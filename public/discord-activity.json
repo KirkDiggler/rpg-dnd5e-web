@@ -1,0 +1,16 @@
+{
+  "name": "D&D 5e Character Creator",
+  "description": "Create and manage D&D 5e characters with your party",
+  "activity_preview_video_asset_id": null,
+  "supported_platforms": ["desktop", "mobile"],
+  "orientation_lock_state": "unlocked",
+  "tablet_default_orientation": "landscape",
+  "requires_age_gate": false,
+  "shelf_rank": 1,
+  "is_embedded": true,
+  "primary_sku_id": null,
+  "premium_tier_requirement": null,
+  "one_person_per_user": false,
+  "tags": ["game", "roleplay", "creative"],
+  "activity_type": "embedded"
+}

@@ -17,6 +17,7 @@
   "dependencies": {
     "@connectrpc/connect": "^2.0.2",
     "@connectrpc/connect-web": "^2.0.2",
+    "@discord/embedded-app-sdk": "^2.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

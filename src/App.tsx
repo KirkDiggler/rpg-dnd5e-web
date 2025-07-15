@@ -1,14 +1,47 @@
 import './App.css';
+import { DiscordDebugPanel, useDiscord } from './discord';
 
 function App() {
+  const discord = useDiscord();
+
   return (
     <div className="App">
       <h1>RPG D&D 5e Web</h1>
       <p>Welcome to the D&D 5e Discord Activity!</p>
+
       <div style={{ marginTop: '2rem' }}>
         <p>Environment: {import.meta.env.MODE}</p>
         <p>API Host: {import.meta.env.VITE_API_HOST || 'Not configured'}</p>
+        <p>
+          Discord Client ID:{' '}
+          {import.meta.env.VITE_DISCORD_CLIENT_ID || 'Not configured'}
+        </p>
       </div>
+
+      {/* Discord Integration Info */}
+      {discord.isDiscord && discord.user && (
+        <div
+          style={{
+            marginTop: '2rem',
+            padding: '1rem',
+            background: '#dcfce7',
+            borderRadius: '8px',
+          }}
+        >
+          <h3>
+            🎮 Welcome to the Activity,{' '}
+            {discord.user.global_name || discord.user.username}!
+          </h3>
+          <p>
+            You're playing with {discord.participants.length} other(s) in this
+            session.
+          </p>
+        </div>
+      )}
+
+      {/* Debug Panel - only show in development or when explicitly enabled */}
+      {(import.meta.env.MODE === 'development' ||
+        import.meta.env.VITE_SHOW_DEBUG === 'true') && <DiscordDebugPanel />}
     </div>
   );
 }
