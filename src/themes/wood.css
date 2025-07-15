@@ -1,66 +1,76 @@
 /* Board Game Wood Theme - Current theme converted to new system */
 :root {
   /* Background colors */
-  --bg-primary: #2C1810; /* Dark wood */
-  --bg-secondary: #4A2C1A; /* Medium wood */
-  
+  --bg-primary: #2c1810; /* Dark wood */
+  --bg-secondary: #4a2c1a; /* Medium wood */
+
   /* Card and content backgrounds */
-  --card-bg: #E8D7B3; /* Parchment base */
-  --section-bg: rgba(244, 232, 208, 0.9); /* Parchment light with transparency */
-  --stat-bg: #E8D7B3; /* Parchment base */
-  --modal-bg: #E8D7B3; /* Parchment base */
-  
+  --card-bg: #e8d7b3; /* Parchment base */
+  --section-bg: rgba(
+    244,
+    232,
+    208,
+    0.9
+  ); /* Parchment light with transparency */
+  --stat-bg: #e8d7b3; /* Parchment base */
+  --modal-bg: #e8d7b3; /* Parchment base */
+
   /* Text colors */
-  --text-primary: #F4E8D0; /* Parchment light */
-  --text-secondary: #1A1612; /* Ink black */
-  --text-button: #F4E8D0; /* Parchment light */
-  --text-muted: #3E2F1F; /* Ink brown */
-  --text-subtle: #5C4033; /* Ink sepia */
-  
+  --text-primary: #f4e8d0; /* Parchment light */
+  --text-secondary: #1a1612; /* Ink black */
+  --text-button: #f4e8d0; /* Parchment light */
+  --text-muted: #3e2f1f; /* Ink brown */
+  --text-subtle: #5c4033; /* Ink sepia */
+
   /* Accent colors */
-  --accent-primary: #8B5A3C; /* Light wood */
-  --accent-primary-hover: #D4A574; /* Gold trim */
-  --accent-secondary: #D4C5A0; /* Parchment dark */
-  --accent-secondary-hover: #E8D7B3; /* Parchment base */
-  
+  --accent-primary: #8b5a3c; /* Light wood */
+  --accent-primary-hover: #d4a574; /* Gold trim */
+  --accent-secondary: #d4c5a0; /* Parchment dark */
+  --accent-secondary-hover: #e8d7b3; /* Parchment base */
+
   /* Border colors */
-  --border-primary: #D4A574; /* Gold trim */
+  --border-primary: #d4a574; /* Gold trim */
   --border-section: rgba(139, 90, 60, 0.3); /* Light wood with transparency */
   --border-dashed: rgba(139, 90, 60, 0.5); /* Light wood with transparency */
-  
+
   /* Background elements */
   --inventory-bg: rgba(26, 22, 18, 0.1); /* Ink black with transparency */
   --resource-bg: rgba(26, 22, 18, 0.2); /* Ink black with transparency */
   --overlay-bg: rgba(26, 22, 18, 0.8); /* Ink black with transparency */
-  
+
   /* Game element colors */
-  --health: #C41E3A;
-  --mana: #1E88E5;
-  --stamina: #FFC107;
-  --experience: #9C27B0;
-  
+  --health: #c41e3a;
+  --mana: #1e88e5;
+  --stamina: #ffc107;
+  --experience: #9c27b0;
+
   /* Rarity colors */
-  --common: #9E9E9E;
-  --uncommon: #4CAF50;
-  --rare: #2196F3;
-  --epic: #9C27B0;
-  --legendary: #FF6F00;
-  
+  --common: #9e9e9e;
+  --uncommon: #4caf50;
+  --rare: #2196f3;
+  --epic: #9c27b0;
+  --legendary: #ff6f00;
+
   /* Shadows */
-  --shadow-card: 0 10px 15px -3px rgba(44, 24, 16, 0.4), 0 4px 6px -2px rgba(44, 24, 16, 0.3);
-  --shadow-card-hover: 0 20px 25px -5px rgba(44, 24, 16, 0.5), 0 10px 10px -5px rgba(44, 24, 16, 0.4);
-  --shadow-button: 0 4px 6px -1px rgba(44, 24, 16, 0.3), 0 2px 4px -1px rgba(44, 24, 16, 0.2);
-  --shadow-section: 0 4px 6px -1px rgba(44, 24, 16, 0.3), 0 2px 4px -1px rgba(44, 24, 16, 0.2);
+  --shadow-card:
+    0 10px 15px -3px rgba(44, 24, 16, 0.4), 0 4px 6px -2px rgba(44, 24, 16, 0.3);
+  --shadow-card-hover:
+    0 20px 25px -5px rgba(44, 24, 16, 0.5),
+    0 10px 10px -5px rgba(44, 24, 16, 0.4);
+  --shadow-button:
+    0 4px 6px -1px rgba(44, 24, 16, 0.3), 0 2px 4px -1px rgba(44, 24, 16, 0.2);
+  --shadow-section:
+    0 4px 6px -1px rgba(44, 24, 16, 0.3), 0 2px 4px -1px rgba(44, 24, 16, 0.2);
   --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   --text-shadow: 1px 1px 2px rgba(26, 22, 18, 0.3);
-  
+
   /* Gradients */
-  --gradient-dice: linear-gradient(to bottom right, #8B5A3C, #4A2C1A);
-  
+  --gradient-dice: linear-gradient(to bottom right, #8b5a3c, #4a2c1a);
+
   /* Glow effects */
-  --glow-common: 0 0 10px rgba(158,158,158,0.5);
-  --glow-uncommon: 0 0 15px rgba(76,175,80,0.6);
-  --glow-rare: 0 0 20px rgba(33,150,243,0.7);
-  --glow-epic: 0 0 25px rgba(156,39,176,0.8);
-  --glow-legendary: 0 0 30px rgba(255,111,0,0.9);
+  --glow-common: 0 0 10px rgba(158, 158, 158, 0.5);
+  --glow-uncommon: 0 0 15px rgba(76, 175, 80, 0.6);
+  --glow-rare: 0 0 20px rgba(33, 150, 243, 0.7);
+  --glow-epic: 0 0 25px rgba(156, 39, 176, 0.8);
+  --glow-legendary: 0 0 30px rgba(255, 111, 0, 0.9);
 }

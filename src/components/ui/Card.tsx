@@ -1,7 +1,7 @@
-import { motion } from 'framer-motion';
+import { HTMLMotionProps, motion } from 'framer-motion';
 import { cn } from '../../utils/cn';
 
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+interface CardProps extends HTMLMotionProps<'div'> {
   rarity?: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 }
 
