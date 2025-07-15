@@ -1,5 +1,6 @@
-import { useDiscord } from './DiscordProvider';
+import { useDiscord } from './hooks';
 import { getEnvironmentInfo } from './sdk';
+import type { DiscordParticipant } from './types';
 
 export function DiscordDebugPanel() {
   const discord = useDiscord();
@@ -89,7 +90,7 @@ export function DiscordDebugPanel() {
         <div style={{ marginTop: '1rem' }}>
           <h4>Participants ({discord.participants.length})</h4>
           <ul style={{ margin: 0, paddingLeft: '1.5rem' }}>
-            {discord.participants.map((participant) => (
+            {discord.participants.map((participant: DiscordParticipant) => (
               <li key={participant.id}>
                 {participant.username}#{participant.discriminator}
                 {participant.global_name && ` (${participant.global_name})`}
