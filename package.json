@@ -17,6 +17,7 @@
   "dependencies": {
     "@connectrpc/connect": "^2.0.2",
     "@connectrpc/connect-web": "^2.0.2",
+    "@kirkdiggler/rpg-api-protos": "file:../rpg-api-protos",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
