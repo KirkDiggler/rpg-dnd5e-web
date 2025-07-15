@@ -175,13 +175,13 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
                     <div className="flex justify-between text-sm">
                       <span style={{ color: 'var(--ink-brown)' }}>
                         Level {character.level}{' '}
-                        {character.race?.id || 'Unknown Race'}
+                        {character.race || 'Unknown Race'}
                       </span>
                       <span
                         className="font-semibold"
                         style={{ color: 'var(--ink-sepia)' }}
                       >
-                        {character.class?.id || 'Unknown Class'}
+                        {character.class || 'Unknown Class'}
                       </span>
                     </div>
 
@@ -195,7 +195,7 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
                           HP
                         </div>
                         <div className="font-bold">
-                          {character.hitPoints || 0}
+                          {character.currentHitPoints || 0}
                         </div>
                       </div>
                       <div className="stat-block">
@@ -206,7 +206,7 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
                           AC
                         </div>
                         <div className="font-bold">
-                          {character.armorClass || 10}
+                          {character.combatStats?.armorClass || 10}
                         </div>
                       </div>
                       <div className="stat-block">
