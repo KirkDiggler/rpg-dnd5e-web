@@ -35,7 +35,7 @@ export const themes: Theme[] = [
 ];
 
 const THEME_STORAGE_KEY = 'rpg-dnd5e-theme';
-const DEFAULT_THEME = 'wood';
+const DEFAULT_THEME = 'arcane';
 
 export function useTheme() {
   const [currentTheme, setCurrentTheme] = useState<string>(DEFAULT_THEME);

@@ -53,20 +53,21 @@ export function ThemeSelector() {
 
         <Select.Portal>
           <Select.Content
-            className="overflow-hidden rounded-lg border shadow-lg z-50"
+            className="overflow-hidden rounded-lg border shadow-lg z-50 min-w-80"
             style={{
-              backgroundColor: 'var(--modal-bg)',
+              backgroundColor: 'var(--bg-secondary)',
               borderColor: 'var(--border-primary)',
+              boxShadow: 'var(--shadow-modal)',
             }}
           >
-            <Select.Viewport className="p-1">
+            <Select.Viewport className="p-2">
               {themes.map((theme) => (
                 <Select.Item
                   key={theme.id}
                   value={theme.id}
-                  className="relative flex items-center px-3 py-2 text-sm rounded cursor-pointer select-none hover:outline-none focus:outline-none"
+                  className="relative flex items-center px-3 py-3 text-sm rounded cursor-pointer select-none hover:outline-none focus:outline-none transition-colors"
                   style={{
-                    color: 'var(--text-secondary)',
+                    color: 'var(--text-primary)',
                     backgroundColor:
                       currentTheme === theme.id
                         ? 'var(--accent-primary)'
@@ -80,26 +81,43 @@ export function ThemeSelector() {
                     className="flex items-center gap-3 w-full"
                   >
                     <div
-                      className="w-4 h-4 rounded-full border flex-shrink-0"
+                      className="w-5 h-5 rounded-full border-2 flex-shrink-0"
                       style={{
                         backgroundColor: theme.preview,
-                        borderColor: 'var(--border-primary)',
+                        borderColor: 'var(--text-primary)',
                       }}
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">
+                      <div
+                        className="font-semibold truncate"
+                        style={{
+                          color:
+                            currentTheme === theme.id
+                              ? 'var(--text-button)'
+                              : 'var(--text-primary)',
+                        }}
+                      >
                         <Select.ItemText>{theme.name}</Select.ItemText>
                       </div>
-                      <div className="text-xs opacity-70 truncate">
+                      <div
+                        className="text-xs truncate mt-1"
+                        style={{
+                          color:
+                            currentTheme === theme.id
+                              ? 'var(--text-button)'
+                              : 'var(--text-muted)',
+                          opacity: 0.9,
+                        }}
+                      >
                         {theme.description}
                       </div>
                     </div>
                   </motion.div>
 
-                  <Select.ItemIndicator className="absolute right-2 flex items-center justify-center">
+                  <Select.ItemIndicator className="absolute right-3 flex items-center justify-center">
                     <svg
-                      width="15"
-                      height="15"
+                      width="16"
+                      height="16"
                       viewBox="0 0 15 15"
                       fill="none"
                       xmlns="http://www.w3.org/2000/svg"
