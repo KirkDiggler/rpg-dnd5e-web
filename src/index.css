@@ -1,68 +1,103 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap');
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+@layer base {
+  body {
+    @apply bg-board-primary text-parchment-light font-body;
   }
-  a:hover {
-    color: #747bff;
+}
+
+@layer components {
+  /* Board game card styling */
+  .game-card {
+    @apply bg-parchment-base border-2 border-board-border rounded-lg shadow-card p-4
+           hover:shadow-xl transition-all duration-300 hover:-translate-y-1;
   }
-  button {
-    background-color: #f9f9f9;
+
+  /* Button variants */
+  .btn-primary {
+    @apply bg-board-accent text-parchment-light px-6 py-3 rounded-md font-game font-semibold
+           hover:bg-board-border transition-colors duration-200 shadow-board
+           active:scale-95 transform;
+  }
+
+  .btn-secondary {
+    @apply bg-parchment-dark text-ink-black px-6 py-3 rounded-md font-game
+           hover:bg-parchment-base transition-colors duration-200 border border-board-accent;
+  }
+
+  /* Dice button for rolls */
+  .btn-dice {
+    @apply bg-gradient-to-br from-board-accent to-board-secondary text-parchment-light
+           w-16 h-16 rounded-lg flex items-center justify-center font-bold text-xl
+           hover:animate-dice-roll shadow-card;
+  }
+
+  /* Character sheet sections */
+  .sheet-section {
+    @apply bg-parchment-light/90 backdrop-blur-sm border border-board-accent/30 
+           rounded-lg p-4 shadow-board;
+  }
+
+  /* Stat blocks */
+  .stat-block {
+    @apply bg-parchment-base border border-board-accent rounded p-2 text-center;
+  }
+
+  /* Health/Mana/Stamina bars */
+  .resource-bar {
+    @apply h-6 bg-ink-black/20 rounded-full overflow-hidden relative;
+  }
+
+  .resource-fill {
+    @apply h-full transition-all duration-500 ease-out;
+  }
+
+  /* Inventory slots */
+  .inventory-slot {
+    @apply w-16 h-16 bg-ink-black/10 border-2 border-dashed border-board-accent/50
+           rounded-lg flex items-center justify-center hover:border-board-border
+           transition-colors duration-200;
+  }
+
+  /* Modal overlay with parchment feel */
+  .modal-overlay {
+    @apply fixed inset-0 bg-ink-black/80 backdrop-blur-sm z-50;
+  }
+
+  .modal-content {
+    @apply bg-parchment-base border-4 border-board-border rounded-xl shadow-2xl
+           max-w-2xl mx-auto mt-20 p-6;
+  }
+}
+
+@layer utilities {
+  /* Text shadows for readability on parchment */
+  .text-shadow {
+    text-shadow: 1px 1px 2px rgba(26, 22, 18, 0.3);
+  }
+
+  /* Glow effects for magical items */
+  .glow-common {
+    @apply shadow-[0_0_10px_rgba(158,158,158,0.5)];
+  }
+  
+  .glow-uncommon {
+    @apply shadow-[0_0_15px_rgba(76,175,80,0.6)];
+  }
+  
+  .glow-rare {
+    @apply shadow-[0_0_20px_rgba(33,150,243,0.7)];
+  }
+  
+  .glow-epic {
+    @apply shadow-[0_0_25px_rgba(156,39,176,0.8)];
+  }
+  
+  .glow-legendary {
+    @apply shadow-[0_0_30px_rgba(255,111,0,0.9)] animate-glow;
   }
 }

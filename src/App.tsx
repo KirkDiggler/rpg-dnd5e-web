@@ -1,73 +1,60 @@
-import { useListCharacters } from './api';
+import { motion } from 'framer-motion';
 import './App.css';
+import { CharacterList } from './components/CharacterList';
+import { Button } from './components/ui/Button';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
 function App() {
   const discord = useDiscord();
-  const {
-    data: characters,
-    loading,
-    error,
-  } = useListCharacters({ playerId: 'test-player' });
+  const playerId = discord.user?.id || 'test-player';
 
   return (
-    <div className="App">
-      <h1>RPG D&D 5e Web</h1>
-      <p>Welcome to the D&D 5e Discord Activity!</p>
-
-      <div style={{ marginTop: '2rem' }}>
-        <p>Environment: {import.meta.env.MODE}</p>
-        <p>API Host: {import.meta.env.VITE_API_HOST || 'Not configured'}</p>
-        <p>
-          Discord Client ID:{' '}
-          {import.meta.env.VITE_DISCORD_CLIENT_ID || 'Not configured'}
-        </p>
-      </div>
-
-      {/* Discord Integration Info */}
-      {discord.isDiscord && discord.user && (
-        <div
-          style={{
-            marginTop: '2rem',
-            padding: '1rem',
-            background: '#dcfce7',
-            borderRadius: '8px',
-          }}
-        >
-          <h3>
-            🎮 Welcome to the Activity,{' '}
-            {discord.user.global_name || discord.user.username}!
-          </h3>
-          <p>
-            You're playing with {discord.participants.length} other(s) in this
-            session.
+    <div className="min-h-screen bg-board-primary p-8">
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-7xl mx-auto"
+      >
+        {/* Header */}
+        <header className="mb-8 text-center">
+          <h1 className="text-5xl font-game font-bold text-parchment-light mb-2 text-shadow">
+            D&D Co-op Adventure
+          </h1>
+          <p className="text-parchment-dark text-lg">
+            Forge your legend in a shared realm
           </p>
+        </header>
+
+        {/* Discord Integration Info */}
+        {discord.isDiscord && discord.user && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="sheet-section mb-6 text-center"
+          >
+            <h3 className="text-lg font-game text-ink-black mb-2">
+              Welcome, {discord.user.global_name || discord.user.username}!
+            </h3>
+            <p className="text-ink-brown">
+              You're playing with {discord.participants.length} other adventurer
+              {discord.participants.length !== 1 ? 's' : ''} in this session.
+            </p>
+          </motion.div>
+        )}
+
+        {/* Demo dice button */}
+        <div className="flex justify-center mb-8">
+          <Button variant="dice">D20</Button>
         </div>
-      )}
 
-      {/* Character List */}
-      <div style={{ marginTop: '2rem' }}>
-        <h2>Characters</h2>
-        {loading && <p>Loading characters...</p>}
-        {error && <p>Error: {error.message}</p>}
-        {characters.length === 0 && !loading && !error && (
-          <p>No characters found.</p>
-        )}
-        {characters.length > 0 && (
-          <ul style={{ textAlign: 'left' }}>
-            {characters.map((character) => (
-              <li key={character.id}>
-                <strong>{character.name}</strong> - Level {character.level}{' '}
-                {character.race} {character.class}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        {/* Character List */}
+        <CharacterList playerId={playerId} />
 
-      {/* Debug Panel - only show in development or when explicitly enabled */}
-      {(import.meta.env.MODE === 'development' ||
-        import.meta.env.VITE_SHOW_DEBUG === 'true') && <DiscordDebugPanel />}
+        {/* Debug Panel - only show in development or when explicitly enabled */}
+        {(import.meta.env.MODE === 'development' ||
+          import.meta.env.VITE_SHOW_DEBUG === 'true') && <DiscordDebugPanel />}
+      </motion.div>
     </div>
   );
 }
