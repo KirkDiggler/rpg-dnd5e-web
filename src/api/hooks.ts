@@ -1,3 +1,4 @@
+import { create } from '@bufbuild/protobuf';
 import type {
   Character,
   CharacterDraft,
@@ -5,8 +6,6 @@ import type {
   DeleteCharacterRequest,
   DeleteDraftRequest,
   FinalizeDraftRequest,
-  GetCharacterRequest,
-  GetDraftRequest,
   ListCharactersRequest,
   ListDraftsRequest,
   UpdateAbilityScoresRequest,
@@ -16,6 +15,12 @@ import type {
   UpdateRaceRequest,
   UpdateSkillsRequest,
   ValidateDraftRequest,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  GetCharacterRequestSchema,
+  GetDraftRequestSchema,
+  ListCharactersRequestSchema,
+  ListDraftsRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { characterClient } from './client';
@@ -49,7 +54,7 @@ export function useGetCharacter(characterId: string) {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const request: GetCharacterRequest = { characterId };
+      const request = create(GetCharacterRequestSchema, { characterId });
       const response = await characterClient.getCharacter(request);
       setState({
         data: response.character || null,
@@ -87,12 +92,12 @@ export function useListCharacters(
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
-        const request: ListCharactersRequest = {
+        const request = create(ListCharactersRequestSchema, {
           pageSize,
           pageToken: pageToken || '',
           sessionId: filters.sessionId || '',
           playerId: filters.playerId || '',
-        };
+        });
 
         const response = await characterClient.listCharacters(request);
 
@@ -141,7 +146,7 @@ export function useGetDraft(draftId: string) {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      const request: GetDraftRequest = { draftId };
+      const request = create(GetDraftRequestSchema, { draftId });
       const response = await characterClient.getDraft(request);
       setState({
         data: response.draft || null,
@@ -179,12 +184,12 @@ export function useListDrafts(
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
-        const request: ListDraftsRequest = {
+        const request = create(ListDraftsRequestSchema, {
           playerId: filters.playerId || '',
           sessionId: filters.sessionId || '',
           pageSize,
           pageToken: pageToken || '',
-        };
+        });
 
         const response = await characterClient.listDrafts(request);
 
