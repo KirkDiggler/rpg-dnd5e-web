@@ -1,4 +1,4 @@
-import './App.css'
+import './App.css';
 
 function App() {
   return (
@@ -10,7 +10,7 @@ function App() {
         <p>API Host: {import.meta.env.VITE_API_HOST || 'Not configured'}</p>
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

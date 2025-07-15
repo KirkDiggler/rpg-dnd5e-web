@@ -15,6 +15,7 @@ This is **rpg-dnd5e-web**, a React-based web UI for D&D 5e gameplay designed as 
 ## Architecture Principles
 
 ### API Communication
+
 - Use Connect RPC with `@kirkdiggler/rpg-api-protos`
 - Follow the hook pattern from platform-admin-react:
   - `useGet*` for single entity fetching
@@ -23,29 +24,34 @@ This is **rpg-dnd5e-web**, a React-based web UI for D&D 5e gameplay designed as 
   - `useStream*` for real-time updates
 
 ### State Management
+
 - Use Zustand for global game state
 - Local state with hooks for component-specific data
 - Keep Discord activity state separate from game state
 
 ### Component Structure
+
 - Feature-based folder organization
 - Shared components in `common/`
 - Custom hooks abstract API calls
 - TypeScript for all components
 
 ### Styling Guidelines
+
 - Tailwind CSS for utility-first styling
 - Radix UI for accessible components
 - Dark theme by default (game aesthetic)
 - Mobile-first responsive design
 
 ### Character Creation Flow
+
 - Draft-based system matching the API
 - Section updates allow non-linear editing
 - Visual progress indicators
 - Validation at each step
 
 ### Game Board Considerations
+
 - Canvas or SVG rendering (TBD)
 - Turn-based, no real-time requirements
 - Static animations for actions
