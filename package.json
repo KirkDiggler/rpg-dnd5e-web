@@ -18,6 +18,7 @@
     "@connectrpc/connect": "^2.0.2",
     "@connectrpc/connect-web": "^2.0.2",
     "@discord/embedded-app-sdk": "^2.1.0",
+    "@kirkdiggler/rpg-api-protos": "github:KirkDiggler/rpg-api-protos#generated",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
