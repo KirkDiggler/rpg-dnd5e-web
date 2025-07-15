@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    reviewers:
+      - 'KirkDiggler'
+    labels:
+      - 'dependencies'
+    groups:
+      development:
+        patterns:
+          - '@types/*'
+          - 'eslint*'
+          - 'prettier*'
+          - 'typescript*'
+          - 'vite*'
+      production:
+        patterns:
+          - 'react*'
+          - '@connectrpc/*'
+          - '@radix-ui/*'

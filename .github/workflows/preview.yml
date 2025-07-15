@@ -1,0 +1,71 @@
+name: Deploy PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  deploy-preview:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+        env:
+          # Add preview-specific env vars here
+          VITE_API_HOST: ${{ secrets.PREVIEW_API_HOST }}
+
+      - name: Deploy to preview
+        id: deploy
+        run: |
+          echo "Preview deployment would happen here"
+          echo "preview_url=https://preview-pr-${{ github.event.number }}.rpg-dnd5e-web.vercel.app" >> $GITHUB_OUTPUT
+
+      # TODO: Replace with actual deployment (Vercel, Netlify, etc)
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Preview deployment')
+            );
+
+            const body = `### 🚀 Preview deployment\n\n` +
+              `Preview URL: ${{ steps.deploy.outputs.preview_url }}\n\n` +
+              `Last updated: ${new Date().toISOString()}`;
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

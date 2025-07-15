@@ -5,6 +5,7 @@ A web-based D&D 5e game interface designed to run as a Discord Activity, providi
 ## Overview
 
 This React application serves as the primary UI for the RPG API's D&D 5e implementation. It provides:
+
 - Character creation and management
 - Turn-based combat with visual board
 - Integration with Discord for multiplayer sessions
