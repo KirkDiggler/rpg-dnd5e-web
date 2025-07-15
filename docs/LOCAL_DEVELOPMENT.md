@@ -2,84 +2,69 @@
 
 ## rpg-api-protos Integration
 
-Currently, the project uses a local file dependency for `@kirkdiggler/rpg-api-protos`:
+The project uses the generated TypeScript client from the `rpg-api-protos` repository:
 
 ```json
-"@kirkdiggler/rpg-api-protos": "file:../rpg-api-protos"
+"@kirkdiggler/rpg-api-protos": "github:KirkDiggler/rpg-api-protos#generated"
 ```
 
-### Why Local Development?
+This pulls directly from the `generated` branch which contains the compiled TypeScript code.
 
-- The proto definitions are slow-changing and part of the API contract
-- During development, it's convenient to work on both repos simultaneously
-- Changes to protos should be driven by API requirements, not UI needs
+### How It Works
 
-### Current Workaround for CI
+- The `rpg-api-protos` repository has a `generated` branch
+- This branch contains the compiled TypeScript code from the proto definitions
+- npm/yarn can install directly from this GitHub branch
+- Works in all environments: local, CI, and production deployments
 
-The CI uses a stub script (`scripts/ci-setup-protos.sh`) to create minimal type definitions. This is a **temporary solution**.
-
-### Production Deployment Issue ⚠️
-
-**This setup will NOT work in production deployments** because:
-
-- The `../rpg-api-protos` directory won't exist on deployment servers
-- `file:` dependencies are not suitable for production builds
-- The deployment process can't access local filesystem paths outside the project
-
-### Proper Solutions (TODO)
-
-1. **Publish to npm** (Recommended)
-   - Publish `@kirkdiggler/rpg-api-protos` as a proper npm package
-   - Use semantic versioning for proto changes
-   - Update via normal `npm install @kirkdiggler/rpg-api-protos@latest`
-
-2. **Git Submodule**
-   - Add rpg-api-protos as a git submodule
-   - Ensures consistent versions across environments
-   - More complex but keeps everything in version control
-
-3. **Build-time Generation**
-   - Generate TypeScript clients during build from proto files
-   - Requires build tooling changes
-
-See Issue #14 for tracking this work.
-
-## Local Development Steps
-
-1. Clone both repositories:
-
-   ```bash
-   git clone git@github.com:KirkDiggler/rpg-dnd5e-web.git
-   git clone git@github.com:KirkDiggler/rpg-api-protos.git
-   ```
-
-2. Ensure they're siblings in the same parent directory:
-
-   ```
-   parent-dir/
-   ├── rpg-dnd5e-web/
-   └── rpg-api-protos/
-   ```
-
-3. In rpg-api-protos, generate the TypeScript client:
-
-   ```bash
-   cd rpg-api-protos
-   npm install
-   npm run generate
-   ```
-
-4. In rpg-dnd5e-web, install dependencies:
-   ```bash
-   cd rpg-dnd5e-web
-   npm install
-   ```
-
-## Updating Proto Definitions
+### Updating Proto Definitions
 
 When the API changes require proto updates:
 
-1. Update the proto files in rpg-api-protos
-2. Regenerate the TypeScript client
-3. The changes will automatically be available in rpg-dnd5e-web
-4. No need to reinstall - the file: dependency points to the local directory
+1. The rpg-api-protos repository will update and regenerate the TypeScript code
+2. The `generated` branch will be updated with new compiled code
+3. To get the latest changes in this project:
+   ```bash
+   npm update @kirkdiggler/rpg-api-protos
+   ```
+
+### Benefits
+
+- ✅ Works in production deployments (Vercel, Netlify, etc.)
+- ✅ No need for local file dependencies
+- ✅ CI/CD works without workarounds
+- ✅ Version controlled through git commits
+- ✅ Can pin to specific commits if needed
+
+## Local Development Steps
+
+1. Clone the repository:
+
+   ```bash
+   git clone git@github.com:KirkDiggler/rpg-dnd5e-web.git
+   cd rpg-dnd5e-web
+   ```
+
+2. Install dependencies (this will pull the protos from GitHub):
+
+   ```bash
+   npm install
+   ```
+
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+That's it! The proto definitions are automatically installed from the GitHub generated branch.
+
+## Environment Variables
+
+Create a `.env.local` file for local development:
+
+```env
+VITE_API_HOST=http://localhost:8080
+VITE_DISCORD_CLIENT_ID=your_discord_client_id
+```
+
+See `.env.example` for all available environment variables.

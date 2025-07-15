@@ -1,7 +1,6 @@
 import type { Interceptor } from '@connectrpc/connect';
 import { createClient } from '@connectrpc/connect';
 import { createConnectTransport } from '@connectrpc/connect-web';
-// @ts-expect-error - CI uses stub files
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
 // Get API host from environment
@@ -46,5 +45,4 @@ const transport = createConnectTransport({
 });
 
 // Create the character service client
-// @ts-expect-error - CI uses stub files
 export const characterClient = createClient(CharacterService, transport);

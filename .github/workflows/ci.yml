@@ -19,9 +19,6 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Setup local dependencies
-        run: ./scripts/ci-setup-protos.sh
-
       - name: Install dependencies
         run: npm ci
 
@@ -49,9 +46,6 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Setup local dependencies
-        run: ./scripts/ci-setup-protos.sh
-
       - name: Install dependencies
         run: npm ci
 
@@ -70,9 +64,6 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-
-      - name: Setup local dependencies
-        run: ./scripts/ci-setup-protos.sh
 
       - name: Install dependencies
         run: npm ci

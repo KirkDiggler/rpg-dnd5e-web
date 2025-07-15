@@ -1,4 +1,3 @@
-// @ts-expect-error - CI uses stub files
 import type {
   Character,
   CharacterDraft,
