@@ -49,9 +49,10 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      'flex flex-col space-y-1.5 text-center sm:text-left border-b border-board-accent pb-4 mb-4',
+      'flex flex-col space-y-1.5 text-center sm:text-left border-b pb-4 mb-4',
       className
     )}
+    style={{ borderBottomColor: 'var(--board-accent)' }}
     {...props}
   />
 );
@@ -63,10 +64,11 @@ const DialogTitle = forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn(
-      'text-2xl font-game font-bold leading-none tracking-tight text-ink-black',
-      className
-    )}
+    className={cn('text-2xl font-bold leading-none tracking-tight', className)}
+    style={{
+      fontFamily: 'Cinzel, serif',
+      color: 'var(--ink-black)',
+    }}
     {...props}
   />
 ));

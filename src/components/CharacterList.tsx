@@ -49,7 +49,11 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          className="w-16 h-16 border-4 border-board-accent border-t-transparent rounded-full"
+          className="w-16 h-16 border-4 border-t-transparent rounded-full"
+          style={{
+            borderColor: 'var(--board-accent)',
+            borderTopColor: 'transparent',
+          }}
         />
       </div>
     );
@@ -58,7 +62,9 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
   if (error) {
     return (
       <Card className="text-center py-8">
-        <p className="text-ink-brown mb-4">Failed to load characters</p>
+        <p className="mb-4" style={{ color: 'var(--ink-brown)' }}>
+          Failed to load characters
+        </p>
         <Button variant="secondary" onClick={() => window.location.reload()}>
           Try Again
         </Button>
@@ -69,7 +75,13 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-game font-bold text-parchment-light text-shadow">
+        <h2
+          className="text-3xl font-bold text-shadow"
+          style={{
+            fontFamily: 'Cinzel, serif',
+            color: 'var(--parchment-light)',
+          }}
+        >
           Your Characters
         </h2>
         <Dialog open={isCreating} onOpenChange={setIsCreating}>
@@ -81,7 +93,7 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
               <DialogTitle>Create New Character</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <p className="text-ink-brown">
+              <p style={{ color: 'var(--ink-brown)' }}>
                 Ready to forge a new hero? Let's begin your adventure!
               </p>
               <div className="flex gap-4 justify-end">
@@ -110,10 +122,16 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
       {characters.length === 0 ? (
         <Card className="text-center py-12">
           <div className="space-y-4">
-            <h3 className="text-xl font-game text-ink-black">
+            <h3
+              className="text-xl"
+              style={{
+                fontFamily: 'Cinzel, serif',
+                color: 'var(--ink-black)',
+              }}
+            >
               No Characters Yet
             </h3>
-            <p className="text-ink-brown">
+            <p style={{ color: 'var(--ink-brown)' }}>
               Your adventure awaits! Create your first character to begin.
             </p>
           </div>
@@ -145,14 +163,23 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
                   className="cursor-pointer hover:scale-105 transition-transform"
                 >
                   <div className="space-y-3">
-                    <h3 className="text-xl font-game font-bold text-ink-black">
+                    <h3
+                      className="text-xl font-bold"
+                      style={{
+                        fontFamily: 'Cinzel, serif',
+                        color: 'var(--ink-black)',
+                      }}
+                    >
                       {character.name}
                     </h3>
                     <div className="flex justify-between text-sm">
-                      <span className="text-ink-brown">
+                      <span style={{ color: 'var(--ink-brown)' }}>
                         Level {character.level} {character.race?.name}
                       </span>
-                      <span className="text-ink-sepia font-semibold">
+                      <span
+                        className="font-semibold"
+                        style={{ color: 'var(--ink-sepia)' }}
+                      >
                         {character.class?.name}
                       </span>
                     </div>
@@ -160,19 +187,34 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
                     {/* Character stats preview */}
                     <div className="grid grid-cols-3 gap-2 pt-2">
                       <div className="stat-block">
-                        <div className="text-xs text-ink-sepia">HP</div>
+                        <div
+                          className="text-xs"
+                          style={{ color: 'var(--ink-sepia)' }}
+                        >
+                          HP
+                        </div>
                         <div className="font-bold">
                           {character.maxHitPoints}
                         </div>
                       </div>
                       <div className="stat-block">
-                        <div className="text-xs text-ink-sepia">AC</div>
+                        <div
+                          className="text-xs"
+                          style={{ color: 'var(--ink-sepia)' }}
+                        >
+                          AC
+                        </div>
                         <div className="font-bold">
                           {character.armorClass || 10}
                         </div>
                       </div>
                       <div className="stat-block">
-                        <div className="text-xs text-ink-sepia">Init</div>
+                        <div
+                          className="text-xs"
+                          style={{ color: 'var(--ink-sepia)' }}
+                        >
+                          Init
+                        </div>
                         <div className="font-bold">
                           {character.abilities?.dexterity
                             ? `+${Math.floor((character.abilities.dexterity - 10) / 2)}`
@@ -183,15 +225,19 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
 
                     {/* XP Progress bar */}
                     <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-ink-sepia">
+                      <div
+                        className="flex justify-between text-xs"
+                        style={{ color: 'var(--ink-sepia)' }}
+                      >
                         <span>Experience</span>
                         <span>{character.experiencePoints} XP</span>
                       </div>
                       <div className="resource-bar">
                         <div
-                          className="resource-fill bg-experience"
+                          className="resource-fill"
                           style={{
                             width: `${(character.experiencePoints % 1000) / 10}%`,
+                            backgroundColor: 'var(--experience)',
                           }}
                         />
                       </div>
