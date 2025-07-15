@@ -1,0 +1,66 @@
+/* Dungeon Stone & Torchlight Theme - Underground dungeon, torchlit atmosphere */
+:root {
+  /* Background colors */
+  --bg-primary: #0a0a0a; /* Deep black */
+  --bg-secondary: #27272a; /* Deep stone gray */
+  
+  /* Card and content backgrounds */
+  --card-bg: #3f3f46; /* Lighter stone */
+  --section-bg: rgba(63, 63, 70, 0.9); /* Lighter stone with transparency */
+  --stat-bg: #52525b; /* Medium stone */
+  --modal-bg: #3f3f46; /* Lighter stone */
+  
+  /* Text colors */
+  --text-primary: #fef3c7; /* Warm white */
+  --text-secondary: #1c1917; /* Dark stone */
+  --text-button: #fef3c7; /* Warm white */
+  --text-muted: #78716c; /* Medium stone */
+  --text-subtle: #a8a29e; /* Light stone */
+  
+  /* Accent colors */
+  --accent-primary: #ea580c; /* Warm orange */
+  --accent-primary-hover: #dc2626; /* Deep red */
+  --accent-secondary: #52525b; /* Medium stone */
+  --accent-secondary-hover: #71717a; /* Light stone */
+  
+  /* Border colors */
+  --border-primary: #a16207; /* Bronze */
+  --border-section: rgba(161, 98, 7, 0.3); /* Bronze with transparency */
+  --border-dashed: rgba(161, 98, 7, 0.5); /* Bronze with transparency */
+  
+  /* Background elements */
+  --inventory-bg: rgba(12, 10, 9, 0.3); /* Deep dark with transparency */
+  --resource-bg: rgba(12, 10, 9, 0.4); /* Deep dark with transparency */
+  --overlay-bg: rgba(12, 10, 9, 0.8); /* Deep dark with transparency */
+  
+  /* Game element colors */
+  --health: #dc2626; /* Deep red */
+  --mana: #2563eb; /* Blue */
+  --stamina: #f59e0b; /* Amber */
+  --experience: #7c2d12; /* Dark orange */
+  
+  /* Rarity colors */
+  --common: #78716c; /* Stone gray */
+  --uncommon: #16a34a; /* Green */
+  --rare: #2563eb; /* Blue */
+  --epic: #7c2d12; /* Dark orange */
+  --legendary: #ea580c; /* Warm orange */
+  
+  /* Shadows */
+  --shadow-card: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-card-hover: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+  --shadow-button: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-section: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  --text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.6);
+  
+  /* Gradients */
+  --gradient-dice: linear-gradient(to bottom right, #ea580c, #7c2d12);
+  
+  /* Glow effects with warm torch-like light */
+  --glow-common: 0 0 10px rgba(120, 113, 108, 0.5);
+  --glow-uncommon: 0 0 15px rgba(22, 163, 74, 0.6);
+  --glow-rare: 0 0 20px rgba(37, 99, 235, 0.7);
+  --glow-epic: 0 0 25px rgba(124, 45, 18, 0.8);
+  --glow-legendary: 0 0 30px rgba(234, 88, 12, 0.9);
+}
