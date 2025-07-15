@@ -20,7 +20,27 @@ EOF
   # Create stub TypeScript files with minimal exports
   cat > ../rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb.ts << 'EOF'
 // CI Stub file
-export const CharacterService = {};
+// @ts-nocheck
+export const CharacterService = {
+  typeName: "dnd5e.api.v1alpha1.CharacterService",
+  methods: {
+    getCharacter: { name: "GetCharacter", input: {}, output: {} },
+    listCharacters: { name: "ListCharacters", input: {}, output: {} },
+    getDraft: { name: "GetDraft", input: {}, output: {} },
+    listDrafts: { name: "ListDrafts", input: {}, output: {} },
+    createDraft: { name: "CreateDraft", input: {}, output: {} },
+    updateName: { name: "UpdateName", input: {}, output: {} },
+    updateRace: { name: "UpdateRace", input: {}, output: {} },
+    updateClass: { name: "UpdateClass", input: {}, output: {} },
+    updateBackground: { name: "UpdateBackground", input: {}, output: {} },
+    updateAbilityScores: { name: "UpdateAbilityScores", input: {}, output: {} },
+    updateSkills: { name: "UpdateSkills", input: {}, output: {} },
+    validateDraft: { name: "ValidateDraft", input: {}, output: {} },
+    finalizeDraft: { name: "FinalizeDraft", input: {}, output: {} },
+    deleteDraft: { name: "DeleteDraft", input: {}, output: {} },
+    deleteCharacter: { name: "DeleteCharacter", input: {}, output: {} }
+  }
+};
 export type Character = any;
 export type CharacterDraft = any;
 export type CreateDraftRequest = any;
@@ -45,13 +65,14 @@ EOF
 
   cat > ../rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb.ts << 'EOF'
 // CI Stub file
-export enum Race { UNSPECIFIED = 0 }
-export enum Class { UNSPECIFIED = 0 }
-export enum Background { UNSPECIFIED = 0 }
-export enum Skill { UNSPECIFIED = 0 }
-export enum Ability { UNSPECIFIED = 0 }
-export enum Alignment { UNSPECIFIED = 0 }
-export enum Language { UNSPECIFIED = 0 }
+// @ts-nocheck
+export const Race = { UNSPECIFIED: 0 };
+export const Class = { UNSPECIFIED: 0 };
+export const Background = { UNSPECIFIED: 0 };
+export const Skill = { UNSPECIFIED: 0 };
+export const Ability = { UNSPECIFIED: 0 };
+export const Alignment = { UNSPECIFIED: 0 };
+export const Language = { UNSPECIFIED: 0 };
 EOF
 
   cat > ../rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb.ts << 'EOF'

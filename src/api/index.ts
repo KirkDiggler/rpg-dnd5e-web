@@ -21,6 +21,7 @@ export {
 } from './hooks';
 
 // Re-export commonly used types from protos
+// @ts-expect-error - CI uses stub files
 export type {
   AbilityScores,
   Character,
@@ -29,6 +30,7 @@ export type {
   CreationStep,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
+// @ts-expect-error - CI uses stub files
 export {
   Ability,
   Alignment,
