@@ -174,13 +174,14 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
                     </h3>
                     <div className="flex justify-between text-sm">
                       <span style={{ color: 'var(--ink-brown)' }}>
-                        Level {character.level} {character.race?.name}
+                        Level {character.level}{' '}
+                        {character.race?.id || 'Unknown Race'}
                       </span>
                       <span
                         className="font-semibold"
                         style={{ color: 'var(--ink-sepia)' }}
                       >
-                        {character.class?.name}
+                        {character.class?.id || 'Unknown Class'}
                       </span>
                     </div>
 
@@ -194,7 +195,7 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
                           HP
                         </div>
                         <div className="font-bold">
-                          {character.maxHitPoints}
+                          {character.hitPoints || 0}
                         </div>
                       </div>
                       <div className="stat-block">
@@ -216,8 +217,8 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
                           Init
                         </div>
                         <div className="font-bold">
-                          {character.abilities?.dexterity
-                            ? `+${Math.floor((character.abilities.dexterity - 10) / 2)}`
+                          {character.abilityScores?.dexterity
+                            ? `+${Math.floor((character.abilityScores.dexterity - 10) / 2)}`
                             : '+0'}
                         </div>
                       </div>
@@ -230,13 +231,13 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
                         style={{ color: 'var(--ink-sepia)' }}
                       >
                         <span>Experience</span>
-                        <span>{character.experiencePoints} XP</span>
+                        <span>{character.experiencePoints || 0} XP</span>
                       </div>
                       <div className="resource-bar">
                         <div
                           className="resource-fill"
                           style={{
-                            width: `${(character.experiencePoints % 1000) / 10}%`,
+                            width: `${((character.experiencePoints || 0) % 1000) / 10}%`,
                             backgroundColor: 'var(--experience)',
                           }}
                         />

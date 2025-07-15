@@ -1,4 +1,4 @@
-import { HTMLMotionProps, motion } from 'framer-motion';
+import { motion, type HTMLMotionProps } from 'framer-motion';
 import { forwardRef } from 'react';
 import { cn } from '../../utils/cn';
 
