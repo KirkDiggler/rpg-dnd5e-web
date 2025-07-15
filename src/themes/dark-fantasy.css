@@ -1,0 +1,70 @@
+/* Modern Dark Fantasy Theme - Sleek, modern, serious fantasy */
+:root {
+  /* Background colors */
+  --bg-primary: #1a1a1a; /* Deep charcoal */
+  --bg-secondary: #2a2a2a; /* Rich dark gray */
+
+  /* Card and content backgrounds */
+  --card-bg: #334155; /* Dark slate */
+  --section-bg: rgba(51, 65, 85, 0.9); /* Dark slate with transparency */
+  --stat-bg: #475569; /* Lighter slate */
+  --modal-bg: #334155; /* Dark slate */
+
+  /* Text colors */
+  --text-primary: #f1f5f9; /* Light gray */
+  --text-secondary: #374151; /* Dark gray */
+  --text-button: #f1f5f9; /* Light gray */
+  --text-muted: #64748b; /* Medium gray */
+  --text-subtle: #94a3b8; /* Light medium gray */
+
+  /* Accent colors */
+  --accent-primary: #3b82f6; /* Electric blue */
+  --accent-primary-hover: #1d4ed8; /* Darker blue */
+  --accent-secondary: #475569; /* Lighter slate */
+  --accent-secondary-hover: #64748b; /* Medium gray */
+
+  /* Border colors */
+  --border-primary: #94a3b8; /* Silver */
+  --border-section: rgba(148, 163, 184, 0.3); /* Silver with transparency */
+  --border-dashed: rgba(148, 163, 184, 0.5); /* Silver with transparency */
+
+  /* Background elements */
+  --inventory-bg: rgba(15, 23, 42, 0.3); /* Very dark with transparency */
+  --resource-bg: rgba(15, 23, 42, 0.4); /* Very dark with transparency */
+  --overlay-bg: rgba(15, 23, 42, 0.8); /* Very dark with transparency */
+
+  /* Game element colors */
+  --health: #ef4444; /* Bright red */
+  --mana: #3b82f6; /* Electric blue */
+  --stamina: #f59e0b; /* Gold */
+  --experience: #8b5cf6; /* Violet */
+
+  /* Rarity colors */
+  --common: #9ca3af; /* Gray */
+  --uncommon: #10b981; /* Emerald */
+  --rare: #3b82f6; /* Blue */
+  --epic: #8b5cf6; /* Violet */
+  --legendary: #f59e0b; /* Amber */
+
+  /* Shadows */
+  --shadow-card:
+    0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  --shadow-card-hover:
+    0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+  --shadow-button:
+    0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --shadow-section:
+    0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  --text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+
+  /* Gradients */
+  --gradient-dice: linear-gradient(to bottom right, #3b82f6, #1e40af);
+
+  /* Glow effects */
+  --glow-common: 0 0 10px rgba(156, 163, 175, 0.5);
+  --glow-uncommon: 0 0 15px rgba(16, 185, 129, 0.6);
+  --glow-rare: 0 0 20px rgba(59, 130, 246, 0.7);
+  --glow-epic: 0 0 25px rgba(139, 92, 246, 0.8);
+  --glow-legendary: 0 0 30px rgba(245, 158, 11, 0.9);
+}

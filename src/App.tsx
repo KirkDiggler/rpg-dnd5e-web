@@ -1,73 +1,57 @@
-import { useListCharacters } from './api';
+import { motion } from 'framer-motion';
 import './App.css';
-import { DiscordDebugPanel, useDiscord } from './discord';
+import { ThemeSelector } from './components/ThemeSelector';
+import { Button } from './components/ui/Button';
+import { DiscordDebugPanel } from './discord';
 
 function App() {
-  const discord = useDiscord();
-  const {
-    data: characters,
-    loading,
-    error,
-  } = useListCharacters({ playerId: 'test-player' });
-
   return (
-    <div className="App">
-      <h1>RPG D&D 5e Web</h1>
-      <p>Welcome to the D&D 5e Discord Activity!</p>
+    <div
+      className="min-h-screen p-8"
+      style={{ backgroundColor: 'var(--bg-primary)' }}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-7xl mx-auto"
+      >
+        {/* Theme Selector */}
+        <div className="flex justify-end mb-6">
+          <ThemeSelector />
+        </div>
 
-      <div style={{ marginTop: '2rem' }}>
-        <p>Environment: {import.meta.env.MODE}</p>
-        <p>API Host: {import.meta.env.VITE_API_HOST || 'Not configured'}</p>
-        <p>
-          Discord Client ID:{' '}
-          {import.meta.env.VITE_DISCORD_CLIENT_ID || 'Not configured'}
-        </p>
-      </div>
+        <header className="mb-8 text-center">
+          <h1
+            className="text-5xl font-bold mb-2 text-shadow"
+            style={{
+              fontFamily: 'Cinzel, serif',
+              color: 'var(--text-primary)',
+            }}
+          >
+            D&D Co-op Adventure
+          </h1>
+          <p className="text-lg" style={{ color: 'var(--text-muted)' }}>
+            Forge your legend in a shared realm
+          </p>
+        </header>
 
-      {/* Discord Integration Info */}
-      {discord.isDiscord && discord.user && (
-        <div
-          style={{
-            marginTop: '2rem',
-            padding: '1rem',
-            background: '#dcfce7',
-            borderRadius: '8px',
-          }}
-        >
-          <h3>
-            🎮 Welcome to the Activity,{' '}
-            {discord.user.global_name || discord.user.username}!
-          </h3>
+        <div className="flex justify-center mb-8">
+          <Button variant="dice">D20</Button>
+        </div>
+
+        <div className="text-center" style={{ color: 'var(--text-primary)' }}>
           <p>
-            You're playing with {discord.participants.length} other(s) in this
-            session.
+            App is working! Try switching themes above to see different
+            aesthetics.
+          </p>
+          <p className="mt-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+            Character list will be added back once we fix the API issue.
           </p>
         </div>
-      )}
 
-      {/* Character List */}
-      <div style={{ marginTop: '2rem' }}>
-        <h2>Characters</h2>
-        {loading && <p>Loading characters...</p>}
-        {error && <p>Error: {error.message}</p>}
-        {characters.length === 0 && !loading && !error && (
-          <p>No characters found.</p>
-        )}
-        {characters.length > 0 && (
-          <ul style={{ textAlign: 'left' }}>
-            {characters.map((character) => (
-              <li key={character.id}>
-                <strong>{character.name}</strong> - Level {character.level}{' '}
-                {character.race} {character.class}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* Debug Panel - only show in development or when explicitly enabled */}
-      {(import.meta.env.MODE === 'development' ||
-        import.meta.env.VITE_SHOW_DEBUG === 'true') && <DiscordDebugPanel />}
+        {(import.meta.env.MODE === 'development' ||
+          import.meta.env.VITE_SHOW_DEBUG === 'true') && <DiscordDebugPanel />}
+      </motion.div>
     </div>
   );
 }
