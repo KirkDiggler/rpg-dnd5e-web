@@ -1,5 +1,5 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { forwardRef } from 'react';
 import { cn } from '../../utils/cn';
 
@@ -7,6 +7,7 @@ const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
 const DialogClose = DialogPrimitive.Close;
+const DialogDescription = DialogPrimitive.Description;
 
 const DialogOverlay = forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
@@ -25,20 +26,18 @@ const DialogContent = forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <DialogPortal>
-    <AnimatePresence>
-      <DialogOverlay />
-      <DialogPrimitive.Content ref={ref} asChild {...props}>
-        <motion.div
-          className={cn('modal-content', className)}
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          transition={{ duration: 0.2 }}
-        >
-          {children}
-        </motion.div>
-      </DialogPrimitive.Content>
-    </AnimatePresence>
+    <DialogOverlay />
+    <DialogPrimitive.Content ref={ref} asChild {...props}>
+      <motion.div
+        className={cn('modal-content', className)}
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ duration: 0.2 }}
+      >
+        {children}
+      </motion.div>
+    </DialogPrimitive.Content>
   </DialogPortal>
 ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
@@ -78,6 +77,7 @@ export {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,

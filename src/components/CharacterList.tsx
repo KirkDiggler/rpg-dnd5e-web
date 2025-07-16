@@ -8,6 +8,7 @@ import { Card } from './ui/Card';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -16,9 +17,14 @@ import {
 interface CharacterListProps {
   playerId?: string;
   sessionId?: string;
+  onCreateCharacter?: () => void;
 }
 
-export function CharacterList({ playerId, sessionId }: CharacterListProps) {
+export function CharacterList({
+  playerId,
+  sessionId,
+  onCreateCharacter,
+}: CharacterListProps) {
   const {
     data: characters,
     loading,
@@ -34,9 +40,9 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
         sessionId: sessionId || '',
       });
       const response = await createDraft(request);
-      if (response.draft) {
-        // TODO: Navigate to character creation wizard with draft ID
-        console.log('Created draft:', response.draft.id);
+      if (response.draft && onCreateCharacter) {
+        // Navigate to character creation wizard
+        onCreateCharacter();
       }
     } catch (err) {
       console.error('Failed to create draft:', err);
@@ -91,6 +97,10 @@ export function CharacterList({ playerId, sessionId }: CharacterListProps) {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create New Character</DialogTitle>
+              <DialogDescription className="sr-only">
+                Start creating a new D&D character by clicking the Start
+                Creation button.
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <p style={{ color: 'var(--ink-brown)' }}>

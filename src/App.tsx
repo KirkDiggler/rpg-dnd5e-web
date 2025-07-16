@@ -1,10 +1,25 @@
 import { motion } from 'framer-motion';
+import { useState } from 'react';
 import './App.css';
+import { CharacterCreationWizard } from './character/creation/CharacterCreationWizard';
+import { CharacterList } from './components/CharacterList';
 import { ThemeSelector } from './components/ThemeSelector';
-import { Button } from './components/ui/Button';
-import { DiscordDebugPanel } from './discord';
+import { DiscordDebugPanel, useDiscord } from './discord';
+
+type AppView = 'character-list' | 'character-creation';
 
 function App() {
+  const [currentView, setCurrentView] = useState<AppView>('character-list');
+  const discord = useDiscord();
+
+  // Use Discord user ID if available, otherwise fallback to test
+  const playerId = discord.user?.id || 'test-player';
+
+  const handleCharacterCreated = (characterId: string) => {
+    console.log('Character created:', characterId);
+    setCurrentView('character-list');
+  };
+
   return (
     <div
       className="min-h-screen p-8"
@@ -35,19 +50,18 @@ function App() {
           </p>
         </header>
 
-        <div className="flex justify-center mb-8">
-          <Button variant="dice">D20</Button>
-        </div>
-
-        <div className="text-center" style={{ color: 'var(--text-primary)' }}>
-          <p>
-            App is working! Try switching themes above to see different
-            aesthetics.
-          </p>
-          <p className="mt-4 text-sm" style={{ color: 'var(--text-muted)' }}>
-            Character list will be added back once we fix the API issue.
-          </p>
-        </div>
+        {/* Main Content */}
+        {currentView === 'character-list' ? (
+          <CharacterList
+            playerId={playerId}
+            onCreateCharacter={() => setCurrentView('character-creation')}
+          />
+        ) : (
+          <CharacterCreationWizard
+            onComplete={handleCharacterCreated}
+            onCancel={() => setCurrentView('character-list')}
+          />
+        )}
 
         {(import.meta.env.MODE === 'development' ||
           import.meta.env.VITE_SHOW_DEBUG === 'true') && <DiscordDebugPanel />}
