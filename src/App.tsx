@@ -1,22 +1,20 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import './App.css';
-import { CharacterCreationWizard } from './character/creation/CharacterCreationWizard';
-import { CharacterList } from './components/CharacterList';
+import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { ThemeSelector } from './components/ThemeSelector';
-import { DiscordDebugPanel, useDiscord } from './discord';
+// import { DiscordDebugPanel } from './discord';
 
 type AppView = 'character-list' | 'character-creation';
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('character-list');
-  const discord = useDiscord();
+  // const discord = useDiscord();
 
   // Use Discord user ID if available, otherwise fallback to test
-  const playerId = discord.user?.id || 'test-player';
+  // const playerId = discord.user?.id || 'test-player';
 
-  const handleCharacterCreated = (characterId: string) => {
-    console.log('Character created:', characterId);
+  const handleCharacterCreated = () => {
     setCurrentView('character-list');
   };
 
@@ -52,19 +50,45 @@ function App() {
 
         {/* Main Content */}
         {currentView === 'character-list' ? (
-          <CharacterList
-            playerId={playerId}
-            onCreateCharacter={() => setCurrentView('character-creation')}
-          />
+          <div className="text-center space-y-8">
+            <div className="max-w-2xl mx-auto">
+              <h2
+                className="text-3xl font-bold mb-4"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                Your Characters
+              </h2>
+              <p
+                className="text-lg mb-8"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                No characters yet. Ready to create your first hero?
+              </p>
+
+              <button
+                onClick={() => setCurrentView('character-creation')}
+                className="px-8 py-4 text-xl font-bold rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
+                style={{
+                  backgroundColor: 'var(--accent-primary)',
+                  color: 'var(--text-primary)',
+                  border: '2px solid var(--border-primary)',
+                  boxShadow: 'var(--shadow-card)',
+                }}
+              >
+                ⚔️ Create Character
+              </button>
+            </div>
+          </div>
         ) : (
-          <CharacterCreationWizard
+          <InteractiveCharacterSheet
             onComplete={handleCharacterCreated}
             onCancel={() => setCurrentView('character-list')}
           />
         )}
 
-        {(import.meta.env.MODE === 'development' ||
-          import.meta.env.VITE_SHOW_DEBUG === 'true') && <DiscordDebugPanel />}
+        {/* Temporarily hidden Discord debug panel */}
+        {/* {(import.meta.env.MODE === 'development' ||
+          import.meta.env.VITE_SHOW_DEBUG === 'true') && <DiscordDebugPanel />} */}
       </motion.div>
     </div>
   );

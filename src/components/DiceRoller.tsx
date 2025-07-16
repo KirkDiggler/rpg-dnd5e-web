@@ -22,6 +22,7 @@ export interface DiceRollerProps {
   disabled?: boolean;
   onRoll?: (roll: DiceRoll) => void;
   className?: string;
+  showResult?: boolean;
 }
 
 export function DiceRoller({
@@ -33,6 +34,7 @@ export function DiceRoller({
   disabled = false,
   onRoll,
   className = '',
+  showResult = true,
 }: DiceRollerProps) {
   const [isRolling, setIsRolling] = useState(false);
   const [lastRoll, setLastRoll] = useState<DiceRoll | null>(null);
@@ -147,7 +149,7 @@ export function DiceRoller({
         </motion.button>
 
         <AnimatePresence mode="wait">
-          {lastRoll && (
+          {lastRoll && showResult && (
             <motion.div
               key={lastRoll.id}
               initial={{ opacity: 0, y: 20 }}
