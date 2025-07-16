@@ -8,18 +8,19 @@ Transform character creation from traditional form-based UI to an interactive, c
 
 ### 📋 GitHub Issues Created
 
-| Issue                                                         | Component          | Priority | Estimated Effort | Description                                       |
-| ------------------------------------------------------------- | ------------------ | -------- | ---------------- | ------------------------------------------------- |
-| [#16](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/16) | ChoiceCard         | High     | 2-3 days         | Large, interactive cards for race/class selection |
-| [#17](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/17) | DetailModal        | High     | 4-5 days         | Full-screen modal with option carousel            |
-| [#18](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/18) | AnimatedStat       | High     | 2-3 days         | Animated ability score display                    |
-| [#22](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/22) | TraitBadge         | Medium   | 1-2 days         | Visual badges for traits and features             |
-| [#23](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/23) | State Management   | High     | 3-4 days         | React context and hooks for builder state         |
-| [#24](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/24) | Wizard Integration | Medium   | 2-3 days         | Update existing wizard to use new components      |
-| [#25](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/25) | Interactive Sheet  | Medium   | 3-4 days         | Enhanced character sheet with live updates        |
-| [#26](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/26) | Theme System       | Medium   | 1-2 days         | Extend theme system for new components            |
+| Issue                                                         | Component          | Priority | Estimated Effort | Description                                        |
+| ------------------------------------------------------------- | ------------------ | -------- | ---------------- | -------------------------------------------------- |
+| [#16](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/16) | ChoiceCard         | High     | 2-3 days         | Large, interactive cards for race/class selection  |
+| [#17](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/17) | DetailModal        | High     | 4-5 days         | Full-screen modal with option carousel             |
+| [#18](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/18) | AnimatedStat       | High     | 2-3 days         | Animated ability score display                     |
+| [#22](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/22) | TraitBadge         | Medium   | 1-2 days         | Visual badges for traits and features              |
+| [#23](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/23) | State Management   | High     | 3-4 days         | React context and hooks for builder state          |
+| [#24](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/24) | Wizard Integration | Medium   | 2-3 days         | Update existing wizard to use new components       |
+| [#25](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/25) | Interactive Sheet  | Medium   | 3-4 days         | Enhanced character sheet with live updates         |
+| [#26](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/26) | Theme System       | Medium   | 1-2 days         | Extend theme system for new components             |
+| [#36](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/36) | Dice Components    | Medium   | 2-3 days         | Foundational dice rolling with blue-grey aesthetic |
 
-**Total Estimated Effort:** 18-28 days
+**Total Estimated Effort:** 20-31 days
 
 ### 🔄 Implementation Order
 
@@ -33,12 +34,13 @@ Transform character creation from traditional form-based UI to an interactive, c
 
 4. **AnimatedStat Component** (#18) - Ability score display
 5. **TraitBadge Component** (#22) - Feature visualization
-6. **DetailModal Component** (#17) - Option exploration
+6. **Dice Components** (#36) - Foundational dice rolling system
+7. **DetailModal Component** (#17) - Option exploration
 
 #### Week 5-6: Integration & Polish
 
-7. **Interactive Character Sheet** (#25) - Live preview system
-8. **Wizard Integration** (#24) - Connect all components
+8. **Interactive Character Sheet** (#25) - Live preview system
+9. **Wizard Integration** (#24) - Connect all components
 
 ### 🎨 Key Features Delivered
 

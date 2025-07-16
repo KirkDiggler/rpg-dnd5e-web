@@ -215,7 +215,25 @@ Extend existing theme system to support new interactive components with proper c
 - Dark/light mode support
 - Accessibility contrast compliance
 
-### 9. Create Storybook Stories for New Components
+### 9. Create Dice Rolling Components
+
+**Priority: Medium**
+**Labels: enhancement, component, ui/ux**
+
+Create foundational dice rolling components for use throughout the application, including character creation and gameplay.
+
+**Requirements:**
+
+- Clean blue-grey or stone aesthetic (NOT wooden)
+- Individual Die component with physics animation
+- DiceRoll component for groups of dice
+- Sound effects and haptic feedback
+- Configurable die types (d4, d6, d8, d10, d12, d20)
+- Advantage/disadvantage support
+- Mobile-friendly touch interactions
+- Integration with AnimatedStat for ability score rolling
+
+### 10. Create Storybook Stories for New Components
 
 **Priority: Low**
 **Labels: documentation, storybook**
@@ -231,7 +249,7 @@ Create comprehensive Storybook stories for all new components to aid development
 - Mobile viewport testing
 - Performance benchmarks
 
-### 10. Add E2E Tests for Character Creation Flow
+### 11. Add E2E Tests for Character Creation Flow
 
 **Priority: Low**
 **Labels: testing, e2e**

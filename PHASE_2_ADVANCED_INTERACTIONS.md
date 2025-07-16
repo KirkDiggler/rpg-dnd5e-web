@@ -95,6 +95,25 @@ Enable multiple players to build characters together or get help from experience
 - "As a player, I want to share my character build with friends for feedback"
 - "As a group, we want to build complementary characters together"
 
+### 6. **Interactive Dice Tray Experience**
+
+Create an immersive dice tray interface for advanced dice rolling scenarios, building upon Phase 1's foundational dice components.
+
+#### Components Needed:
+
+- **DiceTray** - Interactive tray interface for multiple dice sets
+- **DicePhysics** - Advanced physics engine for realistic rolling
+- **DiceCollection** - Manage different dice sets and styles
+- **RollingCeremony** - Special animations for important rolls
+- **PartyRolling** - Synchronized rolling for multiple players
+
+#### User Stories:
+
+- "As a player, I want to roll ability scores with a satisfying dice tray interface"
+- "As a player, I want to reroll individual dice sets if I don't like the results"
+- "As a group, we want to roll initiative together with synchronized animations"
+- "As a player, I want to see my rolling history during a session"
+
 ## 🔧 Technical Architecture
 
 ### State Management Enhancements
@@ -177,6 +196,12 @@ interface AdvancedBuilderAPI {
 - **Week 1-2**: Real-time collaboration infrastructure
 - **Week 3-4**: Sharing and commenting system
 - **Week 5**: Mentor mode and guidance features
+
+### Phase 2.6: Interactive Dice Tray (4-5 weeks)
+
+- **Week 1-2**: Advanced dice physics and tray interface
+- **Week 3-4**: Ability score rolling and reroll mechanics
+- **Week 5**: Party rolling and session history
 
 ## 🎯 Success Metrics
 
