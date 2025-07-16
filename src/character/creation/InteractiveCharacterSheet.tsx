@@ -416,7 +416,7 @@ export function InteractiveCharacterSheet({
                             whileTap={{ scale: 0.95 }}
                             draggable
                             onDragStart={(e) => {
-                              const dragEvent = e as React.DragEvent;
+                              const dragEvent = e as unknown as React.DragEvent;
                               dragEvent.dataTransfer.setData(
                                 'text/plain',
                                 score.toString()
