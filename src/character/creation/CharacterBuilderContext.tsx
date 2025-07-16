@@ -1,45 +1,13 @@
 import type { CharacterDraft } from '@/api';
 import { STEP_TITLES, WIZARD_STEPS, type WizardStep } from '@/constants/wizard';
-import { createContext, useCallback, useState } from 'react';
+import {
+  CharacterBuilderContext,
+  type CharacterBuilderContextType,
+  type StepState,
+} from '@/contexts/CharacterBuilderContext';
+import { useCallback, useState } from 'react';
 
-export type { WizardStep };
-
-export interface StepState {
-  id: WizardStep;
-  title: string;
-  status: 'pending' | 'current' | 'completed';
-  isValid: boolean;
-}
-
-export interface CharacterBuilderState {
-  currentStep: WizardStep;
-  draft: CharacterDraft | null;
-  steps: StepState[];
-  previewMode: boolean;
-  isLoading: boolean;
-  selectedChoices: Record<string, unknown>;
-}
-
-export interface CharacterBuilderActions {
-  setCurrentStep: (step: WizardStep) => void;
-  updateDraft: (updates: Partial<CharacterDraft>) => void;
-  setDraft: (draft: CharacterDraft | null) => void;
-  togglePreviewMode: () => void;
-  setLoading: (loading: boolean) => void;
-  setSelectedChoice: (key: string, value: unknown) => void;
-  clearSelectedChoice: (key: string) => void;
-  markStepCompleted: (step: WizardStep) => void;
-  markStepInvalid: (step: WizardStep) => void;
-  navigateToStep: (step: WizardStep) => void;
-  getStepStatus: (step: WizardStep) => 'pending' | 'current' | 'completed';
-  canNavigateToStep: (step: WizardStep) => boolean;
-}
-
-export type CharacterBuilderContextType = CharacterBuilderState &
-  CharacterBuilderActions;
-
-const CharacterBuilderContext =
-  createContext<CharacterBuilderContextType | null>(null);
+export type { CharacterBuilderContextType, StepState, WizardStep };
 
 interface CharacterBuilderProviderProps {
   children: React.ReactNode;

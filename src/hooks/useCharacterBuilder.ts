@@ -1,7 +1,7 @@
 import {
   CharacterBuilderContext,
   type CharacterBuilderContextType,
-} from '@/character/creation/CharacterBuilderContext';
+} from '@/contexts/CharacterBuilderContext';
 import { useContext } from 'react';
 
 export function useCharacterBuilder(): CharacterBuilderContextType {
