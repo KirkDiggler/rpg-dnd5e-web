@@ -34,15 +34,22 @@ export function CharacterList({
   const [isCreating, setIsCreating] = useState(false);
 
   const handleCreateCharacter = async () => {
+    console.log('🔥 handleCreateCharacter called');
     try {
       const request = create(CreateDraftRequestSchema, {
         playerId: playerId || '',
         sessionId: sessionId || '',
       });
+      console.log('📤 Calling createDraft API...', request);
       const response = await createDraft(request);
+      console.log('📥 createDraft response:', response);
+
       if (response.draft && onCreateCharacter) {
+        console.log('✅ Draft created successfully, calling onCreateCharacter');
         // Navigate to character creation wizard
         onCreateCharacter();
+      } else {
+        console.log('❌ No draft in response or no onCreateCharacter callback');
       }
     } catch (err) {
       console.error('Failed to create draft:', err);
