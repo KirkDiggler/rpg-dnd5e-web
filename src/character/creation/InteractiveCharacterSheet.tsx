@@ -242,7 +242,6 @@ export function InteractiveCharacterSheet({
                       style={{
                         paddingRight: '1rem',
                         borderRight: '1px solid var(--border-primary)',
-                        borderOpacity: '0.3',
                       }}
                     >
                       <div
@@ -318,7 +317,6 @@ export function InteractiveCharacterSheet({
                         paddingLeft: '1rem',
                         paddingRight: '1rem',
                         borderRight: '1px solid var(--border-primary)',
-                        borderOpacity: '0.3',
                       }}
                     >
                       <div className="flex flex-col items-center space-y-2">
@@ -418,11 +416,12 @@ export function InteractiveCharacterSheet({
                             whileTap={{ scale: 0.95 }}
                             draggable
                             onDragStart={(e) => {
-                              e.dataTransfer.setData(
+                              const dragEvent = e as React.DragEvent;
+                              dragEvent.dataTransfer.setData(
                                 'text/plain',
                                 score.toString()
                               );
-                              e.dataTransfer.setData(
+                              dragEvent.dataTransfer.setData(
                                 'application/json',
                                 JSON.stringify({ index: i, value: score })
                               );
@@ -463,18 +462,21 @@ export function InteractiveCharacterSheet({
                               : 'var(--border-primary)',
                           borderWidth: '3px',
                         }}
-                        onDragOver={(e) => {
+                        onDragOver={(e: React.DragEvent) => {
                           e.preventDefault();
-                          e.currentTarget.style.borderColor =
-                            'var(--accent-primary)';
+                          (
+                            e.currentTarget as HTMLDivElement
+                          ).style.borderColor = 'var(--accent-primary)';
                         }}
-                        onDragLeave={(e) => {
-                          e.currentTarget.style.borderColor =
+                        onDragLeave={(e: React.DragEvent) => {
+                          (
+                            e.currentTarget as HTMLDivElement
+                          ).style.borderColor =
                             score > 0
                               ? 'var(--accent-primary)'
                               : 'var(--border-primary)';
                         }}
-                        onDrop={(e) => {
+                        onDrop={(e: React.DragEvent) => {
                           e.preventDefault();
                           const draggedValue = parseInt(
                             e.dataTransfer.getData('text/plain')
@@ -496,8 +498,9 @@ export function InteractiveCharacterSheet({
                             ),
                           }));
 
-                          e.currentTarget.style.borderColor =
-                            'var(--accent-primary)';
+                          (
+                            e.currentTarget as HTMLDivElement
+                          ).style.borderColor = 'var(--accent-primary)';
                         }}
                       >
                         <div className="text-center space-y-2">
