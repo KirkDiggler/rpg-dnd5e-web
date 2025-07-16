@@ -1,6 +1,6 @@
 import type { Interceptor } from '@connectrpc/connect';
 import { createClient } from '@connectrpc/connect';
-import { createConnectTransport } from '@connectrpc/connect-web';
+import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
 // Get API host from environment
@@ -18,7 +18,6 @@ const loggingInterceptor: Interceptor = (next) => async (req) => {
   try {
     const response = await next(req);
     const duration = Date.now() - startTime;
-
     if (import.meta.env.MODE === 'development') {
       console.log(
         `🟢 Response: ${methodName} (${duration}ms)`,
@@ -39,7 +38,7 @@ const loggingInterceptor: Interceptor = (next) => async (req) => {
 };
 
 // Create the transport
-const transport = createConnectTransport({
+const transport = createGrpcWebTransport({
   baseUrl: API_HOST,
   interceptors: [loggingInterceptor],
 });
