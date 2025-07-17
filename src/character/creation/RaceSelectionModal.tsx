@@ -66,7 +66,7 @@ interface RaceSelectionModalProps {
   onClose: () => void;
 }
 
-interface RaceChoices {
+export interface RaceChoices {
   languages: Record<string, string[]>;
   proficiencies: Record<string, string[]>;
 }
@@ -185,7 +185,7 @@ export function RaceSelectionModal({
       currentRaceData.proficiencyOptions &&
       currentRaceData.proficiencyOptions.length > 0;
 
-    if (hasLanguageChoice) {
+    if (hasLanguageChoice && currentRaceData.languageOptions) {
       const key = getChoiceKey(currentRaceData.languageOptions, 0);
       const selected = languageChoices[key] || [];
       const validation = validateChoice(
@@ -692,7 +692,7 @@ export function RaceSelectionModal({
                   }
                   onSelectionChange={(selected) => {
                     const key = getChoiceKey(
-                      currentRaceData.languageOptions,
+                      currentRaceData.languageOptions!,
                       0
                     );
                     setLanguageChoices({ ...languageChoices, [key]: selected });

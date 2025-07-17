@@ -42,7 +42,7 @@ interface ClassSelectionModalProps {
   onClose: () => void;
 }
 
-interface ClassChoices {
+export interface ClassChoices {
   proficiencies: Record<string, string[]>;
 }
 
