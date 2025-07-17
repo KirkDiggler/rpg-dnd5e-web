@@ -1,8 +1,13 @@
-import { CharacterService } from 'github:KirkDiggler/rpg-api-protos/clients/dnd5e/api/v1alpha1/character_connect';
-import { GetCharacterRequest } from 'github:KirkDiggler/rpg-api-protos/clients/dnd5e/api/v1alpha1/character_pb';
+// import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_connect';
+// import { GetCharacterRequest } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
 // Example hook pattern following platform-admin-react style
-// Uncomment when @kirkdiggler/rpg-api-protos is installed
+// Uncomment when fully implemented
+
+/*
+import { useState, useEffect } from 'react';
+import { ConnectError } from '@connectrpc/connect';
+import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
 export function useGetCharacter(characterId: string) {
   const [response, setResponse] = useState<Character | null>(null);
@@ -19,18 +24,16 @@ export function useGetCharacter(characterId: string) {
       try {
         setLoading(true);
         setError(null);
-
+        
         const client = createClient(CharacterService);
         const request = new GetCharacterRequest({
           id: characterId,
         });
-
+        
         const response = await client.getCharacter(request);
         setResponse(response.character);
       } catch (err) {
-        setError(
-          err instanceof ConnectError ? err : new ConnectError('Unknown error')
-        );
+        setError(err instanceof ConnectError ? err : new ConnectError('Unknown error'));
       } finally {
         setLoading(false);
       }
@@ -45,6 +48,7 @@ export function useGetCharacter(characterId: string) {
 
   return { response, loading, error, refetch };
 }
+*/
 
 // Placeholder export to avoid empty file
 export const placeholder = true;
