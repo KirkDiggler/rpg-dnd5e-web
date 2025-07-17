@@ -2,15 +2,18 @@ import type { ClassInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
+import { ChoiceSelector } from '../../components/ChoiceSelector';
+import { getChoiceKey, validateChoice } from '../../types/character';
 
 // Helper to get CSS variable values for portals
-function getCSSVariable(name: string): string {
+function getCSSVariable(name: string, fallback: string): string {
   if (typeof window !== 'undefined') {
-    return getComputedStyle(document.documentElement)
+    const value = getComputedStyle(document.documentElement)
       .getPropertyValue(name)
       .trim();
+    return value || fallback;
   }
-  return '';
+  return fallback;
 }
 
 // Helper function to get class emoji based on name
@@ -35,8 +38,12 @@ function getClassEmoji(className: string): string {
 interface ClassSelectionModalProps {
   isOpen: boolean;
   currentClass?: string;
-  onSelect: (classData: ClassInfo) => void;
+  onSelect: (classData: ClassInfo, choices: ClassChoices) => void;
   onClose: () => void;
+}
+
+interface ClassChoices {
+  proficiencies: Record<string, string[]>;
 }
 
 export function ClassSelectionModal({
@@ -57,6 +64,11 @@ export function ClassSelectionModal({
   const [animationDirection, setAnimationDirection] = useState<
     'left' | 'right'
   >('right');
+
+  // Track choices
+  const [proficiencyChoices, setProficiencyChoices] = useState<
+    Record<string, string[]>
+  >({});
 
   // Show loading or error states
   if (!isOpen) return null;
@@ -122,6 +134,8 @@ export function ClassSelectionModal({
     setTimeout(() => {
       setSelectedIndex((prev) => (prev + 1) % classes.length);
       setIsTransitioning(false);
+      // Clear choices when switching classes
+      setProficiencyChoices({});
     }, 150);
   };
 
@@ -132,24 +146,48 @@ export function ClassSelectionModal({
     setTimeout(() => {
       setSelectedIndex((prev) => (prev - 1 + classes.length) % classes.length);
       setIsTransitioning(false);
+      // Clear choices when switching classes
+      setProficiencyChoices({});
     }, 150);
   };
 
   const handleSelect = () => {
-    onSelect(currentClassData);
+    // Validate all choices are made
+    const hasProficiencyChoices =
+      currentClassData.proficiencyChoices &&
+      currentClassData.proficiencyChoices.length > 0;
+
+    if (hasProficiencyChoices) {
+      for (let i = 0; i < currentClassData.proficiencyChoices.length; i++) {
+        const choice = currentClassData.proficiencyChoices[i];
+        const key = getChoiceKey(choice, i);
+        const selected = proficiencyChoices[key] || [];
+        const validation = validateChoice(choice, selected);
+        if (!validation.isValid) {
+          alert(validation.errors.join('\n'));
+          return;
+        }
+      }
+    }
+
+    onSelect(currentClassData, {
+      proficiencies: proficiencyChoices,
+    });
     onClose();
   };
 
   // Get theme values for portal rendering
-  const overlayBg = getCSSVariable('--overlay-bg') || 'rgba(0,0,0,0.8)';
-  const cardBg = getCSSVariable('--card-bg') || '#ffffff';
-  const borderPrimary = getCSSVariable('--border-primary') || '#e5e7eb';
-  const textPrimary = getCSSVariable('--text-primary') || '#000000';
-  const textMuted = getCSSVariable('--text-muted') || '#6b7280';
-  const accentPrimary = getCSSVariable('--accent-primary') || '#3b82f6';
-  const bgSecondary = getCSSVariable('--bg-secondary') || '#f9fafb';
-  const shadowModal =
-    getCSSVariable('--shadow-modal') || '0 25px 50px -12px rgba(0, 0, 0, 0.25)';
+  const overlayBg = getCSSVariable('--overlay-bg', 'rgba(15, 23, 42, 0.8)');
+  const cardBg = getCSSVariable('--card-bg', '#334155');
+  const borderPrimary = getCSSVariable('--border-primary', '#94a3b8');
+  const textPrimary = getCSSVariable('--text-primary', '#f1f5f9');
+  const textMuted = getCSSVariable('--text-muted', '#64748b');
+  const accentPrimary = getCSSVariable('--accent-primary', '#3b82f6');
+  const bgSecondary = getCSSVariable('--bg-secondary', '#2a2a2a');
+  const shadowModal = getCSSVariable(
+    '--shadow-modal',
+    '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+  );
 
   const modalContent = (
     <div
@@ -249,7 +287,10 @@ export function ClassSelectionModal({
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = accentPrimary;
+                e.currentTarget.style.backgroundColor = getCSSVariable(
+                  '--accent-primary-hover',
+                  '#1d4ed8'
+                );
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'scale(1)';
@@ -323,7 +364,10 @@ export function ClassSelectionModal({
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = accentPrimary;
+                e.currentTarget.style.backgroundColor = getCSSVariable(
+                  '--accent-primary-hover',
+                  '#1d4ed8'
+                );
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'scale(1)';
@@ -441,7 +485,9 @@ export function ClassSelectionModal({
                 >
                   Choose {currentClassData.skillChoicesCount} from:
                 </p>
-                <div style={{ fontSize: '12px', color: textMuted }}>
+                <div
+                  style={{ fontSize: '14px', color: textPrimary, opacity: 0.9 }}
+                >
                   {currentClassData.availableSkills.slice(0, 6).join(', ')}
                   {currentClassData.availableSkills.length > 6 &&
                     ` +${currentClassData.availableSkills.length - 6} more`}
@@ -485,7 +531,13 @@ export function ClassSelectionModal({
                     >
                       Armor
                     </div>
-                    <div style={{ color: textMuted, fontSize: '11px' }}>
+                    <div
+                      style={{
+                        color: textPrimary,
+                        fontSize: '14px',
+                        opacity: 0.9,
+                      }}
+                    >
                       {currentClassData.armorProficiencies.join(', ')}
                     </div>
                   </div>
@@ -509,7 +561,13 @@ export function ClassSelectionModal({
                     >
                       Weapons
                     </div>
-                    <div style={{ color: textMuted, fontSize: '11px' }}>
+                    <div
+                      style={{
+                        color: textPrimary,
+                        fontSize: '14px',
+                        opacity: 0.9,
+                      }}
+                    >
                       {currentClassData.weaponProficiencies
                         .slice(0, 3)
                         .join(', ')}
@@ -537,13 +595,127 @@ export function ClassSelectionModal({
                     >
                       Tools
                     </div>
-                    <div style={{ color: textMuted, fontSize: '11px' }}>
+                    <div
+                      style={{
+                        color: textPrimary,
+                        fontSize: '14px',
+                        opacity: 0.9,
+                      }}
+                    >
                       {currentClassData.toolProficiencies.join(', ')}
                     </div>
                   </div>
                 )}
               </div>
             </div>
+
+            {/* Proficiency Choices */}
+            {currentClassData.proficiencyChoices &&
+              currentClassData.proficiencyChoices.length > 0 && (
+                <div style={{ marginBottom: '20px' }}>
+                  <h4
+                    style={{
+                      color: textPrimary,
+                      fontWeight: 'bold',
+                      marginBottom: '12px',
+                    }}
+                  >
+                    Choose Your Proficiencies
+                  </h4>
+                  {currentClassData.proficiencyChoices.map((choice, index) => (
+                    <div key={index} style={{ marginBottom: '16px' }}>
+                      <ChoiceSelector
+                        choice={choice}
+                        selected={
+                          proficiencyChoices[getChoiceKey(choice, index)] || []
+                        }
+                        onSelectionChange={(selected) => {
+                          const key = getChoiceKey(choice, index);
+                          setProficiencyChoices({
+                            ...proficiencyChoices,
+                            [key]: selected,
+                          });
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+            {/* Equipment Options (Display Only) */}
+            {currentClassData.equipmentChoices &&
+              currentClassData.equipmentChoices.length > 0 && (
+                <div style={{ marginBottom: '20px' }}>
+                  <h4
+                    style={{
+                      color: textPrimary,
+                      fontWeight: 'bold',
+                      marginBottom: '12px',
+                    }}
+                  >
+                    Equipment Options
+                  </h4>
+                  <div
+                    style={{
+                      padding: '12px',
+                      backgroundColor: bgSecondary,
+                      borderRadius: '6px',
+                      border: `1px solid ${borderPrimary}`,
+                    }}
+                  >
+                    {currentClassData.equipmentChoices.map(
+                      (equipChoice, index) => (
+                        <div
+                          key={index}
+                          style={{
+                            marginBottom:
+                              index <
+                              currentClassData.equipmentChoices.length - 1
+                                ? '12px'
+                                : 0,
+                          }}
+                        >
+                          <p
+                            style={{
+                              color: textPrimary,
+                              fontSize: '13px',
+                              fontWeight: 'bold',
+                              marginBottom: '4px',
+                            }}
+                          >
+                            {equipChoice.description}
+                          </p>
+                          <div style={{ paddingLeft: '12px' }}>
+                            {equipChoice.options.map((option, optIdx) => (
+                              <div
+                                key={optIdx}
+                                style={{
+                                  color: textPrimary,
+                                  fontSize: '14px',
+                                  marginBottom: '4px',
+                                  opacity: 0.9,
+                                }}
+                              >
+                                • {option}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    )}
+                    <p
+                      style={{
+                        color: textMuted,
+                        fontSize: '13px',
+                        fontStyle: 'italic',
+                        marginTop: '8px',
+                      }}
+                    >
+                      * You'll choose your equipment in a later step
+                    </p>
+                  </div>
+                </div>
+              )}
 
             {/* Features Section */}
             <div style={{ marginBottom: '20px' }}>
@@ -578,7 +750,14 @@ export function ClassSelectionModal({
                       {feature.name}
                     </div>
                     {feature.description && (
-                      <div style={{ color: textMuted, fontSize: '11px' }}>
+                      <div
+                        style={{
+                          color: textPrimary,
+                          fontSize: '14px',
+                          lineHeight: '1.4',
+                          opacity: 0.9,
+                        }}
+                      >
                         {feature.description}
                       </div>
                     )}
@@ -605,8 +784,9 @@ export function ClassSelectionModal({
                     backgroundColor: bgSecondary,
                     borderRadius: '6px',
                     border: `1px solid ${borderPrimary}`,
-                    fontSize: '12px',
-                    color: textMuted,
+                    fontSize: '14px',
+                    color: textPrimary,
+                    opacity: 0.9,
                   }}
                 >
                   {currentClassData.startingEquipment.slice(0, 4).join(', ')}
@@ -634,7 +814,7 @@ export function ClassSelectionModal({
                     backgroundColor: bgSecondary,
                     borderRadius: '6px',
                     border: `1px solid ${accentPrimary}`,
-                    fontSize: '12px',
+                    fontSize: '14px',
                   }}
                 >
                   <div style={{ color: textPrimary, marginBottom: '4px' }}>

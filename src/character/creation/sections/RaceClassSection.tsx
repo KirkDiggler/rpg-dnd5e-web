@@ -1,89 +1,41 @@
-import { ChoiceCardGrid } from '@/components/ChoiceCard';
-import { DetailModal } from '@/components/DetailModal';
 import { TraitBadge } from '@/components/TraitBadge';
 import { TraitIcons } from '@/constants/traits';
 import { useCharacterBuilder } from '@/hooks/useCharacterBuilder';
+import type {
+  ClassInfo,
+  RaceInfo,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
-
-// Sample data - replace with API calls
-const SAMPLE_RACES = [
-  {
-    id: 'human',
-    title: 'Human',
-    description: 'Versatile and ambitious, humans adapt to any situation.',
-    rarity: 'common' as const,
-    badge: 'Versatile',
-    tags: ['Extra Feat', 'Extra Skill', 'Adaptable'],
-    details: 'Humans are the most adaptable race...',
-  },
-  {
-    id: 'elf',
-    title: 'Elf',
-    description: 'Graceful and magical, masters of blade and spell.',
-    rarity: 'uncommon' as const,
-    badge: 'Magical',
-    tags: ['Darkvision', 'Keen Senses', 'Fey Ancestry'],
-    details: 'Elves are magical beings...',
-  },
-  {
-    id: 'dwarf',
-    title: 'Dwarf',
-    description: 'Hardy and determined, renowned for craftsmanship.',
-    rarity: 'common' as const,
-    badge: 'Resilient',
-    tags: ['Darkvision', 'Stonecunning', 'Dwarven Resilience'],
-    details: 'Dwarves are stout and proud...',
-  },
-];
-
-const SAMPLE_CLASSES = [
-  {
-    id: 'fighter',
-    title: 'Fighter',
-    description: 'Master of weapons and armor, tactical combat expert.',
-    rarity: 'common' as const,
-    badge: 'Martial',
-    tags: ['Fighting Style', 'Second Wind', 'Action Surge'],
-    details: 'Fighters are versatile warriors...',
-  },
-  {
-    id: 'wizard',
-    title: 'Wizard',
-    description: 'Scholar of magic, wielder of arcane power.',
-    rarity: 'rare' as const,
-    badge: 'Arcane',
-    tags: ['Spellcasting', 'Ritual Casting', 'Arcane Recovery'],
-    details: 'Wizards study the arcane arts...',
-  },
-  {
-    id: 'rogue',
-    title: 'Rogue',
-    description: 'Stealthy and cunning, master of precision strikes.',
-    rarity: 'uncommon' as const,
-    badge: 'Cunning',
-    tags: ['Sneak Attack', 'Expertise', 'Cunning Action'],
-    details: 'Rogues excel at what others cant...',
-  },
-];
+import type { ClassChoices } from '../ClassSelectionModal';
+import { ClassSelectionModal } from '../ClassSelectionModal';
+import type { RaceChoices } from '../RaceSelectionModal';
+import { RaceSelectionModal } from '../RaceSelectionModal';
 
 export function RaceClassSection() {
-  const { setSelectedChoice, selectedChoices } = useCharacterBuilder();
+  const { setSelectedChoice } = useCharacterBuilder();
   const [showRaceModal, setShowRaceModal] = useState(false);
   const [showClassModal, setShowClassModal] = useState(false);
-
-  const selectedRace = SAMPLE_RACES.find((r) => r.id === selectedChoices.race);
-  const selectedClass = SAMPLE_CLASSES.find(
-    (c) => c.id === selectedChoices.class
+  const [selectedRaceData, setSelectedRaceData] = useState<RaceInfo | null>(
+    null
+  );
+  const [selectedClassData, setSelectedClassData] = useState<ClassInfo | null>(
+    null
   );
 
-  const handleRaceSelect = (raceId: string) => {
-    setSelectedChoice('race', raceId);
+  const handleRaceSelect = (race: RaceInfo, choices: RaceChoices) => {
+    setSelectedRaceData(race);
+    setSelectedChoice('race', race.id);
+    setSelectedChoice('raceData', race);
+    setSelectedChoice('raceChoices', choices);
     setShowRaceModal(false);
   };
 
-  const handleClassSelect = (classId: string) => {
-    setSelectedChoice('class', classId);
+  const handleClassSelect = (classData: ClassInfo, choices: ClassChoices) => {
+    setSelectedClassData(classData);
+    setSelectedChoice('class', classData.id);
+    setSelectedChoice('classData', classData);
+    setSelectedChoice('classChoices', choices);
     setShowClassModal(false);
   };
 
@@ -107,15 +59,15 @@ export function RaceClassSection() {
           <div
             className="p-6 rounded-lg border-2 border-dashed transition-all duration-300 hover:border-solid"
             style={{
-              backgroundColor: selectedRace
+              backgroundColor: selectedRaceData
                 ? 'var(--card-bg)'
                 : 'var(--bg-secondary)',
-              borderColor: selectedRace
+              borderColor: selectedRaceData
                 ? 'var(--accent-primary)'
                 : 'var(--border-primary)',
             }}
           >
-            {selectedRace ? (
+            {selectedRaceData ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="text-2xl">🧝</div>
@@ -124,21 +76,22 @@ export function RaceClassSection() {
                       className="text-xl font-bold"
                       style={{ color: 'var(--text-primary)' }}
                     >
-                      {selectedRace.title}
+                      {selectedRaceData.name}
                     </h3>
                     <p
                       className="text-sm"
                       style={{ color: 'var(--text-muted)' }}
                     >
-                      {selectedRace.description}
+                      {selectedRaceData.description ||
+                        'A proud member of this race'}
                     </p>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {selectedRace.tags.map((tag) => (
+                  {selectedRaceData.traits.map((trait) => (
                     <TraitBadge
-                      key={tag}
-                      name={tag}
+                      key={trait.name}
+                      name={trait.name}
                       type="racial"
                       icon={TraitIcons.racial}
                     />
@@ -175,15 +128,15 @@ export function RaceClassSection() {
           <div
             className="p-6 rounded-lg border-2 border-dashed transition-all duration-300 hover:border-solid"
             style={{
-              backgroundColor: selectedClass
+              backgroundColor: selectedClassData
                 ? 'var(--card-bg)'
                 : 'var(--bg-secondary)',
-              borderColor: selectedClass
+              borderColor: selectedClassData
                 ? 'var(--accent-primary)'
                 : 'var(--border-primary)',
             }}
           >
-            {selectedClass ? (
+            {selectedClassData ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="text-2xl">⚔️</div>
@@ -192,25 +145,28 @@ export function RaceClassSection() {
                       className="text-xl font-bold"
                       style={{ color: 'var(--text-primary)' }}
                     >
-                      {selectedClass.title}
+                      {selectedClassData.name}
                     </h3>
                     <p
                       className="text-sm"
                       style={{ color: 'var(--text-muted)' }}
                     >
-                      {selectedClass.description}
+                      {selectedClassData.description ||
+                        'A master of their craft'}
                     </p>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {selectedClass.tags.map((tag) => (
-                    <TraitBadge
-                      key={tag}
-                      name={tag}
-                      type="class"
-                      icon={TraitIcons.class}
-                    />
-                  ))}
+                  {selectedClassData.level1Features
+                    .slice(0, 3)
+                    .map((feature) => (
+                      <TraitBadge
+                        key={feature.name}
+                        name={feature.name}
+                        type="class"
+                        icon={TraitIcons.class}
+                      />
+                    ))}
                 </div>
                 <p className="text-xs text-muted">Click to change class</p>
               </div>
@@ -235,55 +191,19 @@ export function RaceClassSection() {
       </div>
 
       {/* Race Selection Modal */}
-      <DetailModal
+      <RaceSelectionModal
         isOpen={showRaceModal}
+        currentRace={selectedRaceData?.name}
+        onSelect={handleRaceSelect}
         onClose={() => setShowRaceModal(false)}
-        items={[
-          {
-            id: 'race-selection',
-            title: 'Choose Your Race',
-            content: (
-              <div className="space-y-4">
-                <p style={{ color: 'var(--text-muted)' }}>
-                  Your race determines your character's heritage, appearance,
-                  and natural abilities.
-                </p>
-                <ChoiceCardGrid
-                  choices={SAMPLE_RACES}
-                  selectedId={selectedChoices.race as string}
-                  onSelect={handleRaceSelect}
-                  columns={2}
-                />
-              </div>
-            ),
-          },
-        ]}
       />
 
       {/* Class Selection Modal */}
-      <DetailModal
+      <ClassSelectionModal
         isOpen={showClassModal}
+        currentClass={selectedClassData?.name}
+        onSelect={handleClassSelect}
         onClose={() => setShowClassModal(false)}
-        items={[
-          {
-            id: 'class-selection',
-            title: 'Choose Your Class',
-            content: (
-              <div className="space-y-4">
-                <p style={{ color: 'var(--text-muted)' }}>
-                  Your class determines your character's abilities, role, and
-                  playstyle.
-                </p>
-                <ChoiceCardGrid
-                  choices={SAMPLE_CLASSES}
-                  selectedId={selectedChoices.class as string}
-                  onSelect={handleClassSelect}
-                  columns={2}
-                />
-              </div>
-            ),
-          },
-        ]}
       />
     </div>
   );

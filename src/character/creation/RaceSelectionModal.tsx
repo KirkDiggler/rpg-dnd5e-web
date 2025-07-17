@@ -2,15 +2,18 @@ import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1al
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListRaces } from '../../api/hooks';
+import { ChoiceSelector } from '../../components/ChoiceSelector';
+import { getChoiceKey, validateChoice } from '../../types/character';
 
 // Helper to get CSS variable values for portals
-function getCSSVariable(name: string): string {
+function getCSSVariable(name: string, fallback: string): string {
   if (typeof window !== 'undefined') {
-    return getComputedStyle(document.documentElement)
+    const value = getComputedStyle(document.documentElement)
       .getPropertyValue(name)
       .trim();
+    return value || fallback;
   }
-  return '';
+  return fallback;
 }
 
 // Helper function to get race emoji based on name
@@ -59,8 +62,13 @@ function getRaceDescription(raceName: string): string {
 interface RaceSelectionModalProps {
   isOpen: boolean;
   currentRace?: string;
-  onSelect: (race: RaceInfo) => void;
+  onSelect: (race: RaceInfo, choices: RaceChoices) => void;
   onClose: () => void;
+}
+
+interface RaceChoices {
+  languages: Record<string, string[]>;
+  proficiencies: Record<string, string[]>;
 }
 
 export function RaceSelectionModal({
@@ -81,6 +89,14 @@ export function RaceSelectionModal({
   const [animationDirection, setAnimationDirection] = useState<
     'left' | 'right'
   >('right');
+
+  // Track choices
+  const [languageChoices, setLanguageChoices] = useState<
+    Record<string, string[]>
+  >({});
+  const [proficiencyChoices, setProficiencyChoices] = useState<
+    Record<string, string[]>
+  >({});
 
   // Show loading or error states
   if (!isOpen) return null;
@@ -143,6 +159,9 @@ export function RaceSelectionModal({
     setTimeout(() => {
       setSelectedIndex((prev) => (prev + 1) % races.length);
       setIsTransitioning(false);
+      // Clear choices when switching races
+      setLanguageChoices({});
+      setProficiencyChoices({});
     }, 150);
   };
 
@@ -153,26 +172,66 @@ export function RaceSelectionModal({
     setTimeout(() => {
       setSelectedIndex((prev) => (prev - 1 + races.length) % races.length);
       setIsTransitioning(false);
+      // Clear choices when switching races
+      setLanguageChoices({});
+      setProficiencyChoices({});
     }, 150);
   };
 
   const handleSelect = () => {
-    onSelect(currentRaceData);
+    // Validate all choices are made
+    const hasLanguageChoice = currentRaceData.languageOptions;
+    const hasProficiencyChoices =
+      currentRaceData.proficiencyOptions &&
+      currentRaceData.proficiencyOptions.length > 0;
+
+    if (hasLanguageChoice) {
+      const key = getChoiceKey(currentRaceData.languageOptions, 0);
+      const selected = languageChoices[key] || [];
+      const validation = validateChoice(
+        currentRaceData.languageOptions,
+        selected
+      );
+      if (!validation.isValid) {
+        alert(validation.errors.join('\n'));
+        return;
+      }
+    }
+
+    if (hasProficiencyChoices) {
+      for (let i = 0; i < currentRaceData.proficiencyOptions.length; i++) {
+        const choice = currentRaceData.proficiencyOptions[i];
+        const key = getChoiceKey(choice, i);
+        const selected = proficiencyChoices[key] || [];
+        const validation = validateChoice(choice, selected);
+        if (!validation.isValid) {
+          alert(validation.errors.join('\n'));
+          return;
+        }
+      }
+    }
+
+    onSelect(currentRaceData, {
+      languages: languageChoices,
+      proficiencies: proficiencyChoices,
+    });
     onClose();
   };
 
   if (!isOpen) return null;
 
   // Get theme values for portal rendering
-  const overlayBg = getCSSVariable('--overlay-bg') || 'rgba(0,0,0,0.8)';
-  const cardBg = getCSSVariable('--card-bg') || '#ffffff';
-  const borderPrimary = getCSSVariable('--border-primary') || '#e5e7eb';
-  const textPrimary = getCSSVariable('--text-primary') || '#000000';
-  const textMuted = getCSSVariable('--text-muted') || '#6b7280';
-  const accentPrimary = getCSSVariable('--accent-primary') || '#3b82f6';
-  const bgSecondary = getCSSVariable('--bg-secondary') || '#f9fafb';
-  const shadowModal =
-    getCSSVariable('--shadow-modal') || '0 25px 50px -12px rgba(0, 0, 0, 0.25)';
+  const overlayBg = getCSSVariable('--overlay-bg', 'rgba(15, 23, 42, 0.8)');
+  const cardBg = getCSSVariable('--card-bg', '#334155');
+  const borderPrimary = getCSSVariable('--border-primary', '#94a3b8');
+  const textPrimary = getCSSVariable('--text-primary', '#f1f5f9');
+  const textMuted = getCSSVariable('--text-muted', '#64748b');
+  const accentPrimary = getCSSVariable('--accent-primary', '#3b82f6');
+  const bgSecondary = getCSSVariable('--bg-secondary', '#2a2a2a');
+  const shadowModal = getCSSVariable(
+    '--shadow-modal',
+    '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+  );
 
   const modalContent = (
     <div
@@ -272,7 +331,10 @@ export function RaceSelectionModal({
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = accentPrimary;
+                e.currentTarget.style.backgroundColor = getCSSVariable(
+                  '--accent-primary-hover',
+                  '#1d4ed8'
+                );
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'scale(1)';
@@ -346,7 +408,10 @@ export function RaceSelectionModal({
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = accentPrimary;
+                e.currentTarget.style.backgroundColor = getCSSVariable(
+                  '--accent-primary-hover',
+                  '#1d4ed8'
+                );
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'scale(1)';
@@ -397,9 +462,90 @@ export function RaceSelectionModal({
                   lineHeight: '1.5',
                 }}
               >
-                {getRaceDescription(currentRaceData.name)}
+                {currentRaceData.description ||
+                  getRaceDescription(currentRaceData.name)}
               </p>
             </div>
+
+            {/* Enhanced Descriptions */}
+            {(currentRaceData.ageDescription ||
+              currentRaceData.alignmentDescription ||
+              currentRaceData.sizeDescription) && (
+              <div style={{ marginBottom: '20px' }}>
+                {currentRaceData.ageDescription && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <h5
+                      style={{
+                        color: textPrimary,
+                        fontWeight: 'bold',
+                        fontSize: '14px',
+                        marginBottom: '4px',
+                      }}
+                    >
+                      Age
+                    </h5>
+                    <p
+                      style={{
+                        color: textPrimary,
+                        fontSize: '13px',
+                        lineHeight: '1.4',
+                        opacity: 0.9,
+                      }}
+                    >
+                      {currentRaceData.ageDescription}
+                    </p>
+                  </div>
+                )}
+                {currentRaceData.alignmentDescription && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <h5
+                      style={{
+                        color: textPrimary,
+                        fontWeight: 'bold',
+                        fontSize: '14px',
+                        marginBottom: '4px',
+                      }}
+                    >
+                      Alignment
+                    </h5>
+                    <p
+                      style={{
+                        color: textPrimary,
+                        fontSize: '13px',
+                        lineHeight: '1.4',
+                        opacity: 0.9,
+                      }}
+                    >
+                      {currentRaceData.alignmentDescription}
+                    </p>
+                  </div>
+                )}
+                {currentRaceData.sizeDescription && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <h5
+                      style={{
+                        color: textPrimary,
+                        fontWeight: 'bold',
+                        fontSize: '14px',
+                        marginBottom: '4px',
+                      }}
+                    >
+                      Size Details
+                    </h5>
+                    <p
+                      style={{
+                        color: textPrimary,
+                        fontSize: '13px',
+                        lineHeight: '1.4',
+                        opacity: 0.9,
+                      }}
+                    >
+                      {currentRaceData.sizeDescription}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Core Stats */}
             <div
@@ -454,7 +600,7 @@ export function RaceSelectionModal({
                       )
                     )
                   ) : (
-                    <div style={{ color: textMuted, fontSize: '12px' }}>
+                    <div style={{ color: textMuted, fontSize: '14px' }}>
                       No ability bonuses
                     </div>
                   )}
@@ -519,8 +665,9 @@ export function RaceSelectionModal({
                       backgroundColor: bgSecondary,
                       borderRadius: '6px',
                       border: `1px solid ${borderPrimary}`,
-                      fontSize: '12px',
-                      color: textMuted,
+                      fontSize: '14px',
+                      color: textPrimary,
+                      opacity: 0.9,
                     }}
                   >
                     {currentRaceData.languages.map((lang, i) => (
@@ -530,6 +677,50 @@ export function RaceSelectionModal({
                       </span>
                     ))}
                   </div>
+                </div>
+              )}
+
+            {/* Language Choices */}
+            {currentRaceData.languageOptions && (
+              <div style={{ marginBottom: '20px' }}>
+                <ChoiceSelector
+                  choice={currentRaceData.languageOptions}
+                  selected={
+                    languageChoices[
+                      getChoiceKey(currentRaceData.languageOptions, 0)
+                    ] || []
+                  }
+                  onSelectionChange={(selected) => {
+                    const key = getChoiceKey(
+                      currentRaceData.languageOptions,
+                      0
+                    );
+                    setLanguageChoices({ ...languageChoices, [key]: selected });
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Proficiency Choices */}
+            {currentRaceData.proficiencyOptions &&
+              currentRaceData.proficiencyOptions.length > 0 && (
+                <div style={{ marginBottom: '20px' }}>
+                  {currentRaceData.proficiencyOptions.map((choice, index) => (
+                    <ChoiceSelector
+                      key={index}
+                      choice={choice}
+                      selected={
+                        proficiencyChoices[getChoiceKey(choice, index)] || []
+                      }
+                      onSelectionChange={(selected) => {
+                        const key = getChoiceKey(choice, index);
+                        setProficiencyChoices({
+                          ...proficiencyChoices,
+                          [key]: selected,
+                        });
+                      }}
+                    />
+                  ))}
                 </div>
               )}
 
@@ -562,19 +753,55 @@ export function RaceSelectionModal({
                           color: textPrimary,
                           fontSize: '13px',
                           fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
                         }}
                       >
                         {trait.name}
+                        {trait.isChoice && (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              padding: '1px 4px',
+                              backgroundColor: accentPrimary,
+                              color: 'white',
+                              borderRadius: '3px',
+                            }}
+                          >
+                            Choice
+                          </span>
+                        )}
                       </div>
                       {trait.description && (
-                        <div style={{ color: textMuted, fontSize: '11px' }}>
+                        <div
+                          style={{
+                            color: textPrimary,
+                            fontSize: '14px',
+                            lineHeight: '1.4',
+                            opacity: 0.9,
+                          }}
+                        >
                           {trait.description}
                         </div>
                       )}
+                      {trait.isChoice &&
+                        trait.options &&
+                        trait.options.length > 0 && (
+                          <div
+                            style={{
+                              marginTop: '4px',
+                              fontSize: '13px',
+                              color: textMuted,
+                            }}
+                          >
+                            Options: {trait.options.join(', ')}
+                          </div>
+                        )}
                     </div>
                   ))
                 ) : (
-                  <div style={{ color: textMuted, fontSize: '12px' }}>
+                  <div style={{ color: textMuted, fontSize: '14px' }}>
                     No racial traits available
                   </div>
                 )}
@@ -600,8 +827,9 @@ export function RaceSelectionModal({
                       backgroundColor: bgSecondary,
                       borderRadius: '6px',
                       border: `1px solid ${borderPrimary}`,
-                      fontSize: '12px',
-                      color: textMuted,
+                      fontSize: '14px',
+                      color: textPrimary,
+                      opacity: 0.9,
                     }}
                   >
                     {currentRaceData.proficiencies.join(', ')}
