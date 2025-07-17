@@ -1,18 +1,7 @@
-import { create } from '@bufbuild/protobuf';
-import { CreateDraftRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useState } from 'react';
-import { useCreateDraft, useListCharacters } from '../api/hooks';
+import { useListCharacters } from '../api/hooks';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from './ui/Dialog';
 
 interface CharacterListProps {
   playerId?: string;
@@ -30,31 +19,6 @@ export function CharacterList({
     loading,
     error,
   } = useListCharacters({ playerId, sessionId });
-  const { createDraft, loading: creating } = useCreateDraft();
-  const [isCreating, setIsCreating] = useState(false);
-
-  const handleCreateCharacter = async () => {
-    console.log('🔥 handleCreateCharacter called');
-    try {
-      const request = create(CreateDraftRequestSchema, {
-        playerId: playerId || '',
-        sessionId: sessionId || '',
-      });
-      console.log('📤 Calling createDraft API...', request);
-      const response = await createDraft(request);
-      console.log('📥 createDraft response:', response);
-
-      if (response.draft && onCreateCharacter) {
-        console.log('✅ Draft created successfully, calling onCreateCharacter');
-        // Navigate to character creation wizard
-        onCreateCharacter();
-      } else {
-        console.log('❌ No draft in response or no onCreateCharacter callback');
-      }
-    } catch (err) {
-      console.error('Failed to create draft:', err);
-    }
-  };
 
   if (loading) {
     return (
@@ -97,43 +61,9 @@ export function CharacterList({
         >
           Your Characters
         </h2>
-        <Dialog open={isCreating} onOpenChange={setIsCreating}>
-          <DialogTrigger asChild>
-            <Button variant="primary">Create Character</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Character</DialogTitle>
-              <DialogDescription className="sr-only">
-                Start creating a new D&D character by clicking the Start
-                Creation button.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <p style={{ color: 'var(--ink-brown)' }}>
-                Ready to forge a new hero? Let's begin your adventure!
-              </p>
-              <div className="flex gap-4 justify-end">
-                <Button
-                  variant="secondary"
-                  onClick={() => setIsCreating(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    setIsCreating(false);
-                    handleCreateCharacter();
-                  }}
-                  disabled={creating}
-                >
-                  {creating ? 'Creating...' : 'Start Creation'}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button variant="primary" onClick={onCreateCharacter}>
+          Create Character
+        </Button>
       </div>
 
       {characters.length === 0 ? (

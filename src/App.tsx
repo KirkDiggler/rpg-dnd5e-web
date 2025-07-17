@@ -2,17 +2,20 @@ import { motion } from 'framer-motion';
 import { useState } from 'react';
 import './App.css';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
+import { CharacterList } from './components/CharacterList';
 import { ThemeSelector } from './components/ThemeSelector';
+import { useDiscord } from './discord';
 // import { DiscordDebugPanel } from './discord';
 
 type AppView = 'character-list' | 'character-creation';
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('character-list');
-  // const discord = useDiscord();
+  const discord = useDiscord();
 
-  // Use Discord user ID if available, otherwise fallback to test
-  // const playerId = discord.user?.id || 'test-player';
+  // In production, require Discord auth. In dev, allow test player
+  const isDevelopment = import.meta.env.MODE === 'development';
+  const playerId = discord.user?.id || (isDevelopment ? 'test-player' : null);
 
   const handleCharacterCreated = () => {
     setCurrentView('character-list');
@@ -49,36 +52,39 @@ function App() {
         </header>
 
         {/* Main Content */}
-        {currentView === 'character-list' ? (
-          <div className="text-center space-y-8">
-            <div className="max-w-2xl mx-auto">
-              <h2
-                className="text-3xl font-bold mb-4"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                Your Characters
-              </h2>
-              <p
-                className="text-lg mb-8"
-                style={{ color: 'var(--text-muted)' }}
-              >
-                No characters yet. Ready to create your first hero?
-              </p>
-
-              <button
-                onClick={() => setCurrentView('character-creation')}
-                className="px-8 py-4 text-xl font-bold rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
-                style={{
-                  backgroundColor: 'var(--accent-primary)',
-                  color: 'var(--text-primary)',
-                  border: '2px solid var(--border-primary)',
-                  boxShadow: 'var(--shadow-card)',
-                }}
-              >
-                ⚔️ Create Character
-              </button>
-            </div>
-          </div>
+        {!playerId && discord.isDiscord ? (
+          // Show auth required message when in Discord but not authenticated
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-16"
+          >
+            <h2
+              className="text-3xl font-bold mb-4"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              Authentication Required
+            </h2>
+            <p className="text-lg mb-8" style={{ color: 'var(--text-muted)' }}>
+              Please authenticate with Discord to continue
+            </p>
+            <button
+              onClick={() => discord.authenticate()}
+              className="px-6 py-3 bg-[#5865F2] text-white rounded-lg hover:bg-[#4752C4] transition-colors"
+              disabled={!discord.isReady}
+            >
+              {discord.isReady ? 'Authenticate with Discord' : 'Loading...'}
+            </button>
+            {discord.error && (
+              <p className="mt-4 text-red-500">{discord.error}</p>
+            )}
+          </motion.div>
+        ) : currentView === 'character-list' ? (
+          <CharacterList
+            playerId={playerId || 'test-player'}
+            sessionId="test-session"
+            onCreateCharacter={() => setCurrentView('character-creation')}
+          />
         ) : (
           <InteractiveCharacterSheet
             onComplete={handleCharacterCreated}
