@@ -1,7 +1,7 @@
-import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { ClassInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useListRaces } from '../../api/hooks';
+import { useListClasses } from '../../api/hooks';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string): string {
@@ -13,66 +13,42 @@ function getCSSVariable(name: string): string {
   return '';
 }
 
-// Helper function to get race emoji based on name
-function getRaceEmoji(raceName: string): string {
-  const raceEmojiMap: Record<string, string> = {
-    Human: '👨',
-    Elf: '🧝',
-    Dwarf: '🧔',
-    Halfling: '🧙',
-    Dragonborn: '🐉',
-    Gnome: '🧞',
-    'Half-Elf': '🧝‍♂️',
-    'Half-Orc': '🗡️',
-    Tiefling: '😈',
+// Helper function to get class emoji based on name
+function getClassEmoji(className: string): string {
+  const classEmojiMap: Record<string, string> = {
+    Barbarian: '🪓',
+    Bard: '🎵',
+    Cleric: '⛪',
+    Druid: '🌿',
+    Fighter: '⚔️',
+    Monk: '👊',
+    Paladin: '🛡️',
+    Ranger: '🏹',
+    Rogue: '🗡️',
+    Sorcerer: '✨',
+    Warlock: '👹',
+    Wizard: '🧙‍♂️',
   };
-  return raceEmojiMap[raceName] || '🧝';
+  return classEmojiMap[className] || '⚔️';
 }
 
-// Hardcoded descriptions for races since API doesn't provide them
-function getRaceDescription(raceName: string): string {
-  const raceDescriptions: Record<string, string> = {
-    Human:
-      'Versatile and ambitious, humans are the most adaptable of the common races. They have the drive to achieve great things in their relatively short lifespans.',
-    Elf: 'Elves are magical people of otherworldly grace, living in harmony with the natural world. They love nature, music, art, and magic.',
-    Dwarf:
-      'Bold and hardy, dwarves are renowned for their skill as warriors, miners, and workers of stone and metal. They live in mountainous regions.',
-    Halfling:
-      'Small but brave, halflings are an affable and cheerful folk. They prefer the comforts of home to dangerous adventures.',
-    Dragonborn:
-      'Born of dragons, dragonborn walk proudly through a world that greets them with fearful incomprehension.',
-    Gnome:
-      "Small, clever, and energetic, gnomes use their long lives to explore the world's brightest possibilities.",
-    'Half-Elf':
-      'Walking in two worlds but belonging to neither, half-elves combine human curiosity with elven grace.',
-    'Half-Orc':
-      'Whether united under the leadership of a mighty warlock or scattered, half-orcs often struggle with their dual nature.',
-    Tiefling:
-      'Bearing a curse from an infernal heritage, tieflings face constant suspicion wherever they go.',
-  };
-  return (
-    raceDescriptions[raceName] ||
-    'A fascinating race with unique traits and abilities.'
-  );
-}
-
-interface RaceSelectionModalProps {
+interface ClassSelectionModalProps {
   isOpen: boolean;
-  currentRace?: string;
-  onSelect: (race: RaceInfo) => void;
+  currentClass?: string;
+  onSelect: (classData: ClassInfo) => void;
   onClose: () => void;
 }
 
-export function RaceSelectionModal({
+export function ClassSelectionModal({
   isOpen,
-  currentRace,
+  currentClass,
   onSelect,
   onClose,
-}: RaceSelectionModalProps) {
-  const { data: races, loading, error } = useListRaces();
+}: ClassSelectionModalProps) {
+  const { data: classes, loading, error } = useListClasses();
   const [selectedIndex, setSelectedIndex] = useState(() => {
-    if (currentRace && races.length > 0) {
-      const index = races.findIndex((race) => race.name === currentRace);
+    if (currentClass && classes.length > 0) {
+      const index = classes.findIndex((cls) => cls.name === currentClass);
       return index >= 0 ? index : 0;
     }
     return 0;
@@ -100,13 +76,15 @@ export function RaceSelectionModal({
           justifyContent: 'center',
         }}
       >
-        <div style={{ color: 'white', fontSize: '18px' }}>Loading races...</div>
+        <div style={{ color: 'white', fontSize: '18px' }}>
+          Loading classes...
+        </div>
       </div>,
       document.body
     );
   }
 
-  if (error || races.length === 0) {
+  if (error || classes.length === 0) {
     return createPortal(
       <div
         style={{
@@ -124,44 +102,43 @@ export function RaceSelectionModal({
       >
         <div style={{ color: 'white', fontSize: '18px' }}>
           {error
-            ? `Error loading races: ${error.message}`
-            : 'No races available'}
+            ? `Error loading classes: ${error.message}`
+            : 'No classes available'}
         </div>
       </div>,
       document.body
     );
   }
 
-  const currentRaceData = races[selectedIndex];
-  const nextRaceData = races[(selectedIndex + 1) % races.length];
-  const prevRaceData = races[(selectedIndex - 1 + races.length) % races.length];
+  const currentClassData = classes[selectedIndex];
+  const nextClassData = classes[(selectedIndex + 1) % classes.length];
+  const prevClassData =
+    classes[(selectedIndex - 1 + classes.length) % classes.length];
 
-  const nextRace = () => {
+  const nextClass = () => {
     if (isTransitioning) return;
     setIsTransitioning(true);
     setAnimationDirection('right');
     setTimeout(() => {
-      setSelectedIndex((prev) => (prev + 1) % races.length);
+      setSelectedIndex((prev) => (prev + 1) % classes.length);
       setIsTransitioning(false);
     }, 150);
   };
 
-  const prevRace = () => {
+  const prevClass = () => {
     if (isTransitioning) return;
     setIsTransitioning(true);
     setAnimationDirection('left');
     setTimeout(() => {
-      setSelectedIndex((prev) => (prev - 1 + races.length) % races.length);
+      setSelectedIndex((prev) => (prev - 1 + classes.length) % classes.length);
       setIsTransitioning(false);
     }, 150);
   };
 
   const handleSelect = () => {
-    onSelect(currentRaceData);
+    onSelect(currentClassData);
     onClose();
   };
-
-  if (!isOpen) return null;
 
   // Get theme values for portal rendering
   const overlayBg = getCSSVariable('--overlay-bg') || 'rgba(0,0,0,0.8)';
@@ -226,7 +203,7 @@ export function RaceSelectionModal({
               fontFamily: 'Cinzel, serif',
             }}
           >
-            Choose Your Race
+            Choose Your Class
           </h2>
           <button
             onClick={onClose}
@@ -254,7 +231,7 @@ export function RaceSelectionModal({
             }}
           >
             <button
-              onClick={prevRace}
+              onClick={prevClass}
               style={{
                 background: bgSecondary,
                 border: `1px solid ${borderPrimary}`,
@@ -278,10 +255,10 @@ export function RaceSelectionModal({
                 e.currentTarget.style.transform = 'scale(1)';
                 e.currentTarget.style.backgroundColor = bgSecondary;
               }}
-              title={`Previous: ${prevRaceData.name}`}
+              title={`Previous: ${prevClassData.name}`}
             >
               <div style={{ fontSize: '20px' }}>
-                {getRaceEmoji(prevRaceData.name)}
+                {getClassEmoji(prevClassData.name)}
               </div>
               <div style={{ fontSize: '10px', color: textMuted }}>←</div>
             </button>
@@ -308,7 +285,7 @@ export function RaceSelectionModal({
                 }}
               >
                 <div style={{ fontSize: '64px', marginBottom: '8px' }}>
-                  {getRaceEmoji(currentRaceData.name)}
+                  {getClassEmoji(currentClassData.name)}
                 </div>
                 <h3
                   style={{
@@ -319,16 +296,16 @@ export function RaceSelectionModal({
                     fontFamily: 'Cinzel, serif',
                   }}
                 >
-                  {currentRaceData.name}
+                  {currentClassData.name}
                 </h3>
                 <p style={{ color: textMuted, fontSize: '14px', margin: 0 }}>
-                  {selectedIndex + 1} of {races.length}
+                  {selectedIndex + 1} of {classes.length}
                 </p>
               </div>
             </div>
 
             <button
-              onClick={nextRace}
+              onClick={nextClass}
               style={{
                 background: bgSecondary,
                 border: `1px solid ${borderPrimary}`,
@@ -352,10 +329,10 @@ export function RaceSelectionModal({
                 e.currentTarget.style.transform = 'scale(1)';
                 e.currentTarget.style.backgroundColor = bgSecondary;
               }}
-              title={`Next: ${nextRaceData.name}`}
+              title={`Next: ${nextClassData.name}`}
             >
               <div style={{ fontSize: '20px' }}>
-                {getRaceEmoji(nextRaceData.name)}
+                {getClassEmoji(nextClassData.name)}
               </div>
               <div style={{ fontSize: '10px', color: textMuted }}>→</div>
             </button>
@@ -380,7 +357,7 @@ export function RaceSelectionModal({
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
           >
-            <div style={{ marginBottom: '20px' }}>
+            <div style={{ marginBottom: '24px' }}>
               <h4
                 style={{
                   color: textPrimary,
@@ -393,15 +370,15 @@ export function RaceSelectionModal({
               <p
                 style={{
                   color: textPrimary,
-                  fontSize: '15px',
+                  fontSize: '16px',
                   lineHeight: '1.5',
                 }}
               >
-                {getRaceDescription(currentRaceData.name)}
+                {currentClassData.description}
               </p>
             </div>
 
-            {/* Core Stats */}
+            {/* Core Info Grid */}
             <div
               style={{
                 display: 'grid',
@@ -418,47 +395,31 @@ export function RaceSelectionModal({
                     marginBottom: '8px',
                   }}
                 >
-                  Ability Score Increases
+                  Hit Die & Primary Abilities
                 </h4>
-                <div
+                <p
                   style={{
-                    padding: '8px',
-                    backgroundColor: bgSecondary,
-                    borderRadius: '6px',
-                    border: `1px solid ${borderPrimary}`,
+                    color: textPrimary,
+                    fontSize: '14px',
+                    marginBottom: '8px',
                   }}
                 >
-                  {Object.entries(currentRaceData.abilityBonuses || {}).length >
-                  0 ? (
-                    Object.entries(currentRaceData.abilityBonuses || {}).map(
-                      ([ability, bonus]) => (
-                        <div
-                          key={ability}
-                          style={{
-                            color: textPrimary,
-                            fontSize: '13px',
-                            marginBottom: '4px',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                          }}
-                        >
-                          <span>
-                            {ability.charAt(0).toUpperCase() + ability.slice(1)}
-                          </span>
-                          <span
-                            style={{ color: accentPrimary, fontWeight: 'bold' }}
-                          >
-                            +{bonus}
-                          </span>
-                        </div>
-                      )
-                    )
-                  ) : (
-                    <div style={{ color: textMuted, fontSize: '12px' }}>
-                      No ability bonuses
-                    </div>
-                  )}
-                </div>
+                  <strong>Hit Die:</strong> {currentClassData.hitDie}
+                </p>
+                <p
+                  style={{
+                    color: textPrimary,
+                    fontSize: '14px',
+                    marginBottom: '8px',
+                  }}
+                >
+                  <strong>Primary:</strong>{' '}
+                  {currentClassData.primaryAbilities.join(' & ')}
+                </p>
+                <p style={{ color: textPrimary, fontSize: '14px' }}>
+                  <strong>Saves:</strong>{' '}
+                  {currentClassData.savingThrowProficiencies.join(', ')}
+                </p>
               </div>
 
               <div>
@@ -469,71 +430,122 @@ export function RaceSelectionModal({
                     marginBottom: '8px',
                   }}
                 >
-                  Size & Movement
+                  Skills
                 </h4>
-                <div
+                <p
                   style={{
-                    padding: '8px',
-                    backgroundColor: bgSecondary,
-                    borderRadius: '6px',
-                    border: `1px solid ${borderPrimary}`,
+                    color: textPrimary,
+                    fontSize: '14px',
+                    marginBottom: '8px',
                   }}
                 >
-                  <div
-                    style={{
-                      color: textPrimary,
-                      fontSize: '13px',
-                      marginBottom: '4px',
-                    }}
-                  >
-                    <strong>Size:</strong>{' '}
-                    {currentRaceData.size === 1
-                      ? 'Medium'
-                      : currentRaceData.size === 2
-                        ? 'Small'
-                        : 'Medium'}
-                  </div>
-                  <div style={{ color: textPrimary, fontSize: '13px' }}>
-                    <strong>Speed:</strong> {currentRaceData.speed} feet
-                  </div>
+                  Choose {currentClassData.skillChoicesCount} from:
+                </p>
+                <div style={{ fontSize: '12px', color: textMuted }}>
+                  {currentClassData.availableSkills.slice(0, 6).join(', ')}
+                  {currentClassData.availableSkills.length > 6 &&
+                    ` +${currentClassData.availableSkills.length - 6} more`}
                 </div>
               </div>
             </div>
 
-            {/* Languages */}
-            {currentRaceData.languages &&
-              currentRaceData.languages.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Languages
-                  </h4>
+            {/* Proficiencies Section */}
+            <div style={{ marginBottom: '20px' }}>
+              <h4
+                style={{
+                  color: textPrimary,
+                  fontWeight: 'bold',
+                  marginBottom: '12px',
+                }}
+              >
+                Proficiencies
+              </h4>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '12px',
+                }}
+              >
+                {currentClassData.armorProficiencies.length > 0 && (
                   <div
                     style={{
                       padding: '8px',
                       backgroundColor: bgSecondary,
                       borderRadius: '6px',
                       border: `1px solid ${borderPrimary}`,
-                      fontSize: '12px',
-                      color: textMuted,
                     }}
                   >
-                    {currentRaceData.languages.map((lang, i) => (
-                      <span key={i}>
-                        {typeof lang === 'string' ? lang : lang.toString()}
-                        {i < currentRaceData.languages.length - 1 ? ', ' : ''}
-                      </span>
-                    ))}
+                    <div
+                      style={{
+                        color: textPrimary,
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      Armor
+                    </div>
+                    <div style={{ color: textMuted, fontSize: '11px' }}>
+                      {currentClassData.armorProficiencies.join(', ')}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-            {/* Racial Traits */}
+                {currentClassData.weaponProficiencies.length > 0 && (
+                  <div
+                    style={{
+                      padding: '8px',
+                      backgroundColor: bgSecondary,
+                      borderRadius: '6px',
+                      border: `1px solid ${borderPrimary}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: textPrimary,
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      Weapons
+                    </div>
+                    <div style={{ color: textMuted, fontSize: '11px' }}>
+                      {currentClassData.weaponProficiencies
+                        .slice(0, 3)
+                        .join(', ')}
+                      {currentClassData.weaponProficiencies.length > 3 &&
+                        ` +${currentClassData.weaponProficiencies.length - 3} more`}
+                    </div>
+                  </div>
+                )}
+
+                {currentClassData.toolProficiencies.length > 0 && (
+                  <div
+                    style={{
+                      padding: '8px',
+                      backgroundColor: bgSecondary,
+                      borderRadius: '6px',
+                      border: `1px solid ${borderPrimary}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: textPrimary,
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      Tools
+                    </div>
+                    <div style={{ color: textMuted, fontSize: '11px' }}>
+                      {currentClassData.toolProficiencies.join(', ')}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Features Section */}
             <div style={{ marginBottom: '20px' }}>
               <h4
                 style={{
@@ -542,11 +554,11 @@ export function RaceSelectionModal({
                   marginBottom: '8px',
                 }}
               >
-                Racial Traits
+                Level 1 Features
               </h4>
               <div
                 style={{
-                  maxHeight: '140px',
+                  maxHeight: '120px',
                   overflowY: 'auto',
                   padding: '8px',
                   backgroundColor: bgSecondary,
@@ -554,60 +566,92 @@ export function RaceSelectionModal({
                   border: `1px solid ${borderPrimary}`,
                 }}
               >
-                {currentRaceData.traits && currentRaceData.traits.length > 0 ? (
-                  currentRaceData.traits.map((trait, i) => (
-                    <div key={i} style={{ marginBottom: '8px' }}>
-                      <div
-                        style={{
-                          color: textPrimary,
-                          fontSize: '13px',
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        {trait.name}
-                      </div>
-                      {trait.description && (
-                        <div style={{ color: textMuted, fontSize: '11px' }}>
-                          {trait.description}
-                        </div>
-                      )}
+                {currentClassData.level1Features.map((feature, i) => (
+                  <div key={i} style={{ marginBottom: '8px' }}>
+                    <div
+                      style={{
+                        color: textPrimary,
+                        fontSize: '13px',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      {feature.name}
                     </div>
-                  ))
-                ) : (
-                  <div style={{ color: textMuted, fontSize: '12px' }}>
-                    No racial traits available
+                    {feature.description && (
+                      <div style={{ color: textMuted, fontSize: '11px' }}>
+                        {feature.description}
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
             </div>
 
-            {/* Proficiencies */}
-            {currentRaceData.proficiencies &&
-              currentRaceData.proficiencies.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Proficiencies
-                  </h4>
-                  <div
-                    style={{
-                      padding: '8px',
-                      backgroundColor: bgSecondary,
-                      borderRadius: '6px',
-                      border: `1px solid ${borderPrimary}`,
-                      fontSize: '12px',
-                      color: textMuted,
-                    }}
-                  >
-                    {currentRaceData.proficiencies.join(', ')}
+            {/* Starting Equipment */}
+            {currentClassData.startingEquipment.length > 0 && (
+              <div style={{ marginBottom: '20px' }}>
+                <h4
+                  style={{
+                    color: textPrimary,
+                    fontWeight: 'bold',
+                    marginBottom: '8px',
+                  }}
+                >
+                  Starting Equipment
+                </h4>
+                <div
+                  style={{
+                    padding: '8px',
+                    backgroundColor: bgSecondary,
+                    borderRadius: '6px',
+                    border: `1px solid ${borderPrimary}`,
+                    fontSize: '12px',
+                    color: textMuted,
+                  }}
+                >
+                  {currentClassData.startingEquipment.slice(0, 4).join(', ')}
+                  {currentClassData.startingEquipment.length > 4 &&
+                    ` +${currentClassData.startingEquipment.length - 4} more items`}
+                </div>
+              </div>
+            )}
+
+            {/* Spellcasting Info */}
+            {currentClassData.spellcasting && (
+              <div style={{ marginBottom: '20px' }}>
+                <h4
+                  style={{
+                    color: textPrimary,
+                    fontWeight: 'bold',
+                    marginBottom: '8px',
+                  }}
+                >
+                  🔮 Spellcasting
+                </h4>
+                <div
+                  style={{
+                    padding: '12px',
+                    backgroundColor: bgSecondary,
+                    borderRadius: '6px',
+                    border: `1px solid ${accentPrimary}`,
+                    fontSize: '12px',
+                  }}
+                >
+                  <div style={{ color: textPrimary, marginBottom: '4px' }}>
+                    <strong>Ability:</strong>{' '}
+                    {currentClassData.spellcasting.spellcastingAbility}
+                  </div>
+                  <div style={{ color: textPrimary, marginBottom: '4px' }}>
+                    <strong>Cantrips Known:</strong>{' '}
+                    {currentClassData.spellcasting.cantripsKnown}
+                  </div>
+                  <div style={{ color: textPrimary }}>
+                    <strong>1st Level Slots:</strong>{' '}
+                    {currentClassData.spellcasting.spellSlotsLevel1}
                   </div>
                 </div>
-              )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -645,13 +689,12 @@ export function RaceSelectionModal({
               fontWeight: 'bold',
             }}
           >
-            Select {currentRaceData.name}
+            Select {currentClassData.name}
           </button>
         </div>
       </div>
     </div>
   );
 
-  // Render modal into document.body using a portal
   return createPortal(modalContent, document.body);
 }

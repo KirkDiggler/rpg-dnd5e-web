@@ -10,19 +10,23 @@ We need to clarify our current focus and goals to avoid scope creep and ensure w
 
 ## Current State Assessment
 
-### What's Working
+### What's Working (Updated 2025-07-16)
 
 - ✅ Interactive character sheet paradigm established
-- ✅ Animated dice rolling functionality
-- ✅ Basic character sheet layout and styling
+- ✅ Animated dice rolling functionality with improved spacing
+- ✅ Proper dice tray layout with visual separators
+- ✅ Drag and drop ability score assignment
+- ✅ RaceSelectionModal component with carousel interface
 - ✅ Real-time character summary updates
 - ✅ Theme system and visual design
+- ✅ All CI checks passing with proper TypeScript compliance
 
-### What Needs Work
+### What Needs Work (Updated 2025-07-16)
 
-- 🚧 Race/Class selection is placeholder (just sets to Human/Fighter)
+- 🚧 Race selection modal not connected to character sheet clicks
+- 🚧 ClassSelectionModal component doesn't exist yet
+- 🚧 No connection to real D&D 5e API data (still using hardcoded)
 - 🚧 Missing skills, background, and equipment sections
-- 🚧 No connection to real D&D 5e API data
 - 🚧 Character persistence and draft saving
 
 ## Decision: Current Focus Areas
@@ -72,13 +76,14 @@ A user should be able to:
 4. See their character build in real-time
 5. Complete a basic character and "Begin Adventure"
 
-## Next Immediate Tasks
+## Next Immediate Tasks (Updated 2025-07-16)
 
-1. **Layout Polish**: Improve character sheet visual design and spacing
-2. **Race Modal**: Implement proper race selection with actual D&D races
-3. **Class Modal**: Implement proper class selection with actual D&D classes
-4. **Skills Section**: Add skills and background selection
-5. **Equipment Section**: Add basic starting equipment display
+1. **Wire Race Modal**: Connect RaceSelectionModal to character sheet race section clicks
+2. **Create Class Modal**: Build ClassSelectionModal component with carousel interface
+3. **Wire Class Modal**: Connect ClassSelectionModal to character sheet class section clicks
+4. **API Integration**: Replace hardcoded race/class data with D&D 5e API calls
+5. **Skills Section**: Add skills and background selection
+6. **Equipment Section**: Add basic starting equipment display
 
 ## Out of Scope (For Now)
 

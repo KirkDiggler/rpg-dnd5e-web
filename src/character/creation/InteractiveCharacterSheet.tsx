@@ -1,6 +1,12 @@
 import { DiceRoller } from '@/components/DiceRoller';
+import type {
+  ClassInfo,
+  RaceInfo,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
+import { ClassSelectionModal } from './ClassSelectionModal';
+import { RaceSelectionModal } from './RaceSelectionModal';
 
 interface InteractiveCharacterSheetProps {
   onComplete: () => void;
@@ -10,8 +16,8 @@ interface InteractiveCharacterSheetProps {
 // Simple context for now - we'll make it more sophisticated later
 const CharacterContext = {
   characterName: '',
-  selectedRace: '',
-  selectedClass: '',
+  selectedRace: null as RaceInfo | null,
+  selectedClass: null as ClassInfo | null,
   rolledScores: [] as number[], // Array of rolled values to assign
   rollLedger: [] as {
     rolls: number[];
@@ -35,8 +41,45 @@ export function InteractiveCharacterSheet({
   onCancel,
 }: InteractiveCharacterSheetProps) {
   const [character, setCharacter] = useState(CharacterContext);
+  const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
+  const [isClassModalOpen, setIsClassModalOpen] = useState(false);
 
   const getModifier = (score: number) => Math.floor((score - 10) / 2);
+
+  // Helper function to get race emoji
+  const getRaceEmoji = (raceName: string) => {
+    const raceEmojiMap: Record<string, string> = {
+      Human: '👨',
+      Elf: '🧝',
+      Dwarf: '🧔',
+      Halfling: '🧙',
+      Dragonborn: '🐉',
+      Gnome: '🧞',
+      'Half-Elf': '🧝‍♂️',
+      'Half-Orc': '🗡️',
+      Tiefling: '😈',
+    };
+    return raceEmojiMap[raceName] || '🧝';
+  };
+
+  // Helper function to get class emoji
+  const getClassEmoji = (className: string) => {
+    const classEmojiMap: Record<string, string> = {
+      Barbarian: '🪓',
+      Bard: '🎵',
+      Cleric: '⛪',
+      Druid: '🌿',
+      Fighter: '⚔️',
+      Monk: '👊',
+      Paladin: '🛡️',
+      Ranger: '🏹',
+      Rogue: '🗡️',
+      Sorcerer: '✨',
+      Warlock: '👹',
+      Wizard: '🧙‍♂️',
+    };
+    return classEmojiMap[className] || '⚔️';
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
@@ -141,18 +184,18 @@ export function InteractiveCharacterSheet({
                     ? 'var(--accent-primary)'
                     : 'var(--border-primary)',
                 }}
-                onClick={() =>
-                  setCharacter((prev) => ({ ...prev, selectedRace: 'Human' }))
-                }
+                onClick={() => setIsRaceModalOpen(true)}
               >
                 <div className="text-center space-y-2">
-                  <div className="text-3xl">🧝</div>
+                  <div className="text-3xl">
+                    {getRaceEmoji(character.selectedRace?.name || '')}
+                  </div>
                   <div>
                     <h3
                       className="text-lg font-bold"
                       style={{ color: 'var(--text-primary)' }}
                     >
-                      {character.selectedRace || 'Choose Race'}
+                      {character.selectedRace?.name || 'Choose Race'}
                     </h3>
                     <p
                       className="text-xs"
@@ -177,21 +220,18 @@ export function InteractiveCharacterSheet({
                     ? 'var(--accent-primary)'
                     : 'var(--border-primary)',
                 }}
-                onClick={() =>
-                  setCharacter((prev) => ({
-                    ...prev,
-                    selectedClass: 'Fighter',
-                  }))
-                }
+                onClick={() => setIsClassModalOpen(true)}
               >
                 <div className="text-center space-y-2">
-                  <div className="text-3xl">⚔️</div>
+                  <div className="text-3xl">
+                    {getClassEmoji(character.selectedClass?.name || '')}
+                  </div>
                   <div>
                     <h3
                       className="text-lg font-bold"
                       style={{ color: 'var(--text-primary)' }}
                     >
-                      {character.selectedClass || 'Choose Class'}
+                      {character.selectedClass?.name || 'Choose Class'}
                     </h3>
                     <p
                       className="text-xs"
@@ -570,8 +610,8 @@ export function InteractiveCharacterSheet({
                 >
                   {character.characterName}
                 </span>
-                {character.selectedRace && `, a ${character.selectedRace}`}
-                {character.selectedClass && ` ${character.selectedClass}`}
+                {character.selectedRace && `, a ${character.selectedRace.name}`}
+                {character.selectedClass && ` ${character.selectedClass.name}`}
                 {character.characterName && ', ready for adventure!'}
               </p>
             </motion.div>
@@ -599,6 +639,32 @@ export function InteractiveCharacterSheet({
           </div>
         </motion.div>
       </div>
+
+      {/* Race Selection Modal */}
+      <RaceSelectionModal
+        isOpen={isRaceModalOpen}
+        currentRace={character.selectedRace?.name}
+        onSelect={(race) => {
+          setCharacter((prev) => ({
+            ...prev,
+            selectedRace: race,
+          }));
+        }}
+        onClose={() => setIsRaceModalOpen(false)}
+      />
+
+      {/* Class Selection Modal */}
+      <ClassSelectionModal
+        isOpen={isClassModalOpen}
+        currentClass={character.selectedClass?.name}
+        onSelect={(classData) => {
+          setCharacter((prev) => ({
+            ...prev,
+            selectedClass: classData,
+          }));
+        }}
+        onClose={() => setIsClassModalOpen(false)}
+      />
     </div>
   );
 }

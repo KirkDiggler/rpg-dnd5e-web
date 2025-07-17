@@ -2,12 +2,16 @@ import { create } from '@bufbuild/protobuf';
 import type {
   Character,
   CharacterDraft,
+  ClassInfo,
   CreateDraftRequest,
   DeleteCharacterRequest,
   DeleteDraftRequest,
   FinalizeDraftRequest,
   ListCharactersRequest,
+  ListClassesRequest,
   ListDraftsRequest,
+  ListRacesRequest,
+  RaceInfo,
   UpdateAbilityScoresRequest,
   UpdateBackgroundRequest,
   UpdateClassRequest,
@@ -20,7 +24,9 @@ import {
   GetCharacterRequestSchema,
   GetDraftRequestSchema,
   ListCharactersRequestSchema,
+  ListClassesRequestSchema,
   ListDraftsRequestSchema,
+  ListRacesRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { characterClient } from './client';
@@ -484,4 +490,109 @@ export function useDeleteCharacter() {
   );
 
   return { deleteCharacter, loading, error };
+}
+
+// Reference data hooks
+export function useListRaces(
+  filters: Partial<Pick<ListRacesRequest, 'pageSize' | 'pageToken'>> = {}
+) {
+  const [state, setState] = useState<ListState<RaceInfo>>({
+    data: [],
+    loading: false,
+    error: null,
+  });
+
+  const fetchRaces = useCallback(
+    async (pageToken?: string) => {
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+
+      try {
+        const request = create(ListRacesRequestSchema, {
+          pageSize: filters.pageSize || 50,
+          pageToken: pageToken || '',
+        });
+
+        const response = await characterClient.listRaces(request);
+
+        setState({
+          data: response.races,
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
+          totalSize: response.totalSize,
+        });
+      } catch (error) {
+        setState({
+          data: [],
+          loading: false,
+          error: error instanceof Error ? error : new Error('Unknown error'),
+        });
+      }
+    },
+    [filters.pageSize]
+  );
+
+  useEffect(() => {
+    fetchRaces();
+  }, [fetchRaces]);
+
+  return {
+    ...state,
+    refetch: fetchRaces,
+    loadMore: state.nextPageToken
+      ? () => fetchRaces(state.nextPageToken)
+      : undefined,
+  };
+}
+
+export function useListClasses(
+  filters: Partial<Pick<ListClassesRequest, 'pageSize' | 'pageToken'>> = {}
+) {
+  const [state, setState] = useState<ListState<ClassInfo>>({
+    data: [],
+    loading: false,
+    error: null,
+  });
+
+  const fetchClasses = useCallback(
+    async (pageToken?: string) => {
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+
+      try {
+        const request = create(ListClassesRequestSchema, {
+          pageSize: filters.pageSize || 50,
+          pageToken: pageToken || '',
+        });
+
+        const response = await characterClient.listClasses(request);
+
+        setState({
+          data: response.classes,
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
+          totalSize: response.totalSize,
+        });
+      } catch (error) {
+        setState({
+          data: [],
+          loading: false,
+          error: error instanceof Error ? error : new Error('Unknown error'),
+        });
+      }
+    },
+    [filters.pageSize]
+  );
+
+  useEffect(() => {
+    fetchClasses();
+  }, [fetchClasses]);
+
+  return {
+    ...state,
+    refetch: fetchClasses,
+    loadMore: state.nextPageToken
+      ? () => fetchClasses(state.nextPageToken)
+      : undefined,
+  };
 }
