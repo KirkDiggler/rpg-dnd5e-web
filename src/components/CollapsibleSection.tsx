@@ -7,6 +7,7 @@ interface CollapsibleSectionProps {
   children: React.ReactNode;
   defaultOpen?: boolean;
   badge?: string;
+  required?: boolean;
   className?: string;
 }
 
@@ -15,6 +16,7 @@ export function CollapsibleSection({
   children,
   defaultOpen = true,
   badge,
+  required,
   className = '',
 }: CollapsibleSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -42,6 +44,9 @@ export function CollapsibleSection({
             style={{ color: 'var(--text-primary)' }}
           >
             {title}
+            {required && (
+              <span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
+            )}
           </h4>
           {badge && (
             <span

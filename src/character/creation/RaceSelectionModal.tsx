@@ -102,12 +102,14 @@ export function RaceSelectionModal({
   const [proficiencyChoices, setProficiencyChoices] = useState<
     Record<string, string[]>
   >({});
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Reset choices when modal opens
   useEffect(() => {
     if (isOpen) {
       setLanguageChoices({});
       setProficiencyChoices({});
+      setErrorMessage('');
     }
   }, [isOpen]);
 
@@ -192,6 +194,8 @@ export function RaceSelectionModal({
   };
 
   const handleSelect = () => {
+    setErrorMessage(''); // Clear any previous errors
+
     // Validate all choices are made
     const hasLanguageChoice = currentRaceData.languageOptions;
     const hasProficiencyChoices =
@@ -206,7 +210,7 @@ export function RaceSelectionModal({
         selected
       );
       if (!validation.isValid) {
-        alert(validation.errors.join('\n'));
+        setErrorMessage(validation.errors.join(' '));
         return;
       }
     }
@@ -218,7 +222,7 @@ export function RaceSelectionModal({
         const selected = proficiencyChoices[key] || [];
         const validation = validateChoice(choice, selected);
         if (!validation.isValid) {
-          alert(validation.errors.join('\n'));
+          setErrorMessage(validation.errors.join(' '));
           return;
         }
       }
@@ -836,6 +840,24 @@ export function RaceSelectionModal({
               )}
           </div>
         </div>
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div
+            style={{
+              padding: '12px 16px',
+              marginBottom: '16px',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '6px',
+              color: '#ef4444',
+              fontSize: '14px',
+              textAlign: 'center',
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div

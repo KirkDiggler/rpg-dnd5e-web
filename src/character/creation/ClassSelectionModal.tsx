@@ -77,12 +77,14 @@ export function ClassSelectionModal({
   const [equipmentChoices, setEquipmentChoices] = useState<
     Record<number, string>
   >({});
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Reset choices when modal opens
   useEffect(() => {
     if (isOpen) {
       setProficiencyChoices({});
       setEquipmentChoices({});
+      setErrorMessage('');
     }
   }, [isOpen]);
 
@@ -170,6 +172,8 @@ export function ClassSelectionModal({
   };
 
   const handleSelect = () => {
+    setErrorMessage(''); // Clear any previous errors
+
     // Validate all choices are made
     const hasProficiencyChoices =
       currentClassData.proficiencyChoices &&
@@ -182,7 +186,7 @@ export function ClassSelectionModal({
         const selected = proficiencyChoices[key] || [];
         const validation = validateChoice(choice, selected);
         if (!validation.isValid) {
-          alert(validation.errors.join('\n'));
+          setErrorMessage(validation.errors.join(' '));
           return;
         }
       }
@@ -197,7 +201,9 @@ export function ClassSelectionModal({
       for (let i = 0; i < currentClassData.equipmentChoices.length; i++) {
         const selection = equipmentChoices[i];
         if (!selection || selection === '') {
-          alert(`Please select an option for Equipment Option ${i + 1}`);
+          setErrorMessage(
+            `Please select an option for Equipment Option ${i + 1}`
+          );
           return;
         }
         // Check if it's a weapon choice that needs a specific selection
@@ -209,7 +215,7 @@ export function ClassSelectionModal({
             option &&
             (option.includes('any martial') || option.includes('any simple'))
           ) {
-            alert(
+            setErrorMessage(
               `Please select a specific weapon for Equipment Option ${i + 1}`
             );
             return;
@@ -656,7 +662,7 @@ export function ClassSelectionModal({
                 <CollapsibleSection
                   title="Choose Your Proficiencies"
                   defaultOpen={true}
-                  badge="Required"
+                  required={true}
                 >
                   <div style={{ marginBottom: '12px' }}>
                     {currentClassData.proficiencyChoices.map(
@@ -690,7 +696,7 @@ export function ClassSelectionModal({
                 <CollapsibleSection
                   title="Choose Your Equipment"
                   defaultOpen={true}
-                  badge="Required"
+                  required={true}
                 >
                   <EquipmentChoiceSelector
                     choices={currentClassData.equipmentChoices}
@@ -817,6 +823,24 @@ export function ClassSelectionModal({
             )}
           </div>
         </div>
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div
+            style={{
+              padding: '12px 16px',
+              marginBottom: '16px',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '6px',
+              color: '#ef4444',
+              fontSize: '14px',
+              textAlign: 'center',
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div

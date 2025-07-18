@@ -54,17 +54,12 @@ export function EquipmentChoiceSelector({
   const [localSelected, setLocalSelected] =
     useState<Record<number, string>>(selected);
 
-  // Debug log
-  console.log('EquipmentChoiceSelector - choices:', choices);
-  console.log('EquipmentChoiceSelector - selected:', selected);
-
   // Sync with parent state
   useEffect(() => {
     setLocalSelected(selected);
   }, [selected]);
 
   const handleSelect = (choiceIndex: number, value: string) => {
-    console.log('Equipment selected:', choiceIndex, value);
     const newSelected = {
       ...localSelected,
       [choiceIndex]: value,
