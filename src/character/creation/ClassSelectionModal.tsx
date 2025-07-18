@@ -1,5 +1,5 @@
 import type { ClassInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { ChoiceSelector } from '../../components/ChoiceSelector';
@@ -435,68 +435,72 @@ export function ClassSelectionModal({
                   marginBottom: '12px',
                 }}
               >
-              <div>
-                <h4
-                  style={{
-                    color: textPrimary,
-                    fontWeight: 'bold',
-                    marginBottom: '8px',
-                  }}
-                >
-                  Hit Die & Primary Abilities
-                </h4>
-                <p
-                  style={{
-                    color: textPrimary,
-                    fontSize: '14px',
-                    marginBottom: '8px',
-                  }}
-                >
-                  <strong>Hit Die:</strong> {currentClassData.hitDie}
-                </p>
-                <p
-                  style={{
-                    color: textPrimary,
-                    fontSize: '14px',
-                    marginBottom: '8px',
-                  }}
-                >
-                  <strong>Primary:</strong>{' '}
-                  {currentClassData.primaryAbilities.join(' & ')}
-                </p>
-                <p style={{ color: textPrimary, fontSize: '14px' }}>
-                  <strong>Saves:</strong>{' '}
-                  {currentClassData.savingThrowProficiencies.join(', ')}
-                </p>
-              </div>
-
-              <div>
-                <h4
-                  style={{
-                    color: textPrimary,
-                    fontWeight: 'bold',
-                    marginBottom: '8px',
-                  }}
-                >
-                  Skills
-                </h4>
-                <p
-                  style={{
-                    color: textPrimary,
-                    fontSize: '14px',
-                    marginBottom: '8px',
-                  }}
-                >
-                  Choose {currentClassData.skillChoicesCount} from:
-                </p>
-                <div
-                  style={{ fontSize: '14px', color: textPrimary, opacity: 0.9 }}
-                >
-                  {currentClassData.availableSkills.slice(0, 6).join(', ')}
-                  {currentClassData.availableSkills.length > 6 &&
-                    ` +${currentClassData.availableSkills.length - 6} more`}
+                <div>
+                  <h4
+                    style={{
+                      color: textPrimary,
+                      fontWeight: 'bold',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Hit Die & Primary Abilities
+                  </h4>
+                  <p
+                    style={{
+                      color: textPrimary,
+                      fontSize: '14px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    <strong>Hit Die:</strong> {currentClassData.hitDie}
+                  </p>
+                  <p
+                    style={{
+                      color: textPrimary,
+                      fontSize: '14px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    <strong>Primary:</strong>{' '}
+                    {currentClassData.primaryAbilities.join(' & ')}
+                  </p>
+                  <p style={{ color: textPrimary, fontSize: '14px' }}>
+                    <strong>Saves:</strong>{' '}
+                    {currentClassData.savingThrowProficiencies.join(', ')}
+                  </p>
                 </div>
-              </div>
+
+                <div>
+                  <h4
+                    style={{
+                      color: textPrimary,
+                      fontWeight: 'bold',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Skills
+                  </h4>
+                  <p
+                    style={{
+                      color: textPrimary,
+                      fontSize: '14px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Choose {currentClassData.skillChoicesCount} from:
+                  </p>
+                  <div
+                    style={{
+                      fontSize: '14px',
+                      color: textPrimary,
+                      opacity: 0.9,
+                    }}
+                  >
+                    {currentClassData.availableSkills.slice(0, 6).join(', ')}
+                    {currentClassData.availableSkills.length > 6 &&
+                      ` +${currentClassData.availableSkills.length - 6} more`}
+                  </div>
+                </div>
               </div>
             </CollapsibleSection>
 
@@ -608,29 +612,32 @@ export function ClassSelectionModal({
             {/* Proficiency Choices */}
             {currentClassData.proficiencyChoices &&
               currentClassData.proficiencyChoices.length > 0 && (
-                <CollapsibleSection 
-                  title="Choose Your Proficiencies" 
+                <CollapsibleSection
+                  title="Choose Your Proficiencies"
                   defaultOpen={true}
                   badge="Required"
                 >
                   <div style={{ marginBottom: '12px' }}>
-                  {currentClassData.proficiencyChoices.map((choice, index) => (
-                    <div key={index} style={{ marginBottom: '16px' }}>
-                      <ChoiceSelector
-                        choice={choice}
-                        selected={
-                          proficiencyChoices[getChoiceKey(choice, index)] || []
-                        }
-                        onSelectionChange={(selected) => {
-                          const key = getChoiceKey(choice, index);
-                          setProficiencyChoices({
-                            ...proficiencyChoices,
-                            [key]: selected,
-                          });
-                        }}
-                      />
-                    </div>
-                  ))}
+                    {currentClassData.proficiencyChoices.map(
+                      (choice, index) => (
+                        <div key={index} style={{ marginBottom: '16px' }}>
+                          <ChoiceSelector
+                            choice={choice}
+                            selected={
+                              proficiencyChoices[getChoiceKey(choice, index)] ||
+                              []
+                            }
+                            onSelectionChange={(selected) => {
+                              const key = getChoiceKey(choice, index);
+                              setProficiencyChoices({
+                                ...proficiencyChoices,
+                                [key]: selected,
+                              });
+                            }}
+                          />
+                        </div>
+                      )
+                    )}
                   </div>
                 </CollapsibleSection>
               )}

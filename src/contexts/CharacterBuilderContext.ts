@@ -24,7 +24,9 @@ export interface CharacterBuilderActions {
   markStepCompleted: (stepId: string) => void;
   markStepInvalid: (stepId: string) => void;
   navigateToStep: (stepId: string) => void;
-  getStepStatus: (stepId: string) => 'completed' | 'current' | 'upcoming' | 'disabled';
+  getStepStatus: (
+    stepId: string
+  ) => 'completed' | 'current' | 'upcoming' | 'disabled';
   canNavigateToStep: (stepId: string) => boolean;
   setSelectedClass: (classId: string) => void;
   setSelectedRace: (raceId: string) => void;

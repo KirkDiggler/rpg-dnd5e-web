@@ -1,12 +1,12 @@
 import { DiceRoller } from '@/components/DiceRoller';
-import { ProgressTracker } from '@/components/ProgressTracker';
 import type { Step } from '@/components/ProgressTracker';
+import { ProgressTracker } from '@/components/ProgressTracker';
 import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { RaceSelectionModal } from './RaceSelectionModal';
 import { ChoiceSection } from './components/ChoiceSection';
@@ -54,43 +54,54 @@ export function InteractiveCharacterSheet({
 
   // Compute character creation steps and their status
   const steps = useMemo<Step[]>(() => {
-    const hasAllScores = Object.values(character.abilityScores).every(score => score > 0);
-    
+    const hasAllScores = Object.values(character.abilityScores).every(
+      (score) => score > 0
+    );
+
     return [
       {
         id: 'identity',
         label: 'Character Identity',
-        status: character.selectedRace && character.selectedClass ? 'completed' : 'current',
+        status:
+          character.selectedRace && character.selectedClass
+            ? 'completed'
+            : 'current',
       },
       {
         id: 'abilities',
         label: 'Roll Abilities',
-        status: hasAllScores ? 'completed' :
-                (character.selectedRace && character.selectedClass) ? 'current' : 'upcoming',
+        status: hasAllScores
+          ? 'completed'
+          : character.selectedRace && character.selectedClass
+            ? 'current'
+            : 'upcoming',
       },
       {
         id: 'details',
         label: 'Name & Details',
-        status: character.characterName ? 'completed' :
-                hasAllScores ? 'current' : 'upcoming',
+        status: character.characterName
+          ? 'completed'
+          : hasAllScores
+            ? 'current'
+            : 'upcoming',
       },
     ];
   }, [character]);
 
   const handleChoiceSelect = (choiceKey: string, optionId: string) => {
-    setCharacter(prev => {
+    setCharacter((prev) => {
       const currentChoices = prev.choices[choiceKey] || [];
       const isSelected = currentChoices.includes(optionId);
-      
+
       let newChoices;
       if (isSelected) {
         // Remove the option
-        newChoices = currentChoices.filter(id => id !== optionId);
+        newChoices = currentChoices.filter((id) => id !== optionId);
       } else {
         // Add the option
         newChoices = [...currentChoices, optionId];
       }
-      
+
       return {
         ...prev,
         choices: {
@@ -150,10 +161,7 @@ export function InteractiveCharacterSheet({
             borderRadius: '0.75rem',
           }}
         >
-          <ProgressTracker
-            steps={steps}
-            orientation="horizontal"
-          />
+          <ProgressTracker steps={steps} orientation="horizontal" />
         </motion.div>
       </div>
 
@@ -330,7 +338,7 @@ export function InteractiveCharacterSheet({
               >
                 Character Choices
               </h2>
-              
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left Column - Proficiencies */}
                 <div
@@ -340,63 +348,73 @@ export function InteractiveCharacterSheet({
                     borderColor: 'var(--border-primary)',
                   }}
                 >
-                  <h3 className="text-lg font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>
+                  <h3
+                    className="text-lg font-semibold mb-3"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
                     Proficiency & Language Choices
                   </h3>
-                  
-                {/* Race Choices */}
-                {character.selectedRace && (
-                  <>
-                    {character.selectedRace.languageOptions && (
-                      <ChoiceSection
-                        title="Choose Languages"
-                        choices={[character.selectedRace.languageOptions]}
-                        selectedChoices={character.choices}
-                        onChoiceSelect={handleChoiceSelect}
-                        existingSelections={draft.allLanguages}
-                      />
+
+                  {/* Race Choices */}
+                  {character.selectedRace && (
+                    <>
+                      {character.selectedRace.languageOptions && (
+                        <ChoiceSection
+                          title="Choose Languages"
+                          choices={[character.selectedRace.languageOptions]}
+                          selectedChoices={character.choices}
+                          onChoiceSelect={handleChoiceSelect}
+                          existingSelections={draft.allLanguages}
+                        />
+                      )}
+
+                      {character.selectedRace.proficiencyOptions &&
+                        character.selectedRace.proficiencyOptions.length >
+                          0 && (
+                          <ChoiceSection
+                            title="Choose Racial Proficiencies"
+                            choices={character.selectedRace.proficiencyOptions}
+                            selectedChoices={character.choices}
+                            onChoiceSelect={handleChoiceSelect}
+                            existingSelections={draft.allProficiencies}
+                          />
+                        )}
+                    </>
+                  )}
+
+                  {/* Class Choices */}
+                  {character.selectedClass && (
+                    <>
+                      {character.selectedClass.proficiencyChoices &&
+                        character.selectedClass.proficiencyChoices.length >
+                          0 && (
+                          <ChoiceSection
+                            title="Choose Class Proficiencies"
+                            choices={character.selectedClass.proficiencyChoices}
+                            selectedChoices={character.choices}
+                            onChoiceSelect={handleChoiceSelect}
+                            existingSelections={draft.allProficiencies}
+                          />
+                        )}
+                    </>
+                  )}
+
+                  {/* Show message if no choices available */}
+                  {character.selectedRace &&
+                    character.selectedClass &&
+                    !character.selectedRace.languageOptions &&
+                    (!character.selectedRace.proficiencyOptions ||
+                      character.selectedRace.proficiencyOptions.length === 0) &&
+                    (!character.selectedClass.proficiencyChoices ||
+                      character.selectedClass.proficiencyChoices.length ===
+                        0) && (
+                      <p style={{ color: 'var(--text-muted)' }}>
+                        No additional choices needed for this race and class
+                        combination.
+                      </p>
                     )}
-                    
-                    {character.selectedRace.proficiencyOptions && 
-                     character.selectedRace.proficiencyOptions.length > 0 && (
-                      <ChoiceSection
-                        title="Choose Racial Proficiencies"
-                        choices={character.selectedRace.proficiencyOptions}
-                        selectedChoices={character.choices}
-                        onChoiceSelect={handleChoiceSelect}
-                        existingSelections={draft.allProficiencies}
-                      />
-                    )}
-                  </>
-                )}
-                
-                {/* Class Choices */}
-                {character.selectedClass && (
-                  <>
-                    {character.selectedClass.proficiencyChoices && 
-                     character.selectedClass.proficiencyChoices.length > 0 && (
-                      <ChoiceSection
-                        title="Choose Class Proficiencies"
-                        choices={character.selectedClass.proficiencyChoices}
-                        selectedChoices={character.choices}
-                        onChoiceSelect={handleChoiceSelect}
-                        existingSelections={draft.allProficiencies}
-                      />
-                    )}
-                  </>
-                )}
-                
-                {/* Show message if no choices available */}
-                {character.selectedRace && character.selectedClass &&
-                 !character.selectedRace.languageOptions &&
-                 (!character.selectedRace.proficiencyOptions || character.selectedRace.proficiencyOptions.length === 0) &&
-                 (!character.selectedClass.proficiencyChoices || character.selectedClass.proficiencyChoices.length === 0) && (
-                  <p style={{ color: 'var(--text-muted)' }}>
-                    No additional choices needed for this race and class combination.
-                  </p>
-                )}
                 </div>
-                
+
                 {/* Right Column - Equipment */}
                 <div
                   className="p-6 rounded-lg border-2"
@@ -405,7 +423,10 @@ export function InteractiveCharacterSheet({
                     borderColor: 'var(--border-primary)',
                   }}
                 >
-                  <h3 className="text-lg font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>
+                  <h3
+                    className="text-lg font-semibold mb-3"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
                     Equipment Choices
                   </h3>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -820,7 +841,7 @@ export function InteractiveCharacterSheet({
             selectedRace: race,
           }));
           draft.setRace(race);
-          
+
           // Add race choices to the draft
           if (choices.languages) {
             Object.entries(choices.languages).forEach(([key, values]) => {
@@ -846,7 +867,7 @@ export function InteractiveCharacterSheet({
             selectedClass: classData,
           }));
           draft.setClass(classData);
-          
+
           // Add class choices to the draft
           if (choices.proficiencies) {
             Object.entries(choices.proficiencies).forEach(([key, values]) => {

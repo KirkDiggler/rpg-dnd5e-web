@@ -1,5 +1,5 @@
 import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListRaces } from '../../api/hooks';
 import { ChoiceSelector } from '../../components/ChoiceSelector';

@@ -1,6 +1,6 @@
-import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
 
 interface CollapsibleSectionProps {
   title: string;
@@ -35,12 +35,9 @@ export function CollapsibleSection({
             animate={{ rotate: isOpen ? 90 : 0 }}
             transition={{ duration: 0.2 }}
           >
-            <ChevronRight 
-              size={16} 
-              style={{ color: 'var(--text-muted)' }}
-            />
+            <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
           </motion.div>
-          <h4 
+          <h4
             className="font-semibold text-sm"
             style={{ color: 'var(--text-primary)' }}
           >
@@ -60,7 +57,7 @@ export function CollapsibleSection({
         </div>
         <ChevronDown
           size={16}
-          style={{ 
+          style={{
             color: 'var(--text-muted)',
             transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
             transition: 'transform 0.2s',
@@ -77,9 +74,7 @@ export function CollapsibleSection({
             transition={{ duration: 0.2 }}
             style={{ overflow: 'hidden' }}
           >
-            <div className="px-1">
-              {children}
-            </div>
+            <div className="px-1">{children}</div>
           </motion.div>
         )}
       </AnimatePresence>

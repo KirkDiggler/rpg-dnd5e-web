@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import './App.css';
-import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
+import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { CharacterList } from './components/CharacterList';
 import { ThemeSelector } from './components/ThemeSelector';
 import { useDiscord } from './discord';
