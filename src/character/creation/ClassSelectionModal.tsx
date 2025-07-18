@@ -5,6 +5,7 @@ import { useListClasses } from '../../api/hooks';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
 import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
+import { EquipmentChoiceSelector } from './components/EquipmentChoiceSelector';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -46,6 +47,7 @@ interface ClassSelectionModalProps {
 
 export interface ClassChoices {
   proficiencies: Record<string, string[]>;
+  equipment: Record<number, number>;
 }
 
 export function ClassSelectionModal({
@@ -72,11 +74,15 @@ export function ClassSelectionModal({
   const [proficiencyChoices, setProficiencyChoices] = useState<
     Record<string, string[]>
   >({});
+  const [equipmentChoices, setEquipmentChoices] = useState<
+    Record<number, number>
+  >({});
 
   // Reset choices when modal opens
   useEffect(() => {
     if (isOpen) {
       setProficiencyChoices({});
+      setEquipmentChoices({});
     }
   }, [isOpen]);
 
@@ -146,6 +152,7 @@ export function ClassSelectionModal({
       setIsTransitioning(false);
       // Clear choices when switching classes
       setProficiencyChoices({});
+      setEquipmentChoices({});
     }, 150);
   };
 
@@ -158,6 +165,7 @@ export function ClassSelectionModal({
       setIsTransitioning(false);
       // Clear choices when switching classes
       setProficiencyChoices({});
+      setEquipmentChoices({});
     }, 150);
   };
 
@@ -180,8 +188,23 @@ export function ClassSelectionModal({
       }
     }
 
+    // Validate equipment choices
+    const hasEquipmentChoices =
+      currentClassData.equipmentChoices &&
+      currentClassData.equipmentChoices.length > 0;
+
+    if (hasEquipmentChoices) {
+      for (let i = 0; i < currentClassData.equipmentChoices.length; i++) {
+        if (equipmentChoices[i] === undefined) {
+          alert(`Please select an option for Equipment Option ${i + 1}`);
+          return;
+        }
+      }
+    }
+
     onSelect(currentClassData, {
       proficiencies: proficiencyChoices,
+      equipment: equipmentChoices,
     });
     onClose();
   };
@@ -645,115 +668,20 @@ export function ClassSelectionModal({
                 </CollapsibleSection>
               )}
 
-            {/* Equipment Options (Display Only) */}
+            {/* Equipment Choices */}
             {currentClassData.equipmentChoices &&
               currentClassData.equipmentChoices.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '12px',
-                    }}
-                  >
-                    Equipment Options
-                  </h4>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                    }}
-                  >
-                    {currentClassData.equipmentChoices.map(
-                      (equipChoice, index) => (
-                        <div
-                          key={index}
-                          style={{
-                            padding: '12px',
-                            backgroundColor: bgSecondary,
-                            borderRadius: '6px',
-                            border: `1px solid ${borderPrimary}`,
-                          }}
-                        >
-                          <p
-                            style={{
-                              color: textPrimary,
-                              fontSize: '13px',
-                              fontWeight: 'bold',
-                              marginBottom: '8px',
-                            }}
-                          >
-                            Option {index + 1}: {equipChoice.description}
-                          </p>
-                          <div
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns:
-                                equipChoice.options.length > 1
-                                  ? 'repeat(auto-fit, minmax(200px, 1fr))'
-                                  : '1fr',
-                              gap: '8px',
-                            }}
-                          >
-                            {equipChoice.options.map((option, optIdx) => (
-                              <div
-                                key={optIdx}
-                                style={{
-                                  padding: '8px 12px',
-                                  backgroundColor: cardBg,
-                                  borderRadius: '4px',
-                                  border: `1px solid ${borderPrimary}`,
-                                  fontSize: '13px',
-                                  color: textPrimary,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  transition: 'all 0.2s ease',
-                                  cursor: 'default',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.borderColor =
-                                    accentPrimary;
-                                  e.currentTarget.style.transform =
-                                    'translateY(-1px)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.borderColor =
-                                    borderPrimary;
-                                  e.currentTarget.style.transform =
-                                    'translateY(0)';
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    color: accentPrimary,
-                                    fontSize: '16px',
-                                    lineHeight: '1',
-                                  }}
-                                >
-                                  {optIdx === 0 ? '⚔️' : '🛡️'}
-                                </span>
-                                <span>{option}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    )}
-                    <p
-                      style={{
-                        color: textMuted,
-                        fontSize: '12px',
-                        fontStyle: 'italic',
-                        textAlign: 'center',
-                        marginTop: '4px',
-                      }}
-                    >
-                      * You'll choose your equipment in a later step
-                    </p>
-                  </div>
-                </div>
+                <CollapsibleSection
+                  title="Choose Your Equipment"
+                  defaultOpen={true}
+                  badge="Required"
+                >
+                  <EquipmentChoiceSelector
+                    choices={currentClassData.equipmentChoices}
+                    selected={equipmentChoices}
+                    onSelectionChange={setEquipmentChoices}
+                  />
+                </CollapsibleSection>
               )}
 
             {/* Features Section */}

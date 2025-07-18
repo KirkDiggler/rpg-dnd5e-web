@@ -998,6 +998,11 @@ export function InteractiveCharacterSheet({
               draft.addClassChoice(key, values);
             });
           }
+          // Store equipment choices (we'll need to handle these later)
+          if (choices.equipment) {
+            // TODO: Store equipment choices in draft when API supports it
+            console.log('Equipment choices:', choices.equipment);
+          }
         }}
         onClose={() => setIsClassModalOpen(false)}
       />
