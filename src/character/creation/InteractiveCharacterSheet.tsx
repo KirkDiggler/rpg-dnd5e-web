@@ -273,10 +273,12 @@ export function InteractiveCharacterSheet({
                   <div className="space-y-2">
                     {/* Race Proficiencies - clickable section */}
                     <motion.div
-                      className="p-3 rounded-lg border cursor-pointer transition-all"
+                      className="cursor-pointer transition-all"
                       style={{
+                        padding: '12px',
                         backgroundColor: 'var(--bg-secondary)',
-                        borderColor: 'var(--border-primary)',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-primary)',
                       }}
                       whileHover={{ scale: 1.01 }}
                       onClick={() => setIsRaceModalOpen(true)}
@@ -386,10 +388,12 @@ export function InteractiveCharacterSheet({
                   <div className="space-y-2">
                     {/* Class Proficiencies - clickable section */}
                     <motion.div
-                      className="p-3 rounded-lg border cursor-pointer transition-all"
+                      className="cursor-pointer transition-all"
                       style={{
+                        padding: '12px',
                         backgroundColor: 'var(--bg-secondary)',
-                        borderColor: 'var(--border-primary)',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-primary)',
                       }}
                       whileHover={{ scale: 1.01 }}
                       onClick={() => setIsClassModalOpen(true)}
@@ -463,10 +467,11 @@ export function InteractiveCharacterSheet({
 
                     {/* Inventory - compact version */}
                     <motion.div
-                      className="p-3 rounded-lg border"
                       style={{
+                        padding: '12px',
                         backgroundColor: 'var(--bg-secondary)',
-                        borderColor: 'var(--border-primary)',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-primary)',
                       }}
                     >
                       <h4
