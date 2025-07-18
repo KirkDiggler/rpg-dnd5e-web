@@ -52,56 +52,92 @@ export function ChoiceSelector({
   };
 
   return (
-    <div className={cn('space-y-2', className)}>
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-sm font-semibold text-text-primary">
-          Choose {choice.choose} {formatOption(choice.type)}
-          {choice.choose > 1 ? 's' : ''}
-        </h4>
-        <span className="text-xs text-text-muted">
-          {localSelected.length} / {choice.choose} selected
-        </span>
+    <div className={cn('space-y-3', className)}>
+      <div
+        className="p-4 rounded-lg"
+        style={{
+          backgroundColor: 'var(--bg-secondary)',
+          border: '1px solid var(--border-primary)',
+        }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h4
+            className="text-sm font-semibold"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Choose {choice.choose} {formatOption(choice.type)}
+            {choice.choose > 1 ? 's' : ''}
+          </h4>
+          <span
+            className="text-xs"
+            style={{
+              color:
+                localSelected.length === choice.choose
+                  ? 'var(--accent-primary)'
+                  : 'var(--text-muted)',
+            }}
+          >
+            {localSelected.length} / {choice.choose} selected
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          {choice.options.map((option) => {
+            const selected = isSelected(option);
+            const disabled = !selected && isAtLimit;
+
+            return (
+              <button
+                key={option}
+                onClick={() => handleToggle(option)}
+                disabled={disabled}
+                className="px-3 py-2 rounded-md text-sm transition-all duration-200"
+                style={{
+                  backgroundColor: selected
+                    ? 'var(--accent-primary)'
+                    : disabled
+                      ? 'var(--bg-primary)'
+                      : 'var(--card-bg)',
+                  border: `1px solid ${selected ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+                  color: selected
+                    ? 'white'
+                    : disabled
+                      ? 'var(--text-muted)'
+                      : 'var(--text-primary)',
+                  cursor: disabled ? 'not-allowed' : 'pointer',
+                  opacity: disabled ? 0.5 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!disabled && !selected) {
+                    e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                    e.currentTarget.style.transform = 'scale(1.02)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!disabled && !selected) {
+                    e.currentTarget.style.borderColor = 'var(--border-primary)';
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }
+                }}
+              >
+                {formatOption(option)}
+              </button>
+            );
+          })}
+        </div>
+
+        {choice.from && (
+          <p
+            className="text-xs mt-3"
+            style={{
+              color: 'var(--text-secondary)',
+              opacity: 0.8,
+            }}
+          >
+            From: {choice.from}
+          </p>
+        )}
       </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        {choice.options.map((option) => {
-          const selected = isSelected(option);
-          const disabled = !selected && isAtLimit;
-
-          return (
-            <button
-              key={option}
-              onClick={() => handleToggle(option)}
-              disabled={disabled}
-              className={cn(
-                'px-3 py-2 rounded-md text-sm transition-all duration-200',
-                'border border-border-primary',
-                selected
-                  ? [
-                      'bg-accent-primary text-white',
-                      'border-accent-primary shadow-sm',
-                    ]
-                  : disabled
-                    ? [
-                        'bg-gray-700 text-gray-500',
-                        'cursor-not-allowed opacity-50',
-                      ]
-                    : [
-                        'bg-bg-secondary hover:bg-bg-primary',
-                        'text-text-primary hover:border-accent-primary',
-                        'cursor-pointer',
-                      ]
-              )}
-            >
-              {formatOption(option)}
-            </button>
-          );
-        })}
-      </div>
-
-      {choice.from && (
-        <p className="text-xs text-text-muted mt-2">From: {choice.from}</p>
-      )}
     </div>
   );
 }
