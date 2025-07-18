@@ -31,10 +31,10 @@ export function ChoiceSection({
         const choiceKey = `${choice.type}_${index}`;
         const selected = selectedChoices[choiceKey] || [];
 
-        // Check if choice has the expected structure
-        if (!choice.from || !Array.isArray(choice.from)) {
+        // Check if choice has the expected structure - now using options array
+        if (!choice.options || !Array.isArray(choice.options)) {
           console.error(
-            'Invalid choice structure - missing or invalid "from" property:',
+            'Invalid choice structure - missing or invalid "options" property:',
             choice
           );
           return (
@@ -54,13 +54,59 @@ export function ChoiceSection({
         return (
           <div key={choiceKey} className="mb-4">
             <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>
-              Choose {choice.choose} from:
+              {choice.from || `Choose ${choice.choose} from:`}
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {choice.from.map((option) => {
-                // Handle different option types
-                if (option.optionType === 'reference' && option.item) {
+              {choice.options.map((option, optionIndex) => {
+                // Handle string options (simple case)
+                if (typeof option === 'string') {
+                  const optionId = option;
+                  const normalized = option
+                    .toLowerCase()
+                    .replace(/^skill[:-]\s*/i, 'skill:');
+                  const isAlreadyHave =
+                    existingSelections.has(optionId) ||
+                    existingSelections.has(normalized);
+                  const isSelected = selected.includes(optionId);
+                  const isDisabled =
+                    isAlreadyHave ||
+                    (!isSelected && selected.length >= choice.choose);
+
+                  return (
+                    <ChoiceCard
+                      key={`${choiceKey}_${optionIndex}`}
+                      id={optionId}
+                      title={option}
+                      description={
+                        isAlreadyHave
+                          ? 'Already have this proficiency'
+                          : `${choice.type} choice`
+                      }
+                      selected={isSelected}
+                      disabled={isDisabled}
+                      onSelect={() => {
+                        if (isAlreadyHave) return; // Prevent selecting duplicates
+
+                        if (isSelected) {
+                          // Deselect
+                          onChoiceSelect(choiceKey, optionId);
+                        } else if (selected.length < choice.choose) {
+                          // Select
+                          onChoiceSelect(choiceKey, optionId);
+                        }
+                      }}
+                    />
+                  );
+                }
+
+                // Handle object options with optionType
+                if (
+                  option &&
+                  typeof option === 'object' &&
+                  option.optionType === 'reference' &&
+                  option.item
+                ) {
                   const optionId = option.item.index;
                   // Check multiple formats for duplicates
                   const normalized = optionId

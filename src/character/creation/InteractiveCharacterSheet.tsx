@@ -358,6 +358,12 @@ export function InteractiveCharacterSheet({
                   {/* Race Choices */}
                   {character.selectedRace && (
                     <>
+                      {/* Debug: Log race data */}
+                      {console.log(
+                        'Selected race data:',
+                        character.selectedRace
+                      )}
+
                       {character.selectedRace.languageOptions && (
                         <ChoiceSection
                           title="Choose Languages"
@@ -385,6 +391,12 @@ export function InteractiveCharacterSheet({
                   {/* Class Choices */}
                   {character.selectedClass && (
                     <>
+                      {/* Debug: Log class data */}
+                      {console.log(
+                        'Selected class data:',
+                        character.selectedClass
+                      )}
+
                       {character.selectedClass.proficiencyChoices &&
                         character.selectedClass.proficiencyChoices.length >
                           0 && (
