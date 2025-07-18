@@ -1,12 +1,15 @@
 import { DiceRoller } from '@/components/DiceRoller';
+import type { Step } from '@/components/ProgressTracker';
+import { ProgressTracker } from '@/components/ProgressTracker';
 import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { RaceSelectionModal } from './RaceSelectionModal';
+import { useCharacterDraft } from './useCharacterDraft';
 
 interface InteractiveCharacterSheetProps {
   onComplete: () => void;
@@ -34,6 +37,8 @@ const CharacterContext = {
     wisdom: 0,
     charisma: 0,
   },
+  choices: {} as Record<string, string[]>, // Track all choices made
+  equipmentChoices: {} as Record<number, string>, // Track equipment selections
 };
 
 export function InteractiveCharacterSheet({
@@ -43,8 +48,45 @@ export function InteractiveCharacterSheet({
   const [character, setCharacter] = useState(CharacterContext);
   const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
+  const draft = useCharacterDraft();
 
   const getModifier = (score: number) => Math.floor((score - 10) / 2);
+
+  // Compute character creation steps and their status
+  const steps = useMemo<Step[]>(() => {
+    const hasAllScores = Object.values(character.abilityScores).every(
+      (score) => score > 0
+    );
+
+    return [
+      {
+        id: 'identity',
+        label: 'Character Identity',
+        status:
+          character.selectedRace && character.selectedClass
+            ? 'completed'
+            : 'current',
+      },
+      {
+        id: 'abilities',
+        label: 'Roll Abilities',
+        status: hasAllScores
+          ? 'completed'
+          : character.selectedRace && character.selectedClass
+            ? 'current'
+            : 'upcoming',
+      },
+      {
+        id: 'details',
+        label: 'Name & Details',
+        status: character.characterName
+          ? 'completed'
+          : hasAllScores
+            ? 'current'
+            : 'upcoming',
+      },
+    ];
+  }, [character]);
 
   // Helper function to get race emoji
   const getRaceEmoji = (raceName: string) => {
@@ -81,8 +123,64 @@ export function InteractiveCharacterSheet({
     return classEmojiMap[className] || '⚔️';
   };
 
+  // Helper function to parse equipment choices into readable format
+  const getSelectedEquipment = () => {
+    const equipment: string[] = [];
+
+    if (
+      character.selectedClass?.equipmentChoices &&
+      character.equipmentChoices
+    ) {
+      character.selectedClass.equipmentChoices.forEach((choice, index) => {
+        const selection = character.equipmentChoices[index];
+        if (selection) {
+          // Parse the selection format "0-1:Longsword" or "0-1"
+          const [optionKey, weaponChoice] = selection.split(':');
+          const optionIndex = parseInt(optionKey.split('-')[1]);
+
+          // Get the option text from the choice
+          const optionsToUse =
+            choice.options && choice.options.length > 0
+              ? choice.options
+              : choice.description.split(' or ').map((part) => part.trim());
+
+          if (optionIndex >= 0 && optionIndex < optionsToUse.length) {
+            const optionText = optionsToUse[optionIndex];
+
+            // If it's a weapon choice, use the specific weapon
+            if (weaponChoice) {
+              equipment.push(weaponChoice);
+            } else {
+              // Clean up the option text (remove (a), (b) prefixes)
+              const cleanOption = optionText.replace(/^\([a-z]\)\s*/i, '');
+              equipment.push(cleanOption);
+            }
+          }
+        }
+      });
+    }
+
+    return equipment;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
+      {/* Progress Tracker */}
+      <div className="max-w-6xl mx-auto mb-6">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="game-card p-4"
+          style={{
+            background: 'var(--card-bg)',
+            border: '2px solid var(--border-primary)',
+            borderRadius: '0.75rem',
+          }}
+        >
+          <ProgressTracker steps={steps} orientation="horizontal" />
+        </motion.div>
+      </div>
+
       <div className="max-w-4xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -164,7 +262,7 @@ export function InteractiveCharacterSheet({
             </div>
           </div>
 
-          {/* Race & Class - Side by Side */}
+          {/* Race & Class - Side by Side with details below */}
           <div className="space-y-4">
             <h2
               className="text-2xl font-bold font-serif"
@@ -173,77 +271,368 @@ export function InteractiveCharacterSheet({
               Character Identity
             </h2>
             <div className="grid grid-cols-2 gap-4">
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                className="cursor-pointer p-4 rounded-lg border-2 border-dashed transition-all hover:border-solid"
-                style={{
-                  backgroundColor: character.selectedRace
-                    ? 'var(--card-bg)'
-                    : 'var(--bg-secondary)',
-                  borderColor: character.selectedRace
-                    ? 'var(--accent-primary)'
-                    : 'var(--border-primary)',
-                }}
-                onClick={() => setIsRaceModalOpen(true)}
-              >
-                <div className="text-center space-y-2">
-                  <div className="text-3xl">
-                    {getRaceEmoji(character.selectedRace?.name || '')}
+              {/* Left Column - Race and Inventory */}
+              <div className="space-y-4">
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  className="cursor-pointer p-4 rounded-lg border-2 border-dashed transition-all hover:border-solid"
+                  style={{
+                    backgroundColor: character.selectedRace
+                      ? 'var(--card-bg)'
+                      : 'var(--bg-secondary)',
+                    borderColor: character.selectedRace
+                      ? 'var(--accent-primary)'
+                      : 'var(--border-primary)',
+                  }}
+                  onClick={() => setIsRaceModalOpen(true)}
+                >
+                  <div className="text-center space-y-2">
+                    <div className="text-3xl">
+                      {getRaceEmoji(character.selectedRace?.name || '')}
+                    </div>
+                    <div>
+                      <h3
+                        className="text-lg font-bold"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {character.selectedRace?.name || 'Choose Race'}
+                      </h3>
+                      <p
+                        className="text-xs"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {character.selectedRace
+                          ? 'Click to change'
+                          : 'Select heritage'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3
-                      className="text-lg font-bold"
-                      style={{ color: 'var(--text-primary)' }}
-                    >
-                      {character.selectedRace?.name || 'Choose Race'}
-                    </h3>
-                    <p
-                      className="text-xs"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      {character.selectedRace
-                        ? 'Click to change'
-                        : 'Select heritage'}
-                    </p>
-                  </div>
-                </div>
-              </motion.div>
+                </motion.div>
 
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                className="cursor-pointer p-4 rounded-lg border-2 border-dashed transition-all hover:border-solid"
-                style={{
-                  backgroundColor: character.selectedClass
-                    ? 'var(--card-bg)'
-                    : 'var(--bg-secondary)',
-                  borderColor: character.selectedClass
-                    ? 'var(--accent-primary)'
-                    : 'var(--border-primary)',
-                }}
-                onClick={() => setIsClassModalOpen(true)}
-              >
-                <div className="text-center space-y-2">
-                  <div className="text-3xl">
-                    {getClassEmoji(character.selectedClass?.name || '')}
-                  </div>
-                  <div>
-                    <h3
-                      className="text-lg font-bold"
-                      style={{ color: 'var(--text-primary)' }}
+                {/* Compact info sections below race */}
+                {character.selectedRace && (
+                  <div className="space-y-2">
+                    {/* Race Proficiencies - clickable section */}
+                    <motion.div
+                      className="cursor-pointer transition-all"
+                      style={{
+                        padding: '12px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-primary)',
+                      }}
+                      whileHover={{ scale: 1.01 }}
+                      onClick={() => setIsRaceModalOpen(true)}
                     >
-                      {character.selectedClass?.name || 'Choose Class'}
-                    </h3>
-                    <p
-                      className="text-xs"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      {character.selectedClass
-                        ? 'Click to change'
-                        : 'Select profession'}
-                    </p>
+                      <div className="flex items-center justify-between">
+                        <h4
+                          className="text-xs font-semibold"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          Race Traits
+                        </h4>
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--accent-primary)' }}
+                        >
+                          Click to modify →
+                        </span>
+                      </div>
+                      {draft.allProficiencies.size > 0 ||
+                      draft.allLanguages.size > 0 ? (
+                        <div className="mt-2 text-xs space-y-1">
+                          {character.selectedRace.proficiencies &&
+                            character.selectedRace.proficiencies.length > 0 && (
+                              <div style={{ color: 'var(--text-primary)' }}>
+                                <span
+                                  style={{
+                                    color: 'var(--text-primary)',
+                                    opacity: 0.7,
+                                  }}
+                                >
+                                  Skills:
+                                </span>{' '}
+                                {character.selectedRace.proficiencies.join(
+                                  ', '
+                                )}
+                              </div>
+                            )}
+                          {character.selectedRace.languages &&
+                            character.selectedRace.languages.length > 0 && (
+                              <div style={{ color: 'var(--text-primary)' }}>
+                                <span
+                                  style={{
+                                    color: 'var(--text-primary)',
+                                    opacity: 0.7,
+                                  }}
+                                >
+                                  Languages:
+                                </span>{' '}
+                                {character.selectedRace.languages.join(', ')}
+                              </div>
+                            )}
+                          {Object.values(draft.raceChoices).flat().length >
+                            0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
+                                }}
+                              >
+                                Chosen:
+                              </span>{' '}
+                              {Object.values(draft.raceChoices)
+                                .flat()
+                                .join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p
+                          className="mt-2 text-xs"
+                          style={{
+                            color: 'var(--text-secondary)',
+                            opacity: 0.6,
+                          }}
+                        >
+                          No special traits
+                        </p>
+                      )}
+                    </motion.div>
                   </div>
-                </div>
-              </motion.div>
+                )}
+              </div>
+
+              {/* Right Column - Class and Proficiencies */}
+              <div className="space-y-4">
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  className="cursor-pointer p-4 rounded-lg border-2 border-dashed transition-all hover:border-solid"
+                  style={{
+                    backgroundColor: character.selectedClass
+                      ? 'var(--card-bg)'
+                      : 'var(--bg-secondary)',
+                    borderColor: character.selectedClass
+                      ? 'var(--accent-primary)'
+                      : 'var(--border-primary)',
+                  }}
+                  onClick={() => setIsClassModalOpen(true)}
+                >
+                  <div className="text-center space-y-2">
+                    <div className="text-3xl">
+                      {getClassEmoji(character.selectedClass?.name || '')}
+                    </div>
+                    <div>
+                      <h3
+                        className="text-lg font-bold"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {character.selectedClass?.name || 'Choose Class'}
+                      </h3>
+                      <p
+                        className="text-xs"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {character.selectedClass
+                          ? 'Click to change'
+                          : 'Select profession'}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Compact info sections below class */}
+                {character.selectedClass && (
+                  <div className="space-y-2">
+                    {/* Class Proficiencies - clickable section */}
+                    <motion.div
+                      className="cursor-pointer transition-all"
+                      style={{
+                        padding: '12px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-primary)',
+                      }}
+                      whileHover={{ scale: 1.01 }}
+                      onClick={() => setIsClassModalOpen(true)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <h4
+                          className="text-xs font-semibold"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          Class Features
+                        </h4>
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--accent-primary)' }}
+                        >
+                          Click to modify →
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs space-y-1">
+                        {character.selectedClass.armorProficiencies &&
+                          character.selectedClass.armorProficiencies.length >
+                            0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
+                                }}
+                              >
+                                Armor:
+                              </span>{' '}
+                              {character.selectedClass.armorProficiencies.join(
+                                ', '
+                              )}
+                            </div>
+                          )}
+                        {character.selectedClass.weaponProficiencies &&
+                          character.selectedClass.weaponProficiencies.length >
+                            0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
+                                }}
+                              >
+                                Weapons:
+                              </span>{' '}
+                              {character.selectedClass.weaponProficiencies
+                                .slice(0, 3)
+                                .join(', ')}
+                              {character.selectedClass.weaponProficiencies
+                                .length > 3 && '...'}
+                            </div>
+                          )}
+                        {character.selectedClass.savingThrowProficiencies &&
+                          character.selectedClass.savingThrowProficiencies
+                            .length > 0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
+                                }}
+                              >
+                                Saves:
+                              </span>{' '}
+                              {character.selectedClass.savingThrowProficiencies.join(
+                                ', '
+                              )}
+                            </div>
+                          )}
+                        {Object.values(draft.classChoices).flat().length >
+                          0 && (
+                          <div style={{ color: 'var(--text-primary)' }}>
+                            <span
+                              style={{
+                                color: 'var(--text-primary)',
+                                opacity: 0.7,
+                              }}
+                            >
+                              Chosen Skills:
+                            </span>{' '}
+                            {Object.values(draft.classChoices)
+                              .flat()
+                              .join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+
+                    {/* Inventory - compact version */}
+                    <motion.div
+                      style={{
+                        padding: '12px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-primary)',
+                      }}
+                    >
+                      <h4
+                        className="text-xs font-semibold mb-2"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        Starting Equipment
+                      </h4>
+                      {(() => {
+                        const selectedEquipment = getSelectedEquipment();
+                        const startingEquipment =
+                          character.selectedClass.startingEquipment || [];
+                        const allEquipment = [
+                          ...startingEquipment,
+                          ...selectedEquipment,
+                        ];
+
+                        if (allEquipment.length > 0) {
+                          return (
+                            <div className="text-xs space-y-1">
+                              {/* Show starting equipment first */}
+                              {startingEquipment
+                                .slice(0, 2)
+                                .map((item, idx) => (
+                                  <div
+                                    key={`starting-${idx}`}
+                                    style={{ color: 'var(--text-primary)' }}
+                                  >
+                                    • {item}
+                                  </div>
+                                ))}
+
+                              {/* Show selected equipment */}
+                              {selectedEquipment.map((item, idx) => (
+                                <div
+                                  key={`selected-${idx}`}
+                                  style={{ color: 'var(--text-primary)' }}
+                                >
+                                  • {item}
+                                  <span
+                                    style={{
+                                      color: 'var(--accent-primary)',
+                                      fontSize: '10px',
+                                      marginLeft: '4px',
+                                    }}
+                                  >
+                                    (chosen)
+                                  </span>
+                                </div>
+                              ))}
+
+                              {/* Show remaining count if there are more items */}
+                              {allEquipment.length >
+                                2 + selectedEquipment.length && (
+                                <div style={{ color: 'var(--text-muted)' }}>
+                                  +
+                                  {allEquipment.length -
+                                    2 -
+                                    selectedEquipment.length}{' '}
+                                  more items...
+                                </div>
+                              )}
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <p
+                              className="text-xs"
+                              style={{
+                                color: 'var(--text-secondary)',
+                                opacity: 0.6,
+                              }}
+                            >
+                              No equipment data
+                            </p>
+                          );
+                        }
+                      })()}
+                    </motion.div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -644,11 +1033,35 @@ export function InteractiveCharacterSheet({
       <RaceSelectionModal
         isOpen={isRaceModalOpen}
         currentRace={character.selectedRace?.name}
-        onSelect={(race) => {
+        existingProficiencies={draft.allProficiencies}
+        existingLanguages={draft.allLanguages}
+        onSelect={(race, choices) => {
           setCharacter((prev) => ({
             ...prev,
             selectedRace: race,
           }));
+          draft.setRace(race);
+
+          // Clear existing race choices first
+          draft.reset();
+          draft.setRace(race);
+
+          // If class was selected, re-apply it
+          if (character.selectedClass) {
+            draft.setClass(character.selectedClass);
+          }
+
+          // Add race choices to the draft
+          if (choices.languages) {
+            Object.entries(choices.languages).forEach(([key, values]) => {
+              draft.addRaceChoice(key, values);
+            });
+          }
+          if (choices.proficiencies) {
+            Object.entries(choices.proficiencies).forEach(([key, values]) => {
+              draft.addRaceChoice(key, values);
+            });
+          }
         }}
         onClose={() => setIsRaceModalOpen(false)}
       />
@@ -657,11 +1070,32 @@ export function InteractiveCharacterSheet({
       <ClassSelectionModal
         isOpen={isClassModalOpen}
         currentClass={character.selectedClass?.name}
-        onSelect={(classData) => {
+        existingProficiencies={draft.allProficiencies}
+        onSelect={(classData, choices) => {
           setCharacter((prev) => ({
             ...prev,
             selectedClass: classData,
+            equipmentChoices: choices.equipment || {}, // Clear equipment choices if none provided
           }));
+          draft.setClass(classData);
+
+          // Clear existing class choices first
+          draft.reset();
+
+          // Re-apply race if selected
+          if (character.selectedRace) {
+            draft.setRace(character.selectedRace);
+          }
+
+          // Apply new class
+          draft.setClass(classData);
+
+          // Only add choices for the selected class
+          if (choices.proficiencies && choices.className === classData.name) {
+            Object.entries(choices.proficiencies).forEach(([key, values]) => {
+              draft.addClassChoice(key, values);
+            });
+          }
         }}
         onClose={() => setIsClassModalOpen(false)}
       />

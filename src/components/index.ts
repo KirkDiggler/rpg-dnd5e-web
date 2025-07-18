@@ -6,7 +6,6 @@ export * from './DiceRoller';
 export * from './TraitBadge';
 
 // Character Builder Context
-export * from '../character/creation/CharacterBuilderContext';
 export * from '../contexts/CharacterBuilderContext';
 export * from '../hooks/useCharacterBuilder';
 

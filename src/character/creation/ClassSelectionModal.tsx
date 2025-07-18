@@ -1,9 +1,12 @@
 import type { ClassInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
-import { ChoiceSelector } from '../../components/ChoiceSelector';
+import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
+import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
+import { EquipmentChoiceSelector } from './components/EquipmentChoiceSelector';
+import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -38,37 +41,62 @@ function getClassEmoji(className: string): string {
 interface ClassSelectionModalProps {
   isOpen: boolean;
   currentClass?: string;
+  existingProficiencies?: Set<string>;
   onSelect: (classData: ClassInfo, choices: ClassChoices) => void;
   onClose: () => void;
 }
 
 export interface ClassChoices {
   proficiencies: Record<string, string[]>;
+  equipment: Record<number, string>;
+  className?: string; // Track which class these choices belong to
 }
 
 export function ClassSelectionModal({
   isOpen,
   currentClass,
+  existingProficiencies,
   onSelect,
   onClose,
 }: ClassSelectionModalProps) {
   const { data: classes, loading, error } = useListClasses();
-  const [selectedIndex, setSelectedIndex] = useState(() => {
-    if (currentClass && classes.length > 0) {
-      const index = classes.findIndex((cls) => cls.name === currentClass);
-      return index >= 0 ? index : 0;
-    }
-    return 0;
-  });
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [animationDirection, setAnimationDirection] = useState<
-    'left' | 'right'
-  >('right');
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Track choices
-  const [proficiencyChoices, setProficiencyChoices] = useState<
-    Record<string, string[]>
+  // Track choices per class
+  const [classChoicesMap, setClassChoicesMap] = useState<
+    Record<
+      string,
+      {
+        proficiencies: Record<string, string[]>;
+        equipment: Record<number, string>;
+      }
+    >
   >({});
+  const [errorMessage, setErrorMessage] = useState<string>('');
+
+  // Get current class name
+  const currentClassName = classes[selectedIndex]?.name || '';
+
+  // Get choices for current class
+  const currentClassChoices = classChoicesMap[currentClassName] || {
+    proficiencies: {},
+    equipment: {},
+  };
+
+  // Reset selected index when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setErrorMessage('');
+
+      // Set selected index based on current class
+      if (currentClass && classes.length > 0) {
+        const index = classes.findIndex((cls) => cls.name === currentClass);
+        if (index >= 0) {
+          setSelectedIndex(index);
+        }
+      }
+    }
+  }, [isOpen, currentClass, classes]);
 
   // Show loading or error states
   if (!isOpen) return null;
@@ -123,35 +151,10 @@ export function ClassSelectionModal({
   }
 
   const currentClassData = classes[selectedIndex];
-  const nextClassData = classes[(selectedIndex + 1) % classes.length];
-  const prevClassData =
-    classes[(selectedIndex - 1 + classes.length) % classes.length];
-
-  const nextClass = () => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setAnimationDirection('right');
-    setTimeout(() => {
-      setSelectedIndex((prev) => (prev + 1) % classes.length);
-      setIsTransitioning(false);
-      // Clear choices when switching classes
-      setProficiencyChoices({});
-    }, 150);
-  };
-
-  const prevClass = () => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setAnimationDirection('left');
-    setTimeout(() => {
-      setSelectedIndex((prev) => (prev - 1 + classes.length) % classes.length);
-      setIsTransitioning(false);
-      // Clear choices when switching classes
-      setProficiencyChoices({});
-    }, 150);
-  };
 
   const handleSelect = () => {
+    setErrorMessage(''); // Clear any previous errors
+
     // Validate all choices are made
     const hasProficiencyChoices =
       currentClassData.proficiencyChoices &&
@@ -161,17 +164,51 @@ export function ClassSelectionModal({
       for (let i = 0; i < currentClassData.proficiencyChoices.length; i++) {
         const choice = currentClassData.proficiencyChoices[i];
         const key = getChoiceKey(choice, i);
-        const selected = proficiencyChoices[key] || [];
+        const selected = currentClassChoices.proficiencies[key] || [];
         const validation = validateChoice(choice, selected);
         if (!validation.isValid) {
-          alert(validation.errors.join('\n'));
+          setErrorMessage(validation.errors.join(' '));
           return;
         }
       }
     }
 
+    // Validate equipment choices
+    const hasEquipmentChoices =
+      currentClassData.equipmentChoices &&
+      currentClassData.equipmentChoices.length > 0;
+
+    if (hasEquipmentChoices) {
+      for (let i = 0; i < currentClassData.equipmentChoices.length; i++) {
+        const selection = currentClassChoices.equipment[i];
+        if (!selection || selection === '') {
+          setErrorMessage(
+            `Please select an option for Equipment Option ${i + 1}`
+          );
+          return;
+        }
+        // Check if it's a weapon choice that needs a specific selection
+        if (selection.includes('-') && !selection.includes(':')) {
+          const optionIndex = parseInt(selection.split('-')[1]);
+          const option =
+            currentClassData.equipmentChoices[i].options[optionIndex];
+          if (
+            option &&
+            (option.includes('any martial') || option.includes('any simple'))
+          ) {
+            setErrorMessage(
+              `Please select a specific weapon for Equipment Option ${i + 1}`
+            );
+            return;
+          }
+        }
+      }
+    }
+
     onSelect(currentClassData, {
-      proficiencies: proficiencyChoices,
+      proficiencies: currentClassChoices.proficiencies,
+      equipment: currentClassChoices.equipment,
+      className: currentClassData.name,
     });
     onClose();
   };
@@ -257,129 +294,33 @@ export function ClassSelectionModal({
           </button>
         </div>
 
-        {/* Carousel */}
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '16px',
-              marginBottom: '16px',
+        {/* Visual Carousel */}
+        <div style={{ marginBottom: '24px' }}>
+          <VisualCarousel
+            items={classes.map((cls) => ({
+              name: cls.name,
+              emoji: getClassEmoji(cls.name),
+            }))}
+            selectedIndex={selectedIndex}
+            onSelect={(index) => {
+              setSelectedIndex(index);
+              setErrorMessage(''); // Only clear error message
             }}
-          >
-            <button
-              onClick={prevClass}
-              style={{
-                background: bgSecondary,
-                border: `1px solid ${borderPrimary}`,
-                borderRadius: '12px',
-                width: '60px',
-                height: '60px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '2px',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = getCSSVariable(
-                  '--accent-primary-hover',
-                  '#1d4ed8'
-                );
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.backgroundColor = bgSecondary;
-              }}
-              title={`Previous: ${prevClassData.name}`}
-            >
-              <div style={{ fontSize: '20px' }}>
-                {getClassEmoji(prevClassData.name)}
-              </div>
-              <div style={{ fontSize: '10px', color: textMuted }}>←</div>
-            </button>
+          />
 
-            <div
+          {/* Selected Class Name - Larger Display */}
+          <div style={{ textAlign: 'center', marginTop: '16px' }}>
+            <h3
               style={{
-                flex: 1,
-                maxWidth: '300px',
-                overflow: 'hidden',
-                position: 'relative',
+                color: textPrimary,
+                fontSize: '32px',
+                fontWeight: 'bold',
+                margin: '0',
+                fontFamily: 'Cinzel, serif',
               }}
             >
-              <div
-                style={{
-                  transform: isTransitioning
-                    ? animationDirection === 'right'
-                      ? 'translateX(-100%)'
-                      : 'translateX(100%)'
-                    : 'translateX(0)',
-                  transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  opacity: isTransitioning ? 0 : 1,
-                  transitionProperty: 'transform, opacity',
-                  transitionDuration: '0.3s',
-                }}
-              >
-                <div style={{ fontSize: '64px', marginBottom: '8px' }}>
-                  {getClassEmoji(currentClassData.name)}
-                </div>
-                <h3
-                  style={{
-                    color: textPrimary,
-                    fontSize: '28px',
-                    fontWeight: 'bold',
-                    margin: '0 0 8px 0',
-                    fontFamily: 'Cinzel, serif',
-                  }}
-                >
-                  {currentClassData.name}
-                </h3>
-                <p style={{ color: textMuted, fontSize: '14px', margin: 0 }}>
-                  {selectedIndex + 1} of {classes.length}
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={nextClass}
-              style={{
-                background: bgSecondary,
-                border: `1px solid ${borderPrimary}`,
-                borderRadius: '12px',
-                width: '60px',
-                height: '60px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '2px',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = getCSSVariable(
-                  '--accent-primary-hover',
-                  '#1d4ed8'
-                );
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.backgroundColor = bgSecondary;
-              }}
-              title={`Next: ${nextClassData.name}`}
-            >
-              <div style={{ fontSize: '20px' }}>
-                {getClassEmoji(nextClassData.name)}
-              </div>
-              <div style={{ fontSize: '10px', color: textMuted }}>→</div>
-            </button>
+              {currentClassData.name}
+            </h3>
           </div>
         </div>
 
@@ -388,124 +329,106 @@ export function ClassSelectionModal({
           style={{
             marginBottom: '24px',
             overflow: 'hidden',
+            maxHeight: '400px',
+            overflowY: 'auto',
           }}
         >
-          <div
-            style={{
-              transform: isTransitioning
-                ? animationDirection === 'right'
-                  ? 'translateX(-20px)'
-                  : 'translateX(20px)'
-                : 'translateX(0)',
-              opacity: isTransitioning ? 0.3 : 1,
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            }}
-          >
-            <div style={{ marginBottom: '24px' }}>
-              <h4
-                style={{
-                  color: textPrimary,
-                  fontWeight: 'bold',
-                  marginBottom: '8px',
-                }}
-              >
-                Description
-              </h4>
+          <div>
+            {/* Description Section */}
+            <CollapsibleSection title="Description" defaultOpen={true}>
               <p
                 style={{
                   color: textPrimary,
                   fontSize: '16px',
                   lineHeight: '1.5',
+                  padding: '8px',
                 }}
               >
                 {currentClassData.description}
               </p>
-            </div>
+            </CollapsibleSection>
 
             {/* Core Info Grid */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '16px',
-                marginBottom: '20px',
-              }}
-            >
-              <div>
-                <h4
-                  style={{
-                    color: textPrimary,
-                    fontWeight: 'bold',
-                    marginBottom: '8px',
-                  }}
-                >
-                  Hit Die & Primary Abilities
-                </h4>
-                <p
-                  style={{
-                    color: textPrimary,
-                    fontSize: '14px',
-                    marginBottom: '8px',
-                  }}
-                >
-                  <strong>Hit Die:</strong> {currentClassData.hitDie}
-                </p>
-                <p
-                  style={{
-                    color: textPrimary,
-                    fontSize: '14px',
-                    marginBottom: '8px',
-                  }}
-                >
-                  <strong>Primary:</strong>{' '}
-                  {currentClassData.primaryAbilities.join(' & ')}
-                </p>
-                <p style={{ color: textPrimary, fontSize: '14px' }}>
-                  <strong>Saves:</strong>{' '}
-                  {currentClassData.savingThrowProficiencies.join(', ')}
-                </p>
-              </div>
-
-              <div>
-                <h4
-                  style={{
-                    color: textPrimary,
-                    fontWeight: 'bold',
-                    marginBottom: '8px',
-                  }}
-                >
-                  Skills
-                </h4>
-                <p
-                  style={{
-                    color: textPrimary,
-                    fontSize: '14px',
-                    marginBottom: '8px',
-                  }}
-                >
-                  Choose {currentClassData.skillChoicesCount} from:
-                </p>
-                <div
-                  style={{ fontSize: '14px', color: textPrimary, opacity: 0.9 }}
-                >
-                  {currentClassData.availableSkills.slice(0, 6).join(', ')}
-                  {currentClassData.availableSkills.length > 6 &&
-                    ` +${currentClassData.availableSkills.length - 6} more`}
-                </div>
-              </div>
-            </div>
-
-            {/* Proficiencies Section */}
-            <div style={{ marginBottom: '20px' }}>
-              <h4
+            <CollapsibleSection title="Core Info" defaultOpen={true}>
+              <div
                 style={{
-                  color: textPrimary,
-                  fontWeight: 'bold',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '16px',
                   marginBottom: '12px',
                 }}
               >
-                Proficiencies
-              </h4>
+                <div>
+                  <h4
+                    style={{
+                      color: textPrimary,
+                      fontWeight: 'bold',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Hit Die & Primary Abilities
+                  </h4>
+                  <p
+                    style={{
+                      color: textPrimary,
+                      fontSize: '14px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    <strong>Hit Die:</strong> {currentClassData.hitDie}
+                  </p>
+                  <p
+                    style={{
+                      color: textPrimary,
+                      fontSize: '14px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    <strong>Primary:</strong>{' '}
+                    {currentClassData.primaryAbilities.join(' & ')}
+                  </p>
+                  <p style={{ color: textPrimary, fontSize: '14px' }}>
+                    <strong>Saves:</strong>{' '}
+                    {currentClassData.savingThrowProficiencies.join(', ')}
+                  </p>
+                </div>
+
+                <div>
+                  <h4
+                    style={{
+                      color: textPrimary,
+                      fontWeight: 'bold',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Skills
+                  </h4>
+                  <p
+                    style={{
+                      color: textPrimary,
+                      fontSize: '14px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Choose {currentClassData.skillChoicesCount} from:
+                  </p>
+                  <div
+                    style={{
+                      fontSize: '14px',
+                      color: textPrimary,
+                      opacity: 0.9,
+                    }}
+                  >
+                    {currentClassData.availableSkills.slice(0, 6).join(', ')}
+                    {currentClassData.availableSkills.length > 6 &&
+                      ` +${currentClassData.availableSkills.length - 6} more`}
+                  </div>
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            {/* Proficiencies Section */}
+            <CollapsibleSection title="Proficiencies" defaultOpen={false}>
               <div
                 style={{
                   display: 'grid',
@@ -607,114 +530,71 @@ export function ClassSelectionModal({
                   </div>
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
 
             {/* Proficiency Choices */}
             {currentClassData.proficiencyChoices &&
               currentClassData.proficiencyChoices.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '12px',
-                    }}
-                  >
-                    Choose Your Proficiencies
-                  </h4>
-                  {currentClassData.proficiencyChoices.map((choice, index) => (
-                    <div key={index} style={{ marginBottom: '16px' }}>
-                      <ChoiceSelector
-                        choice={choice}
-                        selected={
-                          proficiencyChoices[getChoiceKey(choice, index)] || []
-                        }
-                        onSelectionChange={(selected) => {
-                          const key = getChoiceKey(choice, index);
-                          setProficiencyChoices({
-                            ...proficiencyChoices,
-                            [key]: selected,
-                          });
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-            {/* Equipment Options (Display Only) */}
-            {currentClassData.equipmentChoices &&
-              currentClassData.equipmentChoices.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '12px',
-                    }}
-                  >
-                    Equipment Options
-                  </h4>
-                  <div
-                    style={{
-                      padding: '12px',
-                      backgroundColor: bgSecondary,
-                      borderRadius: '6px',
-                      border: `1px solid ${borderPrimary}`,
-                    }}
-                  >
-                    {currentClassData.equipmentChoices.map(
-                      (equipChoice, index) => (
-                        <div
-                          key={index}
-                          style={{
-                            marginBottom:
-                              index <
-                              currentClassData.equipmentChoices.length - 1
-                                ? '12px'
-                                : 0,
-                          }}
-                        >
-                          <p
-                            style={{
-                              color: textPrimary,
-                              fontSize: '13px',
-                              fontWeight: 'bold',
-                              marginBottom: '4px',
+                <CollapsibleSection
+                  title="Choose Your Proficiencies"
+                  defaultOpen={true}
+                  required={true}
+                >
+                  <div style={{ marginBottom: '12px' }}>
+                    {currentClassData.proficiencyChoices.map(
+                      (choice, index) => (
+                        <div key={index} style={{ marginBottom: '16px' }}>
+                          <ChoiceSelectorWithDuplicates
+                            choice={choice}
+                            selected={
+                              currentClassChoices.proficiencies[
+                                getChoiceKey(choice, index)
+                              ] || []
+                            }
+                            existingSelections={existingProficiencies}
+                            onSelectionChange={(selected) => {
+                              const key = getChoiceKey(choice, index);
+                              setClassChoicesMap((prev) => ({
+                                ...prev,
+                                [currentClassName]: {
+                                  ...currentClassChoices,
+                                  proficiencies: {
+                                    ...currentClassChoices.proficiencies,
+                                    [key]: selected,
+                                  },
+                                },
+                              }));
                             }}
-                          >
-                            {equipChoice.description}
-                          </p>
-                          <div style={{ paddingLeft: '12px' }}>
-                            {equipChoice.options.map((option, optIdx) => (
-                              <div
-                                key={optIdx}
-                                style={{
-                                  color: textPrimary,
-                                  fontSize: '14px',
-                                  marginBottom: '4px',
-                                  opacity: 0.9,
-                                }}
-                              >
-                                • {option}
-                              </div>
-                            ))}
-                          </div>
+                          />
                         </div>
                       )
                     )}
-                    <p
-                      style={{
-                        color: textMuted,
-                        fontSize: '13px',
-                        fontStyle: 'italic',
-                        marginTop: '8px',
-                      }}
-                    >
-                      * You'll choose your equipment in a later step
-                    </p>
                   </div>
-                </div>
+                </CollapsibleSection>
+              )}
+
+            {/* Equipment Choices */}
+            {currentClassData.equipmentChoices &&
+              currentClassData.equipmentChoices.length > 0 && (
+                <CollapsibleSection
+                  title="Choose Your Equipment"
+                  defaultOpen={true}
+                  required={true}
+                >
+                  <EquipmentChoiceSelector
+                    choices={currentClassData.equipmentChoices}
+                    selected={currentClassChoices.equipment}
+                    onSelectionChange={(newEquipment) => {
+                      setClassChoicesMap((prev) => ({
+                        ...prev,
+                        [currentClassName]: {
+                          ...currentClassChoices,
+                          equipment: newEquipment,
+                        },
+                      }));
+                    }}
+                  />
+                </CollapsibleSection>
               )}
 
             {/* Features Section */}
@@ -834,6 +714,24 @@ export function ClassSelectionModal({
             )}
           </div>
         </div>
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div
+            style={{
+              padding: '12px 16px',
+              marginBottom: '16px',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '6px',
+              color: '#ef4444',
+              fontSize: '14px',
+              textAlign: 'center',
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div

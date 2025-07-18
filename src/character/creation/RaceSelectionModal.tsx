@@ -1,9 +1,11 @@
 import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListRaces } from '../../api/hooks';
-import { ChoiceSelector } from '../../components/ChoiceSelector';
+import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
+import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
+import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -62,6 +64,8 @@ function getRaceDescription(raceName: string): string {
 interface RaceSelectionModalProps {
   isOpen: boolean;
   currentRace?: string;
+  existingProficiencies?: Set<string>;
+  existingLanguages?: Set<string>;
   onSelect: (race: RaceInfo, choices: RaceChoices) => void;
   onClose: () => void;
 }
@@ -74,29 +78,49 @@ export interface RaceChoices {
 export function RaceSelectionModal({
   isOpen,
   currentRace,
+  existingProficiencies,
+  existingLanguages,
   onSelect,
   onClose,
 }: RaceSelectionModalProps) {
   const { data: races, loading, error } = useListRaces();
-  const [selectedIndex, setSelectedIndex] = useState(() => {
-    if (currentRace && races.length > 0) {
-      const index = races.findIndex((race) => race.name === currentRace);
-      return index >= 0 ? index : 0;
-    }
-    return 0;
-  });
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [animationDirection, setAnimationDirection] = useState<
-    'left' | 'right'
-  >('right');
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Track choices
-  const [languageChoices, setLanguageChoices] = useState<
-    Record<string, string[]>
+  // Track choices per race
+  const [raceChoicesMap, setRaceChoicesMap] = useState<
+    Record<
+      string,
+      {
+        languages: Record<string, string[]>;
+        proficiencies: Record<string, string[]>;
+      }
+    >
   >({});
-  const [proficiencyChoices, setProficiencyChoices] = useState<
-    Record<string, string[]>
-  >({});
+  const [errorMessage, setErrorMessage] = useState<string>('');
+
+  // Get current race name
+  const currentRaceName = races[selectedIndex]?.name || '';
+
+  // Get choices for current race
+  const currentRaceChoices = raceChoicesMap[currentRaceName] || {
+    languages: {},
+    proficiencies: {},
+  };
+
+  // Reset selected index when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setErrorMessage('');
+
+      // Set selected index based on current race
+      if (currentRace && races.length > 0) {
+        const index = races.findIndex((race) => race.name === currentRace);
+        if (index >= 0) {
+          setSelectedIndex(index);
+        }
+      }
+    }
+  }, [isOpen, currentRace, races]);
 
   // Show loading or error states
   if (!isOpen) return null;
@@ -149,36 +173,10 @@ export function RaceSelectionModal({
   }
 
   const currentRaceData = races[selectedIndex];
-  const nextRaceData = races[(selectedIndex + 1) % races.length];
-  const prevRaceData = races[(selectedIndex - 1 + races.length) % races.length];
-
-  const nextRace = () => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setAnimationDirection('right');
-    setTimeout(() => {
-      setSelectedIndex((prev) => (prev + 1) % races.length);
-      setIsTransitioning(false);
-      // Clear choices when switching races
-      setLanguageChoices({});
-      setProficiencyChoices({});
-    }, 150);
-  };
-
-  const prevRace = () => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setAnimationDirection('left');
-    setTimeout(() => {
-      setSelectedIndex((prev) => (prev - 1 + races.length) % races.length);
-      setIsTransitioning(false);
-      // Clear choices when switching races
-      setLanguageChoices({});
-      setProficiencyChoices({});
-    }, 150);
-  };
 
   const handleSelect = () => {
+    setErrorMessage(''); // Clear any previous errors
+
     // Validate all choices are made
     const hasLanguageChoice = currentRaceData.languageOptions;
     const hasProficiencyChoices =
@@ -187,13 +185,13 @@ export function RaceSelectionModal({
 
     if (hasLanguageChoice && currentRaceData.languageOptions) {
       const key = getChoiceKey(currentRaceData.languageOptions, 0);
-      const selected = languageChoices[key] || [];
+      const selected = currentRaceChoices.languages[key] || [];
       const validation = validateChoice(
         currentRaceData.languageOptions,
         selected
       );
       if (!validation.isValid) {
-        alert(validation.errors.join('\n'));
+        setErrorMessage(validation.errors.join(' '));
         return;
       }
     }
@@ -202,18 +200,18 @@ export function RaceSelectionModal({
       for (let i = 0; i < currentRaceData.proficiencyOptions.length; i++) {
         const choice = currentRaceData.proficiencyOptions[i];
         const key = getChoiceKey(choice, i);
-        const selected = proficiencyChoices[key] || [];
+        const selected = currentRaceChoices.proficiencies[key] || [];
         const validation = validateChoice(choice, selected);
         if (!validation.isValid) {
-          alert(validation.errors.join('\n'));
+          setErrorMessage(validation.errors.join(' '));
           return;
         }
       }
     }
 
     onSelect(currentRaceData, {
-      languages: languageChoices,
-      proficiencies: proficiencyChoices,
+      languages: currentRaceChoices.languages,
+      proficiencies: currentRaceChoices.proficiencies,
     });
     onClose();
   };
@@ -301,129 +299,33 @@ export function RaceSelectionModal({
           </button>
         </div>
 
-        {/* Carousel */}
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '16px',
-              marginBottom: '16px',
+        {/* Visual Carousel */}
+        <div style={{ marginBottom: '24px' }}>
+          <VisualCarousel
+            items={races.map((race) => ({
+              name: race.name,
+              emoji: getRaceEmoji(race.name),
+            }))}
+            selectedIndex={selectedIndex}
+            onSelect={(index) => {
+              setSelectedIndex(index);
+              setErrorMessage(''); // Only clear error message
             }}
-          >
-            <button
-              onClick={prevRace}
-              style={{
-                background: bgSecondary,
-                border: `1px solid ${borderPrimary}`,
-                borderRadius: '12px',
-                width: '60px',
-                height: '60px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '2px',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = getCSSVariable(
-                  '--accent-primary-hover',
-                  '#1d4ed8'
-                );
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.backgroundColor = bgSecondary;
-              }}
-              title={`Previous: ${prevRaceData.name}`}
-            >
-              <div style={{ fontSize: '20px' }}>
-                {getRaceEmoji(prevRaceData.name)}
-              </div>
-              <div style={{ fontSize: '10px', color: textMuted }}>←</div>
-            </button>
+          />
 
-            <div
+          {/* Selected Race Name - Larger Display */}
+          <div style={{ textAlign: 'center', marginTop: '16px' }}>
+            <h3
               style={{
-                flex: 1,
-                maxWidth: '300px',
-                overflow: 'hidden',
-                position: 'relative',
+                color: textPrimary,
+                fontSize: '32px',
+                fontWeight: 'bold',
+                margin: '0',
+                fontFamily: 'Cinzel, serif',
               }}
             >
-              <div
-                style={{
-                  transform: isTransitioning
-                    ? animationDirection === 'right'
-                      ? 'translateX(-100%)'
-                      : 'translateX(100%)'
-                    : 'translateX(0)',
-                  transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  opacity: isTransitioning ? 0 : 1,
-                  transitionProperty: 'transform, opacity',
-                  transitionDuration: '0.3s',
-                }}
-              >
-                <div style={{ fontSize: '64px', marginBottom: '8px' }}>
-                  {getRaceEmoji(currentRaceData.name)}
-                </div>
-                <h3
-                  style={{
-                    color: textPrimary,
-                    fontSize: '28px',
-                    fontWeight: 'bold',
-                    margin: '0 0 8px 0',
-                    fontFamily: 'Cinzel, serif',
-                  }}
-                >
-                  {currentRaceData.name}
-                </h3>
-                <p style={{ color: textMuted, fontSize: '14px', margin: 0 }}>
-                  {selectedIndex + 1} of {races.length}
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={nextRace}
-              style={{
-                background: bgSecondary,
-                border: `1px solid ${borderPrimary}`,
-                borderRadius: '12px',
-                width: '60px',
-                height: '60px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '2px',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = getCSSVariable(
-                  '--accent-primary-hover',
-                  '#1d4ed8'
-                );
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.backgroundColor = bgSecondary;
-              }}
-              title={`Next: ${nextRaceData.name}`}
-            >
-              <div style={{ fontSize: '20px' }}>
-                {getRaceEmoji(nextRaceData.name)}
-              </div>
-              <div style={{ fontSize: '10px', color: textMuted }}>→</div>
-            </button>
+              {currentRaceData.name}
+            </h3>
           </div>
         </div>
 
@@ -434,17 +336,7 @@ export function RaceSelectionModal({
             overflow: 'hidden',
           }}
         >
-          <div
-            style={{
-              transform: isTransitioning
-                ? animationDirection === 'right'
-                  ? 'translateX(-20px)'
-                  : 'translateX(20px)'
-                : 'translateX(0)',
-              opacity: isTransitioning ? 0.3 : 1,
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            }}
-          >
+          <div>
             <div style={{ marginBottom: '20px' }}>
               <h4
                 style={{
@@ -683,19 +575,29 @@ export function RaceSelectionModal({
             {/* Language Choices */}
             {currentRaceData.languageOptions && (
               <div style={{ marginBottom: '20px' }}>
-                <ChoiceSelector
+                <ChoiceSelectorWithDuplicates
                   choice={currentRaceData.languageOptions}
                   selected={
-                    languageChoices[
+                    currentRaceChoices.languages[
                       getChoiceKey(currentRaceData.languageOptions, 0)
                     ] || []
                   }
+                  existingSelections={existingLanguages}
                   onSelectionChange={(selected) => {
                     const key = getChoiceKey(
                       currentRaceData.languageOptions!,
                       0
                     );
-                    setLanguageChoices({ ...languageChoices, [key]: selected });
+                    setRaceChoicesMap((prev) => ({
+                      ...prev,
+                      [currentRaceName]: {
+                        ...currentRaceChoices,
+                        languages: {
+                          ...currentRaceChoices.languages,
+                          [key]: selected,
+                        },
+                      },
+                    }));
                   }}
                 />
               </div>
@@ -706,18 +608,27 @@ export function RaceSelectionModal({
               currentRaceData.proficiencyOptions.length > 0 && (
                 <div style={{ marginBottom: '20px' }}>
                   {currentRaceData.proficiencyOptions.map((choice, index) => (
-                    <ChoiceSelector
+                    <ChoiceSelectorWithDuplicates
                       key={index}
                       choice={choice}
                       selected={
-                        proficiencyChoices[getChoiceKey(choice, index)] || []
+                        currentRaceChoices.proficiencies[
+                          getChoiceKey(choice, index)
+                        ] || []
                       }
+                      existingSelections={existingProficiencies}
                       onSelectionChange={(selected) => {
                         const key = getChoiceKey(choice, index);
-                        setProficiencyChoices({
-                          ...proficiencyChoices,
-                          [key]: selected,
-                        });
+                        setRaceChoicesMap((prev) => ({
+                          ...prev,
+                          [currentRaceName]: {
+                            ...currentRaceChoices,
+                            proficiencies: {
+                              ...currentRaceChoices.proficiencies,
+                              [key]: selected,
+                            },
+                          },
+                        }));
                       }}
                     />
                   ))}
@@ -725,16 +636,7 @@ export function RaceSelectionModal({
               )}
 
             {/* Racial Traits */}
-            <div style={{ marginBottom: '20px' }}>
-              <h4
-                style={{
-                  color: textPrimary,
-                  fontWeight: 'bold',
-                  marginBottom: '8px',
-                }}
-              >
-                Racial Traits
-              </h4>
+            <CollapsibleSection title="Racial Traits" defaultOpen={true}>
               <div
                 style={{
                   maxHeight: '140px',
@@ -806,21 +708,12 @@ export function RaceSelectionModal({
                   </div>
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
 
             {/* Proficiencies */}
             {currentRaceData.proficiencies &&
               currentRaceData.proficiencies.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Proficiencies
-                  </h4>
+                <CollapsibleSection title="Proficiencies" defaultOpen={false}>
                   <div
                     style={{
                       padding: '8px',
@@ -830,14 +723,33 @@ export function RaceSelectionModal({
                       fontSize: '14px',
                       color: textPrimary,
                       opacity: 0.9,
+                      marginBottom: '12px',
                     }}
                   >
                     {currentRaceData.proficiencies.join(', ')}
                   </div>
-                </div>
+                </CollapsibleSection>
               )}
           </div>
         </div>
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div
+            style={{
+              padding: '12px 16px',
+              marginBottom: '16px',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '6px',
+              color: '#ef4444',
+              fontSize: '14px',
+              textAlign: 'center',
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div

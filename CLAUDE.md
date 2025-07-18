@@ -11,6 +11,10 @@ This is **rpg-dnd5e-web**, a React-based web UI for D&D 5e gameplay designed as 
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
 - `npm run typecheck` - TypeScript type checking
+- `npm run format` - Format code with Prettier
+- `npm run format:check` - Check code formatting
+- `npm run pre-commit` - Run format, lint, and typecheck (use before committing!)
+- `npm run ci-checks` - Run all CI checks (format:check, lint, typecheck, build)
 
 ## Architecture Principles
 
