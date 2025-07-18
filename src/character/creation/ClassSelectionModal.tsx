@@ -321,17 +321,7 @@ export function ClassSelectionModal({
             overflowY: 'auto',
           }}
         >
-          <div
-            style={{
-              transform: isTransitioning
-                ? animationDirection === 'right'
-                  ? 'translateX(-20px)'
-                  : 'translateX(20px)'
-                : 'translateX(0)',
-              opacity: isTransitioning ? 0.3 : 1,
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            }}
-          >
+          <div>
             {/* Description Section */}
             <CollapsibleSection title="Description" defaultOpen={true}>
               <p

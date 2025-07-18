@@ -326,17 +326,7 @@ export function RaceSelectionModal({
             overflow: 'hidden',
           }}
         >
-          <div
-            style={{
-              transform: isTransitioning
-                ? animationDirection === 'right'
-                  ? 'translateX(-20px)'
-                  : 'translateX(20px)'
-                : 'translateX(0)',
-              opacity: isTransitioning ? 0.3 : 1,
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            }}
-          >
+          <div>
             <div style={{ marginBottom: '20px' }}>
               <h4
                 style={{
