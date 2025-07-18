@@ -47,7 +47,7 @@ interface ClassSelectionModalProps {
 
 export interface ClassChoices {
   proficiencies: Record<string, string[]>;
-  equipment: Record<number, number>;
+  equipment: Record<number, string>;
 }
 
 export function ClassSelectionModal({
@@ -75,7 +75,7 @@ export function ClassSelectionModal({
     Record<string, string[]>
   >({});
   const [equipmentChoices, setEquipmentChoices] = useState<
-    Record<number, number>
+    Record<number, string>
   >({});
 
   // Reset choices when modal opens
@@ -195,9 +195,25 @@ export function ClassSelectionModal({
 
     if (hasEquipmentChoices) {
       for (let i = 0; i < currentClassData.equipmentChoices.length; i++) {
-        if (equipmentChoices[i] === undefined) {
+        const selection = equipmentChoices[i];
+        if (!selection || selection === '') {
           alert(`Please select an option for Equipment Option ${i + 1}`);
           return;
+        }
+        // Check if it's a weapon choice that needs a specific selection
+        if (selection.includes('-') && !selection.includes(':')) {
+          const optionIndex = parseInt(selection.split('-')[1]);
+          const option =
+            currentClassData.equipmentChoices[i].options[optionIndex];
+          if (
+            option &&
+            (option.includes('any martial') || option.includes('any simple'))
+          ) {
+            alert(
+              `Please select a specific weapon for Equipment Option ${i + 1}`
+            );
+            return;
+          }
         }
       }
     }
