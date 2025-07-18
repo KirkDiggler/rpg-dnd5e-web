@@ -38,7 +38,7 @@ export function ChoiceSelectorWithDuplicates({
       <div
         className="text-sm p-3 rounded"
         style={{
-          backgroundColor: 'var(--card-bg)',
+          backgroundColor: 'var(--bg-secondary)',
           color: 'var(--text-muted)',
           border: '1px solid var(--border-primary)',
         }}

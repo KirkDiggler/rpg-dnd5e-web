@@ -275,7 +275,7 @@ export function InteractiveCharacterSheet({
                     <motion.div
                       className="p-3 rounded-lg border cursor-pointer transition-all"
                       style={{
-                        backgroundColor: 'var(--card-bg)',
+                        backgroundColor: 'var(--bg-secondary)',
                         borderColor: 'var(--border-primary)',
                       }}
                       whileHover={{ scale: 1.01 }}
@@ -284,7 +284,7 @@ export function InteractiveCharacterSheet({
                       <div className="flex items-center justify-between">
                         <h4
                           className="text-xs font-semibold"
-                          style={{ color: 'var(--text-muted)' }}
+                          style={{ color: 'var(--text-secondary)' }}
                         >
                           Race Traits
                         </h4>
@@ -388,7 +388,7 @@ export function InteractiveCharacterSheet({
                     <motion.div
                       className="p-3 rounded-lg border cursor-pointer transition-all"
                       style={{
-                        backgroundColor: 'var(--card-bg)',
+                        backgroundColor: 'var(--bg-secondary)',
                         borderColor: 'var(--border-primary)',
                       }}
                       whileHover={{ scale: 1.01 }}
@@ -397,7 +397,7 @@ export function InteractiveCharacterSheet({
                       <div className="flex items-center justify-between">
                         <h4
                           className="text-xs font-semibold"
-                          style={{ color: 'var(--text-muted)' }}
+                          style={{ color: 'var(--text-secondary)' }}
                         >
                           Class Features
                         </h4>
@@ -465,13 +465,13 @@ export function InteractiveCharacterSheet({
                     <motion.div
                       className="p-3 rounded-lg border"
                       style={{
-                        backgroundColor: 'var(--card-bg)',
+                        backgroundColor: 'var(--bg-secondary)',
                         borderColor: 'var(--border-primary)',
                       }}
                     >
                       <h4
                         className="text-xs font-semibold mb-2"
-                        style={{ color: 'var(--text-muted)' }}
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         Starting Equipment
                       </h4>
