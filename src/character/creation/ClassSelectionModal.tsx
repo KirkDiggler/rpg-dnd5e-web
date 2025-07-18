@@ -6,6 +6,7 @@ import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
 import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
 import { EquipmentChoiceSelector } from './components/EquipmentChoiceSelector';
+import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -65,10 +66,6 @@ export function ClassSelectionModal({
     }
     return 0;
   });
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [animationDirection, setAnimationDirection] = useState<
-    'left' | 'right'
-  >('right');
 
   // Track choices
   const [proficiencyChoices, setProficiencyChoices] = useState<
@@ -141,35 +138,6 @@ export function ClassSelectionModal({
   }
 
   const currentClassData = classes[selectedIndex];
-  const nextClassData = classes[(selectedIndex + 1) % classes.length];
-  const prevClassData =
-    classes[(selectedIndex - 1 + classes.length) % classes.length];
-
-  const nextClass = () => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setAnimationDirection('right');
-    setTimeout(() => {
-      setSelectedIndex((prev) => (prev + 1) % classes.length);
-      setIsTransitioning(false);
-      // Clear choices when switching classes
-      setProficiencyChoices({});
-      setEquipmentChoices({});
-    }, 150);
-  };
-
-  const prevClass = () => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setAnimationDirection('left');
-    setTimeout(() => {
-      setSelectedIndex((prev) => (prev - 1 + classes.length) % classes.length);
-      setIsTransitioning(false);
-      // Clear choices when switching classes
-      setProficiencyChoices({});
-      setEquipmentChoices({});
-    }, 150);
-  };
 
   const handleSelect = () => {
     setErrorMessage(''); // Clear any previous errors
@@ -312,129 +280,35 @@ export function ClassSelectionModal({
           </button>
         </div>
 
-        {/* Carousel */}
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '16px',
-              marginBottom: '16px',
+        {/* Visual Carousel */}
+        <div style={{ marginBottom: '24px' }}>
+          <VisualCarousel
+            items={classes.map((cls) => ({
+              name: cls.name,
+              emoji: getClassEmoji(cls.name),
+            }))}
+            selectedIndex={selectedIndex}
+            onSelect={(index) => {
+              setSelectedIndex(index);
+              // Clear choices when switching classes
+              setProficiencyChoices({});
+              setEquipmentChoices({});
             }}
-          >
-            <button
-              onClick={prevClass}
-              style={{
-                background: bgSecondary,
-                border: `1px solid ${borderPrimary}`,
-                borderRadius: '12px',
-                width: '60px',
-                height: '60px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '2px',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = getCSSVariable(
-                  '--accent-primary-hover',
-                  '#1d4ed8'
-                );
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.backgroundColor = bgSecondary;
-              }}
-              title={`Previous: ${prevClassData.name}`}
-            >
-              <div style={{ fontSize: '20px' }}>
-                {getClassEmoji(prevClassData.name)}
-              </div>
-              <div style={{ fontSize: '10px', color: textMuted }}>←</div>
-            </button>
+          />
 
-            <div
+          {/* Selected Class Name - Larger Display */}
+          <div style={{ textAlign: 'center', marginTop: '16px' }}>
+            <h3
               style={{
-                flex: 1,
-                maxWidth: '300px',
-                overflow: 'hidden',
-                position: 'relative',
+                color: textPrimary,
+                fontSize: '32px',
+                fontWeight: 'bold',
+                margin: '0',
+                fontFamily: 'Cinzel, serif',
               }}
             >
-              <div
-                style={{
-                  transform: isTransitioning
-                    ? animationDirection === 'right'
-                      ? 'translateX(-100%)'
-                      : 'translateX(100%)'
-                    : 'translateX(0)',
-                  transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  opacity: isTransitioning ? 0 : 1,
-                  transitionProperty: 'transform, opacity',
-                  transitionDuration: '0.3s',
-                }}
-              >
-                <div style={{ fontSize: '64px', marginBottom: '8px' }}>
-                  {getClassEmoji(currentClassData.name)}
-                </div>
-                <h3
-                  style={{
-                    color: textPrimary,
-                    fontSize: '28px',
-                    fontWeight: 'bold',
-                    margin: '0 0 8px 0',
-                    fontFamily: 'Cinzel, serif',
-                  }}
-                >
-                  {currentClassData.name}
-                </h3>
-                <p style={{ color: textMuted, fontSize: '14px', margin: 0 }}>
-                  {selectedIndex + 1} of {classes.length}
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={nextClass}
-              style={{
-                background: bgSecondary,
-                border: `1px solid ${borderPrimary}`,
-                borderRadius: '12px',
-                width: '60px',
-                height: '60px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '2px',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = getCSSVariable(
-                  '--accent-primary-hover',
-                  '#1d4ed8'
-                );
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.backgroundColor = bgSecondary;
-              }}
-              title={`Next: ${nextClassData.name}`}
-            >
-              <div style={{ fontSize: '20px' }}>
-                {getClassEmoji(nextClassData.name)}
-              </div>
-              <div style={{ fontSize: '10px', color: textMuted }}>→</div>
-            </button>
+              {currentClassData.name}
+            </h3>
           </div>
         </div>
 

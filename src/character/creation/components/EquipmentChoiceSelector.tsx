@@ -153,8 +153,16 @@ export function EquipmentChoiceSelector({
             <div
               style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
             >
-              {equipChoice.options && equipChoice.options.length > 0 ? (
-                equipChoice.options.map((option, optionIndex) => {
+              {/* Parse options from description if options array is empty */}
+              {(() => {
+                const optionsToUse =
+                  equipChoice.options && equipChoice.options.length > 0
+                    ? equipChoice.options
+                    : equipChoice.description
+                        .split(' or ')
+                        .map((part) => part.trim());
+
+                return optionsToUse.map((option, optionIndex) => {
                   const parsed = parseOption(option);
                   const optionKey = `${choiceIndex}-${optionIndex}`;
                   const isSelected = currentSelection.startsWith(optionKey);
@@ -278,12 +286,8 @@ export function EquipmentChoiceSelector({
                       )}
                     </div>
                   );
-                })
-              ) : (
-                <p style={{ color: textSecondary, fontSize: '13px' }}>
-                  No options available
-                </p>
-              )}
+                });
+              })()}
             </div>
           </div>
         );

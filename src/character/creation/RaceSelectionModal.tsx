@@ -5,6 +5,7 @@ import { useListRaces } from '../../api/hooks';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
 import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
+import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -90,10 +91,6 @@ export function RaceSelectionModal({
     }
     return 0;
   });
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [animationDirection, setAnimationDirection] = useState<
-    'left' | 'right'
-  >('right');
 
   // Track choices
   const [languageChoices, setLanguageChoices] = useState<
@@ -164,34 +161,6 @@ export function RaceSelectionModal({
   }
 
   const currentRaceData = races[selectedIndex];
-  const nextRaceData = races[(selectedIndex + 1) % races.length];
-  const prevRaceData = races[(selectedIndex - 1 + races.length) % races.length];
-
-  const nextRace = () => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setAnimationDirection('right');
-    setTimeout(() => {
-      setSelectedIndex((prev) => (prev + 1) % races.length);
-      setIsTransitioning(false);
-      // Clear choices when switching races
-      setLanguageChoices({});
-      setProficiencyChoices({});
-    }, 150);
-  };
-
-  const prevRace = () => {
-    if (isTransitioning) return;
-    setIsTransitioning(true);
-    setAnimationDirection('left');
-    setTimeout(() => {
-      setSelectedIndex((prev) => (prev - 1 + races.length) % races.length);
-      setIsTransitioning(false);
-      // Clear choices when switching races
-      setLanguageChoices({});
-      setProficiencyChoices({});
-    }, 150);
-  };
 
   const handleSelect = () => {
     setErrorMessage(''); // Clear any previous errors
@@ -318,129 +287,35 @@ export function RaceSelectionModal({
           </button>
         </div>
 
-        {/* Carousel */}
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '16px',
-              marginBottom: '16px',
+        {/* Visual Carousel */}
+        <div style={{ marginBottom: '24px' }}>
+          <VisualCarousel
+            items={races.map((race) => ({
+              name: race.name,
+              emoji: getRaceEmoji(race.name),
+            }))}
+            selectedIndex={selectedIndex}
+            onSelect={(index) => {
+              setSelectedIndex(index);
+              // Clear choices when switching races
+              setLanguageChoices({});
+              setProficiencyChoices({});
             }}
-          >
-            <button
-              onClick={prevRace}
-              style={{
-                background: bgSecondary,
-                border: `1px solid ${borderPrimary}`,
-                borderRadius: '12px',
-                width: '60px',
-                height: '60px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '2px',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = getCSSVariable(
-                  '--accent-primary-hover',
-                  '#1d4ed8'
-                );
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.backgroundColor = bgSecondary;
-              }}
-              title={`Previous: ${prevRaceData.name}`}
-            >
-              <div style={{ fontSize: '20px' }}>
-                {getRaceEmoji(prevRaceData.name)}
-              </div>
-              <div style={{ fontSize: '10px', color: textMuted }}>←</div>
-            </button>
+          />
 
-            <div
+          {/* Selected Race Name - Larger Display */}
+          <div style={{ textAlign: 'center', marginTop: '16px' }}>
+            <h3
               style={{
-                flex: 1,
-                maxWidth: '300px',
-                overflow: 'hidden',
-                position: 'relative',
+                color: textPrimary,
+                fontSize: '32px',
+                fontWeight: 'bold',
+                margin: '0',
+                fontFamily: 'Cinzel, serif',
               }}
             >
-              <div
-                style={{
-                  transform: isTransitioning
-                    ? animationDirection === 'right'
-                      ? 'translateX(-100%)'
-                      : 'translateX(100%)'
-                    : 'translateX(0)',
-                  transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  opacity: isTransitioning ? 0 : 1,
-                  transitionProperty: 'transform, opacity',
-                  transitionDuration: '0.3s',
-                }}
-              >
-                <div style={{ fontSize: '64px', marginBottom: '8px' }}>
-                  {getRaceEmoji(currentRaceData.name)}
-                </div>
-                <h3
-                  style={{
-                    color: textPrimary,
-                    fontSize: '28px',
-                    fontWeight: 'bold',
-                    margin: '0 0 8px 0',
-                    fontFamily: 'Cinzel, serif',
-                  }}
-                >
-                  {currentRaceData.name}
-                </h3>
-                <p style={{ color: textMuted, fontSize: '14px', margin: 0 }}>
-                  {selectedIndex + 1} of {races.length}
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={nextRace}
-              style={{
-                background: bgSecondary,
-                border: `1px solid ${borderPrimary}`,
-                borderRadius: '12px',
-                width: '60px',
-                height: '60px',
-                cursor: 'pointer',
-                fontSize: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '2px',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.backgroundColor = getCSSVariable(
-                  '--accent-primary-hover',
-                  '#1d4ed8'
-                );
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.backgroundColor = bgSecondary;
-              }}
-              title={`Next: ${nextRaceData.name}`}
-            >
-              <div style={{ fontSize: '20px' }}>
-                {getRaceEmoji(nextRaceData.name)}
-              </div>
-              <div style={{ fontSize: '10px', color: textMuted }}>→</div>
-            </button>
+              {currentRaceData.name}
+            </h3>
           </div>
         </div>
 
