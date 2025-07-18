@@ -9,7 +9,6 @@ import { motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { RaceSelectionModal } from './RaceSelectionModal';
-import { ProficiencyList } from './components/ProficiencyList';
 import { useCharacterDraft } from './useCharacterDraft';
 
 interface InteractiveCharacterSheetProps {
@@ -269,146 +268,77 @@ export function InteractiveCharacterSheet({
                   </div>
                 </motion.div>
 
-                {/* Inventory below race */}
-                {(character.selectedRace || character.selectedClass) && (
-                  <div
-                    className="p-4 rounded-lg border-2"
-                    style={{
-                      backgroundColor: 'var(--bg-secondary)',
-                      borderColor: 'var(--border-primary)',
-                    }}
-                  >
-                    {/* Fun inventory header */}
-                    <div className="flex items-center justify-between mb-3">
-                      <h3
-                        className="text-sm font-semibold flex items-center gap-2"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
-                        <span style={{ fontSize: '1.2rem' }}>🎒</span>
-                        Inventory
-                      </h3>
-                      <span
-                        className="text-xs px-2 py-1 rounded"
-                        style={{
-                          backgroundColor: 'var(--card-bg)',
-                          color: 'var(--text-muted)',
-                        }}
-                      >
-                        Starting Gear
-                      </span>
-                    </div>
-
-                    {character.selectedClass ? (
-                      <div className="space-y-3">
-                        {/* Equipment grid */}
-                        <div className="grid grid-cols-3 gap-2">
-                          {/* Weapon slot */}
-                          <div
-                            className="aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center text-center p-1"
-                            style={{
-                              backgroundColor: 'var(--card-bg)',
-                              borderColor: 'var(--border-primary)',
-                            }}
-                          >
-                            <span style={{ fontSize: '1.5rem' }}>⚔️</span>
-                            <span
-                              className="text-xs"
-                              style={{ color: 'var(--text-muted)' }}
-                            >
-                              Weapon
-                            </span>
-                          </div>
-
-                          {/* Armor slot */}
-                          <div
-                            className="aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center text-center p-1"
-                            style={{
-                              backgroundColor: 'var(--card-bg)',
-                              borderColor: 'var(--border-primary)',
-                            }}
-                          >
-                            <span style={{ fontSize: '1.5rem' }}>🛡️</span>
-                            <span
-                              className="text-xs"
-                              style={{ color: 'var(--text-muted)' }}
-                            >
-                              Armor
-                            </span>
-                          </div>
-
-                          {/* Pack slot */}
-                          <div
-                            className="aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center text-center p-1"
-                            style={{
-                              backgroundColor: 'var(--card-bg)',
-                              borderColor: 'var(--border-primary)',
-                            }}
-                          >
-                            <span style={{ fontSize: '1.5rem' }}>🎒</span>
-                            <span
-                              className="text-xs"
-                              style={{ color: 'var(--text-muted)' }}
-                            >
-                              Pack
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Starting equipment list */}
-                        {character.selectedClass.startingEquipment &&
-                          character.selectedClass.startingEquipment.length >
-                            0 && (
-                            <div className="text-xs space-y-1">
-                              <div
-                                className="font-semibold"
-                                style={{ color: 'var(--text-muted)' }}
-                              >
-                                {character.selectedClass.name} gear:
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                {character.selectedClass.startingEquipment
-                                  .slice(0, 3)
-                                  .map((item, idx) => (
-                                    <span
-                                      key={idx}
-                                      className="px-2 py-1 rounded text-xs"
-                                      style={{
-                                        backgroundColor: 'var(--card-bg)',
-                                        color: 'var(--text-primary)',
-                                      }}
-                                    >
-                                      {item}
-                                    </span>
-                                  ))}
-                                {character.selectedClass.startingEquipment
-                                  .length > 3 && (
-                                  <span
-                                    className="text-xs"
-                                    style={{ color: 'var(--text-muted)' }}
-                                  >
-                                    +
-                                    {character.selectedClass.startingEquipment
-                                      .length - 3}{' '}
-                                    more...
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                      </div>
-                    ) : (
-                      <div className="text-center py-4">
-                        <span style={{ fontSize: '2rem', opacity: 0.3 }}>
-                          🎒
-                        </span>
-                        <p
-                          className="text-xs mt-1"
+                {/* Compact info sections below race */}
+                {character.selectedRace && (
+                  <div className="space-y-2">
+                    {/* Race Proficiencies - clickable section */}
+                    <motion.div
+                      className="p-3 rounded-lg border cursor-pointer transition-all"
+                      style={{
+                        backgroundColor: 'var(--card-bg)',
+                        borderColor: 'var(--border-primary)',
+                      }}
+                      whileHover={{ scale: 1.01 }}
+                      onClick={() => setIsRaceModalOpen(true)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <h4
+                          className="text-xs font-semibold"
                           style={{ color: 'var(--text-muted)' }}
                         >
-                          Select a class for equipment
-                        </p>
+                          Race Traits
+                        </h4>
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--accent-primary)' }}
+                        >
+                          Click to modify →
+                        </span>
                       </div>
-                    )}
+                      {draft.allProficiencies.size > 0 ||
+                      draft.allLanguages.size > 0 ? (
+                        <div className="mt-2 text-xs space-y-1">
+                          {character.selectedRace.proficiencies &&
+                            character.selectedRace.proficiencies.length > 0 && (
+                              <div style={{ color: 'var(--text-primary)' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>
+                                  Skills:
+                                </span>{' '}
+                                {character.selectedRace.proficiencies.join(
+                                  ', '
+                                )}
+                              </div>
+                            )}
+                          {character.selectedRace.languages &&
+                            character.selectedRace.languages.length > 0 && (
+                              <div style={{ color: 'var(--text-primary)' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>
+                                  Languages:
+                                </span>{' '}
+                                {character.selectedRace.languages.join(', ')}
+                              </div>
+                            )}
+                          {Object.values(draft.raceChoices).flat().length >
+                            0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                Chosen:
+                              </span>{' '}
+                              {Object.values(draft.raceChoices)
+                                .flat()
+                                .join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p
+                          className="mt-2 text-xs"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          No special traits
+                        </p>
+                      )}
+                    </motion.div>
                   </div>
                 )}
               </div>
@@ -451,50 +381,132 @@ export function InteractiveCharacterSheet({
                   </div>
                 </motion.div>
 
-                {/* Proficiencies below class */}
-                {(character.selectedRace || character.selectedClass) && (
-                  <div
-                    className="p-4 rounded-lg border-2"
-                    style={{
-                      backgroundColor: 'var(--bg-secondary)',
-                      borderColor: 'var(--border-primary)',
-                    }}
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <h3
-                        className="text-sm font-semibold"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
-                        Proficiencies & Languages
-                      </h3>
-                      <p
-                        className="text-xs"
+                {/* Compact info sections below class */}
+                {character.selectedClass && (
+                  <div className="space-y-2">
+                    {/* Class Proficiencies - clickable section */}
+                    <motion.div
+                      className="p-3 rounded-lg border cursor-pointer transition-all"
+                      style={{
+                        backgroundColor: 'var(--card-bg)',
+                        borderColor: 'var(--border-primary)',
+                      }}
+                      whileHover={{ scale: 1.01 }}
+                      onClick={() => setIsClassModalOpen(true)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <h4
+                          className="text-xs font-semibold"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          Class Features
+                        </h4>
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--accent-primary)' }}
+                        >
+                          Click to modify →
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs space-y-1">
+                        {character.selectedClass.armorProficiencies &&
+                          character.selectedClass.armorProficiencies.length >
+                            0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                Armor:
+                              </span>{' '}
+                              {character.selectedClass.armorProficiencies.join(
+                                ', '
+                              )}
+                            </div>
+                          )}
+                        {character.selectedClass.weaponProficiencies &&
+                          character.selectedClass.weaponProficiencies.length >
+                            0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                Weapons:
+                              </span>{' '}
+                              {character.selectedClass.weaponProficiencies
+                                .slice(0, 3)
+                                .join(', ')}
+                              {character.selectedClass.weaponProficiencies
+                                .length > 3 && '...'}
+                            </div>
+                          )}
+                        {character.selectedClass.savingThrowProficiencies &&
+                          character.selectedClass.savingThrowProficiencies
+                            .length > 0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                Saves:
+                              </span>{' '}
+                              {character.selectedClass.savingThrowProficiencies.join(
+                                ', '
+                              )}
+                            </div>
+                          )}
+                        {Object.values(draft.classChoices).flat().length >
+                          0 && (
+                          <div style={{ color: 'var(--text-primary)' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              Chosen Skills:
+                            </span>{' '}
+                            {Object.values(draft.classChoices)
+                              .flat()
+                              .join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+
+                    {/* Inventory - compact version */}
+                    <motion.div
+                      className="p-3 rounded-lg border"
+                      style={{
+                        backgroundColor: 'var(--card-bg)',
+                        borderColor: 'var(--border-primary)',
+                      }}
+                    >
+                      <h4
+                        className="text-xs font-semibold mb-2"
                         style={{ color: 'var(--text-muted)' }}
                       >
-                        <span style={{ color: 'var(--accent-primary)' }}>
-                          ↑
-                        </span>{' '}
-                        Modify above
-                      </p>
-                    </div>
-
-                    <div className="max-h-64 overflow-y-auto">
-                      <ProficiencyList
-                        selectedRace={character.selectedRace}
-                        selectedClass={character.selectedClass}
-                        raceChoices={draft.raceChoices}
-                        classChoices={draft.classChoices}
-                      />
-                    </div>
-
-                    {!(character.selectedRace && character.selectedClass) && (
-                      <p
-                        className="text-xs text-center py-2"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        Complete selection for all proficiencies
-                      </p>
-                    )}
+                        Starting Equipment
+                      </h4>
+                      {character.selectedClass.startingEquipment &&
+                      character.selectedClass.startingEquipment.length > 0 ? (
+                        <div className="text-xs space-y-1">
+                          {character.selectedClass.startingEquipment
+                            .slice(0, 3)
+                            .map((item, idx) => (
+                              <div
+                                key={idx}
+                                style={{ color: 'var(--text-primary)' }}
+                              >
+                                • {item}
+                              </div>
+                            ))}
+                          {character.selectedClass.startingEquipment.length >
+                            3 && (
+                            <div style={{ color: 'var(--text-muted)' }}>
+                              +
+                              {character.selectedClass.startingEquipment
+                                .length - 3}{' '}
+                              more items...
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p
+                          className="text-xs"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          No equipment data
+                        </p>
+                      )}
+                    </motion.div>
                   </div>
                 )}
               </div>
@@ -898,6 +910,8 @@ export function InteractiveCharacterSheet({
       <RaceSelectionModal
         isOpen={isRaceModalOpen}
         currentRace={character.selectedRace?.name}
+        existingProficiencies={draft.allProficiencies}
+        existingLanguages={draft.allLanguages}
         onSelect={(race, choices) => {
           setCharacter((prev) => ({
             ...prev,
@@ -924,6 +938,7 @@ export function InteractiveCharacterSheet({
       <ClassSelectionModal
         isOpen={isClassModalOpen}
         currentClass={character.selectedClass?.name}
+        existingProficiencies={draft.allProficiencies}
         onSelect={(classData, choices) => {
           setCharacter((prev) => ({
             ...prev,

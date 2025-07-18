@@ -2,9 +2,9 @@ import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1al
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListRaces } from '../../api/hooks';
-import { ChoiceSelector } from '../../components/ChoiceSelector';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
+import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -63,6 +63,8 @@ function getRaceDescription(raceName: string): string {
 interface RaceSelectionModalProps {
   isOpen: boolean;
   currentRace?: string;
+  existingProficiencies?: Set<string>;
+  existingLanguages?: Set<string>;
   onSelect: (race: RaceInfo, choices: RaceChoices) => void;
   onClose: () => void;
 }
@@ -75,6 +77,8 @@ export interface RaceChoices {
 export function RaceSelectionModal({
   isOpen,
   currentRace,
+  existingProficiencies,
+  existingLanguages,
   onSelect,
   onClose,
 }: RaceSelectionModalProps) {
@@ -692,13 +696,14 @@ export function RaceSelectionModal({
             {/* Language Choices */}
             {currentRaceData.languageOptions && (
               <div style={{ marginBottom: '20px' }}>
-                <ChoiceSelector
+                <ChoiceSelectorWithDuplicates
                   choice={currentRaceData.languageOptions}
                   selected={
                     languageChoices[
                       getChoiceKey(currentRaceData.languageOptions, 0)
                     ] || []
                   }
+                  existingSelections={existingLanguages}
                   onSelectionChange={(selected) => {
                     const key = getChoiceKey(
                       currentRaceData.languageOptions!,
@@ -715,12 +720,13 @@ export function RaceSelectionModal({
               currentRaceData.proficiencyOptions.length > 0 && (
                 <div style={{ marginBottom: '20px' }}>
                   {currentRaceData.proficiencyOptions.map((choice, index) => (
-                    <ChoiceSelector
+                    <ChoiceSelectorWithDuplicates
                       key={index}
                       choice={choice}
                       selected={
                         proficiencyChoices[getChoiceKey(choice, index)] || []
                       }
+                      existingSelections={existingProficiencies}
                       onSelectionChange={(selected) => {
                         const key = getChoiceKey(choice, index);
                         setProficiencyChoices({

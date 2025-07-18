@@ -2,9 +2,9 @@ import type { ClassInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
-import { ChoiceSelector } from '../../components/ChoiceSelector';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
+import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -39,6 +39,7 @@ function getClassEmoji(className: string): string {
 interface ClassSelectionModalProps {
   isOpen: boolean;
   currentClass?: string;
+  existingProficiencies?: Set<string>;
   onSelect: (classData: ClassInfo, choices: ClassChoices) => void;
   onClose: () => void;
 }
@@ -50,6 +51,7 @@ export interface ClassChoices {
 export function ClassSelectionModal({
   isOpen,
   currentClass,
+  existingProficiencies,
   onSelect,
   onClose,
 }: ClassSelectionModalProps) {
@@ -621,12 +623,13 @@ export function ClassSelectionModal({
                     {currentClassData.proficiencyChoices.map(
                       (choice, index) => (
                         <div key={index} style={{ marginBottom: '16px' }}>
-                          <ChoiceSelector
+                          <ChoiceSelectorWithDuplicates
                             choice={choice}
                             selected={
                               proficiencyChoices[getChoiceKey(choice, index)] ||
                               []
                             }
+                            existingSelections={existingProficiencies}
                             onSelectionChange={(selected) => {
                               const key = getChoiceKey(choice, index);
                               setProficiencyChoices({
