@@ -33,10 +33,6 @@ export function ChoiceSection({
 
         // Check if choice has the expected structure - now using options array
         if (!choice.options || !Array.isArray(choice.options)) {
-          console.error(
-            'Invalid choice structure - missing or invalid "options" property:',
-            choice
-          );
           return (
             <div
               key={choiceKey}
