@@ -305,8 +305,8 @@ export function InteractiveCharacterSheet({
                               <div style={{ color: 'var(--text-primary)' }}>
                                 <span
                                   style={{
-                                    color: 'var(--text-secondary)',
-                                    opacity: 0.8,
+                                    color: 'var(--text-primary)',
+                                    opacity: 0.7,
                                   }}
                                 >
                                   Skills:
@@ -321,8 +321,8 @@ export function InteractiveCharacterSheet({
                               <div style={{ color: 'var(--text-primary)' }}>
                                 <span
                                   style={{
-                                    color: 'var(--text-secondary)',
-                                    opacity: 0.8,
+                                    color: 'var(--text-primary)',
+                                    opacity: 0.7,
                                   }}
                                 >
                                   Languages:
@@ -335,8 +335,8 @@ export function InteractiveCharacterSheet({
                             <div style={{ color: 'var(--text-primary)' }}>
                               <span
                                 style={{
-                                  color: 'var(--text-secondary)',
-                                  opacity: 0.8,
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
                                 }}
                               >
                                 Chosen:
@@ -437,8 +437,8 @@ export function InteractiveCharacterSheet({
                             <div style={{ color: 'var(--text-primary)' }}>
                               <span
                                 style={{
-                                  color: 'var(--text-secondary)',
-                                  opacity: 0.8,
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
                                 }}
                               >
                                 Armor:
@@ -454,8 +454,8 @@ export function InteractiveCharacterSheet({
                             <div style={{ color: 'var(--text-primary)' }}>
                               <span
                                 style={{
-                                  color: 'var(--text-secondary)',
-                                  opacity: 0.8,
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
                                 }}
                               >
                                 Weapons:
@@ -473,8 +473,8 @@ export function InteractiveCharacterSheet({
                             <div style={{ color: 'var(--text-primary)' }}>
                               <span
                                 style={{
-                                  color: 'var(--text-secondary)',
-                                  opacity: 0.8,
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
                                 }}
                               >
                                 Saves:
@@ -489,8 +489,8 @@ export function InteractiveCharacterSheet({
                           <div style={{ color: 'var(--text-primary)' }}>
                             <span
                               style={{
-                                color: 'var(--text-secondary)',
-                                opacity: 0.8,
+                                color: 'var(--text-primary)',
+                                opacity: 0.7,
                               }}
                             >
                               Chosen Skills:
