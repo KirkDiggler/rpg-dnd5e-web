@@ -1,5 +1,5 @@
 import type { EquipmentChoice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface EquipmentChoiceSelectorProps {
   choices: EquipmentChoice[];
@@ -15,7 +15,13 @@ export function EquipmentChoiceSelector({
   const [localSelected, setLocalSelected] =
     useState<Record<number, number>>(selected);
 
+  // Sync with parent state
+  useEffect(() => {
+    setLocalSelected(selected);
+  }, [selected]);
+
   const handleSelect = (choiceIndex: number, optionIndex: number) => {
+    console.log('Equipment selected:', choiceIndex, optionIndex);
     const newSelected = {
       ...localSelected,
       [choiceIndex]: optionIndex,
@@ -82,6 +88,7 @@ export function EquipmentChoiceSelector({
               return (
                 <button
                   key={optionIndex}
+                  type="button"
                   onClick={() => handleSelect(choiceIndex, optionIndex)}
                   style={{
                     padding: '12px 16px',
@@ -97,6 +104,9 @@ export function EquipmentChoiceSelector({
                     cursor: 'pointer',
                     textAlign: 'left',
                     width: '100%',
+                    outline: 'none',
+                    position: 'relative',
+                    zIndex: 1,
                   }}
                   onMouseEnter={(e) => {
                     if (!isSelected) {
