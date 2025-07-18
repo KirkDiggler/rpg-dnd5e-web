@@ -96,55 +96,7 @@ export function ChoiceSection({
                   );
                 }
 
-                // Handle object options with optionType
-                if (
-                  option &&
-                  typeof option === 'object' &&
-                  option.optionType === 'reference' &&
-                  option.item
-                ) {
-                  const optionId = option.item.index;
-                  // Check multiple formats for duplicates
-                  const normalized = optionId
-                    .toLowerCase()
-                    .replace(/^skill[:-]\s*/i, 'skill:');
-                  const isAlreadyHave =
-                    existingSelections.has(optionId) ||
-                    existingSelections.has(normalized) ||
-                    existingSelections.has(option.item.name);
-                  const isSelected = selected.includes(optionId);
-                  const isDisabled =
-                    isAlreadyHave ||
-                    (!isSelected && selected.length >= choice.choose);
-
-                  return (
-                    <ChoiceCard
-                      key={optionId}
-                      id={optionId}
-                      title={option.item.name}
-                      description={
-                        isAlreadyHave
-                          ? 'Already have this proficiency'
-                          : `${choice.type} choice`
-                      }
-                      selected={isSelected}
-                      disabled={isDisabled}
-                      onSelect={() => {
-                        if (isAlreadyHave) return; // Prevent selecting duplicates
-
-                        if (isSelected) {
-                          // Deselect
-                          onChoiceSelect(choiceKey, optionId);
-                        } else if (selected.length < choice.choose) {
-                          // Select
-                          onChoiceSelect(choiceKey, optionId);
-                        }
-                      }}
-                    />
-                  );
-                }
-
-                // TODO: Handle other option types (counted_reference, choice, etc.)
+                // Options are now always strings in the new API
                 return null;
               })}
             </div>

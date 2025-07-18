@@ -1,9 +1,16 @@
+import { create } from '@bufbuild/protobuf';
 import type {
   CharacterDraft,
   Choice,
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { AbilityScoresSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  Class,
+  Language,
+  Race,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import {
@@ -11,8 +18,47 @@ import {
   type CharacterDraftState,
 } from './CharacterDraftContextDef';
 
+// Helper to convert RaceInfo name to Race enum
+function getRaceEnum(raceName: string): Race {
+  const raceMap: Record<string, Race> = {
+    Human: Race.HUMAN,
+    Elf: Race.ELF,
+    Dwarf: Race.DWARF,
+    Halfling: Race.HALFLING,
+    Dragonborn: Race.DRAGONBORN,
+    Gnome: Race.GNOME,
+    'Half-Elf': Race.HALF_ELF,
+    'Half-Orc': Race.HALF_ORC,
+    Tiefling: Race.TIEFLING,
+  };
+  return raceMap[raceName] || Race.UNSPECIFIED;
+}
+
+// Helper to convert ClassInfo name to Class enum
+function getClassEnum(className: string): Class {
+  const classMap: Record<string, Class> = {
+    Barbarian: Class.BARBARIAN,
+    Bard: Class.BARD,
+    Cleric: Class.CLERIC,
+    Druid: Class.DRUID,
+    Fighter: Class.FIGHTER,
+    Monk: Class.MONK,
+    Paladin: Class.PALADIN,
+    Ranger: Class.RANGER,
+    Rogue: Class.ROGUE,
+    Sorcerer: Class.SORCERER,
+    Warlock: Class.WARLOCK,
+    Wizard: Class.WIZARD,
+  };
+  return classMap[className] || Class.UNSPECIFIED;
+}
+
 export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState<CharacterDraft | null>(null);
+  const [currentRaceInfo, setCurrentRaceInfo] = useState<RaceInfo | null>(null);
+  const [currentClassInfo, setCurrentClassInfo] = useState<ClassInfo | null>(
+    null
+  );
   const [allProficiencies, setAllProficiencies] = useState<Set<string>>(
     new Set()
   );
@@ -64,9 +110,17 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       const languages = new Set<string>();
       if (!race) return languages;
 
-      // Add base languages
+      // Add base languages (these are now Language enums from RaceInfo)
       if (race.languages) {
-        race.languages.forEach((l) => languages.add(l));
+        race.languages.forEach((l) => {
+          // Convert enum value to string representation
+          const languageName = Object.entries(Language).find(
+            ([, value]) => value === l
+          )?.[0];
+          if (languageName) {
+            languages.add(languageName.replace(/_/g, ' '));
+          }
+        });
       }
 
       // Add chosen languages
@@ -85,12 +139,15 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
   const setRace = useCallback(
     (race: RaceInfo | null) => {
-      // Update draft
+      // Store the full RaceInfo
+      setCurrentRaceInfo(race);
+
+      // Update draft with enum value
       setDraft(
         (prev) =>
           ({
             ...prev,
-            race: race || undefined,
+            race: race ? getRaceEnum(race.name) : Race.UNSPECIFIED,
           }) as CharacterDraft
       );
 
@@ -105,11 +162,14 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   );
 
   const setClass = useCallback((classInfo: ClassInfo | null) => {
+    // Store the full ClassInfo
+    setCurrentClassInfo(classInfo);
+
     setDraft(
       (prev) =>
         ({
           ...prev,
-          class: classInfo || undefined,
+          class: classInfo ? getClassEnum(classInfo.name) : Class.UNSPECIFIED,
         }) as CharacterDraft
     );
 
@@ -143,10 +203,15 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
         [choiceKey]: selection,
       }));
 
-      // Recalculate proficiencies/languages
-      setRace(draft?.race || null);
+      // Recalculate proficiencies/languages using stored RaceInfo
+      if (currentRaceInfo) {
+        const raceProficiencies = collectRaceProficiencies(currentRaceInfo);
+        const raceLanguages = collectRaceLanguages(currentRaceInfo);
+        setAllProficiencies(new Set([...raceProficiencies]));
+        setAllLanguages(new Set([...raceLanguages]));
+      }
     },
-    [draft?.race, setRace]
+    [currentRaceInfo, collectRaceProficiencies, collectRaceLanguages]
   );
 
   const addClassChoice = useCallback(
@@ -172,17 +237,29 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setAbilityScores = useCallback((scores: Record<string, number>) => {
+    // Create AbilityScores message from the scores object
+    const abilityScores = create(AbilityScoresSchema, {
+      strength: scores.strength || 10,
+      dexterity: scores.dexterity || 10,
+      constitution: scores.constitution || 10,
+      intelligence: scores.intelligence || 10,
+      wisdom: scores.wisdom || 10,
+      charisma: scores.charisma || 10,
+    });
+
     setDraft(
       (prev) =>
         ({
           ...prev,
-          abilityScores: scores,
+          abilityScores,
         }) as CharacterDraft
     );
   }, []);
 
   const reset = useCallback(() => {
     setDraft(null);
+    setCurrentRaceInfo(null);
+    setCurrentClassInfo(null);
     setAllProficiencies(new Set());
     setAllLanguages(new Set());
     setRaceChoices({});
@@ -191,6 +268,8 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
   const value: CharacterDraftState = {
     draft,
+    raceInfo: currentRaceInfo,
+    classInfo: currentClassInfo,
     allProficiencies,
     allLanguages,
     raceChoices,

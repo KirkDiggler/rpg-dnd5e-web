@@ -2,6 +2,7 @@ import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 
 interface ProficiencyListProps {
   selectedRace: RaceInfo | null;
@@ -99,9 +100,24 @@ export function ProficiencyList({
   if (selectedRace) {
     // Base languages
     if (selectedRace.languages && selectedRace.languages.length > 0) {
+      // Convert Language enums to strings
+      const languageStrings = selectedRace.languages.map((lang) => {
+        // Find the enum name from the value
+        const languageName = Object.entries(Language).find(
+          ([, value]) => value === lang
+        )?.[0];
+        // Convert ENUM_NAME to readable format (e.g., DEEP_SPEECH -> Deep Speech)
+        return languageName
+          ? languageName
+              .split('_')
+              .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+              .join(' ')
+          : 'Unknown';
+      });
+
       languageGroups['race-base'] = {
         source: `${selectedRace.name} (Base)`,
-        items: selectedRace.languages,
+        items: languageStrings,
       };
     }
 

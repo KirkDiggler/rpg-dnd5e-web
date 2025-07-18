@@ -8,6 +8,8 @@ import { createContext } from 'react';
 
 export interface CharacterDraftState {
   draft: CharacterDraft | null;
+  raceInfo: RaceInfo | null;
+  classInfo: ClassInfo | null;
 
   // Track all proficiencies from various sources
   allProficiencies: Set<string>;
