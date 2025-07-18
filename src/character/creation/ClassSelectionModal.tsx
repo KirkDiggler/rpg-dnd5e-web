@@ -49,6 +49,7 @@ interface ClassSelectionModalProps {
 export interface ClassChoices {
   proficiencies: Record<string, string[]>;
   equipment: Record<number, string>;
+  className?: string; // Track which class these choices belong to
 }
 
 export function ClassSelectionModal({
@@ -61,20 +62,30 @@ export function ClassSelectionModal({
   const { data: classes, loading, error } = useListClasses();
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Track choices
-  const [proficiencyChoices, setProficiencyChoices] = useState<
-    Record<string, string[]>
-  >({});
-  const [equipmentChoices, setEquipmentChoices] = useState<
-    Record<number, string>
+  // Track choices per class
+  const [classChoicesMap, setClassChoicesMap] = useState<
+    Record<
+      string,
+      {
+        proficiencies: Record<string, string[]>;
+        equipment: Record<number, string>;
+      }
+    >
   >({});
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Reset choices when modal opens
+  // Get current class name
+  const currentClassName = classes[selectedIndex]?.name || '';
+
+  // Get choices for current class
+  const currentClassChoices = classChoicesMap[currentClassName] || {
+    proficiencies: {},
+    equipment: {},
+  };
+
+  // Reset selected index when modal opens
   useEffect(() => {
     if (isOpen) {
-      setProficiencyChoices({});
-      setEquipmentChoices({});
       setErrorMessage('');
 
       // Set selected index based on current class
@@ -153,7 +164,7 @@ export function ClassSelectionModal({
       for (let i = 0; i < currentClassData.proficiencyChoices.length; i++) {
         const choice = currentClassData.proficiencyChoices[i];
         const key = getChoiceKey(choice, i);
-        const selected = proficiencyChoices[key] || [];
+        const selected = currentClassChoices.proficiencies[key] || [];
         const validation = validateChoice(choice, selected);
         if (!validation.isValid) {
           setErrorMessage(validation.errors.join(' '));
@@ -169,7 +180,7 @@ export function ClassSelectionModal({
 
     if (hasEquipmentChoices) {
       for (let i = 0; i < currentClassData.equipmentChoices.length; i++) {
-        const selection = equipmentChoices[i];
+        const selection = currentClassChoices.equipment[i];
         if (!selection || selection === '') {
           setErrorMessage(
             `Please select an option for Equipment Option ${i + 1}`
@@ -195,8 +206,9 @@ export function ClassSelectionModal({
     }
 
     onSelect(currentClassData, {
-      proficiencies: proficiencyChoices,
-      equipment: equipmentChoices,
+      proficiencies: currentClassChoices.proficiencies,
+      equipment: currentClassChoices.equipment,
+      className: currentClassData.name,
     });
     onClose();
   };
@@ -292,10 +304,7 @@ export function ClassSelectionModal({
             selectedIndex={selectedIndex}
             onSelect={(index) => {
               setSelectedIndex(index);
-              // Clear choices when switching classes
-              setProficiencyChoices({});
-              setEquipmentChoices({});
-              setErrorMessage('');
+              setErrorMessage(''); // Only clear error message
             }}
           />
 
@@ -538,16 +547,23 @@ export function ClassSelectionModal({
                           <ChoiceSelectorWithDuplicates
                             choice={choice}
                             selected={
-                              proficiencyChoices[getChoiceKey(choice, index)] ||
-                              []
+                              currentClassChoices.proficiencies[
+                                getChoiceKey(choice, index)
+                              ] || []
                             }
                             existingSelections={existingProficiencies}
                             onSelectionChange={(selected) => {
                               const key = getChoiceKey(choice, index);
-                              setProficiencyChoices({
-                                ...proficiencyChoices,
-                                [key]: selected,
-                              });
+                              setClassChoicesMap((prev) => ({
+                                ...prev,
+                                [currentClassName]: {
+                                  ...currentClassChoices,
+                                  proficiencies: {
+                                    ...currentClassChoices.proficiencies,
+                                    [key]: selected,
+                                  },
+                                },
+                              }));
                             }}
                           />
                         </div>
@@ -567,8 +583,16 @@ export function ClassSelectionModal({
                 >
                   <EquipmentChoiceSelector
                     choices={currentClassData.equipmentChoices}
-                    selected={equipmentChoices}
-                    onSelectionChange={setEquipmentChoices}
+                    selected={currentClassChoices.equipment}
+                    onSelectionChange={(newEquipment) => {
+                      setClassChoicesMap((prev) => ({
+                        ...prev,
+                        [currentClassName]: {
+                          ...currentClassChoices,
+                          equipment: newEquipment,
+                        },
+                      }));
+                    }}
                   />
                 </CollapsibleSection>
               )}

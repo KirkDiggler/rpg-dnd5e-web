@@ -1090,8 +1090,8 @@ export function InteractiveCharacterSheet({
           // Apply new class
           draft.setClass(classData);
 
-          // Add class choices to the draft
-          if (choices.proficiencies) {
+          // Only add choices for the selected class
+          if (choices.proficiencies && choices.className === classData.name) {
             Object.entries(choices.proficiencies).forEach(([key, values]) => {
               draft.addClassChoice(key, values);
             });

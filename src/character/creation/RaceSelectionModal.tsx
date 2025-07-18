@@ -86,20 +86,30 @@ export function RaceSelectionModal({
   const { data: races, loading, error } = useListRaces();
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Track choices
-  const [languageChoices, setLanguageChoices] = useState<
-    Record<string, string[]>
-  >({});
-  const [proficiencyChoices, setProficiencyChoices] = useState<
-    Record<string, string[]>
+  // Track choices per race
+  const [raceChoicesMap, setRaceChoicesMap] = useState<
+    Record<
+      string,
+      {
+        languages: Record<string, string[]>;
+        proficiencies: Record<string, string[]>;
+      }
+    >
   >({});
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Reset choices when modal opens
+  // Get current race name
+  const currentRaceName = races[selectedIndex]?.name || '';
+
+  // Get choices for current race
+  const currentRaceChoices = raceChoicesMap[currentRaceName] || {
+    languages: {},
+    proficiencies: {},
+  };
+
+  // Reset selected index when modal opens
   useEffect(() => {
     if (isOpen) {
-      setLanguageChoices({});
-      setProficiencyChoices({});
       setErrorMessage('');
 
       // Set selected index based on current race
@@ -175,7 +185,7 @@ export function RaceSelectionModal({
 
     if (hasLanguageChoice && currentRaceData.languageOptions) {
       const key = getChoiceKey(currentRaceData.languageOptions, 0);
-      const selected = languageChoices[key] || [];
+      const selected = currentRaceChoices.languages[key] || [];
       const validation = validateChoice(
         currentRaceData.languageOptions,
         selected
@@ -190,7 +200,7 @@ export function RaceSelectionModal({
       for (let i = 0; i < currentRaceData.proficiencyOptions.length; i++) {
         const choice = currentRaceData.proficiencyOptions[i];
         const key = getChoiceKey(choice, i);
-        const selected = proficiencyChoices[key] || [];
+        const selected = currentRaceChoices.proficiencies[key] || [];
         const validation = validateChoice(choice, selected);
         if (!validation.isValid) {
           setErrorMessage(validation.errors.join(' '));
@@ -200,8 +210,8 @@ export function RaceSelectionModal({
     }
 
     onSelect(currentRaceData, {
-      languages: languageChoices,
-      proficiencies: proficiencyChoices,
+      languages: currentRaceChoices.languages,
+      proficiencies: currentRaceChoices.proficiencies,
     });
     onClose();
   };
@@ -299,10 +309,7 @@ export function RaceSelectionModal({
             selectedIndex={selectedIndex}
             onSelect={(index) => {
               setSelectedIndex(index);
-              // Clear choices when switching races
-              setLanguageChoices({});
-              setProficiencyChoices({});
-              setErrorMessage('');
+              setErrorMessage(''); // Only clear error message
             }}
           />
 
@@ -571,7 +578,7 @@ export function RaceSelectionModal({
                 <ChoiceSelectorWithDuplicates
                   choice={currentRaceData.languageOptions}
                   selected={
-                    languageChoices[
+                    currentRaceChoices.languages[
                       getChoiceKey(currentRaceData.languageOptions, 0)
                     ] || []
                   }
@@ -581,7 +588,16 @@ export function RaceSelectionModal({
                       currentRaceData.languageOptions!,
                       0
                     );
-                    setLanguageChoices({ ...languageChoices, [key]: selected });
+                    setRaceChoicesMap((prev) => ({
+                      ...prev,
+                      [currentRaceName]: {
+                        ...currentRaceChoices,
+                        languages: {
+                          ...currentRaceChoices.languages,
+                          [key]: selected,
+                        },
+                      },
+                    }));
                   }}
                 />
               </div>
@@ -596,15 +612,23 @@ export function RaceSelectionModal({
                       key={index}
                       choice={choice}
                       selected={
-                        proficiencyChoices[getChoiceKey(choice, index)] || []
+                        currentRaceChoices.proficiencies[
+                          getChoiceKey(choice, index)
+                        ] || []
                       }
                       existingSelections={existingProficiencies}
                       onSelectionChange={(selected) => {
                         const key = getChoiceKey(choice, index);
-                        setProficiencyChoices({
-                          ...proficiencyChoices,
-                          [key]: selected,
-                        });
+                        setRaceChoicesMap((prev) => ({
+                          ...prev,
+                          [currentRaceName]: {
+                            ...currentRaceChoices,
+                            proficiencies: {
+                              ...currentRaceChoices.proficiencies,
+                              [key]: selected,
+                            },
+                          },
+                        }));
                       }}
                     />
                   ))}
