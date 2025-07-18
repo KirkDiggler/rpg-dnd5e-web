@@ -1,38 +1,34 @@
 import type { CharacterDraft } from '@/api';
-import { type WizardStep } from '@/constants/wizard';
 import { createContext } from 'react';
-
-export type { WizardStep };
-
-export interface StepState {
-  id: WizardStep;
-  title: string;
-  status: 'pending' | 'current' | 'completed';
-  isValid: boolean;
-}
+import type { CharacterCreationStep } from '../character/creation/steps';
 
 export interface CharacterBuilderState {
-  currentStep: WizardStep;
+  currentStepId: string;
   draft: CharacterDraft | null;
-  steps: StepState[];
+  steps: CharacterCreationStep[];
   previewMode: boolean;
   isLoading: boolean;
   selectedChoices: Record<string, unknown>;
+  selectedClass?: string;
+  selectedRace?: string;
 }
 
 export interface CharacterBuilderActions {
-  setCurrentStep: (step: WizardStep) => void;
+  setCurrentStepId: (stepId: string) => void;
   updateDraft: (updates: Partial<CharacterDraft>) => void;
   setDraft: (draft: CharacterDraft | null) => void;
   togglePreviewMode: () => void;
   setLoading: (loading: boolean) => void;
   setSelectedChoice: (key: string, value: unknown) => void;
   clearSelectedChoice: (key: string) => void;
-  markStepCompleted: (step: WizardStep) => void;
-  markStepInvalid: (step: WizardStep) => void;
-  navigateToStep: (step: WizardStep) => void;
-  getStepStatus: (step: WizardStep) => 'pending' | 'current' | 'completed';
-  canNavigateToStep: (step: WizardStep) => boolean;
+  markStepCompleted: (stepId: string) => void;
+  markStepInvalid: (stepId: string) => void;
+  navigateToStep: (stepId: string) => void;
+  getStepStatus: (stepId: string) => 'completed' | 'current' | 'upcoming' | 'disabled';
+  canNavigateToStep: (stepId: string) => boolean;
+  setSelectedClass: (classId: string) => void;
+  setSelectedRace: (raceId: string) => void;
+  updateSteps: (steps: CharacterCreationStep[]) => void;
 }
 
 export type CharacterBuilderContextType = CharacterBuilderState &

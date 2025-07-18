@@ -1,8 +1,9 @@
 import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useListRaces } from '../../api/hooks';
 import { ChoiceSelector } from '../../components/ChoiceSelector';
+import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
 
 // Helper to get CSS variable values for portals
@@ -97,6 +98,14 @@ export function RaceSelectionModal({
   const [proficiencyChoices, setProficiencyChoices] = useState<
     Record<string, string[]>
   >({});
+
+  // Reset choices when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setLanguageChoices({});
+      setProficiencyChoices({});
+    }
+  }, [isOpen]);
 
   // Show loading or error states
   if (!isOpen) return null;
@@ -725,16 +734,7 @@ export function RaceSelectionModal({
               )}
 
             {/* Racial Traits */}
-            <div style={{ marginBottom: '20px' }}>
-              <h4
-                style={{
-                  color: textPrimary,
-                  fontWeight: 'bold',
-                  marginBottom: '8px',
-                }}
-              >
-                Racial Traits
-              </h4>
+            <CollapsibleSection title="Racial Traits" defaultOpen={true}>
               <div
                 style={{
                   maxHeight: '140px',
@@ -806,21 +806,12 @@ export function RaceSelectionModal({
                   </div>
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
 
             {/* Proficiencies */}
             {currentRaceData.proficiencies &&
               currentRaceData.proficiencies.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Proficiencies
-                  </h4>
+                <CollapsibleSection title="Proficiencies" defaultOpen={false}>
                   <div
                     style={{
                       padding: '8px',
@@ -830,11 +821,12 @@ export function RaceSelectionModal({
                       fontSize: '14px',
                       color: textPrimary,
                       opacity: 0.9,
+                      marginBottom: '12px',
                     }}
                   >
                     {currentRaceData.proficiencies.join(', ')}
                   </div>
-                </div>
+                </CollapsibleSection>
               )}
           </div>
         </div>

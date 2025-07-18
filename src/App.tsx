@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { useState } from 'react';
 import './App.css';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
+import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { CharacterList } from './components/CharacterList';
 import { ThemeSelector } from './components/ThemeSelector';
 import { useDiscord } from './discord';
@@ -86,10 +87,12 @@ function App() {
             onCreateCharacter={() => setCurrentView('character-creation')}
           />
         ) : (
-          <InteractiveCharacterSheet
-            onComplete={handleCharacterCreated}
-            onCancel={() => setCurrentView('character-list')}
-          />
+          <CharacterDraftProvider>
+            <InteractiveCharacterSheet
+              onComplete={handleCharacterCreated}
+              onCancel={() => setCurrentView('character-list')}
+            />
+          </CharacterDraftProvider>
         )}
 
         {/* Temporarily hidden Discord debug panel */}

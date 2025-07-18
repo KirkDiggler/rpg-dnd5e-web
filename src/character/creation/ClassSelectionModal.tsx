@@ -1,8 +1,9 @@
 import type { ClassInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { ChoiceSelector } from '../../components/ChoiceSelector';
+import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
 
 // Helper to get CSS variable values for portals
@@ -69,6 +70,13 @@ export function ClassSelectionModal({
   const [proficiencyChoices, setProficiencyChoices] = useState<
     Record<string, string[]>
   >({});
+
+  // Reset choices when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setProficiencyChoices({});
+    }
+  }, [isOpen]);
 
   // Show loading or error states
   if (!isOpen) return null;
@@ -388,6 +396,8 @@ export function ClassSelectionModal({
           style={{
             marginBottom: '24px',
             overflow: 'hidden',
+            maxHeight: '400px',
+            overflowY: 'auto',
           }}
         >
           <div
@@ -401,36 +411,30 @@ export function ClassSelectionModal({
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
           >
-            <div style={{ marginBottom: '24px' }}>
-              <h4
-                style={{
-                  color: textPrimary,
-                  fontWeight: 'bold',
-                  marginBottom: '8px',
-                }}
-              >
-                Description
-              </h4>
+            {/* Description Section */}
+            <CollapsibleSection title="Description" defaultOpen={true}>
               <p
                 style={{
                   color: textPrimary,
                   fontSize: '16px',
                   lineHeight: '1.5',
+                  padding: '8px',
                 }}
               >
                 {currentClassData.description}
               </p>
-            </div>
+            </CollapsibleSection>
 
             {/* Core Info Grid */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '16px',
-                marginBottom: '20px',
-              }}
-            >
+            <CollapsibleSection title="Core Info" defaultOpen={true}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '16px',
+                  marginBottom: '12px',
+                }}
+              >
               <div>
                 <h4
                   style={{
@@ -493,19 +497,11 @@ export function ClassSelectionModal({
                     ` +${currentClassData.availableSkills.length - 6} more`}
                 </div>
               </div>
-            </div>
+              </div>
+            </CollapsibleSection>
 
             {/* Proficiencies Section */}
-            <div style={{ marginBottom: '20px' }}>
-              <h4
-                style={{
-                  color: textPrimary,
-                  fontWeight: 'bold',
-                  marginBottom: '12px',
-                }}
-              >
-                Proficiencies
-              </h4>
+            <CollapsibleSection title="Proficiencies" defaultOpen={false}>
               <div
                 style={{
                   display: 'grid',
@@ -607,21 +603,17 @@ export function ClassSelectionModal({
                   </div>
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
 
             {/* Proficiency Choices */}
             {currentClassData.proficiencyChoices &&
               currentClassData.proficiencyChoices.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '12px',
-                    }}
-                  >
-                    Choose Your Proficiencies
-                  </h4>
+                <CollapsibleSection 
+                  title="Choose Your Proficiencies" 
+                  defaultOpen={true}
+                  badge="Required"
+                >
+                  <div style={{ marginBottom: '12px' }}>
                   {currentClassData.proficiencyChoices.map((choice, index) => (
                     <div key={index} style={{ marginBottom: '16px' }}>
                       <ChoiceSelector
@@ -639,7 +631,8 @@ export function ClassSelectionModal({
                       />
                     </div>
                   ))}
-                </div>
+                  </div>
+                </CollapsibleSection>
               )}
 
             {/* Equipment Options (Display Only) */}

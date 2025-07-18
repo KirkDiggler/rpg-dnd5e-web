@@ -1,12 +1,16 @@
 import { DiceRoller } from '@/components/DiceRoller';
+import { ProgressTracker } from '@/components/ProgressTracker';
+import type { Step } from '@/components/ProgressTracker';
 import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { RaceSelectionModal } from './RaceSelectionModal';
+import { ChoiceSection } from './components/ChoiceSection';
+import { useCharacterDraft } from './useCharacterDraft';
 
 interface InteractiveCharacterSheetProps {
   onComplete: () => void;
@@ -34,6 +38,7 @@ const CharacterContext = {
     wisdom: 0,
     charisma: 0,
   },
+  choices: {} as Record<string, string[]>, // Track all choices made
 };
 
 export function InteractiveCharacterSheet({
@@ -43,8 +48,58 @@ export function InteractiveCharacterSheet({
   const [character, setCharacter] = useState(CharacterContext);
   const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
+  const draft = useCharacterDraft();
 
   const getModifier = (score: number) => Math.floor((score - 10) / 2);
+
+  // Compute character creation steps and their status
+  const steps = useMemo<Step[]>(() => {
+    const hasAllScores = Object.values(character.abilityScores).every(score => score > 0);
+    
+    return [
+      {
+        id: 'identity',
+        label: 'Character Identity',
+        status: character.selectedRace && character.selectedClass ? 'completed' : 'current',
+      },
+      {
+        id: 'abilities',
+        label: 'Roll Abilities',
+        status: hasAllScores ? 'completed' :
+                (character.selectedRace && character.selectedClass) ? 'current' : 'upcoming',
+      },
+      {
+        id: 'details',
+        label: 'Name & Details',
+        status: character.characterName ? 'completed' :
+                hasAllScores ? 'current' : 'upcoming',
+      },
+    ];
+  }, [character]);
+
+  const handleChoiceSelect = (choiceKey: string, optionId: string) => {
+    setCharacter(prev => {
+      const currentChoices = prev.choices[choiceKey] || [];
+      const isSelected = currentChoices.includes(optionId);
+      
+      let newChoices;
+      if (isSelected) {
+        // Remove the option
+        newChoices = currentChoices.filter(id => id !== optionId);
+      } else {
+        // Add the option
+        newChoices = [...currentChoices, optionId];
+      }
+      
+      return {
+        ...prev,
+        choices: {
+          ...prev.choices,
+          [choiceKey]: newChoices,
+        },
+      };
+    });
+  };
 
   // Helper function to get race emoji
   const getRaceEmoji = (raceName: string) => {
@@ -83,6 +138,25 @@ export function InteractiveCharacterSheet({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
+      {/* Progress Tracker */}
+      <div className="max-w-6xl mx-auto mb-6">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="game-card p-4"
+          style={{
+            background: 'var(--card-bg)',
+            border: '2px solid var(--border-primary)',
+            borderRadius: '0.75rem',
+          }}
+        >
+          <ProgressTracker
+            steps={steps}
+            orientation="horizontal"
+          />
+        </motion.div>
+      </div>
+
       <div className="max-w-4xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -246,6 +320,102 @@ export function InteractiveCharacterSheet({
               </motion.div>
             </div>
           </div>
+
+          {/* Choices Section - Shows after race/class selection */}
+          {(character.selectedRace || character.selectedClass) && (
+            <div className="space-y-4">
+              <h2
+                className="text-2xl font-bold font-serif"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                Character Choices
+              </h2>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left Column - Proficiencies */}
+                <div
+                  className="p-6 rounded-lg border-2"
+                  style={{
+                    backgroundColor: 'var(--bg-secondary)',
+                    borderColor: 'var(--border-primary)',
+                  }}
+                >
+                  <h3 className="text-lg font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>
+                    Proficiency & Language Choices
+                  </h3>
+                  
+                {/* Race Choices */}
+                {character.selectedRace && (
+                  <>
+                    {character.selectedRace.languageOptions && (
+                      <ChoiceSection
+                        title="Choose Languages"
+                        choices={[character.selectedRace.languageOptions]}
+                        selectedChoices={character.choices}
+                        onChoiceSelect={handleChoiceSelect}
+                        existingSelections={draft.allLanguages}
+                      />
+                    )}
+                    
+                    {character.selectedRace.proficiencyOptions && 
+                     character.selectedRace.proficiencyOptions.length > 0 && (
+                      <ChoiceSection
+                        title="Choose Racial Proficiencies"
+                        choices={character.selectedRace.proficiencyOptions}
+                        selectedChoices={character.choices}
+                        onChoiceSelect={handleChoiceSelect}
+                        existingSelections={draft.allProficiencies}
+                      />
+                    )}
+                  </>
+                )}
+                
+                {/* Class Choices */}
+                {character.selectedClass && (
+                  <>
+                    {character.selectedClass.proficiencyChoices && 
+                     character.selectedClass.proficiencyChoices.length > 0 && (
+                      <ChoiceSection
+                        title="Choose Class Proficiencies"
+                        choices={character.selectedClass.proficiencyChoices}
+                        selectedChoices={character.choices}
+                        onChoiceSelect={handleChoiceSelect}
+                        existingSelections={draft.allProficiencies}
+                      />
+                    )}
+                  </>
+                )}
+                
+                {/* Show message if no choices available */}
+                {character.selectedRace && character.selectedClass &&
+                 !character.selectedRace.languageOptions &&
+                 (!character.selectedRace.proficiencyOptions || character.selectedRace.proficiencyOptions.length === 0) &&
+                 (!character.selectedClass.proficiencyChoices || character.selectedClass.proficiencyChoices.length === 0) && (
+                  <p style={{ color: 'var(--text-muted)' }}>
+                    No additional choices needed for this race and class combination.
+                  </p>
+                )}
+                </div>
+                
+                {/* Right Column - Equipment */}
+                <div
+                  className="p-6 rounded-lg border-2"
+                  style={{
+                    backgroundColor: 'var(--bg-secondary)',
+                    borderColor: 'var(--border-primary)',
+                  }}
+                >
+                  <h3 className="text-lg font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>
+                    Equipment Choices
+                  </h3>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    Equipment selection coming soon...
+                  </p>
+                  {/* TODO: Add equipment choices here */}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Ability Scores - Dice Tray */}
           <div className="space-y-4">
@@ -644,11 +814,24 @@ export function InteractiveCharacterSheet({
       <RaceSelectionModal
         isOpen={isRaceModalOpen}
         currentRace={character.selectedRace?.name}
-        onSelect={(race) => {
+        onSelect={(race, choices) => {
           setCharacter((prev) => ({
             ...prev,
             selectedRace: race,
           }));
+          draft.setRace(race);
+          
+          // Add race choices to the draft
+          if (choices.languages) {
+            Object.entries(choices.languages).forEach(([key, values]) => {
+              draft.addRaceChoice(key, values);
+            });
+          }
+          if (choices.proficiencies) {
+            Object.entries(choices.proficiencies).forEach(([key, values]) => {
+              draft.addRaceChoice(key, values);
+            });
+          }
         }}
         onClose={() => setIsRaceModalOpen(false)}
       />
@@ -657,11 +840,19 @@ export function InteractiveCharacterSheet({
       <ClassSelectionModal
         isOpen={isClassModalOpen}
         currentClass={character.selectedClass?.name}
-        onSelect={(classData) => {
+        onSelect={(classData, choices) => {
           setCharacter((prev) => ({
             ...prev,
             selectedClass: classData,
           }));
+          draft.setClass(classData);
+          
+          // Add class choices to the draft
+          if (choices.proficiencies) {
+            Object.entries(choices.proficiencies).forEach(([key, values]) => {
+              draft.addClassChoice(key, values);
+            });
+          }
         }}
         onClose={() => setIsClassModalOpen(false)}
       />
