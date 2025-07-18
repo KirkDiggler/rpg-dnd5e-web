@@ -303,7 +303,12 @@ export function InteractiveCharacterSheet({
                           {character.selectedRace.proficiencies &&
                             character.selectedRace.proficiencies.length > 0 && (
                               <div style={{ color: 'var(--text-primary)' }}>
-                                <span style={{ color: 'var(--text-muted)' }}>
+                                <span
+                                  style={{
+                                    color: 'var(--text-secondary)',
+                                    opacity: 0.8,
+                                  }}
+                                >
                                   Skills:
                                 </span>{' '}
                                 {character.selectedRace.proficiencies.join(
@@ -314,7 +319,12 @@ export function InteractiveCharacterSheet({
                           {character.selectedRace.languages &&
                             character.selectedRace.languages.length > 0 && (
                               <div style={{ color: 'var(--text-primary)' }}>
-                                <span style={{ color: 'var(--text-muted)' }}>
+                                <span
+                                  style={{
+                                    color: 'var(--text-secondary)',
+                                    opacity: 0.8,
+                                  }}
+                                >
                                   Languages:
                                 </span>{' '}
                                 {character.selectedRace.languages.join(', ')}
@@ -323,7 +333,12 @@ export function InteractiveCharacterSheet({
                           {Object.values(draft.raceChoices).flat().length >
                             0 && (
                             <div style={{ color: 'var(--text-primary)' }}>
-                              <span style={{ color: 'var(--text-muted)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-secondary)',
+                                  opacity: 0.8,
+                                }}
+                              >
                                 Chosen:
                               </span>{' '}
                               {Object.values(draft.raceChoices)
@@ -335,7 +350,10 @@ export function InteractiveCharacterSheet({
                       ) : (
                         <p
                           className="mt-2 text-xs"
-                          style={{ color: 'var(--text-muted)' }}
+                          style={{
+                            color: 'var(--text-secondary)',
+                            opacity: 0.6,
+                          }}
                         >
                           No special traits
                         </p>
@@ -417,7 +435,12 @@ export function InteractiveCharacterSheet({
                           character.selectedClass.armorProficiencies.length >
                             0 && (
                             <div style={{ color: 'var(--text-primary)' }}>
-                              <span style={{ color: 'var(--text-muted)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-secondary)',
+                                  opacity: 0.8,
+                                }}
+                              >
                                 Armor:
                               </span>{' '}
                               {character.selectedClass.armorProficiencies.join(
@@ -429,7 +452,12 @@ export function InteractiveCharacterSheet({
                           character.selectedClass.weaponProficiencies.length >
                             0 && (
                             <div style={{ color: 'var(--text-primary)' }}>
-                              <span style={{ color: 'var(--text-muted)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-secondary)',
+                                  opacity: 0.8,
+                                }}
+                              >
                                 Weapons:
                               </span>{' '}
                               {character.selectedClass.weaponProficiencies
@@ -443,7 +471,12 @@ export function InteractiveCharacterSheet({
                           character.selectedClass.savingThrowProficiencies
                             .length > 0 && (
                             <div style={{ color: 'var(--text-primary)' }}>
-                              <span style={{ color: 'var(--text-muted)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-secondary)',
+                                  opacity: 0.8,
+                                }}
+                              >
                                 Saves:
                               </span>{' '}
                               {character.selectedClass.savingThrowProficiencies.join(
@@ -454,7 +487,12 @@ export function InteractiveCharacterSheet({
                         {Object.values(draft.classChoices).flat().length >
                           0 && (
                           <div style={{ color: 'var(--text-primary)' }}>
-                            <span style={{ color: 'var(--text-muted)' }}>
+                            <span
+                              style={{
+                                color: 'var(--text-secondary)',
+                                opacity: 0.8,
+                              }}
+                            >
                               Chosen Skills:
                             </span>{' '}
                             {Object.values(draft.classChoices)
@@ -506,7 +544,10 @@ export function InteractiveCharacterSheet({
                       ) : (
                         <p
                           className="text-xs"
-                          style={{ color: 'var(--text-muted)' }}
+                          style={{
+                            color: 'var(--text-secondary)',
+                            opacity: 0.6,
+                          }}
                         >
                           No equipment data
                         </p>
