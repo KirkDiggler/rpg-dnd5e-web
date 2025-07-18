@@ -8,7 +8,9 @@ import type {
 import { motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
 import { ClassSelectionModal } from './ClassSelectionModal';
+import { SpellInfoDisplay } from './components/SpellInfoDisplay';
 import { RaceSelectionModal } from './RaceSelectionModal';
+import { SpellSelectionModal } from './SpellSelectionModal';
 import { useCharacterDraft } from './useCharacterDraft';
 
 interface InteractiveCharacterSheetProps {
@@ -48,6 +50,8 @@ export function InteractiveCharacterSheet({
   const [character, setCharacter] = useState(CharacterContext);
   const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
+  const [isSpellModalOpen, setIsSpellModalOpen] = useState(false);
+  const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
   const draft = useCharacterDraft();
 
   const getModifier = (score: number) => Math.floor((score - 10) / 2);
@@ -630,6 +634,25 @@ export function InteractiveCharacterSheet({
                         }
                       })()}
                     </motion.div>
+
+                    {/* Spell Information - display if class has spellcasting */}
+                    {character.selectedClass?.spellcasting && (
+                      <motion.div
+                        style={{
+                          padding: '12px',
+                          backgroundColor: 'var(--bg-secondary)',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-primary)',
+                        }}
+                      >
+                        <SpellInfoDisplay
+                          spellcastingInfo={
+                            character.selectedClass.spellcasting
+                          }
+                          onSelectSpells={() => setIsSpellModalOpen(true)}
+                        />
+                      </motion.div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1099,6 +1122,23 @@ export function InteractiveCharacterSheet({
         }}
         onClose={() => setIsClassModalOpen(false)}
       />
+
+      {/* Spell Selection Modal */}
+      {character.selectedClass?.spellcasting && (
+        <SpellSelectionModal
+          isOpen={isSpellModalOpen}
+          onClose={() => setIsSpellModalOpen(false)}
+          spellcastingInfo={character.selectedClass.spellcasting}
+          className={character.selectedClass.name}
+          level1Features={character.selectedClass.level1Features}
+          currentSpells={selectedSpells}
+          onSelect={(spells) => {
+            setSelectedSpells(spells);
+            // TODO: Add spell selection to character draft
+            console.log('Selected spells:', spells);
+          }}
+        />
+      )}
     </div>
   );
 }
