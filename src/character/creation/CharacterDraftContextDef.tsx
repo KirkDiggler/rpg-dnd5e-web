@@ -1,9 +1,9 @@
 import type {
   CharacterDraft,
+  Choice,
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { createContext } from 'react';
 
 export interface CharacterDraftState {

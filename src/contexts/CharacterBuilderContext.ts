@@ -1,6 +1,12 @@
 import type { CharacterDraft } from '@/api';
 import { createContext } from 'react';
-import type { CharacterCreationStep } from '../character/creation/steps';
+
+// TODO: Define CharacterCreationStep type when steps are implemented
+interface CharacterCreationStep {
+  id: string;
+  label: string;
+  status: 'completed' | 'current' | 'upcoming' | 'disabled';
+}
 
 export interface CharacterBuilderState {
   currentStepId: string;

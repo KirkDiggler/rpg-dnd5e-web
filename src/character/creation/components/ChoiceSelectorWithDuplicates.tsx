@@ -1,5 +1,5 @@
 import { ChoiceSelector } from '@/components/ChoiceSelector';
-import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
+import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
 interface ChoiceSelectorWithDuplicatesProps {
   choice: Choice;

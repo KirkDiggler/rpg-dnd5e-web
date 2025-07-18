@@ -1,5 +1,5 @@
 import { ChoiceCard } from '@/components/ChoiceCard';
-import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
+import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
 interface ChoiceSectionProps {
   title: string;
