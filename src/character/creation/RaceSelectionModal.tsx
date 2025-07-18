@@ -84,13 +84,7 @@ export function RaceSelectionModal({
   onClose,
 }: RaceSelectionModalProps) {
   const { data: races, loading, error } = useListRaces();
-  const [selectedIndex, setSelectedIndex] = useState(() => {
-    if (currentRace && races.length > 0) {
-      const index = races.findIndex((race) => race.name === currentRace);
-      return index >= 0 ? index : 0;
-    }
-    return 0;
-  });
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Track choices
   const [languageChoices, setLanguageChoices] = useState<
@@ -107,8 +101,16 @@ export function RaceSelectionModal({
       setLanguageChoices({});
       setProficiencyChoices({});
       setErrorMessage('');
+
+      // Set selected index based on current race
+      if (currentRace && races.length > 0) {
+        const index = races.findIndex((race) => race.name === currentRace);
+        if (index >= 0) {
+          setSelectedIndex(index);
+        }
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, currentRace, races]);
 
   // Show loading or error states
   if (!isOpen) return null;
@@ -300,6 +302,7 @@ export function RaceSelectionModal({
               // Clear choices when switching races
               setLanguageChoices({});
               setProficiencyChoices({});
+              setErrorMessage('');
             }}
           />
 

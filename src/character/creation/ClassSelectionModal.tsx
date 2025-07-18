@@ -59,13 +59,7 @@ export function ClassSelectionModal({
   onClose,
 }: ClassSelectionModalProps) {
   const { data: classes, loading, error } = useListClasses();
-  const [selectedIndex, setSelectedIndex] = useState(() => {
-    if (currentClass && classes.length > 0) {
-      const index = classes.findIndex((cls) => cls.name === currentClass);
-      return index >= 0 ? index : 0;
-    }
-    return 0;
-  });
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Track choices
   const [proficiencyChoices, setProficiencyChoices] = useState<
@@ -82,8 +76,16 @@ export function ClassSelectionModal({
       setProficiencyChoices({});
       setEquipmentChoices({});
       setErrorMessage('');
+
+      // Set selected index based on current class
+      if (currentClass && classes.length > 0) {
+        const index = classes.findIndex((cls) => cls.name === currentClass);
+        if (index >= 0) {
+          setSelectedIndex(index);
+        }
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, currentClass, classes]);
 
   // Show loading or error states
   if (!isOpen) return null;
@@ -293,6 +295,7 @@ export function ClassSelectionModal({
               // Clear choices when switching classes
               setProficiencyChoices({});
               setEquipmentChoices({});
+              setErrorMessage('');
             }}
           />
 

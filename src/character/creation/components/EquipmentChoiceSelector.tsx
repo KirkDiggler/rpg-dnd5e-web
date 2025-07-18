@@ -7,6 +7,7 @@ interface EquipmentChoiceSelectorProps {
   onSelectionChange: (selected: Record<number, string>) => void;
 }
 
+// TODO(#equipment-api): Replace with API call when equipment endpoints are available
 // Temporary hardcoded data until we have equipment API
 const MARTIAL_MELEE_WEAPONS = [
   'Battleaxe',

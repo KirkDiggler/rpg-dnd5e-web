@@ -38,6 +38,7 @@ const CharacterContext = {
     charisma: 0,
   },
   choices: {} as Record<string, string[]>, // Track all choices made
+  equipmentChoices: {} as Record<number, string>, // Track equipment selections
 };
 
 export function InteractiveCharacterSheet({
@@ -120,6 +121,46 @@ export function InteractiveCharacterSheet({
       Wizard: '🧙‍♂️',
     };
     return classEmojiMap[className] || '⚔️';
+  };
+
+  // Helper function to parse equipment choices into readable format
+  const getSelectedEquipment = () => {
+    const equipment: string[] = [];
+
+    if (
+      character.selectedClass?.equipmentChoices &&
+      character.equipmentChoices
+    ) {
+      character.selectedClass.equipmentChoices.forEach((choice, index) => {
+        const selection = character.equipmentChoices[index];
+        if (selection) {
+          // Parse the selection format "0-1:Longsword" or "0-1"
+          const [optionKey, weaponChoice] = selection.split(':');
+          const optionIndex = parseInt(optionKey.split('-')[1]);
+
+          // Get the option text from the choice
+          const optionsToUse =
+            choice.options && choice.options.length > 0
+              ? choice.options
+              : choice.description.split(' or ').map((part) => part.trim());
+
+          if (optionIndex >= 0 && optionIndex < optionsToUse.length) {
+            const optionText = optionsToUse[optionIndex];
+
+            // If it's a weapon choice, use the specific weapon
+            if (weaponChoice) {
+              equipment.push(weaponChoice);
+            } else {
+              // Clean up the option text (remove (a), (b) prefixes)
+              const cleanOption = optionText.replace(/^\([a-z]\)\s*/i, '');
+              equipment.push(cleanOption);
+            }
+          }
+        }
+      });
+    }
+
+    return equipment;
   };
 
   return (
@@ -518,40 +559,76 @@ export function InteractiveCharacterSheet({
                       >
                         Starting Equipment
                       </h4>
-                      {character.selectedClass.startingEquipment &&
-                      character.selectedClass.startingEquipment.length > 0 ? (
-                        <div className="text-xs space-y-1">
-                          {character.selectedClass.startingEquipment
-                            .slice(0, 3)
-                            .map((item, idx) => (
-                              <div
-                                key={idx}
-                                style={{ color: 'var(--text-primary)' }}
-                              >
-                                • {item}
-                              </div>
-                            ))}
-                          {character.selectedClass.startingEquipment.length >
-                            3 && (
-                            <div style={{ color: 'var(--text-muted)' }}>
-                              +
-                              {character.selectedClass.startingEquipment
-                                .length - 3}{' '}
-                              more items...
+                      {(() => {
+                        const selectedEquipment = getSelectedEquipment();
+                        const startingEquipment =
+                          character.selectedClass.startingEquipment || [];
+                        const allEquipment = [
+                          ...startingEquipment,
+                          ...selectedEquipment,
+                        ];
+
+                        if (allEquipment.length > 0) {
+                          return (
+                            <div className="text-xs space-y-1">
+                              {/* Show starting equipment first */}
+                              {startingEquipment
+                                .slice(0, 2)
+                                .map((item, idx) => (
+                                  <div
+                                    key={`starting-${idx}`}
+                                    style={{ color: 'var(--text-primary)' }}
+                                  >
+                                    • {item}
+                                  </div>
+                                ))}
+
+                              {/* Show selected equipment */}
+                              {selectedEquipment.map((item, idx) => (
+                                <div
+                                  key={`selected-${idx}`}
+                                  style={{ color: 'var(--text-primary)' }}
+                                >
+                                  • {item}
+                                  <span
+                                    style={{
+                                      color: 'var(--accent-primary)',
+                                      fontSize: '10px',
+                                      marginLeft: '4px',
+                                    }}
+                                  >
+                                    (chosen)
+                                  </span>
+                                </div>
+                              ))}
+
+                              {/* Show remaining count if there are more items */}
+                              {allEquipment.length >
+                                2 + selectedEquipment.length && (
+                                <div style={{ color: 'var(--text-muted)' }}>
+                                  +
+                                  {allEquipment.length -
+                                    2 -
+                                    selectedEquipment.length}{' '}
+                                  more items...
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      ) : (
-                        <p
-                          className="text-xs"
-                          style={{
-                            color: 'var(--text-secondary)',
-                            opacity: 0.6,
-                          }}
-                        >
-                          No equipment data
-                        </p>
-                      )}
+                          );
+                        } else {
+                          return (
+                            <p
+                              className="text-xs"
+                              style={{
+                                color: 'var(--text-secondary)',
+                                opacity: 0.6,
+                              }}
+                            >
+                              No equipment data
+                            </p>
+                          );
+                        }
+                      })()}
                     </motion.div>
                   </div>
                 )}
@@ -965,6 +1042,15 @@ export function InteractiveCharacterSheet({
           }));
           draft.setRace(race);
 
+          // Clear existing race choices first
+          draft.reset();
+          draft.setRace(race);
+
+          // If class was selected, re-apply it
+          if (character.selectedClass) {
+            draft.setClass(character.selectedClass);
+          }
+
           // Add race choices to the draft
           if (choices.languages) {
             Object.entries(choices.languages).forEach(([key, values]) => {
@@ -989,7 +1075,19 @@ export function InteractiveCharacterSheet({
           setCharacter((prev) => ({
             ...prev,
             selectedClass: classData,
+            equipmentChoices: choices.equipment || {}, // Clear equipment choices if none provided
           }));
+          draft.setClass(classData);
+
+          // Clear existing class choices first
+          draft.reset();
+
+          // Re-apply race if selected
+          if (character.selectedRace) {
+            draft.setRace(character.selectedRace);
+          }
+
+          // Apply new class
           draft.setClass(classData);
 
           // Add class choices to the draft
@@ -997,11 +1095,6 @@ export function InteractiveCharacterSheet({
             Object.entries(choices.proficiencies).forEach(([key, values]) => {
               draft.addClassChoice(key, values);
             });
-          }
-          // Store equipment choices (we'll need to handle these later)
-          if (choices.equipment) {
-            // TODO: Store equipment choices in draft when API supports it
-            console.log('Equipment choices:', choices.equipment);
           }
         }}
         onClose={() => setIsClassModalOpen(false)}
