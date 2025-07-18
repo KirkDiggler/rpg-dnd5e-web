@@ -130,8 +130,8 @@ export function ChoiceSelector({
           <p
             className="text-xs mt-3"
             style={{
-              color: 'var(--text-secondary)',
-              opacity: 0.8,
+              color: 'var(--text-primary)',
+              opacity: 0.7,
             }}
           >
             From: {choice.from}
