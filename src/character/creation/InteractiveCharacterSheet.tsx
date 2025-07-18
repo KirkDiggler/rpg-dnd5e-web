@@ -286,7 +286,7 @@ export function InteractiveCharacterSheet({
                       <div className="flex items-center justify-between">
                         <h4
                           className="text-xs font-semibold"
-                          style={{ color: 'var(--text-secondary)' }}
+                          style={{ color: 'var(--text-primary)' }}
                         >
                           Race Traits
                         </h4>
@@ -419,7 +419,7 @@ export function InteractiveCharacterSheet({
                       <div className="flex items-center justify-between">
                         <h4
                           className="text-xs font-semibold"
-                          style={{ color: 'var(--text-secondary)' }}
+                          style={{ color: 'var(--text-primary)' }}
                         >
                           Class Features
                         </h4>
@@ -514,7 +514,7 @@ export function InteractiveCharacterSheet({
                     >
                       <h4
                         className="text-xs font-semibold mb-2"
-                        style={{ color: 'var(--text-secondary)' }}
+                        style={{ color: 'var(--text-primary)' }}
                       >
                         Starting Equipment
                       </h4>

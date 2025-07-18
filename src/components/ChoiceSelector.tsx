@@ -74,7 +74,7 @@ export function ChoiceSelector({
               color:
                 localSelected.length === choice.choose
                   ? 'var(--accent-primary)'
-                  : 'var(--text-muted)',
+                  : 'var(--text-secondary)',
             }}
           >
             {localSelected.length} / {choice.choose} selected
@@ -102,7 +102,7 @@ export function ChoiceSelector({
                   color: selected
                     ? 'white'
                     : disabled
-                      ? 'var(--text-muted)'
+                      ? 'var(--text-secondary)'
                       : 'var(--text-primary)',
                   cursor: disabled ? 'not-allowed' : 'pointer',
                   opacity: disabled ? 0.5 : 1,
