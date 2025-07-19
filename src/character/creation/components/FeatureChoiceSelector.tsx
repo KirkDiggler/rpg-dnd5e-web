@@ -75,11 +75,11 @@ export function FeatureChoiceSelector({
             whileTap={{ scale: 0.98 }}
           >
             <ChoiceCard
+              id={option}
               title={formatOptionName(option)}
-              description={getOptionDescription(feature.name, option)}
+              description={getOptionDescription(feature.name, option) || ''}
               selected={selectedOption === option}
               onClick={() => handleSelection(option)}
-              compact
             />
           </motion.div>
         ))}

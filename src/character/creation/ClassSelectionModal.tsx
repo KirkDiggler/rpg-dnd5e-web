@@ -640,7 +640,7 @@ export function ClassSelectionModal({
                             currentSelection={
                               currentClassChoices.features[feature.id]
                             }
-                            onSelect={(featureId, choiceKey, selection) => {
+                            onSelect={(featureId, _, selection) => {
                               setClassChoicesMap((prev) => ({
                                 ...prev,
                                 [currentClassName]: {
