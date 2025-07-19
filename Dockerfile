@@ -23,6 +23,9 @@ ARG VITE_API_HOST
 ENV VITE_DISCORD_CLIENT_ID=$VITE_DISCORD_CLIENT_ID
 ENV VITE_API_HOST=$VITE_API_HOST
 
+# Copy theme files to public directory before build
+RUN mkdir -p public/themes && cp -r src/themes/*.css public/themes/
+
 # Build the application
 RUN npm run build
 

@@ -1,0 +1,421 @@
+/* Base styles and typography shared across all themes */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap');
+
+@layer base {
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Crimson Text', serif;
+  }
+}
+
+@layer components {
+  /* Board game card styling */
+  .game-card {
+    background-color: var(--card-bg);
+    border: 2px solid var(--border-primary);
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow-card);
+    padding: 1rem;
+    transition: all 0.3s ease;
+  }
+
+  .game-card:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-4px);
+  }
+
+  /* Button variants */
+  .btn-primary {
+    background-color: var(--accent-primary);
+    color: var(--text-button);
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.375rem;
+    font-family: 'Cinzel', serif;
+    font-weight: 600;
+    box-shadow: var(--shadow-button);
+    transition: all 0.2s ease;
+    transform: scale(1);
+  }
+
+  .btn-primary:hover {
+    background-color: var(--accent-primary-hover);
+  }
+
+  .btn-primary:active {
+    transform: scale(0.95);
+  }
+
+  .btn-secondary {
+    background-color: var(--accent-secondary);
+    color: var(--text-secondary);
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.375rem;
+    font-family: 'Cinzel', serif;
+    border: 1px solid var(--border-primary);
+    transition: all 0.2s ease;
+  }
+
+  .btn-secondary:hover {
+    background-color: var(--accent-secondary-hover);
+  }
+
+  /* Dice button for rolls */
+  .btn-dice {
+    background: var(--gradient-dice);
+    color: var(--text-button);
+    width: 4rem;
+    height: 4rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.25rem;
+    box-shadow: var(--shadow-card);
+    transition: all 0.2s ease;
+  }
+
+  /* Character sheet sections */
+  .sheet-section {
+    background-color: var(--section-bg);
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--border-section);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    box-shadow: var(--shadow-section);
+  }
+
+  /* Stat blocks */
+  .stat-block {
+    background-color: var(--stat-bg);
+    border: 1px solid var(--border-primary);
+    border-radius: 0.25rem;
+    padding: 0.5rem;
+    text-align: center;
+  }
+
+  /* Health/Mana/Stamina bars */
+  .resource-bar {
+    height: 1.5rem;
+    background-color: var(--resource-bg);
+    border-radius: 9999px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .resource-fill {
+    height: 100%;
+    transition: all 0.5s ease-out;
+  }
+
+  /* Inventory slots */
+  .inventory-slot {
+    width: 4rem;
+    height: 4rem;
+    background-color: var(--inventory-bg);
+    border: 2px dashed var(--border-dashed);
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+  }
+
+  .inventory-slot:hover {
+    border-color: var(--border-primary);
+  }
+
+  /* Modal overlay */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: var(--overlay-bg);
+    backdrop-filter: blur(4px);
+    z-index: 50;
+  }
+
+  .modal-content {
+    background-color: var(--modal-bg);
+    border: 4px solid var(--border-primary);
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-modal);
+    max-width: 42rem;
+    margin: 5rem auto 0;
+    padding: 1.5rem;
+  }
+}
+
+@layer utilities {
+  /* Text shadows for readability */
+  .text-shadow {
+    text-shadow: var(--text-shadow);
+  }
+
+  /* Glow effects for magical items */
+  .glow-common {
+    box-shadow: var(--glow-common);
+  }
+
+  .glow-uncommon {
+    box-shadow: var(--glow-uncommon);
+  }
+
+  .glow-rare {
+    box-shadow: var(--glow-rare);
+  }
+
+  .glow-epic {
+    box-shadow: var(--glow-epic);
+  }
+
+  .glow-legendary {
+    box-shadow: var(--glow-legendary);
+    animation: glow 2s ease-in-out infinite;
+  }
+}
+
+/* Keyframes for animations */
+@keyframes dice-roll {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.2);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+@keyframes card-flip {
+  0% {
+    transform: rotateY(0deg);
+  }
+  100% {
+    transform: rotateY(180deg);
+  }
+}
+
+@keyframes glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Dice animation class */
+.animate-dice-roll {
+  animation: dice-roll 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Phase 1 Component Extensions */
+
+/* ChoiceCard component */
+.choice-card {
+  background-color: var(--card-bg);
+  border: 2px solid var(--border-primary);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.choice-card:hover {
+  transform: translateY(-8px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--accent-primary);
+}
+
+.choice-card.selected {
+  border-color: var(--accent-primary);
+  box-shadow: var(--glow-rare);
+}
+
+.choice-card.rarity-common {
+  border-color: var(--common);
+}
+
+.choice-card.rarity-uncommon {
+  border-color: var(--uncommon);
+}
+
+.choice-card.rarity-rare {
+  border-color: var(--rare);
+}
+
+.choice-card.rarity-epic {
+  border-color: var(--epic);
+}
+
+.choice-card.rarity-legendary {
+  border-color: var(--legendary);
+}
+
+/* DetailModal component */
+.detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background-color: var(--overlay-bg);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.detail-modal-content {
+  background-color: var(--modal-bg);
+  border: 3px solid var(--border-primary);
+  border-radius: 1rem;
+  max-width: 90vw;
+  max-height: 90vh;
+  width: 100%;
+  overflow: hidden;
+  box-shadow: var(--shadow-modal);
+}
+
+.detail-modal-carousel {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  gap: 1rem;
+}
+
+.detail-modal-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.detail-modal-item {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  padding: 2rem;
+}
+
+/* AnimatedStat component */
+.animated-stat {
+  background-color: var(--stat-bg);
+  border: 2px solid var(--border-primary);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.animated-stat-value {
+  font-family: 'Cinzel', serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  transition: all 0.3s ease;
+}
+
+.animated-stat-bonus {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.animated-stat-bonus.positive {
+  color: var(--uncommon);
+}
+
+.animated-stat-bonus.negative {
+  color: var(--health);
+}
+
+/* TraitBadge component */
+.trait-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--border-primary);
+  background-color: var(--card-bg);
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.trait-badge:hover {
+  transform: scale(1.05);
+  box-shadow: var(--shadow-button);
+}
+
+.trait-badge.racial {
+  background-color: var(--uncommon);
+  color: var(--text-button);
+  border-color: var(--uncommon);
+}
+
+.trait-badge.class {
+  background-color: var(--rare);
+  color: var(--text-button);
+  border-color: var(--rare);
+}
+
+.trait-badge.background {
+  background-color: var(--epic);
+  color: var(--text-button);
+  border-color: var(--epic);
+}
+
+/* Character Builder state indicators */
+.builder-step {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.builder-step.completed {
+  background-color: var(--uncommon);
+  color: var(--text-button);
+}
+
+.builder-step.current {
+  background-color: var(--accent-primary);
+  color: var(--text-button);
+  box-shadow: var(--glow-rare);
+}
+
+.builder-step.pending {
+  background-color: var(--card-bg);
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+}
+
+/* Dice rolling components */
+.dice-container {
+  background: var(--gradient-dice);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  box-shadow: var(--shadow-card);
+  border: 2px solid var(--border-primary);
+}
+
+.dice-result {
+  font-family: 'Cinzel', serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-button);
+  text-align: center;
+  margin: 0.5rem 0;
+}
+
+.dice-modifier {
+  font-size: 0.875rem;
+  color: var(--text-button);
+  opacity: 0.8;
+}

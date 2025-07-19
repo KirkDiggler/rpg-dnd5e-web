@@ -61,7 +61,7 @@ export function useTheme() {
       if (!document.querySelector('link[data-theme="base"]')) {
         const baseLink = document.createElement('link');
         baseLink.rel = 'stylesheet';
-        baseLink.href = `/src/themes/base.css`;
+        baseLink.href = `/themes/base.css`;
         baseLink.setAttribute('data-theme', 'base');
         document.head.appendChild(baseLink);
       }
@@ -69,7 +69,7 @@ export function useTheme() {
       // Load theme-specific styles
       const themeLink = document.createElement('link');
       themeLink.rel = 'stylesheet';
-      themeLink.href = `/src/themes/${themeId}.css`;
+      themeLink.href = `/themes/${themeId}.css`;
       themeLink.setAttribute('data-theme', themeId);
       document.head.appendChild(themeLink);
 
