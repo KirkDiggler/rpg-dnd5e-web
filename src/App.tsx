@@ -5,8 +5,7 @@ import { CharacterDraftProvider } from './character/creation/CharacterDraftConte
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { CharacterList } from './components/CharacterList';
 import { ThemeSelector } from './components/ThemeSelector';
-import { useDiscord } from './discord';
-// import { DiscordDebugPanel } from './discord';
+import { DiscordDebugPanel, useDiscord } from './discord';
 
 type AppView = 'character-list' | 'character-creation';
 
@@ -95,9 +94,8 @@ function App() {
           </CharacterDraftProvider>
         )}
 
-        {/* Temporarily hidden Discord debug panel */}
-        {/* {(import.meta.env.MODE === 'development' ||
-          import.meta.env.VITE_SHOW_DEBUG === 'true') && <DiscordDebugPanel />} */}
+        {/* Discord debug panel - always show for debugging */}
+        <DiscordDebugPanel />
       </motion.div>
     </div>
   );
