@@ -70,8 +70,17 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         // Step 2: Exchange the code for an access token via our backend
         console.log('🔐 Exchanging code for token...');
 
+        // In Discord Activities, we need to use the proxy path
+        const isDiscordActivity =
+          window.location.hostname.includes('discordsays.com');
         const apiBase = import.meta.env.VITE_API_HOST || '';
-        const response = await fetch(`${apiBase}/api/discord/token`, {
+        const apiUrl = isDiscordActivity
+          ? '/.proxy/api/discord/token'
+          : `${apiBase}/api/discord/token`;
+
+        console.log('🔐 Calling API:', apiUrl);
+
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -115,6 +124,10 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         let errorMessage = 'Unknown error';
         if (err instanceof Error) {
           errorMessage = err.message;
+          // Add more context for fetch errors
+          if (err.message.includes('fetch')) {
+            errorMessage = `Network error: ${err.message}. This might be due to Discord's security restrictions.`;
+          }
         } else if (err && typeof err === 'object') {
           // Handle Discord SDK error objects
           errorMessage = JSON.stringify(err, null, 2);
