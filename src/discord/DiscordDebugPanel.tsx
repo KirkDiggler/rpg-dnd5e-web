@@ -42,7 +42,16 @@ export function DiscordDebugPanel() {
           <ul style={{ margin: 0, paddingLeft: '1.5rem' }}>
             <li>Is Discord: {discord.isDiscord ? '✅' : '❌'}</li>
             <li>SDK Ready: {discord.isReady ? '✅' : '❌'}</li>
-            <li>Error: {discord.error || 'None'}</li>
+            <li>
+              Error:{' '}
+              {discord.error ? (
+                <span style={{ color: 'red', wordBreak: 'break-word' }}>
+                  {discord.error}
+                </span>
+              ) : (
+                'None'
+              )}
+            </li>
             <li>Frame ID: {envInfo.frameId || 'None'}</li>
             <li>Instance ID: {envInfo.instanceId || 'None'}</li>
             <li>Channel ID: {envInfo.channelId || 'None'}</li>
@@ -67,7 +76,13 @@ export function DiscordDebugPanel() {
               <p>Not authenticated</p>
               {discord.isDiscord && (
                 <button
-                  onClick={discord.authenticate}
+                  onClick={async () => {
+                    try {
+                      await discord.authenticate();
+                    } catch {
+                      // Error will be displayed above via context
+                    }
+                  }}
                   style={{
                     padding: '0.5rem 1rem',
                     background: '#5865F2',
