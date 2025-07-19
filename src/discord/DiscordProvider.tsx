@@ -52,10 +52,12 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
       }
 
       try {
+        console.log('🔐 Attempting Discord authentication...');
         // Using explicit type assertion for Discord SDK authenticate method
         const result = await sdkToUse.commands.authenticate({
           scope: ['identify', 'guilds'],
         } as Parameters<typeof sdkToUse.commands.authenticate>[0]);
+        console.log('🔐 Authentication result:', result);
 
         if (result.access_token && result.user) {
           setUser(result.user as DiscordUser);
@@ -70,7 +72,9 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         }
       } catch (err) {
         console.error('🔴 Discord authentication failed:', err);
-        throw err;
+        // Store error for debug panel
+        setError(err instanceof Error ? err.message : String(err));
+        // Don't throw - let user retry
       }
     },
     [sdk, handleRefreshParticipants]
@@ -90,8 +94,8 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         setSdk(discordSdk);
         setIsReady(true);
 
-        // Try to auto-authenticate if we have a token
-        await handleAuthenticate(discordSdk);
+        // Don't auto-authenticate - let user click button
+        console.log('🎮 Discord SDK ready - user can authenticate when ready');
       } catch (err) {
         const errorMessage =
           err instanceof Error
