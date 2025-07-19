@@ -6,6 +6,7 @@ import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
 import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
 import { EquipmentChoiceSelector } from './components/EquipmentChoiceSelector';
+import { FeatureChoiceSelector } from './components/FeatureChoiceSelector';
 import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
@@ -49,6 +50,7 @@ interface ClassSelectionModalProps {
 export interface ClassChoices {
   proficiencies: Record<string, string[]>;
   equipment: Record<number, string>;
+  features: Record<string, string>; // featureId -> selected option
   className?: string; // Track which class these choices belong to
 }
 
@@ -69,6 +71,7 @@ export function ClassSelectionModal({
       {
         proficiencies: Record<string, string[]>;
         equipment: Record<number, string>;
+        features: Record<string, string>;
       }
     >
   >({});
@@ -81,6 +84,7 @@ export function ClassSelectionModal({
   const currentClassChoices = classChoicesMap[currentClassName] || {
     proficiencies: {},
     equipment: {},
+    features: {},
   };
 
   // Reset selected index when modal opens
@@ -208,6 +212,7 @@ export function ClassSelectionModal({
     onSelect(currentClassData, {
       proficiencies: currentClassChoices.proficiencies,
       equipment: currentClassChoices.equipment,
+      features: currentClassChoices.features,
       className: currentClassData.name,
     });
     onClose();
@@ -569,6 +574,88 @@ export function ClassSelectionModal({
                         </div>
                       )
                     )}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+            {/* Class Features */}
+            {currentClassData.level1Features &&
+              currentClassData.level1Features.length > 0 && (
+                <CollapsibleSection title="Class Features" defaultOpen={true}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                    }}
+                  >
+                    {currentClassData.level1Features.map((feature) => (
+                      <div
+                        key={feature.id}
+                        style={{
+                          padding: '12px',
+                          backgroundColor: bgSecondary,
+                          borderRadius: '8px',
+                          border: `1px solid ${borderPrimary}`,
+                        }}
+                      >
+                        <h4
+                          style={{
+                            color: textPrimary,
+                            fontWeight: 'bold',
+                            marginBottom: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                          }}
+                        >
+                          {feature.name}
+                          {feature.hasChoices && (
+                            <span
+                              style={{
+                                fontSize: '12px',
+                                padding: '2px 8px',
+                                backgroundColor: accentPrimary,
+                                color: 'white',
+                                borderRadius: '4px',
+                              }}
+                            >
+                              Choice Required
+                            </span>
+                          )}
+                        </h4>
+                        <p
+                          style={{
+                            color: textPrimary,
+                            fontSize: '14px',
+                            opacity: 0.9,
+                            lineHeight: '1.5',
+                          }}
+                        >
+                          {feature.description}
+                        </p>
+                        {feature.hasChoices && feature.choices.length > 0 && (
+                          <FeatureChoiceSelector
+                            feature={feature}
+                            currentSelection={
+                              currentClassChoices.features[feature.id]
+                            }
+                            onSelect={(featureId, _, selection) => {
+                              setClassChoicesMap((prev) => ({
+                                ...prev,
+                                [currentClassName]: {
+                                  ...currentClassChoices,
+                                  features: {
+                                    ...currentClassChoices.features,
+                                    [featureId]: selection,
+                                  },
+                                },
+                              }));
+                            }}
+                          />
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </CollapsibleSection>
               )}

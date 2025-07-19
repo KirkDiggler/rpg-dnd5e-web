@@ -1,76 +1,139 @@
-# Next Session Notes
+# Next Session: Spell Lists & Background Equipment (Issue #60)
 
 ## Current State
 
-- ✅ PR #12 (Discord Activity integration) - Merged
-- ✅ PR #13 (rpg-api-protos integration) - Merged
-- Both PRs resolved deployment blockers and established foundational infrastructure
+We just completed a major PR (#58) that implements character creation choices:
 
-## Immediate Next Steps
+- Race/class selection with visual carousel
+- Proficiency and language choices with duplicate prevention
+- Equipment choices with weapon/item selection (✅ ALREADY DISPLAYING)
+- Independent state management per class/race
+- Fixed API breaking changes from proto v0.1.8
 
-### 1. Character Creation UI (Priority: HIGH)
+**Note**: Equipment selection and display is already implemented and working!
 
-Now that we have the API client hooks ready, we should build the character creation flow:
+## Next Task: Spell Lists Display
 
-- Start with a simple character list view using `useListCharacters()`
-- Add a "Create Character" button that uses `useCreateDraft()`
-- Build the step-by-step creation wizard components:
-  - Name input
-  - Race selection (with subrace when applicable)
-  - Class selection
-  - Background selection
-  - Ability score generation/assignment
-  - Skill selection
-  - Language selection
-  - Review and finalize
+**Issue**: #60 - feat: Add spell lists and background equipment to character sheet
 
-### 2. Design System Setup (Priority: MEDIUM)
+### Requirements
 
-Before building too many UI components, establish the design foundation:
+1. **Spell Display** (for spellcasting classes) - PRIMARY FOCUS:
+   - Show spellcasting ability and focus
+   - Display cantrips known count
+   - Display spells known/prepared count
+   - Show spell slots available
+   - Only visible for classes with spellcasting ability
 
-- Set up Tailwind CSS (already in package.json but needs config)
-- Consider adding Radix UI for accessible components
-- Define color scheme for dark theme (D&D aesthetic)
-- Create basic component library (Button, Card, Select, etc.)
+2. **Background Equipment** (BLOCKED on #47):
+   - Will add equipment from background selection
+   - Integrate with existing equipment display
+   - Need background selection implemented first
 
-### 3. State Management (Priority: MEDIUM)
+### Key Technical Points
 
-- Set up Zustand for global state (game state, character drafts)
-- Decide on state architecture:
-  - Discord state (from SDK)
-  - Game/session state
-  - UI state (modals, selections)
+#### Proto Support
 
-### 4. Discord Activity Features (Priority: LOW)
+The protos (v0.1.8) already have the data structures:
 
-- Add party invite functionality
-- Show other players in the activity
-- Implement activity-specific commands
+```typescript
+// ClassInfo has:
+starting_equipment: string[]
+equipment_choices: EquipmentChoice[]
+spellcasting: SpellcastingInfo
 
-## Technical Debt to Address
+// BackgroundInfo has:
+starting_equipment: string[]
 
-- No tests yet - consider adding Vitest and React Testing Library
-- No error boundaries or error handling UI
-- Need loading states and skeletons for better UX
-- Should add pre-commit hooks (Husky is installed but not configured)
+// SpellcastingInfo has:
+spellcasting_ability: string
+ritual_casting: boolean
+spellcasting_focus: string
+cantrips_known: number
+spells_known: number
+spell_slots_level_1: number
+```
 
-## Questions for User
+#### Current Architecture
 
-1. UI framework preference - should we use Radix UI, or another component library?
-2. Design direction - how closely should we match D&D Beyond's aesthetic vs creating something unique?
-3. Mobile-first or desktop-first design approach?
-4. Should we add Storybook for component development?
+- **CharacterDraftContext**: Manages draft state with enum values for API
+- **InteractiveCharacterSheet**: Main display component
+- **Modals**: RaceSelectionModal, ClassSelectionModal handle choices
+- **Equipment Choices**: Already tracked in `equipmentChoices` state
 
-## Development Approach
+#### Files to Reference
 
-The user prefers:
+1. `/src/character/creation/InteractiveCharacterSheet.tsx` - Main sheet
+2. `/src/character/creation/CharacterDraftContext.tsx` - State management
+3. `/src/character/creation/components/ProficiencyList.tsx` - Similar component pattern
+4. `/src/character/creation/ClassSelectionModal.tsx` - Has equipment choice tracking
 
-- Production deployment focus over local development tricks
-- Practical solutions that work in real environments
-- Avoiding rebasing in favor of merging
-- Following existing patterns from platform-admin-react
+### Implementation Plan
 
-## File to Review
+1. **Add Equipment Section to Character Sheet**
+   - Create new component similar to ProficiencyList
+   - Pull equipment from:
+     - `classInfo.startingEquipment`
+     - `classInfo.equipmentChoices` + user selections
+     - `backgroundInfo.startingEquipment` (when implemented)
+   - Use existing dark card styling
 
-- `/home/kirk/personal/rpg-dnd5e-web/src/api/hooks.ts` - Contains all the API hooks ready to use
-- `/home/kirk/personal/rpg-dnd5e-web/CLAUDE.md` - Project guidelines and architecture decisions
+2. **Add Spell Section**
+   - Only render if `classInfo.spellcasting` exists
+   - Show spellcasting details (ability, focus, etc.)
+   - Display spell slot information
+   - Prepare for future spell selection
+
+3. **Update Context if Needed**
+   - Equipment choices already tracked
+   - May need to add spell choices later
+
+### UI/UX Guidelines
+
+- Follow existing patterns from ProficiencyList
+- Use collapsible sections like current implementation
+- Dark card theme with borders (--bg-secondary)
+- Group by source (Class, Background, Chosen)
+- Click to expand/collapse sections
+
+### Current Equipment Choice State
+
+Equipment choices are already being tracked in:
+
+- `ClassSelectionModal`: `equipmentChoices` state
+- Stored as `Record<number, string>` mapping choice index to selection
+- Example: `{0: "greataxe", 1: "handaxe:2"}`
+
+### Out of Scope for This Task
+
+- Inventory management (drag/drop)
+- Spell selection interface
+- Equipment stats/details
+- Spell descriptions
+- Adding/removing items
+
+This is display-only for Phase 1.
+
+## Setup Commands
+
+```bash
+git checkout main
+git pull
+gh pr checkout 58  # or start fresh branch
+npm install
+npm run dev
+```
+
+## Testing Focus
+
+1. Equipment displays correctly for martial classes
+2. Spell info shows only for spellcasters
+3. Equipment choices are reflected properly
+4. UI matches existing dark card patterns
+5. Sections are collapsible and organized
+
+## Related Issues
+
+- Epic #32: Equipment & Inventory Management (future work)
+- Issue #47: Background selection (will add more equipment)
+- Issue #56: Class-specific features (may overlap with spells)
