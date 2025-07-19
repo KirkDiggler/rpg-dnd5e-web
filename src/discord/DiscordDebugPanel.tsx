@@ -42,7 +42,16 @@ export function DiscordDebugPanel() {
           <ul style={{ margin: 0, paddingLeft: '1.5rem' }}>
             <li>Is Discord: {discord.isDiscord ? '✅' : '❌'}</li>
             <li>SDK Ready: {discord.isReady ? '✅' : '❌'}</li>
-            <li>Error: {discord.error || 'None'}</li>
+            <li>
+              Error:{' '}
+              {discord.error ? (
+                <span style={{ color: 'red', wordBreak: 'break-word' }}>
+                  {discord.error}
+                </span>
+              ) : (
+                'None'
+              )}
+            </li>
             <li>Frame ID: {envInfo.frameId || 'None'}</li>
             <li>Instance ID: {envInfo.instanceId || 'None'}</li>
             <li>Channel ID: {envInfo.channelId || 'None'}</li>

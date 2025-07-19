@@ -70,7 +70,10 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         }
       } catch (err) {
         console.error('🔴 Discord authentication failed:', err);
-        throw err;
+        // Store error for display
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        setError(errorMessage);
+        // Don't throw - let user see error and retry
       }
     },
     [sdk, handleRefreshParticipants]
@@ -90,8 +93,11 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         setSdk(discordSdk);
         setIsReady(true);
 
-        // Try to auto-authenticate if we have a token
-        await handleAuthenticate(discordSdk);
+        // Don't auto-authenticate - let user trigger it manually
+        // This helps us see any errors in the debug panel
+        console.log(
+          '🎮 Discord SDK ready - click authenticate button to login'
+        );
       } catch (err) {
         const errorMessage =
           err instanceof Error
