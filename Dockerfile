@@ -41,7 +41,9 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Create nginx user and directories with proper permissions
 RUN mkdir -p /var/cache/nginx /var/log/nginx /var/run && \
     chown -R nginx:nginx /var/cache/nginx /var/log/nginx /var/run && \
-    chmod -R 755 /var/cache/nginx /var/log/nginx
+    chmod -R 755 /var/cache/nginx /var/log/nginx /var/run && \
+    touch /var/run/nginx.pid && \
+    chown nginx:nginx /var/run/nginx.pid
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
