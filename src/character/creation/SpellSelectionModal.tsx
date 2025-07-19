@@ -364,6 +364,17 @@ export function SpellSelectionModal({
         return currentLevelSpells.length < spellSelection.spellsToSelect;
       }
       // Fallback to spellsKnown from spellcasting info
+      // For wizards who prepare spells, they need to select spells for their spellbook
+      if (className === 'Wizard') {
+        return currentLevelSpells.length < 6; // Wizards start with 6 spells in spellbook
+      }
+      // If spellsKnown is 0 but we have spell slots, something is wrong
+      if (
+        spellcastingInfo.spellsKnown === 0 &&
+        spellcastingInfo.spellSlotsLevel1 > 0
+      ) {
+        return currentLevelSpells.length < 2; // Safe default
+      }
       return currentLevelSpells.length < (spellcastingInfo.spellsKnown || 0);
     }
     return false;
@@ -420,7 +431,7 @@ export function SpellSelectionModal({
             Choose spells for your {className} character. You can select{' '}
             {spellcastingInfo.cantripsKnown} cantrips
             {spellcastingInfo.spellSlotsLevel1 > 0
-              ? ` and ${className === 'Wizard' ? 6 : spellcastingInfo.spellsKnown || 0} level 1 spells`
+              ? ` and ${getSpellSelectionForLevel(1)?.spellsToSelect || (className === 'Wizard' ? 6 : spellcastingInfo.spellsKnown || 0)} level 1 spells`
               : ''}
             . Use the tabs to switch between spell levels and the filter buttons
             to find spells by type.
@@ -489,8 +500,9 @@ export function SpellSelectionModal({
                     <Zap className="w-4 h-4 inline mr-2" />
                     Level 1 Spells ({getSelectedCount(1)}/
                     {getSpellSelectionForLevel(1)?.spellsToSelect ||
-                      spellcastingInfo.spellsKnown ||
-                      0}
+                      (className === 'Wizard'
+                        ? 6
+                        : spellcastingInfo.spellsKnown || 0)}
                     )
                   </button>
                 )}
@@ -623,7 +635,7 @@ export function SpellSelectionModal({
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                     {selectedLevel === 0
                       ? `${getSelectedCount(0)} of ${getSpellSelectionForLevel(0)?.spellsToSelect || spellcastingInfo.cantripsKnown} cantrips selected`
-                      : `${getSelectedCount(1)} of ${getSpellSelectionForLevel(1)?.spellsToSelect || spellcastingInfo.spellsKnown || 0} spells selected`}
+                      : `${getSelectedCount(1)} of ${getSpellSelectionForLevel(1)?.spellsToSelect || (className === 'Wizard' ? 6 : spellcastingInfo.spellsKnown || 0)} spells selected`}
                   </p>
                   <p
                     className="text-xs mt-1"
