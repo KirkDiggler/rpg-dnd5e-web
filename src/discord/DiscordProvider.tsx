@@ -67,17 +67,45 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
           code ? 'received' : 'missing'
         );
 
-        // For Discord Activities in development, we can skip the token exchange
-        // The authorization code itself acts as proof of authentication
-        console.log('🔐 Authorization successful, marking as authenticated...');
+        // Step 2: Exchange the code for an access token via our backend
+        console.log('🔐 Exchanging code for token...');
 
-        // In production, you would exchange the code for a token here
-        // For now, we'll just mark as authenticated since Discord has authorized
+        const apiBase = import.meta.env.VITE_API_HOST || '';
+        const response = await fetch(`${apiBase}/api/discord/token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ code }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response
+            .json()
+            .catch(() => ({ error: 'Unknown error' }));
+          throw new Error(
+            errorData.error || `HTTP ${response.status}: ${response.statusText}`
+          );
+        }
+
+        const { access_token } = await response.json();
+        console.log(
+          '🔐 Got access token:',
+          access_token ? 'received' : 'missing'
+        );
+
+        // Step 3: Authenticate with Discord using the access token
+        console.log('🔐 Authenticating with Discord SDK...');
+        const auth = await sdkToUse.commands.authenticate({
+          access_token,
+        });
+
+        console.log('🎉 Authentication successful!', auth);
         setIsAuthenticated(true);
         setError(null);
 
-        // User info will be available after proper token exchange
-        // For now, we just mark as authenticated
+        // The SDK should now have access to user info
+        // TODO: Set user info from auth response if available
 
         // Fetch initial participants
         await handleRefreshParticipants(sdkToUse);
