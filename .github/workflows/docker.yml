@@ -75,7 +75,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             VITE_DISCORD_CLIENT_ID=${{ secrets.VITE_DISCORD_CLIENT_ID }}
-            VITE_API_HOST=
+            VITE_API_HOST=${{ secrets.VITE_API_HOST }}
 
       - name: Trigger deployment
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
