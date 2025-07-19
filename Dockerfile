@@ -15,6 +15,14 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Accept build arguments for environment variables
+ARG VITE_DISCORD_CLIENT_ID
+ARG VITE_API_HOST
+
+# Set environment variables for the build
+ENV VITE_DISCORD_CLIENT_ID=$VITE_DISCORD_CLIENT_ID
+ENV VITE_API_HOST=$VITE_API_HOST
+
 # Build the application
 RUN npm run build
 
