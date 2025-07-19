@@ -6,6 +6,7 @@ import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { getChoiceKey, validateChoice } from '../../types/character';
 import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
 import { EquipmentChoiceSelector } from './components/EquipmentChoiceSelector';
+import { FeatureChoiceSelector } from './components/FeatureChoiceSelector';
 import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
@@ -49,6 +50,7 @@ interface ClassSelectionModalProps {
 export interface ClassChoices {
   proficiencies: Record<string, string[]>;
   equipment: Record<number, string>;
+  features: Record<string, string>; // featureId -> selected option
   className?: string; // Track which class these choices belong to
 }
 
@@ -69,6 +71,7 @@ export function ClassSelectionModal({
       {
         proficiencies: Record<string, string[]>;
         equipment: Record<number, string>;
+        features: Record<string, string>;
       }
     >
   >({});
@@ -81,6 +84,7 @@ export function ClassSelectionModal({
   const currentClassChoices = classChoicesMap[currentClassName] || {
     proficiencies: {},
     equipment: {},
+    features: {},
   };
 
   // Reset selected index when modal opens
@@ -208,6 +212,7 @@ export function ClassSelectionModal({
     onSelect(currentClassData, {
       proficiencies: currentClassChoices.proficiencies,
       equipment: currentClassChoices.equipment,
+      features: currentClassChoices.features,
       className: currentClassData.name,
     });
     onClose();
@@ -630,25 +635,24 @@ export function ClassSelectionModal({
                           {feature.description}
                         </p>
                         {feature.hasChoices && feature.choices.length > 0 && (
-                          <div
-                            style={{
-                              marginTop: '12px',
-                              padding: '8px',
-                              backgroundColor: bgPrimary,
-                              borderRadius: '6px',
-                              border: `1px solid ${borderPrimary}`,
+                          <FeatureChoiceSelector
+                            feature={feature}
+                            currentSelection={
+                              currentClassChoices.features[feature.id]
+                            }
+                            onSelect={(featureId, choiceKey, selection) => {
+                              setClassChoicesMap((prev) => ({
+                                ...prev,
+                                [currentClassName]: {
+                                  ...currentClassChoices,
+                                  features: {
+                                    ...currentClassChoices.features,
+                                    [featureId]: selection,
+                                  },
+                                },
+                              }));
                             }}
-                          >
-                            <p
-                              style={{
-                                color: textPrimary,
-                                fontSize: '13px',
-                                fontStyle: 'italic',
-                              }}
-                            >
-                              ⚠️ Feature choice selection coming soon
-                            </p>
-                          </div>
+                          />
                         )}
                       </div>
                     ))}
