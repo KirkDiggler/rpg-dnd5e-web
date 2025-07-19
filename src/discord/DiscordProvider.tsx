@@ -20,7 +20,7 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
   const [sdk, setSdk] = useState<DiscordSDK | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<DiscordUser | null>(null);
+  const [user /*, setUser*/] = useState<DiscordUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [participants, setParticipants] = useState<DiscordParticipant[]>([]);
 
@@ -76,12 +76,8 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         setIsAuthenticated(true);
         setError(null);
 
-        // Try to get user info from the SDK if available
-        // @ts-expect-error - accessing potentially available property
-        if (sdkToUse.user) {
-          setUser(sdkToUse.user);
-          console.log('👤 Got user from SDK:', sdkToUse.user);
-        }
+        // User info will be available after proper token exchange
+        // For now, we just mark as authenticated
 
         // Fetch initial participants
         await handleRefreshParticipants(sdkToUse);
