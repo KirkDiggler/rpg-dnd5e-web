@@ -19,7 +19,7 @@ export function FeatureChoiceSelector({
   // For now, we'll only handle single choice features
   // TODO: Handle multi-choice features
   const choice = feature.choices[0];
-  if (!choice || choice.count !== 1) {
+  if (!choice || choice.choose !== 1) {
     return (
       <div
         style={{
@@ -39,7 +39,7 @@ export function FeatureChoiceSelector({
 
   const handleSelection = (option: string) => {
     setSelectedOption(option);
-    onSelect(feature.id, choice.key, option);
+    onSelect(feature.id, choice.type, option);
   };
 
   return (
@@ -79,7 +79,7 @@ export function FeatureChoiceSelector({
               title={formatOptionName(option)}
               description={getOptionDescription(feature.name, option) || ''}
               selected={selectedOption === option}
-              onClick={() => handleSelection(option)}
+              onSelect={() => handleSelection(option)}
             />
           </motion.div>
         ))}
