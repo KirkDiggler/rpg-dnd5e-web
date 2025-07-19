@@ -1,0 +1,71 @@
+/* Mystical Arcane Theme - Magical, mysterious, spellcasting focus */
+:root {
+  /* Background colors */
+  --bg-primary: #0f172a; /* Deep midnight blue */
+  --bg-secondary: #1e1b4b; /* Dark purple */
+
+  /* Card and content backgrounds */
+  --card-bg: #4c1d95; /* Rich purple */
+  --section-bg: rgba(76, 29, 149, 0.9); /* Rich purple with transparency */
+  --stat-bg: #5b21b6; /* Medium purple */
+  --modal-bg: #4c1d95; /* Rich purple */
+
+  /* Text colors */
+  --text-primary: #e0f2fe; /* Pale blue */
+  --text-secondary: #1e1b4b; /* Dark purple */
+  --text-button: #e0f2fe; /* Pale blue */
+  --text-muted: #8b5cf6; /* Violet */
+  --text-subtle: #cbd5e1; /* Silver */
+
+  /* Accent colors */
+  --accent-primary: #06b6d4; /* Bright cyan */
+  --accent-primary-hover: #0891b2; /* Darker cyan */
+  --accent-secondary: #5b21b6; /* Medium purple */
+  --accent-secondary-hover: #7c3aed; /* Lighter purple */
+
+  /* Border colors */
+  --border-primary: #e2e8f0; /* Silver */
+  --border-section: rgba(226, 232, 240, 0.3); /* Silver with transparency */
+  --border-dashed: rgba(226, 232, 240, 0.5); /* Silver with transparency */
+
+  /* Background elements */
+  --inventory-bg: rgba(15, 23, 42, 0.3); /* Deep midnight with transparency */
+  --resource-bg: rgba(15, 23, 42, 0.4); /* Deep midnight with transparency */
+  --overlay-bg: rgba(15, 23, 42, 0.8); /* Deep midnight with transparency */
+
+  /* Game element colors */
+  --health: #f43f5e; /* Rose */
+  --mana: #06b6d4; /* Cyan */
+  --stamina: #a855f7; /* Purple */
+  --experience: #8b5cf6; /* Violet */
+
+  /* Rarity colors */
+  --common: #94a3b8; /* Slate */
+  --uncommon: #10b981; /* Emerald */
+  --rare: #06b6d4; /* Cyan */
+  --epic: #8b5cf6; /* Violet */
+  --legendary: #a855f7; /* Purple */
+
+  /* Shadows */
+  --shadow-card:
+    0 10px 15px -3px rgba(30, 27, 75, 0.4), 0 4px 6px -2px rgba(30, 27, 75, 0.3);
+  --shadow-card-hover:
+    0 20px 25px -5px rgba(30, 27, 75, 0.5),
+    0 10px 10px -5px rgba(30, 27, 75, 0.4);
+  --shadow-button:
+    0 4px 6px -1px rgba(30, 27, 75, 0.3), 0 2px 4px -1px rgba(30, 27, 75, 0.2);
+  --shadow-section:
+    0 4px 6px -1px rgba(30, 27, 75, 0.3), 0 2px 4px -1px rgba(30, 27, 75, 0.2);
+  --shadow-modal: 0 25px 50px -12px rgba(15, 23, 42, 0.5);
+  --text-shadow: 1px 1px 2px rgba(15, 23, 42, 0.5);
+
+  /* Gradients */
+  --gradient-dice: linear-gradient(to bottom right, #06b6d4, #8b5cf6);
+
+  /* Glow effects with mystical energy */
+  --glow-common: 0 0 10px rgba(148, 163, 184, 0.5);
+  --glow-uncommon: 0 0 15px rgba(16, 185, 129, 0.6);
+  --glow-rare: 0 0 20px rgba(6, 182, 212, 0.7);
+  --glow-epic: 0 0 25px rgba(139, 92, 246, 0.8);
+  --glow-legendary: 0 0 30px rgba(168, 85, 247, 0.9);
+}

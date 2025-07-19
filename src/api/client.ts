@@ -3,8 +3,8 @@ import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
-// Get API host from environment
-const API_HOST = import.meta.env.VITE_API_HOST || 'http://localhost:8080';
+// Get API host from environment - default to current origin if not set
+const API_HOST = import.meta.env.VITE_API_HOST || window.location.origin;
 
 // Logging interceptor for debugging
 const loggingInterceptor: Interceptor = (next) => async (req) => {
