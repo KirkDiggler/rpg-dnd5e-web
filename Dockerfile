@@ -38,12 +38,11 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Copy built application
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Create nginx user and directories with proper permissions
-RUN mkdir -p /var/cache/nginx /var/log/nginx /var/run && \
-    chown -R nginx:nginx /var/cache/nginx /var/log/nginx /var/run && \
-    chmod -R 755 /var/cache/nginx /var/log/nginx /var/run && \
-    touch /var/run/nginx.pid && \
-    chown nginx:nginx /var/run/nginx.pid
+# Create directories with proper permissions for non-root nginx
+RUN mkdir -p /var/cache/nginx /var/log/nginx /tmp && \
+    chown -R nginx:nginx /var/cache/nginx /var/log/nginx /usr/share/nginx/html && \
+    chmod -R 755 /var/cache/nginx /var/log/nginx && \
+    chmod 1777 /tmp
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
