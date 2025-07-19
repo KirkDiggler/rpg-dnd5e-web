@@ -71,7 +71,15 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
       } catch (err) {
         console.error('🔴 Discord authentication failed:', err);
         // Store error for display
-        const errorMessage = err instanceof Error ? err.message : String(err);
+        let errorMessage = 'Unknown error';
+        if (err instanceof Error) {
+          errorMessage = err.message;
+        } else if (err && typeof err === 'object') {
+          // Handle Discord SDK error objects
+          errorMessage = JSON.stringify(err, null, 2);
+        } else {
+          errorMessage = String(err);
+        }
         setError(errorMessage);
         // Don't throw - let user see error and retry
       }

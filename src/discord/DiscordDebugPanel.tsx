@@ -45,9 +45,17 @@ export function DiscordDebugPanel() {
             <li>
               Error:{' '}
               {discord.error ? (
-                <span style={{ color: 'red', wordBreak: 'break-word' }}>
+                <pre
+                  style={{
+                    color: 'red',
+                    wordBreak: 'break-word',
+                    whiteSpace: 'pre-wrap',
+                    fontSize: '0.875rem',
+                    margin: 0,
+                  }}
+                >
                   {discord.error}
-                </span>
+                </pre>
               ) : (
                 'None'
               )}
