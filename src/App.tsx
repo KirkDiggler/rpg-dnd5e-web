@@ -11,6 +11,7 @@ type AppView = 'character-list' | 'character-creation';
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('character-list');
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
   const discord = useDiscord();
 
   // In production, require Discord auth. In dev, allow test player
@@ -94,8 +95,28 @@ function App() {
           </CharacterDraftProvider>
         )}
 
-        {/* Discord debug panel - always show for debugging */}
-        <DiscordDebugPanel />
+        {/* Debug panel toggle button */}
+        <div className="fixed bottom-4 right-4 z-50">
+          <button
+            onClick={() => setShowDebugPanel(!showDebugPanel)}
+            className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
+            title={showDebugPanel ? 'Hide Debug Panel' : 'Show Debug Panel'}
+          >
+            {showDebugPanel ? '🔧✕' : '🔧'}
+          </button>
+        </div>
+
+        {/* Discord debug panel - show based on state */}
+        {showDebugPanel && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="mt-8"
+          >
+            <DiscordDebugPanel />
+          </motion.div>
+        )}
       </motion.div>
     </div>
   );

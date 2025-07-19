@@ -20,7 +20,7 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
   const [sdk, setSdk] = useState<DiscordSDK | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [user /*, setUser*/] = useState<DiscordUser | null>(null);
+  const [user, setUser] = useState<DiscordUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [participants, setParticipants] = useState<DiscordParticipant[]>([]);
 
@@ -113,8 +113,17 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         setIsAuthenticated(true);
         setError(null);
 
-        // The SDK should now have access to user info
-        // TODO: Set user info from auth response if available
+        // Extract user info from auth response
+        if (auth.user) {
+          setUser({
+            id: auth.user.id,
+            username: auth.user.username,
+            discriminator: auth.user.discriminator,
+            avatar: auth.user.avatar || undefined,
+            global_name: auth.user.global_name || undefined,
+          });
+          console.log('👤 User authenticated:', auth.user.username);
+        }
 
         // Fetch initial participants
         await handleRefreshParticipants(sdkToUse);
