@@ -3,8 +3,11 @@ import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
-// Get API host from environment - default to current origin if not set
-const API_HOST = import.meta.env.VITE_API_HOST || window.location.origin;
+// Get API host from environment - handle Discord Activity proxy
+const isDiscordActivity = window.location.hostname.includes('discordsays.com');
+const API_HOST = isDiscordActivity
+  ? '/.proxy'
+  : import.meta.env.VITE_API_HOST || window.location.origin;
 
 // Logging interceptor for debugging
 const loggingInterceptor: Interceptor = (next) => async (req) => {
@@ -13,6 +16,7 @@ const loggingInterceptor: Interceptor = (next) => async (req) => {
 
   if (import.meta.env.MODE === 'development') {
     console.log(`🔵 Request: ${methodName}`, req.message);
+    console.log(`📡 API Host: ${API_HOST}`);
   }
 
   try {
