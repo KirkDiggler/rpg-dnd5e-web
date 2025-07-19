@@ -59,7 +59,7 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
           response_type: 'code',
           state: '',
           prompt: 'none',
-          scope: ['identify', 'guilds'],
+          scope: ['identify', 'applications.commands'],
         });
 
         console.log(
