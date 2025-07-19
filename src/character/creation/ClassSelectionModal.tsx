@@ -573,6 +573,89 @@ export function ClassSelectionModal({
                 </CollapsibleSection>
               )}
 
+            {/* Class Features */}
+            {currentClassData.level1Features &&
+              currentClassData.level1Features.length > 0 && (
+                <CollapsibleSection title="Class Features" defaultOpen={true}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                    }}
+                  >
+                    {currentClassData.level1Features.map((feature) => (
+                      <div
+                        key={feature.id}
+                        style={{
+                          padding: '12px',
+                          backgroundColor: bgSecondary,
+                          borderRadius: '8px',
+                          border: `1px solid ${borderPrimary}`,
+                        }}
+                      >
+                        <h4
+                          style={{
+                            color: textPrimary,
+                            fontWeight: 'bold',
+                            marginBottom: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                          }}
+                        >
+                          {feature.name}
+                          {feature.hasChoices && (
+                            <span
+                              style={{
+                                fontSize: '12px',
+                                padding: '2px 8px',
+                                backgroundColor: accentPrimary,
+                                color: 'white',
+                                borderRadius: '4px',
+                              }}
+                            >
+                              Choice Required
+                            </span>
+                          )}
+                        </h4>
+                        <p
+                          style={{
+                            color: textPrimary,
+                            fontSize: '14px',
+                            opacity: 0.9,
+                            lineHeight: '1.5',
+                          }}
+                        >
+                          {feature.description}
+                        </p>
+                        {feature.hasChoices && feature.choices.length > 0 && (
+                          <div
+                            style={{
+                              marginTop: '12px',
+                              padding: '8px',
+                              backgroundColor: bgPrimary,
+                              borderRadius: '6px',
+                              border: `1px solid ${borderPrimary}`,
+                            }}
+                          >
+                            <p
+                              style={{
+                                color: textPrimary,
+                                fontSize: '13px',
+                                fontStyle: 'italic',
+                              }}
+                            >
+                              ⚠️ Feature choice selection coming soon
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
+
             {/* Equipment Choices */}
             {currentClassData.equipmentChoices &&
               currentClassData.equipmentChoices.length > 0 && (
