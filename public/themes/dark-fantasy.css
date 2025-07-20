@@ -1,70 +1,80 @@
 /* Modern Dark Fantasy Theme - Sleek, modern, serious fantasy */
 :root {
   /* Background colors */
-  --bg-primary: #1a1a1a; /* Deep charcoal */
-  --bg-secondary: #2a2a2a; /* Rich dark gray */
+  --bg-primary: #0a0a0a; /* Ultra deep black */
+  --bg-secondary: #141414; /* Rich charcoal */
 
   /* Card and content backgrounds */
-  --card-bg: #334155; /* Dark slate */
-  --section-bg: rgba(51, 65, 85, 0.9); /* Dark slate with transparency */
-  --stat-bg: #475569; /* Lighter slate */
-  --modal-bg: #334155; /* Dark slate */
+  --card-bg: #1e293b; /* Darker slate with better contrast */
+  --section-bg: rgba(30, 41, 59, 0.95); /* Darker slate with higher opacity */
+  --stat-bg: #334155; /* Dark slate */
+  --modal-bg: #1e293b; /* Darker slate */
 
   /* Text colors */
-  --text-primary: #f1f5f9; /* Light gray */
-  --text-secondary: #374151; /* Dark gray */
-  --text-button: #f1f5f9; /* Light gray */
-  --text-muted: #64748b; /* Medium gray */
-  --text-subtle: #94a3b8; /* Light medium gray */
+  --text-primary: #f8fafc; /* Brighter white for better readability */
+  --text-secondary: #e2e8f0; /* Light gray for secondary text */
+  --text-button: #ffffff; /* Pure white for buttons */
+  --text-muted: #94a3b8; /* Lighter muted text */
+  --text-subtle: #cbd5e1; /* Brighter subtle text */
 
   /* Accent colors */
   --accent-primary: #3b82f6; /* Electric blue */
-  --accent-primary-hover: #1d4ed8; /* Darker blue */
-  --accent-secondary: #475569; /* Lighter slate */
-  --accent-secondary-hover: #64748b; /* Medium gray */
+  --accent-primary-hover: #2563eb; /* Brighter hover blue */
+  --accent-secondary: #334155; /* Dark slate */
+  --accent-secondary-hover: #475569; /* Lighter slate hover */
 
   /* Border colors */
-  --border-primary: #94a3b8; /* Silver */
-  --border-section: rgba(148, 163, 184, 0.3); /* Silver with transparency */
-  --border-dashed: rgba(148, 163, 184, 0.5); /* Silver with transparency */
+  --border-primary: #475569; /* Darker borders for better integration */
+  --border-section: rgba(71, 85, 105, 0.5); /* Darker section borders */
+  --border-dashed: rgba(71, 85, 105, 0.6); /* Darker dashed borders */
 
   /* Background elements */
-  --inventory-bg: rgba(15, 23, 42, 0.3); /* Very dark with transparency */
-  --resource-bg: rgba(15, 23, 42, 0.4); /* Very dark with transparency */
-  --overlay-bg: rgba(15, 23, 42, 0.8); /* Very dark with transparency */
+  --inventory-bg: rgba(10, 10, 10, 0.5); /* Darker inventory background */
+  --resource-bg: rgba(10, 10, 10, 0.6); /* Darker resource background */
+  --overlay-bg: rgba(10, 10, 10, 0.9); /* Darker overlay */
 
   /* Game element colors */
-  --health: #ef4444; /* Bright red */
+  --health: #dc2626; /* Deeper red for better contrast */
   --mana: #3b82f6; /* Electric blue */
-  --stamina: #f59e0b; /* Gold */
-  --experience: #8b5cf6; /* Violet */
+  --stamina: #d97706; /* Deeper amber */
+  --experience: #9333ea; /* Richer purple */
 
   /* Rarity colors */
-  --common: #9ca3af; /* Gray */
-  --uncommon: #10b981; /* Emerald */
-  --rare: #3b82f6; /* Blue */
-  --epic: #8b5cf6; /* Violet */
-  --legendary: #f59e0b; /* Amber */
+  --common: #6b7280; /* Darker gray */
+  --uncommon: #059669; /* Deeper emerald */
+  --rare: #2563eb; /* Deeper blue */
+  --epic: #7c3aed; /* Richer violet */
+  --legendary: #dc2626; /* Red for legendary (more dramatic) */
 
-  /* Shadows */
+  /* Shadows - Enhanced for depth */
   --shadow-card:
-    0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+    0 0 0 1px rgba(71, 85, 105, 0.1), 0 10px 15px -3px rgba(0, 0, 0, 0.7),
+    0 4px 6px -2px rgba(0, 0, 0, 0.5);
   --shadow-card-hover:
-    0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+    0 0 0 1px rgba(59, 130, 246, 0.3), 0 20px 25px -5px rgba(0, 0, 0, 0.8),
+    0 10px 10px -5px rgba(0, 0, 0, 0.6);
   --shadow-button:
-    0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+    0 0 0 1px rgba(71, 85, 105, 0.1), 0 4px 6px -1px rgba(0, 0, 0, 0.5),
+    0 2px 4px -1px rgba(0, 0, 0, 0.3);
   --shadow-section:
-    0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
-  --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  --text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    inset 0 2px 4px 0 rgba(0, 0, 0, 0.2), 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-modal:
+    0 0 0 1px rgba(71, 85, 105, 0.2), 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+  --text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
 
-  /* Gradients */
-  --gradient-dice: linear-gradient(to bottom right, #3b82f6, #1e40af);
+  /* Gradients - More dramatic */
+  --gradient-dice: linear-gradient(
+    135deg,
+    #3b82f6 0%,
+    #1e40af 50%,
+    #1e3a8a 100%
+  );
 
-  /* Glow effects */
-  --glow-common: 0 0 10px rgba(156, 163, 175, 0.5);
-  --glow-uncommon: 0 0 15px rgba(16, 185, 129, 0.6);
-  --glow-rare: 0 0 20px rgba(59, 130, 246, 0.7);
-  --glow-epic: 0 0 25px rgba(139, 92, 246, 0.8);
-  --glow-legendary: 0 0 30px rgba(245, 158, 11, 0.9);
+  /* Glow effects - Subtler and more refined */
+  --glow-common: 0 0 8px rgba(107, 114, 128, 0.4);
+  --glow-uncommon: 0 0 12px rgba(5, 150, 105, 0.5);
+  --glow-rare: 0 0 16px rgba(37, 99, 235, 0.6);
+  --glow-epic: 0 0 20px rgba(124, 58, 237, 0.7);
+  --glow-legendary:
+    0 0 24px rgba(220, 38, 38, 0.8), 0 0 36px rgba(220, 38, 38, 0.4);
 }
