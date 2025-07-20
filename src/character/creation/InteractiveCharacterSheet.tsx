@@ -163,14 +163,20 @@ export function InteractiveCharacterSheet({
       });
     }
 
-    // Update current step logic
-    let currentFound = false;
-    for (const step of allSteps) {
-      if (step.status === 'current') {
-        currentFound = true;
-      } else if (!currentFound && step.status === 'upcoming') {
-        step.status = 'current';
-        currentFound = true;
+    // Update current step logic using functional approach
+    const hasCurrentStep = allSteps.some((step) => step.status === 'current');
+
+    if (!hasCurrentStep) {
+      // Find first upcoming step and make it current
+      const firstUpcomingIndex = allSteps.findIndex(
+        (step) => step.status === 'upcoming'
+      );
+      if (firstUpcomingIndex !== -1) {
+        return allSteps.map((step, index) =>
+          index === firstUpcomingIndex
+            ? { ...step, status: 'current' as const }
+            : step
+        );
       }
     }
 
