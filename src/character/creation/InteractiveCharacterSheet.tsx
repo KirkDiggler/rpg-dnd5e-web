@@ -7,6 +7,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
+import type { ClassChoices } from './ClassSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
 import { RaceSelectionModal } from './RaceSelectionModal';
@@ -16,6 +17,12 @@ import { useCharacterDraft } from './useCharacterDraft';
 interface InteractiveCharacterSheetProps {
   onComplete: () => void;
   onCancel: () => void;
+}
+
+interface CharacterChoices {
+  classChoices?: ClassChoices;
+  raceChoices?: Record<string, string[]>; // TODO: Import RaceChoices type when available
+  [key: string]: unknown; // Allow other choice types
 }
 
 // Simple context for now - we'll make it more sophisticated later
@@ -39,7 +46,7 @@ const CharacterContext = {
     wisdom: 0,
     charisma: 0,
   },
-  choices: {} as Record<string, string[]>, // Track all choices made
+  choices: {} as CharacterChoices, // Track all choices made
   equipmentChoices: {} as Record<number, string>, // Track equipment selections
 };
 
@@ -57,7 +64,7 @@ export function InteractiveCharacterSheet({
   const getModifier = (score: number) => Math.floor((score - 10) / 2);
 
   // Get classChoices from character state
-  const classChoices = character.choices?.classChoices || {};
+  const classChoices = character.choices?.classChoices || ({} as ClassChoices);
 
   // Compute character creation steps and their status
   const steps = useMemo<Step[]>(() => {
