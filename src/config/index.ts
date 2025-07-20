@@ -15,7 +15,17 @@ const parseEnvironmentFromHostname = () => {
 };
 
 export const ENVIRONMENT = parseEnvironmentFromHostname();
-export const API_HOST = import.meta.env.VITE_API_HOST || window.location.origin;
+
+// In local development, default to localhost:8080 (Envoy proxy)
+// In production, use the origin (where nginx serves the app)
+const getDefaultApiHost = () => {
+  if (ENVIRONMENT === 'local' && !import.meta.env.VITE_API_HOST) {
+    return 'http://localhost:8080';
+  }
+  return window.location.origin;
+};
+
+export const API_HOST = import.meta.env.VITE_API_HOST || getDefaultApiHost();
 
 // Logging interceptor for Connect RPC
 const loggingInterceptor: Interceptor = (next) => async (req) => {

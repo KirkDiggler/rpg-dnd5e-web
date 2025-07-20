@@ -13,6 +13,8 @@ export function EquipmentChoiceSelector({
   selected,
   onSelectionChange,
 }: EquipmentChoiceSelectorProps) {
+  console.log('Equipment choices:', choices);
+
   const [localSelected, setLocalSelected] =
     useState<Record<number, string>>(selected);
 
@@ -61,14 +63,18 @@ export function EquipmentChoiceSelector({
 
   // Parse equipment option to determine if it needs a dropdown
   const parseOption = (option: string) => {
+    console.log('Parsing option:', option);
     // Check for patterns like "(a) a greataxe or (b) any martial melee weapon"
-    if (option.includes('any martial melee weapon')) {
+    // Also check for just "any simple weapon" or "any martial weapon"
+    const lowerOption = option.toLowerCase();
+
+    if (lowerOption.includes('any martial melee weapon')) {
       return { type: 'martial_melee', text: option };
     }
-    if (option.includes('any simple weapon')) {
+    if (lowerOption.includes('any simple weapon')) {
       return { type: 'simple_weapon', text: option };
     }
-    if (option.includes('any martial weapon')) {
+    if (lowerOption.includes('any martial weapon')) {
       return { type: 'martial_any', text: option };
     }
     // Otherwise it's a specific item

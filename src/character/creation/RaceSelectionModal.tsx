@@ -1,11 +1,16 @@
 import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListRaces } from '../../api/hooks';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
-import { getChoiceKey, validateChoice } from '../../types/character';
-import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
 import { VisualCarousel } from './components/VisualCarousel';
+import { 
+  UnifiedChoiceSelector,
+  useChoiceSelection,
+  filterChoicesByType,
+  type ChoiceSelections
+} from './choices';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -49,9 +54,9 @@ function getRaceDescription(raceName: string): string {
     Gnome:
       "Small, clever, and energetic, gnomes use their long lives to explore the world's brightest possibilities.",
     'Half-Elf':
-      'Walking in two worlds but belonging to neither, half-elves combine human curiosity with elven grace.',
+      'Walking in two worlds but truly belonging to neither, half-elves combine the best qualities of their elf and human parents.',
     'Half-Orc':
-      'Whether united under the leadership of a mighty warlock or scattered, half-orcs often struggle with their dual nature.',
+      'Whether united under the leadership of a mighty warlock or fighting in their own hordes, orcs and half-orcs are fierce warriors.',
     Tiefling:
       'Bearing a curse from an infernal heritage, tieflings face constant suspicion wherever they go.',
   };
@@ -64,48 +69,45 @@ function getRaceDescription(raceName: string): string {
 interface RaceSelectionModalProps {
   isOpen: boolean;
   currentRace?: string;
-  existingProficiencies?: Set<string>;
-  existingLanguages?: Set<string>;
-  onSelect: (race: RaceInfo, choices: RaceChoices) => void;
+  onSelect: (raceData: RaceInfo, selections: ChoiceSelections) => void;
   onClose: () => void;
-}
-
-export interface RaceChoices {
-  languages: Record<string, string[]>;
-  proficiencies: Record<string, string[]>;
 }
 
 export function RaceSelectionModal({
   isOpen,
   currentRace,
-  existingProficiencies,
-  existingLanguages,
   onSelect,
   onClose,
 }: RaceSelectionModalProps) {
   const { data: races, loading, error } = useListRaces();
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Track choices per race
-  const [raceChoicesMap, setRaceChoicesMap] = useState<
-    Record<
-      string,
-      {
-        languages: Record<string, string[]>;
-        proficiencies: Record<string, string[]>;
-      }
-    >
-  >({});
+  // Track selections per race using the unified system
+  const [raceSelectionsMap, setRaceSelectionsMap] = useState<Record<string, ChoiceSelections>>({});
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Get current race name
-  const currentRaceName = races[selectedIndex]?.name || '';
+  // Get current race
+  const currentRaceData = races[selectedIndex];
+  const currentRaceName = currentRaceData?.name || '';
 
-  // Get choices for current race
-  const currentRaceChoices = raceChoicesMap[currentRaceName] || {
-    languages: {},
-    proficiencies: {},
-  };
+  // Get selections for current race
+  const currentSelections = raceSelectionsMap[currentRaceName] || {};
+
+  const {
+    selections,
+    setSelection,
+    isValidSelection,
+  } = useChoiceSelection({ initialSelections: currentSelections });
+
+  // Update the race selections map when selections change
+  useEffect(() => {
+    if (currentRaceName) {
+      setRaceSelectionsMap(prev => ({
+        ...prev,
+        [currentRaceName]: selections
+      }));
+    }
+  }, [selections, currentRaceName]);
 
   // Reset selected index when modal opens
   useEffect(() => {
@@ -122,101 +124,27 @@ export function RaceSelectionModal({
     }
   }, [isOpen, currentRace, races]);
 
-  // Show loading or error states
   if (!isOpen) return null;
-  if (loading) {
-    return createPortal(
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          zIndex: 99999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <div style={{ color: 'white', fontSize: '18px' }}>Loading races...</div>
-      </div>,
-      document.body
-    );
-  }
 
-  if (error || races.length === 0) {
-    return createPortal(
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          zIndex: 99999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <div style={{ color: 'white', fontSize: '18px' }}>
-          {error
-            ? `Error loading races: ${error.message}`
-            : 'No races available'}
-        </div>
-      </div>,
-      document.body
-    );
-  }
-
-  const currentRaceData = races[selectedIndex];
-
-  const handleSelect = () => {
-    setErrorMessage(''); // Clear any previous errors
+  const handleRaceSelect = () => {
+    if (!currentRaceData) return;
 
     // Validate all choices are made
-    const hasLanguageChoice = currentRaceData.languageOptions;
-    const hasProficiencyChoices =
-      currentRaceData.proficiencyOptions &&
-      currentRaceData.proficiencyOptions.length > 0;
-
-    if (hasLanguageChoice && currentRaceData.languageOptions) {
-      const key = getChoiceKey(currentRaceData.languageOptions, 0);
-      const selected = currentRaceChoices.languages[key] || [];
-      const validation = validateChoice(
-        currentRaceData.languageOptions,
-        selected
-      );
-      if (!validation.isValid) {
-        setErrorMessage(validation.errors.join(' '));
+    const allChoices = currentRaceData.choices || [];
+    
+    for (const choice of allChoices) {
+      const selectedValues = selections[choice.id] || [];
+      if (!isValidSelection(choice, selectedValues)) {
+        const choiceTypeLabel = ChoiceType[choice.choiceType] || 'choice';
+        setErrorMessage(`Please complete the ${choiceTypeLabel.toLowerCase()} selection: "${choice.description}"`);
         return;
       }
     }
 
-    if (hasProficiencyChoices) {
-      for (let i = 0; i < currentRaceData.proficiencyOptions.length; i++) {
-        const choice = currentRaceData.proficiencyOptions[i];
-        const key = getChoiceKey(choice, i);
-        const selected = currentRaceChoices.proficiencies[key] || [];
-        const validation = validateChoice(choice, selected);
-        if (!validation.isValid) {
-          setErrorMessage(validation.errors.join(' '));
-          return;
-        }
-      }
-    }
-
-    onSelect(currentRaceData, {
-      languages: currentRaceChoices.languages,
-      proficiencies: currentRaceChoices.proficiencies,
-    });
+    // All validations passed
+    onSelect(currentRaceData, selections);
     onClose();
   };
-
-  if (!isOpen) return null;
 
   // Get theme values for portal rendering
   const overlayBg = getCSSVariable('--overlay-bg', 'rgba(15, 23, 42, 0.8)');
@@ -280,7 +208,6 @@ export function RaceSelectionModal({
               fontSize: '24px',
               fontWeight: 'bold',
               margin: 0,
-              fontFamily: 'Cinzel, serif',
             }}
           >
             Choose Your Race
@@ -290,508 +217,231 @@ export function RaceSelectionModal({
             style={{
               background: 'none',
               border: 'none',
+              color: textMuted,
               fontSize: '24px',
               cursor: 'pointer',
-              color: textMuted,
+              padding: '0',
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             ×
           </button>
         </div>
 
-        {/* Visual Carousel */}
-        <div style={{ marginBottom: '24px' }}>
-          <VisualCarousel
-            items={races.map((race) => ({
-              name: race.name,
-              emoji: getRaceEmoji(race.name),
-            }))}
-            selectedIndex={selectedIndex}
-            onSelect={(index) => {
-              setSelectedIndex(index);
-              setErrorMessage(''); // Only clear error message
-            }}
-          />
-
-          {/* Selected Race Name - Larger Display */}
-          <div style={{ textAlign: 'center', marginTop: '16px' }}>
-            <h3
-              style={{
-                color: textPrimary,
-                fontSize: '32px',
-                fontWeight: 'bold',
-                margin: '0',
-                fontFamily: 'Cinzel, serif',
-              }}
-            >
-              {currentRaceData.name}
-            </h3>
-          </div>
-        </div>
-
-        {/* Details */}
-        <div
-          style={{
-            marginBottom: '24px',
-            overflow: 'hidden',
-          }}
-        >
-          <div>
-            <div style={{ marginBottom: '20px' }}>
-              <h4
-                style={{
-                  color: textPrimary,
-                  fontWeight: 'bold',
-                  marginBottom: '8px',
-                }}
-              >
-                Description
-              </h4>
-              <p
-                style={{
-                  color: textPrimary,
-                  fontSize: '15px',
-                  lineHeight: '1.5',
-                }}
-              >
-                {currentRaceData.description ||
-                  getRaceDescription(currentRaceData.name)}
-              </p>
-            </div>
-
-            {/* Enhanced Descriptions */}
-            {(currentRaceData.ageDescription ||
-              currentRaceData.alignmentDescription ||
-              currentRaceData.sizeDescription) && (
-              <div style={{ marginBottom: '20px' }}>
-                {currentRaceData.ageDescription && (
-                  <div style={{ marginBottom: '12px' }}>
-                    <h5
-                      style={{
-                        color: textPrimary,
-                        fontWeight: 'bold',
-                        fontSize: '14px',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      Age
-                    </h5>
-                    <p
-                      style={{
-                        color: textPrimary,
-                        fontSize: '13px',
-                        lineHeight: '1.4',
-                        opacity: 0.9,
-                      }}
-                    >
-                      {currentRaceData.ageDescription}
-                    </p>
-                  </div>
-                )}
-                {currentRaceData.alignmentDescription && (
-                  <div style={{ marginBottom: '12px' }}>
-                    <h5
-                      style={{
-                        color: textPrimary,
-                        fontWeight: 'bold',
-                        fontSize: '14px',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      Alignment
-                    </h5>
-                    <p
-                      style={{
-                        color: textPrimary,
-                        fontSize: '13px',
-                        lineHeight: '1.4',
-                        opacity: 0.9,
-                      }}
-                    >
-                      {currentRaceData.alignmentDescription}
-                    </p>
-                  </div>
-                )}
-                {currentRaceData.sizeDescription && (
-                  <div style={{ marginBottom: '12px' }}>
-                    <h5
-                      style={{
-                        color: textPrimary,
-                        fontWeight: 'bold',
-                        fontSize: '14px',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      Size Details
-                    </h5>
-                    <p
-                      style={{
-                        color: textPrimary,
-                        fontSize: '13px',
-                        lineHeight: '1.4',
-                        opacity: 0.9,
-                      }}
-                    >
-                      {currentRaceData.sizeDescription}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Core Stats */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '16px',
-                marginBottom: '20px',
-              }}
-            >
-              <div>
-                <h4
-                  style={{
-                    color: textPrimary,
-                    fontWeight: 'bold',
-                    marginBottom: '8px',
-                  }}
-                >
-                  Ability Score Increases
-                </h4>
-                <div
-                  style={{
-                    padding: '8px',
-                    backgroundColor: bgSecondary,
-                    borderRadius: '6px',
-                    border: `1px solid ${borderPrimary}`,
-                  }}
-                >
-                  {Object.entries(currentRaceData.abilityBonuses || {}).length >
-                  0 ? (
-                    Object.entries(currentRaceData.abilityBonuses || {}).map(
-                      ([ability, bonus]) => (
-                        <div
-                          key={ability}
-                          style={{
-                            color: textPrimary,
-                            fontSize: '13px',
-                            marginBottom: '4px',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                          }}
-                        >
-                          <span>
-                            {ability.charAt(0).toUpperCase() + ability.slice(1)}
-                          </span>
-                          <span
-                            style={{ color: accentPrimary, fontWeight: 'bold' }}
-                          >
-                            +{bonus}
-                          </span>
-                        </div>
-                      )
-                    )
-                  ) : (
-                    <div style={{ color: textMuted, fontSize: '14px' }}>
-                      No ability bonuses
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <h4
-                  style={{
-                    color: textPrimary,
-                    fontWeight: 'bold',
-                    marginBottom: '8px',
-                  }}
-                >
-                  Size & Movement
-                </h4>
-                <div
-                  style={{
-                    padding: '8px',
-                    backgroundColor: bgSecondary,
-                    borderRadius: '6px',
-                    border: `1px solid ${borderPrimary}`,
-                  }}
-                >
-                  <div
-                    style={{
-                      color: textPrimary,
-                      fontSize: '13px',
-                      marginBottom: '4px',
-                    }}
-                  >
-                    <strong>Size:</strong>{' '}
-                    {currentRaceData.size === 1
-                      ? 'Medium'
-                      : currentRaceData.size === 2
-                        ? 'Small'
-                        : 'Medium'}
-                  </div>
-                  <div style={{ color: textPrimary, fontSize: '13px' }}>
-                    <strong>Speed:</strong> {currentRaceData.speed} feet
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Languages */}
-            {currentRaceData.languages &&
-              currentRaceData.languages.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Languages
-                  </h4>
-                  <div
-                    style={{
-                      padding: '8px',
-                      backgroundColor: bgSecondary,
-                      borderRadius: '6px',
-                      border: `1px solid ${borderPrimary}`,
-                      fontSize: '14px',
-                      color: textPrimary,
-                      opacity: 0.9,
-                    }}
-                  >
-                    {currentRaceData.languages.map((lang, i) => (
-                      <span key={i}>
-                        {typeof lang === 'string' ? lang : lang.toString()}
-                        {i < currentRaceData.languages.length - 1 ? ', ' : ''}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-            {/* Language Choices */}
-            {currentRaceData.languageOptions && (
-              <div style={{ marginBottom: '20px' }}>
-                <ChoiceSelectorWithDuplicates
-                  choice={currentRaceData.languageOptions}
-                  selected={
-                    currentRaceChoices.languages[
-                      getChoiceKey(currentRaceData.languageOptions, 0)
-                    ] || []
-                  }
-                  existingSelections={existingLanguages}
-                  onSelectionChange={(selected) => {
-                    const key = getChoiceKey(
-                      currentRaceData.languageOptions!,
-                      0
-                    );
-                    setRaceChoicesMap((prev) => ({
-                      ...prev,
-                      [currentRaceName]: {
-                        ...currentRaceChoices,
-                        languages: {
-                          ...currentRaceChoices.languages,
-                          [key]: selected,
-                        },
-                      },
-                    }));
-                  }}
-                />
-              </div>
-            )}
-
-            {/* Proficiency Choices */}
-            {currentRaceData.proficiencyOptions &&
-              currentRaceData.proficiencyOptions.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                  {currentRaceData.proficiencyOptions.map((choice, index) => (
-                    <ChoiceSelectorWithDuplicates
-                      key={index}
-                      choice={choice}
-                      selected={
-                        currentRaceChoices.proficiencies[
-                          getChoiceKey(choice, index)
-                        ] || []
-                      }
-                      existingSelections={existingProficiencies}
-                      onSelectionChange={(selected) => {
-                        const key = getChoiceKey(choice, index);
-                        setRaceChoicesMap((prev) => ({
-                          ...prev,
-                          [currentRaceName]: {
-                            ...currentRaceChoices,
-                            proficiencies: {
-                              ...currentRaceChoices.proficiencies,
-                              [key]: selected,
-                            },
-                          },
-                        }));
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-
-            {/* Racial Traits */}
-            <CollapsibleSection title="Racial Traits" defaultOpen={true}>
-              <div
-                style={{
-                  maxHeight: '140px',
-                  overflowY: 'auto',
-                  padding: '8px',
-                  backgroundColor: bgSecondary,
-                  borderRadius: '6px',
-                  border: `1px solid ${borderPrimary}`,
-                }}
-              >
-                {currentRaceData.traits && currentRaceData.traits.length > 0 ? (
-                  currentRaceData.traits.map((trait, i) => (
-                    <div key={i} style={{ marginBottom: '8px' }}>
-                      <div
-                        style={{
-                          color: textPrimary,
-                          fontSize: '13px',
-                          fontWeight: 'bold',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                        }}
-                      >
-                        {trait.name}
-                        {trait.isChoice && (
-                          <span
-                            style={{
-                              fontSize: '10px',
-                              padding: '1px 4px',
-                              backgroundColor: accentPrimary,
-                              color: 'white',
-                              borderRadius: '3px',
-                            }}
-                          >
-                            Choice
-                          </span>
-                        )}
-                      </div>
-                      {trait.description && (
-                        <div
-                          style={{
-                            color: textPrimary,
-                            fontSize: '14px',
-                            lineHeight: '1.4',
-                            opacity: 0.9,
-                          }}
-                        >
-                          {trait.description}
-                        </div>
-                      )}
-                      {trait.isChoice &&
-                        trait.options &&
-                        trait.options.length > 0 && (
-                          <div
-                            style={{
-                              marginTop: '4px',
-                              fontSize: '13px',
-                              color: textMuted,
-                            }}
-                          >
-                            Options: {trait.options.join(', ')}
-                          </div>
-                        )}
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ color: textMuted, fontSize: '14px' }}>
-                    No racial traits available
-                  </div>
-                )}
-              </div>
-            </CollapsibleSection>
-
-            {/* Proficiencies */}
-            {currentRaceData.proficiencies &&
-              currentRaceData.proficiencies.length > 0 && (
-                <CollapsibleSection title="Proficiencies" defaultOpen={false}>
-                  <div
-                    style={{
-                      padding: '8px',
-                      backgroundColor: bgSecondary,
-                      borderRadius: '6px',
-                      border: `1px solid ${borderPrimary}`,
-                      fontSize: '14px',
-                      color: textPrimary,
-                      opacity: 0.9,
-                      marginBottom: '12px',
-                    }}
-                  >
-                    {currentRaceData.proficiencies.join(', ')}
-                  </div>
-                </CollapsibleSection>
-              )}
-          </div>
-        </div>
-
-        {/* Error Message */}
-        {errorMessage && (
+        {/* Content */}
+        {loading ? (
           <div
             style={{
-              padding: '12px 16px',
-              marginBottom: '16px',
-              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              borderRadius: '6px',
-              color: '#ef4444',
-              fontSize: '14px',
               textAlign: 'center',
+              padding: '32px',
+              color: textMuted,
             }}
           >
-            {errorMessage}
+            Loading races...
           </div>
+        ) : error ? (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '32px',
+              color: '#ef4444',
+            }}
+          >
+            Error loading races: {error.message}
+          </div>
+        ) : (
+          <>
+            <VisualCarousel
+              items={races.map((race) => ({
+                id: race.raceId,
+                name: race.name,
+                description: getRaceDescription(race.name),
+                visual: getRaceEmoji(race.name),
+                color: '#10b981',
+              }))}
+              selectedIndex={selectedIndex}
+              onSelect={setSelectedIndex}
+            />
+
+            {currentRaceData && (
+              <div style={{ marginTop: '24px' }}>
+                {/* Show language choices */}
+                {filterChoicesByType(currentRaceData.choices || [], ChoiceType.LANGUAGE).length > 0 && (
+                  <CollapsibleSection
+                    title="Language Options"
+                    defaultOpen
+                    bgSecondary={bgSecondary}
+                    borderPrimary={borderPrimary}
+                    textPrimary={textPrimary}
+                    textMuted={textMuted}
+                  >
+                    <UnifiedChoiceSelector
+                      choices={currentRaceData.choices || []}
+                      choiceType={ChoiceType.LANGUAGE}
+                      selections={selections}
+                      onSelectionsChange={(newSelections) => {
+                        Object.entries(newSelections).forEach(([choiceId, values]) => {
+                          setSelection(choiceId, values);
+                        });
+                      }}
+                    />
+                  </CollapsibleSection>
+                )}
+
+                {/* Show proficiency choices */}
+                {(filterChoicesByType(currentRaceData.choices || [], ChoiceType.SKILL).length > 0 ||
+                  filterChoicesByType(currentRaceData.choices || [], ChoiceType.TOOL).length > 0) && (
+                  <CollapsibleSection
+                    title="Proficiency Options"
+                    defaultOpen
+                    bgSecondary={bgSecondary}
+                    borderPrimary={borderPrimary}
+                    textPrimary={textPrimary}
+                    textMuted={textMuted}
+                  >
+                    <UnifiedChoiceSelector
+                      choices={currentRaceData.choices?.filter(c => 
+                        c.choiceType === ChoiceType.SKILL || 
+                        c.choiceType === ChoiceType.TOOL
+                      ) || []}
+                      selections={selections}
+                      onSelectionsChange={(newSelections) => {
+                        Object.entries(newSelections).forEach(([choiceId, values]) => {
+                          setSelection(choiceId, values);
+                        });
+                      }}
+                    />
+                  </CollapsibleSection>
+                )}
+
+                {/* Show ability score bonuses */}
+                {currentRaceData.abilityScoreBonuses && currentRaceData.abilityScoreBonuses.length > 0 && (
+                  <CollapsibleSection
+                    title="Ability Score Bonuses"
+                    defaultOpen={false}
+                    bgSecondary={bgSecondary}
+                    borderPrimary={borderPrimary}
+                    textPrimary={textPrimary}
+                    textMuted={textMuted}
+                  >
+                    <div className="space-y-2">
+                      {currentRaceData.abilityScoreBonuses.map((bonus) => (
+                        <div
+                          key={bonus.ability}
+                          className="flex items-center justify-between"
+                          style={{ color: textPrimary }}
+                        >
+                          <span className="capitalize">{bonus.ability}</span>
+                          <span className="font-medium">+{bonus.bonus}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleSection>
+                )}
+
+                {/* Show traits */}
+                {currentRaceData.traits && currentRaceData.traits.length > 0 && (
+                  <CollapsibleSection
+                    title="Racial Traits"
+                    defaultOpen={false}
+                    bgSecondary={bgSecondary}
+                    borderPrimary={borderPrimary}
+                    textPrimary={textPrimary}
+                    textMuted={textMuted}
+                  >
+                    <div className="space-y-3">
+                      {currentRaceData.traits.map((trait) => (
+                        <div key={trait.name}>
+                          <h4
+                            className="font-medium"
+                            style={{ color: textPrimary }}
+                          >
+                            {trait.name}
+                          </h4>
+                          <p
+                            className="text-sm mt-1"
+                            style={{ color: textMuted }}
+                          >
+                            {trait.description}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleSection>
+                )}
+
+                {/* Error message */}
+                {errorMessage && (
+                  <div
+                    style={{
+                      marginTop: '16px',
+                      padding: '12px',
+                      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid #ef4444',
+                      borderRadius: '8px',
+                      color: '#ef4444',
+                      fontSize: '14px',
+                    }}
+                  >
+                    {errorMessage}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '12px',
+                    marginTop: '24px',
+                    paddingTop: '24px',
+                    borderTop: `1px solid ${borderPrimary}`,
+                  }}
+                >
+                  <button
+                    onClick={onClose}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      backgroundColor: 'transparent',
+                      color: textPrimary,
+                      border: `2px solid ${borderPrimary}`,
+                      borderRadius: '8px',
+                      fontSize: '16px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRaceSelect}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      backgroundColor: accentPrimary,
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '16px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Select {currentRaceData.name}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
-
-        {/* Action Buttons */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <button
-            onClick={onClose}
-            style={{
-              background: bgSecondary,
-              border: `1px solid ${borderPrimary}`,
-              borderRadius: '6px',
-              padding: '8px 16px',
-              cursor: 'pointer',
-              color: textPrimary,
-            }}
-          >
-            Cancel
-          </button>
-
-          <button
-            onClick={handleSelect}
-            style={{
-              background: accentPrimary,
-              border: 'none',
-              borderRadius: '6px',
-              padding: '8px 24px',
-              cursor: 'pointer',
-              color: textPrimary,
-              fontWeight: 'bold',
-            }}
-          >
-            Select {currentRaceData.name}
-          </button>
-        </div>
       </div>
     </div>
   );
 
-  // Render modal into document.body using a portal
+  // Use React Portal to render at document root
   return createPortal(modalContent, document.body);
 }

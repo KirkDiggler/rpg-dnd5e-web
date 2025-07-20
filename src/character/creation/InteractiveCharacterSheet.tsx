@@ -7,8 +7,8 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
-import type { ClassChoices } from './ClassSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
+import type { ChoiceSelections } from './choices';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
 import { RaceSelectionModal } from './RaceSelectionModal';
 import { SpellSelectionModal } from './SpellSelectionModal';
@@ -20,8 +20,8 @@ interface InteractiveCharacterSheetProps {
 }
 
 interface CharacterChoices {
-  classChoices?: ClassChoices;
-  raceChoices?: Record<string, string[]>; // TODO: Import RaceChoices type when available
+  classChoices?: ChoiceSelections;
+  raceChoices?: ChoiceSelections;
   [key: string]: unknown; // Allow other choice types
 }
 

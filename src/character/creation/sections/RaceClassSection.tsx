@@ -7,10 +7,9 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
-import type { ClassChoices } from '../ClassSelectionModal';
 import { ClassSelectionModal } from '../ClassSelectionModal';
-import type { RaceChoices } from '../RaceSelectionModal';
 import { RaceSelectionModal } from '../RaceSelectionModal';
+import type { ChoiceSelections } from '../choices';
 
 export function RaceClassSection() {
   const { setSelectedChoice } = useCharacterBuilder();
@@ -23,7 +22,7 @@ export function RaceClassSection() {
     null
   );
 
-  const handleRaceSelect = (race: RaceInfo, choices: RaceChoices) => {
+  const handleRaceSelect = (race: RaceInfo, choices: ChoiceSelections) => {
     setSelectedRaceData(race);
     setSelectedChoice('race', race.id);
     setSelectedChoice('raceData', race);
@@ -31,7 +30,7 @@ export function RaceClassSection() {
     setShowRaceModal(false);
   };
 
-  const handleClassSelect = (classData: ClassInfo, choices: ClassChoices) => {
+  const handleClassSelect = (classData: ClassInfo, choices: ChoiceSelections) => {
     setSelectedClassData(classData);
     setSelectedChoice('class', classData.id);
     setSelectedChoice('classData', classData);

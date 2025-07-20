@@ -5,9 +5,10 @@ import { CharacterDraftProvider } from './character/creation/CharacterDraftConte
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { CharacterList } from './components/CharacterList';
 import { ThemeSelector } from './components/ThemeSelector';
+import { UnifiedChoiceDemo } from './components/UnifiedChoiceDemo';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
-type AppView = 'character-list' | 'character-creation';
+type AppView = 'character-list' | 'character-creation' | 'choice-demo';
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('character-list');
@@ -32,8 +33,14 @@ function App() {
         animate={{ opacity: 1, y: 0 }}
         className="max-w-7xl mx-auto"
       >
-        {/* Theme Selector */}
-        <div className="flex justify-end mb-6">
+        {/* Theme Selector and Demo Link */}
+        <div className="flex justify-between mb-6">
+          <button
+            onClick={() => setCurrentView(currentView === 'choice-demo' ? 'character-list' : 'choice-demo')}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            {currentView === 'choice-demo' ? 'Back to Characters' : 'Choice System Demo'}
+          </button>
           <ThemeSelector />
         </div>
 
@@ -80,6 +87,8 @@ function App() {
               <p className="mt-4 text-red-500">{discord.error}</p>
             )}
           </motion.div>
+        ) : currentView === 'choice-demo' ? (
+          <UnifiedChoiceDemo />
         ) : currentView === 'character-list' ? (
           <CharacterList
             playerId={playerId || 'test-player'}

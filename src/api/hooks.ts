@@ -30,7 +30,6 @@ import {
   ListEquipmentByTypeRequestSchema,
   ListRacesRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type { EquipmentType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { characterClient } from './client';
 
@@ -601,7 +600,10 @@ export function useListClasses(
 }
 
 // Equipment hooks
-export function useListEquipmentByType(equipmentType: EquipmentType) {
+export function useListEquipmentByType(
+  params: { equipmentType: string },
+  options: { enabled?: boolean } = {}
+) {
   const [state, setState] = useState<ListState<Equipment>>({
     data: [],
     loading: false,
@@ -614,7 +616,7 @@ export function useListEquipmentByType(equipmentType: EquipmentType) {
 
       try {
         const request = create(ListEquipmentByTypeRequestSchema, {
-          equipmentType,
+          equipmentType: params.equipmentType,
           pageSize: 100, // Get all equipment of this type
           pageToken: pageToken || '',
         });
@@ -636,17 +638,18 @@ export function useListEquipmentByType(equipmentType: EquipmentType) {
         });
       }
     },
-    [equipmentType]
+    [params.equipmentType]
   );
 
   useEffect(() => {
-    if (equipmentType) {
+    if (params.equipmentType && options.enabled !== false) {
       fetchEquipment();
     }
-  }, [fetchEquipment, equipmentType]);
+  }, [fetchEquipment, params.equipmentType, options.enabled]);
 
   return {
     ...state,
+    equipment: state.data,
     refetch: fetchEquipment,
     loadMore: state.nextPageToken
       ? () => fetchEquipment(state.nextPageToken)

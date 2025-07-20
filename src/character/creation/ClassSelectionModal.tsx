@@ -1,13 +1,17 @@
 import type { ClassInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
-import { getChoiceKey, validateChoice } from '../../types/character';
-import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
-import { EquipmentChoiceSelector } from './components/EquipmentChoiceSelector';
-import { FeatureChoiceSelector } from './components/FeatureChoiceSelector';
 import { VisualCarousel } from './components/VisualCarousel';
+import { SpellInfoDisplay } from './components/SpellInfoDisplay';
+import { 
+  UnifiedChoiceSelector,
+  useChoiceSelection,
+  filterChoicesByType,
+  type ChoiceSelections
+} from './choices';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -42,16 +46,8 @@ function getClassEmoji(className: string): string {
 interface ClassSelectionModalProps {
   isOpen: boolean;
   currentClass?: string;
-  existingProficiencies?: Set<string>;
-  onSelect: (classData: ClassInfo, choices: ClassChoices) => void;
+  onSelect: (classData: ClassInfo, selections: ChoiceSelections) => void;
   onClose: () => void;
-}
-
-export interface ClassChoices {
-  proficiencies: Record<string, string[]>;
-  equipment: Record<number, string>;
-  features: Record<string, string>; // featureId -> selected option
-  className?: string; // Track which class these choices belong to
 }
 
 export function ClassSelectionModal({
@@ -64,28 +60,32 @@ export function ClassSelectionModal({
   const { data: classes, loading, error } = useListClasses();
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Track choices per class
-  const [classChoicesMap, setClassChoicesMap] = useState<
-    Record<
-      string,
-      {
-        proficiencies: Record<string, string[]>;
-        equipment: Record<number, string>;
-        features: Record<string, string>;
-      }
-    >
-  >({});
+  // Track selections per class using the unified system
+  const [classSelectionsMap, setClassSelectionsMap] = useState<Record<string, ChoiceSelections>>({});
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Get current class name
-  const currentClassName = classes[selectedIndex]?.name || '';
+  // Get current class
+  const currentClassData = classes[selectedIndex];
+  const currentClassName = currentClassData?.name || '';
 
-  // Get choices for current class
-  const currentClassChoices = classChoicesMap[currentClassName] || {
-    proficiencies: {},
-    equipment: {},
-    features: {},
-  };
+  // Get selections for current class
+  const currentSelections = classSelectionsMap[currentClassName] || {};
+
+  const {
+    selections,
+    setSelection,
+    isValidSelection,
+  } = useChoiceSelection({ initialSelections: currentSelections });
+
+  // Update the class selections map when selections change
+  useEffect(() => {
+    if (currentClassName) {
+      setClassSelectionsMap(prev => ({
+        ...prev,
+        [currentClassName]: selections
+      }));
+    }
+  }, [selections, currentClassName]);
 
   // Reset selected index when modal opens
   useEffect(() => {
@@ -102,136 +102,25 @@ export function ClassSelectionModal({
     }
   }, [isOpen, currentClass, classes]);
 
-  // Show loading or error states
   if (!isOpen) return null;
-  if (loading) {
-    return createPortal(
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          zIndex: 99999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <div style={{ color: 'white', fontSize: '18px' }}>
-          Loading classes...
-        </div>
-      </div>,
-      document.body
-    );
-  }
 
-  if (error || classes.length === 0) {
-    return createPortal(
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          zIndex: 99999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <div style={{ color: 'white', fontSize: '18px' }}>
-          {error
-            ? `Error loading classes: ${error.message}`
-            : 'No classes available'}
-        </div>
-      </div>,
-      document.body
-    );
-  }
-
-  const currentClassData = classes[selectedIndex];
-
-  const handleSelect = () => {
-    setErrorMessage(''); // Clear any previous errors
+  const handleClassSelect = () => {
+    if (!currentClassData) return;
 
     // Validate all choices are made
-    const hasProficiencyChoices =
-      currentClassData.proficiencyChoices &&
-      currentClassData.proficiencyChoices.length > 0;
-
-    if (hasProficiencyChoices) {
-      for (let i = 0; i < currentClassData.proficiencyChoices.length; i++) {
-        const choice = currentClassData.proficiencyChoices[i];
-        const key = getChoiceKey(choice, i);
-        const selected = currentClassChoices.proficiencies[key] || [];
-        const validation = validateChoice(choice, selected);
-        if (!validation.isValid) {
-          setErrorMessage(validation.errors.join(' '));
-          return;
-        }
+    const allChoices = currentClassData.choices || [];
+    
+    for (const choice of allChoices) {
+      const selectedValues = selections[choice.id] || [];
+      if (!isValidSelection(choice, selectedValues)) {
+        const choiceTypeLabel = ChoiceType[choice.choiceType] || 'choice';
+        setErrorMessage(`Please complete the ${choiceTypeLabel.toLowerCase()} selection: "${choice.description}"`);
+        return;
       }
     }
 
-    // Validate equipment choices
-    const hasEquipmentChoices =
-      currentClassData.equipmentChoices &&
-      currentClassData.equipmentChoices.length > 0;
-
-    if (hasEquipmentChoices) {
-      for (let i = 0; i < currentClassData.equipmentChoices.length; i++) {
-        const selection = currentClassChoices.equipment[i];
-        if (!selection || selection === '') {
-          setErrorMessage(
-            `Please select an option for Equipment Option ${i + 1}`
-          );
-          return;
-        }
-        // Check if it's a weapon choice that needs a specific selection
-        if (selection.includes('-') && !selection.includes(':')) {
-          const optionIndex = parseInt(selection.split('-')[1]);
-          const option =
-            currentClassData.equipmentChoices[i].options[optionIndex];
-          if (
-            option &&
-            (option.includes('any martial') || option.includes('any simple'))
-          ) {
-            setErrorMessage(
-              `Please select a specific weapon for Equipment Option ${i + 1}`
-            );
-            return;
-          }
-        }
-      }
-    }
-
-    // Validate feature choices
-    const hasFeatureChoices =
-      currentClassData.level1Features &&
-      currentClassData.level1Features.some((f) => f.hasChoices);
-
-    if (hasFeatureChoices) {
-      for (const feature of currentClassData.level1Features) {
-        if (feature.hasChoices && feature.choices.length > 0) {
-          const selection = currentClassChoices.features[feature.id];
-          if (!selection || selection === '') {
-            setErrorMessage(`Please make a selection for ${feature.name}`);
-            return;
-          }
-        }
-      }
-    }
-
-    onSelect(currentClassData, {
-      proficiencies: currentClassChoices.proficiencies,
-      equipment: currentClassChoices.equipment,
-      features: currentClassChoices.features,
-      className: currentClassData.name,
-    });
+    // All validations passed
+    onSelect(currentClassData, selections);
     onClose();
   };
 
@@ -297,7 +186,6 @@ export function ClassSelectionModal({
               fontSize: '24px',
               fontWeight: 'bold',
               margin: 0,
-              fontFamily: 'Cinzel, serif',
             }}
           >
             Choose Your Class
@@ -307,578 +195,189 @@ export function ClassSelectionModal({
             style={{
               background: 'none',
               border: 'none',
+              color: textMuted,
               fontSize: '24px',
               cursor: 'pointer',
-              color: textMuted,
+              padding: '0',
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             ×
           </button>
         </div>
 
-        {/* Visual Carousel */}
-        <div style={{ marginBottom: '24px' }}>
-          <VisualCarousel
-            items={classes.map((cls) => ({
-              name: cls.name,
-              emoji: getClassEmoji(cls.name),
-            }))}
-            selectedIndex={selectedIndex}
-            onSelect={(index) => {
-              setSelectedIndex(index);
-              setErrorMessage(''); // Only clear error message
-            }}
-          />
-
-          {/* Selected Class Name - Larger Display */}
-          <div style={{ textAlign: 'center', marginTop: '16px' }}>
-            <h3
-              style={{
-                color: textPrimary,
-                fontSize: '32px',
-                fontWeight: 'bold',
-                margin: '0',
-                fontFamily: 'Cinzel, serif',
-              }}
-            >
-              {currentClassData.name}
-            </h3>
-          </div>
-        </div>
-
-        {/* Details */}
-        <div
-          style={{
-            marginBottom: '24px',
-            overflow: 'hidden',
-            maxHeight: '400px',
-            overflowY: 'auto',
-          }}
-        >
-          <div>
-            {/* Description Section */}
-            <CollapsibleSection title="Description" defaultOpen={true}>
-              <p
-                style={{
-                  color: textPrimary,
-                  fontSize: '16px',
-                  lineHeight: '1.5',
-                  padding: '8px',
-                }}
-              >
-                {currentClassData.description}
-              </p>
-            </CollapsibleSection>
-
-            {/* Core Info Grid */}
-            <CollapsibleSection title="Core Info" defaultOpen={true}>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '16px',
-                  marginBottom: '12px',
-                }}
-              >
-                <div>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Hit Die & Primary Abilities
-                  </h4>
-                  <p
-                    style={{
-                      color: textPrimary,
-                      fontSize: '14px',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    <strong>Hit Die:</strong> {currentClassData.hitDie}
-                  </p>
-                  <p
-                    style={{
-                      color: textPrimary,
-                      fontSize: '14px',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    <strong>Primary:</strong>{' '}
-                    {currentClassData.primaryAbilities.join(' & ')}
-                  </p>
-                  <p style={{ color: textPrimary, fontSize: '14px' }}>
-                    <strong>Saves:</strong>{' '}
-                    {currentClassData.savingThrowProficiencies.join(', ')}
-                  </p>
-                </div>
-
-                <div>
-                  <h4
-                    style={{
-                      color: textPrimary,
-                      fontWeight: 'bold',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Skills
-                  </h4>
-                  <p
-                    style={{
-                      color: textPrimary,
-                      fontSize: '14px',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Choose {currentClassData.skillChoicesCount} from:
-                  </p>
-                  <div
-                    style={{
-                      fontSize: '14px',
-                      color: textPrimary,
-                      opacity: 0.9,
-                    }}
-                  >
-                    {currentClassData.availableSkills.slice(0, 6).join(', ')}
-                    {currentClassData.availableSkills.length > 6 &&
-                      ` +${currentClassData.availableSkills.length - 6} more`}
-                  </div>
-                </div>
-              </div>
-            </CollapsibleSection>
-
-            {/* Proficiencies Section */}
-            <CollapsibleSection title="Proficiencies" defaultOpen={false}>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                  gap: '12px',
-                }}
-              >
-                {currentClassData.armorProficiencies.length > 0 && (
-                  <div
-                    style={{
-                      padding: '8px',
-                      backgroundColor: bgSecondary,
-                      borderRadius: '6px',
-                      border: `1px solid ${borderPrimary}`,
-                    }}
-                  >
-                    <div
-                      style={{
-                        color: textPrimary,
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      Armor
-                    </div>
-                    <div
-                      style={{
-                        color: textPrimary,
-                        fontSize: '14px',
-                        opacity: 0.9,
-                      }}
-                    >
-                      {currentClassData.armorProficiencies.join(', ')}
-                    </div>
-                  </div>
-                )}
-
-                {currentClassData.weaponProficiencies.length > 0 && (
-                  <div
-                    style={{
-                      padding: '8px',
-                      backgroundColor: bgSecondary,
-                      borderRadius: '6px',
-                      border: `1px solid ${borderPrimary}`,
-                    }}
-                  >
-                    <div
-                      style={{
-                        color: textPrimary,
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      Weapons
-                    </div>
-                    <div
-                      style={{
-                        color: textPrimary,
-                        fontSize: '14px',
-                        opacity: 0.9,
-                      }}
-                    >
-                      {currentClassData.weaponProficiencies
-                        .slice(0, 3)
-                        .join(', ')}
-                      {currentClassData.weaponProficiencies.length > 3 &&
-                        ` +${currentClassData.weaponProficiencies.length - 3} more`}
-                    </div>
-                  </div>
-                )}
-
-                {currentClassData.toolProficiencies.length > 0 && (
-                  <div
-                    style={{
-                      padding: '8px',
-                      backgroundColor: bgSecondary,
-                      borderRadius: '6px',
-                      border: `1px solid ${borderPrimary}`,
-                    }}
-                  >
-                    <div
-                      style={{
-                        color: textPrimary,
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      Tools
-                    </div>
-                    <div
-                      style={{
-                        color: textPrimary,
-                        fontSize: '14px',
-                        opacity: 0.9,
-                      }}
-                    >
-                      {currentClassData.toolProficiencies.join(', ')}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CollapsibleSection>
-
-            {/* Proficiency Choices */}
-            {currentClassData.proficiencyChoices &&
-              currentClassData.proficiencyChoices.length > 0 && (
-                <CollapsibleSection
-                  title="Choose Your Proficiencies"
-                  defaultOpen={true}
-                  required={true}
-                >
-                  <div style={{ marginBottom: '12px' }}>
-                    {currentClassData.proficiencyChoices.map(
-                      (choice, index) => (
-                        <div key={index} style={{ marginBottom: '16px' }}>
-                          <ChoiceSelectorWithDuplicates
-                            choice={choice}
-                            selected={
-                              currentClassChoices.proficiencies[
-                                getChoiceKey(choice, index)
-                              ] || []
-                            }
-                            existingSelections={existingProficiencies}
-                            onSelectionChange={(selected) => {
-                              const key = getChoiceKey(choice, index);
-                              setClassChoicesMap((prev) => ({
-                                ...prev,
-                                [currentClassName]: {
-                                  ...currentClassChoices,
-                                  proficiencies: {
-                                    ...currentClassChoices.proficiencies,
-                                    [key]: selected,
-                                  },
-                                },
-                              }));
-                            }}
-                          />
-                        </div>
-                      )
-                    )}
-                  </div>
-                </CollapsibleSection>
-              )}
-
-            {/* Class Features */}
-            {currentClassData.level1Features &&
-              currentClassData.level1Features.length > 0 && (
-                <CollapsibleSection title="Class Features" defaultOpen={true}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '12px',
-                    }}
-                  >
-                    {currentClassData.level1Features.map((feature) => (
-                      <div
-                        key={feature.id}
-                        style={{
-                          padding: '12px',
-                          backgroundColor: bgSecondary,
-                          borderRadius: '8px',
-                          border: feature.hasChoices
-                            ? '2px solid var(--accent-primary)'
-                            : `1px solid ${borderPrimary}`,
-                        }}
-                      >
-                        <h4
-                          style={{
-                            color: textPrimary,
-                            fontWeight: 'bold',
-                            marginBottom: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                          }}
-                        >
-                          {feature.name}
-                          {feature.hasChoices && (
-                            <span
-                              style={{
-                                fontSize: '12px',
-                                padding: '2px 8px',
-                                backgroundColor: accentPrimary,
-                                color: 'white',
-                                borderRadius: '4px',
-                              }}
-                            >
-                              Choice Required
-                            </span>
-                          )}
-                        </h4>
-                        <p
-                          style={{
-                            color: textPrimary,
-                            fontSize: '14px',
-                            opacity: 0.9,
-                            lineHeight: '1.5',
-                          }}
-                        >
-                          {feature.description}
-                        </p>
-                        {feature.hasChoices && feature.choices.length > 0 && (
-                          <FeatureChoiceSelector
-                            feature={feature}
-                            currentSelection={
-                              currentClassChoices.features[feature.id]
-                            }
-                            onSelect={(featureId, _, selection) => {
-                              setClassChoicesMap((prev) => ({
-                                ...prev,
-                                [currentClassName]: {
-                                  ...currentClassChoices,
-                                  features: {
-                                    ...currentClassChoices.features,
-                                    [featureId]: selection,
-                                  },
-                                },
-                              }));
-                            }}
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleSection>
-              )}
-
-            {/* Equipment Choices */}
-            {currentClassData.equipmentChoices &&
-              currentClassData.equipmentChoices.length > 0 && (
-                <CollapsibleSection
-                  title="Choose Your Equipment"
-                  defaultOpen={true}
-                  required={true}
-                >
-                  <EquipmentChoiceSelector
-                    choices={currentClassData.equipmentChoices}
-                    selected={currentClassChoices.equipment}
-                    onSelectionChange={(newEquipment) => {
-                      setClassChoicesMap((prev) => ({
-                        ...prev,
-                        [currentClassName]: {
-                          ...currentClassChoices,
-                          equipment: newEquipment,
-                        },
-                      }));
-                    }}
-                  />
-                </CollapsibleSection>
-              )}
-
-            {/* Features Section */}
-            <div style={{ marginBottom: '20px' }}>
-              <h4
-                style={{
-                  color: textPrimary,
-                  fontWeight: 'bold',
-                  marginBottom: '8px',
-                }}
-              >
-                Level 1 Features
-              </h4>
-              <div
-                style={{
-                  maxHeight: '120px',
-                  overflowY: 'auto',
-                  padding: '8px',
-                  backgroundColor: bgSecondary,
-                  borderRadius: '6px',
-                  border: `1px solid ${borderPrimary}`,
-                }}
-              >
-                {currentClassData.level1Features.map((feature, i) => (
-                  <div key={i} style={{ marginBottom: '8px' }}>
-                    <div
-                      style={{
-                        color: textPrimary,
-                        fontSize: '13px',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      {feature.name}
-                    </div>
-                    {feature.description && (
-                      <div
-                        style={{
-                          color: textPrimary,
-                          fontSize: '14px',
-                          lineHeight: '1.4',
-                          opacity: 0.9,
-                        }}
-                      >
-                        {feature.description}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Starting Equipment */}
-            {currentClassData.startingEquipment.length > 0 && (
-              <div style={{ marginBottom: '20px' }}>
-                <h4
-                  style={{
-                    color: textPrimary,
-                    fontWeight: 'bold',
-                    marginBottom: '8px',
-                  }}
-                >
-                  Starting Equipment
-                </h4>
-                <div
-                  style={{
-                    padding: '8px',
-                    backgroundColor: bgSecondary,
-                    borderRadius: '6px',
-                    border: `1px solid ${borderPrimary}`,
-                    fontSize: '14px',
-                    color: textPrimary,
-                    opacity: 0.9,
-                  }}
-                >
-                  {currentClassData.startingEquipment.slice(0, 4).join(', ')}
-                  {currentClassData.startingEquipment.length > 4 &&
-                    ` +${currentClassData.startingEquipment.length - 4} more items`}
-                </div>
-              </div>
-            )}
-
-            {/* Spellcasting Info */}
-            {currentClassData.spellcasting && (
-              <div style={{ marginBottom: '20px' }}>
-                <h4
-                  style={{
-                    color: textPrimary,
-                    fontWeight: 'bold',
-                    marginBottom: '8px',
-                  }}
-                >
-                  🔮 Spellcasting
-                </h4>
-                <div
-                  style={{
-                    padding: '12px',
-                    backgroundColor: bgSecondary,
-                    borderRadius: '6px',
-                    border: `1px solid ${accentPrimary}`,
-                    fontSize: '14px',
-                  }}
-                >
-                  <div style={{ color: textPrimary, marginBottom: '4px' }}>
-                    <strong>Ability:</strong>{' '}
-                    {currentClassData.spellcasting.spellcastingAbility}
-                  </div>
-                  <div style={{ color: textPrimary, marginBottom: '4px' }}>
-                    <strong>Cantrips Known:</strong>{' '}
-                    {currentClassData.spellcasting.cantripsKnown}
-                  </div>
-                  <div style={{ color: textPrimary }}>
-                    <strong>1st Level Slots:</strong>{' '}
-                    {currentClassData.spellcasting.spellSlotsLevel1}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Error Message */}
-        {errorMessage && (
+        {/* Content */}
+        {loading ? (
           <div
             style={{
-              padding: '12px 16px',
-              marginBottom: '16px',
-              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              borderRadius: '6px',
-              color: '#ef4444',
-              fontSize: '14px',
               textAlign: 'center',
+              padding: '32px',
+              color: textMuted,
             }}
           >
-            {errorMessage}
+            Loading classes...
           </div>
+        ) : error ? (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '32px',
+              color: '#ef4444',
+            }}
+          >
+            Error loading classes: {error.message}
+          </div>
+        ) : (
+          <>
+            <VisualCarousel
+              items={classes.map((cls) => ({
+                id: cls.classId,
+                name: cls.name,
+                description: cls.description,
+                visual: getClassEmoji(cls.name),
+                color: '#3b82f6',
+              }))}
+              selectedIndex={selectedIndex}
+              onSelect={setSelectedIndex}
+            />
+
+            {currentClassData && (
+              <div style={{ marginTop: '24px' }}>
+                {/* Show equipment choices */}
+                {filterChoicesByType(currentClassData.choices || [], ChoiceType.EQUIPMENT).length > 0 && (
+                  <CollapsibleSection
+                    title="Equipment Options"
+                    defaultOpen
+                    bgSecondary={bgSecondary}
+                    borderPrimary={borderPrimary}
+                    textPrimary={textPrimary}
+                    textMuted={textMuted}
+                  >
+                    <UnifiedChoiceSelector
+                      choices={currentClassData.choices || []}
+                      choiceType={ChoiceType.EQUIPMENT}
+                      selections={selections}
+                      onSelectionsChange={(newSelections) => {
+                        Object.entries(newSelections).forEach(([choiceId, values]) => {
+                          setSelection(choiceId, values);
+                        });
+                      }}
+                    />
+                  </CollapsibleSection>
+                )}
+
+                {/* Show proficiency choices */}
+                {(filterChoicesByType(currentClassData.choices || [], ChoiceType.SKILL).length > 0 ||
+                  filterChoicesByType(currentClassData.choices || [], ChoiceType.TOOL).length > 0) && (
+                  <CollapsibleSection
+                    title="Proficiency Options"
+                    defaultOpen
+                    bgSecondary={bgSecondary}
+                    borderPrimary={borderPrimary}
+                    textPrimary={textPrimary}
+                    textMuted={textMuted}
+                  >
+                    <UnifiedChoiceSelector
+                      choices={currentClassData.choices?.filter(c => 
+                        c.choiceType === ChoiceType.SKILL || 
+                        c.choiceType === ChoiceType.TOOL
+                      ) || []}
+                      selections={selections}
+                      onSelectionsChange={(newSelections) => {
+                        Object.entries(newSelections).forEach(([choiceId, values]) => {
+                          setSelection(choiceId, values);
+                        });
+                      }}
+                    />
+                  </CollapsibleSection>
+                )}
+
+                {/* Show spellcasting info if available */}
+                {currentClassData.spellcasting && (
+                  <CollapsibleSection
+                    title="Spellcasting"
+                    defaultOpen={false}
+                    bgSecondary={bgSecondary}
+                    borderPrimary={borderPrimary}
+                    textPrimary={textPrimary}
+                    textMuted={textMuted}
+                  >
+                    <SpellInfoDisplay spellcasting={currentClassData.spellcasting} />
+                  </CollapsibleSection>
+                )}
+
+                {/* Error message */}
+                {errorMessage && (
+                  <div
+                    style={{
+                      marginTop: '16px',
+                      padding: '12px',
+                      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid #ef4444',
+                      borderRadius: '8px',
+                      color: '#ef4444',
+                      fontSize: '14px',
+                    }}
+                  >
+                    {errorMessage}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '12px',
+                    marginTop: '24px',
+                    paddingTop: '24px',
+                    borderTop: `1px solid ${borderPrimary}`,
+                  }}
+                >
+                  <button
+                    onClick={onClose}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      backgroundColor: 'transparent',
+                      color: textPrimary,
+                      border: `2px solid ${borderPrimary}`,
+                      borderRadius: '8px',
+                      fontSize: '16px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleClassSelect}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      backgroundColor: accentPrimary,
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '16px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Select {currentClassData.name}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
-
-        {/* Action Buttons */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <button
-            onClick={onClose}
-            style={{
-              background: bgSecondary,
-              border: `1px solid ${borderPrimary}`,
-              borderRadius: '6px',
-              padding: '8px 16px',
-              cursor: 'pointer',
-              color: textPrimary,
-            }}
-          >
-            Cancel
-          </button>
-
-          <button
-            onClick={handleSelect}
-            style={{
-              background: accentPrimary,
-              border: 'none',
-              borderRadius: '6px',
-              padding: '8px 24px',
-              cursor: 'pointer',
-              color: textPrimary,
-              fontWeight: 'bold',
-            }}
-          >
-            Select {currentClassData.name}
-          </button>
-        </div>
       </div>
     </div>
   );
 
+  // Use React Portal to render at document root
   return createPortal(modalContent, document.body);
 }
