@@ -15,6 +15,8 @@ When updating `@kirkdiggler/rpg-api-protos` version:
 
 **Why**: GitHub dependencies with tags don't always update properly. The lock file might keep pointing to old commits even after package.json is updated. This causes CI to use the wrong proto version.
 
+**Latest proto tags**: Check https://github.com/KirkDiggler/rpg-api-protos/tags for the latest version. As of last update, v0.1.12 includes the equipment API endpoints.
+
 ## Development Commands
 
 - `npm run dev` - Start development server

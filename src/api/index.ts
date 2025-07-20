@@ -10,7 +10,10 @@ export {
   useGetCharacter,
   useGetDraft,
   useListCharacters,
+  useListClasses,
   useListDrafts,
+  useListEquipmentByType,
+  useListRaces,
   useUpdateDraftAbilityScores,
   useUpdateDraftBackground,
   useUpdateDraftClass,
@@ -27,6 +30,7 @@ export type {
   CharacterDraft,
   CreationProgress,
   CreationStep,
+  Equipment,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
 export {
@@ -34,6 +38,7 @@ export {
   Alignment,
   Background,
   Class,
+  EquipmentType,
   Language,
   Race,
   Skill,
