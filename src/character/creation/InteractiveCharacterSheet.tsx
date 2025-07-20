@@ -7,8 +7,8 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
-import { ClassSelectionModal } from './ClassSelectionModal';
 import type { ChoiceSelections } from './choices';
+import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
 import { RaceSelectionModal } from './RaceSelectionModal';
 import { SpellSelectionModal } from './SpellSelectionModal';

@@ -1,12 +1,12 @@
-import { useState } from 'react';
 import { useListClasses, useListRaces } from '@/api/hooks';
-import { 
-  UnifiedChoiceSelector,
+import {
   EquipmentChoices,
-  ProficiencyChoices,
   LanguageChoices,
-  type ChoiceSelections
+  ProficiencyChoices,
+  UnifiedChoiceSelector,
+  type ChoiceSelections,
 } from '@/character/creation/choices';
+import { useState } from 'react';
 import { Button } from './ui/Button';
 
 export function UnifiedChoiceDemo() {
@@ -18,8 +18,8 @@ export function UnifiedChoiceDemo() {
   const { data: classes, loading: classesLoading } = useListClasses();
   const { data: races, loading: racesLoading } = useListRaces();
 
-  const currentClass = classes.find(c => c.classId === selectedClass);
-  const currentRace = races.find(r => r.raceId === selectedRace);
+  const currentClass = classes.find((c) => c.classId === selectedClass);
+  const currentRace = races.find((r) => r.raceId === selectedRace);
 
   const handleShowSelections = () => {
     console.log('Class Selections:', classSelections);
@@ -40,7 +40,8 @@ export function UnifiedChoiceDemo() {
       <div>
         <h1 className="text-3xl font-bold mb-6">Unified Choice System Demo</h1>
         <p className="text-gray-600 dark:text-gray-400 mb-4">
-          This demonstrates the new unified choice components that work with the updated proto structure.
+          This demonstrates the new unified choice components that work with the
+          updated proto structure.
         </p>
       </div>
 
@@ -56,32 +57,36 @@ export function UnifiedChoiceDemo() {
           className="w-full p-2 border rounded-lg dark:bg-gray-800"
         >
           <option value="">Choose a class...</option>
-          {classes.map(cls => (
+          {classes.map((cls) => (
             <option key={cls.classId} value={cls.classId}>
               {cls.name}
             </option>
           ))}
         </select>
 
-        {currentClass && currentClass.choices && currentClass.choices.length > 0 && (
-          <div className="mt-6 space-y-6">
-            <h3 className="text-lg font-medium">Class Choices for {currentClass.name}</h3>
-            
-            {/* Equipment Choices */}
-            <EquipmentChoices
-              choices={currentClass.choices}
-              selections={classSelections}
-              onSelectionsChange={setClassSelections}
-            />
+        {currentClass &&
+          currentClass.choices &&
+          currentClass.choices.length > 0 && (
+            <div className="mt-6 space-y-6">
+              <h3 className="text-lg font-medium">
+                Class Choices for {currentClass.name}
+              </h3>
 
-            {/* Proficiency Choices */}
-            <ProficiencyChoices
-              choices={currentClass.choices}
-              selections={classSelections}
-              onSelectionsChange={setClassSelections}
-            />
-          </div>
-        )}
+              {/* Equipment Choices */}
+              <EquipmentChoices
+                choices={currentClass.choices}
+                selections={classSelections}
+                onSelectionsChange={setClassSelections}
+              />
+
+              {/* Proficiency Choices */}
+              <ProficiencyChoices
+                choices={currentClass.choices}
+                selections={classSelections}
+                onSelectionsChange={setClassSelections}
+              />
+            </div>
+          )}
       </div>
 
       {/* Race Selection */}
@@ -96,38 +101,42 @@ export function UnifiedChoiceDemo() {
           className="w-full p-2 border rounded-lg dark:bg-gray-800"
         >
           <option value="">Choose a race...</option>
-          {races.map(race => (
+          {races.map((race) => (
             <option key={race.raceId} value={race.raceId}>
               {race.name}
             </option>
           ))}
         </select>
 
-        {currentRace && currentRace.choices && currentRace.choices.length > 0 && (
-          <div className="mt-6 space-y-6">
-            <h3 className="text-lg font-medium">Race Choices for {currentRace.name}</h3>
-            
-            {/* Language Choices */}
-            <LanguageChoices
-              choices={currentRace.choices}
-              selections={raceSelections}
-              onSelectionsChange={setRaceSelections}
-            />
+        {currentRace &&
+          currentRace.choices &&
+          currentRace.choices.length > 0 && (
+            <div className="mt-6 space-y-6">
+              <h3 className="text-lg font-medium">
+                Race Choices for {currentRace.name}
+              </h3>
 
-            {/* Proficiency Choices */}
-            <ProficiencyChoices
-              choices={currentRace.choices}
-              selections={raceSelections}
-              onSelectionsChange={setRaceSelections}
-            />
-          </div>
-        )}
+              {/* Language Choices */}
+              <LanguageChoices
+                choices={currentRace.choices}
+                selections={raceSelections}
+                onSelectionsChange={setRaceSelections}
+              />
+
+              {/* Proficiency Choices */}
+              <ProficiencyChoices
+                choices={currentRace.choices}
+                selections={raceSelections}
+                onSelectionsChange={setRaceSelections}
+              />
+            </div>
+          )}
       </div>
 
       {/* Show All Choices (for debugging) */}
       <div className="space-y-4 border-t pt-6">
         <h2 className="text-xl font-semibold">All Choices (Debug View)</h2>
-        
+
         {currentClass && currentClass.choices && (
           <div>
             <h3 className="font-medium">All Class Choices:</h3>
@@ -152,9 +161,7 @@ export function UnifiedChoiceDemo() {
       </div>
 
       <div className="flex justify-center pt-6">
-        <Button onClick={handleShowSelections}>
-          Log Current Selections
-        </Button>
+        <Button onClick={handleShowSelections}>Log Current Selections</Button>
       </div>
     </div>
   );

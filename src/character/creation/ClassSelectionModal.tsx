@@ -4,14 +4,14 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
-import { VisualCarousel } from './components/VisualCarousel';
-import { SpellInfoDisplay } from './components/SpellInfoDisplay';
-import { 
+import {
+  filterChoicesByType,
   UnifiedChoiceSelector,
   useChoiceSelection,
-  filterChoicesByType,
-  type ChoiceSelections
+  type ChoiceSelections,
 } from './choices';
+import { SpellInfoDisplay } from './components/SpellInfoDisplay';
+import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -53,7 +53,6 @@ interface ClassSelectionModalProps {
 export function ClassSelectionModal({
   isOpen,
   currentClass,
-  existingProficiencies,
   onSelect,
   onClose,
 }: ClassSelectionModalProps) {
@@ -61,7 +60,9 @@ export function ClassSelectionModal({
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Track selections per class using the unified system
-  const [classSelectionsMap, setClassSelectionsMap] = useState<Record<string, ChoiceSelections>>({});
+  const [classSelectionsMap, setClassSelectionsMap] = useState<
+    Record<string, ChoiceSelections>
+  >({});
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Get current class
@@ -71,18 +72,16 @@ export function ClassSelectionModal({
   // Get selections for current class
   const currentSelections = classSelectionsMap[currentClassName] || {};
 
-  const {
-    selections,
-    setSelection,
-    isValidSelection,
-  } = useChoiceSelection({ initialSelections: currentSelections });
+  const { selections, setSelection, isValidSelection } = useChoiceSelection({
+    initialSelections: currentSelections,
+  });
 
   // Update the class selections map when selections change
   useEffect(() => {
     if (currentClassName) {
-      setClassSelectionsMap(prev => ({
+      setClassSelectionsMap((prev) => ({
         ...prev,
-        [currentClassName]: selections
+        [currentClassName]: selections,
       }));
     }
   }, [selections, currentClassName]);
@@ -109,12 +108,14 @@ export function ClassSelectionModal({
 
     // Validate all choices are made
     const allChoices = currentClassData.choices || [];
-    
+
     for (const choice of allChoices) {
       const selectedValues = selections[choice.id] || [];
       if (!isValidSelection(choice, selectedValues)) {
         const choiceTypeLabel = ChoiceType[choice.choiceType] || 'choice';
-        setErrorMessage(`Please complete the ${choiceTypeLabel.toLowerCase()} selection: "${choice.description}"`);
+        setErrorMessage(
+          `Please complete the ${choiceTypeLabel.toLowerCase()} selection: "${choice.description}"`
+        );
         return;
       }
     }
@@ -248,7 +249,10 @@ export function ClassSelectionModal({
             {currentClassData && (
               <div style={{ marginTop: '24px' }}>
                 {/* Show equipment choices */}
-                {filterChoicesByType(currentClassData.choices || [], ChoiceType.EQUIPMENT).length > 0 && (
+                {filterChoicesByType(
+                  currentClassData.choices || [],
+                  ChoiceType.EQUIPMENT
+                ).length > 0 && (
                   <CollapsibleSection
                     title="Equipment Options"
                     defaultOpen
@@ -262,17 +266,25 @@ export function ClassSelectionModal({
                       choiceType={ChoiceType.EQUIPMENT}
                       selections={selections}
                       onSelectionsChange={(newSelections) => {
-                        Object.entries(newSelections).forEach(([choiceId, values]) => {
-                          setSelection(choiceId, values);
-                        });
+                        Object.entries(newSelections).forEach(
+                          ([choiceId, values]) => {
+                            setSelection(choiceId, values);
+                          }
+                        );
                       }}
                     />
                   </CollapsibleSection>
                 )}
 
                 {/* Show proficiency choices */}
-                {(filterChoicesByType(currentClassData.choices || [], ChoiceType.SKILL).length > 0 ||
-                  filterChoicesByType(currentClassData.choices || [], ChoiceType.TOOL).length > 0) && (
+                {(filterChoicesByType(
+                  currentClassData.choices || [],
+                  ChoiceType.SKILL
+                ).length > 0 ||
+                  filterChoicesByType(
+                    currentClassData.choices || [],
+                    ChoiceType.TOOL
+                  ).length > 0) && (
                   <CollapsibleSection
                     title="Proficiency Options"
                     defaultOpen
@@ -282,15 +294,20 @@ export function ClassSelectionModal({
                     textMuted={textMuted}
                   >
                     <UnifiedChoiceSelector
-                      choices={currentClassData.choices?.filter(c => 
-                        c.choiceType === ChoiceType.SKILL || 
-                        c.choiceType === ChoiceType.TOOL
-                      ) || []}
+                      choices={
+                        currentClassData.choices?.filter(
+                          (c) =>
+                            c.choiceType === ChoiceType.SKILL ||
+                            c.choiceType === ChoiceType.TOOL
+                        ) || []
+                      }
                       selections={selections}
                       onSelectionsChange={(newSelections) => {
-                        Object.entries(newSelections).forEach(([choiceId, values]) => {
-                          setSelection(choiceId, values);
-                        });
+                        Object.entries(newSelections).forEach(
+                          ([choiceId, values]) => {
+                            setSelection(choiceId, values);
+                          }
+                        );
                       }}
                     />
                   </CollapsibleSection>
@@ -306,7 +323,9 @@ export function ClassSelectionModal({
                     textPrimary={textPrimary}
                     textMuted={textMuted}
                   >
-                    <SpellInfoDisplay spellcasting={currentClassData.spellcasting} />
+                    <SpellInfoDisplay
+                      spellcasting={currentClassData.spellcasting}
+                    />
                   </CollapsibleSection>
                 )}
 

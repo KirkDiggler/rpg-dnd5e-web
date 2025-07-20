@@ -1,10 +1,10 @@
-import { useCallback } from 'react';
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { useCallback } from 'react';
 import { ChoiceRenderer } from './ChoiceRenderer';
 import { useChoices } from './hooks/useChoices';
-import { useChoiceSelection } from './hooks/useChoiceSelection';
 import type { ChoiceSelections } from './hooks/useChoiceSelection';
+import { useChoiceSelection } from './hooks/useChoiceSelection';
 
 export interface UnifiedChoiceSelectorProps {
   choices: Choice[];
@@ -24,19 +24,18 @@ export function UnifiedChoiceSelector({
   onSelectionsChange,
   disabled = false,
 }: UnifiedChoiceSelectorProps) {
-  const { filteredChoices, hasChoices } = useChoices({ choices, type: choiceType });
-  
-  const {
-    selections,
-    setSelection,
-    getSelection,
-    isValidSelection,
-  } = useChoiceSelection({ initialSelections: externalSelections });
+  const { filteredChoices, hasChoices } = useChoices({
+    choices,
+    type: choiceType,
+  });
+
+  const { selections, setSelection, getSelection, isValidSelection } =
+    useChoiceSelection({ initialSelections: externalSelections });
 
   const handleSelectionChange = useCallback(
     (choiceId: string, values: string[]) => {
       setSelection(choiceId, values);
-      
+
       // Notify parent if callback provided
       if (onSelectionsChange) {
         const newSelections = {
@@ -68,22 +67,26 @@ export function UnifiedChoiceSelector({
             key={choice.id}
             className={`
               p-4 rounded-lg border
-              ${isValid 
-                ? 'border-gray-200 dark:border-gray-700' 
-                : 'border-red-300 dark:border-red-700'
+              ${
+                isValid
+                  ? 'border-gray-200 dark:border-gray-700'
+                  : 'border-red-300 dark:border-red-700'
               }
             `}
           >
             <ChoiceRenderer
               choice={choice}
               selectedValues={selectedValues}
-              onSelectionChange={(values) => handleSelectionChange(choice.id, values)}
+              onSelectionChange={(values) =>
+                handleSelectionChange(choice.id, values)
+              }
               disabled={disabled}
             />
-            
+
             {!isValid && selectedValues.length > 0 && (
               <p className="text-sm text-red-600 dark:text-red-400 mt-2">
-                Please select exactly {choice.chooseCount} option{choice.chooseCount !== 1 ? 's' : ''}
+                Please select exactly {choice.chooseCount} option
+                {choice.chooseCount !== 1 ? 's' : ''}
               </p>
             )}
           </div>

@@ -1,7 +1,10 @@
-import { useMemo } from 'react';
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { filterChoicesByType, groupChoicesByType } from '../utils/choiceFilters';
+import { useMemo } from 'react';
+import {
+  filterChoicesByType,
+  groupChoicesByType,
+} from '../utils/choiceFilters';
 
 export interface UseChoicesOptions {
   choices: Choice[];
@@ -19,7 +22,10 @@ export interface UseChoicesResult {
 /**
  * Hook to manage and filter choices
  */
-export function useChoices({ choices, type }: UseChoicesOptions): UseChoicesResult {
+export function useChoices({
+  choices,
+  type,
+}: UseChoicesOptions): UseChoicesResult {
   const filteredChoices = useMemo(() => {
     if (!type) return choices;
     return filterChoicesByType(choices, type);

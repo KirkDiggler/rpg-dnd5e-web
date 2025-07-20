@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
-import type { 
+import { useListEquipmentByType } from '@/api/hooks';
+import type {
+  CategoryReference,
   Choice,
   ExplicitOptions,
-  CategoryReference
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { useEffect, useState } from 'react';
 import { ChoiceOptionRenderer } from './ChoiceOptionRenderer';
-import { useListEquipmentByType } from '@/api/hooks';
 
 export interface ChoiceRendererProps {
   choice: Choice;
@@ -34,9 +34,10 @@ export function ChoiceRenderer({
   const [expandedOptions, setExpandedOptions] = useState<ExpandedOption[]>([]);
 
   // Handle category reference expansion for equipment
-  const categoryRef = choice.optionSet.case === 'categoryReference' 
-    ? choice.optionSet.value as CategoryReference 
-    : null;
+  const categoryRef =
+    choice.optionSet.case === 'categoryReference'
+      ? (choice.optionSet.value as CategoryReference)
+      : null;
 
   // Map category IDs to equipment types
   const getEquipmentType = (categoryId: string): string | null => {
@@ -45,19 +46,22 @@ export function ChoiceRenderer({
       'simple-ranged-weapons': 'Simple Ranged',
       'martial-melee-weapons': 'Martial Melee',
       'martial-ranged-weapons': 'Martial Ranged',
-      'artisan-tools': 'Artisan\'s Tools',
+      'artisan-tools': "Artisan's Tools",
       'gaming-sets': 'Gaming Set',
       'musical-instruments': 'Instrument',
     };
     return typeMap[categoryId] || null;
   };
 
-  const equipmentType = categoryRef ? getEquipmentType(categoryRef.categoryId) : null;
-  
-  const { data: equipmentData, loading: equipmentLoading } = useListEquipmentByType(
-    { equipmentType: equipmentType || '' },
-    { enabled: !!equipmentType && choice.choiceType === ChoiceType.EQUIPMENT }
-  );
+  const equipmentType = categoryRef
+    ? getEquipmentType(categoryRef.categoryId)
+    : null;
+
+  const { data: equipmentData, loading: equipmentLoading } =
+    useListEquipmentByType(
+      { equipmentType: equipmentType || '' },
+      { enabled: !!equipmentType && choice.choiceType === ChoiceType.EQUIPMENT }
+    );
 
   useEffect(() => {
     if (choice.optionSet.case === 'explicitOptions') {
@@ -66,8 +70,8 @@ export function ChoiceRenderer({
     } else if (categoryRef && equipmentData?.equipment) {
       // Convert equipment to choice options
       const options = equipmentData.equipment
-        .filter(eq => !categoryRef.excludeIds.includes(eq.equipmentId))
-        .map(eq => ({
+        .filter((eq) => !categoryRef.excludeIds.includes(eq.equipmentId))
+        .map((eq) => ({
           optionType: {
             case: 'item',
             value: {
@@ -87,7 +91,7 @@ export function ChoiceRenderer({
 
     if (currentIndex >= 0) {
       // Remove from selection
-      newSelection = selectedValues.filter(v => v !== optionId);
+      newSelection = selectedValues.filter((v) => v !== optionId);
     } else if (choice.chooseCount === 1) {
       // Single selection - replace
       newSelection = [optionId];
@@ -109,13 +113,18 @@ export function ChoiceRenderer({
         return item.itemId;
       }
       case 'countedItem': {
-        const countedItem = option.optionType.value as { itemId: string; quantity: number };
+        const countedItem = option.optionType.value as {
+          itemId: string;
+          quantity: number;
+        };
         return `${countedItem.itemId}:${countedItem.quantity}`;
       }
       case 'bundle': {
-        const bundle = option.optionType.value as { bundleId?: string; items: Array<{ itemId: string }> };
-        return bundle.bundleId || 
-          bundle.items.map((i) => i.itemId).join('-');
+        const bundle = option.optionType.value as {
+          bundleId?: string;
+          items: Array<{ itemId: string }>;
+        };
+        return bundle.bundleId || bundle.items.map((i) => i.itemId).join('-');
       }
       case 'nestedChoice': {
         const nestedChoice = option.optionType.value as { choiceId: string };
@@ -153,7 +162,8 @@ export function ChoiceRenderer({
           {choice.description}
         </p>
         <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-          Choose {choice.chooseCount} {choice.chooseCount === 1 ? 'option' : 'options'}
+          Choose {choice.chooseCount}{' '}
+          {choice.chooseCount === 1 ? 'option' : 'options'}
           {selectedValues.length > 0 && ` (${selectedValues.length} selected)`}
         </p>
       </div>
@@ -172,7 +182,11 @@ export function ChoiceRenderer({
                 option={option}
                 isSelected={selectedValues.includes(optionId)}
                 onSelect={() => handleOptionToggle(optionId)}
-                disabled={disabled || (!selectedValues.includes(optionId) && selectedValues.length >= choice.chooseCount)}
+                disabled={
+                  disabled ||
+                  (!selectedValues.includes(optionId) &&
+                    selectedValues.length >= choice.chooseCount)
+                }
               />
             );
           })

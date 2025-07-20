@@ -4,13 +4,13 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListRaces } from '../../api/hooks';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
-import { VisualCarousel } from './components/VisualCarousel';
-import { 
+import {
+  filterChoicesByType,
   UnifiedChoiceSelector,
   useChoiceSelection,
-  filterChoicesByType,
-  type ChoiceSelections
+  type ChoiceSelections,
 } from './choices';
+import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -83,7 +83,9 @@ export function RaceSelectionModal({
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Track selections per race using the unified system
-  const [raceSelectionsMap, setRaceSelectionsMap] = useState<Record<string, ChoiceSelections>>({});
+  const [raceSelectionsMap, setRaceSelectionsMap] = useState<
+    Record<string, ChoiceSelections>
+  >({});
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Get current race
@@ -93,18 +95,16 @@ export function RaceSelectionModal({
   // Get selections for current race
   const currentSelections = raceSelectionsMap[currentRaceName] || {};
 
-  const {
-    selections,
-    setSelection,
-    isValidSelection,
-  } = useChoiceSelection({ initialSelections: currentSelections });
+  const { selections, setSelection, isValidSelection } = useChoiceSelection({
+    initialSelections: currentSelections,
+  });
 
   // Update the race selections map when selections change
   useEffect(() => {
     if (currentRaceName) {
-      setRaceSelectionsMap(prev => ({
+      setRaceSelectionsMap((prev) => ({
         ...prev,
-        [currentRaceName]: selections
+        [currentRaceName]: selections,
       }));
     }
   }, [selections, currentRaceName]);
@@ -131,12 +131,14 @@ export function RaceSelectionModal({
 
     // Validate all choices are made
     const allChoices = currentRaceData.choices || [];
-    
+
     for (const choice of allChoices) {
       const selectedValues = selections[choice.id] || [];
       if (!isValidSelection(choice, selectedValues)) {
         const choiceTypeLabel = ChoiceType[choice.choiceType] || 'choice';
-        setErrorMessage(`Please complete the ${choiceTypeLabel.toLowerCase()} selection: "${choice.description}"`);
+        setErrorMessage(
+          `Please complete the ${choiceTypeLabel.toLowerCase()} selection: "${choice.description}"`
+        );
         return;
       }
     }
@@ -270,7 +272,10 @@ export function RaceSelectionModal({
             {currentRaceData && (
               <div style={{ marginTop: '24px' }}>
                 {/* Show language choices */}
-                {filterChoicesByType(currentRaceData.choices || [], ChoiceType.LANGUAGE).length > 0 && (
+                {filterChoicesByType(
+                  currentRaceData.choices || [],
+                  ChoiceType.LANGUAGE
+                ).length > 0 && (
                   <CollapsibleSection
                     title="Language Options"
                     defaultOpen
@@ -284,17 +289,25 @@ export function RaceSelectionModal({
                       choiceType={ChoiceType.LANGUAGE}
                       selections={selections}
                       onSelectionsChange={(newSelections) => {
-                        Object.entries(newSelections).forEach(([choiceId, values]) => {
-                          setSelection(choiceId, values);
-                        });
+                        Object.entries(newSelections).forEach(
+                          ([choiceId, values]) => {
+                            setSelection(choiceId, values);
+                          }
+                        );
                       }}
                     />
                   </CollapsibleSection>
                 )}
 
                 {/* Show proficiency choices */}
-                {(filterChoicesByType(currentRaceData.choices || [], ChoiceType.SKILL).length > 0 ||
-                  filterChoicesByType(currentRaceData.choices || [], ChoiceType.TOOL).length > 0) && (
+                {(filterChoicesByType(
+                  currentRaceData.choices || [],
+                  ChoiceType.SKILL
+                ).length > 0 ||
+                  filterChoicesByType(
+                    currentRaceData.choices || [],
+                    ChoiceType.TOOL
+                  ).length > 0) && (
                   <CollapsibleSection
                     title="Proficiency Options"
                     defaultOpen
@@ -304,75 +317,82 @@ export function RaceSelectionModal({
                     textMuted={textMuted}
                   >
                     <UnifiedChoiceSelector
-                      choices={currentRaceData.choices?.filter(c => 
-                        c.choiceType === ChoiceType.SKILL || 
-                        c.choiceType === ChoiceType.TOOL
-                      ) || []}
+                      choices={
+                        currentRaceData.choices?.filter(
+                          (c) =>
+                            c.choiceType === ChoiceType.SKILL ||
+                            c.choiceType === ChoiceType.TOOL
+                        ) || []
+                      }
                       selections={selections}
                       onSelectionsChange={(newSelections) => {
-                        Object.entries(newSelections).forEach(([choiceId, values]) => {
-                          setSelection(choiceId, values);
-                        });
+                        Object.entries(newSelections).forEach(
+                          ([choiceId, values]) => {
+                            setSelection(choiceId, values);
+                          }
+                        );
                       }}
                     />
                   </CollapsibleSection>
                 )}
 
                 {/* Show ability score bonuses */}
-                {currentRaceData.abilityScoreBonuses && currentRaceData.abilityScoreBonuses.length > 0 && (
-                  <CollapsibleSection
-                    title="Ability Score Bonuses"
-                    defaultOpen={false}
-                    bgSecondary={bgSecondary}
-                    borderPrimary={borderPrimary}
-                    textPrimary={textPrimary}
-                    textMuted={textMuted}
-                  >
-                    <div className="space-y-2">
-                      {currentRaceData.abilityScoreBonuses.map((bonus) => (
-                        <div
-                          key={bonus.ability}
-                          className="flex items-center justify-between"
-                          style={{ color: textPrimary }}
-                        >
-                          <span className="capitalize">{bonus.ability}</span>
-                          <span className="font-medium">+{bonus.bonus}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CollapsibleSection>
-                )}
-
-                {/* Show traits */}
-                {currentRaceData.traits && currentRaceData.traits.length > 0 && (
-                  <CollapsibleSection
-                    title="Racial Traits"
-                    defaultOpen={false}
-                    bgSecondary={bgSecondary}
-                    borderPrimary={borderPrimary}
-                    textPrimary={textPrimary}
-                    textMuted={textMuted}
-                  >
-                    <div className="space-y-3">
-                      {currentRaceData.traits.map((trait) => (
-                        <div key={trait.name}>
-                          <h4
-                            className="font-medium"
+                {currentRaceData.abilityScoreBonuses &&
+                  currentRaceData.abilityScoreBonuses.length > 0 && (
+                    <CollapsibleSection
+                      title="Ability Score Bonuses"
+                      defaultOpen={false}
+                      bgSecondary={bgSecondary}
+                      borderPrimary={borderPrimary}
+                      textPrimary={textPrimary}
+                      textMuted={textMuted}
+                    >
+                      <div className="space-y-2">
+                        {currentRaceData.abilityScoreBonuses.map((bonus) => (
+                          <div
+                            key={bonus.ability}
+                            className="flex items-center justify-between"
                             style={{ color: textPrimary }}
                           >
-                            {trait.name}
-                          </h4>
-                          <p
-                            className="text-sm mt-1"
-                            style={{ color: textMuted }}
-                          >
-                            {trait.description}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </CollapsibleSection>
-                )}
+                            <span className="capitalize">{bonus.ability}</span>
+                            <span className="font-medium">+{bonus.bonus}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                {/* Show traits */}
+                {currentRaceData.traits &&
+                  currentRaceData.traits.length > 0 && (
+                    <CollapsibleSection
+                      title="Racial Traits"
+                      defaultOpen={false}
+                      bgSecondary={bgSecondary}
+                      borderPrimary={borderPrimary}
+                      textPrimary={textPrimary}
+                      textMuted={textMuted}
+                    >
+                      <div className="space-y-3">
+                        {currentRaceData.traits.map((trait) => (
+                          <div key={trait.name}>
+                            <h4
+                              className="font-medium"
+                              style={{ color: textPrimary }}
+                            >
+                              {trait.name}
+                            </h4>
+                            <p
+                              className="text-sm mt-1"
+                              style={{ color: textMuted }}
+                            >
+                              {trait.description}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  )}
 
                 {/* Error message */}
                 {errorMessage && (

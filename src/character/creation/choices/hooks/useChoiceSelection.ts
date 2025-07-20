@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { useCallback, useState } from 'react';
 
 export type ChoiceSelections = Record<string, string[]>;
 
@@ -23,7 +23,8 @@ export interface UseChoiceSelectionResult {
 export function useChoiceSelection({
   initialSelections = {},
 }: UseChoiceSelectionOptions = {}): UseChoiceSelectionResult {
-  const [selections, setSelections] = useState<ChoiceSelections>(initialSelections);
+  const [selections, setSelections] =
+    useState<ChoiceSelections>(initialSelections);
 
   const setSelection = useCallback((choiceId: string, values: string[]) => {
     setSelections((prev) => ({

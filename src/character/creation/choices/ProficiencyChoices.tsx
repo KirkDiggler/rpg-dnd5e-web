@@ -21,8 +21,8 @@ export function ProficiencyChoices({
 }: ProficiencyChoicesProps) {
   // Filter for both skill and tool proficiencies
   const proficiencyChoices = choices.filter(
-    (choice) => 
-      choice.choiceType === ChoiceType.SKILL || 
+    (choice) =>
+      choice.choiceType === ChoiceType.SKILL ||
       choice.choiceType === ChoiceType.TOOL
   );
 

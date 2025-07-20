@@ -9,6 +9,12 @@ export interface Theme {
 
 export const themes: Theme[] = [
   {
+    id: 'wood',
+    name: 'Board Game Wood',
+    description: 'Classic wood texture with parchment - warm and tactile',
+    preview: '#8B5A3C',
+  },
+  {
     id: 'dark-fantasy',
     name: 'Modern Dark Fantasy',
     description: 'Sleek modern design with electric blue accents',
@@ -29,7 +35,7 @@ export const themes: Theme[] = [
 ];
 
 const THEME_STORAGE_KEY = 'rpg-dnd5e-theme';
-const DEFAULT_THEME = 'dark-fantasy';
+const DEFAULT_THEME = 'arcane';
 
 export function useTheme() {
   const [currentTheme, setCurrentTheme] = useState<string>(DEFAULT_THEME);

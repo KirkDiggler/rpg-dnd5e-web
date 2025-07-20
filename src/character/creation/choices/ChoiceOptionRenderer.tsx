@@ -1,9 +1,9 @@
-import type { 
+import type {
   ChoiceOption,
-  ItemReference,
   CountedItemReference,
   ItemBundle,
-  NestedChoice
+  ItemReference,
+  NestedChoice,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
 export interface ChoiceOptionRendererProps {
@@ -38,7 +38,9 @@ export function ChoiceOptionRenderer({
         return (
           <div className="flex items-center justify-between">
             <span>{countedItem.name || countedItem.itemId}</span>
-            <span className="text-sm text-gray-500">×{countedItem.quantity}</span>
+            <span className="text-sm text-gray-500">
+              ×{countedItem.quantity}
+            </span>
           </div>
         );
       }
@@ -51,7 +53,8 @@ export function ChoiceOptionRenderer({
             <div className="text-sm text-gray-600">
               {bundle.items.map((item, index) => (
                 <div key={index}>
-                  • {item.name || item.itemId} {item.quantity > 1 && `×${item.quantity}`}
+                  • {item.name || item.itemId}{' '}
+                  {item.quantity > 1 && `×${item.quantity}`}
                 </div>
               ))}
             </div>
@@ -65,7 +68,8 @@ export function ChoiceOptionRenderer({
           <div className="space-y-1">
             <div className="font-medium">{nested.description}</div>
             <div className="text-sm text-gray-600">
-              Choose {nested.chooseCount} option{nested.chooseCount !== 1 ? 's' : ''}
+              Choose {nested.chooseCount} option
+              {nested.chooseCount !== 1 ? 's' : ''}
             </div>
           </div>
         );
@@ -82,9 +86,10 @@ export function ChoiceOptionRenderer({
       disabled={disabled}
       className={`
         w-full p-3 rounded-lg border transition-all text-left
-        ${isSelected 
-          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-          : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+        ${
+          isSelected
+            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+            : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
         }
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
       `}

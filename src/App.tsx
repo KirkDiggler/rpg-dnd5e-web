@@ -36,10 +36,16 @@ function App() {
         {/* Theme Selector and Demo Link */}
         <div className="flex justify-between mb-6">
           <button
-            onClick={() => setCurrentView(currentView === 'choice-demo' ? 'character-list' : 'choice-demo')}
+            onClick={() =>
+              setCurrentView(
+                currentView === 'choice-demo' ? 'character-list' : 'choice-demo'
+              )
+            }
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
           >
-            {currentView === 'choice-demo' ? 'Back to Characters' : 'Choice System Demo'}
+            {currentView === 'choice-demo'
+              ? 'Back to Characters'
+              : 'Choice System Demo'}
           </button>
           <ThemeSelector />
         </div>

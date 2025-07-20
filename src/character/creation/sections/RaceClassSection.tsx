@@ -30,7 +30,10 @@ export function RaceClassSection() {
     setShowRaceModal(false);
   };
 
-  const handleClassSelect = (classData: ClassInfo, choices: ChoiceSelections) => {
+  const handleClassSelect = (
+    classData: ClassInfo,
+    choices: ChoiceSelections
+  ) => {
     setSelectedClassData(classData);
     setSelectedChoice('class', classData.id);
     setSelectedChoice('classData', classData);

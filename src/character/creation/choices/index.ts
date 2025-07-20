@@ -23,10 +23,10 @@ export { useChoices } from './hooks/useChoices';
 export type { UseChoicesOptions, UseChoicesResult } from './hooks/useChoices';
 
 export { useChoiceSelection } from './hooks/useChoiceSelection';
-export type { 
-  ChoiceSelections, 
-  UseChoiceSelectionOptions, 
-  UseChoiceSelectionResult 
+export type {
+  ChoiceSelections,
+  UseChoiceSelectionOptions,
+  UseChoiceSelectionResult,
 } from './hooks/useChoiceSelection';
 
 // Utils
