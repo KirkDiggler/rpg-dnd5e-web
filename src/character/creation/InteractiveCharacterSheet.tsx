@@ -7,6 +7,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
+import type { ClassChoices } from './ClassSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
 import { RaceSelectionModal } from './RaceSelectionModal';
@@ -16,6 +17,12 @@ import { useCharacterDraft } from './useCharacterDraft';
 interface InteractiveCharacterSheetProps {
   onComplete: () => void;
   onCancel: () => void;
+}
+
+interface CharacterChoices {
+  classChoices?: ClassChoices;
+  raceChoices?: Record<string, string[]>; // TODO: Import RaceChoices type when available
+  [key: string]: unknown; // Allow other choice types
 }
 
 // Simple context for now - we'll make it more sophisticated later
@@ -39,7 +46,7 @@ const CharacterContext = {
     wisdom: 0,
     charisma: 0,
   },
-  choices: {} as Record<string, string[]>, // Track all choices made
+  choices: {} as CharacterChoices, // Track all choices made
   equipmentChoices: {} as Record<number, string>, // Track equipment selections
 };
 
@@ -56,41 +63,132 @@ export function InteractiveCharacterSheet({
 
   const getModifier = (score: number) => Math.floor((score - 10) / 2);
 
+  // Get classChoices from character state
+  const classChoices = character.choices?.classChoices || ({} as ClassChoices);
+
   // Compute character creation steps and their status
   const steps = useMemo<Step[]>(() => {
-    const hasAllScores = Object.values(character.abilityScores).every(
-      (score) => score > 0
-    );
+    const hasRace = character.selectedRace !== null;
+    const hasClass = character.selectedClass !== null;
+    const hasProficiencies =
+      Object.keys(classChoices.proficiencies || {}).length > 0;
+    const hasEquipment = Object.keys(character.equipmentChoices).length > 0;
+    const hasSpells = selectedSpells.length > 0;
 
-    return [
+    // Check if class is a spellcaster
+    const isSpellcaster = character.selectedClass?.spellcasting !== undefined;
+
+    // Check if any level1Features have choices that need selection
+    const hasFeatureChoices =
+      character.selectedClass?.level1Features?.some((feature) => {
+        return (
+          feature.hasChoices && feature.choices && feature.choices.length > 0
+        );
+      }) || false;
+
+    // Check if all feature choices have been made
+    const hasFeatureChoicesSelected =
+      !hasFeatureChoices ||
+      (character.selectedClass?.level1Features?.every((feature) => {
+        if (
+          !feature.hasChoices ||
+          !feature.choices ||
+          feature.choices.length === 0
+        ) {
+          return true; // No choice needed
+        }
+        // Check if this feature has a selection in the features object
+        const featureSelections = classChoices.features || {};
+        return featureSelections[feature.id] !== undefined;
+      }) ??
+        true);
+
+    // Build steps array
+    const allSteps: Step[] = [
       {
-        id: 'identity',
-        label: 'Character Identity',
-        status:
-          character.selectedRace && character.selectedClass
-            ? 'completed'
-            : 'current',
+        id: 'race',
+        label: 'Race',
+        status: hasRace ? 'completed' : 'current',
       },
       {
-        id: 'abilities',
-        label: 'Roll Abilities',
-        status: hasAllScores
-          ? 'completed'
-          : character.selectedRace && character.selectedClass
-            ? 'current'
-            : 'upcoming',
-      },
-      {
-        id: 'details',
-        label: 'Name & Details',
-        status: character.characterName
-          ? 'completed'
-          : hasAllScores
-            ? 'current'
-            : 'upcoming',
+        id: 'class',
+        label: 'Class',
+        status: hasClass ? 'completed' : hasRace ? 'current' : 'upcoming',
       },
     ];
-  }, [character]);
+
+    // Add feature selection if applicable (e.g., Fighting Style for Fighter)
+    if (hasFeatureChoices) {
+      allSteps.push({
+        id: 'features',
+        label: 'Features',
+        status: hasFeatureChoicesSelected
+          ? 'completed'
+          : hasClass
+            ? 'current'
+            : 'upcoming',
+        conditional: true,
+      });
+    }
+
+    // Proficiencies step
+    allSteps.push({
+      id: 'proficiencies',
+      label: 'Proficiencies',
+      status: hasProficiencies
+        ? 'completed'
+        : hasClass
+          ? 'current'
+          : 'upcoming',
+    });
+
+    // Equipment step
+    allSteps.push({
+      id: 'equipment',
+      label: 'Equipment',
+      status: hasEquipment
+        ? 'completed'
+        : hasProficiencies
+          ? 'current'
+          : 'upcoming',
+    });
+
+    // Spells step (conditional on class)
+    if (isSpellcaster) {
+      allSteps.push({
+        id: 'spells',
+        label: 'Spells',
+        status: hasSpells ? 'completed' : hasEquipment ? 'current' : 'upcoming',
+        conditional: true,
+      });
+    }
+
+    // Update current step logic using functional approach
+    const hasCurrentStep = allSteps.some((step) => step.status === 'current');
+
+    if (!hasCurrentStep) {
+      // Find first upcoming step and make it current
+      const firstUpcomingIndex = allSteps.findIndex(
+        (step) => step.status === 'upcoming'
+      );
+      if (firstUpcomingIndex !== -1) {
+        return allSteps.map((step, index) =>
+          index === firstUpcomingIndex
+            ? { ...step, status: 'current' as const }
+            : step
+        );
+      }
+    }
+
+    return allSteps;
+  }, [
+    character.selectedRace,
+    character.selectedClass,
+    character.equipmentChoices,
+    classChoices.proficiencies,
+    classChoices.features,
+    selectedSpells,
+  ]);
 
   // Helper function to get race emoji
   const getRaceEmoji = (raceName: string) => {
@@ -181,7 +279,19 @@ export function InteractiveCharacterSheet({
             borderRadius: '0.75rem',
           }}
         >
-          <ProgressTracker steps={steps} orientation="horizontal" />
+          <div className="overflow-x-auto">
+            <ProgressTracker steps={steps} orientation="horizontal" />
+          </div>
+          {draft.draft?.progress?.completionPercentage !== undefined && (
+            <div className="mt-3 text-center">
+              <span
+                className="text-sm font-medium"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                {draft.draft.progress.completionPercentage}% Complete
+              </span>
+            </div>
+          )}
         </motion.div>
       </div>
 
@@ -529,22 +639,23 @@ export function InteractiveCharacterSheet({
                               )}
                             </div>
                           )}
-                        {Object.values(draft.classChoices).flat().length >
-                          0 && (
-                          <div style={{ color: 'var(--text-primary)' }}>
-                            <span
-                              style={{
-                                color: 'var(--text-primary)',
-                                opacity: 0.7,
-                              }}
-                            >
-                              Chosen Skills:
-                            </span>{' '}
-                            {Object.values(draft.classChoices)
-                              .flat()
-                              .join(', ')}
-                          </div>
-                        )}
+                        {classChoices.proficiencies &&
+                          Object.values(classChoices.proficiencies).flat()
+                            .length > 0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
+                                }}
+                              >
+                                Chosen Skills:
+                              </span>{' '}
+                              {Object.values(classChoices.proficiencies)
+                                .flat()
+                                .join(', ')}
+                            </div>
+                          )}
                       </div>
                     </motion.div>
 
@@ -1098,7 +1209,11 @@ export function InteractiveCharacterSheet({
           setCharacter((prev) => ({
             ...prev,
             selectedClass: classData,
-            equipmentChoices: choices.equipment || {}, // Clear equipment choices if none provided
+            equipmentChoices: choices.equipment || {},
+            choices: {
+              ...prev.choices,
+              classChoices: choices, // Store the full choices object including features
+            },
           }));
           draft.setClass(classData);
 

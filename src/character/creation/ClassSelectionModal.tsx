@@ -209,6 +209,23 @@ export function ClassSelectionModal({
       }
     }
 
+    // Validate feature choices
+    const hasFeatureChoices =
+      currentClassData.level1Features &&
+      currentClassData.level1Features.some((f) => f.hasChoices);
+
+    if (hasFeatureChoices) {
+      for (const feature of currentClassData.level1Features) {
+        if (feature.hasChoices && feature.choices.length > 0) {
+          const selection = currentClassChoices.features[feature.id];
+          if (!selection || selection === '') {
+            setErrorMessage(`Please make a selection for ${feature.name}`);
+            return;
+          }
+        }
+      }
+    }
+
     onSelect(currentClassData, {
       proficiencies: currentClassChoices.proficiencies,
       equipment: currentClassChoices.equipment,
@@ -596,7 +613,9 @@ export function ClassSelectionModal({
                           padding: '12px',
                           backgroundColor: bgSecondary,
                           borderRadius: '8px',
-                          border: `1px solid ${borderPrimary}`,
+                          border: feature.hasChoices
+                            ? '2px solid var(--accent-primary)'
+                            : `1px solid ${borderPrimary}`,
                         }}
                       >
                         <h4
