@@ -1,5 +1,15 @@
 # Next Session: Spell Lists & Background Equipment (Issue #60)
 
+## 🚨 CRITICAL: Unified Choice System Update
+
+**The proto structure has fundamentally changed in v0.1.12!**
+
+The old `EquipmentChoice`, `ProficiencyChoice`, etc. types are GONE. There's now a unified `Choice` type for everything. Our current implementation is using the old structure and will not work with the new API.
+
+**See `NEXT_SESSION_UNIFIED_CHOICES.md` for complete migration guide.**
+
+Consider starting fresh with new components designed for the unified system rather than trying to retrofit the old ones.
+
 ## Current State
 
 We just completed a major PR (#58) that implements character creation choices:
