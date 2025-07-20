@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
 import { UnifiedChoiceSelector } from '../../components/UnifiedChoiceSelector';
-import { EquipmentChoiceSelector } from './components/EquipmentChoiceSelector';
 import { FeatureChoiceSelector } from './components/FeatureChoiceSelector';
 import { VisualCarousel } from './components/VisualCarousel';
 
@@ -174,34 +173,18 @@ export function ClassSelectionModal({
     }
 
     // Validate equipment choices
-    const hasEquipmentChoices =
-      currentClassData.equipmentChoices &&
-      currentClassData.equipmentChoices.length > 0;
+    const equipmentChoices =
+      currentClassData.choices?.filter(
+        (choice) => choice.choiceType === ChoiceType.EQUIPMENT
+      ) || [];
 
-    if (hasEquipmentChoices) {
-      for (let i = 0; i < currentClassData.equipmentChoices.length; i++) {
-        const selection = currentClassChoices.equipment[i];
-        if (!selection || selection === '') {
-          setErrorMessage(
-            `Please select an option for Equipment Option ${i + 1}`
-          );
-          return;
-        }
-        // Check if it's a weapon choice that needs a specific selection
-        if (selection.includes('-') && !selection.includes(':')) {
-          const optionIndex = parseInt(selection.split('-')[1]);
-          const option =
-            currentClassData.equipmentChoices[i].options[optionIndex];
-          if (
-            option &&
-            (option.includes('any martial') || option.includes('any simple'))
-          ) {
-            setErrorMessage(
-              `Please select a specific weapon for Equipment Option ${i + 1}`
-            );
-            return;
-          }
-        }
+    for (const choice of equipmentChoices) {
+      const selected = currentClassChoices.equipment[choice.id] || '';
+      if (!selected) {
+        setErrorMessage(
+          `Please select an option for equipment: ${choice.description}`
+        );
+        return;
       }
     }
 
@@ -693,29 +676,50 @@ export function ClassSelectionModal({
                 </CollapsibleSection>
               )}
 
-            {/* Equipment Choices */}
-            {currentClassData.equipmentChoices &&
-              currentClassData.equipmentChoices.length > 0 && (
+            {/* Equipment Choices from new choice system */}
+            {(() => {
+              const equipmentChoices =
+                currentClassData.choices?.filter(
+                  (choice) => choice.choiceType === ChoiceType.EQUIPMENT
+                ) || [];
+
+              if (equipmentChoices.length === 0) return null;
+
+              return (
                 <CollapsibleSection
                   title="Choose Your Equipment"
                   defaultOpen={true}
                   required={true}
                 >
-                  <EquipmentChoiceSelector
-                    choices={currentClassData.equipmentChoices}
-                    selected={currentClassChoices.equipment}
-                    onSelectionChange={(newEquipment) => {
-                      setClassChoicesMap((prev) => ({
-                        ...prev,
-                        [currentClassName]: {
-                          ...currentClassChoices,
-                          equipment: newEquipment,
-                        },
-                      }));
-                    }}
-                  />
+                  <div style={{ marginBottom: '12px' }}>
+                    {equipmentChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <UnifiedChoiceSelector
+                          choice={choice}
+                          currentSelections={
+                            currentClassChoices.equipment[choice.id]
+                              ? [currentClassChoices.equipment[choice.id]]
+                              : []
+                          }
+                          onSelectionChange={(choiceId, selections) => {
+                            setClassChoicesMap((prev) => ({
+                              ...prev,
+                              [currentClassName]: {
+                                ...currentClassChoices,
+                                equipment: {
+                                  ...currentClassChoices.equipment,
+                                  [choiceId]: selections[0] || '',
+                                },
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </CollapsibleSection>
-              )}
+              );
+            })()}
 
             {/* Features Section */}
             <div style={{ marginBottom: '20px' }}>
