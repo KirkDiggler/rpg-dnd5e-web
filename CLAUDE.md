@@ -111,3 +111,68 @@ When updating `@kirkdiggler/rpg-api-protos` version:
 - API authentication via Discord token
 - Validate all user inputs
 - Sanitize rendered content
+
+## Connect RPC Configuration and API Patterns
+
+### Connect RPC Client Setup
+
+**Location**: `/src/api/client.ts`
+
+- Uses `@connectrpc/connect` and `@connectrpc/connect-web` for gRPC-Web transport
+- Configured with automatic Discord Activity proxy support (routes through `/.proxy` when hosted on discordsays.com)
+- Includes a logging interceptor for debugging API calls in development mode
+- Currently only exposes `characterClient` for the CharacterService
+
+### API Hook Pattern
+
+**Location**: `/src/api/hooks.ts`
+
+- Consistent hook naming: `use{Action}{Resource}` (e.g., `useGetCharacter`, `useListCharacters`)
+- Two types of hooks:
+  1. **Query hooks** (auto-fetch on mount): Return `{ data, loading, error, refetch }`
+  2. **Mutation hooks** (imperative): Return `{ action, loading, error }`
+- Uses `@bufbuild/protobuf` for creating request objects with schemas
+- All hooks handle loading states and errors consistently
+
+### Protobuf Dependencies
+
+- Uses `@kirkdiggler/rpg-api-protos` (v0.1.11) from GitHub
+- Imports from `/gen/ts/dnd5e/api/v1alpha1/character_pb` for types and schemas
+- Common imports: `Character`, `CharacterDraft`, `ClassInfo`, `RaceInfo`, etc.
+
+### Equipment/Weapon Support Status
+
+- **EquipmentChoice** type exists in protos and is used in `EquipmentChoiceSelector` component
+- **No dedicated equipment/weapon API endpoints yet** - currently using hardcoded data
+- TODO comment in code: `// TODO(#equipment-api): Replace with API call when equipment endpoints are available`
+- Temporary weapon lists: `MARTIAL_MELEE_WEAPONS`, `SIMPLE_WEAPONS` arrays
+
+### Adding New API Hooks Pattern
+
+When adding new API endpoints (e.g., for equipment/weapons):
+
+1. Import types and schemas from protos
+2. Create query hooks with this structure:
+   ```typescript
+   export function useListEquipment(filters?, pageSize = 20) {
+     const [state, setState] = useState<ListState<Equipment>>({
+       data: [],
+       loading: false,
+       error: null,
+     });
+     // ... fetch logic using characterClient.listEquipment
+     return { ...state, refetch, loadMore };
+   }
+   ```
+3. Create mutation hooks for actions:
+   ```typescript
+   export function useEquipItem() {
+     const [loading, setLoading] = useState(false);
+     const [error, setError] = useState<Error | null>(null);
+     const equipItem = useCallback(async (request) => {
+       // ... mutation logic
+     }, []);
+     return { equipItem, loading, error };
+   }
+   ```
+4. Export from `/src/api/index.ts`

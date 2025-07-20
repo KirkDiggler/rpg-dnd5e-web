@@ -1,51 +1,12 @@
+import { EquipmentType, useListEquipmentByType } from '@/api';
 import type { EquipmentChoice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface EquipmentChoiceSelectorProps {
   choices: EquipmentChoice[];
   selected: Record<number, string>; // choiceIndex -> selected option or specific item
   onSelectionChange: (selected: Record<number, string>) => void;
 }
-
-// TODO(#equipment-api): Replace with API call when equipment endpoints are available
-// Temporary hardcoded data until we have equipment API
-const MARTIAL_MELEE_WEAPONS = [
-  'Battleaxe',
-  'Flail',
-  'Glaive',
-  'Greataxe',
-  'Greatsword',
-  'Halberd',
-  'Lance',
-  'Longsword',
-  'Maul',
-  'Morningstar',
-  'Pike',
-  'Rapier',
-  'Scimitar',
-  'Shortsword',
-  'Trident',
-  'War pick',
-  'Warhammer',
-  'Whip',
-];
-
-const SIMPLE_WEAPONS = [
-  'Club',
-  'Dagger',
-  'Greatclub',
-  'Handaxe',
-  'Javelin',
-  'Light hammer',
-  'Mace',
-  'Quarterstaff',
-  'Sickle',
-  'Spear',
-  'Crossbow, light',
-  'Dart',
-  'Shortbow',
-  'Sling',
-];
 
 export function EquipmentChoiceSelector({
   choices,
@@ -54,6 +15,48 @@ export function EquipmentChoiceSelector({
 }: EquipmentChoiceSelectorProps) {
   const [localSelected, setLocalSelected] =
     useState<Record<number, string>>(selected);
+
+  // Fetch equipment data from API
+  const { data: simpleWeapons, loading: simpleLoading } =
+    useListEquipmentByType(EquipmentType.SIMPLE_MELEE_WEAPON);
+  const { data: simpleRangedWeapons, loading: simpleRangedLoading } =
+    useListEquipmentByType(EquipmentType.SIMPLE_RANGED_WEAPON);
+  const { data: martialMeleeWeapons, loading: martialMeleeLoading } =
+    useListEquipmentByType(EquipmentType.MARTIAL_MELEE_WEAPON);
+  const { data: martialRangedWeapons, loading: martialRangedLoading } =
+    useListEquipmentByType(EquipmentType.MARTIAL_RANGED_WEAPON);
+
+  // Combine weapons by category
+  const weaponsByType = useMemo(() => {
+    const allSimpleWeapons = [
+      ...(simpleWeapons || []),
+      ...(simpleRangedWeapons || []),
+    ];
+    const allMartialWeapons = [
+      ...(martialMeleeWeapons || []),
+      ...(martialRangedWeapons || []),
+    ];
+
+    return {
+      simple_weapon: allSimpleWeapons.map((w) => ({ id: w.id, name: w.name })),
+      martial_melee: (martialMeleeWeapons || []).map((w) => ({
+        id: w.id,
+        name: w.name,
+      })),
+      martial_any: allMartialWeapons.map((w) => ({ id: w.id, name: w.name })),
+    } as Record<string, Array<{ id: string; name: string }>>;
+  }, [
+    simpleWeapons,
+    simpleRangedWeapons,
+    martialMeleeWeapons,
+    martialRangedWeapons,
+  ]);
+
+  const isLoading =
+    simpleLoading ||
+    simpleRangedLoading ||
+    martialMeleeLoading ||
+    martialRangedLoading;
 
   // Sync with parent state
   useEffect(() => {
@@ -271,17 +274,17 @@ export function EquipmentChoiceSelector({
                               outline: 'none',
                             }}
                           >
-                            <option value="">-- Select a weapon --</option>
-                            {(parsed.type === 'martial_melee'
-                              ? MARTIAL_MELEE_WEAPONS
-                              : parsed.type === 'simple_weapon'
-                                ? SIMPLE_WEAPONS
-                                : [...MARTIAL_MELEE_WEAPONS, ...SIMPLE_WEAPONS]
-                            ).map((weapon) => (
-                              <option key={weapon} value={weapon}>
-                                {weapon}
-                              </option>
-                            ))}
+                            <option value="">
+                              {isLoading
+                                ? '-- Loading weapons... --'
+                                : '-- Select a weapon --'}
+                            </option>
+                            {!isLoading &&
+                              weaponsByType[parsed.type]?.map((weapon) => (
+                                <option key={weapon.id} value={weapon.name}>
+                                  {weapon.name}
+                                </option>
+                              ))}
                           </select>
                         </div>
                       )}

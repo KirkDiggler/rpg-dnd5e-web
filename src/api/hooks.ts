@@ -6,10 +6,12 @@ import type {
   CreateDraftRequest,
   DeleteCharacterRequest,
   DeleteDraftRequest,
+  Equipment,
   FinalizeDraftRequest,
   ListCharactersRequest,
   ListClassesRequest,
   ListDraftsRequest,
+  ListEquipmentByTypeRequest,
   ListRacesRequest,
   RaceInfo,
   UpdateAbilityScoresRequest,
@@ -26,8 +28,10 @@ import {
   ListCharactersRequestSchema,
   ListClassesRequestSchema,
   ListDraftsRequestSchema,
+  ListEquipmentByTypeRequestSchema,
   ListRacesRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { EquipmentType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { characterClient } from './client';
 
@@ -593,6 +597,63 @@ export function useListClasses(
     refetch: fetchClasses,
     loadMore: state.nextPageToken
       ? () => fetchClasses(state.nextPageToken)
+      : undefined,
+  };
+}
+
+// Equipment hooks
+export function useListEquipmentByType(
+  equipmentType: EquipmentType,
+  filters: Partial<
+    Pick<ListEquipmentByTypeRequest, 'pageSize' | 'pageToken'>
+  > = {}
+) {
+  const [state, setState] = useState<ListState<Equipment>>({
+    data: [],
+    loading: false,
+    error: null,
+  });
+
+  const fetchEquipment = useCallback(
+    async (pageToken?: string) => {
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+
+      try {
+        const request = create(ListEquipmentByTypeRequestSchema, {
+          equipmentType,
+          pageSize: filters.pageSize || 50,
+          pageToken: pageToken || '',
+        });
+
+        const response = await characterClient.listEquipmentByType(request);
+
+        setState({
+          data: response.equipment,
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
+          totalSize: response.totalSize,
+        });
+      } catch (error) {
+        setState({
+          data: [],
+          loading: false,
+          error: error instanceof Error ? error : new Error('Unknown error'),
+        });
+      }
+    },
+    [equipmentType, filters.pageSize]
+  );
+
+  useEffect(() => {
+    fetchEquipment();
+  }, [fetchEquipment]);
+
+  return {
+    ...state,
+    refetch: fetchEquipment,
+    loadMore: state.nextPageToken
+      ? () => fetchEquipment(state.nextPageToken)
       : undefined,
   };
 }
