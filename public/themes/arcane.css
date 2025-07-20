@@ -1,71 +1,89 @@
 /* Mystical Arcane Theme - Magical, mysterious, spellcasting focus */
 :root {
   /* Background colors */
-  --bg-primary: #0f172a; /* Deep midnight blue */
-  --bg-secondary: #1e1b4b; /* Dark purple */
+  --bg-primary: #0c0a1f; /* Deep mystical void */
+  --bg-secondary: #1a1547; /* Dark arcane purple */
 
   /* Card and content backgrounds */
-  --card-bg: #4c1d95; /* Rich purple */
-  --section-bg: rgba(76, 29, 149, 0.9); /* Rich purple with transparency */
-  --stat-bg: #5b21b6; /* Medium purple */
-  --modal-bg: #4c1d95; /* Rich purple */
+  --card-bg: #312e81; /* Deep indigo */
+  --section-bg: rgba(49, 46, 129, 0.95); /* Deep indigo with transparency */
+  --stat-bg: #4338ca; /* Vibrant indigo */
+  --modal-bg: #312e81; /* Deep indigo */
 
   /* Text colors */
-  --text-primary: #e0f2fe; /* Pale blue */
-  --text-secondary: #1e1b4b; /* Dark purple */
-  --text-button: #e0f2fe; /* Pale blue */
-  --text-muted: #8b5cf6; /* Violet */
+  --text-primary: #e0e7ff; /* Pale lavender */
+  --text-secondary: #c7d2fe; /* Light lavender */
+  --text-button: #ffffff; /* Pure white */
+  --text-muted: #a5b4fc; /* Muted indigo */
   --text-subtle: #cbd5e1; /* Silver */
 
   /* Accent colors */
-  --accent-primary: #06b6d4; /* Bright cyan */
-  --accent-primary-hover: #0891b2; /* Darker cyan */
-  --accent-secondary: #5b21b6; /* Medium purple */
-  --accent-secondary-hover: #7c3aed; /* Lighter purple */
+  --accent-primary: #0ea5e9; /* Mystic cyan */
+  --accent-primary-hover: #0284c7; /* Deeper cyan */
+  --accent-secondary: #6366f1; /* Bright indigo */
+  --accent-secondary-hover: #818cf8; /* Lighter indigo */
 
   /* Border colors */
-  --border-primary: #e2e8f0; /* Silver */
-  --border-section: rgba(226, 232, 240, 0.3); /* Silver with transparency */
-  --border-dashed: rgba(226, 232, 240, 0.5); /* Silver with transparency */
+  --border-primary: #6366f1; /* Bright indigo borders */
+  --border-section: rgba(99, 102, 241, 0.4); /* Indigo with transparency */
+  --border-dashed: rgba(99, 102, 241, 0.6); /* Indigo with transparency */
 
   /* Background elements */
-  --inventory-bg: rgba(15, 23, 42, 0.3); /* Deep midnight with transparency */
-  --resource-bg: rgba(15, 23, 42, 0.4); /* Deep midnight with transparency */
-  --overlay-bg: rgba(15, 23, 42, 0.8); /* Deep midnight with transparency */
+  --inventory-bg: rgba(12, 10, 31, 0.5); /* Deep void with transparency */
+  --resource-bg: rgba(12, 10, 31, 0.6); /* Deep void with transparency */
+  --overlay-bg: rgba(12, 10, 31, 0.9); /* Deep void with transparency */
 
   /* Game element colors */
-  --health: #f43f5e; /* Rose */
-  --mana: #06b6d4; /* Cyan */
-  --stamina: #a855f7; /* Purple */
-  --experience: #8b5cf6; /* Violet */
+  --health: #ec4899; /* Mystic pink */
+  --mana: #0ea5e9; /* Mystic cyan */
+  --stamina: #8b5cf6; /* Mystic violet */
+  --experience: #f59e0b; /* Golden amber */
 
   /* Rarity colors */
-  --common: #94a3b8; /* Slate */
+  --common: #6b7280; /* Gray */
   --uncommon: #10b981; /* Emerald */
-  --rare: #06b6d4; /* Cyan */
+  --rare: #0ea5e9; /* Cyan */
   --epic: #8b5cf6; /* Violet */
-  --legendary: #a855f7; /* Purple */
+  --legendary: #fbbf24; /* Golden for legendary */
 
-  /* Shadows */
+  /* Shadows - Magical depth */
   --shadow-card:
-    0 10px 15px -3px rgba(30, 27, 75, 0.4), 0 4px 6px -2px rgba(30, 27, 75, 0.3);
+    0 0 0 1px rgba(99, 102, 241, 0.2), 0 10px 15px -3px rgba(12, 10, 31, 0.7),
+    0 4px 6px -2px rgba(12, 10, 31, 0.5),
+    inset 0 1px 0 0 rgba(99, 102, 241, 0.1);
   --shadow-card-hover:
-    0 20px 25px -5px rgba(30, 27, 75, 0.5),
-    0 10px 10px -5px rgba(30, 27, 75, 0.4);
+    0 0 0 1px rgba(14, 165, 233, 0.4), 0 20px 25px -5px rgba(12, 10, 31, 0.8),
+    0 10px 10px -5px rgba(12, 10, 31, 0.6),
+    inset 0 1px 0 0 rgba(14, 165, 233, 0.2);
   --shadow-button:
-    0 4px 6px -1px rgba(30, 27, 75, 0.3), 0 2px 4px -1px rgba(30, 27, 75, 0.2);
+    0 0 0 1px rgba(99, 102, 241, 0.2), 0 4px 6px -1px rgba(12, 10, 31, 0.5),
+    0 2px 4px -1px rgba(12, 10, 31, 0.3),
+    inset 0 1px 0 0 rgba(99, 102, 241, 0.1);
   --shadow-section:
-    0 4px 6px -1px rgba(30, 27, 75, 0.3), 0 2px 4px -1px rgba(30, 27, 75, 0.2);
-  --shadow-modal: 0 25px 50px -12px rgba(15, 23, 42, 0.5);
-  --text-shadow: 1px 1px 2px rgba(15, 23, 42, 0.5);
+    inset 0 2px 4px 0 rgba(12, 10, 31, 0.3),
+    0 4px 6px -1px rgba(12, 10, 31, 0.5), 0 0 0 1px rgba(99, 102, 241, 0.1);
+  --shadow-modal:
+    0 0 0 1px rgba(99, 102, 241, 0.3), 0 25px 50px -12px rgba(12, 10, 31, 0.8),
+    0 0 100px -20px rgba(99, 102, 241, 0.3);
+  --text-shadow: 2px 2px 4px rgba(12, 10, 31, 0.8);
 
-  /* Gradients */
-  --gradient-dice: linear-gradient(to bottom right, #06b6d4, #8b5cf6);
+  /* Gradients - Mystical energy */
+  --gradient-dice: linear-gradient(
+    135deg,
+    #0ea5e9 0%,
+    #6366f1 50%,
+    #8b5cf6 100%
+  );
 
   /* Glow effects with mystical energy */
-  --glow-common: 0 0 10px rgba(148, 163, 184, 0.5);
-  --glow-uncommon: 0 0 15px rgba(16, 185, 129, 0.6);
-  --glow-rare: 0 0 20px rgba(6, 182, 212, 0.7);
-  --glow-epic: 0 0 25px rgba(139, 92, 246, 0.8);
-  --glow-legendary: 0 0 30px rgba(168, 85, 247, 0.9);
+  --glow-common: 0 0 10px rgba(107, 114, 128, 0.5);
+  --glow-uncommon:
+    0 0 15px rgba(16, 185, 129, 0.6), 0 0 30px rgba(16, 185, 129, 0.2);
+  --glow-rare:
+    0 0 20px rgba(14, 165, 233, 0.7), 0 0 40px rgba(14, 165, 233, 0.3);
+  --glow-epic:
+    0 0 25px rgba(139, 92, 246, 0.8), 0 0 50px rgba(139, 92, 246, 0.4);
+  --glow-legendary:
+    0 0 30px rgba(251, 191, 36, 0.9), 0 0 60px rgba(251, 191, 36, 0.5),
+    0 0 90px rgba(251, 191, 36, 0.2);
 }
