@@ -1204,7 +1204,6 @@ export function InteractiveCharacterSheet({
       <ClassSelectionModal
         isOpen={isClassModalOpen}
         currentClass={character.selectedClass?.name}
-        existingProficiencies={draft.allProficiencies}
         onSelect={(classData, choices) => {
           setCharacter((prev) => ({
             ...prev,
