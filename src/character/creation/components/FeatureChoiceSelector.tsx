@@ -1,5 +1,5 @@
 import type { FeatureInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { UnifiedChoiceSelector } from '../../../components/UnifiedChoiceSelector';
+import { ChoiceRenderer } from '../../../components/ChoiceRenderer';
 
 interface FeatureChoiceSelectorProps {
   feature: FeatureInfo;
@@ -20,10 +20,10 @@ export function FeatureChoiceSelector({
     <div style={{ marginTop: '16px' }}>
       {feature.choices.map((choice) => (
         <div key={choice.id} style={{ marginBottom: '12px' }}>
-          <UnifiedChoiceSelector
+          <ChoiceRenderer
             choice={choice}
             currentSelections={currentSelections[choice.id] || []}
-            onSelectionChange={(choiceId, selections) => {
+            onSelectionChange={(choiceId: string, selections: string[]) => {
               onSelect(feature.id, choiceId, selections);
             }}
           />
