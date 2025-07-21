@@ -1,10 +1,11 @@
 import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListRaces } from '../../api/hooks';
+import { ChoiceRenderer } from '../../components/ChoiceRenderer';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
-import { UnifiedChoiceSelector } from '../../components/UnifiedChoiceSelector';
 import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
@@ -59,6 +60,30 @@ function getRaceDescription(raceName: string): string {
     raceDescriptions[raceName] ||
     'A fascinating race with unique traits and abilities.'
   );
+}
+
+// Helper to convert Language enum to display name
+function getLanguageDisplayName(languageEnum: Language): string {
+  const languageNames: Record<Language, string> = {
+    [Language.UNSPECIFIED]: 'Unknown',
+    [Language.COMMON]: 'Common',
+    [Language.DWARVISH]: 'Dwarvish',
+    [Language.ELVISH]: 'Elvish',
+    [Language.GIANT]: 'Giant',
+    [Language.GNOMISH]: 'Gnomish',
+    [Language.GOBLIN]: 'Goblin',
+    [Language.HALFLING]: 'Halfling',
+    [Language.ORC]: 'Orc',
+    [Language.ABYSSAL]: 'Abyssal',
+    [Language.CELESTIAL]: 'Celestial',
+    [Language.DRACONIC]: 'Draconic',
+    [Language.DEEP_SPEECH]: 'Deep Speech',
+    [Language.INFERNAL]: 'Infernal',
+    [Language.PRIMORDIAL]: 'Primordial',
+    [Language.SYLVAN]: 'Sylvan',
+    [Language.UNDERCOMMON]: 'Undercommon',
+  };
+  return languageNames[languageEnum] || 'Unknown';
 }
 
 interface RaceSelectionModalProps {
@@ -568,7 +593,7 @@ export function RaceSelectionModal({
                   >
                     {currentRaceData.languages.map((lang, i) => (
                       <span key={i}>
-                        {typeof lang === 'string' ? lang : lang.toString()}
+                        {getLanguageDisplayName(lang)}
                         {i < currentRaceData.languages.length - 1 ? ', ' : ''}
                       </span>
                     ))}
@@ -594,7 +619,7 @@ export function RaceSelectionModal({
                   <div style={{ marginBottom: '12px' }}>
                     {languageChoices.map((choice) => (
                       <div key={choice.id} style={{ marginBottom: '16px' }}>
-                        <UnifiedChoiceSelector
+                        <ChoiceRenderer
                           choice={choice}
                           currentSelections={
                             currentRaceChoices.languages[choice.id] || []
@@ -641,7 +666,7 @@ export function RaceSelectionModal({
                   <div style={{ marginBottom: '12px' }}>
                     {proficiencyChoices.map((choice) => (
                       <div key={choice.id} style={{ marginBottom: '16px' }}>
-                        <UnifiedChoiceSelector
+                        <ChoiceRenderer
                           choice={choice}
                           currentSelections={
                             currentRaceChoices.proficiencies[choice.id] || []

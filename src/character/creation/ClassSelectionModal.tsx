@@ -3,8 +3,8 @@ import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
+import { ChoiceRenderer } from '../../components/ChoiceRenderer';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
-import { UnifiedChoiceSelector } from '../../components/UnifiedChoiceSelector';
 import { FeatureChoiceSelector } from './components/FeatureChoiceSelector';
 import { VisualCarousel } from './components/VisualCarousel';
 
@@ -596,7 +596,7 @@ export function ClassSelectionModal({
                   <div style={{ marginBottom: '12px' }}>
                     {skillChoices.map((choice) => (
                       <div key={choice.id} style={{ marginBottom: '16px' }}>
-                        <UnifiedChoiceSelector
+                        <ChoiceRenderer
                           choice={choice}
                           currentSelections={
                             currentClassChoices.proficiencies[choice.id] || []
@@ -729,7 +729,7 @@ export function ClassSelectionModal({
                   <div style={{ marginBottom: '12px' }}>
                     {equipmentChoices.map((choice) => (
                       <div key={choice.id} style={{ marginBottom: '16px' }}>
-                        <UnifiedChoiceSelector
+                        <ChoiceRenderer
                           choice={choice}
                           currentSelections={
                             currentClassChoices.equipment[choice.id]
@@ -777,7 +777,7 @@ export function ClassSelectionModal({
                   <div style={{ marginBottom: '12px' }}>
                     {proficiencyChoices.map((choice) => (
                       <div key={choice.id} style={{ marginBottom: '16px' }}>
-                        <UnifiedChoiceSelector
+                        <ChoiceRenderer
                           choice={choice}
                           currentSelections={
                             currentClassChoices.proficiencies[choice.id] || []
@@ -820,7 +820,7 @@ export function ClassSelectionModal({
                   <div style={{ marginBottom: '12px' }}>
                     {featChoices.map((choice) => (
                       <div key={choice.id} style={{ marginBottom: '16px' }}>
-                        <UnifiedChoiceSelector
+                        <ChoiceRenderer
                           choice={choice}
                           currentSelections={
                             currentClassChoices.proficiencies[choice.id] || []
@@ -871,7 +871,7 @@ export function ClassSelectionModal({
                   <div style={{ marginBottom: '12px' }}>
                     {otherChoices.map((choice) => (
                       <div key={choice.id} style={{ marginBottom: '16px' }}>
-                        <UnifiedChoiceSelector
+                        <ChoiceRenderer
                           choice={choice}
                           currentSelections={
                             currentClassChoices.proficiencies[choice.id] || []

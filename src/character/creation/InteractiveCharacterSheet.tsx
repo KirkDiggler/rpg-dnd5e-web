@@ -5,6 +5,7 @@ import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
 import type { ClassChoices } from './ClassSelectionModal';
@@ -23,6 +24,30 @@ interface CharacterChoices {
   classChoices?: ClassChoices;
   raceChoices?: Record<string, string[]>; // TODO: Import RaceChoices type when available
   [key: string]: unknown; // Allow other choice types
+}
+
+// Helper to convert Language enum to display name
+function getLanguageDisplayName(languageEnum: Language): string {
+  const languageNames: Record<Language, string> = {
+    [Language.UNSPECIFIED]: 'Unknown',
+    [Language.COMMON]: 'Common',
+    [Language.DWARVISH]: 'Dwarvish',
+    [Language.ELVISH]: 'Elvish',
+    [Language.GIANT]: 'Giant',
+    [Language.GNOMISH]: 'Gnomish',
+    [Language.GOBLIN]: 'Goblin',
+    [Language.HALFLING]: 'Halfling',
+    [Language.ORC]: 'Orc',
+    [Language.ABYSSAL]: 'Abyssal',
+    [Language.CELESTIAL]: 'Celestial',
+    [Language.DRACONIC]: 'Draconic',
+    [Language.DEEP_SPEECH]: 'Deep Speech',
+    [Language.INFERNAL]: 'Infernal',
+    [Language.PRIMORDIAL]: 'Primordial',
+    [Language.SYLVAN]: 'Sylvan',
+    [Language.UNDERCOMMON]: 'Undercommon',
+  };
+  return languageNames[languageEnum] || 'Unknown';
 }
 
 // Simple context for now - we'll make it more sophisticated later
@@ -229,35 +254,73 @@ export function InteractiveCharacterSheet({
   const getSelectedEquipment = () => {
     const equipment: string[] = [];
 
+    // First check the local state equipment choices
     if (character.selectedClass?.choices && character.equipmentChoices) {
       const equipmentChoices = character.selectedClass.choices.filter(
         (choice) => choice.choiceType === 1 // EQUIPMENT type
       );
-      equipmentChoices.forEach((choice, index) => {
-        const selection =
-          (character.equipmentChoices as Record<string, string>)[choice.id] ||
-          character.equipmentChoices[index];
+
+      equipmentChoices.forEach((choice) => {
+        const selection = (
+          character.equipmentChoices as Record<string, string>
+        )[choice.id];
         if (selection) {
-          // Parse the selection format "0-1:Longsword" or "0-1"
-          const [optionKey, weaponChoice] = selection.split(':');
-          const optionIndex = parseInt(optionKey.split('-')[1]);
+          // Parse the selection format - could be:
+          // "0" - simple selection index
+          // "0:Longsword" - selection with nested choice
+          const parts = selection.split(':');
+          const optionIndex = parseInt(parts[0]);
+          const nestedSelection = parts[1];
 
-          // Get the option text from the choice - using description since options property doesn't exist
-          const optionsToUse = choice.description
-            .split(' or ')
-            .map((part) => part.trim());
+          // Get the actual option from the choice
+          if (
+            choice.optionSet.case === 'explicitOptions' &&
+            choice.optionSet.value.options[optionIndex]
+          ) {
+            const option = choice.optionSet.value.options[optionIndex];
 
-          if (optionIndex >= 0 && optionIndex < optionsToUse.length) {
-            const optionText = optionsToUse[optionIndex];
-
-            // If it's a weapon choice, use the specific weapon
-            if (weaponChoice) {
-              equipment.push(weaponChoice);
+            if (option.optionType.case === 'countedItem') {
+              const item = option.optionType.value;
+              equipment.push(item.name);
+            } else if (option.optionType.case === 'bundle') {
+              const bundle = option.optionType.value;
+              // For bundles, show the items or the nested selection
+              if (nestedSelection) {
+                equipment.push(nestedSelection);
+              } else {
+                // Show the first few items from the bundle
+                bundle.items.forEach((bundleItem) => {
+                  if (bundleItem.itemType?.case === 'concreteItem') {
+                    equipment.push(bundleItem.itemType.value.name);
+                  }
+                });
+              }
+            } else if (
+              option.optionType.case === 'nestedChoice' &&
+              nestedSelection
+            ) {
+              equipment.push(nestedSelection);
             } else {
-              // Clean up the option text (remove (a), (b) prefixes)
-              const cleanOption = optionText.replace(/^\([a-z]\)\s*/i, '');
-              equipment.push(cleanOption);
+              // Fallback to the selection value if we can't parse it
+              equipment.push(selection);
             }
+          }
+        }
+      });
+    }
+
+    // Also check the draft context for equipment choices
+    if (draft.classChoices) {
+      Object.entries(draft.classChoices).forEach(([key, value]) => {
+        if (
+          key.startsWith('equipment_') &&
+          Array.isArray(value) &&
+          value.length > 0
+        ) {
+          // The value is already the selected equipment item
+          const item = value[0];
+          if (item && !equipment.includes(item)) {
+            equipment.push(item);
           }
         }
       });
@@ -483,22 +546,81 @@ export function InteractiveCharacterSheet({
                                 >
                                   Languages:
                                 </span>{' '}
-                                {character.selectedRace.languages.join(', ')}
+                                {character.selectedRace.languages
+                                  .map((lang) => getLanguageDisplayName(lang))
+                                  .join(', ')}
                               </div>
                             )}
-                          {Object.values(draft.raceChoices).flat().length >
-                            0 && (
+                          {/* Display resolved proficiencies from race choices */}
+                          {draft.allProficiencies.size > 0 && (
                             <div style={{ color: 'var(--text-primary)' }}>
                               <span
                                 style={{
-                                  color: 'var(--text-primary)',
+                                  color: 'var(--text-muted)',
+                                  fontSize: '11px',
                                   opacity: 0.7,
                                 }}
                               >
-                                Chosen:
+                                Proficiencies:
                               </span>{' '}
-                              {Object.values(draft.raceChoices)
-                                .flat()
+                              {Array.from(draft.allProficiencies)
+                                .filter((p) => !p.includes('language_')) // Filter out language choices
+                                .map((p) => {
+                                  // Clean up the proficiency display
+                                  const cleaned = p
+                                    .replace(
+                                      /^(tool_|skill_|weapon_|armor_)\w+:?\s*/i,
+                                      ''
+                                    )
+                                    .replace(/^proficiency_\w+:?\s*/i, '')
+                                    .replace(/skill[:-]\s*/i, '')
+                                    .replace(/-/g, ' ')
+                                    .trim();
+
+                                  // Handle special cases
+                                  if (
+                                    cleaned.toLowerCase() === 'sleight of hand'
+                                  ) {
+                                    return 'Sleight of Hand';
+                                  }
+                                  if (
+                                    cleaned.toLowerCase() === 'animal handling'
+                                  ) {
+                                    return 'Animal Handling';
+                                  }
+
+                                  // Capitalize each word
+                                  return cleaned.replace(/\b\w/g, (l) =>
+                                    l.toUpperCase()
+                                  );
+                                })
+                                .filter((p) => p.length > 0)
+                                .join(', ')}
+                            </div>
+                          )}
+                          {/* Display resolved languages from race choices */}
+                          {draft.allLanguages.size > 0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-muted)',
+                                  fontSize: '11px',
+                                  opacity: 0.7,
+                                }}
+                              >
+                                Extra Languages:
+                              </span>{' '}
+                              {Array.from(draft.allLanguages)
+                                .filter((lang) => {
+                                  // Filter out base languages that come with race
+                                  const baseLanguages =
+                                    character.selectedRace?.languages || [];
+                                  return !baseLanguages
+                                    .map((l) =>
+                                      getLanguageDisplayName(l).toLowerCase()
+                                    )
+                                    .includes(lang.toLowerCase());
+                                })
                                 .join(', ')}
                             </div>
                           )}
@@ -654,6 +776,28 @@ export function InteractiveCharacterSheet({
                               </span>{' '}
                               {Object.values(classChoices.proficiencies)
                                 .flat()
+                                .map((skill) => {
+                                  // Convert skill index back to display name
+                                  if (
+                                    typeof skill === 'string' &&
+                                    skill.match(/^\d+$/)
+                                  ) {
+                                    const index = parseInt(skill);
+                                    const skillOptions =
+                                      character.selectedClass
+                                        ?.availableSkills || [];
+                                    const rawSkill =
+                                      skillOptions[index] || skill;
+                                    // Format the skill name properly
+                                    return rawSkill
+                                      .replace(/-/g, ' ')
+                                      .replace(/\b\w/g, (l) => l.toUpperCase());
+                                  }
+                                  // Format non-index skills too
+                                  return skill
+                                    .replace(/-/g, ' ')
+                                    .replace(/\b\w/g, (l) => l.toUpperCase());
+                                })
                                 .join(', ')}
                             </div>
                           )}
