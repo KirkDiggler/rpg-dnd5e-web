@@ -2,7 +2,8 @@ import { TraitBadgeGroup } from '@/components/TraitBadge';
 import { TraitIcons } from '@/constants/traits';
 import { useCharacterBuilder } from '@/hooks/useCharacterBuilder';
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useContext, useState } from 'react';
+import { CharacterDraftContext } from '../CharacterDraftContextDef';
 
 const SAMPLE_SKILLS = [
   {
@@ -49,6 +50,38 @@ const SAMPLE_BACKGROUNDS = [
 export function SkillsBackgroundSection() {
   const { selectedChoices, setSelectedChoice } = useCharacterBuilder();
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const context = useContext(CharacterDraftContext);
+  if (!context)
+    throw new Error(
+      'SkillsBackgroundSection must be used within CharacterDraftProvider'
+    );
+
+  const { classChoices, raceChoices } = context;
+
+  // Get proficiencies from character choices
+  const classProficiencies = classChoices || {};
+  const raceProficiencies = raceChoices || {};
+
+  // Flatten proficiency choices into arrays and categorize by type
+  const allClassChoices = Object.values(classProficiencies).flat();
+  const allRaceChoices = Object.values(raceProficiencies).flat();
+
+  // Separate by type based on the item ID prefix
+  const classSkillChoices = allClassChoices.filter(
+    (id): id is string => typeof id === 'string' && id.startsWith('skill:')
+  );
+  const classToolChoices = allClassChoices.filter(
+    (id): id is string => typeof id === 'string' && id.startsWith('tool:')
+  );
+  const classFeatChoices = allClassChoices.filter(
+    (id): id is string => typeof id === 'string' && id.startsWith('feat:')
+  );
+  const raceSkillChoices = allRaceChoices.filter(
+    (id): id is string => typeof id === 'string' && id.startsWith('skill:')
+  );
+  const raceLanguageChoices = allRaceChoices.filter(
+    (id): id is string => typeof id === 'string' && id.startsWith('language:')
+  );
 
   const selectedBackground = SAMPLE_BACKGROUNDS.find(
     (b) => b.id === selectedChoices.background
@@ -66,6 +99,7 @@ export function SkillsBackgroundSection() {
     setSelectedChoice('background', backgroundId);
   };
 
+  // For now, still use sample skills for available options
   const skillsBySource = {
     racial: SAMPLE_SKILLS.filter((s) => s.source === 'racial'),
     class: SAMPLE_SKILLS.filter((s) => s.source === 'class'),
@@ -86,25 +120,63 @@ export function SkillsBackgroundSection() {
 
           <TraitBadgeGroup
             title="Racial Proficiencies"
-            traits={skillsBySource.racial.map((skill) => ({
-              id: skill.id,
-              name: skill.name,
+            traits={raceSkillChoices.map((skillId, index) => ({
+              id: `race-skill-${index}`,
+              name: skillId
+                .replace('skill:-', '')
+                .replace(/-/g, ' ')
+                .replace(/\b\w/g, (l: string) => l.toUpperCase()),
               type: 'racial' as const,
               icon: TraitIcons.racial,
-              description: `${skill.ability} based skill`,
+              description: 'Racial proficiency',
             }))}
           />
 
           <TraitBadgeGroup
             title="Class Proficiencies"
-            traits={skillsBySource.class.map((skill) => ({
-              id: skill.id,
-              name: skill.name,
+            traits={classSkillChoices.map((skillId, index) => ({
+              id: `class-skill-${index}`,
+              name: skillId
+                .replace('skill:-', '')
+                .replace(/-/g, ' ')
+                .replace(/\b\w/g, (l: string) => l.toUpperCase()),
               type: 'class' as const,
               icon: TraitIcons.class,
-              description: `${skill.ability} based skill`,
+              description: 'Class proficiency',
             }))}
           />
+
+          {classToolChoices.length > 0 && (
+            <TraitBadgeGroup
+              title="Tool Proficiencies"
+              traits={classToolChoices.map((toolId, index) => ({
+                id: `class-tool-${index}`,
+                name: toolId
+                  .replace('tool:-', '')
+                  .replace(/-/g, ' ')
+                  .replace(/\b\w/g, (l: string) => l.toUpperCase()),
+                type: 'class' as const,
+                icon: '🔧',
+                description: 'Tool proficiency',
+              }))}
+            />
+          )}
+
+          {classFeatChoices.length > 0 && (
+            <TraitBadgeGroup
+              title="Feats"
+              traits={classFeatChoices.map((featId, index) => ({
+                id: `class-feat-${index}`,
+                name: featId
+                  .replace('feat:-', '')
+                  .replace(/-/g, ' ')
+                  .replace(/\b\w/g, (l: string) => l.toUpperCase()),
+                type: 'class' as const,
+                icon: '⭐',
+                description: 'Feat',
+              }))}
+            />
+          )}
 
           <div className="space-y-2">
             <h4
@@ -137,8 +209,24 @@ export function SkillsBackgroundSection() {
             className="text-xl font-bold font-serif"
             style={{ color: 'var(--text-primary)' }}
           >
-            Background
+            Background & Languages
           </h2>
+
+          {raceLanguageChoices.length > 0 && (
+            <TraitBadgeGroup
+              title="Languages"
+              traits={raceLanguageChoices.map((langId, index) => ({
+                id: `race-lang-${index}`,
+                name: langId
+                  .replace('language:-', '')
+                  .replace(/-/g, ' ')
+                  .replace(/\b\w/g, (l: string) => l.toUpperCase()),
+                type: 'racial' as const,
+                icon: '💬',
+                description: 'Language',
+              }))}
+            />
+          )}
 
           {selectedBackground ? (
             <motion.div

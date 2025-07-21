@@ -188,6 +188,41 @@ export function ClassSelectionModal({
       }
     }
 
+    // Validate other proficiency choices (tool, weapon, armor)
+    const proficiencyChoices =
+      currentClassData.choices?.filter(
+        (choice) =>
+          choice.choiceType === ChoiceType.TOOL ||
+          choice.choiceType === ChoiceType.WEAPON_PROFICIENCY ||
+          choice.choiceType === ChoiceType.ARMOR_PROFICIENCY
+      ) || [];
+
+    for (const choice of proficiencyChoices) {
+      const selected = currentClassChoices.proficiencies[choice.id] || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} option${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
+    // Validate feat choices
+    const featChoices =
+      currentClassData.choices?.filter(
+        (choice) => choice.choiceType === ChoiceType.FEAT
+      ) || [];
+
+    for (const choice of featChoices) {
+      const selected = currentClassChoices.proficiencies[choice.id] || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} feat${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
     // Validate feature choices
     const hasFeatureChoices =
       currentClassData.level1Features &&
@@ -709,6 +744,146 @@ export function ClassSelectionModal({
                                 equipment: {
                                   ...currentClassChoices.equipment,
                                   [choiceId]: selections[0] || '',
+                                },
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              );
+            })()}
+
+            {/* Other Proficiency Choices (Tool, Weapon, Armor) */}
+            {(() => {
+              const proficiencyChoices =
+                currentClassData.choices?.filter(
+                  (choice) =>
+                    choice.choiceType === ChoiceType.TOOL ||
+                    choice.choiceType === ChoiceType.WEAPON_PROFICIENCY ||
+                    choice.choiceType === ChoiceType.ARMOR_PROFICIENCY
+                ) || [];
+
+              if (proficiencyChoices.length === 0) return null;
+
+              return (
+                <CollapsibleSection
+                  title="Choose Your Proficiencies"
+                  defaultOpen={true}
+                  required={true}
+                >
+                  <div style={{ marginBottom: '12px' }}>
+                    {proficiencyChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <UnifiedChoiceSelector
+                          choice={choice}
+                          currentSelections={
+                            currentClassChoices.proficiencies[choice.id] || []
+                          }
+                          onSelectionChange={(choiceId, selections) => {
+                            setClassChoicesMap((prev) => ({
+                              ...prev,
+                              [currentClassName]: {
+                                ...currentClassChoices,
+                                proficiencies: {
+                                  ...currentClassChoices.proficiencies,
+                                  [choiceId]: selections,
+                                },
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              );
+            })()}
+
+            {/* Feat Choices */}
+            {(() => {
+              const featChoices =
+                currentClassData.choices?.filter(
+                  (choice) => choice.choiceType === ChoiceType.FEAT
+                ) || [];
+
+              if (featChoices.length === 0) return null;
+
+              return (
+                <CollapsibleSection
+                  title="Choose Your Feats"
+                  defaultOpen={true}
+                  required={true}
+                >
+                  <div style={{ marginBottom: '12px' }}>
+                    {featChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <UnifiedChoiceSelector
+                          choice={choice}
+                          currentSelections={
+                            currentClassChoices.proficiencies[choice.id] || []
+                          }
+                          onSelectionChange={(choiceId, selections) => {
+                            setClassChoicesMap((prev) => ({
+                              ...prev,
+                              [currentClassName]: {
+                                ...currentClassChoices,
+                                proficiencies: {
+                                  ...currentClassChoices.proficiencies,
+                                  [choiceId]: selections,
+                                },
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              );
+            })()}
+
+            {/* Other Choices (Spells, Languages, etc.) */}
+            {(() => {
+              const otherChoices =
+                currentClassData.choices?.filter(
+                  (choice) =>
+                    choice.choiceType === ChoiceType.SPELL ||
+                    choice.choiceType === ChoiceType.LANGUAGE ||
+                    (choice.choiceType !== ChoiceType.SKILL &&
+                      choice.choiceType !== ChoiceType.EQUIPMENT &&
+                      choice.choiceType !== ChoiceType.TOOL &&
+                      choice.choiceType !== ChoiceType.WEAPON_PROFICIENCY &&
+                      choice.choiceType !== ChoiceType.ARMOR_PROFICIENCY &&
+                      choice.choiceType !== ChoiceType.FEAT)
+                ) || [];
+
+              if (otherChoices.length === 0) return null;
+
+              return (
+                <CollapsibleSection
+                  title="Other Choices"
+                  defaultOpen={true}
+                  required={true}
+                >
+                  <div style={{ marginBottom: '12px' }}>
+                    {otherChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <UnifiedChoiceSelector
+                          choice={choice}
+                          currentSelections={
+                            currentClassChoices.proficiencies[choice.id] || []
+                          }
+                          onSelectionChange={(choiceId, selections) => {
+                            setClassChoicesMap((prev) => ({
+                              ...prev,
+                              [currentClassName]: {
+                                ...currentClassChoices,
+                                proficiencies: {
+                                  ...currentClassChoices.proficiencies,
+                                  [choiceId]: selections,
                                 },
                               },
                             }));

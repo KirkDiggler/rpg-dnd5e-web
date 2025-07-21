@@ -1,10 +1,10 @@
 import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListRaces } from '../../api/hooks';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
-// import { getChoiceKey, validateChoice } from '../../types/character';
-// import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
+import { UnifiedChoiceSelector } from '../../components/UnifiedChoiceSelector';
 import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
@@ -87,7 +87,7 @@ export function RaceSelectionModal({
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Track choices per race
-  const [raceChoicesMap /*, setRaceChoicesMap*/] = useState<
+  const [raceChoicesMap, setRaceChoicesMap] = useState<
     Record<
       string,
       {
@@ -177,8 +177,41 @@ export function RaceSelectionModal({
   const handleSelect = () => {
     setErrorMessage(''); // Clear any previous errors
 
-    // TODO: Validate choices using new Choice system (issue #93)
-    // Temporarily skip validation to get CI passing
+    // Validate language choices
+    const languageChoices =
+      currentRaceData.choices?.filter(
+        (choice) => choice.choiceType === ChoiceType.LANGUAGE
+      ) || [];
+
+    for (const choice of languageChoices) {
+      const selected = currentRaceChoices.languages[choice.id] || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} language${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
+    // Validate proficiency choices
+    const proficiencyChoices =
+      currentRaceData.choices?.filter(
+        (choice) =>
+          choice.choiceType === ChoiceType.SKILL ||
+          choice.choiceType === ChoiceType.TOOL ||
+          choice.choiceType === ChoiceType.WEAPON_PROFICIENCY ||
+          choice.choiceType === ChoiceType.ARMOR_PROFICIENCY
+      ) || [];
+
+    for (const choice of proficiencyChoices) {
+      const selected = currentRaceChoices.proficiencies[choice.id] || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} proficienc${choice.chooseCount > 1 ? 'ies' : 'y'}: ${choice.description}`
+        );
+        return;
+      }
+    }
 
     onSelect(currentRaceData, {
       languages: currentRaceChoices.languages,
@@ -543,9 +576,95 @@ export function RaceSelectionModal({
                 </div>
               )}
 
-            {/* Language Choices - TODO: Implement with new Choice system (issue #93) */}
+            {/* Language Choices */}
+            {(() => {
+              const languageChoices =
+                currentRaceData.choices?.filter(
+                  (choice) => choice.choiceType === ChoiceType.LANGUAGE
+                ) || [];
 
-            {/* Proficiency Choices - TODO: Implement with new Choice system (issue #93) */}
+              if (languageChoices.length === 0) return null;
+
+              return (
+                <CollapsibleSection
+                  title="Choose Languages"
+                  defaultOpen={true}
+                  required={true}
+                >
+                  <div style={{ marginBottom: '12px' }}>
+                    {languageChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <UnifiedChoiceSelector
+                          choice={choice}
+                          currentSelections={
+                            currentRaceChoices.languages[choice.id] || []
+                          }
+                          onSelectionChange={(choiceId, selections) => {
+                            setRaceChoicesMap((prev) => ({
+                              ...prev,
+                              [currentRaceName]: {
+                                ...currentRaceChoices,
+                                languages: {
+                                  ...currentRaceChoices.languages,
+                                  [choiceId]: selections,
+                                },
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              );
+            })()}
+
+            {/* Proficiency Choices */}
+            {(() => {
+              const proficiencyChoices =
+                currentRaceData.choices?.filter(
+                  (choice) =>
+                    choice.choiceType === ChoiceType.SKILL ||
+                    choice.choiceType === ChoiceType.TOOL ||
+                    choice.choiceType === ChoiceType.WEAPON_PROFICIENCY ||
+                    choice.choiceType === ChoiceType.ARMOR_PROFICIENCY
+                ) || [];
+
+              if (proficiencyChoices.length === 0) return null;
+
+              return (
+                <CollapsibleSection
+                  title="Choose Proficiencies"
+                  defaultOpen={true}
+                  required={true}
+                >
+                  <div style={{ marginBottom: '12px' }}>
+                    {proficiencyChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <UnifiedChoiceSelector
+                          choice={choice}
+                          currentSelections={
+                            currentRaceChoices.proficiencies[choice.id] || []
+                          }
+                          onSelectionChange={(choiceId, selections) => {
+                            setRaceChoicesMap((prev) => ({
+                              ...prev,
+                              [currentRaceName]: {
+                                ...currentRaceChoices,
+                                proficiencies: {
+                                  ...currentRaceChoices.proficiencies,
+                                  [choiceId]: selections,
+                                },
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              );
+            })()}
 
             {/* Racial Traits */}
             <CollapsibleSection title="Racial Traits" defaultOpen={true}>
