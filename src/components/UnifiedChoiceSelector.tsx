@@ -214,9 +214,11 @@ export function UnifiedChoiceSelector({
                   {option.optionType.case === 'nestedChoice' && (
                     <NestedChoiceExpanded
                       nestedChoice={option.optionType.value}
-                      onComplete={(selections) => {
-                        // For nested choices, we need to handle multiple selections
-                        selections.forEach((s) => handleSelection(s));
+                      onComplete={(nestedSelections) => {
+                        // For nested choices, replace all selections with the nested ones
+                        setSelections(nestedSelections);
+                        onSelectionChange(choice.id, nestedSelections);
+                        handleSelection(optionId); // Mark this option as selected
                         setExpandedOption(null);
                       }}
                       disabled={disabled}
