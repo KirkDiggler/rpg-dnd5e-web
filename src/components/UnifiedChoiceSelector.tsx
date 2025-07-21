@@ -285,6 +285,7 @@ interface CategoryReferenceSelectorProps {
   chooseCount: number;
   disabled?: boolean;
   children?: React.ReactNode;
+  startExpanded?: boolean;
 }
 
 function CategoryReferenceSelector({
@@ -294,8 +295,9 @@ function CategoryReferenceSelector({
   chooseCount,
   disabled = false,
   children,
+  startExpanded = false,
 }: CategoryReferenceSelectorProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(startExpanded);
 
   // Determine equipment type to fetch
   const equipmentType = useMemo(() => {
@@ -640,6 +642,7 @@ function NestedChoiceExpanded({
         onSelect={handleSelection}
         chooseCount={chooseCount}
         disabled={disabled}
+        startExpanded={true}
       >
         <button
           type="button"
