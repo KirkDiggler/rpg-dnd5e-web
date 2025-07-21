@@ -11,7 +11,7 @@ import {
   ItemReferenceSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { EquipmentType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useListEquipmentByTypeConditional } from '../api/hooks';
 
 interface UnifiedChoiceSelectorProps {
@@ -82,6 +82,7 @@ export function UnifiedChoiceSelector({
   disabled = false,
 }: UnifiedChoiceSelectorProps) {
   const [selections, setSelections] = useState<string[]>(currentSelections);
+  const [expandedOption, setExpandedOption] = useState<string | null>(null);
 
   // Handle selection change
   const handleSelection = useCallback(
@@ -131,6 +132,32 @@ export function UnifiedChoiceSelector({
     }
   };
 
+  // Check if an option needs expanded selection (bundle with category or nested choice)
+  const needsExpansion = (option: ChoiceOption): boolean => {
+    if (option.optionType.case === 'bundle') {
+      const items = option.optionType.value.items;
+      return items.some((item) => isCategoryReference(item.itemId));
+    }
+    if (option.optionType.case === 'nestedChoice') {
+      return true;
+    }
+    return false;
+  };
+
+  // Handle option selection
+  const handleOptionSelect = useCallback(
+    (optionId: string, option: ChoiceOption) => {
+      if (needsExpansion(option)) {
+        // Toggle expansion
+        setExpandedOption(expandedOption === optionId ? null : optionId);
+      } else {
+        // Direct selection
+        handleSelection(optionId);
+      }
+    },
+    [expandedOption, handleSelection]
+  );
+
   // Render explicit options
   const renderExplicitOptions = (options: ExplicitOptions) => {
     // First check if all options are nested choices - if so, flatten them
@@ -154,46 +181,50 @@ export function UnifiedChoiceSelector({
     return (
       <div className="grid gap-2">
         {options.options.map((option, index) => {
-          // Check if this is a bundle with category references
-          if (option.optionType.case === 'bundle') {
-            const items = option.optionType.value.items;
-            const hasCategoryRef = items.some((item) =>
-              isCategoryReference(item.itemId)
-            );
+          const optionId = getOptionId(option);
+          const isSelected = selections.includes(optionId);
+          const isExpanded = expandedOption === optionId;
 
-            if (hasCategoryRef) {
-              return (
-                <BundleWithCategory
-                  key={index}
-                  bundle={option}
-                  isSelected={selections.includes(getOptionId(option))}
-                  onSelect={(bundleId) => {
-                    // When bundle is selected, we just track the bundle ID
-                    // The actual selections are managed within the BundleWithCategory component
-                    handleSelection(bundleId);
-                  }}
-                  disabled={
-                    disabled ||
-                    (!selections.includes(getOptionId(option)) &&
-                      selections.length >= choice.chooseCount)
-                  }
-                />
-              );
-            }
-          }
-
+          // First, show the option selector
           return (
-            <ChoiceOptionItem
-              key={index}
-              option={option}
-              isSelected={selections.includes(getOptionId(option))}
-              onSelect={() => handleSelection(getOptionId(option))}
-              disabled={
-                disabled ||
-                (!selections.includes(getOptionId(option)) &&
-                  selections.length >= choice.chooseCount)
-              }
-            />
+            <div key={index}>
+              <ChoiceOptionItem
+                option={option}
+                isSelected={isSelected}
+                onSelect={() => handleOptionSelect(optionId, option)}
+                disabled={
+                  disabled ||
+                  (!isSelected && selections.length >= choice.chooseCount)
+                }
+              />
+
+              {/* Show expanded content if this option is selected and needs expansion */}
+              {isExpanded && needsExpansion(option) && (
+                <div style={{ marginTop: '12px', marginLeft: '24px' }}>
+                  {option.optionType.case === 'bundle' && (
+                    <BundleExpanded
+                      bundle={option}
+                      onComplete={() => {
+                        handleSelection(optionId);
+                        setExpandedOption(null);
+                      }}
+                      disabled={disabled}
+                    />
+                  )}
+                  {option.optionType.case === 'nestedChoice' && (
+                    <NestedChoiceExpanded
+                      nestedChoice={option.optionType.value}
+                      onComplete={(selections) => {
+                        // For nested choices, we need to handle multiple selections
+                        selections.forEach((s) => handleSelection(s));
+                        setExpandedOption(null);
+                      }}
+                      disabled={disabled}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -253,6 +284,7 @@ interface CategoryReferenceSelectorProps {
   onSelect: (itemId: string) => void;
   chooseCount: number;
   disabled?: boolean;
+  children?: React.ReactNode;
 }
 
 function CategoryReferenceSelector({
@@ -261,6 +293,7 @@ function CategoryReferenceSelector({
   onSelect,
   chooseCount,
   disabled = false,
+  children,
 }: CategoryReferenceSelectorProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -422,24 +455,23 @@ function CategoryReferenceSelector({
           );
         })}
       </div>
+      {children}
     </div>
   );
 }
 
-// Component for bundle with category references
-interface BundleWithCategoryProps {
+// Component for expanded bundle selection
+interface BundleExpandedProps {
   bundle: ChoiceOption;
-  isSelected: boolean;
-  onSelect: (bundleId: string) => void;
+  onComplete: () => void;
   disabled?: boolean;
 }
 
-function BundleWithCategory({
+function BundleExpanded({
   bundle,
-  isSelected,
-  onSelect,
+  onComplete,
   disabled = false,
-}: BundleWithCategoryProps) {
+}: BundleExpandedProps) {
   const [categorySelections, setCategorySelections] = useState<
     Record<string, string>
   >({});
@@ -450,7 +482,7 @@ function BundleWithCategory({
   const hasCategoryRef = items.some((item) => isCategoryReference(item.itemId));
 
   if (!hasCategoryRef) {
-    // Regular bundle without category refs - use normal rendering
+    // Regular bundle without category refs - shouldn't reach here
     return null;
   }
 
@@ -464,7 +496,7 @@ function BundleWithCategory({
       .every((item) => newSelections[item.itemId]);
 
     if (allSelected) {
-      onSelect(getOptionId(bundle));
+      onComplete();
     }
   };
 
@@ -472,14 +504,19 @@ function BundleWithCategory({
     <div
       style={{
         padding: '16px',
-        backgroundColor: isSelected
-          ? 'var(--accent-primary)'
-          : 'var(--bg-secondary)',
+        backgroundColor: 'var(--bg-secondary)',
         borderRadius: '8px',
-        border: `2px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+        border: '1px solid var(--border-primary)',
       }}
     >
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: '12px',
+          alignItems: 'center',
+          marginBottom: '12px',
+        }}
+      >
         {items.map((item, idx) => {
           if (isCategoryReference(item.itemId)) {
             // Render dropdown for category reference
@@ -488,7 +525,7 @@ function BundleWithCategory({
               <div key={idx} style={{ flex: 1 }}>
                 <CategoryDropdown
                   equipmentType={equipmentType || EquipmentType.UNSPECIFIED}
-                  placeholder={item.name}
+                  placeholder={`Select ${item.name}`}
                   value={categorySelections[item.itemId]}
                   onChange={(value) =>
                     handleCategorySelection(item.itemId, value)
@@ -523,8 +560,109 @@ function BundleWithCategory({
           }
         })}
       </div>
+
+      {/* Confirm button */}
+      <button
+        type="button"
+        disabled={
+          !items
+            .filter((item) => isCategoryReference(item.itemId))
+            .every((item) => categorySelections[item.itemId])
+        }
+        onClick={onComplete}
+        style={{
+          padding: '8px 16px',
+          backgroundColor: 'var(--accent-primary)',
+          border: 'none',
+          borderRadius: '6px',
+          color: 'white',
+          cursor: 'pointer',
+          opacity: !items
+            .filter((item) => isCategoryReference(item.itemId))
+            .every((item) => categorySelections[item.itemId])
+            ? 0.5
+            : 1,
+        }}
+      >
+        Confirm Selection
+      </button>
     </div>
   );
+}
+
+// Component for expanded nested choice
+interface NestedChoiceExpandedProps {
+  nestedChoice: { choice?: Choice };
+  onComplete: (selections: string[]) => void;
+  disabled?: boolean;
+}
+
+function NestedChoiceExpanded({
+  nestedChoice,
+  onComplete,
+  disabled = false,
+}: NestedChoiceExpandedProps) {
+  const [selections, setSelections] = useState<string[]>([]);
+
+  if (!nestedChoice?.choice) return null;
+
+  const choice = nestedChoice.choice;
+  const chooseCount = choice.chooseCount || 1;
+
+  const handleSelection = (itemId: string) => {
+    const newSelections = [...selections];
+    const index = newSelections.indexOf(itemId);
+
+    if (index > -1) {
+      // Remove one instance
+      newSelections.splice(index, 1);
+    } else if (newSelections.length < chooseCount) {
+      // Add if under limit
+      newSelections.push(itemId);
+    }
+
+    setSelections(newSelections);
+  };
+
+  const handleConfirm = () => {
+    if (selections.length === chooseCount) {
+      onComplete(selections);
+    }
+  };
+
+  if (choice.optionSet.case === 'categoryReference') {
+    const category = choice.optionSet.value;
+
+    return (
+      <CategoryReferenceSelector
+        category={category}
+        selections={selections}
+        onSelect={handleSelection}
+        chooseCount={chooseCount}
+        disabled={disabled}
+      >
+        <button
+          type="button"
+          disabled={selections.length !== chooseCount}
+          onClick={handleConfirm}
+          style={{
+            marginTop: '12px',
+            padding: '8px 16px',
+            backgroundColor: 'var(--accent-primary)',
+            border: 'none',
+            borderRadius: '6px',
+            color: 'white',
+            cursor: 'pointer',
+            opacity: selections.length !== chooseCount ? 0.5 : 1,
+          }}
+        >
+          Confirm Selection ({selections.length}/{chooseCount})
+        </button>
+      </CategoryReferenceSelector>
+    );
+  }
+
+  return null;
 }
 
 // Dropdown component for category selection
