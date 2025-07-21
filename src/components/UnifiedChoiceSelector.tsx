@@ -284,6 +284,7 @@ interface CategoryReferenceSelectorProps {
   category: CategoryReference;
   selections: string[];
   onSelect: (itemId: string) => void;
+  onRemove?: (itemId: string, index: number) => void;
   chooseCount: number;
   disabled?: boolean;
   children?: React.ReactNode;
@@ -294,6 +295,7 @@ function CategoryReferenceSelector({
   category,
   selections,
   onSelect,
+  onRemove,
   chooseCount,
   disabled = false,
   children,
@@ -420,42 +422,75 @@ function CategoryReferenceSelector({
         ← Back to category selection
       </button>
 
+      {/* Show current selections at the top */}
+      {selections.length > 0 && (
+        <div style={{ marginBottom: '12px' }}>
+          <div
+            style={{
+              fontSize: '12px',
+              color: 'var(--text-muted)',
+              marginBottom: '4px',
+            }}
+          >
+            Selected ({selections.length}/{chooseCount}):
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {selections.map((itemId, idx) => {
+              const item = allEquipment.find((e) => e.id === itemId);
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 8px',
+                    backgroundColor: 'var(--accent-primary)',
+                    color: 'white',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                  }}
+                >
+                  <span>{item?.name || itemId}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onRemove) {
+                        onRemove(itemId, idx);
+                      }
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'white',
+                      cursor: 'pointer',
+                      padding: '0 2px',
+                      fontSize: '16px',
+                      lineHeight: '1',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-2 max-h-96 overflow-y-auto">
         {options.map((option, index) => {
           const optionId = getOptionId(option);
-          // Count how many times this option is selected
-          const selectionCount = selections.filter(
-            (s) => s === optionId
-          ).length;
-          const isSelected = selectionCount > 0;
+          const canSelect = selections.length < chooseCount;
 
           return (
-            <div
+            <ChoiceOptionItem
               key={index}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <ChoiceOptionItem
-                option={option}
-                isSelected={isSelected}
-                onSelect={() => onSelect(optionId)}
-                disabled={
-                  disabled || (!isSelected && selections.length >= chooseCount)
-                }
-              />
-              {selectionCount > 0 && chooseCount > 1 && (
-                <span
-                  style={{
-                    color: 'var(--text-primary)',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                    minWidth: '30px',
-                    textAlign: 'center',
-                  }}
-                >
-                  ×{selectionCount}
-                </span>
-              )}
-            </div>
+              option={option}
+              isSelected={false} // Never show as selected since we show selections above
+              onSelect={() => onSelect(optionId)}
+              disabled={disabled || !canSelect}
+            />
           );
         })}
       </div>
@@ -615,16 +650,17 @@ function NestedChoiceExpanded({
 
   const handleSelection = (itemId: string) => {
     const newSelections = [...selections];
-    const index = newSelections.indexOf(itemId);
 
-    if (index > -1) {
-      // Remove one instance
-      newSelections.splice(index, 1);
-    } else if (newSelections.length < chooseCount) {
-      // Add if under limit
+    if (newSelections.length < chooseCount) {
+      // Always add if under limit (allows duplicates)
       newSelections.push(itemId);
+      setSelections(newSelections);
     }
+  };
 
+  const handleRemoveSelection = (itemId: string, index: number) => {
+    const newSelections = [...selections];
+    newSelections.splice(index, 1);
     setSelections(newSelections);
   };
 
@@ -642,6 +678,7 @@ function NestedChoiceExpanded({
         category={category}
         selections={selections}
         onSelect={handleSelection}
+        onRemove={handleRemoveSelection}
         chooseCount={chooseCount}
         disabled={disabled}
         startExpanded={true}
