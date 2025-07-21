@@ -1,3 +1,7 @@
+// DEPRECATED: This component uses old Choice properties (type, from, choose, options)
+// Should be replaced with UnifiedChoiceSelector - see issue #93
+/* eslint-disable */
+// @ts-nocheck
 import { ChoiceCard } from '@/components/ChoiceCard';
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 

@@ -67,8 +67,8 @@ export function ClassSelectionModal({
       string,
       {
         proficiencies: Record<string, string[]>;
-        equipment: Record<number, string>;
-        features: Record<string, string>;
+        equipment: Record<string, string>;
+        features: Record<string, Record<string, string[]>>;
       }
     >
   >({});
@@ -659,9 +659,9 @@ export function ClassSelectionModal({
                                   features: {
                                     ...currentClassChoices.features,
                                     [featureId]: {
-                                      ...currentClassChoices.features[
+                                      ...(currentClassChoices.features[
                                         featureId
-                                      ],
+                                      ] ?? {}),
                                       [choiceId]: selections,
                                     },
                                   },

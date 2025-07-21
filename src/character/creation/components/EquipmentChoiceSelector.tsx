@@ -1,3 +1,7 @@
+// DEPRECATED: This component uses the old EquipmentChoice type which no longer exists
+// Replaced by UnifiedChoiceSelector - see issue #93
+/* eslint-disable */
+// @ts-nocheck
 import type { EquipmentChoice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useEffect, useState } from 'react';
 

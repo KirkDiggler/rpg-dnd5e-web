@@ -229,22 +229,23 @@ export function InteractiveCharacterSheet({
   const getSelectedEquipment = () => {
     const equipment: string[] = [];
 
-    if (
-      character.selectedClass?.equipmentChoices &&
-      character.equipmentChoices
-    ) {
-      character.selectedClass.equipmentChoices.forEach((choice, index) => {
-        const selection = character.equipmentChoices[index];
+    if (character.selectedClass?.choices && character.equipmentChoices) {
+      const equipmentChoices = character.selectedClass.choices.filter(
+        (choice) => choice.choiceType === 1 // EQUIPMENT type
+      );
+      equipmentChoices.forEach((choice, index) => {
+        const selection =
+          (character.equipmentChoices as Record<string, string>)[choice.id] ||
+          character.equipmentChoices[index];
         if (selection) {
           // Parse the selection format "0-1:Longsword" or "0-1"
           const [optionKey, weaponChoice] = selection.split(':');
           const optionIndex = parseInt(optionKey.split('-')[1]);
 
-          // Get the option text from the choice
-          const optionsToUse =
-            choice.options && choice.options.length > 0
-              ? choice.options
-              : choice.description.split(' or ').map((part) => part.trim());
+          // Get the option text from the choice - using description since options property doesn't exist
+          const optionsToUse = choice.description
+            .split(' or ')
+            .map((part) => part.trim());
 
           if (optionIndex >= 0 && optionIndex < optionsToUse.length) {
             const optionText = optionsToUse[optionIndex];
@@ -1204,7 +1205,6 @@ export function InteractiveCharacterSheet({
       <ClassSelectionModal
         isOpen={isClassModalOpen}
         currentClass={character.selectedClass?.name}
-        existingProficiencies={draft.allProficiencies}
         onSelect={(classData, choices) => {
           setCharacter((prev) => ({
             ...prev,
