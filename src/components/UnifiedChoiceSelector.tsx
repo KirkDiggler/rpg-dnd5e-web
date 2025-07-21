@@ -52,6 +52,29 @@ function isGeneralWeaponCategory(categoryId: string): boolean {
   );
 }
 
+// Check if an item ID is actually a category reference
+function isCategoryReference(itemId: string): boolean {
+  const categoryIds = [
+    'simple-weapons',
+    'simple-melee-weapons',
+    'simple-ranged-weapons',
+    'martial-weapons',
+    'martial-melee-weapons',
+    'martial-ranged-weapons',
+    'light-armor',
+    'medium-armor',
+    'heavy-armor',
+    'shields',
+    'adventuring-gear',
+    'tools',
+    'artisan-tools',
+    'gaming-sets',
+    'musical-instruments',
+    'vehicles',
+  ];
+  return categoryIds.includes(itemId.toLowerCase());
+}
+
 export function UnifiedChoiceSelector({
   choice,
   onSelectionChange,
@@ -365,6 +388,63 @@ function ChoiceOptionItem({
 }: ChoiceOptionItemProps) {
   const content = getOptionContent(option);
 
+  // Special handling for nested choices - render them differently
+  if (option.optionType.case === 'nestedChoice') {
+    const nestedChoice = option.optionType.value?.choice;
+    if (nestedChoice) {
+      return (
+        <div
+          style={{
+            padding: '16px',
+            backgroundColor: 'var(--bg-secondary)',
+            borderRadius: '8px',
+            border: `2px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+          }}
+        >
+          <h4
+            style={{
+              color: 'var(--text-primary)',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              marginBottom: '8px',
+            }}
+          >
+            {nestedChoice.description}
+          </h4>
+          <p
+            style={{
+              color: 'var(--text-muted)',
+              fontSize: '12px',
+              marginBottom: '12px',
+            }}
+          >
+            Choose {nestedChoice.chooseCount} option
+            {nestedChoice.chooseCount > 1 ? 's' : ''}
+          </p>
+          <button
+            type="button"
+            onClick={disabled ? undefined : onSelect}
+            disabled={disabled}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: isSelected
+                ? 'var(--accent-primary)'
+                : 'var(--card-bg)',
+              borderRadius: '6px',
+              border: `2px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+              fontSize: '13px',
+              color: isSelected ? 'white' : 'var(--text-primary)',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              width: '100%',
+            }}
+          >
+            {isSelected ? 'Selected ✓' : 'Select this option'}
+          </button>
+        </div>
+      );
+    }
+  }
+
   return (
     <button
       type="button"
@@ -481,12 +561,16 @@ function getOptionContent(option: ChoiceOption): {
       };
     case 'bundle': {
       const items = option.optionType.value.items;
+      // Format bundle items, highlighting category references
+      const itemNames = items.map((item) => {
+        const name = isCategoryReference(item.itemId)
+          ? `[Any ${item.name}]`
+          : item.name;
+        return item.quantity > 1 ? `${item.quantity}x ${name}` : name;
+      });
+
       return {
-        name: items
-          .map((item) =>
-            item.quantity > 1 ? `${item.quantity}x ${item.name}` : item.name
-          )
-          .join(', '),
+        name: itemNames.join(' + '),
         icon: getBundleIcon(items),
       };
     }
