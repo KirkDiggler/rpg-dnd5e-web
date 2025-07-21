@@ -12,7 +12,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { EquipmentType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useCallback, useMemo, useState } from 'react';
-import { useListEquipmentByType } from '../api/hooks';
+import { useListEquipmentByTypeConditional } from '../api/hooks';
 
 interface UnifiedChoiceSelectorProps {
   choice: Choice;
@@ -116,10 +116,15 @@ export function UnifiedChoiceSelector({
     );
 
     if (allNestedChoices && options.options.length === 1) {
-      const nestedChoice = options.options[0].optionType.value?.choice;
-      if (nestedChoice && nestedChoice.optionSet.case === 'explicitOptions') {
+      const nestedChoice = options.options[0].optionType.value;
+      if (
+        nestedChoice &&
+        'choice' in nestedChoice &&
+        nestedChoice.choice &&
+        nestedChoice.choice.optionSet.case === 'explicitOptions'
+      ) {
         // Flatten single nested choice
-        return renderExplicitOptions(nestedChoice.optionSet.value);
+        return renderExplicitOptions(nestedChoice.choice.optionSet.value);
       }
     }
 
@@ -212,9 +217,11 @@ function CategoryReferenceSelector({
     return type || EquipmentType.UNSPECIFIED;
   }, [category.categoryId]);
 
-  // Use the equipment hook for the primary type
+  // Use the equipment hook for the primary type - only fetch when expanded
   const { data: primaryEquipment, loading: primaryLoading } =
-    useListEquipmentByType(equipmentType, { pageSize: 100 });
+    useListEquipmentByTypeConditional(equipmentType, expanded, {
+      pageSize: 100,
+    });
 
   // For general weapon categories, we need a second type
   const needsSecondaryType = isGeneralWeaponCategory(category.categoryId);
@@ -230,7 +237,11 @@ function CategoryReferenceSelector({
   }, [category.categoryId, needsSecondaryType]);
 
   const { data: secondaryEquipment, loading: secondaryLoading } =
-    useListEquipmentByType(secondaryType, { pageSize: 100 });
+    useListEquipmentByTypeConditional(
+      secondaryType,
+      expanded && needsSecondaryType,
+      { pageSize: 100 }
+    );
 
   // Combine equipment and filter excluded items
   const allEquipment = useMemo(() => {
@@ -439,7 +450,7 @@ function getOptionId(option: ChoiceOption): string {
     case 'bundle':
       return option.optionType.value.items.map((item) => item.itemId).join('-');
     case 'nestedChoice':
-      return option.optionType.value.choice?.id || 'nested';
+      return option.optionType.value?.choice?.id || 'nested';
     default:
       return 'unknown';
   }
@@ -481,7 +492,7 @@ function getOptionContent(option: ChoiceOption): {
     }
     case 'nestedChoice':
       return {
-        name: option.optionType.value.choice?.description || 'Choose...',
+        name: option.optionType.value?.choice?.description || 'Choose...',
         icon: '📦',
       };
     default:

@@ -656,3 +656,65 @@ export function useListEquipmentByType(
       : undefined,
   };
 }
+
+// Conditional version that only fetches when enabled
+export function useListEquipmentByTypeConditional(
+  equipmentType: EquipmentType,
+  enabled: boolean,
+  filters: Partial<
+    Pick<ListEquipmentByTypeRequest, 'pageSize' | 'pageToken'>
+  > = {}
+) {
+  const [state, setState] = useState<ListState<Equipment>>({
+    data: [],
+    loading: false,
+    error: null,
+  });
+
+  const fetchEquipment = useCallback(
+    async (pageToken?: string) => {
+      if (!enabled) return;
+
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+
+      try {
+        const request = create(ListEquipmentByTypeRequestSchema, {
+          equipmentType,
+          pageSize: filters.pageSize || 50,
+          pageToken: pageToken || '',
+        });
+
+        const response = await characterClient.listEquipmentByType(request);
+
+        setState({
+          data: response.equipment,
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
+          totalSize: response.totalSize,
+        });
+      } catch (error) {
+        setState({
+          data: [],
+          loading: false,
+          error: error instanceof Error ? error : new Error('Unknown error'),
+        });
+      }
+    },
+    [equipmentType, filters.pageSize, enabled]
+  );
+
+  useEffect(() => {
+    if (enabled) {
+      fetchEquipment();
+    }
+  }, [fetchEquipment, enabled]);
+
+  return {
+    ...state,
+    refetch: fetchEquipment,
+    loadMore: state.nextPageToken
+      ? () => fetchEquipment(state.nextPageToken)
+      : undefined,
+  };
+}
