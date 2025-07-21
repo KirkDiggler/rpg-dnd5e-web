@@ -3,7 +3,7 @@ import { TraitIcons } from '@/constants/traits';
 import { useCharacterBuilder } from '@/hooks/useCharacterBuilder';
 import { motion } from 'framer-motion';
 import { useContext, useState } from 'react';
-import { CharacterDraftContext } from '../CharacterDraftContext';
+import { CharacterDraftContext } from '../CharacterDraftContextDef';
 
 const SAMPLE_SKILLS = [
   {
@@ -68,20 +68,20 @@ export function SkillsBackgroundSection() {
   const allRaceChoices = Object.values(raceProficiencies).flat();
 
   // Separate by type based on the item ID prefix
-  const classSkillChoices = allClassChoices.filter((id) =>
-    id.startsWith('skill:')
+  const classSkillChoices = allClassChoices.filter(
+    (id): id is string => typeof id === 'string' && id.startsWith('skill:')
   );
-  const classToolChoices = allClassChoices.filter((id) =>
-    id.startsWith('tool:')
+  const classToolChoices = allClassChoices.filter(
+    (id): id is string => typeof id === 'string' && id.startsWith('tool:')
   );
-  const classFeatChoices = allClassChoices.filter((id) =>
-    id.startsWith('feat:')
+  const classFeatChoices = allClassChoices.filter(
+    (id): id is string => typeof id === 'string' && id.startsWith('feat:')
   );
-  const raceSkillChoices = allRaceChoices.filter((id) =>
-    id.startsWith('skill:')
+  const raceSkillChoices = allRaceChoices.filter(
+    (id): id is string => typeof id === 'string' && id.startsWith('skill:')
   );
-  const raceLanguageChoices = allRaceChoices.filter((id) =>
-    id.startsWith('language:')
+  const raceLanguageChoices = allRaceChoices.filter(
+    (id): id is string => typeof id === 'string' && id.startsWith('language:')
   );
 
   const selectedBackground = SAMPLE_BACKGROUNDS.find(
@@ -126,7 +126,7 @@ export function SkillsBackgroundSection() {
               name: skillId
                 .replace('skill:-', '')
                 .replace(/-/g, ' ')
-                .replace(/\b\w/g, (l) => l.toUpperCase()),
+                .replace(/\b\w/g, (l: string) => l.toUpperCase()),
               type: 'racial' as const,
               icon: TraitIcons.racial,
               description: 'Racial proficiency',
@@ -140,7 +140,7 @@ export function SkillsBackgroundSection() {
               name: skillId
                 .replace('skill:-', '')
                 .replace(/-/g, ' ')
-                .replace(/\b\w/g, (l) => l.toUpperCase()),
+                .replace(/\b\w/g, (l: string) => l.toUpperCase()),
               type: 'class' as const,
               icon: TraitIcons.class,
               description: 'Class proficiency',
@@ -155,7 +155,7 @@ export function SkillsBackgroundSection() {
                 name: toolId
                   .replace('tool:-', '')
                   .replace(/-/g, ' ')
-                  .replace(/\b\w/g, (l) => l.toUpperCase()),
+                  .replace(/\b\w/g, (l: string) => l.toUpperCase()),
                 type: 'class' as const,
                 icon: '🔧',
                 description: 'Tool proficiency',
@@ -171,7 +171,7 @@ export function SkillsBackgroundSection() {
                 name: featId
                   .replace('feat:-', '')
                   .replace(/-/g, ' ')
-                  .replace(/\b\w/g, (l) => l.toUpperCase()),
+                  .replace(/\b\w/g, (l: string) => l.toUpperCase()),
                 type: 'class' as const,
                 icon: '⭐',
                 description: 'Feat',
@@ -221,7 +221,7 @@ export function SkillsBackgroundSection() {
                 name: langId
                   .replace('language:-', '')
                   .replace(/-/g, ' ')
-                  .replace(/\b\w/g, (l) => l.toUpperCase()),
+                  .replace(/\b\w/g, (l: string) => l.toUpperCase()),
                 type: 'racial' as const,
                 icon: '💬',
                 description: 'Language',
