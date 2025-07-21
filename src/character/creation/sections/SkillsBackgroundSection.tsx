@@ -56,12 +56,11 @@ export function SkillsBackgroundSection() {
       'SkillsBackgroundSection must be used within CharacterDraftProvider'
     );
 
-  const { character } = context;
+  const { classChoices, raceChoices } = context;
 
   // Get proficiencies from character choices
-  const classProficiencies =
-    character.choices?.classChoices?.proficiencies || {};
-  const raceProficiencies = character.choices?.raceChoices?.proficiencies || {};
+  const classProficiencies = classChoices || {};
+  const raceProficiencies = raceChoices || {};
 
   // Flatten proficiency choices into arrays and categorize by type
   const allClassChoices = Object.values(classProficiencies).flat();
