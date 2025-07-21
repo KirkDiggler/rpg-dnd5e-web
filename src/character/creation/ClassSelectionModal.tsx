@@ -1,11 +1,10 @@
 import type { ClassInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
-import { getChoiceKey, validateChoice } from '../../types/character';
-import { ChoiceSelectorWithDuplicates } from './components/ChoiceSelectorWithDuplicates';
-import { EquipmentChoiceSelector } from './components/EquipmentChoiceSelector';
+import { UnifiedChoiceSelector } from '../../components/UnifiedChoiceSelector';
 import { FeatureChoiceSelector } from './components/FeatureChoiceSelector';
 import { VisualCarousel } from './components/VisualCarousel';
 
@@ -42,22 +41,20 @@ function getClassEmoji(className: string): string {
 interface ClassSelectionModalProps {
   isOpen: boolean;
   currentClass?: string;
-  existingProficiencies?: Set<string>;
   onSelect: (classData: ClassInfo, choices: ClassChoices) => void;
   onClose: () => void;
 }
 
 export interface ClassChoices {
   proficiencies: Record<string, string[]>;
-  equipment: Record<number, string>;
-  features: Record<string, string>; // featureId -> selected option
+  equipment: Record<string, string>; // choiceId -> selected item
+  features: Record<string, Record<string, string[]>>; // featureId -> choiceId -> selections
   className?: string; // Track which class these choices belong to
 }
 
 export function ClassSelectionModal({
   isOpen,
   currentClass,
-  existingProficiencies,
   onSelect,
   onClose,
 }: ClassSelectionModalProps) {
@@ -159,68 +156,60 @@ export function ClassSelectionModal({
   const handleSelect = () => {
     setErrorMessage(''); // Clear any previous errors
 
-    // Validate all choices are made
-    const hasProficiencyChoices =
-      currentClassData.proficiencyChoices &&
-      currentClassData.proficiencyChoices.length > 0;
+    // Validate skill choices
+    const skillChoices =
+      currentClassData.choices?.filter(
+        (choice) => choice.choiceType === ChoiceType.SKILL
+      ) || [];
 
-    if (hasProficiencyChoices) {
-      for (let i = 0; i < currentClassData.proficiencyChoices.length; i++) {
-        const choice = currentClassData.proficiencyChoices[i];
-        const key = getChoiceKey(choice, i);
-        const selected = currentClassChoices.proficiencies[key] || [];
-        const validation = validateChoice(choice, selected);
-        if (!validation.isValid) {
-          setErrorMessage(validation.errors.join(' '));
-          return;
-        }
+    for (const choice of skillChoices) {
+      const selected = currentClassChoices.proficiencies[choice.id] || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} skill${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
       }
     }
 
     // Validate equipment choices
-    const hasEquipmentChoices =
-      currentClassData.equipmentChoices &&
-      currentClassData.equipmentChoices.length > 0;
+    const equipmentChoices =
+      currentClassData.choices?.filter(
+        (choice) => choice.choiceType === ChoiceType.EQUIPMENT
+      ) || [];
 
-    if (hasEquipmentChoices) {
-      for (let i = 0; i < currentClassData.equipmentChoices.length; i++) {
-        const selection = currentClassChoices.equipment[i];
-        if (!selection || selection === '') {
-          setErrorMessage(
-            `Please select an option for Equipment Option ${i + 1}`
-          );
-          return;
-        }
-        // Check if it's a weapon choice that needs a specific selection
-        if (selection.includes('-') && !selection.includes(':')) {
-          const optionIndex = parseInt(selection.split('-')[1]);
-          const option =
-            currentClassData.equipmentChoices[i].options[optionIndex];
-          if (
-            option &&
-            (option.includes('any martial') || option.includes('any simple'))
-          ) {
-            setErrorMessage(
-              `Please select a specific weapon for Equipment Option ${i + 1}`
-            );
-            return;
-          }
-        }
+    for (const choice of equipmentChoices) {
+      const selected = currentClassChoices.equipment[choice.id] || '';
+      if (!selected) {
+        setErrorMessage(
+          `Please select an option for equipment: ${choice.description}`
+        );
+        return;
       }
     }
 
     // Validate feature choices
     const hasFeatureChoices =
       currentClassData.level1Features &&
-      currentClassData.level1Features.some((f) => f.hasChoices);
+      currentClassData.level1Features.some(
+        (f) => f.choices && f.choices.length > 0
+      );
 
     if (hasFeatureChoices) {
       for (const feature of currentClassData.level1Features) {
-        if (feature.hasChoices && feature.choices.length > 0) {
-          const selection = currentClassChoices.features[feature.id];
-          if (!selection || selection === '') {
-            setErrorMessage(`Please make a selection for ${feature.name}`);
-            return;
+        if (feature.choices && feature.choices.length > 0) {
+          const featureSelections =
+            currentClassChoices.features[feature.id] || {};
+
+          // Check each choice in the feature
+          for (const choice of feature.choices) {
+            const selections = featureSelections[choice.id] || [];
+            if (selections.length !== choice.chooseCount) {
+              setErrorMessage(
+                `Please select ${choice.chooseCount} option${choice.chooseCount > 1 ? 's' : ''} for ${feature.name}: ${choice.description}`
+              );
+              return;
+            }
           }
         }
       }
@@ -554,46 +543,48 @@ export function ClassSelectionModal({
               </div>
             </CollapsibleSection>
 
-            {/* Proficiency Choices */}
-            {currentClassData.proficiencyChoices &&
-              currentClassData.proficiencyChoices.length > 0 && (
+            {/* Skill Proficiency Choices */}
+            {(() => {
+              const skillChoices =
+                currentClassData.choices?.filter(
+                  (choice) => choice.choiceType === ChoiceType.SKILL
+                ) || [];
+
+              if (skillChoices.length === 0) return null;
+
+              return (
                 <CollapsibleSection
-                  title="Choose Your Proficiencies"
+                  title="Choose Your Skills"
                   defaultOpen={true}
                   required={true}
                 >
                   <div style={{ marginBottom: '12px' }}>
-                    {currentClassData.proficiencyChoices.map(
-                      (choice, index) => (
-                        <div key={index} style={{ marginBottom: '16px' }}>
-                          <ChoiceSelectorWithDuplicates
-                            choice={choice}
-                            selected={
-                              currentClassChoices.proficiencies[
-                                getChoiceKey(choice, index)
-                              ] || []
-                            }
-                            existingSelections={existingProficiencies}
-                            onSelectionChange={(selected) => {
-                              const key = getChoiceKey(choice, index);
-                              setClassChoicesMap((prev) => ({
-                                ...prev,
-                                [currentClassName]: {
-                                  ...currentClassChoices,
-                                  proficiencies: {
-                                    ...currentClassChoices.proficiencies,
-                                    [key]: selected,
-                                  },
+                    {skillChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <UnifiedChoiceSelector
+                          choice={choice}
+                          currentSelections={
+                            currentClassChoices.proficiencies[choice.id] || []
+                          }
+                          onSelectionChange={(choiceId, selections) => {
+                            setClassChoicesMap((prev) => ({
+                              ...prev,
+                              [currentClassName]: {
+                                ...currentClassChoices,
+                                proficiencies: {
+                                  ...currentClassChoices.proficiencies,
+                                  [choiceId]: selections,
                                 },
-                              }));
-                            }}
-                          />
-                        </div>
-                      )
-                    )}
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                    ))}
                   </div>
                 </CollapsibleSection>
-              )}
+              );
+            })()}
 
             {/* Class Features */}
             {currentClassData.level1Features &&
@@ -613,9 +604,10 @@ export function ClassSelectionModal({
                           padding: '12px',
                           backgroundColor: bgSecondary,
                           borderRadius: '8px',
-                          border: feature.hasChoices
-                            ? '2px solid var(--accent-primary)'
-                            : `1px solid ${borderPrimary}`,
+                          border:
+                            feature.choices && feature.choices.length > 0
+                              ? '2px solid var(--accent-primary)'
+                              : `1px solid ${borderPrimary}`,
                         }}
                       >
                         <h4
@@ -629,7 +621,7 @@ export function ClassSelectionModal({
                           }}
                         >
                           {feature.name}
-                          {feature.hasChoices && (
+                          {feature.choices && feature.choices.length > 0 && (
                             <span
                               style={{
                                 fontSize: '12px',
@@ -653,20 +645,25 @@ export function ClassSelectionModal({
                         >
                           {feature.description}
                         </p>
-                        {feature.hasChoices && feature.choices.length > 0 && (
+                        {feature.choices && feature.choices.length > 0 && (
                           <FeatureChoiceSelector
                             feature={feature}
-                            currentSelection={
-                              currentClassChoices.features[feature.id]
+                            currentSelections={
+                              currentClassChoices.features[feature.id] || {}
                             }
-                            onSelect={(featureId, _, selection) => {
+                            onSelect={(featureId, choiceId, selections) => {
                               setClassChoicesMap((prev) => ({
                                 ...prev,
                                 [currentClassName]: {
                                   ...currentClassChoices,
                                   features: {
                                     ...currentClassChoices.features,
-                                    [featureId]: selection,
+                                    [featureId]: {
+                                      ...currentClassChoices.features[
+                                        featureId
+                                      ],
+                                      [choiceId]: selections,
+                                    },
                                   },
                                 },
                               }));
@@ -679,29 +676,50 @@ export function ClassSelectionModal({
                 </CollapsibleSection>
               )}
 
-            {/* Equipment Choices */}
-            {currentClassData.equipmentChoices &&
-              currentClassData.equipmentChoices.length > 0 && (
+            {/* Equipment Choices from new choice system */}
+            {(() => {
+              const equipmentChoices =
+                currentClassData.choices?.filter(
+                  (choice) => choice.choiceType === ChoiceType.EQUIPMENT
+                ) || [];
+
+              if (equipmentChoices.length === 0) return null;
+
+              return (
                 <CollapsibleSection
                   title="Choose Your Equipment"
                   defaultOpen={true}
                   required={true}
                 >
-                  <EquipmentChoiceSelector
-                    choices={currentClassData.equipmentChoices}
-                    selected={currentClassChoices.equipment}
-                    onSelectionChange={(newEquipment) => {
-                      setClassChoicesMap((prev) => ({
-                        ...prev,
-                        [currentClassName]: {
-                          ...currentClassChoices,
-                          equipment: newEquipment,
-                        },
-                      }));
-                    }}
-                  />
+                  <div style={{ marginBottom: '12px' }}>
+                    {equipmentChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <UnifiedChoiceSelector
+                          choice={choice}
+                          currentSelections={
+                            currentClassChoices.equipment[choice.id]
+                              ? [currentClassChoices.equipment[choice.id]]
+                              : []
+                          }
+                          onSelectionChange={(choiceId, selections) => {
+                            setClassChoicesMap((prev) => ({
+                              ...prev,
+                              [currentClassName]: {
+                                ...currentClassChoices,
+                                equipment: {
+                                  ...currentClassChoices.equipment,
+                                  [choiceId]: selections[0] || '',
+                                },
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </CollapsibleSection>
-              )}
+              );
+            })()}
 
             {/* Features Section */}
             <div style={{ marginBottom: '20px' }}>
