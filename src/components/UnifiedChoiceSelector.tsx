@@ -658,7 +658,7 @@ function NestedChoiceExpanded({
     }
   };
 
-  const handleRemoveSelection = (itemId: string, index: number) => {
+  const handleRemoveSelection = (_itemId: string, index: number) => {
     const newSelections = [...selections];
     newSelections.splice(index, 1);
     setSelections(newSelections);
