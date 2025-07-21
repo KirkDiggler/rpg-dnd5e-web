@@ -153,19 +153,49 @@ export function UnifiedChoiceSelector({
 
     return (
       <div className="grid gap-2">
-        {options.options.map((option, index) => (
-          <ChoiceOptionItem
-            key={index}
-            option={option}
-            isSelected={selections.includes(getOptionId(option))}
-            onSelect={() => handleSelection(getOptionId(option))}
-            disabled={
-              disabled ||
-              (!selections.includes(getOptionId(option)) &&
-                selections.length >= choice.chooseCount)
+        {options.options.map((option, index) => {
+          // Check if this is a bundle with category references
+          if (option.optionType.case === 'bundle') {
+            const items = option.optionType.value.items;
+            const hasCategoryRef = items.some((item) =>
+              isCategoryReference(item.itemId)
+            );
+
+            if (hasCategoryRef) {
+              return (
+                <BundleWithCategory
+                  key={index}
+                  bundle={option}
+                  isSelected={selections.includes(getOptionId(option))}
+                  onSelect={(bundleId) => {
+                    // When bundle is selected, we just track the bundle ID
+                    // The actual selections are managed within the BundleWithCategory component
+                    handleSelection(bundleId);
+                  }}
+                  disabled={
+                    disabled ||
+                    (!selections.includes(getOptionId(option)) &&
+                      selections.length >= choice.chooseCount)
+                  }
+                />
+              );
             }
-          />
-        ))}
+          }
+
+          return (
+            <ChoiceOptionItem
+              key={index}
+              option={option}
+              isSelected={selections.includes(getOptionId(option))}
+              onSelect={() => handleSelection(getOptionId(option))}
+              disabled={
+                disabled ||
+                (!selections.includes(getOptionId(option)) &&
+                  selections.length >= choice.chooseCount)
+              }
+            />
+          );
+        })}
       </div>
     );
   };
@@ -354,20 +384,255 @@ function CategoryReferenceSelector({
       </button>
 
       <div className="grid gap-2 max-h-96 overflow-y-auto">
-        {options.map((option, index) => (
-          <ChoiceOptionItem
-            key={index}
-            option={option}
-            isSelected={selections.includes(getOptionId(option))}
-            onSelect={() => onSelect(getOptionId(option))}
-            disabled={
-              disabled ||
-              (!selections.includes(getOptionId(option)) &&
-                selections.length >= chooseCount)
-            }
-          />
-        ))}
+        {options.map((option, index) => {
+          const optionId = getOptionId(option);
+          // Count how many times this option is selected
+          const selectionCount = selections.filter(
+            (s) => s === optionId
+          ).length;
+          const isSelected = selectionCount > 0;
+
+          return (
+            <div
+              key={index}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              <ChoiceOptionItem
+                option={option}
+                isSelected={isSelected}
+                onSelect={() => onSelect(optionId)}
+                disabled={
+                  disabled || (!isSelected && selections.length >= chooseCount)
+                }
+              />
+              {selectionCount > 0 && chooseCount > 1 && (
+                <span
+                  style={{
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    minWidth: '30px',
+                    textAlign: 'center',
+                  }}
+                >
+                  ×{selectionCount}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+// Component for bundle with category references
+interface BundleWithCategoryProps {
+  bundle: ChoiceOption;
+  isSelected: boolean;
+  onSelect: (bundleId: string) => void;
+  disabled?: boolean;
+}
+
+function BundleWithCategory({
+  bundle,
+  isSelected,
+  onSelect,
+  disabled = false,
+}: BundleWithCategoryProps) {
+  const [categorySelections, setCategorySelections] = useState<
+    Record<string, string>
+  >({});
+
+  if (bundle.optionType.case !== 'bundle') return null;
+
+  const items = bundle.optionType.value.items;
+  const hasCategoryRef = items.some((item) => isCategoryReference(item.itemId));
+
+  if (!hasCategoryRef) {
+    // Regular bundle without category refs - use normal rendering
+    return null;
+  }
+
+  const handleCategorySelection = (itemId: string, selectedId: string) => {
+    const newSelections = { ...categorySelections, [itemId]: selectedId };
+    setCategorySelections(newSelections);
+
+    // Check if all category refs have selections
+    const allSelected = items
+      .filter((item) => isCategoryReference(item.itemId))
+      .every((item) => newSelections[item.itemId]);
+
+    if (allSelected) {
+      onSelect(getOptionId(bundle));
+    }
+  };
+
+  return (
+    <div
+      style={{
+        padding: '16px',
+        backgroundColor: isSelected
+          ? 'var(--accent-primary)'
+          : 'var(--bg-secondary)',
+        borderRadius: '8px',
+        border: `2px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+      }}
+    >
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        {items.map((item, idx) => {
+          if (isCategoryReference(item.itemId)) {
+            // Render dropdown for category reference
+            const equipmentType = categoryIdToEquipmentType(item.itemId);
+            return (
+              <div key={idx} style={{ flex: 1 }}>
+                <CategoryDropdown
+                  equipmentType={equipmentType || EquipmentType.UNSPECIFIED}
+                  placeholder={item.name}
+                  value={categorySelections[item.itemId]}
+                  onChange={(value) =>
+                    handleCategorySelection(item.itemId, value)
+                  }
+                  disabled={disabled}
+                />
+              </div>
+            );
+          } else {
+            // Render static item (like shield)
+            return (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  backgroundColor: 'var(--card-bg)',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-primary)',
+                }}
+              >
+                <span style={{ fontSize: '18px' }}>
+                  {getItemIcon(item.name, item.itemId)}
+                </span>
+                <span style={{ color: 'var(--text-primary)' }}>
+                  {item.name}
+                </span>
+              </div>
+            );
+          }
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Dropdown component for category selection
+interface CategoryDropdownProps {
+  equipmentType: EquipmentType;
+  placeholder: string;
+  value?: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+function CategoryDropdown({
+  equipmentType,
+  placeholder,
+  value,
+  onChange,
+  disabled = false,
+}: CategoryDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const { data: equipment, loading } = useListEquipmentByTypeConditional(
+    equipmentType,
+    isOpen,
+    { pageSize: 100 }
+  );
+
+  const selectedItem = equipment?.find((e) => e.id === value);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        disabled={disabled}
+        style={{
+          width: '100%',
+          padding: '8px 16px',
+          backgroundColor: 'var(--card-bg)',
+          border: '1px solid var(--border-primary)',
+          borderRadius: '6px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          color: 'var(--text-primary)',
+        }}
+      >
+        <span>{selectedItem?.name || placeholder}</span>
+        <span style={{ fontSize: '12px' }}>▼</span>
+      </button>
+
+      {isOpen && !loading && equipment && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            marginTop: '4px',
+            backgroundColor: 'var(--card-bg)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '6px',
+            maxHeight: '200px',
+            overflowY: 'auto',
+            zIndex: 10,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}
+        >
+          {equipment.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                onChange(item.id);
+                setIsOpen(false);
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 16px',
+                backgroundColor:
+                  value === item.id ? 'var(--accent-primary)' : 'transparent',
+                border: 'none',
+                textAlign: 'left',
+                cursor: 'pointer',
+                color: value === item.id ? 'white' : 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+              onMouseEnter={(e) => {
+                if (value !== item.id) {
+                  e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (value !== item.id) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }
+              }}
+            >
+              <span style={{ fontSize: '14px' }}>
+                {getItemIcon(item.name, item.id)}
+              </span>
+              {item.name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
