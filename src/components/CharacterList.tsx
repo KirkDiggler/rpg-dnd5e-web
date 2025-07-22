@@ -134,12 +134,10 @@ export function CharacterList({
                   </h3>
                   <div className="flex justify-between text-sm">
                     <span style={{ color: 'var(--ink-brown)' }}>
-                      {draft.race ? getRaceDisplayName(draft.race) : 'No Race'}
+                      {draft.race?.name || 'No Race'}
                     </span>
                     <span style={{ color: 'var(--ink-sepia)' }}>
-                      {draft.class
-                        ? getClassDisplayName(draft.class)
-                        : 'No Class'}
+                      {draft.class?.name || 'No Class'}
                     </span>
                   </div>
                   <div

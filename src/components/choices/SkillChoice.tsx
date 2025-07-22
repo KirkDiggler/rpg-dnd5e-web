@@ -101,7 +101,7 @@ export function SkillChoice({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {skills.map((skill) => {
+              {skills.map(({ skill }) => {
                 const isSelected = currentSelections.includes(skill.itemId);
                 const isDisabled =
                   !isSelected && currentSelections.length >= choice.chooseCount;
@@ -116,6 +116,7 @@ export function SkillChoice({
                         : () => handleSkillToggle(skill.itemId)
                     }
                     disabled={isDisabled}
+                    className="skill-choice-button"
                     style={{
                       padding: '12px 16px',
                       backgroundColor: isSelected

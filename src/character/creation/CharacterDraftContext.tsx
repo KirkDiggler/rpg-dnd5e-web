@@ -5,15 +5,16 @@ import type {
   ChoiceSelection,
   ClassInfo,
   RaceInfo,
-  UpdateAbilityScoresRequest,
-  UpdateClassRequest,
-  UpdateNameRequest,
-  UpdateRaceRequest,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   AbilityScoresSchema,
   ChoiceSelectionSchema,
   ChoiceSource,
+  CreateDraftRequestSchema,
+  UpdateAbilityScoresRequestSchema,
+  UpdateClassRequestSchema,
+  UpdateNameRequestSchema,
+  UpdateRaceRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   Class,
@@ -201,10 +202,12 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       setError(null);
       try {
-        const response = await createDraftAPI({
-          playerId,
-          sessionId: sessionId || '',
-        });
+        const response = await createDraftAPI(
+          create(CreateDraftRequestSchema, {
+            playerId,
+            sessionId: sessionId || '',
+          })
+        );
         if (response.draft) {
           setDraftId(response.draft.id);
           setDraft(response.draft);
@@ -315,12 +318,12 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       // Store the full RaceInfo immediately
       setCurrentRaceInfo(race);
 
-      // Update draft with enum value
+      // Update draft with race info
       setDraft(
         (prev) =>
           ({
             ...prev,
-            race: race ? getRaceEnum(race.name) : Race.UNSPECIFIED,
+            race: race || undefined,
           }) as CharacterDraft
       );
 
@@ -349,12 +352,12 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             ChoiceSource.RACE
           );
 
-          const request: UpdateRaceRequest = {
+          const request = create(UpdateRaceRequestSchema, {
             draftId,
             race: getRaceEnum(race.name),
             raceChoices: raceChoiceSelections,
             // TODO: Add subrace when supported
-          };
+          });
           await updateRaceAPI(request);
         } catch (err) {
           setError(
@@ -405,7 +408,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
         (prev) =>
           ({
             ...prev,
-            class: classInfo ? getClassEnum(classInfo.name) : Class.UNSPECIFIED,
+            class: classInfo || undefined,
           }) as CharacterDraft
       );
 
@@ -429,11 +432,11 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             ChoiceSource.CLASS
           );
 
-          const request: UpdateClassRequest = {
+          const request = create(UpdateClassRequestSchema, {
             draftId,
             class: getClassEnum(classInfo.name),
             classChoices: classChoiceSelections,
-          };
+          });
           await updateClassAPI(request);
         } catch (err) {
           setError(
@@ -514,10 +517,10 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       if (draftId) {
         setSaving(true);
         try {
-          const request: UpdateNameRequest = {
+          const request = create(UpdateNameRequestSchema, {
             draftId,
             name,
-          };
+          });
           await updateNameAPI(request);
         } catch (err) {
           setError(
@@ -556,10 +559,13 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       if (draftId) {
         setSaving(true);
         try {
-          const request: UpdateAbilityScoresRequest = {
+          const request = create(UpdateAbilityScoresRequestSchema, {
             draftId,
-            abilityScores,
-          };
+            scoresInput: {
+              case: 'abilityScores',
+              value: create(AbilityScoresSchema, abilityScores),
+            },
+          });
           await updateAbilityScoresAPI(request);
         } catch (err) {
           setError(
