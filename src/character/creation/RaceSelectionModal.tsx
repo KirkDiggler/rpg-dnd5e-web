@@ -91,6 +91,7 @@ interface RaceSelectionModalProps {
   currentRace?: string;
   existingProficiencies?: Set<string>;
   existingLanguages?: Set<string>;
+  existingChoices?: RaceChoices;
   onSelect: (race: RaceInfo, choices: RaceChoices) => void;
   onClose: () => void;
 }
@@ -105,6 +106,7 @@ export function RaceSelectionModal({
   currentRace,
   // existingProficiencies, // TODO: Use when implementing new Choice system
   // existingLanguages, // TODO: Use when implementing new Choice system
+  existingChoices,
   onSelect,
   onClose,
 }: RaceSelectionModalProps) {
@@ -144,8 +146,19 @@ export function RaceSelectionModal({
           setSelectedIndex(index);
         }
       }
+
+      // Initialize with existing choices if provided
+      if (existingChoices && currentRace) {
+        setRaceChoicesMap((prev) => ({
+          ...prev,
+          [currentRace]: {
+            languages: existingChoices.languages || {},
+            proficiencies: existingChoices.proficiencies || {},
+          },
+        }));
+      }
     }
-  }, [isOpen, currentRace, races]);
+  }, [isOpen, currentRace, races, existingChoices]);
 
   // Show loading or error states
   if (!isOpen) return null;

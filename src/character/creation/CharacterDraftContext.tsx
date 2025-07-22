@@ -2,10 +2,19 @@ import { create } from '@bufbuild/protobuf';
 import type {
   CharacterDraft,
   Choice,
+  ChoiceSelection,
   ClassInfo,
   RaceInfo,
+  UpdateAbilityScoresRequest,
+  UpdateClassRequest,
+  UpdateNameRequest,
+  UpdateRaceRequest,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { AbilityScoresSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  AbilityScoresSchema,
+  ChoiceSelectionSchema,
+  ChoiceSource,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   Class,
   Language,
@@ -13,6 +22,14 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
+import { characterClient } from '../../api/client';
+import {
+  useCreateDraft,
+  useUpdateDraftAbilityScores,
+  useUpdateDraftClass,
+  useUpdateDraftName,
+  useUpdateDraftRace,
+} from '../../api/hooks';
 import {
   CharacterDraftContext,
   type CharacterDraftState,
@@ -53,7 +70,30 @@ function getClassEnum(className: string): Class {
   return classMap[className] || Class.UNSPECIFIED;
 }
 
+// Helper to convert our choice format to ChoiceSelection
+function createChoiceSelections(
+  choices: Record<string, string[]>,
+  source: ChoiceSource
+): ChoiceSelection[] {
+  const selections: ChoiceSelection[] = [];
+
+  Object.entries(choices).forEach(([choiceId, selectedKeys]) => {
+    if (selectedKeys.length > 0) {
+      selections.push(
+        create(ChoiceSelectionSchema, {
+          choiceId,
+          source,
+          selectedKeys,
+        })
+      );
+    }
+  });
+
+  return selections;
+}
+
 export function CharacterDraftProvider({ children }: { children: ReactNode }) {
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [draft, setDraft] = useState<CharacterDraft | null>(null);
   const [currentRaceInfo, setCurrentRaceInfo] = useState<RaceInfo | null>(null);
   const [currentClassInfo, setCurrentClassInfo] = useState<ClassInfo | null>(
@@ -67,10 +107,24 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const [classChoices, setClassChoices] = useState<Record<string, string[]>>(
     {}
   );
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  // API hooks
+  const { createDraft: createDraftAPI } = useCreateDraft();
+  const { updateName: updateNameAPI } = useUpdateDraftName();
+  const { updateRace: updateRaceAPI } = useUpdateDraftRace();
+  const { updateClass: updateClassAPI } = useUpdateDraftClass();
+  const { updateAbilityScores: updateAbilityScoresAPI } =
+    useUpdateDraftAbilityScores();
 
   // Helper to collect all proficiencies from a race
   const collectRaceProficiencies = useCallback(
-    (race: RaceInfo | null): Set<string> => {
+    (
+      race: RaceInfo | null,
+      choicesOverride?: Record<string, string[]>
+    ): Set<string> => {
       const proficiencies = new Set<string>();
       if (!race) return proficiencies;
 
@@ -88,7 +142,8 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       }
 
       // Add chosen proficiencies from race choices
-      Object.values(raceChoices)
+      const choicesToUse = choicesOverride || raceChoices;
+      Object.values(choicesToUse)
         .flat()
         .forEach((p) => {
           proficiencies.add(p);
@@ -106,7 +161,10 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
   // Helper to collect all languages from a race
   const collectRaceLanguages = useCallback(
-    (race: RaceInfo | null): Set<string> => {
+    (
+      race: RaceInfo | null,
+      choicesOverride?: Record<string, string[]>
+    ): Set<string> => {
       const languages = new Set<string>();
       if (!race) return languages;
 
@@ -124,7 +182,8 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       }
 
       // Add chosen languages
-      Object.values(raceChoices)
+      const choicesToUse = choicesOverride || raceChoices;
+      Object.values(choicesToUse)
         .flat()
         .forEach((l) => {
           if (l.startsWith('language:')) {
@@ -137,9 +196,123 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     [raceChoices]
   );
 
+  const createDraft = useCallback(
+    async (playerId: string, sessionId?: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await createDraftAPI({
+          playerId,
+          sessionId: sessionId || '',
+        });
+        if (response.draft) {
+          setDraftId(response.draft.id);
+          setDraft(response.draft);
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error ? err : new Error('Failed to create draft')
+        );
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [createDraftAPI]
+  );
+
+  const loadDraft = useCallback(
+    async (id: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        setDraftId(id);
+        // Load the draft data
+        const { getDraft } = characterClient;
+        const response = await getDraft({ draftId: id });
+
+        if (response.draft) {
+          setDraft(response.draft);
+          setDraftId(response.draft.id);
+
+          // Load race info if race is set - it's already a RaceInfo object!
+          if (response.draft.race) {
+            setCurrentRaceInfo(response.draft.race);
+          }
+
+          // Load class info if class is set - it's already a ClassInfo object!
+          if (response.draft.class) {
+            setCurrentClassInfo(response.draft.class);
+            // TODO: Load class proficiencies when we understand the structure
+          }
+
+          // Load choices from draft
+          if (response.draft.choices) {
+            // Group choices by source
+            const raceChoicesFromDraft: Record<string, string[]> = {};
+            const classChoicesFromDraft: Record<string, string[]> = {};
+
+            response.draft.choices.forEach((choice) => {
+              if (
+                choice.source === ChoiceSource.RACE ||
+                choice.source === ChoiceSource.SUBRACE
+              ) {
+                raceChoicesFromDraft[choice.choiceId] = choice.selectedKeys;
+              } else if (choice.source === ChoiceSource.CLASS) {
+                classChoicesFromDraft[choice.choiceId] = choice.selectedKeys;
+              }
+              // TODO: Handle BACKGROUND when implemented
+            });
+
+            setRaceChoices(raceChoicesFromDraft);
+            setClassChoices(classChoicesFromDraft);
+
+            // Now recalculate proficiencies and languages with the loaded choices
+            if (response.draft.race) {
+              const raceProficiencies = collectRaceProficiencies(
+                response.draft.race,
+                raceChoicesFromDraft
+              );
+              const raceLanguages = collectRaceLanguages(
+                response.draft.race,
+                raceChoicesFromDraft
+              );
+              setAllProficiencies(new Set([...raceProficiencies]));
+              setAllLanguages(new Set([...raceLanguages]));
+            }
+          }
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error ? err : new Error('Failed to load draft')
+        );
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [collectRaceProficiencies, collectRaceLanguages]
+  );
+
   const setRace = useCallback(
-    (race: RaceInfo | null) => {
-      // Store the full RaceInfo
+    async (race: RaceInfo | null, choices?: Record<string, string[]>) => {
+      // Don't proceed if no draft exists yet or if we're already saving
+      if (!draftId) {
+        console.warn('Cannot set race: no draft ID available yet');
+        return;
+      }
+
+      // Clear race choices when changing race
+      if (!race || (currentRaceInfo && currentRaceInfo.name !== race?.name)) {
+        setRaceChoices({});
+      }
+
+      // If choices are provided, update them immediately
+      if (choices) {
+        setRaceChoices(choices);
+      }
+
+      // Store the full RaceInfo immediately
       setCurrentRaceInfo(race);
 
       // Update draft with enum value
@@ -152,29 +325,128 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       );
 
       // Recalculate all proficiencies and languages
-      const raceProficiencies = collectRaceProficiencies(race);
-      const raceLanguages = collectRaceLanguages(race);
+      const raceProficiencies = collectRaceProficiencies(race, choices);
+      const raceLanguages = collectRaceLanguages(race, choices);
 
       setAllProficiencies(new Set([...raceProficiencies]));
       setAllLanguages(new Set([...raceLanguages]));
+
+      // Save to API if draft exists and race is provided
+      if (race) {
+        // Return early if already saving to prevent multiple concurrent saves
+        if (saving) {
+          console.warn('Already saving, skipping duplicate save');
+          return;
+        }
+
+        setSaving(true);
+        try {
+          // Convert our choices to ChoiceSelection format
+          // Use provided choices or fall back to state
+          const choicesToSend = choices || raceChoices;
+          const raceChoiceSelections = createChoiceSelections(
+            choicesToSend,
+            ChoiceSource.RACE
+          );
+
+          const request: UpdateRaceRequest = {
+            draftId,
+            race: getRaceEnum(race.name),
+            raceChoices: raceChoiceSelections,
+            // TODO: Add subrace when supported
+          };
+          await updateRaceAPI(request);
+        } catch (err) {
+          setError(
+            err instanceof Error ? err : new Error('Failed to save race')
+          );
+          throw err;
+        } finally {
+          setSaving(false);
+        }
+      }
     },
-    [collectRaceProficiencies, collectRaceLanguages]
+    [
+      collectRaceProficiencies,
+      collectRaceLanguages,
+      draftId,
+      updateRaceAPI,
+      saving,
+      currentRaceInfo,
+      raceChoices,
+    ]
   );
 
-  const setClass = useCallback((classInfo: ClassInfo | null) => {
-    // Store the full ClassInfo
-    setCurrentClassInfo(classInfo);
+  const setClass = useCallback(
+    async (classInfo: ClassInfo | null, choices?: Record<string, string[]>) => {
+      // Don't proceed if no draft exists yet
+      if (!draftId) {
+        console.warn('Cannot set class: no draft ID available yet');
+        return;
+      }
 
-    setDraft(
-      (prev) =>
-        ({
-          ...prev,
-          class: classInfo ? getClassEnum(classInfo.name) : Class.UNSPECIFIED,
-        }) as CharacterDraft
-    );
+      // Clear class choices when changing class
+      if (
+        !classInfo ||
+        (currentClassInfo && currentClassInfo.name !== classInfo?.name)
+      ) {
+        setClassChoices({});
+      }
 
-    // TODO: Add class proficiencies when we understand the structure
-  }, []);
+      // If choices are provided, update them immediately
+      if (choices) {
+        setClassChoices(choices);
+      }
+
+      // Store the full ClassInfo immediately
+      setCurrentClassInfo(classInfo);
+
+      setDraft(
+        (prev) =>
+          ({
+            ...prev,
+            class: classInfo ? getClassEnum(classInfo.name) : Class.UNSPECIFIED,
+          }) as CharacterDraft
+      );
+
+      // TODO: Add class proficiencies when we understand the structure
+
+      // Save to API if draft exists and class is provided
+      if (classInfo) {
+        // Return early if already saving to prevent multiple concurrent saves
+        if (saving) {
+          console.warn('Already saving, skipping duplicate save');
+          return;
+        }
+
+        setSaving(true);
+        try {
+          // Convert our choices to ChoiceSelection format
+          // Use provided choices or fall back to state
+          const choicesToSend = choices || classChoices;
+          const classChoiceSelections = createChoiceSelections(
+            choicesToSend,
+            ChoiceSource.CLASS
+          );
+
+          const request: UpdateClassRequest = {
+            draftId,
+            class: getClassEnum(classInfo.name),
+            classChoices: classChoiceSelections,
+          };
+          await updateClassAPI(request);
+        } catch (err) {
+          setError(
+            err instanceof Error ? err : new Error('Failed to save class')
+          );
+          throw err;
+        } finally {
+          setSaving(false);
+        }
+      }
+    },
+    [draftId, updateClassAPI, saving, currentClassInfo, classChoices]
+  );
 
   const hasProficiency = useCallback(
     (proficiencyIndex: string): boolean => {
@@ -198,10 +470,12 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
   const addRaceChoice = useCallback(
     (choiceKey: string, selection: string[]) => {
-      setRaceChoices((prev) => ({
-        ...prev,
-        [choiceKey]: selection,
-      }));
+      setRaceChoices((prev) => {
+        // If this is a new race selection, clear all previous choices
+        const newChoices = { ...prev };
+        newChoices[choiceKey] = selection;
+        return newChoices;
+      });
 
       // Recalculate proficiencies/languages using stored RaceInfo
       if (currentRaceInfo) {
@@ -226,37 +500,84 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const setName = useCallback((name: string) => {
-    setDraft(
-      (prev) =>
-        ({
-          ...prev,
-          name,
-        }) as CharacterDraft
-    );
-  }, []);
+  const setName = useCallback(
+    async (name: string) => {
+      setDraft(
+        (prev) =>
+          ({
+            ...prev,
+            name,
+          }) as CharacterDraft
+      );
 
-  const setAbilityScores = useCallback((scores: Record<string, number>) => {
-    // Create AbilityScores message from the scores object
-    const abilityScores = create(AbilityScoresSchema, {
-      strength: scores.strength || 10,
-      dexterity: scores.dexterity || 10,
-      constitution: scores.constitution || 10,
-      intelligence: scores.intelligence || 10,
-      wisdom: scores.wisdom || 10,
-      charisma: scores.charisma || 10,
-    });
+      // Save to API if draft exists
+      if (draftId) {
+        setSaving(true);
+        try {
+          const request: UpdateNameRequest = {
+            draftId,
+            name,
+          };
+          await updateNameAPI(request);
+        } catch (err) {
+          setError(
+            err instanceof Error ? err : new Error('Failed to save name')
+          );
+          throw err;
+        } finally {
+          setSaving(false);
+        }
+      }
+    },
+    [draftId, updateNameAPI]
+  );
 
-    setDraft(
-      (prev) =>
-        ({
-          ...prev,
-          abilityScores,
-        }) as CharacterDraft
-    );
-  }, []);
+  const setAbilityScores = useCallback(
+    async (scores: Record<string, number>) => {
+      // Create AbilityScores message from the scores object
+      const abilityScores = create(AbilityScoresSchema, {
+        strength: scores.strength || 10,
+        dexterity: scores.dexterity || 10,
+        constitution: scores.constitution || 10,
+        intelligence: scores.intelligence || 10,
+        wisdom: scores.wisdom || 10,
+        charisma: scores.charisma || 10,
+      });
+
+      setDraft(
+        (prev) =>
+          ({
+            ...prev,
+            abilityScores,
+          }) as CharacterDraft
+      );
+
+      // Save to API if draft exists
+      if (draftId) {
+        setSaving(true);
+        try {
+          const request: UpdateAbilityScoresRequest = {
+            draftId,
+            abilityScores,
+          };
+          await updateAbilityScoresAPI(request);
+        } catch (err) {
+          setError(
+            err instanceof Error
+              ? err
+              : new Error('Failed to save ability scores')
+          );
+          throw err;
+        } finally {
+          setSaving(false);
+        }
+      }
+    },
+    [draftId, updateAbilityScoresAPI]
+  );
 
   const reset = useCallback(() => {
+    setDraftId(null);
     setDraft(null);
     setCurrentRaceInfo(null);
     setCurrentClassInfo(null);
@@ -264,9 +585,13 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     setAllLanguages(new Set());
     setRaceChoices({});
     setClassChoices({});
+    setLoading(false);
+    setSaving(false);
+    setError(null);
   }, []);
 
   const value: CharacterDraftState = {
+    draftId,
     draft,
     raceInfo: currentRaceInfo,
     classInfo: currentClassInfo,
@@ -274,6 +599,11 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     allLanguages,
     raceChoices,
     classChoices,
+    loading,
+    saving,
+    error,
+    createDraft,
+    loadDraft,
     setRace,
     setClass,
     setName,

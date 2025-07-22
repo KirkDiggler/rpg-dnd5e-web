@@ -7,6 +7,7 @@ import type {
 import { createContext } from 'react';
 
 export interface CharacterDraftState {
+  draftId: string | null;
   draft: CharacterDraft | null;
   raceInfo: RaceInfo | null;
   classInfo: ClassInfo | null;
@@ -21,11 +22,24 @@ export interface CharacterDraftState {
   raceChoices: Record<string, string[]>;
   classChoices: Record<string, string[]>;
 
+  // Loading states
+  loading: boolean;
+  saving: boolean;
+  error: Error | null;
+
   // Methods
-  setRace: (race: RaceInfo | null) => void;
-  setClass: (classInfo: ClassInfo | null) => void;
-  setName: (name: string) => void;
-  setAbilityScores: (scores: Record<string, number>) => void;
+  createDraft: (playerId: string, sessionId?: string) => Promise<void>;
+  loadDraft: (draftId: string) => Promise<void>;
+  setRace: (
+    race: RaceInfo | null,
+    choices?: Record<string, string[]>
+  ) => Promise<void>;
+  setClass: (
+    classInfo: ClassInfo | null,
+    choices?: Record<string, string[]>
+  ) => Promise<void>;
+  setName: (name: string) => Promise<void>;
+  setAbilityScores: (scores: Record<string, number>) => Promise<void>;
 
   // Choice management
   addRaceChoice: (choiceKey: string, selection: string[]) => void;

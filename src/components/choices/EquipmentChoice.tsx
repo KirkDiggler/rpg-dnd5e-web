@@ -42,30 +42,29 @@ export function EquipmentChoice({
     Set<string>
   >(new Set());
 
-  const handleSelection = (optionIndex: number, nestedSelection?: string) => {
-    const selectionKey = nestedSelection
-      ? `${optionIndex}:${nestedSelection}`
-      : `${optionIndex}`;
+  const handleSelection = (selectionKey: string, nestedSelection?: string) => {
+    const fullKey = nestedSelection
+      ? `${selectionKey}:${nestedSelection}`
+      : selectionKey;
 
     if (choice.chooseCount === 1) {
       // Radio button behavior - replace selection
-      onSelectionChange(choice.id, [selectionKey]);
+      onSelectionChange(choice.id, [fullKey]);
     } else {
       // Checkbox behavior - toggle selection
-      const newSelections = currentSelections.includes(selectionKey)
-        ? currentSelections.filter((s) => s !== selectionKey)
-        : [...currentSelections, selectionKey].slice(0, choice.chooseCount);
+      const newSelections = currentSelections.includes(fullKey)
+        ? currentSelections.filter((s) => s !== fullKey)
+        : [...currentSelections, fullKey].slice(0, choice.chooseCount);
       onSelectionChange(choice.id, newSelections);
     }
   };
 
-  const toggleNestedChoice = (optionIndex: number) => {
-    const key = optionIndex.toString();
+  const toggleNestedChoice = (optionId: string) => {
     const newExpanded = new Set(expandedNestedChoices);
-    if (newExpanded.has(key)) {
-      newExpanded.delete(key);
+    if (newExpanded.has(optionId)) {
+      newExpanded.delete(optionId);
     } else {
-      newExpanded.add(key);
+      newExpanded.add(optionId);
     }
     setExpandedNestedChoices(newExpanded);
   };
@@ -90,13 +89,27 @@ export function EquipmentChoice({
 
         <div className="space-y-2">
           {options.map((option, index) => {
-            const isSelected = currentSelections.some((s) =>
-              s.startsWith(`${index}`)
+            // Get the option ID based on the option type
+            let optionId = '';
+            if (option.optionType.case === 'item') {
+              optionId = option.optionType.value.itemId;
+            } else if (option.optionType.case === 'countedItem') {
+              optionId = option.optionType.value.itemId;
+            } else if (option.optionType.case === 'bundle') {
+              // For bundles, create a unique ID
+              optionId = `bundle_${index}`;
+            } else if (option.optionType.case === 'nestedChoice') {
+              optionId =
+                option.optionType.value.choice?.id || `nested_${index}`;
+            }
+
+            const isSelected = currentSelections.some(
+              (s) => s === optionId || s.startsWith(`${optionId}:`)
             );
 
             return (
               <div
-                key={index}
+                key={optionId}
                 className="border rounded-md p-3"
                 style={{
                   borderColor: isSelected
@@ -111,7 +124,7 @@ export function EquipmentChoice({
                 {option.optionType.case === 'countedItem' && (
                   <button
                     type="button"
-                    onClick={() => handleSelection(index)}
+                    onClick={() => handleSelection(optionId)}
                     style={{
                       padding: '12px 16px',
                       backgroundColor: isSelected
@@ -188,9 +201,9 @@ export function EquipmentChoice({
                           (item) => item.itemType?.case === 'choiceItem'
                         );
                       if (hasChoices) {
-                        toggleNestedChoice(index);
+                        toggleNestedChoice(optionId);
                       } else {
-                        handleSelection(index);
+                        handleSelection(optionId);
                       }
                     }}
                     style={{
@@ -304,7 +317,7 @@ export function EquipmentChoice({
                 )}
 
                 {/* Show expanded content for bundles with choices */}
-                {expandedNestedChoices.has(index.toString()) &&
+                {expandedNestedChoices.has(optionId) &&
                   option.optionType.case === 'bundle' &&
                   (() => {
                     const bundle = option.optionType.value;
@@ -329,14 +342,14 @@ export function EquipmentChoice({
                                   onSelection={(selectedItem) => {
                                     // Store bundle selection with nested choice
                                     handleSelection(
-                                      index,
+                                      optionId,
                                       `${itemIndex}:${selectedItem}`
                                     );
                                     setExpandedNestedChoices(new Set());
                                   }}
                                   currentSelection={
                                     currentSelections
-                                      .find((s) => s.startsWith(`${index}:`))
+                                      .find((s) => s.startsWith(`${optionId}:`))
                                       ?.split(':')
                                       .slice(1)
                                       .join(':') || ''
@@ -356,7 +369,7 @@ export function EquipmentChoice({
                   <div>
                     <button
                       type="button"
-                      onClick={() => toggleNestedChoice(index)}
+                      onClick={() => toggleNestedChoice(optionId)}
                       style={{
                         padding: '12px 16px',
                         backgroundColor: isSelected
@@ -396,9 +409,7 @@ export function EquipmentChoice({
                       }}
                     >
                       <span style={{ fontSize: '18px', lineHeight: '1' }}>
-                        {expandedNestedChoices.has(index.toString())
-                          ? '📂'
-                          : '📁'}
+                        {expandedNestedChoices.has(optionId) ? '📂' : '📁'}
                       </span>
                       <div
                         style={{ flex: 1, textAlign: 'left' }}
@@ -412,16 +423,16 @@ export function EquipmentChoice({
                       )}
                     </button>
 
-                    {expandedNestedChoices.has(index.toString()) && (
+                    {expandedNestedChoices.has(optionId) && (
                       <div className="ml-6 mt-2">
                         <NestedEquipmentChoice
                           nestedChoice={option.optionType.value.choice!}
                           onSelection={(selectedItem) =>
-                            handleSelection(index, selectedItem)
+                            handleSelection(optionId, selectedItem)
                           }
                           currentSelection={
                             currentSelections
-                              .find((s) => s.startsWith(`${index}:`))
+                              .find((s) => s.startsWith(`${optionId}:`))
                               ?.split(':')[1]
                           }
                         />
@@ -513,7 +524,11 @@ function NestedEquipmentChoice({
             transition: 'all 0.2s ease',
           }}
         >
-          <span>{currentSelection || 'Choose item'}</span>
+          <span>
+            {equipment?.find((item) => item.id === currentSelection)?.name ||
+              currentSelection ||
+              'Choose item'}
+          </span>
           <span style={{ fontSize: '12px', opacity: 0.8 }}>
             {isExpanded ? '▼' : '▶'}
           </span>
@@ -542,7 +557,7 @@ function NestedEquipmentChoice({
                     <button
                       key={item.id}
                       onClick={() => {
-                        onSelection(item.name);
+                        onSelection(item.id);
                         setIsExpanded(false);
                       }}
                       style={{

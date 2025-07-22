@@ -37,17 +37,15 @@ export function SkillChoice({
   onSelectionChange,
   currentSelections,
 }: SkillChoiceProps) {
-  const handleSkillToggle = (skillIndex: number) => {
-    const selectionKey = `${skillIndex}`;
-
+  const handleSkillToggle = (skillId: string) => {
     if (choice.chooseCount === 1) {
       // Radio button behavior
-      onSelectionChange(choice.id, [selectionKey]);
+      onSelectionChange(choice.id, [skillId]);
     } else {
       // Checkbox behavior
-      const newSelections = currentSelections.includes(selectionKey)
-        ? currentSelections.filter((s) => s !== selectionKey)
-        : [...currentSelections, selectionKey].slice(0, choice.chooseCount);
+      const newSelections = currentSelections.includes(skillId)
+        ? currentSelections.filter((s) => s !== skillId)
+        : [...currentSelections, skillId].slice(0, choice.chooseCount);
       onSelectionChange(choice.id, newSelections);
     }
   };
@@ -103,8 +101,8 @@ export function SkillChoice({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {skills.map(({ index, skill }) => {
-                const isSelected = currentSelections.includes(`${index}`);
+              {skills.map(({ skill }) => {
+                const isSelected = currentSelections.includes(skill.itemId);
                 const isDisabled =
                   !isSelected && currentSelections.length >= choice.chooseCount;
 
@@ -113,7 +111,9 @@ export function SkillChoice({
                     key={skill.itemId}
                     type="button"
                     onClick={
-                      isDisabled ? undefined : () => handleSkillToggle(index)
+                      isDisabled
+                        ? undefined
+                        : () => handleSkillToggle(skill.itemId)
                     }
                     disabled={isDisabled}
                     style={{
