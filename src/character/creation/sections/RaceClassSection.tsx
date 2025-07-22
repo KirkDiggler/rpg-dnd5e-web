@@ -7,7 +7,7 @@ import type {
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ClassChoices } from '../ClassSelectionModal';
 import { ClassSelectionModal } from '../ClassSelectionModal';
 import type { RaceChoices } from '../RaceSelectionModal';

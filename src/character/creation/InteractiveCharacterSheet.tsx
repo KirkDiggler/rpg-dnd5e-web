@@ -88,12 +88,6 @@ export function InteractiveCharacterSheet({
 
   // Sync draft data with local character state
   useEffect(() => {
-    console.log('Syncing draft to character state:', {
-      raceInfo: draft.raceInfo,
-      classInfo: draft.classInfo,
-      draftName: draft.draft?.name,
-    });
-
     if (draft.raceInfo) {
       setCharacter((prev) => ({
         ...prev,
@@ -1189,10 +1183,6 @@ export function InteractiveCharacterSheet({
                               .reduce((sum, roll) => sum + roll, 0);
                             const dropped = sortedRolls[3]; // The lowest die that was dropped
 
-                            console.log(
-                              `🎲 Rolled: [${roll.rolls.join(', ')}] → Keep: [${sortedRolls.slice(0, 3).join(', ')}] Drop: ${dropped} → Total: ${total}`
-                            );
-
                             const rollRecord = {
                               rolls: roll.rolls,
                               kept: sortedRolls.slice(0, 3),
@@ -1549,7 +1539,6 @@ export function InteractiveCharacterSheet({
           onSelect={(spells) => {
             setSelectedSpells(spells);
             // TODO: Add spell selection to character draft
-            console.log('Selected spells:', spells);
           }}
         />
       )}
