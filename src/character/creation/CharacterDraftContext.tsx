@@ -317,25 +317,26 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             const raceChoicesFromDraft: Record<string, string[]> = {};
             const classChoicesFromDraft: Record<string, string[]> = {};
 
-            response.draft.choices.forEach((choice) => {
+            response.draft.choices.forEach((choice: ChoiceSelection) => {
               // Ensure selectedKeys contains only strings, not objects
               const cleanedKeys = choice.selectedKeys
-                .map((key) => {
+                .map((key: unknown) => {
                   // If it's an object (like ChoiceSelection), extract the relevant value
                   if (typeof key === 'object' && key !== null) {
                     // If it has selectedKeys property, use the first value
+                    const keyObj = key as { selectedKeys?: unknown[] };
                     if (
-                      'selectedKeys' in key &&
-                      Array.isArray(key.selectedKeys) &&
-                      key.selectedKeys.length > 0
+                      'selectedKeys' in keyObj &&
+                      Array.isArray(keyObj.selectedKeys) &&
+                      keyObj.selectedKeys.length > 0
                     ) {
-                      return key.selectedKeys[0];
+                      return String(keyObj.selectedKeys[0]);
                     }
                     // Otherwise, convert to string and log warning
                     console.warn('Unexpected object in selectedKeys:', key);
                     return String(key);
                   }
-                  return key;
+                  return String(key);
                 })
                 .filter(
                   (key) =>
