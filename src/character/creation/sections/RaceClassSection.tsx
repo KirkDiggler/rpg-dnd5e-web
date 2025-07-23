@@ -129,6 +129,7 @@ export function RaceClassSection() {
         Object.entries(choices.equipment).forEach(
           ([choiceId, selectedItem]) => {
             if (selectedItem) {
+              // Equipment choices should be arrays for consistency with other choices
               formattedChoices[choiceId] = [selectedItem];
             }
           }
