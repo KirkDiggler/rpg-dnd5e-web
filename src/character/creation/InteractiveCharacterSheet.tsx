@@ -1585,11 +1585,11 @@ export function InteractiveCharacterSheet({
                     Roll dice, then drag values to abilities
                   </p>
 
-                  {/* Show save status and clear button */}
+                  {/* Show save status */}
                   {Object.values(character.abilityScores).some(
                     (score) => score > 0
                   ) && (
-                    <div className="flex items-center justify-center gap-4">
+                    <div className="flex items-center justify-center">
                       {Object.values(character.abilityScores).every(
                         (score) => score > 0
                       ) ? (
@@ -1607,34 +1607,6 @@ export function InteractiveCharacterSheet({
                           Assign all scores to save
                         </span>
                       )}
-
-                      <button
-                        onClick={() => {
-                          // Clear all ability scores and return them to rolled scores
-                          const clearedScores = Object.values(
-                            character.abilityScores
-                          ).filter((score) => score > 0);
-                          setCharacter((prev) => ({
-                            ...prev,
-                            abilityScores: {
-                              strength: 0,
-                              dexterity: 0,
-                              constitution: 0,
-                              intelligence: 0,
-                              wisdom: 0,
-                              charisma: 0,
-                            },
-                            rolledScores: [
-                              ...prev.rolledScores,
-                              ...clearedScores,
-                            ].sort((a, b) => b - a),
-                          }));
-                        }}
-                        className="text-xs underline hover:no-underline"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        Clear & Re-roll
-                      </button>
                     </div>
                   )}
                 </div>
