@@ -227,6 +227,9 @@ export function InteractiveCharacterSheet({
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
   const [isSpellModalOpen, setIsSpellModalOpen] = useState(false);
   const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
+  const [abilityScoreError, setAbilityScoreError] = useState<string | null>(
+    null
+  );
   const draft = useCharacterDraft();
 
   // Sync draft data with local character state
@@ -1528,6 +1531,9 @@ export function InteractiveCharacterSheet({
                               [ability]: draggedValue,
                             };
 
+                            // Clear any previous error when user makes changes
+                            setAbilityScoreError(null);
+
                             return {
                               ...prev,
                               abilityScores: newScores,
@@ -1601,27 +1607,54 @@ export function InteractiveCharacterSheet({
                           ✓ Ability scores saved
                         </span>
                       ) : (
-                        <button
-                          onClick={() => {
-                            if (draft.draftId) {
-                              draft.setAbilityScores(character.abilityScores);
-                            }
-                          }}
-                          disabled={!draft.draftId || draft.saving}
-                          className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
-                          style={{
-                            backgroundColor: 'var(--accent-primary)',
-                            color: 'var(--text-primary)',
-                            opacity: !draft.draftId || draft.saving ? 0.6 : 1,
-                            cursor:
-                              !draft.draftId || draft.saving
-                                ? 'not-allowed'
-                                : 'pointer',
-                          }}
-                        >
-                          {draft.saving ? 'Saving...' : 'Save Ability Scores'}
-                        </button>
+                        <>
+                          <button
+                            onClick={async () => {
+                              if (draft.draftId) {
+                                setAbilityScoreError(null);
+                                try {
+                                  await draft.setAbilityScores(
+                                    character.abilityScores
+                                  );
+                                } catch (error) {
+                                  console.error(
+                                    'Failed to save ability scores:',
+                                    error
+                                  );
+                                  setAbilityScoreError(
+                                    error instanceof Error
+                                      ? error.message
+                                      : 'Failed to save ability scores. Please try again.'
+                                  );
+                                }
+                              }
+                            }}
+                            disabled={!draft.draftId || draft.saving}
+                            className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+                            style={{
+                              backgroundColor: 'var(--accent-primary)',
+                              color: 'var(--text-primary)',
+                              opacity: !draft.draftId || draft.saving ? 0.6 : 1,
+                              cursor:
+                                !draft.draftId || draft.saving
+                                  ? 'not-allowed'
+                                  : 'pointer',
+                            }}
+                          >
+                            {draft.saving ? 'Saving...' : 'Save Ability Scores'}
+                          </button>
+                        </>
                       )}
+                    </div>
+                  )}
+
+                  {/* Show error message if save failed */}
+                  {abilityScoreError && (
+                    <div
+                      className="text-xs text-center mt-2"
+                      style={{ color: 'var(--error, #dc2626)' }}
+                    >
+                      {abilityScoreError}
                     </div>
                   )}
                 </div>
