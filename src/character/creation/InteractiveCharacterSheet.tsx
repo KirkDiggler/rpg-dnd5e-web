@@ -227,6 +227,9 @@ export function InteractiveCharacterSheet({
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
   const [isSpellModalOpen, setIsSpellModalOpen] = useState(false);
   const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
+  const [abilityScoreError, setAbilityScoreError] = useState<string | null>(
+    null
+  );
   const draft = useCharacterDraft();
 
   // Sync draft data with local character state
@@ -323,6 +326,12 @@ export function InteractiveCharacterSheet({
   const steps = useMemo<Step[]>(() => {
     const hasRace = character.selectedRace !== null;
     const hasClass = character.selectedClass !== null;
+
+    // Check if all ability scores are assigned (all non-zero)
+    const hasAbilityScores = Object.values(character.abilityScores).every(
+      (score) => score > 0
+    );
+
     const hasProficiencies =
       Object.keys(classChoices.proficiencies || {}).length > 0;
     const hasEquipment = Object.keys(character.equipmentChoices).length > 0;
@@ -368,6 +377,15 @@ export function InteractiveCharacterSheet({
         label: 'Class',
         status: hasClass ? 'completed' : hasRace ? 'current' : 'upcoming',
       },
+      {
+        id: 'ability-scores',
+        label: 'Ability Scores',
+        status: hasAbilityScores
+          ? 'completed'
+          : hasClass
+            ? 'current'
+            : 'upcoming',
+      },
     ];
 
     // Add feature selection if applicable (e.g., Fighting Style for Fighter)
@@ -377,7 +395,7 @@ export function InteractiveCharacterSheet({
         label: 'Features',
         status: hasFeatureChoicesSelected
           ? 'completed'
-          : hasClass
+          : hasAbilityScores && hasClass
             ? 'current'
             : 'upcoming',
         conditional: true,
@@ -390,7 +408,7 @@ export function InteractiveCharacterSheet({
       label: 'Proficiencies',
       status: hasProficiencies
         ? 'completed'
-        : hasClass
+        : hasAbilityScores && hasClass
           ? 'current'
           : 'upcoming',
     });
@@ -437,6 +455,7 @@ export function InteractiveCharacterSheet({
   }, [
     character.selectedRace,
     character.selectedClass,
+    character.abilityScores,
     character.equipmentChoices,
     classChoices.proficiencies,
     classChoices.features,
@@ -1341,7 +1360,8 @@ export function InteractiveCharacterSheet({
                           className="text-xs text-center"
                           style={{ color: 'var(--text-muted)' }}
                         >
-                          4d6 (drop lowest)
+                          4d6 (drop lowest) - {6 - character.rollLedger.length}{' '}
+                          rolls left
                         </div>
                         <DiceRoller
                           dice="d6"
@@ -1349,7 +1369,13 @@ export function InteractiveCharacterSheet({
                           size="medium"
                           label="Roll ability score"
                           showResult={false}
+                          disabled={character.rollLedger.length >= 6}
                           onRoll={(roll) => {
+                            // Prevent rolling more than 6 times
+                            if (character.rollLedger.length >= 6) {
+                              return;
+                            }
+
                             // Roll 4d6, drop lowest - show what was rolled
                             const sortedRolls = [...roll.rolls].sort(
                               (a, b) => b - a
@@ -1499,17 +1525,24 @@ export function InteractiveCharacterSheet({
                           );
 
                           // Assign the score to this ability
-                          setCharacter((prev) => ({
-                            ...prev,
-                            abilityScores: {
+                          setCharacter((prev) => {
+                            const newScores = {
                               ...prev.abilityScores,
                               [ability]: draggedValue,
-                            },
-                            // Remove the used score from rolled scores
-                            rolledScores: prev.rolledScores.filter(
-                              (_, i) => i !== dragData.index
-                            ),
-                          }));
+                            };
+
+                            // Clear any previous error when user makes changes
+                            setAbilityScoreError(null);
+
+                            return {
+                              ...prev,
+                              abilityScores: newScores,
+                              // Remove the used score from rolled scores
+                              rolledScores: prev.rolledScores.filter(
+                                (_, i) => i !== dragData.index
+                              ),
+                            };
+                          });
 
                           (
                             e.currentTarget as HTMLDivElement
@@ -1550,10 +1583,80 @@ export function InteractiveCharacterSheet({
                   )}
                 </div>
 
-                <div className="text-center">
+                <div className="text-center space-y-2">
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                     Roll dice, then drag values to abilities
                   </p>
+
+                  {/* Show save button when all scores are assigned */}
+                  {Object.values(character.abilityScores).every(
+                    (score) => score > 0
+                  ) && (
+                    <div className="flex items-center justify-center gap-4">
+                      {draft.draft?.abilityScores &&
+                      Object.entries(character.abilityScores).every(
+                        ([key, value]) =>
+                          draft.draft?.abilityScores?.[
+                            key as keyof typeof draft.draft.abilityScores
+                          ] === value
+                      ) ? (
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: 'var(--accent-primary)' }}
+                        >
+                          ✓ Ability scores saved
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={async () => {
+                              if (draft.draftId) {
+                                setAbilityScoreError(null);
+                                try {
+                                  await draft.setAbilityScores(
+                                    character.abilityScores
+                                  );
+                                } catch (error) {
+                                  console.error(
+                                    'Failed to save ability scores:',
+                                    error
+                                  );
+                                  setAbilityScoreError(
+                                    error instanceof Error
+                                      ? error.message
+                                      : 'Failed to save ability scores. Please try again.'
+                                  );
+                                }
+                              }
+                            }}
+                            disabled={!draft.draftId || draft.saving}
+                            className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+                            style={{
+                              backgroundColor: 'var(--accent-primary)',
+                              color: 'var(--text-primary)',
+                              opacity: !draft.draftId || draft.saving ? 0.6 : 1,
+                              cursor:
+                                !draft.draftId || draft.saving
+                                  ? 'not-allowed'
+                                  : 'pointer',
+                            }}
+                          >
+                            {draft.saving ? 'Saving...' : 'Save Ability Scores'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Show error message if save failed */}
+                  {abilityScoreError && (
+                    <div
+                      className="text-xs text-center mt-2"
+                      style={{ color: 'var(--error, #dc2626)' }}
+                    >
+                      {abilityScoreError}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
