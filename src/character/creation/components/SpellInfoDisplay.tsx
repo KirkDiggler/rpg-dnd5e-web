@@ -6,12 +6,14 @@ interface SpellInfoDisplayProps {
   spellcastingInfo: SpellcastingInfo;
   className?: string;
   onSelectSpells?: () => void;
+  selectedSpells?: string[];
 }
 
 export function SpellInfoDisplay({
   spellcastingInfo,
   className,
   onSelectSpells,
+  selectedSpells = [],
 }: SpellInfoDisplayProps) {
   const getAbilityDisplayName = (ability: string) => {
     const abilityMap: Record<string, string> = {
@@ -249,6 +251,115 @@ export function SpellInfoDisplay({
           </div>
         </div>
       )}
+
+      {/* Selected Spells */}
+      {selectedSpells.length > 0 &&
+        (() => {
+          // Common cantrip spell IDs
+          const cantripIds = [
+            'SPELL_ACID_SPLASH',
+            'SPELL_FIRE_BOLT',
+            'SPELL_POISON_SPRAY',
+            'SPELL_MAGE_HAND',
+            'SPELL_MINOR_ILLUSION',
+            'SPELL_PRESTIDIGITATION',
+            'SPELL_RAY_OF_FROST',
+            'SPELL_LIGHT',
+            'SPELL_MENDING',
+            'SPELL_MESSAGE',
+            'SPELL_SHOCKING_GRASP',
+            'SPELL_CHILL_TOUCH',
+            'SPELL_DANCING_LIGHTS',
+            'SPELL_TRUE_STRIKE',
+          ];
+
+          const cantrips = selectedSpells.filter((spell) =>
+            cantripIds.includes(spell)
+          );
+          const level1Spells = selectedSpells.filter(
+            (spell) => !cantripIds.includes(spell)
+          );
+
+          const formatSpellName = (spell: string) =>
+            spell
+              .replace('SPELL_', '')
+              .replace(/_/g, ' ')
+              .toLowerCase()
+              .split(' ')
+              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+              .join(' ');
+
+          return (
+            <div
+              className="p-3 rounded-lg border"
+              style={{
+                backgroundColor: 'var(--bg-secondary)',
+                borderColor: 'var(--border-primary)',
+              }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <BookOpen
+                  className="w-4 h-4"
+                  style={{ color: 'var(--accent-primary)' }}
+                />
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  Selected Spells
+                </span>
+              </div>
+              <div className="space-y-3">
+                {cantrips.length > 0 && (
+                  <div>
+                    <div
+                      className="text-xs font-medium mb-1"
+                      style={{
+                        color: 'var(--accent-primary)',
+                      }}
+                    >
+                      Cantrips
+                    </div>
+                    <div
+                      className="text-xs space-y-1"
+                      style={{
+                        color: 'var(--text-primary)',
+                        fontFamily: 'var(--font-body)',
+                      }}
+                    >
+                      {cantrips.map((spell) => (
+                        <div key={spell}>• {formatSpellName(spell)}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {level1Spells.length > 0 && (
+                  <div>
+                    <div
+                      className="text-xs font-medium mb-1"
+                      style={{
+                        color: 'var(--accent-primary)',
+                      }}
+                    >
+                      1st Level Spells
+                    </div>
+                    <div
+                      className="text-xs space-y-1"
+                      style={{
+                        color: 'var(--text-primary)',
+                        fontFamily: 'var(--font-body)',
+                      }}
+                    >
+                      {level1Spells.map((spell) => (
+                        <div key={spell}>• {formatSpellName(spell)}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
     </motion.div>
   );
 }

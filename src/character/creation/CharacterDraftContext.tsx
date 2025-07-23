@@ -10,6 +10,7 @@ import {
   AbilityScoresSchema,
   ChoiceSelectionSchema,
   ChoiceSource,
+  ChoiceType,
   CreateDraftRequestSchema,
   UpdateAbilityScoresRequestSchema,
   UpdateClassRequestSchema,
@@ -107,6 +108,33 @@ function cleanSelectedKeys(selectedKeys: unknown[]): string[] {
     .filter((key) => typeof key === 'string' && !key.includes('"$typeName"'));
 }
 
+// Helper to determine choice type from choice ID
+function getChoiceType(choiceId: string): ChoiceType {
+  const lowerChoiceId = choiceId.toLowerCase();
+
+  if (lowerChoiceId.includes('spell') || lowerChoiceId.includes('cantrip')) {
+    return ChoiceType.SPELL;
+  } else if (lowerChoiceId.includes('skill')) {
+    return ChoiceType.SKILL;
+  } else if (lowerChoiceId.includes('equipment')) {
+    return ChoiceType.EQUIPMENT;
+  } else if (lowerChoiceId.includes('language')) {
+    return ChoiceType.LANGUAGE;
+  } else if (lowerChoiceId.includes('tool')) {
+    return ChoiceType.TOOL;
+  } else if (lowerChoiceId.includes('weapon')) {
+    return ChoiceType.WEAPON_PROFICIENCY;
+  } else if (lowerChoiceId.includes('armor')) {
+    return ChoiceType.ARMOR_PROFICIENCY;
+  } else if (lowerChoiceId.includes('feat')) {
+    return ChoiceType.FEAT;
+  } else if (lowerChoiceId.includes('ability')) {
+    return ChoiceType.ABILITY_SCORE;
+  }
+
+  return ChoiceType.UNSPECIFIED;
+}
+
 // Helper to convert our choice format to ChoiceSelection
 function createChoiceSelections(
   choices: Record<string, string[]>,
@@ -120,6 +148,7 @@ function createChoiceSelections(
         create(ChoiceSelectionSchema, {
           choiceId,
           source,
+          choiceType: getChoiceType(choiceId),
           selectedKeys,
         })
       );

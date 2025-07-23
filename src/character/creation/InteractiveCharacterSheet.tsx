@@ -27,14 +27,6 @@ interface CharacterChoices {
 }
 
 // Helper to convert Language enum to display name
-// Constants
-const EQUIPMENT_FILTER_ITEMS = [
-  'chain mail',
-  'bundle_0',
-  'dungeoneers pack',
-  'equipment_warhammer',
-];
-
 // Helper Functions
 function getLanguageDisplayName(languageEnum: Language): string {
   const languageNames: Record<Language, string> = {
@@ -57,140 +49,6 @@ function getLanguageDisplayName(languageEnum: Language): string {
     [Language.UNDERCOMMON]: 'Undercommon',
   };
   return languageNames[languageEnum] || 'Unknown';
-}
-
-// Helper function to format and group proficiencies
-function formatProficiencies(proficiencies: Set<string>): string {
-  const proficiencyMap = new Map<string, string>();
-
-  Array.from(proficiencies)
-    .filter((p) => {
-      // Filter out objects (stringified ChoiceSelection)
-      if (typeof p === 'string' && p.includes('"$typeName"')) return false;
-
-      // Filter out language choices
-      if (p.includes('language_')) return false;
-
-      // Filter out equipment items
-      const lowerP = p.toLowerCase();
-      if (EQUIPMENT_FILTER_ITEMS.some((item) => lowerP.includes(item)))
-        return false;
-      if (lowerP.includes('bundle') || lowerP.includes('pack')) return false;
-
-      // Filter out specific equipment patterns
-      if (p.match(/^(Chain Mail|Dungeoneers Pack|Bundle_\d+)/)) return false;
-
-      // Filter out fighting styles and other non-proficiency items
-      if (lowerP.includes('fighting style')) return false;
-
-      return true;
-    })
-    .forEach((p) => {
-      // Extract the core proficiency name
-      let cleaned = p;
-      let category = '';
-
-      // Extract category and clean the name
-      if (p.toLowerCase().includes('armor:')) {
-        category = 'Armor: ';
-        cleaned = p.replace(/armor:/i, '');
-      } else if (p.toLowerCase().includes('weapon:')) {
-        category = 'Weapons: ';
-        cleaned = p.replace(/weapon:/i, '');
-      } else if (p.toLowerCase().includes('tool:')) {
-        category = 'Tools: ';
-        cleaned = p.replace(/tool:/i, '');
-      } else if (
-        p.toLowerCase().includes('saving-throw:') ||
-        p.toLowerCase().includes('saving throw:')
-      ) {
-        category = 'Saving Throws: ';
-        cleaned = p.replace(/saving[- ]throw:/i, '');
-      } else if (p.toLowerCase().includes('skill:')) {
-        category = 'Skills: ';
-        cleaned = p.replace(/skill:/i, '');
-      }
-
-      // Clean up the proficiency name
-      cleaned = cleaned
-        .replace(/^proficiency_\w+:?\s*/i, '')
-        .replace(/-/g, ' ')
-        .trim();
-
-      // Handle special cases
-      if (cleaned.toLowerCase() === 'sleight of hand') {
-        cleaned = 'Sleight of Hand';
-      } else if (cleaned.toLowerCase() === 'animal handling') {
-        cleaned = 'Animal Handling';
-      } else if (cleaned.toLowerCase() === 'str') {
-        cleaned = 'Strength';
-      } else if (cleaned.toLowerCase() === 'con') {
-        cleaned = 'Constitution';
-      } else {
-        // Capitalize each word
-        cleaned = cleaned.replace(/\b\w/g, (l) => l.toUpperCase());
-      }
-
-      // Use the cleaned name as key to avoid duplicates
-      const key = category + cleaned.toLowerCase();
-      if (!proficiencyMap.has(key) && cleaned.length > 0) {
-        proficiencyMap.set(key, cleaned);
-      }
-    });
-
-  // Group by category
-  const skills: string[] = [];
-  const armor: string[] = [];
-  const weapons: string[] = [];
-  const tools: string[] = [];
-  const savingThrows: string[] = [];
-  const other: string[] = [];
-
-  proficiencyMap.forEach((value, key) => {
-    if (key.startsWith('Skills:')) skills.push(value);
-    else if (key.startsWith('Armor:')) armor.push(value);
-    else if (key.startsWith('Weapons:')) weapons.push(value);
-    else if (key.startsWith('Tools:')) tools.push(value);
-    else if (key.startsWith('Saving Throws:')) savingThrows.push(value);
-    else other.push(value);
-  });
-
-  // Build the display string
-  const parts: string[] = [];
-  if (skills.length > 0) parts.push(`Skills: ${skills.join(', ')}`);
-  if (armor.length > 0) parts.push(`Armor: ${armor.join(', ')}`);
-  if (weapons.length > 0) parts.push(`Weapons: ${weapons.join(', ')}`);
-  if (tools.length > 0) parts.push(`Tools: ${tools.join(', ')}`);
-  if (savingThrows.length > 0)
-    parts.push(`Saving Throws: ${savingThrows.join(', ')}`);
-  if (other.length > 0) parts.push(other.join(', '));
-
-  return parts.join(' • ');
-}
-
-// Helper function to get extra languages
-function getExtraLanguages(
-  allLanguages: Set<string>,
-  baseLanguages: Language[]
-): string[] {
-  return Array.from(allLanguages)
-    .filter((lang) => {
-      // Filter out objects (stringified ChoiceSelection)
-      if (typeof lang === 'string' && lang.includes('"$typeName"'))
-        return false;
-
-      // Filter out UNSPECIFIED
-      if (lang.toLowerCase() === 'unspecified') return false;
-
-      // Filter out base languages that come with race
-      return !baseLanguages
-        .map((l) => getLanguageDisplayName(l).toLowerCase())
-        .includes(lang.toLowerCase());
-    })
-    .map((lang) => {
-      // Clean up language names
-      return lang.charAt(0).toUpperCase() + lang.slice(1).toLowerCase();
-    });
 }
 
 // Simple context for now - we'll make it more sophisticated later
@@ -279,7 +137,10 @@ export function InteractiveCharacterSheet({
 
       // Parse draft.classChoices which is Record<string, string[]>
       Object.entries(draft.classChoices || {}).forEach(([key, values]) => {
-        if (key.includes('equipment')) {
+        if (key.endsWith('-cantrips') || key.endsWith('-spells')) {
+          // Restore spell selections - combine all spell choices
+          setSelectedSpells((prev) => [...new Set([...prev, ...values])]);
+        } else if (key.includes('equipment')) {
           // Equipment choices - single selection
           structuredClassChoices.equipment[key] = values[0] || '';
         } else if (key.startsWith('feature_')) {
@@ -884,8 +745,8 @@ export function InteractiveCharacterSheet({
                                   .join(', ')}
                               </div>
                             )}
-                          {/* Display resolved proficiencies from race choices */}
-                          {draft.allProficiencies.size > 0 && (
+                          {/* Display user's race choices */}
+                          {Object.keys(draft.raceChoices).length > 0 && (
                             <div style={{ color: 'var(--text-primary)' }}>
                               <span
                                 style={{
@@ -894,37 +755,29 @@ export function InteractiveCharacterSheet({
                                   opacity: 0.7,
                                 }}
                               >
-                                Proficiencies:
+                                Your Choices:
                               </span>{' '}
-                              {formatProficiencies(draft.allProficiencies)}
+                              {Object.values(draft.raceChoices)
+                                .flat()
+                                .map((choice) => {
+                                  // Clean up the choice display
+                                  return choice
+                                    .replace(
+                                      /^(skill:|weapon:|armor:|tool:|language:)/,
+                                      ''
+                                    )
+                                    .replace(/_/g, ' ')
+                                    .split(' ')
+                                    .map(
+                                      (word) =>
+                                        word.charAt(0).toUpperCase() +
+                                        word.slice(1).toLowerCase()
+                                    )
+                                    .join(' ');
+                                })
+                                .join(', ')}
                             </div>
                           )}
-                          {/* Display resolved languages from race choices */}
-                          {(() => {
-                            const extraLanguages = getExtraLanguages(
-                              draft.allLanguages,
-                              character.selectedRace?.languages || []
-                            );
-
-                            // Only show if there are actual extra languages
-                            if (extraLanguages.length > 0) {
-                              return (
-                                <div style={{ color: 'var(--text-primary)' }}>
-                                  <span
-                                    style={{
-                                      color: 'var(--text-muted)',
-                                      fontSize: '11px',
-                                      opacity: 0.7,
-                                    }}
-                                  >
-                                    Extra Languages:
-                                  </span>{' '}
-                                  {extraLanguages.join(', ')}
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
                         </div>
                       ) : (
                         <p
@@ -1234,6 +1087,7 @@ export function InteractiveCharacterSheet({
                             character.selectedClass.spellcasting
                           }
                           onSelectSpells={() => setIsSpellModalOpen(true)}
+                          selectedSpells={selectedSpells}
                         />
                       </motion.div>
                     )}
@@ -1817,7 +1671,52 @@ export function InteractiveCharacterSheet({
           currentSpells={selectedSpells}
           onSelect={(spells) => {
             setSelectedSpells(spells);
-            // TODO: Add spell selection to character draft
+            // Save spell selections as class choices
+            if (spells.length > 0 && character.selectedClass) {
+              const spellChoices: Record<string, string[]> = {};
+              const className = character.selectedClass.name.toLowerCase();
+
+              // Group spells by their spell level
+              const cantripIds = spells.filter((spellId) =>
+                // Common cantrip spell IDs
+                [
+                  'SPELL_ACID_SPLASH',
+                  'SPELL_FIRE_BOLT',
+                  'SPELL_POISON_SPRAY',
+                  'SPELL_MAGE_HAND',
+                  'SPELL_MINOR_ILLUSION',
+                  'SPELL_PRESTIDIGITATION',
+                  'SPELL_RAY_OF_FROST',
+                  'SPELL_LIGHT',
+                  'SPELL_MENDING',
+                  'SPELL_MESSAGE',
+                  'SPELL_SHOCKING_GRASP',
+                  'SPELL_CHILL_TOUCH',
+                  'SPELL_DANCING_LIGHTS',
+                  'SPELL_TRUE_STRIKE',
+                ].includes(spellId)
+              );
+              const level1SpellIds = spells.filter(
+                (spellId) => !cantripIds.includes(spellId)
+              );
+
+              // Store cantrips and spells separately with class-specific keys
+              if (cantripIds.length > 0) {
+                spellChoices[`${className}-cantrips`] = cantripIds;
+              }
+              if (level1SpellIds.length > 0) {
+                spellChoices[`${className}-spells`] = level1SpellIds;
+              }
+
+              // Add these choices to existing class choices
+              const updatedClassChoices = {
+                ...draft.classChoices,
+                ...spellChoices,
+              };
+
+              // Update the class with the new choices (this will save to the API)
+              draft.setClass(draft.classInfo, updatedClassChoices);
+            }
           }}
         />
       )}
