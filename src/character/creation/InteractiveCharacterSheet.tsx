@@ -1357,7 +1357,8 @@ export function InteractiveCharacterSheet({
                           className="text-xs text-center"
                           style={{ color: 'var(--text-muted)' }}
                         >
-                          4d6 (drop lowest)
+                          4d6 (drop lowest) - {6 - character.rollLedger.length}{' '}
+                          rolls left
                         </div>
                         <DiceRoller
                           dice="d6"
@@ -1365,7 +1366,13 @@ export function InteractiveCharacterSheet({
                           size="medium"
                           label="Roll ability score"
                           showResult={false}
+                          disabled={character.rollLedger.length >= 6}
                           onRoll={(roll) => {
+                            // Prevent rolling more than 6 times
+                            if (character.rollLedger.length >= 6) {
+                              return;
+                            }
+
                             // Roll 4d6, drop lowest - show what was rolled
                             const sortedRolls = [...roll.rolls].sort(
                               (a, b) => b - a
@@ -1521,16 +1528,6 @@ export function InteractiveCharacterSheet({
                               [ability]: draggedValue,
                             };
 
-                            // Save to draft if all scores are assigned
-                            const allScoresAssigned = Object.values(
-                              newScores
-                            ).every((score) => score > 0);
-
-                            if (allScoresAssigned && draft.draftId) {
-                              // Save ability scores to the API
-                              draft.setAbilityScores(newScores);
-                            }
-
                             return {
                               ...prev,
                               abilityScores: newScores,
@@ -1585,13 +1582,17 @@ export function InteractiveCharacterSheet({
                     Roll dice, then drag values to abilities
                   </p>
 
-                  {/* Show save status */}
-                  {Object.values(character.abilityScores).some(
+                  {/* Show save button when all scores are assigned */}
+                  {Object.values(character.abilityScores).every(
                     (score) => score > 0
                   ) && (
-                    <div className="flex items-center justify-center">
-                      {Object.values(character.abilityScores).every(
-                        (score) => score > 0
+                    <div className="flex items-center justify-center gap-4">
+                      {draft.draft?.abilityScores &&
+                      Object.entries(character.abilityScores).every(
+                        ([key, value]) =>
+                          draft.draft?.abilityScores?.[
+                            key as keyof typeof draft.draft.abilityScores
+                          ] === value
                       ) ? (
                         <span
                           className="text-xs font-medium"
@@ -1600,12 +1601,26 @@ export function InteractiveCharacterSheet({
                           ✓ Ability scores saved
                         </span>
                       ) : (
-                        <span
-                          className="text-xs"
-                          style={{ color: 'var(--text-muted)' }}
+                        <button
+                          onClick={() => {
+                            if (draft.draftId) {
+                              draft.setAbilityScores(character.abilityScores);
+                            }
+                          }}
+                          disabled={!draft.draftId || draft.saving}
+                          className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+                          style={{
+                            backgroundColor: 'var(--accent-primary)',
+                            color: 'var(--text-primary)',
+                            opacity: !draft.draftId || draft.saving ? 0.6 : 1,
+                            cursor:
+                              !draft.draftId || draft.saving
+                                ? 'not-allowed'
+                                : 'pointer',
+                          }}
                         >
-                          Assign all scores to save
-                        </span>
+                          {draft.saving ? 'Saving...' : 'Save Ability Scores'}
+                        </button>
                       )}
                     </div>
                   )}
