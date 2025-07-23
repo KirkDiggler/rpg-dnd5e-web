@@ -71,6 +71,42 @@ function getClassEnum(className: string): Class {
   return classMap[className] || Class.UNSPECIFIED;
 }
 
+// Helper function to format proficiencies with category prefix
+function formatProficiencyList(
+  category: string,
+  proficiencies: string[] | undefined
+): string[] {
+  if (!proficiencies) return [];
+  return proficiencies.flatMap((p) => [
+    `${category}:${p.toLowerCase()}`,
+    p, // Also add original format
+  ]);
+}
+
+// Helper function to clean selected keys from API response
+function cleanSelectedKeys(selectedKeys: unknown[]): string[] {
+  return selectedKeys
+    .map((key: unknown) => {
+      // If it's an object (like ChoiceSelection), extract the relevant value
+      if (typeof key === 'object' && key !== null) {
+        // If it has selectedKeys property, use the first value
+        const keyObj = key as { selectedKeys?: unknown[] };
+        if (
+          'selectedKeys' in keyObj &&
+          Array.isArray(keyObj.selectedKeys) &&
+          keyObj.selectedKeys.length > 0
+        ) {
+          return String(keyObj.selectedKeys[0]);
+        }
+        // Otherwise, convert to string and log warning
+        console.warn('Unexpected object in selectedKeys:', key);
+        return String(key);
+      }
+      return String(key);
+    })
+    .filter((key) => typeof key === 'string' && !key.includes('"$typeName"'));
+}
+
 // Helper to convert our choice format to ChoiceSelection
 function createChoiceSelections(
   choices: Record<string, string[]>,
@@ -188,13 +224,59 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
         .flat()
         .forEach((l) => {
           if (l.startsWith('language:')) {
-            languages.add(l);
+            // Remove the 'language:' prefix and clean up the name
+            const languageName = l.replace('language:', '').trim();
+            languages.add(languageName);
           }
         });
 
       return languages;
     },
     [raceChoices]
+  );
+
+  // Helper to collect all proficiencies from a class
+  const collectClassProficiencies = useCallback(
+    (
+      classInfo: ClassInfo | null,
+      choicesOverride?: Record<string, string[]>
+    ): Set<string> => {
+      const proficiencies = new Set<string>();
+      if (!classInfo) return proficiencies;
+
+      // Add base proficiencies using helper
+      formatProficiencyList('armor', classInfo.armorProficiencies).forEach(
+        (p) => proficiencies.add(p)
+      );
+      formatProficiencyList('weapon', classInfo.weaponProficiencies).forEach(
+        (p) => proficiencies.add(p)
+      );
+      formatProficiencyList('tool', classInfo.toolProficiencies).forEach((p) =>
+        proficiencies.add(p)
+      );
+      formatProficiencyList(
+        'saving-throw',
+        classInfo.savingThrowProficiencies
+      ).forEach((p) => proficiencies.add(p));
+
+      // Add chosen proficiencies from class choices (skills, tools, etc.)
+      const choicesToUse = choicesOverride || classChoices;
+      Object.entries(choicesToUse).forEach(([, selections]) => {
+        selections.forEach((p) => {
+          proficiencies.add(p);
+          // Also add normalized version for skills
+          if (p.toLowerCase().includes('skill')) {
+            const normalized = p
+              .toLowerCase()
+              .replace(/^skill[:-]\s*/i, 'skill:');
+            proficiencies.add(normalized);
+          }
+        });
+      });
+
+      return proficiencies;
+    },
+    [classChoices]
   );
 
   const createDraft = useCallback(
@@ -246,7 +328,6 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
           // Load class info if class is set - it's already a ClassInfo object!
           if (response.draft.class) {
             setCurrentClassInfo(response.draft.class);
-            // TODO: Load class proficiencies when we understand the structure
           }
 
           // Load choices from draft
@@ -255,14 +336,17 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             const raceChoicesFromDraft: Record<string, string[]> = {};
             const classChoicesFromDraft: Record<string, string[]> = {};
 
-            response.draft.choices.forEach((choice) => {
+            response.draft.choices.forEach((choice: ChoiceSelection) => {
+              // Ensure selectedKeys contains only strings, not objects
+              const cleanedKeys = cleanSelectedKeys(choice.selectedKeys);
+
               if (
                 choice.source === ChoiceSource.RACE ||
                 choice.source === ChoiceSource.SUBRACE
               ) {
-                raceChoicesFromDraft[choice.choiceId] = choice.selectedKeys;
+                raceChoicesFromDraft[choice.choiceId] = cleanedKeys;
               } else if (choice.source === ChoiceSource.CLASS) {
-                classChoicesFromDraft[choice.choiceId] = choice.selectedKeys;
+                classChoicesFromDraft[choice.choiceId] = cleanedKeys;
               }
               // TODO: Handle BACKGROUND when implemented
             });
@@ -271,6 +355,9 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             setClassChoices(classChoicesFromDraft);
 
             // Now recalculate proficiencies and languages with the loaded choices
+            const allProfs = new Set<string>();
+            const allLangs = new Set<string>();
+
             if (response.draft.race) {
               const raceProficiencies = collectRaceProficiencies(
                 response.draft.race,
@@ -280,9 +367,20 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
                 response.draft.race,
                 raceChoicesFromDraft
               );
-              setAllProficiencies(new Set([...raceProficiencies]));
-              setAllLanguages(new Set([...raceLanguages]));
+              raceProficiencies.forEach((p) => allProfs.add(p));
+              raceLanguages.forEach((l) => allLangs.add(l));
             }
+
+            if (response.draft.class) {
+              const classProficiencies = collectClassProficiencies(
+                response.draft.class,
+                classChoicesFromDraft
+              );
+              classProficiencies.forEach((p) => allProfs.add(p));
+            }
+
+            setAllProficiencies(allProfs);
+            setAllLanguages(allLangs);
           }
         }
       } catch (err) {
@@ -294,7 +392,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [collectRaceProficiencies, collectRaceLanguages]
+    [collectRaceProficiencies, collectRaceLanguages, collectClassProficiencies]
   );
 
   const setRace = useCallback(
@@ -412,7 +510,29 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
           }) as CharacterDraft
       );
 
-      // TODO: Add class proficiencies when we understand the structure
+      // Update proficiencies when class changes
+      if (classInfo) {
+        const choicesToUse = choices || classChoices;
+        const classProficiencies = collectClassProficiencies(
+          classInfo,
+          choicesToUse
+        );
+
+        // Merge with existing race proficiencies
+        setAllProficiencies((prev) => {
+          const merged = new Set(prev);
+          classProficiencies.forEach((p) => merged.add(p));
+          return merged;
+        });
+      } else {
+        // Class was cleared, recalculate with just race proficiencies
+        if (currentRaceInfo) {
+          const raceProficiencies = collectRaceProficiencies(currentRaceInfo);
+          const raceLanguages = collectRaceLanguages(currentRaceInfo);
+          setAllProficiencies(new Set([...raceProficiencies]));
+          setAllLanguages(new Set([...raceLanguages]));
+        }
+      }
 
       // Save to API if draft exists and class is provided
       if (classInfo) {
@@ -448,7 +568,17 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [draftId, updateClassAPI, saving, currentClassInfo, classChoices]
+    [
+      draftId,
+      updateClassAPI,
+      saving,
+      currentClassInfo,
+      classChoices,
+      collectClassProficiencies,
+      currentRaceInfo,
+      collectRaceProficiencies,
+      collectRaceLanguages,
+    ]
   );
 
   const hasProficiency = useCallback(
@@ -484,23 +614,57 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       if (currentRaceInfo) {
         const raceProficiencies = collectRaceProficiencies(currentRaceInfo);
         const raceLanguages = collectRaceLanguages(currentRaceInfo);
-        setAllProficiencies(new Set([...raceProficiencies]));
+        const classProficiencies = currentClassInfo
+          ? collectClassProficiencies(currentClassInfo)
+          : new Set<string>();
+
+        setAllProficiencies(
+          new Set([...raceProficiencies, ...classProficiencies])
+        );
         setAllLanguages(new Set([...raceLanguages]));
       }
     },
-    [currentRaceInfo, collectRaceProficiencies, collectRaceLanguages]
+    [
+      currentRaceInfo,
+      currentClassInfo,
+      collectRaceProficiencies,
+      collectRaceLanguages,
+      collectClassProficiencies,
+    ]
   );
 
   const addClassChoice = useCallback(
     (choiceKey: string, selection: string[]) => {
-      setClassChoices((prev) => ({
-        ...prev,
-        [choiceKey]: selection,
-      }));
+      setClassChoices((prev) => {
+        const newChoices = {
+          ...prev,
+          [choiceKey]: selection,
+        };
 
-      // TODO: Recalculate when we understand class proficiencies
+        // Recalculate proficiencies with new choices
+        if (currentClassInfo) {
+          const classProficiencies = collectClassProficiencies(
+            currentClassInfo,
+            newChoices
+          );
+          const raceProficiencies = currentRaceInfo
+            ? collectRaceProficiencies(currentRaceInfo)
+            : new Set<string>();
+
+          setAllProficiencies(
+            new Set([...raceProficiencies, ...classProficiencies])
+          );
+        }
+
+        return newChoices;
+      });
     },
-    []
+    [
+      currentClassInfo,
+      currentRaceInfo,
+      collectClassProficiencies,
+      collectRaceProficiencies,
+    ]
   );
 
   const setName = useCallback(
