@@ -3,22 +3,54 @@ import { useState } from 'react';
 import './App.css';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
+import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterList } from './components/CharacterList';
 import { ThemeSelector } from './components/ThemeSelector';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
 type AppView = 'character-list' | 'character-creation';
 
-function App() {
+function AppContent() {
   const [currentView, setCurrentView] = useState<AppView>('character-list');
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const discord = useDiscord();
+  const draft = useCharacterDraft();
 
   // In production, require Discord auth. In dev, allow test player
   const isDevelopment = import.meta.env.MODE === 'development';
   const playerId = discord.user?.id || (isDevelopment ? 'test-player' : null);
 
+  const handleCreateCharacter = async () => {
+    try {
+      // Reset any existing draft
+      draft.reset();
+      // Create new draft
+      await draft.createDraft(playerId || 'test-player', 'test-session');
+      // Switch to creation view
+      setCurrentView('character-creation');
+    } catch (error) {
+      console.error('Failed to create draft:', error);
+    }
+  };
+
+  const handleResumeDraft = async (draftId: string) => {
+    try {
+      // Load the draft
+      await draft.loadDraft(draftId);
+      // Switch to creation view
+      setCurrentView('character-creation');
+    } catch (error) {
+      console.error('Failed to load draft:', error);
+    }
+  };
+
   const handleCharacterCreated = () => {
+    draft.reset();
+    setCurrentView('character-list');
+  };
+
+  const handleCancelCreation = () => {
+    draft.reset();
     setCurrentView('character-list');
   };
 
@@ -84,15 +116,21 @@ function App() {
           <CharacterList
             playerId={playerId || 'test-player'}
             sessionId="test-session"
-            onCreateCharacter={() => setCurrentView('character-creation')}
+            onCreateCharacter={handleCreateCharacter}
+            onResumeDraft={handleResumeDraft}
           />
+        ) : draft.loading ? (
+          <div className="flex items-center justify-center h-screen">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-primary mx-auto mb-4"></div>
+              <p className="text-lg">Loading draft...</p>
+            </div>
+          </div>
         ) : (
-          <CharacterDraftProvider>
-            <InteractiveCharacterSheet
-              onComplete={handleCharacterCreated}
-              onCancel={() => setCurrentView('character-list')}
-            />
-          </CharacterDraftProvider>
+          <InteractiveCharacterSheet
+            onComplete={handleCharacterCreated}
+            onCancel={handleCancelCreation}
+          />
         )}
 
         {/* Debug panel toggle button */}
@@ -119,6 +157,14 @@ function App() {
         )}
       </motion.div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <CharacterDraftProvider>
+      <AppContent />
+    </CharacterDraftProvider>
   );
 }
 

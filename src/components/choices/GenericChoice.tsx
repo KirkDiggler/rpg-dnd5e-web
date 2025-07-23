@@ -15,9 +15,7 @@ export function GenericChoice({
   onSelectionChange,
   currentSelections,
 }: GenericChoiceProps) {
-  const handleSelection = (optionIndex: number) => {
-    const selectionKey = `${optionIndex}`;
-
+  const handleSelection = (selectionKey: string) => {
     if (choice.chooseCount === 1) {
       // Radio button behavior - replace selection
       onSelectionChange(choice.id, [selectionKey]);
@@ -50,15 +48,28 @@ export function GenericChoice({
 
         <div className="space-y-2">
           {options.map((option, index) => {
-            const isSelected = currentSelections.includes(`${index}`);
+            // Get the item ID based on the option type
+            let optionId = '';
+            if (option.optionType.case === 'item') {
+              optionId = option.optionType.value.itemId;
+            } else if (option.optionType.case === 'countedItem') {
+              optionId = option.optionType.value.itemId;
+            } else if (option.optionType.case === 'nestedChoice') {
+              optionId =
+                option.optionType.value.choice?.id || `nested_${index}`;
+            } else {
+              optionId = `option_${index}`;
+            }
+
+            const isSelected = currentSelections.includes(optionId);
 
             return (
-              <div key={index}>
+              <div key={optionId}>
                 {/* Handle item references */}
                 {option.optionType.case === 'item' && (
                   <button
                     type="button"
-                    onClick={() => handleSelection(index)}
+                    onClick={() => handleSelection(optionId)}
                     style={{
                       padding: '12px 16px',
                       backgroundColor: isSelected
@@ -113,7 +124,7 @@ export function GenericChoice({
                 {option.optionType.case !== 'item' && (
                   <button
                     type="button"
-                    onClick={() => handleSelection(index)}
+                    onClick={() => handleSelection(optionId)}
                     style={{
                       padding: '12px 16px',
                       backgroundColor: isSelected

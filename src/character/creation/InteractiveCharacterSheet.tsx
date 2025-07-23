@@ -7,7 +7,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ClassChoices } from './ClassSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
@@ -85,6 +85,91 @@ export function InteractiveCharacterSheet({
   const [isSpellModalOpen, setIsSpellModalOpen] = useState(false);
   const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
   const draft = useCharacterDraft();
+
+  // Sync draft data with local character state
+  useEffect(() => {
+    if (draft.raceInfo) {
+      setCharacter((prev) => ({
+        ...prev,
+        selectedRace: draft.raceInfo,
+      }));
+    }
+    if (draft.classInfo) {
+      setCharacter((prev) => ({
+        ...prev,
+        selectedClass: draft.classInfo,
+      }));
+    }
+    if (draft.draft?.name) {
+      setCharacter((prev) => ({
+        ...prev,
+        characterName: draft.draft?.name || '',
+      }));
+    }
+    // Load ability scores from draft
+    if (draft.draft?.abilityScores) {
+      setCharacter((prev) => ({
+        ...prev,
+        abilityScores: {
+          strength: draft.draft?.abilityScores?.strength || 0,
+          dexterity: draft.draft?.abilityScores?.dexterity || 0,
+          constitution: draft.draft?.abilityScores?.constitution || 0,
+          intelligence: draft.draft?.abilityScores?.intelligence || 0,
+          wisdom: draft.draft?.abilityScores?.wisdom || 0,
+          charisma: draft.draft?.abilityScores?.charisma || 0,
+        },
+      }));
+    }
+
+    // Load choices from draft context
+    if (draft.raceChoices || draft.classChoices) {
+      // Parse the flat classChoices into structured format
+      const structuredClassChoices: ClassChoices = {
+        proficiencies: {},
+        features: {},
+        equipment: {},
+        className: draft.classInfo?.name,
+      };
+
+      // Parse draft.classChoices which is Record<string, string[]>
+      Object.entries(draft.classChoices || {}).forEach(([key, values]) => {
+        if (key.includes('equipment')) {
+          // Equipment choices - single selection
+          structuredClassChoices.equipment[key] = values[0] || '';
+        } else if (key.startsWith('feature_')) {
+          // Feature choices - format: feature_featureId_choiceId
+          const parts = key.split('_');
+          if (parts.length >= 3) {
+            const featureId = parts[1];
+            const choiceId = parts.slice(2).join('_');
+            if (!structuredClassChoices.features[featureId]) {
+              structuredClassChoices.features[featureId] = {};
+            }
+            structuredClassChoices.features[featureId][choiceId] = values;
+          }
+        } else {
+          // Default to proficiencies (includes skills, tools, etc.)
+          structuredClassChoices.proficiencies[key] = values;
+        }
+      });
+
+      setCharacter((prev) => ({
+        ...prev,
+        choices: {
+          ...prev.choices,
+          classChoices: structuredClassChoices,
+        },
+      }));
+    }
+  }, [
+    draft.raceInfo,
+    draft.classInfo,
+    draft.classInfo?.name,
+    draft.draft?.name,
+    draft.draft?.abilityScores,
+    draft.raceChoices,
+    draft.classChoices,
+  ]);
 
   const getModifier = (score: number) => Math.floor((score - 10) / 2);
 
@@ -461,8 +546,19 @@ export function InteractiveCharacterSheet({
                     borderColor: character.selectedRace
                       ? 'var(--accent-primary)'
                       : 'var(--border-primary)',
+                    cursor:
+                      !draft.draftId || draft.loading || draft.saving
+                        ? 'not-allowed'
+                        : 'pointer',
+                    opacity:
+                      !draft.draftId || draft.loading || draft.saving ? 0.6 : 1,
                   }}
-                  onClick={() => setIsRaceModalOpen(true)}
+                  onClick={() =>
+                    !draft.loading &&
+                    !draft.saving &&
+                    draft.draftId &&
+                    setIsRaceModalOpen(true)
+                  }
                 >
                   <div className="text-center space-y-2">
                     <div className="text-3xl">
@@ -498,9 +594,22 @@ export function InteractiveCharacterSheet({
                         backgroundColor: 'var(--bg-secondary)',
                         borderRadius: '6px',
                         border: '1px solid var(--border-primary)',
+                        cursor:
+                          !draft.draftId || draft.loading || draft.saving
+                            ? 'not-allowed'
+                            : 'pointer',
+                        opacity:
+                          !draft.draftId || draft.loading || draft.saving
+                            ? 0.6
+                            : 1,
                       }}
                       whileHover={{ scale: 1.01 }}
-                      onClick={() => setIsRaceModalOpen(true)}
+                      onClick={() =>
+                        !draft.loading &&
+                        !draft.saving &&
+                        draft.draftId &&
+                        setIsRaceModalOpen(true)
+                      }
                     >
                       <div className="flex items-center justify-between">
                         <h4
@@ -653,8 +762,19 @@ export function InteractiveCharacterSheet({
                     borderColor: character.selectedClass
                       ? 'var(--accent-primary)'
                       : 'var(--border-primary)',
+                    cursor:
+                      !draft.draftId || draft.loading || draft.saving
+                        ? 'not-allowed'
+                        : 'pointer',
+                    opacity:
+                      !draft.draftId || draft.loading || draft.saving ? 0.6 : 1,
                   }}
-                  onClick={() => setIsClassModalOpen(true)}
+                  onClick={() =>
+                    !draft.loading &&
+                    !draft.saving &&
+                    draft.draftId &&
+                    setIsClassModalOpen(true)
+                  }
                 >
                   <div className="text-center space-y-2">
                     <div className="text-3xl">
@@ -690,9 +810,22 @@ export function InteractiveCharacterSheet({
                         backgroundColor: 'var(--bg-secondary)',
                         borderRadius: '6px',
                         border: '1px solid var(--border-primary)',
+                        cursor:
+                          !draft.draftId || draft.loading || draft.saving
+                            ? 'not-allowed'
+                            : 'pointer',
+                        opacity:
+                          !draft.draftId || draft.loading || draft.saving
+                            ? 0.6
+                            : 1,
                       }}
                       whileHover={{ scale: 1.01 }}
-                      onClick={() => setIsClassModalOpen(true)}
+                      onClick={() =>
+                        !draft.loading &&
+                        !draft.saving &&
+                        draft.draftId &&
+                        setIsClassModalOpen(true)
+                      }
                     >
                       <div className="flex items-center justify-between">
                         <h4
@@ -1050,10 +1183,6 @@ export function InteractiveCharacterSheet({
                               .reduce((sum, roll) => sum + roll, 0);
                             const dropped = sortedRolls[3]; // The lowest die that was dropped
 
-                            console.log(
-                              `🎲 Rolled: [${roll.rolls.join(', ')}] → Keep: [${sortedRolls.slice(0, 3).join(', ')}] Drop: ${dropped} → Total: ${total}`
-                            );
-
                             const rollRecord = {
                               rolls: roll.rolls,
                               kept: sortedRolls.slice(0, 3),
@@ -1319,28 +1448,23 @@ export function InteractiveCharacterSheet({
             ...prev,
             selectedRace: race,
           }));
-          draft.setRace(race);
 
-          // Clear existing race choices first
-          draft.reset();
-          draft.setRace(race);
+          // Format choices for the draft context
+          const formattedChoices: Record<string, string[]> = {};
 
-          // If class was selected, re-apply it
-          if (character.selectedClass) {
-            draft.setClass(character.selectedClass);
-          }
-
-          // Add race choices to the draft
           if (choices.languages) {
             Object.entries(choices.languages).forEach(([key, values]) => {
-              draft.addRaceChoice(key, values);
+              formattedChoices[key] = values;
             });
           }
           if (choices.proficiencies) {
             Object.entries(choices.proficiencies).forEach(([key, values]) => {
-              draft.addRaceChoice(key, values);
+              formattedChoices[key] = values;
             });
           }
+
+          // Set race with choices
+          draft.setRace(race, formattedChoices);
         }}
         onClose={() => setIsRaceModalOpen(false)}
       />
@@ -1349,7 +1473,8 @@ export function InteractiveCharacterSheet({
       <ClassSelectionModal
         isOpen={isClassModalOpen}
         currentClass={character.selectedClass?.name}
-        onSelect={(classData, choices) => {
+        existingChoices={character.choices?.classChoices}
+        onSelect={async (classData, choices) => {
           setCharacter((prev) => ({
             ...prev,
             selectedClass: classData,
@@ -1359,24 +1484,44 @@ export function InteractiveCharacterSheet({
               classChoices: choices, // Store the full choices object including features
             },
           }));
-          draft.setClass(classData);
 
-          // Clear existing class choices first
-          draft.reset();
+          // Format choices for the draft context
+          const formattedChoices: Record<string, string[]> = {};
 
-          // Re-apply race if selected
-          if (character.selectedRace) {
-            draft.setRace(character.selectedRace);
-          }
-
-          // Apply new class
-          draft.setClass(classData);
-
-          // Only add choices for the selected class
+          // Add proficiency choices
           if (choices.proficiencies && choices.className === classData.name) {
             Object.entries(choices.proficiencies).forEach(([key, values]) => {
-              draft.addClassChoice(key, values);
+              formattedChoices[key] = values;
             });
+          }
+
+          // Add feature choices
+          if (choices.features) {
+            Object.entries(choices.features).forEach(
+              ([featureId, featureChoices]) => {
+                Object.entries(featureChoices).forEach(
+                  ([choiceKey, values]) => {
+                    formattedChoices[`${featureId}_${choiceKey}`] = values;
+                  }
+                );
+              }
+            );
+          }
+
+          // Add equipment choices
+          if (choices.equipment) {
+            Object.entries(choices.equipment).forEach(([key, value]) => {
+              // Equipment choices are single selections, so wrap in array
+              formattedChoices[key] = [value];
+            });
+          }
+
+          // Save class to API with choices
+          try {
+            await draft.setClass(classData, formattedChoices);
+          } catch (error) {
+            console.error('Failed to save class:', error);
+            // TODO: Show error toast to user
           }
         }}
         onClose={() => setIsClassModalOpen(false)}
@@ -1394,7 +1539,6 @@ export function InteractiveCharacterSheet({
           onSelect={(spells) => {
             setSelectedSpells(spells);
             // TODO: Add spell selection to character draft
-            console.log('Selected spells:', spells);
           }}
         />
       )}

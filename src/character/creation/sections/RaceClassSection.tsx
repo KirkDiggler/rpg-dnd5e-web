@@ -1,29 +1,13 @@
-import {
-  useUpdateDraftClass,
-  useUpdateDraftRace,
-  useUpdateDraftSkills,
-} from '@/api/hooks';
 import { useCharacterDraft } from '@/character/creation/useCharacterDraft';
 import { TraitBadge } from '@/components/TraitBadge';
 import { TraitIcons } from '@/constants/traits';
 import { useCharacterBuilder } from '@/hooks/useCharacterBuilder';
-import { create } from '@bufbuild/protobuf';
 import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import {
-  UpdateClassRequestSchema,
-  UpdateRaceRequestSchema,
-  UpdateSkillsRequestSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import {
-  Class,
-  Race,
-  Skill,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ClassChoices } from '../ClassSelectionModal';
 import { ClassSelectionModal } from '../ClassSelectionModal';
 import type { RaceChoices } from '../RaceSelectionModal';
@@ -31,80 +15,52 @@ import { RaceSelectionModal } from '../RaceSelectionModal';
 
 export function RaceClassSection() {
   const { setSelectedChoice } = useCharacterBuilder();
-  const { draft, setRace, setClass, addRaceChoice, addClassChoice } =
+  const { raceInfo, classInfo, setRace, setClass, raceChoices, classChoices } =
     useCharacterDraft();
-  const { updateRace } = useUpdateDraftRace();
-  const { updateClass } = useUpdateDraftClass();
-  const { updateSkills } = useUpdateDraftSkills();
 
   const [showRaceModal, setShowRaceModal] = useState(false);
   const [showClassModal, setShowClassModal] = useState(false);
   const [selectedRaceData, setSelectedRaceData] = useState<RaceInfo | null>(
-    null
+    raceInfo
   );
   const [selectedClassData, setSelectedClassData] = useState<ClassInfo | null>(
-    null
+    classInfo
   );
 
-  // Helper to convert RaceInfo name to Race enum
-  const getRaceEnum = (raceName: string): Race => {
-    const raceMap: Record<string, Race> = {
-      Human: Race.HUMAN,
-      Elf: Race.ELF,
-      Dwarf: Race.DWARF,
-      Halfling: Race.HALFLING,
-      Dragonborn: Race.DRAGONBORN,
-      Gnome: Race.GNOME,
-      'Half-Elf': Race.HALF_ELF,
-      'Half-Orc': Race.HALF_ORC,
-      Tiefling: Race.TIEFLING,
-    };
-    return raceMap[raceName] || Race.UNSPECIFIED;
-  };
+  // Update selected data when draft loads
+  useEffect(() => {
+    if (raceInfo && !selectedRaceData) {
+      setSelectedRaceData(raceInfo);
+    }
+    if (classInfo && !selectedClassData) {
+      setSelectedClassData(classInfo);
+    }
+  }, [raceInfo, classInfo, selectedRaceData, selectedClassData]);
 
-  // Helper to convert ClassInfo name to Class enum
-  const getClassEnum = (className: string): Class => {
-    const classMap: Record<string, Class> = {
-      Barbarian: Class.BARBARIAN,
-      Bard: Class.BARD,
-      Cleric: Class.CLERIC,
-      Druid: Class.DRUID,
-      Fighter: Class.FIGHTER,
-      Monk: Class.MONK,
-      Paladin: Class.PALADIN,
-      Ranger: Class.RANGER,
-      Rogue: Class.ROGUE,
-      Sorcerer: Class.SORCERER,
-      Warlock: Class.WARLOCK,
-      Wizard: Class.WIZARD,
-    };
-    return classMap[className] || Class.UNSPECIFIED;
-  };
+  // Format existing race choices for the modal
+  const existingRaceChoices: RaceChoices | undefined =
+    raceChoices && Object.keys(raceChoices).length > 0
+      ? {
+          languages: {},
+          proficiencies: {},
+        }
+      : undefined;
 
-  // Helper to convert skill string to Skill enum
-  const getSkillEnum = (skillName: string): Skill => {
-    const skillMap: Record<string, Skill> = {
-      Acrobatics: Skill.ACROBATICS,
-      'Animal Handling': Skill.ANIMAL_HANDLING,
-      Arcana: Skill.ARCANA,
-      Athletics: Skill.ATHLETICS,
-      Deception: Skill.DECEPTION,
-      History: Skill.HISTORY,
-      Insight: Skill.INSIGHT,
-      Intimidation: Skill.INTIMIDATION,
-      Investigation: Skill.INVESTIGATION,
-      Medicine: Skill.MEDICINE,
-      Nature: Skill.NATURE,
-      Perception: Skill.PERCEPTION,
-      Performance: Skill.PERFORMANCE,
-      Persuasion: Skill.PERSUASION,
-      Religion: Skill.RELIGION,
-      'Sleight of Hand': Skill.SLEIGHT_OF_HAND,
-      Stealth: Skill.STEALTH,
-      Survival: Skill.SURVIVAL,
-    };
-    return skillMap[skillName] || Skill.UNSPECIFIED;
-  };
+  // Populate existing race choices
+  if (existingRaceChoices && raceChoices) {
+    Object.entries(raceChoices).forEach(([choiceId, selections]) => {
+      // Determine if it's a language or proficiency choice
+      // This is a simple heuristic - you might need to adjust based on actual choice IDs
+      if (
+        choiceId.includes('language') ||
+        selections.some((s) => s.startsWith('language:'))
+      ) {
+        existingRaceChoices.languages[choiceId] = selections;
+      } else {
+        existingRaceChoices.proficiencies[choiceId] = selections;
+      }
+    });
+  }
 
   const handleRaceSelect = async (race: RaceInfo, choices: RaceChoices) => {
     setSelectedRaceData(race);
@@ -112,15 +68,14 @@ export function RaceClassSection() {
     setSelectedChoice('raceData', race);
     setSelectedChoice('raceChoices', choices);
 
-    // Update the draft context
-    setRace(race);
+    // Format choices for the context
+    const formattedChoices: Record<string, string[]> = {};
 
-    // Store race choices in context
     // Handle languages (Record<string, string[]>)
     if (choices.languages && Object.keys(choices.languages).length > 0) {
       Object.entries(choices.languages).forEach(([choiceId, selections]) => {
         if (selections && selections.length > 0) {
-          addRaceChoice(`language_${choiceId}`, selections);
+          formattedChoices[choiceId] = selections;
         }
       });
     }
@@ -133,128 +88,77 @@ export function RaceClassSection() {
       Object.entries(choices.proficiencies).forEach(
         ([choiceId, selections]) => {
           if (selections && selections.length > 0) {
-            addRaceChoice(`proficiency_${choiceId}`, selections);
+            formattedChoices[choiceId] = selections;
           }
         }
       );
     }
 
-    // Call API to update the draft if we have a draft ID
-    if (draft?.id) {
-      try {
-        const request = create(UpdateRaceRequestSchema, {
-          draftId: draft.id,
-          race: getRaceEnum(race.name),
-          // TODO: Add subrace support when needed
-        });
-        await updateRace(request);
-      } catch (error) {
-        console.error('Failed to update race:', error);
-        // TODO: Show error to user
-      }
-    }
+    // Update the draft context with race and choices
+    await setRace(race, formattedChoices);
 
     setShowRaceModal(false);
   };
 
-  const handleClassSelect = async (
-    classData: ClassInfo,
-    choices: ClassChoices
-  ) => {
-    setSelectedClassData(classData);
-    setSelectedChoice('class', classData.id);
-    setSelectedChoice('classData', classData);
-    setSelectedChoice('classChoices', choices);
+  const handleClassSelect = useCallback(
+    async (classData: ClassInfo, choices: ClassChoices) => {
+      setSelectedClassData(classData);
+      setSelectedChoice('class', classData.id);
+      setSelectedChoice('classData', classData);
+      setSelectedChoice('classChoices', choices);
 
-    // Update the draft context
-    setClass(classData);
+      // Format choices for the context
+      const formattedChoices: Record<string, string[]> = {};
 
-    // Store class choices in context
-    // Handle proficiencies (Record<string, string[]>)
-    if (
-      choices.proficiencies &&
-      Object.keys(choices.proficiencies).length > 0
-    ) {
-      Object.entries(choices.proficiencies).forEach(
-        ([choiceId, selections]) => {
-          if (selections && selections.length > 0) {
-            addClassChoice(`proficiency_${choiceId}`, selections);
-          }
-        }
-      );
-    }
-
-    // Handle equipment (Record<string, string>)
-    if (choices.equipment && Object.keys(choices.equipment).length > 0) {
-      Object.entries(choices.equipment).forEach(([choiceId, selectedItem]) => {
-        if (selectedItem) {
-          addClassChoice(`equipment_${choiceId}`, [selectedItem]);
-        }
-      });
-    }
-
-    // Handle features (Record<string, Record<string, string[]>>)
-    if (choices.features && Object.keys(choices.features).length > 0) {
-      Object.entries(choices.features).forEach(
-        ([featureId, featureChoices]) => {
-          Object.entries(featureChoices).forEach(([choiceId, selections]) => {
-            if (selections && selections.length > 0) {
-              addClassChoice(`feature_${featureId}_${choiceId}`, selections);
-            }
-          });
-        }
-      );
-    }
-
-    // Call API to update the draft if we have a draft ID
-    if (draft?.id) {
-      try {
-        const request = create(UpdateClassRequestSchema, {
-          draftId: draft.id,
-          class: getClassEnum(classData.name),
-        });
-        await updateClass(request);
-
-        // Also update skills if any were chosen
-        // Skills are stored in proficiencies with skill choice IDs
-        const skillSelections: string[] = [];
+      // Handle proficiencies (Record<string, string[]>)
+      if (
+        choices.proficiencies &&
+        Object.keys(choices.proficiencies).length > 0
+      ) {
         Object.entries(choices.proficiencies).forEach(
           ([choiceId, selections]) => {
-            // Check if this is a skill choice by looking at the available skills
-            if (classData.choices) {
-              const skillChoice = classData.choices.find(
-                (c) => c.id === choiceId && c.choiceType === 2 // SKILL type
-              );
-              if (skillChoice && selections.length > 0) {
-                // Convert selection indices to skill names
-                selections.forEach((selection) => {
-                  const index = parseInt(selection);
-                  if (!isNaN(index) && classData.availableSkills[index]) {
-                    skillSelections.push(classData.availableSkills[index]);
-                  }
-                });
-              }
+            if (selections && selections.length > 0) {
+              formattedChoices[choiceId] = selections;
             }
           }
         );
-
-        if (skillSelections.length > 0) {
-          const skillsRequest = create(UpdateSkillsRequestSchema, {
-            draftId: draft.id,
-            skills: skillSelections.map((skillName: string) =>
-              getSkillEnum(skillName)
-            ),
-          });
-          await updateSkills(skillsRequest);
-        }
-      } catch (error) {
-        console.error('Failed to update class:', error);
-        // TODO: Show error to user
       }
-    }
 
-    setShowClassModal(false);
-  };
+      // Handle equipment (Record<string, string>)
+      if (choices.equipment && Object.keys(choices.equipment).length > 0) {
+        Object.entries(choices.equipment).forEach(
+          ([choiceId, selectedItem]) => {
+            if (selectedItem) {
+              formattedChoices[choiceId] = [selectedItem];
+            }
+          }
+        );
+      }
+
+      // Handle features (Record<string, Record<string, string[]>>)
+      if (choices.features && Object.keys(choices.features).length > 0) {
+        Object.entries(choices.features).forEach(
+          ([featureId, featureChoices]) => {
+            Object.entries(featureChoices).forEach(([choiceId, selections]) => {
+              if (selections && selections.length > 0) {
+                // For features, we might need to use a combined key
+                const combinedKey = `${featureId}_${choiceId}`;
+                formattedChoices[combinedKey] = selections;
+              }
+            });
+          }
+        );
+      }
+
+      // Update the draft context with class and choices
+      await setClass(classData, formattedChoices);
+
+      // TODO: Handle skills update when supported in the context
+
+      setShowClassModal(false);
+    },
+    [setClass, setSelectedChoice]
+  );
 
   return (
     <div className="space-y-6">
@@ -411,6 +315,7 @@ export function RaceClassSection() {
       <RaceSelectionModal
         isOpen={showRaceModal}
         currentRace={selectedRaceData?.name}
+        existingChoices={existingRaceChoices}
         onSelect={handleRaceSelect}
         onClose={() => setShowRaceModal(false)}
       />
@@ -418,7 +323,8 @@ export function RaceClassSection() {
       {/* Class Selection Modal */}
       <ClassSelectionModal
         isOpen={showClassModal}
-        currentClass={selectedClassData?.name}
+        currentClass={selectedClassData?.name || classInfo?.name}
+        rawExistingChoices={classChoices}
         onSelect={handleClassSelect}
         onClose={() => setShowClassModal(false)}
       />

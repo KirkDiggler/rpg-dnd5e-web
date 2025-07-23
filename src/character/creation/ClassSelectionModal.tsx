@@ -41,6 +41,8 @@ function getClassEmoji(className: string): string {
 interface ClassSelectionModalProps {
   isOpen: boolean;
   currentClass?: string;
+  existingChoices?: ClassChoices;
+  rawExistingChoices?: Record<string, string[]>; // Raw choices from draft
   onSelect: (classData: ClassInfo, choices: ClassChoices) => void;
   onClose: () => void;
 }
@@ -55,6 +57,8 @@ export interface ClassChoices {
 export function ClassSelectionModal({
   isOpen,
   currentClass,
+  existingChoices,
+  rawExistingChoices,
   onSelect,
   onClose,
 }: ClassSelectionModalProps) {
@@ -96,8 +100,48 @@ export function ClassSelectionModal({
           setSelectedIndex(index);
         }
       }
+
+      // Initialize with existing choices if provided
+      if (
+        existingChoices &&
+        currentClass &&
+        existingChoices.className === currentClass
+      ) {
+        setClassChoicesMap((prev) => ({
+          ...prev,
+          [currentClass]: {
+            proficiencies: existingChoices.proficiencies || {},
+            equipment: existingChoices.equipment || {},
+            features: existingChoices.features || {},
+          },
+        }));
+      } else if (rawExistingChoices && currentClass) {
+        // Handle raw choices from draft
+        const formattedChoices: ClassChoices = {
+          proficiencies: {},
+          equipment: {},
+          features: {},
+        };
+
+        // Format the raw choices
+        Object.entries(rawExistingChoices).forEach(([choiceId, selections]) => {
+          if (choiceId.includes('equipment')) {
+            formattedChoices.equipment[choiceId] = selections[0] || '';
+          } else if (choiceId.startsWith('feature_')) {
+            // Handle feature choices if needed
+          } else {
+            // Default to proficiencies
+            formattedChoices.proficiencies[choiceId] = selections;
+          }
+        });
+
+        setClassChoicesMap((prev) => ({
+          ...prev,
+          [currentClass]: formattedChoices,
+        }));
+      }
     }
-  }, [isOpen, currentClass, classes]);
+  }, [isOpen, currentClass, classes, existingChoices, rawExistingChoices]);
 
   // Show loading or error states
   if (!isOpen) return null;
