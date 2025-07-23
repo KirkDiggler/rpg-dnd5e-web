@@ -323,6 +323,12 @@ export function InteractiveCharacterSheet({
   const steps = useMemo<Step[]>(() => {
     const hasRace = character.selectedRace !== null;
     const hasClass = character.selectedClass !== null;
+
+    // Check if all ability scores are assigned (all non-zero)
+    const hasAbilityScores = Object.values(character.abilityScores).every(
+      (score) => score > 0
+    );
+
     const hasProficiencies =
       Object.keys(classChoices.proficiencies || {}).length > 0;
     const hasEquipment = Object.keys(character.equipmentChoices).length > 0;
@@ -368,6 +374,15 @@ export function InteractiveCharacterSheet({
         label: 'Class',
         status: hasClass ? 'completed' : hasRace ? 'current' : 'upcoming',
       },
+      {
+        id: 'ability-scores',
+        label: 'Ability Scores',
+        status: hasAbilityScores
+          ? 'completed'
+          : hasClass
+            ? 'current'
+            : 'upcoming',
+      },
     ];
 
     // Add feature selection if applicable (e.g., Fighting Style for Fighter)
@@ -377,7 +392,7 @@ export function InteractiveCharacterSheet({
         label: 'Features',
         status: hasFeatureChoicesSelected
           ? 'completed'
-          : hasClass
+          : hasAbilityScores && hasClass
             ? 'current'
             : 'upcoming',
         conditional: true,
@@ -390,7 +405,7 @@ export function InteractiveCharacterSheet({
       label: 'Proficiencies',
       status: hasProficiencies
         ? 'completed'
-        : hasClass
+        : hasAbilityScores && hasClass
           ? 'current'
           : 'upcoming',
     });
@@ -437,6 +452,7 @@ export function InteractiveCharacterSheet({
   }, [
     character.selectedRace,
     character.selectedClass,
+    character.abilityScores,
     character.equipmentChoices,
     classChoices.proficiencies,
     classChoices.features,
@@ -1499,17 +1515,31 @@ export function InteractiveCharacterSheet({
                           );
 
                           // Assign the score to this ability
-                          setCharacter((prev) => ({
-                            ...prev,
-                            abilityScores: {
+                          setCharacter((prev) => {
+                            const newScores = {
                               ...prev.abilityScores,
                               [ability]: draggedValue,
-                            },
-                            // Remove the used score from rolled scores
-                            rolledScores: prev.rolledScores.filter(
-                              (_, i) => i !== dragData.index
-                            ),
-                          }));
+                            };
+
+                            // Save to draft if all scores are assigned
+                            const allScoresAssigned = Object.values(
+                              newScores
+                            ).every((score) => score > 0);
+
+                            if (allScoresAssigned && draft.draftId) {
+                              // Save ability scores to the API
+                              draft.setAbilityScores(newScores);
+                            }
+
+                            return {
+                              ...prev,
+                              abilityScores: newScores,
+                              // Remove the used score from rolled scores
+                              rolledScores: prev.rolledScores.filter(
+                                (_, i) => i !== dragData.index
+                              ),
+                            };
+                          });
 
                           (
                             e.currentTarget as HTMLDivElement
@@ -1550,10 +1580,63 @@ export function InteractiveCharacterSheet({
                   )}
                 </div>
 
-                <div className="text-center">
+                <div className="text-center space-y-2">
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                     Roll dice, then drag values to abilities
                   </p>
+
+                  {/* Show save status and clear button */}
+                  {Object.values(character.abilityScores).some(
+                    (score) => score > 0
+                  ) && (
+                    <div className="flex items-center justify-center gap-4">
+                      {Object.values(character.abilityScores).every(
+                        (score) => score > 0
+                      ) ? (
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: 'var(--accent-primary)' }}
+                        >
+                          ✓ Ability scores saved
+                        </span>
+                      ) : (
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          Assign all scores to save
+                        </span>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          // Clear all ability scores and return them to rolled scores
+                          const clearedScores = Object.values(
+                            character.abilityScores
+                          ).filter((score) => score > 0);
+                          setCharacter((prev) => ({
+                            ...prev,
+                            abilityScores: {
+                              strength: 0,
+                              dexterity: 0,
+                              constitution: 0,
+                              intelligence: 0,
+                              wisdom: 0,
+                              charisma: 0,
+                            },
+                            rolledScores: [
+                              ...prev.rolledScores,
+                              ...clearedScores,
+                            ].sort((a, b) => b - a),
+                          }));
+                        }}
+                        className="text-xs underline hover:no-underline"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        Clear & Re-roll
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
