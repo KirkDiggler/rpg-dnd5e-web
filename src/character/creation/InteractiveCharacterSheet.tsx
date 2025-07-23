@@ -27,6 +27,15 @@ interface CharacterChoices {
 }
 
 // Helper to convert Language enum to display name
+// Constants
+const EQUIPMENT_FILTER_ITEMS = [
+  'chain mail',
+  'bundle_0',
+  'dungeoneers pack',
+  'equipment_warhammer',
+];
+
+// Helper Functions
 function getLanguageDisplayName(languageEnum: Language): string {
   const languageNames: Record<Language, string> = {
     [Language.UNSPECIFIED]: 'Unknown',
@@ -48,6 +57,140 @@ function getLanguageDisplayName(languageEnum: Language): string {
     [Language.UNDERCOMMON]: 'Undercommon',
   };
   return languageNames[languageEnum] || 'Unknown';
+}
+
+// Helper function to format and group proficiencies
+function formatProficiencies(proficiencies: Set<string>): string {
+  const proficiencyMap = new Map<string, string>();
+
+  Array.from(proficiencies)
+    .filter((p) => {
+      // Filter out objects (stringified ChoiceSelection)
+      if (typeof p === 'string' && p.includes('"$typeName"')) return false;
+
+      // Filter out language choices
+      if (p.includes('language_')) return false;
+
+      // Filter out equipment items
+      const lowerP = p.toLowerCase();
+      if (EQUIPMENT_FILTER_ITEMS.some((item) => lowerP.includes(item)))
+        return false;
+      if (lowerP.includes('bundle') || lowerP.includes('pack')) return false;
+
+      // Filter out specific equipment patterns
+      if (p.match(/^(Chain Mail|Dungeoneers Pack|Bundle_\d+)/)) return false;
+
+      // Filter out fighting styles and other non-proficiency items
+      if (lowerP.includes('fighting style')) return false;
+
+      return true;
+    })
+    .forEach((p) => {
+      // Extract the core proficiency name
+      let cleaned = p;
+      let category = '';
+
+      // Extract category and clean the name
+      if (p.toLowerCase().includes('armor:')) {
+        category = 'Armor: ';
+        cleaned = p.replace(/armor:/i, '');
+      } else if (p.toLowerCase().includes('weapon:')) {
+        category = 'Weapons: ';
+        cleaned = p.replace(/weapon:/i, '');
+      } else if (p.toLowerCase().includes('tool:')) {
+        category = 'Tools: ';
+        cleaned = p.replace(/tool:/i, '');
+      } else if (
+        p.toLowerCase().includes('saving-throw:') ||
+        p.toLowerCase().includes('saving throw:')
+      ) {
+        category = 'Saving Throws: ';
+        cleaned = p.replace(/saving[- ]throw:/i, '');
+      } else if (p.toLowerCase().includes('skill:')) {
+        category = 'Skills: ';
+        cleaned = p.replace(/skill:/i, '');
+      }
+
+      // Clean up the proficiency name
+      cleaned = cleaned
+        .replace(/^proficiency_\w+:?\s*/i, '')
+        .replace(/-/g, ' ')
+        .trim();
+
+      // Handle special cases
+      if (cleaned.toLowerCase() === 'sleight of hand') {
+        cleaned = 'Sleight of Hand';
+      } else if (cleaned.toLowerCase() === 'animal handling') {
+        cleaned = 'Animal Handling';
+      } else if (cleaned.toLowerCase() === 'str') {
+        cleaned = 'Strength';
+      } else if (cleaned.toLowerCase() === 'con') {
+        cleaned = 'Constitution';
+      } else {
+        // Capitalize each word
+        cleaned = cleaned.replace(/\b\w/g, (l) => l.toUpperCase());
+      }
+
+      // Use the cleaned name as key to avoid duplicates
+      const key = category + cleaned.toLowerCase();
+      if (!proficiencyMap.has(key) && cleaned.length > 0) {
+        proficiencyMap.set(key, cleaned);
+      }
+    });
+
+  // Group by category
+  const skills: string[] = [];
+  const armor: string[] = [];
+  const weapons: string[] = [];
+  const tools: string[] = [];
+  const savingThrows: string[] = [];
+  const other: string[] = [];
+
+  proficiencyMap.forEach((value, key) => {
+    if (key.startsWith('Skills:')) skills.push(value);
+    else if (key.startsWith('Armor:')) armor.push(value);
+    else if (key.startsWith('Weapons:')) weapons.push(value);
+    else if (key.startsWith('Tools:')) tools.push(value);
+    else if (key.startsWith('Saving Throws:')) savingThrows.push(value);
+    else other.push(value);
+  });
+
+  // Build the display string
+  const parts: string[] = [];
+  if (skills.length > 0) parts.push(`Skills: ${skills.join(', ')}`);
+  if (armor.length > 0) parts.push(`Armor: ${armor.join(', ')}`);
+  if (weapons.length > 0) parts.push(`Weapons: ${weapons.join(', ')}`);
+  if (tools.length > 0) parts.push(`Tools: ${tools.join(', ')}`);
+  if (savingThrows.length > 0)
+    parts.push(`Saving Throws: ${savingThrows.join(', ')}`);
+  if (other.length > 0) parts.push(other.join(', '));
+
+  return parts.join(' • ');
+}
+
+// Helper function to get extra languages
+function getExtraLanguages(
+  allLanguages: Set<string>,
+  baseLanguages: Language[]
+): string[] {
+  return Array.from(allLanguages)
+    .filter((lang) => {
+      // Filter out objects (stringified ChoiceSelection)
+      if (typeof lang === 'string' && lang.includes('"$typeName"'))
+        return false;
+
+      // Filter out UNSPECIFIED
+      if (lang.toLowerCase() === 'unspecified') return false;
+
+      // Filter out base languages that come with race
+      return !baseLanguages
+        .map((l) => getLanguageDisplayName(l).toLowerCase())
+        .includes(lang.toLowerCase());
+    })
+    .map((lang) => {
+      // Clean up language names
+      return lang.charAt(0).toUpperCase() + lang.slice(1).toLowerCase();
+    });
 }
 
 // Simple context for now - we'll make it more sophisticated later
@@ -734,214 +877,15 @@ export function InteractiveCharacterSheet({
                               >
                                 Proficiencies:
                               </span>{' '}
-                              {(() => {
-                                const proficiencyMap = new Map<
-                                  string,
-                                  string
-                                >();
-                                const equipmentItems = [
-                                  'chain mail',
-                                  'bundle_0',
-                                  'dungeoneers pack',
-                                  'equipment_warhammer',
-                                ];
-
-                                Array.from(draft.allProficiencies)
-                                  .filter((p) => {
-                                    // Filter out objects (stringified ChoiceSelection)
-                                    if (
-                                      typeof p === 'string' &&
-                                      p.includes('"$typeName"')
-                                    )
-                                      return false;
-
-                                    // Filter out language choices
-                                    if (p.includes('language_')) return false;
-
-                                    // Filter out equipment items
-                                    const lowerP = p.toLowerCase();
-                                    if (
-                                      equipmentItems.some((item) =>
-                                        lowerP.includes(item)
-                                      )
-                                    )
-                                      return false;
-                                    if (
-                                      lowerP.includes('bundle') ||
-                                      lowerP.includes('pack')
-                                    )
-                                      return false;
-
-                                    // Filter out specific equipment patterns
-                                    if (
-                                      p.match(
-                                        /^(Chain Mail|Dungeoneers Pack|Bundle_\d+)/
-                                      )
-                                    )
-                                      return false;
-
-                                    // Filter out fighting styles and other non-proficiency items
-                                    if (lowerP.includes('fighting style'))
-                                      return false;
-
-                                    return true;
-                                  })
-                                  .forEach((p) => {
-                                    // Extract the core proficiency name
-                                    let cleaned = p;
-                                    let category = '';
-
-                                    // Extract category and clean the name
-                                    if (p.toLowerCase().includes('armor:')) {
-                                      category = 'Armor: ';
-                                      cleaned = p.replace(/armor:/i, '');
-                                    } else if (
-                                      p.toLowerCase().includes('weapon:')
-                                    ) {
-                                      category = 'Weapons: ';
-                                      cleaned = p.replace(/weapon:/i, '');
-                                    } else if (
-                                      p.toLowerCase().includes('tool:')
-                                    ) {
-                                      category = 'Tools: ';
-                                      cleaned = p.replace(/tool:/i, '');
-                                    } else if (
-                                      p
-                                        .toLowerCase()
-                                        .includes('saving-throw:') ||
-                                      p.toLowerCase().includes('saving throw:')
-                                    ) {
-                                      category = 'Saving Throws: ';
-                                      cleaned = p.replace(
-                                        /saving[- ]throw:/i,
-                                        ''
-                                      );
-                                    } else if (
-                                      p.toLowerCase().includes('skill:')
-                                    ) {
-                                      category = 'Skills: ';
-                                      cleaned = p.replace(/skill:/i, '');
-                                    }
-
-                                    // Clean up the proficiency name
-                                    cleaned = cleaned
-                                      .replace(/^proficiency_\w+:?\s*/i, '')
-                                      .replace(/-/g, ' ')
-                                      .trim();
-
-                                    // Handle special cases
-                                    if (
-                                      cleaned.toLowerCase() ===
-                                      'sleight of hand'
-                                    ) {
-                                      cleaned = 'Sleight of Hand';
-                                    } else if (
-                                      cleaned.toLowerCase() ===
-                                      'animal handling'
-                                    ) {
-                                      cleaned = 'Animal Handling';
-                                    } else if (
-                                      cleaned.toLowerCase() === 'str'
-                                    ) {
-                                      cleaned = 'Strength';
-                                    } else if (
-                                      cleaned.toLowerCase() === 'con'
-                                    ) {
-                                      cleaned = 'Constitution';
-                                    } else {
-                                      // Capitalize each word
-                                      cleaned = cleaned.replace(/\b\w/g, (l) =>
-                                        l.toUpperCase()
-                                      );
-                                    }
-
-                                    // Use the cleaned name as key to avoid duplicates
-                                    const key =
-                                      category + cleaned.toLowerCase();
-                                    if (
-                                      !proficiencyMap.has(key) &&
-                                      cleaned.length > 0
-                                    ) {
-                                      proficiencyMap.set(key, cleaned);
-                                    }
-                                  });
-
-                                // Group by category
-                                const skills: string[] = [];
-                                const armor: string[] = [];
-                                const weapons: string[] = [];
-                                const tools: string[] = [];
-                                const savingThrows: string[] = [];
-                                const other: string[] = [];
-
-                                proficiencyMap.forEach((value, key) => {
-                                  if (key.startsWith('Skills:'))
-                                    skills.push(value);
-                                  else if (key.startsWith('Armor:'))
-                                    armor.push(value);
-                                  else if (key.startsWith('Weapons:'))
-                                    weapons.push(value);
-                                  else if (key.startsWith('Tools:'))
-                                    tools.push(value);
-                                  else if (key.startsWith('Saving Throws:'))
-                                    savingThrows.push(value);
-                                  else other.push(value);
-                                });
-
-                                // Build the display string
-                                const parts: string[] = [];
-                                if (skills.length > 0)
-                                  parts.push(`Skills: ${skills.join(', ')}`);
-                                if (armor.length > 0)
-                                  parts.push(`Armor: ${armor.join(', ')}`);
-                                if (weapons.length > 0)
-                                  parts.push(`Weapons: ${weapons.join(', ')}`);
-                                if (tools.length > 0)
-                                  parts.push(`Tools: ${tools.join(', ')}`);
-                                if (savingThrows.length > 0)
-                                  parts.push(
-                                    `Saving Throws: ${savingThrows.join(', ')}`
-                                  );
-                                if (other.length > 0)
-                                  parts.push(other.join(', '));
-
-                                return parts.join(' • ');
-                              })()}
+                              {formatProficiencies(draft.allProficiencies)}
                             </div>
                           )}
                           {/* Display resolved languages from race choices */}
                           {(() => {
-                            const extraLanguages = Array.from(
-                              draft.allLanguages
-                            )
-                              .filter((lang) => {
-                                // Filter out objects (stringified ChoiceSelection)
-                                if (
-                                  typeof lang === 'string' &&
-                                  lang.includes('"$typeName"')
-                                )
-                                  return false;
-
-                                // Filter out UNSPECIFIED
-                                if (lang.toLowerCase() === 'unspecified')
-                                  return false;
-
-                                // Filter out base languages that come with race
-                                const baseLanguages =
-                                  character.selectedRace?.languages || [];
-                                return !baseLanguages
-                                  .map((l) =>
-                                    getLanguageDisplayName(l).toLowerCase()
-                                  )
-                                  .includes(lang.toLowerCase());
-                              })
-                              .map((lang) => {
-                                // Clean up language names
-                                return (
-                                  lang.charAt(0).toUpperCase() +
-                                  lang.slice(1).toLowerCase()
-                                );
-                              });
+                            const extraLanguages = getExtraLanguages(
+                              draft.allLanguages,
+                              character.selectedRace?.languages || []
+                            );
 
                             // Only show if there are actual extra languages
                             if (extraLanguages.length > 0) {

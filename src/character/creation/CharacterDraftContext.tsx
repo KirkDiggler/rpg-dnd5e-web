@@ -71,6 +71,42 @@ function getClassEnum(className: string): Class {
   return classMap[className] || Class.UNSPECIFIED;
 }
 
+// Helper function to format proficiencies with category prefix
+function formatProficiencyList(
+  category: string,
+  proficiencies: string[] | undefined
+): string[] {
+  if (!proficiencies) return [];
+  return proficiencies.flatMap((p) => [
+    `${category}:${p.toLowerCase()}`,
+    p, // Also add original format
+  ]);
+}
+
+// Helper function to clean selected keys from API response
+function cleanSelectedKeys(selectedKeys: unknown[]): string[] {
+  return selectedKeys
+    .map((key: unknown) => {
+      // If it's an object (like ChoiceSelection), extract the relevant value
+      if (typeof key === 'object' && key !== null) {
+        // If it has selectedKeys property, use the first value
+        const keyObj = key as { selectedKeys?: unknown[] };
+        if (
+          'selectedKeys' in keyObj &&
+          Array.isArray(keyObj.selectedKeys) &&
+          keyObj.selectedKeys.length > 0
+        ) {
+          return String(keyObj.selectedKeys[0]);
+        }
+        // Otherwise, convert to string and log warning
+        console.warn('Unexpected object in selectedKeys:', key);
+        return String(key);
+      }
+      return String(key);
+    })
+    .filter((key) => typeof key === 'string' && !key.includes('"$typeName"'));
+}
+
 // Helper to convert our choice format to ChoiceSelection
 function createChoiceSelections(
   choices: Record<string, string[]>,
@@ -208,37 +244,20 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       const proficiencies = new Set<string>();
       if (!classInfo) return proficiencies;
 
-      // Add base armor proficiencies
-      if (classInfo.armorProficiencies) {
-        classInfo.armorProficiencies.forEach((p) => {
-          proficiencies.add(`armor:${p.toLowerCase()}`);
-          proficiencies.add(p); // Also add original format
-        });
-      }
-
-      // Add base weapon proficiencies
-      if (classInfo.weaponProficiencies) {
-        classInfo.weaponProficiencies.forEach((p) => {
-          proficiencies.add(`weapon:${p.toLowerCase()}`);
-          proficiencies.add(p); // Also add original format
-        });
-      }
-
-      // Add base tool proficiencies
-      if (classInfo.toolProficiencies) {
-        classInfo.toolProficiencies.forEach((p) => {
-          proficiencies.add(`tool:${p.toLowerCase()}`);
-          proficiencies.add(p); // Also add original format
-        });
-      }
-
-      // Add base saving throw proficiencies
-      if (classInfo.savingThrowProficiencies) {
-        classInfo.savingThrowProficiencies.forEach((p) => {
-          proficiencies.add(`saving-throw:${p.toLowerCase()}`);
-          proficiencies.add(p); // Also add original format
-        });
-      }
+      // Add base proficiencies using helper
+      formatProficiencyList('armor', classInfo.armorProficiencies).forEach(
+        (p) => proficiencies.add(p)
+      );
+      formatProficiencyList('weapon', classInfo.weaponProficiencies).forEach(
+        (p) => proficiencies.add(p)
+      );
+      formatProficiencyList('tool', classInfo.toolProficiencies).forEach((p) =>
+        proficiencies.add(p)
+      );
+      formatProficiencyList(
+        'saving-throw',
+        classInfo.savingThrowProficiencies
+      ).forEach((p) => proficiencies.add(p));
 
       // Add chosen proficiencies from class choices (skills, tools, etc.)
       const choicesToUse = choicesOverride || classChoices;
@@ -319,29 +338,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
             response.draft.choices.forEach((choice: ChoiceSelection) => {
               // Ensure selectedKeys contains only strings, not objects
-              const cleanedKeys = choice.selectedKeys
-                .map((key: unknown) => {
-                  // If it's an object (like ChoiceSelection), extract the relevant value
-                  if (typeof key === 'object' && key !== null) {
-                    // If it has selectedKeys property, use the first value
-                    const keyObj = key as { selectedKeys?: unknown[] };
-                    if (
-                      'selectedKeys' in keyObj &&
-                      Array.isArray(keyObj.selectedKeys) &&
-                      keyObj.selectedKeys.length > 0
-                    ) {
-                      return String(keyObj.selectedKeys[0]);
-                    }
-                    // Otherwise, convert to string and log warning
-                    console.warn('Unexpected object in selectedKeys:', key);
-                    return String(key);
-                  }
-                  return String(key);
-                })
-                .filter(
-                  (key) =>
-                    typeof key === 'string' && !key.includes('"$typeName"')
-                );
+              const cleanedKeys = cleanSelectedKeys(choice.selectedKeys);
 
               if (
                 choice.source === ChoiceSource.RACE ||
