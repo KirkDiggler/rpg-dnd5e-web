@@ -128,8 +128,6 @@ function getChoiceType(choiceId: string): ChoiceType {
     return ChoiceType.ARMOR_PROFICIENCY;
   } else if (lowerChoiceId.includes('feat')) {
     return ChoiceType.FEAT;
-  } else if (lowerChoiceId.includes('ability')) {
-    return ChoiceType.ABILITY_SCORE;
   }
 
   return ChoiceType.UNSPECIFIED;

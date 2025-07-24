@@ -8,6 +8,7 @@ import type {
 import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
+import { isCantrip } from '../../constants/spells';
 import type { ClassChoices } from './ClassSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
@@ -1677,27 +1678,9 @@ export function InteractiveCharacterSheet({
               const className = character.selectedClass.name.toLowerCase();
 
               // Group spells by their spell level
-              const cantripIds = spells.filter((spellId) =>
-                // Common cantrip spell IDs
-                [
-                  'SPELL_ACID_SPLASH',
-                  'SPELL_FIRE_BOLT',
-                  'SPELL_POISON_SPRAY',
-                  'SPELL_MAGE_HAND',
-                  'SPELL_MINOR_ILLUSION',
-                  'SPELL_PRESTIDIGITATION',
-                  'SPELL_RAY_OF_FROST',
-                  'SPELL_LIGHT',
-                  'SPELL_MENDING',
-                  'SPELL_MESSAGE',
-                  'SPELL_SHOCKING_GRASP',
-                  'SPELL_CHILL_TOUCH',
-                  'SPELL_DANCING_LIGHTS',
-                  'SPELL_TRUE_STRIKE',
-                ].includes(spellId)
-              );
+              const cantripIds = spells.filter(isCantrip);
               const level1SpellIds = spells.filter(
-                (spellId) => !cantripIds.includes(spellId)
+                (spellId) => !isCantrip(spellId)
               );
 
               // Store cantrips and spells separately with class-specific keys

@@ -1,6 +1,7 @@
 import type { SpellcastingInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { BookOpen, Focus, Plus, Sparkles, Zap } from 'lucide-react';
+import { formatSpellName, isCantrip } from '../../../constants/spells';
 
 interface SpellInfoDisplayProps {
   spellcastingInfo: SpellcastingInfo;
@@ -255,39 +256,10 @@ export function SpellInfoDisplay({
       {/* Selected Spells */}
       {selectedSpells.length > 0 &&
         (() => {
-          // Common cantrip spell IDs
-          const cantripIds = [
-            'SPELL_ACID_SPLASH',
-            'SPELL_FIRE_BOLT',
-            'SPELL_POISON_SPRAY',
-            'SPELL_MAGE_HAND',
-            'SPELL_MINOR_ILLUSION',
-            'SPELL_PRESTIDIGITATION',
-            'SPELL_RAY_OF_FROST',
-            'SPELL_LIGHT',
-            'SPELL_MENDING',
-            'SPELL_MESSAGE',
-            'SPELL_SHOCKING_GRASP',
-            'SPELL_CHILL_TOUCH',
-            'SPELL_DANCING_LIGHTS',
-            'SPELL_TRUE_STRIKE',
-          ];
-
-          const cantrips = selectedSpells.filter((spell) =>
-            cantripIds.includes(spell)
-          );
+          const cantrips = selectedSpells.filter(isCantrip);
           const level1Spells = selectedSpells.filter(
-            (spell) => !cantripIds.includes(spell)
+            (spell) => !isCantrip(spell)
           );
-
-          const formatSpellName = (spell: string) =>
-            spell
-              .replace('SPELL_', '')
-              .replace(/_/g, ' ')
-              .toLowerCase()
-              .split(' ')
-              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-              .join(' ');
 
           return (
             <div
