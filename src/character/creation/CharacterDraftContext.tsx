@@ -324,11 +324,13 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
           if (response.draft.race) {
             setCurrentRaceInfo(response.draft.race);
           }
+          // Note: In v0.1.24+ we also have draft.raceId as Race enum
 
           // Load class info if class is set - it's already a ClassInfo object!
           if (response.draft.class) {
             setCurrentClassInfo(response.draft.class);
           }
+          // Note: In v0.1.24+ we also have draft.classId as Class enum
 
           // Load choices from draft
           if (response.draft.choices) {
