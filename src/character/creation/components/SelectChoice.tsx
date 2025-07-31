@@ -100,14 +100,15 @@ export function SelectChoice({
           } else if (option.optionType.case === 'countedItem') {
             const counted = option.optionType.value;
             optionValue = counted.itemId;
-            optionLabel = `${counted.name}${counted.count > 1 ? ` (${counted.count})` : ''}`;
+            optionLabel = `${counted.name}${counted.quantity > 1 ? ` (${counted.quantity})` : ''}`;
           } else if (option.optionType.case === 'bundle') {
             optionValue = `bundle_${index}`;
             optionLabel = `Equipment Bundle ${index + 1}`;
           } else if (option.optionType.case === 'nestedChoice') {
             optionValue = `nested_${index}`;
             optionLabel =
-              option.optionType.value.description || `Choice ${index + 1}`;
+              option.optionType.value.choice?.description ||
+              `Choice ${index + 1}`;
           }
 
           const isDisabled =
