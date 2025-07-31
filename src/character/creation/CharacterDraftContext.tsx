@@ -2,6 +2,7 @@ import { create } from '@bufbuild/protobuf';
 import type {
   CharacterDraft,
   Choice,
+  ChoiceData,
   ChoiceSelection,
   ClassInfo,
   RaceInfo,
@@ -20,6 +21,7 @@ import {
   Class,
   Language,
   Race,
+  Skill,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { ReactNode } from 'react';
 import { useCallback, useState } from 'react';
@@ -81,30 +83,6 @@ function formatProficiencyList(
     `${category}:${p.toLowerCase()}`,
     p, // Also add original format
   ]);
-}
-
-// Helper function to clean selected keys from API response
-function cleanSelectedKeys(selectedKeys: unknown[]): string[] {
-  return selectedKeys
-    .map((key: unknown) => {
-      // If it's an object (like ChoiceSelection), extract the relevant value
-      if (typeof key === 'object' && key !== null) {
-        // If it has selectedKeys property, use the first value
-        const keyObj = key as { selectedKeys?: unknown[] };
-        if (
-          'selectedKeys' in keyObj &&
-          Array.isArray(keyObj.selectedKeys) &&
-          keyObj.selectedKeys.length > 0
-        ) {
-          return String(keyObj.selectedKeys[0]);
-        }
-        // Otherwise, convert to string and log warning
-        console.warn('Unexpected object in selectedKeys:', key);
-        return String(key);
-      }
-      return String(key);
-    })
-    .filter((key) => typeof key === 'string' && !key.includes('"$typeName"'));
 }
 
 // Helper to convert our choice format to ChoiceSelection
@@ -338,17 +316,76 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             const raceChoicesFromDraft: Record<string, string[]> = {};
             const classChoicesFromDraft: Record<string, string[]> = {};
 
-            response.draft.choices.forEach((choice: ChoiceSelection) => {
-              // Ensure selectedKeys contains only strings, not objects
-              const cleanedKeys = cleanSelectedKeys(choice.selectedKeys);
+            response.draft.choices.forEach((choice: ChoiceData) => {
+              // Extract selections from the new ChoiceData structure
+              const selections: string[] = [];
+
+              // Handle the oneof selection pattern
+              if (choice.selection) {
+                switch (choice.selection.case) {
+                  case 'name':
+                    selections.push(choice.selection.value);
+                    break;
+                  case 'skills':
+                    // Convert skill enums to strings
+                    if (choice.selection.value.skills) {
+                      choice.selection.value.skills.forEach((skill: Skill) => {
+                        selections.push(skill.toString());
+                      });
+                    }
+                    break;
+                  case 'languages':
+                    // Convert language enums to strings
+                    if (choice.selection.value.languages) {
+                      choice.selection.value.languages.forEach(
+                        (lang: Language) => {
+                          selections.push(lang.toString());
+                        }
+                      );
+                    }
+                    break;
+                  case 'equipment':
+                    // Equipment is stored as EquipmentList
+                    if (choice.selection.value.items) {
+                      choice.selection.value.items.forEach(
+                        (item: { name?: string; toString: () => string }) => {
+                          selections.push(item.name || item.toString());
+                        }
+                      );
+                    }
+                    break;
+                  case 'fightingStyle':
+                    selections.push(choice.selection.value);
+                    break;
+                  case 'spells':
+                    // Handle spell selections
+                    if (choice.selection.value.spells) {
+                      choice.selection.value.spells.forEach((spell: string) => {
+                        selections.push(spell.toString());
+                      });
+                    }
+                    break;
+                  case 'cantrips':
+                    // Handle cantrip selections
+                    if (choice.selection.value.cantrips) {
+                      choice.selection.value.cantrips.forEach(
+                        (cantrip: string) => {
+                          selections.push(cantrip.toString());
+                        }
+                      );
+                    }
+                    break;
+                  // Other cases like race, class, background are not choices but actual selections
+                }
+              }
 
               if (
                 choice.source === ChoiceSource.RACE ||
                 choice.source === ChoiceSource.SUBRACE
               ) {
-                raceChoicesFromDraft[choice.choiceId] = cleanedKeys;
+                raceChoicesFromDraft[choice.choiceId] = selections;
               } else if (choice.source === ChoiceSource.CLASS) {
-                classChoicesFromDraft[choice.choiceId] = cleanedKeys;
+                classChoicesFromDraft[choice.choiceId] = selections;
               }
               // TODO: Handle BACKGROUND when implemented
             });
