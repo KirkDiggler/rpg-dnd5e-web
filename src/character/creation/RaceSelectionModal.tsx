@@ -1,5 +1,5 @@
 import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -218,7 +218,7 @@ export function RaceSelectionModal({
     // Validate language choices
     const languageChoices =
       currentRaceData.choices?.filter(
-        (choice) => choice.choiceType === ChoiceType.LANGUAGE
+        (choice) => choice.choiceType === ChoiceCategory.LANGUAGES
       ) || [];
 
     for (const choice of languageChoices) {
@@ -235,10 +235,10 @@ export function RaceSelectionModal({
     const proficiencyChoices =
       currentRaceData.choices?.filter(
         (choice) =>
-          choice.choiceType === ChoiceType.SKILL ||
-          choice.choiceType === ChoiceType.TOOL ||
-          choice.choiceType === ChoiceType.WEAPON_PROFICIENCY ||
-          choice.choiceType === ChoiceType.ARMOR_PROFICIENCY
+          choice.choiceType === ChoiceCategory.SKILLS ||
+          choice.choiceType === ChoiceCategory.TOOLS ||
+          choice.choiceType === ChoiceCategory.WEAPON_PROFICIENCIES ||
+          choice.choiceType === ChoiceCategory.ARMOR_PROFICIENCIES
       ) || [];
 
     for (const choice of proficiencyChoices) {
@@ -618,7 +618,7 @@ export function RaceSelectionModal({
             {(() => {
               const languageChoices =
                 currentRaceData.choices?.filter(
-                  (choice) => choice.choiceType === ChoiceType.LANGUAGE
+                  (choice) => choice.choiceType === ChoiceCategory.LANGUAGES
                 ) || [];
 
               if (languageChoices.length === 0) return null;
@@ -662,10 +662,10 @@ export function RaceSelectionModal({
               const proficiencyChoices =
                 currentRaceData.choices?.filter(
                   (choice) =>
-                    choice.choiceType === ChoiceType.SKILL ||
-                    choice.choiceType === ChoiceType.TOOL ||
-                    choice.choiceType === ChoiceType.WEAPON_PROFICIENCY ||
-                    choice.choiceType === ChoiceType.ARMOR_PROFICIENCY
+                    choice.choiceType === ChoiceCategory.SKILLS ||
+                    choice.choiceType === ChoiceCategory.TOOLS ||
+                    choice.choiceType === ChoiceCategory.WEAPON_PROFICIENCIES ||
+                    choice.choiceType === ChoiceCategory.ARMOR_PROFICIENCIES
                 ) || [];
 
               if (proficiencyChoices.length === 0) return null;

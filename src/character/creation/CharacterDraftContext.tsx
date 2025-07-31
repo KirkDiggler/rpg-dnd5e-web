@@ -2,6 +2,7 @@ import { create } from '@bufbuild/protobuf';
 import type {
   CharacterDraft,
   Choice,
+  ChoiceData,
   ChoiceSelection,
   ClassInfo,
   RaceInfo,
@@ -83,28 +84,41 @@ function formatProficiencyList(
   ]);
 }
 
-// Helper function to clean selected keys from API response
-function cleanSelectedKeys(selectedKeys: unknown[]): string[] {
-  return selectedKeys
-    .map((key: unknown) => {
-      // If it's an object (like ChoiceSelection), extract the relevant value
-      if (typeof key === 'object' && key !== null) {
-        // If it has selectedKeys property, use the first value
-        const keyObj = key as { selectedKeys?: unknown[] };
-        if (
-          'selectedKeys' in keyObj &&
-          Array.isArray(keyObj.selectedKeys) &&
-          keyObj.selectedKeys.length > 0
-        ) {
-          return String(keyObj.selectedKeys[0]);
-        }
-        // Otherwise, convert to string and log warning
-        console.warn('Unexpected object in selectedKeys:', key);
-        return String(key);
-      }
-      return String(key);
-    })
-    .filter((key) => typeof key === 'string' && !key.includes('"$typeName"'));
+// Helper to extract selections from ChoiceData based on the new oneof pattern
+function extractSelectionsFromChoiceData(choice: ChoiceData): string[] {
+  if (!choice.selection) return [];
+
+  switch (choice.selection.case) {
+    case 'name':
+      return [choice.selection.value];
+    case 'skills':
+      // Convert skill enums to strings
+      return choice.selection.value.skills?.map((skill) => String(skill)) || [];
+    case 'languages':
+      // Convert language enums to strings
+      return (
+        choice.selection.value.languages?.map((lang) => String(lang)) || []
+      );
+    case 'equipment':
+      // EquipmentList has items field, not equipment
+      return choice.selection.value.items || [];
+    case 'spells':
+      return choice.selection.value.spells || [];
+    case 'cantrips':
+      return choice.selection.value.cantrips || [];
+    case 'race':
+      // Convert race enum to string
+      return [String(choice.selection.value)];
+    case 'class':
+      // Convert class enum to string
+      return [String(choice.selection.value)];
+    case 'background':
+      // Convert background enum to string
+      return [String(choice.selection.value)];
+    default:
+      console.warn('Unknown choice selection case:', choice.selection);
+      return [];
+  }
 }
 
 // Helper to convert our choice format to ChoiceSelection
@@ -336,17 +350,17 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             const raceChoicesFromDraft: Record<string, string[]> = {};
             const classChoicesFromDraft: Record<string, string[]> = {};
 
-            response.draft.choices.forEach((choice: ChoiceSelection) => {
-              // Ensure selectedKeys contains only strings, not objects
-              const cleanedKeys = cleanSelectedKeys(choice.selectedKeys);
+            response.draft.choices.forEach((choice: ChoiceData) => {
+              // Extract selections from the new ChoiceData structure
+              const selections = extractSelectionsFromChoiceData(choice);
 
               if (
                 choice.source === ChoiceSource.RACE ||
                 choice.source === ChoiceSource.SUBRACE
               ) {
-                raceChoicesFromDraft[choice.choiceId] = cleanedKeys;
+                raceChoicesFromDraft[choice.choiceId] = selections;
               } else if (choice.source === ChoiceSource.CLASS) {
-                classChoicesFromDraft[choice.choiceId] = cleanedKeys;
+                classChoicesFromDraft[choice.choiceId] = selections;
               }
               // TODO: Handle BACKGROUND when implemented
             });

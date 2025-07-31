@@ -1,5 +1,5 @@
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { EquipmentChoice } from './choices/EquipmentChoice';
 import { GenericChoice } from './choices/GenericChoice';
 import { LanguageChoice } from './choices/LanguageChoice';
@@ -22,7 +22,7 @@ export function ChoiceRenderer({
   currentSelections,
 }: ChoiceRendererProps) {
   switch (choice.choiceType) {
-    case ChoiceType.SKILL:
+    case ChoiceCategory.SKILLS:
       return (
         <SkillChoice
           choice={choice}
@@ -31,7 +31,7 @@ export function ChoiceRenderer({
         />
       );
 
-    case ChoiceType.EQUIPMENT:
+    case ChoiceCategory.EQUIPMENT:
       return (
         <EquipmentChoice
           choice={choice}
@@ -40,7 +40,7 @@ export function ChoiceRenderer({
         />
       );
 
-    case ChoiceType.SPELL:
+    case ChoiceCategory.SPELLS:
       return (
         <SpellChoice
           choice={choice}
@@ -49,7 +49,7 @@ export function ChoiceRenderer({
         />
       );
 
-    case ChoiceType.LANGUAGE:
+    case ChoiceCategory.LANGUAGES:
       return (
         <LanguageChoice
           choice={choice}
@@ -58,9 +58,9 @@ export function ChoiceRenderer({
         />
       );
 
-    case ChoiceType.TOOL:
-    case ChoiceType.WEAPON_PROFICIENCY:
-    case ChoiceType.ARMOR_PROFICIENCY:
+    case ChoiceCategory.TOOLS:
+    case ChoiceCategory.WEAPON_PROFICIENCIES:
+    case ChoiceCategory.ARMOR_PROFICIENCIES:
       // These are proficiency types that can be handled generically for now
       return (
         <GenericChoice
