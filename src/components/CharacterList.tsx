@@ -134,18 +134,10 @@ export function CharacterList({
                   </h3>
                   <div className="flex justify-between text-sm">
                     <span style={{ color: 'var(--ink-brown)' }}>
-                      {/* Use full object name if available, otherwise use ID */}
-                      {draft.race?.name ||
-                        (draft.raceId
-                          ? getRaceDisplayName(draft.raceId)
-                          : 'No Race')}
+                      {draft.race?.name || 'No Race'}
                     </span>
                     <span style={{ color: 'var(--ink-sepia)' }}>
-                      {/* Use full object name if available, otherwise use ID */}
-                      {draft.class?.name ||
-                        (draft.classId
-                          ? getClassDisplayName(draft.classId)
-                          : 'No Class')}
+                      {draft.class?.name || 'No Class'}
                     </span>
                   </div>
                   <div

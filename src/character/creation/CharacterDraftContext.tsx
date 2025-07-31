@@ -320,17 +320,15 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
           setDraft(response.draft);
           setDraftId(response.draft.id);
 
-          // Load race info - prefer the full object if available, otherwise we'll need to fetch it
+          // Load race info if race is set - it's already a RaceInfo object!
           if (response.draft.race) {
             setCurrentRaceInfo(response.draft.race);
           }
-          // Note: In v0.1.24+ we have raceId as well, but we still need the full RaceInfo for now
 
-          // Load class info - prefer the full object if available, otherwise we'll need to fetch it
+          // Load class info if class is set - it's already a ClassInfo object!
           if (response.draft.class) {
             setCurrentClassInfo(response.draft.class);
           }
-          // Note: In v0.1.24+ we have classId as well, but we still need the full ClassInfo for now
 
           // Load choices from draft
           if (response.draft.choices) {
