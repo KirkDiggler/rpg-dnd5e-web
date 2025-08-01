@@ -10,6 +10,18 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  optimizeDeps: {
+    // Force Vite to pre-bundle these deps
+    include: [
+      '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb',
+    ],
+    esbuildOptions: {
+      // Handle .ts files in node_modules
+      loader: {
+        '.ts': 'ts',
+      },
+    },
+  },
   server: {
     port: 3000,
     // Proxy API requests to the rpg-api server

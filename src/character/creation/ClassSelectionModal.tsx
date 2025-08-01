@@ -1,5 +1,5 @@
 import type { ClassInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ChoiceType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
@@ -203,7 +203,7 @@ export function ClassSelectionModal({
     // Validate skill choices
     const skillChoices =
       currentClassData.choices?.filter(
-        (choice) => choice.choiceType === ChoiceType.SKILL
+        (choice) => choice.choiceType === ChoiceCategory.SKILLS
       ) || [];
 
     for (const choice of skillChoices) {
@@ -219,7 +219,7 @@ export function ClassSelectionModal({
     // Validate equipment choices
     const equipmentChoices =
       currentClassData.choices?.filter(
-        (choice) => choice.choiceType === ChoiceType.EQUIPMENT
+        (choice) => choice.choiceType === ChoiceCategory.EQUIPMENT
       ) || [];
 
     for (const choice of equipmentChoices) {
@@ -236,9 +236,9 @@ export function ClassSelectionModal({
     const proficiencyChoices =
       currentClassData.choices?.filter(
         (choice) =>
-          choice.choiceType === ChoiceType.TOOL ||
-          choice.choiceType === ChoiceType.WEAPON_PROFICIENCY ||
-          choice.choiceType === ChoiceType.ARMOR_PROFICIENCY
+          choice.choiceType === ChoiceCategory.TOOLS ||
+          choice.choiceType === ChoiceCategory.WEAPON_PROFICIENCIES ||
+          choice.choiceType === ChoiceCategory.ARMOR_PROFICIENCIES
       ) || [];
 
     for (const choice of proficiencyChoices) {
@@ -254,7 +254,7 @@ export function ClassSelectionModal({
     // Validate feat choices
     const featChoices =
       currentClassData.choices?.filter(
-        (choice) => choice.choiceType === ChoiceType.FEAT
+        (choice) => choice.choiceType === ChoiceCategory.FEATS
       ) || [];
 
     for (const choice of featChoices) {
@@ -626,7 +626,7 @@ export function ClassSelectionModal({
             {(() => {
               const skillChoices =
                 currentClassData.choices?.filter(
-                  (choice) => choice.choiceType === ChoiceType.SKILL
+                  (choice) => choice.choiceType === ChoiceCategory.SKILLS
                 ) || [];
 
               if (skillChoices.length === 0) return null;
@@ -759,7 +759,7 @@ export function ClassSelectionModal({
             {(() => {
               const equipmentChoices =
                 currentClassData.choices?.filter(
-                  (choice) => choice.choiceType === ChoiceType.EQUIPMENT
+                  (choice) => choice.choiceType === ChoiceCategory.EQUIPMENT
                 ) || [];
 
               if (equipmentChoices.length === 0) return null;
@@ -805,9 +805,9 @@ export function ClassSelectionModal({
               const proficiencyChoices =
                 currentClassData.choices?.filter(
                   (choice) =>
-                    choice.choiceType === ChoiceType.TOOL ||
-                    choice.choiceType === ChoiceType.WEAPON_PROFICIENCY ||
-                    choice.choiceType === ChoiceType.ARMOR_PROFICIENCY
+                    choice.choiceType === ChoiceCategory.TOOLS ||
+                    choice.choiceType === ChoiceCategory.WEAPON_PROFICIENCIES ||
+                    choice.choiceType === ChoiceCategory.ARMOR_PROFICIENCIES
                 ) || [];
 
               if (proficiencyChoices.length === 0) return null;
@@ -850,7 +850,7 @@ export function ClassSelectionModal({
             {(() => {
               const featChoices =
                 currentClassData.choices?.filter(
-                  (choice) => choice.choiceType === ChoiceType.FEAT
+                  (choice) => choice.choiceType === ChoiceCategory.FEATS
                 ) || [];
 
               if (featChoices.length === 0) return null;
@@ -894,14 +894,16 @@ export function ClassSelectionModal({
               const otherChoices =
                 currentClassData.choices?.filter(
                   (choice) =>
-                    choice.choiceType === ChoiceType.SPELL ||
-                    choice.choiceType === ChoiceType.LANGUAGE ||
-                    (choice.choiceType !== ChoiceType.SKILL &&
-                      choice.choiceType !== ChoiceType.EQUIPMENT &&
-                      choice.choiceType !== ChoiceType.TOOL &&
-                      choice.choiceType !== ChoiceType.WEAPON_PROFICIENCY &&
-                      choice.choiceType !== ChoiceType.ARMOR_PROFICIENCY &&
-                      choice.choiceType !== ChoiceType.FEAT)
+                    choice.choiceType === ChoiceCategory.SPELLS ||
+                    choice.choiceType === ChoiceCategory.LANGUAGES ||
+                    (choice.choiceType !== ChoiceCategory.SKILLS &&
+                      choice.choiceType !== ChoiceCategory.EQUIPMENT &&
+                      choice.choiceType !== ChoiceCategory.TOOLS &&
+                      choice.choiceType !==
+                        ChoiceCategory.WEAPON_PROFICIENCIES &&
+                      choice.choiceType !==
+                        ChoiceCategory.ARMOR_PROFICIENCIES &&
+                      choice.choiceType !== ChoiceCategory.FEATS)
                 ) || [];
 
               if (otherChoices.length === 0) return null;
