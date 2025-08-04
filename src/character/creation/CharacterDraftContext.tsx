@@ -24,15 +24,18 @@ import {
   Skill,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { characterClient } from '../../api/client';
 import {
   useCreateDraft,
+  useListClasses,
+  useListRaces,
   useUpdateDraftAbilityScores,
   useUpdateDraftClass,
   useUpdateDraftName,
   useUpdateDraftRace,
 } from '../../api/hooks';
+import { classLookup, raceLookup } from '../../utils/lookupUtils';
 import {
   CharacterDraftContext,
   type CharacterDraftState,
@@ -126,6 +129,10 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  // Fetch available races and classes for lookups
+  const { data: availableRaces } = useListRaces({ pageSize: 50 });
+  const { data: availableClasses } = useListClasses({ pageSize: 50 });
+
   // API hooks
   const { createDraft: createDraftAPI } = useCreateDraft();
   const { updateName: updateNameAPI } = useUpdateDraftName();
@@ -133,6 +140,25 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const { updateClass: updateClassAPI } = useUpdateDraftClass();
   const { updateAbilityScores: updateAbilityScoresAPI } =
     useUpdateDraftAbilityScores();
+
+  // When draft loads and we have enum IDs, look up the full race/class info
+  useEffect(() => {
+    if (draft?.raceId && availableRaces && availableRaces.length > 0) {
+      const raceInfo = raceLookup.findByEnum(availableRaces, draft.raceId);
+      if (raceInfo) {
+        setCurrentRaceInfo(raceInfo);
+      }
+    }
+  }, [draft?.raceId, availableRaces]);
+
+  useEffect(() => {
+    if (draft?.classId && availableClasses && availableClasses.length > 0) {
+      const classInfo = classLookup.findByEnum(availableClasses, draft.classId);
+      if (classInfo) {
+        setCurrentClassInfo(classInfo);
+      }
+    }
+  }, [draft?.classId, availableClasses]);
 
   // Helper to collect all proficiencies from a race
   const collectRaceProficiencies = useCallback(
@@ -298,17 +324,8 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
           setDraft(response.draft);
           setDraftId(response.draft.id);
 
-          // Load race info if race is set - it's already a RaceInfo object!
-          if (response.draft.race) {
-            setCurrentRaceInfo(response.draft.race);
-          }
-          // Note: In v0.1.24+ we also have draft.raceId as Race enum
-
-          // Load class info if class is set - it's already a ClassInfo object!
-          if (response.draft.class) {
-            setCurrentClassInfo(response.draft.class);
-          }
-          // Note: In v0.1.24+ we also have draft.classId as Class enum
+          // Draft only contains enum IDs (raceId, classId)
+          // The useEffect hooks above will fetch the full info when available
 
           // Load choices from draft
           if (response.draft.choices) {
@@ -393,33 +410,9 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             setRaceChoices(raceChoicesFromDraft);
             setClassChoices(classChoicesFromDraft);
 
-            // Now recalculate proficiencies and languages with the loaded choices
-            const allProfs = new Set<string>();
-            const allLangs = new Set<string>();
-
-            if (response.draft.race) {
-              const raceProficiencies = collectRaceProficiencies(
-                response.draft.race,
-                raceChoicesFromDraft
-              );
-              const raceLanguages = collectRaceLanguages(
-                response.draft.race,
-                raceChoicesFromDraft
-              );
-              raceProficiencies.forEach((p) => allProfs.add(p));
-              raceLanguages.forEach((l) => allLangs.add(l));
-            }
-
-            if (response.draft.class) {
-              const classProficiencies = collectClassProficiencies(
-                response.draft.class,
-                classChoicesFromDraft
-              );
-              classProficiencies.forEach((p) => allProfs.add(p));
-            }
-
-            setAllProficiencies(allProfs);
-            setAllLanguages(allLangs);
+            // Don't calculate proficiencies/languages here since we don't have
+            // the full race/class info yet. The useEffect hooks will trigger
+            // recalculation once the data is loaded.
           }
         }
       } catch (err) {
@@ -639,6 +632,41 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     // We'll implement this once we understand the choice structure better
     return choices;
   }, []);
+
+  // Recalculate proficiencies and languages when race/class info changes
+  useEffect(() => {
+    const allProfs = new Set<string>();
+    const allLangs = new Set<string>();
+
+    if (currentRaceInfo) {
+      const raceProficiencies = collectRaceProficiencies(
+        currentRaceInfo,
+        raceChoices
+      );
+      const raceLanguages = collectRaceLanguages(currentRaceInfo, raceChoices);
+      raceProficiencies.forEach((p) => allProfs.add(p));
+      raceLanguages.forEach((l) => allLangs.add(l));
+    }
+
+    if (currentClassInfo) {
+      const classProficiencies = collectClassProficiencies(
+        currentClassInfo,
+        classChoices
+      );
+      classProficiencies.forEach((p) => allProfs.add(p));
+    }
+
+    setAllProficiencies(allProfs);
+    setAllLanguages(allLangs);
+  }, [
+    currentRaceInfo,
+    currentClassInfo,
+    raceChoices,
+    classChoices,
+    collectRaceProficiencies,
+    collectRaceLanguages,
+    collectClassProficiencies,
+  ]);
 
   const addRaceChoice = useCallback(
     (choiceKey: string, selection: string[]) => {

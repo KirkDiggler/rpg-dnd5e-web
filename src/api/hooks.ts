@@ -99,7 +99,7 @@ export function useGetCharacter(characterId: string) {
 
     fetchCharacter(controller.signal);
 
-    return () => controller.abort();
+    return () => controller.abort('Component unmounted');
   }, [fetchCharacter]);
 
   return { ...state, refetch: () => fetchCharacter() };
@@ -160,7 +160,7 @@ export function useListCharacters(
 
     fetchCharacters(undefined, controller.signal);
 
-    return () => controller.abort();
+    return () => controller.abort('Component unmounted');
   }, [fetchCharacters]);
 
   return {
@@ -219,7 +219,7 @@ export function useGetDraft(draftId: string) {
 
     fetchDraft(controller.signal);
 
-    return () => controller.abort();
+    return () => controller.abort('Component unmounted');
   }, [fetchDraft]);
 
   return { ...state, refetch: () => fetchDraft() };
@@ -279,7 +279,7 @@ export function useListDrafts(
 
     fetchDrafts(undefined, controller.signal);
 
-    return () => controller.abort();
+    return () => controller.abort('Component unmounted');
   }, [fetchDrafts]);
 
   return {
@@ -607,7 +607,7 @@ export function useListRaces(
 
     fetchRaces(undefined, controller.signal);
 
-    return () => controller.abort();
+    return () => controller.abort('Component unmounted');
   }, [fetchRaces]);
 
   return {
@@ -671,7 +671,7 @@ export function useListClasses(
 
     fetchClasses(undefined, controller.signal);
 
-    return () => controller.abort();
+    return () => controller.abort('Component unmounted');
   }, [fetchClasses]);
 
   return {
@@ -739,7 +739,7 @@ export function useListEquipmentByType(
 
     fetchEquipment(undefined, controller.signal);
 
-    return () => controller.abort();
+    return () => controller.abort('Component unmounted');
   }, [fetchEquipment]);
 
   return {
@@ -813,7 +813,7 @@ export function useListEquipmentByTypeConditional(
 
     fetchEquipment(undefined, controller.signal);
 
-    return () => controller.abort();
+    return () => controller.abort('Component unmounted');
   }, [fetchEquipment, enabled]);
 
   return {
