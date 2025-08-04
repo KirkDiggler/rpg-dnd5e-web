@@ -24,10 +24,12 @@ import {
   Skill,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { characterClient } from '../../api/client';
 import {
   useCreateDraft,
+  useListClasses,
+  useListRaces,
   useUpdateDraftAbilityScores,
   useUpdateDraftClass,
   useUpdateDraftName,
@@ -37,43 +39,6 @@ import {
   CharacterDraftContext,
   type CharacterDraftState,
 } from './CharacterDraftContextDef';
-
-// Helper to convert Race enum to display name
-function getRaceDisplayName(raceEnum: Race): string {
-  const raceNames: Record<Race, string> = {
-    [Race.UNSPECIFIED]: 'Unknown',
-    [Race.HUMAN]: 'Human',
-    [Race.ELF]: 'Elf',
-    [Race.DWARF]: 'Dwarf',
-    [Race.HALFLING]: 'Halfling',
-    [Race.DRAGONBORN]: 'Dragonborn',
-    [Race.GNOME]: 'Gnome',
-    [Race.HALF_ELF]: 'Half-Elf',
-    [Race.HALF_ORC]: 'Half-Orc',
-    [Race.TIEFLING]: 'Tiefling',
-  };
-  return raceNames[raceEnum] || 'Unknown Race';
-}
-
-// Helper to convert Class enum to display name
-function getClassDisplayName(classEnum: Class): string {
-  const classNames: Record<Class, string> = {
-    [Class.UNSPECIFIED]: 'Unknown',
-    [Class.BARBARIAN]: 'Barbarian',
-    [Class.BARD]: 'Bard',
-    [Class.CLERIC]: 'Cleric',
-    [Class.DRUID]: 'Druid',
-    [Class.FIGHTER]: 'Fighter',
-    [Class.MONK]: 'Monk',
-    [Class.PALADIN]: 'Paladin',
-    [Class.RANGER]: 'Ranger',
-    [Class.ROGUE]: 'Rogue',
-    [Class.SORCERER]: 'Sorcerer',
-    [Class.WARLOCK]: 'Warlock',
-    [Class.WIZARD]: 'Wizard',
-  };
-  return classNames[classEnum] || 'Unknown Class';
-}
 
 // Helper to convert RaceInfo name to Race enum
 function getRaceEnum(raceName: string): Race {
@@ -163,6 +128,10 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  // Get reference data for race/class lookups
+  const { data: availableRaces } = useListRaces({ pageSize: 50 });
+  const { data: availableClasses } = useListClasses({ pageSize: 50 });
+
   // API hooks
   const { createDraft: createDraftAPI } = useCreateDraft();
   const { updateName: updateNameAPI } = useUpdateDraftName();
@@ -170,6 +139,40 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const { updateClass: updateClassAPI } = useUpdateDraftClass();
   const { updateAbilityScores: updateAbilityScoresAPI } =
     useUpdateDraftAbilityScores();
+
+  // When draft has raceId but no race object, look it up from available races
+  useEffect(() => {
+    if (
+      draft?.raceId &&
+      availableRaces &&
+      availableRaces.length > 0 &&
+      !draft.race
+    ) {
+      const raceInfo = availableRaces.find(
+        (r) => r.id === Race[draft.raceId].toLowerCase()
+      );
+      if (raceInfo) {
+        setCurrentRaceInfo(raceInfo);
+      }
+    }
+  }, [draft?.raceId, draft?.race, availableRaces]);
+
+  // When draft has classId but no class object, look it up from available classes
+  useEffect(() => {
+    if (
+      draft?.classId &&
+      availableClasses &&
+      availableClasses.length > 0 &&
+      !draft.class
+    ) {
+      const classInfo = availableClasses.find(
+        (c) => c.id === Class[draft.classId].toLowerCase()
+      );
+      if (classInfo) {
+        setCurrentClassInfo(classInfo);
+      }
+    }
+  }, [draft?.classId, draft?.class, availableClasses]);
 
   // Helper to collect all proficiencies from a race
   const collectRaceProficiencies = useCallback(
@@ -338,22 +341,14 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
           // Load race info if available
           if (response.draft.race) {
             setCurrentRaceInfo(response.draft.race);
-          } else if (response.draft.raceId) {
-            // Create minimal RaceInfo from enum
-            setCurrentRaceInfo({
-              name: getRaceDisplayName(response.draft.raceId),
-            } as RaceInfo);
           }
+          // If we only have raceId, the useEffect will handle loading full RaceInfo
 
           // Load class info if available
           if (response.draft.class) {
             setCurrentClassInfo(response.draft.class);
-          } else if (response.draft.classId) {
-            // Create minimal ClassInfo from enum
-            setCurrentClassInfo({
-              name: getClassDisplayName(response.draft.classId),
-            } as ClassInfo);
           }
+          // If we only have classId, the useEffect will handle loading full ClassInfo
 
           // Load choices from draft
           if (response.draft.choices) {
