@@ -370,7 +370,15 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
                     // Convert skill enums to strings
                     if (choice.selection.value.skills) {
                       choice.selection.value.skills.forEach((skill: Skill) => {
-                        selections.push(skill.toString());
+                        // Convert enum to skill name
+                        const skillName = Object.entries(Skill).find(
+                          ([, value]) => value === skill
+                        )?.[0];
+                        if (skillName) {
+                          selections.push(
+                            `skill:${skillName.toLowerCase().replace(/_/g, ' ')}`
+                          );
+                        }
                       });
                     }
                     break;
@@ -379,7 +387,15 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
                     if (choice.selection.value.languages) {
                       choice.selection.value.languages.forEach(
                         (lang: Language) => {
-                          selections.push(lang.toString());
+                          // Convert enum to language name
+                          const languageName = Object.entries(Language).find(
+                            ([, value]) => value === lang
+                          )?.[0];
+                          if (languageName) {
+                            selections.push(
+                              `language:${languageName.toLowerCase().replace(/_/g, ' ')}`
+                            );
+                          }
                         }
                       );
                     }
