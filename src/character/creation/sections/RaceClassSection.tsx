@@ -6,6 +6,7 @@ import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
 import type { ClassChoices } from '../ClassSelectionModal';
@@ -15,12 +16,22 @@ import { RaceSelectionModal } from '../RaceSelectionModal';
 
 export function RaceClassSection() {
   const { setSelectedChoice } = useCharacterBuilder();
-  const { raceInfo, classInfo, setRace, setClass, raceChoices, classChoices } =
-    useCharacterDraft();
+  const {
+    raceInfo,
+    classInfo,
+    setRace,
+    setClass,
+    raceChoices,
+    classChoices,
+    allLanguages,
+    allProficiencies,
+  } = useCharacterDraft();
 
   // Debug logging
   console.log('RaceClassSection - raceInfo:', raceInfo);
   console.log('RaceClassSection - raceChoices:', raceChoices);
+  console.log('RaceClassSection - allLanguages:', allLanguages);
+  console.log('RaceClassSection - allProficiencies:', allProficiencies);
 
   const [showRaceModal, setShowRaceModal] = useState(false);
   const [showClassModal, setShowClassModal] = useState(false);
@@ -214,6 +225,7 @@ export function RaceClassSection() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {/* Display racial traits */}
                   {selectedRaceData.traits.map((trait) => (
                     <TraitBadge
                       key={trait.name}
@@ -222,6 +234,47 @@ export function RaceClassSection() {
                       icon={TraitIcons.racial}
                     />
                   ))}
+
+                  {/* Display race's built-in languages */}
+                  {selectedRaceData.languages &&
+                    selectedRaceData.languages.length > 0 && (
+                      <>
+                        {selectedRaceData.languages.map((langEnum) => {
+                          // Convert enum to display name
+                          const langName = Object.entries(Language).find(
+                            ([, value]) => value === langEnum
+                          )?.[0];
+                          if (!langName) return null;
+                          return (
+                            <TraitBadge
+                              key={`lang-${langName}`}
+                              name={langName.replace(/_/g, ' ').toLowerCase()}
+                              type="language"
+                              icon="🗣️"
+                            />
+                          );
+                        })}
+                      </>
+                    )}
+
+                  {/* Display race's built-in proficiencies */}
+                  {selectedRaceData.proficiencies &&
+                    selectedRaceData.proficiencies.length > 0 && (
+                      <>
+                        {selectedRaceData.proficiencies.map((prof) => (
+                          <TraitBadge
+                            key={`prof-${prof}`}
+                            name={prof.replace(
+                              /^(skill:|weapon:|armor:|tool:)/,
+                              ''
+                            )}
+                            type="proficiency"
+                            icon="⚔️"
+                          />
+                        ))}
+                      </>
+                    )}
+
                   {/* Display race choices */}
                   {raceChoices &&
                     Object.entries(raceChoices).map(([choiceId, selections]) =>
