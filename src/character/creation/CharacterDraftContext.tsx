@@ -449,6 +449,10 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             setRaceChoices(raceChoicesFromDraft);
             setClassChoices(classChoicesFromDraft);
 
+            // Debug logging
+            console.log('Loaded race choices:', raceChoicesFromDraft);
+            console.log('Loaded class choices:', classChoicesFromDraft);
+
             // Now recalculate proficiencies and languages with the loaded choices
             const allProfs = new Set<string>();
             const allLangs = new Set<string>();

@@ -18,6 +18,10 @@ export function RaceClassSection() {
   const { raceInfo, classInfo, setRace, setClass, raceChoices, classChoices } =
     useCharacterDraft();
 
+  // Debug logging
+  console.log('RaceClassSection - raceInfo:', raceInfo);
+  console.log('RaceClassSection - raceChoices:', raceChoices);
+
   const [showRaceModal, setShowRaceModal] = useState(false);
   const [showClassModal, setShowClassModal] = useState(false);
   const [selectedRaceData, setSelectedRaceData] = useState<RaceInfo | null>(
@@ -29,13 +33,13 @@ export function RaceClassSection() {
 
   // Update selected data when draft loads
   useEffect(() => {
-    if (raceInfo && !selectedRaceData) {
+    if (raceInfo) {
       setSelectedRaceData(raceInfo);
     }
-    if (classInfo && !selectedClassData) {
+    if (classInfo) {
       setSelectedClassData(classInfo);
     }
-  }, [raceInfo, classInfo, selectedRaceData, selectedClassData]);
+  }, [raceInfo, classInfo]);
 
   // Format existing race choices for the modal
   const existingRaceChoices: RaceChoices | undefined =
