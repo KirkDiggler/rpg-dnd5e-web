@@ -218,6 +218,21 @@ export function RaceClassSection() {
                       icon={TraitIcons.racial}
                     />
                   ))}
+                  {/* Display race choices */}
+                  {raceChoices &&
+                    Object.entries(raceChoices).map(([choiceId, selections]) =>
+                      selections.map((selection) => (
+                        <TraitBadge
+                          key={`${choiceId}-${selection}`}
+                          name={selection.replace(
+                            /^(language:|skill:|tool:|proficiency:)/,
+                            ''
+                          )}
+                          type="choice"
+                          icon="✓"
+                        />
+                      ))
+                    )}
                 </div>
                 <p className="text-xs text-muted">Click to change race</p>
               </div>
@@ -289,6 +304,21 @@ export function RaceClassSection() {
                         icon={TraitIcons.class}
                       />
                     ))}
+                  {/* Display class choices */}
+                  {classChoices &&
+                    Object.entries(classChoices).map(([choiceId, selections]) =>
+                      selections.map((selection) => (
+                        <TraitBadge
+                          key={`${choiceId}-${selection}`}
+                          name={selection.replace(
+                            /^(skill:|tool:|proficiency:|equipment:)/,
+                            ''
+                          )}
+                          type="choice"
+                          icon="✓"
+                        />
+                      ))
+                    )}
                 </div>
                 <p className="text-xs text-muted">Click to change class</p>
               </div>
