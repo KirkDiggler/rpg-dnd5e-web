@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { ChoiceRenderer } from '../../components/ChoiceRenderer';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
-import { FeatureChoiceSelector } from './components/FeatureChoiceSelector';
 import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
@@ -267,30 +266,19 @@ export function ClassSelectionModal({
       }
     }
 
-    // Validate feature choices
-    const hasFeatureChoices =
-      currentClassData.level1Features &&
-      currentClassData.level1Features.some(
-        (f) => f.choices && f.choices.length > 0
-      );
+    // Validate feature choices - features are now in the choices array
+    const featureChoices =
+      currentClassData.choices?.filter(
+        (choice) => choice.choiceType === ChoiceCategory.FEATURE
+      ) || [];
 
-    if (hasFeatureChoices) {
-      for (const feature of currentClassData.level1Features) {
-        if (feature.choices && feature.choices.length > 0) {
-          const featureSelections =
-            currentClassChoices.features[feature.id] || {};
-
-          // Check each choice in the feature
-          for (const choice of feature.choices) {
-            const selections = featureSelections[choice.id] || [];
-            if (selections.length !== choice.chooseCount) {
-              setErrorMessage(
-                `Please select ${choice.chooseCount} option${choice.chooseCount > 1 ? 's' : ''} for ${feature.name}: ${choice.description}`
-              );
-              return;
-            }
-          }
-        }
+    for (const choice of featureChoices) {
+      const selections = currentClassChoices.proficiencies[choice.id] || [];
+      if (selections.length < choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} option${choice.chooseCount > 1 ? 's' : ''} for ${choice.description}`
+        );
+        return;
       }
     }
 
@@ -493,26 +481,51 @@ export function ClassSelectionModal({
                   >
                     Skills
                   </h4>
-                  <p
-                    style={{
-                      color: textPrimary,
-                      fontSize: '14px',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Choose {currentClassData.skillChoicesCount} from:
-                  </p>
-                  <div
-                    style={{
-                      fontSize: '14px',
-                      color: textPrimary,
-                      opacity: 0.9,
-                    }}
-                  >
-                    {currentClassData.availableSkills.slice(0, 6).join(', ')}
-                    {currentClassData.availableSkills.length > 6 &&
-                      ` +${currentClassData.availableSkills.length - 6} more`}
-                  </div>
+                  {(() => {
+                    const skillChoice = currentClassData.choices?.find(
+                      (choice) => choice.choiceType === ChoiceCategory.SKILLS
+                    );
+                    if (!skillChoice)
+                      return (
+                        <p style={{ color: textPrimary, fontSize: '14px' }}>
+                          No skill choices available
+                        </p>
+                      );
+
+                    const skillOptions =
+                      skillChoice.optionSet?.case === 'explicitOptions'
+                        ? skillChoice.optionSet.value.options
+                            .filter((opt) => opt.optionType.case === 'item')
+                            .map((opt) =>
+                              opt.optionType.value.name.replace(/-/g, ' ')
+                            )
+                        : [];
+
+                    return (
+                      <>
+                        <p
+                          style={{
+                            color: textPrimary,
+                            fontSize: '14px',
+                            marginBottom: '8px',
+                          }}
+                        >
+                          Choose {skillChoice.chooseCount} from:
+                        </p>
+                        <div
+                          style={{
+                            fontSize: '14px',
+                            color: textPrimary,
+                            opacity: 0.9,
+                          }}
+                        >
+                          {skillOptions.slice(0, 6).join(', ')}
+                          {skillOptions.length > 6 &&
+                            ` +${skillOptions.length - 6} more`}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </CollapsibleSection>
@@ -665,95 +678,7 @@ export function ClassSelectionModal({
               );
             })()}
 
-            {/* Class Features */}
-            {currentClassData.level1Features &&
-              currentClassData.level1Features.length > 0 && (
-                <CollapsibleSection title="Class Features" defaultOpen={true}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '12px',
-                    }}
-                  >
-                    {currentClassData.level1Features.map((feature) => (
-                      <div
-                        key={feature.id}
-                        style={{
-                          padding: '12px',
-                          backgroundColor: bgSecondary,
-                          borderRadius: '8px',
-                          border:
-                            feature.choices && feature.choices.length > 0
-                              ? '2px solid var(--accent-primary)'
-                              : `1px solid ${borderPrimary}`,
-                        }}
-                      >
-                        <h4
-                          style={{
-                            color: textPrimary,
-                            fontWeight: 'bold',
-                            marginBottom: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                          }}
-                        >
-                          {feature.name}
-                          {feature.choices && feature.choices.length > 0 && (
-                            <span
-                              style={{
-                                fontSize: '12px',
-                                padding: '2px 8px',
-                                backgroundColor: accentPrimary,
-                                color: 'white',
-                                borderRadius: '4px',
-                              }}
-                            >
-                              Choice Required
-                            </span>
-                          )}
-                        </h4>
-                        <p
-                          style={{
-                            color: textPrimary,
-                            fontSize: '14px',
-                            opacity: 0.9,
-                            lineHeight: '1.5',
-                          }}
-                        >
-                          {feature.description}
-                        </p>
-                        {feature.choices && feature.choices.length > 0 && (
-                          <FeatureChoiceSelector
-                            feature={feature}
-                            currentSelections={
-                              currentClassChoices.features[feature.id] || {}
-                            }
-                            onSelect={(featureId, choiceId, selections) => {
-                              setClassChoicesMap((prev) => ({
-                                ...prev,
-                                [currentClassName]: {
-                                  ...currentClassChoices,
-                                  features: {
-                                    ...currentClassChoices.features,
-                                    [featureId]: {
-                                      ...(currentClassChoices.features[
-                                        featureId
-                                      ] ?? {}),
-                                      [choiceId]: selections,
-                                    },
-                                  },
-                                },
-                              }));
-                            }}
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleSection>
-              )}
+            {/* Class Features are now part of the choices array - handled by ChoiceRenderer */}
 
             {/* Equipment Choices from new choice system */}
             {(() => {
@@ -941,55 +866,6 @@ export function ClassSelectionModal({
                 </CollapsibleSection>
               );
             })()}
-
-            {/* Features Section */}
-            <div style={{ marginBottom: '20px' }}>
-              <h4
-                style={{
-                  color: textPrimary,
-                  fontWeight: 'bold',
-                  marginBottom: '8px',
-                }}
-              >
-                Level 1 Features
-              </h4>
-              <div
-                style={{
-                  maxHeight: '120px',
-                  overflowY: 'auto',
-                  padding: '8px',
-                  backgroundColor: bgSecondary,
-                  borderRadius: '6px',
-                  border: `1px solid ${borderPrimary}`,
-                }}
-              >
-                {currentClassData.level1Features.map((feature, i) => (
-                  <div key={i} style={{ marginBottom: '8px' }}>
-                    <div
-                      style={{
-                        color: textPrimary,
-                        fontSize: '13px',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      {feature.name}
-                    </div>
-                    {feature.description && (
-                      <div
-                        style={{
-                          color: textPrimary,
-                          fontSize: '14px',
-                          lineHeight: '1.4',
-                          opacity: 0.9,
-                        }}
-                      >
-                        {feature.description}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
 
             {/* Starting Equipment */}
             {currentClassData.startingEquipment.length > 0 && (

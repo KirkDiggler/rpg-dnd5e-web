@@ -16,22 +16,8 @@ import { RaceSelectionModal } from '../RaceSelectionModal';
 
 export function RaceClassSection() {
   const { setSelectedChoice } = useCharacterBuilder();
-  const {
-    raceInfo,
-    classInfo,
-    setRace,
-    setClass,
-    raceChoices,
-    classChoices,
-    allLanguages,
-    allProficiencies,
-  } = useCharacterDraft();
-
-  // Debug logging
-  console.log('RaceClassSection - raceInfo:', raceInfo);
-  console.log('RaceClassSection - raceChoices:', raceChoices);
-  console.log('RaceClassSection - allLanguages:', allLanguages);
-  console.log('RaceClassSection - allProficiencies:', allProficiencies);
+  const { raceInfo, classInfo, setRace, setClass, raceChoices, classChoices } =
+    useCharacterDraft();
 
   const [showRaceModal, setShowRaceModal] = useState(false);
   const [showClassModal, setShowClassModal] = useState(false);
@@ -44,12 +30,10 @@ export function RaceClassSection() {
 
   // Update selected data when draft loads
   useEffect(() => {
-    console.log('RaceClassSection useEffect - raceInfo changed:', raceInfo);
     setSelectedRaceData(raceInfo);
   }, [raceInfo]);
 
   useEffect(() => {
-    console.log('RaceClassSection useEffect - classInfo changed:', classInfo);
     setSelectedClassData(classInfo);
   }, [classInfo]);
 
@@ -226,17 +210,6 @@ export function RaceClassSection() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {(() => {
-                    console.log('Rendering race section:');
-                    console.log('- selectedRaceData:', selectedRaceData);
-                    console.log('- traits:', selectedRaceData.traits);
-                    console.log('- languages:', selectedRaceData.languages);
-                    console.log(
-                      '- proficiencies:',
-                      selectedRaceData.proficiencies
-                    );
-                    return null;
-                  })()}
                   {/* Display racial traits */}
                   {selectedRaceData.traits.map((trait) => (
                     <TraitBadge

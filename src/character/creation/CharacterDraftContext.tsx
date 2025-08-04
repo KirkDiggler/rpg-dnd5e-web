@@ -483,10 +483,6 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             setRaceChoices(raceChoicesFromDraft);
             setClassChoices(classChoicesFromDraft);
 
-            // Debug logging
-            console.log('Loaded race choices:', raceChoicesFromDraft);
-            console.log('Loaded class choices:', classChoicesFromDraft);
-
             // The useEffect hooks will recalculate proficiencies and languages once the race/class are loaded
           }
         }

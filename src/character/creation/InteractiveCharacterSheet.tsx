@@ -833,17 +833,6 @@ export function InteractiveCharacterSheet({
                           Click to modify →
                         </span>
                       </div>
-                      {(() => {
-                        console.log('InteractiveCharacterSheet race display:');
-                        console.log('- selectedRace:', character.selectedRace);
-                        console.log(
-                          '- allProficiencies:',
-                          draft.allProficiencies
-                        );
-                        console.log('- allLanguages:', draft.allLanguages);
-                        console.log('- raceChoices:', draft.raceChoices);
-                        return null;
-                      })()}
                       {draft.allProficiencies.size > 0 ||
                       draft.allLanguages.size > 0 ? (
                         <div className="mt-2 text-xs space-y-1">
