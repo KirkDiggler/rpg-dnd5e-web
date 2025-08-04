@@ -1,6 +1,7 @@
 import type { Interceptor } from '@connectrpc/connect';
 import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
+import { DiceService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
 // Get API host from environment - handle Discord Activity proxy
@@ -49,3 +50,6 @@ const transport = createGrpcWebTransport({
 
 // Create the character service client
 export const characterClient = createClient(CharacterService, transport);
+
+// Create the dice service client
+export const diceClient = createClient(DiceService, transport);

@@ -1,0 +1,504 @@
+import { useAbilityScoreRolls } from '@/api/diceHooks';
+import { useUpdateDraftAbilityScores } from '@/api/hooks';
+import { AnimatedStat } from '@/components/AnimatedStat';
+import { Button } from '@/components/ui/Button';
+import { useDiscord } from '@/discord';
+import { create } from '@bufbuild/protobuf';
+import type { DiceRoll } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
+import { RollAssignmentsSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { motion } from 'framer-motion';
+import { CheckCircle, Dices, RefreshCw } from 'lucide-react';
+import { useContext, useEffect, useState } from 'react';
+import { CharacterDraftContext } from '../CharacterDraftContextDef';
+
+const ABILITY_NAMES = [
+  { key: 'strength', label: 'Strength', abbr: 'STR' },
+  { key: 'dexterity', label: 'Dexterity', abbr: 'DEX' },
+  { key: 'constitution', label: 'Constitution', abbr: 'CON' },
+  { key: 'intelligence', label: 'Intelligence', abbr: 'INT' },
+  { key: 'wisdom', label: 'Wisdom', abbr: 'WIS' },
+  { key: 'charisma', label: 'Charisma', abbr: 'CHA' },
+];
+
+interface DiceRollDisplayProps {
+  roll: DiceRoll;
+  isAssigned: boolean;
+  isSelected: boolean;
+  onClick: () => void;
+}
+
+function DiceRollDisplay({
+  roll,
+  isAssigned,
+  isSelected,
+  onClick,
+}: DiceRollDisplayProps) {
+  const getModifier = (score: number) => Math.floor((score - 10) / 2);
+
+  // Calculate the correct total by summing dice minus dropped values
+  const calculateTotal = () => {
+    if (roll.dropped.length === 0) return roll.total;
+
+    // For 4d6 drop lowest, sum all dice then subtract the dropped ones
+    const allDiceSum = roll.dice.reduce((sum, die) => sum + die, 0);
+    const droppedSum = roll.dropped.reduce((sum, die) => sum + die, 0);
+    return allDiceSum - droppedSum;
+  };
+
+  const actualTotal = calculateTotal();
+  const modifier = getModifier(actualTotal);
+  const modifierStr = modifier >= 0 ? `+${modifier}` : `${modifier}`;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+        isAssigned
+          ? 'opacity-50 cursor-not-allowed'
+          : isSelected
+            ? 'border-blue-500 bg-blue-500/10'
+            : 'border-gray-300 hover:border-gray-400'
+      }`}
+      onClick={!isAssigned ? onClick : undefined}
+      style={{
+        backgroundColor: isAssigned
+          ? 'var(--bg-secondary)'
+          : isSelected
+            ? 'var(--accent-bg)'
+            : 'var(--card-bg)',
+        borderColor: isSelected
+          ? 'var(--accent-primary)'
+          : 'var(--border-primary)',
+      }}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-2xl font-bold">{actualTotal}</span>
+        <span className="text-sm text-muted">{modifierStr}</span>
+      </div>
+      <div className="flex gap-1 text-xs">
+        {roll.dice.map((die, idx) => {
+          // Mark the indices of dropped dice to display them correctly
+          const droppedIndices = new Set<number>();
+
+          // Mark the indices of dropped dice
+          const diceCopy = [...roll.dice];
+          roll.dropped.forEach((droppedValue) => {
+            const index = diceCopy.indexOf(droppedValue);
+            if (index !== -1) {
+              droppedIndices.add(index);
+              diceCopy[index] = -1; // Mark as used
+            }
+          });
+
+          const isDropped = droppedIndices.has(idx);
+
+          return (
+            <span
+              key={idx}
+              className={`px-1 py-0.5 rounded ${
+                isDropped ? 'opacity-50 line-through' : ''
+              }`}
+              style={{
+                backgroundColor: isDropped
+                  ? 'var(--bg-tertiary)'
+                  : 'var(--bg-secondary)',
+              }}
+            >
+              {die}
+            </span>
+          );
+        })}
+      </div>
+      {isAssigned && <div className="text-xs text-muted mt-1">Assigned</div>}
+    </motion.div>
+  );
+}
+
+interface AbilitySlotProps {
+  ability: (typeof ABILITY_NAMES)[0];
+  assignedRoll?: DiceRoll;
+  onSelect: () => void;
+  isSelected: boolean;
+}
+
+function AbilitySlot({
+  ability,
+  assignedRoll,
+  onSelect,
+  isSelected,
+}: AbilitySlotProps) {
+  const getModifier = (score: number) => Math.floor((score - 10) / 2);
+
+  // Calculate the correct total if we have an assigned roll
+  const calculateTotal = (roll: DiceRoll) => {
+    if (!roll.dropped || roll.dropped.length === 0) return roll.total;
+    const allDiceSum = roll.dice.reduce((sum, die) => sum + die, 0);
+    const droppedSum = roll.dropped.reduce((sum, die) => sum + die, 0);
+    return allDiceSum - droppedSum;
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+        isSelected
+          ? 'border-blue-500 bg-blue-500/10'
+          : assignedRoll
+            ? 'border-green-500'
+            : 'border-gray-300 hover:border-gray-400'
+      }`}
+      onClick={onSelect}
+      style={{
+        backgroundColor: isSelected ? 'var(--accent-bg)' : 'var(--card-bg)',
+        borderColor: isSelected
+          ? 'var(--accent-primary)'
+          : assignedRoll
+            ? 'var(--success)'
+            : 'var(--border-primary)',
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <h3
+          className="font-bold text-sm"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          {ability.abbr}
+        </h3>
+        {assignedRoll && (
+          <CheckCircle
+            className="w-4 h-4"
+            style={{ color: 'var(--success)' }}
+          />
+        )}
+      </div>
+
+      {assignedRoll ? (
+        <AnimatedStat
+          label={ability.label}
+          value={calculateTotal(assignedRoll)}
+          previousValue={10}
+          modifier={getModifier(calculateTotal(assignedRoll))}
+          animate={true}
+          variant="compact"
+          size="small"
+        />
+      ) : (
+        <div className="text-center py-4">
+          <p className="text-sm text-muted">Click to assign</p>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+interface AbilityScoresSectionV2Props {
+  draftId?: string;
+  playerId?: string;
+}
+
+export function AbilityScoresSectionV2({
+  draftId: propDraftId,
+  playerId: propPlayerId,
+}: AbilityScoresSectionV2Props = {}) {
+  const context = useContext(CharacterDraftContext);
+  const discord = useDiscord();
+  const isDevelopment = import.meta.env.MODE === 'development';
+
+  const contextDraftId = context?.draftId;
+  const draftId = propDraftId || contextDraftId;
+  const playerId =
+    propPlayerId || discord.user?.id || (isDevelopment ? 'test-player' : '');
+  const [selectedRoll, setSelectedRoll] = useState<string | null>(null);
+  const [selectedAbility, setSelectedAbility] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const {
+    rolls,
+    assignments,
+    loading,
+    error,
+    loadExistingRolls,
+    rollAbilityScores,
+    assignRoll,
+    unassignRoll,
+    isRollAssigned,
+    getAssignedRoll,
+    isComplete,
+    getRollAssignments,
+  } = useAbilityScoreRolls(playerId);
+
+  const { updateAbilityScores } = useUpdateDraftAbilityScores();
+
+  // Load existing rolls on mount
+  useEffect(() => {
+    if (playerId) {
+      loadExistingRolls();
+    }
+    // Only run on mount and when playerId changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerId]);
+
+  // Handle roll selection
+  const handleRollClick = (rollId: string) => {
+    if (isRollAssigned(rollId)) return;
+
+    if (selectedAbility) {
+      // Assign roll to selected ability
+      assignRoll(selectedAbility, rollId);
+      setSelectedAbility(null);
+      setSelectedRoll(null);
+    } else {
+      // Select roll
+      setSelectedRoll(rollId === selectedRoll ? null : rollId);
+    }
+  };
+
+  // Handle ability selection
+  const handleAbilityClick = (abilityKey: string) => {
+    if (selectedRoll) {
+      // Assign selected roll to ability
+      assignRoll(abilityKey, selectedRoll);
+      setSelectedRoll(null);
+      setSelectedAbility(null);
+    } else {
+      // Select ability or unassign if already assigned
+      if (getAssignedRoll(abilityKey)) {
+        unassignRoll(abilityKey);
+      } else {
+        setSelectedAbility(abilityKey === selectedAbility ? null : abilityKey);
+      }
+    }
+  };
+
+  // Roll individual ability score
+  const handleRollOne = async () => {
+    try {
+      await rollAbilityScores(1);
+    } catch (error) {
+      console.error('Failed to roll:', error);
+    }
+  };
+
+  // Roll all ability scores at once
+  const handleRollAll = async () => {
+    try {
+      await rollAbilityScores(6);
+    } catch (error) {
+      console.error('Failed to roll all:', error);
+    }
+  };
+
+  // Submit ability scores to server
+  const handleSubmit = async () => {
+    if (!draftId || !isComplete()) return;
+
+    setIsSubmitting(true);
+    try {
+      const rollAssignments = create(
+        RollAssignmentsSchema,
+        getRollAssignments()
+      );
+
+      await updateAbilityScores({
+        draftId,
+        scoresInput: {
+          value: rollAssignments,
+          case: 'rollAssignments',
+        },
+      });
+
+      // Update context if needed
+      if (context?.updateAbilityScores) {
+        const calculateTotal = (roll: DiceRoll | undefined) => {
+          if (!roll) return 10;
+          if (!roll.dropped || roll.dropped.length === 0) return roll.total;
+          const allDiceSum = roll.dice.reduce((sum, die) => sum + die, 0);
+          const droppedSum = roll.dropped.reduce((sum, die) => sum + die, 0);
+          return allDiceSum - droppedSum;
+        };
+
+        const scores = {
+          strength: calculateTotal(
+            rolls.find((r) => r.rollId === assignments.strength)
+          ),
+          dexterity: calculateTotal(
+            rolls.find((r) => r.rollId === assignments.dexterity)
+          ),
+          constitution: calculateTotal(
+            rolls.find((r) => r.rollId === assignments.constitution)
+          ),
+          intelligence: calculateTotal(
+            rolls.find((r) => r.rollId === assignments.intelligence)
+          ),
+          wisdom: calculateTotal(
+            rolls.find((r) => r.rollId === assignments.wisdom)
+          ),
+          charisma: calculateTotal(
+            rolls.find((r) => r.rollId === assignments.charisma)
+          ),
+        };
+        await context.updateAbilityScores(scores);
+      }
+    } catch (error) {
+      console.error('Failed to submit ability scores:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!draftId) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-muted">Please create a character draft first.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2
+          className="text-2xl font-bold font-serif"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          Ability Scores
+        </h2>
+
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={handleRollOne}
+            size="sm"
+            disabled={loading || rolls.length >= 6}
+          >
+            <Dices className="w-4 h-4 mr-1" />
+            Roll One
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleRollAll}
+            size="sm"
+            disabled={loading || rolls.length > 0}
+          >
+            <RefreshCw className="w-4 h-4 mr-1" />
+            Roll All (6)
+          </Button>
+        </div>
+      </div>
+
+      {error && (
+        <div
+          className="p-4 rounded-lg border"
+          style={{
+            backgroundColor: 'var(--danger-bg)',
+            borderColor: 'var(--danger)',
+          }}
+        >
+          <p className="text-sm">{error.message}</p>
+        </div>
+      )}
+
+      <div
+        className="p-4 rounded-lg"
+        style={{ backgroundColor: 'var(--bg-secondary)' }}
+      >
+        <p className="text-sm text-muted mb-2">
+          Roll dice using the buttons above, then assign them to abilities by
+          clicking a roll and then an ability slot.
+        </p>
+        <p className="text-sm text-muted">
+          Each roll uses 4d6, dropping the lowest die.
+        </p>
+      </div>
+
+      {/* Unassigned Rolls */}
+      {rolls.length > 0 && (
+        <div>
+          <h3
+            className="text-lg font-semibold mb-3"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Available Rolls
+          </h3>
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+            {rolls.map((roll) => (
+              <DiceRollDisplay
+                key={roll.rollId}
+                roll={roll}
+                isAssigned={isRollAssigned(roll.rollId)}
+                isSelected={selectedRoll === roll.rollId}
+                onClick={() => handleRollClick(roll.rollId)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ability Slots */}
+      <div>
+        <h3
+          className="text-lg font-semibold mb-3"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          Abilities
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {ABILITY_NAMES.map((ability) => {
+            const assignedRollId = getAssignedRoll(ability.key);
+            const assignedRoll = rolls.find((r) => r.rollId === assignedRollId);
+            return (
+              <AbilitySlot
+                key={ability.key}
+                ability={ability}
+                assignedRoll={assignedRoll}
+                onSelect={() => handleAbilityClick(ability.key)}
+                isSelected={selectedAbility === ability.key}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Submit Button */}
+      {isComplete() && (
+        <div className="flex justify-center pt-4">
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Saving...' : 'Confirm Ability Scores'}
+          </Button>
+        </div>
+      )}
+
+      {/* Stats Summary */}
+      <div className="text-center">
+        <p className="text-sm text-muted">
+          {Object.keys(assignments).length} of 6 abilities assigned
+        </p>
+        {isComplete() && (
+          <p className="text-sm text-muted mt-1">
+            Total modifier:{' '}
+            {ABILITY_NAMES.reduce((sum, ability) => {
+              const rollId = getAssignedRoll(ability.key);
+              const roll = rolls.find((r) => r.rollId === rollId);
+              if (!roll) return sum;
+
+              const total =
+                !roll.dropped || roll.dropped.length === 0
+                  ? roll.total
+                  : roll.dice.reduce((s, d) => s + d, 0) -
+                    roll.dropped.reduce((s, d) => s + d, 0);
+
+              return sum + Math.floor((total - 10) / 2);
+            }, 0)}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}

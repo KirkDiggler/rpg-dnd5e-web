@@ -5,10 +5,11 @@ import { CharacterDraftProvider } from './character/creation/CharacterDraftConte
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterList } from './components/CharacterList';
+import { ServerRollingDemo } from './components/ServerRollingDemo';
 import { ThemeSelector } from './components/ThemeSelector';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
-type AppView = 'character-list' | 'character-creation';
+type AppView = 'character-list' | 'character-creation' | 'server-rolling-demo';
 
 function AppContent() {
   const [currentView, setCurrentView] = useState<AppView>('character-list');
@@ -64,8 +65,33 @@ function AppContent() {
         animate={{ opacity: 1, y: 0 }}
         className="max-w-7xl mx-auto"
       >
-        {/* Theme Selector */}
-        <div className="flex justify-end mb-6">
+        {/* Theme Selector and Demo Toggle */}
+        <div className="flex justify-between items-center mb-6">
+          <button
+            onClick={() =>
+              setCurrentView(
+                currentView === 'server-rolling-demo'
+                  ? 'character-list'
+                  : 'server-rolling-demo'
+              )
+            }
+            className="px-4 py-2 rounded-lg transition-colors"
+            style={{
+              backgroundColor:
+                currentView === 'server-rolling-demo'
+                  ? 'var(--accent-primary)'
+                  : 'var(--bg-secondary)',
+              color:
+                currentView === 'server-rolling-demo'
+                  ? 'white'
+                  : 'var(--text-primary)',
+              border: '1px solid var(--border-primary)',
+            }}
+          >
+            {currentView === 'server-rolling-demo'
+              ? '← Back to Character List'
+              : '🎲 Server Rolling Demo'}
+          </button>
           <ThemeSelector />
         </div>
 
@@ -112,6 +138,8 @@ function AppContent() {
               <p className="mt-4 text-red-500">{discord.error}</p>
             )}
           </motion.div>
+        ) : currentView === 'server-rolling-demo' ? (
+          <ServerRollingDemo />
         ) : currentView === 'character-list' ? (
           <CharacterList
             playerId={playerId || 'test-player'}
