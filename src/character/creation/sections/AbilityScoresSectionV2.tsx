@@ -5,7 +5,10 @@ import { Button } from '@/components/ui/Button';
 import { useDiscord } from '@/discord';
 import { create } from '@bufbuild/protobuf';
 import type { DiceRoll } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
-import { RollAssignmentsSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  RollAssignmentsSchema,
+  UpdateAbilityScoresRequestSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { CheckCircle, Dices, RefreshCw } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
@@ -301,16 +304,18 @@ export function AbilityScoresSectionV2({
         getRollAssignments()
       );
 
-      await updateAbilityScores({
-        draftId,
-        scoresInput: {
-          value: rollAssignments,
-          case: 'rollAssignments',
-        },
-      });
+      await updateAbilityScores(
+        create(UpdateAbilityScoresRequestSchema, {
+          draftId,
+          scoresInput: {
+            value: rollAssignments,
+            case: 'rollAssignments',
+          },
+        })
+      );
 
       // Update context if needed
-      if (context?.updateAbilityScores) {
+      if (context?.setAbilityScores) {
         const calculateTotal = (roll: DiceRoll | undefined) => {
           if (!roll) return 10;
           if (!roll.dropped || roll.dropped.length === 0) return roll.total;
@@ -339,7 +344,7 @@ export function AbilityScoresSectionV2({
             rolls.find((r) => r.rollId === assignments.charisma)
           ),
         };
-        await context.updateAbilityScores(scores);
+        await context.setAbilityScores(scores);
       }
     } catch (error) {
       console.error('Failed to submit ability scores:', error);
