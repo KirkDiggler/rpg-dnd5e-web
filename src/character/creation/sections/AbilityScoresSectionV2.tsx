@@ -3,6 +3,12 @@ import { useUpdateDraftAbilityScores } from '@/api/hooks';
 import { AnimatedStat } from '@/components/AnimatedStat';
 import { Button } from '@/components/ui/Button';
 import { useDiscord } from '@/discord';
+import {
+  calculateDiceTotal,
+  formatModifier,
+  getAbilityModifier,
+  getDroppedDiceIndices,
+} from '@/utils/diceCalculations';
 import { create } from '@bufbuild/protobuf';
 import type { DiceRoll } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
 import {
@@ -36,21 +42,9 @@ function DiceRollDisplay({
   isSelected,
   onClick,
 }: DiceRollDisplayProps) {
-  const getModifier = (score: number) => Math.floor((score - 10) / 2);
-
-  // Calculate the correct total by summing dice minus dropped values
-  const calculateTotal = () => {
-    if (roll.dropped.length === 0) return roll.total;
-
-    // For 4d6 drop lowest, sum all dice then subtract the dropped ones
-    const allDiceSum = roll.dice.reduce((sum, die) => sum + die, 0);
-    const droppedSum = roll.dropped.reduce((sum, die) => sum + die, 0);
-    return allDiceSum - droppedSum;
-  };
-
-  const actualTotal = calculateTotal();
-  const modifier = getModifier(actualTotal);
-  const modifierStr = modifier >= 0 ? `+${modifier}` : `${modifier}`;
+  const actualTotal = calculateDiceTotal(roll);
+  const modifier = getAbilityModifier(actualTotal);
+  const modifierStr = formatModifier(modifier);
 
   return (
     <motion.div
@@ -80,38 +74,28 @@ function DiceRollDisplay({
         <span className="text-sm text-muted">{modifierStr}</span>
       </div>
       <div className="flex gap-1 text-xs">
-        {roll.dice.map((die, idx) => {
-          // Mark the indices of dropped dice to display them correctly
-          const droppedIndices = new Set<number>();
+        {(() => {
+          const droppedIndices = getDroppedDiceIndices(roll.dice, roll.dropped);
+          return roll.dice.map((die, idx) => {
+            const isDropped = droppedIndices.has(idx);
 
-          // Mark the indices of dropped dice
-          const diceCopy = [...roll.dice];
-          roll.dropped.forEach((droppedValue) => {
-            const index = diceCopy.indexOf(droppedValue);
-            if (index !== -1) {
-              droppedIndices.add(index);
-              diceCopy[index] = -1; // Mark as used
-            }
+            return (
+              <span
+                key={idx}
+                className={`px-1 py-0.5 rounded ${
+                  isDropped ? 'opacity-50 line-through' : ''
+                }`}
+                style={{
+                  backgroundColor: isDropped
+                    ? 'var(--bg-tertiary)'
+                    : 'var(--bg-secondary)',
+                }}
+              >
+                {die}
+              </span>
+            );
           });
-
-          const isDropped = droppedIndices.has(idx);
-
-          return (
-            <span
-              key={idx}
-              className={`px-1 py-0.5 rounded ${
-                isDropped ? 'opacity-50 line-through' : ''
-              }`}
-              style={{
-                backgroundColor: isDropped
-                  ? 'var(--bg-tertiary)'
-                  : 'var(--bg-secondary)',
-              }}
-            >
-              {die}
-            </span>
-          );
-        })}
+        })()}
       </div>
       {isAssigned && <div className="text-xs text-muted mt-1">Assigned</div>}
     </motion.div>
@@ -131,16 +115,6 @@ function AbilitySlot({
   onSelect,
   isSelected,
 }: AbilitySlotProps) {
-  const getModifier = (score: number) => Math.floor((score - 10) / 2);
-
-  // Calculate the correct total if we have an assigned roll
-  const calculateTotal = (roll: DiceRoll) => {
-    if (!roll.dropped || roll.dropped.length === 0) return roll.total;
-    const allDiceSum = roll.dice.reduce((sum, die) => sum + die, 0);
-    const droppedSum = roll.dropped.reduce((sum, die) => sum + die, 0);
-    return allDiceSum - droppedSum;
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -180,9 +154,9 @@ function AbilitySlot({
       {assignedRoll ? (
         <AnimatedStat
           label={ability.label}
-          value={calculateTotal(assignedRoll)}
+          value={calculateDiceTotal(assignedRoll)}
           previousValue={10}
-          modifier={getModifier(calculateTotal(assignedRoll))}
+          modifier={getAbilityModifier(calculateDiceTotal(assignedRoll))}
           animate={true}
           variant="compact"
           size="small"
@@ -209,8 +183,8 @@ export function AbilityScoresSectionV2({
   const discord = useDiscord();
   const isDevelopment = import.meta.env.MODE === 'development';
 
-  const contextDraftId = context?.draftId;
-  const draftId = propDraftId || contextDraftId;
+  // Simplified player ID resolution: props > discord > development fallback
+  const draftId = propDraftId || context?.draftId;
   const playerId =
     propPlayerId || discord.user?.id || (isDevelopment ? 'test-player' : '');
   const [selectedRoll, setSelectedRoll] = useState<string | null>(null);
@@ -316,33 +290,19 @@ export function AbilityScoresSectionV2({
 
       // Update context if needed
       if (context?.setAbilityScores) {
-        const calculateTotal = (roll: DiceRoll | undefined) => {
-          if (!roll) return 10;
-          if (!roll.dropped || roll.dropped.length === 0) return roll.total;
-          const allDiceSum = roll.dice.reduce((sum, die) => sum + die, 0);
-          const droppedSum = roll.dropped.reduce((sum, die) => sum + die, 0);
-          return allDiceSum - droppedSum;
+        const getScoreForAbility = (rollId: string | undefined): number => {
+          if (!rollId) return 10;
+          const roll = rolls.find((r) => r.rollId === rollId);
+          return roll ? calculateDiceTotal(roll) : 10;
         };
 
         const scores = {
-          strength: calculateTotal(
-            rolls.find((r) => r.rollId === assignments.strength)
-          ),
-          dexterity: calculateTotal(
-            rolls.find((r) => r.rollId === assignments.dexterity)
-          ),
-          constitution: calculateTotal(
-            rolls.find((r) => r.rollId === assignments.constitution)
-          ),
-          intelligence: calculateTotal(
-            rolls.find((r) => r.rollId === assignments.intelligence)
-          ),
-          wisdom: calculateTotal(
-            rolls.find((r) => r.rollId === assignments.wisdom)
-          ),
-          charisma: calculateTotal(
-            rolls.find((r) => r.rollId === assignments.charisma)
-          ),
+          strength: getScoreForAbility(assignments.strength),
+          dexterity: getScoreForAbility(assignments.dexterity),
+          constitution: getScoreForAbility(assignments.constitution),
+          intelligence: getScoreForAbility(assignments.intelligence),
+          wisdom: getScoreForAbility(assignments.wisdom),
+          charisma: getScoreForAbility(assignments.charisma),
         };
         await context.setAbilityScores(scores);
       }

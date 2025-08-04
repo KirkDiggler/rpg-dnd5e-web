@@ -163,3 +163,48 @@ When updating `@kirkdiggler/rpg-api-protos` version:
 3. Keep dependencies up to date with lock file
 4. Write tests for new features
 5. Use the CI check script added in `scripts/ci-check.sh`
+
+## PR Review Workflow
+
+### Checking for Review Comments
+
+After creating a PR, always check for automated review comments from tools like Copilot:
+
+```bash
+# View all PR comments
+gh pr view <PR_NUMBER> --comments
+
+# Check for inline review comments
+gh api repos/KirkDiggler/rpg-dnd5e-web/pulls/<PR_NUMBER>/comments
+```
+
+### Common Review Feedback
+
+1. **Code Duplication**: Extract repeated logic into utilities
+2. **Complex Logic**: Break down into smaller, testable functions
+3. **Type Safety**: Ensure proper TypeScript types and null checks
+4. **Performance**: Consider memoization for expensive calculations
+5. **Readability**: Add comments for complex algorithms
+
+### Addressing Review Comments
+
+1. **Create a todo list** for all review items
+2. **Address each comment** systematically
+3. **Test changes** with `npm run ci-check`
+4. **Update PR** with fixes
+5. **Respond to comments** explaining changes made
+
+### Example Review Response
+
+```bash
+# After addressing all comments
+git add -A
+git commit -m "refactor: Address PR review feedback
+
+- Extract dice calculation logic into utility functions
+- Improve duplicate roll prevention with full equality check
+- Simplify player ID resolution logic
+- Add helper function for dropped dice indices"
+
+git push
+```

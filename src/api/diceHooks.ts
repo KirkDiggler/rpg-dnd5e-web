@@ -1,3 +1,4 @@
+import { areDiceRollsEqual } from '@/utils/diceCalculations';
 import { create } from '@bufbuild/protobuf';
 import type { DiceRoll } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
 import {
@@ -170,14 +171,19 @@ export function useAbilityScoreRolls(playerId: string) {
           if (prev.length === 0) {
             return existingRolls;
           }
-          // Check for duplicates
-          const existingIds = new Set(prev.map((r) => r.rollId));
-          const uniqueNewRolls = existingRolls.filter(
-            (r) => !existingIds.has(r.rollId)
-          );
-          return uniqueNewRolls.length > 0
-            ? [...prev, ...uniqueNewRolls]
-            : prev;
+
+          // Merge with existing rolls, avoiding duplicates by checking full equality
+          const merged = [...prev];
+          existingRolls.forEach((newRoll) => {
+            const isDuplicate = merged.some((existingRoll) =>
+              areDiceRollsEqual(existingRoll, newRoll)
+            );
+            if (!isDuplicate) {
+              merged.push(newRoll);
+            }
+          });
+
+          return merged;
         });
       }
     } catch {
