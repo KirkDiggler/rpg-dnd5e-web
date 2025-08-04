@@ -4,6 +4,30 @@
 
 This is **rpg-dnd5e-web**, a React-based web UI for D&D 5e gameplay designed as a Discord Activity. It connects to the rpg-api gRPC server to provide character creation, combat, and game board visualization.
 
+## 🚨 CRITICAL: CI Pre-flight Checks
+
+**ALWAYS run CI checks locally before pushing to prevent CI failures:**
+
+```bash
+npm run ci-check  # Quick summary of all checks
+npm run ci-fix    # Auto-fix issues where possible
+```
+
+The `ci-check` script runs:
+
+- Format check (Prettier)
+- Lint check (ESLint)
+- Type check (TypeScript)
+- Build verification
+- Test suite
+
+If any check fails, fix the issues before pushing. This prevents:
+
+- Broken CI builds
+- Failed PRs
+- Wasted time debugging CI failures
+- Blocked deployments
+
 ## 🚨 CRITICAL: Proto Updates Require Lock File Regeneration
 
 When updating `@kirkdiggler/rpg-api-protos` version:
@@ -111,3 +135,31 @@ When updating `@kirkdiggler/rpg-api-protos` version:
 - API authentication via Discord token
 - Validate all user inputs
 - Sanitize rendered content
+
+## Common CI Issues and Solutions
+
+### TypeScript Errors
+
+- **Missing imports**: Use `create()` from `@bufbuild/protobuf` for proto messages
+- **Type mismatches**: Check proto-generated types match your usage
+- **Missing schemas**: Import `*Schema` types when using `create()`
+
+### Build Failures
+
+- **Large chunks**: Ignore the warning about chunks > 500KB (expected for proto libraries)
+- **Import errors**: Ensure all imports use correct paths (use `@/` alias)
+- **Missing dependencies**: Run `npm install` after pulling changes
+
+### Format/Lint Issues
+
+- **Auto-fix**: Run `npm run format` and `npm run lint --fix`
+- **Pre-commit hook**: Runs automatically via husky
+- **CI mismatch**: Ensure local prettier/eslint configs match CI
+
+### Best Practices
+
+1. Always run `npm run ci-check` before pushing
+2. Fix issues locally - don't rely on CI to catch them
+3. Keep dependencies up to date with lock file
+4. Write tests for new features
+5. Use the CI check script added in `scripts/ci-check.sh`
