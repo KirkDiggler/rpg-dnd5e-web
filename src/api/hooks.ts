@@ -58,33 +58,51 @@ export function useGetCharacter(characterId: string) {
     error: null,
   });
 
-  const fetchCharacter = useCallback(async () => {
-    if (!characterId) return;
+  const fetchCharacter = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!characterId) return;
 
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+      setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    try {
-      const request = create(GetCharacterRequestSchema, { characterId });
-      const response = await characterClient.getCharacter(request);
-      setState({
-        data: response.character || null,
-        loading: false,
-        error: null,
-      });
-    } catch (error) {
-      setState({
-        data: null,
-        loading: false,
-        error: error instanceof Error ? error : new Error('Unknown error'),
-      });
-    }
-  }, [characterId]);
+      try {
+        const request = create(GetCharacterRequestSchema, { characterId });
+        const response = await characterClient.getCharacter(request, {
+          signal,
+        });
+
+        // Only update state if not aborted
+        if (!signal?.aborted) {
+          setState({
+            data: response.character || null,
+            loading: false,
+            error: null,
+          });
+        }
+      } catch (error) {
+        // Ignore abort errors
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
+        setState({
+          data: null,
+          loading: false,
+          error: error instanceof Error ? error : new Error('Unknown error'),
+        });
+      }
+    },
+    [characterId]
+  );
 
   useEffect(() => {
-    fetchCharacter();
+    const controller = new AbortController();
+
+    fetchCharacter(controller.signal);
+
+    return () => controller.abort();
   }, [fetchCharacter]);
 
-  return { ...state, refetch: fetchCharacter };
+  return { ...state, refetch: () => fetchCharacter() };
 }
 
 export function useListCharacters(
@@ -98,7 +116,7 @@ export function useListCharacters(
   });
 
   const fetchCharacters = useCallback(
-    async (pageToken?: string) => {
+    async (pageToken?: string, signal?: AbortSignal) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -109,16 +127,24 @@ export function useListCharacters(
           playerId: filters.playerId || '',
         });
 
-        const response = await characterClient.listCharacters(request);
-
-        setState({
-          data: response.characters,
-          loading: false,
-          error: null,
-          nextPageToken: response.nextPageToken,
-          totalSize: response.totalSize,
+        const response = await characterClient.listCharacters(request, {
+          signal,
         });
+
+        if (!signal?.aborted) {
+          setState({
+            data: response.characters,
+            loading: false,
+            error: null,
+            nextPageToken: response.nextPageToken,
+            totalSize: response.totalSize,
+          });
+        }
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
         setState({
           data: [],
           loading: false,
@@ -130,12 +156,16 @@ export function useListCharacters(
   );
 
   useEffect(() => {
-    fetchCharacters();
+    const controller = new AbortController();
+
+    fetchCharacters(undefined, controller.signal);
+
+    return () => controller.abort();
   }, [fetchCharacters]);
 
   return {
     ...state,
-    refetch: fetchCharacters,
+    refetch: (pageToken?: string) => fetchCharacters(pageToken),
     loadMore: state.nextPageToken
       ? () => fetchCharacters(state.nextPageToken)
       : undefined,
@@ -150,33 +180,49 @@ export function useGetDraft(draftId: string) {
     error: null,
   });
 
-  const fetchDraft = useCallback(async () => {
-    if (!draftId) return;
+  const fetchDraft = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!draftId) return;
 
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+      setState((prev) => ({ ...prev, loading: true, error: null }));
 
-    try {
-      const request = create(GetDraftRequestSchema, { draftId });
-      const response = await characterClient.getDraft(request);
-      setState({
-        data: response.draft || null,
-        loading: false,
-        error: null,
-      });
-    } catch (error) {
-      setState({
-        data: null,
-        loading: false,
-        error: error instanceof Error ? error : new Error('Unknown error'),
-      });
-    }
-  }, [draftId]);
+      try {
+        const request = create(GetDraftRequestSchema, { draftId });
+        const response = await characterClient.getDraft(request, {
+          signal,
+        });
+
+        if (!signal?.aborted) {
+          setState({
+            data: response.draft || null,
+            loading: false,
+            error: null,
+          });
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
+        setState({
+          data: null,
+          loading: false,
+          error: error instanceof Error ? error : new Error('Unknown error'),
+        });
+      }
+    },
+    [draftId]
+  );
 
   useEffect(() => {
-    fetchDraft();
+    const controller = new AbortController();
+
+    fetchDraft(controller.signal);
+
+    return () => controller.abort();
   }, [fetchDraft]);
 
-  return { ...state, refetch: fetchDraft };
+  return { ...state, refetch: () => fetchDraft() };
 }
 
 export function useListDrafts(
@@ -190,7 +236,7 @@ export function useListDrafts(
   });
 
   const fetchDrafts = useCallback(
-    async (pageToken?: string) => {
+    async (pageToken?: string, signal?: AbortSignal) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -201,15 +247,23 @@ export function useListDrafts(
           pageToken: pageToken || '',
         });
 
-        const response = await characterClient.listDrafts(request);
-
-        setState({
-          data: response.drafts,
-          loading: false,
-          error: null,
-          nextPageToken: response.nextPageToken,
+        const response = await characterClient.listDrafts(request, {
+          signal,
         });
+
+        if (!signal?.aborted) {
+          setState({
+            data: response.drafts,
+            loading: false,
+            error: null,
+            nextPageToken: response.nextPageToken,
+          });
+        }
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
         setState({
           data: [],
           loading: false,
@@ -221,12 +275,16 @@ export function useListDrafts(
   );
 
   useEffect(() => {
-    fetchDrafts();
+    const controller = new AbortController();
+
+    fetchDrafts(undefined, controller.signal);
+
+    return () => controller.abort();
   }, [fetchDrafts]);
 
   return {
     ...state,
-    refetch: fetchDrafts,
+    refetch: (pageToken?: string) => fetchDrafts(pageToken),
     loadMore: state.nextPageToken
       ? () => fetchDrafts(state.nextPageToken)
       : undefined,
@@ -507,7 +565,7 @@ export function useListRaces(
   });
 
   const fetchRaces = useCallback(
-    async (pageToken?: string) => {
+    async (pageToken?: string, signal?: AbortSignal) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -516,16 +574,24 @@ export function useListRaces(
           pageToken: pageToken || '',
         });
 
-        const response = await characterClient.listRaces(request);
-
-        setState({
-          data: response.races,
-          loading: false,
-          error: null,
-          nextPageToken: response.nextPageToken,
-          totalSize: response.totalSize,
+        const response = await characterClient.listRaces(request, {
+          signal,
         });
+
+        if (!signal?.aborted) {
+          setState({
+            data: response.races,
+            loading: false,
+            error: null,
+            nextPageToken: response.nextPageToken,
+            totalSize: response.totalSize,
+          });
+        }
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
         setState({
           data: [],
           loading: false,
@@ -537,12 +603,16 @@ export function useListRaces(
   );
 
   useEffect(() => {
-    fetchRaces();
+    const controller = new AbortController();
+
+    fetchRaces(undefined, controller.signal);
+
+    return () => controller.abort();
   }, [fetchRaces]);
 
   return {
     ...state,
-    refetch: fetchRaces,
+    refetch: (pageToken?: string) => fetchRaces(pageToken),
     loadMore: state.nextPageToken
       ? () => fetchRaces(state.nextPageToken)
       : undefined,
@@ -559,7 +629,7 @@ export function useListClasses(
   });
 
   const fetchClasses = useCallback(
-    async (pageToken?: string) => {
+    async (pageToken?: string, signal?: AbortSignal) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -568,16 +638,24 @@ export function useListClasses(
           pageToken: pageToken || '',
         });
 
-        const response = await characterClient.listClasses(request);
-
-        setState({
-          data: response.classes,
-          loading: false,
-          error: null,
-          nextPageToken: response.nextPageToken,
-          totalSize: response.totalSize,
+        const response = await characterClient.listClasses(request, {
+          signal,
         });
+
+        if (!signal?.aborted) {
+          setState({
+            data: response.classes,
+            loading: false,
+            error: null,
+            nextPageToken: response.nextPageToken,
+            totalSize: response.totalSize,
+          });
+        }
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
         setState({
           data: [],
           loading: false,
@@ -589,12 +667,16 @@ export function useListClasses(
   );
 
   useEffect(() => {
-    fetchClasses();
+    const controller = new AbortController();
+
+    fetchClasses(undefined, controller.signal);
+
+    return () => controller.abort();
   }, [fetchClasses]);
 
   return {
     ...state,
-    refetch: fetchClasses,
+    refetch: (pageToken?: string) => fetchClasses(pageToken),
     loadMore: state.nextPageToken
       ? () => fetchClasses(state.nextPageToken)
       : undefined,
@@ -614,7 +696,7 @@ export function useListEquipmentByType(
   });
 
   const fetchEquipment = useCallback(
-    async (pageToken?: string) => {
+    async (pageToken?: string, signal?: AbortSignal) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -624,16 +706,24 @@ export function useListEquipmentByType(
           pageToken: pageToken || '',
         });
 
-        const response = await characterClient.listEquipmentByType(request);
-
-        setState({
-          data: response.equipment,
-          loading: false,
-          error: null,
-          nextPageToken: response.nextPageToken,
-          totalSize: response.totalSize,
+        const response = await characterClient.listEquipmentByType(request, {
+          signal,
         });
+
+        if (!signal?.aborted) {
+          setState({
+            data: response.equipment,
+            loading: false,
+            error: null,
+            nextPageToken: response.nextPageToken,
+            totalSize: response.totalSize,
+          });
+        }
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
         setState({
           data: [],
           loading: false,
@@ -645,12 +735,16 @@ export function useListEquipmentByType(
   );
 
   useEffect(() => {
-    fetchEquipment();
+    const controller = new AbortController();
+
+    fetchEquipment(undefined, controller.signal);
+
+    return () => controller.abort();
   }, [fetchEquipment]);
 
   return {
     ...state,
-    refetch: fetchEquipment,
+    refetch: (pageToken?: string) => fetchEquipment(pageToken),
     loadMore: state.nextPageToken
       ? () => fetchEquipment(state.nextPageToken)
       : undefined,
@@ -672,7 +766,7 @@ export function useListEquipmentByTypeConditional(
   });
 
   const fetchEquipment = useCallback(
-    async (pageToken?: string) => {
+    async (pageToken?: string, signal?: AbortSignal) => {
       if (!enabled) return;
 
       setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -684,16 +778,24 @@ export function useListEquipmentByTypeConditional(
           pageToken: pageToken || '',
         });
 
-        const response = await characterClient.listEquipmentByType(request);
-
-        setState({
-          data: response.equipment,
-          loading: false,
-          error: null,
-          nextPageToken: response.nextPageToken,
-          totalSize: response.totalSize,
+        const response = await characterClient.listEquipmentByType(request, {
+          signal,
         });
+
+        if (!signal?.aborted) {
+          setState({
+            data: response.equipment,
+            loading: false,
+            error: null,
+            nextPageToken: response.nextPageToken,
+            totalSize: response.totalSize,
+          });
+        }
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
         setState({
           data: [],
           loading: false,
@@ -705,14 +807,18 @@ export function useListEquipmentByTypeConditional(
   );
 
   useEffect(() => {
-    if (enabled) {
-      fetchEquipment();
-    }
+    if (!enabled) return;
+
+    const controller = new AbortController();
+
+    fetchEquipment(undefined, controller.signal);
+
+    return () => controller.abort();
   }, [fetchEquipment, enabled]);
 
   return {
     ...state,
-    refetch: fetchEquipment,
+    refetch: (pageToken?: string) => fetchEquipment(pageToken),
     loadMore: state.nextPageToken
       ? () => fetchEquipment(state.nextPageToken)
       : undefined,
