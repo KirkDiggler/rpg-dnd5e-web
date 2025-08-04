@@ -288,24 +288,9 @@ export function AbilityScoresSectionV2({
         })
       );
 
-      // Update context if needed
-      if (context?.setAbilityScores) {
-        const getScoreForAbility = (rollId: string | undefined): number => {
-          if (!rollId) return 10;
-          const roll = rolls.find((r) => r.rollId === rollId);
-          return roll ? calculateDiceTotal(roll) : 10;
-        };
-
-        const scores = {
-          strength: getScoreForAbility(assignments.strength),
-          dexterity: getScoreForAbility(assignments.dexterity),
-          constitution: getScoreForAbility(assignments.constitution),
-          intelligence: getScoreForAbility(assignments.intelligence),
-          wisdom: getScoreForAbility(assignments.wisdom),
-          charisma: getScoreForAbility(assignments.charisma),
-        };
-        await context.setAbilityScores(scores);
-      }
+      // Don't call context.setAbilityScores here as it would overwrite
+      // our roll assignments with raw ability scores. The server will
+      // handle calculating the scores from the roll assignments.
     } catch (error) {
       console.error('Failed to submit ability scores:', error);
     } finally {
