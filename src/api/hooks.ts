@@ -1,4 +1,5 @@
 import { create } from '@bufbuild/protobuf';
+import { Code, ConnectError } from '@connectrpc/connect';
 import type {
   Character,
   CharacterDraft,
@@ -79,8 +80,8 @@ export function useGetCharacter(characterId: string) {
           });
         }
       } catch (error) {
-        // Ignore abort errors
-        if (error instanceof Error && error.name === 'AbortError') {
+        // Ignore cancelled requests
+        if (error instanceof ConnectError && error.code === Code.Canceled) {
           return;
         }
 
@@ -141,7 +142,7 @@ export function useListCharacters(
           });
         }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
+        if (error instanceof ConnectError && error.code === Code.Canceled) {
           return;
         }
 
@@ -200,7 +201,7 @@ export function useGetDraft(draftId: string) {
           });
         }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
+        if (error instanceof ConnectError && error.code === Code.Canceled) {
           return;
         }
 
@@ -260,7 +261,7 @@ export function useListDrafts(
           });
         }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
+        if (error instanceof ConnectError && error.code === Code.Canceled) {
           return;
         }
 
@@ -588,7 +589,7 @@ export function useListRaces(
           });
         }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
+        if (error instanceof ConnectError && error.code === Code.Canceled) {
           return;
         }
 
@@ -652,7 +653,7 @@ export function useListClasses(
           });
         }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
+        if (error instanceof ConnectError && error.code === Code.Canceled) {
           return;
         }
 
@@ -720,7 +721,7 @@ export function useListEquipmentByType(
           });
         }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
+        if (error instanceof ConnectError && error.code === Code.Canceled) {
           return;
         }
 
@@ -792,7 +793,7 @@ export function useListEquipmentByTypeConditional(
           });
         }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
+        if (error instanceof ConnectError && error.code === Code.Canceled) {
           return;
         }
 
