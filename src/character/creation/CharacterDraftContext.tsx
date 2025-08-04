@@ -140,84 +140,6 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const { updateAbilityScores: updateAbilityScoresAPI } =
     useUpdateDraftAbilityScores();
 
-  // When draft has raceId, look it up from available races
-  useEffect(() => {
-    if (draft?.raceId && availableRaces && availableRaces.length > 0) {
-      const raceInfo = availableRaces.find(
-        (r) => r.id === Race[draft.raceId].toLowerCase()
-      );
-      if (raceInfo) {
-        setCurrentRaceInfo(raceInfo);
-
-        // Recalculate proficiencies and languages with the loaded race
-        const raceProficiencies = collectRaceProficiencies(
-          raceInfo,
-          raceChoices
-        );
-        const raceLanguages = collectRaceLanguages(raceInfo, raceChoices);
-
-        // If we have a class, include its proficiencies too
-        const classProficiencies = currentClassInfo
-          ? collectClassProficiencies(currentClassInfo, classChoices)
-          : new Set<string>();
-
-        setAllProficiencies(
-          new Set([...raceProficiencies, ...classProficiencies])
-        );
-        setAllLanguages(new Set([...raceLanguages]));
-      }
-    }
-  }, [
-    draft?.raceId,
-    availableRaces,
-    raceChoices,
-    classChoices,
-    currentClassInfo,
-    collectRaceProficiencies,
-    collectRaceLanguages,
-    collectClassProficiencies,
-  ]);
-
-  // When draft has classId, look it up from available classes
-  useEffect(() => {
-    if (draft?.classId && availableClasses && availableClasses.length > 0) {
-      const classInfo = availableClasses.find(
-        (c) => c.id === Class[draft.classId].toLowerCase()
-      );
-      if (classInfo) {
-        setCurrentClassInfo(classInfo);
-
-        // Recalculate proficiencies with the loaded class
-        const classProficiencies = collectClassProficiencies(
-          classInfo,
-          classChoices
-        );
-
-        // Include race proficiencies if we have a race
-        const raceProficiencies = currentRaceInfo
-          ? collectRaceProficiencies(currentRaceInfo, raceChoices)
-          : new Set<string>();
-        const raceLanguages = currentRaceInfo
-          ? collectRaceLanguages(currentRaceInfo, raceChoices)
-          : new Set<string>();
-
-        setAllProficiencies(
-          new Set([...raceProficiencies, ...classProficiencies])
-        );
-        setAllLanguages(new Set([...raceLanguages]));
-      }
-    }
-  }, [
-    draft?.classId,
-    availableClasses,
-    classChoices,
-    raceChoices,
-    currentRaceInfo,
-    collectClassProficiencies,
-    collectRaceProficiencies,
-    collectRaceLanguages,
-  ]);
-
   // Helper to collect all proficiencies from a race
   const collectRaceProficiencies = useCallback(
     (
@@ -340,6 +262,84 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     },
     [classChoices]
   );
+
+  // When draft has raceId, look it up from available races
+  useEffect(() => {
+    if (draft?.raceId && availableRaces && availableRaces.length > 0) {
+      const raceInfo = availableRaces.find(
+        (r) => r.id === Race[draft.raceId].toLowerCase()
+      );
+      if (raceInfo) {
+        setCurrentRaceInfo(raceInfo);
+
+        // Recalculate proficiencies and languages with the loaded race
+        const raceProficiencies = collectRaceProficiencies(
+          raceInfo,
+          raceChoices
+        );
+        const raceLanguages = collectRaceLanguages(raceInfo, raceChoices);
+
+        // If we have a class, include its proficiencies too
+        const classProficiencies = currentClassInfo
+          ? collectClassProficiencies(currentClassInfo, classChoices)
+          : new Set<string>();
+
+        setAllProficiencies(
+          new Set([...raceProficiencies, ...classProficiencies])
+        );
+        setAllLanguages(new Set([...raceLanguages]));
+      }
+    }
+  }, [
+    draft?.raceId,
+    availableRaces,
+    raceChoices,
+    classChoices,
+    currentClassInfo,
+    collectRaceProficiencies,
+    collectRaceLanguages,
+    collectClassProficiencies,
+  ]);
+
+  // When draft has classId, look it up from available classes
+  useEffect(() => {
+    if (draft?.classId && availableClasses && availableClasses.length > 0) {
+      const classInfo = availableClasses.find(
+        (c) => c.id === Class[draft.classId].toLowerCase()
+      );
+      if (classInfo) {
+        setCurrentClassInfo(classInfo);
+
+        // Recalculate proficiencies with the loaded class
+        const classProficiencies = collectClassProficiencies(
+          classInfo,
+          classChoices
+        );
+
+        // Include race proficiencies if we have a race
+        const raceProficiencies = currentRaceInfo
+          ? collectRaceProficiencies(currentRaceInfo, raceChoices)
+          : new Set<string>();
+        const raceLanguages = currentRaceInfo
+          ? collectRaceLanguages(currentRaceInfo, raceChoices)
+          : new Set<string>();
+
+        setAllProficiencies(
+          new Set([...raceProficiencies, ...classProficiencies])
+        );
+        setAllLanguages(new Set([...raceLanguages]));
+      }
+    }
+  }, [
+    draft?.classId,
+    availableClasses,
+    classChoices,
+    raceChoices,
+    currentRaceInfo,
+    collectClassProficiencies,
+    collectRaceProficiencies,
+    collectRaceLanguages,
+  ]);
 
   const createDraft = useCallback(
     async (playerId: string, sessionId?: string) => {
