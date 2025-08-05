@@ -3,15 +3,18 @@ import type {
   CharacterDraft,
   Choice,
   ChoiceData,
-  ChoiceSelection,
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   AbilityScoresSchema,
-  ChoiceSelectionSchema,
+  ChoiceCategory,
+  ChoiceDataSchema,
   ChoiceSource,
   CreateDraftRequestSchema,
+  EquipmentListSchema,
+  LanguageListSchema,
+  SkillListSchema,
   UpdateAbilityScoresRequestSchema,
   UpdateClassRequestSchema,
   UpdateNameRequestSchema,
@@ -87,26 +90,139 @@ function formatProficiencyList(
   ]);
 }
 
-// Helper to convert our choice format to ChoiceSelection
-function createChoiceSelections(
+// Helper to convert ChoiceData array to internal choice format
+function convertChoiceDataToInternalFormat(
+  choiceData: ChoiceData[]
+): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+
+  choiceData.forEach((choice) => {
+    const selections: string[] = [];
+
+    switch (choice.selection.case) {
+      case 'skills':
+        if (choice.selection.value.skills) {
+          selections.push(
+            ...choice.selection.value.skills.map(
+              (skill) => `skill:${Skill[skill].toLowerCase()}`
+            )
+          );
+        }
+        break;
+      case 'languages':
+        if (choice.selection.value.languages) {
+          selections.push(
+            ...choice.selection.value.languages.map(
+              (lang) => `language:${Language[lang].toLowerCase()}`
+            )
+          );
+        }
+        break;
+      case 'equipment':
+        if (choice.selection.value.items) {
+          selections.push(...choice.selection.value.items);
+        }
+        break;
+      case 'fightingStyle':
+        selections.push(choice.selection.value);
+        break;
+      case 'name':
+        selections.push(choice.selection.value);
+        break;
+      // Add other cases as needed
+    }
+
+    if (selections.length > 0) {
+      result[choice.choiceId] = selections;
+    }
+  });
+
+  return result;
+}
+
+// Helper to create ChoiceData from our internal choice format
+function createChoiceDataFromInternalFormat(
   choices: Record<string, string[]>,
   source: ChoiceSource
-): ChoiceSelection[] {
-  const selections: ChoiceSelection[] = [];
+): ChoiceData[] {
+  const choiceDataArray: ChoiceData[] = [];
 
-  Object.entries(choices).forEach(([choiceId, selectedKeys]) => {
-    if (selectedKeys.length > 0) {
-      selections.push(
-        create(ChoiceSelectionSchema, {
-          choiceId,
+  Object.entries(choices).forEach(([choiceId, selectedValues]) => {
+    if (selectedValues.length > 0) {
+      // Determine the choice category and create appropriate ChoiceData
+      let category: ChoiceCategory;
+      let selection: ChoiceData['selection'];
+
+      if (selectedValues.some((v) => v.startsWith('skill:'))) {
+        category = ChoiceCategory.SKILLS;
+        // Convert string skills to Skill enums
+        const skills = selectedValues
+          .map((skill) => {
+            const skillName = skill
+              .replace('skill:', '')
+              .replace(/[- ]/g, '_')
+              .toUpperCase();
+            return Skill[skillName as keyof typeof Skill] || Skill.UNSPECIFIED;
+          })
+          .filter((skill) => skill !== Skill.UNSPECIFIED);
+
+        selection = {
+          case: 'skills',
+          value: create(SkillListSchema, { skills }),
+        };
+      } else if (selectedValues.some((v) => v.startsWith('language:'))) {
+        category = ChoiceCategory.LANGUAGES;
+        // Convert string languages to Language enums
+        const languages = selectedValues
+          .map((lang) => {
+            const langName = lang
+              .replace('language:', '')
+              .replace(/[- ]/g, '_')
+              .toUpperCase();
+            return (
+              Language[langName as keyof typeof Language] ||
+              Language.UNSPECIFIED
+            );
+          })
+          .filter((lang) => lang !== Language.UNSPECIFIED);
+
+        selection = {
+          case: 'languages',
+          value: create(LanguageListSchema, { languages }),
+        };
+      } else if (choiceId.includes('equipment')) {
+        category = ChoiceCategory.EQUIPMENT;
+        selection = {
+          case: 'equipment',
+          value: create(EquipmentListSchema, { items: selectedValues }),
+        };
+      } else if (choiceId.includes('fighting')) {
+        category = ChoiceCategory.FIGHTING_STYLE;
+        selection = {
+          case: 'fightingStyle',
+          value: selectedValues[0] || '',
+        };
+      } else {
+        // Default to name for unrecognized choice types
+        category = ChoiceCategory.UNSPECIFIED;
+        selection = {
+          case: 'name',
+          value: selectedValues.join(', '),
+        };
+      }
+
+      choiceDataArray.push(
+        create(ChoiceDataSchema, {
+          category,
           source,
-          selectedKeys,
+          choiceId,
+          selection,
         })
       );
     }
   });
 
-  return selections;
+  return choiceDataArray;
 }
 
 export function CharacterDraftProvider({ children }: { children: ReactNode }) {
@@ -368,135 +484,60 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     [createDraftAPI]
   );
 
-  const loadDraft = useCallback(
-    async (id: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        setDraftId(id);
-        // Load the draft data
-        const { getDraft } = characterClient;
-        const response = await getDraft({ draftId: id });
+  const loadDraft = useCallback(async (id: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      setDraftId(id);
+      // Load the draft data
+      const { getDraft } = characterClient;
+      const response = await getDraft({ draftId: id });
 
-        if (response.draft) {
-          setDraft(response.draft);
-          setDraftId(response.draft.id);
+      if (response.draft) {
+        setDraft(response.draft);
+        setDraftId(response.draft.id);
 
-          // The useEffect hooks will handle loading RaceInfo and ClassInfo from the IDs
+        // The useEffect hooks will handle loading RaceInfo and ClassInfo from the IDs
 
-          // Load choices from draft
-          if (response.draft.choices) {
-            // Group choices by source
-            const raceChoicesFromDraft: Record<string, string[]> = {};
-            const classChoicesFromDraft: Record<string, string[]> = {};
+        // Load choices from draft
+        if (response.draft.choices) {
+          // Convert ChoiceData to our internal format
+          const allChoices = convertChoiceDataToInternalFormat(
+            response.draft.choices
+          );
 
-            response.draft.choices.forEach((choice: ChoiceData) => {
-              // Extract selections from the new ChoiceData structure
-              const selections: string[] = [];
+          // Group choices by source
+          const raceChoicesFromDraft: Record<string, string[]> = {};
+          const classChoicesFromDraft: Record<string, string[]> = {};
 
-              // Handle the oneof selection pattern
-              if (choice.selection) {
-                switch (choice.selection.case) {
-                  case 'name':
-                    selections.push(choice.selection.value);
-                    break;
-                  case 'skills':
-                    // Convert skill enums to strings
-                    if (choice.selection.value.skills) {
-                      choice.selection.value.skills.forEach((skill: Skill) => {
-                        // Convert enum to skill name
-                        const skillName = Object.entries(Skill).find(
-                          ([, value]) => value === skill
-                        )?.[0];
-                        if (skillName) {
-                          selections.push(
-                            `skill:${skillName.toLowerCase().replace(/_/g, ' ')}`
-                          );
-                        }
-                      });
-                    }
-                    break;
-                  case 'languages':
-                    // Convert language enums to strings
-                    if (choice.selection.value.languages) {
-                      choice.selection.value.languages.forEach(
-                        (lang: Language) => {
-                          // Convert enum to language name
-                          const languageName = Object.entries(Language).find(
-                            ([, value]) => value === lang
-                          )?.[0];
-                          if (languageName) {
-                            selections.push(
-                              `language:${languageName.toLowerCase().replace(/_/g, ' ')}`
-                            );
-                          }
-                        }
-                      );
-                    }
-                    break;
-                  case 'equipment':
-                    // Equipment is stored as EquipmentList
-                    if (choice.selection.value.items) {
-                      choice.selection.value.items.forEach(
-                        (item: { name?: string; toString: () => string }) => {
-                          selections.push(item.name || item.toString());
-                        }
-                      );
-                    }
-                    break;
-                  case 'fightingStyle':
-                    selections.push(choice.selection.value);
-                    break;
-                  case 'spells':
-                    // Handle spell selections
-                    if (choice.selection.value.spells) {
-                      choice.selection.value.spells.forEach((spell: string) => {
-                        selections.push(spell.toString());
-                      });
-                    }
-                    break;
-                  case 'cantrips':
-                    // Handle cantrip selections
-                    if (choice.selection.value.cantrips) {
-                      choice.selection.value.cantrips.forEach(
-                        (cantrip: string) => {
-                          selections.push(cantrip.toString());
-                        }
-                      );
-                    }
-                    break;
-                  // Other cases like race, class, background are not choices but actual selections
-                }
-              }
+          response.draft.choices.forEach((choice: ChoiceData) => {
+            const selections = allChoices[choice.choiceId] || [];
 
-              if (
-                choice.source === ChoiceSource.RACE ||
-                choice.source === ChoiceSource.SUBRACE
-              ) {
-                raceChoicesFromDraft[choice.choiceId] = selections;
-              } else if (choice.source === ChoiceSource.CLASS) {
-                classChoicesFromDraft[choice.choiceId] = selections;
-              }
-              // TODO: Handle BACKGROUND when implemented
-            });
+            // Group by source
+            if (
+              choice.source === ChoiceSource.RACE ||
+              choice.source === ChoiceSource.SUBRACE
+            ) {
+              raceChoicesFromDraft[choice.choiceId] = selections;
+            } else if (choice.source === ChoiceSource.CLASS) {
+              classChoicesFromDraft[choice.choiceId] = selections;
+            }
+            // TODO: Handle BACKGROUND when implemented
+          });
 
-            setRaceChoices(raceChoicesFromDraft);
-            setClassChoices(classChoicesFromDraft);
+          setRaceChoices(raceChoicesFromDraft);
+          setClassChoices(classChoicesFromDraft);
 
-            // The useEffect hooks will recalculate proficiencies and languages once the race/class are loaded
-          }
+          // The useEffect hooks will recalculate proficiencies and languages once the race/class are loaded
         }
-      } catch (err) {
-        setError(
-          err instanceof Error ? err : new Error('Failed to load draft')
-        );
-        throw err;
-      } finally {
-        setLoading(false);
       }
-    },
-    [collectRaceProficiencies, collectRaceLanguages, collectClassProficiencies]
-  );
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to load draft'));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const setRace = useCallback(
     async (race: RaceInfo | null, choices?: Record<string, string[]>) => {
@@ -545,10 +586,10 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
         setSaving(true);
         try {
-          // Convert our choices to ChoiceSelection format
+          // Convert our choices to ChoiceData format
           // Use provided choices or fall back to state
           const choicesToSend = choices || raceChoices;
-          const raceChoiceSelections = createChoiceSelections(
+          const raceChoiceData = createChoiceDataFromInternalFormat(
             choicesToSend,
             ChoiceSource.RACE
           );
@@ -556,7 +597,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
           const request = create(UpdateRaceRequestSchema, {
             draftId,
             race: getRaceEnum(race.name),
-            raceChoices: raceChoiceSelections,
+            raceChoices: raceChoiceData,
             // TODO: Add subrace when supported
           });
           await updateRaceAPI(request);
@@ -647,10 +688,10 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
         setSaving(true);
         try {
-          // Convert our choices to ChoiceSelection format
+          // Convert our choices to ChoiceData format
           // Use provided choices or fall back to state
           const choicesToSend = choices || classChoices;
-          const classChoiceSelections = createChoiceSelections(
+          const classChoiceData = createChoiceDataFromInternalFormat(
             choicesToSend,
             ChoiceSource.CLASS
           );
@@ -658,7 +699,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
           const request = create(UpdateClassRequestSchema, {
             draftId,
             class: getClassEnum(classInfo.name),
-            classChoices: classChoiceSelections,
+            classChoices: classChoiceData,
           });
           await updateClassAPI(request);
         } catch (err) {

@@ -6,6 +6,7 @@ import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
@@ -234,7 +235,7 @@ export function RaceClassSection() {
                             <TraitBadge
                               key={`lang-${langName}`}
                               name={langName.replace(/_/g, ' ').toLowerCase()}
-                              type="language"
+                              type="racial"
                               icon="🗣️"
                             />
                           );
@@ -253,7 +254,7 @@ export function RaceClassSection() {
                               /^(skill:|weapon:|armor:|tool:)/,
                               ''
                             )}
-                            type="proficiency"
+                            type="racial"
                             icon="⚔️"
                           />
                         ))}
@@ -270,7 +271,7 @@ export function RaceClassSection() {
                             /^(language:|skill:|tool:|proficiency:)/,
                             ''
                           )}
-                          type="choice"
+                          type="racial"
                           icon="✓"
                         />
                       ))
@@ -336,16 +337,26 @@ export function RaceClassSection() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {selectedClassData.level1Features
-                    .slice(0, 3)
-                    .map((feature) => (
-                      <TraitBadge
-                        key={feature.name}
-                        name={feature.name}
-                        type="class"
-                        icon={TraitIcons.class}
-                      />
-                    ))}
+                  {/* Display class features from choices */}
+                  {(() => {
+                    const featureChoices =
+                      selectedClassData.choices?.filter(
+                        (choice) =>
+                          choice.choiceType === ChoiceCategory.FIGHTING_STYLE
+                      ) || [];
+
+                    // For Fighter, this includes Fighting Style choices
+                    return featureChoices
+                      .slice(0, 3)
+                      .map((choice) => (
+                        <TraitBadge
+                          key={choice.id}
+                          name={choice.description}
+                          type="class"
+                          icon={TraitIcons.class}
+                        />
+                      ));
+                  })()}
                   {/* Display class choices */}
                   {classChoices &&
                     Object.entries(classChoices).map(([choiceId, selections]) =>
@@ -356,7 +367,7 @@ export function RaceClassSection() {
                             /^(skill:|tool:|proficiency:|equipment:)/,
                             ''
                           )}
-                          type="choice"
+                          type="racial"
                           icon="✓"
                         />
                       ))

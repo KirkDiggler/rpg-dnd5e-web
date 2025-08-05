@@ -269,7 +269,7 @@ export function ClassSelectionModal({
     // Validate feature choices - features are now in the choices array
     const featureChoices =
       currentClassData.choices?.filter(
-        (choice) => choice.choiceType === ChoiceCategory.FEATURE
+        (choice) => choice.choiceType === ChoiceCategory.FIGHTING_STYLE
       ) || [];
 
     for (const choice of featureChoices) {
@@ -496,9 +496,14 @@ export function ClassSelectionModal({
                       skillChoice.optionSet?.case === 'explicitOptions'
                         ? skillChoice.optionSet.value.options
                             .filter((opt) => opt.optionType.case === 'item')
-                            .map((opt) =>
-                              opt.optionType.value.name.replace(/-/g, ' ')
-                            )
+                            .map((opt) => {
+                              const value = opt.optionType.value;
+                              return (
+                                (value && 'name' in value
+                                  ? value.name?.replace(/-/g, ' ')
+                                  : undefined) || 'Unknown'
+                              );
+                            })
                         : [];
 
                     return (
@@ -678,7 +683,49 @@ export function ClassSelectionModal({
               );
             })()}
 
-            {/* Class Features are now part of the choices array - handled by ChoiceRenderer */}
+            {/* Class Features - now in choices array */}
+            {(() => {
+              const featureChoices =
+                currentClassData.choices?.filter(
+                  (choice) =>
+                    choice.choiceType === ChoiceCategory.FIGHTING_STYLE
+                ) || [];
+
+              if (featureChoices.length === 0) return null;
+
+              return (
+                <CollapsibleSection
+                  title="Choose Your Features"
+                  defaultOpen={true}
+                  required={true}
+                >
+                  <div style={{ marginBottom: '12px' }}>
+                    {featureChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <ChoiceRenderer
+                          choice={choice}
+                          currentSelections={
+                            currentClassChoices.proficiencies[choice.id] || []
+                          }
+                          onSelectionChange={(choiceId, selections) => {
+                            setClassChoicesMap((prev) => ({
+                              ...prev,
+                              [currentClassName]: {
+                                ...currentClassChoices,
+                                proficiencies: {
+                                  ...currentClassChoices.proficiencies,
+                                  [choiceId]: selections,
+                                },
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              );
+            })()}
 
             {/* Equipment Choices from new choice system */}
             {(() => {

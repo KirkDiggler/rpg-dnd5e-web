@@ -120,6 +120,61 @@ export function EquipmentChoice({
                     : 'var(--card-bg)',
                 }}
               >
+                {/* Simple Item */}
+                {option.optionType.case === 'item' && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelection(optionId)}
+                    style={{
+                      padding: '12px 16px',
+                      backgroundColor: isSelected
+                        ? 'var(--accent-primary)'
+                        : 'var(--card-bg)',
+                      borderRadius: '6px',
+                      border: `2px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+                      fontSize: '13px',
+                      color: isSelected ? 'white' : 'var(--text-primary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'all 0.2s ease',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      width: '100%',
+                      outline: 'none',
+                      transform: 'translateY(0)',
+                      boxShadow: 'none',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.borderColor =
+                          'var(--accent-primary)';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow =
+                          '0 4px 12px rgba(0,0,0,0.2)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.borderColor =
+                          'var(--border-primary)';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }
+                    }}
+                  >
+                    <span style={{ fontSize: '18px', lineHeight: '1' }}>
+                      ⚔️
+                    </span>
+                    <div style={{ flex: 1, textAlign: 'left' }}>
+                      <div className="font-medium">
+                        {option.optionType.value.name}
+                      </div>
+                    </div>
+                    {isSelected && <span style={{ fontSize: '16px' }}>✓</span>}
+                  </button>
+                )}
+
                 {/* Counted Item */}
                 {option.optionType.case === 'countedItem' && (
                   <button
@@ -300,9 +355,11 @@ export function EquipmentChoice({
                                       color: isSelected
                                         ? 'rgba(255,255,255,0.9)'
                                         : 'var(--text-primary)',
+                                      fontStyle: 'italic',
                                     }}
                                   >
-                                    {choice?.choice?.description || 'Choice'}
+                                    {choice?.choice?.description ||
+                                      'Choose equipment'}
                                   </span>
                                 </div>
                               );
@@ -501,6 +558,109 @@ function NestedEquipmentChoice({
       equipmentType !== EquipmentType.UNSPECIFIED,
     { pageSize: 100 }
   );
+
+  // Handle explicit options (like martial weapons list)
+  if (nestedChoice.optionSet.case === 'explicitOptions') {
+    const options = nestedChoice.optionSet.value.options;
+
+    return (
+      <div className="space-y-2">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          style={{
+            padding: '8px 12px',
+            backgroundColor: 'var(--card-bg)',
+            borderRadius: '6px',
+            border: `2px solid ${currentSelection ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+            fontSize: '14px',
+            fontWeight: '500',
+            color: 'var(--text-primary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            width: '100%',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <span>
+            {(() => {
+              const foundOpt = options.find(
+                (opt) =>
+                  opt.optionType.case === 'item' &&
+                  opt.optionType.value.itemId === currentSelection
+              );
+              const value = foundOpt?.optionType.value;
+              return (
+                (value && 'name' in value ? value.name : currentSelection) ||
+                'Choose item'
+              );
+            })()}
+          </span>
+          <span style={{ fontSize: '12px', opacity: 0.8 }}>
+            {isExpanded ? '▼' : '▶'}
+          </span>
+        </button>
+
+        {isExpanded && (
+          <div
+            className="max-h-48 overflow-y-auto border rounded p-2"
+            style={{
+              borderColor: 'var(--border-primary)',
+              backgroundColor: 'var(--bg-secondary)',
+            }}
+          >
+            <div className="space-y-1">
+              {options.map((option) => {
+                if (option.optionType.case === 'item') {
+                  const item = option.optionType.value;
+                  return (
+                    <button
+                      key={item.itemId}
+                      onClick={() => {
+                        onSelection(item.itemId);
+                        setIsExpanded(false);
+                      }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '8px 12px',
+                        borderRadius: '4px',
+                        fontSize: '14px',
+                        color: 'var(--text-primary)',
+                        backgroundColor:
+                          currentSelection === item.itemId
+                            ? 'var(--accent-primary)20'
+                            : 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (currentSelection !== item.itemId) {
+                          e.currentTarget.style.backgroundColor =
+                            'var(--accent-primary)20';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (currentSelection !== item.itemId) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      {item.name}
+                    </button>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (nestedChoice.optionSet.case === 'categoryReference' && category) {
     return (

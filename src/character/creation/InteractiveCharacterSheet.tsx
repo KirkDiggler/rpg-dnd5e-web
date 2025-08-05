@@ -4,6 +4,7 @@ import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
@@ -27,13 +28,7 @@ interface CharacterChoices {
 }
 
 // Helper to convert Language enum to display name
-// Constants
-const EQUIPMENT_FILTER_ITEMS = [
-  'chain mail',
-  'bundle_0',
-  'dungeoneers pack',
-  'equipment_warhammer',
-];
+// Constants (removed unused EQUIPMENT_FILTER_ITEMS)
 
 // Helper Functions
 function getLanguageDisplayName(languageEnum: Language): string {
@@ -59,114 +54,7 @@ function getLanguageDisplayName(languageEnum: Language): string {
   return languageNames[languageEnum] || 'Unknown';
 }
 
-// Helper function to format and group proficiencies
-function formatProficiencies(proficiencies: Set<string>): string {
-  const proficiencyMap = new Map<string, string>();
-
-  Array.from(proficiencies)
-    .filter((p) => {
-      // Filter out objects (stringified ChoiceSelection)
-      if (typeof p === 'string' && p.includes('"$typeName"')) return false;
-
-      // Filter out language choices
-      if (p.includes('language_')) return false;
-
-      // Filter out equipment items
-      const lowerP = p.toLowerCase();
-      if (EQUIPMENT_FILTER_ITEMS.some((item) => lowerP.includes(item)))
-        return false;
-      if (lowerP.includes('bundle') || lowerP.includes('pack')) return false;
-
-      // Filter out specific equipment patterns
-      if (p.match(/^(Chain Mail|Dungeoneers Pack|Bundle_\d+)/)) return false;
-
-      // Filter out fighting styles and other non-proficiency items
-      if (lowerP.includes('fighting style')) return false;
-
-      return true;
-    })
-    .forEach((p) => {
-      // Extract the core proficiency name
-      let cleaned = p;
-      let category = '';
-
-      // Extract category and clean the name
-      if (p.toLowerCase().includes('armor:')) {
-        category = 'Armor: ';
-        cleaned = p.replace(/armor:/i, '');
-      } else if (p.toLowerCase().includes('weapon:')) {
-        category = 'Weapons: ';
-        cleaned = p.replace(/weapon:/i, '');
-      } else if (p.toLowerCase().includes('tool:')) {
-        category = 'Tools: ';
-        cleaned = p.replace(/tool:/i, '');
-      } else if (
-        p.toLowerCase().includes('saving-throw:') ||
-        p.toLowerCase().includes('saving throw:')
-      ) {
-        category = 'Saving Throws: ';
-        cleaned = p.replace(/saving[- ]throw:/i, '');
-      } else if (p.toLowerCase().includes('skill:')) {
-        category = 'Skills: ';
-        cleaned = p.replace(/skill:/i, '');
-      }
-
-      // Clean up the proficiency name
-      cleaned = cleaned
-        .replace(/^proficiency_\w+:?\s*/i, '')
-        .replace(/-/g, ' ')
-        .trim();
-
-      // Handle special cases
-      if (cleaned.toLowerCase() === 'sleight of hand') {
-        cleaned = 'Sleight of Hand';
-      } else if (cleaned.toLowerCase() === 'animal handling') {
-        cleaned = 'Animal Handling';
-      } else if (cleaned.toLowerCase() === 'str') {
-        cleaned = 'Strength';
-      } else if (cleaned.toLowerCase() === 'con') {
-        cleaned = 'Constitution';
-      } else {
-        // Capitalize each word
-        cleaned = cleaned.replace(/\b\w/g, (l) => l.toUpperCase());
-      }
-
-      // Use the cleaned name as key to avoid duplicates
-      const key = category + cleaned.toLowerCase();
-      if (!proficiencyMap.has(key) && cleaned.length > 0) {
-        proficiencyMap.set(key, cleaned);
-      }
-    });
-
-  // Group by category
-  const skills: string[] = [];
-  const armor: string[] = [];
-  const weapons: string[] = [];
-  const tools: string[] = [];
-  const savingThrows: string[] = [];
-  const other: string[] = [];
-
-  proficiencyMap.forEach((value, key) => {
-    if (key.startsWith('Skills:')) skills.push(value);
-    else if (key.startsWith('Armor:')) armor.push(value);
-    else if (key.startsWith('Weapons:')) weapons.push(value);
-    else if (key.startsWith('Tools:')) tools.push(value);
-    else if (key.startsWith('Saving Throws:')) savingThrows.push(value);
-    else other.push(value);
-  });
-
-  // Build the display string
-  const parts: string[] = [];
-  if (skills.length > 0) parts.push(`Skills: ${skills.join(', ')}`);
-  if (armor.length > 0) parts.push(`Armor: ${armor.join(', ')}`);
-  if (weapons.length > 0) parts.push(`Weapons: ${weapons.join(', ')}`);
-  if (tools.length > 0) parts.push(`Tools: ${tools.join(', ')}`);
-  if (savingThrows.length > 0)
-    parts.push(`Saving Throws: ${savingThrows.join(', ')}`);
-  if (other.length > 0) parts.push(other.join(', '));
-
-  return parts.join(' • ');
-}
+// Helper function to format and group proficiencies (removed - was unused)
 
 // Helper function to get extra languages
 function getExtraLanguages(
@@ -175,7 +63,7 @@ function getExtraLanguages(
 ): string[] {
   return Array.from(allLanguages)
     .filter((lang) => {
-      // Filter out objects (stringified ChoiceSelection)
+      // Filter out objects (stringified ChoiceData)
       if (typeof lang === 'string' && lang.includes('"$typeName"'))
         return false;
 
@@ -327,28 +215,21 @@ export function InteractiveCharacterSheet({
     // Check if class is a spellcaster
     const isSpellcaster = character.selectedClass?.spellcasting !== undefined;
 
-    // Check if any level1Features have choices that need selection
+    // Check if class has feature choices (like Fighting Style)
     const hasFeatureChoices =
-      character.selectedClass?.level1Features?.some((feature) => {
-        return (
-          feature.hasChoices && feature.choices && feature.choices.length > 0
-        );
+      character.selectedClass?.choices?.some((choice) => {
+        return choice.choiceType === ChoiceCategory.FIGHTING_STYLE;
       }) || false;
 
     // Check if all feature choices have been made
     const hasFeatureChoicesSelected =
       !hasFeatureChoices ||
-      (character.selectedClass?.level1Features?.every((feature) => {
-        if (
-          !feature.hasChoices ||
-          !feature.choices ||
-          feature.choices.length === 0
-        ) {
-          return true; // No choice needed
-        }
-        // Check if this feature has a selection in the features object
-        const featureSelections = classChoices.features || {};
-        return featureSelections[feature.id] !== undefined;
+      (character.selectedClass?.choices?.every((choice) => {
+        if (choice.choiceType !== ChoiceCategory.FIGHTING_STYLE) return true;
+
+        // Check if this feature choice has been made in draft.classChoices
+        const selections = draft.classChoices[choice.id];
+        return selections && selections.length >= choice.chooseCount;
       }) ??
         true);
 
@@ -445,7 +326,7 @@ export function InteractiveCharacterSheet({
     character.abilityScores,
     character.equipmentChoices,
     classChoices.proficiencies,
-    classChoices.features,
+    draft.classChoices,
     selectedSpells,
   ]);
 
@@ -536,88 +417,46 @@ export function InteractiveCharacterSheet({
   const getSelectedEquipment = () => {
     const equipment: string[] = [];
 
-    // First check the local state equipment choices
-    if (character.selectedClass?.choices && character.equipmentChoices) {
-      const equipmentChoices = character.selectedClass.choices.filter(
-        (choice) => choice.choiceType === 1 // EQUIPMENT type
-      );
+    // Get equipment choices from draft.classChoices
+    const equipmentChoiceKeys = Object.keys(draft.classChoices).filter((key) =>
+      key.includes('_equipment_')
+    );
 
-      equipmentChoices.forEach((choice) => {
-        const selection = (
-          character.equipmentChoices as Record<string, string>
-        )[choice.id];
-        if (selection) {
-          // Parse the selection format - could be:
-          // "0" - simple selection index
-          // "0:Longsword" - selection with nested choice
-          const parts = selection.split(':');
-          const optionIndex = parseInt(parts[0]);
-          const nestedSelection = parts[1];
+    equipmentChoiceKeys.forEach((choiceKey) => {
+      const selections = draft.classChoices[choiceKey];
+      if (selections && selections.length > 0) {
+        // Add the selected equipment items
+        selections.forEach((selection) => {
+          // Parse the selection - the format varies:
+          // "chain-mail" - direct item selection
+          // "bundle_1" - bundle selection
+          // "bundle_1:0:longsword" - bundle with nested choice
 
-          // Get the actual option from the choice
-          if (
-            choice.optionSet.case === 'explicitOptions' &&
-            choice.optionSet.value.options[optionIndex]
-          ) {
-            const option = choice.optionSet.value.options[optionIndex];
-
-            if (option.optionType.case === 'countedItem') {
-              const item = option.optionType.value;
-              equipment.push(item.name);
-            } else if (option.optionType.case === 'bundle') {
-              const bundle = option.optionType.value;
-              // For bundles, show the items or the nested selection
-              if (nestedSelection) {
-                equipment.push(nestedSelection);
-              } else {
-                // Show the first few items from the bundle
-                bundle.items.forEach((bundleItem) => {
-                  if (bundleItem.itemType?.case === 'concreteItem') {
-                    equipment.push(bundleItem.itemType.value.name);
-                  }
-                });
-              }
-            } else if (
-              option.optionType.case === 'nestedChoice' &&
-              nestedSelection
-            ) {
-              equipment.push(nestedSelection);
-            } else {
-              // Fallback to the selection value if we can't parse it
-              equipment.push(selection);
-            }
+          if (selection.includes(':')) {
+            // This has a nested selection (e.g., "bundle_1:0:longsword")
+            const parts = selection.split(':');
+            const nestedItem = parts[parts.length - 1];
+            // Format the item name
+            equipment.push(
+              nestedItem
+                .replace(/-/g, ' ')
+                .replace(/\b\w/g, (l) => l.toUpperCase())
+            );
+          } else if (selection.startsWith('bundle_')) {
+            // This is a bundle - we need to look up what's in it
+            // For now, show a generic message
+            equipment.push('Equipment Bundle');
+          } else {
+            // Direct item selection - format the name
+            equipment.push(
+              selection
+                .replace(/-/g, ' ')
+                .replace(/\b\w/g, (l) => l.toUpperCase())
+            );
           }
-        }
-      });
-    }
-
-    // Also check the draft context for equipment choices
-    if (draft.classChoices && character.selectedClass?.choices) {
-      // Get equipment choices from the class definition
-      const equipmentChoices = character.selectedClass.choices.filter(
-        (choice) => choice.choiceType === 1 // EQUIPMENT type
-      );
-
-      // Check each equipment choice ID in the draft choices
-      equipmentChoices.forEach((choice) => {
-        const values = draft.classChoices[choice.id];
-        if (Array.isArray(values) && values.length > 0) {
-          values.forEach((item) => {
-            if (item && !equipment.includes(item)) {
-              // Skip generic bundle references if we have more specific items
-              if (
-                item === 'bundle_0' &&
-                values.some((v) => v.includes('bundle_0:'))
-              ) {
-                return;
-              }
-
-              equipment.push(item);
-            }
-          });
-        }
-      });
-    }
+        });
+      }
+    });
 
     return equipment;
   };
@@ -872,20 +711,29 @@ export function InteractiveCharacterSheet({
                               </div>
                             )}
                           {/* Display resolved proficiencies from race choices */}
-                          {draft.allProficiencies.size > 0 && (
-                            <div style={{ color: 'var(--text-primary)' }}>
-                              <span
-                                style={{
-                                  color: 'var(--text-muted)',
-                                  fontSize: '11px',
-                                  opacity: 0.7,
-                                }}
-                              >
-                                Proficiencies:
-                              </span>{' '}
-                              {formatProficiencies(draft.allProficiencies)}
-                            </div>
-                          )}
+                          {/* Only show race-specific proficiencies here */}
+                          {character.selectedRace?.proficiencies &&
+                            character.selectedRace.proficiencies.length > 0 && (
+                              <div style={{ color: 'var(--text-primary)' }}>
+                                <span
+                                  style={{
+                                    color: 'var(--text-muted)',
+                                    fontSize: '11px',
+                                    opacity: 0.7,
+                                  }}
+                                >
+                                  Racial Proficiencies:
+                                </span>{' '}
+                                {character.selectedRace.proficiencies
+                                  .map((p) =>
+                                    p.replace(
+                                      /^(skill:|weapon:|armor:|tool:)/,
+                                      ''
+                                    )
+                                  )
+                                  .join(', ')}
+                              </div>
+                            )}
                           {/* Display resolved languages from race choices */}
                           {(() => {
                             const extraLanguages = getExtraLanguages(
@@ -1074,45 +922,75 @@ export function InteractiveCharacterSheet({
                               )}
                             </div>
                           )}
-                        {classChoices.proficiencies &&
-                          Object.values(classChoices.proficiencies).flat()
-                            .length > 0 && (
-                            <div style={{ color: 'var(--text-primary)' }}>
-                              <span
-                                style={{
-                                  color: 'var(--text-primary)',
-                                  opacity: 0.7,
-                                }}
-                              >
-                                Chosen Skills:
-                              </span>{' '}
-                              {Object.values(classChoices.proficiencies)
-                                .flat()
-                                .map((skill) => {
-                                  // Convert skill index back to display name
-                                  if (
-                                    typeof skill === 'string' &&
-                                    skill.match(/^\d+$/)
-                                  ) {
-                                    const index = parseInt(skill);
-                                    const skillOptions =
-                                      character.selectedClass
-                                        ?.availableSkills || [];
-                                    const rawSkill =
-                                      skillOptions[index] || skill;
-                                    // Format the skill name properly
-                                    return rawSkill
+                        {/* Display chosen skills from draft.classChoices */}
+                        {(() => {
+                          // Find skill choices for the current class
+                          const skillChoiceKeys = Object.keys(
+                            draft.classChoices
+                          ).filter((key) => key.includes('_skills'));
+
+                          const allSkillSelections = skillChoiceKeys.flatMap(
+                            (key) => draft.classChoices[key] || []
+                          );
+
+                          if (allSkillSelections.length > 0) {
+                            return (
+                              <div style={{ color: 'var(--text-primary)' }}>
+                                <span
+                                  style={{
+                                    color: 'var(--text-primary)',
+                                    opacity: 0.7,
+                                  }}
+                                >
+                                  Chosen Skills:
+                                </span>{' '}
+                                {allSkillSelections
+                                  .map((skill) => {
+                                    // Remove skill: prefix and format
+                                    return skill
+                                      .replace('skill:', '')
                                       .replace(/-/g, ' ')
                                       .replace(/\b\w/g, (l) => l.toUpperCase());
-                                  }
-                                  // Format non-index skills too
-                                  return skill
-                                    .replace(/-/g, ' ')
-                                    .replace(/\b\w/g, (l) => l.toUpperCase());
-                                })
-                                .join(', ')}
-                            </div>
-                          )}
+                                  })
+                                  .join(', ')}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+
+                        {/* Display Class Features (like Fighting Style) */}
+                        {(() => {
+                          const featureChoices =
+                            character.selectedClass?.choices?.filter(
+                              (choice) =>
+                                choice.choiceType ===
+                                ChoiceCategory.FIGHTING_STYLE
+                            ) || [];
+
+                          return featureChoices.map((choice) => {
+                            const selections =
+                              draft.classChoices[choice.id] || [];
+                            if (selections.length === 0) return null;
+
+                            return (
+                              <div
+                                key={choice.id}
+                                style={{ color: 'var(--text-primary)' }}
+                              >
+                                <span
+                                  style={{
+                                    color: 'var(--text-primary)',
+                                    opacity: 0.7,
+                                  }}
+                                >
+                                  {choice.description}:
+                                </span>{' '}
+                                {selections.join(', ')}
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     </motion.div>
 
