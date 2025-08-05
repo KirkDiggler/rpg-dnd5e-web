@@ -4,16 +4,24 @@ import './App.css';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
+import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { CharacterList } from './components/CharacterList';
 import { ServerRollingDemo } from './components/ServerRollingDemo';
 import { ThemeSelector } from './components/ThemeSelector';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
-type AppView = 'character-list' | 'character-creation' | 'server-rolling-demo';
+type AppView =
+  | 'character-list'
+  | 'character-creation'
+  | 'character-sheet'
+  | 'server-rolling-demo';
 
 function AppContent() {
   const [currentView, setCurrentView] = useState<AppView>('character-list');
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [currentCharacterId, setCurrentCharacterId] = useState<string | null>(
+    null
+  );
   const discord = useDiscord();
   const draft = useCharacterDraft();
 
@@ -52,6 +60,16 @@ function AppContent() {
 
   const handleCancelCreation = () => {
     draft.reset();
+    setCurrentView('character-list');
+  };
+
+  const handleViewCharacter = (characterId: string) => {
+    setCurrentCharacterId(characterId);
+    setCurrentView('character-sheet');
+  };
+
+  const handleBackToCharacterList = () => {
+    setCurrentCharacterId(null);
     setCurrentView('character-list');
   };
 
@@ -146,6 +164,12 @@ function AppContent() {
             sessionId="test-session"
             onCreateCharacter={handleCreateCharacter}
             onResumeDraft={handleResumeDraft}
+            onViewCharacter={handleViewCharacter}
+          />
+        ) : currentView === 'character-sheet' && currentCharacterId ? (
+          <CharacterSheet
+            characterId={currentCharacterId}
+            onBack={handleBackToCharacterList}
           />
         ) : draft.loading ? (
           <div className="flex items-center justify-center h-screen">
