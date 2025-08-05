@@ -10,6 +10,8 @@ This directory contains snapshot responses from the rpg-api server, captured dur
 
 - `classesResponse.json` - Sample response from ListClasses API
 - `getDraftResponse.json` - Sample response from GetDraft API with a fighter character
+- `dice_session.json` - Sample dice roll session data
+- `updateAbilityScores.json` - Sample request for updating ability scores
 
 ## When to Update
 

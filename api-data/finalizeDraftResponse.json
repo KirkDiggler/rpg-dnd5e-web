@@ -1,0 +1,53 @@
+{
+  "$typeName": "dnd5e.api.v1alpha1.FinalizeDraftResponse",
+  "draftDeleted": true,
+  "character": {
+    "$typeName": "dnd5e.api.v1alpha1.Character",
+    "id": "draft_1c6bde67-4587-4442-bd73-0ba1f50db27c",
+    "name": "Stan",
+    "level": 1,
+    "experiencePoints": 0,
+    "race": 1,
+    "subrace": 0,
+    "class": 5,
+    "background": 0,
+    "alignment": 0,
+    "languages": [1],
+    "currentHitPoints": 12,
+    "temporaryHitPoints": 0,
+    "sessionId": "",
+    "inventory": [],
+    "abilityScores": {
+      "$typeName": "dnd5e.api.v1alpha1.AbilityScores",
+      "strength": 14,
+      "dexterity": 18,
+      "constitution": 14,
+      "intelligence": 7,
+      "wisdom": 8,
+      "charisma": 11
+    },
+    "combatStats": {
+      "$typeName": "dnd5e.api.v1alpha1.CombatStats",
+      "hitPointMaximum": 12,
+      "armorClass": 0,
+      "initiative": 0,
+      "speed": 30,
+      "proficiencyBonus": 0,
+      "hitDice": ""
+    },
+    "proficiencies": {
+      "$typeName": "dnd5e.api.v1alpha1.Proficiencies",
+      "skills": [],
+      "savingThrows": [1, 3],
+      "armor": ["All armor", "Shields"],
+      "weapons": ["Simple Weapons", "Martial Weapons"],
+      "tools": []
+    },
+    "metadata": {
+      "$typeName": "dnd5e.api.v1alpha1.CharacterMetadata",
+      "createdAt": "1754366930",
+      "updatedAt": "1754369498",
+      "playerId": "test-player"
+    }
+  }
+}

@@ -2,7 +2,7 @@
   "$typeName": "dnd5e.api.v1alpha1.GetDraftResponse",
   "draft": {
     "$typeName": "dnd5e.api.v1alpha1.CharacterDraft",
-    "id": "draft_a8851bab-15d5-460b-b0e6-7277ff94afc5",
+    "id": "draft_5aeaed21-ae50-48e6-ae44-27539ae136e3",
     "playerId": "test-player",
     "sessionId": "",
     "name": "",
@@ -10,16 +10,10 @@
     "choices": [
       {
         "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
-        "category": 4,
+        "category": 0,
         "source": 2,
         "choiceId": "language_choice",
-        "selection": {
-          "case": "languages",
-          "value": {
-            "$typeName": "dnd5e.api.v1alpha1.LanguageList",
-            "languages": [6]
-          }
-        }
+        "selection": {}
       },
       {
         "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
@@ -30,57 +24,93 @@
       },
       {
         "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
-        "category": 0,
+        "category": 11,
         "source": 4,
         "choiceId": "fighter_feature_fighter-fighting-style_choice",
-        "selection": {}
+        "selection": {
+          "case": "fightingStyle",
+          "value": "feature_fighting_style:_dueling"
+        }
       },
       {
         "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
-        "category": 0,
+        "category": 1,
         "source": 4,
         "choiceId": "fighter_equipment_1",
-        "selection": {}
+        "selection": {
+          "case": "equipment",
+          "value": {
+            "$typeName": "dnd5e.api.v1alpha1.EquipmentList",
+            "items": ["chain-mail"]
+          }
+        }
       },
       {
         "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
-        "category": 0,
+        "category": 1,
         "source": 4,
         "choiceId": "fighter_equipment_2",
-        "selection": {}
+        "selection": {
+          "case": "equipment",
+          "value": {
+            "$typeName": "dnd5e.api.v1alpha1.EquipmentList",
+            "items": ["bundle_0:0:warhammer"]
+          }
+        }
       },
       {
         "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
-        "category": 0,
+        "category": 1,
         "source": 4,
         "choiceId": "fighter_equipment_3",
-        "selection": {}
+        "selection": {
+          "case": "equipment",
+          "value": {
+            "$typeName": "dnd5e.api.v1alpha1.EquipmentList",
+            "items": ["bundle_0"]
+          }
+        }
       },
       {
         "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
-        "category": 0,
+        "category": 1,
         "source": 4,
         "choiceId": "fighter_equipment_4",
-        "selection": {}
+        "selection": {
+          "case": "equipment",
+          "value": {
+            "$typeName": "dnd5e.api.v1alpha1.EquipmentList",
+            "items": ["dungeoneers-pack"]
+          }
+        }
       }
     ],
     "expiresAt": "0",
-    "createdAt": "1754336568",
-    "updatedAt": "1754340057",
+    "createdAt": "1754366930",
+    "updatedAt": "1754367035",
     "raceId": 1,
     "subraceId": 0,
     "classId": 5,
     "backgroundId": 0,
+    "abilityScores": {
+      "$typeName": "dnd5e.api.v1alpha1.AbilityScores",
+      "strength": 14,
+      "dexterity": 18,
+      "constitution": 14,
+      "intelligence": 7,
+      "wisdom": 8,
+      "charisma": 11
+    },
     "progress": {
       "$typeName": "dnd5e.api.v1alpha1.CreationProgress",
       "hasName": false,
       "hasRace": true,
       "hasClass": true,
       "hasBackground": false,
-      "hasAbilityScores": false,
+      "hasAbilityScores": true,
       "hasSkills": false,
       "hasLanguages": false,
-      "completionPercentage": 40,
+      "completionPercentage": 60,
       "currentStep": 0
     }
   }

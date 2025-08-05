@@ -7,7 +7,7 @@ import type {
 import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ClassChoices } from './ClassSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
@@ -83,7 +83,6 @@ function getExtraLanguages(
 
 // Simple context for now - we'll make it more sophisticated later
 const CharacterContext = {
-  characterName: '',
   selectedRace: null as RaceInfo | null,
   selectedClass: null as ClassInfo | null,
   abilityScores: {
@@ -109,6 +108,45 @@ export function InteractiveCharacterSheet({
   const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
   const draft = useCharacterDraft();
 
+  // Sync draft state with local character state
+  useEffect(() => {
+    if (draft.draft) {
+      setCharacter((prev) => ({
+        ...prev,
+        // Update ability scores if they exist in the draft
+        abilityScores: draft.draft?.abilityScores || prev.abilityScores,
+      }));
+    }
+  }, [draft.draft]);
+
+  // Sync equipment choices from draft
+  useEffect(() => {
+    if (draft.draft?.choices) {
+      // Find equipment choices in the draft choices array
+      const equipmentChoices: Record<number, string> = {};
+      let equipmentIndex = 0;
+
+      draft.draft.choices.forEach((choice) => {
+        // Check if this is an equipment choice (category === 1)
+        if (
+          choice.category === ChoiceCategory.EQUIPMENT &&
+          choice.selection.case === 'equipment'
+        ) {
+          // Store the equipment selection using an index
+          equipmentChoices[equipmentIndex++] =
+            choice.selection.value.items.join(',');
+        }
+      });
+
+      if (Object.keys(equipmentChoices).length > 0) {
+        setCharacter((prev) => ({
+          ...prev,
+          equipmentChoices,
+        }));
+      }
+    }
+  }, [draft.draft]);
+
   // Sync draft data with local character state
   useEffect(() => {
     if (draft.raceInfo) {
@@ -121,12 +159,6 @@ export function InteractiveCharacterSheet({
       setCharacter((prev) => ({
         ...prev,
         selectedClass: draft.classInfo,
-      }));
-    }
-    if (draft.draft?.name) {
-      setCharacter((prev) => ({
-        ...prev,
-        characterName: draft.draft?.name || '',
       }));
     }
     // Load ability scores from draft
@@ -188,7 +220,6 @@ export function InteractiveCharacterSheet({
     draft.raceInfo,
     draft.classInfo,
     draft.classInfo?.name,
-    draft.draft?.name,
     draft.draft?.abilityScores,
     draft.raceChoices,
     draft.classChoices,
@@ -196,6 +227,41 @@ export function InteractiveCharacterSheet({
 
   // Get classChoices from character state
   const classChoices = character.choices?.classChoices || ({} as ClassChoices);
+
+  // Validation function to check if character is ready for finalization
+  const isCharacterValid = useCallback(() => {
+    // Check required fields
+    const hasName = Boolean(draft.draft?.name?.trim());
+    const hasRace = Boolean(draft.raceInfo);
+    const hasClass = Boolean(draft.classInfo);
+
+    // Check if all ability scores are assigned (all greater than 0)
+    const hasAbilityScores =
+      draft.draft?.abilityScores &&
+      draft.draft.abilityScores.strength > 0 &&
+      draft.draft.abilityScores.dexterity > 0 &&
+      draft.draft.abilityScores.constitution > 0 &&
+      draft.draft.abilityScores.intelligence > 0 &&
+      draft.draft.abilityScores.wisdom > 0 &&
+      draft.draft.abilityScores.charisma > 0;
+
+    return hasName && hasRace && hasClass && hasAbilityScores;
+  }, [draft]);
+
+  // Handle finalize button click
+  const handleFinalize = useCallback(async () => {
+    if (!isCharacterValid()) return;
+
+    try {
+      await draft.finalizeDraft();
+      // For now, just call onComplete
+      // In the future, this could navigate to the character sheet with the returned ID
+      onComplete();
+    } catch (error) {
+      console.error('Failed to finalize character:', error);
+      // Error is already handled by the context, just log it here
+    }
+  }, [isCharacterValid, draft, onComplete]);
 
   // Compute character creation steps and their status
   const steps = useMemo<Step[]>(() => {
@@ -541,18 +607,13 @@ export function InteractiveCharacterSheet({
             <div className="relative">
               <input
                 type="text"
-                value={character.characterName}
-                onChange={(e) =>
-                  setCharacter((prev) => ({
-                    ...prev,
-                    characterName: e.target.value,
-                  }))
-                }
+                value={draft.draft?.name || ''}
+                onChange={(e) => draft.setName(e.target.value)}
                 placeholder="Enter your character's name..."
                 className="w-full p-4 text-xl font-serif rounded-lg border-2 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2"
                 style={{
                   backgroundColor: 'var(--bg-secondary)',
-                  borderColor: character.characterName
+                  borderColor: draft.draft?.name
                     ? 'var(--accent-primary)'
                     : 'var(--border-primary)',
                   color: 'var(--text-primary)',
@@ -1114,7 +1175,7 @@ export function InteractiveCharacterSheet({
           </div>
 
           {/* Character Summary */}
-          {character.characterName && (
+          {draft.draft?.name && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1135,33 +1196,63 @@ export function InteractiveCharacterSheet({
                   className="font-bold"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  {character.characterName}
+                  {draft.draft.name}
                 </span>
                 {character.selectedRace && `, a ${character.selectedRace.name}`}
                 {character.selectedClass && ` ${character.selectedClass.name}`}
-                {character.characterName && ', ready for adventure!'}
+                {draft.draft.name && ', ready for adventure!'}
               </p>
             </motion.div>
+          )}
+
+          {/* Error Display */}
+          {draft.error && (
+            <div
+              className="mb-4 p-3 rounded-lg border"
+              style={{
+                backgroundColor: 'var(--bg-danger)',
+                borderColor: 'var(--border-danger)',
+                color: 'var(--text-danger)',
+              }}
+            >
+              <p className="text-sm font-medium">
+                Failed to finalize character:
+              </p>
+              <p className="text-sm">{draft.error.message}</p>
+            </div>
           )}
 
           {/* Action Buttons */}
           <div className="flex justify-between items-center pt-4">
             <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              Build your character by clicking sections above
+              {isCharacterValid()
+                ? 'Your character is ready for adventure!'
+                : 'Build your character by clicking sections above'}
             </div>
 
             <motion.button
-              onClick={() => onComplete()}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="px-8 py-3 text-lg font-bold rounded-lg transition-all"
+              onClick={handleFinalize}
+              disabled={!isCharacterValid() || draft.saving}
+              whileHover={
+                isCharacterValid() && !draft.saving ? { scale: 1.05 } : {}
+              }
+              whileTap={
+                isCharacterValid() && !draft.saving ? { scale: 0.95 } : {}
+              }
+              className="px-8 py-3 text-lg font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
-                backgroundColor: 'var(--accent-primary)',
+                backgroundColor:
+                  isCharacterValid() && !draft.saving
+                    ? 'var(--accent-primary)'
+                    : 'var(--bg-muted)',
                 borderColor: 'var(--border-primary)',
-                color: 'var(--text-primary)',
+                color:
+                  isCharacterValid() && !draft.saving
+                    ? 'var(--text-primary)'
+                    : 'var(--text-muted)',
               }}
             >
-              ⚔️ Begin Adventure!
+              {draft.saving ? '⏳ Finalizing...' : '⚔️ Begin Adventure!'}
             </motion.button>
           </div>
         </motion.div>
