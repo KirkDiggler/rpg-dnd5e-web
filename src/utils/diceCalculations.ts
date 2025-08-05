@@ -89,6 +89,10 @@ export function calculateAbilityScoreValue(roll: DiceRoll): number {
     return sorted[1] + sorted[2] + sorted[3];
   }
 
-  // For other dice counts, just use the total
-  return roll.total;
+  // For other dice counts, calculate total manually for consistency
+  if (roll.dropped && roll.dropped.length > 0) {
+    return calculateDiceTotal(roll);
+  }
+  // No dropped dice, sum all dice
+  return roll.dice.reduce((sum, die) => sum + die, 0);
 }

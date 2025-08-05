@@ -245,18 +245,6 @@ export function InteractiveCharacterSheet({
       draft.draft.abilityScores.wisdom > 0 &&
       draft.draft.abilityScores.charisma > 0;
 
-    // Debug logging to help identify issues
-    console.log('Character validation:', {
-      hasName,
-      hasRace,
-      hasClass,
-      hasAbilityScores,
-      name: draft.draft?.name,
-      race: draft.raceInfo?.name,
-      class: draft.classInfo?.name,
-      scores: draft.draft?.abilityScores,
-    });
-
     return hasName && hasRace && hasClass && hasAbilityScores;
   }, [draft]);
 
@@ -265,11 +253,10 @@ export function InteractiveCharacterSheet({
     if (!isCharacterValid()) return;
 
     try {
-      const characterId = await draft.finalizeDraft();
-      // For now, call onComplete with the character ID
-      // In the future, this could navigate to the character sheet
+      await draft.finalizeDraft();
+      // For now, just call onComplete
+      // In the future, this could navigate to the character sheet with the returned ID
       onComplete();
-      console.log('Character finalized successfully:', characterId);
     } catch (error) {
       console.error('Failed to finalize character:', error);
       // Error is already handled by the context, just log it here

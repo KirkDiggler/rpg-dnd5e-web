@@ -20,7 +20,15 @@ import { CheckCircle, Dices, RefreshCw } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
 import { CharacterDraftContext } from '../CharacterDraftContextDef';
 
-const ABILITY_NAMES = [
+type AbilityKey =
+  | 'strength'
+  | 'dexterity'
+  | 'constitution'
+  | 'intelligence'
+  | 'wisdom'
+  | 'charisma';
+
+const ABILITY_NAMES: Array<{ key: AbilityKey; label: string; abbr: string }> = [
   { key: 'strength', label: 'Strength', abbr: 'STR' },
   { key: 'dexterity', label: 'Dexterity', abbr: 'DEX' },
   { key: 'constitution', label: 'Constitution', abbr: 'CON' },
@@ -354,7 +362,7 @@ export function AbilityScoresSectionV2({
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {ABILITY_NAMES.map((ability) => {
-              const score = scores[ability.key as keyof typeof scores];
+              const score = scores[ability.key];
               const scoreValue = typeof score === 'number' ? score : 0;
               const modifier = getAbilityModifier(scoreValue);
 
