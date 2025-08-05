@@ -1,0 +1,16 @@
+{
+  "$typeName": "dnd5e.api.v1alpha1.UpdateAbilityScoresRequest",
+  "draftId": "draft_14c6d39f-46d4-43c7-b76a-267b9f5e99df",
+  "scoresInput": {
+    "case": "rollAssignments",
+    "value": {
+      "$typeName": "dnd5e.api.v1alpha1.RollAssignments",
+      "strengthRollId": "roll-_1754359627499022398_10da2427",
+      "dexterityRollId": "roll-_1754359625942152476_1784a033",
+      "constitutionRollId": "roll-_1754359626429968057_46c6d0bd",
+      "intelligenceRollId": "roll-_1754359627011551001_23ad59f7",
+      "wisdomRollId": "roll-_1754359624686527618_9d136156",
+      "charismaRollId": "roll-_1754359625365633913_90f8d466"
+    }
+  }
+}

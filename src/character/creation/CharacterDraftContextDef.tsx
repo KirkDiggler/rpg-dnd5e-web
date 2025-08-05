@@ -40,6 +40,7 @@ export interface CharacterDraftState {
   ) => Promise<void>;
   setName: (name: string) => Promise<void>;
   setAbilityScores: (scores: Record<string, number>) => Promise<void>;
+  finalizeDraft: () => Promise<string>; // Returns character ID
 
   // Choice management
   addRaceChoice: (choiceKey: string, selection: string[]) => void;

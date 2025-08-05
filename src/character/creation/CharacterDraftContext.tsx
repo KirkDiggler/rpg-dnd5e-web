@@ -13,6 +13,7 @@ import {
   ChoiceSource,
   CreateDraftRequestSchema,
   EquipmentListSchema,
+  FinalizeDraftRequestSchema,
   LanguageListSchema,
   SkillListSchema,
   UpdateAbilityScoresRequestSchema,
@@ -31,6 +32,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { characterClient } from '../../api/client';
 import {
   useCreateDraft,
+  useFinalizeDraft,
   useListClasses,
   useListRaces,
   useUpdateDraftAbilityScores,
@@ -255,6 +257,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const { updateClass: updateClassAPI } = useUpdateDraftClass();
   const { updateAbilityScores: updateAbilityScoresAPI } =
     useUpdateDraftAbilityScores();
+  const { finalizeDraft: finalizeDraftAPI } = useFinalizeDraft();
 
   // Helper to collect all proficiencies from a race
   const collectRaceProficiencies = useCallback(
@@ -904,6 +907,35 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     setError(null);
   }, []);
 
+  const finalizeDraft = useCallback(async () => {
+    if (!draftId) {
+      throw new Error('No draft to finalize');
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const request = create(FinalizeDraftRequestSchema, { draftId });
+      const response = await finalizeDraftAPI(request);
+
+      if (!response.character?.id) {
+        throw new Error('Failed to finalize draft - no character ID returned');
+      }
+
+      // Reset the draft state after successful finalization
+      reset();
+
+      return response.character.id;
+    } catch (err) {
+      const error =
+        err instanceof Error ? err : new Error('Failed to finalize draft');
+      setError(error);
+      throw error;
+    } finally {
+      setSaving(false);
+    }
+  }, [draftId, finalizeDraftAPI, reset]);
+
   const value: CharacterDraftState = {
     draftId,
     draft,
@@ -922,6 +954,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     setClass,
     setName,
     setAbilityScores,
+    finalizeDraft,
     addRaceChoice,
     addClassChoice,
     getAvailableChoices,

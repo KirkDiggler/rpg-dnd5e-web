@@ -1,0 +1,73 @@
+{
+  "$typeName": "api.v1alpha1.GetRollSessionResponse",
+  "rolls": [
+    {
+      "$typeName": "api.v1alpha1.DiceRoll",
+      "rollId": "roll-_1754359624686527618_9d136156",
+      "notation": "4d6",
+      "dice": [1, 5, 1, 2],
+      "total": 9,
+      "dropped": [],
+      "description": "",
+      "diceTotal": 9,
+      "modifier": 0
+    },
+    {
+      "$typeName": "api.v1alpha1.DiceRoll",
+      "rollId": "roll-_1754359625365633913_90f8d466",
+      "notation": "4d6",
+      "dice": [4, 2, 2, 4],
+      "total": 12,
+      "dropped": [],
+      "description": "",
+      "diceTotal": 12,
+      "modifier": 0
+    },
+    {
+      "$typeName": "api.v1alpha1.DiceRoll",
+      "rollId": "roll-_1754359625942152476_1784a033",
+      "notation": "4d6",
+      "dice": [2, 3, 5, 4],
+      "total": 14,
+      "dropped": [],
+      "description": "",
+      "diceTotal": 14,
+      "modifier": 0
+    },
+    {
+      "$typeName": "api.v1alpha1.DiceRoll",
+      "rollId": "roll-_1754359626429968057_46c6d0bd",
+      "notation": "4d6",
+      "dice": [3, 4, 4, 1],
+      "total": 12,
+      "dropped": [],
+      "description": "",
+      "diceTotal": 12,
+      "modifier": 0
+    },
+    {
+      "$typeName": "api.v1alpha1.DiceRoll",
+      "rollId": "roll-_1754359627011551001_23ad59f7",
+      "notation": "4d6",
+      "dice": [4, 2, 1, 2],
+      "total": 9,
+      "dropped": [],
+      "description": "",
+      "diceTotal": 9,
+      "modifier": 0
+    },
+    {
+      "$typeName": "api.v1alpha1.DiceRoll",
+      "rollId": "roll-_1754359627499022398_10da2427",
+      "notation": "4d6",
+      "dice": [6, 6, 1, 3],
+      "total": 16,
+      "dropped": [],
+      "description": "",
+      "diceTotal": 16,
+      "modifier": 0
+    }
+  ],
+  "expiresAt": "1754360524",
+  "createdAt": "1754359624"
+}

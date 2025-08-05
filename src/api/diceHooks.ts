@@ -198,7 +198,7 @@ export function useAbilityScoreRolls(playerId: string) {
       const newRolls = await rollDice({
         entityId: playerId,
         context,
-        notation: '4d6',
+        notation: '4d6dl1',
         count,
       });
       // Check for duplicates before adding
