@@ -71,3 +71,24 @@ export function areDiceRollsEqual(roll1: DiceRoll, roll2: DiceRoll): boolean {
 
   return true;
 }
+
+/**
+ * Calculate what an ability score would be for a 4d6 roll (drop lowest)
+ * This is for UI display only - the server makes the final determination
+ */
+export function calculateAbilityScoreValue(roll: DiceRoll): number {
+  // If server already provided dropped dice, use the calculated total
+  if (roll.dropped && roll.dropped.length > 0) {
+    return calculateDiceTotal(roll);
+  }
+
+  // For 4d6 with no dropped dice, calculate drop lowest for display
+  if (roll.dice.length === 4) {
+    const sorted = [...roll.dice].sort((a, b) => a - b);
+    // Sum the highest 3 dice (drop the lowest)
+    return sorted[1] + sorted[2] + sorted[3];
+  }
+
+  // For other dice counts, just use the total
+  return roll.total;
+}

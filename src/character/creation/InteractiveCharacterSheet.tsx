@@ -83,7 +83,6 @@ function getExtraLanguages(
 
 // Simple context for now - we'll make it more sophisticated later
 const CharacterContext = {
-  characterName: '',
   selectedRace: null as RaceInfo | null,
   selectedClass: null as ClassInfo | null,
   abilityScores: {
@@ -109,6 +108,45 @@ export function InteractiveCharacterSheet({
   const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
   const draft = useCharacterDraft();
 
+  // Sync draft state with local character state
+  useEffect(() => {
+    if (draft.draft) {
+      setCharacter((prev) => ({
+        ...prev,
+        // Update ability scores if they exist in the draft
+        abilityScores: draft.draft?.abilityScores || prev.abilityScores,
+      }));
+    }
+  }, [draft.draft]);
+
+  // Sync equipment choices from draft
+  useEffect(() => {
+    if (draft.draft?.choices) {
+      // Find equipment choices in the draft choices array
+      const equipmentChoices: Record<number, string> = {};
+      let equipmentIndex = 0;
+
+      draft.draft.choices.forEach((choice) => {
+        // Check if this is an equipment choice (category === 1)
+        if (
+          choice.category === ChoiceCategory.EQUIPMENT &&
+          choice.selection.case === 'equipment'
+        ) {
+          // Store the equipment selection using an index
+          equipmentChoices[equipmentIndex++] =
+            choice.selection.value.items.join(',');
+        }
+      });
+
+      if (Object.keys(equipmentChoices).length > 0) {
+        setCharacter((prev) => ({
+          ...prev,
+          equipmentChoices,
+        }));
+      }
+    }
+  }, [draft.draft]);
+
   // Sync draft data with local character state
   useEffect(() => {
     if (draft.raceInfo) {
@@ -121,12 +159,6 @@ export function InteractiveCharacterSheet({
       setCharacter((prev) => ({
         ...prev,
         selectedClass: draft.classInfo,
-      }));
-    }
-    if (draft.draft?.name) {
-      setCharacter((prev) => ({
-        ...prev,
-        characterName: draft.draft?.name || '',
       }));
     }
     // Load ability scores from draft
@@ -188,7 +220,6 @@ export function InteractiveCharacterSheet({
     draft.raceInfo,
     draft.classInfo,
     draft.classInfo?.name,
-    draft.draft?.name,
     draft.draft?.abilityScores,
     draft.raceChoices,
     draft.classChoices,
@@ -213,6 +244,18 @@ export function InteractiveCharacterSheet({
       draft.draft.abilityScores.intelligence > 0 &&
       draft.draft.abilityScores.wisdom > 0 &&
       draft.draft.abilityScores.charisma > 0;
+
+    // Debug logging to help identify issues
+    console.log('Character validation:', {
+      hasName,
+      hasRace,
+      hasClass,
+      hasAbilityScores,
+      name: draft.draft?.name,
+      race: draft.raceInfo?.name,
+      class: draft.classInfo?.name,
+      scores: draft.draft?.abilityScores,
+    });
 
     return hasName && hasRace && hasClass && hasAbilityScores;
   }, [draft]);
@@ -577,18 +620,13 @@ export function InteractiveCharacterSheet({
             <div className="relative">
               <input
                 type="text"
-                value={character.characterName}
-                onChange={(e) =>
-                  setCharacter((prev) => ({
-                    ...prev,
-                    characterName: e.target.value,
-                  }))
-                }
+                value={draft.draft?.name || ''}
+                onChange={(e) => draft.setName(e.target.value)}
                 placeholder="Enter your character's name..."
                 className="w-full p-4 text-xl font-serif rounded-lg border-2 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2"
                 style={{
                   backgroundColor: 'var(--bg-secondary)',
-                  borderColor: character.characterName
+                  borderColor: draft.draft?.name
                     ? 'var(--accent-primary)'
                     : 'var(--border-primary)',
                   color: 'var(--text-primary)',
@@ -1150,7 +1188,7 @@ export function InteractiveCharacterSheet({
           </div>
 
           {/* Character Summary */}
-          {character.characterName && (
+          {draft.draft?.name && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1171,11 +1209,11 @@ export function InteractiveCharacterSheet({
                   className="font-bold"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  {character.characterName}
+                  {draft.draft.name}
                 </span>
                 {character.selectedRace && `, a ${character.selectedRace.name}`}
                 {character.selectedClass && ` ${character.selectedClass.name}`}
-                {character.characterName && ', ready for adventure!'}
+                {draft.draft.name && ', ready for adventure!'}
               </p>
             </motion.div>
           )}

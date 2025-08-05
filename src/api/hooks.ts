@@ -14,6 +14,8 @@ import type {
   ListEquipmentByTypeRequest,
   ListRacesRequest,
   RaceInfo,
+  RollAbilityScoresRequest,
+  RollAbilityScoresResponse,
   UpdateAbilityScoresRequest,
   UpdateBackgroundRequest,
   UpdateClassRequest,
@@ -434,6 +436,41 @@ export function useUpdateDraftAbilityScores() {
   );
 
   return { updateAbilityScores, loading, error };
+}
+
+export function useRollAbilityScores() {
+  const [state, setState] = useState<AsyncState<RollAbilityScoresResponse>>({
+    data: null,
+    loading: false,
+    error: null,
+  });
+
+  const rollAbilityScores = useCallback(
+    async (request: RollAbilityScoresRequest) => {
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+
+      try {
+        const response = await characterClient.rollAbilityScores(request);
+        setState({
+          data: response,
+          loading: false,
+          error: null,
+        });
+        return response;
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        setState({
+          data: null,
+          loading: false,
+          error: err,
+        });
+        throw err;
+      }
+    },
+    []
+  );
+
+  return { rollAbilityScores, ...state };
 }
 
 export function useUpdateDraftSkills() {

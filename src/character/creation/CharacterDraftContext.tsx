@@ -816,13 +816,14 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
   const setName = useCallback(
     async (name: string) => {
-      setDraft(
-        (prev) =>
-          ({
-            ...prev,
-            name,
-          }) as CharacterDraft
-      );
+      // Update the draft's name property
+      setDraft((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          name,
+        };
+      });
 
       // Save to API if draft exists
       if (draftId) {
