@@ -3,15 +3,20 @@ import type {
   CharacterDraft,
   Choice,
   ChoiceData,
-  ChoiceSelection,
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   AbilityScoresSchema,
-  ChoiceSelectionSchema,
+  CantripListSchema,
+  ChoiceCategory,
+  ChoiceDataSchema,
   ChoiceSource,
   CreateDraftRequestSchema,
+  EquipmentListSchema,
+  LanguageListSchema,
+  SkillListSchema,
+  SpellListSchema,
   UpdateAbilityScoresRequestSchema,
   UpdateClassRequestSchema,
   UpdateNameRequestSchema,
@@ -85,20 +90,65 @@ function formatProficiencyList(
   ]);
 }
 
-// Helper to convert our choice format to ChoiceSelection
+// Helper to convert our choice format to ChoiceData
 function createChoiceSelections(
   choices: Record<string, string[]>,
   source: ChoiceSource
-): ChoiceSelection[] {
-  const selections: ChoiceSelection[] = [];
+): ChoiceData[] {
+  const selections: ChoiceData[] = [];
 
   Object.entries(choices).forEach(([choiceId, selectedKeys]) => {
     if (selectedKeys.length > 0) {
+      // Determine the selection type and category based on the choiceId
+      let selection: ChoiceData['selection'];
+      let category = ChoiceCategory.UNSPECIFIED;
+
+      if (choiceId.includes('skill')) {
+        category = ChoiceCategory.SKILLS;
+        selection = {
+          case: 'skills',
+          value: create(SkillListSchema, { skills: selectedKeys }),
+        };
+      } else if (choiceId.includes('language')) {
+        category = ChoiceCategory.LANGUAGES;
+        selection = {
+          case: 'languages',
+          value: create(LanguageListSchema, { languages: selectedKeys }),
+        };
+      } else if (choiceId.includes('cantrip')) {
+        category = ChoiceCategory.CANTRIPS;
+        selection = {
+          case: 'cantrips',
+          value: create(CantripListSchema, { cantrips: selectedKeys }),
+        };
+      } else if (choiceId.includes('spell')) {
+        category = ChoiceCategory.SPELLS;
+        selection = {
+          case: 'spells',
+          value: create(SpellListSchema, { spells: selectedKeys }),
+        };
+      } else if (choiceId.includes('equipment')) {
+        category = ChoiceCategory.EQUIPMENT;
+        selection = {
+          case: 'equipment',
+          value: create(EquipmentListSchema, {
+            items: selectedKeys,
+          }),
+        };
+      } else {
+        // Default to name for other choices
+        selection = {
+          case: 'name',
+          value: selectedKeys[0] || '',
+        };
+      }
+
       selections.push(
-        create(ChoiceSelectionSchema, {
+        create(ChoiceDataSchema, {
           choiceId,
           source,
-          selectedKeys,
+          category,
+          selection,
         })
       );
     }
