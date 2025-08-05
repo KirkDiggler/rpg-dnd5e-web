@@ -1,0 +1,87 @@
+{
+  "$typeName": "dnd5e.api.v1alpha1.GetDraftResponse",
+  "draft": {
+    "$typeName": "dnd5e.api.v1alpha1.CharacterDraft",
+    "id": "draft_a8851bab-15d5-460b-b0e6-7277ff94afc5",
+    "playerId": "test-player",
+    "sessionId": "",
+    "name": "",
+    "alignment": 0,
+    "choices": [
+      {
+        "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+        "category": 4,
+        "source": 2,
+        "choiceId": "language_choice",
+        "selection": {
+          "case": "languages",
+          "value": {
+            "$typeName": "dnd5e.api.v1alpha1.LanguageList",
+            "languages": [6]
+          }
+        }
+      },
+      {
+        "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+        "category": 0,
+        "source": 4,
+        "choiceId": "fighter_skills",
+        "selection": {}
+      },
+      {
+        "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+        "category": 0,
+        "source": 4,
+        "choiceId": "fighter_feature_fighter-fighting-style_choice",
+        "selection": {}
+      },
+      {
+        "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+        "category": 0,
+        "source": 4,
+        "choiceId": "fighter_equipment_1",
+        "selection": {}
+      },
+      {
+        "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+        "category": 0,
+        "source": 4,
+        "choiceId": "fighter_equipment_2",
+        "selection": {}
+      },
+      {
+        "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+        "category": 0,
+        "source": 4,
+        "choiceId": "fighter_equipment_3",
+        "selection": {}
+      },
+      {
+        "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+        "category": 0,
+        "source": 4,
+        "choiceId": "fighter_equipment_4",
+        "selection": {}
+      }
+    ],
+    "expiresAt": "0",
+    "createdAt": "1754336568",
+    "updatedAt": "1754340057",
+    "raceId": 1,
+    "subraceId": 0,
+    "classId": 5,
+    "backgroundId": 0,
+    "progress": {
+      "$typeName": "dnd5e.api.v1alpha1.CreationProgress",
+      "hasName": false,
+      "hasRace": true,
+      "hasClass": true,
+      "hasBackground": false,
+      "hasAbilityScores": false,
+      "hasSkills": false,
+      "hasLanguages": false,
+      "completionPercentage": 40,
+      "currentStep": 0
+    }
+  }
+}
