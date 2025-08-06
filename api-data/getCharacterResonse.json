@@ -1,0 +1,52 @@
+{
+  "$typeName": "dnd5e.api.v1alpha1.GetCharacterResponse",
+  "character": {
+    "$typeName": "dnd5e.api.v1alpha1.Character",
+    "id": "draft_ae31710e-90e3-4be9-ae94-618b051c2818",
+    "name": "Syandre",
+    "level": 1,
+    "experiencePoints": 0,
+    "race": 8,
+    "subrace": 0,
+    "class": 1,
+    "background": 0,
+    "alignment": 0,
+    "languages": [1, 8],
+    "currentHitPoints": 14,
+    "temporaryHitPoints": 0,
+    "sessionId": "",
+    "inventory": [],
+    "abilityScores": {
+      "$typeName": "dnd5e.api.v1alpha1.AbilityScores",
+      "strength": 15,
+      "dexterity": 14,
+      "constitution": 14,
+      "intelligence": 12,
+      "wisdom": 13,
+      "charisma": 14
+    },
+    "combatStats": {
+      "$typeName": "dnd5e.api.v1alpha1.CombatStats",
+      "hitPointMaximum": 14,
+      "armorClass": 0,
+      "initiative": 0,
+      "speed": 30,
+      "proficiencyBonus": 0,
+      "hitDice": ""
+    },
+    "proficiencies": {
+      "$typeName": "dnd5e.api.v1alpha1.Proficiencies",
+      "skills": [8, 18, 4],
+      "savingThrows": [3, 1],
+      "armor": ["Light Armor", "Medium Armor", "Shields"],
+      "weapons": ["Simple Weapons", "Martial Weapons"],
+      "tools": []
+    },
+    "metadata": {
+      "$typeName": "dnd5e.api.v1alpha1.CharacterMetadata",
+      "createdAt": "1754453119",
+      "updatedAt": "1754453242",
+      "playerId": "test-player"
+    }
+  }
+}

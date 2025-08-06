@@ -12,6 +12,7 @@ interface CharacterListProps {
   sessionId?: string;
   onCreateCharacter?: () => void;
   onResumeDraft?: (draftId: string) => void;
+  onViewCharacter?: (characterId: string) => void;
 }
 
 // Helper to convert Race enum to display name
@@ -56,6 +57,7 @@ export function CharacterList({
   sessionId,
   onCreateCharacter,
   onResumeDraft,
+  onViewCharacter,
 }: CharacterListProps) {
   const {
     data: characters,
@@ -219,7 +221,7 @@ export function CharacterList({
                               ? 'uncommon'
                               : 'common'
                     }
-                    className="cursor-pointer hover:scale-105 transition-transform"
+                    className="hover:scale-105 transition-transform"
                   >
                     <div className="space-y-3">
                       <h3
@@ -301,6 +303,17 @@ export function CharacterList({
                             }}
                           />
                         </div>
+                      </div>
+
+                      {/* Action Button */}
+                      <div className="pt-2">
+                        <Button
+                          variant="primary"
+                          onClick={() => onViewCharacter?.(character.id)}
+                          className="w-full"
+                        >
+                          View Character
+                        </Button>
                       </div>
                     </div>
                   </Card>

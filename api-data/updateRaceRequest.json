@@ -1,0 +1,21 @@
+{
+  "$typeName": "dnd5e.api.v1alpha1.UpdateRaceRequest",
+  "draftId": "draft_6d5bf886-a2cc-4d9d-b753-f910947f8fa5",
+  "race": 1,
+  "subrace": 0,
+  "raceChoices": [
+    {
+      "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+      "category": 4,
+      "source": 2,
+      "choiceId": "language_choice",
+      "selection": {
+        "case": "languages",
+        "value": {
+          "$typeName": "dnd5e.api.v1alpha1.LanguageList",
+          "languages": [0]
+        }
+      }
+    }
+  ]
+}

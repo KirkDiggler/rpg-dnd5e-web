@@ -8,6 +8,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   AbilityScoresSchema,
+  CantripListSchema,
   ChoiceCategory,
   ChoiceDataSchema,
   ChoiceSource,
@@ -16,6 +17,7 @@ import {
   FinalizeDraftRequestSchema,
   LanguageListSchema,
   SkillListSchema,
+  SpellListSchema,
   UpdateAbilityScoresRequestSchema,
   UpdateClassRequestSchema,
   UpdateNameRequestSchema,
@@ -191,6 +193,18 @@ function createChoiceDataFromInternalFormat(
         selection = {
           case: 'languages',
           value: create(LanguageListSchema, { languages }),
+        };
+      } else if (choiceId.includes('cantrip')) {
+        category = ChoiceCategory.CANTRIPS;
+        selection = {
+          case: 'cantrips',
+          value: create(CantripListSchema, { cantrips: selectedValues }),
+        };
+      } else if (choiceId.includes('spell')) {
+        category = ChoiceCategory.SPELLS;
+        selection = {
+          case: 'spells',
+          value: create(SpellListSchema, { spells: selectedValues }),
         };
       } else if (choiceId.includes('equipment')) {
         category = ChoiceCategory.EQUIPMENT;

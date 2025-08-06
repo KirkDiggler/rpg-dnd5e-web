@@ -1,0 +1,82 @@
+{
+  "$typeName": "dnd5e.api.v1alpha1.UpdateClassRequest",
+  "draftId": "draft_6d5bf886-a2cc-4d9d-b753-f910947f8fa5",
+  "class": 5,
+  "classChoices": [
+    {
+      "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+      "category": 2,
+      "source": 4,
+      "choiceId": "fighter_skills",
+      "selection": {
+        "case": "skills",
+        "value": {
+          "$typeName": "dnd5e.api.v1alpha1.SkillList",
+          "skills": [0, 0]
+        }
+      }
+    },
+    {
+      "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+      "category": 0,
+      "source": 4,
+      "choiceId": "fighter_feature_fighter-fighting-style_choice",
+      "selection": {
+        "case": "name",
+        "value": "feature_fighting_style:_dueling"
+      }
+    },
+    {
+      "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+      "category": 1,
+      "source": 4,
+      "choiceId": "fighter_equipment_1",
+      "selection": {
+        "case": "equipment",
+        "value": {
+          "$typeName": "dnd5e.api.v1alpha1.EquipmentList",
+          "items": ["chain-mail"]
+        }
+      }
+    },
+    {
+      "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+      "category": 1,
+      "source": 4,
+      "choiceId": "fighter_equipment_2",
+      "selection": {
+        "case": "equipment",
+        "value": {
+          "$typeName": "dnd5e.api.v1alpha1.EquipmentList",
+          "items": ["bundle_0:0:warhammer"]
+        }
+      }
+    },
+    {
+      "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+      "category": 1,
+      "source": 4,
+      "choiceId": "fighter_equipment_4",
+      "selection": {
+        "case": "equipment",
+        "value": {
+          "$typeName": "dnd5e.api.v1alpha1.EquipmentList",
+          "items": ["dungeoneers-pack"]
+        }
+      }
+    },
+    {
+      "$typeName": "dnd5e.api.v1alpha1.ChoiceData",
+      "category": 1,
+      "source": 4,
+      "choiceId": "fighter_equipment_3",
+      "selection": {
+        "case": "equipment",
+        "value": {
+          "$typeName": "dnd5e.api.v1alpha1.EquipmentList",
+          "items": ["bundle_0"]
+        }
+      }
+    }
+  ]
+}
