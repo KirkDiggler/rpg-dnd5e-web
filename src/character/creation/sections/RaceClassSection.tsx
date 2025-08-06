@@ -6,6 +6,8 @@ import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
 import type { ClassChoices } from '../ClassSelectionModal';
@@ -29,13 +31,12 @@ export function RaceClassSection() {
 
   // Update selected data when draft loads
   useEffect(() => {
-    if (raceInfo && !selectedRaceData) {
-      setSelectedRaceData(raceInfo);
-    }
-    if (classInfo && !selectedClassData) {
-      setSelectedClassData(classInfo);
-    }
-  }, [raceInfo, classInfo, selectedRaceData, selectedClassData]);
+    setSelectedRaceData(raceInfo);
+  }, [raceInfo]);
+
+  useEffect(() => {
+    setSelectedClassData(classInfo);
+  }, [classInfo]);
 
   // Format existing race choices for the modal
   const existingRaceChoices: RaceChoices | undefined =
@@ -210,6 +211,7 @@ export function RaceClassSection() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {/* Display racial traits */}
                   {selectedRaceData.traits.map((trait) => (
                     <TraitBadge
                       key={trait.name}
@@ -218,6 +220,62 @@ export function RaceClassSection() {
                       icon={TraitIcons.racial}
                     />
                   ))}
+
+                  {/* Display race's built-in languages */}
+                  {selectedRaceData.languages &&
+                    selectedRaceData.languages.length > 0 && (
+                      <>
+                        {selectedRaceData.languages.map((langEnum) => {
+                          // Convert enum to display name
+                          const langName = Object.entries(Language).find(
+                            ([, value]) => value === langEnum
+                          )?.[0];
+                          if (!langName) return null;
+                          return (
+                            <TraitBadge
+                              key={`lang-${langName}`}
+                              name={langName.replace(/_/g, ' ').toLowerCase()}
+                              type="racial"
+                              icon="🗣️"
+                            />
+                          );
+                        })}
+                      </>
+                    )}
+
+                  {/* Display race's built-in proficiencies */}
+                  {selectedRaceData.proficiencies &&
+                    selectedRaceData.proficiencies.length > 0 && (
+                      <>
+                        {selectedRaceData.proficiencies.map((prof) => (
+                          <TraitBadge
+                            key={`prof-${prof}`}
+                            name={prof.replace(
+                              /^(skill:|weapon:|armor:|tool:)/,
+                              ''
+                            )}
+                            type="racial"
+                            icon="⚔️"
+                          />
+                        ))}
+                      </>
+                    )}
+
+                  {/* Display race choices */}
+                  {raceChoices &&
+                    Object.entries(raceChoices).map(([choiceId, selections]) =>
+                      selections.map((selection) => (
+                        <TraitBadge
+                          key={`${choiceId}-${selection}`}
+                          name={selection.replace(
+                            /^(language:|skill:|tool:|proficiency:)/,
+                            ''
+                          )}
+                          type="racial"
+                          icon="✓"
+                        />
+                      ))
+                    )}
                 </div>
                 <p className="text-xs text-muted">Click to change race</p>
               </div>
@@ -279,16 +337,41 @@ export function RaceClassSection() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {selectedClassData.level1Features
-                    .slice(0, 3)
-                    .map((feature) => (
-                      <TraitBadge
-                        key={feature.name}
-                        name={feature.name}
-                        type="class"
-                        icon={TraitIcons.class}
-                      />
-                    ))}
+                  {/* Display class features from choices */}
+                  {(() => {
+                    const featureChoices =
+                      selectedClassData.choices?.filter(
+                        (choice) =>
+                          choice.choiceType === ChoiceCategory.FIGHTING_STYLE
+                      ) || [];
+
+                    // For Fighter, this includes Fighting Style choices
+                    return featureChoices
+                      .slice(0, 3)
+                      .map((choice) => (
+                        <TraitBadge
+                          key={choice.id}
+                          name={choice.description}
+                          type="class"
+                          icon={TraitIcons.class}
+                        />
+                      ));
+                  })()}
+                  {/* Display class choices */}
+                  {classChoices &&
+                    Object.entries(classChoices).map(([choiceId, selections]) =>
+                      selections.map((selection) => (
+                        <TraitBadge
+                          key={`${choiceId}-${selection}`}
+                          name={selection.replace(
+                            /^(skill:|tool:|proficiency:|equipment:)/,
+                            ''
+                          )}
+                          type="racial"
+                          icon="✓"
+                        />
+                      ))
+                    )}
                 </div>
                 <p className="text-xs text-muted">Click to change class</p>
               </div>

@@ -94,7 +94,7 @@ export function EquipmentChoice({
                     : 'var(--card-bg)',
                 }}
               >
-                {/* Single Item */}
+                {/* Simple Item */}
                 {option.optionType.case === 'item' && (
                   <button
                     type="button"
@@ -329,9 +329,11 @@ export function EquipmentChoice({
                                       color: isSelected
                                         ? 'rgba(255,255,255,0.9)'
                                         : 'var(--text-primary)',
+                                      fontStyle: 'italic',
                                     }}
                                   >
-                                    {choice?.choice?.description || 'Choice'}
+                                    {choice?.choice?.description ||
+                                      'Choose equipment'}
                                   </span>
                                 </div>
                               );
@@ -452,7 +454,6 @@ function NestedEquipmentChoice({
   // API now provides complete explicit options for nested choices
   if (nestedChoice.optionSet.case === 'explicitOptions') {
     const options = nestedChoice.optionSet.value.options;
-
     return (
       <select
         value={currentSelection || ''}

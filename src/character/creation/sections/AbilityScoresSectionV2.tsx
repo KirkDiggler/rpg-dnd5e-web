@@ -4,7 +4,7 @@ import { AnimatedStat } from '@/components/AnimatedStat';
 import { Button } from '@/components/ui/Button';
 import { useDiscord } from '@/discord';
 import {
-  calculateDiceTotal,
+  calculateAbilityScoreValue,
   formatModifier,
   getAbilityModifier,
   getDroppedDiceIndices,
@@ -20,7 +20,15 @@ import { CheckCircle, Dices, RefreshCw } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
 import { CharacterDraftContext } from '../CharacterDraftContextDef';
 
-const ABILITY_NAMES = [
+type AbilityKey =
+  | 'strength'
+  | 'dexterity'
+  | 'constitution'
+  | 'intelligence'
+  | 'wisdom'
+  | 'charisma';
+
+const ABILITY_NAMES: Array<{ key: AbilityKey; label: string; abbr: string }> = [
   { key: 'strength', label: 'Strength', abbr: 'STR' },
   { key: 'dexterity', label: 'Dexterity', abbr: 'DEX' },
   { key: 'constitution', label: 'Constitution', abbr: 'CON' },
@@ -42,7 +50,7 @@ function DiceRollDisplay({
   isSelected,
   onClick,
 }: DiceRollDisplayProps) {
-  const actualTotal = calculateDiceTotal(roll);
+  const actualTotal = calculateAbilityScoreValue(roll);
   const modifier = getAbilityModifier(actualTotal);
   const modifierStr = formatModifier(modifier);
 
@@ -75,7 +83,18 @@ function DiceRollDisplay({
       </div>
       <div className="flex gap-1 text-xs">
         {(() => {
-          const droppedIndices = getDroppedDiceIndices(roll.dice, roll.dropped);
+          // For 4d6 rolls, calculate which die would be dropped for ability scores
+          let droppedIndices = new Set<number>();
+          if (roll.dropped && roll.dropped.length > 0) {
+            // Server already told us what was dropped
+            droppedIndices = getDroppedDiceIndices(roll.dice, roll.dropped);
+          } else if (roll.dice.length === 4) {
+            // For 4d6 with no server-side dropping, show what would be dropped
+            const lowestValue = Math.min(...roll.dice);
+            const lowestIndex = roll.dice.indexOf(lowestValue);
+            droppedIndices.add(lowestIndex);
+          }
+
           return roll.dice.map((die, idx) => {
             const isDropped = droppedIndices.has(idx);
 
@@ -154,9 +173,11 @@ function AbilitySlot({
       {assignedRoll ? (
         <AnimatedStat
           label={ability.label}
-          value={calculateDiceTotal(assignedRoll)}
+          value={calculateAbilityScoreValue(assignedRoll)}
           previousValue={10}
-          modifier={getAbilityModifier(calculateDiceTotal(assignedRoll))}
+          modifier={getAbilityModifier(
+            calculateAbilityScoreValue(assignedRoll)
+          )}
           animate={true}
           variant="compact"
           size="small"
@@ -204,7 +225,7 @@ export function AbilityScoresSectionV2({
     getAssignedRoll,
     isComplete,
     getRollAssignments,
-  } = useAbilityScoreRolls(playerId);
+  } = useAbilityScoreRolls(playerId, draftId ?? undefined);
 
   const { updateAbilityScores } = useUpdateDraftAbilityScores();
 
@@ -278,7 +299,7 @@ export function AbilityScoresSectionV2({
         getRollAssignments()
       );
 
-      await updateAbilityScores(
+      const response = await updateAbilityScores(
         create(UpdateAbilityScoresRequestSchema, {
           draftId,
           scoresInput: {
@@ -288,9 +309,21 @@ export function AbilityScoresSectionV2({
         })
       );
 
-      // Don't call context.setAbilityScores here as it would overwrite
-      // our roll assignments with raw ability scores. The server will
-      // handle calculating the scores from the roll assignments.
+      // Update the context with the new draft that includes ability scores
+      if (response.draft && context) {
+        // The server has calculated the ability scores from our roll assignments
+        // Update the context so the UI knows they're saved
+        if (response.draft.abilityScores) {
+          context.setAbilityScores({
+            strength: response.draft.abilityScores.strength,
+            dexterity: response.draft.abilityScores.dexterity,
+            constitution: response.draft.abilityScores.constitution,
+            intelligence: response.draft.abilityScores.intelligence,
+            wisdom: response.draft.abilityScores.wisdom,
+            charisma: response.draft.abilityScores.charisma,
+          });
+        }
+      }
     } catch (error) {
       console.error('Failed to submit ability scores:', error);
     } finally {
@@ -304,6 +337,66 @@ export function AbilityScoresSectionV2({
         <p className="text-muted">Please create a character draft first.</p>
       </div>
     );
+  }
+
+  // Check if ability scores are already set in the draft
+  if (context?.draft?.abilityScores) {
+    const scores = context.draft.abilityScores;
+    const hasScores =
+      scores.strength > 0 ||
+      scores.dexterity > 0 ||
+      scores.constitution > 0 ||
+      scores.intelligence > 0 ||
+      scores.wisdom > 0 ||
+      scores.charisma > 0;
+
+    if (hasScores) {
+      return (
+        <div className="space-y-6">
+          <h2
+            className="text-2xl font-bold font-serif"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Ability Scores
+          </h2>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {ABILITY_NAMES.map((ability) => {
+              const score = scores[ability.key];
+              const scoreValue = typeof score === 'number' ? score : 0;
+              const modifier = getAbilityModifier(scoreValue);
+
+              return (
+                <div
+                  key={ability.key}
+                  className="p-4 rounded-lg border-2 border-green-500"
+                  style={{
+                    backgroundColor: 'var(--card-bg)',
+                    borderColor: 'var(--success)',
+                  }}
+                >
+                  <AnimatedStat
+                    label={ability.label}
+                    value={scoreValue}
+                    previousValue={10}
+                    modifier={modifier}
+                    animate={false}
+                    variant="compact"
+                    size="small"
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="text-center">
+            <p className="text-sm text-muted">
+              Ability scores have been assigned
+            </p>
+          </div>
+        </div>
+      );
+    }
   }
 
   return (
@@ -438,13 +531,8 @@ export function AbilityScoresSectionV2({
               const roll = rolls.find((r) => r.rollId === rollId);
               if (!roll) return sum;
 
-              const total =
-                !roll.dropped || roll.dropped.length === 0
-                  ? roll.total
-                  : roll.dice.reduce((s, d) => s + d, 0) -
-                    roll.dropped.reduce((s, d) => s + d, 0);
-
-              return sum + Math.floor((total - 10) / 2);
+              const total = calculateAbilityScoreValue(roll);
+              return sum + getAbilityModifier(total);
             }, 0)}
           </p>
         )}

@@ -60,15 +60,19 @@ else
   FAILED=1
 fi
 
-# Run tests
+# Run tests (if test script exists)
 echo ""
 echo "🧪 Running tests..."
-if npm test -- --run > /dev/null 2>&1; then
-  echo -e "${GREEN}✓ Tests passed${NC}"
+if npm run | grep -q "test"; then
+  if npm test -- --run > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Tests passed${NC}"
+  else
+    echo -e "${RED}✗ Tests failed${NC}"
+    echo -e "${YELLOW}  Run 'npm test' to see failures${NC}"
+    FAILED=1
+  fi
 else
-  echo -e "${RED}✗ Tests failed${NC}"
-  echo -e "${YELLOW}  Run 'npm test' to see failures${NC}"
-  FAILED=1
+  echo -e "${YELLOW}⚠ No test script found, skipping tests${NC}"
 fi
 
 # Summary

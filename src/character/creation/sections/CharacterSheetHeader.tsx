@@ -1,18 +1,18 @@
 import { Button } from '@/components/ui/Button';
-import { useCharacterBuilder } from '@/hooks/useCharacterBuilder';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
+import { useCharacterDraft } from '../useCharacterDraft';
 
 interface CharacterSheetHeaderProps {
   onCancel: () => void;
 }
 
 export function CharacterSheetHeader({ onCancel }: CharacterSheetHeaderProps) {
-  const { draft, updateDraft } = useCharacterBuilder();
-  const [isEditing, setIsEditing] = useState(!draft?.name);
+  const draft = useCharacterDraft();
+  const [isEditing, setIsEditing] = useState(!draft.draft?.name);
 
   const handleNameChange = (name: string) => {
-    updateDraft({ name });
+    draft.setName(name);
     setIsEditing(false);
   };
 
@@ -28,7 +28,7 @@ export function CharacterSheetHeader({ onCancel }: CharacterSheetHeaderProps) {
             <input
               type="text"
               placeholder="Enter character name..."
-              defaultValue={draft?.name || ''}
+              defaultValue={draft.draft?.name || ''}
               className="text-3xl font-bold bg-transparent border-b-2 border-accent focus:outline-none focus:border-accent-primary"
               style={{
                 color: 'var(--text-primary)',
@@ -57,7 +57,7 @@ export function CharacterSheetHeader({ onCancel }: CharacterSheetHeaderProps) {
               style={{ color: 'var(--text-primary)' }}
               onClick={handleNameClick}
             >
-              {draft?.name || 'Unnamed Character'}
+              {draft.draft?.name || 'Unnamed Character'}
             </h1>
             <p className="text-sm text-muted">Click to edit name</p>
           </motion.div>

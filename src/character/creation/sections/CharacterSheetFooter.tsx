@@ -1,6 +1,13 @@
+import { useFinalizeDraft, useValidateDraft } from '@/api/hooks';
+import { useCharacterDraft } from '@/character/creation/useCharacterDraft';
 import { Button } from '@/components/ui/Button';
-import { useCharacterBuilder } from '@/hooks/useCharacterBuilder';
+import { create } from '@bufbuild/protobuf';
+import {
+  FinalizeDraftRequestSchema,
+  ValidateDraftRequestSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
+import { useState } from 'react';
 
 interface CharacterSheetFooterProps {
   onComplete: (characterId: string) => void;
@@ -9,24 +16,67 @@ interface CharacterSheetFooterProps {
 export function CharacterSheetFooter({
   onComplete,
 }: CharacterSheetFooterProps) {
-  const { selectedChoices, draft } = useCharacterBuilder();
+  const { draft, draftId, raceInfo, classInfo } = useCharacterDraft();
+  const { finalizeDraft, loading: finalizing } = useFinalizeDraft();
+  const { validateDraft, loading: validating } = useValidateDraft();
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   const isComplete = !!(
     draft?.name &&
-    selectedChoices.race &&
-    selectedChoices.class &&
-    selectedChoices.background
+    raceInfo &&
+    classInfo &&
+    draft?.abilityScores &&
+    draft?.background
   );
 
-  const handleComplete = () => {
-    if (isComplete) {
-      // In real implementation, this would call the API to finalize the character
-      onComplete('temp-character-id');
+  const handleComplete = async () => {
+    if (!isComplete || !draftId) return;
+
+    setValidationErrors([]);
+
+    try {
+      // First validate the draft
+      const validateRequest = create(ValidateDraftRequestSchema, {
+        draftId,
+      });
+      const validateResponse = await validateDraft(validateRequest);
+
+      if (!validateResponse.isValid) {
+        const errors = validateResponse.errors?.map((e) =>
+          typeof e === 'string' ? e : e.message || 'Validation error'
+        ) || ['Draft validation failed'];
+        setValidationErrors(errors);
+        return;
+      }
+
+      // If valid, finalize the draft
+      const finalizeRequest = create(FinalizeDraftRequestSchema, {
+        draftId,
+      });
+      const finalizeResponse = await finalizeDraft(finalizeRequest);
+
+      if (finalizeResponse.character?.id) {
+        onComplete(finalizeResponse.character.id);
+      }
+    } catch (err) {
+      console.error('Failed to finalize character:', err);
+      setValidationErrors([
+        err instanceof Error ? err.message : 'Failed to finalize character',
+      ]);
     }
   };
 
+  // Calculate completion percentage based on required fields
+  const requiredFields = [
+    draft?.name,
+    raceInfo,
+    classInfo,
+    draft?.abilityScores,
+    draft?.background,
+  ];
+  const completedFields = requiredFields.filter(Boolean).length;
   const completionPercentage = Math.round(
-    (Object.keys(selectedChoices).length / 4) * 100
+    (completedFields / requiredFields.length) * 100
   );
 
   return (
@@ -67,13 +117,40 @@ export function CharacterSheetFooter({
           <Button
             variant="primary"
             onClick={handleComplete}
-            disabled={!isComplete}
+            disabled={!isComplete || finalizing || validating}
             className="px-8 py-3 text-lg font-bold"
           >
-            {isComplete ? 'Begin Adventure!' : 'Complete Character'}
+            {finalizing || validating
+              ? 'Finalizing...'
+              : isComplete
+                ? 'Begin Adventure!'
+                : 'Complete Character'}
           </Button>
         </motion.div>
       </div>
+
+      {/* Error Display */}
+      {validationErrors.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 rounded-lg border border-red-500 bg-red-50 dark:bg-red-900/20"
+        >
+          <h3 className="font-bold mb-2 text-red-700 dark:text-red-400">
+            Validation Errors
+          </h3>
+          <ul className="list-disc list-inside space-y-1">
+            {validationErrors.map((error, index) => (
+              <li
+                key={index}
+                className="text-sm text-red-600 dark:text-red-300"
+              >
+                {error}
+              </li>
+            ))}
+          </ul>
+        </motion.div>
+      )}
 
       {/* Character Summary */}
       {isComplete && (
@@ -93,10 +170,12 @@ export function CharacterSheetFooter({
             Character Summary
           </h3>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            {draft?.name}, a {String(selectedChoices.race)}{' '}
-            {String(selectedChoices.class)} with a{' '}
-            {String(selectedChoices.background)} background, is ready to embark
-            on epic adventures!
+            {draft?.name}, a {raceInfo?.name || 'Unknown'}{' '}
+            {classInfo?.name || 'Unknown'} with a{' '}
+            {typeof draft?.background === 'string'
+              ? draft.background
+              : draft?.background?.name || 'mysterious'}{' '}
+            background, is ready to embark on epic adventures!
           </p>
         </motion.div>
       )}

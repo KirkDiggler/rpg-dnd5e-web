@@ -39,6 +39,31 @@ When updating `@kirkdiggler/rpg-api-protos` version:
 
 **Why**: GitHub dependencies with tags don't always update properly. The lock file might keep pointing to old commits even after package.json is updated. This causes CI to use the wrong proto version.
 
+## 🚨 IMPORTANT: React StrictMode and Double API Calls
+
+**In development, you will see double API calls - this is NORMAL and EXPECTED.**
+
+React StrictMode (enabled in `src/main.tsx`) intentionally double-mounts components in development to help detect side effects and prepare your code for React's concurrent features.
+
+**What this means:**
+
+- Components mount → unmount → mount again in development
+- useEffect hooks run twice
+- API calls happen twice
+- This ONLY happens in development, NOT in production
+
+**What NOT to do:**
+
+- Don't try to "fix" it with AbortController for simple API calls
+- Don't disable StrictMode - it helps catch bugs
+- Don't worry about the double calls - they're harmless
+
+**What TO do:**
+
+- Make your API operations idempotent
+- Focus on real issues, not development quirks
+- Read the journey doc at `docs/journey/2025-08-04-strictmode-double-calls-and-abort-controller.md` for the full story
+
 ## Development Commands
 
 - `npm run dev` - Start development server
