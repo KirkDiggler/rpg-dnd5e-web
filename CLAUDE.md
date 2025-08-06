@@ -1,5 +1,22 @@
 # Claude AI Development Guidelines
 
+## 🚨 CRITICAL: ALWAYS RUN CI CHECKS BEFORE PUSHING 🚨
+
+**MANDATORY before EVERY push:**
+
+```bash
+npm run ci-check  # MUST PASS before pushing
+```
+
+This catches:
+
+- Formatting issues (Prettier)
+- Lint errors (ESLint)
+- TypeScript errors
+- Build failures
+
+**The pre-push hook will enforce this, but run it manually to save time!**
+
 ## Project Overview
 
 This is **rpg-dnd5e-web**, a React-based web UI for D&D 5e gameplay designed as a Discord Activity. It connects to the rpg-api gRPC server to provide character creation, combat, and game board visualization.

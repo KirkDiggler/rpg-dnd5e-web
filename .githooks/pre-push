@@ -1,0 +1,19 @@
+#!/bin/sh
+# Pre-push hook to run CI checks before pushing
+# This prevents pushing code that will fail CI
+
+echo "🚀 Running CI checks before push..."
+echo ""
+
+# Run the CI check script
+npm run ci-check
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ CI checks failed! Fix issues before pushing."
+    echo "💡 To bypass (NOT RECOMMENDED): git push --no-verify"
+    exit 1
+fi
+
+echo ""
+echo "✅ All CI checks passed! Proceeding with push..."
