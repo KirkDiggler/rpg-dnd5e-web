@@ -212,7 +212,8 @@ export function CombatStatsDisplay({ character }: CombatStatsDisplayProps) {
         </div>
         <div className="mt-1 space-y-1">
           <div style={{ color: 'var(--text-primary)' }}>
-            Current: {character.currentHitPoints || 0} / {100}{' '}
+            Current: {character.currentHitPoints || 0} /{' '}
+            {character.combatStats?.hitPointMaximum || 0}{' '}
             {/* TODO: Calculate max HP */}
           </div>
           {character.temporaryHitPoints && character.temporaryHitPoints > 0 && (

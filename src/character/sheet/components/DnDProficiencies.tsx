@@ -1,4 +1,5 @@
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useState } from 'react';
 import { Card } from '../../../components/ui/Card';
 
@@ -17,7 +18,17 @@ export function DnDProficiencies({
   const armorProficiencies = character.proficiencies?.armor || [];
   const weaponProficiencies = character.proficiencies?.weapons || [];
   const toolProficiencies = character.proficiencies?.tools || [];
-  const languages: string[] = ['Common']; // TODO: Get from character.languages when available
+
+  // Convert language enums to display names
+  const languages: string[] = (character.languages || []).map((langEnum) => {
+    const langName = Language[langEnum];
+    return langName
+      ? langName
+          .replace(/_/g, ' ')
+          .toLowerCase()
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+      : 'Unknown';
+  });
 
   const handleShowDetails = () => {
     const content = (

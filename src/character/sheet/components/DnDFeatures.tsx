@@ -7,7 +7,8 @@ interface DnDFeaturesProps {
   onShowModal?: (title: string, content: React.ReactNode) => void;
 }
 
-// Mock features data - in real app this would come from the character
+// TODO: Replace with character.features when available from API
+// Currently using mock data as the API doesn't provide features yet
 const MOCK_FEATURES = [
   {
     name: 'Fighting Style',
@@ -39,9 +40,7 @@ const MOCK_FEATURES = [
   },
 ];
 
-export function DnDFeatures({
-  onShowModal,
-}: DnDFeaturesProps) {
+export function DnDFeatures({ onShowModal }: DnDFeaturesProps) {
   const [expanded, setExpanded] = useState(false);
 
   // In real app, get from character.features

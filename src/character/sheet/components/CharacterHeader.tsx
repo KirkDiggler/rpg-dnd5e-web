@@ -115,7 +115,7 @@ export function CharacterHeader({ character }: CharacterHeaderProps) {
         <div className="flex gap-6">
           <HPDisplay
             currentHP={character.currentHitPoints || 0}
-            maxHP={100} // TODO: Calculate from character level and constitution
+            maxHP={character.combatStats?.hitPointMaximum || 0}
             tempHP={character.temporaryHitPoints || 0}
           />
           <div className="text-center">

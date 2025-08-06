@@ -365,30 +365,27 @@ export function EquipmentChoice({
                               bundleItem.itemType.value?.choice
                             ) {
                               return (
-                                <div key={itemIndex}>
-                                  <NestedEquipmentChoice
-                                    nestedChoice={
-                                      bundleItem.itemType.value.choice
-                                    }
-                                    onSelection={(selectedItem) => {
-                                      // Store bundle selection with nested choice
-                                      handleSelection(
-                                        optionId,
-                                        `${itemIndex}:${selectedItem}`
-                                      );
-                                      setExpandedNestedChoices(new Set());
-                                    }}
-                                    currentSelection={
-                                      currentSelections
-                                        .find((s) =>
-                                          s.startsWith(`${optionId}:`)
-                                        )
-                                        ?.split(':')
-                                        .slice(1)
-                                        .join(':') || ''
-                                    }
-                                  />
-                                </div>
+                                <NestedEquipmentChoice
+                                  key={itemIndex}
+                                  nestedChoice={
+                                    bundleItem.itemType.value.choice
+                                  }
+                                  onSelection={(selectedItem) => {
+                                    // Store bundle selection with nested choice
+                                    handleSelection(
+                                      optionId,
+                                      `${itemIndex}:${selectedItem}`
+                                    );
+                                    setExpandedNestedChoices(new Set());
+                                  }}
+                                  currentSelection={
+                                    currentSelections
+                                      .find((s) => s.startsWith(`${optionId}:`))
+                                      ?.split(':')
+                                      .slice(1)
+                                      .join(':') || ''
+                                  }
+                                />
                               );
                             }
                             return null;

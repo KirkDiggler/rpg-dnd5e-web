@@ -10,7 +10,7 @@ interface ModalProps {
 }
 
 export function Modal({
-  isOpen = true,
+  isOpen = false,
   title,
   onClose,
   children,
