@@ -179,7 +179,11 @@ export function SkillsDisplay({ character }: SkillsDisplayProps) {
 
   const skills: CharacterSkill[] = proficientSkills.map((skillEnum) => {
     const skillInfo = SKILL_INFO[skillEnum] || SKILL_INFO[Skill.UNSPECIFIED];
-    const abilityScore = abilityScores[skillInfo.ability as keyof typeof abilityScores] || 10;
+    const abilityScoreValue = abilityScores
+      ? abilityScores[skillInfo.ability as keyof typeof abilityScores]
+      : undefined;
+    const abilityScore =
+      typeof abilityScoreValue === 'number' ? abilityScoreValue : 10;
     const baseModifier = calculateModifier(abilityScore);
 
     // All skills in this list are proficient by definition

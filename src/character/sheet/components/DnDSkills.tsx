@@ -45,9 +45,11 @@ const SKILLS = [
 
 export function DnDSkills({ character }: DnDSkillsProps) {
   const abilityScores = character.abilityScores;
-  const proficiencyBonus = character.combatStats?.proficiencyBonus !== undefined && character.combatStats.proficiencyBonus > 0
-    ? character.combatStats.proficiencyBonus 
-    : calculateProficiencyBonus(character.level);
+  const proficiencyBonus =
+    character.combatStats?.proficiencyBonus !== undefined &&
+    character.combatStats.proficiencyBonus > 0
+      ? character.combatStats.proficiencyBonus
+      : calculateProficiencyBonus(character.level);
 
   // Get skill proficiencies from API
   const skillProficiencies = character.proficiencies?.skills || [];
@@ -84,43 +86,49 @@ export function DnDSkills({ character }: DnDSkillsProps) {
 
       <div className="space-y-1">
         {skillProficiencies.length === 0 ? (
-          <div className="text-xs text-center" style={{ color: 'var(--text-secondary)' }}>
+          <div
+            className="text-xs text-center"
+            style={{ color: 'var(--text-secondary)' }}
+          >
             No skill proficiencies
           </div>
-        ) : SKILLS.filter(skill => skillProficiencies.includes(skill.enumValue)).map((skill) => {
-          const abilityModifier = getAbilityModifier(skill.ability);
-          const isProficient = true; // Always true since we're filtering
-          const totalModifier =
-            abilityModifier + proficiencyBonus;
+        ) : (
+          SKILLS.filter((skill) =>
+            skillProficiencies.includes(skill.enumValue)
+          ).map((skill) => {
+            const abilityModifier = getAbilityModifier(skill.ability);
+            const isProficient = true; // Always true since we're filtering
+            const totalModifier = abilityModifier + proficiencyBonus;
 
-          return (
-            <div 
-              key={skill.name} 
-              className="flex items-center justify-between py-0.5 px-2 rounded-sm hover:bg-gray-100 dark:hover:bg-gray-800 text-xs"
-            >
-              {/* Left side - Proficiency dot and modifier */}
-              <div className="flex items-center gap-1">
+            return (
+              <div
+                key={skill.name}
+                className="flex items-center justify-between py-0.5 px-2 rounded-sm hover:bg-gray-100 dark:hover:bg-gray-800 text-xs"
+              >
+                {/* Left side - Proficiency dot and modifier */}
+                <div className="flex items-center gap-1">
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full ${isProficient ? 'bg-green-500' : 'bg-gray-300'}`}
+                  />
+                  <div
+                    className="font-bold w-5 text-right"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    {formatModifier(totalModifier)}
+                  </div>
+                </div>
+
+                {/* Right side - Skill Name */}
                 <div
-                  className={`w-1.5 h-1.5 rounded-full ${isProficient ? 'bg-green-500' : 'bg-gray-300'}`}
-                />
-                <div
-                  className="font-bold w-5 text-right"
+                  className="text-xs truncate"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  {formatModifier(totalModifier)}
+                  {skill.name}
                 </div>
               </div>
-
-              {/* Right side - Skill Name */}
-              <div
-                className="text-xs truncate"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                {skill.name}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {/* Passive Perception */}

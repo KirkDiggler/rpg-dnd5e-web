@@ -46,9 +46,11 @@ function InspirationBox() {
 
 function ProficiencyBonusBox({ character }: { character: Character }) {
   // Use API proficiencyBonus when available, fallback to calculation
-  const proficiencyBonus = character.combatStats?.proficiencyBonus !== undefined && character.combatStats.proficiencyBonus > 0
-    ? character.combatStats.proficiencyBonus 
-    : Math.ceil(character.level / 4) + 1;
+  const proficiencyBonus =
+    character.combatStats?.proficiencyBonus !== undefined &&
+    character.combatStats.proficiencyBonus > 0
+      ? character.combatStats.proficiencyBonus
+      : Math.ceil(character.level / 4) + 1;
 
   return (
     <Card className="p-4 text-center">
@@ -68,21 +70,34 @@ function ProficiencyBonusBox({ character }: { character: Character }) {
   );
 }
 
-function AttacksSection({ }: { character: Character }) {
-  // TODO: Get actual attacks from character data
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+function AttacksSection({ character }: { character: Character }) {
+  // TODO: Get actual attacks from character data when available in API
+  // For now, return empty attacks or could derive from equipment
+  void character; // Acknowledge parameter usage
   const sampleAttacks = [
-    { name: 'Longsword', atkBonus: '+5', damage: '1d8+3', range: '5 ft', notes: 'Versatile' },
-    { name: 'Shortbow', atkBonus: '+3', damage: '1d6+1', range: '80/320 ft', notes: 'Ammunition' },
+    {
+      name: 'Longsword',
+      atkBonus: '+5',
+      damage: '1d8+3',
+      range: '5 ft',
+      notes: 'Versatile',
+    },
+    {
+      name: 'Shortbow',
+      atkBonus: '+3',
+      damage: '1d6+1',
+      range: '80/320 ft',
+      notes: 'Ammunition',
+    },
   ];
 
   return (
     <Card className="p-4">
       <h4
         className="text-lg font-bold mb-3 text-center"
-        style={{ 
+        style={{
           fontFamily: 'Cinzel, serif',
-          color: 'var(--text-primary)' 
+          color: 'var(--text-primary)',
         }}
       >
         ATTACKS & SPELLCASTING
@@ -91,9 +106,9 @@ function AttacksSection({ }: { character: Character }) {
         {/* Attack headers */}
         <div
           className="grid grid-cols-5 gap-2 text-xs font-bold pb-2 border-b"
-          style={{ 
+          style={{
             color: 'var(--text-muted)',
-            borderColor: 'var(--border-primary)'
+            borderColor: 'var(--border-primary)',
           }}
         >
           <div>NAME</div>
@@ -117,25 +132,27 @@ function AttacksSection({ }: { character: Character }) {
             <div className="text-sm">{attack.notes}</div>
           </div>
         ))}
-        
+
         {/* Empty rows for character sheet feel */}
-        {Array.from({ length: Math.max(0, 3 - sampleAttacks.length) }).map((_, i) => (
-          <div
-            key={`empty-${i}`}
-            className="grid grid-cols-5 gap-2 py-2 text-sm border-b"
-            style={{ 
-              color: 'var(--text-muted)',
-              borderColor: 'var(--border-primary)',
-              borderStyle: 'dashed'
-            }}
-          >
-            <div>—</div>
-            <div className="text-center">—</div>
-            <div className="text-center">—</div>
-            <div className="text-center">—</div>
-            <div>—</div>
-          </div>
-        ))}
+        {Array.from({ length: Math.max(0, 3 - sampleAttacks.length) }).map(
+          (_, i) => (
+            <div
+              key={`empty-${i}`}
+              className="grid grid-cols-5 gap-2 py-2 text-sm border-b"
+              style={{
+                color: 'var(--text-muted)',
+                borderColor: 'var(--border-primary)',
+                borderStyle: 'dashed',
+              }}
+            >
+              <div>—</div>
+              <div className="text-center">—</div>
+              <div className="text-center">—</div>
+              <div className="text-center">—</div>
+              <div>—</div>
+            </div>
+          )
+        )}
       </div>
     </Card>
   );

@@ -10,87 +10,62 @@ interface DnDEquipmentProps {
 export function DnDEquipment({ character, onShowModal }: DnDEquipmentProps) {
   const [expanded, setExpanded] = useState(false);
 
-  // Get actual equipment from character
-  const equipment = character.inventory || [];
-  const totalWeight = equipment.reduce(
-    (sum, item) => sum + item.weight * item.quantity,
-    0
-  );
+  // Get equipment from character inventory
+  // Note: inventory items only contain itemId references, not full equipment data
+  // TODO: Need to fetch actual equipment details using itemId from Equipment API
+  const inventoryItems = character.inventory || [];
 
+  // For now, show basic inventory info
   const handleShowDetails = () => {
     const content = (
       <div className="space-y-4">
         <div
-          className="grid grid-cols-4 gap-2 text-sm font-bold border-b pb-2"
+          className="grid grid-cols-3 gap-2 text-sm font-bold border-b pb-2"
           style={{ borderColor: 'var(--border-primary)' }}
         >
-          <div style={{ color: 'var(--text-primary)' }}>Item</div>
-          <div style={{ color: 'var(--text-primary)' }}>Type</div>
+          <div style={{ color: 'var(--text-primary)' }}>Item ID</div>
           <div style={{ color: 'var(--text-primary)' }}>Qty</div>
-          <div style={{ color: 'var(--text-primary)' }}>Weight</div>
+          <div style={{ color: 'var(--text-primary)' }}>Attuned</div>
         </div>
 
-        {equipment.map((item, index) => (
+        {inventoryItems.map((item, index) => (
           <div
             key={index}
-            className="grid grid-cols-4 gap-2 text-sm py-2 hover:bg-opacity-50 rounded cursor-pointer"
+            className="grid grid-cols-3 gap-2 text-sm py-2 hover:bg-opacity-50 rounded"
             style={{ backgroundColor: 'var(--bg-secondary)' }}
-            onClick={() => {
-              // TODO: Show item details in nested modal
-            }}
           >
             <div
               className="font-medium"
               style={{ color: 'var(--text-primary)' }}
             >
-              {item.name}
+              {item.customName || item.itemId}
             </div>
-            <div style={{ color: 'var(--text-muted)' }}>{item.type}</div>
             <div style={{ color: 'var(--text-muted)' }}>{item.quantity}</div>
             <div style={{ color: 'var(--text-muted)' }}>
-              {item.weight * item.quantity} lbs
+              {item.isAttuned ? '✓' : '—'}
             </div>
           </div>
         ))}
 
-        <div
-          className="border-t pt-3"
-          style={{ borderColor: 'var(--border-primary)' }}
-        >
-          <div className="flex justify-between font-bold">
-            <span style={{ color: 'var(--text-primary)' }}>Total Weight:</span>
-            <span style={{ color: 'var(--text-primary)' }}>
-              {totalWeight} lbs
-            </span>
-          </div>
-          <div className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Carrying Capacity: {(character.abilityScores?.strength || 10) * 15}{' '}
-            lbs
-          </div>
-        </div>
+        {inventoryItems.length === 0 && (
+          <p
+            className="text-center py-4"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            No equipment
+          </p>
+        )}
       </div>
     );
 
     if (onShowModal) {
       onShowModal('Equipment & Inventory', content);
-    } else {
-      setExpanded(!expanded);
     }
   };
 
-  const weaponsAndArmor = equipment.filter(
-    (item) => item.type === 'Weapon' || item.type === 'Armor'
-  );
-  const otherGear = equipment.filter(
-    (item) => item.type !== 'Weapon' && item.type !== 'Armor'
-  );
-
   return (
-    <Card className="p-4">
-      <div
-        className="flex items-center justify-between cursor-pointer"
-        onClick={handleShowDetails}
-      >
+    <Card className="p-4 h-full">
+      <div className="flex justify-between items-center mb-3">
         <h4
           className="text-lg font-bold"
           style={{
@@ -98,136 +73,98 @@ export function DnDEquipment({ character, onShowModal }: DnDEquipmentProps) {
             color: 'var(--text-primary)',
           }}
         >
-          EQUIPMENT
+          Equipment
         </h4>
-        <div
-          className="text-sm px-2 py-1 rounded"
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-sm px-2 py-1 rounded transition-colors"
           style={{
-            backgroundColor: 'var(--accent-primary)',
-            color: 'var(--text-button)',
+            backgroundColor: expanded
+              ? 'var(--accent-primary)'
+              : 'var(--bg-secondary)',
+            color: expanded ? 'var(--text-button)' : 'var(--text-primary)',
+            border: '1px solid var(--border-primary)',
           }}
         >
-          {equipment.length} items
+          {expanded ? 'Hide' : 'Show All'}
+        </button>
+      </div>
+
+      <div className="flex justify-between items-center mb-2">
+        <button
+          onClick={handleShowDetails}
+          className="text-sm hover:underline"
+          style={{ color: 'var(--accent-primary)' }}
+        >
+          View Details →
+        </button>
+        <div
+          className="text-sm"
+          style={{
+            color: 'var(--text-muted)',
+          }}
+        >
+          {inventoryItems.length} items
         </div>
       </div>
 
       {/* Quick Equipment Overview */}
       <div className="mt-3 space-y-3">
-        {equipment.length === 0 ? (
-          <div className="text-sm text-center py-4" style={{ color: 'var(--text-secondary)' }}>
+        {inventoryItems.length === 0 ? (
+          <div
+            className="text-sm text-center py-4"
+            style={{ color: 'var(--text-secondary)' }}
+          >
             No equipment
           </div>
         ) : (
           <>
-            {/* Weapons & Armor */}
+            {/* Show first few items */}
             <div>
               <h5
                 className="text-sm font-bold mb-2"
                 style={{ color: 'var(--text-primary)' }}
               >
-                Weapons & Armor
+                Inventory Items
               </h5>
               <div className="space-y-1">
-                {weaponsAndArmor.slice(0, 3).map((item, index) => (
-              <div key={index} className="flex justify-between text-sm">
-                <span style={{ color: 'var(--text-muted)' }}>{item.name}</span>
-                <span style={{ color: 'var(--text-subtle)' }}>
-                  {item.quantity > 1 ? `×${item.quantity}` : ''}
-                </span>
+                {inventoryItems
+                  .slice(0, expanded ? undefined : 3)
+                  .map((item, index) => (
+                    <div key={index} className="flex justify-between text-sm">
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {item.customName || `Item: ${item.itemId}`}
+                      </span>
+                      <span style={{ color: 'var(--text-subtle)' }}>
+                        {item.quantity > 1 ? `×${item.quantity}` : ''}
+                        {item.isAttuned ? ' (Attuned)' : ''}
+                      </span>
+                    </div>
+                  ))}
+                {!expanded && inventoryItems.length > 3 && (
+                  <div
+                    className="text-sm text-center"
+                    style={{ color: 'var(--text-subtle)' }}
+                  >
+                    +{inventoryItems.length - 3} more...
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {/* Other Gear */}
-        <div>
-          <h5
-            className="text-sm font-bold mb-2"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            Other Equipment
-          </h5>
-          <div className="space-y-1">
-            {otherGear.slice(0, 3).map((item, index) => (
-              <div key={index} className="flex justify-between text-sm">
-                <span style={{ color: 'var(--text-muted)' }}>{item.name}</span>
-                <span style={{ color: 'var(--text-subtle)' }}>
-                  {item.quantity > 1 ? `×${item.quantity}` : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-            {/* Weight Summary */}
+            {/* Note about equipment details */}
             <div
-              className="pt-2 border-t"
-              style={{ borderColor: 'var(--border-primary)' }}
+              className="pt-2 border-t text-xs"
+              style={{
+                borderColor: 'var(--border-primary)',
+                color: 'var(--text-subtle)',
+              }}
             >
-              <div className="flex justify-between text-sm">
-                <span style={{ color: 'var(--text-primary)' }}>Total Weight:</span>
-                <span
-                  style={{
-                    color:
-                      totalWeight > (character.abilityScores?.strength || 10) * 15
-                        ? 'var(--health)'
-                        : 'var(--text-primary)',
-                  }}
-                >
-                  {totalWeight} lbs
-                </span>
-              </div>
+              Note: Full equipment details require Equipment API integration
             </div>
           </>
         )}
       </div>
-
-      {/* Click indicator */}
-      <div
-        className="text-center mt-3 text-xs"
-        style={{ color: 'var(--text-subtle)' }}
-      >
-        Click to view full inventory
-      </div>
-
-      {/* Expanded content (if modal not used) */}
-      {expanded && !onShowModal && (
-        <div
-          className="mt-4 pt-4 border-t"
-          style={{ borderColor: 'var(--border-primary)' }}
-        >
-          <div className="space-y-2">
-            {equipment.map((item, index) => (
-              <div
-                key={index}
-                className="flex justify-between items-center p-2 rounded"
-                style={{ backgroundColor: 'var(--bg-secondary)' }}
-              >
-                <div>
-                  <div
-                    className="font-medium text-sm"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
-                    {item.name}
-                  </div>
-                  <div
-                    className="text-xs"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    {item.type} • {item.weight * item.quantity} lbs
-                  </div>
-                </div>
-                <div
-                  className="text-sm font-bold"
-                  style={{ color: 'var(--text-primary)' }}
-                >
-                  ×{item.quantity}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </Card>
   );
 }

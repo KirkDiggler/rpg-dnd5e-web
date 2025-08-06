@@ -1,4 +1,5 @@
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { Card } from '../../../components/ui/Card';
 
 interface ProficienciesDisplayProps {
@@ -45,8 +46,17 @@ export function ProficienciesDisplay({ character }: ProficienciesDisplayProps) {
     });
   }
 
-  // Languages
-  const languages = character.languages || [];
+  // Languages - convert enum values to strings
+  const languageEnums = character.languages || [];
+  const languages = languageEnums.map((langEnum) => {
+    const langName = Language[langEnum];
+    return langName
+      ? langName
+          .replace(/_/g, ' ')
+          .toLowerCase()
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+      : 'Unknown';
+  });
   if (languages.length > 0) {
     proficiencies.push({
       name: 'Languages',

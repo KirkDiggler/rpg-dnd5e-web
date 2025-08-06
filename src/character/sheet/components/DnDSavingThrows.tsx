@@ -23,9 +23,11 @@ function calculateProficiencyBonus(level: number): number {
 
 export function DnDSavingThrows({ character }: DnDSavingThrowsProps) {
   const abilityScores = character.abilityScores;
-  const proficiencyBonus = character.combatStats?.proficiencyBonus !== undefined && character.combatStats.proficiencyBonus > 0
-    ? character.combatStats.proficiencyBonus 
-    : calculateProficiencyBonus(character.level);
+  const proficiencyBonus =
+    character.combatStats?.proficiencyBonus !== undefined &&
+    character.combatStats.proficiencyBonus > 0
+      ? character.combatStats.proficiencyBonus
+      : calculateProficiencyBonus(character.level);
 
   // Get saving throw proficiencies from API
   const savingThrowProficiencies = character.proficiencies?.savingThrows || [];
@@ -104,10 +106,7 @@ export function DnDSavingThrows({ character }: DnDSavingThrowsProps) {
               </div>
 
               {/* Right side - Ability Name */}
-              <div
-                className="text-xs"
-                style={{ color: 'var(--text-primary)' }}
-              >
+              <div className="text-xs" style={{ color: 'var(--text-primary)' }}>
                 {save.name}
               </div>
             </div>

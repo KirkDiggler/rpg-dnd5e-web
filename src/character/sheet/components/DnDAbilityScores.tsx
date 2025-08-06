@@ -105,7 +105,8 @@ export function DnDAbilityScores({ character }: DnDAbilityScoresProps) {
               <div
                 className="text-xs px-1"
                 style={{
-                  color: ability.modifier >= 0 ? 'var(--success)' : 'var(--danger)',
+                  color:
+                    ability.modifier >= 0 ? 'var(--success)' : 'var(--danger)',
                 }}
               >
                 {formatModifier(ability.modifier)}

@@ -20,15 +20,19 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
   const abilityScores = character.abilityScores;
 
   // Use API data when available, fallback to calculations
-  const initiativeModifier = combatStats?.initiative !== undefined ? combatStats.initiative : calculateModifier(abilityScores?.dexterity || 10);
+  const initiativeModifier =
+    combatStats?.initiative !== undefined
+      ? combatStats.initiative
+      : calculateModifier(abilityScores?.dexterity || 10);
   const maxHP = combatStats?.hitPointMaximum || 10; // Use API hitPointMaximum
   const currentHP = character.currentHitPoints || maxHP;
   const tempHP = character.temporaryHitPoints || 0;
-  
+
   // Calculate AC if not provided in API (base 10 + DEX modifier for no armor)
-  const armorClass = combatStats?.armorClass !== undefined && combatStats.armorClass > 0 
-    ? combatStats.armorClass 
-    : 10 + calculateModifier(abilityScores?.dexterity || 10);
+  const armorClass =
+    combatStats?.armorClass !== undefined && combatStats.armorClass > 0
+      ? combatStats.armorClass
+      : 10 + calculateModifier(abilityScores?.dexterity || 10);
 
   return (
     <Card className="p-4">
@@ -36,14 +40,17 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
       <div className="grid grid-cols-4 gap-4 mb-4">
         {/* Armor Class */}
         <div className="text-center">
-          <h4 className="text-xs font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+          <h4
+            className="text-xs font-bold mb-1"
+            style={{ color: 'var(--text-primary)' }}
+          >
             AC
           </h4>
-          <div 
+          <div
             className="w-12 h-12 mx-auto rounded-full flex items-center justify-center text-xl font-bold"
-            style={{ 
-              backgroundColor: 'var(--accent-primary)', 
-              color: 'var(--text-button)' 
+            style={{
+              backgroundColor: 'var(--accent-primary)',
+              color: 'var(--text-button)',
             }}
           >
             {armorClass}
@@ -52,20 +59,32 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
 
         {/* Initiative */}
         <div className="text-center">
-          <h4 className="text-xs font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+          <h4
+            className="text-xs font-bold mb-1"
+            style={{ color: 'var(--text-primary)' }}
+          >
             INITIATIVE
           </h4>
-          <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+          <div
+            className="text-2xl font-bold"
+            style={{ color: 'var(--text-primary)' }}
+          >
             {formatModifier(initiativeModifier)}
           </div>
         </div>
 
         {/* Speed */}
         <div className="text-center">
-          <h4 className="text-xs font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+          <h4
+            className="text-xs font-bold mb-1"
+            style={{ color: 'var(--text-primary)' }}
+          >
             SPEED
           </h4>
-          <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+          <div
+            className="text-2xl font-bold"
+            style={{ color: 'var(--text-primary)' }}
+          >
             {combatStats?.speed || 30}
           </div>
           <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -75,7 +94,10 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
 
         {/* Hit Points - Display Only */}
         <div className="text-center">
-          <h4 className="text-xs font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+          <h4
+            className="text-xs font-bold mb-1"
+            style={{ color: 'var(--text-primary)' }}
+          >
             HIT POINTS
           </h4>
           <div className="text-xl font-bold" style={{ color: 'var(--health)' }}>
@@ -90,9 +112,15 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
       </div>
 
       {/* Bottom Row - Hit Dice and Death Saves */}
-      <div className="grid grid-cols-2 gap-4 pt-3 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+      <div
+        className="grid grid-cols-2 gap-4 pt-3 border-t"
+        style={{ borderColor: 'var(--border-primary)' }}
+      >
         <div className="text-center">
-          <h4 className="text-xs font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+          <h4
+            className="text-xs font-bold mb-1"
+            style={{ color: 'var(--text-primary)' }}
+          >
             HIT DICE
           </h4>
           <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
@@ -101,10 +129,16 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
         </div>
 
         <div className="text-center">
-          <h4 className="text-xs font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+          <h4
+            className="text-xs font-bold mb-1"
+            style={{ color: 'var(--text-primary)' }}
+          >
             DEATH SAVES
           </h4>
-          <div className="flex justify-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <div
+            className="flex justify-center gap-2 text-xs"
+            style={{ color: 'var(--text-muted)' }}
+          >
             <span>S: ○○○</span>
             <span>F: ○○○</span>
           </div>
