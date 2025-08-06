@@ -1,7 +1,7 @@
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Card } from '../../../components/ui/Card';
 
-interface AbilityScoresDisplayProps {
+interface DnDAbilityScoresProps {
   character: Character;
 }
 
@@ -22,26 +22,11 @@ function formatModifier(modifier: number): string {
   return modifier >= 0 ? `+${modifier}` : `${modifier}`;
 }
 
-export function AbilityScoresDisplay({ character }: AbilityScoresDisplayProps) {
+export function DnDAbilityScores({ character }: DnDAbilityScoresProps) {
   const abilityScores = character.abilityScores;
 
   if (!abilityScores) {
-    return (
-      <Card className="p-4">
-        <h3
-          className="text-xl font-bold mb-4 text-center"
-          style={{
-            fontFamily: 'Cinzel, serif',
-            color: 'var(--text-primary)',
-          }}
-        >
-          Ability Scores
-        </h3>
-        <p className="text-center" style={{ color: 'var(--text-muted)' }}>
-          No ability scores available
-        </p>
-      </Card>
-    );
+    return null;
   }
 
   const abilities: AbilityScore[] = [
@@ -84,71 +69,47 @@ export function AbilityScoresDisplay({ character }: AbilityScoresDisplayProps) {
   ];
 
   return (
-    <Card className="p-4 h-fit">
-      <h3
-        className="text-xl font-bold mb-4 text-center"
+    <Card className="p-4">
+      <h4
+        className="text-sm font-bold mb-3 uppercase tracking-wider text-center"
         style={{
-          fontFamily: 'Cinzel, serif',
           color: 'var(--text-primary)',
         }}
       >
         Ability Scores
-      </h3>
+      </h4>
 
-      <div className="space-y-3">
+      <div className="space-y-1">
         {abilities.map((ability) => (
           <div
             key={ability.short}
-            className="text-center p-3 rounded-lg transition-all hover:scale-105"
-            style={{
-              backgroundColor: 'var(--bg-secondary)',
-              border: '1px solid var(--border-primary)',
-            }}
+            className="flex items-center justify-between py-1 px-2 rounded-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+            title={`${ability.name}: ${ability.value} (${formatModifier(ability.modifier)})`}
           >
-            {/* Ability Name */}
+            {/* Ability Short Name */}
             <div
-              className="text-sm font-medium mb-1"
+              className="font-bold text-sm"
               style={{ color: 'var(--text-primary)' }}
             >
-              {ability.short.toUpperCase()}
+              {ability.short}
             </div>
 
-            {/* Score Circle - D&D traditional style */}
-            <div className="relative mx-auto mb-2">
+            {/* Score and Modifier */}
+            <div className="flex items-center gap-2">
               <div
-                className="w-16 h-16 rounded border-2 flex flex-col items-center justify-center"
-                style={{
-                  backgroundColor: 'var(--card-bg)',
-                  borderColor: 'var(--accent-primary)',
-                }}
+                className="text-sm font-bold"
+                style={{ color: 'var(--text-primary)' }}
               >
-                <div
-                  className="text-xl font-bold leading-none"
-                  style={{ color: 'var(--text-primary)' }}
-                >
-                  {ability.value}
-                </div>
+                {ability.value}
               </div>
-
-              {/* Modifier Badge */}
               <div
-                className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-8 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                className="text-xs px-1"
                 style={{
-                  backgroundColor:
-                    ability.modifier >= 0 ? 'var(--uncommon)' : 'var(--health)',
-                  color: 'white',
+                  color: ability.modifier >= 0 ? 'var(--success)' : 'var(--danger)',
                 }}
               >
                 {formatModifier(ability.modifier)}
               </div>
-            </div>
-
-            {/* Full Name */}
-            <div
-              className="text-xs font-medium"
-              style={{ color: 'var(--text-subtle)' }}
-            >
-              {ability.name}
             </div>
           </div>
         ))}

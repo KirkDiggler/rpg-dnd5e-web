@@ -9,6 +9,35 @@ interface CharacterHeaderProps {
   character: Character;
 }
 
+// Simple read-only HP display component
+function HPDisplay({
+  currentHP,
+  maxHP,
+  tempHP = 0,
+}: {
+  currentHP: number;
+  maxHP: number;
+  tempHP?: number;
+}) {
+  return (
+    <div className="text-center">
+      <div
+        className="text-2xl font-bold"
+        style={{ color: 'var(--text-primary)' }}
+      >
+        {currentHP}
+        {tempHP > 0 && <span className="text-sm text-blue-400">+{tempHP}</span>}
+        <span className="text-lg" style={{ color: 'var(--text-muted)' }}>
+          /{maxHP}
+        </span>
+      </div>
+      <div className="text-sm" style={{ color: 'var(--text-subtle)' }}>
+        Hit Points
+      </div>
+    </div>
+  );
+}
+
 // Helper to convert Race enum to display name
 function getRaceDisplayName(raceEnum: Race): string {
   const raceNames: Record<Race, string> = {
@@ -60,7 +89,7 @@ export function CharacterHeader({ character }: CharacterHeaderProps) {
                 ? 'uncommon'
                 : 'common'
       }
-      className="p-6"
+      className="p-4"
     >
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         {/* Character Name and Basic Info */}
@@ -84,17 +113,11 @@ export function CharacterHeader({ character }: CharacterHeaderProps) {
 
         {/* Quick Stats */}
         <div className="flex gap-6">
-          <div className="text-center">
-            <div
-              className="text-2xl font-bold"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {character.currentHitPoints || 0}
-            </div>
-            <div className="text-sm" style={{ color: 'var(--text-subtle)' }}>
-              Hit Points
-            </div>
-          </div>
+          <HPDisplay
+            currentHP={character.currentHitPoints || 0}
+            maxHP={100} // TODO: Calculate from character level and constitution
+            tempHP={character.temporaryHitPoints || 0}
+          />
           <div className="text-center">
             <div
               className="text-2xl font-bold"

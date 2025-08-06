@@ -1,6 +1,9 @@
+import { create } from '@bufbuild/protobuf';
+import { FinalizeDraftRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import './App.css';
+import { useFinalizeDraft } from './api/hooks';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
@@ -24,6 +27,7 @@ function AppContent() {
   );
   const discord = useDiscord();
   const draft = useCharacterDraft();
+  const { finalizeDraft, loading: finalizing } = useFinalizeDraft();
 
   // In production, require Discord auth. In dev, allow test player
   const isDevelopment = import.meta.env.MODE === 'development';
@@ -53,9 +57,33 @@ function AppContent() {
     }
   };
 
-  const handleCharacterCreated = () => {
-    draft.reset();
-    setCurrentView('character-list');
+  const handleCharacterCreated = async () => {
+    if (!draft.draftId) {
+      console.error('No draft ID available');
+      return;
+    }
+
+    try {
+      // Finalize the draft to create a character
+      const request = create(FinalizeDraftRequestSchema, {
+        draftId: draft.draftId,
+      });
+
+      const response = await finalizeDraft(request);
+
+      if (response.character) {
+        console.log('Character created:', response.character.id);
+        // TODO: Navigate to the new character sheet
+        // setCurrentCharacterId(response.character.id);
+        // setCurrentView('character-sheet');
+      }
+
+      // Reset draft and go back to character list
+      draft.reset();
+      setCurrentView('character-list');
+    } catch (error) {
+      console.error('Failed to finalize character:', error);
+    }
   };
 
   const handleCancelCreation = () => {
@@ -75,58 +103,63 @@ function AppContent() {
 
   return (
     <div
-      className="min-h-screen p-8"
+      className={`min-h-screen ${currentView === 'character-sheet' ? 'p-0' : 'p-8'}`}
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-7xl mx-auto"
+        className={currentView === 'character-sheet' ? '' : 'max-w-7xl mx-auto'}
       >
-        {/* Theme Selector and Demo Toggle */}
-        <div className="flex justify-between items-center mb-6">
-          <button
-            onClick={() =>
-              setCurrentView(
-                currentView === 'server-rolling-demo'
-                  ? 'character-list'
-                  : 'server-rolling-demo'
-              )
-            }
-            className="px-4 py-2 rounded-lg transition-colors"
-            style={{
-              backgroundColor:
-                currentView === 'server-rolling-demo'
-                  ? 'var(--accent-primary)'
-                  : 'var(--bg-secondary)',
-              color:
-                currentView === 'server-rolling-demo'
-                  ? 'white'
-                  : 'var(--text-primary)',
-              border: '1px solid var(--border-primary)',
-            }}
-          >
-            {currentView === 'server-rolling-demo'
-              ? '← Back to Character List'
-              : '🎲 Server Rolling Demo'}
-          </button>
-          <ThemeSelector />
-        </div>
+        {/* Theme Selector and Demo Toggle - Hide on character sheet */}
+        {currentView !== 'character-sheet' && (
+          <div className="flex justify-between items-center mb-6">
+            <button
+              onClick={() =>
+                setCurrentView(
+                  currentView === 'server-rolling-demo'
+                    ? 'character-list'
+                    : 'server-rolling-demo'
+                )
+              }
+              className="px-4 py-2 rounded-lg transition-colors"
+              style={{
+                backgroundColor:
+                  currentView === 'server-rolling-demo'
+                    ? 'var(--accent-primary)'
+                    : 'var(--bg-secondary)',
+                color:
+                  currentView === 'server-rolling-demo'
+                    ? 'white'
+                    : 'var(--text-primary)',
+                border: '1px solid var(--border-primary)',
+              }}
+            >
+              {currentView === 'server-rolling-demo'
+                ? '← Back to Character List'
+                : '🎲 Server Rolling Demo'}
+            </button>
+            <ThemeSelector />
+          </div>
+        )}
 
-        <header className="mb-8 text-center">
-          <h1
-            className="text-5xl font-bold mb-2 text-shadow"
-            style={{
-              fontFamily: 'Cinzel, serif',
-              color: 'var(--text-primary)',
-            }}
-          >
-            D&D Co-op Adventure
-          </h1>
-          <p className="text-lg" style={{ color: 'var(--text-muted)' }}>
-            Forge your legend in a shared realm
-          </p>
-        </header>
+        {/* Show header only when not viewing character sheet */}
+        {currentView !== 'character-sheet' && (
+          <header className="mb-8 text-center">
+            <h1
+              className="text-5xl font-bold mb-2 text-shadow"
+              style={{
+                fontFamily: 'Cinzel, serif',
+                color: 'var(--text-primary)',
+              }}
+            >
+              D&D Co-op Adventure
+            </h1>
+            <p className="text-lg" style={{ color: 'var(--text-muted)' }}>
+              Forge your legend in a shared realm
+            </p>
+          </header>
+        )}
 
         {/* Main Content */}
         {!playerId && discord.isDiscord ? (
@@ -171,11 +204,13 @@ function AppContent() {
             characterId={currentCharacterId}
             onBack={handleBackToCharacterList}
           />
-        ) : draft.loading ? (
+        ) : draft.loading || finalizing ? (
           <div className="flex items-center justify-center h-screen">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-primary mx-auto mb-4"></div>
-              <p className="text-lg">Loading draft...</p>
+              <p className="text-lg">
+                {finalizing ? 'Creating character...' : 'Loading draft...'}
+              </p>
             </div>
           </div>
         ) : (
