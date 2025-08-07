@@ -5,6 +5,10 @@ import React from 'react';
 interface HexGridProps {
   room: Room;
   cellSize?: number;
+  selectedCharacter?: string | null;
+  onCellClick?: (x: number, y: number) => void;
+  onEntityClick?: (entityId: string) => void;
+  onEntityHover?: (entityId: string | null) => void;
 }
 
 // Hex grid constants for pointy-top orientation
@@ -30,18 +34,45 @@ function hexPath(centerX: number, centerY: number, size: number): string {
   return `M ${points.map((p) => `${p.x},${p.y}`).join(' L ')} Z`;
 }
 
-// Get entity color based on type
-function getEntityColor(entityType: string): string {
+// Get entity color based on type and selection state
+function getEntityColor(
+  entityType: string,
+  entityId?: string,
+  selectedCharacter?: string | null,
+  isHovered?: boolean
+): string {
+  let baseColor: string;
   switch (entityType.toLowerCase()) {
     case 'character':
-      return '#2563eb'; // Blue
+      baseColor = '#2563eb'; // Blue
+      break;
     case 'monster':
-      return '#dc2626'; // Red
+      baseColor = '#dc2626'; // Red
+      break;
     case 'object':
-      return '#65a30d'; // Green
+      baseColor = '#65a30d'; // Green
+      break;
     default:
-      return '#6b7280'; // Gray
+      baseColor = '#6b7280'; // Gray
+      break;
   }
+
+  // Highlight selected character
+  if (entityId && selectedCharacter === entityId) {
+    return '#fbbf24'; // Amber for selected character
+  }
+
+  // Brighten on hover
+  if (isHovered) {
+    // Convert hex to RGB and brighten
+    const hex = baseColor.replace('#', '');
+    const r = Math.min(255, parseInt(hex.substr(0, 2), 16) + 40);
+    const g = Math.min(255, parseInt(hex.substr(2, 2), 16) + 40);
+    const b = Math.min(255, parseInt(hex.substr(4, 2), 16) + 40);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  return baseColor;
 }
 
 // Get entity display name
@@ -51,7 +82,19 @@ function getEntityDisplayName(entity: EntityPlacement): string {
   return parts[parts.length - 1] || entity.entityId.substring(0, 3);
 }
 
-export function HexGrid({ room, cellSize = 30 }: HexGridProps) {
+export function HexGrid({
+  room,
+  cellSize = 30,
+  selectedCharacter,
+  onCellClick,
+  onEntityClick,
+  onEntityHover,
+}: HexGridProps) {
+  const [hoveredCell, setHoveredCell] = React.useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [hoveredEntity, setHoveredEntity] = React.useState<string | null>(null);
   // Only render hex grids
   if (room.gridType !== GridType.HEX_POINTY) {
     return (
@@ -80,14 +123,20 @@ export function HexGrid({ room, cellSize = 30 }: HexGridProps) {
       const centerX = pixelX + (cellSize * SQRT_3) / 2;
       const centerY = pixelY + cellSize;
 
+      const isHovered = hoveredCell?.x === x && hoveredCell?.y === y;
+
       gridCells.push(
         <path
           key={`cell-${x}-${y}`}
           d={hexPath(centerX, centerY, cellSize * 0.9)}
-          fill="none"
+          fill={isHovered ? 'var(--bg-secondary)' : 'none'}
           stroke="var(--border-primary)"
           strokeWidth="1"
-          opacity="0.6"
+          opacity={isHovered ? '0.8' : '0.6'}
+          style={{ cursor: onCellClick ? 'pointer' : 'default' }}
+          onMouseEnter={() => setHoveredCell({ x, y })}
+          onMouseLeave={() => setHoveredCell(null)}
+          onClick={() => onCellClick?.(x, y)}
         />
       );
     }
@@ -108,7 +157,13 @@ export function HexGrid({ room, cellSize = 30 }: HexGridProps) {
     const centerX = pixelX + (cellSize * SQRT_3) / 2;
     const centerY = pixelY + cellSize;
 
-    const color = getEntityColor(entity.entityType);
+    const isHovered = hoveredEntity === entity.entityId;
+    const color = getEntityColor(
+      entity.entityType,
+      entity.entityId,
+      selectedCharacter,
+      isHovered
+    );
     const displayName = getEntityDisplayName(entity);
 
     entityMarkers.push(
@@ -117,10 +172,31 @@ export function HexGrid({ room, cellSize = 30 }: HexGridProps) {
         <path
           d={hexPath(centerX, centerY, cellSize * 0.8)}
           fill={color}
-          opacity="0.7"
+          opacity={isHovered ? '0.9' : '0.7'}
           stroke={color}
-          strokeWidth="2"
+          strokeWidth={entity.entityId === selectedCharacter ? '3' : '2'}
+          style={{ cursor: onEntityClick ? 'pointer' : 'default' }}
+          onMouseEnter={() => {
+            setHoveredEntity(entity.entityId);
+            onEntityHover?.(entity.entityId);
+          }}
+          onMouseLeave={() => {
+            setHoveredEntity(null);
+            onEntityHover?.(null);
+          }}
+          onClick={() => onEntityClick?.(entity.entityId)}
         />
+        {/* Selection ring for selected character */}
+        {entity.entityId === selectedCharacter && (
+          <path
+            d={hexPath(centerX, centerY, cellSize * 0.95)}
+            fill="none"
+            stroke="#fbbf24"
+            strokeWidth="3"
+            opacity="0.8"
+            strokeDasharray="5,3"
+          />
+        )}
         {/* Entity label */}
         <text
           x={centerX}
@@ -130,6 +206,7 @@ export function HexGrid({ room, cellSize = 30 }: HexGridProps) {
           fill="white"
           fontSize={cellSize * 0.3}
           fontWeight="bold"
+          style={{ pointerEvents: 'none' }}
         >
           {displayName}
         </text>
@@ -180,6 +257,13 @@ export function HexGrid({ room, cellSize = 30 }: HexGridProps) {
             style={{ backgroundColor: '#65a30d' }}
           />
           <span>Objects</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div
+            className="w-4 h-4 rounded border-2 border-dashed"
+            style={{ backgroundColor: '#fbbf24', borderColor: '#fbbf24' }}
+          />
+          <span>Selected Character</span>
         </div>
       </div>
     </div>
