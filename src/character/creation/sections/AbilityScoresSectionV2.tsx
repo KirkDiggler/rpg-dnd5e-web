@@ -225,7 +225,7 @@ export function AbilityScoresSectionV2({
     getAssignedRoll,
     isComplete,
     getRollAssignments,
-  } = useAbilityScoreRolls(playerId, draftId ?? undefined);
+  } = useAbilityScoreRolls(playerId);
 
   const { updateAbilityScores } = useUpdateDraftAbilityScores();
 
@@ -299,6 +299,11 @@ export function AbilityScoresSectionV2({
         getRollAssignments()
       );
 
+      console.log('Submitting ability scores with roll assignments:', {
+        draftId,
+        rollAssignments,
+      });
+
       const response = await updateAbilityScores(
         create(UpdateAbilityScoresRequestSchema, {
           draftId,
@@ -308,6 +313,8 @@ export function AbilityScoresSectionV2({
           },
         })
       );
+
+      console.log('Ability scores submitted successfully:', response);
 
       // Update the context with the new draft that includes ability scores
       if (response.draft && context) {

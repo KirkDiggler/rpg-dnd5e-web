@@ -73,14 +73,16 @@ function AppContent() {
 
       if (response.character) {
         console.log('Character created:', response.character.id);
-        // TODO: Navigate to the new character sheet
-        // setCurrentCharacterId(response.character.id);
-        // setCurrentView('character-sheet');
+        // Navigate to the new character sheet
+        setCurrentCharacterId(response.character.id);
+        setCurrentView('character-sheet');
+        // Reset draft after successful navigation
+        draft.reset();
+      } else {
+        // If no character was created, reset draft and go back to character list
+        draft.reset();
+        setCurrentView('character-list');
       }
-
-      // Reset draft and go back to character list
-      draft.reset();
-      setCurrentView('character-list');
     } catch (error) {
       console.error('Failed to finalize character:', error);
     }

@@ -60,48 +60,31 @@ export function useGetCharacter(characterId: string) {
     error: null,
   });
 
-  const fetchCharacter = useCallback(
-    async (signal?: AbortSignal) => {
-      if (!characterId) return;
+  const fetchCharacter = useCallback(async () => {
+    if (!characterId) return;
 
-      setState((prev) => ({ ...prev, loading: true, error: null }));
+    setState((prev) => ({ ...prev, loading: true, error: null }));
 
-      try {
-        const request = create(GetCharacterRequestSchema, { characterId });
-        const response = await characterClient.getCharacter(request, {
-          signal,
-        });
+    try {
+      const request = create(GetCharacterRequestSchema, { characterId });
+      const response = await characterClient.getCharacter(request);
 
-        // Only update state if not aborted
-        if (!signal?.aborted) {
-          setState({
-            data: response.character || null,
-            loading: false,
-            error: null,
-          });
-        }
-      } catch (error) {
-        // Ignore abort errors
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-
-        setState({
-          data: null,
-          loading: false,
-          error: error instanceof Error ? error : new Error('Unknown error'),
-        });
-      }
-    },
-    [characterId]
-  );
+      setState({
+        data: response.character || null,
+        loading: false,
+        error: null,
+      });
+    } catch (error) {
+      setState({
+        data: null,
+        loading: false,
+        error: error instanceof Error ? error : new Error('Unknown error'),
+      });
+    }
+  }, [characterId]);
 
   useEffect(() => {
-    const controller = new AbortController();
-
-    fetchCharacter(controller.signal);
-
-    return () => controller.abort();
+    fetchCharacter();
   }, [fetchCharacter]);
 
   return { ...state, refetch: () => fetchCharacter() };
@@ -118,7 +101,7 @@ export function useListCharacters(
   });
 
   const fetchCharacters = useCallback(
-    async (pageToken?: string, signal?: AbortSignal) => {
+    async (pageToken?: string) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -129,24 +112,16 @@ export function useListCharacters(
           playerId: filters.playerId || '',
         });
 
-        const response = await characterClient.listCharacters(request, {
-          signal,
+        const response = await characterClient.listCharacters(request);
+
+        setState({
+          data: response.characters,
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
+          totalSize: response.totalSize,
         });
-
-        if (!signal?.aborted) {
-          setState({
-            data: response.characters,
-            loading: false,
-            error: null,
-            nextPageToken: response.nextPageToken,
-            totalSize: response.totalSize,
-          });
-        }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-
         setState({
           data: [],
           loading: false,
@@ -158,11 +133,7 @@ export function useListCharacters(
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-
-    fetchCharacters(undefined, controller.signal);
-
-    return () => controller.abort();
+    fetchCharacters();
   }, [fetchCharacters]);
 
   return {
@@ -182,46 +153,31 @@ export function useGetDraft(draftId: string) {
     error: null,
   });
 
-  const fetchDraft = useCallback(
-    async (signal?: AbortSignal) => {
-      if (!draftId) return;
+  const fetchDraft = useCallback(async () => {
+    if (!draftId) return;
 
-      setState((prev) => ({ ...prev, loading: true, error: null }));
+    setState((prev) => ({ ...prev, loading: true, error: null }));
 
-      try {
-        const request = create(GetDraftRequestSchema, { draftId });
-        const response = await characterClient.getDraft(request, {
-          signal,
-        });
+    try {
+      const request = create(GetDraftRequestSchema, { draftId });
+      const response = await characterClient.getDraft(request);
 
-        if (!signal?.aborted) {
-          setState({
-            data: response.draft || null,
-            loading: false,
-            error: null,
-          });
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-
-        setState({
-          data: null,
-          loading: false,
-          error: error instanceof Error ? error : new Error('Unknown error'),
-        });
-      }
-    },
-    [draftId]
-  );
+      setState({
+        data: response.draft || null,
+        loading: false,
+        error: null,
+      });
+    } catch (error) {
+      setState({
+        data: null,
+        loading: false,
+        error: error instanceof Error ? error : new Error('Unknown error'),
+      });
+    }
+  }, [draftId]);
 
   useEffect(() => {
-    const controller = new AbortController();
-
-    fetchDraft(controller.signal);
-
-    return () => controller.abort();
+    fetchDraft();
   }, [fetchDraft]);
 
   return { ...state, refetch: () => fetchDraft() };
@@ -238,7 +194,7 @@ export function useListDrafts(
   });
 
   const fetchDrafts = useCallback(
-    async (pageToken?: string, signal?: AbortSignal) => {
+    async (pageToken?: string) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -249,23 +205,15 @@ export function useListDrafts(
           pageToken: pageToken || '',
         });
 
-        const response = await characterClient.listDrafts(request, {
-          signal,
+        const response = await characterClient.listDrafts(request);
+
+        setState({
+          data: response.drafts,
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
         });
-
-        if (!signal?.aborted) {
-          setState({
-            data: response.drafts,
-            loading: false,
-            error: null,
-            nextPageToken: response.nextPageToken,
-          });
-        }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-
         setState({
           data: [],
           loading: false,
@@ -277,11 +225,7 @@ export function useListDrafts(
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-
-    fetchDrafts(undefined, controller.signal);
-
-    return () => controller.abort();
+    fetchDrafts();
   }, [fetchDrafts]);
 
   return {
@@ -602,7 +546,7 @@ export function useListRaces(
   });
 
   const fetchRaces = useCallback(
-    async (pageToken?: string, signal?: AbortSignal) => {
+    async (pageToken?: string) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -611,24 +555,16 @@ export function useListRaces(
           pageToken: pageToken || '',
         });
 
-        const response = await characterClient.listRaces(request, {
-          signal,
+        const response = await characterClient.listRaces(request);
+
+        setState({
+          data: response.races,
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
+          totalSize: response.totalSize,
         });
-
-        if (!signal?.aborted) {
-          setState({
-            data: response.races,
-            loading: false,
-            error: null,
-            nextPageToken: response.nextPageToken,
-            totalSize: response.totalSize,
-          });
-        }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-
         setState({
           data: [],
           loading: false,
@@ -640,11 +576,7 @@ export function useListRaces(
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-
-    fetchRaces(undefined, controller.signal);
-
-    return () => controller.abort();
+    fetchRaces();
   }, [fetchRaces]);
 
   return {
@@ -666,7 +598,7 @@ export function useListClasses(
   });
 
   const fetchClasses = useCallback(
-    async (pageToken?: string, signal?: AbortSignal) => {
+    async (pageToken?: string) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -675,24 +607,16 @@ export function useListClasses(
           pageToken: pageToken || '',
         });
 
-        const response = await characterClient.listClasses(request, {
-          signal,
+        const response = await characterClient.listClasses(request);
+
+        setState({
+          data: response.classes,
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
+          totalSize: response.totalSize,
         });
-
-        if (!signal?.aborted) {
-          setState({
-            data: response.classes,
-            loading: false,
-            error: null,
-            nextPageToken: response.nextPageToken,
-            totalSize: response.totalSize,
-          });
-        }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-
         setState({
           data: [],
           loading: false,
@@ -704,11 +628,7 @@ export function useListClasses(
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-
-    fetchClasses(undefined, controller.signal);
-
-    return () => controller.abort();
+    fetchClasses();
   }, [fetchClasses]);
 
   return {
@@ -733,7 +653,7 @@ export function useListEquipmentByType(
   });
 
   const fetchEquipment = useCallback(
-    async (pageToken?: string, signal?: AbortSignal) => {
+    async (pageToken?: string) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
@@ -743,24 +663,16 @@ export function useListEquipmentByType(
           pageToken: pageToken || '',
         });
 
-        const response = await characterClient.listEquipmentByType(request, {
-          signal,
+        const response = await characterClient.listEquipmentByType(request);
+
+        setState({
+          data: response.equipment,
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
+          totalSize: response.totalSize,
         });
-
-        if (!signal?.aborted) {
-          setState({
-            data: response.equipment,
-            loading: false,
-            error: null,
-            nextPageToken: response.nextPageToken,
-            totalSize: response.totalSize,
-          });
-        }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-
         setState({
           data: [],
           loading: false,
@@ -772,11 +684,7 @@ export function useListEquipmentByType(
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-
-    fetchEquipment(undefined, controller.signal);
-
-    return () => controller.abort();
+    fetchEquipment();
   }, [fetchEquipment]);
 
   return {
@@ -803,7 +711,7 @@ export function useListEquipmentByTypeConditional(
   });
 
   const fetchEquipment = useCallback(
-    async (pageToken?: string, signal?: AbortSignal) => {
+    async (pageToken?: string) => {
       if (!enabled) return;
 
       setState((prev) => ({ ...prev, loading: true, error: null }));
@@ -815,24 +723,16 @@ export function useListEquipmentByTypeConditional(
           pageToken: pageToken || '',
         });
 
-        const response = await characterClient.listEquipmentByType(request, {
-          signal,
+        const response = await characterClient.listEquipmentByType(request);
+
+        setState({
+          data: response.equipment,
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
+          totalSize: response.totalSize,
         });
-
-        if (!signal?.aborted) {
-          setState({
-            data: response.equipment,
-            loading: false,
-            error: null,
-            nextPageToken: response.nextPageToken,
-            totalSize: response.totalSize,
-          });
-        }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-
         setState({
           data: [],
           loading: false,
@@ -846,11 +746,7 @@ export function useListEquipmentByTypeConditional(
   useEffect(() => {
     if (!enabled) return;
 
-    const controller = new AbortController();
-
-    fetchEquipment(undefined, controller.signal);
-
-    return () => controller.abort();
+    fetchEquipment();
   }, [fetchEquipment, enabled]);
 
   return {
