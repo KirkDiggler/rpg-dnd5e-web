@@ -9,7 +9,7 @@ import { InteractiveCharacterSheet } from './character/creation/InteractiveChara
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { CharacterList } from './components/CharacterList';
-import { ServerRollingDemo } from './components/ServerRollingDemo';
+import { RoomDemo } from './components/RoomDemo';
 import { ThemeSelector } from './components/ThemeSelector';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
@@ -17,7 +17,7 @@ type AppView =
   | 'character-list'
   | 'character-creation'
   | 'character-sheet'
-  | 'server-rolling-demo';
+  | 'room-demo';
 
 function AppContent() {
   const [currentView, setCurrentView] = useState<AppView>('character-list');
@@ -119,27 +119,23 @@ function AppContent() {
             <button
               onClick={() =>
                 setCurrentView(
-                  currentView === 'server-rolling-demo'
-                    ? 'character-list'
-                    : 'server-rolling-demo'
+                  currentView === 'room-demo' ? 'character-list' : 'room-demo'
                 )
               }
               className="px-4 py-2 rounded-lg transition-colors"
               style={{
                 backgroundColor:
-                  currentView === 'server-rolling-demo'
+                  currentView === 'room-demo'
                     ? 'var(--accent-primary)'
                     : 'var(--bg-secondary)',
                 color:
-                  currentView === 'server-rolling-demo'
-                    ? 'white'
-                    : 'var(--text-primary)',
+                  currentView === 'room-demo' ? 'white' : 'var(--text-primary)',
                 border: '1px solid var(--border-primary)',
               }}
             >
-              {currentView === 'server-rolling-demo'
+              {currentView === 'room-demo'
                 ? '← Back to Character List'
-                : '🎲 Server Rolling Demo'}
+                : '🏰 Enter Room Demo'}
             </button>
             <ThemeSelector />
           </div>
@@ -191,8 +187,8 @@ function AppContent() {
               <p className="mt-4 text-red-500">{discord.error}</p>
             )}
           </motion.div>
-        ) : currentView === 'server-rolling-demo' ? (
-          <ServerRollingDemo />
+        ) : currentView === 'room-demo' ? (
+          <RoomDemo />
         ) : currentView === 'character-list' ? (
           <CharacterList
             playerId={playerId || 'test-player'}
