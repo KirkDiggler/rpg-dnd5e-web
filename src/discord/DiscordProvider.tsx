@@ -75,8 +75,8 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
           window.location.hostname.includes('discordsays.com');
         const apiBase = import.meta.env.VITE_API_HOST || '';
         const apiUrl = isDiscordActivity
-          ? '/.proxy/api/discord/token'
-          : `${apiBase}/api/discord/token`;
+          ? '/.proxy/auth/discord/token'
+          : `${apiBase}/auth/discord/token`;
 
         console.log('🔐 Calling API:', apiUrl);
 
