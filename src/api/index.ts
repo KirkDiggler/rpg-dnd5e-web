@@ -1,5 +1,5 @@
 // Re-export the client
-export { characterClient } from './client';
+export { characterClient, encounterClient } from './client';
 
 // Re-export all hooks
 export {
@@ -20,6 +20,9 @@ export {
   useValidateDraft,
 } from './hooks';
 
+// Re-export encounter hooks
+export { useDungeonStart } from './encounterHooks';
+
 // Re-export commonly used types from protos
 export type {
   AbilityScores,
@@ -38,3 +41,15 @@ export {
   Race,
   Skill,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+
+// Re-export encounter types
+export type {
+  DungeonStartRequest,
+  DungeonStartResponse,
+  EntityPlacement,
+  Room,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+
+export type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
+
+export { GridType } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
