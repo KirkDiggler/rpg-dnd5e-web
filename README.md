@@ -39,6 +39,33 @@ npm install
 npm run dev
 ```
 
+### 🚨 IMPORTANT: Pre-Push CI Checks
+
+**ALWAYS run CI checks before pushing:**
+
+```bash
+npm run ci-check  # Run this BEFORE git push
+```
+
+We have multiple safeguards in place:
+
+1. **Pre-push hook** - Automatically runs CI checks when you `git push`
+2. **Safe push script** - Use `./scripts/safe-push.sh` or `git safepush`
+3. **CI check script** - Quick local CI validation with `npm run ci-check`
+
+#### Quick Commands
+
+```bash
+# Check if your code will pass CI
+npm run ci-check
+
+# Auto-fix common issues
+npm run ci-fix
+
+# Safe push with automatic checks
+git safepush origin feature-branch
+```
+
 ### Building
 
 ```bash

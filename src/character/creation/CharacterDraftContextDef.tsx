@@ -1,6 +1,7 @@
 import type {
   CharacterDraft,
   Choice,
+  ChoiceData,
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
@@ -19,8 +20,8 @@ export interface CharacterDraftState {
   allLanguages: Set<string>;
 
   // Track choices made for each source
-  raceChoices: Record<string, string[]>;
-  classChoices: Record<string, string[]>;
+  raceChoices: ChoiceData[];
+  classChoices: ChoiceData[];
 
   // Loading states
   loading: boolean;
@@ -30,21 +31,18 @@ export interface CharacterDraftState {
   // Methods
   createDraft: (playerId: string, sessionId?: string) => Promise<void>;
   loadDraft: (draftId: string) => Promise<void>;
-  setRace: (
-    race: RaceInfo | null,
-    choices?: Record<string, string[]>
-  ) => Promise<void>;
+  setRace: (race: RaceInfo | null, choices?: ChoiceData[]) => Promise<void>;
   setClass: (
     classInfo: ClassInfo | null,
-    choices?: Record<string, string[]>
+    choices?: ChoiceData[]
   ) => Promise<void>;
   setName: (name: string) => Promise<void>;
   setAbilityScores: (scores: Record<string, number>) => Promise<void>;
   finalizeDraft: () => Promise<string>; // Returns character ID
 
   // Choice management
-  addRaceChoice: (choiceKey: string, selection: string[]) => void;
-  addClassChoice: (choiceKey: string, selection: string[]) => void;
+  addRaceChoice: (choice: ChoiceData) => void;
+  addClassChoice: (choice: ChoiceData) => void;
 
   // Get available choices (filtering out already selected)
   getAvailableChoices: (

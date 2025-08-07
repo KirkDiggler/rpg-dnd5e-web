@@ -146,7 +146,7 @@ export function useClearRollSession() {
 }
 
 // Helper hook to manage ability score rolls
-export function useAbilityScoreRolls(playerId: string, draftId?: string) {
+export function useAbilityScoreRolls(playerId: string) {
   const [rolls, setRolls] = useState<DiceRoll[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const { rollDice, loading: rolling, error: rollError } = useRollDice();
@@ -156,10 +156,9 @@ export function useAbilityScoreRolls(playerId: string, draftId?: string) {
     error: sessionError,
   } = useGetRollSession();
 
-  // Context should match what the server expects: character_draft_{draftId}_abilities
-  const context = draftId
-    ? `character_draft_${draftId}_abilities`
-    : 'ability_scores';
+  // Context should always be 'ability_scores' for ability score rolling
+  // The server uses a fixed context and scopes by entityId (playerId)
+  const context = 'ability_scores';
 
   // Load existing rolls on mount
   const loadExistingRolls = useCallback(async () => {

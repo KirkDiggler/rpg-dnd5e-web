@@ -1,10 +1,11 @@
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { getLanguageEnum } from '../../utils/enumDisplay';
 
 interface LanguageChoiceProps {
   choice: Choice;
-  onSelectionChange: (choiceId: string, selectedIds: string[]) => void;
-  currentSelections: string[];
+  onSelectionChange: (choiceId: string, selectedLanguages: Language[]) => void;
+  currentSelections: Language[];
 }
 
 // Helper to convert Language enum to display name
@@ -63,15 +64,15 @@ export function LanguageChoice({
   onSelectionChange,
   currentSelections,
 }: LanguageChoiceProps) {
-  const handleLanguageToggle = (languageId: string) => {
+  const handleLanguageToggle = (language: Language) => {
     if (choice.chooseCount === 1) {
       // Radio button behavior
-      onSelectionChange(choice.id, [languageId]);
+      onSelectionChange(choice.id, [language]);
     } else {
       // Checkbox behavior
-      const newSelections = currentSelections.includes(languageId)
-        ? currentSelections.filter((id) => id !== languageId)
-        : [...currentSelections, languageId].slice(0, choice.chooseCount);
+      const newSelections = currentSelections.includes(language)
+        ? currentSelections.filter((lang) => lang !== language)
+        : [...currentSelections, language].slice(0, choice.chooseCount);
       onSelectionChange(choice.id, newSelections);
     }
   };
@@ -93,19 +94,21 @@ export function LanguageChoice({
           {options.map((option) => {
             if (option.optionType.case !== 'item') return null;
 
-            const language = option.optionType.value;
-            const isSelected = currentSelections.includes(language.itemId);
+            const item = option.optionType.value;
+            // Convert itemId (string) to Language enum
+            const languageEnum = getLanguageEnum(item.itemId);
+            const isSelected = currentSelections.includes(languageEnum);
             const isDisabled =
               !isSelected && currentSelections.length >= choice.chooseCount;
 
             return (
               <button
-                key={language.itemId}
+                key={item.itemId}
                 type="button"
                 onClick={
                   isDisabled
                     ? undefined
-                    : () => handleLanguageToggle(language.itemId)
+                    : () => handleLanguageToggle(languageEnum)
                 }
                 disabled={isDisabled}
                 style={{
@@ -147,7 +150,7 @@ export function LanguageChoice({
               >
                 <span style={{ fontSize: '18px', lineHeight: '1' }}>💬</span>
                 <div style={{ flex: 1, textAlign: 'left' }}>
-                  <div className="font-medium">{language.name}</div>
+                  <div className="font-medium">{item.name}</div>
                   {/* ItemReference no longer has description in v0.1.13 */}
                 </div>
                 {isSelected && <span style={{ fontSize: '16px' }}>✓</span>}
@@ -165,13 +168,15 @@ export function LanguageChoice({
     const excludeIds = category.excludeIds || [];
     const { standard, exotic } = getAllLanguages();
 
-    // Filter out excluded languages
-    const availableStandard = standard.filter(
-      (lang) => !excludeIds.includes(Language[lang].toLowerCase())
-    );
-    const availableExotic = exotic.filter(
-      (lang) => !excludeIds.includes(Language[lang].toLowerCase())
-    );
+    // Filter out excluded languages (excludeIds contains lowercase names like "common")
+    const availableStandard = standard.filter((lang) => {
+      const langName = Language[lang].toLowerCase().replace(/_/g, '-');
+      return !excludeIds.includes(langName);
+    });
+    const availableExotic = exotic.filter((lang) => {
+      const langName = Language[lang].toLowerCase().replace(/_/g, '-');
+      return !excludeIds.includes(langName);
+    });
 
     return (
       <div className="space-y-4">
@@ -200,20 +205,19 @@ export function LanguageChoice({
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {availableStandard.map((language) => {
-                const languageId = Language[language].toLowerCase();
                 const languageName = getLanguageDisplayName(language);
-                const isSelected = currentSelections.includes(languageId);
+                const isSelected = currentSelections.includes(language);
                 const isDisabled =
                   !isSelected && currentSelections.length >= choice.chooseCount;
 
                 return (
                   <button
-                    key={languageId}
+                    key={language}
                     type="button"
                     onClick={
                       isDisabled
                         ? undefined
-                        : () => handleLanguageToggle(languageId)
+                        : () => handleLanguageToggle(language)
                     }
                     disabled={isDisabled}
                     style={{
@@ -280,20 +284,19 @@ export function LanguageChoice({
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {availableExotic.map((language) => {
-                const languageId = Language[language].toLowerCase();
                 const languageName = getLanguageDisplayName(language);
-                const isSelected = currentSelections.includes(languageId);
+                const isSelected = currentSelections.includes(language);
                 const isDisabled =
                   !isSelected && currentSelections.length >= choice.chooseCount;
 
                 return (
                   <button
-                    key={languageId}
+                    key={language}
                     type="button"
                     onClick={
                       isDisabled
                         ? undefined
-                        : () => handleLanguageToggle(languageId)
+                        : () => handleLanguageToggle(language)
                     }
                     disabled={isDisabled}
                     style={{

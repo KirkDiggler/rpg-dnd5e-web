@@ -1,6 +1,11 @@
 import { TraitBadgeGroup } from '@/components/TraitBadge';
 import { TraitIcons } from '@/constants/traits';
 import { useCharacterBuilder } from '@/hooks/useCharacterBuilder';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  Language,
+  Skill,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useContext, useState } from 'react';
 import { CharacterDraftContext } from '../CharacterDraftContextDef';
@@ -58,30 +63,44 @@ export function SkillsBackgroundSection() {
 
   const { classChoices, raceChoices } = context;
 
-  // Get proficiencies from character choices
-  const classProficiencies = classChoices || {};
-  const raceProficiencies = raceChoices || {};
+  // Get proficiencies from character choices (now ChoiceData arrays)
+  const classChoiceData = classChoices || [];
+  const raceChoiceData = raceChoices || [];
 
-  // Flatten proficiency choices into arrays and categorize by type
-  const allClassChoices = Object.values(classProficiencies).flat();
-  const allRaceChoices = Object.values(raceProficiencies).flat();
+  // Extract skills, tools, and languages from ChoiceData
+  const classSkillChoices: number[] = [];
+  const classToolChoices: string[] = [];
+  const classFeatChoices: string[] = [];
+  const raceSkillChoices: number[] = [];
+  const raceLanguageChoices: number[] = [];
 
-  // Separate by type based on the item ID prefix
-  const classSkillChoices = allClassChoices.filter(
-    (id): id is string => typeof id === 'string' && id.startsWith('skill:')
-  );
-  const classToolChoices = allClassChoices.filter(
-    (id): id is string => typeof id === 'string' && id.startsWith('tool:')
-  );
-  const classFeatChoices = allClassChoices.filter(
-    (id): id is string => typeof id === 'string' && id.startsWith('feat:')
-  );
-  const raceSkillChoices = allRaceChoices.filter(
-    (id): id is string => typeof id === 'string' && id.startsWith('skill:')
-  );
-  const raceLanguageChoices = allRaceChoices.filter(
-    (id): id is string => typeof id === 'string' && id.startsWith('language:')
-  );
+  // Process class choices
+  classChoiceData.forEach((choice) => {
+    if (
+      choice.category === ChoiceCategory.SKILLS &&
+      choice.selection?.case === 'skills'
+    ) {
+      classSkillChoices.push(...(choice.selection.value.skills || []));
+    } else if (choice.category === ChoiceCategory.TOOLS) {
+      // TODO: Handle tool choices when implemented
+    }
+    // TODO: Handle feat choices
+  });
+
+  // Process race choices
+  raceChoiceData.forEach((choice) => {
+    if (
+      choice.category === ChoiceCategory.SKILLS &&
+      choice.selection?.case === 'skills'
+    ) {
+      raceSkillChoices.push(...(choice.selection.value.skills || []));
+    } else if (
+      choice.category === ChoiceCategory.LANGUAGES &&
+      choice.selection?.case === 'languages'
+    ) {
+      raceLanguageChoices.push(...(choice.selection.value.languages || []));
+    }
+  });
 
   const selectedBackground = SAMPLE_BACKGROUNDS.find(
     (b) => b.id === selectedChoices.background
@@ -120,12 +139,9 @@ export function SkillsBackgroundSection() {
 
           <TraitBadgeGroup
             title="Racial Proficiencies"
-            traits={raceSkillChoices.map((skillId, index) => ({
+            traits={raceSkillChoices.map((skillEnum, index) => ({
               id: `race-skill-${index}`,
-              name: skillId
-                .replace('skill:-', '')
-                .replace(/-/g, ' ')
-                .replace(/\b\w/g, (l: string) => l.toUpperCase()),
+              name: Skill[skillEnum] || `Skill ${skillEnum}`,
               type: 'racial' as const,
               icon: TraitIcons.racial,
               description: 'Racial proficiency',
@@ -134,12 +150,9 @@ export function SkillsBackgroundSection() {
 
           <TraitBadgeGroup
             title="Class Proficiencies"
-            traits={classSkillChoices.map((skillId, index) => ({
+            traits={classSkillChoices.map((skillEnum, index) => ({
               id: `class-skill-${index}`,
-              name: skillId
-                .replace('skill:-', '')
-                .replace(/-/g, ' ')
-                .replace(/\b\w/g, (l: string) => l.toUpperCase()),
+              name: Skill[skillEnum] || `Skill ${skillEnum}`,
               type: 'class' as const,
               icon: TraitIcons.class,
               description: 'Class proficiency',
@@ -215,12 +228,9 @@ export function SkillsBackgroundSection() {
           {raceLanguageChoices.length > 0 && (
             <TraitBadgeGroup
               title="Languages"
-              traits={raceLanguageChoices.map((langId, index) => ({
+              traits={raceLanguageChoices.map((langEnum, index) => ({
                 id: `race-lang-${index}`,
-                name: langId
-                  .replace('language:-', '')
-                  .replace(/-/g, ' ')
-                  .replace(/\b\w/g, (l: string) => l.toUpperCase()),
+                name: Language[langEnum] || `Language ${langEnum}`,
                 type: 'racial' as const,
                 icon: '💬',
                 description: 'Language',

@@ -1,9 +1,11 @@
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Skill } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { getSkillEnum } from '../../utils/enumDisplay';
 
 interface SkillChoiceProps {
   choice: Choice;
-  onSelectionChange: (choiceId: string, selectedIds: string[]) => void;
-  currentSelections: string[];
+  onSelectionChange: (choiceId: string, selectedSkills: Skill[]) => void;
+  currentSelections: Skill[];
 }
 
 // Map skills to their ability scores for grouping
@@ -37,15 +39,15 @@ export function SkillChoice({
   onSelectionChange,
   currentSelections,
 }: SkillChoiceProps) {
-  const handleSkillToggle = (skillId: string) => {
+  const handleSkillToggle = (skill: Skill) => {
     if (choice.chooseCount === 1) {
       // Radio button behavior
-      onSelectionChange(choice.id, [skillId]);
+      onSelectionChange(choice.id, [skill]);
     } else {
       // Checkbox behavior
-      const newSelections = currentSelections.includes(skillId)
-        ? currentSelections.filter((s) => s !== skillId)
-        : [...currentSelections, skillId].slice(0, choice.chooseCount);
+      const newSelections = currentSelections.includes(skill)
+        ? currentSelections.filter((s) => s !== skill)
+        : [...currentSelections, skill].slice(0, choice.chooseCount);
       onSelectionChange(choice.id, newSelections);
     }
   };
@@ -102,7 +104,9 @@ export function SkillChoice({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {skills.map(({ skill }) => {
-                const isSelected = currentSelections.includes(skill.itemId);
+                // Convert itemId to Skill enum
+                const skillEnum = getSkillEnum(skill.itemId);
+                const isSelected = currentSelections.includes(skillEnum);
                 const isDisabled =
                   !isSelected && currentSelections.length >= choice.chooseCount;
 
@@ -113,7 +117,7 @@ export function SkillChoice({
                     onClick={
                       isDisabled
                         ? undefined
-                        : () => handleSkillToggle(skill.itemId)
+                        : () => handleSkillToggle(skillEnum)
                     }
                     disabled={isDisabled}
                     className="skill-choice-button"
