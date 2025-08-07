@@ -54,7 +54,7 @@ export function RoomDemo() {
   const { data: availableCharacters, loading: charactersLoading } =
     useListCharacters({
       playerId,
-      sessionId: discord.session?.sessionId,
+      sessionId: isDevelopment ? 'test-session' : undefined,
     });
 
   // Selected characters for the party
@@ -122,7 +122,7 @@ export function RoomDemo() {
       return {
         name: character.name,
         details: `Level ${character.level} ${getRaceDisplayName(character.race)} ${getClassDisplayName(character.class)}`,
-        hp: `${character.currentHitPoints}/${character.maxHitPoints || character.currentHitPoints} HP`,
+        hp: `${character.currentHitPoints} HP`,
         type: 'Player Character',
       };
     }
@@ -441,7 +441,7 @@ export function RoomDemo() {
                             )
                           }
                           className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                            isSelected ? 'ring-2' : ''
+                            isSelected ? 'ring-2 ring-orange-500' : ''
                           }`}
                           style={{
                             backgroundColor: isSelected
@@ -449,7 +449,6 @@ export function RoomDemo() {
                               : 'var(--bg-secondary)',
                             color: isSelected ? 'white' : 'var(--text-primary)',
                             border: '1px solid var(--border-primary)',
-                            ringColor: 'var(--accent-primary)',
                           }}
                         >
                           {character.name}
