@@ -6,10 +6,13 @@ import { LanguageChoice } from './choices/LanguageChoice';
 import { SkillChoice } from './choices/SkillChoice';
 import { SpellChoice } from './choices/SpellChoice';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SelectionValue = any; // Generic type that can be Language[] | Skill[] | string[] based on choice type
+
 interface ChoiceRendererProps {
   choice: Choice;
-  onSelectionChange: (choiceId: string, selectedIds: string[]) => void;
-  currentSelections: string[];
+  onSelectionChange: (choiceId: string, selections: SelectionValue) => void; // Generic handler, will be Language[] | Skill[] | string[] based on choice type
+  currentSelections: SelectionValue; // Will be Language[] | Skill[] | string[] etc based on choice type
 }
 
 /**

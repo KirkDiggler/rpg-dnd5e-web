@@ -3,7 +3,12 @@ import {
   Race,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useListCharacters, useListDrafts } from '../api/hooks';
+import { useState } from 'react';
+import {
+  useDeleteCharacter,
+  useListCharacters,
+  useListDrafts,
+} from '../api/hooks';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 
@@ -59,10 +64,15 @@ export function CharacterList({
   onResumeDraft,
   onViewCharacter,
 }: CharacterListProps) {
+  const [deletingCharacterId, setDeletingCharacterId] = useState<string | null>(
+    null
+  );
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const {
     data: characters,
     loading: charactersLoading,
     error: charactersError,
+    refetch: refetchCharacters,
   } = useListCharacters({ playerId, sessionId });
 
   const {
@@ -71,8 +81,54 @@ export function CharacterList({
     error: draftsError,
   } = useListDrafts({ playerId, sessionId });
 
-  const loading = charactersLoading || draftsLoading;
+  const { deleteCharacter, loading: deleteLoading } = useDeleteCharacter();
+  const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
+
+  const loading =
+    charactersLoading || draftsLoading || deleteLoading || clearingAll;
   const error = charactersError || draftsError;
+
+  const handleDeleteClick = (characterId: string) => {
+    setConfirmDelete(characterId);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return;
+
+    setDeletingCharacterId(confirmDelete);
+    try {
+      await deleteCharacter(confirmDelete);
+      // Refresh the character list
+      await refetchCharacters();
+    } catch (error) {
+      console.error('Failed to delete character:', error);
+    } finally {
+      setDeletingCharacterId(null);
+      setConfirmDelete(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setConfirmDelete(null);
+  };
+
+  const handleClearAll = async () => {
+    setClearingAll(true);
+    try {
+      // Delete all characters one by one
+      for (const character of characters) {
+        await deleteCharacter(character.id);
+      }
+      // Refresh the list after all deletions
+      await refetchCharacters();
+    } catch (error) {
+      console.error('Failed to clear all characters:', error);
+    } finally {
+      setClearingAll(false);
+      setShowClearAllConfirm(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -175,9 +231,20 @@ export function CharacterList({
           >
             Your Characters
           </h2>
-          <Button variant="primary" onClick={onCreateCharacter}>
-            Create Character
-          </Button>
+          <div className="flex gap-2">
+            {characters.length > 0 && (
+              <Button
+                variant="secondary"
+                onClick={() => setShowClearAllConfirm(true)}
+                disabled={clearingAll}
+              >
+                {clearingAll ? 'Clearing...' : 'Clear All'}
+              </Button>
+            )}
+            <Button variant="primary" onClick={onCreateCharacter}>
+              Create Character
+            </Button>
+          </div>
         </div>
 
         {characters.length === 0 ? (
@@ -305,14 +372,24 @@ export function CharacterList({
                         </div>
                       </div>
 
-                      {/* Action Button */}
-                      <div className="pt-2">
+                      {/* Action Buttons */}
+                      <div className="pt-2 space-y-2">
                         <Button
                           variant="primary"
                           onClick={() => onViewCharacter?.(character.id)}
                           className="w-full"
                         >
                           View Character
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleDeleteClick(character.id)}
+                          className="w-full"
+                          disabled={deletingCharacterId === character.id}
+                        >
+                          {deletingCharacterId === character.id
+                            ? 'Deleting...'
+                            : 'Delete'}
                         </Button>
                       </div>
                     </div>
@@ -323,6 +400,90 @@ export function CharacterList({
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="max-w-md p-6">
+            <h3
+              className="text-xl font-bold mb-4"
+              style={{
+                fontFamily: 'Cinzel, serif',
+                color: 'var(--ink-black)',
+              }}
+            >
+              Confirm Delete
+            </h3>
+            <p style={{ color: 'var(--ink-brown)' }} className="mb-6">
+              Are you sure you want to delete this character? This action cannot
+              be undone.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="secondary"
+                onClick={handleCancelDelete}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleConfirmDelete}
+                className="flex-1"
+                style={{
+                  backgroundColor: '#dc3545',
+                  borderColor: '#dc3545',
+                  color: 'white',
+                }}
+              >
+                Delete Character
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Clear All Confirmation Modal */}
+      {showClearAllConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="max-w-md p-6">
+            <h3
+              className="text-xl font-bold mb-4"
+              style={{
+                fontFamily: 'Cinzel, serif',
+                color: 'var(--ink-black)',
+              }}
+            >
+              Clear All Characters
+            </h3>
+            <p style={{ color: 'var(--ink-brown)' }} className="mb-6">
+              Are you sure you want to delete ALL {characters.length}{' '}
+              characters? This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => setShowClearAllConfirm(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleClearAll}
+                className="flex-1"
+                style={{
+                  backgroundColor: '#dc3545',
+                  borderColor: '#dc3545',
+                  color: 'white',
+                }}
+              >
+                Delete All Characters
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

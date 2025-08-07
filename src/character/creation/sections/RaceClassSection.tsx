@@ -6,13 +6,24 @@ import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  ChoiceCategory,
+  ChoiceSource,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
-import type { ClassChoices } from '../ClassSelectionModal';
+import type {
+  ClassModalChoices,
+  RaceModalChoices,
+} from '../../../types/choices';
+import {
+  convertEquipmentChoiceToProto,
+  convertFeatureChoiceToProto,
+  convertLanguageChoiceToProto,
+  convertSkillChoiceToProto,
+} from '../../../utils/choiceConverter';
 import { ClassSelectionModal } from '../ClassSelectionModal';
-import type { RaceChoices } from '../RaceSelectionModal';
 import { RaceSelectionModal } from '../RaceSelectionModal';
 
 export function RaceClassSection() {
@@ -28,6 +39,9 @@ export function RaceClassSection() {
   const [selectedClassData, setSelectedClassData] = useState<ClassInfo | null>(
     classInfo
   );
+  const [selectedClassChoices, setSelectedClassChoices] = useState<
+    ClassModalChoices | undefined
+  >();
 
   // Update selected data when draft loads
   useEffect(() => {
@@ -38,124 +52,144 @@ export function RaceClassSection() {
     setSelectedClassData(classInfo);
   }, [classInfo]);
 
-  // Format existing race choices for the modal
-  const existingRaceChoices: RaceChoices | undefined =
-    raceChoices && Object.keys(raceChoices).length > 0
-      ? {
-          languages: {},
-          proficiencies: {},
-        }
-      : undefined;
+  // Convert existing choices from ChoiceData to modal format if needed
+  const existingRaceChoices: RaceModalChoices | undefined = undefined;
 
-  // Populate existing race choices
-  if (existingRaceChoices && raceChoices) {
-    Object.entries(raceChoices).forEach(([choiceId, selections]) => {
-      // Determine if it's a language or proficiency choice
-      // This is a simple heuristic - you might need to adjust based on actual choice IDs
-      if (
-        choiceId.includes('language') ||
-        selections.some((s) => s.startsWith('language:'))
-      ) {
-        existingRaceChoices.languages[choiceId] = selections;
-      } else {
-        existingRaceChoices.proficiencies[choiceId] = selections;
-      }
-    });
-  }
-
-  const handleRaceSelect = async (race: RaceInfo, choices: RaceChoices) => {
+  const handleRaceSelect = async (
+    race: RaceInfo,
+    choices: RaceModalChoices
+  ) => {
     setSelectedRaceData(race);
     setSelectedChoice('race', race.id);
     setSelectedChoice('raceData', race);
     setSelectedChoice('raceChoices', choices);
 
-    // Format choices for the context
-    const formattedChoices: Record<string, string[]> = {};
+    // Convert structured choices to ChoiceData proto format
+    const choiceDataArray = [];
 
-    // Handle languages (Record<string, string[]>)
-    if (choices.languages && Object.keys(choices.languages).length > 0) {
-      Object.entries(choices.languages).forEach(([choiceId, selections]) => {
-        if (selections && selections.length > 0) {
-          formattedChoices[choiceId] = selections;
-        }
-      });
+    // Convert language choices
+    if (choices.languages) {
+      for (const languageChoice of choices.languages) {
+        const choiceData = convertLanguageChoiceToProto(
+          languageChoice,
+          ChoiceSource.RACE
+        );
+        choiceDataArray.push(choiceData);
+      }
     }
 
-    // Handle proficiencies (Record<string, string[]>) - includes tools, skills, weapons, armor
-    if (
-      choices.proficiencies &&
-      Object.keys(choices.proficiencies).length > 0
-    ) {
-      Object.entries(choices.proficiencies).forEach(
-        ([choiceId, selections]) => {
-          if (selections && selections.length > 0) {
-            formattedChoices[choiceId] = selections;
-          }
-        }
-      );
+    // Convert skill choices
+    if (choices.skills) {
+      for (const skillChoice of choices.skills) {
+        const choiceData = convertSkillChoiceToProto(
+          skillChoice,
+          ChoiceSource.RACE
+        );
+        choiceDataArray.push(choiceData);
+      }
     }
+
+    // TODO: Convert other proficiency choices when they are structured
 
     // Update the draft context with race and choices
-    await setRace(race, formattedChoices);
+    await setRace(race, choiceDataArray);
 
     setShowRaceModal(false);
   };
 
   const handleClassSelect = useCallback(
-    async (classData: ClassInfo, choices: ClassChoices) => {
+    async (classData: ClassInfo, choices: ClassModalChoices) => {
+      console.log('🎯 RaceClassSection - Received choices from modal:', {
+        className: classData.name,
+        choices,
+        hasFeatures: choices.features && choices.features.length > 0,
+        features: choices.features,
+      });
+
       setSelectedClassData(classData);
+      setSelectedClassChoices(choices); // Save for modal re-opening
       setSelectedChoice('class', classData.id);
       setSelectedChoice('classData', classData);
       setSelectedChoice('classChoices', choices);
 
-      // Format choices for the context
-      const formattedChoices: Record<string, string[]> = {};
+      // Convert structured choices to ChoiceData proto format
+      const choiceDataArray = [];
+      console.log('📝 Starting conversion of choices to ChoiceData array');
 
-      // Handle proficiencies (Record<string, string[]>)
-      if (
-        choices.proficiencies &&
-        Object.keys(choices.proficiencies).length > 0
-      ) {
-        Object.entries(choices.proficiencies).forEach(
-          ([choiceId, selections]) => {
-            if (selections && selections.length > 0) {
-              formattedChoices[choiceId] = selections;
-            }
-          }
-        );
+      // Convert skill choices
+      if (choices.skills) {
+        for (const skillChoice of choices.skills) {
+          const choiceData = convertSkillChoiceToProto(
+            skillChoice,
+            ChoiceSource.CLASS
+          );
+          choiceDataArray.push(choiceData);
+        }
       }
 
-      // Handle equipment (Record<string, string>)
-      if (choices.equipment && Object.keys(choices.equipment).length > 0) {
-        Object.entries(choices.equipment).forEach(
-          ([choiceId, selectedItem]) => {
-            if (selectedItem) {
-              // Equipment choices should be arrays for consistency with other choices
-              formattedChoices[choiceId] = [selectedItem];
-            }
-          }
-        );
+      // Convert equipment choices
+      if (choices.equipment) {
+        for (const equipmentChoice of choices.equipment) {
+          const choiceData = convertEquipmentChoiceToProto(
+            equipmentChoice,
+            ChoiceSource.CLASS
+          );
+          choiceDataArray.push(choiceData);
+        }
       }
 
-      // Handle features (Record<string, Record<string, string[]>>)
-      if (choices.features && Object.keys(choices.features).length > 0) {
-        Object.entries(choices.features).forEach(
-          ([featureId, featureChoices]) => {
-            Object.entries(featureChoices).forEach(([choiceId, selections]) => {
-              if (selections && selections.length > 0) {
-                // For features, we might need to use a combined key
-                const combinedKey = `${featureId}_${choiceId}`;
-                formattedChoices[combinedKey] = selections;
-              }
-            });
+      // Convert feature choices (fighting styles, etc.)
+      if (choices.features && choices.features.length > 0) {
+        console.log(
+          '🎯 Converting feature choices:',
+          JSON.stringify(choices.features)
+        );
+        for (const featureChoice of choices.features) {
+          try {
+            console.log('🔨 Converting individual feature:', featureChoice);
+            const choiceData = convertFeatureChoiceToProto(
+              featureChoice,
+              ChoiceSource.CLASS
+            );
+            console.log('🎯 Converted feature choice result:', choiceData);
+            if (choiceData) {
+              choiceDataArray.push(choiceData);
+              console.log(
+                '✅ Added feature to array, new length:',
+                choiceDataArray.length
+              );
+            } else {
+              console.error('❌ Feature conversion returned null/undefined');
+            }
+          } catch (error) {
+            console.error(
+              '❌ Error converting feature choice:',
+              error,
+              featureChoice
+            );
           }
+        }
+      } else {
+        console.log(
+          '⚠️ No features to convert - choices.features:',
+          choices.features
         );
       }
 
       // Update the draft context with class and choices
-      await setClass(classData, formattedChoices);
-
-      // TODO: Handle skills update when supported in the context
+      console.log('📦 Final choiceDataArray being sent:', {
+        length: choiceDataArray.length,
+        items: choiceDataArray,
+        hasFightingStyle: choiceDataArray.some(
+          (c) => c.category === ChoiceCategory.FIGHTING_STYLE
+        ),
+        categories: choiceDataArray.map((c) => ({
+          choiceId: c.choiceId,
+          category: c.category,
+          categoryName: ChoiceCategory[c.category],
+        })),
+      });
+      await setClass(classData, choiceDataArray);
 
       setShowClassModal(false);
     },
@@ -263,19 +297,35 @@ export function RaceClassSection() {
 
                   {/* Display race choices */}
                   {raceChoices &&
-                    Object.entries(raceChoices).map(([choiceId, selections]) =>
-                      selections.map((selection) => (
-                        <TraitBadge
-                          key={`${choiceId}-${selection}`}
-                          name={selection.replace(
-                            /^(language:|skill:|tool:|proficiency:)/,
-                            ''
-                          )}
-                          type="racial"
-                          icon="✓"
-                        />
-                      ))
-                    )}
+                    raceChoices.map((choice) => {
+                      // Display based on choice type
+                      if (
+                        choice.category === ChoiceCategory.LANGUAGES &&
+                        choice.selection?.case === 'languages'
+                      ) {
+                        return choice.selection.value.languages?.map((lang) => (
+                          <TraitBadge
+                            key={`${choice.choiceId}-lang-${lang}`}
+                            name={Language[lang] || `Language ${lang}`}
+                            type="racial"
+                            icon="💬"
+                          />
+                        ));
+                      } else if (
+                        choice.category === ChoiceCategory.SKILLS &&
+                        choice.selection?.case === 'skills'
+                      ) {
+                        return choice.selection.value.skills?.map((skill) => (
+                          <TraitBadge
+                            key={`${choice.choiceId}-skill-${skill}`}
+                            name={`Skill ${skill}`}
+                            type="racial"
+                            icon="⚔️"
+                          />
+                        ));
+                      }
+                      return null;
+                    })}
                 </div>
                 <p className="text-xs text-muted">Click to change race</p>
               </div>
@@ -337,41 +387,73 @@ export function RaceClassSection() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {/* Display class features from choices */}
-                  {(() => {
-                    const featureChoices =
-                      selectedClassData.choices?.filter(
+                  {/* Display selected fighting style */}
+                  {classChoices &&
+                    classChoices
+                      .filter(
                         (choice) =>
-                          choice.choiceType === ChoiceCategory.FIGHTING_STYLE
-                      ) || [];
-
-                    // For Fighter, this includes Fighting Style choices
-                    return featureChoices
-                      .slice(0, 3)
-                      .map((choice) => (
-                        <TraitBadge
-                          key={choice.id}
-                          name={choice.description}
-                          type="class"
-                          icon={TraitIcons.class}
-                        />
-                      ));
-                  })()}
+                          choice.category === ChoiceCategory.FIGHTING_STYLE
+                      )
+                      .map((choice) => {
+                        // Extract the fighting style name from the selection
+                        if (
+                          choice.selection?.case === 'name' ||
+                          choice.selection?.case === 'fightingStyle'
+                        ) {
+                          const styleName = choice.selection.value as string;
+                          // Convert "feature_fighting_style:_dueling" to "Dueling"
+                          const displayName = styleName
+                            .replace(/^feature_fighting_style:_/, '')
+                            .replace(/_/g, ' ')
+                            .split(' ')
+                            .map(
+                              (word) =>
+                                word.charAt(0).toUpperCase() +
+                                word.slice(1).toLowerCase()
+                            )
+                            .join(' ');
+                          return (
+                            <TraitBadge
+                              key={choice.choiceId}
+                              name={`Fighting Style: ${displayName}`}
+                              type="class"
+                              icon="🗡️"
+                            />
+                          );
+                        }
+                        return null;
+                      })}
                   {/* Display class choices */}
                   {classChoices &&
-                    Object.entries(classChoices).map(([choiceId, selections]) =>
-                      selections.map((selection) => (
-                        <TraitBadge
-                          key={`${choiceId}-${selection}`}
-                          name={selection.replace(
-                            /^(skill:|tool:|proficiency:|equipment:)/,
-                            ''
-                          )}
-                          type="racial"
-                          icon="✓"
-                        />
-                      ))
-                    )}
+                    classChoices.map((choice) => {
+                      // Display based on choice type
+                      if (
+                        choice.category === ChoiceCategory.SKILLS &&
+                        choice.selection?.case === 'skills'
+                      ) {
+                        return choice.selection.value.skills?.map((skill) => (
+                          <TraitBadge
+                            key={`${choice.choiceId}-skill-${skill}`}
+                            name={`Skill ${skill}`}
+                            type="class"
+                            icon="⚔️"
+                          />
+                        ));
+                      } else if (
+                        choice.category === ChoiceCategory.EQUIPMENT &&
+                        choice.selection?.case === 'equipment'
+                      ) {
+                        return choice.selection.value.items?.map((item) => (
+                          <TraitBadge
+                            key={`${choice.choiceId}-equip-${item}`}
+                            name={item}
+                            type="class"
+                            icon="🛡️"
+                          />
+                        ));
+                      }
+                      return null;
+                    })}
                 </div>
                 <p className="text-xs text-muted">Click to change class</p>
               </div>
@@ -408,7 +490,7 @@ export function RaceClassSection() {
       <ClassSelectionModal
         isOpen={showClassModal}
         currentClass={selectedClassData?.name || classInfo?.name}
-        rawExistingChoices={classChoices}
+        existingChoices={selectedClassChoices}
         onSelect={handleClassSelect}
         onClose={() => setShowClassModal(false)}
       />

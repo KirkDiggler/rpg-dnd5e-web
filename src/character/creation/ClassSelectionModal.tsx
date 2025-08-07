@@ -1,10 +1,12 @@
 import type { ClassInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Skill } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { ChoiceRenderer } from '../../components/ChoiceRenderer';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
+import type { ClassModalChoices } from '../../types/choices';
 import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
@@ -40,24 +42,15 @@ function getClassEmoji(className: string): string {
 interface ClassSelectionModalProps {
   isOpen: boolean;
   currentClass?: string;
-  existingChoices?: ClassChoices;
-  rawExistingChoices?: Record<string, string[]>; // Raw choices from draft
-  onSelect: (classData: ClassInfo, choices: ClassChoices) => void;
+  existingChoices?: ClassModalChoices;
+  onSelect: (classData: ClassInfo, choices: ClassModalChoices) => void;
   onClose: () => void;
-}
-
-export interface ClassChoices {
-  proficiencies: Record<string, string[]>;
-  equipment: Record<string, string>; // choiceId -> selected item
-  features: Record<string, Record<string, string[]>>; // featureId -> choiceId -> selections
-  className?: string; // Track which class these choices belong to
 }
 
 export function ClassSelectionModal({
   isOpen,
   currentClass,
   existingChoices,
-  rawExistingChoices,
   onSelect,
   onClose,
 }: ClassSelectionModalProps) {
@@ -66,14 +59,7 @@ export function ClassSelectionModal({
 
   // Track choices per class
   const [classChoicesMap, setClassChoicesMap] = useState<
-    Record<
-      string,
-      {
-        proficiencies: Record<string, string[]>;
-        equipment: Record<string, string>;
-        features: Record<string, Record<string, string[]>>;
-      }
-    >
+    Record<string, ClassModalChoices>
   >({});
   const [errorMessage, setErrorMessage] = useState<string>('');
 
@@ -82,15 +68,18 @@ export function ClassSelectionModal({
 
   // Get choices for current class
   const currentClassChoices = classChoicesMap[currentClassName] || {
-    proficiencies: {},
-    equipment: {},
-    features: {},
+    skills: [],
+    equipment: [],
+    features: [],
   };
 
   // Reset selected index when modal opens
   useEffect(() => {
     if (isOpen) {
       setErrorMessage('');
+
+      // Clear previous choices when opening modal
+      setClassChoicesMap({});
 
       // Set selected index based on current class
       if (currentClass && classes.length > 0) {
@@ -101,46 +90,13 @@ export function ClassSelectionModal({
       }
 
       // Initialize with existing choices if provided
-      if (
-        existingChoices &&
-        currentClass &&
-        existingChoices.className === currentClass
-      ) {
-        setClassChoicesMap((prev) => ({
-          ...prev,
-          [currentClass]: {
-            proficiencies: existingChoices.proficiencies || {},
-            equipment: existingChoices.equipment || {},
-            features: existingChoices.features || {},
-          },
-        }));
-      } else if (rawExistingChoices && currentClass) {
-        // Handle raw choices from draft
-        const formattedChoices: ClassChoices = {
-          proficiencies: {},
-          equipment: {},
-          features: {},
-        };
-
-        // Format the raw choices
-        Object.entries(rawExistingChoices).forEach(([choiceId, selections]) => {
-          if (choiceId.includes('equipment')) {
-            formattedChoices.equipment[choiceId] = selections[0] || '';
-          } else if (choiceId.startsWith('feature_')) {
-            // Handle feature choices if needed
-          } else {
-            // Default to proficiencies
-            formattedChoices.proficiencies[choiceId] = selections;
-          }
+      if (existingChoices && currentClass) {
+        setClassChoicesMap({
+          [currentClass]: existingChoices,
         });
-
-        setClassChoicesMap((prev) => ({
-          ...prev,
-          [currentClass]: formattedChoices,
-        }));
       }
     }
-  }, [isOpen, currentClass, classes, existingChoices, rawExistingChoices]);
+  }, [isOpen, currentClass, classes, existingChoices]);
 
   // Show loading or error states
   if (!isOpen) return null;
@@ -206,7 +162,10 @@ export function ClassSelectionModal({
       ) || [];
 
     for (const choice of skillChoices) {
-      const selected = currentClassChoices.proficiencies[choice.id] || [];
+      const skillChoice = currentClassChoices.skills?.find(
+        (sc) => sc.choiceId === choice.id
+      );
+      const selected = skillChoice?.skills || [];
       if (selected.length !== choice.chooseCount) {
         setErrorMessage(
           `Please select ${choice.chooseCount} skill${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
@@ -222,8 +181,11 @@ export function ClassSelectionModal({
       ) || [];
 
     for (const choice of equipmentChoices) {
-      const selected = currentClassChoices.equipment[choice.id] || '';
-      if (!selected) {
+      const equipmentChoice = currentClassChoices.equipment?.find(
+        (ec) => ec.choiceId === choice.id
+      );
+      const selected = equipmentChoice?.items || [];
+      if (selected.length === 0) {
         setErrorMessage(
           `Please select an option for equipment: ${choice.description}`
         );
@@ -231,63 +193,19 @@ export function ClassSelectionModal({
       }
     }
 
-    // Validate other proficiency choices (tool, weapon, armor)
-    const proficiencyChoices =
-      currentClassData.choices?.filter(
-        (choice) =>
-          choice.choiceType === ChoiceCategory.TOOLS ||
-          choice.choiceType === ChoiceCategory.WEAPON_PROFICIENCIES ||
-          choice.choiceType === ChoiceCategory.ARMOR_PROFICIENCIES
-      ) || [];
+    // For now, we'll skip validation of other choice types that don't use enums yet
+    // TODO: Add validation for tools, weapon proficiencies, armor proficiencies, feats, features
+    // when they are updated to use structured types
 
-    for (const choice of proficiencyChoices) {
-      const selected = currentClassChoices.proficiencies[choice.id] || [];
-      if (selected.length !== choice.chooseCount) {
-        setErrorMessage(
-          `Please select ${choice.chooseCount} option${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
-        );
-        return;
-      }
-    }
-
-    // Validate feat choices
-    const featChoices =
-      currentClassData.choices?.filter(
-        (choice) => choice.choiceType === ChoiceCategory.FEATS
-      ) || [];
-
-    for (const choice of featChoices) {
-      const selected = currentClassChoices.proficiencies[choice.id] || [];
-      if (selected.length !== choice.chooseCount) {
-        setErrorMessage(
-          `Please select ${choice.chooseCount} feat${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
-        );
-        return;
-      }
-    }
-
-    // Validate feature choices - features are now in the choices array
-    const featureChoices =
-      currentClassData.choices?.filter(
-        (choice) => choice.choiceType === ChoiceCategory.FIGHTING_STYLE
-      ) || [];
-
-    for (const choice of featureChoices) {
-      const selections = currentClassChoices.proficiencies[choice.id] || [];
-      if (selections.length < choice.chooseCount) {
-        setErrorMessage(
-          `Please select ${choice.chooseCount} option${choice.chooseCount > 1 ? 's' : ''} for ${choice.description}`
-        );
-        return;
-      }
-    }
-
-    onSelect(currentClassData, {
-      proficiencies: currentClassChoices.proficiencies,
-      equipment: currentClassChoices.equipment,
-      features: currentClassChoices.features,
+    console.log('🎮 ClassSelectionModal - Passing choices to parent:', {
       className: currentClassData.name,
+      choices: currentClassChoices,
+      hasFeatures:
+        currentClassChoices.features && currentClassChoices.features.length > 0,
+      features: currentClassChoices.features,
     });
+
+    onSelect(currentClassData, currentClassChoices);
     onClose();
   };
 
@@ -382,7 +300,20 @@ export function ClassSelectionModal({
             selectedIndex={selectedIndex}
             onSelect={(index) => {
               setSelectedIndex(index);
-              setErrorMessage(''); // Only clear error message
+              setErrorMessage(''); // Clear error message
+              // Clear choices for the newly selected class if it's different
+              const newClassName = classes[index]?.name;
+              if (newClassName && !classChoicesMap[newClassName]) {
+                // Only initialize if not already present
+                setClassChoicesMap((prev) => ({
+                  ...prev,
+                  [newClassName]: {
+                    skills: [],
+                    equipment: [],
+                    features: [],
+                  },
+                }));
+              }
             }}
           />
 
@@ -661,19 +592,40 @@ export function ClassSelectionModal({
                         <ChoiceRenderer
                           choice={choice}
                           currentSelections={
-                            currentClassChoices.proficiencies[choice.id] || []
+                            currentClassChoices.skills?.find(
+                              (sc) => sc.choiceId === choice.id
+                            )?.skills || []
                           }
-                          onSelectionChange={(choiceId, selections) => {
-                            setClassChoicesMap((prev) => ({
-                              ...prev,
-                              [currentClassName]: {
-                                ...currentClassChoices,
-                                proficiencies: {
-                                  ...currentClassChoices.proficiencies,
-                                  [choiceId]: selections,
+                          onSelectionChange={(_choiceId, selections) => {
+                            // selections are now Skill enums directly
+                            const skillEnums = selections as Skill[];
+
+                            setClassChoicesMap((prev) => {
+                              const currentChoices = prev[currentClassName] || {
+                                skills: [],
+                                equipment: [],
+                                features: [],
+                              };
+                              const updatedSkills =
+                                currentChoices.skills?.filter(
+                                  (sc) => sc.choiceId !== choice.id
+                                ) || [];
+
+                              if (skillEnums.length > 0) {
+                                updatedSkills.push({
+                                  choiceId: choice.id,
+                                  skills: skillEnums,
+                                });
+                              }
+
+                              return {
+                                ...prev,
+                                [currentClassName]: {
+                                  ...currentChoices,
+                                  skills: updatedSkills,
                                 },
-                              },
-                            }));
+                              };
+                            });
                           }}
                         />
                       </div>
@@ -705,19 +657,49 @@ export function ClassSelectionModal({
                         <ChoiceRenderer
                           choice={choice}
                           currentSelections={
-                            currentClassChoices.proficiencies[choice.id] || []
+                            currentClassChoices.features?.find(
+                              (fc) => fc.choiceId === choice.id
+                            )?.selection
+                              ? [
+                                  currentClassChoices.features.find(
+                                    (fc) => fc.choiceId === choice.id
+                                  )!.selection,
+                                ]
+                              : []
                           }
-                          onSelectionChange={(choiceId, selections) => {
-                            setClassChoicesMap((prev) => ({
-                              ...prev,
-                              [currentClassName]: {
-                                ...currentClassChoices,
-                                proficiencies: {
-                                  ...currentClassChoices.proficiencies,
-                                  [choiceId]: selections,
+                          onSelectionChange={(_choiceId, selections) => {
+                            setClassChoicesMap((prev) => {
+                              const currentChoices = prev[currentClassName] || {
+                                skills: [],
+                                equipment: [],
+                                features: [],
+                              };
+                              const updatedFeatures =
+                                currentChoices.features?.filter(
+                                  (fc) => fc.choiceId !== choice.id
+                                ) || [];
+
+                              if (selections.length > 0) {
+                                const feature = {
+                                  choiceId: choice.id,
+                                  featureId: choice.id,
+                                  selection: selections[0], // Fighting style is single choice
+                                };
+                                console.log(
+                                  '🗡️ Adding fighting style selection:',
+                                  feature
+                                );
+                                updatedFeatures.push(feature);
+                              }
+
+                              return {
+                                ...prev,
+                                [currentClassName]: {
+                                  ...currentChoices,
+                                  features: updatedFeatures,
                                 },
-                              },
-                            }));
+                              };
+                            });
                           }}
                         />
                       </div>
@@ -748,21 +730,37 @@ export function ClassSelectionModal({
                         <ChoiceRenderer
                           choice={choice}
                           currentSelections={
-                            currentClassChoices.equipment[choice.id]
-                              ? [currentClassChoices.equipment[choice.id]]
-                              : []
+                            currentClassChoices.equipment?.find(
+                              (ec) => ec.choiceId === choice.id
+                            )?.items || []
                           }
-                          onSelectionChange={(choiceId, selections) => {
-                            setClassChoicesMap((prev) => ({
-                              ...prev,
-                              [currentClassName]: {
-                                ...currentClassChoices,
-                                equipment: {
-                                  ...currentClassChoices.equipment,
-                                  [choiceId]: selections[0] || '',
+                          onSelectionChange={(_choiceId, selections) => {
+                            setClassChoicesMap((prev) => {
+                              const currentChoices = prev[currentClassName] || {
+                                skills: [],
+                                equipment: [],
+                                features: [],
+                              };
+                              const updatedEquipment =
+                                currentChoices.equipment?.filter(
+                                  (ec) => ec.choiceId !== choice.id
+                                ) || [];
+
+                              if (selections.length > 0) {
+                                updatedEquipment.push({
+                                  choiceId: choice.id,
+                                  items: selections,
+                                });
+                              }
+
+                              return {
+                                ...prev,
+                                [currentClassName]: {
+                                  ...currentChoices,
+                                  equipment: updatedEquipment,
                                 },
-                              },
-                            }));
+                              };
+                            });
                           }}
                         />
                       </div>
@@ -796,17 +794,16 @@ export function ClassSelectionModal({
                         <ChoiceRenderer
                           choice={choice}
                           currentSelections={
-                            currentClassChoices.proficiencies[choice.id] || []
+                            // TODO: Properly handle selections for this choice type
+                            []
                           }
-                          onSelectionChange={(choiceId, selections) => {
+                          onSelectionChange={(_choiceId, selections) => {
                             setClassChoicesMap((prev) => ({
                               ...prev,
                               [currentClassName]: {
                                 ...currentClassChoices,
-                                proficiencies: {
-                                  ...currentClassChoices.proficiencies,
-                                  [choiceId]: selections,
-                                },
+                                // TODO: Properly store selections
+                                proficiencies: selections,
                               },
                             }));
                           }}
@@ -839,17 +836,16 @@ export function ClassSelectionModal({
                         <ChoiceRenderer
                           choice={choice}
                           currentSelections={
-                            currentClassChoices.proficiencies[choice.id] || []
+                            // TODO: Properly handle selections for this choice type
+                            []
                           }
-                          onSelectionChange={(choiceId, selections) => {
+                          onSelectionChange={(_choiceId, selections) => {
                             setClassChoicesMap((prev) => ({
                               ...prev,
                               [currentClassName]: {
                                 ...currentClassChoices,
-                                proficiencies: {
-                                  ...currentClassChoices.proficiencies,
-                                  [choiceId]: selections,
-                                },
+                                // TODO: Properly store selections
+                                proficiencies: selections,
                               },
                             }));
                           }}
@@ -875,7 +871,8 @@ export function ClassSelectionModal({
                         ChoiceCategory.WEAPON_PROFICIENCIES &&
                       choice.choiceType !==
                         ChoiceCategory.ARMOR_PROFICIENCIES &&
-                      choice.choiceType !== ChoiceCategory.FEATS)
+                      choice.choiceType !== ChoiceCategory.FEATS &&
+                      choice.choiceType !== ChoiceCategory.FIGHTING_STYLE)
                 ) || [];
 
               if (otherChoices.length === 0) return null;
@@ -892,17 +889,16 @@ export function ClassSelectionModal({
                         <ChoiceRenderer
                           choice={choice}
                           currentSelections={
-                            currentClassChoices.proficiencies[choice.id] || []
+                            // TODO: Properly handle selections for this choice type
+                            []
                           }
-                          onSelectionChange={(choiceId, selections) => {
+                          onSelectionChange={(_choiceId, selections) => {
                             setClassChoicesMap((prev) => ({
                               ...prev,
                               [currentClassName]: {
                                 ...currentClassChoices,
-                                proficiencies: {
-                                  ...currentClassChoices.proficiencies,
-                                  [choiceId]: selections,
-                                },
+                                // TODO: Properly store selections
+                                proficiencies: selections,
                               },
                             }));
                           }}

@@ -1,11 +1,16 @@
 import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import {
+  Language,
+  Skill,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListRaces } from '../../api/hooks';
 import { ChoiceRenderer } from '../../components/ChoiceRenderer';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
+import type { RaceModalChoices } from '../../types/choices';
+import { getLanguageDisplay } from '../../utils/enumDisplay';
 import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
@@ -62,43 +67,14 @@ function getRaceDescription(raceName: string): string {
   );
 }
 
-// Helper to convert Language enum to display name
-function getLanguageDisplayName(languageEnum: Language): string {
-  const languageNames: Record<Language, string> = {
-    [Language.UNSPECIFIED]: 'Unknown',
-    [Language.COMMON]: 'Common',
-    [Language.DWARVISH]: 'Dwarvish',
-    [Language.ELVISH]: 'Elvish',
-    [Language.GIANT]: 'Giant',
-    [Language.GNOMISH]: 'Gnomish',
-    [Language.GOBLIN]: 'Goblin',
-    [Language.HALFLING]: 'Halfling',
-    [Language.ORC]: 'Orc',
-    [Language.ABYSSAL]: 'Abyssal',
-    [Language.CELESTIAL]: 'Celestial',
-    [Language.DRACONIC]: 'Draconic',
-    [Language.DEEP_SPEECH]: 'Deep Speech',
-    [Language.INFERNAL]: 'Infernal',
-    [Language.PRIMORDIAL]: 'Primordial',
-    [Language.SYLVAN]: 'Sylvan',
-    [Language.UNDERCOMMON]: 'Undercommon',
-  };
-  return languageNames[languageEnum] || 'Unknown';
-}
-
 interface RaceSelectionModalProps {
   isOpen: boolean;
   currentRace?: string;
   existingProficiencies?: Set<string>;
   existingLanguages?: Set<string>;
-  existingChoices?: RaceChoices;
-  onSelect: (race: RaceInfo, choices: RaceChoices) => void;
+  existingChoices?: RaceModalChoices;
+  onSelect: (race: RaceInfo, choices: RaceModalChoices) => void;
   onClose: () => void;
-}
-
-export interface RaceChoices {
-  languages: Record<string, string[]>;
-  proficiencies: Record<string, string[]>;
 }
 
 export function RaceSelectionModal({
@@ -115,13 +91,7 @@ export function RaceSelectionModal({
 
   // Track choices per race
   const [raceChoicesMap, setRaceChoicesMap] = useState<
-    Record<
-      string,
-      {
-        languages: Record<string, string[]>;
-        proficiencies: Record<string, string[]>;
-      }
-    >
+    Record<string, RaceModalChoices>
   >({});
   const [errorMessage, setErrorMessage] = useState<string>('');
 
@@ -130,8 +100,9 @@ export function RaceSelectionModal({
 
   // Get choices for current race
   const currentRaceChoices = raceChoicesMap[currentRaceName] || {
-    languages: {},
-    proficiencies: {},
+    languages: [],
+    skills: [],
+    proficiencies: [],
   };
 
   // Reset selected index when modal opens
@@ -151,10 +122,7 @@ export function RaceSelectionModal({
       if (existingChoices && currentRace) {
         setRaceChoicesMap((prev) => ({
           ...prev,
-          [currentRace]: {
-            languages: existingChoices.languages || {},
-            proficiencies: existingChoices.proficiencies || {},
-          },
+          [currentRace]: existingChoices,
         }));
       }
     }
@@ -222,7 +190,10 @@ export function RaceSelectionModal({
       ) || [];
 
     for (const choice of languageChoices) {
-      const selected = currentRaceChoices.languages[choice.id] || [];
+      const languageChoice = currentRaceChoices.languages?.find(
+        (lc) => lc.choiceId === choice.id
+      );
+      const selected = languageChoice?.languages || [];
       if (selected.length !== choice.chooseCount) {
         setErrorMessage(
           `Please select ${choice.chooseCount} language${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
@@ -231,18 +202,36 @@ export function RaceSelectionModal({
       }
     }
 
-    // Validate proficiency choices
+    // Validate skill choices
+    const skillChoices =
+      currentRaceData.choices?.filter(
+        (choice) => choice.choiceType === ChoiceCategory.SKILLS
+      ) || [];
+
+    for (const choice of skillChoices) {
+      const skillChoice = currentRaceChoices.skills?.find(
+        (sc) => sc.choiceId === choice.id
+      );
+      const selected = skillChoice?.skills || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} skill${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
+    // Validate other proficiency choices (tools, weapons, armor)
     const proficiencyChoices =
       currentRaceData.choices?.filter(
         (choice) =>
-          choice.choiceType === ChoiceCategory.SKILLS ||
           choice.choiceType === ChoiceCategory.TOOLS ||
           choice.choiceType === ChoiceCategory.WEAPON_PROFICIENCIES ||
           choice.choiceType === ChoiceCategory.ARMOR_PROFICIENCIES
       ) || [];
 
     for (const choice of proficiencyChoices) {
-      const selected = currentRaceChoices.proficiencies[choice.id] || [];
+      const selected = currentRaceChoices.proficiencies || [];
       if (selected.length !== choice.chooseCount) {
         setErrorMessage(
           `Please select ${choice.chooseCount} proficienc${choice.chooseCount > 1 ? 'ies' : 'y'}: ${choice.description}`
@@ -251,10 +240,11 @@ export function RaceSelectionModal({
       }
     }
 
-    onSelect(currentRaceData, {
-      languages: currentRaceChoices.languages,
-      proficiencies: currentRaceChoices.proficiencies,
-    });
+    console.log('🚀 RaceSelectionModal sending choices:', currentRaceChoices);
+    console.log('  - Languages:', currentRaceChoices.languages);
+    console.log('  - Skills:', currentRaceChoices.skills);
+    console.log('  - Proficiencies:', currentRaceChoices.proficiencies);
+    onSelect(currentRaceData, currentRaceChoices);
     onClose();
   };
 
@@ -606,7 +596,7 @@ export function RaceSelectionModal({
                   >
                     {currentRaceData.languages.map((lang, i) => (
                       <span key={i}>
-                        {getLanguageDisplayName(lang)}
+                        {getLanguageDisplay(lang)}
                         {i < currentRaceData.languages.length - 1 ? ', ' : ''}
                       </span>
                     ))}
@@ -635,19 +625,40 @@ export function RaceSelectionModal({
                         <ChoiceRenderer
                           choice={choice}
                           currentSelections={
-                            currentRaceChoices.languages[choice.id] || []
+                            currentRaceChoices.languages?.find(
+                              (lc) => lc.choiceId === choice.id
+                            )?.languages || []
                           }
-                          onSelectionChange={(choiceId, selections) => {
-                            setRaceChoicesMap((prev) => ({
-                              ...prev,
-                              [currentRaceName]: {
-                                ...currentRaceChoices,
-                                languages: {
-                                  ...currentRaceChoices.languages,
-                                  [choiceId]: selections,
+                          onSelectionChange={(_choiceId, selections) => {
+                            // selections are now Language enums directly
+                            const languageEnums = selections as Language[];
+
+                            setRaceChoicesMap((prev) => {
+                              const currentChoices = prev[currentRaceName] || {
+                                languages: [],
+                                skills: [],
+                                proficiencies: [],
+                              };
+                              const updatedLanguages =
+                                currentChoices.languages?.filter(
+                                  (lc) => lc.choiceId !== choice.id
+                                ) || [];
+
+                              if (languageEnums.length > 0) {
+                                updatedLanguages.push({
+                                  choiceId: choice.id,
+                                  languages: languageEnums,
+                                });
+                              }
+
+                              return {
+                                ...prev,
+                                [currentRaceName]: {
+                                  ...currentChoices,
+                                  languages: updatedLanguages,
                                 },
-                              },
-                            }));
+                              };
+                            });
                           }}
                         />
                       </div>
@@ -657,12 +668,75 @@ export function RaceSelectionModal({
               );
             })()}
 
-            {/* Proficiency Choices */}
+            {/* Skill Choices */}
+            {(() => {
+              const skillChoices =
+                currentRaceData.choices?.filter(
+                  (choice) => choice.choiceType === ChoiceCategory.SKILLS
+                ) || [];
+
+              if (skillChoices.length === 0) return null;
+
+              return (
+                <CollapsibleSection
+                  title="Choose Skills"
+                  defaultOpen={true}
+                  required={true}
+                >
+                  <div style={{ marginBottom: '12px' }}>
+                    {skillChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <ChoiceRenderer
+                          choice={choice}
+                          currentSelections={
+                            currentRaceChoices.skills?.find(
+                              (sc) => sc.choiceId === choice.id
+                            )?.skills || []
+                          }
+                          onSelectionChange={(_choiceId, selections) => {
+                            // selections are now Skill enums directly
+                            const skillEnums = selections as Skill[];
+
+                            setRaceChoicesMap((prev) => {
+                              const currentChoices = prev[currentRaceName] || {
+                                languages: [],
+                                skills: [],
+                                proficiencies: [],
+                              };
+                              const updatedSkills =
+                                currentChoices.skills?.filter(
+                                  (sc) => sc.choiceId !== choice.id
+                                ) || [];
+
+                              if (skillEnums.length > 0) {
+                                updatedSkills.push({
+                                  choiceId: choice.id,
+                                  skills: skillEnums,
+                                });
+                              }
+
+                              return {
+                                ...prev,
+                                [currentRaceName]: {
+                                  ...currentChoices,
+                                  skills: updatedSkills,
+                                },
+                              };
+                            });
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              );
+            })()}
+
+            {/* Other Proficiency Choices (Tools, Weapons, Armor) */}
             {(() => {
               const proficiencyChoices =
                 currentRaceData.choices?.filter(
                   (choice) =>
-                    choice.choiceType === ChoiceCategory.SKILLS ||
                     choice.choiceType === ChoiceCategory.TOOLS ||
                     choice.choiceType === ChoiceCategory.WEAPON_PROFICIENCIES ||
                     choice.choiceType === ChoiceCategory.ARMOR_PROFICIENCIES
@@ -682,17 +756,14 @@ export function RaceSelectionModal({
                         <ChoiceRenderer
                           choice={choice}
                           currentSelections={
-                            currentRaceChoices.proficiencies[choice.id] || []
+                            currentRaceChoices.proficiencies || []
                           }
-                          onSelectionChange={(choiceId, selections) => {
+                          onSelectionChange={(_choiceId, selections) => {
                             setRaceChoicesMap((prev) => ({
                               ...prev,
                               [currentRaceName]: {
                                 ...currentRaceChoices,
-                                proficiencies: {
-                                  ...currentRaceChoices.proficiencies,
-                                  [choiceId]: selections,
-                                },
+                                proficiencies: selections,
                               },
                             }));
                           }}

@@ -4,15 +4,9 @@ import type {
   CharacterDraft,
   ClassInfo,
   CreateDraftRequest,
-  DeleteCharacterRequest,
   DeleteDraftRequest,
   Equipment,
   FinalizeDraftRequest,
-  ListCharactersRequest,
-  ListClassesRequest,
-  ListDraftsRequest,
-  ListEquipmentByTypeRequest,
-  ListRacesRequest,
   RaceInfo,
   RollAbilityScoresRequest,
   RollAbilityScoresResponse,
@@ -25,6 +19,7 @@ import type {
   ValidateDraftRequest,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
+  DeleteCharacterRequestSchema,
   GetCharacterRequestSchema,
   GetDraftRequestSchema,
   ListCharactersRequestSchema,
@@ -49,10 +44,9 @@ interface ListState<T> {
   loading: boolean;
   error: Error | null;
   nextPageToken?: string;
-  totalSize?: number;
 }
 
-// Character hooks
+// Character API hooks
 export function useGetCharacter(characterId: string) {
   const [state, setState] = useState<AsyncState<Character>>({
     data: null,
@@ -61,39 +55,55 @@ export function useGetCharacter(characterId: string) {
   });
 
   const fetchCharacter = useCallback(async () => {
-    if (!characterId) return;
+    if (!characterId) {
+      setState({
+        data: null,
+        loading: false,
+        error: new Error('Character ID is required'),
+      });
+      return;
+    }
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
-
     try {
-      const request = create(GetCharacterRequestSchema, { characterId });
+      const request = create(GetCharacterRequestSchema, {
+        characterId,
+      });
       const response = await characterClient.getCharacter(request);
-
       setState({
         data: response.character || null,
         loading: false,
         error: null,
       });
-    } catch (error) {
+    } catch (err) {
       setState({
         data: null,
         loading: false,
-        error: error instanceof Error ? error : new Error('Unknown error'),
+        error:
+          err instanceof Error ? err : new Error('Failed to fetch character'),
       });
     }
   }, [characterId]);
 
   useEffect(() => {
-    fetchCharacter();
+    void fetchCharacter();
   }, [fetchCharacter]);
 
-  return { ...state, refetch: () => fetchCharacter() };
+  return {
+    ...state,
+    refetch: fetchCharacter,
+  };
 }
 
-export function useListCharacters(
-  filters: Partial<Pick<ListCharactersRequest, 'sessionId' | 'playerId'>> = {},
-  pageSize = 20
-) {
+export function useListCharacters({
+  playerId,
+  sessionId,
+  pageSize = 10,
+}: {
+  playerId?: string;
+  sessionId?: string;
+  pageSize?: number;
+}) {
   const [state, setState] = useState<ListState<Character>>({
     data: [],
     loading: false,
@@ -102,38 +112,41 @@ export function useListCharacters(
 
   const fetchCharacters = useCallback(
     async (pageToken?: string) => {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
-
+      setState((prev) => ({
+        ...prev,
+        loading: true,
+        error: null,
+      }));
       try {
         const request = create(ListCharactersRequestSchema, {
           pageSize,
           pageToken: pageToken || '',
-          sessionId: filters.sessionId || '',
-          playerId: filters.playerId || '',
+          playerId: playerId || '',
+          sessionId: sessionId || '',
         });
-
         const response = await characterClient.listCharacters(request);
-
         setState({
-          data: response.characters,
+          data: response.characters || [],
           loading: false,
           error: null,
           nextPageToken: response.nextPageToken,
-          totalSize: response.totalSize,
         });
-      } catch (error) {
+      } catch (err) {
         setState({
           data: [],
           loading: false,
-          error: error instanceof Error ? error : new Error('Unknown error'),
+          error:
+            err instanceof Error
+              ? err
+              : new Error('Failed to fetch characters'),
         });
       }
     },
-    [filters.sessionId, filters.playerId, pageSize]
+    [pageSize, playerId, sessionId]
   );
 
   useEffect(() => {
-    fetchCharacters();
+    void fetchCharacters();
   }, [fetchCharacters]);
 
   return {
@@ -145,7 +158,7 @@ export function useListCharacters(
   };
 }
 
-// Character draft hooks
+// Draft API hooks
 export function useGetDraft(draftId: string) {
   const [state, setState] = useState<AsyncState<CharacterDraft>>({
     data: null,
@@ -154,39 +167,54 @@ export function useGetDraft(draftId: string) {
   });
 
   const fetchDraft = useCallback(async () => {
-    if (!draftId) return;
+    if (!draftId) {
+      setState({
+        data: null,
+        loading: false,
+        error: new Error('Draft ID is required'),
+      });
+      return;
+    }
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
-
     try {
-      const request = create(GetDraftRequestSchema, { draftId });
+      const request = create(GetDraftRequestSchema, {
+        draftId,
+      });
       const response = await characterClient.getDraft(request);
-
       setState({
         data: response.draft || null,
         loading: false,
         error: null,
       });
-    } catch (error) {
+    } catch (err) {
       setState({
         data: null,
         loading: false,
-        error: error instanceof Error ? error : new Error('Unknown error'),
+        error: err instanceof Error ? err : new Error('Failed to fetch draft'),
       });
     }
   }, [draftId]);
 
   useEffect(() => {
-    fetchDraft();
+    void fetchDraft();
   }, [fetchDraft]);
 
-  return { ...state, refetch: () => fetchDraft() };
+  return {
+    ...state,
+    refetch: fetchDraft,
+  };
 }
 
-export function useListDrafts(
-  filters: Partial<Pick<ListDraftsRequest, 'playerId' | 'sessionId'>> = {},
-  pageSize = 20
-) {
+export function useListDrafts({
+  playerId,
+  sessionId,
+  pageSize = 10,
+}: {
+  playerId?: string;
+  sessionId?: string;
+  pageSize?: number;
+}) {
   const [state, setState] = useState<ListState<CharacterDraft>>({
     data: [],
     loading: false,
@@ -195,37 +223,39 @@ export function useListDrafts(
 
   const fetchDrafts = useCallback(
     async (pageToken?: string) => {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
-
+      setState((prev) => ({
+        ...prev,
+        loading: true,
+        error: null,
+      }));
       try {
         const request = create(ListDraftsRequestSchema, {
-          playerId: filters.playerId || '',
-          sessionId: filters.sessionId || '',
           pageSize,
           pageToken: pageToken || '',
+          playerId: playerId || '',
+          sessionId: sessionId || '',
         });
-
         const response = await characterClient.listDrafts(request);
-
         setState({
-          data: response.drafts,
+          data: response.drafts || [],
           loading: false,
           error: null,
           nextPageToken: response.nextPageToken,
         });
-      } catch (error) {
+      } catch (err) {
         setState({
           data: [],
           loading: false,
-          error: error instanceof Error ? error : new Error('Unknown error'),
+          error:
+            err instanceof Error ? err : new Error('Failed to fetch drafts'),
         });
       }
     },
-    [filters.playerId, filters.sessionId, pageSize]
+    [pageSize, playerId, sessionId]
   );
 
   useEffect(() => {
-    fetchDrafts();
+    void fetchDrafts();
   }, [fetchDrafts]);
 
   return {
@@ -237,7 +267,7 @@ export function useListDrafts(
   };
 }
 
-// Imperative action hooks
+// Character creation hooks
 export function useCreateDraft() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -245,16 +275,16 @@ export function useCreateDraft() {
   const createDraft = useCallback(async (request: CreateDraftRequest) => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await characterClient.createDraft(request);
-      setLoading(false);
       return response;
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Unknown error');
+      const error =
+        err instanceof Error ? err : new Error('Failed to create draft');
       setError(error);
-      setLoading(false);
       throw error;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -268,16 +298,16 @@ export function useUpdateDraftName() {
   const updateName = useCallback(async (request: UpdateNameRequest) => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await characterClient.updateName(request);
-      setLoading(false);
       return response;
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Unknown error');
+      const error =
+        err instanceof Error ? err : new Error('Failed to update name');
       setError(error);
-      setLoading(false);
       throw error;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -291,16 +321,16 @@ export function useUpdateDraftRace() {
   const updateRace = useCallback(async (request: UpdateRaceRequest) => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await characterClient.updateRace(request);
-      setLoading(false);
       return response;
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Unknown error');
+      const error =
+        err instanceof Error ? err : new Error('Failed to update race');
       setError(error);
-      setLoading(false);
       throw error;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -314,16 +344,16 @@ export function useUpdateDraftClass() {
   const updateClass = useCallback(async (request: UpdateClassRequest) => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await characterClient.updateClass(request);
-      setLoading(false);
       return response;
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Unknown error');
+      const error =
+        err instanceof Error ? err : new Error('Failed to update class');
       setError(error);
-      setLoading(false);
       throw error;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -338,16 +368,16 @@ export function useUpdateDraftBackground() {
     async (request: UpdateBackgroundRequest) => {
       setLoading(true);
       setError(null);
-
       try {
         const response = await characterClient.updateBackground(request);
-        setLoading(false);
         return response;
       } catch (err) {
-        const error = err instanceof Error ? err : new Error('Unknown error');
+        const error =
+          err instanceof Error ? err : new Error('Failed to update background');
         setError(error);
-        setLoading(false);
         throw error;
+      } finally {
+        setLoading(false);
       }
     },
     []
@@ -364,57 +394,24 @@ export function useUpdateDraftAbilityScores() {
     async (request: UpdateAbilityScoresRequest) => {
       setLoading(true);
       setError(null);
-
       try {
         const response = await characterClient.updateAbilityScores(request);
-        setLoading(false);
         return response;
       } catch (err) {
-        const error = err instanceof Error ? err : new Error('Unknown error');
+        const error =
+          err instanceof Error
+            ? err
+            : new Error('Failed to update ability scores');
         setError(error);
-        setLoading(false);
         throw error;
+      } finally {
+        setLoading(false);
       }
     },
     []
   );
 
   return { updateAbilityScores, loading, error };
-}
-
-export function useRollAbilityScores() {
-  const [state, setState] = useState<AsyncState<RollAbilityScoresResponse>>({
-    data: null,
-    loading: false,
-    error: null,
-  });
-
-  const rollAbilityScores = useCallback(
-    async (request: RollAbilityScoresRequest) => {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
-
-      try {
-        const response = await characterClient.rollAbilityScores(request);
-        setState({
-          data: response,
-          loading: false,
-          error: null,
-        });
-        return response;
-      } catch (error) {
-        const err = error instanceof Error ? error : new Error('Unknown error');
-        setState({
-          data: null,
-          loading: false,
-          error: err,
-        });
-        throw err;
-      }
-    },
-    []
-  );
-
-  return { rollAbilityScores, ...state };
 }
 
 export function useUpdateDraftSkills() {
@@ -424,16 +421,16 @@ export function useUpdateDraftSkills() {
   const updateSkills = useCallback(async (request: UpdateSkillsRequest) => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await characterClient.updateSkills(request);
-      setLoading(false);
       return response;
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Unknown error');
+      const error =
+        err instanceof Error ? err : new Error('Failed to update skills');
       setError(error);
-      setLoading(false);
       throw error;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -447,16 +444,16 @@ export function useValidateDraft() {
   const validateDraft = useCallback(async (request: ValidateDraftRequest) => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await characterClient.validateDraft(request);
-      setLoading(false);
       return response;
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Unknown error');
+      const error =
+        err instanceof Error ? err : new Error('Failed to validate draft');
       setError(error);
-      setLoading(false);
       throw error;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -470,16 +467,16 @@ export function useFinalizeDraft() {
   const finalizeDraft = useCallback(async (request: FinalizeDraftRequest) => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await characterClient.finalizeDraft(request);
-      setLoading(false);
       return response;
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Unknown error');
+      const error =
+        err instanceof Error ? err : new Error('Failed to finalize draft');
       setError(error);
-      setLoading(false);
       throw error;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -493,52 +490,30 @@ export function useDeleteDraft() {
   const deleteDraft = useCallback(async (request: DeleteDraftRequest) => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await characterClient.deleteDraft(request);
-      setLoading(false);
       return response;
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Unknown error');
+      const error =
+        err instanceof Error ? err : new Error('Failed to delete draft');
       setError(error);
-      setLoading(false);
       throw error;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   return { deleteDraft, loading, error };
 }
 
-export function useDeleteCharacter() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-
-  const deleteCharacter = useCallback(
-    async (request: DeleteCharacterRequest) => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await characterClient.deleteCharacter(request);
-        setLoading(false);
-        return response;
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error('Unknown error');
-        setError(error);
-        setLoading(false);
-        throw error;
-      }
-    },
-    []
-  );
-
-  return { deleteCharacter, loading, error };
-}
-
-// Reference data hooks
-export function useListRaces(
-  filters: Partial<Pick<ListRacesRequest, 'pageSize' | 'pageToken'>> = {}
-) {
+// Race API hooks
+export function useListRaces({
+  pageSize = 50,
+  enabled = true,
+}: {
+  pageSize?: number;
+  enabled?: boolean;
+} = {}) {
   const [state, setState] = useState<ListState<RaceInfo>>({
     data: [],
     loading: false,
@@ -547,37 +522,40 @@ export function useListRaces(
 
   const fetchRaces = useCallback(
     async (pageToken?: string) => {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
-
+      setState((prev) => ({
+        ...prev,
+        loading: true,
+        error: null,
+      }));
       try {
         const request = create(ListRacesRequestSchema, {
-          pageSize: filters.pageSize || 50,
+          pageSize,
           pageToken: pageToken || '',
         });
-
         const response = await characterClient.listRaces(request);
-
         setState({
-          data: response.races,
+          data: response.races || [],
           loading: false,
           error: null,
           nextPageToken: response.nextPageToken,
-          totalSize: response.totalSize,
         });
-      } catch (error) {
+      } catch (err) {
         setState({
           data: [],
           loading: false,
-          error: error instanceof Error ? error : new Error('Unknown error'),
+          error:
+            err instanceof Error ? err : new Error('Failed to fetch races'),
         });
       }
     },
-    [filters.pageSize]
+    [pageSize]
   );
 
   useEffect(() => {
-    fetchRaces();
-  }, [fetchRaces]);
+    if (enabled) {
+      void fetchRaces();
+    }
+  }, [fetchRaces, enabled]);
 
   return {
     ...state,
@@ -588,9 +566,14 @@ export function useListRaces(
   };
 }
 
-export function useListClasses(
-  filters: Partial<Pick<ListClassesRequest, 'pageSize' | 'pageToken'>> = {}
-) {
+// Class API hooks
+export function useListClasses({
+  pageSize = 50,
+  enabled = true,
+}: {
+  pageSize?: number;
+  enabled?: boolean;
+} = {}) {
   const [state, setState] = useState<ListState<ClassInfo>>({
     data: [],
     loading: false,
@@ -599,37 +582,40 @@ export function useListClasses(
 
   const fetchClasses = useCallback(
     async (pageToken?: string) => {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
-
+      setState((prev) => ({
+        ...prev,
+        loading: true,
+        error: null,
+      }));
       try {
         const request = create(ListClassesRequestSchema, {
-          pageSize: filters.pageSize || 50,
+          pageSize,
           pageToken: pageToken || '',
         });
-
         const response = await characterClient.listClasses(request);
-
         setState({
-          data: response.classes,
+          data: response.classes || [],
           loading: false,
           error: null,
           nextPageToken: response.nextPageToken,
-          totalSize: response.totalSize,
         });
-      } catch (error) {
+      } catch (err) {
         setState({
           data: [],
           loading: false,
-          error: error instanceof Error ? error : new Error('Unknown error'),
+          error:
+            err instanceof Error ? err : new Error('Failed to fetch classes'),
         });
       }
     },
-    [filters.pageSize]
+    [pageSize]
   );
 
   useEffect(() => {
-    fetchClasses();
-  }, [fetchClasses]);
+    if (enabled) {
+      void fetchClasses();
+    }
+  }, [fetchClasses, enabled]);
 
   return {
     ...state,
@@ -640,52 +626,98 @@ export function useListClasses(
   };
 }
 
-export function useListEquipmentByType(
-  equipmentType: EquipmentType,
-  filters: Partial<
-    Pick<ListEquipmentByTypeRequest, 'pageSize' | 'pageToken'>
-  > = {}
-) {
-  const [state, setState] = useState<ListState<Equipment>>({
+// Roll ability scores
+export function useRollAbilityScores() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [response, setResponse] = useState<RollAbilityScoresResponse | null>(
+    null
+  );
+
+  const rollAbilityScores = useCallback(
+    async (request: RollAbilityScoresRequest) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await characterClient.rollAbilityScores(request);
+        setResponse(response);
+        return response;
+      } catch (err) {
+        const error =
+          err instanceof Error
+            ? err
+            : new Error('Failed to roll ability scores');
+        setError(error);
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { rollAbilityScores, response, loading, error };
+}
+
+// Equipment API hooks
+export function useListEquipmentByType({
+  equipmentType,
+  pageSize = 50,
+  enabled = true,
+}: {
+  equipmentType: EquipmentType;
+  pageSize?: number;
+  enabled?: boolean;
+}) {
+  const [state, setState] = useState<
+    ListState<Equipment> & {
+      nextPageToken?: string;
+    }
+  >({
     data: [],
     loading: false,
     error: null,
+    nextPageToken: undefined,
   });
 
   const fetchEquipment = useCallback(
     async (pageToken?: string) => {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
-
+      setState((prev) => ({
+        ...prev,
+        loading: true,
+        error: null,
+      }));
       try {
         const request = create(ListEquipmentByTypeRequestSchema, {
           equipmentType,
-          pageSize: filters.pageSize || 50,
+          pageSize,
           pageToken: pageToken || '',
         });
-
         const response = await characterClient.listEquipmentByType(request);
-
         setState({
-          data: response.equipment,
+          data: response.equipment || [],
           loading: false,
           error: null,
           nextPageToken: response.nextPageToken,
-          totalSize: response.totalSize,
         });
-      } catch (error) {
+      } catch (err) {
         setState({
           data: [],
           loading: false,
-          error: error instanceof Error ? error : new Error('Unknown error'),
+          error:
+            err instanceof Error ? err : new Error('Failed to fetch equipment'),
+          nextPageToken: undefined,
         });
       }
     },
-    [equipmentType, filters.pageSize]
+    [equipmentType, pageSize]
   );
 
   useEffect(() => {
-    fetchEquipment();
-  }, [fetchEquipment]);
+    if (enabled) {
+      void fetchEquipment();
+    }
+  }, [fetchEquipment, enabled]);
 
   return {
     ...state,
@@ -696,64 +728,29 @@ export function useListEquipmentByType(
   };
 }
 
-// Conditional version that only fetches when enabled
-export function useListEquipmentByTypeConditional(
-  equipmentType: EquipmentType,
-  enabled: boolean,
-  filters: Partial<
-    Pick<ListEquipmentByTypeRequest, 'pageSize' | 'pageToken'>
-  > = {}
-) {
-  const [state, setState] = useState<ListState<Equipment>>({
-    data: [],
-    loading: false,
-    error: null,
-  });
+// Delete character hook
+export function useDeleteCharacter() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-  const fetchEquipment = useCallback(
-    async (pageToken?: string) => {
-      if (!enabled) return;
+  const deleteCharacter = useCallback(async (characterId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const request = create(DeleteCharacterRequestSchema, {
+        characterId,
+      });
+      const response = await characterClient.deleteCharacter(request);
+      return response;
+    } catch (err) {
+      const error =
+        err instanceof Error ? err : new Error('Failed to delete character');
+      setError(error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-      setState((prev) => ({ ...prev, loading: true, error: null }));
-
-      try {
-        const request = create(ListEquipmentByTypeRequestSchema, {
-          equipmentType,
-          pageSize: filters.pageSize || 50,
-          pageToken: pageToken || '',
-        });
-
-        const response = await characterClient.listEquipmentByType(request);
-
-        setState({
-          data: response.equipment,
-          loading: false,
-          error: null,
-          nextPageToken: response.nextPageToken,
-          totalSize: response.totalSize,
-        });
-      } catch (error) {
-        setState({
-          data: [],
-          loading: false,
-          error: error instanceof Error ? error : new Error('Unknown error'),
-        });
-      }
-    },
-    [equipmentType, filters.pageSize, enabled]
-  );
-
-  useEffect(() => {
-    if (!enabled) return;
-
-    fetchEquipment();
-  }, [fetchEquipment, enabled]);
-
-  return {
-    ...state,
-    refetch: (pageToken?: string) => fetchEquipment(pageToken),
-    loadMore: state.nextPageToken
-      ? () => fetchEquipment(state.nextPageToken)
-      : undefined,
-  };
+  return { deleteCharacter, loading, error };
 }

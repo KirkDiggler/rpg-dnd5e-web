@@ -7,7 +7,6 @@ import {
   calculateAbilityScoreValue,
   formatModifier,
   getAbilityModifier,
-  getDroppedDiceIndices,
 } from '@/utils/diceCalculations';
 import { create } from '@bufbuild/protobuf';
 import type { DiceRoll } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
@@ -83,19 +82,32 @@ function DiceRollDisplay({
       </div>
       <div className="flex gap-1 text-xs">
         {(() => {
-          // For 4d6 rolls, calculate which die would be dropped for ability scores
-          let droppedIndices = new Set<number>();
+          // WORKAROUND: Server currently returns only kept dice + dropped values
+          // See issue: https://github.com/KirkDiggler/rpg-api/issues/196
+          // Server returns: { dice: [4,6,4], dropped: [3] } for a 4d6 roll
+          // We need to reconstruct the full roll for display
+
+          let displayDice = [...roll.dice];
+          const droppedIndices = new Set<number>();
+
           if (roll.dropped && roll.dropped.length > 0) {
-            // Server already told us what was dropped
-            droppedIndices = getDroppedDiceIndices(roll.dice, roll.dropped);
+            // Reconstruct the full roll by adding dropped dice back
+            // Note: This assumes 4d6 drop lowest (1 die dropped)
+            displayDice = [...roll.dice, ...roll.dropped].sort((a, b) => b - a);
+
+            // Find which index has the dropped value
+            // For 4d6 drop lowest, it's always the lowest value
+            const lowestValue = Math.min(...displayDice);
+            const lowestIndex = displayDice.indexOf(lowestValue);
+            droppedIndices.add(lowestIndex);
           } else if (roll.dice.length === 4) {
-            // For 4d6 with no server-side dropping, show what would be dropped
-            const lowestValue = Math.min(...roll.dice);
-            const lowestIndex = roll.dice.indexOf(lowestValue);
+            // Legacy path: For 4d6 with no server-side dropping
+            const lowestValue = Math.min(...displayDice);
+            const lowestIndex = displayDice.indexOf(lowestValue);
             droppedIndices.add(lowestIndex);
           }
 
-          return roll.dice.map((die, idx) => {
+          return displayDice.map((die, idx) => {
             const isDropped = droppedIndices.has(idx);
 
             return (

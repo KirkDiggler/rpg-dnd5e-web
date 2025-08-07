@@ -1,14 +1,27 @@
 import type { Step } from '@/components/ProgressTracker';
 import { ProgressTracker } from '@/components/ProgressTracker';
 import type {
+  ChoiceData,
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import {
+  ChoiceCategory,
+  ChoiceSource,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  Language,
+  Skill,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ClassChoices } from './ClassSelectionModal';
+import type { ClassModalChoices, RaceModalChoices } from '../../types/choices';
+import {
+  convertEquipmentChoiceToProto,
+  convertFeatureChoiceToProto,
+  convertLanguageChoiceToProto,
+  convertSkillChoiceToProto,
+} from '../../utils/choiceConverter';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
 import { RaceSelectionModal } from './RaceSelectionModal';
@@ -22,8 +35,8 @@ interface InteractiveCharacterSheetProps {
 }
 
 interface CharacterChoices {
-  classChoices?: ClassChoices;
-  raceChoices?: Record<string, string[]>; // TODO: Import RaceChoices type when available
+  classChoices?: ClassModalChoices;
+  raceChoices?: RaceModalChoices;
   [key: string]: unknown; // Allow other choice types
 }
 
@@ -178,34 +191,34 @@ export function InteractiveCharacterSheet({
 
     // Load choices from draft context
     if (draft.raceChoices || draft.classChoices) {
-      // Parse the flat classChoices into structured format
-      const structuredClassChoices: ClassChoices = {
-        proficiencies: {},
-        features: {},
-        equipment: {},
-        className: draft.classInfo?.name,
+      // Convert ChoiceData arrays to structured format for the UI
+      const structuredClassChoices: ClassModalChoices = {
+        skills: [],
+        equipment: [],
+        features: [],
+        proficiencies: [],
       };
 
-      // Parse draft.classChoices which is Record<string, string[]>
-      Object.entries(draft.classChoices || {}).forEach(([key, values]) => {
-        if (key.includes('equipment')) {
-          // Equipment choices - single selection
-          structuredClassChoices.equipment[key] = values[0] || '';
-        } else if (key.startsWith('feature_')) {
-          // Feature choices - format: feature_featureId_choiceId
-          const parts = key.split('_');
-          if (parts.length >= 3) {
-            const featureId = parts[1];
-            const choiceId = parts.slice(2).join('_');
-            if (!structuredClassChoices.features[featureId]) {
-              structuredClassChoices.features[featureId] = {};
-            }
-            structuredClassChoices.features[featureId][choiceId] = values;
-          }
-        } else {
-          // Default to proficiencies (includes skills, tools, etc.)
-          structuredClassChoices.proficiencies[key] = values;
+      // Parse draft.classChoices which is now ChoiceData[]
+      (draft.classChoices || []).forEach((choice) => {
+        if (
+          choice.category === ChoiceCategory.EQUIPMENT &&
+          choice.selection?.case === 'equipment'
+        ) {
+          structuredClassChoices.equipment?.push({
+            choiceId: choice.choiceId,
+            items: choice.selection.value.items || [],
+          });
+        } else if (
+          choice.category === ChoiceCategory.SKILLS &&
+          choice.selection?.case === 'skills'
+        ) {
+          structuredClassChoices.skills?.push({
+            choiceId: choice.choiceId,
+            skills: choice.selection.value.skills || [],
+          });
         }
+        // TODO: Handle other choice types as needed
       });
 
       setCharacter((prev) => ({
@@ -226,7 +239,8 @@ export function InteractiveCharacterSheet({
   ]);
 
   // Get classChoices from character state
-  const classChoices = character.choices?.classChoices || ({} as ClassChoices);
+  const classChoices =
+    character.choices?.classChoices || ({} as ClassModalChoices);
 
   // Validation function to check if character is ready for finalization
   const isCharacterValid = useCallback(() => {
@@ -294,8 +308,10 @@ export function InteractiveCharacterSheet({
         if (choice.choiceType !== ChoiceCategory.FIGHTING_STYLE) return true;
 
         // Check if this feature choice has been made in draft.classChoices
-        const selections = draft.classChoices[choice.id];
-        return selections && selections.length >= choice.chooseCount;
+        const choiceData = draft.classChoices.find(
+          (c) => c.choiceId === choice.id
+        );
+        return choiceData && choiceData.selection;
       }) ??
         true);
 
@@ -484,15 +500,18 @@ export function InteractiveCharacterSheet({
     const equipment: string[] = [];
 
     // Get equipment choices from draft.classChoices
-    const equipmentChoiceKeys = Object.keys(draft.classChoices).filter((key) =>
-      key.includes('_equipment_')
+    const equipmentChoices = draft.classChoices.filter(
+      (choice) =>
+        choice.category === ChoiceCategory.EQUIPMENT &&
+        choice.selection?.case === 'equipment'
     );
 
-    equipmentChoiceKeys.forEach((choiceKey) => {
-      const selections = draft.classChoices[choiceKey];
+    equipmentChoices.forEach((choice) => {
+      if (choice.selection?.case !== 'equipment') return;
+      const selections = choice.selection.value.items || [];
       if (selections && selections.length > 0) {
         // Add the selected equipment items
-        selections.forEach((selection) => {
+        selections.forEach((selection: string) => {
           // Parse the selection - the format varies:
           // "chain-mail" - direct item selection
           // "bundle_1" - bundle selection
@@ -506,7 +525,7 @@ export function InteractiveCharacterSheet({
             equipment.push(
               nestedItem
                 .replace(/-/g, ' ')
-                .replace(/\b\w/g, (l) => l.toUpperCase())
+                .replace(/\b\w/g, (l: string) => l.toUpperCase())
             );
           } else if (selection.startsWith('bundle_')) {
             // This is a bundle - we need to look up what's in it
@@ -517,7 +536,7 @@ export function InteractiveCharacterSheet({
             equipment.push(
               selection
                 .replace(/-/g, ' ')
-                .replace(/\b\w/g, (l) => l.toUpperCase())
+                .replace(/\b\w/g, (l: string) => l.toUpperCase())
             );
           }
         });
@@ -986,12 +1005,19 @@ export function InteractiveCharacterSheet({
                         {/* Display chosen skills from draft.classChoices */}
                         {(() => {
                           // Find skill choices for the current class
-                          const skillChoiceKeys = Object.keys(
-                            draft.classChoices
-                          ).filter((key) => key.includes('_skills'));
+                          const skillChoices = draft.classChoices.filter(
+                            (choice) =>
+                              choice.category === ChoiceCategory.SKILLS &&
+                              choice.selection?.case === 'skills'
+                          );
 
-                          const allSkillSelections = skillChoiceKeys.flatMap(
-                            (key) => draft.classChoices[key] || []
+                          const allSkillSelections = skillChoices.flatMap(
+                            (choice) => {
+                              if (choice.selection?.case === 'skills') {
+                                return choice.selection.value.skills || [];
+                              }
+                              return [];
+                            }
                           );
 
                           if (allSkillSelections.length > 0) {
@@ -1006,12 +1032,11 @@ export function InteractiveCharacterSheet({
                                   Chosen Skills:
                                 </span>{' '}
                                 {allSkillSelections
-                                  .map((skill) => {
-                                    // Remove skill: prefix and format
-                                    return skill
-                                      .replace('skill:', '')
-                                      .replace(/-/g, ' ')
-                                      .replace(/\b\w/g, (l) => l.toUpperCase());
+                                  .map((skillEnum) => {
+                                    // Convert enum to display name
+                                    return (
+                                      Skill[skillEnum] || `Skill ${skillEnum}`
+                                    );
                                   })
                                   .join(', ')}
                               </div>
@@ -1030,9 +1055,11 @@ export function InteractiveCharacterSheet({
                             ) || [];
 
                           return featureChoices.map((choice) => {
-                            const selections =
-                              draft.classChoices[choice.id] || [];
-                            if (selections.length === 0) return null;
+                            const choiceData = draft.classChoices.find(
+                              (c) => c.choiceId === choice.id
+                            );
+                            if (!choiceData || !choiceData.selection)
+                              return null;
 
                             return (
                               <div
@@ -1047,7 +1074,8 @@ export function InteractiveCharacterSheet({
                                 >
                                   {choice.description}:
                                 </span>{' '}
-                                {selections.join(', ')}
+                                {/* TODO: Display the actual selection based on the choice type */}
+                                Selected
                               </div>
                             );
                           });
@@ -1270,22 +1298,33 @@ export function InteractiveCharacterSheet({
             selectedRace: race,
           }));
 
-          // Format choices for the draft context
-          const formattedChoices: Record<string, string[]> = {};
+          // Convert choices to ChoiceData format
+          console.log('🎯 Race choices received from modal:', choices);
+          const choiceData: ChoiceData[] = [];
 
+          // Convert language choices
           if (choices.languages) {
-            Object.entries(choices.languages).forEach(([key, values]) => {
-              formattedChoices[key] = values;
-            });
-          }
-          if (choices.proficiencies) {
-            Object.entries(choices.proficiencies).forEach(([key, values]) => {
-              formattedChoices[key] = values;
+            console.log('📚 Converting language choices:', choices.languages);
+            choices.languages.forEach((langChoice) => {
+              choiceData.push(
+                convertLanguageChoiceToProto(langChoice, ChoiceSource.RACE)
+              );
             });
           }
 
-          // Set race with choices
-          draft.setRace(race, formattedChoices);
+          // Convert skill choices if any
+          if (choices.skills) {
+            console.log('⚔️ Converting skill choices:', choices.skills);
+            choices.skills.forEach((skillChoice) => {
+              choiceData.push(
+                convertSkillChoiceToProto(skillChoice, ChoiceSource.RACE)
+              );
+            });
+          }
+
+          console.log('📦 Final choiceData array:', choiceData);
+          // Set race with converted choices
+          draft.setRace(race, choiceData);
         }}
         onClose={() => setIsRaceModalOpen(false)}
       />
@@ -1306,40 +1345,39 @@ export function InteractiveCharacterSheet({
             },
           }));
 
-          // Format choices for the draft context
-          const formattedChoices: Record<string, string[]> = {};
+          // Convert choices to ChoiceData format
+          const choiceData: ChoiceData[] = [];
 
-          // Add proficiency choices
-          if (choices.proficiencies && choices.className === classData.name) {
-            Object.entries(choices.proficiencies).forEach(([key, values]) => {
-              formattedChoices[key] = values;
+          // Convert skill choices
+          if (choices.skills) {
+            choices.skills.forEach((skillChoice) => {
+              choiceData.push(
+                convertSkillChoiceToProto(skillChoice, ChoiceSource.CLASS)
+              );
             });
           }
 
-          // Add feature choices
-          if (choices.features) {
-            Object.entries(choices.features).forEach(
-              ([featureId, featureChoices]) => {
-                Object.entries(featureChoices).forEach(
-                  ([choiceKey, values]) => {
-                    formattedChoices[`${featureId}_${choiceKey}`] = values;
-                  }
-                );
-              }
-            );
-          }
-
-          // Add equipment choices
+          // Convert equipment choices
           if (choices.equipment) {
-            Object.entries(choices.equipment).forEach(([key, value]) => {
-              // Equipment choices are single selections, so wrap in array
-              formattedChoices[key] = [value];
+            choices.equipment.forEach((equipChoice) => {
+              choiceData.push(
+                convertEquipmentChoiceToProto(equipChoice, ChoiceSource.CLASS)
+              );
             });
           }
 
-          // Save class to API with choices
+          // Convert feature choices (fighting styles, etc.)
+          if (choices.features) {
+            choices.features.forEach((featureChoice) => {
+              choiceData.push(
+                convertFeatureChoiceToProto(featureChoice, ChoiceSource.CLASS)
+              );
+            });
+          }
+
+          // Save class to API with converted choices
           try {
-            await draft.setClass(classData, formattedChoices);
+            await draft.setClass(classData, choiceData);
           } catch (error) {
             console.error('Failed to save class:', error);
             // TODO: Show error toast to user
