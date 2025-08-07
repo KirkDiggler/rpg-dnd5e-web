@@ -79,7 +79,7 @@ function getEntityColor(
 function getEntityDisplayName(entity: EntityPlacement): string {
   // Try to extract a short name from the entity ID
   const parts = entity.entityId.split('_');
-  return parts[parts.length - 1] || entity.entityId.substring(0, 3);
+  return parts[parts.length - 1];
 }
 
 export function HexGrid({
