@@ -6,6 +6,30 @@ import type {
 import { useState } from 'react';
 import { HexGrid } from './HexGrid';
 
+// Constants for demo configuration
+const DEFAULT_CHARACTER_IDS = ['char-1', 'char-2', 'char-3'];
+const DEFAULT_INITIATIVE = 10;
+
+// Utility function to format entity IDs for display
+function formatEntityId(entityId: string | undefined): string {
+  if (!entityId) return 'None';
+
+  // Handle different ID formats gracefully
+  // Show last segment if ID contains underscores (generated IDs)
+  if (entityId.includes('_')) {
+    const parts = entityId.split('_');
+    return parts[parts.length - 1].substring(0, 8);
+  }
+
+  // For simple IDs like "char-1", show the whole thing if short enough
+  if (entityId.length <= 10) {
+    return entityId;
+  }
+
+  // Otherwise show last 8 characters
+  return entityId.slice(-8);
+}
+
 export function EncounterDemo() {
   const { dungeonStart, loading, error } = useDungeonStart();
   const { endTurn, loading: endTurnLoading } = useEndTurn();
@@ -16,8 +40,8 @@ export function EncounterDemo() {
 
   const handleStartEncounter = async () => {
     try {
-      // Start with 3 test characters
-      const response = await dungeonStart(['char-1', 'char-2', 'char-3']);
+      // Start with default test characters
+      const response = await dungeonStart(DEFAULT_CHARACTER_IDS);
 
       if (response.encounterId) {
         setEncounterId(response.encounterId);
@@ -133,14 +157,14 @@ export function EncounterDemo() {
                       <div className="flex justify-between items-center">
                         <div>
                           <div className="font-medium">
-                            {entry.entityId.slice(-8)}
+                            {formatEntityId(entry.entityId)}
                           </div>
                           <div className="text-sm opacity-75">
                             {entry.entityType}
                           </div>
                         </div>
                         <div className="text-lg font-bold">
-                          {entry.initiative || 10}
+                          {entry.initiative || DEFAULT_INITIATIVE}
                         </div>
                       </div>
                       {isActive && (
@@ -157,8 +181,7 @@ export function EncounterDemo() {
                 <div className="space-y-2 text-sm">
                   <div>Round: {combatState.round}</div>
                   <div>
-                    Current:{' '}
-                    {combatState.currentTurn?.entityId?.slice(-8) || 'None'}
+                    Current: {formatEntityId(combatState.currentTurn?.entityId)}
                   </div>
                   {combatState.currentTurn && (
                     <>
