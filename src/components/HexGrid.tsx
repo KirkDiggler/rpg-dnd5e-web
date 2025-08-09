@@ -144,7 +144,7 @@ export function HexGrid({
 
   // Create entity markers
   const entityMarkers: React.ReactElement[] = [];
-  room.entities.forEach((entity) => {
+  Object.values(room.entities).forEach((entity) => {
     if (!entity.position) return;
 
     const x = entity.position.x;

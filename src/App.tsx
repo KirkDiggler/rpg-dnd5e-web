@@ -9,7 +9,7 @@ import { InteractiveCharacterSheet } from './character/creation/InteractiveChara
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { CharacterList } from './components/CharacterList';
-import { RoomDemo } from './components/RoomDemo';
+import { EncounterDemo } from './components/EncounterDemo';
 import { ThemeSelector } from './components/ThemeSelector';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
@@ -135,7 +135,7 @@ function AppContent() {
             >
               {currentView === 'room-demo'
                 ? '← Back to Character List'
-                : '🏰 Enter Room Demo'}
+                : '⚔️ Enter Combat Demo'}
             </button>
             <ThemeSelector />
           </div>
@@ -188,7 +188,7 @@ function AppContent() {
             )}
           </motion.div>
         ) : currentView === 'room-demo' ? (
-          <RoomDemo />
+          <EncounterDemo />
         ) : currentView === 'character-list' ? (
           <CharacterList
             playerId={playerId || 'test-player'}
