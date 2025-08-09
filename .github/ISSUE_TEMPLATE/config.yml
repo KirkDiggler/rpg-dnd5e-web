@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discord Server
+    url: https://discord.gg/your-server-here
+    about: Join our Discord server for quick questions and community chat
+  - name: Game Documentation
+    url: https://github.com/KirkDiggler/rpg-dnd5e-web/wiki
+    about: Check our wiki for game guides and documentation
