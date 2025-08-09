@@ -114,7 +114,9 @@ export function RoomDemo() {
   const getEntityDisplayInfo = (entityId: string) => {
     if (!entityId || !data?.room) return null;
 
-    const entity = data.room.entities.find((e) => e.entityId === entityId);
+    const entity = Object.values(data.room.entities).find(
+      (e) => e.entityId === entityId
+    );
     if (!entity) return null;
 
     const character = availableCharacters.find((c) => c.id === entityId);
@@ -398,7 +400,7 @@ export function RoomDemo() {
                     className="font-semibold"
                     style={{ color: 'var(--text-primary)' }}
                   >
-                    {data.room.entities.length}
+                    {Object.keys(data.room.entities).length}
                   </div>
                 </div>
                 <div
@@ -538,7 +540,7 @@ export function RoomDemo() {
               )}
 
               {/* Entity Details */}
-              {data.room.entities.length > 0 && (
+              {Object.keys(data.room.entities).length > 0 && (
                 <div className="mt-6">
                   <h4
                     className="text-md font-semibold mb-3"
@@ -547,7 +549,7 @@ export function RoomDemo() {
                     Entity Details
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {data.room.entities.map((entity) => (
+                    {Object.values(data.room.entities).map((entity) => (
                       <div
                         key={entity.entityId}
                         className="p-3 rounded border"
