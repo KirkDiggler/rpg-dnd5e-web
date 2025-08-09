@@ -2,7 +2,7 @@
 name: Feature Request
 about: Suggest an idea for the Discord activity
 title: '[FEATURE] '
-labels: 'enhancement', 'discord-activity'
+labels: [enhancement, discord-activity]
 assignees: ''
 ---
 
