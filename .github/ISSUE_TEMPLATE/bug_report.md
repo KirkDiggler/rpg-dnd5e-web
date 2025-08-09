@@ -2,7 +2,7 @@
 name: Bug Report
 about: Something isn't working right in the Discord activity
 title: '[BUG] '
-labels: 'bug', 'discord-activity'
+labels: [bug, discord-activity]
 assignees: ''
 ---
 

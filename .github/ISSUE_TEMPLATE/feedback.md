@@ -2,7 +2,7 @@
 name: General Feedback
 about: Share your thoughts, questions, or general feedback about the game
 title: '[FEEDBACK] '
-labels: 'feedback', 'discord-activity'
+labels: [feedback, discord-activity]
 assignees: ''
 ---
 
