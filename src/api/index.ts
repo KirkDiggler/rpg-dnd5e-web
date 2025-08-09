@@ -23,6 +23,13 @@ export {
 // Re-export encounter hooks
 export { useDungeonStart } from './encounterHooks';
 
+// Re-export equipment hooks
+export {
+  useEquipItem,
+  useGetCharacterInventory,
+  useUnequipItem,
+} from './equipmentHooks';
+
 // Re-export commonly used types from protos
 export type {
   AbilityScores,
@@ -30,7 +37,12 @@ export type {
   CharacterDraft,
   CreationProgress,
   CreationStep,
+  EquipmentSlots,
+  GetCharacterInventoryResponse,
+  InventoryItem,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+
+export { EquipmentSlot } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 
 export {
   Ability,

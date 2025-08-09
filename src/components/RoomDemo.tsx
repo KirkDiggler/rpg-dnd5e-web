@@ -6,7 +6,9 @@ import {
   Race,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useState } from 'react';
+import { Equipment } from './Equipment';
 import { HexGrid } from './HexGrid';
+import { TestModal } from './TestModal';
 
 // Helper functions for display names
 function getRaceDisplayName(raceEnum: Race): string {
@@ -67,6 +69,12 @@ export function RoomDemo() {
   );
   // Hovered entity info
   const [hoveredEntity, setHoveredEntity] = useState<string | null>(null);
+  // Equipment modal state
+  const [equipmentCharacterId, setEquipmentCharacterId] = useState<
+    string | null
+  >(null);
+  // Test modal state
+  const [showTestModal, setShowTestModal] = useState(false);
 
   const handleGenerateRoom = async () => {
     try {
@@ -90,16 +98,15 @@ export function RoomDemo() {
     );
   };
 
-  const handleCellClick = (x: number, y: number) => {
-    console.log(`Clicked on cell (${x}, ${y})`);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleCellClick = (_x: number, _y: number) => {
     // TODO: Implement movement logic when selectedCharacter is set
     if (selectedCharacter) {
-      console.log(`Moving ${selectedCharacter} to (${x}, ${y})`);
+      // Moving character to new position
     }
   };
 
   const handleEntityClick = (entityId: string) => {
-    console.log(`Clicked on entity: ${entityId}`);
     // If it's a character in our party, select it for movement
     const character = availableCharacters.find((c) => c.id === entityId);
     if (character && selectedCharacterIds.includes(entityId)) {
@@ -285,7 +292,7 @@ export function RoomDemo() {
                     >
                       Selected Party ({selectedCharacterIds.length})
                     </h4>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 mb-3">
                       {getSelectedCharacters().map((character) => (
                         <span
                           key={character.id}
@@ -305,6 +312,34 @@ export function RoomDemo() {
                         </span>
                       ))}
                     </div>
+
+                    {/* Equipment Management Buttons */}
+                    <div className="pt-3 border-t border-gray-600">
+                      <h5
+                        className="text-xs font-medium mb-2"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        Manage Equipment:
+                      </h5>
+                      <div className="flex flex-wrap gap-2">
+                        {getSelectedCharacters().map((character) => (
+                          <button
+                            key={`equipment-${character.id}`}
+                            onClick={() => {
+                              setEquipmentCharacterId(character.id);
+                            }}
+                            className="px-3 py-1 rounded text-sm font-medium transition-colors hover:opacity-90"
+                            style={{
+                              backgroundColor: 'var(--bg-secondary)',
+                              color: 'var(--text-primary)',
+                              border: '1px solid var(--border-primary)',
+                            }}
+                          >
+                            {character.name} Equipment
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
               </>
@@ -313,20 +348,33 @@ export function RoomDemo() {
 
           {/* Generate Button */}
           <div className="text-center mb-6">
-            <button
-              onClick={handleGenerateRoom}
-              disabled={loading || selectedCharacterIds.length === 0}
-              className="px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
-              style={{
-                backgroundColor: loading
-                  ? 'var(--bg-secondary)'
-                  : 'var(--accent-primary)',
-                color: 'white',
-                border: 'none',
-              }}
-            >
-              {loading ? 'Generating Room...' : 'Generate Room'}
-            </button>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={handleGenerateRoom}
+                disabled={loading || selectedCharacterIds.length === 0}
+                className="px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
+                style={{
+                  backgroundColor: loading
+                    ? 'var(--bg-secondary)'
+                    : 'var(--accent-primary)',
+                  color: 'white',
+                  border: 'none',
+                }}
+              >
+                {loading ? 'Generating Room...' : 'Generate Room'}
+              </button>
+              <button
+                onClick={() => setShowTestModal(true)}
+                className="px-4 py-2 rounded-lg font-medium transition-colors"
+                style={{
+                  backgroundColor: 'var(--accent-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-primary)',
+                }}
+              >
+                Test Modal
+              </button>
+            </div>
           </div>
 
           {/* Error Display */}
@@ -474,6 +522,34 @@ export function RoomDemo() {
                       }
                     </p>
                   )}
+
+                  {/* Equipment Management */}
+                  <div className="mt-4">
+                    <h5
+                      className="text-sm font-medium mb-2"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
+                      Equipment Management
+                    </h5>
+                    <div className="flex flex-wrap gap-2">
+                      {getSelectedCharacters().map((character) => (
+                        <button
+                          key={`equipment-${character.id}`}
+                          onClick={() => {
+                            setEquipmentCharacterId(character.id);
+                          }}
+                          className="px-3 py-1 rounded text-sm font-medium transition-colors"
+                          style={{
+                            backgroundColor: 'var(--accent-primary)',
+                            color: 'white',
+                            border: '1px solid var(--border-primary)',
+                          }}
+                        >
+                          {character.name} Equipment
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -635,6 +711,19 @@ export function RoomDemo() {
             )}
           </p>
         </div>
+
+        {/* Test Modal */}
+        {showTestModal && <TestModal onClose={() => setShowTestModal(false)} />}
+
+        {/* Equipment Modal */}
+        {equipmentCharacterId && (
+          <Equipment
+            characterId={equipmentCharacterId}
+            onClose={() => {
+              setEquipmentCharacterId(null);
+            }}
+          />
+        )}
       </div>
     </div>
   );
