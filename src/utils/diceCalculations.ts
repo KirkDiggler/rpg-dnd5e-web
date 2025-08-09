@@ -2,16 +2,22 @@ import type { DiceRoll } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/d
 
 /**
  * Calculate the total score from a dice roll, accounting for dropped dice
- * For 4d6 drop lowest, this sums all dice then subtracts the dropped ones
+ *
+ * IMPORTANT: The server returns only the KEPT dice in the dice array,
+ * with dropped dice values in a separate dropped array.
+ * Example: For 4d6 drop lowest rolling [3,4,6,4], server returns:
+ * { dice: [4,6,4], dropped: [3], total: 14 }
+ *
+ * Therefore, we should just sum the dice array (kept dice only).
  */
 export function calculateDiceTotal(roll: DiceRoll): number {
-  if (!roll.dropped || roll.dropped.length === 0) {
+  // If we have a total from the server, prefer that
+  if (roll.total > 0) {
     return roll.total;
   }
 
-  const allDiceSum = roll.dice.reduce((sum, die) => sum + die, 0);
-  const droppedSum = roll.dropped.reduce((sum, die) => sum + die, 0);
-  return allDiceSum - droppedSum;
+  // Otherwise sum the dice array (which contains only kept dice)
+  return roll.dice.reduce((sum, die) => sum + die, 0);
 }
 
 /**
@@ -75,24 +81,12 @@ export function areDiceRollsEqual(roll1: DiceRoll, roll2: DiceRoll): boolean {
 /**
  * Calculate what an ability score would be for a 4d6 roll (drop lowest)
  * This is for UI display only - the server makes the final determination
+ *
+ * IMPORTANT: The server returns only the KEPT dice in the dice array.
+ * Example: For 4d6 drop lowest rolling [3,4,6,4], server returns:
+ * { dice: [4,6,4], dropped: [3], total: 14 }
  */
 export function calculateAbilityScoreValue(roll: DiceRoll): number {
-  // If server already provided dropped dice, use the calculated total
-  if (roll.dropped && roll.dropped.length > 0) {
-    return calculateDiceTotal(roll);
-  }
-
-  // For 4d6 with no dropped dice, calculate drop lowest for display
-  if (roll.dice.length === 4) {
-    const sorted = [...roll.dice].sort((a, b) => a - b);
-    // Sum the highest 3 dice (drop the lowest)
-    return sorted[1] + sorted[2] + sorted[3];
-  }
-
-  // For other dice counts, calculate total manually for consistency
-  if (roll.dropped && roll.dropped.length > 0) {
-    return calculateDiceTotal(roll);
-  }
-  // No dropped dice, sum all dice
-  return roll.dice.reduce((sum, die) => sum + die, 0);
+  // Always use calculateDiceTotal which handles the server's format correctly
+  return calculateDiceTotal(roll);
 }
