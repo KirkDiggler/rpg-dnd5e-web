@@ -5,14 +5,11 @@ interface TestModalProps {
 }
 
 export function TestModal({ onClose }: TestModalProps) {
-  console.log('TestModal rendering');
-
   const modalContent = (
     <div
       className="fixed inset-0 bg-red-500 bg-opacity-50 flex items-center justify-center"
       style={{ zIndex: 9999 }}
       onClick={(e) => {
-        console.log('TestModal overlay clicked');
         if (e.target === e.currentTarget) {
           onClose();
         }

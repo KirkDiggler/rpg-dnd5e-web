@@ -169,20 +169,6 @@ function getAvailableSlots(itemName: string): EquipmentSlot[] {
   return [EquipmentSlot.MAIN_HAND, EquipmentSlot.OFF_HAND, EquipmentSlot.ARMOR];
 }
 
-// Convert equipment slots to select options
-// Unused for now - kept for potential future use with dropdown selection
-// function getSlotOptions(itemName: string): SelectOption[] {
-//   const availableSlots = getAvailableSlots(itemName);
-//   return availableSlots.map((slot) => {
-//     const { name, icon } = getSlotInfo(slot);
-//     return {
-//       value: slot.toString(),
-//       label: name,
-//       icon,
-//     };
-//   });
-// }
-
 export function Equipment({ characterId, onClose }: EquipmentProps) {
   const {
     getCharacterInventory,

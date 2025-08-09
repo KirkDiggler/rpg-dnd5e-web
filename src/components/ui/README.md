@@ -68,7 +68,7 @@ var(--shadow-card)       /* Card shadows */
 <Button
   variant="primary"
   icon={<Save size={16} />}
-  loading={isSaving}
+  loading={loading}
 >
   Save
 </Button>
