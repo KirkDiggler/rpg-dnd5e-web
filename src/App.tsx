@@ -9,7 +9,7 @@ import { InteractiveCharacterSheet } from './character/creation/InteractiveChara
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { CharacterList } from './components/CharacterList';
-import { RoomDemo } from './components/RoomDemo';
+import { EncounterDemo } from './components/EncounterDemo';
 import { ThemeSelector } from './components/ThemeSelector';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
@@ -17,7 +17,7 @@ type AppView =
   | 'character-list'
   | 'character-creation'
   | 'character-sheet'
-  | 'room-demo';
+  | 'encounter-demo';
 
 function AppContent() {
   const [currentView, setCurrentView] = useState<AppView>('character-list');
@@ -119,23 +119,27 @@ function AppContent() {
             <button
               onClick={() =>
                 setCurrentView(
-                  currentView === 'room-demo' ? 'character-list' : 'room-demo'
+                  currentView === 'encounter-demo'
+                    ? 'character-list'
+                    : 'encounter-demo'
                 )
               }
               className="px-4 py-2 rounded-lg transition-colors"
               style={{
                 backgroundColor:
-                  currentView === 'room-demo'
+                  currentView === 'encounter-demo'
                     ? 'var(--accent-primary)'
                     : 'var(--bg-secondary)',
                 color:
-                  currentView === 'room-demo' ? 'white' : 'var(--text-primary)',
+                  currentView === 'encounter-demo'
+                    ? 'white'
+                    : 'var(--text-primary)',
                 border: '1px solid var(--border-primary)',
               }}
             >
-              {currentView === 'room-demo'
+              {currentView === 'encounter-demo'
                 ? '← Back to Character List'
-                : '⚔️ Enter Combat Demo'}
+                : '⚔️ Enter Combat'}
             </button>
             <ThemeSelector />
           </div>
@@ -187,8 +191,8 @@ function AppContent() {
               <p className="mt-4 text-red-500">{discord.error}</p>
             )}
           </motion.div>
-        ) : currentView === 'room-demo' ? (
-          <RoomDemo />
+        ) : currentView === 'encounter-demo' ? (
+          <EncounterDemo />
         ) : currentView === 'character-list' ? (
           <CharacterList
             playerId={playerId || 'test-player'}

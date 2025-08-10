@@ -1,47 +1,52 @@
-import { useDungeonStart, useEndTurn } from '@/api/encounterHooks';
+import { useDungeonStart, useListCharacters, useMoveCharacter } from '@/api';
+import { useDiscord } from '@/discord';
+import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
-import { HexGrid } from './HexGrid';
-
-// Constants for demo configuration
-const DEFAULT_CHARACTER_IDS = ['char-1', 'char-2', 'char-3'];
-const DEFAULT_INITIATIVE = 10;
-
-// Utility function to format entity IDs for display
-function formatEntityId(entityId: string | undefined): string {
-  if (!entityId) return 'None';
-
-  // Handle different ID formats gracefully
-  // Show last segment if ID contains underscores (generated IDs)
-  if (entityId.includes('_')) {
-    const parts = entityId.split('_');
-    return parts[parts.length - 1].substring(0, 8);
-  }
-
-  // For simple IDs like "char-1", show the whole thing if short enough
-  if (entityId.length <= 10) {
-    return entityId;
-  }
-
-  // Otherwise show last 8 characters
-  return entityId.slice(-8);
-}
+import { ActionPanel } from './combat-v2';
+import { BattleMapPanel } from './encounter/BattleMapPanel';
+import { InitiativePanel } from './encounter/InitiativePanel';
+import { PartySetupPanel } from './encounter/PartySetupPanel';
+import { Equipment } from './Equipment';
 
 export function EncounterDemo() {
   const { dungeonStart, loading, error } = useDungeonStart();
-  const { endTurn, loading: endTurnLoading } = useEndTurn();
+  const { moveCharacter } = useMoveCharacter();
+  const discord = useDiscord();
+  const isDevelopment = import.meta.env.MODE === 'development';
+  const playerId = discord.user?.id || (isDevelopment ? 'test-player' : '');
+
+  // Fetch user's characters
+  const { data: availableCharacters = [], loading: charactersLoading } =
+    useListCharacters({
+      playerId,
+      sessionId: isDevelopment ? 'test-session' : undefined,
+    });
+
+  // Game state
   const [encounterId, setEncounterId] = useState<string | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [combatState, setCombatState] = useState<CombatState | null>(null);
+
+  // Character selection state
+  const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>(
+    []
+  );
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
+  const [hoveredEntity, setHoveredEntity] = useState<string | null>(null);
+
+  // UI state
+  const [equipmentCharacterId, setEquipmentCharacterId] = useState<
+    string | null
+  >(null);
+  const [movementMode, setMovementMode] = useState(false);
 
   const handleStartEncounter = async () => {
     try {
-      // Start with default test characters
-      const response = await dungeonStart(DEFAULT_CHARACTER_IDS);
+      const response = await dungeonStart(selectedCharacterIds);
 
       if (response.encounterId) {
         setEncounterId(response.encounterId);
@@ -63,155 +68,170 @@ export function EncounterDemo() {
     }
   };
 
+  const handleCharacterToggle = (characterId: string) => {
+    setSelectedCharacterIds((prev) =>
+      prev.includes(characterId)
+        ? prev.filter((id) => id !== characterId)
+        : [...prev, characterId]
+    );
+  };
+
   const handleEntityClick = (entityId: string) => {
     setSelectedEntity(entityId);
-    console.log('Selected entity:', entityId);
   };
 
-  const handleCellClick = (x: number, y: number) => {
-    console.log('Cell clicked:', x, y);
-    // TODO: Implement movement when it's the selected entity's turn
+  const handleEntityHover = (entityId: string | null) => {
+    setHoveredEntity(entityId);
   };
 
-  const handleEndTurn = async () => {
-    if (!encounterId) {
-      console.error('No encounter ID available');
-      return;
-    }
-
-    try {
-      const response = await endTurn(encounterId);
-
-      if (response.combatState) {
-        setCombatState(response.combatState);
-        // Update selected entity to the new current turn
-        if (response.combatState.currentTurn?.entityId) {
-          setSelectedEntity(response.combatState.currentTurn.entityId);
+  const handleCellClick = async (x: number, y: number) => {
+    if (movementMode && selectedEntity && encounterId) {
+      try {
+        const response = await moveCharacter(encounterId, selectedEntity, x, y);
+        if (response.success) {
+          // Update states with the response
+          if (response.combatState) {
+            setCombatState(response.combatState);
+          }
+          if (response.updatedRoom) {
+            setRoom(response.updatedRoom);
+          }
+          // Exit movement mode
+          setMovementMode(false);
+        } else {
+          console.error('Move failed:', response.error?.message);
         }
+      } catch (err) {
+        console.error('Failed to move character:', err);
       }
-    } catch (err) {
-      console.error('Failed to end turn:', err);
     }
+  };
+
+  const handleCombatStateUpdate = (newCombatState: CombatState) => {
+    setCombatState(newCombatState);
+    // Update selected entity to the new current turn's entity
+    if (newCombatState.currentTurn?.entityId) {
+      setSelectedEntity(newCombatState.currentTurn.entityId);
+    }
+    // Clear movement mode when turn changes
+    setMovementMode(false);
+  };
+
+  const handleMoveAction = () => {
+    setMovementMode((prev) => !prev);
+  };
+
+  const getSelectedCharacters = (): Character[] => {
+    // During combat, return the characters that were selected for the encounter
+    // The entity IDs in combat state don't match character IDs, so we use the original selection
+    if (combatState && combatState.turnOrder.length > 0) {
+      return availableCharacters.filter((char) =>
+        selectedCharacterIds.includes(char.id)
+      );
+    }
+
+    // Before combat, use the selected characters for party setup
+    return availableCharacters.filter((char) =>
+      selectedCharacterIds.includes(char.id)
+    );
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Encounter Demo</h1>
+    <>
+      <div
+        className="min-h-screen p-8"
+        style={{ backgroundColor: 'var(--bg-primary)' }}
+      >
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <div className="mb-8 text-center">
+            <h1
+              className="text-4xl font-bold mb-2"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              Combat Encounter
+            </h1>
+            <p className="text-lg" style={{ color: 'var(--text-muted)' }}>
+              Battle your way through the dungeon
+            </p>
+          </div>
 
-      {/* Start button */}
-      {!room && (
-        <div className="mb-6">
-          <button
-            onClick={handleStartEncounter}
-            disabled={loading}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Starting...' : 'Start Encounter'}
-          </button>
+          {/* Main Content */}
+          {!room ? (
+            // Pre-encounter setup
+            <PartySetupPanel
+              availableCharacters={availableCharacters}
+              selectedCharacterIds={selectedCharacterIds}
+              onCharacterToggle={handleCharacterToggle}
+              onStartEncounter={handleStartEncounter}
+              loading={loading}
+              charactersLoading={charactersLoading}
+              error={error}
+            />
+          ) : (
+            // Active encounter
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* Battle map - 3 columns */}
+              <div className="lg:col-span-3">
+                <BattleMapPanel
+                  room={room}
+                  selectedEntity={selectedEntity}
+                  hoveredEntity={hoveredEntity}
+                  availableCharacters={availableCharacters}
+                  movementMode={movementMode}
+                  movementRange={
+                    combatState?.currentTurn?.movementMax
+                      ? combatState.currentTurn.movementMax -
+                        (combatState.currentTurn.movementUsed || 0)
+                      : 0
+                  }
+                  onEntityClick={handleEntityClick}
+                  onEntityHover={handleEntityHover}
+                  onCellClick={handleCellClick}
+                />
+              </div>
 
-          {error && (
-            <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">
-              Error: {error.message}
+              {/* Initiative & controls - 1 column */}
+              <div className="lg:col-span-1">
+                {combatState && (
+                  <InitiativePanel
+                    combatState={combatState}
+                    selectedEntity={selectedEntity}
+                    selectedCharacterIds={selectedCharacterIds}
+                    availableCharacters={availableCharacters}
+                    equipmentCharacterId={equipmentCharacterId}
+                    encounterId={encounterId}
+                    onEntitySelect={handleEntityClick}
+                    onEquipmentOpen={setEquipmentCharacterId}
+                    onCombatStateUpdate={handleCombatStateUpdate}
+                  />
+                )}
+              </div>
             </div>
           )}
+
+          {/* Equipment Modal */}
+          {equipmentCharacterId && (
+            <Equipment
+              characterId={equipmentCharacterId}
+              onClose={() => {
+                setEquipmentCharacterId(null);
+              }}
+            />
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Main game area */}
-      {room && combatState && (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Hex grid - 3 columns */}
-          <div className="lg:col-span-3">
-            <div className="bg-gray-800 p-4 rounded-lg">
-              <h2 className="text-xl font-semibold mb-4">Battle Map</h2>
-              <HexGrid
-                room={room}
-                selectedCharacter={selectedEntity}
-                onEntityClick={handleEntityClick}
-                onCellClick={handleCellClick}
-              />
-            </div>
-          </div>
-
-          {/* Initiative order - 1 column */}
-          <div className="lg:col-span-1">
-            <div className="bg-gray-800 p-4 rounded-lg">
-              <h2 className="text-xl font-semibold mb-4">Initiative Order</h2>
-              <div className="space-y-2">
-                {combatState.turnOrder.map((entry, index) => {
-                  const isActive = index === combatState.activeIndex;
-                  const isSelected = entry.entityId === selectedEntity;
-
-                  return (
-                    <div
-                      key={entry.entityId}
-                      className={`p-3 rounded cursor-pointer transition-colors ${
-                        isActive
-                          ? 'bg-green-600 text-white'
-                          : isSelected
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-700 hover:bg-gray-600'
-                      }`}
-                      onClick={() => setSelectedEntity(entry.entityId)}
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="font-medium">
-                            {formatEntityId(entry.entityId)}
-                          </div>
-                          <div className="text-sm opacity-75">
-                            {entry.entityType}
-                          </div>
-                        </div>
-                        <div className="text-lg font-bold">
-                          {entry.initiative || DEFAULT_INITIATIVE}
-                        </div>
-                      </div>
-                      {isActive && (
-                        <div className="mt-1 text-xs">Current Turn</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Turn controls */}
-              <div className="mt-6">
-                <h3 className="text-lg font-semibold mb-3">Turn Info</h3>
-                <div className="space-y-2 text-sm">
-                  <div>Round: {combatState.round}</div>
-                  <div>
-                    Current: {formatEntityId(combatState.currentTurn?.entityId)}
-                  </div>
-                  {combatState.currentTurn && (
-                    <>
-                      <div>
-                        Movement: {combatState.currentTurn.movementUsed || 0}/
-                        {combatState.currentTurn.movementMax || 30}
-                      </div>
-                      <div>
-                        Action: {combatState.currentTurn.actionUsed ? '✗' : '✓'}
-                      </div>
-                      <div>
-                        Bonus:{' '}
-                        {combatState.currentTurn.bonusActionUsed ? '✗' : '✓'}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <button
-                  onClick={handleEndTurn}
-                  disabled={endTurnLoading}
-                  className="mt-4 w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-                >
-                  {endTurnLoading ? 'Processing...' : 'End Turn'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      {/* NEW Combat v2 Action Panel - OUTSIDE all containers with Portal */}
+      <ActionPanel
+        combatState={combatState}
+        encounterId={encounterId}
+        selectedCharacters={getSelectedCharacters()}
+        onMoveAction={handleMoveAction}
+        onCombatStateUpdate={handleCombatStateUpdate}
+        movementMode={movementMode}
+        debug={false} // Set to true for visibility testing
+      />
+    </>
   );
 }
