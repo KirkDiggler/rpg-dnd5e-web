@@ -1307,12 +1307,10 @@ export function InteractiveCharacterSheet({
           }));
 
           // Convert choices to ChoiceData format
-          console.log('🎯 Race choices received from modal:', choices);
           const choiceData: ChoiceData[] = [];
 
           // Convert language choices
           if (choices.languages) {
-            console.log('📚 Converting language choices:', choices.languages);
             choices.languages.forEach((langChoice) => {
               choiceData.push(
                 convertLanguageChoiceToProto(langChoice, ChoiceSource.RACE)
@@ -1322,7 +1320,6 @@ export function InteractiveCharacterSheet({
 
           // Convert skill choices if any
           if (choices.skills) {
-            console.log('⚔️ Converting skill choices:', choices.skills);
             choices.skills.forEach((skillChoice) => {
               choiceData.push(
                 convertSkillChoiceToProto(skillChoice, ChoiceSource.RACE)
@@ -1330,7 +1327,6 @@ export function InteractiveCharacterSheet({
             });
           }
 
-          console.log('📦 Final choiceData array:', choiceData);
           // Set race with converted choices
           draft.setRace(race, choiceData);
         }}

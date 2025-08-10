@@ -197,14 +197,6 @@ export function ClassSelectionModal({
     // TODO: Add validation for tools, weapon proficiencies, armor proficiencies, feats, features
     // when they are updated to use structured types
 
-    console.log('🎮 ClassSelectionModal - Passing choices to parent:', {
-      className: currentClassData.name,
-      choices: currentClassChoices,
-      hasFeatures:
-        currentClassChoices.features && currentClassChoices.features.length > 0,
-      features: currentClassChoices.features,
-    });
-
     onSelect(currentClassData, currentClassChoices);
     onClose();
   };
@@ -685,10 +677,6 @@ export function ClassSelectionModal({
                                   featureId: choice.id,
                                   selection: selections[0], // Fighting style is single choice
                                 };
-                                console.log(
-                                  '🗡️ Adding fighting style selection:',
-                                  feature
-                                );
                                 updatedFeatures.push(feature);
                               }
 
@@ -735,11 +723,6 @@ export function ClassSelectionModal({
                             )?.items || []
                           }
                           onSelectionChange={(_choiceId, selections) => {
-                            console.log(
-                              '⚔️ Equipment selection received:',
-                              selections
-                            );
-
                             setClassChoicesMap((prev) => {
                               const currentChoices = prev[currentClassName] || {
                                 skills: [],

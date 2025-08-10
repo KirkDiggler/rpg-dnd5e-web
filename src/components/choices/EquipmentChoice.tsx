@@ -1,5 +1,8 @@
 import { create } from '@bufbuild/protobuf';
-import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type {
+  Choice,
+  ItemBundle,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   ChoiceOptionSchema,
   ChoiceSchema,
@@ -12,6 +15,38 @@ interface EquipmentChoiceProps {
   choice: Choice;
   onSelectionChange: (choiceId: string, selectedIds: string[]) => void;
   currentSelections: string[];
+}
+
+// Helper function to build bundle selections - avoids code duplication
+function buildBundleSelections(
+  bundle: ItemBundle,
+  optionId: string,
+  selectedItemIndex: number,
+  selectedItem: string
+): string[] {
+  const bundleSelections: string[] = [];
+
+  bundle.items.forEach((bundleItem, idx: number) => {
+    if (bundleItem.itemType?.case === 'concreteItem') {
+      if (bundleItem.itemType.value?.itemId?.startsWith('choose-')) {
+        // This is a choice placeholder - replace with user's selection
+        if (idx === selectedItemIndex) {
+          bundleSelections.push(`${optionId}:${idx}:${selectedItem}`);
+        }
+      } else if (bundleItem.itemType.value?.itemId) {
+        // This is a concrete item - include as-is
+        const item = bundleItem.itemType.value;
+        bundleSelections.push(`${optionId}:${idx}:${item.itemId}`);
+      }
+    } else if (bundleItem.itemType?.case === 'choiceItem') {
+      // This is a proper choice item - replace with user's selection
+      if (idx === selectedItemIndex) {
+        bundleSelections.push(`${optionId}:${idx}:${selectedItem}`);
+      }
+    }
+  });
+
+  return bundleSelections;
 }
 
 export function EquipmentChoice({
@@ -435,64 +470,14 @@ export function EquipmentChoice({
                                     bundleItem.itemType.value.choice
                                   }
                                   onSelection={(selectedItem) => {
-                                    // For bundles with nested choices, we need to include:
-                                    // 1. All concrete items in the bundle (formatted as bundle references)
-                                    // 2. The selected nested choice item (formatted as bundle reference)
-                                    const bundleSelections: string[] = [];
-
-                                    // Process all bundle items to build proper selections
-                                    bundle.items.forEach((bundleItem, idx) => {
-                                      if (
-                                        bundleItem.itemType?.case ===
-                                        'concreteItem'
-                                      ) {
-                                        if (
-                                          bundleItem.itemType.value.itemId.startsWith(
-                                            'choose-'
-                                          )
-                                        ) {
-                                          // This is a choice placeholder - replace with user's selection
-                                          if (idx === itemIndex) {
-                                            bundleSelections.push(
-                                              `${optionId}:${idx}:${selectedItem}`
-                                            );
-                                          }
-                                        } else {
-                                          // This is a concrete item - include as-is
-                                          const item =
-                                            bundleItem.itemType.value;
-                                          bundleSelections.push(
-                                            `${optionId}:${idx}:${item.itemId}`
-                                          );
-                                        }
-                                      } else if (
-                                        bundleItem.itemType?.case ===
-                                        'choiceItem'
-                                      ) {
-                                        // This is a proper choice item - replace with user's selection
-                                        if (idx === itemIndex) {
-                                          bundleSelections.push(
-                                            `${optionId}:${idx}:${selectedItem}`
-                                          );
-                                        }
-                                      }
-                                    });
-
-                                    // Debug logging to verify all selections are included
-                                    console.log(
-                                      '🎒 Bundle selections being sent:',
-                                      bundleSelections
-                                    );
-                                    console.log(
-                                      '🎯 Selected weapon at index',
-                                      itemIndex,
-                                      ':',
-                                      selectedItem
-                                    );
-                                    console.log(
-                                      '📦 Bundle items count:',
-                                      bundle.items.length
-                                    );
+                                    // Build bundle selections with all items properly formatted
+                                    const bundleSelections =
+                                      buildBundleSelections(
+                                        bundle,
+                                        optionId,
+                                        itemIndex,
+                                        selectedItem
+                                      );
 
                                     // Send all selections
                                     onSelectionChange(
@@ -702,64 +687,14 @@ export function EquipmentChoice({
                                   key={itemIndex}
                                   nestedChoice={fakeChoice}
                                   onSelection={(selectedItem) => {
-                                    // For bundles with nested choices, we need to include:
-                                    // 1. All concrete items in the bundle (formatted as bundle references)
-                                    // 2. The selected nested choice item (formatted as bundle reference)
-                                    const bundleSelections: string[] = [];
-
-                                    // Process all bundle items to build proper selections
-                                    bundle.items.forEach((bundleItem, idx) => {
-                                      if (
-                                        bundleItem.itemType?.case ===
-                                        'concreteItem'
-                                      ) {
-                                        if (
-                                          bundleItem.itemType.value.itemId.startsWith(
-                                            'choose-'
-                                          )
-                                        ) {
-                                          // This is a choice placeholder - replace with user's selection
-                                          if (idx === itemIndex) {
-                                            bundleSelections.push(
-                                              `${optionId}:${idx}:${selectedItem}`
-                                            );
-                                          }
-                                        } else {
-                                          // This is a concrete item - include as-is
-                                          const item =
-                                            bundleItem.itemType.value;
-                                          bundleSelections.push(
-                                            `${optionId}:${idx}:${item.itemId}`
-                                          );
-                                        }
-                                      } else if (
-                                        bundleItem.itemType?.case ===
-                                        'choiceItem'
-                                      ) {
-                                        // This is a proper choice item - replace with user's selection
-                                        if (idx === itemIndex) {
-                                          bundleSelections.push(
-                                            `${optionId}:${idx}:${selectedItem}`
-                                          );
-                                        }
-                                      }
-                                    });
-
-                                    // Debug logging to verify all selections are included
-                                    console.log(
-                                      '🎒 Bundle selections being sent:',
-                                      bundleSelections
-                                    );
-                                    console.log(
-                                      '🎯 Selected weapon at index',
-                                      itemIndex,
-                                      ':',
-                                      selectedItem
-                                    );
-                                    console.log(
-                                      '📦 Bundle items count:',
-                                      bundle.items.length
-                                    );
+                                    // Build bundle selections with all items properly formatted
+                                    const bundleSelections =
+                                      buildBundleSelections(
+                                        bundle,
+                                        optionId,
+                                        itemIndex,
+                                        selectedItem
+                                      );
 
                                     // Send all selections
                                     onSelectionChange(
