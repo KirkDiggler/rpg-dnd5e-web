@@ -466,9 +466,15 @@ export function InteractiveCharacterSheet({
       }
     }
 
-    // Handle simple bundle references - skip these
+    // Handle simple bundle references - this should not happen with the new implementation
+    // but handle it gracefully for backward compatibility
     if (item.match(/^bundle_\d+$/)) {
-      return null; // Will filter out later
+      console.warn(
+        'Found unexpanded bundle reference:',
+        item,
+        '- this should not happen with the new implementation'
+      );
+      return `Equipment Bundle ${item.replace('bundle_', '#')} (not expanded)`;
     }
 
     // Handle kebab-case items
@@ -514,30 +520,32 @@ export function InteractiveCharacterSheet({
         selections.forEach((selection: string) => {
           // Parse the selection - the format varies:
           // "chain-mail" - direct item selection
-          // "bundle_1" - bundle selection
-          // "bundle_1:0:longsword" - bundle with nested choice
+          // "bundle_1" - bundle selection (legacy - should be expanded by backend)
+          // "bundle_1:0:longsword" or "bundle_1:1:shield" - bundle items with references
 
           if (selection.includes(':')) {
-            // This has a nested selection (e.g., "bundle_1:0:longsword")
+            // This has a bundle item reference (e.g., "bundle_1:0:longsword", "bundle_1:1:shield")
             const parts = selection.split(':');
-            const nestedItem = parts[parts.length - 1];
-            // Format the item name
-            equipment.push(
-              nestedItem
-                .replace(/-/g, ' ')
-                .replace(/\b\w/g, (l: string) => l.toUpperCase())
-            );
+            if (parts.length >= 3) {
+              // Format: "bundle_X:Y:itemname"
+              const itemName = parts[parts.length - 1];
+              equipment.push(itemName); // Don't format here - let formatEquipmentName() handle it
+            } else if (parts.length === 2 && !parts[1].match(/^\d+$/)) {
+              // Format: "X:itemname" (legacy nested selection)
+              const itemName = parts[1];
+              equipment.push(itemName); // Don't format here - let formatEquipmentName() handle it
+            }
           } else if (selection.startsWith('bundle_')) {
-            // This is a bundle - we need to look up what's in it
-            // For now, show a generic message
-            equipment.push('Equipment Bundle');
-          } else {
-            // Direct item selection - format the name
-            equipment.push(
+            // This is a raw bundle reference without individual items
+            // This should not happen with the new implementation, but handle it gracefully
+            console.warn(
+              'Found raw bundle reference - this should be expanded by backend:',
               selection
-                .replace(/-/g, ' ')
-                .replace(/\b\w/g, (l: string) => l.toUpperCase())
             );
+            equipment.push(selection); // Pass the bundle reference to formatEquipmentName for proper handling
+          } else {
+            // Direct item selection - pass to formatEquipmentName for consistent formatting
+            equipment.push(selection);
           }
         });
       }

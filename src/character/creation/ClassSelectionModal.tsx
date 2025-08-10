@@ -735,6 +735,11 @@ export function ClassSelectionModal({
                             )?.items || []
                           }
                           onSelectionChange={(_choiceId, selections) => {
+                            console.log(
+                              '⚔️ Equipment selection received:',
+                              selections
+                            );
+
                             setClassChoicesMap((prev) => {
                               const currentChoices = prev[currentClassName] || {
                                 skills: [],
@@ -747,10 +752,11 @@ export function ClassSelectionModal({
                                 ) || [];
 
                               if (selections.length > 0) {
-                                updatedEquipment.push({
+                                const equipmentChoice = {
                                   choiceId: choice.id,
                                   items: selections,
-                                });
+                                };
+                                updatedEquipment.push(equipmentChoice);
                               }
 
                               return {
