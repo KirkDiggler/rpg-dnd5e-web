@@ -1,0 +1,321 @@
+/**
+ * Combat v2 CSS Module
+ * 
+ * This module provides bulletproof styling for combat UI components.
+ * All z-index values are explicit and well-documented to prevent layering issues.
+ * 
+ * Z-Index Management:
+ * - Modal backdrop: 1000
+ * - Modal content: 1010
+ * - Combat overlays: 2000-2999
+ * - Action panel: 2500 (always visible over game content but under modals)
+ * - Debug overlays: 9999 (development only)
+ */
+
+/* Action Panel - Fixed bottom overlay */
+.actionPanel {
+  /* Positioning - Fixed to viewport bottom */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+
+  /* Layout - Explicit dimensions */
+  min-height: 180px;
+  max-height: 240px;
+  height: auto;
+
+  /* Z-index - Always above game content, below modals */
+  z-index: 2500;
+
+  /* Background - Solid with fallback */
+  background-color: #1e293b; /* slate-800 fallback */
+  background-color: var(--bg-secondary, #1e293b);
+
+  /* Border - Visual separation */
+  border-top: 2px solid #475569; /* slate-600 fallback */
+  border-top: 2px solid var(--border-color, #475569);
+
+  /* Shadow - Depth visual cue */
+  box-shadow: 0 -8px 25px -5px rgba(0, 0, 0, 0.3);
+
+  /* Interaction - Ensure clicks work */
+  pointer-events: auto;
+
+  /* Animation - Smooth entry */
+  transform: translateY(0);
+  transition: transform 0.3s ease-in-out;
+}
+
+/* Action panel slide-in animation */
+.actionPanel.entering {
+  transform: translateY(100%);
+}
+
+.actionPanel.entered {
+  transform: translateY(0);
+}
+
+/* Container - Content wrapper with max-width */
+.actionPanelContainer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 20px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Header section */
+.actionPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.characterName {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  margin: 0;
+}
+
+.roundBadge {
+  font-size: 0.875rem;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background-color: #3b82f6; /* blue-500 fallback */
+  background-color: var(--accent-primary, #3b82f6);
+  color: white;
+  font-weight: 500;
+}
+
+.characterStats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.875rem;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+}
+
+.statValue {
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  font-weight: 600;
+}
+
+/* Resources section */
+.resourcesSection {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.resourceItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resourceLabel {
+  font-size: 0.875rem;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+  white-space: nowrap;
+}
+
+.movementBar {
+  width: 80px;
+  height: 6px;
+  background-color: #374151; /* gray-700 fallback */
+  background-color: var(--bg-primary, #374151);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.movementBarFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.movementBarFill.hasMovement {
+  background-color: #10b981; /* emerald-500 */
+}
+
+.movementBarFill.noMovement {
+  background-color: #6b7280; /* gray-500 */
+}
+
+.movementText {
+  font-size: 0.875rem;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  font-weight: 500;
+  min-width: 32px;
+}
+
+.statusIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.statusIcon.available {
+  background-color: #10b981; /* emerald-500 */
+  color: white;
+}
+
+.statusIcon.used {
+  background-color: #6b7280; /* gray-500 */
+  color: #9ca3af; /* gray-400 */
+}
+
+/* Actions section */
+.actionsSection {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.actionButton {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.actionButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.actionButton:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.actionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.actionButton.move {
+  background-color: #3b82f6; /* blue-500 */
+  color: white;
+}
+
+.actionButton.move:hover:not(:disabled) {
+  background-color: #2563eb; /* blue-600 */
+}
+
+.actionButton.move.active {
+  background-color: #1d4ed8; /* blue-700 */
+}
+
+.actionButton.attack {
+  background-color: #dc2626; /* red-600 */
+  color: white;
+}
+
+.actionButton.attack:hover:not(:disabled) {
+  background-color: #b91c1c; /* red-700 */
+}
+
+.actionButton.spell {
+  background-color: #7c3aed; /* violet-600 */
+  color: white;
+}
+
+.actionButton.spell:hover:not(:disabled) {
+  background-color: #6d28d9; /* violet-700 */
+}
+
+.actionButton.ability {
+  background-color: #ea580c; /* orange-600 */
+  color: white;
+}
+
+.actionButton.ability:hover:not(:disabled) {
+  background-color: #c2410c; /* orange-700 */
+}
+
+.actionButton.endTurn {
+  background-color: #16a34a; /* green-600 */
+  color: white;
+  margin-left: auto;
+  padding: 10px 24px;
+}
+
+.actionButton.endTurn:hover:not(:disabled) {
+  background-color: #15803d; /* green-700 */
+}
+
+.actionButton.disabled {
+  background-color: #6b7280; /* gray-500 */
+  color: #9ca3af; /* gray-400 */
+}
+
+/* Debug mode - bright colors for testing visibility */
+.actionPanel.debug {
+  background-color: #ff00ff !important; /* magenta */
+  border-top: 5px solid #ffff00 !important; /* yellow */
+}
+
+.actionPanel.debug .characterName {
+  color: #000000 !important;
+  text-shadow: 1px 1px 0 #ffffff;
+}
+
+.actionPanel.debug .actionButton {
+  border: 2px solid #00ff00 !important; /* green border */
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .actionPanelContainer {
+    padding: 12px 16px;
+  }
+
+  .actionPanelHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .characterStats {
+    align-self: flex-end;
+  }
+
+  .resourcesSection {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .actionsSection {
+    justify-content: center;
+  }
+
+  .actionButton.endTurn {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
+}

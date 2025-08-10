@@ -1,11 +1,14 @@
 import { create } from '@bufbuild/protobuf';
+import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type {
   DungeonStartResponse,
   EndTurnResponse,
+  MoveCharacterResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
   DungeonStartRequestSchema,
   EndTurnRequestSchema,
+  MoveCharacterRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useCallback, useState } from 'react';
 import { encounterClient } from './client';
@@ -46,6 +49,46 @@ export function useEndTurn() {
 
   return {
     endTurn,
+    loading: state.loading,
+    error: state.error,
+    data: state.data,
+  };
+}
+
+// Hook for MoveCharacter
+export function useMoveCharacter() {
+  const [state, setState] = useState<AsyncState<MoveCharacterResponse>>({
+    data: null,
+    loading: false,
+    error: null,
+  });
+
+  const moveCharacter = useCallback(
+    async (encounterId: string, entityId: string, x: number, y: number) => {
+      setState({ data: null, loading: true, error: null });
+
+      try {
+        const request = create(MoveCharacterRequestSchema, {
+          encounterId,
+          entityId,
+          targetPosition: create(PositionSchema, { x, y }),
+        });
+
+        const response = await encounterClient.moveCharacter(request);
+        setState({ data: response, loading: false, error: null });
+        return response;
+      } catch (error) {
+        const errorObj =
+          error instanceof Error ? error : new Error(String(error));
+        setState({ data: null, loading: false, error: errorObj });
+        throw errorObj;
+      }
+    },
+    []
+  );
+
+  return {
+    moveCharacter,
     loading: state.loading,
     error: state.error,
     data: state.data,

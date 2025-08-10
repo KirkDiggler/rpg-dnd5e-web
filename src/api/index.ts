@@ -21,7 +21,11 @@ export {
 } from './hooks';
 
 // Re-export encounter hooks
-export { useDungeonStart } from './encounterHooks';
+export {
+  useDungeonStart,
+  useEndTurn,
+  useMoveCharacter,
+} from './encounterHooks';
 
 // Re-export equipment hooks
 export {
