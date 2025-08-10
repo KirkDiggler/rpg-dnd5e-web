@@ -173,20 +173,32 @@ export function HexGrid({
     const valid = new Set<string>();
     const rangeInHexes = Math.floor(movementRange / 5); // 5ft per hex
 
-    // Check all cells within range
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
+    // Create a Set of occupied positions for O(1) lookup
+    const occupiedPositions = new Set<string>();
+    Object.values(room.entities).forEach((entity) => {
+      if (entity.position) {
+        occupiedPositions.add(`${entity.position.x},${entity.position.y}`);
+      }
+    });
+
+    // Only check cells within a bounding box around the selected position
+    // This reduces the search space from O(width * height) to O(rangeInHexes²)
+    const minX = Math.max(0, selectedPos.x - rangeInHexes);
+    const maxX = Math.min(width - 1, selectedPos.x + rangeInHexes);
+    const minY = Math.max(0, selectedPos.y - rangeInHexes);
+    const maxY = Math.min(height - 1, selectedPos.y + rangeInHexes);
+
+    // Check cells within the bounding box
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
         const distance = hexDistance(selectedPos.x, selectedPos.y, x, y);
 
         // Within movement range and not the current position
         if (distance > 0 && distance <= rangeInHexes) {
-          // Check if occupied
-          const isOccupied = Object.values(room.entities).some(
-            (entity) => entity.position?.x === x && entity.position?.y === y
-          );
-
-          if (!isOccupied) {
-            valid.add(`${x},${y}`);
+          // Check if occupied using O(1) Set lookup
+          const cellKey = `${x},${y}`;
+          if (!occupiedPositions.has(cellKey)) {
+            valid.add(cellKey);
           }
         }
       }

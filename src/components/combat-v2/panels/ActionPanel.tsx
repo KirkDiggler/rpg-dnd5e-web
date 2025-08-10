@@ -106,24 +106,13 @@ export function ActionPanel({
         borderTop: debug ? '5px solid #ffff00' : '2px solid #475569',
         boxShadow: '0 -8px 25px -5px rgba(0, 0, 0, 0.3)',
         pointerEvents: 'auto',
-        ...(debug && {
-          backgroundColor: '#ff00ff !important',
-          borderTop: '5px solid #ffff00 !important',
-        }),
       }}
     >
       <div className={styles.actionPanelContainer}>
         {/* Header Section */}
         <div className={styles.actionPanelHeader}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <h3
-              className={styles.characterName}
-              style={
-                debug
-                  ? { color: '#000000', textShadow: '1px 1px 0 #ffffff' }
-                  : {}
-              }
-            >
+            <h3 className={styles.characterName}>
               {currentCharacter.name}'s Turn
             </h3>
             <span className={styles.roundBadge}>
@@ -203,7 +192,6 @@ export function ActionPanel({
             className={`${styles.actionButton} ${styles.move} ${
               movementMode ? styles.active : ''
             }`}
-            style={debug ? { border: '2px solid #00ff00' } : {}}
           >
             🏃{' '}
             {movementMode
@@ -217,7 +205,6 @@ export function ActionPanel({
             className={`${styles.actionButton} ${styles.attack} ${
               !resources.hasAction ? styles.disabled : ''
             }`}
-            style={debug ? { border: '2px solid #00ff00' } : {}}
           >
             ⚔️ Attack
           </button>
@@ -230,7 +217,6 @@ export function ActionPanel({
                 ? styles.disabled
                 : ''
             }`}
-            style={debug ? { border: '2px solid #00ff00' } : {}}
           >
             ✨ Spell
           </button>
@@ -241,7 +227,6 @@ export function ActionPanel({
             className={`${styles.actionButton} ${styles.ability} ${
               !resources.hasAction ? styles.disabled : ''
             }`}
-            style={debug ? { border: '2px solid #00ff00' } : {}}
           >
             💪 Ability
           </button>
@@ -251,7 +236,6 @@ export function ActionPanel({
             onClick={handleEndTurn}
             disabled={endTurnLoading}
             className={`${styles.actionButton} ${styles.endTurn}`}
-            style={debug ? { border: '2px solid #00ff00' } : {}}
           >
             {endTurnLoading ? '⏳ Ending...' : 'End Turn'}
           </button>

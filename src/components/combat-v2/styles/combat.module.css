@@ -214,7 +214,7 @@
 .actionButton:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  transform: none !important;
+  transform: none;
 }
 
 .actionButton.move {
@@ -275,17 +275,27 @@
 
 /* Debug mode - bright colors for testing visibility */
 .actionPanel.debug {
-  background-color: #ff00ff !important; /* magenta */
-  border-top: 5px solid #ffff00 !important; /* yellow */
+  background-color: #ff00ff; /* magenta */
+  border-top: 5px solid #ffff00; /* yellow */
 }
 
 .actionPanel.debug .characterName {
-  color: #000000 !important;
+  color: #000000;
   text-shadow: 1px 1px 0 #ffffff;
 }
 
 .actionPanel.debug .actionButton {
-  border: 2px solid #00ff00 !important; /* green border */
+  border: 2px solid #00ff00; /* green border */
+}
+
+.actionPanel.debug .statValue {
+  color: #000000;
+  font-weight: 900;
+}
+
+.actionPanel.debug .resourceLabel {
+  color: #000000;
+  font-weight: bold;
 }
 
 /* Responsive design */

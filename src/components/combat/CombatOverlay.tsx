@@ -201,10 +201,7 @@ function CombatActionPanel({
         pointerEvents: 'auto',
       }}
     >
-      <div
-        className="bg-slate-800 border-4 border-red-500 rounded-xl shadow-2xl p-4"
-        style={{ background: 'red' }}
-      >
+      <div className="bg-slate-800 border-2 border-slate-600 rounded-xl shadow-2xl p-4">
         {/* Character Info */}
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-600">
           <div className="flex items-center gap-3">

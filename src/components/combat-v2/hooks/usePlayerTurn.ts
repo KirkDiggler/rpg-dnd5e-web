@@ -59,30 +59,40 @@ export function usePlayerTurn({
 
   const currentTurn = combatState.currentTurn;
 
-  // For now, we'll use a simple heuristic: if we have selected characters and there's a current turn,
-  // assume it's a player turn. In a more sophisticated implementation, we might:
-  // - Match entity IDs from turn order to character IDs
-  // - Check entity types (PLAYER vs NPC)
-  // - Look up character ownership
+  // Match current turn entity to selected characters
+  // Note: Entity IDs in combat may have suffixes, so we check for partial matches
+  let currentCharacter: Character | null = null;
+  let isPlayerTurn = false;
 
-  // Use the first selected character as the "current" character for now
-  // This is a simplification - in reality we'd match the current turn entity
-  // to the specific character, but that requires more complex entity mapping
-  const currentCharacter =
-    selectedCharacters.length > 0 ? selectedCharacters[0] : null;
+  if (currentTurn && currentTurn.entityId) {
+    // Try exact match first
+    currentCharacter =
+      selectedCharacters.find((char) => char.id === currentTurn.entityId) ||
+      null;
+
+    // If no exact match, try prefix match (entity IDs may have combat suffixes)
+    if (!currentCharacter) {
+      currentCharacter =
+        selectedCharacters.find((char) => {
+          // Check if the turn entity ID starts with the character ID
+          return currentTurn.entityId.startsWith(char.id.split('-')[0]);
+        }) || null;
+    }
+
+    // Also check entity type if available from turn order
+    // For now, we consider it a player turn if we found a matching character
+    isPlayerTurn = Boolean(currentCharacter);
+  }
 
   // Calculate resources from the current turn state
   const resources = {
-    hasAction: !currentTurn.actionUsed,
-    hasBonusAction: !currentTurn.bonusActionUsed,
-    movementMax: currentTurn.movementMax || 30,
-    movementRemaining:
-      (currentTurn.movementMax || 30) - (currentTurn.movementUsed || 0),
+    hasAction: currentTurn ? !currentTurn.actionUsed : false,
+    hasBonusAction: currentTurn ? !currentTurn.bonusActionUsed : false,
+    movementMax: currentTurn?.movementMax || 30,
+    movementRemaining: currentTurn
+      ? (currentTurn.movementMax || 30) - (currentTurn.movementUsed || 0)
+      : 0,
   };
-
-  // For this implementation, if we have a current turn and selected characters,
-  // we assume it's a player turn. This matches the existing logic in the app.
-  const isPlayerTurn = Boolean(currentCharacter && currentTurn);
 
   return {
     isPlayerTurn,
