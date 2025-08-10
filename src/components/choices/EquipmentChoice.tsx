@@ -1,4 +1,11 @@
+import { create } from '@bufbuild/protobuf';
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  ChoiceOptionSchema,
+  ChoiceSchema,
+  ExplicitOptionsSchema,
+  ItemReferenceSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useState } from 'react';
 
 interface EquipmentChoiceProps {
@@ -514,181 +521,181 @@ export function EquipmentChoice({
                             ) {
                               // Create a fake choice for martial weapons
                               // TODO: This should be handled properly by the API
-                              const fakeChoice = {
+                              const fakeChoice = create(ChoiceSchema, {
                                 id: 'martial-weapons-choice',
                                 description: 'Choose a martial weapon',
                                 chooseCount: 1,
                                 choiceType: 1, // EQUIPMENT
                                 optionSet: {
-                                  case: 'explicitOptions' as const,
-                                  value: {
+                                  case: 'explicitOptions',
+                                  value: create(ExplicitOptionsSchema, {
                                     options: [
-                                      {
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'longsword',
                                             name: 'Longsword',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'battleaxe',
                                             name: 'Battleaxe',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'flail',
                                             name: 'Flail',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'glaive',
                                             name: 'Glaive',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'greataxe',
                                             name: 'Greataxe',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'greatsword',
                                             name: 'Greatsword',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'halberd',
                                             name: 'Halberd',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'lance',
                                             name: 'Lance',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'maul',
                                             name: 'Maul',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'morningstar',
                                             name: 'Morningstar',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'pike',
                                             name: 'Pike',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'rapier',
                                             name: 'Rapier',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'scimitar',
                                             name: 'Scimitar',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'shortsword',
                                             name: 'Shortsword',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'trident',
                                             name: 'Trident',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'war-pick',
                                             name: 'War Pick',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'warhammer',
                                             name: 'Warhammer',
-                                          },
+                                          }),
                                         },
-                                      },
-                                      {
+                                      }),
+                                      create(ChoiceOptionSchema, {
                                         optionType: {
-                                          case: 'item' as const,
-                                          value: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
                                             itemId: 'whip',
                                             name: 'Whip',
-                                          },
+                                          }),
                                         },
-                                      },
+                                      }),
                                     ],
-                                  },
+                                  }),
                                 },
-                              };
+                              });
 
                               return (
                                 <NestedEquipmentChoice
