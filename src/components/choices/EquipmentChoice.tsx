@@ -1,10 +1,52 @@
-import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { create } from '@bufbuild/protobuf';
+import type {
+  Choice,
+  ItemBundle,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  ChoiceOptionSchema,
+  ChoiceSchema,
+  ExplicitOptionsSchema,
+  ItemReferenceSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useState } from 'react';
 
 interface EquipmentChoiceProps {
   choice: Choice;
   onSelectionChange: (choiceId: string, selectedIds: string[]) => void;
   currentSelections: string[];
+}
+
+// Helper function to build bundle selections - avoids code duplication
+function buildBundleSelections(
+  bundle: ItemBundle,
+  optionId: string,
+  selectedItemIndex: number,
+  selectedItem: string
+): string[] {
+  const bundleSelections: string[] = [];
+
+  bundle.items.forEach((bundleItem, idx: number) => {
+    if (bundleItem.itemType?.case === 'concreteItem') {
+      if (bundleItem.itemType.value?.itemId?.startsWith('choose-')) {
+        // This is a choice placeholder - replace with user's selection
+        if (idx === selectedItemIndex) {
+          bundleSelections.push(`${optionId}:${idx}:${selectedItem}`);
+        }
+      } else if (bundleItem.itemType.value?.itemId) {
+        // This is a concrete item - include as-is
+        const item = bundleItem.itemType.value;
+        bundleSelections.push(`${optionId}:${idx}:${item.itemId}`);
+      }
+    } else if (bundleItem.itemType?.case === 'choiceItem') {
+      // This is a proper choice item - replace with user's selection
+      if (idx === selectedItemIndex) {
+        bundleSelections.push(`${optionId}:${idx}:${selectedItem}`);
+      }
+    }
+  });
+
+  return bundleSelections;
 }
 
 export function EquipmentChoice({
@@ -77,13 +119,16 @@ export function EquipmentChoice({
                 option.optionType.value.choice?.id || `nested_${index}`;
             }
 
+            // Create unique key by combining optionId with index to handle duplicates
+            const uniqueKey = `${optionId}_${index}`;
+
             const isSelected = currentSelections.some(
               (s) => s === optionId || s.startsWith(`${optionId}:`)
             );
 
             return (
               <div
-                key={optionId}
+                key={uniqueKey}
                 className="border rounded-md p-3"
                 style={{
                   borderColor: isSelected
@@ -227,12 +272,37 @@ export function EquipmentChoice({
                         bundle &&
                         'items' in bundle &&
                         bundle.items.some(
-                          (item) => item.itemType?.case === 'choiceItem'
+                          (item) =>
+                            item.itemType?.case === 'choiceItem' ||
+                            // Handle API bug: choice placeholders marked as concreteItem
+                            (item.itemType?.case === 'concreteItem' &&
+                              item.itemType.value.itemId.startsWith('choose-'))
                         );
+
                       if (hasChoices) {
                         toggleNestedChoice(optionId);
                       } else {
-                        handleSelection(optionId);
+                        // For bundles with only concrete items, send all items as bundle references
+                        // Format: "bundle_X:Y:item_id" where X=bundle index, Y=item index
+                        const bundleSelections: string[] = [];
+                        if (bundle && 'items' in bundle) {
+                          bundle.items.forEach((bundleItem, itemIndex) => {
+                            if (
+                              bundleItem.itemType?.case === 'concreteItem' &&
+                              !bundleItem.itemType.value.itemId.startsWith(
+                                'choose-'
+                              )
+                            ) {
+                              const item = bundleItem.itemType.value;
+                              bundleSelections.push(
+                                `${optionId}:${itemIndex}:${item.itemId}`
+                              );
+                            }
+                          });
+                        }
+
+                        // Send all bundle items as selections
+                        onSelectionChange(choice.id, bundleSelections);
                       }
                     }}
                     style={{
@@ -284,6 +354,30 @@ export function EquipmentChoice({
                             // Handle new BundleItem oneof structure
                             if (bundleItem.itemType.case === 'concreteItem') {
                               const item = bundleItem.itemType.value;
+
+                              // Handle choice placeholders marked as concreteItem (API bug workaround)
+                              if (item.itemId.startsWith('choose-')) {
+                                return (
+                                  <div
+                                    key={itemIndex}
+                                    className="text-sm flex items-center gap-2"
+                                  >
+                                    <span>•</span>
+                                    <span
+                                      style={{
+                                        color: isSelected
+                                          ? 'rgba(255,255,255,0.9)'
+                                          : 'var(--text-primary)',
+                                        fontStyle: 'italic',
+                                      }}
+                                    >
+                                      Choose martial weapon
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              // Regular concrete items
                               return (
                                 <div
                                   key={itemIndex}
@@ -356,10 +450,15 @@ export function EquipmentChoice({
                       bundle &&
                       'items' in bundle &&
                       bundle.items.some(
-                        (item) => item.itemType?.case === 'choiceItem'
+                        (item) =>
+                          item.itemType?.case === 'choiceItem' ||
+                          // Handle API bug: choice placeholders marked as concreteItem
+                          (item.itemType?.case === 'concreteItem' &&
+                            item.itemType.value.itemId.startsWith('choose-'))
                       ) && (
                         <div className="mt-2 pl-6 space-y-2">
                           {bundle.items.map((bundleItem, itemIndex) => {
+                            // Handle regular choiceItem
                             if (
                               bundleItem.itemType?.case === 'choiceItem' &&
                               bundleItem.itemType.value?.choice
@@ -371,10 +470,19 @@ export function EquipmentChoice({
                                     bundleItem.itemType.value.choice
                                   }
                                   onSelection={(selectedItem) => {
-                                    // Store bundle selection with nested choice
-                                    handleSelection(
-                                      optionId,
-                                      `${itemIndex}:${selectedItem}`
+                                    // Build bundle selections with all items properly formatted
+                                    const bundleSelections =
+                                      buildBundleSelections(
+                                        bundle,
+                                        optionId,
+                                        itemIndex,
+                                        selectedItem
+                                      );
+
+                                    // Send all selections
+                                    onSelectionChange(
+                                      choice.id,
+                                      bundleSelections
                                     );
                                     setExpandedNestedChoices(new Set());
                                   }}
@@ -388,6 +496,224 @@ export function EquipmentChoice({
                                 />
                               );
                             }
+
+                            // Handle choice placeholders marked as concreteItem (API bug workaround)
+                            if (
+                              bundleItem.itemType?.case === 'concreteItem' &&
+                              bundleItem.itemType.value.itemId.startsWith(
+                                'choose-'
+                              )
+                            ) {
+                              // Create a fake choice for martial weapons
+                              // TODO: This should be handled properly by the API
+                              const fakeChoice = create(ChoiceSchema, {
+                                id: 'martial-weapons-choice',
+                                description: 'Choose a martial weapon',
+                                chooseCount: 1,
+                                choiceType: 1, // EQUIPMENT
+                                optionSet: {
+                                  case: 'explicitOptions',
+                                  value: create(ExplicitOptionsSchema, {
+                                    options: [
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'longsword',
+                                            name: 'Longsword',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'battleaxe',
+                                            name: 'Battleaxe',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'flail',
+                                            name: 'Flail',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'glaive',
+                                            name: 'Glaive',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'greataxe',
+                                            name: 'Greataxe',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'greatsword',
+                                            name: 'Greatsword',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'halberd',
+                                            name: 'Halberd',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'lance',
+                                            name: 'Lance',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'maul',
+                                            name: 'Maul',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'morningstar',
+                                            name: 'Morningstar',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'pike',
+                                            name: 'Pike',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'rapier',
+                                            name: 'Rapier',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'scimitar',
+                                            name: 'Scimitar',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'shortsword',
+                                            name: 'Shortsword',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'trident',
+                                            name: 'Trident',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'war-pick',
+                                            name: 'War Pick',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'warhammer',
+                                            name: 'Warhammer',
+                                          }),
+                                        },
+                                      }),
+                                      create(ChoiceOptionSchema, {
+                                        optionType: {
+                                          case: 'item',
+                                          value: create(ItemReferenceSchema, {
+                                            itemId: 'whip',
+                                            name: 'Whip',
+                                          }),
+                                        },
+                                      }),
+                                    ],
+                                  }),
+                                },
+                              });
+
+                              return (
+                                <NestedEquipmentChoice
+                                  key={itemIndex}
+                                  nestedChoice={fakeChoice}
+                                  onSelection={(selectedItem) => {
+                                    // Build bundle selections with all items properly formatted
+                                    const bundleSelections =
+                                      buildBundleSelections(
+                                        bundle,
+                                        optionId,
+                                        itemIndex,
+                                        selectedItem
+                                      );
+
+                                    // Send all selections
+                                    onSelectionChange(
+                                      choice.id,
+                                      bundleSelections
+                                    );
+                                    setExpandedNestedChoices(new Set());
+                                  }}
+                                  currentSelection={
+                                    currentSelections
+                                      .find((s) => s.startsWith(`${optionId}:`))
+                                      ?.split(':')
+                                      .slice(1)
+                                      .join(':') || ''
+                                  }
+                                />
+                              );
+                            }
+
                             return null;
                           })}
                         </div>
@@ -467,7 +793,7 @@ function NestedEquipmentChoice({
         }}
       >
         <option value="">Choose {nestedChoice.description || 'item'}</option>
-        {options.map((option) => {
+        {options.map((option, index) => {
           let optionId = '';
           let optionName = '';
 
@@ -480,7 +806,7 @@ function NestedEquipmentChoice({
           }
 
           return optionId ? (
-            <option key={optionId} value={optionId}>
+            <option key={`${optionId}_${index}`} value={optionId}>
               {optionName}
             </option>
           ) : null;

@@ -89,15 +89,6 @@ export function convertFeatureChoiceToProto(
     },
   });
 
-  console.log('🔧 Created fighting style ChoiceData:', {
-    choiceId: result.choiceId,
-    category: result.category,
-    categoryName: ChoiceCategory[result.category],
-    selection: result.selection,
-    selectionCase: result.selection?.case,
-    selectionValue: result.selection?.value,
-  });
-
   return result;
 }
 

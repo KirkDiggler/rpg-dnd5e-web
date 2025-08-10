@@ -99,13 +99,6 @@ export function RaceClassSection() {
 
   const handleClassSelect = useCallback(
     async (classData: ClassInfo, choices: ClassModalChoices) => {
-      console.log('🎯 RaceClassSection - Received choices from modal:', {
-        className: classData.name,
-        choices,
-        hasFeatures: choices.features && choices.features.length > 0,
-        features: choices.features,
-      });
-
       setSelectedClassData(classData);
       setSelectedClassChoices(choices); // Save for modal re-opening
       setSelectedChoice('class', classData.id);
@@ -114,7 +107,6 @@ export function RaceClassSection() {
 
       // Convert structured choices to ChoiceData proto format
       const choiceDataArray = [];
-      console.log('📝 Starting conversion of choices to ChoiceData array');
 
       // Convert skill choices
       if (choices.skills) {
@@ -140,55 +132,23 @@ export function RaceClassSection() {
 
       // Convert feature choices (fighting styles, etc.)
       if (choices.features && choices.features.length > 0) {
-        console.log(
-          '🎯 Converting feature choices:',
-          JSON.stringify(choices.features)
-        );
         for (const featureChoice of choices.features) {
           try {
-            console.log('🔨 Converting individual feature:', featureChoice);
             const choiceData = convertFeatureChoiceToProto(
               featureChoice,
               ChoiceSource.CLASS
             );
-            console.log('🎯 Converted feature choice result:', choiceData);
             if (choiceData) {
               choiceDataArray.push(choiceData);
-              console.log(
-                '✅ Added feature to array, new length:',
-                choiceDataArray.length
-              );
-            } else {
-              console.error('❌ Feature conversion returned null/undefined');
             }
-          } catch (error) {
-            console.error(
-              '❌ Error converting feature choice:',
-              error,
-              featureChoice
-            );
+          } catch {
+            // Skip feature choices that fail to convert
+            // This shouldn't happen but protects against API changes
           }
         }
-      } else {
-        console.log(
-          '⚠️ No features to convert - choices.features:',
-          choices.features
-        );
       }
 
       // Update the draft context with class and choices
-      console.log('📦 Final choiceDataArray being sent:', {
-        length: choiceDataArray.length,
-        items: choiceDataArray,
-        hasFightingStyle: choiceDataArray.some(
-          (c) => c.category === ChoiceCategory.FIGHTING_STYLE
-        ),
-        categories: choiceDataArray.map((c) => ({
-          choiceId: c.choiceId,
-          category: c.category,
-          categoryName: ChoiceCategory[c.category],
-        })),
-      });
       await setClass(classData, choiceDataArray);
 
       setShowClassModal(false);
