@@ -2,11 +2,12 @@ import { useDungeonStart, useListCharacters, useMoveCharacter } from '@/api';
 import { useDiscord } from '@/discord';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
+  AttackResponse,
   CombatState,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
-import { ActionPanel } from './combat-v2';
+import { ActionPanel, AttackResultToast } from './combat-v2';
 import { BattleMapPanel } from './encounter/BattleMapPanel';
 import { InitiativePanel } from './encounter/InitiativePanel';
 import { PartySetupPanel } from './encounter/PartySetupPanel';
@@ -43,6 +44,11 @@ export function EncounterDemo() {
     string | null
   >(null);
   const [movementMode, setMovementMode] = useState(false);
+  const [attackMode, setAttackMode] = useState(false);
+  const [attackResult, setAttackResult] = useState<AttackResponse | null>(null);
+  const [attackTargetHandler, setAttackTargetHandler] = useState<
+    ((targetId: string) => Promise<void>) | null
+  >(null);
 
   const handleStartEncounter = async () => {
     try {
@@ -77,7 +83,13 @@ export function EncounterDemo() {
   };
 
   const handleEntityClick = (entityId: string) => {
-    setSelectedEntity(entityId);
+    // If in attack mode and we have an attack handler, try to attack the target
+    if (attackMode && attackTargetHandler) {
+      attackTargetHandler(entityId);
+    } else {
+      // Normal entity selection
+      setSelectedEntity(entityId);
+    }
   };
 
   const handleEntityHover = (entityId: string | null) => {
@@ -113,12 +125,42 @@ export function EncounterDemo() {
     if (newCombatState.currentTurn?.entityId) {
       setSelectedEntity(newCombatState.currentTurn.entityId);
     }
-    // Clear movement mode when turn changes
+    // Clear action modes when turn changes
     setMovementMode(false);
+    setAttackMode(false);
   };
 
   const handleMoveAction = () => {
     setMovementMode((prev) => !prev);
+    // Clear attack mode if entering movement mode
+    if (!movementMode) {
+      setAttackMode(false);
+    }
+  };
+
+  const handleAttackAction = () => {
+    setAttackMode((prev) => !prev);
+    // Clear movement mode if entering attack mode
+    if (!attackMode) {
+      setMovementMode(false);
+    }
+  };
+
+  const handleAttackTarget = (
+    attackHandler: (targetId: string) => Promise<void>
+  ) => {
+    // Wrap in a function that returns the handler to avoid infinite loops
+    setAttackTargetHandler(() => attackHandler);
+  };
+
+  const handleAttackResult = (result: AttackResponse) => {
+    setAttackResult(result);
+    // Exit attack mode after attack
+    setAttackMode(false);
+  };
+
+  const handleRoomUpdate = (updatedRoom: Room) => {
+    setRoom(updatedRoom);
   };
 
   const getSelectedCharacters = (): Character[] => {
@@ -179,6 +221,7 @@ export function EncounterDemo() {
                   hoveredEntity={hoveredEntity}
                   availableCharacters={availableCharacters}
                   movementMode={movementMode}
+                  attackMode={attackMode}
                   movementRange={
                     combatState?.currentTurn?.movementMax
                       ? combatState.currentTurn.movementMax -
@@ -228,9 +271,20 @@ export function EncounterDemo() {
         encounterId={encounterId}
         selectedCharacters={getSelectedCharacters()}
         onMoveAction={handleMoveAction}
+        onAttackAction={handleAttackAction}
+        onAttackTarget={handleAttackTarget}
         onCombatStateUpdate={handleCombatStateUpdate}
+        onRoomUpdate={handleRoomUpdate}
+        onAttackResult={handleAttackResult}
         movementMode={movementMode}
+        attackMode={attackMode}
         debug={false} // Set to true for visibility testing
+      />
+
+      {/* Attack Result Toast */}
+      <AttackResultToast
+        attackResult={attackResult}
+        onClose={() => setAttackResult(null)}
       />
     </>
   );
