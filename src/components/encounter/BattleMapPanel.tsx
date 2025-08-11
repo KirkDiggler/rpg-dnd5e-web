@@ -9,6 +9,7 @@ interface BattleMapPanelProps {
   hoveredEntity: string | null;
   availableCharacters: Character[];
   movementMode?: boolean;
+  attackMode?: boolean;
   movementRange?: number;
   onEntityClick: (entityId: string) => void;
   onEntityHover: (entityId: string | null) => void;
@@ -21,6 +22,7 @@ export function BattleMapPanel({
   hoveredEntity,
   availableCharacters,
   movementMode,
+  attackMode,
   movementRange,
   onEntityClick,
   onEntityHover,
@@ -63,6 +65,7 @@ export function BattleMapPanel({
           cellSize={35}
           selectedCharacter={selectedEntity}
           movementMode={movementMode}
+          attackMode={attackMode}
           movementRange={movementRange}
           onEntityClick={onEntityClick}
           onEntityHover={onEntityHover}
