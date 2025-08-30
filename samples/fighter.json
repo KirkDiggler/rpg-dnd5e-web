@@ -2,11 +2,11 @@
   "$typeName": "dnd5e.api.v1alpha1.ClassInfo",
   "id": "fighter",
   "name": "Fighter",
-  "description": "",
+  "description": "A master of martial combat, skilled with a variety of weapons and armor. Fighters are versatile warriors who excel in physical combat.",
   "hitDie": "1d10",
   "primaryAbilities": ["str", "con"],
-  "armorProficiencies": ["All armor", "Shields"],
-  "weaponProficiencies": ["Simple Weapons", "Martial Weapons"],
+  "armorProficiencies": ["light", "medium", "heavy", "shields"],
+  "weaponProficiencies": ["simple", "martial"],
   "toolProficiencies": [],
   "savingThrowProficiencies": ["str", "con"],
   "skillChoicesCount": 2,
@@ -128,7 +128,7 @@
     },
     {
       "$typeName": "dnd5e.api.v1alpha1.Choice",
-      "id": "fighter_equipment_1",
+      "id": "fighter-armor-choice",
       "description": "(a) chain mail or (b) leather armor, longbow, and 20 arrows",
       "chooseCount": 1,
       "choiceType": 1,
@@ -151,47 +151,11 @@
             {
               "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
               "optionType": {
-                "case": "bundle",
+                "case": "item",
                 "value": {
-                  "$typeName": "dnd5e.api.v1alpha1.ItemBundle",
-                  "items": [
-                    {
-                      "$typeName": "dnd5e.api.v1alpha1.BundleItem",
-                      "itemType": {
-                        "case": "concreteItem",
-                        "value": {
-                          "$typeName": "dnd5e.api.v1alpha1.CountedItemReference",
-                          "itemId": "leather-armor",
-                          "name": "leather-armor",
-                          "quantity": 1
-                        }
-                      }
-                    },
-                    {
-                      "$typeName": "dnd5e.api.v1alpha1.BundleItem",
-                      "itemType": {
-                        "case": "concreteItem",
-                        "value": {
-                          "$typeName": "dnd5e.api.v1alpha1.CountedItemReference",
-                          "itemId": "longbow",
-                          "name": "longbow",
-                          "quantity": 1
-                        }
-                      }
-                    },
-                    {
-                      "$typeName": "dnd5e.api.v1alpha1.BundleItem",
-                      "itemType": {
-                        "case": "concreteItem",
-                        "value": {
-                          "$typeName": "dnd5e.api.v1alpha1.CountedItemReference",
-                          "itemId": "arrow",
-                          "name": "arrow",
-                          "quantity": 20
-                        }
-                      }
-                    }
-                  ]
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "leather-longbow",
+                  "name": "leather-longbow"
                 }
               }
             }
@@ -201,8 +165,8 @@
     },
     {
       "$typeName": "dnd5e.api.v1alpha1.Choice",
-      "id": "fighter_equipment_2",
-      "description": "(a) a martial weapon and a shield or (b) two martial weapons",
+      "id": "fighter-primary-weapon",
+      "description": "Choose your first martial weapon",
       "chooseCount": 1,
       "choiceType": 1,
       "optionSet": {
@@ -213,588 +177,253 @@
             {
               "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
               "optionType": {
-                "case": "bundle",
+                "case": "item",
                 "value": {
-                  "$typeName": "dnd5e.api.v1alpha1.ItemBundle",
-                  "items": [
-                    {
-                      "$typeName": "dnd5e.api.v1alpha1.BundleItem",
-                      "itemType": {
-                        "case": "choiceItem",
-                        "value": {
-                          "$typeName": "dnd5e.api.v1alpha1.NestedChoice",
-                          "choice": {
-                            "$typeName": "dnd5e.api.v1alpha1.Choice",
-                            "id": "choose-martial-weapons",
-                            "description": "a martial weapon",
-                            "chooseCount": 1,
-                            "choiceType": 1,
-                            "optionSet": {
-                              "case": "explicitOptions",
-                              "value": {
-                                "$typeName": "dnd5e.api.v1alpha1.ExplicitOptions",
-                                "options": [
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "battleaxe",
-                                        "name": "battleaxe"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "flail",
-                                        "name": "flail"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "glaive",
-                                        "name": "glaive"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "greataxe",
-                                        "name": "greataxe"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "greatsword",
-                                        "name": "greatsword"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "halberd",
-                                        "name": "halberd"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "lance",
-                                        "name": "lance"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "longsword",
-                                        "name": "longsword"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "maul",
-                                        "name": "maul"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "morningstar",
-                                        "name": "morningstar"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "pike",
-                                        "name": "pike"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "rapier",
-                                        "name": "rapier"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "scimitar",
-                                        "name": "scimitar"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "shortsword",
-                                        "name": "shortsword"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "trident",
-                                        "name": "trident"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "war-pick",
-                                        "name": "war-pick"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "warhammer",
-                                        "name": "warhammer"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "whip",
-                                        "name": "whip"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "blowgun",
-                                        "name": "blowgun"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "crossbow-hand",
-                                        "name": "crossbow-hand"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "crossbow-heavy",
-                                        "name": "crossbow-heavy"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "longbow",
-                                        "name": "longbow"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "net",
-                                        "name": "net"
-                                      }
-                                    }
-                                  }
-                                ]
-                              }
-                            }
-                          }
-                        }
-                      }
-                    },
-                    {
-                      "$typeName": "dnd5e.api.v1alpha1.BundleItem",
-                      "itemType": {
-                        "case": "concreteItem",
-                        "value": {
-                          "$typeName": "dnd5e.api.v1alpha1.CountedItemReference",
-                          "itemId": "shield",
-                          "name": "shield",
-                          "quantity": 1
-                        }
-                      }
-                    }
-                  ]
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "greataxe",
+                  "name": "greataxe"
                 }
               }
             },
             {
               "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
               "optionType": {
-                "case": "bundle",
+                "case": "item",
                 "value": {
-                  "$typeName": "dnd5e.api.v1alpha1.ItemBundle",
-                  "items": [
-                    {
-                      "$typeName": "dnd5e.api.v1alpha1.BundleItem",
-                      "itemType": {
-                        "case": "choiceItem",
-                        "value": {
-                          "$typeName": "dnd5e.api.v1alpha1.NestedChoice",
-                          "choice": {
-                            "$typeName": "dnd5e.api.v1alpha1.Choice",
-                            "id": "choose-martial-weapons",
-                            "description": "two martial weapons",
-                            "chooseCount": 2,
-                            "choiceType": 1,
-                            "optionSet": {
-                              "case": "explicitOptions",
-                              "value": {
-                                "$typeName": "dnd5e.api.v1alpha1.ExplicitOptions",
-                                "options": [
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "battleaxe",
-                                        "name": "battleaxe"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "flail",
-                                        "name": "flail"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "glaive",
-                                        "name": "glaive"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "greataxe",
-                                        "name": "greataxe"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "greatsword",
-                                        "name": "greatsword"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "halberd",
-                                        "name": "halberd"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "lance",
-                                        "name": "lance"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "longsword",
-                                        "name": "longsword"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "maul",
-                                        "name": "maul"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "morningstar",
-                                        "name": "morningstar"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "pike",
-                                        "name": "pike"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "rapier",
-                                        "name": "rapier"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "scimitar",
-                                        "name": "scimitar"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "shortsword",
-                                        "name": "shortsword"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "trident",
-                                        "name": "trident"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "war-pick",
-                                        "name": "war-pick"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "warhammer",
-                                        "name": "warhammer"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "whip",
-                                        "name": "whip"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "blowgun",
-                                        "name": "blowgun"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "crossbow-hand",
-                                        "name": "crossbow-hand"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "crossbow-heavy",
-                                        "name": "crossbow-heavy"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "longbow",
-                                        "name": "longbow"
-                                      }
-                                    }
-                                  },
-                                  {
-                                    "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
-                                    "optionType": {
-                                      "case": "item",
-                                      "value": {
-                                        "$typeName": "dnd5e.api.v1alpha1.ItemReference",
-                                        "itemId": "net",
-                                        "name": "net"
-                                      }
-                                    }
-                                  }
-                                ]
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  ]
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "warhammer",
+                  "name": "warhammer"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "longsword",
+                  "name": "longsword"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "morningstar",
+                  "name": "morningstar"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "whip",
+                  "name": "whip"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "greatsword",
+                  "name": "greatsword"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "battleaxe",
+                  "name": "battleaxe"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "shortsword",
+                  "name": "shortsword"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "pike",
+                  "name": "pike"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "maul",
+                  "name": "maul"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "rapier",
+                  "name": "rapier"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "glaive",
+                  "name": "glaive"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "war-pick",
+                  "name": "war-pick"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "lance",
+                  "name": "lance"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "trident",
+                  "name": "trident"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "scimitar",
+                  "name": "scimitar"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "halberd",
+                  "name": "halberd"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "flail",
+                  "name": "flail"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "heavy-crossbow",
+                  "name": "heavy-crossbow"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "blowgun",
+                  "name": "blowgun"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "hand-crossbow",
+                  "name": "hand-crossbow"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "net",
+                  "name": "net"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "longbow",
+                  "name": "longbow"
                 }
               }
             }
@@ -804,7 +433,286 @@
     },
     {
       "$typeName": "dnd5e.api.v1alpha1.Choice",
-      "id": "fighter_equipment_3",
+      "id": "fighter-secondary-equipment",
+      "description": "(a) a shield or (b) a second martial weapon",
+      "chooseCount": 1,
+      "choiceType": 1,
+      "optionSet": {
+        "case": "explicitOptions",
+        "value": {
+          "$typeName": "dnd5e.api.v1alpha1.ExplicitOptions",
+          "options": [
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "shield",
+                  "name": "shield"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "rapier",
+                  "name": "rapier"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "glaive",
+                  "name": "glaive"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "war-pick",
+                  "name": "war-pick"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "lance",
+                  "name": "lance"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "trident",
+                  "name": "trident"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "scimitar",
+                  "name": "scimitar"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "halberd",
+                  "name": "halberd"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "flail",
+                  "name": "flail"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "greataxe",
+                  "name": "greataxe"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "warhammer",
+                  "name": "warhammer"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "longsword",
+                  "name": "longsword"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "morningstar",
+                  "name": "morningstar"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "whip",
+                  "name": "whip"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "greatsword",
+                  "name": "greatsword"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "battleaxe",
+                  "name": "battleaxe"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "shortsword",
+                  "name": "shortsword"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "pike",
+                  "name": "pike"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "maul",
+                  "name": "maul"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "hand-crossbow",
+                  "name": "hand-crossbow"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "net",
+                  "name": "net"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "longbow",
+                  "name": "longbow"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "heavy-crossbow",
+                  "name": "heavy-crossbow"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "blowgun",
+                  "name": "blowgun"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "$typeName": "dnd5e.api.v1alpha1.Choice",
+      "id": "fighter-ranged-choice",
       "description": "(a) a light crossbow and 20 bolts or (b) two handaxes",
       "chooseCount": 1,
       "choiceType": 1,
@@ -816,47 +724,22 @@
             {
               "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
               "optionType": {
-                "case": "bundle",
+                "case": "item",
                 "value": {
-                  "$typeName": "dnd5e.api.v1alpha1.ItemBundle",
-                  "items": [
-                    {
-                      "$typeName": "dnd5e.api.v1alpha1.BundleItem",
-                      "itemType": {
-                        "case": "concreteItem",
-                        "value": {
-                          "$typeName": "dnd5e.api.v1alpha1.CountedItemReference",
-                          "itemId": "crossbow-light",
-                          "name": "crossbow-light",
-                          "quantity": 1
-                        }
-                      }
-                    },
-                    {
-                      "$typeName": "dnd5e.api.v1alpha1.BundleItem",
-                      "itemType": {
-                        "case": "concreteItem",
-                        "value": {
-                          "$typeName": "dnd5e.api.v1alpha1.CountedItemReference",
-                          "itemId": "crossbow-bolt",
-                          "name": "crossbow-bolt",
-                          "quantity": 20
-                        }
-                      }
-                    }
-                  ]
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "crossbow-bolts",
+                  "name": "crossbow-bolts"
                 }
               }
             },
             {
               "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
               "optionType": {
-                "case": "countedItem",
+                "case": "item",
                 "value": {
-                  "$typeName": "dnd5e.api.v1alpha1.CountedItemReference",
-                  "itemId": "handaxe",
-                  "name": "handaxe",
-                  "quantity": 2
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "two-handaxes",
+                  "name": "two-handaxes"
                 }
               }
             }
@@ -866,8 +749,8 @@
     },
     {
       "$typeName": "dnd5e.api.v1alpha1.Choice",
-      "id": "fighter_equipment_4",
-      "description": "(a) a dungeoneer’s pack or (b) an explorer’s pack",
+      "id": "fighter-pack-choice",
+      "description": "(a) a dungeoneer's pack or (b) an explorer's pack",
       "chooseCount": 1,
       "choiceType": 1,
       "optionSet": {
@@ -894,6 +777,87 @@
                   "$typeName": "dnd5e.api.v1alpha1.ItemReference",
                   "itemId": "explorers-pack",
                   "name": "explorers-pack"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "$typeName": "dnd5e.api.v1alpha1.Choice",
+      "id": "fighter_feature_fighting-style-choice",
+      "description": "Choose a fighting style",
+      "chooseCount": 1,
+      "choiceType": 11,
+      "optionSet": {
+        "case": "explicitOptions",
+        "value": {
+          "$typeName": "dnd5e.api.v1alpha1.ExplicitOptions",
+          "options": [
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "feature_archery",
+                  "name": "archery"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "feature_defense",
+                  "name": "defense"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "feature_dueling",
+                  "name": "dueling"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "feature_great-weapon-fighting",
+                  "name": "great-weapon-fighting"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "feature_protection",
+                  "name": "protection"
+                }
+              }
+            },
+            {
+              "$typeName": "dnd5e.api.v1alpha1.ChoiceOption",
+              "optionType": {
+                "case": "item",
+                "value": {
+                  "$typeName": "dnd5e.api.v1alpha1.ItemReference",
+                  "itemId": "feature_two-weapon-fighting",
+                  "name": "two-weapon-fighting"
                 }
               }
             }

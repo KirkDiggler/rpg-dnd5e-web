@@ -29,24 +29,41 @@ export interface FeatureChoice {
   selection: string;
 }
 
+export interface ExpertiseChoice {
+  choiceId: string;
+  skills: string[];
+}
+
+export interface TraitChoice {
+  choiceId: string;
+  traits: string[];
+}
+
 // Combined choices for a character
 export interface CharacterChoices {
   skills: SkillChoice[];
   languages: LanguageChoice[];
   equipment: EquipmentChoice[];
   features: FeatureChoice[];
+  expertise: ExpertiseChoice[];
+  traits: TraitChoice[];
 }
 
 // For race/class modals that return partial choices
 export interface RaceModalChoices {
   languages?: LanguageChoice[];
   skills?: SkillChoice[];
+  expertise?: ExpertiseChoice[];
+  traits?: TraitChoice[];
   proficiencies?: string[]; // Other proficiencies like tools
 }
 
 export interface ClassModalChoices {
   skills?: SkillChoice[];
+  languages?: LanguageChoice[]; // Language choices for subclasses like Knowledge Domain
   equipment?: EquipmentChoice[];
   features?: FeatureChoice[];
+  expertise?: ExpertiseChoice[];
+  traits?: TraitChoice[];
   proficiencies?: string[]; // Tool and other proficiency choices
 }

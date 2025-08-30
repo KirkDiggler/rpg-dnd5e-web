@@ -4,6 +4,7 @@ import type {
   ChoiceData,
   ClassInfo,
   RaceInfo,
+  SubclassInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { createContext } from 'react';
 
@@ -11,7 +12,7 @@ export interface CharacterDraftState {
   draftId: string | null;
   draft: CharacterDraft | null;
   raceInfo: RaceInfo | null;
-  classInfo: ClassInfo | null;
+  classInfo: ClassInfo | SubclassInfo | null;
 
   // Track all proficiencies from various sources
   allProficiencies: Set<string>;
@@ -33,7 +34,7 @@ export interface CharacterDraftState {
   loadDraft: (draftId: string) => Promise<void>;
   setRace: (race: RaceInfo | null, choices?: ChoiceData[]) => Promise<void>;
   setClass: (
-    classInfo: ClassInfo | null,
+    classInfo: ClassInfo | SubclassInfo | null,
     choices?: ChoiceData[]
   ) => Promise<void>;
   setName: (name: string) => Promise<void>;

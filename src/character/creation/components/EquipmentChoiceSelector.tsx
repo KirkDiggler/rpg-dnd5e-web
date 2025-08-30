@@ -1,5 +1,8 @@
 // DEPRECATED: This component uses the old EquipmentChoice type which no longer exists
 // Replaced by UnifiedChoiceSelector - see issue #93
+// IMPORTANT: If this component is still being used somewhere, equipment choices
+// sent from this component may not use proper option IDs (like "martial_weapon_warhammer")
+// and instead send display names (like "warhammer"). Check EquipmentChoice.tsx for the fix.
 /* eslint-disable */
 // @ts-nocheck
 import type { EquipmentChoice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';

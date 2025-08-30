@@ -1,10 +1,12 @@
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { EquipmentChoice } from './choices/EquipmentChoice';
+import { ExpertiseChoice } from './choices/ExpertiseChoice';
 import { GenericChoice } from './choices/GenericChoice';
 import { LanguageChoice } from './choices/LanguageChoice';
 import { SkillChoice } from './choices/SkillChoice';
 import { SpellChoice } from './choices/SpellChoice';
+import { TraitChoice } from './choices/TraitChoice';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SelectionValue = any; // Generic type that can be Language[] | Skill[] | string[] based on choice type
@@ -55,6 +57,34 @@ export function ChoiceRenderer({
     case ChoiceCategory.LANGUAGES:
       return (
         <LanguageChoice
+          choice={choice}
+          onSelectionChange={onSelectionChange}
+          currentSelections={currentSelections}
+        />
+      );
+
+    case ChoiceCategory.EXPERTISE:
+      return (
+        <ExpertiseChoice
+          choice={choice}
+          onSelectionChange={onSelectionChange}
+          currentSelections={currentSelections}
+        />
+      );
+
+    case ChoiceCategory.TRAITS:
+      return (
+        <TraitChoice
+          choice={choice}
+          onSelectionChange={onSelectionChange}
+          currentSelections={currentSelections}
+        />
+      );
+
+    case ChoiceCategory.FIGHTING_STYLE:
+      // Fighting styles are feature choices - use GenericChoice which handles them well
+      return (
+        <GenericChoice
           choice={choice}
           onSelectionChange={onSelectionChange}
           currentSelections={currentSelections}

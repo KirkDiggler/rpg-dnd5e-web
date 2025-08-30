@@ -23,7 +23,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    port: 3001,
     // Proxy API requests to the rpg-api server
     proxy: {
       '/connect': {

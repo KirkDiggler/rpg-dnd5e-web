@@ -5,8 +5,10 @@ import {
   ChoiceDataSchema,
   ChoiceSource,
   EquipmentListSchema,
+  ExpertiseListSchema,
   LanguageListSchema,
   SkillListSchema,
+  TraitListSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   EquipmentChoice,
@@ -77,19 +79,58 @@ export function convertFeatureChoiceToProto(
   choice: FeatureChoice,
   source: ChoiceSource
 ): ChoiceData {
-  // Fighting styles use the 'name' selection case (simple string)
-  // Unlike skills/equipment which have their own schemas, name is just a string
+  // Fighting styles use the 'fightingStyle' selection case (simple string)
+  // The server expects just the style name without the "feature_" prefix
+  // Convert "feature_archery" -> "archery", "feature_defense" -> "defense", etc.
+  const cleanValue = choice.selection.replace(/^feature_/, '');
+
   const result = create(ChoiceDataSchema, {
     choiceId: choice.choiceId,
     category: ChoiceCategory.FIGHTING_STYLE, // Category 11
     source,
     selection: {
-      case: 'name',
-      value: choice.selection, // e.g., "feature_fighting_style:_dueling"
+      case: 'fightingStyle',
+      value: cleanValue, // e.g., "archery" or "defense"
     },
   });
 
   return result;
+}
+
+export function convertExpertiseChoiceToProto(
+  choiceId: string,
+  selectedSkills: string[],
+  source: ChoiceSource
+): ChoiceData {
+  return create(ChoiceDataSchema, {
+    choiceId,
+    category: ChoiceCategory.EXPERTISE,
+    source,
+    selection: {
+      case: 'expertise',
+      value: create(ExpertiseListSchema, {
+        skills: selectedSkills,
+      }),
+    },
+  });
+}
+
+export function convertTraitChoiceToProto(
+  choiceId: string,
+  selectedTraits: string[],
+  source: ChoiceSource
+): ChoiceData {
+  return create(ChoiceDataSchema, {
+    choiceId,
+    category: ChoiceCategory.TRAITS,
+    source,
+    selection: {
+      case: 'traits',
+      value: create(TraitListSchema, {
+        traits: selectedTraits,
+      }),
+    },
+  });
 }
 
 // Convert from proto back to structured format (for loading drafts)

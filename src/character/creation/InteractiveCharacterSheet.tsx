@@ -4,6 +4,7 @@ import type {
   ChoiceData,
   ClassInfo,
   RaceInfo,
+  SubclassInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   ChoiceCategory,
@@ -18,9 +19,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ClassModalChoices, RaceModalChoices } from '../../types/choices';
 import {
   convertEquipmentChoiceToProto,
+  convertExpertiseChoiceToProto,
   convertFeatureChoiceToProto,
   convertLanguageChoiceToProto,
   convertSkillChoiceToProto,
+  convertTraitChoiceToProto,
 } from '../../utils/choiceConverter';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
@@ -44,6 +47,10 @@ interface CharacterChoices {
 // Constants (removed unused EQUIPMENT_FILTER_ITEMS)
 
 // Helper Functions
+function isClassInfo(info: ClassInfo | SubclassInfo | null): info is ClassInfo {
+  return info != null && info.$typeName === 'dnd5e.api.v1alpha1.ClassInfo';
+}
+
 function getLanguageDisplayName(languageEnum: Language): string {
   const languageNames: Record<Language, string> = {
     [Language.UNSPECIFIED]: 'Unknown',
@@ -97,7 +104,7 @@ function getExtraLanguages(
 // Simple context for now - we'll make it more sophisticated later
 const CharacterContext = {
   selectedRace: null as RaceInfo | null,
-  selectedClass: null as ClassInfo | null,
+  selectedClass: null as ClassInfo | SubclassInfo | null,
   abilityScores: {
     strength: 0,
     dexterity: 0,
@@ -292,27 +299,32 @@ export function InteractiveCharacterSheet({
     const hasEquipment = Object.keys(character.equipmentChoices).length > 0;
     const hasSpells = selectedSpells.length > 0;
 
-    // Check if class is a spellcaster
-    const isSpellcaster = character.selectedClass?.spellcasting !== undefined;
+    // Check if class is a spellcaster (only base classes have spellcasting info)
+    const isSpellcaster =
+      isClassInfo(character.selectedClass) &&
+      character.selectedClass.spellcasting !== undefined;
 
-    // Check if class has feature choices (like Fighting Style)
+    // Check if class has feature choices (like Fighting Style) (only base classes have choices)
     const hasFeatureChoices =
-      character.selectedClass?.choices?.some((choice) => {
-        return choice.choiceType === ChoiceCategory.FIGHTING_STYLE;
-      }) || false;
+      (isClassInfo(character.selectedClass) &&
+        character.selectedClass.choices?.some((choice) => {
+          return choice.choiceType === ChoiceCategory.FIGHTING_STYLE;
+        })) ||
+      false;
 
     // Check if all feature choices have been made
     const hasFeatureChoicesSelected =
       !hasFeatureChoices ||
-      (character.selectedClass?.choices?.every((choice) => {
-        if (choice.choiceType !== ChoiceCategory.FIGHTING_STYLE) return true;
+      ((isClassInfo(character.selectedClass) &&
+        character.selectedClass.choices?.every((choice) => {
+          if (choice.choiceType !== ChoiceCategory.FIGHTING_STYLE) return true;
 
-        // Check if this feature choice has been made in draft.classChoices
-        const choiceData = draft.classChoices.find(
-          (c) => c.choiceId === choice.id
-        );
-        return choiceData && choiceData.selection;
-      }) ??
+          // Check if this feature choice has been made in draft.classChoices
+          const choiceData = draft.classChoices.find(
+            (c) => c.choiceId === choice.id
+          );
+          return choiceData && choiceData.selection;
+        })) ??
         true);
 
     // Build steps array
@@ -993,7 +1005,8 @@ export function InteractiveCharacterSheet({
                                 .length > 3 && '...'}
                             </div>
                           )}
-                        {character.selectedClass.savingThrowProficiencies &&
+                        {isClassInfo(character.selectedClass) &&
+                          character.selectedClass.savingThrowProficiencies &&
                           character.selectedClass.savingThrowProficiencies
                             .length > 0 && (
                             <div style={{ color: 'var(--text-primary)' }}>
@@ -1056,11 +1069,13 @@ export function InteractiveCharacterSheet({
                         {/* Display Class Features (like Fighting Style) */}
                         {(() => {
                           const featureChoices =
-                            character.selectedClass?.choices?.filter(
-                              (choice) =>
-                                choice.choiceType ===
-                                ChoiceCategory.FIGHTING_STYLE
-                            ) || [];
+                            (isClassInfo(character.selectedClass)
+                              ? character.selectedClass.choices?.filter(
+                                  (choice) =>
+                                    choice.choiceType ===
+                                    ChoiceCategory.FIGHTING_STYLE
+                                )
+                              : []) || [];
 
                           return featureChoices.map((choice) => {
                             const choiceData = draft.classChoices.find(
@@ -1109,7 +1124,9 @@ export function InteractiveCharacterSheet({
                       {(() => {
                         const selectedEquipment = getSelectedEquipment();
                         const startingEquipment =
-                          character.selectedClass.startingEquipment || [];
+                          (isClassInfo(character.selectedClass)
+                            ? character.selectedClass.startingEquipment
+                            : []) || [];
                         const allEquipment = [
                           ...startingEquipment,
                           ...selectedEquipment,
@@ -1182,23 +1199,24 @@ export function InteractiveCharacterSheet({
                     </motion.div>
 
                     {/* Spell Information - display if class has spellcasting */}
-                    {character.selectedClass?.spellcasting && (
-                      <motion.div
-                        style={{
-                          padding: '12px',
-                          backgroundColor: 'var(--bg-secondary)',
-                          borderRadius: '6px',
-                          border: '1px solid var(--border-primary)',
-                        }}
-                      >
-                        <SpellInfoDisplay
-                          spellcastingInfo={
-                            character.selectedClass.spellcasting
-                          }
-                          onSelectSpells={() => setIsSpellModalOpen(true)}
-                        />
-                      </motion.div>
-                    )}
+                    {isClassInfo(character.selectedClass) &&
+                      character.selectedClass.spellcasting && (
+                        <motion.div
+                          style={{
+                            padding: '12px',
+                            backgroundColor: 'var(--bg-secondary)',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-primary)',
+                          }}
+                        >
+                          <SpellInfoDisplay
+                            spellcastingInfo={
+                              character.selectedClass.spellcasting
+                            }
+                            onSelectSpells={() => setIsSpellModalOpen(true)}
+                          />
+                        </motion.div>
+                      )}
                   </div>
                 )}
               </div>
@@ -1327,6 +1345,32 @@ export function InteractiveCharacterSheet({
             });
           }
 
+          // Convert expertise choices if any
+          if (choices.expertise) {
+            choices.expertise.forEach((expertiseChoice) => {
+              choiceData.push(
+                convertExpertiseChoiceToProto(
+                  expertiseChoice.choiceId,
+                  expertiseChoice.skills,
+                  ChoiceSource.RACE
+                )
+              );
+            });
+          }
+
+          // Convert trait choices if any
+          if (choices.traits) {
+            choices.traits.forEach((traitChoice) => {
+              choiceData.push(
+                convertTraitChoiceToProto(
+                  traitChoice.choiceId,
+                  traitChoice.traits,
+                  ChoiceSource.RACE
+                )
+              );
+            });
+          }
+
           // Set race with converted choices
           draft.setRace(race, choiceData);
         }}
@@ -1379,6 +1423,32 @@ export function InteractiveCharacterSheet({
             });
           }
 
+          // Convert expertise choices if any
+          if (choices.expertise) {
+            choices.expertise.forEach((expertiseChoice) => {
+              choiceData.push(
+                convertExpertiseChoiceToProto(
+                  expertiseChoice.choiceId,
+                  expertiseChoice.skills,
+                  ChoiceSource.CLASS
+                )
+              );
+            });
+          }
+
+          // Convert trait choices if any
+          if (choices.traits) {
+            choices.traits.forEach((traitChoice) => {
+              choiceData.push(
+                convertTraitChoiceToProto(
+                  traitChoice.choiceId,
+                  traitChoice.traits,
+                  ChoiceSource.CLASS
+                )
+              );
+            });
+          }
+
           // Save class to API with converted choices
           try {
             await draft.setClass(classData, choiceData);
@@ -1391,20 +1461,25 @@ export function InteractiveCharacterSheet({
       />
 
       {/* Spell Selection Modal */}
-      {character.selectedClass?.spellcasting && (
-        <SpellSelectionModal
-          isOpen={isSpellModalOpen}
-          onClose={() => setIsSpellModalOpen(false)}
-          spellcastingInfo={character.selectedClass.spellcasting}
-          className={character.selectedClass.name}
-          level1Features={character.selectedClass.level1Features}
-          currentSpells={selectedSpells}
-          onSelect={(spells) => {
-            setSelectedSpells(spells);
-            // TODO: Add spell selection to character draft
-          }}
-        />
-      )}
+      {isClassInfo(character.selectedClass) &&
+        character.selectedClass.spellcasting && (
+          <SpellSelectionModal
+            isOpen={isSpellModalOpen}
+            onClose={() => setIsSpellModalOpen(false)}
+            spellcastingInfo={character.selectedClass.spellcasting}
+            className={character.selectedClass.name}
+            level1Features={
+              isClassInfo(character.selectedClass)
+                ? character.selectedClass.level1Features
+                : []
+            }
+            currentSpells={selectedSpells}
+            onSelect={(spells) => {
+              setSelectedSpells(spells);
+              // TODO: Add spell selection to character draft
+            }}
+          />
+        )}
     </div>
   );
 }

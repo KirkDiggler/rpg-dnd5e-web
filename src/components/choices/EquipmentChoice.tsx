@@ -9,12 +9,51 @@ import {
   ExplicitOptionsSchema,
   ItemReferenceSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  Backpack,
+  ChevronDown,
+  Package,
+  ScrollText,
+  Shield,
+  Sword,
+} from 'lucide-react';
 import { useState } from 'react';
 
 interface EquipmentChoiceProps {
   choice: Choice;
   onSelectionChange: (choiceId: string, selectedIds: string[]) => void;
   currentSelections: string[];
+}
+
+// Helper function to get icon based on item type
+function getItemIcon(itemName: string): React.ReactNode {
+  const name = itemName.toLowerCase();
+  if (
+    name.includes('sword') ||
+    name.includes('axe') ||
+    name.includes('hammer') ||
+    name.includes('weapon')
+  ) {
+    return <Sword className="w-4 h-4" />;
+  }
+  if (
+    name.includes('shield') ||
+    name.includes('armor') ||
+    name.includes('mail')
+  ) {
+    return <Shield className="w-4 h-4" />;
+  }
+  if (name.includes('pack') || name.includes('kit')) {
+    return <Backpack className="w-4 h-4" />;
+  }
+  if (
+    name.includes('scroll') ||
+    name.includes('book') ||
+    name.includes('component')
+  ) {
+    return <ScrollText className="w-4 h-4" />;
+  }
+  return <Package className="w-4 h-4" />;
 }
 
 // Helper function to build bundle selections - avoids code duplication
@@ -31,16 +70,18 @@ function buildBundleSelections(
       if (bundleItem.itemType.value?.itemId?.startsWith('choose-')) {
         // This is a choice placeholder - replace with user's selection
         if (idx === selectedItemIndex) {
+          // Use the selected item ID directly (server-provided)
           bundleSelections.push(`${optionId}:${idx}:${selectedItem}`);
         }
       } else if (bundleItem.itemType.value?.itemId) {
-        // This is a concrete item - include as-is
+        // This is a concrete item - include as-is (should already be properly formatted)
         const item = bundleItem.itemType.value;
         bundleSelections.push(`${optionId}:${idx}:${item.itemId}`);
       }
     } else if (bundleItem.itemType?.case === 'choiceItem') {
       // This is a proper choice item - replace with user's selection
       if (idx === selectedItemIndex) {
+        // Use the selected item ID directly (server-provided)
         bundleSelections.push(`${optionId}:${idx}:${selectedItem}`);
       }
     }
@@ -57,20 +98,30 @@ export function EquipmentChoice({
   const [expandedNestedChoices, setExpandedNestedChoices] = useState<
     Set<string>
   >(new Set());
+  const [hoveredOption, setHoveredOption] = useState<string | null>(null);
 
   const handleSelection = (selectionKey: string, nestedSelection?: string) => {
     const fullKey = nestedSelection
       ? `${selectionKey}:${nestedSelection}`
       : selectionKey;
 
+    console.log('Equipment handleSelection called:', {
+      selectionKey,
+      nestedSelection,
+      fullKey,
+      choiceId: choice.id,
+    });
+
     if (choice.chooseCount === 1) {
       // Radio button behavior - replace selection
+      console.log('Equipment selection (single):', [fullKey]);
       onSelectionChange(choice.id, [fullKey]);
     } else {
       // Checkbox behavior - toggle selection
       const newSelections = currentSelections.includes(fullKey)
         ? currentSelections.filter((s) => s !== fullKey)
         : [...currentSelections, fullKey].slice(0, choice.chooseCount);
+      console.log('Equipment selection (multiple):', newSelections);
       onSelectionChange(choice.id, newSelections);
     }
   };
@@ -89,662 +140,230 @@ export function EquipmentChoice({
   if (choice.optionSet.case === 'explicitOptions') {
     const options = choice.optionSet.value.options;
 
+    // Prepare options for enhanced UI
+    const selectOptions = options.map((option, index) => {
+      let optionId = '';
+      let displayName = '';
+      let hasNestedChoice = false;
+
+      if (option.optionType.case === 'item') {
+        optionId = option.optionType.value.itemId;
+        displayName = option.optionType.value.name;
+      } else if (option.optionType.case === 'bundle') {
+        const bundle = option.optionType.value;
+        optionId = `bundle_${index}`;
+        const itemNames = bundle.items
+          .map((item) => {
+            if (item.itemType?.case === 'concreteItem') {
+              const concreteItem = item.itemType.value;
+              if (concreteItem.itemId?.startsWith('choose-')) {
+                hasNestedChoice = true;
+                return concreteItem.name || 'choice';
+              }
+              return concreteItem.name;
+            } else if (item.itemType?.case === 'choiceItem') {
+              hasNestedChoice = true;
+              const choiceItem = item.itemType.value;
+              return choiceItem.choice?.description || 'choice';
+            }
+            return '';
+          })
+          .filter(Boolean);
+        displayName = itemNames.join(' + ');
+      } else if (option.optionType.case === 'nestedChoice') {
+        const nestedChoice = option.optionType.value;
+        optionId = `choice_${index}`;
+        displayName = nestedChoice.choice?.description || 'Make a choice';
+        hasNestedChoice = true;
+      }
+
+      return {
+        optionId,
+        displayName,
+        hasNestedChoice,
+        originalOption: option,
+        index,
+      };
+    });
+
+    const selectedOption = selectOptions.find((opt) =>
+      currentSelections.some(
+        (s) => s === opt.optionId || s.startsWith(`${opt.optionId}:`)
+      )
+    );
+
     return (
-      <div className="space-y-3">
-        <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
-          {choice.description}
-          {choice.chooseCount > 1 && (
-            <span
-              className="text-sm ml-2"
-              style={{ color: 'var(--text-muted)' }}
+      <div className="space-y-4">
+        <div className="flex items-start gap-2">
+          <Package className="w-5 h-5 mt-0.5 text-amber-500" />
+          <div className="flex-1">
+            <h4
+              className="font-semibold text-base"
+              style={{ color: 'var(--text-primary)' }}
             >
-              (Choose {choice.chooseCount})
-            </span>
-          )}
+              Equipment Choice
+            </h4>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+              {choice.description || 'Select your equipment'}
+            </p>
+          </div>
         </div>
 
-        <div className="space-y-2">
-          {options.map((option, index) => {
-            // Get the option ID based on the option type
-            let optionId = '';
-            if (option.optionType.case === 'item') {
-              optionId = option.optionType.value.itemId;
-            } else if (option.optionType.case === 'countedItem') {
-              optionId = option.optionType.value.itemId;
-            } else if (option.optionType.case === 'bundle') {
-              // For bundles, create a unique ID
-              optionId = `bundle_${index}`;
-            } else if (option.optionType.case === 'nestedChoice') {
-              optionId =
-                option.optionType.value.choice?.id || `nested_${index}`;
-            }
-
-            // Create unique key by combining optionId with index to handle duplicates
-            const uniqueKey = `${optionId}_${index}`;
-
-            const isSelected = currentSelections.some(
-              (s) => s === optionId || s.startsWith(`${optionId}:`)
-            );
+        <div className="grid gap-2">
+          {selectOptions.map((opt) => {
+            const isSelected = selectedOption?.optionId === opt.optionId;
+            const isExpanded = expandedNestedChoices.has(opt.optionId);
+            const isHovered = hoveredOption === opt.optionId;
 
             return (
-              <div
-                key={uniqueKey}
-                className="border rounded-md p-3"
-                style={{
-                  borderColor: isSelected
-                    ? 'var(--accent-primary)'
-                    : 'var(--border-primary)',
-                  backgroundColor: isSelected
-                    ? 'var(--accent-primary)15'
-                    : 'var(--card-bg)',
-                }}
-              >
-                {/* Simple Item */}
-                {option.optionType.case === 'item' && (
-                  <button
-                    type="button"
-                    onClick={() => handleSelection(optionId)}
-                    style={{
-                      padding: '12px 16px',
-                      backgroundColor: isSelected
-                        ? 'var(--accent-primary)'
-                        : 'var(--card-bg)',
-                      borderRadius: '6px',
-                      border: `2px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
-                      fontSize: '13px',
-                      color: isSelected ? 'white' : 'var(--text-primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      transition: 'all 0.2s ease',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      width: '100%',
-                      outline: 'none',
-                      transform: 'translateY(0)',
-                      boxShadow: 'none',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.borderColor =
-                          'var(--accent-primary)';
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow =
-                          '0 4px 12px rgba(0,0,0,0.2)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.borderColor =
-                          'var(--border-primary)';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }
-                    }}
-                  >
-                    <span style={{ fontSize: '18px', lineHeight: '1' }}>
-                      ⚔️
-                    </span>
-                    <div style={{ flex: 1, textAlign: 'left' }}>
-                      <div className="font-medium">
-                        {option.optionType.value.name}
-                      </div>
-                    </div>
-                    {isSelected && <span style={{ fontSize: '16px' }}>✓</span>}
-                  </button>
-                )}
-
-                {/* Counted Item */}
-                {option.optionType.case === 'countedItem' && (
-                  <button
-                    type="button"
-                    onClick={() => handleSelection(optionId)}
-                    style={{
-                      padding: '12px 16px',
-                      backgroundColor: isSelected
-                        ? 'var(--accent-primary)'
-                        : 'var(--card-bg)',
-                      borderRadius: '6px',
-                      border: `2px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
-                      fontSize: '13px',
-                      color: isSelected ? 'white' : 'var(--text-primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      transition: 'all 0.2s ease',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      width: '100%',
-                      outline: 'none',
-                      transform: 'translateY(0)',
-                      boxShadow: 'none',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.borderColor =
-                          'var(--accent-primary)';
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow =
-                          '0 4px 12px rgba(0,0,0,0.2)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.borderColor =
-                          'var(--border-primary)';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }
-                    }}
-                  >
-                    <span style={{ fontSize: '18px', lineHeight: '1' }}>
-                      ⚔️
-                    </span>
-                    <div style={{ flex: 1, textAlign: 'left' }}>
-                      <div className="font-medium">
-                        {option.optionType.value.name}
-                        {option.optionType.value.quantity > 1 && (
-                          <span
-                            className="ml-2 text-sm"
-                            style={{
-                              color: isSelected
-                                ? 'rgba(255,255,255,0.9)'
-                                : 'var(--text-muted)',
-                            }}
-                          >
-                            ×{option.optionType.value.quantity}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {isSelected && <span style={{ fontSize: '16px' }}>✓</span>}
-                  </button>
-                )}
-
-                {/* Bundle */}
-                {option.optionType.case === 'bundle' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Check if bundle has any choices that need expansion
-                      const bundle = option.optionType.value;
-                      const hasChoices =
-                        bundle &&
-                        'items' in bundle &&
-                        bundle.items.some(
-                          (item) =>
-                            item.itemType?.case === 'choiceItem' ||
-                            // Handle API bug: choice placeholders marked as concreteItem
-                            (item.itemType?.case === 'concreteItem' &&
-                              item.itemType.value.itemId.startsWith('choose-'))
-                        );
-
-                      if (hasChoices) {
-                        toggleNestedChoice(optionId);
+              <div key={`${opt.optionId}_${opt.index}`}>
+                <button
+                  onClick={() => {
+                    if (opt.hasNestedChoice) {
+                      toggleNestedChoice(opt.optionId);
+                      // Clear previous selection when expanding nested choices
+                      onSelectionChange(choice.id, []);
+                    } else if (
+                      opt.originalOption.optionType.case === 'bundle'
+                    ) {
+                      // For bundles without choices, send all items
+                      const bundle = opt.originalOption.optionType.value;
+                      const bundleSelections: string[] = [];
+                      bundle.items.forEach((bundleItem, itemIndex) => {
+                        if (
+                          bundleItem.itemType?.case === 'concreteItem' &&
+                          !bundleItem.itemType.value.itemId.startsWith(
+                            'choose-'
+                          )
+                        ) {
+                          const item = bundleItem.itemType.value;
+                          bundleSelections.push(
+                            `${opt.optionId}:${itemIndex}:${item.itemId}`
+                          );
+                        }
+                      });
+                      onSelectionChange(choice.id, bundleSelections);
+                    } else {
+                      // For direct item selection, use the server-provided option ID
+                      if (opt.originalOption.optionType.case === 'item') {
+                        const item = opt.originalOption.optionType.value;
+                        console.log('Direct equipment selection:', {
+                          itemId: item.itemId,
+                        });
+                        handleSelection(item.itemId);
                       } else {
-                        // For bundles with only concrete items, send all items as bundle references
-                        // Format: "bundle_X:Y:item_id" where X=bundle index, Y=item index
-                        const bundleSelections: string[] = [];
-                        if (bundle && 'items' in bundle) {
-                          bundle.items.forEach((bundleItem, itemIndex) => {
-                            if (
-                              bundleItem.itemType?.case === 'concreteItem' &&
-                              !bundleItem.itemType.value.itemId.startsWith(
-                                'choose-'
-                              )
-                            ) {
-                              const item = bundleItem.itemType.value;
-                              bundleSelections.push(
-                                `${optionId}:${itemIndex}:${item.itemId}`
-                              );
-                            }
-                          });
-                        }
-
-                        // Send all bundle items as selections
-                        onSelectionChange(choice.id, bundleSelections);
+                        handleSelection(opt.optionId);
                       }
-                    }}
-                    style={{
-                      padding: '12px 16px',
-                      backgroundColor: isSelected
+                    }
+                  }}
+                  onMouseEnter={() => setHoveredOption(opt.optionId)}
+                  onMouseLeave={() => setHoveredOption(null)}
+                  className="w-full text-left transition-all duration-200"
+                  style={{
+                    padding: '14px 16px',
+                    borderRadius: '8px',
+                    border: `2px solid ${
+                      isSelected
                         ? 'var(--accent-primary)'
+                        : isHovered
+                          ? 'var(--accent-hover)'
+                          : 'var(--border-primary)'
+                    }`,
+                    backgroundColor: isSelected
+                      ? 'rgba(var(--accent-primary-rgb), 0.1)'
+                      : isHovered
+                        ? 'rgba(var(--accent-primary-rgb), 0.05)'
                         : 'var(--card-bg)',
-                      borderRadius: '6px',
-                      border: `2px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
-                      fontSize: '13px',
-                      color: isSelected ? 'white' : 'var(--text-primary)',
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '8px',
-                      transition: 'all 0.2s ease',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      width: '100%',
-                      outline: 'none',
-                      transform: 'translateY(0)',
-                      boxShadow: 'none',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.borderColor =
-                          'var(--accent-primary)';
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow =
-                          '0 4px 12px rgba(0,0,0,0.2)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.borderColor =
-                          'var(--border-primary)';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }
-                    }}
-                  >
-                    <span style={{ fontSize: '18px', lineHeight: '1' }}>
-                      📦
-                    </span>
-                    <div style={{ flex: 1, textAlign: 'left' }}>
-                      <div className="font-medium mb-2">Equipment Bundle</div>
-                      <div className="pl-4 space-y-1">
-                        {option.optionType.value.items.map(
-                          (bundleItem, itemIndex) => {
-                            // Handle new BundleItem oneof structure
-                            if (bundleItem.itemType.case === 'concreteItem') {
-                              const item = bundleItem.itemType.value;
-
-                              // Handle choice placeholders marked as concreteItem (API bug workaround)
-                              if (item.itemId.startsWith('choose-')) {
-                                return (
-                                  <div
-                                    key={itemIndex}
-                                    className="text-sm flex items-center gap-2"
-                                  >
-                                    <span>•</span>
-                                    <span
-                                      style={{
-                                        color: isSelected
-                                          ? 'rgba(255,255,255,0.9)'
-                                          : 'var(--text-primary)',
-                                        fontStyle: 'italic',
-                                      }}
-                                    >
-                                      Choose martial weapon
-                                    </span>
-                                  </div>
-                                );
-                              }
-
-                              // Regular concrete items
-                              return (
-                                <div
-                                  key={itemIndex}
-                                  className="text-sm flex items-center gap-2"
-                                >
-                                  <span>•</span>
-                                  <span
-                                    style={{
-                                      color: isSelected
-                                        ? 'rgba(255,255,255,0.9)'
-                                        : 'var(--text-primary)',
-                                    }}
-                                  >
-                                    {item.name}
-                                    {item.quantity > 1 && (
-                                      <span
-                                        className="ml-2"
-                                        style={{
-                                          color: isSelected
-                                            ? 'rgba(255,255,255,0.7)'
-                                            : 'var(--text-muted)',
-                                        }}
-                                      >
-                                        ×{item.quantity}
-                                      </span>
-                                    )}
-                                  </span>
-                                </div>
-                              );
-                            } else if (
-                              bundleItem.itemType.case === 'choiceItem'
-                            ) {
-                              // Handle nested choice in bundle
-                              const choice = bundleItem.itemType.value;
-                              return (
-                                <div
-                                  key={itemIndex}
-                                  className="text-sm flex items-center gap-2"
-                                >
-                                  <span>•</span>
-                                  <span
-                                    style={{
-                                      color: isSelected
-                                        ? 'rgba(255,255,255,0.9)'
-                                        : 'var(--text-primary)',
-                                      fontStyle: 'italic',
-                                    }}
-                                  >
-                                    {choice?.choice?.description ||
-                                      'Choose equipment'}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            return null;
-                          }
+                    transform: isHovered ? 'translateX(4px)' : 'translateX(0)',
+                    boxShadow: isSelected
+                      ? '0 4px 12px rgba(0, 0, 0, 0.15)'
+                      : isHovered
+                        ? '0 2px 8px rgba(0, 0, 0, 0.1)'
+                        : 'none',
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="p-2 rounded-full"
+                        style={{
+                          backgroundColor: isSelected
+                            ? 'var(--accent-primary)'
+                            : 'rgba(var(--accent-primary-rgb), 0.2)',
+                          color: isSelected ? 'white' : 'var(--accent-primary)',
+                        }}
+                      >
+                        {getItemIcon(opt.displayName)}
+                      </div>
+                      <div>
+                        <div
+                          className="font-medium"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          {opt.displayName}
+                        </div>
+                        {isSelected && (
+                          <div
+                            className="text-xs mt-0.5"
+                            style={{ color: 'var(--accent-primary)' }}
+                          >
+                            Selected
+                          </div>
                         )}
                       </div>
                     </div>
-                    {isSelected && <span style={{ fontSize: '16px' }}>✓</span>}
-                  </button>
-                )}
-
-                {/* Show expanded content for bundles with choices */}
-                {expandedNestedChoices.has(optionId) &&
-                  option.optionType.case === 'bundle' &&
-                  (() => {
-                    const bundle = option.optionType.value;
-                    return (
-                      bundle &&
-                      'items' in bundle &&
-                      bundle.items.some(
-                        (item) =>
-                          item.itemType?.case === 'choiceItem' ||
-                          // Handle API bug: choice placeholders marked as concreteItem
-                          (item.itemType?.case === 'concreteItem' &&
-                            item.itemType.value.itemId.startsWith('choose-'))
-                      ) && (
-                        <div className="mt-2 pl-6 space-y-2">
-                          {bundle.items.map((bundleItem, itemIndex) => {
-                            // Handle regular choiceItem
-                            if (
-                              bundleItem.itemType?.case === 'choiceItem' &&
-                              bundleItem.itemType.value?.choice
-                            ) {
-                              return (
-                                <NestedEquipmentChoice
-                                  key={itemIndex}
-                                  nestedChoice={
-                                    bundleItem.itemType.value.choice
-                                  }
-                                  onSelection={(selectedItem) => {
-                                    // Build bundle selections with all items properly formatted
-                                    const bundleSelections =
-                                      buildBundleSelections(
-                                        bundle,
-                                        optionId,
-                                        itemIndex,
-                                        selectedItem
-                                      );
-
-                                    // Send all selections
-                                    onSelectionChange(
-                                      choice.id,
-                                      bundleSelections
-                                    );
-                                    setExpandedNestedChoices(new Set());
-                                  }}
-                                  currentSelection={
-                                    currentSelections
-                                      .find((s) => s.startsWith(`${optionId}:`))
-                                      ?.split(':')
-                                      .slice(1)
-                                      .join(':') || ''
-                                  }
-                                />
-                              );
-                            }
-
-                            // Handle choice placeholders marked as concreteItem (API bug workaround)
-                            if (
-                              bundleItem.itemType?.case === 'concreteItem' &&
-                              bundleItem.itemType.value.itemId.startsWith(
-                                'choose-'
-                              )
-                            ) {
-                              // Create a fake choice for martial weapons
-                              // TODO: This should be handled properly by the API
-                              const fakeChoice = create(ChoiceSchema, {
-                                id: 'martial-weapons-choice',
-                                description: 'Choose a martial weapon',
-                                chooseCount: 1,
-                                choiceType: 1, // EQUIPMENT
-                                optionSet: {
-                                  case: 'explicitOptions',
-                                  value: create(ExplicitOptionsSchema, {
-                                    options: [
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'longsword',
-                                            name: 'Longsword',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'battleaxe',
-                                            name: 'Battleaxe',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'flail',
-                                            name: 'Flail',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'glaive',
-                                            name: 'Glaive',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'greataxe',
-                                            name: 'Greataxe',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'greatsword',
-                                            name: 'Greatsword',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'halberd',
-                                            name: 'Halberd',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'lance',
-                                            name: 'Lance',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'maul',
-                                            name: 'Maul',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'morningstar',
-                                            name: 'Morningstar',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'pike',
-                                            name: 'Pike',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'rapier',
-                                            name: 'Rapier',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'scimitar',
-                                            name: 'Scimitar',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'shortsword',
-                                            name: 'Shortsword',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'trident',
-                                            name: 'Trident',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'war-pick',
-                                            name: 'War Pick',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'warhammer',
-                                            name: 'Warhammer',
-                                          }),
-                                        },
-                                      }),
-                                      create(ChoiceOptionSchema, {
-                                        optionType: {
-                                          case: 'item',
-                                          value: create(ItemReferenceSchema, {
-                                            itemId: 'whip',
-                                            name: 'Whip',
-                                          }),
-                                        },
-                                      }),
-                                    ],
-                                  }),
-                                },
-                              });
-
-                              return (
-                                <NestedEquipmentChoice
-                                  key={itemIndex}
-                                  nestedChoice={fakeChoice}
-                                  onSelection={(selectedItem) => {
-                                    // Build bundle selections with all items properly formatted
-                                    const bundleSelections =
-                                      buildBundleSelections(
-                                        bundle,
-                                        optionId,
-                                        itemIndex,
-                                        selectedItem
-                                      );
-
-                                    // Send all selections
-                                    onSelectionChange(
-                                      choice.id,
-                                      bundleSelections
-                                    );
-                                    setExpandedNestedChoices(new Set());
-                                  }}
-                                  currentSelection={
-                                    currentSelections
-                                      .find((s) => s.startsWith(`${optionId}:`))
-                                      ?.split(':')
-                                      .slice(1)
-                                      .join(':') || ''
-                                  }
-                                />
-                              );
-                            }
-
-                            return null;
-                          })}
-                        </div>
-                      )
-                    );
-                  })()}
-
-                {/* Nested Choice */}
-                {option.optionType.case === 'nestedChoice' &&
-                  option.optionType.value.choice && (
-                    <div className="space-y-2">
+                    {opt.hasNestedChoice && (
                       <div
-                        className="font-medium text-sm"
-                        style={{ color: 'var(--text-primary)' }}
+                        className="transition-transform duration-200"
+                        style={{
+                          transform: isExpanded
+                            ? 'rotate(180deg)'
+                            : 'rotate(0deg)',
+                          color: 'var(--text-muted)',
+                        }}
                       >
-                        {option.optionType.value.choice.description ||
-                          'Choose Item'}
+                        <ChevronDown className="w-4 h-4" />
                       </div>
+                    )}
+                  </div>
+                </button>
+
+                {/* Show nested choices if expanded */}
+                {isExpanded && opt.hasNestedChoice && (
+                  <div
+                    className="mt-2 ml-12 p-3 rounded-lg"
+                    style={{
+                      backgroundColor: 'rgba(var(--card-bg-rgb), 0.5)',
+                      borderLeft: '3px solid var(--accent-primary)',
+                    }}
+                  >
+                    {opt.originalOption.optionType.case === 'bundle' && (
+                      <RenderBundleNestedChoices
+                        bundle={opt.originalOption.optionType.value}
+                        optionId={opt.optionId}
+                        onSelection={onSelectionChange}
+                        choiceId={choice.id}
+                        currentSelections={currentSelections}
+                      />
+                    )}
+                    {opt.originalOption.optionType.case === 'nestedChoice' && (
                       <NestedEquipmentChoice
-                        nestedChoice={option.optionType.value.choice}
-                        onSelection={(selectedItem) =>
-                          handleSelection(optionId, selectedItem)
+                        nestedChoice={
+                          opt.originalOption.optionType.value.choice ||
+                          create(ChoiceSchema, {})
                         }
+                        onSelection={(selectedItem) => {
+                          handleSelection(opt.optionId, selectedItem);
+                        }}
                         currentSelection={
                           currentSelections
-                            .find((s) => s.startsWith(`${optionId}:`))
-                            ?.split(':')[1]
+                            .find((s) => s.startsWith(`${opt.optionId}:`))
+                            ?.split(':')[1] || ''
                         }
                       />
-                    </div>
-                  )}
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -753,11 +372,143 @@ export function EquipmentChoice({
     );
   }
 
-  // The API now provides complete lists, no need for category references
+  // Handle different option sets (reference options, tag filters)
+  if (choice.optionSet.case === 'categoryReference') {
+    const refOptions = choice.optionSet.value;
+    return (
+      <div className="space-y-4">
+        <div className="flex items-start gap-2">
+          <Package className="w-5 h-5 mt-0.5 text-amber-500" />
+          <div className="flex-1">
+            <h4
+              className="font-semibold text-base"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              Equipment Reference
+            </h4>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+              {choice.description || 'Reference options available'}
+            </p>
+          </div>
+        </div>
+        <div
+          className="text-sm p-3 rounded-lg"
+          style={{
+            backgroundColor: 'var(--card-bg)',
+            color: 'var(--text-muted)',
+          }}
+        >
+          Category: {refOptions.categoryId}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ color: 'var(--text-primary)' }}>
+    <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
       Unsupported equipment choice type: {choice.optionSet.case}
+    </div>
+  );
+}
+
+// Component for handling bundle nested choices
+interface BundleNestedChoicesProps {
+  bundle: ItemBundle;
+  optionId: string;
+  choiceId: string;
+  onSelection: (choiceId: string, selections: string[]) => void;
+  currentSelections: string[];
+}
+
+function RenderBundleNestedChoices({
+  bundle,
+  optionId,
+  choiceId,
+  onSelection,
+  currentSelections,
+}: BundleNestedChoicesProps) {
+  return (
+    <div className="space-y-3">
+      {bundle.items.map((bundleItem, itemIndex) => {
+        if (
+          bundleItem.itemType?.case === 'concreteItem' &&
+          bundleItem.itemType.value.itemId?.startsWith('choose-')
+        ) {
+          // This is a placeholder for a nested choice
+          const fakeChoice = create(ChoiceSchema, {
+            id: `nested_${itemIndex}`,
+            description: bundleItem.itemType.value.name || 'Choose an item',
+            chooseCount: 1,
+            optionSet: {
+              case: 'explicitOptions',
+              value: create(ExplicitOptionsSchema, {
+                options: bundleItem.itemType.value.itemId
+                  .replace('choose-', '')
+                  .split('-or-')
+                  .map((itemId) => {
+                    // Use the item ID as-is (server should provide proper format)
+                    const displayName = itemId.replace(/-/g, ' ');
+
+                    return create(ChoiceOptionSchema, {
+                      optionType: {
+                        case: 'item',
+                        value: create(ItemReferenceSchema, {
+                          itemId: itemId, // Use server-provided ID directly
+                          name: displayName, // Keep user-friendly display name
+                        }),
+                      },
+                    });
+                  }),
+              }),
+            },
+          });
+
+          return (
+            <NestedEquipmentChoice
+              key={itemIndex}
+              nestedChoice={fakeChoice}
+              onSelection={(selectedItem) => {
+                const selections = buildBundleSelections(
+                  bundle,
+                  optionId,
+                  itemIndex,
+                  selectedItem
+                );
+                onSelection(choiceId, selections);
+              }}
+              currentSelection={
+                currentSelections
+                  .find((s) => s.startsWith(`${optionId}:${itemIndex}:`))
+                  ?.split(':')[2] || ''
+              }
+            />
+          );
+        } else if (bundleItem.itemType?.case === 'choiceItem') {
+          return (
+            <NestedEquipmentChoice
+              key={itemIndex}
+              nestedChoice={
+                bundleItem.itemType.value.choice || create(ChoiceSchema, {})
+              }
+              onSelection={(selectedItem) => {
+                const selections = buildBundleSelections(
+                  bundle,
+                  optionId,
+                  itemIndex,
+                  selectedItem
+                );
+                onSelection(choiceId, selections);
+              }}
+              currentSelection={
+                currentSelections
+                  .find((s) => s.startsWith(`${optionId}:${itemIndex}:`))
+                  ?.split(':')[2] || ''
+              }
+            />
+          );
+        }
+        return null;
+      })}
     </div>
   );
 }
@@ -766,7 +517,7 @@ export function EquipmentChoice({
 interface NestedEquipmentChoiceProps {
   nestedChoice: Choice;
   onSelection: (selectedItem: string) => void;
-  currentSelection?: string;
+  currentSelection: string;
 }
 
 function NestedEquipmentChoice({
@@ -777,43 +528,65 @@ function NestedEquipmentChoice({
   // API now provides complete explicit options for nested choices
   if (nestedChoice.optionSet.case === 'explicitOptions') {
     const options = nestedChoice.optionSet.value.options;
+
     return (
-      <select
-        value={currentSelection || ''}
-        onChange={(e) => onSelection(e.target.value)}
-        style={{
-          width: '100%',
-          padding: '8px 12px',
-          borderRadius: '6px',
-          border: `2px solid ${currentSelection ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
-          backgroundColor: 'var(--card-bg)',
-          color: 'var(--text-primary)',
-          fontSize: '14px',
-          cursor: 'pointer',
-        }}
-      >
-        <option value="">Choose {nestedChoice.description || 'item'}</option>
-        {options.map((option, index) => {
-          let optionId = '';
-          let optionName = '';
+      <div className="space-y-2">
+        <p
+          className="text-sm font-medium mb-2"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          {nestedChoice.description}
+        </p>
+        <div className="grid gap-1">
+          {options.map((option, idx) => {
+            if (option.optionType.case === 'item') {
+              const item = option.optionType.value;
+              const isSelected = currentSelection === item.itemId;
 
-          if (option.optionType.case === 'item') {
-            optionId = option.optionType.value.itemId;
-            optionName = option.optionType.value.name;
-          } else if (option.optionType.case === 'countedItem') {
-            optionId = option.optionType.value.itemId;
-            optionName = `${option.optionType.value.name} ×${option.optionType.value.quantity}`;
-          }
-
-          return optionId ? (
-            <option key={`${optionId}_${index}`} value={optionId}>
-              {optionName}
-            </option>
-          ) : null;
-        })}
-      </select>
+              return (
+                <button
+                  key={`${item.itemId}_${idx}`}
+                  onClick={() => {
+                    // Ensure we're sending the proper option ID, not just the display name
+                    // The itemId should already be the correct format (e.g., "martial_weapon_warhammer")
+                    // but we need to verify this is preserved through the selection chain
+                    console.log(
+                      'Equipment selection - sending itemId:',
+                      item.itemId,
+                      'for item name:',
+                      item.name
+                    );
+                    onSelection(item.itemId);
+                  }}
+                  className="text-left p-2 rounded transition-all duration-150"
+                  style={{
+                    backgroundColor: isSelected
+                      ? 'rgba(var(--accent-primary-rgb), 0.2)'
+                      : 'transparent',
+                    border: `1px solid ${isSelected ? 'var(--accent-primary)' : 'transparent'}`,
+                    color: isSelected
+                      ? 'var(--accent-primary)'
+                      : 'var(--text-primary)',
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4">{getItemIcon(item.name)}</div>
+                    <span className="text-sm">{item.name}</span>
+                  </div>
+                </button>
+              );
+            }
+            return null;
+          })}
+        </div>
+      </div>
     );
   }
 
-  return <div>Nested choice type not supported</div>;
+  // Fallback for other types
+  return (
+    <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
+      Nested choice type: {nestedChoice.optionSet.case}
+    </div>
+  );
 }

@@ -5,6 +5,7 @@ import type {
   ChoiceData,
   ClassInfo,
   RaceInfo,
+  SubclassInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   AbilityScoresSchema,
@@ -21,7 +22,7 @@ import {
   Class,
   Language,
   Race,
-  Skill,
+  Subclass,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
@@ -41,36 +42,6 @@ import {
   CharacterDraftContext,
   type CharacterDraftState,
 } from './CharacterDraftContextDef';
-
-// Debug: Log all available enums to help with troubleshooting
-if (import.meta.env.MODE === 'development') {
-  console.group('🧩 Available Proto Enums');
-  console.log(
-    '🎲 Skills:',
-    Object.entries(Skill)
-      .filter(([, v]) => typeof v === 'number')
-      .map(([k, v]) => `${k}=${v}`)
-  );
-  console.log(
-    '🗣️ Languages:',
-    Object.entries(Language)
-      .filter(([, v]) => typeof v === 'number')
-      .map(([k, v]) => `${k}=${v}`)
-  );
-  console.log(
-    '🏃 Classes:',
-    Object.entries(Class)
-      .filter(([, v]) => typeof v === 'number')
-      .map(([k, v]) => `${k}=${v}`)
-  );
-  console.log(
-    '👥 Races:',
-    Object.entries(Race)
-      .filter(([, v]) => typeof v === 'number')
-      .map(([k, v]) => `${k}=${v}`)
-  );
-  console.groupEnd();
-}
 
 // Helper to convert RaceInfo name to Race enum
 function getRaceEnum(raceName: string): Race {
@@ -415,9 +386,9 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draft, setDraft] = useState<CharacterDraft | null>(null);
   const [currentRaceInfo, setCurrentRaceInfo] = useState<RaceInfo | null>(null);
-  const [currentClassInfo, setCurrentClassInfo] = useState<ClassInfo | null>(
-    null
-  );
+  const [currentClassInfo, setCurrentClassInfo] = useState<
+    ClassInfo | SubclassInfo | null
+  >(null);
   const [allProficiencies, setAllProficiencies] = useState<Set<string>>(
     new Set()
   );
@@ -521,7 +492,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   // Helper to collect all proficiencies from a class
   const collectClassProficiencies = useCallback(
     (
-      classInfo: ClassInfo | null,
+      classInfo: ClassInfo | SubclassInfo | null,
       choicesOverride?: ChoiceData[]
     ): Set<string> => {
       const proficiencies = new Set<string>();
@@ -537,10 +508,13 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       formatProficiencyList('tool', classInfo.toolProficiencies).forEach((p) =>
         proficiencies.add(p)
       );
-      formatProficiencyList(
-        'saving-throw',
-        classInfo.savingThrowProficiencies
-      ).forEach((p) => proficiencies.add(p));
+      // savingThrowProficiencies only exists on ClassInfo, not SubclassInfo
+      if (classInfo.$typeName === 'dnd5e.api.v1alpha1.ClassInfo') {
+        formatProficiencyList(
+          'saving-throw',
+          (classInfo as ClassInfo).savingThrowProficiencies
+        ).forEach((p) => proficiencies.add(p));
+      }
 
       // Add chosen proficiencies from class choices (now ChoiceData[])
       const choicesToUse = choicesOverride || classChoices;
@@ -868,7 +842,10 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   );
 
   const setClass = useCallback(
-    async (classInfo: ClassInfo | null, choices?: ChoiceData[]) => {
+    async (
+      classInfo: ClassInfo | SubclassInfo | null,
+      choices?: ChoiceData[]
+    ) => {
       // Don't proceed if no draft exists yet
       if (!draftId) {
         console.warn('Cannot set class: no draft ID available yet');
@@ -934,50 +911,43 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
         setSaving(true);
         try {
-          console.group('🏁 Saving class to API');
-          console.log('🏷️ Class name:', classInfo.name);
-          console.log('🏷️ Class enum:', getClassEnum(classInfo.name));
-          console.log('📥 Received choices parameter:', choices);
-          console.log('📥 Choices length:', choices ? choices.length : 0);
-
           // Use provided ChoiceData directly or convert from state
           let classChoiceData: ChoiceData[];
           if (choices && choices.length > 0) {
             classChoiceData = choices;
-            console.log(
-              '📦 Using provided ChoiceData directly:',
-              classChoiceData
-            );
           } else {
-            // Convert from legacy internal format if no ChoiceData provided
             // Use the stored ChoiceData directly
             classChoiceData = classChoices;
-            console.log('📦 Using stored choices:', classChoiceData);
+          }
+
+          // Check if this is a combined class+subclass object
+          const hasSelectedSubclass = 'selectedSubclass' in classInfo;
+          let baseClassName: string;
+          let subclassEnum: Subclass | undefined;
+
+          if (hasSelectedSubclass) {
+            // This is a ClassInfo with selectedSubclass property
+            const combinedData = classInfo as ClassInfo & {
+              selectedSubclass: SubclassInfo;
+            };
+            baseClassName = combinedData.name;
+            // Use the enum directly from SubclassInfo
+            subclassEnum = combinedData.selectedSubclass.subclass;
+          } else {
+            // This is just a base ClassInfo (no subclass selected)
+            baseClassName = classInfo.name;
+            subclassEnum = undefined;
           }
 
           const request = create(UpdateClassRequestSchema, {
             draftId,
-            class: getClassEnum(classInfo.name),
+            class: getClassEnum(baseClassName),
             classChoices: classChoiceData,
+            subclass: subclassEnum,
           });
 
-          console.log('🚀 UpdateClassRequest:', {
-            draftId,
-            class: `${Class[getClassEnum(classInfo.name)]}(${getClassEnum(classInfo.name)})`,
-            classChoicesCount: classChoiceData.length,
-            classChoices: classChoiceData.map((cd) => ({
-              choiceId: cd.choiceId,
-              category: `${ChoiceCategory[cd.category]}(${cd.category})`,
-              selection: cd.selection.case,
-            })),
-          });
-
-          const response = await updateClassAPI(request);
-          console.log('✅ UpdateClass API response:', response);
-          console.groupEnd();
+          await updateClassAPI(request);
         } catch (err) {
-          console.error('❌ Failed to save class:', err);
-          console.groupEnd();
           setError(
             err instanceof Error ? err : new Error('Failed to save class')
           );
@@ -997,6 +967,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       currentRaceInfo,
       collectRaceProficiencies,
       collectRaceLanguages,
+      availableClasses,
     ]
   );
 

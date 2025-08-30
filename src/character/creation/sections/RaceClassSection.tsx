@@ -5,6 +5,7 @@ import { useCharacterBuilder } from '@/hooks/useCharacterBuilder';
 import type {
   ClassInfo,
   RaceInfo,
+  SubclassInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   ChoiceCategory,
@@ -36,9 +37,9 @@ export function RaceClassSection() {
   const [selectedRaceData, setSelectedRaceData] = useState<RaceInfo | null>(
     raceInfo
   );
-  const [selectedClassData, setSelectedClassData] = useState<ClassInfo | null>(
-    classInfo
-  );
+  const [selectedClassData, setSelectedClassData] = useState<
+    ClassInfo | SubclassInfo | null
+  >(classInfo);
   const [selectedClassChoices, setSelectedClassChoices] = useState<
     ClassModalChoices | undefined
   >();
@@ -98,7 +99,10 @@ export function RaceClassSection() {
   };
 
   const handleClassSelect = useCallback(
-    async (classData: ClassInfo, choices: ClassModalChoices) => {
+    async (
+      classData: ClassInfo | (ClassInfo & { selectedSubclass: SubclassInfo }),
+      choices: ClassModalChoices
+    ) => {
       setSelectedClassData(classData);
       setSelectedClassChoices(choices); // Save for modal re-opening
       setSelectedChoice('class', classData.id);
@@ -113,6 +117,17 @@ export function RaceClassSection() {
         for (const skillChoice of choices.skills) {
           const choiceData = convertSkillChoiceToProto(
             skillChoice,
+            ChoiceSource.CLASS
+          );
+          choiceDataArray.push(choiceData);
+        }
+      }
+
+      // Convert language choices
+      if (choices.languages) {
+        for (const languageChoice of choices.languages) {
+          const choiceData = convertLanguageChoiceToProto(
+            languageChoice,
             ChoiceSource.CLASS
           );
           choiceDataArray.push(choiceData);
@@ -449,7 +464,7 @@ export function RaceClassSection() {
       {/* Class Selection Modal */}
       <ClassSelectionModal
         isOpen={showClassModal}
-        currentClass={selectedClassData?.name || classInfo?.name}
+        currentClass={selectedClassData?.id || classInfo?.id}
         existingChoices={selectedClassChoices}
         onSelect={handleClassSelect}
         onClose={() => setShowClassModal(false)}

@@ -1,5 +1,4 @@
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { Skill } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import {
   Activity,
   BookOpen,
@@ -8,17 +7,17 @@ import {
   Eye,
   Heart,
   Sparkles,
+  Star,
 } from 'lucide-react';
 import { useState } from 'react';
-import { getSkillEnum } from '../../utils/enumDisplay';
 
-interface SkillChoiceProps {
+interface ExpertiseChoiceProps {
   choice: Choice;
-  onSelectionChange: (choiceId: string, selectedSkills: Skill[]) => void;
-  currentSelections: Skill[];
+  onSelectionChange: (choiceId: string, selectedSkills: string[]) => void;
+  currentSelections: string[];
 }
 
-// Map skills to their ability scores for grouping
+// Map skills to their ability scores for grouping (same as SkillChoice)
 const SKILL_ABILITY_MAP: Record<string, string> = {
   acrobatics: 'Dexterity',
   'animal-handling': 'Wisdom',
@@ -84,22 +83,22 @@ function getSkillAbility(skillId: string): string {
   return SKILL_ABILITY_MAP[skillId.toLowerCase()] || 'Unknown';
 }
 
-export function SkillChoice({
+export function ExpertiseChoice({
   choice,
   onSelectionChange,
   currentSelections,
-}: SkillChoiceProps) {
+}: ExpertiseChoiceProps) {
   const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
 
-  const handleSkillToggle = (skill: Skill) => {
+  const handleSkillToggle = (skillId: string) => {
     if (choice.chooseCount === 1) {
       // Radio button behavior
-      onSelectionChange(choice.id, [skill]);
+      onSelectionChange(choice.id, [skillId]);
     } else {
       // Checkbox behavior
-      const newSelections = currentSelections.includes(skill)
-        ? currentSelections.filter((s) => s !== skill)
-        : [...currentSelections, skill].slice(0, choice.chooseCount);
+      const newSelections = currentSelections.includes(skillId)
+        ? currentSelections.filter((s) => s !== skillId)
+        : [...currentSelections, skillId].slice(0, choice.chooseCount);
       onSelectionChange(choice.id, newSelections);
     }
   };
@@ -145,30 +144,38 @@ export function SkillChoice({
     return (
       <div className="space-y-4">
         <div className="flex items-start gap-2">
-          <BookOpen
-            className="w-5 h-5 mt-0.5"
-            style={{ color: 'var(--accent-primary)' }}
-          />
+          <div className="relative">
+            <BookOpen
+              className="w-5 h-5 mt-0.5"
+              style={{ color: 'var(--accent-primary)' }}
+            />
+            <Star
+              className="w-3 h-3 absolute -top-1 -right-1"
+              style={{ color: '#fbbf24' }}
+              fill="#fbbf24"
+            />
+          </div>
           <div className="flex-1">
             <h4
               className="font-semibold text-base"
               style={{ color: 'var(--text-primary)' }}
             >
-              Skill Proficiencies
+              Expertise Selection
             </h4>
             <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
               {choice.description ||
-                `Choose ${choice.chooseCount} skill${choice.chooseCount > 1 ? 's' : ''}`}
+                `Choose ${choice.chooseCount} skill${choice.chooseCount > 1 ? 's' : ''} for expertise (double proficiency bonus)`}
             </p>
             {choice.chooseCount > 1 && (
               <div className="flex items-center gap-2 mt-2">
                 <div
                   className="text-xs px-2 py-1 rounded-full"
                   style={{
-                    backgroundColor: 'rgba(var(--accent-primary-rgb), 0.2)',
-                    color: 'var(--accent-primary)',
+                    backgroundColor: 'rgba(251, 191, 36, 0.2)',
+                    color: '#f59e0b',
                   }}
                 >
+                  <Star className="w-3 h-3 inline mr-1" />
                   {currentSelections.length} / {choice.chooseCount} selected
                 </div>
               </div>
@@ -202,8 +209,7 @@ export function SkillChoice({
 
               <div className="grid gap-1 ml-6">
                 {skillsByAbility[ability].map(({ index, skill }) => {
-                  const skillEnum = getSkillEnum(skill.itemId);
-                  const isSelected = currentSelections.includes(skillEnum);
+                  const isSelected = currentSelections.includes(skill.itemId);
                   const isDisabled =
                     !isSelected &&
                     currentSelections.length >= choice.chooseCount;
@@ -213,7 +219,7 @@ export function SkillChoice({
                     <button
                       key={`${skill.itemId}_${index}`}
                       onClick={() =>
-                        !isDisabled && handleSkillToggle(skillEnum)
+                        !isDisabled && handleSkillToggle(skill.itemId)
                       }
                       onMouseEnter={() => setHoveredSkill(skill.itemId)}
                       onMouseLeave={() => setHoveredSkill(null)}
@@ -224,15 +230,15 @@ export function SkillChoice({
                         borderRadius: '6px',
                         border: `2px solid ${
                           isSelected
-                            ? 'var(--accent-primary)'
+                            ? '#f59e0b'
                             : isHovered && !isDisabled
-                              ? 'var(--accent-hover)'
+                              ? '#fbbf24'
                               : 'transparent'
                         }`,
                         backgroundColor: isSelected
-                          ? 'rgba(var(--accent-primary-rgb), 0.1)'
+                          ? 'rgba(251, 191, 36, 0.1)'
                           : isHovered && !isDisabled
-                            ? 'rgba(var(--accent-primary-rgb), 0.05)'
+                            ? 'rgba(251, 191, 36, 0.05)'
                             : 'transparent',
                         opacity: isDisabled ? 0.5 : 1,
                         cursor: isDisabled ? 'not-allowed' : 'pointer',
@@ -245,55 +251,70 @@ export function SkillChoice({
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div
-                            className="w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200"
+                            className="w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200 relative"
                             style={{
                               borderColor: isSelected
-                                ? 'var(--accent-primary)'
+                                ? '#f59e0b'
                                 : isHovered && !isDisabled
-                                  ? 'var(--accent-hover)'
+                                  ? '#fbbf24'
                                   : 'var(--border-primary)',
                               backgroundColor: isSelected
-                                ? 'var(--accent-primary)'
+                                ? '#f59e0b'
                                 : 'transparent',
                             }}
                           >
                             {isSelected && (
-                              <Check
-                                className="w-3 h-3"
-                                style={{ color: 'white' }}
-                              />
+                              <>
+                                <Check
+                                  className="w-3 h-3"
+                                  style={{ color: 'white' }}
+                                />
+                                <Star
+                                  className="w-2 h-2 absolute -top-1 -right-1"
+                                  style={{ color: '#fbbf24' }}
+                                  fill="#fbbf24"
+                                />
+                              </>
                             )}
                           </div>
                           <div>
                             <div
-                              className="font-medium"
+                              className="font-medium flex items-center gap-1"
                               style={{
                                 color: isSelected
-                                  ? 'var(--accent-primary)'
+                                  ? '#f59e0b'
                                   : 'var(--text-primary)',
                               }}
                             >
                               {skill.name}
+                              {isSelected && (
+                                <Star
+                                  className="w-3 h-3"
+                                  style={{ color: '#fbbf24' }}
+                                  fill="#fbbf24"
+                                />
+                              )}
                             </div>
-                            {skill.description && (
+                            {isSelected && (
                               <div
-                                className="text-xs mt-0.5 opacity-75"
-                                style={{ color: 'var(--text-muted)' }}
+                                className="text-xs mt-0.5 font-medium"
+                                style={{ color: '#f59e0b' }}
                               >
-                                {skill.description}
+                                Double proficiency bonus
                               </div>
                             )}
                           </div>
                         </div>
                         {isSelected && (
                           <div
-                            className="text-xs px-2 py-0.5 rounded"
+                            className="text-xs px-2 py-0.5 rounded flex items-center gap-1"
                             style={{
-                              backgroundColor: 'var(--accent-primary)',
+                              backgroundColor: '#f59e0b',
                               color: 'white',
                             }}
                           >
-                            Selected
+                            <Star className="w-3 h-3" />
+                            Expertise
                           </div>
                         )}
                       </div>
@@ -314,16 +335,23 @@ export function SkillChoice({
     return (
       <div className="space-y-4">
         <div className="flex items-start gap-2">
-          <BookOpen
-            className="w-5 h-5 mt-0.5"
-            style={{ color: 'var(--accent-primary)' }}
-          />
+          <div className="relative">
+            <BookOpen
+              className="w-5 h-5 mt-0.5"
+              style={{ color: 'var(--accent-primary)' }}
+            />
+            <Star
+              className="w-3 h-3 absolute -top-1 -right-1"
+              style={{ color: '#fbbf24' }}
+              fill="#fbbf24"
+            />
+          </div>
           <div className="flex-1">
             <h4
               className="font-semibold text-base"
               style={{ color: 'var(--text-primary)' }}
             >
-              Skill References
+              Expertise References
             </h4>
             <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
               {choice.description || 'Reference options available'}
@@ -345,7 +373,7 @@ export function SkillChoice({
 
   return (
     <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
-      Unsupported skill choice type: {choice.optionSet.case}
+      Unsupported expertise choice type: {choice.optionSet.case}
     </div>
   );
 }
