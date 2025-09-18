@@ -1,27 +1,27 @@
 import { useCharacterService } from '@/services/useCharacterService';
 import type {
   FeatureInfo,
-  Spell,
   SpellcastingInfo,
+  SpellInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Class } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import * as Dialog from '@radix-ui/react-dialog';
 import { motion } from 'framer-motion';
 import {
   BookOpen,
-  Clock,
   Eye,
-  Flame,
   Heart,
   Search,
   Shield,
   Sparkles,
   Swords,
-  Wind,
   X,
   Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+
+// Use the SpellInfo type from protos for spell data
+type Spell = SpellInfo;
 
 interface SpellSelectionModalProps {
   isOpen: boolean;
@@ -125,21 +125,8 @@ function SpellCard({
   const category = categorizeSpell(spell);
   const CategoryIcon = SPELL_CATEGORIES[category].icon;
 
-  const getSpellSchoolIcon = (school: string) => {
-    const schoolIcons: Record<string, typeof Flame> = {
-      evocation: Flame,
-      abjuration: Shield,
-      conjuration: Sparkles,
-      divination: Eye,
-      enchantment: Heart,
-      illusion: Wind,
-      necromancy: BookOpen,
-      transmutation: Zap,
-    };
-    return schoolIcons[school.toLowerCase()] || BookOpen;
-  };
-
-  const SchoolIcon = getSpellSchoolIcon(spell.school);
+  // School information not available in SpellInfo yet
+  const SchoolIcon = BookOpen;
 
   return (
     <motion.div
@@ -176,18 +163,9 @@ function SpellCard({
             <div className="flex items-center gap-3 text-sm text-gray-400">
               <div className="flex items-center gap-1">
                 <SchoolIcon className="w-4 h-4" />
-                <span className="capitalize">{spell.school}</span>
+                <span className="capitalize">Magic</span>
               </div>
-              {spell.ritual && (
-                <span className="px-2 py-0.5 bg-indigo-800 text-indigo-200 text-xs rounded">
-                  Ritual
-                </span>
-              )}
-              {spell.concentration && (
-                <span className="px-2 py-0.5 bg-orange-800 text-orange-200 text-xs rounded">
-                  Concentration
-                </span>
-              )}
+              {/* Ritual and concentration not yet available in SpellInfo */}
             </div>
           </div>
           <input
@@ -199,45 +177,14 @@ function SpellCard({
           />
         </div>
 
-        {/* Quick Info */}
-        <div className="grid grid-cols-3 gap-2 text-xs text-gray-400 mb-3">
-          <div className="flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            {spell.castingTime}
-          </div>
-          <div>Range: {spell.range}</div>
-          <div>Duration: {spell.duration}</div>
-        </div>
+        {/* Quick Info - not yet available in SpellInfo */}
 
         {/* Full Description */}
         <p className="text-sm text-gray-300">{spell.description}</p>
 
-        {/* Damage info if available */}
-        {spell.damage && (
-          <div className="mt-2 p-2 bg-gray-900 rounded">
-            <div className="text-xs text-gray-300">
-              <strong className="text-orange-400">Damage:</strong>{' '}
-              {spell.damage.damageType}
-              {spell.damage.damageAtSlotLevel &&
-                spell.damage.damageAtSlotLevel.length > 0 && (
-                  <span className="ml-2">
-                    (
-                    {spell.damage.damageAtSlotLevel.find(
-                      (d) => d.slotLevel === spell.level
-                    )?.damageDice || 'varies'}
-                    )
-                  </span>
-                )}
-            </div>
-          </div>
-        )}
+        {/* Damage info not yet available in SpellInfo */}
 
-        {/* Components */}
-        {spell.components && (
-          <div className="mt-2 text-xs text-gray-500">
-            Components: {spell.components}
-          </div>
-        )}
+        {/* Components not yet available in SpellInfo */}
       </div>
     </motion.div>
   );
@@ -342,7 +289,7 @@ export function SpellSelectionModal({
     const currentLevelSpells = Array.from(selectedSpells).filter((id) => {
       // Check all spell levels to find this spell
       for (const [, spells] of allSpells) {
-        const spell = spells.find((s) => s.id === id);
+        const spell = spells.find((s) => String(s.spellId) === id);
         if (spell && spell.level === selectedLevel) {
           return true;
         }
@@ -381,7 +328,7 @@ export function SpellSelectionModal({
   };
 
   const toggleSpellSelection = (spellId: string) => {
-    const spell = availableSpells.find((s) => s.id === spellId);
+    const spell = availableSpells.find((s) => String(s.spellId) === spellId);
     if (!spell) return;
 
     const newSelection = new Set(selectedSpells);
@@ -402,7 +349,7 @@ export function SpellSelectionModal({
     return Array.from(selectedSpells).filter((id) => {
       // Check all spell levels to find this spell
       for (const [, spells] of allSpells) {
-        const spell = spells.find((s) => s.id === id);
+        const spell = spells.find((s) => String(s.spellId) === id);
         if (spell && spell.level === level) {
           return true;
         }
@@ -600,12 +547,15 @@ export function SpellSelectionModal({
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {filteredSpells.map((spell) => (
                     <SpellCard
-                      key={spell.id}
+                      key={String(spell.spellId)}
                       spell={spell}
-                      isSelected={selectedSpells.has(spell.id)}
-                      onToggle={() => toggleSpellSelection(spell.id)}
+                      isSelected={selectedSpells.has(String(spell.spellId))}
+                      onToggle={() =>
+                        toggleSpellSelection(String(spell.spellId))
+                      }
                       disabled={
-                        !selectedSpells.has(spell.id) && !canSelectMore()
+                        !selectedSpells.has(String(spell.spellId)) &&
+                        !canSelectMore()
                       }
                     />
                   ))}

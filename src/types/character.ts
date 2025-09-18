@@ -1,7 +1,5 @@
-import type {
-  Choice,
-  RaceInfo,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 
 export interface RaceSelectionState {
   selectedRace?: RaceInfo;

@@ -1,7 +1,12 @@
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useState } from 'react';
 import { Card } from '../../../components/ui/Card';
+import {
+  getArmorProficiencyDisplay,
+  getLanguageDisplay,
+  getToolProficiencyDisplay,
+  getWeaponProficiencyDisplay,
+} from '../../../utils/enumDisplay';
 
 interface DnDProficienciesProps {
   character: Character;
@@ -20,15 +25,9 @@ export function DnDProficiencies({
   const toolProficiencies = character.proficiencies?.tools || [];
 
   // Convert language enums to display names
-  const languages: string[] = (character.languages || []).map((langEnum) => {
-    const langName = Language[langEnum];
-    return langName
-      ? langName
-          .replace(/_/g, ' ')
-          .toLowerCase()
-          .replace(/\b\w/g, (c) => c.toUpperCase())
-      : 'Unknown';
-  });
+  const languages: string[] = (character.languages || []).map((langEnum) =>
+    getLanguageDisplay(langEnum)
+  );
 
   const handleShowDetails = () => {
     const content = (
@@ -48,7 +47,7 @@ export function DnDProficiencies({
                   className="text-sm"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  • {armor}
+                  • {getArmorProficiencyDisplay(armor)}
                 </li>
               ))}
             </ul>
@@ -70,7 +69,7 @@ export function DnDProficiencies({
                   className="text-sm"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  • {weapon}
+                  • {getWeaponProficiencyDisplay(weapon)}
                 </li>
               ))}
             </ul>
@@ -92,7 +91,7 @@ export function DnDProficiencies({
                   className="text-sm"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  • {tool}
+                  • {getToolProficiencyDisplay(tool)}
                 </li>
               ))}
             </ul>
@@ -167,7 +166,7 @@ export function DnDProficiencies({
             className="text-sm"
             style={{ color: 'var(--text-muted)' }}
           >
-            • {armor}
+            • {getArmorProficiencyDisplay(armor)}
           </div>
         ))}
 
@@ -177,7 +176,7 @@ export function DnDProficiencies({
             className="text-sm"
             style={{ color: 'var(--text-muted)' }}
           >
-            • {weapon}
+            • {getWeaponProficiencyDisplay(weapon)}
           </div>
         ))}
 
@@ -233,7 +232,7 @@ export function DnDProficiencies({
                     className="text-sm"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    • {armor}
+                    • {getArmorProficiencyDisplay(armor)}
                   </li>
                 ))}
               </ul>
@@ -255,7 +254,7 @@ export function DnDProficiencies({
                     className="text-sm"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    • {weapon}
+                    • {getWeaponProficiencyDisplay(weapon)}
                   </li>
                 ))}
               </ul>
@@ -277,7 +276,7 @@ export function DnDProficiencies({
                     className="text-sm"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    • {tool}
+                    • {getToolProficiencyDisplay(tool)}
                   </li>
                 ))}
               </ul>

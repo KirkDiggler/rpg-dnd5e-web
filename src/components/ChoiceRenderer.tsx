@@ -1,10 +1,8 @@
-import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { EquipmentChoice } from './choices/EquipmentChoice';
-import { GenericChoice } from './choices/GenericChoice';
-import { LanguageChoice } from './choices/LanguageChoice';
-import { SkillChoice } from './choices/SkillChoice';
-import { SpellChoice } from './choices/SpellChoice';
+import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
+import { EquipmentBundleChoice } from './choices/EquipmentBundleChoice';
+import { SimpleChoice } from './choices/SimpleChoice';
+import { ToolChoice } from './choices/ToolChoice';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SelectionValue = any; // Generic type that can be Language[] | Skill[] | string[] based on choice type
@@ -24,63 +22,46 @@ export function ChoiceRenderer({
   onSelectionChange,
   currentSelections,
 }: ChoiceRendererProps) {
-  switch (choice.choiceType) {
-    case ChoiceCategory.SKILLS:
-      return (
-        <SkillChoice
-          choice={choice}
-          onSelectionChange={onSelectionChange}
-          currentSelections={currentSelections}
-        />
-      );
-
-    case ChoiceCategory.EQUIPMENT:
-      return (
-        <EquipmentChoice
-          choice={choice}
-          onSelectionChange={onSelectionChange}
-          currentSelections={currentSelections}
-        />
-      );
-
-    case ChoiceCategory.SPELLS:
-      return (
-        <SpellChoice
-          choice={choice}
-          onSelectionChange={onSelectionChange}
-          currentSelections={currentSelections}
-        />
-      );
-
-    case ChoiceCategory.LANGUAGES:
-      return (
-        <LanguageChoice
-          choice={choice}
-          onSelectionChange={onSelectionChange}
-          currentSelections={currentSelections}
-        />
-      );
-
-    case ChoiceCategory.TOOLS:
-    case ChoiceCategory.WEAPON_PROFICIENCIES:
-    case ChoiceCategory.ARMOR_PROFICIENCIES:
-      // These are proficiency types that can be handled generically for now
-      return (
-        <GenericChoice
-          choice={choice}
-          onSelectionChange={onSelectionChange}
-          currentSelections={currentSelections}
-        />
-      );
-
-    default:
-      // Fallback to generic choice renderer
-      return (
-        <GenericChoice
-          choice={choice}
-          onSelectionChange={onSelectionChange}
-          currentSelections={currentSelections}
-        />
-      );
+  // Check if it's an equipment choice with bundles (the special case we handle properly)
+  if (
+    choice.choiceType === ChoiceCategory.EQUIPMENT &&
+    choice.options?.case === 'equipmentOptions'
+  ) {
+    return (
+      <EquipmentBundleChoice
+        choice={choice}
+        onSelectionChange={(bundleId, categorySelections) => {
+          // Convert EquipmentBundleChoice format back to standard format
+          const selections: string[] = [];
+          if (bundleId) selections.push(bundleId);
+          categorySelections.forEach((equipment, index) => {
+            equipment.forEach((item) =>
+              selections.push(`cat${index}:${item.id}`)
+            );
+          });
+          onSelectionChange(choice.id, selections);
+        }}
+      />
+    );
   }
+
+  // Tools still use their dedicated component
+  if (choice.choiceType === ChoiceCategory.TOOLS) {
+    return (
+      <ToolChoice
+        choice={choice}
+        onSelectionChange={onSelectionChange}
+        currentSelections={currentSelections}
+      />
+    );
+  }
+
+  // Everything else uses the simple fallback
+  return (
+    <SimpleChoice
+      choice={choice}
+      onSelectionChange={onSelectionChange}
+      currentSelections={currentSelections}
+    />
+  );
 }

@@ -2,7 +2,17 @@ import type {
   ClassInfo,
   RaceInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import {
+  Ability,
+  ArmorProficiencyCategory,
+  Language,
+  WeaponProficiencyCategory,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import {
+  getArmorProficiencyDisplay,
+  getToolProficiencyDisplay,
+  getWeaponProficiencyDisplay,
+} from '../../../utils/enumDisplay';
 
 interface ProficiencyListProps {
   selectedRace: RaceInfo | null;
@@ -23,13 +33,8 @@ export function ProficiencyList({
 
   // Add race proficiencies
   if (selectedRace) {
-    // Base race proficiencies
-    if (selectedRace.proficiencies && selectedRace.proficiencies.length > 0) {
-      proficiencyGroups['race-base'] = {
-        source: `${selectedRace.name} (Base)`,
-        items: selectedRace.proficiencies,
-      };
-    }
+    // Base race proficiencies - these now come through choices only
+    // RaceInfo no longer has a proficiencies field
 
     // Race choice proficiencies
     const raceChoiceProfs = Object.values(raceChoices)
@@ -49,30 +54,40 @@ export function ProficiencyList({
     const classProfs: string[] = [];
 
     // Armor proficiencies
-    if (selectedClass.armorProficiencies?.length) {
+    if (selectedClass.armorProficiencyCategories?.length) {
       classProfs.push(
-        ...selectedClass.armorProficiencies.map((p) => `Armor: ${p}`)
+        ...selectedClass.armorProficiencyCategories.map(
+          (p: ArmorProficiencyCategory) =>
+            `Armor: ${getArmorProficiencyDisplay(String(p))}`
+        )
       );
     }
 
     // Weapon proficiencies
-    if (selectedClass.weaponProficiencies?.length) {
+    if (selectedClass.weaponProficiencyCategories?.length) {
       classProfs.push(
-        ...selectedClass.weaponProficiencies.map((p) => `Weapon: ${p}`)
+        ...selectedClass.weaponProficiencyCategories.map(
+          (p: WeaponProficiencyCategory) =>
+            `Weapon: ${getWeaponProficiencyDisplay(String(p))}`
+        )
       );
     }
 
     // Tool proficiencies
     if (selectedClass.toolProficiencies?.length) {
       classProfs.push(
-        ...selectedClass.toolProficiencies.map((p) => `Tool: ${p}`)
+        ...selectedClass.toolProficiencies.map(
+          (p) => `Tool: ${getToolProficiencyDisplay(p)}`
+        )
       );
     }
 
     // Saving throw proficiencies
     if (selectedClass.savingThrowProficiencies?.length) {
       classProfs.push(
-        ...selectedClass.savingThrowProficiencies.map((p) => `Save: ${p}`)
+        ...selectedClass.savingThrowProficiencies.map(
+          (p: Ability) => `Save: ${String(p)}`
+        )
       );
     }
 

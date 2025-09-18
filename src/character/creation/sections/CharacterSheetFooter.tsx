@@ -1,6 +1,7 @@
 import { useFinalizeDraft, useValidateDraft } from '@/api/hooks';
 import { useCharacterDraft } from '@/character/creation/useCharacterDraft';
 import { Button } from '@/components/ui/Button';
+import { getBackgroundDisplay } from '@/utils/enumDisplay';
 import { create } from '@bufbuild/protobuf';
 import {
   FinalizeDraftRequestSchema,
@@ -25,7 +26,7 @@ export function CharacterSheetFooter({
     draft?.name &&
     raceInfo &&
     classInfo &&
-    draft?.abilityScores &&
+    draft?.baseAbilityScores &&
     draft?.background
   );
 
@@ -42,8 +43,11 @@ export function CharacterSheetFooter({
       const validateResponse = await validateDraft(validateRequest);
 
       if (!validateResponse.isValid) {
-        const errors = validateResponse.errors?.map((e) =>
-          typeof e === 'string' ? e : e.message || 'Validation error'
+        const errors = validateResponse.validation?.issues?.map(
+          (issue: unknown) =>
+            typeof issue === 'string'
+              ? issue
+              : (issue as { message?: string }).message || 'Validation error'
         ) || ['Draft validation failed'];
         setValidationErrors(errors);
         return;
@@ -71,7 +75,7 @@ export function CharacterSheetFooter({
     draft?.name,
     raceInfo,
     classInfo,
-    draft?.abilityScores,
+    draft?.baseAbilityScores,
     draft?.background,
   ];
   const completedFields = requiredFields.filter(Boolean).length;
@@ -172,9 +176,9 @@ export function CharacterSheetFooter({
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {draft?.name}, a {raceInfo?.name || 'Unknown'}{' '}
             {classInfo?.name || 'Unknown'} with a{' '}
-            {typeof draft?.background === 'string'
-              ? draft.background
-              : draft?.background?.name || 'mysterious'}{' '}
+            {draft?.background
+              ? getBackgroundDisplay(draft.background)
+              : 'mysterious'}{' '}
             background, is ready to embark on epic adventures!
           </p>
         </motion.div>

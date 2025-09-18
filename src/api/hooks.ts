@@ -1,5 +1,6 @@
 import { create } from '@bufbuild/protobuf';
 import type {
+  BackgroundInfo,
   Character,
   CharacterDraft,
   ClassInfo,
@@ -22,6 +23,7 @@ import {
   DeleteCharacterRequestSchema,
   GetCharacterRequestSchema,
   GetDraftRequestSchema,
+  ListBackgroundsRequestSchema,
   ListCharactersRequestSchema,
   ListClassesRequestSchema,
   ListDraftsRequestSchema,
@@ -753,4 +755,57 @@ export function useDeleteCharacter() {
   }, []);
 
   return { deleteCharacter, loading, error };
+}
+
+// Background hooks
+export function useListBackgrounds({
+  pageSize = 50,
+  enabled = true,
+}: {
+  pageSize?: number;
+  enabled?: boolean;
+} = {}) {
+  const [state, setState] = useState<ListState<BackgroundInfo>>({
+    data: [],
+    loading: false,
+    error: null,
+  });
+
+  const fetchBackgrounds = useCallback(
+    async (pageToken?: string) => {
+      setState((prev) => ({
+        ...prev,
+        loading: true,
+        error: null,
+      }));
+      try {
+        const request = create(ListBackgroundsRequestSchema, {
+          pageSize,
+          pageToken: pageToken || '',
+        });
+        const response = await characterClient.listBackgrounds(request);
+        setState({
+          data: response.backgrounds || [],
+          loading: false,
+          error: null,
+          nextPageToken: response.nextPageToken,
+        });
+      } catch (error) {
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: error as Error,
+        }));
+      }
+    },
+    [pageSize]
+  );
+
+  useEffect(() => {
+    if (enabled) {
+      void fetchBackgrounds();
+    }
+  }, [fetchBackgrounds, enabled]);
+
+  return { ...state, refetch: fetchBackgrounds };
 }

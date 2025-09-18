@@ -1,8 +1,9 @@
 import type { RaceInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
   Language,
   Skill,
+  Tool,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -221,11 +222,29 @@ export function RaceSelectionModal({
       }
     }
 
-    // Validate other proficiency choices (tools, weapons, armor)
+    // Validate tool choices
+    const toolChoices =
+      currentRaceData.choices?.filter(
+        (choice) => choice.choiceType === ChoiceCategory.TOOLS
+      ) || [];
+
+    for (const choice of toolChoices) {
+      const toolChoice = currentRaceChoices.tools?.find(
+        (tc) => tc.choiceId === choice.id
+      );
+      const selected = toolChoice?.tools || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} tool${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
+    // Validate other proficiency choices (weapons, armor)
     const proficiencyChoices =
       currentRaceData.choices?.filter(
         (choice) =>
-          choice.choiceType === ChoiceCategory.TOOLS ||
           choice.choiceType === ChoiceCategory.WEAPON_PROFICIENCIES ||
           choice.choiceType === ChoiceCategory.ARMOR_PROFICIENCIES
       ) || [];
@@ -243,6 +262,7 @@ export function RaceSelectionModal({
     console.log('🚀 RaceSelectionModal sending choices:', currentRaceChoices);
     console.log('  - Languages:', currentRaceChoices.languages);
     console.log('  - Skills:', currentRaceChoices.skills);
+    console.log('  - Tools:', currentRaceChoices.tools);
     console.log('  - Proficiencies:', currentRaceChoices.proficiencies);
     onSelect(currentRaceData, currentRaceChoices);
     onClose();
@@ -391,85 +411,7 @@ export function RaceSelectionModal({
               </p>
             </div>
 
-            {/* Enhanced Descriptions */}
-            {(currentRaceData.ageDescription ||
-              currentRaceData.alignmentDescription ||
-              currentRaceData.sizeDescription) && (
-              <div style={{ marginBottom: '20px' }}>
-                {currentRaceData.ageDescription && (
-                  <div style={{ marginBottom: '12px' }}>
-                    <h5
-                      style={{
-                        color: textPrimary,
-                        fontWeight: 'bold',
-                        fontSize: '14px',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      Age
-                    </h5>
-                    <p
-                      style={{
-                        color: textPrimary,
-                        fontSize: '13px',
-                        lineHeight: '1.4',
-                        opacity: 0.9,
-                      }}
-                    >
-                      {currentRaceData.ageDescription}
-                    </p>
-                  </div>
-                )}
-                {currentRaceData.alignmentDescription && (
-                  <div style={{ marginBottom: '12px' }}>
-                    <h5
-                      style={{
-                        color: textPrimary,
-                        fontWeight: 'bold',
-                        fontSize: '14px',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      Alignment
-                    </h5>
-                    <p
-                      style={{
-                        color: textPrimary,
-                        fontSize: '13px',
-                        lineHeight: '1.4',
-                        opacity: 0.9,
-                      }}
-                    >
-                      {currentRaceData.alignmentDescription}
-                    </p>
-                  </div>
-                )}
-                {currentRaceData.sizeDescription && (
-                  <div style={{ marginBottom: '12px' }}>
-                    <h5
-                      style={{
-                        color: textPrimary,
-                        fontWeight: 'bold',
-                        fontSize: '14px',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      Size Details
-                    </h5>
-                    <p
-                      style={{
-                        color: textPrimary,
-                        fontSize: '13px',
-                        lineHeight: '1.4',
-                        opacity: 0.9,
-                      }}
-                    >
-                      {currentRaceData.sizeDescription}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Enhanced Descriptions - These fields no longer exist in RaceInfo */}
 
             {/* Core Stats */}
             <div
@@ -732,12 +674,77 @@ export function RaceSelectionModal({
               );
             })()}
 
-            {/* Other Proficiency Choices (Tools, Weapons, Armor) */}
+            {/* Tool Choices */}
+            {(() => {
+              const toolChoices =
+                currentRaceData.choices?.filter(
+                  (choice) => choice.choiceType === ChoiceCategory.TOOLS
+                ) || [];
+
+              if (toolChoices.length === 0) return null;
+
+              return (
+                <CollapsibleSection
+                  title="Choose Tool Proficiencies"
+                  defaultOpen={true}
+                  required={true}
+                >
+                  <div style={{ marginBottom: '12px' }}>
+                    {toolChoices.map((choice) => (
+                      <div key={choice.id} style={{ marginBottom: '16px' }}>
+                        <ChoiceRenderer
+                          choice={choice}
+                          currentSelections={
+                            // Pass Tool enum values directly
+                            currentRaceChoices.tools?.find(
+                              (tc) => tc.choiceId === choice.id
+                            )?.tools || []
+                          }
+                          onSelectionChange={(_choiceId, selections) => {
+                            // selections are now Tool enums directly
+                            const toolEnums = selections as Tool[];
+
+                            setRaceChoicesMap((prev) => {
+                              const currentChoices = prev[currentRaceName] || {
+                                languages: [],
+                                skills: [],
+                                tools: [],
+                                proficiencies: [],
+                              };
+                              const updatedTools =
+                                currentChoices.tools?.filter(
+                                  (tc) => tc.choiceId !== choice.id
+                                ) || [];
+
+                              if (toolEnums.length > 0) {
+                                updatedTools.push({
+                                  choiceId: choice.id,
+                                  tools: toolEnums,
+                                });
+                              }
+
+                              return {
+                                ...prev,
+                                [currentRaceName]: {
+                                  ...currentChoices,
+                                  tools: updatedTools,
+                                },
+                              };
+                            });
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              );
+            })()}
+
+            {/* Other Proficiency Choices (Weapons, Armor) */}
             {(() => {
               const proficiencyChoices =
                 currentRaceData.choices?.filter(
                   (choice) =>
-                    choice.choiceType === ChoiceCategory.TOOLS ||
                     choice.choiceType === ChoiceCategory.WEAPON_PROFICIENCIES ||
                     choice.choiceType === ChoiceCategory.ARMOR_PROFICIENCIES
                 ) || [];
@@ -850,26 +857,7 @@ export function RaceSelectionModal({
               </div>
             </CollapsibleSection>
 
-            {/* Proficiencies */}
-            {currentRaceData.proficiencies &&
-              currentRaceData.proficiencies.length > 0 && (
-                <CollapsibleSection title="Proficiencies" defaultOpen={false}>
-                  <div
-                    style={{
-                      padding: '8px',
-                      backgroundColor: bgSecondary,
-                      borderRadius: '6px',
-                      border: `1px solid ${borderPrimary}`,
-                      fontSize: '14px',
-                      color: textPrimary,
-                      opacity: 0.9,
-                      marginBottom: '12px',
-                    }}
-                  >
-                    {currentRaceData.proficiencies.join(', ')}
-                  </div>
-                </CollapsibleSection>
-              )}
+            {/* Proficiencies - RaceInfo no longer has proficiencies field - they come through choices now */}
           </div>
         </div>
 

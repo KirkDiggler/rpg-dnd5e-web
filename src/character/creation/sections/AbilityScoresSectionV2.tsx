@@ -332,14 +332,14 @@ export function AbilityScoresSectionV2({
       if (response.draft && context) {
         // The server has calculated the ability scores from our roll assignments
         // Update the context so the UI knows they're saved
-        if (response.draft.abilityScores) {
+        if (response.draft.baseAbilityScores) {
           context.setAbilityScores({
-            strength: response.draft.abilityScores.strength,
-            dexterity: response.draft.abilityScores.dexterity,
-            constitution: response.draft.abilityScores.constitution,
-            intelligence: response.draft.abilityScores.intelligence,
-            wisdom: response.draft.abilityScores.wisdom,
-            charisma: response.draft.abilityScores.charisma,
+            strength: response.draft.baseAbilityScores.strength,
+            dexterity: response.draft.baseAbilityScores.dexterity,
+            constitution: response.draft.baseAbilityScores.constitution,
+            intelligence: response.draft.baseAbilityScores.intelligence,
+            wisdom: response.draft.baseAbilityScores.wisdom,
+            charisma: response.draft.baseAbilityScores.charisma,
           });
         }
       }
@@ -359,8 +359,9 @@ export function AbilityScoresSectionV2({
   }
 
   // Check if ability scores are already set in the draft
-  if (context?.draft?.abilityScores) {
-    const scores = context.draft.abilityScores;
+  const draftScores = context?.draft?.baseAbilityScores;
+  if (draftScores) {
+    const scores = draftScores;
     const hasScores =
       scores.strength > 0 ||
       scores.dexterity > 0 ||
@@ -379,7 +380,7 @@ export function AbilityScoresSectionV2({
             Ability Scores
           </h2>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
             {ABILITY_NAMES.map((ability) => {
               const score = scores[ability.key];
               const scoreValue = typeof score === 'number' ? score : 0;
@@ -484,7 +485,7 @@ export function AbilityScoresSectionV2({
           >
             Available Rolls
           </h3>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {rolls.map((roll) => (
               <DiceRollDisplay
                 key={roll.rollId}
@@ -506,7 +507,7 @@ export function AbilityScoresSectionV2({
         >
           Abilities
         </h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
           {ABILITY_NAMES.map((ability) => {
             const assignedRollId = getAssignedRoll(ability.key);
             const assignedRoll = rolls.find((r) => r.rollId === assignedRollId);
