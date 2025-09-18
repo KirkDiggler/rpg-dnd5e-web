@@ -1,28 +1,37 @@
 import { create } from '@bufbuild/protobuf';
 import type {
+  BackgroundInfo,
   CharacterDraft,
-  Choice,
-  ChoiceData,
   ClassInfo,
   RaceInfo,
   SubclassInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
-  AbilityScoresSchema,
-  ChoiceCategory,
-  ChoiceSource,
   CreateDraftRequestSchema,
   FinalizeDraftRequestSchema,
   UpdateAbilityScoresRequestSchema,
+  UpdateBackgroundRequestSchema,
   UpdateClassRequestSchema,
   UpdateNameRequestSchema,
   UpdateRaceRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type {
+  Choice,
+  ChoiceData,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
+  ChoiceCategory,
+  ChoiceSource,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
+import { AbilityScoresSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
+import {
+  ArmorProficiencyCategory,
   Class,
   Language,
   Race,
   Subclass,
+  Tool,
+  WeaponProficiencyCategory,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
@@ -30,9 +39,11 @@ import { characterClient } from '../../api/client';
 import {
   useCreateDraft,
   useFinalizeDraft,
+  useListBackgrounds,
   useListClasses,
   useListRaces,
   useUpdateDraftAbilityScores,
+  useUpdateDraftBackground,
   useUpdateDraftClass,
   useUpdateDraftName,
   useUpdateDraftRace,
@@ -84,303 +95,15 @@ function formatProficiencyList(
   proficiencies: string[] | undefined
 ): string[] {
   if (!proficiencies) return [];
-  return proficiencies.flatMap((p) => [
-    `${category}:${p.toLowerCase()}`,
-    p, // Also add original format
-  ]);
-}
-
-// Helper to convert ChoiceData array to internal choice format
-// Removed convertChoiceDataToInternalFormat - no longer needed
-// We now use ChoiceData directly
-/*
-function convertChoiceDataToInternalFormat(
-  choiceData: ChoiceData[]
-): Record<string, string[]> {
-  const result: Record<string, string[]> = {};
-
-  console.group('📥 Converting ChoiceData to internal format');
-  console.log(
-    '🧩 Input ChoiceData array:',
-    choiceData.map((cd) => ({
-      choiceId: cd.choiceId,
-      category: `${ChoiceCategory[cd.category]}(${cd.category})`,
-      source: `${ChoiceSource[cd.source]}(${cd.source})`,
-      selection: cd.selection.case,
-    }))
-  );
-
-  choiceData.forEach((choice) => {
-    console.group(`🎯 Processing choice: ${choice.choiceId}`);
-    console.log(
-      '📋 Category:',
-      `${ChoiceCategory[choice.category]}(${choice.category})`
-    );
-    console.log(
-      '📡 Source:',
-      `${ChoiceSource[choice.source]}(${choice.source})`
-    );
-    console.log('🎲 Selection type:', choice.selection.case);
-
-    const selections: string[] = [];
-
-    switch (choice.selection.case) {
-      case 'skills':
-        console.log('🎯 Processing skills selection');
-        if (choice.selection.value.skills) {
-          const skillMappings = choice.selection.value.skills.map((skill) => {
-            const skillName = `skill:${Skill[skill].toLowerCase()}`;
-            console.log(
-              `🔄 Skill enum ${skill} -> ${Skill[skill]} -> "${skillName}"`
-            );
-            return skillName;
-          });
-          selections.push(...skillMappings);
-          console.log('✅ Skills converted:', skillMappings);
-        } else {
-          console.warn('⚠️ Skills selection has no skills array');
-        }
-        break;
-      case 'languages':
-        console.log('🎯 Processing languages selection');
-        if (choice.selection.value.languages) {
-          const languageMappings = choice.selection.value.languages.map(
-            (lang) => {
-              const languageName = `language:${Language[lang].toLowerCase()}`;
-              console.log(
-                `🔄 Language enum ${lang} -> ${Language[lang]} -> "${languageName}"`
-              );
-              return languageName;
-            }
-          );
-          selections.push(...languageMappings);
-          console.log('✅ Languages converted:', languageMappings);
-        } else {
-          console.warn('⚠️ Languages selection has no languages array');
-        }
-        break;
-      case 'equipment':
-        console.log('🎯 Processing equipment selection');
-        if (choice.selection.value.items) {
-          selections.push(...choice.selection.value.items);
-          console.log('✅ Equipment items:', choice.selection.value.items);
-        } else {
-          console.warn('⚠️ Equipment selection has no items array');
-        }
-        break;
-      case 'fightingStyle':
-        console.log('🎯 Processing fighting style selection');
-        selections.push(choice.selection.value);
-        console.log('✅ Fighting style:', choice.selection.value);
-        break;
-      case 'name':
-        console.log('🎯 Processing name selection');
-        selections.push(choice.selection.value);
-        console.log('✅ Name:', choice.selection.value);
-        break;
-      // Add other cases as needed
-      default:
-        console.warn(`⚠️ Unknown selection type: ${choice.selection.case}`);
-    }
-
-    if (selections.length > 0) {
-      result[choice.choiceId] = selections;
-      console.log('✅ Added to result:', { [choice.choiceId]: selections });
-    } else {
-      console.warn('⚠️ No selections found, skipping');
-    }
-    console.groupEnd();
+  return proficiencies.flatMap((p) => {
+    // Ensure p is a string
+    const profString = typeof p === 'string' ? p : String(p);
+    return [
+      `${category}:${profString.toLowerCase()}`,
+      profString, // Also add original format
+    ];
   });
-
-  console.log('🏁 Final result:', result);
-  console.groupEnd();
-  return result;
 }
-*/
-
-// Helper to create ChoiceData from our internal choice format
-// Removed unused function createChoiceDataFromInternalFormat
-// We now use ChoiceData directly without conversion
-
-/*
-function createChoiceDataFromInternalFormat(
-  choices: Record<string, string[]>,
-  source: ChoiceSource
-): ChoiceData[] {
-  const choiceDataArray: ChoiceData[] = [];
-
-  console.group('🔧 Creating ChoiceData from internal format');
-  console.log('📝 Input choices:', JSON.stringify(choices, null, 2));
-  console.log('📍 Source:', ChoiceSource[source]);
-
-  Object.entries(choices).forEach(([choiceId, selectedValues]) => {
-    console.group(`🎯 Processing choice: ${choiceId}`);
-    console.log('📋 Selected values:', selectedValues);
-
-    if (selectedValues.length > 0) {
-      // Determine the choice category and create appropriate ChoiceData
-      let category: ChoiceCategory;
-      let selection: ChoiceData['selection'];
-
-      if (selectedValues.some((v) => v.startsWith('skill:'))) {
-        console.log('🎯 Detected SKILLS choice');
-        category = ChoiceCategory.SKILLS;
-
-        // Convert string skills to Skill enums
-        const skills = selectedValues
-          .filter((v) => v.startsWith('skill:')) // Only process skill values
-          .map((skill) => {
-            const skillName = skill
-              .replace('skill:', '')
-              .replace(/[- ]/g, '_')
-              .toUpperCase();
-            const skillEnum =
-              Skill[skillName as keyof typeof Skill] || Skill.UNSPECIFIED;
-            console.log(
-              `🔄 Converting skill: "${skill}" -> "${skillName}" -> ${Skill[skillEnum] || 'INVALID'} (${skillEnum})`
-            );
-            return skillEnum;
-          })
-          .filter((skill) => {
-            const isValid = skill !== Skill.UNSPECIFIED;
-            if (!isValid) {
-              console.warn('⚠️ Filtered out UNSPECIFIED skill');
-            }
-            return isValid;
-          });
-
-        console.log(
-          '✅ Final skills array:',
-          skills.map((s) => `${Skill[s]}(${s})`)
-        );
-
-        selection = {
-          case: 'skills',
-          value: create(SkillListSchema, { skills }),
-        };
-      } else if (selectedValues.some((v) => v.startsWith('language:'))) {
-        console.log('🎯 Detected LANGUAGES choice');
-        category = ChoiceCategory.LANGUAGES;
-
-        // Convert string languages to Language enums
-        const languages = selectedValues
-          .filter((v) => v.startsWith('language:')) // Only process language values
-          .map((lang) => {
-            const langName = lang
-              .replace('language:', '')
-              .replace(/[- ]/g, '_')
-              .toUpperCase();
-            // Check if the enum key exists
-            const hasLanguageEnum = langName in Language;
-            const langEnum = hasLanguageEnum
-              ? Language[langName as keyof typeof Language]
-              : Language.UNSPECIFIED;
-            console.log(
-              `🔄 Converting language: "${lang}" -> "${langName}" -> ${hasLanguageEnum ? 'FOUND' : 'NOT FOUND'} -> ${Language[langEnum] || 'INVALID'} (${langEnum})`
-            );
-            return langEnum;
-          })
-          .filter((lang) => {
-            const isValid = lang !== Language.UNSPECIFIED;
-            if (!isValid) {
-              console.warn('⚠️ Filtered out UNSPECIFIED language');
-            }
-            return isValid;
-          });
-
-        console.log(
-          '✅ Final languages array:',
-          languages.map((l) => `${Language[l]}(${l})`)
-        );
-
-        selection = {
-          case: 'languages',
-          value: create(LanguageListSchema, { languages }),
-        };
-      } else if (choiceId.includes('cantrip')) {
-        console.log('🎯 Detected CANTRIPS choice');
-        category = ChoiceCategory.CANTRIPS;
-        selection = {
-          case: 'cantrips',
-          value: create(CantripListSchema, { cantrips: selectedValues }),
-        };
-      } else if (choiceId.includes('spell')) {
-        console.log('🎯 Detected SPELLS choice');
-        category = ChoiceCategory.SPELLS;
-        selection = {
-          case: 'spells',
-          value: create(SpellListSchema, { spells: selectedValues }),
-        };
-      } else if (choiceId.includes('equipment')) {
-        console.log('🎯 Detected EQUIPMENT choice');
-        category = ChoiceCategory.EQUIPMENT;
-        selection = {
-          case: 'equipment',
-          value: create(EquipmentListSchema, { items: selectedValues }),
-        };
-      } else if (choiceId.includes('fighting')) {
-        console.log('🎯 Detected FIGHTING_STYLE choice');
-        category = ChoiceCategory.FIGHTING_STYLE;
-        selection = {
-          case: 'fightingStyle',
-          value: selectedValues[0] || '',
-        };
-      } else {
-        console.log('🎯 Using fallback UNSPECIFIED choice');
-        // Default to name for unrecognized choice types
-        category = ChoiceCategory.UNSPECIFIED;
-        selection = {
-          case: 'name',
-          value: selectedValues.join(', '),
-        };
-      }
-
-      const choiceData = create(ChoiceDataSchema, {
-        category,
-        source,
-        choiceId,
-        selection,
-      });
-
-      console.log('📦 Created ChoiceData:', {
-        choiceId,
-        category: `${ChoiceCategory[category]}(${category})`,
-        source: `${ChoiceSource[source]}(${source})`,
-        selection: {
-          case: selection.case,
-          value:
-            selection.case === 'skills'
-              ? (selection.value as { skills?: number[] }).skills?.map(
-                  (s: number) => `${Skill[s]}(${s})`
-                )
-              : selection.case === 'languages'
-                ? (selection.value as { languages?: number[] }).languages?.map(
-                    (l: number) => `${Language[l]}(${l})`
-                  )
-                : selection.value,
-        },
-      });
-
-      choiceDataArray.push(choiceData);
-    } else {
-      console.log('⏭️ Skipping empty choice');
-    }
-    console.groupEnd();
-  });
-
-  console.log(
-    '🏁 Final ChoiceData array:',
-    choiceDataArray.map((cd) => ({
-      choiceId: cd.choiceId,
-      category: `${ChoiceCategory[cd.category]}(${cd.category})`,
-      source: `${ChoiceSource[cd.source]}(${cd.source})`,
-      selection: cd.selection.case,
-    }))
-  );
-  console.groupEnd();
-  return choiceDataArray;
-}
-*/
 
 export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const [draftId, setDraftId] = useState<string | null>(null);
@@ -389,25 +112,30 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const [currentClassInfo, setCurrentClassInfo] = useState<
     ClassInfo | SubclassInfo | null
   >(null);
+  const [currentBackgroundInfo, setCurrentBackgroundInfo] =
+    useState<BackgroundInfo | null>(null);
   const [allProficiencies, setAllProficiencies] = useState<Set<string>>(
     new Set()
   );
   const [allLanguages, setAllLanguages] = useState<Set<string>>(new Set());
   const [raceChoices, setRaceChoices] = useState<ChoiceData[]>([]);
   const [classChoices, setClassChoices] = useState<ChoiceData[]>([]);
+  const [backgroundChoices, setBackgroundChoices] = useState<ChoiceData[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  // Get reference data for race/class lookups
+  // Get reference data for race/class/background lookups
   const { data: availableRaces } = useListRaces({ pageSize: 50 });
   const { data: availableClasses } = useListClasses({ pageSize: 50 });
+  const { data: availableBackgrounds } = useListBackgrounds({ pageSize: 50 });
 
   // API hooks
   const { createDraft: createDraftAPI } = useCreateDraft();
   const { updateName: updateNameAPI } = useUpdateDraftName();
   const { updateRace: updateRaceAPI } = useUpdateDraftRace();
   const { updateClass: updateClassAPI } = useUpdateDraftClass();
+  const { updateBackground: updateBackgroundAPI } = useUpdateDraftBackground();
   const { updateAbilityScores: updateAbilityScoresAPI } =
     useUpdateDraftAbilityScores();
   const { finalizeDraft: finalizeDraftAPI } = useFinalizeDraft();
@@ -418,18 +146,8 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       const proficiencies = new Set<string>();
       if (!race) return proficiencies;
 
-      // Add base proficiencies - these come automatically with the race
-      if (race.proficiencies && Array.isArray(race.proficiencies)) {
-        race.proficiencies.forEach((p) => {
-          // Normalize the proficiency index
-          // API might return "skill-intimidation" or "Skill: Intimidation"
-          const normalized = p
-            .toLowerCase()
-            .replace(/^skill[:-]\s*/i, 'skill:');
-          proficiencies.add(normalized);
-          proficiencies.add(p); // Also add original format
-        });
-      }
+      // TODO: RaceInfo no longer has proficiencies field in new proto
+      // Proficiencies now come through choices only
 
       // Add chosen proficiencies from race choices (now ChoiceData[])
       const choicesToUse = choicesOverride || raceChoices;
@@ -442,6 +160,27 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             const skillName = getSkillDisplay(skillEnum);
             proficiencies.add(skillName);
             proficiencies.add(`skill:${skillName.toLowerCase()}`);
+          });
+        }
+        // Add tool proficiencies from choices
+        if (
+          choice.selection?.case === 'tools' &&
+          choice.selection.value.tools
+        ) {
+          choice.selection.value.tools.forEach((toolEnum) => {
+            const toolName = Tool[toolEnum];
+            if (toolName) {
+              // Convert enum name to display name (e.g., SMITH_TOOLS -> Smith's Tools)
+              const displayName = toolName
+                .split('_')
+                .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+                .join(' ')
+                .replace('Tools', "'s Tools")
+                .replace('Supplies', "'s Supplies")
+                .replace('Utensils', ' Utensils');
+              proficiencies.add(displayName);
+              proficiencies.add(`tool:${displayName.toLowerCase()}`);
+            }
           });
         }
       });
@@ -499,21 +238,40 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       if (!classInfo) return proficiencies;
 
       // Add base proficiencies using helper
-      formatProficiencyList('armor', classInfo.armorProficiencies).forEach(
-        (p) => proficiencies.add(p)
+      // Convert any non-string values to strings first
+      // Only ClassInfo has armor/weapon proficiency categories, not SubclassInfo
+      let armorProfs: string[] | undefined;
+      let weaponProfs: string[] | undefined;
+      if (classInfo.$typeName === 'dnd5e.api.v1alpha1.ClassInfo') {
+        const ci = classInfo as ClassInfo;
+        armorProfs = ci.armorProficiencyCategories?.map(
+          (p: ArmorProficiencyCategory) => String(p)
+        );
+        weaponProfs = ci.weaponProficiencyCategories?.map(
+          (p: WeaponProficiencyCategory) => String(p)
+        );
+      }
+      const toolProfs = classInfo.toolProficiencies?.map((p: Tool) =>
+        String(p)
       );
-      formatProficiencyList('weapon', classInfo.weaponProficiencies).forEach(
-        (p) => proficiencies.add(p)
+
+      formatProficiencyList('armor', armorProfs).forEach((p) =>
+        proficiencies.add(p)
       );
-      formatProficiencyList('tool', classInfo.toolProficiencies).forEach((p) =>
+      formatProficiencyList('weapon', weaponProfs).forEach((p) =>
+        proficiencies.add(p)
+      );
+      formatProficiencyList('tool', toolProfs).forEach((p) =>
         proficiencies.add(p)
       );
       // savingThrowProficiencies only exists on ClassInfo, not SubclassInfo
       if (classInfo.$typeName === 'dnd5e.api.v1alpha1.ClassInfo') {
-        formatProficiencyList(
-          'saving-throw',
-          (classInfo as ClassInfo).savingThrowProficiencies
-        ).forEach((p) => proficiencies.add(p));
+        const saveProfs = (
+          classInfo as ClassInfo
+        ).savingThrowProficiencies?.map((p) => String(p));
+        formatProficiencyList('saving-throw', saveProfs).forEach((p) =>
+          proficiencies.add(p)
+        );
       }
 
       // Add chosen proficiencies from class choices (now ChoiceData[])
@@ -538,10 +296,61 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
   // When draft has raceId, look it up from available races
   useEffect(() => {
-    if (draft?.raceId && availableRaces && availableRaces.length > 0) {
-      const raceInfo = availableRaces.find(
-        (r) => r.id === Race[draft.raceId].toLowerCase()
-      );
+    if (draft?.race && availableRaces && availableRaces.length > 0) {
+      // Try multiple matching strategies
+      // First check if raceId matches directly (both as same type)
+      let raceInfo = availableRaces.find((r) => r.raceId === draft.race);
+
+      if (!raceInfo) {
+        // Try comparing as numbers (draft.race might be number, r.raceId might be enum)
+        raceInfo = availableRaces.find(
+          (r) => Number(r.raceId) === Number(draft.race)
+        );
+      }
+
+      if (!raceInfo) {
+        // Try matching by id field directly with enum value
+        raceInfo = availableRaces.find((r) => r.raceId === draft.race);
+      }
+
+      if (!raceInfo) {
+        // Try matching by enum name
+        const raceName = Race[draft.race];
+        if (raceName) {
+          if (!raceInfo) {
+            // Try exact lowercase match
+            raceInfo = availableRaces.find((r) => r.raceId === draft.race);
+          }
+        }
+      }
+
+      if (!raceInfo) {
+        // Try matching by name directly
+        const raceName = Race[draft.race];
+        if (raceName) {
+          raceInfo = availableRaces.find(
+            (r) => r.name.toUpperCase().replace(/[- ]/g, '_') === raceName
+          );
+        }
+      }
+
+      if (!raceInfo) {
+        // Try matching by name with proper case
+        const raceName = Race[draft.race];
+        if (raceName) {
+          // Convert HUMAN to Human, HALF_ELF to Half-Elf, etc.
+          const properCaseName = raceName
+            .split('_')
+            .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+            .join('-');
+          raceInfo = availableRaces.find(
+            (r) =>
+              r.name === properCaseName ||
+              r.name === properCaseName.replace('-', ' ')
+          );
+        }
+      }
+
       if (raceInfo) {
         setCurrentRaceInfo(raceInfo);
 
@@ -564,7 +373,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [
-    draft?.raceId,
+    draft?.race,
     availableRaces,
     raceChoices,
     classChoices,
@@ -576,10 +385,58 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
 
   // When draft has classId, look it up from available classes
   useEffect(() => {
-    if (draft?.classId && availableClasses && availableClasses.length > 0) {
-      const classInfo = availableClasses.find(
-        (c) => c.id === Class[draft.classId].toLowerCase()
-      );
+    if (draft?.class && availableClasses && availableClasses.length > 0) {
+      // Try multiple matching strategies
+      // First check if classId matches directly (both as same type)
+      let classInfo = availableClasses.find((c) => c.classId === draft.class);
+
+      if (!classInfo) {
+        // Try comparing as numbers (draft.class might be number, c.classId might be enum)
+        classInfo = availableClasses.find(
+          (c) => Number(c.classId) === Number(draft.class)
+        );
+      }
+
+      if (!classInfo) {
+        // Try matching by id field directly with enum value
+        classInfo = availableClasses.find((c) => c.classId === draft.class);
+      }
+
+      if (!classInfo) {
+        // Try matching by enum name
+        const className = Class[draft.class];
+        if (className) {
+          classInfo = availableClasses.find((c) => c.classId === draft.class);
+
+          if (!classInfo) {
+            // Try exact lowercase match
+            classInfo = availableClasses.find((c) => c.classId === draft.class);
+          }
+        }
+      }
+
+      if (!classInfo) {
+        // Try matching by name directly
+        const className = Class[draft.class];
+        if (className) {
+          classInfo = availableClasses.find(
+            (c) => c.name.toUpperCase().replace(/[- ]/g, '_') === className
+          );
+        }
+      }
+
+      if (!classInfo) {
+        // Try matching by name with proper case
+        const className = Class[draft.class];
+        if (className) {
+          // Convert FIGHTER to Fighter, etc.
+          const properCaseName = className
+            .split('_')
+            .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+            .join(' ');
+          classInfo = availableClasses.find((c) => c.name === properCaseName);
+        }
+      }
       if (classInfo) {
         setCurrentClassInfo(classInfo);
 
@@ -604,7 +461,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [
-    draft?.classId,
+    draft?.class,
     availableClasses,
     classChoices,
     raceChoices,
@@ -613,6 +470,32 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     collectRaceProficiencies,
     collectRaceLanguages,
   ]);
+
+  // When draft has background ID, look it up from available backgrounds
+  useEffect(() => {
+    if (
+      draft?.background &&
+      availableBackgrounds &&
+      availableBackgrounds.length > 0
+    ) {
+      // Only update if we don't already have the background info
+      if (
+        !currentBackgroundInfo ||
+        currentBackgroundInfo.backgroundId !== draft.background
+      ) {
+        // Find the background by ID
+        const backgroundInfo = availableBackgrounds.find(
+          (b) =>
+            b.backgroundId === draft.background ||
+            Number(b.backgroundId) === Number(draft.background)
+        );
+
+        if (backgroundInfo) {
+          setCurrentBackgroundInfo(backgroundInfo);
+        }
+      }
+    }
+  }, [draft?.background, availableBackgrounds, currentBackgroundInfo]);
 
   const createDraft = useCallback(
     async (playerId: string, sessionId?: string) => {
@@ -645,85 +528,54 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      console.group('📥 Loading draft from server');
-      console.log('🆔 Draft ID:', id);
-
       setDraftId(id);
       // Load the draft data
       const { getDraft } = characterClient;
       const response = await getDraft({ draftId: id });
 
-      console.log('📦 Raw server response:', response);
-
       if (response.draft) {
-        console.log('✅ Draft found:', {
-          id: response.draft.id,
-          name: response.draft.name,
-          raceId: response.draft.raceId
-            ? `${Race[response.draft.raceId]}(${response.draft.raceId})`
-            : 'none',
-          classId: response.draft.classId
-            ? `${Class[response.draft.classId]}(${response.draft.classId})`
-            : 'none',
-          choicesCount: response.draft.choices?.length || 0,
-        });
-
         setDraft(response.draft);
         setDraftId(response.draft.id);
+
+        // Load background info directly from draft if available
+        if (response.draft.backgroundInfo) {
+          setCurrentBackgroundInfo(response.draft.backgroundInfo);
+        }
 
         // The useEffect hooks will handle loading RaceInfo and ClassInfo from the IDs
 
         // Load choices from draft
         if (response.draft.choices) {
-          console.log('🎯 Processing draft choices:', response.draft.choices);
-
           // Group choices by source directly (no conversion needed)
           const raceChoicesFromDraft: ChoiceData[] = [];
           const classChoicesFromDraft: ChoiceData[] = [];
+          const backgroundChoicesFromDraft: ChoiceData[] = [];
 
           response.draft.choices.forEach((choice: ChoiceData) => {
-            console.log(
-              `📂 Grouping choice ${choice.choiceId} with source ${ChoiceSource[choice.source]}(${choice.source})`
-            );
-
             // Group by source
             if (
               choice.source === ChoiceSource.RACE ||
               choice.source === ChoiceSource.SUBRACE
             ) {
               raceChoicesFromDraft.push(choice);
-              console.log('➡️ Added to race choices');
             } else if (choice.source === ChoiceSource.CLASS) {
               classChoicesFromDraft.push(choice);
-              console.log('➡️ Added to class choices');
-            } else {
-              console.log(
-                `⚠️ Unknown source, skipping: ${ChoiceSource[choice.source]}`
-              );
+            } else if (choice.source === ChoiceSource.BACKGROUND) {
+              backgroundChoicesFromDraft.push(choice);
             }
-            // TODO: Handle BACKGROUND when implemented
-          });
-
-          console.log('🏁 Final grouped choices:', {
-            raceChoices: raceChoicesFromDraft,
-            classChoices: classChoicesFromDraft,
           });
 
           // Use the grouped choices we just processed
           setRaceChoices(raceChoicesFromDraft);
           setClassChoices(classChoicesFromDraft);
+          setBackgroundChoices(backgroundChoicesFromDraft);
 
           // The useEffect hooks will recalculate proficiencies and languages once the race/class are loaded
-        } else {
-          console.log('ℹ️ No choices found in draft');
         }
       } else {
         console.warn('⚠️ No draft found in response');
       }
-      console.groupEnd();
     } catch (err) {
-      console.error('❌ Failed to load draft:', err);
-      console.groupEnd();
       setError(err instanceof Error ? err : new Error('Failed to load draft'));
       throw err;
     } finally {
@@ -753,12 +605,12 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       // Store the full RaceInfo immediately
       setCurrentRaceInfo(race);
 
-      // Update draft with race info
+      // Update draft with race enum
       setDraft(
         (prev) =>
           ({
             ...prev,
-            race: race || undefined,
+            race: race?.raceId || Race.UNSPECIFIED,
           }) as CharacterDraft
       );
 
@@ -873,7 +725,10 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
         (prev) =>
           ({
             ...prev,
-            class: classInfo || undefined,
+            class:
+              classInfo?.$typeName === 'dnd5e.api.v1alpha1.ClassInfo'
+                ? (classInfo as ClassInfo).classId
+                : Class.UNSPECIFIED,
           }) as CharacterDraft
       );
 
@@ -932,7 +787,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             };
             baseClassName = combinedData.name;
             // Use the enum directly from SubclassInfo
-            subclassEnum = combinedData.selectedSubclass.subclass;
+            subclassEnum = combinedData.selectedSubclass.subclassId;
           } else {
             // This is just a base ClassInfo (no subclass selected)
             baseClassName = classInfo.name;
@@ -967,7 +822,104 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
       currentRaceInfo,
       collectRaceProficiencies,
       collectRaceLanguages,
-      availableClasses,
+    ]
+  );
+
+  const setBackground = useCallback(
+    async (backgroundInfo: BackgroundInfo | null, choices?: ChoiceData[]) => {
+      // Don't proceed if no draft exists yet
+      if (!draftId) {
+        console.warn('Cannot set background: no draft ID available yet');
+        return;
+      }
+
+      // Clear background choices when changing background
+      if (
+        !backgroundInfo ||
+        (currentBackgroundInfo &&
+          currentBackgroundInfo.name !== backgroundInfo?.name)
+      ) {
+        setBackgroundChoices([]);
+      }
+
+      // If choices are provided, update state
+      if (choices && choices.length > 0) {
+        setBackgroundChoices(choices);
+      }
+
+      // Store the full BackgroundInfo immediately
+      setCurrentBackgroundInfo(backgroundInfo);
+
+      setDraft(
+        (prev) =>
+          ({
+            ...prev,
+            background: backgroundInfo?.backgroundId || undefined,
+            backgroundInfo: backgroundInfo || undefined,
+          }) as CharacterDraft
+      );
+
+      // Update proficiencies and languages when background changes
+      // TODO: Collect background proficiencies and languages once we understand the structure
+
+      // API call to update background
+      if (!saving) {
+        setSaving(true);
+        try {
+          const backgroundChoiceData = choices || backgroundChoices;
+
+          const request = create(UpdateBackgroundRequestSchema, {
+            draftId,
+            background: backgroundInfo?.backgroundId || 0, // UNSPECIFIED
+            backgroundChoices: backgroundChoiceData,
+          });
+
+          console.log('🚀 UpdateBackgroundRequest:', {
+            draftId,
+            background: backgroundInfo?.name || 'none',
+            backgroundChoicesCount: backgroundChoiceData.length,
+          });
+
+          const response = await updateBackgroundAPI(request);
+
+          if (response.draft) {
+            setDraft(response.draft);
+            // If server doesn't return backgroundInfo but has background ID, don't clear our local state
+            if (
+              !response.draft.backgroundInfo &&
+              response.draft.background &&
+              backgroundInfo
+            ) {
+              // Keep the backgroundInfo we already have
+              setCurrentBackgroundInfo(backgroundInfo);
+            } else {
+              // Update from the returned draft
+              setCurrentBackgroundInfo(response.draft.backgroundInfo || null);
+            }
+            // Update choices from response if available
+            // backgroundChoices field no longer exists in CharacterDraft
+            // if (response.draft.backgroundChoices) {
+            //   setBackgroundChoices(response.draft.backgroundChoices);
+            // }
+          }
+        } catch (error) {
+          console.error('Failed to update background:', error);
+          setError(
+            error instanceof Error
+              ? error
+              : new Error('Failed to update background')
+          );
+        } finally {
+          setSaving(false);
+        }
+      }
+    },
+    [
+      draftId,
+      updateBackgroundAPI,
+      saving,
+      currentBackgroundInfo,
+      backgroundChoices,
     ]
   );
 
@@ -1068,6 +1020,20 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     ]
   );
 
+  const addBackgroundChoice = useCallback((choice: ChoiceData) => {
+    console.group('🎯 Adding background choice');
+    console.log('📝 Choice:', choice);
+
+    setBackgroundChoices((prev) => {
+      // Replace any existing choice with the same ID
+      const filtered = prev.filter((c) => c.choiceId !== choice.choiceId);
+      const newChoices = [...filtered, choice];
+      console.log('📋 Updated background choices:', newChoices);
+      return newChoices;
+    });
+    console.groupEnd();
+  }, []);
+
   const setName = useCallback(
     async (name: string) => {
       // Update the draft's name property
@@ -1153,10 +1119,12 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     setDraft(null);
     setCurrentRaceInfo(null);
     setCurrentClassInfo(null);
+    setCurrentBackgroundInfo(null);
     setAllProficiencies(new Set());
     setAllLanguages(new Set());
     setRaceChoices([]);
     setClassChoices([]);
+    setBackgroundChoices([]);
     setLoading(false);
     setSaving(false);
     setError(null);
@@ -1196,10 +1164,12 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     draft,
     raceInfo: currentRaceInfo,
     classInfo: currentClassInfo,
+    backgroundInfo: currentBackgroundInfo,
     allProficiencies,
     allLanguages,
     raceChoices,
     classChoices,
+    backgroundChoices,
     loading,
     saving,
     error,
@@ -1207,11 +1177,13 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     loadDraft,
     setRace,
     setClass,
+    setBackground,
     setName,
     setAbilityScores,
     finalizeDraft,
     addRaceChoice,
     addClassChoice,
+    addBackgroundChoice,
     getAvailableChoices,
     hasProficiency,
     hasLanguage,

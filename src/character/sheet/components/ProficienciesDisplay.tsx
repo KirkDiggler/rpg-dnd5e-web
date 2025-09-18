@@ -1,6 +1,11 @@
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { Card } from '../../../components/ui/Card';
+import {
+  getArmorProficiencyDisplay,
+  getToolProficiencyDisplay,
+  getWeaponProficiencyDisplay,
+} from '../../../utils/enumDisplay';
 
 interface ProficienciesDisplayProps {
   character: Character;
@@ -21,7 +26,9 @@ export function ProficienciesDisplay({ character }: ProficienciesDisplayProps) {
   if (armorProficiencies.length > 0) {
     proficiencies.push({
       name: 'Armor',
-      items: armorProficiencies,
+      items: armorProficiencies.map((armor) =>
+        getArmorProficiencyDisplay(armor)
+      ),
       icon: '🛡️',
     });
   }
@@ -31,7 +38,9 @@ export function ProficienciesDisplay({ character }: ProficienciesDisplayProps) {
   if (weaponProficiencies.length > 0) {
     proficiencies.push({
       name: 'Weapons',
-      items: weaponProficiencies,
+      items: weaponProficiencies.map((weapon) =>
+        getWeaponProficiencyDisplay(weapon)
+      ),
       icon: '⚔️',
     });
   }
@@ -41,7 +50,7 @@ export function ProficienciesDisplay({ character }: ProficienciesDisplayProps) {
   if (toolProficiencies.length > 0) {
     proficiencies.push({
       name: 'Tools',
-      items: toolProficiencies,
+      items: toolProficiencies.map((tool) => getToolProficiencyDisplay(tool)),
       icon: '🔨',
     });
   }

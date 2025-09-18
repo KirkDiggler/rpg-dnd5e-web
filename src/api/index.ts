@@ -36,15 +36,15 @@ export {
 
 // Re-export commonly used types from protos
 export type {
-  AbilityScores,
   Character,
   CharacterDraft,
   CreationProgress,
-  CreationStep,
   EquipmentSlots,
   GetCharacterInventoryResponse,
   InventoryItem,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+
+export type { AbilityScores } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 
 export { EquipmentSlot } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 

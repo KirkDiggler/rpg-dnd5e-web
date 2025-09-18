@@ -10,7 +10,7 @@ import type {
 import {
   ChoiceCategory,
   ChoiceSource,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { Language } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
@@ -53,7 +53,7 @@ export function RaceClassSection() {
     setSelectedClassData(classInfo);
   }, [classInfo]);
 
-  // Convert existing choices from ChoiceData to modal format if needed
+  // Convert existing choices from ChoiceSubmission to modal format if needed
   const existingRaceChoices: RaceModalChoices | undefined = undefined;
 
   const handleRaceSelect = async (
@@ -61,11 +61,11 @@ export function RaceClassSection() {
     choices: RaceModalChoices
   ) => {
     setSelectedRaceData(race);
-    setSelectedChoice('race', race.id);
+    setSelectedChoice('race', race.raceId);
     setSelectedChoice('raceData', race);
     setSelectedChoice('raceChoices', choices);
 
-    // Convert structured choices to ChoiceData proto format
+    // Convert structured choices to ChoiceSubmission proto format
     const choiceDataArray = [];
 
     // Convert language choices
@@ -105,11 +105,11 @@ export function RaceClassSection() {
     ) => {
       setSelectedClassData(classData);
       setSelectedClassChoices(choices); // Save for modal re-opening
-      setSelectedChoice('class', classData.id);
+      setSelectedChoice('class', classData.classId);
       setSelectedChoice('classData', classData);
       setSelectedChoice('classChoices', choices);
 
-      // Convert structured choices to ChoiceData proto format
+      // Convert structured choices to ChoiceSubmission proto format
       const choiceDataArray = [];
 
       // Convert skill choices
@@ -253,22 +253,7 @@ export function RaceClassSection() {
                     )}
 
                   {/* Display race's built-in proficiencies */}
-                  {selectedRaceData.proficiencies &&
-                    selectedRaceData.proficiencies.length > 0 && (
-                      <>
-                        {selectedRaceData.proficiencies.map((prof) => (
-                          <TraitBadge
-                            key={`prof-${prof}`}
-                            name={prof.replace(
-                              /^(skill:|weapon:|armor:|tool:)/,
-                              ''
-                            )}
-                            type="racial"
-                            icon="⚔️"
-                          />
-                        ))}
-                      </>
-                    )}
+                  {/* Note: RaceInfo no longer has proficiencies field - they come through choices now */}
 
                   {/* Display race choices */}
                   {raceChoices &&
@@ -418,14 +403,34 @@ export function RaceClassSection() {
                         choice.category === ChoiceCategory.EQUIPMENT &&
                         choice.selection?.case === 'equipment'
                       ) {
-                        return choice.selection.value.items?.map((item) => (
-                          <TraitBadge
-                            key={`${choice.choiceId}-equip-${item}`}
-                            name={item}
-                            type="class"
-                            icon="🛡️"
-                          />
-                        ));
+                        return choice.selection.value.items?.map(
+                          (item: unknown) => {
+                            // Extract display name from equipment item
+                            let displayName = 'Unknown Equipment';
+                            if (
+                              (item as { equipment?: { case?: string } })
+                                .equipment?.case === 'otherEquipmentId'
+                            ) {
+                              displayName = (
+                                item as { equipment: { value: string } }
+                              ).equipment.value;
+                            } else if (
+                              (item as { equipment?: { case?: string } })
+                                .equipment?.case
+                            ) {
+                              // It's an enum value (weapon, armor, etc)
+                              displayName = `${(item as { equipment: { case: string; value: string } }).equipment.case}: ${(item as { equipment: { case: string; value: string } }).equipment.value}`;
+                            }
+                            return (
+                              <TraitBadge
+                                key={`${choice.choiceId}-equip-${displayName}`}
+                                name={displayName}
+                                type="class"
+                                icon="🛡️"
+                              />
+                            );
+                          }
+                        );
                       }
                       return null;
                     })}
@@ -464,7 +469,21 @@ export function RaceClassSection() {
       {/* Class Selection Modal */}
       <ClassSelectionModal
         isOpen={showClassModal}
-        currentClass={selectedClassData?.id || classInfo?.id}
+        currentClass={
+          (
+            selectedClassData as unknown as {
+              classId?: string;
+              subclassId?: string;
+            }
+          )?.classId ||
+          (
+            selectedClassData as unknown as {
+              classId?: string;
+              subclassId?: string;
+            }
+          )?.subclassId ||
+          (classInfo as { classId?: string })?.classId
+        }
         existingChoices={selectedClassChoices}
         onSelect={handleClassSelect}
         onClose={() => setShowClassModal(false)}

@@ -1,73 +1,32 @@
 import { TraitBadgeGroup } from '@/components/TraitBadge';
 import { TraitIcons } from '@/constants/traits';
-import { useCharacterBuilder } from '@/hooks/useCharacterBuilder';
-import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import {
-  Language,
-  Skill,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import type { BackgroundInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { motion } from 'framer-motion';
-import { useContext, useState } from 'react';
+import { useCallback, useContext, useState } from 'react';
+import {
+  getLanguageDisplay,
+  getSkillDisplay,
+} from '../../../utils/enumDisplay';
+import { BackgroundSelectionModal } from '../BackgroundSelectionModal';
 import { CharacterDraftContext } from '../CharacterDraftContextDef';
 
-const SAMPLE_SKILLS = [
-  {
-    id: 'acrobatics',
-    name: 'Acrobatics',
-    ability: 'dexterity',
-    source: 'available',
-  },
-  {
-    id: 'athletics',
-    name: 'Athletics',
-    ability: 'strength',
-    source: 'available',
-  },
-  { id: 'perception', name: 'Perception', ability: 'wisdom', source: 'racial' },
-  { id: 'stealth', name: 'Stealth', ability: 'dexterity', source: 'available' },
-  {
-    id: 'investigation',
-    name: 'Investigation',
-    ability: 'intelligence',
-    source: 'class',
-  },
-  { id: 'insight', name: 'Insight', ability: 'wisdom', source: 'available' },
-];
-
-const SAMPLE_BACKGROUNDS = [
-  {
-    id: 'noble',
-    name: 'Noble',
-    description: 'You understand wealth, power, and privilege.',
-  },
-  {
-    id: 'criminal',
-    name: 'Criminal',
-    description: 'You have a criminal past, or current.',
-  },
-  {
-    id: 'folk-hero',
-    name: 'Folk Hero',
-    description: 'You come from humble origins.',
-  },
-];
-
 export function SkillsBackgroundSection() {
-  const { selectedChoices, setSelectedChoice } = useCharacterBuilder();
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [showBackgroundModal, setShowBackgroundModal] = useState(false);
+
   const context = useContext(CharacterDraftContext);
   if (!context)
     throw new Error(
       'SkillsBackgroundSection must be used within CharacterDraftProvider'
     );
 
-  const { classChoices, raceChoices } = context;
+  const { classChoices, raceChoices, backgroundInfo, setBackground } = context;
 
-  // Get proficiencies from character choices (now ChoiceData arrays)
-  const classChoiceData = classChoices || [];
-  const raceChoiceData = raceChoices || [];
+  // Get proficiencies from character choices (now ChoiceSubmission arrays)
+  const classChoiceSubmissions = classChoices || [];
+  const raceChoiceSubmissions = raceChoices || [];
 
-  // Extract skills, tools, and languages from ChoiceData
+  // Extract skills, tools, and languages from ChoiceSubmission
   const classSkillChoices: number[] = [];
   const classToolChoices: string[] = [];
   const classFeatChoices: string[] = [];
@@ -75,7 +34,7 @@ export function SkillsBackgroundSection() {
   const raceLanguageChoices: number[] = [];
 
   // Process class choices
-  classChoiceData.forEach((choice) => {
+  classChoiceSubmissions.forEach((choice) => {
     if (
       choice.category === ChoiceCategory.SKILLS &&
       choice.selection?.case === 'skills'
@@ -88,7 +47,7 @@ export function SkillsBackgroundSection() {
   });
 
   // Process race choices
-  raceChoiceData.forEach((choice) => {
+  raceChoiceSubmissions.forEach((choice) => {
     if (
       choice.category === ChoiceCategory.SKILLS &&
       choice.selection?.case === 'skills'
@@ -102,28 +61,18 @@ export function SkillsBackgroundSection() {
     }
   });
 
-  const selectedBackground = SAMPLE_BACKGROUNDS.find(
-    (b) => b.id === selectedChoices.background
+  // Background selection handlers
+  const handleBackgroundSelect = useCallback(
+    async (background: BackgroundInfo) => {
+      try {
+        // Backgrounds don't have choices - they provide fixed proficiencies
+        await setBackground(background, []);
+      } catch (error) {
+        console.error('Failed to select background:', error);
+      }
+    },
+    [setBackground]
   );
-
-  const handleSkillToggle = (skillId: string) => {
-    setSelectedSkills((prev) =>
-      prev.includes(skillId)
-        ? prev.filter((id) => id !== skillId)
-        : [...prev, skillId]
-    );
-  };
-
-  const handleBackgroundSelect = (backgroundId: string) => {
-    setSelectedChoice('background', backgroundId);
-  };
-
-  // For now, still use sample skills for available options
-  const skillsBySource = {
-    racial: SAMPLE_SKILLS.filter((s) => s.source === 'racial'),
-    class: SAMPLE_SKILLS.filter((s) => s.source === 'class'),
-    available: SAMPLE_SKILLS.filter((s) => s.source === 'available'),
-  };
 
   return (
     <div className="space-y-6">
@@ -141,21 +90,10 @@ export function SkillsBackgroundSection() {
             title="Racial Proficiencies"
             traits={raceSkillChoices.map((skillEnum, index) => ({
               id: `race-skill-${index}`,
-              name: Skill[skillEnum] || `Skill ${skillEnum}`,
+              name: getSkillDisplay(skillEnum),
               type: 'racial' as const,
               icon: TraitIcons.racial,
               description: 'Racial proficiency',
-            }))}
-          />
-
-          <TraitBadgeGroup
-            title="Class Proficiencies"
-            traits={classSkillChoices.map((skillEnum, index) => ({
-              id: `class-skill-${index}`,
-              name: Skill[skillEnum] || `Skill ${skillEnum}`,
-              type: 'class' as const,
-              icon: TraitIcons.class,
-              description: 'Class proficiency',
             }))}
           />
 
@@ -190,30 +128,6 @@ export function SkillsBackgroundSection() {
               }))}
             />
           )}
-
-          <div className="space-y-2">
-            <h4
-              className="font-medium"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              Choose Additional Skills
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {skillsBySource.available.map((skill) => (
-                <button
-                  key={skill.id}
-                  onClick={() => handleSkillToggle(skill.id)}
-                  className={`px-3 py-1 rounded-full text-sm border transition-all ${
-                    selectedSkills.includes(skill.id)
-                      ? 'bg-accent text-white border-accent'
-                      : 'border-border hover:border-accent'
-                  }`}
-                >
-                  {skill.name}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Background Section */}
@@ -230,7 +144,7 @@ export function SkillsBackgroundSection() {
               title="Languages"
               traits={raceLanguageChoices.map((langEnum, index) => ({
                 id: `race-lang-${index}`,
-                name: Language[langEnum] || `Language ${langEnum}`,
+                name: getLanguageDisplay(langEnum),
                 type: 'racial' as const,
                 icon: '💬',
                 description: 'Language',
@@ -238,7 +152,7 @@ export function SkillsBackgroundSection() {
             />
           )}
 
-          {selectedBackground ? (
+          {backgroundInfo ? (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -255,55 +169,50 @@ export function SkillsBackgroundSection() {
                     className="font-bold"
                     style={{ color: 'var(--text-primary)' }}
                   >
-                    {selectedBackground.name}
+                    {backgroundInfo.name}
                   </h3>
                   <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    {selectedBackground.description}
+                    Background proficiencies and choices applied
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setSelectedChoice('background', null)}
+                onClick={() => setShowBackgroundModal(true)}
                 className="text-xs text-muted hover:text-accent"
               >
                 Click to change
               </button>
             </motion.div>
           ) : (
-            <div className="space-y-2">
-              {SAMPLE_BACKGROUNDS.map((background) => (
-                <button
-                  key={background.id}
-                  onClick={() => handleBackgroundSelect(background.id)}
-                  className="w-full p-3 text-left rounded-lg border-2 border-dashed hover:border-solid transition-all"
-                  style={{
-                    backgroundColor: 'var(--bg-secondary)',
-                    borderColor: 'var(--border-primary)',
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="text-xl">🛡️</div>
-                    <div>
-                      <h4
-                        className="font-medium"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        {background.name}
-                      </h4>
-                      <p
-                        className="text-sm"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        {background.description}
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
+            <button
+              onClick={() => setShowBackgroundModal(true)}
+              className="w-full p-6 text-center rounded-lg border-2 border-dashed hover:border-solid transition-all"
+              style={{
+                backgroundColor: 'var(--bg-secondary)',
+                borderColor: 'var(--border-primary)',
+              }}
+            >
+              <div className="text-4xl mb-2">🛡️</div>
+              <h4
+                className="font-medium text-lg mb-1"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                Choose Your Background
+              </h4>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                Your background grants skills, languages, and equipment
+              </p>
+            </button>
           )}
         </div>
       </div>
+
+      <BackgroundSelectionModal
+        isOpen={showBackgroundModal}
+        currentBackground={backgroundInfo?.backgroundId}
+        onSelect={handleBackgroundSelect}
+        onClose={() => setShowBackgroundModal(false)}
+      />
     </div>
   );
 }

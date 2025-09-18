@@ -2,16 +2,23 @@ import type {
   ClassInfo,
   SubclassInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
+  Armor,
   Language,
   Skill,
+  Weapon,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { ChoiceRenderer } from '../../components/ChoiceRenderer';
-import type { ClassModalChoices } from '../../types/choices';
+import type { ClassModalChoices, EquipmentChoice } from '../../types/choices';
+import {
+  getArmorProficiencyDisplay,
+  getSavingThrowDisplay,
+  getWeaponProficiencyDisplay,
+} from '../../utils/enumDisplay';
 import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
@@ -176,7 +183,8 @@ export function ClassSelectionModal({
         // First try to find by class name or ID
         let classIndex = classes.findIndex(
           (cls) =>
-            cls.name === currentClassParam || cls.id === currentClassParam
+            cls.name === currentClassParam ||
+            String(cls.classId) === currentClassParam
         );
 
         // If not found, search for subclass ID within classes
@@ -185,7 +193,7 @@ export function ClassSelectionModal({
             const foundClass = classes[i];
             if (foundClass?.subclasses && foundClass.subclasses.length > 0) {
               const subclassIndex = foundClass.subclasses.findIndex(
-                (sub) => sub.id === currentClassParam
+                (sub) => String(sub.subclassId) === currentClassParam
               );
               if (subclassIndex >= 0) {
                 classIndex = i;
@@ -213,7 +221,8 @@ export function ClassSelectionModal({
         !currentClassParam ||
         classes.findIndex(
           (cls) =>
-            cls.name === currentClassParam || cls.id === currentClassParam
+            cls.name === currentClassParam ||
+            String(cls.classId) === currentClassParam
         ) >= 0
       ) {
         setSelectedSubclassIndex(null);
@@ -337,7 +346,9 @@ export function ClassSelectionModal({
       const equipmentChoice = currentClassChoices.equipment?.find(
         (ec) => ec.choiceId === choice.id
       );
-      const selected = equipmentChoice?.items || [];
+      const selected = equipmentChoice?.bundleId
+        ? [equipmentChoice.bundleId]
+        : [];
       if (selected.length === 0) {
         setErrorMessage(
           `Please select an option for equipment: ${choice.description}`
@@ -558,10 +569,7 @@ export function ClassSelectionModal({
                     fontFamily: 'Cinzel, serif',
                   }}
                 >
-                  Choose Your{' '}
-                  {getSubclassTypeDisplayName(
-                    selectedClass?.subclassType || ''
-                  )}
+                  Choose Your {getSubclassTypeDisplayName('Subclass')}
                 </h3>
                 <div
                   style={{
@@ -587,7 +595,7 @@ export function ClassSelectionModal({
                 >
                   {selectedClass!.subclasses.map((subclass, index) => (
                     <button
-                      key={subclass.id}
+                      key={subclass.subclassId}
                       onClick={() => {
                         setSelectedSubclassIndex(index);
                         setErrorMessage('');
@@ -644,8 +652,10 @@ export function ClassSelectionModal({
                         {subclass.description ||
                           'A specialized path within this class.'}
                       </div>
-                      {(subclass.armorProficiencies.length > 0 ||
-                        subclass.weaponProficiencies.length > 0) && (
+                      {((subclass.armorProficiencies &&
+                        subclass.armorProficiencies.length > 0) ||
+                        (subclass.weaponProficiencies &&
+                          subclass.weaponProficiencies.length > 0)) && (
                         <div
                           style={{
                             fontSize: '12px',
@@ -653,16 +663,24 @@ export function ClassSelectionModal({
                             marginTop: '4px',
                           }}
                         >
-                          {subclass.armorProficiencies.length > 0 && (
-                            <div>
-                              + {subclass.armorProficiencies.join(', ')}
-                            </div>
-                          )}
-                          {subclass.weaponProficiencies.length > 0 && (
-                            <div>
-                              + {subclass.weaponProficiencies.join(', ')}
-                            </div>
-                          )}
+                          {subclass.armorProficiencies &&
+                            subclass.armorProficiencies.length > 0 && (
+                              <div>
+                                +{' '}
+                                {subclass.armorProficiencies
+                                  .map((p: Armor) => String(p))
+                                  .join(', ')}
+                              </div>
+                            )}
+                          {subclass.weaponProficiencies &&
+                            subclass.weaponProficiencies.length > 0 && (
+                              <div>
+                                +{' '}
+                                {subclass.weaponProficiencies
+                                  .map((p: Weapon) => String(p))
+                                  .join(', ')}
+                              </div>
+                            )}
                         </div>
                       )}
                     </button>
@@ -836,11 +854,13 @@ export function ClassSelectionModal({
                         }}
                       >
                         <strong>Primary:</strong>{' '}
-                        {selectedClass!.primaryAbilities.join(' & ')}
+                        {selectedClass!.primaryAbility}
                       </div>
                       <div style={{ color: textPrimary, fontSize: '14px' }}>
                         <strong>Saves:</strong>{' '}
-                        {selectedClass!.savingThrowProficiencies.join(', ')}
+                        {selectedClass!.savingThrowProficiencies
+                          .map((save) => getSavingThrowDisplay(save))
+                          .join(', ')}
                       </div>
                     </div>
 
@@ -881,17 +901,10 @@ export function ClassSelectionModal({
                           );
 
                         const skillOptions =
-                          skillChoice.optionSet?.case === 'explicitOptions'
-                            ? skillChoice.optionSet.value.options
-                                .filter((opt) => opt.optionType.case === 'item')
-                                .map((opt) => {
-                                  const value = opt.optionType.value;
-                                  return (
-                                    (value && 'name' in value
-                                      ? value.name?.replace(/-/g, ' ')
-                                      : undefined) || 'Unknown'
-                                  );
-                                })
+                          skillChoice.options?.case === 'skillOptions'
+                            ? skillChoice.options.value.available.map(
+                                (skill: Skill) => Skill[skill]
+                              )
                             : [];
 
                         return (
@@ -946,136 +959,115 @@ export function ClassSelectionModal({
                       gap: '12px',
                     }}
                   >
-                    {selectedClass!.armorProficiencies.length > 0 && (
-                      <div
-                        style={{
-                          padding: '12px',
-                          backgroundColor: bgSecondary,
-                          borderRadius: '8px',
-                          border: `1px solid ${borderPrimary}`,
-                        }}
-                      >
+                    {selectedClass!.armorProficiencyCategories &&
+                      selectedClass!.armorProficiencyCategories.length > 0 && (
                         <div
                           style={{
-                            color: textPrimary,
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                            marginBottom: '6px',
+                            padding: '12px',
+                            backgroundColor: bgSecondary,
+                            borderRadius: '8px',
+                            border: `1px solid ${borderPrimary}`,
                           }}
                         >
-                          Armor
+                          <div
+                            style={{
+                              color: textPrimary,
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              marginBottom: '6px',
+                            }}
+                          >
+                            Armor
+                          </div>
+                          <div
+                            style={{
+                              color: textPrimary,
+                              fontSize: '14px',
+                              opacity: 0.9,
+                            }}
+                          >
+                            {selectedClass!.armorProficiencyCategories
+                              .map((p) => getArmorProficiencyDisplay(String(p)))
+                              .join(', ')}
+                          </div>
                         </div>
-                        <div
-                          style={{
-                            color: textPrimary,
-                            fontSize: '14px',
-                            opacity: 0.9,
-                          }}
-                        >
-                          {selectedClass!.armorProficiencies.join(', ')}
-                        </div>
-                      </div>
-                    )}
+                      )}
 
-                    {selectedClass!.weaponProficiencies.length > 0 && (
-                      <div
-                        style={{
-                          padding: '12px',
-                          backgroundColor: bgSecondary,
-                          borderRadius: '8px',
-                          border: `1px solid ${borderPrimary}`,
-                        }}
-                      >
+                    {selectedClass!.weaponProficiencyCategories &&
+                      selectedClass!.weaponProficiencyCategories.length > 0 && (
                         <div
                           style={{
-                            color: textPrimary,
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                            marginBottom: '6px',
+                            padding: '12px',
+                            backgroundColor: bgSecondary,
+                            borderRadius: '8px',
+                            border: `1px solid ${borderPrimary}`,
                           }}
                         >
-                          Weapons
+                          <div
+                            style={{
+                              color: textPrimary,
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              marginBottom: '6px',
+                            }}
+                          >
+                            Weapons
+                          </div>
+                          <div
+                            style={{
+                              color: textPrimary,
+                              fontSize: '14px',
+                              opacity: 0.9,
+                            }}
+                          >
+                            {selectedClass!.weaponProficiencyCategories
+                              .slice(0, 3)
+                              .map((p) =>
+                                getWeaponProficiencyDisplay(String(p))
+                              )
+                              .join(', ')}
+                            {selectedClass!.weaponProficiencyCategories.length >
+                              3 &&
+                              ` +${selectedClass!.weaponProficiencyCategories.length - 3} more`}
+                          </div>
                         </div>
-                        <div
-                          style={{
-                            color: textPrimary,
-                            fontSize: '14px',
-                            opacity: 0.9,
-                          }}
-                        >
-                          {selectedClass!.weaponProficiencies
-                            .slice(0, 3)
-                            .join(', ')}
-                          {selectedClass!.weaponProficiencies.length > 3 &&
-                            ` +${selectedClass!.weaponProficiencies.length - 3} more`}
-                        </div>
-                      </div>
-                    )}
+                      )}
 
-                    {selectedClass!.toolProficiencies.length > 0 && (
-                      <div
-                        style={{
-                          padding: '12px',
-                          backgroundColor: bgSecondary,
-                          borderRadius: '8px',
-                          border: `1px solid ${borderPrimary}`,
-                        }}
-                      >
+                    {selectedClass!.toolProficiencies &&
+                      selectedClass!.toolProficiencies.length > 0 && (
                         <div
                           style={{
-                            color: textPrimary,
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                            marginBottom: '6px',
+                            padding: '12px',
+                            backgroundColor: bgSecondary,
+                            borderRadius: '8px',
+                            border: `1px solid ${borderPrimary}`,
                           }}
                         >
-                          Tools
+                          <div
+                            style={{
+                              color: textPrimary,
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              marginBottom: '6px',
+                            }}
+                          >
+                            Tools
+                          </div>
+                          <div
+                            style={{
+                              color: textPrimary,
+                              fontSize: '14px',
+                              opacity: 0.9,
+                            }}
+                          >
+                            {selectedClass!.toolProficiencies.join(', ')}
+                          </div>
                         </div>
-                        <div
-                          style={{
-                            color: textPrimary,
-                            fontSize: '14px',
-                            opacity: 0.9,
-                          }}
-                        >
-                          {selectedClass!.toolProficiencies.join(', ')}
-                        </div>
-                      </div>
-                    )}
+                      )}
                   </div>
                 </div>
 
-                {/* Starting Equipment */}
-                {selectedClass!.startingEquipment.length > 0 && (
-                  <div>
-                    <h4
-                      style={{
-                        color: textPrimary,
-                        fontSize: '18px',
-                        fontWeight: 'bold',
-                        marginBottom: '12px',
-                        fontFamily: 'Cinzel, serif',
-                      }}
-                    >
-                      Starting Equipment
-                    </h4>
-                    <div
-                      style={{
-                        padding: '12px',
-                        backgroundColor: bgSecondary,
-                        borderRadius: '8px',
-                        border: `1px solid ${borderPrimary}`,
-                        fontSize: '14px',
-                        color: textPrimary,
-                        opacity: 0.9,
-                      }}
-                    >
-                      {selectedClass!.startingEquipment.slice(0, 6).join(', ')}
-                      {selectedClass!.startingEquipment.length > 6 &&
-                        ` +${selectedClass!.startingEquipment.length - 6} more items`}
-                    </div>
-                  </div>
-                )}
+                {/* Starting Equipment - Field no longer exists in ClassInfo */}
 
                 {/* Spellcasting Info */}
                 {selectedClass!.spellcasting && (
@@ -1385,7 +1377,13 @@ export function ClassSelectionModal({
                                 currentSelections={
                                   currentClassChoices.equipment?.find(
                                     (ec) => ec.choiceId === choice.id
-                                  )?.items || []
+                                  )?.bundleId
+                                    ? [
+                                        currentClassChoices.equipment?.find(
+                                          (ec) => ec.choiceId === choice.id
+                                        )?.bundleId,
+                                      ]
+                                    : ([] as string[])
                                 }
                                 onSelectionChange={(_choiceId, selections) => {
                                   setClassChoicesMap((prev) => {
@@ -1400,9 +1398,15 @@ export function ClassSelectionModal({
                                       ) || [];
 
                                     if (selections.length > 0) {
-                                      const equipmentChoice = {
+                                      // Extract bundleId from the first selection
+                                      // Format is "bundleId:index:itemId" or similar
+                                      const firstSel = selections[0];
+                                      const bundleId = firstSel.split(':')[0];
+
+                                      const equipmentChoice: EquipmentChoice = {
                                         choiceId: choice.id,
-                                        items: selections,
+                                        bundleId: bundleId,
+                                        categorySelections: [], // TODO: Parse selections into categories
                                       };
                                       updatedEquipment.push(equipmentChoice);
                                     }

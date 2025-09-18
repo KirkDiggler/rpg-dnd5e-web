@@ -188,9 +188,16 @@ export function useAbilityScoreRolls(playerId: string) {
           return merged;
         });
       }
-    } catch {
-      // No existing session is fine
-      console.log('No existing roll session found');
+    } catch (err) {
+      // No existing session is fine - this is expected on first load
+      // Only log if it's not a "not found" error
+      if (
+        err instanceof Error &&
+        !err.message.toLowerCase().includes('not_found') &&
+        !err.message.toLowerCase().includes('not found')
+      ) {
+        console.error('Error loading roll session:', err);
+      }
     }
   }, [playerId, context, getRollSession]);
 
@@ -279,11 +286,20 @@ export function useAbilityScoreRolls(playerId: string) {
     };
   }, [assignments]);
 
+  // Filter out expected "not found" errors from display
+  const displayError =
+    rollError ||
+    (sessionError &&
+    !sessionError.message.toLowerCase().includes('not_found') &&
+    !sessionError.message.toLowerCase().includes('not found')
+      ? sessionError
+      : null);
+
   return {
     rolls,
     assignments,
     loading: rolling || loadingSession,
-    error: rollError || sessionError,
+    error: displayError,
     loadExistingRolls,
     rollAbilityScores,
     assignRoll,

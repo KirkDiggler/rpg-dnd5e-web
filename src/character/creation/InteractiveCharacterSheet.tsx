@@ -1,20 +1,22 @@
 import type { Step } from '@/components/ProgressTracker';
 import { ProgressTracker } from '@/components/ProgressTracker';
 import type {
-  ChoiceData,
   ClassInfo,
   RaceInfo,
   SubclassInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { ChoiceData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
   ChoiceCategory,
   ChoiceSource,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
+  FightingStyle,
   Language,
   Skill,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
+import { ChevronDown } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ClassModalChoices, RaceModalChoices } from '../../types/choices';
 import {
@@ -23,8 +25,16 @@ import {
   convertFeatureChoiceToProto,
   convertLanguageChoiceToProto,
   convertSkillChoiceToProto,
+  convertToolChoiceToProto,
   convertTraitChoiceToProto,
 } from '../../utils/choiceConverter';
+import {
+  getArmorProficiencyDisplay,
+  getSavingThrowDisplay,
+  getSkillDisplay,
+  getWeaponProficiencyDisplay,
+} from '../../utils/enumDisplay';
+import { BackgroundSelectionModal } from './BackgroundSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
 import { RaceSelectionModal } from './RaceSelectionModal';
@@ -83,7 +93,7 @@ function getExtraLanguages(
 ): string[] {
   return Array.from(allLanguages)
     .filter((lang) => {
-      // Filter out objects (stringified ChoiceData)
+      // Filter out objects (stringified ChoiceSubmission)
       if (typeof lang === 'string' && lang.includes('"$typeName"'))
         return false;
 
@@ -101,11 +111,37 @@ function getExtraLanguages(
     });
 }
 
+// Helper function to get tool proficiencies
+function getToolProficiencies(allProficiencies: Set<string>): string[] {
+  return Array.from(allProficiencies)
+    .filter((prof) => {
+      // Look for tool proficiencies (either prefixed or containing tool-related keywords)
+      if (prof.toLowerCase().startsWith('tool:')) return true;
+      if (prof.includes("'s Tools")) return true;
+      if (prof.includes("'s Supplies")) return true;
+      if (prof.includes(' Utensils')) return true;
+      return false;
+    })
+    .map((prof) => {
+      // Clean up the display name
+      if (prof.toLowerCase().startsWith('tool:')) {
+        // Convert back from lowercase format to proper display
+        const name = prof.substring(5);
+        return name
+          .split(' ')
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+      }
+      return prof;
+    })
+    .filter(Boolean);
+}
+
 // Simple context for now - we'll make it more sophisticated later
 const CharacterContext = {
   selectedRace: null as RaceInfo | null,
   selectedClass: null as ClassInfo | SubclassInfo | null,
-  abilityScores: {
+  baseAbilityScores: {
     strength: 0,
     dexterity: 0,
     constitution: 0,
@@ -125,8 +161,70 @@ export function InteractiveCharacterSheet({
   const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
   const [isSpellModalOpen, setIsSpellModalOpen] = useState(false);
+  const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
+  const [showingBackgroundDetails, setShowingBackgroundDetails] =
+    useState(false);
   const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
   const draft = useCharacterDraft();
+  const { setBackground } = draft;
+
+  // Convert draft choices to modal format
+  const structuredClassChoices = useMemo(() => {
+    const choices: ClassModalChoices = {
+      skills: [],
+      languages: [],
+      equipment: [],
+      features: [],
+      expertise: [],
+      traits: [],
+      proficiencies: [],
+    };
+
+    // Parse draft.classChoices which is now ChoiceSubmission[]
+    (draft.classChoices || []).forEach((choice) => {
+      if (
+        choice.category === ChoiceCategory.EQUIPMENT &&
+        choice.selection?.case === 'equipment'
+      ) {
+        // TODO: Convert equipment selection to new EquipmentChoice structure
+        // For now, create a minimal valid EquipmentChoice
+        choices.equipment?.push({
+          choiceId: choice.choiceId,
+          bundleId: '',
+          categorySelections: [],
+        });
+      } else if (
+        choice.category === ChoiceCategory.SKILLS &&
+        choice.selection?.case === 'skills'
+      ) {
+        choices.skills?.push({
+          choiceId: choice.choiceId,
+          skills: choice.selection.value.skills || [],
+        });
+      } else if (
+        choice.category === ChoiceCategory.LANGUAGES &&
+        choice.selection?.case === 'languages'
+      ) {
+        choices.languages?.push({
+          choiceId: choice.choiceId,
+          languages: choice.selection.value.languages || [],
+        });
+      } else if (
+        choice.category === ChoiceCategory.FIGHTING_STYLE &&
+        choice.selection?.case === 'fightingStyle'
+      ) {
+        // Fighting styles are handled as features
+        choices.features?.push({
+          choiceId: choice.choiceId,
+          featureId: String(choice.selection.value.style || ''),
+          selection: FightingStyle[choice.selection.value.style] || '',
+        });
+      }
+      // TODO: Handle other choice types as needed
+    });
+
+    return choices;
+  }, [draft.classChoices]);
 
   // Sync draft state with local character state
   useEffect(() => {
@@ -134,7 +232,8 @@ export function InteractiveCharacterSheet({
       setCharacter((prev) => ({
         ...prev,
         // Update ability scores if they exist in the draft
-        abilityScores: draft.draft?.abilityScores || prev.abilityScores,
+        baseAbilityScores:
+          draft.draft?.baseAbilityScores || prev.baseAbilityScores,
       }));
     }
   }, [draft.draft]);
@@ -182,23 +281,23 @@ export function InteractiveCharacterSheet({
       }));
     }
     // Load ability scores from draft
-    if (draft.draft?.abilityScores) {
+    if (draft.draft?.baseAbilityScores) {
       setCharacter((prev) => ({
         ...prev,
-        abilityScores: {
-          strength: draft.draft?.abilityScores?.strength || 0,
-          dexterity: draft.draft?.abilityScores?.dexterity || 0,
-          constitution: draft.draft?.abilityScores?.constitution || 0,
-          intelligence: draft.draft?.abilityScores?.intelligence || 0,
-          wisdom: draft.draft?.abilityScores?.wisdom || 0,
-          charisma: draft.draft?.abilityScores?.charisma || 0,
+        baseAbilityScores: {
+          strength: draft.draft?.baseAbilityScores?.strength || 0,
+          dexterity: draft.draft?.baseAbilityScores?.dexterity || 0,
+          constitution: draft.draft?.baseAbilityScores?.constitution || 0,
+          intelligence: draft.draft?.baseAbilityScores?.intelligence || 0,
+          wisdom: draft.draft?.baseAbilityScores?.wisdom || 0,
+          charisma: draft.draft?.baseAbilityScores?.charisma || 0,
         },
       }));
     }
 
     // Load choices from draft context
     if (draft.raceChoices || draft.classChoices) {
-      // Convert ChoiceData arrays to structured format for the UI
+      // Convert ChoiceSubmission arrays to structured format for the UI
       const structuredClassChoices: ClassModalChoices = {
         skills: [],
         equipment: [],
@@ -206,7 +305,7 @@ export function InteractiveCharacterSheet({
         proficiencies: [],
       };
 
-      // Parse draft.classChoices which is now ChoiceData[]
+      // Parse draft.classChoices which is now ChoiceSubmission[]
       (draft.classChoices || []).forEach((choice) => {
         if (
           choice.category === ChoiceCategory.EQUIPMENT &&
@@ -214,7 +313,8 @@ export function InteractiveCharacterSheet({
         ) {
           structuredClassChoices.equipment?.push({
             choiceId: choice.choiceId,
-            items: choice.selection.value.items || [],
+            bundleId: '',
+            categorySelections: [],
           });
         } else if (
           choice.category === ChoiceCategory.SKILLS &&
@@ -240,14 +340,10 @@ export function InteractiveCharacterSheet({
     draft.raceInfo,
     draft.classInfo,
     draft.classInfo?.name,
-    draft.draft?.abilityScores,
+    draft.draft?.baseAbilityScores,
     draft.raceChoices,
     draft.classChoices,
   ]);
-
-  // Get classChoices from character state
-  const classChoices =
-    character.choices?.classChoices || ({} as ClassModalChoices);
 
   // Validation function to check if character is ready for finalization
   const isCharacterValid = useCallback(() => {
@@ -255,18 +351,29 @@ export function InteractiveCharacterSheet({
     const hasName = Boolean(draft.draft?.name?.trim());
     const hasRace = Boolean(draft.raceInfo);
     const hasClass = Boolean(draft.classInfo);
+    const hasBackground = Boolean(draft.backgroundInfo);
+
+    // Temporary debug for background issue
+    if (!hasBackground && draft.draft?.background) {
+      console.log('Background ID exists but backgroundInfo missing:', {
+        backgroundId: draft.draft.background,
+        backgroundInfo: draft.backgroundInfo,
+      });
+    }
 
     // Check if all ability scores are assigned (all greater than 0)
+    // Check baseAbilityScores (new field name in proto)
+    const scores = draft.draft?.baseAbilityScores;
     const hasAbilityScores =
-      draft.draft?.abilityScores &&
-      draft.draft.abilityScores.strength > 0 &&
-      draft.draft.abilityScores.dexterity > 0 &&
-      draft.draft.abilityScores.constitution > 0 &&
-      draft.draft.abilityScores.intelligence > 0 &&
-      draft.draft.abilityScores.wisdom > 0 &&
-      draft.draft.abilityScores.charisma > 0;
+      scores &&
+      scores.strength > 0 &&
+      scores.dexterity > 0 &&
+      scores.constitution > 0 &&
+      scores.intelligence > 0 &&
+      scores.wisdom > 0 &&
+      scores.charisma > 0;
 
-    return hasName && hasRace && hasClass && hasAbilityScores;
+    return hasName && hasRace && hasClass && hasBackground && hasAbilityScores;
   }, [draft]);
 
   // Handle finalize button click
@@ -286,53 +393,39 @@ export function InteractiveCharacterSheet({
 
   // Compute character creation steps and their status
   const steps = useMemo<Step[]>(() => {
-    const hasRace = character.selectedRace !== null;
-    const hasClass = character.selectedClass !== null;
+    const hasName = Boolean(draft.draft?.name?.trim());
+    const hasRace = Boolean(draft.raceInfo);
+    const hasClass = Boolean(draft.classInfo);
+    const hasBackground = Boolean(draft.backgroundInfo);
 
     // Check if all ability scores are assigned (all non-zero)
-    const hasAbilityScores = Object.values(character.abilityScores).every(
-      (score) => score > 0
-    );
+    const scores = draft.draft?.baseAbilityScores;
+    const hasAbilityScores =
+      scores &&
+      scores.strength > 0 &&
+      scores.dexterity > 0 &&
+      scores.constitution > 0 &&
+      scores.intelligence > 0 &&
+      scores.wisdom > 0 &&
+      scores.charisma > 0;
 
-    const hasProficiencies =
-      Object.keys(classChoices.proficiencies || {}).length > 0;
-    const hasEquipment = Object.keys(character.equipmentChoices).length > 0;
-    const hasSpells = selectedSpells.length > 0;
+    // Build steps array - only the actual decisions
+    const allSteps: Step[] = [];
 
-    // Check if class is a spellcaster (only base classes have spellcasting info)
-    const isSpellcaster =
-      isClassInfo(character.selectedClass) &&
-      character.selectedClass.spellcasting !== undefined;
+    // Only show name step if it's not filled
+    if (!hasName) {
+      allSteps.push({
+        id: 'name',
+        label: 'Name',
+        status: 'current',
+      });
+    }
 
-    // Check if class has feature choices (like Fighting Style) (only base classes have choices)
-    const hasFeatureChoices =
-      (isClassInfo(character.selectedClass) &&
-        character.selectedClass.choices?.some((choice) => {
-          return choice.choiceType === ChoiceCategory.FIGHTING_STYLE;
-        })) ||
-      false;
-
-    // Check if all feature choices have been made
-    const hasFeatureChoicesSelected =
-      !hasFeatureChoices ||
-      ((isClassInfo(character.selectedClass) &&
-        character.selectedClass.choices?.every((choice) => {
-          if (choice.choiceType !== ChoiceCategory.FIGHTING_STYLE) return true;
-
-          // Check if this feature choice has been made in draft.classChoices
-          const choiceData = draft.classChoices.find(
-            (c) => c.choiceId === choice.id
-          );
-          return choiceData && choiceData.selection;
-        })) ??
-        true);
-
-    // Build steps array
-    const allSteps: Step[] = [
+    allSteps.push(
       {
         id: 'race',
         label: 'Race',
-        status: hasRace ? 'completed' : 'current',
+        status: hasRace ? 'completed' : !hasName ? 'upcoming' : 'current',
       },
       {
         id: 'class',
@@ -340,88 +433,28 @@ export function InteractiveCharacterSheet({
         status: hasClass ? 'completed' : hasRace ? 'current' : 'upcoming',
       },
       {
+        id: 'background',
+        label: 'Background',
+        status: hasBackground ? 'completed' : hasClass ? 'current' : 'upcoming',
+      },
+      {
         id: 'ability-scores',
-        label: 'Ability Scores',
+        label: 'Abilities',
         status: hasAbilityScores
           ? 'completed'
-          : hasClass
+          : hasBackground
             ? 'current'
             : 'upcoming',
-      },
-    ];
-
-    // Add feature selection if applicable (e.g., Fighting Style for Fighter)
-    if (hasFeatureChoices) {
-      allSteps.push({
-        id: 'features',
-        label: 'Features',
-        status: hasFeatureChoicesSelected
-          ? 'completed'
-          : hasAbilityScores && hasClass
-            ? 'current'
-            : 'upcoming',
-        conditional: true,
-      });
-    }
-
-    // Proficiencies step
-    allSteps.push({
-      id: 'proficiencies',
-      label: 'Proficiencies',
-      status: hasProficiencies
-        ? 'completed'
-        : hasAbilityScores && hasClass
-          ? 'current'
-          : 'upcoming',
-    });
-
-    // Equipment step
-    allSteps.push({
-      id: 'equipment',
-      label: 'Equipment',
-      status: hasEquipment
-        ? 'completed'
-        : hasProficiencies
-          ? 'current'
-          : 'upcoming',
-    });
-
-    // Spells step (conditional on class)
-    if (isSpellcaster) {
-      allSteps.push({
-        id: 'spells',
-        label: 'Spells',
-        status: hasSpells ? 'completed' : hasEquipment ? 'current' : 'upcoming',
-        conditional: true,
-      });
-    }
-
-    // Update current step logic using functional approach
-    const hasCurrentStep = allSteps.some((step) => step.status === 'current');
-
-    if (!hasCurrentStep) {
-      // Find first upcoming step and make it current
-      const firstUpcomingIndex = allSteps.findIndex(
-        (step) => step.status === 'upcoming'
-      );
-      if (firstUpcomingIndex !== -1) {
-        return allSteps.map((step, index) =>
-          index === firstUpcomingIndex
-            ? { ...step, status: 'current' as const }
-            : step
-        );
       }
-    }
+    );
 
     return allSteps;
   }, [
-    character.selectedRace,
-    character.selectedClass,
-    character.abilityScores,
-    character.equipmentChoices,
-    classChoices.proficiencies,
-    draft.classChoices,
-    selectedSpells,
+    draft.draft?.name,
+    draft.raceInfo,
+    draft.classInfo,
+    draft.backgroundInfo,
+    draft.draft?.baseAbilityScores,
   ]);
 
   // Helper function to get race emoji
@@ -457,6 +490,25 @@ export function InteractiveCharacterSheet({
       Wizard: '🧙‍♂️',
     };
     return classEmojiMap[className] || '⚔️';
+  };
+
+  // Helper function to get background emoji
+  const getBackgroundEmoji = (backgroundName: string) => {
+    const backgroundEmojiMap: Record<string, string> = {
+      Acolyte: '🙏',
+      Criminal: '🗡️',
+      'Folk Hero': '🛡️',
+      Noble: '👑',
+      Sage: '📚',
+      Soldier: '⚔️',
+      Hermit: '🧙',
+      Entertainer: '🎭',
+      'Guild Artisan': '🔨',
+      Outlander: '🏕️',
+      Sailor: '⚓',
+      Urchin: '🥷',
+    };
+    return backgroundEmojiMap[backgroundName] || '📜';
   };
 
   // Helper function to format equipment names
@@ -529,35 +581,22 @@ export function InteractiveCharacterSheet({
       const selections = choice.selection.value.items || [];
       if (selections && selections.length > 0) {
         // Add the selected equipment items
-        selections.forEach((selection: string) => {
-          // Parse the selection - the format varies:
-          // "chain-mail" - direct item selection
-          // "bundle_1" - bundle selection (legacy - should be expanded by backend)
-          // "bundle_1:0:longsword" or "bundle_1:1:shield" - bundle items with references
-
-          if (selection.includes(':')) {
-            // This has a bundle item reference (e.g., "bundle_1:0:longsword", "bundle_1:1:shield")
-            const parts = selection.split(':');
-            if (parts.length >= 3) {
-              // Format: "bundle_X:Y:itemname"
-              const itemName = parts[parts.length - 1];
-              equipment.push(itemName); // Don't format here - let formatEquipmentName() handle it
-            } else if (parts.length === 2 && !parts[1].match(/^\d+$/)) {
-              // Format: "X:itemname" (legacy nested selection)
-              const itemName = parts[1];
-              equipment.push(itemName); // Don't format here - let formatEquipmentName() handle it
+        selections.forEach((selection) => {
+          // selections is always EquipmentSelectionItem[] from the proto
+          if (selection.equipment) {
+            // Extract the equipment identifier from the oneof
+            if (selection.equipment.case === 'otherEquipmentId') {
+              // String ID for custom equipment
+              equipment.push(selection.equipment.value);
+            } else if (selection.equipment.case) {
+              // It's a specific equipment type (weapon, armor, etc.)
+              // Convert enum value to string - the value is an enum number
+              const enumName = selection.equipment.case.toUpperCase();
+              const enumValue = selection.equipment.value;
+              // For now, use the case name as identifier
+              // TODO: Convert enum value to actual equipment name
+              equipment.push(`${enumName}_${enumValue}`);
             }
-          } else if (selection.startsWith('bundle_')) {
-            // This is a raw bundle reference without individual items
-            // This should not happen with the new implementation, but handle it gracefully
-            console.warn(
-              'Found raw bundle reference - this should be expanded by backend:',
-              selection
-            );
-            equipment.push(selection); // Pass the bundle reference to formatEquipmentName for proper handling
-          } else {
-            // Direct item selection - pass to formatEquipmentName for consistent formatting
-            equipment.push(selection);
           }
         });
       }
@@ -569,7 +608,7 @@ export function InteractiveCharacterSheet({
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
       {/* Progress Tracker */}
-      <div className="max-w-6xl mx-auto mb-6">
+      <div className="max-w-7xl mx-auto mb-6">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -596,7 +635,7 @@ export function InteractiveCharacterSheet({
         </motion.div>
       </div>
 
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -680,8 +719,8 @@ export function InteractiveCharacterSheet({
             >
               Character Identity
             </h2>
-            <div className="grid grid-cols-2 gap-4">
-              {/* Left Column - Race and Inventory */}
+            <div className="grid grid-cols-3 gap-4">
+              {/* Race Selection */}
               <div className="space-y-4">
                 <motion.div
                   whileHover={{ scale: 1.02 }}
@@ -775,22 +814,7 @@ export function InteractiveCharacterSheet({
                       {draft.allProficiencies.size > 0 ||
                       draft.allLanguages.size > 0 ? (
                         <div className="mt-2 text-xs space-y-1">
-                          {character.selectedRace.proficiencies &&
-                            character.selectedRace.proficiencies.length > 0 && (
-                              <div style={{ color: 'var(--text-primary)' }}>
-                                <span
-                                  style={{
-                                    color: 'var(--text-primary)',
-                                    opacity: 0.7,
-                                  }}
-                                >
-                                  Skills:
-                                </span>{' '}
-                                {character.selectedRace.proficiencies.join(
-                                  ', '
-                                )}
-                              </div>
-                            )}
+                          {/* RaceInfo no longer has proficiencies field - they come through choices now */}
                           {character.selectedRace.languages &&
                             character.selectedRace.languages.length > 0 && (
                               <div style={{ color: 'var(--text-primary)' }}>
@@ -810,30 +834,7 @@ export function InteractiveCharacterSheet({
                                   .join(', ')}
                               </div>
                             )}
-                          {/* Display resolved proficiencies from race choices */}
-                          {/* Only show race-specific proficiencies here */}
-                          {character.selectedRace?.proficiencies &&
-                            character.selectedRace.proficiencies.length > 0 && (
-                              <div style={{ color: 'var(--text-primary)' }}>
-                                <span
-                                  style={{
-                                    color: 'var(--text-muted)',
-                                    fontSize: '11px',
-                                    opacity: 0.7,
-                                  }}
-                                >
-                                  Racial Proficiencies:
-                                </span>{' '}
-                                {character.selectedRace.proficiencies
-                                  .map((p) =>
-                                    p.replace(
-                                      /^(skill:|weapon:|armor:|tool:)/,
-                                      ''
-                                    )
-                                  )
-                                  .join(', ')}
-                              </div>
-                            )}
+                          {/* RaceInfo no longer has proficiencies field - they come through choices now */}
                           {/* Display resolved languages from race choices */}
                           {(() => {
                             const extraLanguages = getExtraLanguages(
@@ -860,6 +861,31 @@ export function InteractiveCharacterSheet({
                             }
                             return null;
                           })()}
+                          {/* Display chosen tool proficiencies */}
+                          {(() => {
+                            const toolProficiencies = getToolProficiencies(
+                              draft.allProficiencies
+                            );
+
+                            // Only show if there are tool proficiencies
+                            if (toolProficiencies.length > 0) {
+                              return (
+                                <div style={{ color: 'var(--text-primary)' }}>
+                                  <span
+                                    style={{
+                                      color: 'var(--text-muted)',
+                                      fontSize: '11px',
+                                      opacity: 0.7,
+                                    }}
+                                  >
+                                    Tool Proficiencies:
+                                  </span>{' '}
+                                  {toolProficiencies.join(', ')}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       ) : (
                         <p
@@ -877,7 +903,7 @@ export function InteractiveCharacterSheet({
                 )}
               </div>
 
-              {/* Right Column - Class and Proficiencies */}
+              {/* Class Selection */}
               <div className="space-y-4">
                 <motion.div
                   whileHover={{ scale: 1.02 }}
@@ -969,9 +995,10 @@ export function InteractiveCharacterSheet({
                         </span>
                       </div>
                       <div className="mt-2 text-xs space-y-1">
-                        {character.selectedClass.armorProficiencies &&
-                          character.selectedClass.armorProficiencies.length >
-                            0 && (
+                        {isClassInfo(character.selectedClass) &&
+                          character.selectedClass.armorProficiencyCategories &&
+                          character.selectedClass.armorProficiencyCategories
+                            .length > 0 && (
                             <div style={{ color: 'var(--text-primary)' }}>
                               <span
                                 style={{
@@ -981,14 +1008,17 @@ export function InteractiveCharacterSheet({
                               >
                                 Armor:
                               </span>{' '}
-                              {character.selectedClass.armorProficiencies.join(
-                                ', '
-                              )}
+                              {character.selectedClass.armorProficiencyCategories
+                                .map((p) =>
+                                  getArmorProficiencyDisplay(String(p))
+                                )
+                                .join(', ')}
                             </div>
                           )}
-                        {character.selectedClass.weaponProficiencies &&
-                          character.selectedClass.weaponProficiencies.length >
-                            0 && (
+                        {isClassInfo(character.selectedClass) &&
+                          character.selectedClass.weaponProficiencyCategories &&
+                          character.selectedClass.weaponProficiencyCategories
+                            .length > 0 && (
                             <div style={{ color: 'var(--text-primary)' }}>
                               <span
                                 style={{
@@ -998,11 +1028,15 @@ export function InteractiveCharacterSheet({
                               >
                                 Weapons:
                               </span>{' '}
-                              {character.selectedClass.weaponProficiencies
+                              {character.selectedClass.weaponProficiencyCategories
                                 .slice(0, 3)
+                                .map((p) =>
+                                  getWeaponProficiencyDisplay(String(p))
+                                )
                                 .join(', ')}
-                              {character.selectedClass.weaponProficiencies
-                                .length > 3 && '...'}
+                              {character.selectedClass
+                                .weaponProficiencyCategories.length > 3 &&
+                                '...'}
                             </div>
                           )}
                         {isClassInfo(character.selectedClass) &&
@@ -1018,9 +1052,9 @@ export function InteractiveCharacterSheet({
                               >
                                 Saves:
                               </span>{' '}
-                              {character.selectedClass.savingThrowProficiencies.join(
-                                ', '
-                              )}
+                              {character.selectedClass.savingThrowProficiencies
+                                .map((save) => getSavingThrowDisplay(save))
+                                .join(', ')}
                             </div>
                           )}
                         {/* Display chosen skills from draft.classChoices */}
@@ -1084,6 +1118,31 @@ export function InteractiveCharacterSheet({
                             if (!choiceData || !choiceData.selection)
                               return null;
 
+                            // Extract the display name from the selection
+                            let displayValue = 'Selected';
+                            if (choiceData.selection) {
+                              // Check if it's a fighting style selection
+                              if (
+                                choiceData.selection.case === 'fightingStyle'
+                              ) {
+                                // It's a FightingStyle enum value
+                                const styleValue =
+                                  choiceData.selection.value.style;
+                                displayValue =
+                                  FightingStyle[styleValue] ||
+                                  `Style ${styleValue}`;
+                                // Format the name properly (DUELING -> Dueling)
+                                displayValue = displayValue
+                                  .split('_')
+                                  .map(
+                                    (word: string) =>
+                                      word.charAt(0).toUpperCase() +
+                                      word.slice(1).toLowerCase()
+                                  )
+                                  .join(' ');
+                              }
+                            }
+
                             return (
                               <div
                                 key={choice.id}
@@ -1097,8 +1156,7 @@ export function InteractiveCharacterSheet({
                                 >
                                   {choice.description}:
                                 </span>{' '}
-                                {/* TODO: Display the actual selection based on the choice type */}
-                                Selected
+                                {displayValue}
                               </div>
                             );
                           });
@@ -1123,10 +1181,7 @@ export function InteractiveCharacterSheet({
                       </h4>
                       {(() => {
                         const selectedEquipment = getSelectedEquipment();
-                        const startingEquipment =
-                          (isClassInfo(character.selectedClass)
-                            ? character.selectedClass.startingEquipment
-                            : []) || [];
+                        const startingEquipment: string[] = []; // startingEquipment field no longer exists in ClassInfo
                         const allEquipment = [
                           ...startingEquipment,
                           ...selectedEquipment,
@@ -1149,9 +1204,11 @@ export function InteractiveCharacterSheet({
 
                               {/* Show selected equipment */}
                               {selectedEquipment
-                                .map((item) => formatEquipmentName(item))
+                                .map((item: string) =>
+                                  formatEquipmentName(item)
+                                )
                                 .filter((name) => name !== null)
-                                .map((name, idx) => (
+                                .map((name: string | null, idx: number) => (
                                   <div
                                     key={`selected-${idx}`}
                                     style={{ color: 'var(--text-primary)' }}
@@ -1217,6 +1274,127 @@ export function InteractiveCharacterSheet({
                           />
                         </motion.div>
                       )}
+                  </div>
+                )}
+              </div>
+
+              {/* Background Selection */}
+              <div className="space-y-4">
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  className="cursor-pointer p-4 rounded-lg border-2 border-dashed transition-all hover:border-solid"
+                  style={{
+                    backgroundColor: draft.backgroundInfo
+                      ? 'var(--card-bg)'
+                      : 'var(--bg-secondary)',
+                    borderColor: draft.backgroundInfo
+                      ? 'var(--accent-primary)'
+                      : 'var(--border-primary)',
+                    cursor:
+                      !draft.draftId || draft.loading || draft.saving
+                        ? 'not-allowed'
+                        : 'pointer',
+                    opacity:
+                      !draft.draftId || draft.loading || draft.saving ? 0.6 : 1,
+                  }}
+                  onClick={() => {
+                    if (!draft.loading && !draft.saving && draft.draftId) {
+                      setIsBackgroundModalOpen(true);
+                    }
+                  }}
+                >
+                  <div className="text-center space-y-2">
+                    <div className="text-3xl">
+                      {getBackgroundEmoji(draft.backgroundInfo?.name || '')}
+                    </div>
+                    <div>
+                      <h3
+                        className="text-lg font-bold"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {draft.backgroundInfo?.name || 'Choose Background'}
+                      </h3>
+                      <p
+                        className="text-xs"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {draft.backgroundInfo
+                          ? 'Click to change'
+                          : 'Select background'}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Show background proficiencies if selected */}
+                {draft.backgroundInfo && (
+                  <div
+                    className="rounded-lg p-3 border"
+                    style={{
+                      backgroundColor: 'var(--bg-secondary)',
+                      borderColor: 'var(--border-primary)',
+                    }}
+                  >
+                    {/* Background Proficiencies - clickable section */}
+                    <div
+                      className="space-y-2 cursor-pointer"
+                      onClick={() =>
+                        setShowingBackgroundDetails(!showingBackgroundDetails)
+                      }
+                    >
+                      <div className="flex items-center justify-between">
+                        <h4
+                          className="text-sm font-medium"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          Background Proficiencies
+                        </h4>
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform ${
+                            showingBackgroundDetails ? 'rotate-180' : ''
+                          }`}
+                          style={{ color: 'var(--text-muted)' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Expandable Background Details */}
+                    {showingBackgroundDetails && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="mt-2 space-y-2"
+                      >
+                        {/* Display background proficiencies here */}
+                        {draft.backgroundInfo.skillProficiencies?.length >
+                          0 && (
+                          <div className="flex flex-wrap gap-1">
+                            <span
+                              className="text-xs"
+                              style={{ color: 'var(--text-muted)' }}
+                            >
+                              Skills:
+                            </span>
+                            {draft.backgroundInfo.skillProficiencies.map(
+                              (skill, idx) => (
+                                <span
+                                  key={idx}
+                                  className="px-2 py-0.5 text-xs rounded-full"
+                                  style={{
+                                    backgroundColor: 'var(--bg-primary)',
+                                    color: 'var(--text-primary)',
+                                    border: '1px solid var(--border-primary)',
+                                  }}
+                                >
+                                  {getSkillDisplay(skill)}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1315,7 +1493,7 @@ export function InteractiveCharacterSheet({
       {/* Race Selection Modal */}
       <RaceSelectionModal
         isOpen={isRaceModalOpen}
-        currentRace={character.selectedRace?.name}
+        currentRace={character.selectedRace?.name || draft.raceInfo?.name}
         existingProficiencies={draft.allProficiencies}
         existingLanguages={draft.allLanguages}
         onSelect={(race, choices) => {
@@ -1324,7 +1502,7 @@ export function InteractiveCharacterSheet({
             selectedRace: race,
           }));
 
-          // Convert choices to ChoiceData format
+          // Convert choices to ChoiceData format for the API
           const choiceData: ChoiceData[] = [];
 
           // Convert language choices
@@ -1341,6 +1519,15 @@ export function InteractiveCharacterSheet({
             choices.skills.forEach((skillChoice) => {
               choiceData.push(
                 convertSkillChoiceToProto(skillChoice, ChoiceSource.RACE)
+              );
+            });
+          }
+
+          // Convert tool choices if any
+          if (choices.tools) {
+            choices.tools.forEach((toolChoice) => {
+              choiceData.push(
+                convertToolChoiceToProto(toolChoice, ChoiceSource.RACE)
               );
             });
           }
@@ -1380,8 +1567,8 @@ export function InteractiveCharacterSheet({
       {/* Class Selection Modal */}
       <ClassSelectionModal
         isOpen={isClassModalOpen}
-        currentClass={character.selectedClass?.name}
-        existingChoices={character.choices?.classChoices}
+        currentClass={character.selectedClass?.name || draft.classInfo?.name}
+        existingChoices={structuredClassChoices}
         onSelect={async (classData, choices) => {
           setCharacter((prev) => ({
             ...prev,
@@ -1393,7 +1580,7 @@ export function InteractiveCharacterSheet({
             },
           }));
 
-          // Convert choices to ChoiceData format
+          // Convert choices to ChoiceData format for the API
           const choiceData: ChoiceData[] = [];
 
           // Convert skill choices
@@ -1480,6 +1667,17 @@ export function InteractiveCharacterSheet({
             }}
           />
         )}
+
+      {/* Background Selection Modal */}
+      <BackgroundSelectionModal
+        isOpen={isBackgroundModalOpen}
+        currentBackground={draft.backgroundInfo?.name}
+        onSelect={async (background) => {
+          await setBackground(background, []);
+          setIsBackgroundModalOpen(false);
+        }}
+        onClose={() => setIsBackgroundModalOpen(false)}
+      />
     </div>
   );
 }

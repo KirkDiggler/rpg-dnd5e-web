@@ -90,6 +90,7 @@ export function CharacterList({
   const error = charactersError || draftsError;
 
   const handleDeleteClick = (characterId: string) => {
+    console.log('Delete clicked for character:', characterId);
     setConfirmDelete(characterId);
   };
 
@@ -192,18 +193,14 @@ export function CharacterList({
                   </h3>
                   <div className="flex justify-between text-sm">
                     <span style={{ color: 'var(--ink-brown)' }}>
-                      {/* Use full object name if available, otherwise use ID */}
-                      {draft.race?.name ||
-                        (draft.raceId
-                          ? getRaceDisplayName(draft.raceId)
-                          : 'No Race')}
+                      {/* Use enum value to get display name */}
+                      {draft.race ? getRaceDisplayName(draft.race) : 'No Race'}
                     </span>
                     <span style={{ color: 'var(--ink-sepia)' }}>
-                      {/* Use full object name if available, otherwise use ID */}
-                      {draft.class?.name ||
-                        (draft.classId
-                          ? getClassDisplayName(draft.classId)
-                          : 'No Class')}
+                      {/* Use enum value to get display name */}
+                      {draft.class
+                        ? getClassDisplayName(draft.class)
+                        : 'No Class'}
                     </span>
                   </div>
                   <div
@@ -219,8 +216,9 @@ export function CharacterList({
         </div>
       )}
 
-      {/* Characters Section */}
+      {/* Character sections */}
       <div className="space-y-4">
+        {/* Characters Section */}
         <div className="flex justify-between items-center">
           <h2
             className="text-3xl font-bold text-shadow"
@@ -402,46 +400,112 @@ export function CharacterList({
       </div>
 
       {/* Delete Confirmation Modal */}
-      {confirmDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="max-w-md p-6">
-            <h3
-              className="text-xl font-bold mb-4"
+      {confirmDelete ? (
+        <div
+          className="fixed inset-0 flex items-center justify-center"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 9999,
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(8px)',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCancelDelete();
+            }
+          }}
+        >
+          <div
+            className="max-w-md w-full mx-4 p-8 rounded-xl shadow-2xl transform transition-all"
+            style={{
+              backgroundColor: 'var(--card-bg)',
+              border: '2px solid var(--accent-primary)',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            <div className="text-center mb-6">
+              <div
+                className="inline-block p-3 rounded-full mb-4"
+                style={{
+                  backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                  border: '2px solid rgba(220, 53, 69, 0.3)',
+                }}
+              >
+                <span className="text-4xl">⚠️</span>
+              </div>
+              <h3
+                className="text-2xl font-bold"
+                style={{
+                  color: 'var(--text-primary)',
+                }}
+              >
+                Confirm Character Deletion
+              </h3>
+            </div>
+            <p
+              className="text-center mb-8 leading-relaxed"
               style={{
-                fontFamily: 'Cinzel, serif',
-                color: 'var(--ink-black)',
+                color: 'var(--text-secondary)',
+                fontSize: '1.1rem',
               }}
             >
-              Confirm Delete
-            </h3>
-            <p style={{ color: 'var(--ink-brown)' }} className="mb-6">
-              Are you sure you want to delete this character? This action cannot
-              be undone.
+              Are you sure you want to delete this character?
+              <br />
+              <span
+                className="font-semibold"
+                style={{ color: 'var(--danger)' }}
+              >
+                This action cannot be undone.
+              </span>
             </p>
-            <div className="flex gap-3">
+            <div className="flex gap-4">
               <Button
                 variant="secondary"
                 onClick={handleCancelDelete}
-                className="flex-1"
+                className="flex-1 py-3 font-semibold transition-all hover:scale-105"
+                style={{
+                  backgroundColor: 'var(--bg-secondary)',
+                  borderColor: 'var(--border-primary)',
+                  color: 'var(--text-primary)',
+                }}
               >
                 Cancel
               </Button>
               <Button
                 variant="primary"
                 onClick={handleConfirmDelete}
-                className="flex-1"
+                className="flex-1 py-3 font-semibold transition-all hover:scale-105"
+                disabled={deletingCharacterId === confirmDelete}
                 style={{
-                  backgroundColor: '#dc3545',
-                  borderColor: '#dc3545',
+                  backgroundColor:
+                    deletingCharacterId === confirmDelete
+                      ? '#999'
+                      : 'var(--danger)',
+                  borderColor:
+                    deletingCharacterId === confirmDelete
+                      ? '#999'
+                      : 'var(--danger)',
                   color: 'white',
+                  opacity: deletingCharacterId === confirmDelete ? 0.7 : 1,
                 }}
               >
-                Delete Character
+                {deletingCharacterId === confirmDelete ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="animate-spin">⏳</span>
+                    Deleting...
+                  </span>
+                ) : (
+                  'Delete Character'
+                )}
               </Button>
             </div>
-          </Card>
+          </div>
         </div>
-      )}
+      ) : null}
 
       {/* Clear All Confirmation Modal */}
       {showClearAllConfirm && (

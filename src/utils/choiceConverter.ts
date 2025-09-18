@@ -1,20 +1,26 @@
 import { create } from '@bufbuild/protobuf';
-import type { ChoiceData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { ChoiceData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
   ChoiceCategory,
   ChoiceDataSchema,
   ChoiceSource,
-  EquipmentListSchema,
-  ExpertiseListSchema,
-  LanguageListSchema,
-  SkillListSchema,
-  TraitListSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+  EquipmentSelectionSchema,
+  ExpertiseSelectionSchema,
+  FightingStyleSelectionSchema,
+  LanguageSelectionSchema,
+  SkillSelectionSchema,
+  ToolSelectionSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
+import {
+  FightingStyle,
+  Skill,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type {
   EquipmentChoice,
   FeatureChoice,
   LanguageChoice,
   SkillChoice,
+  ToolChoice,
 } from '../types/choices';
 
 /**
@@ -32,7 +38,7 @@ export function convertSkillChoiceToProto(
     source,
     selection: {
       case: 'skills',
-      value: create(SkillListSchema, {
+      value: create(SkillSelectionSchema, {
         skills: choice.skills,
       }),
     },
@@ -49,8 +55,25 @@ export function convertLanguageChoiceToProto(
     source,
     selection: {
       case: 'languages',
-      value: create(LanguageListSchema, {
+      value: create(LanguageSelectionSchema, {
         languages: choice.languages,
+      }),
+    },
+  });
+}
+
+export function convertToolChoiceToProto(
+  choice: ToolChoice,
+  source: ChoiceSource
+): ChoiceData {
+  return create(ChoiceDataSchema, {
+    choiceId: choice.choiceId,
+    category: ChoiceCategory.TOOLS,
+    source,
+    selection: {
+      case: 'tools',
+      value: create(ToolSelectionSchema, {
+        tools: choice.tools,
       }),
     },
   });
@@ -60,14 +83,17 @@ export function convertEquipmentChoiceToProto(
   choice: EquipmentChoice,
   source: ChoiceSource
 ): ChoiceData {
+  // Use bundleId as optionId if available, otherwise leave empty
+  // The items array contains selection strings from the UI
   return create(ChoiceDataSchema, {
     choiceId: choice.choiceId,
+    optionId: choice.bundleId || undefined, // The selected bundle
     category: ChoiceCategory.EQUIPMENT,
     source,
     selection: {
       case: 'equipment',
-      value: create(EquipmentListSchema, {
-        items: choice.items,
+      value: create(EquipmentSelectionSchema, {
+        items: [], // The backend processes the bundleId to know what was selected
       }),
     },
   });
@@ -79,10 +105,12 @@ export function convertFeatureChoiceToProto(
   choice: FeatureChoice,
   source: ChoiceSource
 ): ChoiceData {
-  // Fighting styles use the 'fightingStyle' selection case (simple string)
-  // The server expects just the style name without the "feature_" prefix
+  // Fighting styles use the 'fightingStyle' selection case
   // Convert "feature_archery" -> "archery", "feature_defense" -> "defense", etc.
   const cleanValue = choice.selection.replace(/^feature_/, '');
+
+  // Convert string to FightingStyle enum
+  const styleEnum = getFightingStyleEnum(cleanValue);
 
   const result = create(ChoiceDataSchema, {
     choiceId: choice.choiceId,
@@ -90,11 +118,30 @@ export function convertFeatureChoiceToProto(
     source,
     selection: {
       case: 'fightingStyle',
-      value: cleanValue, // e.g., "archery" or "defense"
+      value: create(FightingStyleSelectionSchema, {
+        style: styleEnum,
+      }),
     },
   });
 
   return result;
+}
+
+// Helper to convert fighting style string to enum
+function getFightingStyleEnum(styleName: string): FightingStyle {
+  const styleMap: Record<string, FightingStyle> = {
+    archery: FightingStyle.ARCHERY,
+    defense: FightingStyle.DEFENSE,
+    dueling: FightingStyle.DUELING,
+    great_weapon_fighting: FightingStyle.GREAT_WEAPON_FIGHTING,
+    'great-weapon-fighting': FightingStyle.GREAT_WEAPON_FIGHTING,
+    protection: FightingStyle.PROTECTION,
+    two_weapon_fighting: FightingStyle.TWO_WEAPON_FIGHTING,
+    'two-weapon-fighting': FightingStyle.TWO_WEAPON_FIGHTING,
+  };
+
+  const lowerName = styleName.toLowerCase();
+  return styleMap[lowerName] || FightingStyle.UNSPECIFIED;
 }
 
 export function convertExpertiseChoiceToProto(
@@ -102,14 +149,27 @@ export function convertExpertiseChoiceToProto(
   selectedSkills: string[],
   source: ChoiceSource
 ): ChoiceData {
+  // Convert string skill names to Skill enum values
+  const skillEnums = selectedSkills
+    .map((skillStr) => {
+      // Try to find the enum value for this skill string
+      const enumValue = Object.entries(Skill).find(
+        ([key, val]) =>
+          typeof val === 'number' &&
+          key.toLowerCase() === skillStr.toLowerCase().replace(/[^a-z]/g, '')
+      )?.[1] as Skill | undefined;
+      return enumValue || Skill.UNSPECIFIED;
+    })
+    .filter((s) => s !== Skill.UNSPECIFIED);
+
   return create(ChoiceDataSchema, {
     choiceId,
     category: ChoiceCategory.EXPERTISE,
     source,
     selection: {
       case: 'expertise',
-      value: create(ExpertiseListSchema, {
-        skills: selectedSkills,
+      value: create(ExpertiseSelectionSchema, {
+        skills: skillEnums,
       }),
     },
   });
@@ -120,16 +180,15 @@ export function convertTraitChoiceToProto(
   selectedTraits: string[],
   source: ChoiceSource
 ): ChoiceData {
+  // TODO: TraitSelection type doesn't exist in v0.1.49 yet
+  // For now, create a minimal ChoiceData without selection
+  // This will need to be updated when TraitSelection is added to protos
   return create(ChoiceDataSchema, {
     choiceId,
     category: ChoiceCategory.TRAITS,
     source,
-    selection: {
-      case: 'traits',
-      value: create(TraitListSchema, {
-        traits: selectedTraits,
-      }),
-    },
+    optionId: selectedTraits[0] || '', // Use first trait as optionId temporarily
+    // selection field omitted until TraitSelection type is available
   });
 }
 
@@ -163,6 +222,7 @@ export function convertProtoToEquipmentChoice(
 
   return {
     choiceId: data.choiceId,
-    items: data.selection.value.items || [],
+    bundleId: data.optionId || '', // optionId holds the selected bundle
+    categorySelections: [], // Equipment items would need to be parsed from selection.value.items if needed
   };
 }
