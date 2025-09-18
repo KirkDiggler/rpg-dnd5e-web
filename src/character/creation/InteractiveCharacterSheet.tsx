@@ -353,14 +353,6 @@ export function InteractiveCharacterSheet({
     const hasClass = Boolean(draft.classInfo);
     const hasBackground = Boolean(draft.backgroundInfo);
 
-    // Temporary debug for background issue
-    if (!hasBackground && draft.draft?.background) {
-      console.log('Background ID exists but backgroundInfo missing:', {
-        backgroundId: draft.draft.background,
-        backgroundInfo: draft.backgroundInfo,
-      });
-    }
-
     // Check if all ability scores are assigned (all greater than 0)
     // Check baseAbilityScores (new field name in proto)
     const scores = draft.draft?.baseAbilityScores;
