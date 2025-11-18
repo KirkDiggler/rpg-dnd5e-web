@@ -1,8 +1,8 @@
 import { useCharacterDraft } from '@/character/creation/useCharacterDraft';
 import { TraitBadge } from '@/components/TraitBadge';
 import { TraitIcons } from '@/constants/traits';
-import { useCharacterBuilder } from '@/hooks/useCharacterBuilder';
 import type {
+  BackgroundInfo,
   ClassInfo,
   RaceInfo,
   SubclassInfo,
@@ -24,22 +24,33 @@ import {
   convertLanguageChoiceToProto,
   convertSkillChoiceToProto,
 } from '../../../utils/choiceConverter';
+import { BackgroundSelectionModal } from '../BackgroundSelectionModal';
 import { ClassSelectionModal } from '../ClassSelectionModal';
 import { RaceSelectionModal } from '../RaceSelectionModal';
 
 export function RaceClassSection() {
-  const { setSelectedChoice } = useCharacterBuilder();
-  const { raceInfo, classInfo, setRace, setClass, raceChoices, classChoices } =
-    useCharacterDraft();
+  const {
+    raceInfo,
+    classInfo,
+    backgroundInfo,
+    setRace,
+    setClass,
+    setBackground,
+    raceChoices,
+    classChoices,
+  } = useCharacterDraft();
 
   const [showRaceModal, setShowRaceModal] = useState(false);
   const [showClassModal, setShowClassModal] = useState(false);
+  const [showBackgroundModal, setShowBackgroundModal] = useState(false);
   const [selectedRaceData, setSelectedRaceData] = useState<RaceInfo | null>(
     raceInfo
   );
   const [selectedClassData, setSelectedClassData] = useState<
     ClassInfo | SubclassInfo | null
   >(classInfo);
+  const [selectedBackgroundData, setSelectedBackgroundData] =
+    useState<BackgroundInfo | null>(backgroundInfo);
   const [selectedClassChoices, setSelectedClassChoices] = useState<
     ClassModalChoices | undefined
   >();
@@ -53,6 +64,10 @@ export function RaceClassSection() {
     setSelectedClassData(classInfo);
   }, [classInfo]);
 
+  useEffect(() => {
+    setSelectedBackgroundData(backgroundInfo);
+  }, [backgroundInfo]);
+
   // Convert existing choices from ChoiceSubmission to modal format if needed
   const existingRaceChoices: RaceModalChoices | undefined = undefined;
 
@@ -61,9 +76,6 @@ export function RaceClassSection() {
     choices: RaceModalChoices
   ) => {
     setSelectedRaceData(race);
-    setSelectedChoice('race', race.raceId);
-    setSelectedChoice('raceData', race);
-    setSelectedChoice('raceChoices', choices);
 
     // Convert structured choices to ChoiceSubmission proto format
     const choiceDataArray = [];
@@ -105,9 +117,6 @@ export function RaceClassSection() {
     ) => {
       setSelectedClassData(classData);
       setSelectedClassChoices(choices); // Save for modal re-opening
-      setSelectedChoice('class', classData.classId);
-      setSelectedChoice('classData', classData);
-      setSelectedChoice('classChoices', choices);
 
       // Convert structured choices to ChoiceSubmission proto format
       const choiceDataArray = [];
@@ -168,8 +177,14 @@ export function RaceClassSection() {
 
       setShowClassModal(false);
     },
-    [setClass, setSelectedChoice]
+    [setClass]
   );
+
+  const handleBackgroundSelect = async (background: BackgroundInfo) => {
+    setSelectedBackgroundData(background);
+    await setBackground(background, []);
+    setShowBackgroundModal(false);
+  };
 
   return (
     <div className="space-y-6">
@@ -180,7 +195,7 @@ export function RaceClassSection() {
         Character Identity
       </h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Race Selection */}
         <motion.div
           whileHover={{ scale: 1.02 }}
@@ -455,6 +470,108 @@ export function RaceClassSection() {
             )}
           </div>
         </motion.div>
+
+        {/* Background Selection */}
+        <motion.div
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          className="cursor-pointer"
+          onClick={() => setShowBackgroundModal(true)}
+        >
+          <div
+            className="p-6 rounded-lg border-2 border-dashed transition-all duration-300 hover:border-solid"
+            style={{
+              backgroundColor: selectedBackgroundData
+                ? 'var(--card-bg)'
+                : 'var(--bg-secondary)',
+              borderColor: selectedBackgroundData
+                ? 'var(--accent-primary)'
+                : 'var(--border-primary)',
+            }}
+          >
+            {selectedBackgroundData ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl">📜</div>
+                  <div>
+                    <h3
+                      className="text-xl font-bold"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
+                      {selectedBackgroundData.name}
+                    </h3>
+                    <p
+                      className="text-sm"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {selectedBackgroundData.description ||
+                        'Your character background'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {/* Display skill proficiencies */}
+                  {selectedBackgroundData.skillProficiencies &&
+                    selectedBackgroundData.skillProficiencies.length > 0 &&
+                    selectedBackgroundData.skillProficiencies.map((skill) => (
+                      <TraitBadge
+                        key={`skill-${skill}`}
+                        name={`Skill: ${skill}`}
+                        type="background"
+                        icon="⚔️"
+                      />
+                    ))}
+
+                  {/* Display languages */}
+                  {selectedBackgroundData.languages &&
+                    selectedBackgroundData.languages.length > 0 &&
+                    selectedBackgroundData.languages.map((lang) => {
+                      const langName = Object.entries(Language).find(
+                        ([, value]) => value === lang
+                      )?.[0];
+                      if (!langName) return null;
+                      return (
+                        <TraitBadge
+                          key={`lang-${langName}`}
+                          name={langName.replace(/_/g, ' ').toLowerCase()}
+                          type="background"
+                          icon="🗣️"
+                        />
+                      );
+                    })}
+
+                  {/* Display tool proficiencies */}
+                  {selectedBackgroundData.toolProficiencies &&
+                    selectedBackgroundData.toolProficiencies.length > 0 &&
+                    selectedBackgroundData.toolProficiencies.map((tool) => (
+                      <TraitBadge
+                        key={`tool-${tool}`}
+                        name={`Tool: ${tool}`}
+                        type="background"
+                        icon="🔧"
+                      />
+                    ))}
+                </div>
+                <p className="text-xs text-muted">Click to change background</p>
+              </div>
+            ) : (
+              <div className="text-center space-y-3">
+                <div className="text-4xl opacity-50">📜</div>
+                <div>
+                  <h3
+                    className="text-xl font-bold"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    Choose Background
+                  </h3>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    Select your character's history
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.div>
       </div>
 
       {/* Race Selection Modal */}
@@ -487,6 +604,14 @@ export function RaceClassSection() {
         existingChoices={selectedClassChoices}
         onSelect={handleClassSelect}
         onClose={() => setShowClassModal(false)}
+      />
+
+      {/* Background Selection Modal */}
+      <BackgroundSelectionModal
+        isOpen={showBackgroundModal}
+        currentBackground={selectedBackgroundData?.name}
+        onSelect={handleBackgroundSelect}
+        onClose={() => setShowBackgroundModal(false)}
       />
     </div>
   );
