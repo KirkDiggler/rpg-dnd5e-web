@@ -304,27 +304,21 @@ export function InteractiveCharacterSheet({
       return [];
     }
 
-    // Build steps array based on API progress
-    const allSteps: Step[] = [];
-
-    // Only show name step if it's not filled
-    if (!progress.hasName) {
-      allSteps.push({
+    // Build steps array based on API progress - always show all steps
+    const allSteps: Step[] = [
+      {
         id: 'name',
         label: 'Name',
-        status: 'current',
-      });
-    }
-
-    allSteps.push(
+        status: progress.hasName ? 'completed' : 'current',
+      },
       {
         id: 'race',
         label: 'Race',
         status: progress.hasRace
           ? 'completed'
-          : !progress.hasName
-            ? 'upcoming'
-            : 'current',
+          : progress.hasName
+            ? 'current'
+            : 'upcoming',
       },
       {
         id: 'class',
@@ -352,8 +346,8 @@ export function InteractiveCharacterSheet({
           : progress.hasBackground
             ? 'current'
             : 'upcoming',
-      }
-    );
+      },
+    ];
 
     return allSteps;
   }, [draft.draft?.progress]);

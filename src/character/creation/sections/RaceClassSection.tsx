@@ -24,6 +24,7 @@ import {
   convertLanguageChoiceToProto,
   convertSkillChoiceToProto,
 } from '../../../utils/choiceConverter';
+import { getSkillDisplay } from '../../../utils/enumDisplay';
 import { BackgroundSelectionModal } from '../BackgroundSelectionModal';
 import { ClassSelectionModal } from '../ClassSelectionModal';
 import { RaceSelectionModal } from '../RaceSelectionModal';
@@ -293,7 +294,7 @@ export function RaceClassSection() {
                         return choice.selection.value.skills?.map((skill) => (
                           <TraitBadge
                             key={`${choice.choiceId}-skill-${skill}`}
-                            name={`Skill ${skill}`}
+                            name={getSkillDisplay(skill)}
                             type="racial"
                             icon="⚔️"
                           />
@@ -409,7 +410,7 @@ export function RaceClassSection() {
                         return choice.selection.value.skills?.map((skill) => (
                           <TraitBadge
                             key={`${choice.choiceId}-skill-${skill}`}
-                            name={`Skill ${skill}`}
+                            name={getSkillDisplay(skill)}
                             type="class"
                             icon="⚔️"
                           />
