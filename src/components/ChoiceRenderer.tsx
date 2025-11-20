@@ -2,6 +2,7 @@ import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alph
 import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { EquipmentBundleChoice } from './choices/EquipmentBundleChoice';
 import { SimpleChoice } from './choices/SimpleChoice';
+import { SkillChoice } from './choices/SkillChoice';
 import { ToolChoice } from './choices/ToolChoice';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,6 +42,17 @@ export function ChoiceRenderer({
           });
           onSelectionChange(choice.id, selections);
         }}
+      />
+    );
+  }
+
+  // Skills use their dedicated component
+  if (choice.choiceType === ChoiceCategory.SKILLS) {
+    return (
+      <SkillChoice
+        choice={choice}
+        onSelectionChange={onSelectionChange}
+        currentSelections={currentSelections}
       />
     );
   }
