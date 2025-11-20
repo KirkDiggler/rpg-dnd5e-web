@@ -13,7 +13,6 @@ import {
 import {
   FightingStyle,
   Language,
-  Skill,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
@@ -1095,9 +1094,7 @@ export function InteractiveCharacterSheet({
                                 {allSkillSelections
                                   .map((skillEnum) => {
                                     // Convert enum to display name
-                                    return (
-                                      Skill[skillEnum] || `Skill ${skillEnum}`
-                                    );
+                                    return getSkillDisplay(skillEnum);
                                   })
                                   .join(', ')}
                               </div>

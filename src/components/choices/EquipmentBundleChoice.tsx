@@ -129,13 +129,15 @@ function CategorySelector({
 
   // Use Radix Select for single choice, dropdown for multi-select
   if (category.choose === 1) {
-    const selectedItem = availableEquipment.find((e) => selectedIds.has(e.id));
+    // Use equipment data directly for rendering, or fall back to availableEquipment
+    const itemsToRender = equipment || availableEquipment;
+    const selectedItem = itemsToRender.find((e) => selectedIds.has(e.id));
 
     return (
       <Select.Root
         value={selectedItem?.id || ''}
         onValueChange={(value) => {
-          const item = availableEquipment.find((e) => e.id === value);
+          const item = itemsToRender.find((e) => e.id === value);
           if (item) {
             setSelectedIds(new Set([item.id]));
             onSelect(categoryIndex, [item]);
@@ -183,7 +185,7 @@ function CategorySelector({
             }}
           >
             <Select.Viewport className="p-2 max-h-80 overflow-y-auto">
-              {availableEquipment.map((item) => (
+              {itemsToRender.map((item) => (
                 <Select.Item
                   key={item.id}
                   value={item.id}
