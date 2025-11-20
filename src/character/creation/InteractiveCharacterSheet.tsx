@@ -597,10 +597,17 @@ export function InteractiveCharacterSheet({
               case 'ammunition':
                 equipment.push(getAmmunitionDisplay(selection.equipment.value));
                 break;
-              case 'otherEquipmentId':
-                // String ID for custom equipment - use as-is or format
-                equipment.push(selection.equipment.value);
+              case 'otherEquipmentId': {
+                // String ID for custom equipment - format for display
+                // Convert kebab-case to Title Case (e.g., "greatclub" -> "Greatclub")
+                const id = selection.equipment.value;
+                const displayName = id
+                  .split('-')
+                  .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                  .join(' ');
+                equipment.push(displayName);
                 break;
+              }
             }
           }
         });

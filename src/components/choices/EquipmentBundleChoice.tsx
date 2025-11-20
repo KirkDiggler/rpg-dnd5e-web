@@ -150,6 +150,8 @@ export function EquipmentBundleChoice({
   const handleBundleSelect = useCallback(
     (bundleId: string) => {
       selectBundle(bundleId);
+      // Note: We only send the bundleId here, not the fixed items
+      // The backend will look up bundle.items based on the bundleId
       onSelectionChange(bundleId, new Map());
     },
     [selectBundle, onSelectionChange]
