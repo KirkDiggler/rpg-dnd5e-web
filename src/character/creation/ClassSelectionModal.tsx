@@ -1399,14 +1399,47 @@ export function ClassSelectionModal({
 
                                     if (selections.length > 0) {
                                       // Extract bundleId from the first selection
-                                      // Format is "bundleId:index:itemId" or similar
                                       const firstSel = selections[0];
                                       const bundleId = firstSel.split(':')[0];
+
+                                      // Parse category selections from remaining items
+                                      // Format: "cat{index}:{id}:{name}"
+                                      const categorySelections: Array<{
+                                        categoryIndex: number;
+                                        equipmentIds: string[];
+                                      }> = [];
+
+                                      selections
+                                        .slice(1)
+                                        .forEach((sel: string) => {
+                                          if (sel.startsWith('cat')) {
+                                            const parts = sel.split(':');
+                                            const catIndex = parseInt(
+                                              parts[0].replace('cat', '')
+                                            );
+                                            const equipId = parts[1];
+
+                                            // Find or create category entry
+                                            let catEntry =
+                                              categorySelections.find(
+                                                (c) =>
+                                                  c.categoryIndex === catIndex
+                                              );
+                                            if (!catEntry) {
+                                              catEntry = {
+                                                categoryIndex: catIndex,
+                                                equipmentIds: [],
+                                              };
+                                              categorySelections.push(catEntry);
+                                            }
+                                            catEntry.equipmentIds.push(equipId);
+                                          }
+                                        });
 
                                       const equipmentChoice: EquipmentChoice = {
                                         choiceId: choice.id,
                                         bundleId: bundleId,
-                                        categorySelections: [], // TODO: Parse selections into categories
+                                        categorySelections,
                                       };
                                       updatedEquipment.push(equipmentChoice);
                                     }
