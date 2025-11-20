@@ -563,31 +563,31 @@ export function InteractiveCharacterSheet({
 
     // Get equipment choices from draft.classChoices
     const equipmentChoices = draft.classChoices.filter(
-      (choice) =>
-        choice.category === ChoiceCategory.EQUIPMENT &&
-        choice.selection?.case === 'equipment'
+      (choice) => choice.category === ChoiceCategory.EQUIPMENT
     );
 
     equipmentChoices.forEach((choice) => {
-      if (choice.selection?.case !== 'equipment') return;
-      const selections = choice.selection.value.items || [];
-      if (selections && selections.length > 0) {
-        // Add the selected equipment items
+      // Handle equipment bundle selections
+      if (choice.selection?.case === 'equipment') {
+        const selections = choice.selection.value.items || [];
         selections.forEach((selection) => {
-          // selections is always EquipmentSelectionItem[] from the proto
           if (selection.equipment) {
-            // Extract the equipment identifier from the oneof
+            // Extract equipment name from the oneof
             if (selection.equipment.case === 'otherEquipmentId') {
-              // String ID for custom equipment
-              equipment.push(selection.equipment.value);
-            } else if (selection.equipment.case) {
-              // It's a specific equipment type (weapon, armor, etc.)
-              // Convert enum value to string - the value is an enum number
-              const enumName = selection.equipment.case.toUpperCase();
-              const enumValue = selection.equipment.value;
-              // For now, use the case name as identifier
-              // TODO: Convert enum value to actual equipment name
-              equipment.push(`${enumName}_${enumValue}`);
+              // This is an equipment ID (like "greataxe" or "explorers-pack")
+              const formatted = formatEquipmentName(selection.equipment.value);
+              if (formatted) equipment.push(formatted);
+            } else if (selection.equipment.case === 'weapon') {
+              // TODO: Look up weapon name from enum value
+              equipment.push(`Weapon #${selection.equipment.value}`);
+            } else if (selection.equipment.case === 'armor') {
+              equipment.push(`Armor #${selection.equipment.value}`);
+            } else if (selection.equipment.case === 'tool') {
+              equipment.push(`Tool #${selection.equipment.value}`);
+            } else if (selection.equipment.case === 'pack') {
+              equipment.push(`Pack #${selection.equipment.value}`);
+            } else if (selection.equipment.case === 'ammunition') {
+              equipment.push(`Ammunition #${selection.equipment.value}`);
             }
           }
         });
