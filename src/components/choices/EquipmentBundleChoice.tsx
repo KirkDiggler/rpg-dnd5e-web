@@ -7,13 +7,8 @@ import {
   EquipmentType,
   WeaponCategory,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import {
-  ChevronDown,
-  ChevronRight,
-  Package,
-  Shield,
-  Sword,
-} from 'lucide-react';
+import * as Select from '@radix-ui/react-select';
+import { Package, Shield, Sword } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useListEquipmentByType } from '../../api/hooks';
 import { useEquipmentBundleSelection } from '../../hooks/useEquipmentBundleSelection';
@@ -132,6 +127,93 @@ function CategorySelector({
     onSelect(categoryIndex, selectedEquipment);
   };
 
+  // Use Radix Select for single choice, dropdown for multi-select
+  if (category.choose === 1) {
+    const selectedItem = availableEquipment.find((e) => selectedIds.has(e.id));
+
+    return (
+      <Select.Root
+        value={selectedItem?.id || ''}
+        onValueChange={(value) => {
+          const item = availableEquipment.find((e) => e.id === value);
+          if (item) {
+            setSelectedIds(new Set([item.id]));
+            onSelect(categoryIndex, [item]);
+          }
+        }}
+        onOpenChange={(open) => setExpanded(open)}
+      >
+        <Select.Trigger
+          className="w-full inline-flex items-center justify-between rounded px-4 py-3 text-sm font-medium border transition-colors focus:outline-none focus:ring-2"
+          style={{
+            backgroundColor: 'var(--card-bg)',
+            borderColor: 'var(--border-primary)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          <Select.Value placeholder={category.label || 'Select item'}>
+            {selectedItem ? selectedItem.name : category.label || 'Select item'}
+          </Select.Value>
+          <Select.Icon className="ml-2">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 15 15"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M4.93179 5.43179C4.75605 5.60753 4.75605 5.89245 4.93179 6.06819C5.10753 6.24392 5.39245 6.24392 5.56819 6.06819L7.49999 4.13638L9.43179 6.06819C9.60753 6.24392 9.89245 6.24392 10.0682 6.06819C10.2439 5.89245 10.2439 5.60753 10.0682 5.43179L7.81819 3.18179C7.73379 3.0974 7.61933 3.04999 7.49999 3.04999C7.38064 3.04999 7.26618 3.0974 7.18179 3.18179L4.93179 5.43179ZM10.0682 9.56819C10.2439 9.39245 10.2439 9.10753 10.0682 8.93179C9.89245 8.75605 9.60753 8.75605 9.43179 8.93179L7.49999 10.8636L5.56819 8.93179C5.39245 8.75605 5.10753 8.75605 4.93179 8.93179C4.75605 9.10753 4.75605 9.39245 4.93179 9.56819L7.18179 11.8182C7.26618 11.9026 7.38064 11.95 7.49999 11.95C7.61933 11.95 7.73379 11.9026 7.81819 11.8182L10.0682 9.56819Z"
+                fill="currentColor"
+                fillRule="evenodd"
+                clipRule="evenodd"
+              />
+            </svg>
+          </Select.Icon>
+        </Select.Trigger>
+
+        <Select.Portal>
+          <Select.Content
+            className="overflow-hidden rounded-lg border shadow-lg z-50"
+            style={{
+              backgroundColor: 'var(--bg-secondary)',
+              borderColor: 'var(--border-primary)',
+              boxShadow: 'var(--shadow-modal)',
+              maxWidth: '400px',
+            }}
+          >
+            <Select.Viewport className="p-2 max-h-80 overflow-y-auto">
+              {availableEquipment.map((item) => (
+                <Select.Item
+                  key={item.id}
+                  value={item.id}
+                  className="relative flex items-center gap-2 px-3 py-2 text-sm rounded cursor-pointer select-none hover:outline-none focus:outline-none transition-colors"
+                  style={{
+                    color: 'var(--text-primary)',
+                    backgroundColor: selectedIds.has(item.id)
+                      ? 'var(--accent-primary)'
+                      : 'transparent',
+                  }}
+                >
+                  <Select.ItemText>
+                    <div className="flex items-center gap-2">
+                      {getEquipmentIcon(item)}
+                      <span>{item.name}</span>
+                    </div>
+                  </Select.ItemText>
+                  <Select.ItemIndicator className="ml-auto">
+                    ✓
+                  </Select.ItemIndicator>
+                </Select.Item>
+              ))}
+            </Select.Viewport>
+          </Select.Content>
+        </Select.Portal>
+      </Select.Root>
+    );
+  }
+
+  // Multi-select fallback (keep existing expand/collapse for now)
   return (
     <div className="border rounded-lg p-3 space-y-2">
       <button
@@ -146,11 +228,6 @@ function CategorySelector({
             {selectedIds.size} of {category.choose} selected
           </div>
         </div>
-        {expanded ? (
-          <ChevronDown className="w-4 h-4" />
-        ) : (
-          <ChevronRight className="w-4 h-4" />
-        )}
       </button>
 
       {expanded && (
