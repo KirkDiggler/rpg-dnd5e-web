@@ -33,11 +33,13 @@ export function ChoiceRenderer({
         choice={choice}
         onSelectionChange={(bundleId, categorySelections) => {
           // Convert EquipmentBundleChoice format back to standard format
+          // Store equipment selections with both id and name: "cat0:id:name"
           const selections: string[] = [];
           if (bundleId) selections.push(bundleId);
           categorySelections.forEach((equipment, index) => {
             equipment.forEach((item) =>
-              selections.push(`cat${index}:${item.id}`)
+              // Store as "cat{index}:{id}:{name}" so we can extract name later
+              selections.push(`cat${index}:${item.id}:${item.name}`)
             );
           });
           onSelectionChange(choice.id, selections);

@@ -29,9 +29,14 @@ import {
   convertTraitChoiceToProto,
 } from '../../utils/choiceConverter';
 import {
+  getAmmunitionDisplay,
+  getArmorDisplay,
   getArmorProficiencyDisplay,
+  getPackDisplay,
   getSavingThrowDisplay,
   getSkillDisplay,
+  getToolDisplay,
+  getWeaponDisplay,
   getWeaponProficiencyDisplay,
 } from '../../utils/enumDisplay';
 import { BackgroundSelectionModal } from './BackgroundSelectionModal';
@@ -576,18 +581,27 @@ export function InteractiveCharacterSheet({
         selections.forEach((selection) => {
           // selections is always EquipmentSelectionItem[] from the proto
           if (selection.equipment) {
-            // Extract the equipment identifier from the oneof
-            if (selection.equipment.case === 'otherEquipmentId') {
-              // String ID for custom equipment
-              equipment.push(selection.equipment.value);
-            } else if (selection.equipment.case) {
-              // It's a specific equipment type (weapon, armor, etc.)
-              // Convert enum value to string - the value is an enum number
-              const enumName = selection.equipment.case.toUpperCase();
-              const enumValue = selection.equipment.value;
-              // For now, use the case name as identifier
-              // TODO: Convert enum value to actual equipment name
-              equipment.push(`${enumName}_${enumValue}`);
+            // Extract the equipment identifier from the oneof and convert to display name
+            switch (selection.equipment.case) {
+              case 'weapon':
+                equipment.push(getWeaponDisplay(selection.equipment.value));
+                break;
+              case 'armor':
+                equipment.push(getArmorDisplay(selection.equipment.value));
+                break;
+              case 'tool':
+                equipment.push(getToolDisplay(selection.equipment.value));
+                break;
+              case 'pack':
+                equipment.push(getPackDisplay(selection.equipment.value));
+                break;
+              case 'ammunition':
+                equipment.push(getAmmunitionDisplay(selection.equipment.value));
+                break;
+              case 'otherEquipmentId':
+                // String ID for custom equipment - use as-is or format
+                equipment.push(selection.equipment.value);
+                break;
             }
           }
         });
