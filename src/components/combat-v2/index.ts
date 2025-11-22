@@ -16,6 +16,10 @@
 export { ActionPanel } from './panels/ActionPanel';
 export type { ActionPanelProps } from './panels/ActionPanel';
 
+// Components
+export { AttackResultToast } from './AttackResultToast';
+export type { AttackResultToastProps } from './AttackResultToast';
+
 // Hooks
 export { usePlayerTurn } from './hooks/usePlayerTurn';
 export type { PlayerTurnInfo, UsePlayerTurnProps } from './hooks/usePlayerTurn';

@@ -1,7 +1,11 @@
-import { useEndTurn } from '@/api/encounterHooks';
+import { useAttack, useEndTurn } from '@/api/encounterHooks';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { useEffect, useState } from 'react';
+import type {
+  AttackResponse,
+  CombatState,
+  Room,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePlayerTurn } from '../hooks/usePlayerTurn';
 import styles from '../styles/combat.module.css';
@@ -11,8 +15,13 @@ export interface ActionPanelProps {
   encounterId: string | null;
   selectedCharacters: Character[];
   onMoveAction?: () => void;
+  onAttackAction?: () => void;
+  onAttackTarget?: (attackHandler: (targetId: string) => Promise<void>) => void;
   onCombatStateUpdate?: (combatState: CombatState) => void;
+  onRoomUpdate?: (room: Room) => void;
+  onAttackResult?: (result: AttackResponse) => void;
   movementMode?: boolean;
+  attackMode?: boolean;
   /** Enable debug mode with bright colors for visibility testing */
   debug?: boolean;
 }
@@ -35,14 +44,21 @@ export function ActionPanel({
   encounterId,
   selectedCharacters,
   onMoveAction,
+  onAttackAction,
+  onAttackTarget,
   onCombatStateUpdate,
+  onRoomUpdate,
+  onAttackResult,
   movementMode = false,
+  attackMode = false,
   debug = false,
 }: ActionPanelProps) {
+  // ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
     null
   );
   const { endTurn, loading: endTurnLoading } = useEndTurn();
+  const { attack, loading: attackLoading } = useAttack();
 
   // Extract turn information using our custom hook
   const { isPlayerTurn, currentCharacter, currentTurn, resources } =
@@ -50,6 +66,45 @@ export function ActionPanel({
       combatState,
       selectedCharacters,
     });
+
+  // Define attack handler - must be before conditional returns for hooks order
+  const handleAttackTarget = useCallback(
+    async (targetId: string) => {
+      if (!encounterId || !currentCharacter) return;
+      try {
+        const response = await attack(
+          encounterId,
+          currentCharacter.id,
+          targetId
+        );
+
+        // Update combat state if provided
+        if (response.combatState && onCombatStateUpdate) {
+          onCombatStateUpdate(response.combatState);
+        }
+
+        // Update room if entities were removed/updated
+        if (response.updatedRoom && onRoomUpdate) {
+          onRoomUpdate(response.updatedRoom);
+        }
+
+        // Notify parent about attack result for UI feedback
+        if (onAttackResult) {
+          onAttackResult(response);
+        }
+      } catch (err) {
+        console.error('Failed to attack target:', err);
+      }
+    },
+    [
+      encounterId,
+      currentCharacter,
+      attack,
+      onCombatStateUpdate,
+      onRoomUpdate,
+      onAttackResult,
+    ]
+  );
 
   // Create portal container on mount
   useEffect(() => {
@@ -74,6 +129,20 @@ export function ActionPanel({
     };
   }, []);
 
+  // Expose the attack handler to parent component only when attack mode is activated
+  useEffect(() => {
+    if (onAttackTarget) {
+      // Only set the handler when entering attack mode, clear it when leaving
+      if (attackMode) {
+        onAttackTarget(handleAttackTarget);
+      } else {
+        onAttackTarget(() => Promise.resolve());
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attackMode]); // Only depend on attackMode to avoid loops
+
+  // NOW we can have conditional returns after all hooks are declared
   // Don't render if not a player turn or missing required data
   if (!isPlayerTurn || !currentCharacter || !currentTurn || !encounterId) {
     return null;
@@ -88,6 +157,18 @@ export function ActionPanel({
       }
     } catch (err) {
       console.error('Failed to end turn:', err);
+    }
+  };
+
+  const handleMoveClick = () => {
+    if (onMoveAction) {
+      onMoveAction();
+    }
+  };
+
+  const handleAttackClick = () => {
+    if (onAttackAction) {
+      onAttackAction();
     }
   };
 
@@ -187,7 +268,7 @@ export function ActionPanel({
         <div className={styles.actionsSection}>
           {/* Move Button */}
           <button
-            onClick={onMoveAction}
+            onClick={handleMoveClick}
             disabled={!resources.movementRemaining}
             className={`${styles.actionButton} ${styles.move} ${
               movementMode ? styles.active : ''
@@ -201,12 +282,18 @@ export function ActionPanel({
 
           {/* Attack Button */}
           <button
-            disabled={!resources.hasAction}
+            onClick={handleAttackClick}
+            disabled={!resources.hasAction || attackLoading}
             className={`${styles.actionButton} ${styles.attack} ${
-              !resources.hasAction ? styles.disabled : ''
-            }`}
+              attackMode ? styles.active : ''
+            } ${!resources.hasAction ? styles.disabled : ''}`}
           >
-            ⚔️ Attack
+            ⚔️{' '}
+            {attackLoading
+              ? 'Attacking...'
+              : attackMode
+                ? 'Cancel Attack'
+                : 'Attack'}
           </button>
 
           {/* Spell Button */}
