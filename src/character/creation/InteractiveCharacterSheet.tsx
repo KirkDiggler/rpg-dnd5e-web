@@ -806,21 +806,13 @@ export function InteractiveCharacterSheet({
                         setIsRaceModalOpen(true)
                       }
                     >
-                      <div className="flex items-center justify-between">
-                        <h4
-                          className="text-xs font-semibold"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          Race Traits
-                        </h4>
-                        <span
-                          className="text-xs"
-                          style={{ color: 'var(--accent-primary)' }}
-                        >
-                          Click to modify →
-                        </span>
-                      </div>
-                      <div className="mt-2 text-xs space-y-1">
+                      <h4
+                        className="text-xs font-semibold mb-2"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        Race Traits
+                      </h4>
+                      <div className="text-xs space-y-1">
                         {/* Display ability score bonuses */}
                         {character.selectedRace?.abilityBonuses &&
                           Object.keys(character.selectedRace.abilityBonuses)
@@ -1019,21 +1011,13 @@ export function InteractiveCharacterSheet({
                         setIsClassModalOpen(true)
                       }
                     >
-                      <div className="flex items-center justify-between">
-                        <h4
-                          className="text-xs font-semibold"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          Class Features
-                        </h4>
-                        <span
-                          className="text-xs"
-                          style={{ color: 'var(--accent-primary)' }}
-                        >
-                          Click to modify →
-                        </span>
-                      </div>
-                      <div className="mt-2 text-xs space-y-1">
+                      <h4
+                        className="text-xs font-semibold mb-2"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        Class Features
+                      </h4>
+                      <div className="text-xs space-y-1">
                         {isClassInfo(character.selectedClass) &&
                           character.selectedClass.armorProficiencyCategories &&
                           character.selectedClass.armorProficiencyCategories
@@ -1381,78 +1365,50 @@ export function InteractiveCharacterSheet({
                     <div className="text-xs space-y-1">
                       {/* Display background skill proficiencies */}
                       {draft.backgroundInfo.skillProficiencies?.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
+                        <div style={{ color: 'var(--text-primary)' }}>
                           <span
-                            className="text-xs"
-                            style={{ color: 'var(--text-muted)' }}
+                            style={{
+                              color: 'var(--text-primary)',
+                              opacity: 0.7,
+                            }}
                           >
                             Skills:
-                          </span>
-                          {draft.backgroundInfo.skillProficiencies.map(
-                            (skill, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-0.5 text-xs rounded-full"
-                                style={{
-                                  backgroundColor: 'var(--bg-primary)',
-                                  color: 'var(--text-primary)',
-                                  border: '1px solid var(--border-primary)',
-                                }}
-                              >
-                                {getSkillDisplay(skill)}
-                              </span>
-                            )
-                          )}
+                          </span>{' '}
+                          {draft.backgroundInfo.skillProficiencies
+                            .map((skill) => getSkillDisplay(skill))
+                            .join(', ')}
                         </div>
                       )}
                       {/* Display background tool proficiencies */}
                       {draft.backgroundInfo.toolProficiencies?.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
+                        <div style={{ color: 'var(--text-primary)' }}>
                           <span
-                            className="text-xs"
-                            style={{ color: 'var(--text-muted)' }}
+                            style={{
+                              color: 'var(--text-primary)',
+                              opacity: 0.7,
+                            }}
                           >
                             Tools:
-                          </span>
-                          {draft.backgroundInfo.toolProficiencies.map(
-                            (tool, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-0.5 text-xs rounded-full"
-                                style={{
-                                  backgroundColor: 'var(--bg-primary)',
-                                  color: 'var(--text-primary)',
-                                  border: '1px solid var(--border-primary)',
-                                }}
-                              >
-                                {getToolDisplay(tool)}
-                              </span>
-                            )
-                          )}
+                          </span>{' '}
+                          {draft.backgroundInfo.toolProficiencies
+                            .map((tool) => getToolDisplay(tool))
+                            .join(', ')}
                         </div>
                       )}
                       {/* Display background languages */}
                       {draft.backgroundInfo.languages?.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
+                        <div style={{ color: 'var(--text-primary)' }}>
                           <span
-                            className="text-xs"
-                            style={{ color: 'var(--text-muted)' }}
+                            style={{
+                              color: 'var(--text-primary)',
+                              opacity: 0.7,
+                            }}
                           >
                             Languages:
-                          </span>
-                          {draft.backgroundInfo.languages.map((lang, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2 py-0.5 text-xs rounded-full"
-                              style={{
-                                backgroundColor: 'var(--bg-primary)',
-                                color: 'var(--text-primary)',
-                                border: '1px solid var(--border-primary)',
-                              }}
-                            >
-                              {getLanguageDisplayName(lang)}
-                            </span>
-                          ))}
+                          </span>{' '}
+                          {draft.backgroundInfo.languages
+                            .map((lang) => getLanguageDisplayName(lang))
+                            .join(', ')}
                         </div>
                       )}
                     </div>
