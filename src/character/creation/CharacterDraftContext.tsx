@@ -801,7 +801,17 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
             subclass: subclassEnum,
           });
 
-          await updateClassAPI(request);
+          const response = await updateClassAPI(request);
+
+          // Update local state with the response choices
+          // The backend returns the full ChoiceData including resolved equipment items
+          // Filter for class choices (source = CLASS)
+          if (response?.draft?.choices) {
+            const updatedClassChoices = response.draft.choices.filter(
+              (c) => c.source === ChoiceSource.CLASS
+            );
+            setClassChoices(updatedClassChoices);
+          }
         } catch (err) {
           setError(
             err instanceof Error ? err : new Error('Failed to save class')
