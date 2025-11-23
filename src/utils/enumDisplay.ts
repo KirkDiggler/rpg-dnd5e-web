@@ -1,6 +1,7 @@
 import {
   Ammunition,
   Armor,
+  ArmorProficiencyCategory,
   Background,
   Class,
   Language,
@@ -9,6 +10,7 @@ import {
   Skill,
   Tool,
   Weapon,
+  WeaponProficiencyCategory,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 
 /**
@@ -144,14 +146,28 @@ export function getRaceEnum(name: string): Race {
 }
 
 /**
- * Convert armor proficiency enum values to human-readable strings
- * Examples: LIGHT -> Light, MEDIUM -> Medium, HEAVY -> Heavy, SHIELDS -> Shields
+ * Convert ArmorProficiencyCategory enum to display name
+ * Examples: LIGHT -> Light Armor, SHIELDS -> Shields
+ */
+export function getArmorProficiencyCategoryDisplay(
+  armor: ArmorProficiencyCategory
+): string {
+  const displays: Record<ArmorProficiencyCategory, string> = {
+    [ArmorProficiencyCategory.UNSPECIFIED]: 'Unknown',
+    [ArmorProficiencyCategory.LIGHT]: 'Light Armor',
+    [ArmorProficiencyCategory.MEDIUM]: 'Medium Armor',
+    [ArmorProficiencyCategory.HEAVY]: 'Heavy Armor',
+    [ArmorProficiencyCategory.SHIELDS]: 'Shields',
+  };
+  return displays[armor] || 'Unknown Armor';
+}
+
+/**
+ * Legacy function for displaying armor proficiencies from string/number
+ * Used by character sheet components
  */
 export function getArmorProficiencyDisplay(armor: string | number): string {
-  // Convert to string if it's a number
   const armorStr = typeof armor === 'string' ? armor : String(armor);
-
-  // Handle special cases
   const specialCases: Record<string, string> = {
     SHIELDS: 'Shields',
     LIGHT: 'Light Armor',
@@ -159,12 +175,9 @@ export function getArmorProficiencyDisplay(armor: string | number): string {
     HEAVY: 'Heavy Armor',
     ALL: 'All Armor',
   };
-
   if (specialCases[armorStr]) {
     return specialCases[armorStr];
   }
-
-  // Convert ENUM_STYLE to Title Case
   return armorStr
     .split('_')
     .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
@@ -172,14 +185,27 @@ export function getArmorProficiencyDisplay(armor: string | number): string {
 }
 
 /**
- * Convert weapon proficiency enum values to human-readable strings
- * Examples: SIMPLE -> Simple Weapons, MARTIAL -> Martial Weapons,
- * DAGGER -> Dagger, QUARTERSTAFF -> Quarterstaff
+ * Convert WeaponProficiencyCategory enum to display name
+ * Examples: SIMPLE -> Simple Weapons, MARTIAL -> Martial Weapons
+ */
+export function getWeaponProficiencyCategoryDisplay(
+  weapon: WeaponProficiencyCategory
+): string {
+  const displays: Record<WeaponProficiencyCategory, string> = {
+    [WeaponProficiencyCategory.UNSPECIFIED]: 'Unknown',
+    [WeaponProficiencyCategory.SIMPLE]: 'Simple Weapons',
+    [WeaponProficiencyCategory.MARTIAL]: 'Martial Weapons',
+    [WeaponProficiencyCategory.SPECIFIC]: 'Specific Weapons',
+  };
+  return displays[weapon] || 'Unknown Weapon Category';
+}
+
+/**
+ * Legacy function for displaying weapon proficiencies from string/number
+ * Used by character sheet components
  */
 export function getWeaponProficiencyDisplay(weapon: string | number): string {
-  // Convert to string if it's a number
   const weaponStr = typeof weapon === 'string' ? weapon : String(weapon);
-  // Handle category cases
   const categories: Record<string, string> = {
     SIMPLE: 'Simple Weapons',
     MARTIAL: 'Martial Weapons',
@@ -188,12 +214,9 @@ export function getWeaponProficiencyDisplay(weapon: string | number): string {
     MARTIAL_MELEE: 'Martial Melee Weapons',
     MARTIAL_RANGED: 'Martial Ranged Weapons',
   };
-
   if (categories[weaponStr]) {
     return categories[weaponStr];
   }
-
-  // Handle specific weapon names
   const specificWeapons: Record<string, string> = {
     QUARTERSTAFF: 'Quarterstaff',
     MACE: 'Mace',
@@ -227,12 +250,9 @@ export function getWeaponProficiencyDisplay(weapon: string | number): string {
     LONGBOW: 'Longbow',
     NET: 'Net',
   };
-
   if (specificWeapons[weaponStr]) {
     return specificWeapons[weaponStr];
   }
-
-  // Default conversion: ENUM_STYLE to Title Case
   return weaponStr
     .split('_')
     .map((word) => word.charAt(0) + word.slice(1).toLowerCase())

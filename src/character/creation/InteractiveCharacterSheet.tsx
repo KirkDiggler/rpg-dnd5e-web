@@ -30,13 +30,13 @@ import {
 import {
   getAmmunitionDisplay,
   getArmorDisplay,
-  getArmorProficiencyDisplay,
+  getArmorProficiencyCategoryDisplay,
   getPackDisplay,
   getSavingThrowDisplay,
   getSkillDisplay,
   getToolDisplay,
   getWeaponDisplay,
-  getWeaponProficiencyDisplay,
+  getWeaponProficiencyCategoryDisplay,
 } from '../../utils/enumDisplay';
 import { BackgroundSelectionModal } from './BackgroundSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
@@ -1022,7 +1022,7 @@ export function InteractiveCharacterSheet({
                               </span>{' '}
                               {character.selectedClass.armorProficiencyCategories
                                 .map((p) =>
-                                  getArmorProficiencyDisplay(String(p))
+                                  getArmorProficiencyCategoryDisplay(p)
                                 )
                                 .join(', ')}
                             </div>
@@ -1043,7 +1043,7 @@ export function InteractiveCharacterSheet({
                               {character.selectedClass.weaponProficiencyCategories
                                 .slice(0, 3)
                                 .map((p) =>
-                                  getWeaponProficiencyDisplay(String(p))
+                                  getWeaponProficiencyCategoryDisplay(p)
                                 )
                                 .join(', ')}
                               {character.selectedClass

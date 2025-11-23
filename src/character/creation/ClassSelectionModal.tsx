@@ -15,9 +15,9 @@ import { useListClasses } from '../../api/hooks';
 import { ChoiceRenderer } from '../../components/ChoiceRenderer';
 import type { ClassModalChoices, EquipmentChoice } from '../../types/choices';
 import {
-  getArmorProficiencyDisplay,
+  getArmorProficiencyCategoryDisplay,
   getSavingThrowDisplay,
-  getWeaponProficiencyDisplay,
+  getWeaponProficiencyCategoryDisplay,
 } from '../../utils/enumDisplay';
 import { VisualCarousel } from './components/VisualCarousel';
 
@@ -987,7 +987,7 @@ export function ClassSelectionModal({
                             }}
                           >
                             {selectedClass!.armorProficiencyCategories
-                              .map((p) => getArmorProficiencyDisplay(String(p)))
+                              .map((p) => getArmorProficiencyCategoryDisplay(p))
                               .join(', ')}
                           </div>
                         </div>
@@ -1023,7 +1023,7 @@ export function ClassSelectionModal({
                             {selectedClass!.weaponProficiencyCategories
                               .slice(0, 3)
                               .map((p) =>
-                                getWeaponProficiencyDisplay(String(p))
+                                getWeaponProficiencyCategoryDisplay(p)
                               )
                               .join(', ')}
                             {selectedClass!.weaponProficiencyCategories.length >
