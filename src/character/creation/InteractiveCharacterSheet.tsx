@@ -777,6 +777,24 @@ export function InteractiveCharacterSheet({
                           ? 'Click to change'
                           : 'Select heritage'}
                       </p>
+                      {/* Display ability score bonuses */}
+                      {character.selectedRace?.abilityBonuses &&
+                        Object.keys(character.selectedRace.abilityBonuses)
+                          .length > 0 && (
+                          <p
+                            className="text-xs mt-1"
+                            style={{ color: 'var(--accent-primary)' }}
+                          >
+                            {Object.entries(
+                              character.selectedRace.abilityBonuses
+                            )
+                              .map(
+                                ([ability, bonus]) =>
+                                  `+${bonus} ${ability.charAt(0).toUpperCase() + ability.slice(1, 3)}`
+                              )
+                              .join(', ')}
+                          </p>
+                        )}
                     </div>
                   </div>
                 </motion.div>
@@ -1366,6 +1384,24 @@ export function InteractiveCharacterSheet({
                           style={{ color: 'var(--text-muted)' }}
                         />
                       </div>
+                      {/* Show summary when collapsed */}
+                      {!showingBackgroundDetails && (
+                        <div
+                          className="text-xs mt-1"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {[
+                            draft.backgroundInfo.skillProficiencies?.length &&
+                              `${draft.backgroundInfo.skillProficiencies.length} skills`,
+                            draft.backgroundInfo.toolProficiencies?.length &&
+                              `${draft.backgroundInfo.toolProficiencies.length} tools`,
+                            draft.backgroundInfo.languages?.length &&
+                              `${draft.backgroundInfo.languages.length} languages`,
+                          ]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </div>
+                      )}
                     </div>
 
                     {/* Expandable Background Details */}
@@ -1376,7 +1412,7 @@ export function InteractiveCharacterSheet({
                         exit={{ height: 0, opacity: 0 }}
                         className="mt-2 space-y-2"
                       >
-                        {/* Display background proficiencies here */}
+                        {/* Display background skill proficiencies */}
                         {draft.backgroundInfo.skillProficiencies?.length >
                           0 && (
                           <div className="flex flex-wrap gap-1">
@@ -1401,6 +1437,56 @@ export function InteractiveCharacterSheet({
                                 </span>
                               )
                             )}
+                          </div>
+                        )}
+                        {/* Display background tool proficiencies */}
+                        {draft.backgroundInfo.toolProficiencies?.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            <span
+                              className="text-xs"
+                              style={{ color: 'var(--text-muted)' }}
+                            >
+                              Tools:
+                            </span>
+                            {draft.backgroundInfo.toolProficiencies.map(
+                              (tool, idx) => (
+                                <span
+                                  key={idx}
+                                  className="px-2 py-0.5 text-xs rounded-full"
+                                  style={{
+                                    backgroundColor: 'var(--bg-primary)',
+                                    color: 'var(--text-primary)',
+                                    border: '1px solid var(--border-primary)',
+                                  }}
+                                >
+                                  {getToolDisplay(tool)}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        )}
+                        {/* Display background languages */}
+                        {draft.backgroundInfo.languages?.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            <span
+                              className="text-xs"
+                              style={{ color: 'var(--text-muted)' }}
+                            >
+                              Languages:
+                            </span>
+                            {draft.backgroundInfo.languages.map((lang, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-0.5 text-xs rounded-full"
+                                style={{
+                                  backgroundColor: 'var(--bg-primary)',
+                                  color: 'var(--text-primary)',
+                                  border: '1px solid var(--border-primary)',
+                                }}
+                              >
+                                {getLanguageDisplayName(lang)}
+                              </span>
+                            ))}
                           </div>
                         )}
                       </motion.div>
