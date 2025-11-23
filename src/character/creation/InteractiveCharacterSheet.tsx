@@ -13,10 +13,8 @@ import {
 import {
   FightingStyle,
   Language,
-  Skill,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ClassModalChoices, RaceModalChoices } from '../../types/choices';
 import {
@@ -29,10 +27,15 @@ import {
   convertTraitChoiceToProto,
 } from '../../utils/choiceConverter';
 import {
-  getArmorProficiencyDisplay,
+  getAmmunitionDisplay,
+  getArmorDisplay,
+  getArmorProficiencyCategoryDisplay,
+  getPackDisplay,
   getSavingThrowDisplay,
   getSkillDisplay,
-  getWeaponProficiencyDisplay,
+  getToolDisplay,
+  getWeaponDisplay,
+  getWeaponProficiencyCategoryDisplay,
 } from '../../utils/enumDisplay';
 import { BackgroundSelectionModal } from './BackgroundSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
@@ -162,8 +165,6 @@ export function InteractiveCharacterSheet({
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
   const [isSpellModalOpen, setIsSpellModalOpen] = useState(false);
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
-  const [showingBackgroundDetails, setShowingBackgroundDetails] =
-    useState(false);
   const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
   const draft = useCharacterDraft();
   const { setBackground } = draft;
@@ -576,18 +577,34 @@ export function InteractiveCharacterSheet({
         selections.forEach((selection) => {
           // selections is always EquipmentSelectionItem[] from the proto
           if (selection.equipment) {
-            // Extract the equipment identifier from the oneof
-            if (selection.equipment.case === 'otherEquipmentId') {
-              // String ID for custom equipment
-              equipment.push(selection.equipment.value);
-            } else if (selection.equipment.case) {
-              // It's a specific equipment type (weapon, armor, etc.)
-              // Convert enum value to string - the value is an enum number
-              const enumName = selection.equipment.case.toUpperCase();
-              const enumValue = selection.equipment.value;
-              // For now, use the case name as identifier
-              // TODO: Convert enum value to actual equipment name
-              equipment.push(`${enumName}_${enumValue}`);
+            // Extract the equipment identifier from the oneof and convert to display name
+            switch (selection.equipment.case) {
+              case 'weapon':
+                equipment.push(getWeaponDisplay(selection.equipment.value));
+                break;
+              case 'armor':
+                equipment.push(getArmorDisplay(selection.equipment.value));
+                break;
+              case 'tool':
+                equipment.push(getToolDisplay(selection.equipment.value));
+                break;
+              case 'pack':
+                equipment.push(getPackDisplay(selection.equipment.value));
+                break;
+              case 'ammunition':
+                equipment.push(getAmmunitionDisplay(selection.equipment.value));
+                break;
+              case 'otherEquipmentId': {
+                // String ID for custom equipment - format for display
+                // Convert kebab-case to Title Case (e.g., "greatclub" -> "Greatclub")
+                const id = selection.equipment.value;
+                const displayName = id
+                  .split('-')
+                  .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                  .join(' ');
+                equipment.push(displayName);
+                break;
+              }
             }
           }
         });
@@ -803,93 +820,123 @@ export function InteractiveCharacterSheet({
                           Click to modify →
                         </span>
                       </div>
-                      {draft.allProficiencies.size > 0 ||
-                      draft.allLanguages.size > 0 ? (
-                        <div className="mt-2 text-xs space-y-1">
-                          {/* RaceInfo no longer has proficiencies field - they come through choices now */}
-                          {character.selectedRace.languages &&
-                            character.selectedRace.languages.length > 0 && (
-                              <div style={{ color: 'var(--text-primary)' }}>
-                                <span
-                                  style={{
-                                    color: 'var(--text-primary)',
-                                    opacity: 0.7,
-                                  }}
-                                >
-                                  Languages:
-                                </span>{' '}
-                                {character.selectedRace.languages
-                                  .filter(
-                                    (lang) => lang !== Language.UNSPECIFIED
+                      <div className="mt-2 text-xs space-y-1">
+                        {/* Display ability score bonuses */}
+                        {character.selectedRace?.abilityBonuses &&
+                          Object.keys(character.selectedRace.abilityBonuses)
+                            .length > 0 && (
+                            <div style={{ color: 'var(--text-primary)' }}>
+                              <span
+                                style={{
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
+                                }}
+                              >
+                                Ability Bonuses:
+                              </span>{' '}
+                              <span style={{ color: 'var(--accent-primary)' }}>
+                                {Object.entries(
+                                  character.selectedRace.abilityBonuses
+                                )
+                                  .map(
+                                    ([ability, bonus]) =>
+                                      `+${bonus} ${ability.charAt(0).toUpperCase() + ability.slice(1, 3)}`
                                   )
-                                  .map((lang) => getLanguageDisplayName(lang))
                                   .join(', ')}
-                              </div>
-                            )}
-                          {/* RaceInfo no longer has proficiencies field - they come through choices now */}
-                          {/* Display resolved languages from race choices */}
-                          {(() => {
-                            const extraLanguages = getExtraLanguages(
-                              draft.allLanguages,
-                              character.selectedRace?.languages || []
-                            );
-
-                            // Only show if there are actual extra languages
-                            if (extraLanguages.length > 0) {
-                              return (
+                              </span>
+                            </div>
+                          )}
+                        {(draft.allProficiencies.size > 0 ||
+                          draft.allLanguages.size > 0) && (
+                          <>
+                            {/* RaceInfo no longer has proficiencies field - they come through choices now */}
+                            {character.selectedRace.languages &&
+                              character.selectedRace.languages.length > 0 && (
                                 <div style={{ color: 'var(--text-primary)' }}>
                                   <span
                                     style={{
-                                      color: 'var(--text-muted)',
-                                      fontSize: '11px',
+                                      color: 'var(--text-primary)',
                                       opacity: 0.7,
                                     }}
                                   >
-                                    Extra Languages:
+                                    Languages:
                                   </span>{' '}
-                                  {extraLanguages.join(', ')}
+                                  {character.selectedRace.languages
+                                    .filter(
+                                      (lang) => lang !== Language.UNSPECIFIED
+                                    )
+                                    .map((lang) => getLanguageDisplayName(lang))
+                                    .join(', ')}
                                 </div>
+                              )}
+                            {/* RaceInfo no longer has proficiencies field - they come through choices now */}
+                            {/* Display resolved languages from race choices */}
+                            {(() => {
+                              const extraLanguages = getExtraLanguages(
+                                draft.allLanguages,
+                                character.selectedRace?.languages || []
                               );
-                            }
-                            return null;
-                          })()}
-                          {/* Display chosen tool proficiencies */}
-                          {(() => {
-                            const toolProficiencies = getToolProficiencies(
-                              draft.allProficiencies
-                            );
 
-                            // Only show if there are tool proficiencies
-                            if (toolProficiencies.length > 0) {
-                              return (
-                                <div style={{ color: 'var(--text-primary)' }}>
-                                  <span
-                                    style={{
-                                      color: 'var(--text-muted)',
-                                      fontSize: '11px',
-                                      opacity: 0.7,
-                                    }}
-                                  >
-                                    Tool Proficiencies:
-                                  </span>{' '}
-                                  {toolProficiencies.join(', ')}
-                                </div>
+                              // Only show if there are actual extra languages
+                              if (extraLanguages.length > 0) {
+                                return (
+                                  <div style={{ color: 'var(--text-primary)' }}>
+                                    <span
+                                      style={{
+                                        color: 'var(--text-muted)',
+                                        fontSize: '11px',
+                                        opacity: 0.7,
+                                      }}
+                                    >
+                                      Extra Languages:
+                                    </span>{' '}
+                                    {extraLanguages.join(', ')}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                            {/* Display chosen tool proficiencies */}
+                            {(() => {
+                              const toolProficiencies = getToolProficiencies(
+                                draft.allProficiencies
                               );
-                            }
-                            return null;
-                          })()}
-                        </div>
-                      ) : (
-                        <p
-                          className="mt-2 text-xs"
-                          style={{
-                            color: 'var(--text-secondary)',
-                            opacity: 0.6,
-                          }}
-                        >
-                          No special traits
-                        </p>
-                      )}
+
+                              // Only show if there are tool proficiencies
+                              if (toolProficiencies.length > 0) {
+                                return (
+                                  <div style={{ color: 'var(--text-primary)' }}>
+                                    <span
+                                      style={{
+                                        color: 'var(--text-muted)',
+                                        fontSize: '11px',
+                                        opacity: 0.7,
+                                      }}
+                                    >
+                                      Tool Proficiencies:
+                                    </span>{' '}
+                                    {toolProficiencies.join(', ')}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </>
+                        )}
+                        {!character.selectedRace?.abilityBonuses &&
+                          draft.allProficiencies.size === 0 &&
+                          draft.allLanguages.size === 0 && (
+                            <p
+                              className="mt-2 text-xs"
+                              style={{
+                                color: 'var(--text-secondary)',
+                                opacity: 0.6,
+                              }}
+                            >
+                              No special traits
+                            </p>
+                          )}
+                      </div>
                     </motion.div>
                   </div>
                 )}
@@ -1002,7 +1049,7 @@ export function InteractiveCharacterSheet({
                               </span>{' '}
                               {character.selectedClass.armorProficiencyCategories
                                 .map((p) =>
-                                  getArmorProficiencyDisplay(String(p))
+                                  getArmorProficiencyCategoryDisplay(p)
                                 )
                                 .join(', ')}
                             </div>
@@ -1023,7 +1070,7 @@ export function InteractiveCharacterSheet({
                               {character.selectedClass.weaponProficiencyCategories
                                 .slice(0, 3)
                                 .map((p) =>
-                                  getWeaponProficiencyDisplay(String(p))
+                                  getWeaponProficiencyCategoryDisplay(p)
                                 )
                                 .join(', ')}
                               {character.selectedClass
@@ -1081,9 +1128,7 @@ export function InteractiveCharacterSheet({
                                 {allSkillSelections
                                   .map((skillEnum) => {
                                     // Convert enum to display name
-                                    return (
-                                      Skill[skillEnum] || `Skill ${skillEnum}`
-                                    );
+                                    return getSkillDisplay(skillEnum);
                                   })
                                   .join(', ')}
                               </div>
@@ -1327,66 +1372,90 @@ export function InteractiveCharacterSheet({
                       borderColor: 'var(--border-primary)',
                     }}
                   >
-                    {/* Background Proficiencies - clickable section */}
-                    <div
-                      className="space-y-2 cursor-pointer"
-                      onClick={() =>
-                        setShowingBackgroundDetails(!showingBackgroundDetails)
-                      }
+                    <h4
+                      className="text-xs font-semibold mb-2"
+                      style={{ color: 'var(--text-primary)' }}
                     >
-                      <div className="flex items-center justify-between">
-                        <h4
-                          className="text-sm font-medium"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          Background Proficiencies
-                        </h4>
-                        <ChevronDown
-                          className={`w-4 h-4 transition-transform ${
-                            showingBackgroundDetails ? 'rotate-180' : ''
-                          }`}
-                          style={{ color: 'var(--text-muted)' }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Expandable Background Details */}
-                    {showingBackgroundDetails && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="mt-2 space-y-2"
-                      >
-                        {/* Display background proficiencies here */}
-                        {draft.backgroundInfo.skillProficiencies?.length >
-                          0 && (
-                          <div className="flex flex-wrap gap-1">
+                      Background Proficiencies
+                    </h4>
+                    <div className="text-xs space-y-1">
+                      {/* Display background skill proficiencies */}
+                      {draft.backgroundInfo.skillProficiencies?.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          <span
+                            className="text-xs"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            Skills:
+                          </span>
+                          {draft.backgroundInfo.skillProficiencies.map(
+                            (skill, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-0.5 text-xs rounded-full"
+                                style={{
+                                  backgroundColor: 'var(--bg-primary)',
+                                  color: 'var(--text-primary)',
+                                  border: '1px solid var(--border-primary)',
+                                }}
+                              >
+                                {getSkillDisplay(skill)}
+                              </span>
+                            )
+                          )}
+                        </div>
+                      )}
+                      {/* Display background tool proficiencies */}
+                      {draft.backgroundInfo.toolProficiencies?.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          <span
+                            className="text-xs"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            Tools:
+                          </span>
+                          {draft.backgroundInfo.toolProficiencies.map(
+                            (tool, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-0.5 text-xs rounded-full"
+                                style={{
+                                  backgroundColor: 'var(--bg-primary)',
+                                  color: 'var(--text-primary)',
+                                  border: '1px solid var(--border-primary)',
+                                }}
+                              >
+                                {getToolDisplay(tool)}
+                              </span>
+                            )
+                          )}
+                        </div>
+                      )}
+                      {/* Display background languages */}
+                      {draft.backgroundInfo.languages?.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          <span
+                            className="text-xs"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            Languages:
+                          </span>
+                          {draft.backgroundInfo.languages.map((lang, idx) => (
                             <span
-                              className="text-xs"
-                              style={{ color: 'var(--text-muted)' }}
+                              key={idx}
+                              className="px-2 py-0.5 text-xs rounded-full"
+                              style={{
+                                backgroundColor: 'var(--bg-primary)',
+                                color: 'var(--text-primary)',
+                                border: '1px solid var(--border-primary)',
+                              }}
                             >
-                              Skills:
+                              {getLanguageDisplayName(lang)}
                             </span>
-                            {draft.backgroundInfo.skillProficiencies.map(
-                              (skill, idx) => (
-                                <span
-                                  key={idx}
-                                  className="px-2 py-0.5 text-xs rounded-full"
-                                  style={{
-                                    backgroundColor: 'var(--bg-primary)',
-                                    color: 'var(--text-primary)',
-                                    border: '1px solid var(--border-primary)',
-                                  }}
-                                >
-                                  {getSkillDisplay(skill)}
-                                </span>
-                              )
-                            )}
-                          </div>
-                        )}
-                      </motion.div>
-                    )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

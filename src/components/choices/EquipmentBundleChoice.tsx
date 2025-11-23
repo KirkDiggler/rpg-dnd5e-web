@@ -7,14 +7,8 @@ import {
   EquipmentType,
   WeaponCategory,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import {
-  ChevronDown,
-  ChevronRight,
-  Package,
-  Shield,
-  Sword,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { Package } from 'lucide-react';
+import { useCallback, useState } from 'react';
 import { useListEquipmentByType } from '../../api/hooks';
 import { useEquipmentBundleSelection } from '../../hooks/useEquipmentBundleSelection';
 
@@ -26,23 +20,7 @@ interface EquipmentBundleChoiceProps {
   ) => void;
 }
 
-// Helper to get icon for equipment type
-function getEquipmentIcon(equipment: Equipment): React.ReactNode {
-  if (!equipment.equipmentData) {
-    return <Package className="w-4 h-4" />;
-  }
-
-  switch (equipment.equipmentData.case) {
-    case 'weaponData':
-      return <Sword className="w-4 h-4" />;
-    case 'armorData':
-      return <Shield className="w-4 h-4" />;
-    default:
-      return <Package className="w-4 h-4" />;
-  }
-}
-
-// Component for selecting from a category
+// Component for selecting from a category - uses native select for better reliability
 function CategorySelector({
   category,
   categoryIndex,
@@ -54,8 +32,6 @@ function CategorySelector({
   onSelect: (categoryIndex: number, items: Equipment[]) => void;
   currentSelections: Equipment[];
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [availableEquipment, setAvailableEquipment] = useState<Equipment[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     new Set(currentSelections.map((e) => e.id))
   );
@@ -65,7 +41,6 @@ function CategorySelector({
     const types: EquipmentType[] = [];
 
     if (category.weaponCategories && category.weaponCategories.length > 0) {
-      // Map weapon categories to equipment types
       category.weaponCategories.forEach((cat) => {
         if (cat === WeaponCategory.SIMPLE) {
           types.push(EquipmentType.SIMPLE_MELEE_WEAPON);
@@ -78,7 +53,6 @@ function CategorySelector({
     }
 
     if (category.armorCategories && category.armorCategories.length > 0) {
-      // Add armor types based on categories
       types.push(EquipmentType.LIGHT_ARMOR);
       types.push(EquipmentType.MEDIUM_ARMOR);
       types.push(EquipmentType.HEAVY_ARMOR);
@@ -92,88 +66,61 @@ function CategorySelector({
     return types;
   }, [category]);
 
-  // Fetch equipment when expanded - use the primary type
+  // Fetch equipment - always enabled since we're not using expand/collapse
   const types = equipmentTypes();
   const primaryType = types[0] || EquipmentType.UNSPECIFIED;
   const { data: equipment } = useListEquipmentByType({
     equipmentType: primaryType,
-    enabled: expanded && types.length > 0,
+    enabled: types.length > 0,
   });
 
-  useEffect(() => {
-    if (expanded && equipment) {
-      setAvailableEquipment(equipment);
+  const handleSelectChange = (value: string) => {
+    if (!equipment) return;
+
+    const item = equipment.find((e) => e.id === value);
+    if (item) {
+      setSelectedIds(new Set([item.id]));
+      onSelect(categoryIndex, [item]);
     }
-  }, [expanded, equipment]);
-
-  const handleToggleItem = (item: Equipment) => {
-    const newSelected = new Set(selectedIds);
-
-    if (newSelected.has(item.id)) {
-      newSelected.delete(item.id);
-    } else {
-      // Check if we've reached the limit
-      if (newSelected.size >= category.choose) {
-        // Remove the oldest selection
-        const first = newSelected.values().next().value;
-        if (first) {
-          newSelected.delete(first);
-        }
-      }
-      newSelected.add(item.id);
-    }
-
-    setSelectedIds(newSelected);
-
-    // Update parent with full Equipment objects
-    const selectedEquipment = availableEquipment.filter((e) =>
-      newSelected.has(e.id)
-    );
-    onSelect(categoryIndex, selectedEquipment);
   };
 
-  return (
-    <div className="border rounded-lg p-3 space-y-2">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between text-left"
-      >
-        <div>
-          <div className="font-medium">
-            {category.label || `Choose ${category.choose} item(s)`}
-          </div>
-          <div className="text-sm text-gray-500">
-            {selectedIds.size} of {category.choose} selected
-          </div>
-        </div>
-        {expanded ? (
-          <ChevronDown className="w-4 h-4" />
-        ) : (
-          <ChevronRight className="w-4 h-4" />
-        )}
-      </button>
+  const selectedItem = equipment?.find((e) => selectedIds.has(e.id));
 
-      {expanded && (
-        <div className="space-y-1 max-h-60 overflow-y-auto">
-          {availableEquipment.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => handleToggleItem(item)}
-              className={`w-full flex items-center gap-2 p-2 rounded text-left transition-colors ${
-                selectedIds.has(item.id)
-                  ? 'bg-blue-100 border-blue-500 border'
-                  : 'hover:bg-gray-100 border-transparent border'
-              }`}
-            >
-              {getEquipmentIcon(item)}
-              <span className="flex-1">{item.name}</span>
-              {selectedIds.has(item.id) && (
-                <span className="text-blue-600 text-sm">✓</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+  return (
+    <div style={{ marginTop: '8px' }}>
+      <label
+        style={{
+          display: 'block',
+          marginBottom: '8px',
+          color: 'var(--text-primary)',
+          fontSize: '13px',
+          fontWeight: 'bold',
+        }}
+      >
+        {category.label || `Choose ${category.choose} item(s)`}:
+      </label>
+      <select
+        value={selectedItem?.id || ''}
+        onChange={(e) => handleSelectChange(e.target.value)}
+        style={{
+          width: '100%',
+          padding: '8px 12px',
+          backgroundColor: 'var(--bg-secondary)',
+          border: '1px solid var(--border-primary)',
+          borderRadius: '4px',
+          color: 'var(--text-primary)',
+          fontSize: '13px',
+          cursor: 'pointer',
+          outline: 'none',
+        }}
+      >
+        <option value="">-- Select item --</option>
+        {equipment?.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.name}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -203,6 +150,8 @@ export function EquipmentBundleChoice({
   const handleBundleSelect = useCallback(
     (bundleId: string) => {
       selectBundle(bundleId);
+      // Note: We only send the bundleId here, not the fixed items
+      // The backend will look up bundle.items based on the bundleId
       onSelectionChange(bundleId, new Map());
     },
     [selectBundle, onSelectionChange]
@@ -236,31 +185,81 @@ export function EquipmentBundleChoice({
       </div>
 
       {/* Bundle selection */}
-      <div className="space-y-2">
-        {bundles.map((bundle) => (
-          <button
-            key={bundle.id}
-            onClick={() => handleBundleSelect(bundle.id)}
-            className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-              selectedBundleId === bundle.id
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <div className="font-medium">{bundle.label}</div>
-            {bundle.items.length > 0 && (
-              <div className="text-sm text-gray-600 mt-1">
-                Includes:{' '}
-                {bundle.items.map((item) => item.selectionId).join(', ')}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {bundles.map((bundle, index) => {
+          const isSelected = selectedBundleId === bundle.id;
+          return (
+            <button
+              key={bundle.id}
+              type="button"
+              onClick={() => handleBundleSelect(bundle.id)}
+              style={{
+                padding: '12px 16px',
+                backgroundColor: isSelected
+                  ? 'var(--accent-primary)'
+                  : 'var(--card-bg)',
+                borderRadius: '6px',
+                border: `2px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
+                fontSize: '13px',
+                color: isSelected ? 'white' : 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease',
+                cursor: 'pointer',
+                textAlign: 'left',
+                width: '100%',
+                outline: 'none',
+              }}
+              onMouseEnter={(e) => {
+                if (!isSelected) {
+                  e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow =
+                    '0 4px 12px rgba(0,0,0,0.2)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isSelected) {
+                  e.currentTarget.style.borderColor = 'var(--border-primary)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }
+              }}
+            >
+              <span style={{ fontSize: '18px', lineHeight: '1' }}>
+                {index === 0 ? '⚔️' : '🛡️'}
+              </span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 'bold' }}>{bundle.label}</div>
+                {bundle.items.length > 0 && (
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      marginTop: '4px',
+                      opacity: 0.8,
+                    }}
+                  >
+                    Includes:{' '}
+                    {bundle.items.map((item) => item.selectionId).join(', ')}
+                  </div>
+                )}
+                {bundle.categoryChoices.length > 0 && (
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      marginTop: '4px',
+                      opacity: 0.8,
+                    }}
+                  >
+                    Plus choices from categories
+                  </div>
+                )}
               </div>
-            )}
-            {bundle.categoryChoices.length > 0 && (
-              <div className="text-sm text-gray-600 mt-1">
-                Plus choices from categories
-              </div>
-            )}
-          </button>
-        ))}
+              {isSelected && <span style={{ fontSize: '16px' }}>✓</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* Category selections for selected bundle */}
