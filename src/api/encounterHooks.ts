@@ -64,14 +64,20 @@ export function useMoveCharacter() {
   });
 
   const moveCharacter = useCallback(
-    async (encounterId: string, entityId: string, x: number, y: number) => {
+    async (
+      encounterId: string,
+      entityId: string,
+      path: Array<{ x: number; y: number }>
+    ) => {
       setState({ data: null, loading: true, error: null });
 
       try {
         const request = create(MoveCharacterRequestSchema, {
           encounterId,
           entityId,
-          targetPosition: create(PositionSchema, { x, y }),
+          path: path.map((pos) =>
+            create(PositionSchema, { x: pos.x, y: pos.y, z: 0 })
+          ),
         });
 
         const response = await encounterClient.moveCharacter(request);

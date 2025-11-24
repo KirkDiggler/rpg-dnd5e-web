@@ -1,5 +1,6 @@
 import { useDungeonStart, useListCharacters, useMoveCharacter } from '@/api';
 import { useDiscord } from '@/discord';
+import { findHexPath } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -43,6 +44,9 @@ export function EncounterDemo() {
     string | null
   >(null);
   const [movementMode, setMovementMode] = useState(false);
+  const [movementPath, setMovementPath] = useState<
+    Array<{ x: number; y: number }>
+  >([]);
 
   const handleStartEncounter = async () => {
     try {
@@ -86,24 +90,44 @@ export function EncounterDemo() {
 
   const handleCellClick = async (x: number, y: number) => {
     if (movementMode && selectedEntity && encounterId) {
-      try {
-        const response = await moveCharacter(encounterId, selectedEntity, x, y);
-        if (response.success) {
-          // Update states with the response
-          if (response.combatState) {
-            setCombatState(response.combatState);
+      const entityPos = room?.entities[selectedEntity]?.position;
+      if (!entityPos) return;
+
+      // Get the last position in the path, or entity's current position
+      const lastPos =
+        movementPath.length > 0
+          ? movementPath[movementPath.length - 1]
+          : { x: entityPos.x, y: entityPos.y };
+
+      // Get occupied positions (excluding the target)
+      const occupiedPositions = new Set<string>();
+      if (room?.entities) {
+        Object.values(room.entities).forEach((entity) => {
+          if (
+            entity.position &&
+            entity.blocksMovement &&
+            entity.entityId !== selectedEntity
+          ) {
+            occupiedPositions.add(`${entity.position.x},${entity.position.y}`);
           }
-          if (response.updatedRoom) {
-            setRoom(response.updatedRoom);
-          }
-          // Exit movement mode
-          setMovementMode(false);
-        } else {
-          console.error('Move failed:', response.error?.message);
-        }
-      } catch (err) {
-        console.error('Failed to move character:', err);
+        });
       }
+
+      // Find path from last position to clicked hex
+      const newSegment = findHexPath(lastPos, { x, y }, occupiedPositions);
+
+      // Validate total movement cost
+      const pathCost = (movementPath.length + newSegment.length) * 5; // 5ft per hex
+      const maxMovement = combatState?.currentTurn?.movementMax || 30;
+      const usedMovement = combatState?.currentTurn?.movementUsed || 0;
+
+      if (pathCost > maxMovement - usedMovement) {
+        console.warn('Not enough movement remaining');
+        return; // Don't add to path
+      }
+
+      // Add the new segment to the path
+      setMovementPath((prev) => [...prev, ...newSegment]);
     }
   };
 
@@ -119,6 +143,35 @@ export function EncounterDemo() {
 
   const handleMoveAction = () => {
     setMovementMode((prev) => !prev);
+    if (movementMode) {
+      setMovementPath([]); // Clear path when exiting movement mode
+    }
+  };
+
+  const handleExecuteMove = async () => {
+    if (movementPath.length === 0 || !selectedEntity || !encounterId) return;
+
+    try {
+      const response = await moveCharacter(
+        encounterId,
+        selectedEntity,
+        movementPath
+      );
+      if (response.success) {
+        if (response.updatedRoom) setRoom(response.updatedRoom);
+        setMovementPath([]);
+        setMovementMode(false);
+      } else {
+        console.error('Move failed:', response.error?.message);
+      }
+    } catch (err) {
+      console.error('Failed to move character:', err);
+    }
+  };
+
+  const handleCancelMove = () => {
+    setMovementPath([]);
+    setMovementMode(false);
   };
 
   const getSelectedCharacters = (): Character[] => {
@@ -185,6 +238,7 @@ export function EncounterDemo() {
                         (combatState.currentTurn.movementUsed || 0)
                       : 0
                   }
+                  movementPath={movementPath}
                   onEntityClick={handleEntityClick}
                   onEntityHover={handleEntityHover}
                   onCellClick={handleCellClick}
@@ -230,6 +284,9 @@ export function EncounterDemo() {
         onMoveAction={handleMoveAction}
         onCombatStateUpdate={handleCombatStateUpdate}
         movementMode={movementMode}
+        movementPath={movementPath}
+        onExecuteMove={handleExecuteMove}
+        onCancelMove={handleCancelMove}
         debug={false} // Set to true for visibility testing
       />
     </>
