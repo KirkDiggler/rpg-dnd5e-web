@@ -1,16 +1,18 @@
+import { VOXChunk, VOXLoader, VOXMesh } from '@/loaders/VOXLoader200';
 import { useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 interface UseVoxelModelOptions {
   modelPath: string;
   scale?: number;
-  rotationY?: number; // Rotation around Y axis in radians
+  rotationX?: number; // Rotation around X axis (to stand up Z-up models)
+  rotationY?: number; // Rotation around Y axis (horizontal spin)
 }
 
 export function useVoxelModel({
   modelPath,
   scale = 0.01,
+  rotationX = 0,
   rotationY = 0,
 }: UseVoxelModelOptions) {
   const [model, setModel] = useState<THREE.Group | null>(null);
@@ -18,26 +20,38 @@ export function useVoxelModel({
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    const loader = new GLTFLoader();
+    const loader = new VOXLoader();
 
     loader.load(
       modelPath,
-      (gltf) => {
-        // Get the scene from the loaded GLTF
-        const loadedModel = gltf.scene;
+      (chunks: VOXChunk[]) => {
+        // Create a group to hold all chunks
+        const group = new THREE.Group();
 
-        // Center the model
-        const box = new THREE.Box3().setFromObject(loadedModel);
+        // Convert raw chunk data to VOXMesh objects and add to group
+        chunks.forEach((chunk) => {
+          const mesh = new VOXMesh(chunk);
+          group.add(mesh);
+        });
+
+        // Apply scale first
+        group.scale.setScalar(scale);
+
+        // Apply rotations before centering
+        // X rotation: MagicaVoxel uses Z-up, Three.js uses Y-up, so rotate around X to stand up
+        group.rotation.x = rotationX;
+        // Y rotation: spin the model horizontally
+        group.rotation.y = rotationY;
+
+        // Center the model on X/Z axes only, keep Y at base
+        const box = new THREE.Box3().setFromObject(group);
         const center = box.getCenter(new THREE.Vector3());
-        loadedModel.position.sub(center);
+        group.position.x -= center.x;
+        group.position.z -= center.z;
+        // Position at base (bottom of bounding box)
+        group.position.y -= box.min.y;
 
-        // Apply scale
-        loadedModel.scale.setScalar(scale);
-
-        // Apply rotation (Y-axis for spinning the model horizontally)
-        loadedModel.rotation.y = rotationY;
-
-        setModel(loadedModel);
+        setModel(group);
         setLoading(false);
       },
       undefined, // onProgress
@@ -49,7 +63,7 @@ export function useVoxelModel({
         setLoading(false);
       }
     );
-  }, [modelPath, scale, rotationY]);
+  }, [modelPath, scale, rotationX, rotationY]);
 
   return { model, loading, error };
 }

@@ -166,8 +166,9 @@ function EntityMarker({
   const type = entityType.toLowerCase();
   const isPlayer = type === 'character' || type === 'player';
   const { model: voxelModel } = useVoxelModel({
-    modelPath: '/models/human_test.glb',
-    scale: 10.0, // Much larger to be visible on hex grid
+    modelPath: '/models/human_final.vox',
+    scale: 0.015, // VOX files need smaller scale than GLB
+    rotationX: -Math.PI / 2, // Stand up the model right-side up
     rotationY: -Math.PI / 2, // Rotate 90 degrees right (clockwise from top)
   });
 
@@ -175,16 +176,16 @@ function EntityMarker({
   useFrame((state) => {
     if (groupRef.current && isSelected) {
       groupRef.current.position.y =
-        0.5 + Math.sin(state.clock.elapsedTime * 2) * 0.1;
+        0.05 + Math.sin(state.clock.elapsedTime * 2) * 0.1;
     } else if (groupRef.current) {
-      groupRef.current.position.y = 0.5;
+      groupRef.current.position.y = 0.05;
     }
   });
 
   return (
     <group
       ref={groupRef}
-      position={[pos.x, 0.5, pos.z]}
+      position={[pos.x, 0.05, pos.z]}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -200,7 +201,9 @@ function EntityMarker({
     >
       {isPlayer && voxelModel ? (
         // Use voxel model for player characters
-        <primitive object={voxelModel.clone()} />
+        // Don't clone - just reference the model directly since each EntityMarker
+        // is positioned independently via the group transform
+        <primitive object={voxelModel} />
       ) : (
         // Fallback to box geometry for monsters and while loading
         <mesh>
