@@ -74,8 +74,8 @@ export function usePlayerTurn({
     if (!currentCharacter) {
       currentCharacter =
         selectedCharacters.find((char) => {
-          // Check if the turn entity ID starts with the character ID
-          return currentTurn.entityId.startsWith(char.id.split('-')[0]);
+          const prefix = char.id.split('-')[0];
+          return currentTurn.entityId.startsWith(prefix);
         }) || null;
     }
 

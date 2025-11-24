@@ -13,6 +13,9 @@ export interface ActionPanelProps {
   onMoveAction?: () => void;
   onCombatStateUpdate?: (combatState: CombatState) => void;
   movementMode?: boolean;
+  movementPath?: Array<{ x: number; y: number }>;
+  onExecuteMove?: () => void;
+  onCancelMove?: () => void;
   /** Enable debug mode with bright colors for visibility testing */
   debug?: boolean;
 }
@@ -37,6 +40,9 @@ export function ActionPanel({
   onMoveAction,
   onCombatStateUpdate,
   movementMode = false,
+  movementPath = [],
+  onExecuteMove,
+  onCancelMove,
   debug = false,
 }: ActionPanelProps) {
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
@@ -198,6 +204,27 @@ export function ActionPanel({
               ? 'Cancel Move'
               : `Move (${resources.movementRemaining}ft)`}
           </button>
+
+          {/* Execute/Cancel buttons when path exists */}
+          {movementMode && movementPath && movementPath.length > 0 && (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Path: {movementPath.length} steps ({movementPath.length * 5}ft)
+              </span>
+              <button
+                onClick={onExecuteMove}
+                className={`${styles.actionButton} ${styles.spell}`}
+              >
+                ✓ Execute
+              </button>
+              <button
+                onClick={onCancelMove}
+                className={`${styles.actionButton} ${styles.attack}`}
+              >
+                ✗ Cancel
+              </button>
+            </div>
+          )}
 
           {/* Attack Button */}
           <button
