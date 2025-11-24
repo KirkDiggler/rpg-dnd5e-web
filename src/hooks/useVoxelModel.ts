@@ -1,4 +1,4 @@
-import { VOXChunk, VOXLoader, VOXMesh } from '@/loaders/VOXLoader200';
+import { VOXLoader, VOXMesh, type VOXChunk } from '@/loaders/VOXLoader200';
 import { useEffect, useState } from 'react';
 import * as THREE from 'three';
 

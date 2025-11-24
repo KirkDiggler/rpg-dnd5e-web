@@ -48,7 +48,12 @@ class VOXLoader extends Loader {
    * @param {onProgressCallback} onProgress - Executed while the loading is in progress.
    * @param {onErrorCallback} onError - Executed when errors occur.
    */
-  load(url, onLoad, onProgress, onError) {
+  load(
+    url: string,
+    onLoad: (chunks: VOXChunk[]) => void,
+    onProgress?: (event: ProgressEvent) => void,
+    onError?: (error: unknown) => void
+  ) {
     const loader = new FileLoader(this.manager);
     loader.setPath(this.path);
     loader.setResponseType('arraybuffer');
@@ -57,7 +62,7 @@ class VOXLoader extends Loader {
       url,
       (buffer) => {
         try {
-          onLoad(this.parse(buffer));
+          onLoad(this.parse(buffer as ArrayBuffer));
         } catch (e) {
           if (onError) {
             onError(e);
@@ -79,7 +84,7 @@ class VOXLoader extends Loader {
    * @param {ArrayBuffer} buffer - The raw VOX data as an array buffer.
    * @return {Array<Object>} The parsed chunks.
    */
-  parse(buffer) {
+  parse(buffer: ArrayBuffer): VOXChunk[] {
     const data = new DataView(buffer);
 
     const id = data.getUint32(0, true);
@@ -87,7 +92,7 @@ class VOXLoader extends Loader {
 
     if (id !== 542658390) {
       console.error('THREE.VOXLoader: Invalid VOX file.');
-      return;
+      return [];
     }
 
     if (version !== 150 && version !== 200) {
@@ -95,7 +100,7 @@ class VOXLoader extends Loader {
         'THREE.VOXLoader200: Invalid VOX file. Unsupported version:',
         version
       );
-      return;
+      return [];
     }
 
     const DEFAULT_PALETTE = [
@@ -146,8 +151,8 @@ class VOXLoader extends Loader {
 
     let i = 8;
 
-    let chunk;
-    const chunks = [];
+    let chunk: VOXChunk | undefined;
+    const chunks: VOXChunk[] = [];
 
     while (i < data.byteLength) {
       let id = '';
@@ -171,6 +176,7 @@ class VOXLoader extends Loader {
         chunk = {
           palette: DEFAULT_PALETTE,
           size: { x: x, y: y, z: z },
+          data: new Uint8Array(0), // Will be set by XYZI chunk
         };
 
         chunks.push(chunk);
@@ -179,7 +185,9 @@ class VOXLoader extends Loader {
       } else if (id === 'XYZI') {
         const numVoxels = data.getUint32(i, true);
         i += 4;
-        chunk.data = new Uint8Array(buffer, i, numVoxels * 4);
+        if (chunk) {
+          chunk.data = new Uint8Array(buffer, i, numVoxels * 4);
+        }
 
         i += numVoxels * 4;
       } else if (id === 'RGBA') {
@@ -190,7 +198,9 @@ class VOXLoader extends Loader {
           i += 4;
         }
 
-        chunk.palette = palette;
+        if (chunk) {
+          chunk.palette = palette;
+        }
       } else {
         // console.log( id, chunkSize, childChunks );
 
@@ -215,15 +225,15 @@ class VOXMesh extends Mesh {
    *
    * @param {Object} chunk - A VOX chunk loaded via {@link VOXLoader}.
    */
-  constructor(chunk) {
+  constructor(chunk: VOXChunk) {
     const data = chunk.data;
     const size = chunk.size;
     const palette = chunk.palette;
 
     //
 
-    const vertices = [];
-    const colors = [];
+    const vertices: number[] = [];
+    const colors: number[] = [];
 
     const nx = [0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1];
     const px = [1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0];
@@ -234,7 +244,15 @@ class VOXMesh extends Mesh {
 
     const _color = new Color();
 
-    function add(tile, x, y, z, r, g, b) {
+    function add(
+      tile: number[],
+      x: number,
+      y: number,
+      z: number,
+      r: number,
+      g: number,
+      b: number
+    ) {
       x -= size.x / 2;
       y -= size.z / 2;
       z += size.y / 2;
@@ -322,7 +340,7 @@ class VOXData3DTexture extends Data3DTexture {
    *
    * @param {Object} chunk - A VOX chunk loaded via {@link VOXLoader}.
    */
-  constructor(chunk) {
+  constructor(chunk: VOXChunk) {
     const data = chunk.data;
     const size = chunk.size;
 
