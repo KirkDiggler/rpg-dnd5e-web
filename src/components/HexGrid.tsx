@@ -10,6 +10,7 @@ interface HexGridProps {
   room: Room;
   cellSize?: number;
   selectedCharacter?: string | null;
+  attackTarget?: string | null;
   movementMode?: boolean;
   movementRange?: number;
   movementPath?: Array<{ x: number; y: number }>;
@@ -123,6 +124,7 @@ export function HexGrid({
   room,
   cellSize = 30,
   selectedCharacter,
+  attackTarget,
   movementMode = false,
   movementRange = 0,
   movementPath = [],
@@ -300,6 +302,7 @@ export function HexGrid({
 
     const isHovered = hoveredEntity === entity.entityId;
     const isSelected = entity.entityId === selectedCharacter;
+    const isAttackTarget = entity.entityId === attackTarget;
     const color = getEntityColor(
       entity.entityType,
       entity.entityId,
@@ -326,6 +329,21 @@ export function HexGrid({
             strokeWidth="3"
             opacity="0.5"
             strokeDasharray="5,3"
+            className="animate-pulse"
+          />
+        )}
+
+        {/* Attack target indicator - red pulsing ring */}
+        {isAttackTarget && (
+          <circle
+            cx={centerX}
+            cy={centerY}
+            r={cellSize * 0.9}
+            fill="none"
+            stroke="#EF4444"
+            strokeWidth="4"
+            opacity="0.7"
+            strokeDasharray="3,2"
             className="animate-pulse"
           />
         )}

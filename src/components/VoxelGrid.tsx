@@ -162,12 +162,22 @@ function EntityMarker({
     return '#8b5cf6'; // Purple for other
   };
 
-  // Load voxel model for player characters
+  // Load voxel model based on entity type
   const type = entityType.toLowerCase();
   const isPlayer = type === 'character' || type === 'player';
+  const isMonster = type === 'monster' || type === 'enemy';
+  const isPillar = type === 'pillar' || type === 'obstacle';
+
+  // Players get high-res model, monsters get low-res for comparison, pillars stay as boxes
+  const shouldUseVoxel = isPlayer || isMonster;
+
+  const modelPath = isPlayer
+    ? '/models/human_complete_hires_solid.vox'
+    : '/models/human_complete.vox'; // Low-res 13KB model for monsters
+
   const { model: voxelModel } = useVoxelModel({
-    modelPath: '/models/human_final.vox',
-    scale: 0.015, // VOX files need smaller scale than GLB
+    modelPath: shouldUseVoxel ? modelPath : '',
+    scale: 0.02, // Scale to make character ~1.0 world units (5 feet) tall
     rotationX: -Math.PI / 2, // Stand up the model right-side up
     rotationY: -Math.PI / 2, // Rotate 90 degrees right (clockwise from top)
   });
@@ -199,15 +209,16 @@ function EntityMarker({
         onHover(false);
       }}
     >
-      {isPlayer && voxelModel ? (
-        // Use voxel model for player characters
+      {shouldUseVoxel && voxelModel ? (
+        // Use voxel model for characters and monsters
         // Don't clone - just reference the model directly since each EntityMarker
         // is positioned independently via the group transform
         <primitive object={voxelModel} />
       ) : (
-        // Fallback to box geometry for monsters and while loading
+        // Box geometry for pillars/obstacles and while loading
+        // Pillars should be around 10 feet (2.0 world units), characters ~5-6 feet (1.0-1.2 units)
         <mesh>
-          <boxGeometry args={[0.8, 1.5, 0.8]} />
+          <boxGeometry args={[0.8, isPillar ? 2.0 : 1.2, 0.8]} />
           <meshStandardMaterial
             color={getColor()}
             emissive={isSelected ? getColor() : '#000000'}

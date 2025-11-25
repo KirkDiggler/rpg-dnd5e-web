@@ -1,6 +1,11 @@
-import { useDungeonStart, useListCharacters, useMoveCharacter } from '@/api';
+import {
+  useAttack,
+  useDungeonStart,
+  useListCharacters,
+  useMoveCharacter,
+} from '@/api';
 import { useDiscord } from '@/discord';
-import { findHexPath } from '@/utils/hexUtils';
+import { findHexPath, hexDistance } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -16,6 +21,7 @@ import { Equipment } from './Equipment';
 export function EncounterDemo() {
   const { dungeonStart, loading, error } = useDungeonStart();
   const { moveCharacter } = useMoveCharacter();
+  const { attack } = useAttack();
   const discord = useDiscord();
   const isDevelopment = import.meta.env.MODE === 'development';
   const playerId = discord.user?.id || (isDevelopment ? 'test-player' : '');
@@ -38,6 +44,7 @@ export function EncounterDemo() {
   );
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
   const [hoveredEntity, setHoveredEntity] = useState<string | null>(null);
+  const [attackTarget, setAttackTarget] = useState<string | null>(null);
 
   // UI state
   const [equipmentCharacterId, setEquipmentCharacterId] = useState<
@@ -81,6 +88,34 @@ export function EncounterDemo() {
   };
 
   const handleEntityClick = (entityId: string) => {
+    // Get clicked entity
+    const clickedEntity = room?.entities[entityId];
+    if (!clickedEntity) return;
+
+    // If it's a monster/enemy and we have a current turn entity, mark as attack target
+    const currentTurnEntityId = combatState?.currentTurn?.entityId;
+    if (
+      currentTurnEntityId &&
+      clickedEntity.entityType.toLowerCase() === 'monster'
+    ) {
+      // Check if adjacent (within 1 hex for melee)
+      const currentEntity = room?.entities[currentTurnEntityId];
+      if (currentEntity?.position && clickedEntity.position) {
+        const distance = hexDistance(
+          currentEntity.position.x,
+          currentEntity.position.y,
+          clickedEntity.position.x,
+          clickedEntity.position.y
+        );
+
+        // Set as attack target (can be adjacent or not - button will handle enabling)
+        setAttackTarget(entityId);
+        console.log(
+          `Target selected: ${entityId}, distance: ${distance} hexes, adjacent: ${distance === 1}`
+        );
+      }
+    }
+
     setSelectedEntity(entityId);
   };
 
@@ -137,8 +172,53 @@ export function EncounterDemo() {
     if (newCombatState.currentTurn?.entityId) {
       setSelectedEntity(newCombatState.currentTurn.entityId);
     }
-    // Clear movement mode when turn changes
+    // Clear movement mode and attack target when turn changes
     setMovementMode(false);
+    setAttackTarget(null);
+  };
+
+  const handleAttackAction = async () => {
+    if (!encounterId || !combatState?.currentTurn?.entityId || !attackTarget) {
+      console.warn('Missing required data for attack', {
+        encounterId,
+        attackerId: combatState?.currentTurn?.entityId,
+        attackTarget,
+      });
+      return;
+    }
+
+    try {
+      const response = await attack(
+        encounterId,
+        combatState.currentTurn.entityId,
+        attackTarget
+      );
+
+      console.log('Attack response:', response);
+
+      if (response.result) {
+        const { hit, damage, damageType, critical, attackTotal, targetAc } =
+          response.result;
+        console.log(
+          `Attack ${hit ? 'HIT' : 'MISSED'}! (${attackTotal} vs AC ${targetAc})`
+        );
+        if (hit) {
+          console.log(
+            `Damage: ${damage} ${damageType}${critical ? ' (CRITICAL!)' : ''}`
+          );
+        }
+      }
+
+      // Update combat state if returned
+      if (response.combatState) {
+        handleCombatStateUpdate(response.combatState);
+      }
+
+      // Clear attack target after successful attack
+      setAttackTarget(null);
+    } catch (err) {
+      console.error('Failed to execute attack:', err);
+    }
   };
 
   const handleMoveAction = () => {
@@ -159,6 +239,20 @@ export function EncounterDemo() {
       );
       if (response.success) {
         if (response.updatedRoom) setRoom(response.updatedRoom);
+
+        // Update combat state to reflect new movement remaining
+        if (combatState && combatState.currentTurn) {
+          const movementUsed =
+            combatState.currentTurn.movementMax - response.movementRemaining;
+          setCombatState({
+            ...combatState,
+            currentTurn: {
+              ...combatState.currentTurn,
+              movementUsed,
+            },
+          });
+        }
+
         setMovementPath([]);
         setMovementMode(false);
       } else {
@@ -231,6 +325,7 @@ export function EncounterDemo() {
                   selectedEntity={selectedEntity}
                   hoveredEntity={hoveredEntity}
                   availableCharacters={availableCharacters}
+                  attackTarget={attackTarget}
                   movementMode={movementMode}
                   movementRange={
                     combatState?.currentTurn?.movementMax
@@ -281,7 +376,10 @@ export function EncounterDemo() {
         combatState={combatState}
         encounterId={encounterId}
         selectedCharacters={getSelectedCharacters()}
+        room={room}
+        attackTarget={attackTarget}
         onMoveAction={handleMoveAction}
+        onAttackAction={handleAttackAction}
         onCombatStateUpdate={handleCombatStateUpdate}
         movementMode={movementMode}
         movementPath={movementPath}

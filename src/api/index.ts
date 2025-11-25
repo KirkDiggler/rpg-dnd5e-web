@@ -22,6 +22,7 @@ export {
 
 // Re-export encounter hooks
 export {
+  useAttack,
   useDungeonStart,
   useEndTurn,
   useMoveCharacter,
