@@ -22,6 +22,8 @@ export {
 
 // Re-export encounter hooks
 export {
+  useActivateFeature,
+  useAttack,
   useDungeonStart,
   useEndTurn,
   useMoveCharacter,

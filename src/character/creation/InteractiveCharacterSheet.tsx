@@ -1,5 +1,6 @@
 import type { Step } from '@/components/ProgressTracker';
 import { ProgressTracker } from '@/components/ProgressTracker';
+import { useToast } from '@/components/ui';
 import type {
   ClassInfo,
   RaceInfo,
@@ -168,6 +169,7 @@ export function InteractiveCharacterSheet({
   const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
   const draft = useCharacterDraft();
   const { setBackground } = draft;
+  const { addToast } = useToast();
 
   // Convert draft choices to modal format
   const structuredClassChoices = useMemo(() => {
@@ -1577,6 +1579,13 @@ export function InteractiveCharacterSheet({
 
           // Set race with converted choices
           draft.setRace(race, choiceData);
+
+          // Show toast notification
+          addToast({
+            type: 'success',
+            message: `Race updated to ${race.name}`,
+            duration: 3000,
+          });
         }}
         onClose={() => setIsRaceModalOpen(false)}
       />

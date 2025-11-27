@@ -1,11 +1,15 @@
 import { create } from '@bufbuild/protobuf';
 import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type {
+  ActivateFeatureResponse,
+  AttackResponse,
   DungeonStartResponse,
   EndTurnResponse,
   MoveCharacterResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
+  ActivateFeatureRequestSchema,
+  AttackRequestSchema,
   DungeonStartRequestSchema,
   EndTurnRequestSchema,
   MoveCharacterRequestSchema,
@@ -95,6 +99,87 @@ export function useMoveCharacter() {
 
   return {
     moveCharacter,
+    loading: state.loading,
+    error: state.error,
+    data: state.data,
+  };
+}
+
+// Hook for Attack
+export function useAttack() {
+  const [state, setState] = useState<AsyncState<AttackResponse>>({
+    data: null,
+    loading: false,
+    error: null,
+  });
+
+  const attack = useCallback(
+    async (encounterId: string, attackerId: string, targetId: string) => {
+      setState({ data: null, loading: true, error: null });
+
+      try {
+        const request = create(AttackRequestSchema, {
+          encounterId,
+          attackerId,
+          targetId,
+          weaponId: '', // Use default weapon
+        });
+
+        const response = await encounterClient.attack(request);
+        setState({ data: response, loading: false, error: null });
+        return response;
+      } catch (error) {
+        const errorObj =
+          error instanceof Error ? error : new Error(String(error));
+        setState({ data: null, loading: false, error: errorObj });
+        throw errorObj;
+      }
+    },
+    []
+  );
+
+  return {
+    attack,
+    loading: state.loading,
+    error: state.error,
+    data: state.data,
+  };
+}
+
+// Hook for ActivateFeature
+export function useActivateFeature() {
+  const [state, setState] = useState<AsyncState<ActivateFeatureResponse>>({
+    data: null,
+    loading: false,
+    error: null,
+  });
+
+  const activateFeature = useCallback(
+    async (encounterId: string, characterId: string, featureId: string) => {
+      setState({ data: null, loading: true, error: null });
+
+      try {
+        const request = create(ActivateFeatureRequestSchema, {
+          encounterId,
+          characterId,
+          featureId,
+        });
+
+        const response = await encounterClient.activateFeature(request);
+        setState({ data: response, loading: false, error: null });
+        return response;
+      } catch (error) {
+        const errorObj =
+          error instanceof Error ? error : new Error(String(error));
+        setState({ data: null, loading: false, error: errorObj });
+        throw errorObj;
+      }
+    },
+    []
+  );
+
+  return {
+    activateFeature,
     loading: state.loading,
     error: state.error,
     data: state.data,

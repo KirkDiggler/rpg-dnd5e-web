@@ -43,7 +43,8 @@ function getHexNeighbors(
   ];
 }
 
-// Find shortest path between two hexes using simple greedy pathfinding
+// Find a path between two hexes using a greedy pathfinding approach.
+// Note: This method does not guarantee the shortest (optimal) path, especially when obstacles are present.
 export function findHexPath(
   from: { x: number; y: number },
   to: { x: number; y: number },
@@ -62,18 +63,23 @@ export function findHexPath(
     const neighbors = getHexNeighbors(current.x, current.y);
 
     // Find neighbor closest to target that isn't occupied
-    let best = neighbors[0];
-    let bestDist = hexDistance(best.x, best.y, to.x, to.y);
+    let best: { x: number; y: number } | null = null;
+    let bestDist = Infinity;
 
     for (const neighbor of neighbors) {
       const key = `${neighbor.x},${neighbor.y}`;
       if (occupiedPositions.has(key)) continue; // Skip occupied cells
 
       const dist = hexDistance(neighbor.x, neighbor.y, to.x, to.y);
-      if (dist < bestDist) {
+      if (best === null || dist < bestDist) {
         best = neighbor;
         bestDist = dist;
       }
+    }
+
+    // No unoccupied neighbor found, cannot proceed
+    if (best === null) {
+      break;
     }
 
     path.push(best);

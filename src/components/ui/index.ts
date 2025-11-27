@@ -37,3 +37,7 @@ export * from './Form';
 
 // Feedback components
 export * from './Feedback';
+
+// Toast notifications
+export { ToastProvider, useToast } from './Toast';
+export type { Toast } from './Toast';
