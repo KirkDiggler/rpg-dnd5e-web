@@ -1,10 +1,17 @@
 import { useVoxelModel } from '@/hooks/useVoxelModel';
 import { hexDistance } from '@/utils/hexUtils';
 import type { Room } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { OrbitControls } from '@react-three/drei';
+import { Html, OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useRef, useState } from 'react';
 import * as THREE from 'three';
+
+interface DamageNumber {
+  id: string;
+  entityId: string;
+  damage: number;
+  isCritical: boolean;
+}
 
 interface VoxelGridProps {
   room: Room;
@@ -12,9 +19,11 @@ interface VoxelGridProps {
   selectedCharacter?: string | null;
   movementMode?: boolean;
   movementRange?: number;
+  damageNumbers?: DamageNumber[];
   onEntityClick?: (entityId: string) => void;
   onEntityHover?: (entityId: string | null) => void;
   onCellClick?: (x: number, y: number) => void;
+  onCellDoubleClick?: (x: number, y: number) => void;
 }
 
 // Hex math constants (matching HexGrid.tsx)
@@ -60,6 +69,7 @@ interface GridCellProps {
   isHovered: boolean;
   isInRange: boolean;
   onClick: () => void;
+  onDoubleClick?: () => void;
   onHover: (hover: boolean) => void;
 }
 
@@ -71,6 +81,7 @@ function HexCell({
   isHovered,
   isInRange,
   onClick,
+  onDoubleClick,
   onHover,
 }: GridCellProps) {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -105,6 +116,7 @@ function HexCell({
       <mesh
         ref={meshRef}
         onClick={onClick}
+        onDoubleClick={onDoubleClick}
         onPointerOver={() => onHover(true)}
         onPointerOut={() => onHover(false)}
         geometry={hexGeometry}
@@ -175,9 +187,12 @@ function EntityMarker({
     ? '/models/human_complete_hires_solid.vox'
     : '/models/human_complete.vox'; // Low-res 13KB model for monsters
 
+  // Players need smaller scale due to high-res model dimensions
+  const modelScale = isPlayer ? 0.015 : 0.02;
+
   const { model: voxelModel } = useVoxelModel({
     modelPath: shouldUseVoxel ? modelPath : '',
-    scale: 0.02, // Scale to make character ~1.0 world units (5 feet) tall
+    scale: modelScale, // Scale to make character ~1.0 world units (5 feet) tall
     rotationX: -Math.PI / 2, // Stand up the model right-side up
     rotationY: -Math.PI / 2, // Rotate 90 degrees right (clockwise from top)
   });
@@ -235,9 +250,11 @@ function Scene({
   selectedCharacter,
   movementMode,
   movementRange,
+  damageNumbers = [],
   onEntityClick,
   onEntityHover,
   onCellClick,
+  onCellDoubleClick,
 }: VoxelGridProps) {
   const [hoveredCell, setHoveredCell] = useState<{
     x: number;
@@ -283,6 +300,7 @@ function Scene({
             isHovered={isHovered}
             isInRange={isInRange}
             onClick={() => onCellClick?.(x, y)}
+            onDoubleClick={() => onCellDoubleClick?.(x, y)}
             onHover={(hover) => {
               setHoveredCell(hover ? { x, y } : null);
             }}
@@ -314,6 +332,40 @@ function Scene({
     });
   };
 
+  // Render floating damage numbers as HTML overlay
+  const renderDamageNumbers = () => {
+    return damageNumbers.map((dmg) => {
+      const entity = Object.values(room.entities).find(
+        (e) => e.entityId === dmg.entityId
+      );
+      if (!entity?.position) return null;
+
+      const pos = hexToWorld(entity.position.x, entity.position.y);
+
+      return (
+        <group
+          key={dmg.id}
+          position={[pos.x - room.width / 2, 1.5, pos.z - room.height / 2]}
+        >
+          <Html center>
+            <div
+              style={{
+                color: dmg.isCritical ? '#FCD34D' : '#EF4444',
+                fontSize: dmg.isCritical ? '2rem' : '1.5rem',
+                fontWeight: 'bold',
+                textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                pointerEvents: 'none',
+                animation: 'floatUp3D 1.5s ease-out forwards',
+              }}
+            >
+              {dmg.isCritical ? `CRIT! ${dmg.damage}` : dmg.damage}
+            </div>
+          </Html>
+        </group>
+      );
+    });
+  };
+
   return (
     <>
       {/* Lighting */}
@@ -326,6 +378,9 @@ function Scene({
         {renderGrid()}
         {renderEntities()}
       </group>
+
+      {/* Floating damage numbers */}
+      {renderDamageNumbers()}
     </>
   );
 }
@@ -333,6 +388,20 @@ function Scene({
 export function VoxelGrid(props: VoxelGridProps) {
   return (
     <div style={{ width: '100%', height: '600px', position: 'relative' }}>
+      <style>
+        {`
+          @keyframes floatUp3D {
+            0% {
+              transform: translateY(0);
+              opacity: 1;
+            }
+            100% {
+              transform: translateY(-100px);
+              opacity: 0;
+            }
+          }
+        `}
+      </style>
       <Canvas
         camera={{
           position: [

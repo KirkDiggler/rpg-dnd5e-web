@@ -6,6 +6,13 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import React from 'react';
 
+interface DamageNumber {
+  id: string;
+  entityId: string;
+  damage: number;
+  isCritical: boolean;
+}
+
 interface HexGridProps {
   room: Room;
   cellSize?: number;
@@ -14,7 +21,9 @@ interface HexGridProps {
   movementMode?: boolean;
   movementRange?: number;
   movementPath?: Array<{ x: number; y: number }>;
+  damageNumbers?: DamageNumber[];
   onCellClick?: (x: number, y: number) => void;
+  onCellDoubleClick?: (x: number, y: number) => void;
   onEntityClick?: (entityId: string) => void;
   onEntityHover?: (entityId: string | null) => void;
 }
@@ -128,7 +137,9 @@ export function HexGrid({
   movementMode = false,
   movementRange = 0,
   movementPath = [],
+  damageNumbers = [],
   onCellClick,
+  onCellDoubleClick,
   onEntityClick,
   onEntityHover,
 }: HexGridProps) {
@@ -278,6 +289,12 @@ export function HexGrid({
           onClick={() => {
             if (onCellClick && (!movementMode || isValidMove)) {
               onCellClick(x, y);
+            }
+          }}
+          onDoubleClick={() => {
+            // Double-click always allowed - it will validate movement in the handler
+            if (onCellDoubleClick) {
+              onCellDoubleClick(x, y);
             }
           }}
         />
@@ -447,6 +464,57 @@ export function HexGrid({
       );
     }) || [];
 
+  // Render floating damage numbers
+  const damageNumberElements = damageNumbers.map((dmg) => {
+    const entity = Object.values(room.entities).find(
+      (e) => e.entityId === dmg.entityId
+    );
+    if (!entity?.position) return null;
+
+    const { x: pixelX, y: pixelY } = hexToPixel(
+      entity.position.x,
+      entity.position.y,
+      cellSize
+    );
+    const centerX = pixelX + (cellSize * SQRT_3) / 2;
+    const centerY = pixelY + cellSize;
+
+    return (
+      <g key={dmg.id} className="damage-number">
+        <style>
+          {`
+            @keyframes floatUp {
+              0% {
+                transform: translateY(0);
+                opacity: 1;
+              }
+              100% {
+                transform: translateY(-50px);
+                opacity: 0;
+              }
+            }
+            .damage-number {
+              animation: floatUp 1.5s ease-out forwards;
+            }
+          `}
+        </style>
+        <text
+          x={centerX}
+          y={centerY - cellSize * 0.8}
+          textAnchor="middle"
+          fill={dmg.isCritical ? '#FCD34D' : '#EF4444'}
+          fontSize={dmg.isCritical ? cellSize * 0.8 : cellSize * 0.6}
+          fontWeight="bold"
+          stroke="#000000"
+          strokeWidth="2"
+          style={{ pointerEvents: 'none' }}
+        >
+          {dmg.isCritical ? `CRIT! ${dmg.damage}` : dmg.damage}
+        </text>
+      </g>
+    );
+  });
+
   return (
     <div className="hex-grid-container">
       <svg
@@ -470,6 +538,9 @@ export function HexGrid({
 
         {/* Entity markers */}
         <g className="entity-markers">{entityMarkers}</g>
+
+        {/* Floating damage numbers */}
+        {damageNumberElements}
       </svg>
 
       {/* Improved Legend */}

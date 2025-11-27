@@ -18,6 +18,7 @@ export interface ActionPanelProps {
   attackTarget?: string | null;
   onMoveAction?: () => void;
   onAttackAction?: () => void;
+  onActivateFeature?: (featureId: string) => void;
   onCombatStateUpdate?: (combatState: CombatState) => void;
   movementMode?: boolean;
   movementPath?: Array<{ x: number; y: number }>;
@@ -48,6 +49,7 @@ export function ActionPanel({
   attackTarget,
   onMoveAction,
   onAttackAction,
+  onActivateFeature,
   onCombatStateUpdate,
   movementMode = false,
   movementPath = [],
@@ -131,6 +133,16 @@ export function ActionPanel({
   // 2. Has a target selected
   // 3. Target is adjacent (for now, only melee)
   const canAttack = resources.hasAction && attackTarget && isTargetAdjacent;
+
+  // Check if character has Rage feature
+  const hasRageFeature =
+    currentCharacter?.features?.some((f) => f.id === 'rage') ?? false;
+
+  // Check if character is already raging
+  const isRaging =
+    currentCharacter?.activeConditions?.some(
+      (c) => c.name === 'raging' || c.name === 'Raging'
+    ) ?? false;
 
   const panelContent = (
     <div
@@ -307,6 +319,26 @@ export function ActionPanel({
           >
             💪 Ability
           </button>
+
+          {/* Rage Button - Only show for characters with Rage feature */}
+          {hasRageFeature && (
+            <button
+              onClick={() => onActivateFeature?.('rage')}
+              disabled={!resources.hasBonusAction || isRaging}
+              className={`${styles.actionButton} ${styles.attack} ${
+                isRaging ? styles.active : ''
+              } ${!resources.hasBonusAction || isRaging ? styles.disabled : ''}`}
+              title={
+                isRaging
+                  ? 'Already raging'
+                  : !resources.hasBonusAction
+                    ? 'No bonus action'
+                    : 'Activate Rage (Bonus Action)'
+              }
+            >
+              🔥 {isRaging ? 'Raging!' : 'Rage'}
+            </button>
+          )}
 
           {/* End Turn Button */}
           <button

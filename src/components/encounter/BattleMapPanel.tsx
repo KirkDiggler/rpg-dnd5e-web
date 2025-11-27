@@ -5,6 +5,13 @@ import { useState } from 'react';
 import { HexGrid } from '../HexGrid';
 import { VoxelGrid } from '../VoxelGrid';
 
+export interface DamageNumber {
+  id: string;
+  entityId: string;
+  damage: number;
+  isCritical: boolean;
+}
+
 interface BattleMapPanelProps {
   room: Room;
   selectedEntity: string | null;
@@ -14,9 +21,11 @@ interface BattleMapPanelProps {
   movementMode?: boolean;
   movementRange?: number;
   movementPath?: Array<{ x: number; y: number }>;
+  damageNumbers?: DamageNumber[];
   onEntityClick: (entityId: string) => void;
   onEntityHover: (entityId: string | null) => void;
   onCellClick: (x: number, y: number) => void;
+  onCellDoubleClick?: (x: number, y: number) => void;
 }
 
 export function BattleMapPanel({
@@ -28,9 +37,11 @@ export function BattleMapPanel({
   movementMode,
   movementRange,
   movementPath,
+  damageNumbers,
   onEntityClick,
   onEntityHover,
   onCellClick,
+  onCellDoubleClick,
 }: BattleMapPanelProps) {
   const [view3D, setView3D] = useState(false);
 
@@ -88,9 +99,11 @@ export function BattleMapPanel({
             selectedCharacter={selectedEntity}
             movementMode={movementMode}
             movementRange={movementRange}
+            damageNumbers={damageNumbers}
             onEntityClick={onEntityClick}
             onEntityHover={onEntityHover}
             onCellClick={onCellClick}
+            onCellDoubleClick={onCellDoubleClick}
           />
         ) : (
           <HexGrid
@@ -101,9 +114,11 @@ export function BattleMapPanel({
             movementMode={movementMode}
             movementRange={movementRange}
             movementPath={movementPath}
+            damageNumbers={damageNumbers}
             onEntityClick={onEntityClick}
             onEntityHover={onEntityHover}
             onCellClick={onCellClick}
+            onCellDoubleClick={onCellDoubleClick}
           />
         )}
       </div>
