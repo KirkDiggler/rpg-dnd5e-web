@@ -32,8 +32,17 @@ function getSnapshot() {
   return toasts;
 }
 
+// Generate unique ID with fallback for non-secure contexts (HTTP dev)
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for non-secure contexts
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
 function addToast(toast: Omit<Toast, 'id'>) {
-  const id = crypto.randomUUID();
+  const id = generateId();
   const newToast = { ...toast, id };
 
   // Clear existing toasts when a new one arrives (keep only the new one)

@@ -1,3 +1,4 @@
+import type { DamageNumber } from '@/types/combat';
 import { hexDistance } from '@/utils/hexUtils';
 import { GridType } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type {
@@ -5,13 +6,6 @@ import type {
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import React from 'react';
-
-interface DamageNumber {
-  id: string;
-  entityId: string;
-  damage: number;
-  isCritical: boolean;
-}
 
 interface HexGridProps {
   room: Room;

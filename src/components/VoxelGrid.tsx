@@ -1,17 +1,11 @@
 import { useVoxelModel } from '@/hooks/useVoxelModel';
+import type { DamageNumber } from '@/types/combat';
 import { hexDistance } from '@/utils/hexUtils';
 import type { Room } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Html, OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useRef, useState } from 'react';
 import * as THREE from 'three';
-
-interface DamageNumber {
-  id: string;
-  entityId: string;
-  damage: number;
-  isCritical: boolean;
-}
 
 interface VoxelGridProps {
   room: Room;

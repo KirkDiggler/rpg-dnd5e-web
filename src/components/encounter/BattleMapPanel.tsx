@@ -1,3 +1,4 @@
+import type { DamageNumber } from '@/types/combat';
 import { formatCharacterSummary } from '@/utils/displayNames';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { Room } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
@@ -5,12 +6,8 @@ import { useState } from 'react';
 import { HexGrid } from '../HexGrid';
 import { VoxelGrid } from '../VoxelGrid';
 
-export interface DamageNumber {
-  id: string;
-  entityId: string;
-  damage: number;
-  isCritical: boolean;
-}
+// Re-export for consumers that import from here
+export type { DamageNumber } from '@/types/combat';
 
 interface BattleMapPanelProps {
   room: Room;
