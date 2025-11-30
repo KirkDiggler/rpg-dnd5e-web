@@ -1,6 +1,7 @@
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { EquipmentBundleChoice } from './choices/EquipmentBundleChoice';
+import { FightingStyleChoice } from './choices/FightingStyleChoice';
 import { SimpleChoice } from './choices/SimpleChoice';
 import { SkillChoice } from './choices/SkillChoice';
 import { ToolChoice } from './choices/ToolChoice';
@@ -63,6 +64,17 @@ export function ChoiceRenderer({
   if (choice.choiceType === ChoiceCategory.TOOLS) {
     return (
       <ToolChoice
+        choice={choice}
+        onSelectionChange={onSelectionChange}
+        currentSelections={currentSelections}
+      />
+    );
+  }
+
+  // Fighting styles use their dedicated component
+  if (choice.choiceType === ChoiceCategory.FIGHTING_STYLE) {
+    return (
+      <FightingStyleChoice
         choice={choice}
         onSelectionChange={onSelectionChange}
         currentSelections={currentSelections}
