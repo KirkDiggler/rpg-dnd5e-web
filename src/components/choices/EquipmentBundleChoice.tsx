@@ -20,7 +20,7 @@ interface EquipmentBundleChoiceProps {
   ) => void;
 }
 
-// Component for selecting from a category - uses native select for better reliability
+// Component for selecting from a category - supports multiple selections when choose > 1
 function CategorySelector({
   category,
   categoryIndex,
@@ -32,8 +32,14 @@ function CategorySelector({
   onSelect: (categoryIndex: number, items: Equipment[]) => void;
   currentSelections: Equipment[];
 }) {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    new Set(currentSelections.map((e) => e.id))
+  const chooseCount = category.choose || 1;
+
+  // Track selections for each slot (when choose > 1)
+  const [selectedBySlot, setSelectedBySlot] = useState<(string | null)[]>(() =>
+    Array.from(
+      { length: chooseCount },
+      (_, i) => currentSelections[i]?.id ?? null
+    )
   );
 
   // Determine equipment types to fetch based on category
@@ -74,17 +80,33 @@ function CategorySelector({
     enabled: types.length > 0,
   });
 
-  const handleSelectChange = (value: string) => {
+  const handleSlotChange = (slotIndex: number, value: string) => {
     if (!equipment) return;
 
-    const item = equipment.find((e) => e.id === value);
-    if (item) {
-      setSelectedIds(new Set([item.id]));
-      onSelect(categoryIndex, [item]);
-    }
+    const newSelectedBySlot = [...selectedBySlot];
+    newSelectedBySlot[slotIndex] = value || null;
+    setSelectedBySlot(newSelectedBySlot);
+
+    // Gather all selected items and report back
+    const selectedItems = newSelectedBySlot
+      .filter((id): id is string => id !== null)
+      .map((id) => equipment.find((e) => e.id === id))
+      .filter((item): item is Equipment => item !== undefined);
+
+    onSelect(categoryIndex, selectedItems);
   };
 
-  const selectedItem = equipment?.find((e) => selectedIds.has(e.id));
+  const selectStyle = {
+    width: '100%',
+    padding: '8px 12px',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border-primary)',
+    borderRadius: '4px',
+    color: 'var(--text-primary)',
+    fontSize: '13px',
+    cursor: 'pointer',
+    outline: 'none',
+  };
 
   return (
     <div style={{ marginTop: '8px' }}>
@@ -97,30 +119,27 @@ function CategorySelector({
           fontWeight: 'bold',
         }}
       >
-        {category.label || `Choose ${category.choose} item(s)`}:
+        {category.label || `Choose ${chooseCount} item(s)`}:
       </label>
-      <select
-        value={selectedItem?.id || ''}
-        onChange={(e) => handleSelectChange(e.target.value)}
-        style={{
-          width: '100%',
-          padding: '8px 12px',
-          backgroundColor: 'var(--bg-secondary)',
-          border: '1px solid var(--border-primary)',
-          borderRadius: '4px',
-          color: 'var(--text-primary)',
-          fontSize: '13px',
-          cursor: 'pointer',
-          outline: 'none',
-        }}
-      >
-        <option value="">-- Select item --</option>
-        {equipment?.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.name}
-          </option>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {Array.from({ length: chooseCount }, (_, slotIndex) => (
+          <select
+            key={slotIndex}
+            value={selectedBySlot[slotIndex] || ''}
+            onChange={(e) => handleSlotChange(slotIndex, e.target.value)}
+            style={selectStyle}
+          >
+            <option value="">
+              -- Select {chooseCount > 1 ? `item ${slotIndex + 1}` : 'item'} --
+            </option>
+            {equipment?.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
         ))}
-      </select>
+      </div>
     </div>
   );
 }
