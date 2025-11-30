@@ -4,6 +4,7 @@ import {
   ChoiceCategory,
   ChoiceDataSchema,
   ChoiceSource,
+  EquipmentSelectionItemSchema,
   EquipmentSelectionSchema,
   ExpertiseSelectionSchema,
   FightingStyleSelectionSchema,
@@ -83,8 +84,27 @@ export function convertEquipmentChoiceToProto(
   choice: EquipmentChoice,
   source: ChoiceSource
 ): ChoiceData {
-  // Use bundleId as optionId if available, otherwise leave empty
-  // The items array contains selection strings from the UI
+  // Convert category selections to EquipmentSelectionItem[]
+  const items: ReturnType<
+    typeof create<typeof EquipmentSelectionItemSchema>
+  >[] = [];
+
+  choice.categorySelections.forEach((catSel) => {
+    catSel.equipmentIds.forEach((equipId) => {
+      // For now, use otherEquipmentId since we're storing string IDs from the API
+      // The backend will need to handle converting these IDs to proper equipment references
+      items.push(
+        create(EquipmentSelectionItemSchema, {
+          equipment: {
+            case: 'otherEquipmentId' as const,
+            value: equipId,
+          },
+          quantity: 1,
+        })
+      );
+    });
+  });
+
   return create(ChoiceDataSchema, {
     choiceId: choice.choiceId,
     optionId: choice.bundleId || undefined, // The selected bundle
@@ -93,7 +113,7 @@ export function convertEquipmentChoiceToProto(
     selection: {
       case: 'equipment',
       value: create(EquipmentSelectionSchema, {
-        items: [], // The backend processes the bundleId to know what was selected
+        items,
       }),
     },
   });

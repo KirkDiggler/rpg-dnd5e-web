@@ -1,6 +1,10 @@
 import { useEndTurn } from '@/api/encounterHooks';
+import { hexDistance } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type {
+  CombatState,
+  Room,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePlayerTurn } from '../hooks/usePlayerTurn';
@@ -10,9 +14,16 @@ export interface ActionPanelProps {
   combatState: CombatState | null;
   encounterId: string | null;
   selectedCharacters: Character[];
+  room: Room | null;
+  attackTarget?: string | null;
   onMoveAction?: () => void;
+  onAttackAction?: () => void;
+  onActivateFeature?: (featureId: string) => void;
   onCombatStateUpdate?: (combatState: CombatState) => void;
   movementMode?: boolean;
+  movementPath?: Array<{ x: number; y: number }>;
+  onExecuteMove?: () => void;
+  onCancelMove?: () => void;
   /** Enable debug mode with bright colors for visibility testing */
   debug?: boolean;
 }
@@ -34,9 +45,16 @@ export function ActionPanel({
   combatState,
   encounterId,
   selectedCharacters,
+  room,
+  attackTarget,
   onMoveAction,
+  onAttackAction,
+  onActivateFeature,
   onCombatStateUpdate,
   movementMode = false,
+  movementPath = [],
+  onExecuteMove,
+  onCancelMove,
   debug = false,
 }: ActionPanelProps) {
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
@@ -90,6 +108,41 @@ export function ActionPanel({
       console.error('Failed to end turn:', err);
     }
   };
+
+  // Check if attack target is adjacent (for melee attacks)
+  const isTargetAdjacent = (() => {
+    if (!attackTarget || !room || !currentTurn.entityId) return false;
+
+    const currentEntity = room.entities[currentTurn.entityId];
+    const targetEntity = room.entities[attackTarget];
+
+    if (!currentEntity?.position || !targetEntity?.position) return false;
+
+    const distance = hexDistance(
+      currentEntity.position.x,
+      currentEntity.position.y,
+      targetEntity.position.x,
+      targetEntity.position.y
+    );
+
+    return distance === 1;
+  })();
+
+  // Attack button should be enabled if:
+  // 1. Has action available
+  // 2. Has a target selected
+  // 3. Target is adjacent (for now, only melee)
+  const canAttack = resources.hasAction && attackTarget && isTargetAdjacent;
+
+  // Check if character has Rage feature
+  const hasRageFeature =
+    currentCharacter?.features?.some((f) => f.id === 'rage') ?? false;
+
+  // Check if character is already raging
+  const isRaging =
+    currentCharacter?.activeConditions?.some(
+      (c) => c.name === 'raging' || c.name === 'Raging'
+    ) ?? false;
 
   const panelContent = (
     <div
@@ -199,14 +252,50 @@ export function ActionPanel({
               : `Move (${resources.movementRemaining}ft)`}
           </button>
 
+          {/* Execute/Cancel buttons when path exists */}
+          {movementMode && movementPath && movementPath.length > 0 && (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Path: {movementPath.length} steps ({movementPath.length * 5}ft)
+              </span>
+              <button
+                onClick={onExecuteMove}
+                className={`${styles.actionButton} ${styles.spell}`}
+              >
+                ✓ Execute
+              </button>
+              <button
+                onClick={onCancelMove}
+                className={`${styles.actionButton} ${styles.attack}`}
+              >
+                ✗ Cancel
+              </button>
+            </div>
+          )}
+
           {/* Attack Button */}
           <button
-            disabled={!resources.hasAction}
+            onClick={onAttackAction}
+            disabled={!canAttack}
             className={`${styles.actionButton} ${styles.attack} ${
-              !resources.hasAction ? styles.disabled : ''
+              !canAttack ? styles.disabled : ''
             }`}
+            title={
+              !resources.hasAction
+                ? 'No action available'
+                : !attackTarget
+                  ? 'Select a target'
+                  : !isTargetAdjacent
+                    ? 'Target not adjacent'
+                    : 'Attack target'
+            }
           >
             ⚔️ Attack
+            {attackTarget && !isTargetAdjacent && (
+              <span style={{ fontSize: '10px', marginLeft: '4px' }}>
+                (too far)
+              </span>
+            )}
           </button>
 
           {/* Spell Button */}
@@ -230,6 +319,26 @@ export function ActionPanel({
           >
             💪 Ability
           </button>
+
+          {/* Rage Button - Only show for characters with Rage feature */}
+          {hasRageFeature && (
+            <button
+              onClick={() => onActivateFeature?.('rage')}
+              disabled={!resources.hasBonusAction || isRaging}
+              className={`${styles.actionButton} ${styles.attack} ${
+                isRaging ? styles.active : ''
+              } ${!resources.hasBonusAction || isRaging ? styles.disabled : ''}`}
+              title={
+                isRaging
+                  ? 'Already raging'
+                  : !resources.hasBonusAction
+                    ? 'No bonus action'
+                    : 'Activate Rage (Bonus Action)'
+              }
+            >
+              🔥 {isRaging ? 'Raging!' : 'Rage'}
+            </button>
+          )}
 
           {/* End Turn Button */}
           <button

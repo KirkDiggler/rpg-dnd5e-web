@@ -1,3 +1,5 @@
+import type { DamageNumber } from '@/types/combat';
+import { hexDistance } from '@/utils/hexUtils';
 import { GridType } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type {
   EntityPlacement,
@@ -9,35 +11,19 @@ interface HexGridProps {
   room: Room;
   cellSize?: number;
   selectedCharacter?: string | null;
+  attackTarget?: string | null;
   movementMode?: boolean;
   movementRange?: number;
+  movementPath?: Array<{ x: number; y: number }>;
+  damageNumbers?: DamageNumber[];
   onCellClick?: (x: number, y: number) => void;
+  onCellDoubleClick?: (x: number, y: number) => void;
   onEntityClick?: (entityId: string) => void;
   onEntityHover?: (entityId: string | null) => void;
 }
 
 // Hex math constants
 const SQRT_3 = Math.sqrt(3);
-
-// Calculate hex distance (using offset coordinates with proper conversion)
-function hexDistance(x1: number, y1: number, x2: number, y2: number): number {
-  // Convert offset to cube coordinates for accurate distance
-  // For odd-r offset coordinates (pointy-top hexes)
-  const cubeX1 = x1;
-  const cubeZ1 = y1 - (x1 - (x1 & 1)) / 2;
-  const cubeY1 = -cubeX1 - cubeZ1;
-
-  const cubeX2 = x2;
-  const cubeZ2 = y2 - (x2 - (x2 & 1)) / 2;
-  const cubeY2 = -cubeX2 - cubeZ2;
-
-  // Manhattan distance in cube coordinates divided by 2
-  return Math.max(
-    Math.abs(cubeX1 - cubeX2),
-    Math.abs(cubeY1 - cubeY2),
-    Math.abs(cubeZ1 - cubeZ2)
-  );
-}
 
 // Convert hex grid coordinates to pixel coordinates (pointy-top hex)
 function hexToPixel(
@@ -141,9 +127,13 @@ export function HexGrid({
   room,
   cellSize = 30,
   selectedCharacter,
+  attackTarget,
   movementMode = false,
   movementRange = 0,
+  movementPath = [],
+  damageNumbers = [],
   onCellClick,
+  onCellDoubleClick,
   onEntityClick,
   onEntityHover,
 }: HexGridProps) {
@@ -171,7 +161,29 @@ export function HexGrid({
       return new Set<string>();
 
     const valid = new Set<string>();
-    const rangeInHexes = Math.floor(movementRange / 5); // 5ft per hex
+
+    // Calculate starting position and remaining movement
+    const startPos =
+      movementPath && movementPath.length > 0
+        ? movementPath[movementPath.length - 1] // Start from last path position
+        : selectedPos; // Or from entity's current position
+
+    // Calculate movement used by path
+    let movementUsed = 0;
+    if (movementPath && movementPath.length > 0) {
+      let prevX = selectedPos.x;
+      let prevY = selectedPos.y;
+      for (const pos of movementPath) {
+        movementUsed += hexDistance(prevX, prevY, pos.x, pos.y) * 5; // 5ft per hex
+        prevX = pos.x;
+        prevY = pos.y;
+      }
+    }
+
+    const remainingMovement = movementRange - movementUsed;
+    const remainingHexes = Math.floor(remainingMovement / 5);
+
+    if (remainingHexes <= 0) return new Set(); // No movement left
 
     // Create a Set of occupied positions for O(1) lookup
     const occupiedPositions = new Set<string>();
@@ -181,30 +193,35 @@ export function HexGrid({
       }
     });
 
-    // Only check cells within a bounding box around the selected position
-    // This reduces the search space from O(width * height) to O(rangeInHexes²)
-    const minX = Math.max(0, selectedPos.x - rangeInHexes);
-    const maxX = Math.min(width - 1, selectedPos.x + rangeInHexes);
-    const minY = Math.max(0, selectedPos.y - rangeInHexes);
-    const maxY = Math.min(height - 1, selectedPos.y + rangeInHexes);
+    // Bounding box around the LAST position in path (not starting position)
+    const minX = Math.max(0, startPos.x - remainingHexes);
+    const maxX = Math.min(width - 1, startPos.x + remainingHexes);
+    const minY = Math.max(0, startPos.y - remainingHexes);
+    const maxY = Math.min(height - 1, startPos.y + remainingHexes);
 
-    // Check cells within the bounding box
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
-        const distance = hexDistance(selectedPos.x, selectedPos.y, x, y);
-
-        // Within movement range and not the current position
-        if (distance > 0 && distance <= rangeInHexes) {
-          // Check if occupied using O(1) Set lookup
+        const distance = hexDistance(startPos.x, startPos.y, x, y);
+        if (distance <= remainingHexes && distance > 0) {
           const cellKey = `${x},${y}`;
+          // Don't allow occupied positions
           if (!occupiedPositions.has(cellKey)) {
             valid.add(cellKey);
           }
         }
       }
     }
+
     return valid;
-  }, [movementMode, selectedPos, movementRange, width, height, room.entities]);
+  }, [
+    movementMode,
+    selectedPos,
+    movementRange,
+    width,
+    height,
+    room.entities,
+    movementPath,
+  ]);
 
   // Only render hex grids
   if (room.gridType !== GridType.HEX_POINTY) {
@@ -224,13 +241,20 @@ export function HexGrid({
       const centerY = pixelY + cellSize;
       const isHovered = hoveredCell?.x === x && hoveredCell?.y === y;
       const isValidMove = validMovementCells.has(`${x},${y}`);
+      const isInPath =
+        movementPath?.some((p) => p.x === x && p.y === y) || false;
 
       let fill = 'transparent';
       let stroke = 'var(--border-primary)';
       let strokeWidth = '1';
       let opacity = '0.3';
 
-      if (movementMode && isValidMove) {
+      if (isInPath) {
+        fill = 'rgba(59, 130, 246, 0.5)'; // Blue for path cells
+        stroke = '#3B82F6';
+        strokeWidth = '3';
+        opacity = '1';
+      } else if (movementMode && isValidMove) {
         fill = isHovered ? 'rgba(34, 197, 94, 0.4)' : 'rgba(34, 197, 94, 0.2)';
         stroke = '#22C55E';
         strokeWidth = '2';
@@ -261,6 +285,12 @@ export function HexGrid({
               onCellClick(x, y);
             }
           }}
+          onDoubleClick={() => {
+            // Double-click always allowed - it will validate movement in the handler
+            if (onCellDoubleClick) {
+              onCellDoubleClick(x, y);
+            }
+          }}
         />
       );
     }
@@ -283,6 +313,7 @@ export function HexGrid({
 
     const isHovered = hoveredEntity === entity.entityId;
     const isSelected = entity.entityId === selectedCharacter;
+    const isAttackTarget = entity.entityId === attackTarget;
     const color = getEntityColor(
       entity.entityType,
       entity.entityId,
@@ -309,6 +340,21 @@ export function HexGrid({
             strokeWidth="3"
             opacity="0.5"
             strokeDasharray="5,3"
+            className="animate-pulse"
+          />
+        )}
+
+        {/* Attack target indicator - red pulsing ring */}
+        {isAttackTarget && (
+          <circle
+            cx={centerX}
+            cy={centerY}
+            r={cellSize * 0.9}
+            fill="none"
+            stroke="#EF4444"
+            strokeWidth="4"
+            opacity="0.7"
+            strokeDasharray="3,2"
             className="animate-pulse"
           />
         )}
@@ -386,6 +432,83 @@ export function HexGrid({
     );
   });
 
+  // Add path step numbers
+  const pathMarkers =
+    movementPath?.map((pos, idx) => {
+      const { x: pixelX, y: pixelY } = hexToPixel(pos.x, pos.y, cellSize);
+      const centerX = pixelX + (cellSize * SQRT_3) / 2;
+      const centerY = pixelY + cellSize;
+
+      return (
+        <text
+          key={`path-num-${idx}`}
+          x={centerX}
+          y={centerY - cellSize * 0.3}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="#FFFFFF"
+          fontSize={cellSize * 0.5}
+          fontWeight="bold"
+          stroke="#000000"
+          strokeWidth="1"
+          style={{ pointerEvents: 'none' }}
+        >
+          {idx + 1}
+        </text>
+      );
+    }) || [];
+
+  // Render floating damage numbers
+  const damageNumberElements = damageNumbers.map((dmg) => {
+    const entity = Object.values(room.entities).find(
+      (e) => e.entityId === dmg.entityId
+    );
+    if (!entity?.position) return null;
+
+    const { x: pixelX, y: pixelY } = hexToPixel(
+      entity.position.x,
+      entity.position.y,
+      cellSize
+    );
+    const centerX = pixelX + (cellSize * SQRT_3) / 2;
+    const centerY = pixelY + cellSize;
+
+    return (
+      <g key={dmg.id} className="damage-number">
+        <style>
+          {`
+            @keyframes floatUp {
+              0% {
+                transform: translateY(0);
+                opacity: 1;
+              }
+              100% {
+                transform: translateY(-50px);
+                opacity: 0;
+              }
+            }
+            .damage-number {
+              animation: floatUp 1.5s ease-out forwards;
+            }
+          `}
+        </style>
+        <text
+          x={centerX}
+          y={centerY - cellSize * 0.8}
+          textAnchor="middle"
+          fill={dmg.isCritical ? '#FCD34D' : '#EF4444'}
+          fontSize={dmg.isCritical ? cellSize * 0.8 : cellSize * 0.6}
+          fontWeight="bold"
+          stroke="#000000"
+          strokeWidth="2"
+          style={{ pointerEvents: 'none' }}
+        >
+          {dmg.isCritical ? `CRIT! ${dmg.damage}` : dmg.damage}
+        </text>
+      </g>
+    );
+  });
+
   return (
     <div className="hex-grid-container">
       <svg
@@ -404,8 +527,14 @@ export function HexGrid({
         {/* Grid cells */}
         <g className="grid-cells">{gridCells}</g>
 
+        {/* Path markers */}
+        <g className="path-markers">{pathMarkers}</g>
+
         {/* Entity markers */}
         <g className="entity-markers">{entityMarkers}</g>
+
+        {/* Floating damage numbers */}
+        {damageNumberElements}
       </svg>
 
       {/* Improved Legend */}

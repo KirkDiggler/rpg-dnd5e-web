@@ -2,6 +2,7 @@ import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alph
 import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { EquipmentBundleChoice } from './choices/EquipmentBundleChoice';
 import { SimpleChoice } from './choices/SimpleChoice';
+import { SkillChoice } from './choices/SkillChoice';
 import { ToolChoice } from './choices/ToolChoice';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,15 +33,28 @@ export function ChoiceRenderer({
         choice={choice}
         onSelectionChange={(bundleId, categorySelections) => {
           // Convert EquipmentBundleChoice format back to standard format
+          // Store equipment selections with both id and name: "cat0:id:name"
           const selections: string[] = [];
           if (bundleId) selections.push(bundleId);
           categorySelections.forEach((equipment, index) => {
             equipment.forEach((item) =>
-              selections.push(`cat${index}:${item.id}`)
+              // Store as "cat{index}:{id}:{name}" so we can extract name later
+              selections.push(`cat${index}:${item.id}:${item.name}`)
             );
           });
           onSelectionChange(choice.id, selections);
         }}
+      />
+    );
+  }
+
+  // Skills use their dedicated component
+  if (choice.choiceType === ChoiceCategory.SKILLS) {
+    return (
+      <SkillChoice
+        choice={choice}
+        onSelectionChange={onSelectionChange}
+        currentSelections={currentSelections}
       />
     );
   }

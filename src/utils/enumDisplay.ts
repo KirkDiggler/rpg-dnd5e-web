@@ -1,9 +1,16 @@
 import {
+  Ammunition,
+  Armor,
+  ArmorProficiencyCategory,
   Background,
   Class,
   Language,
+  Pack,
   Race,
   Skill,
+  Tool,
+  Weapon,
+  WeaponProficiencyCategory,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 
 /**
@@ -139,14 +146,28 @@ export function getRaceEnum(name: string): Race {
 }
 
 /**
- * Convert armor proficiency enum values to human-readable strings
- * Examples: LIGHT -> Light, MEDIUM -> Medium, HEAVY -> Heavy, SHIELDS -> Shields
+ * Convert ArmorProficiencyCategory enum to display name
+ * Examples: LIGHT -> Light Armor, SHIELDS -> Shields
+ */
+export function getArmorProficiencyCategoryDisplay(
+  armor: ArmorProficiencyCategory
+): string {
+  const displays: Record<ArmorProficiencyCategory, string> = {
+    [ArmorProficiencyCategory.UNSPECIFIED]: 'Unknown',
+    [ArmorProficiencyCategory.LIGHT]: 'Light Armor',
+    [ArmorProficiencyCategory.MEDIUM]: 'Medium Armor',
+    [ArmorProficiencyCategory.HEAVY]: 'Heavy Armor',
+    [ArmorProficiencyCategory.SHIELDS]: 'Shields',
+  };
+  return displays[armor] || 'Unknown Armor';
+}
+
+/**
+ * Legacy function for displaying armor proficiencies from string/number
+ * Used by character sheet components
  */
 export function getArmorProficiencyDisplay(armor: string | number): string {
-  // Convert to string if it's a number
   const armorStr = typeof armor === 'string' ? armor : String(armor);
-
-  // Handle special cases
   const specialCases: Record<string, string> = {
     SHIELDS: 'Shields',
     LIGHT: 'Light Armor',
@@ -154,12 +175,9 @@ export function getArmorProficiencyDisplay(armor: string | number): string {
     HEAVY: 'Heavy Armor',
     ALL: 'All Armor',
   };
-
   if (specialCases[armorStr]) {
     return specialCases[armorStr];
   }
-
-  // Convert ENUM_STYLE to Title Case
   return armorStr
     .split('_')
     .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
@@ -167,14 +185,27 @@ export function getArmorProficiencyDisplay(armor: string | number): string {
 }
 
 /**
- * Convert weapon proficiency enum values to human-readable strings
- * Examples: SIMPLE -> Simple Weapons, MARTIAL -> Martial Weapons,
- * DAGGER -> Dagger, QUARTERSTAFF -> Quarterstaff
+ * Convert WeaponProficiencyCategory enum to display name
+ * Examples: SIMPLE -> Simple Weapons, MARTIAL -> Martial Weapons
+ */
+export function getWeaponProficiencyCategoryDisplay(
+  weapon: WeaponProficiencyCategory
+): string {
+  const displays: Record<WeaponProficiencyCategory, string> = {
+    [WeaponProficiencyCategory.UNSPECIFIED]: 'Unknown',
+    [WeaponProficiencyCategory.SIMPLE]: 'Simple Weapons',
+    [WeaponProficiencyCategory.MARTIAL]: 'Martial Weapons',
+    [WeaponProficiencyCategory.SPECIFIC]: 'Specific Weapons',
+  };
+  return displays[weapon] || 'Unknown Weapon Category';
+}
+
+/**
+ * Legacy function for displaying weapon proficiencies from string/number
+ * Used by character sheet components
  */
 export function getWeaponProficiencyDisplay(weapon: string | number): string {
-  // Convert to string if it's a number
   const weaponStr = typeof weapon === 'string' ? weapon : String(weapon);
-  // Handle category cases
   const categories: Record<string, string> = {
     SIMPLE: 'Simple Weapons',
     MARTIAL: 'Martial Weapons',
@@ -183,12 +214,9 @@ export function getWeaponProficiencyDisplay(weapon: string | number): string {
     MARTIAL_MELEE: 'Martial Melee Weapons',
     MARTIAL_RANGED: 'Martial Ranged Weapons',
   };
-
   if (categories[weaponStr]) {
     return categories[weaponStr];
   }
-
-  // Handle specific weapon names
   const specificWeapons: Record<string, string> = {
     QUARTERSTAFF: 'Quarterstaff',
     MACE: 'Mace',
@@ -222,12 +250,9 @@ export function getWeaponProficiencyDisplay(weapon: string | number): string {
     LONGBOW: 'Longbow',
     NET: 'Net',
   };
-
   if (specificWeapons[weaponStr]) {
     return specificWeapons[weaponStr];
   }
-
-  // Default conversion: ENUM_STYLE to Title Case
   return weaponStr
     .split('_')
     .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
@@ -312,4 +337,163 @@ export function getToolProficiencyDisplay(tool: string | number): string {
     .split('_')
     .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
     .join(' ');
+}
+
+/**
+ * Convert Weapon enum to display name
+ * Examples: CLUB -> Club, GREATAXE -> Greataxe, LIGHT_CROSSBOW -> Light Crossbow
+ */
+export function getWeaponDisplay(weapon: Weapon): string {
+  const displays: Record<Weapon, string> = {
+    [Weapon.UNSPECIFIED]: 'Unknown',
+    [Weapon.CLUB]: 'Club',
+    [Weapon.DAGGER]: 'Dagger',
+    [Weapon.GREATCLUB]: 'Greatclub',
+    [Weapon.HANDAXE]: 'Handaxe',
+    [Weapon.JAVELIN]: 'Javelin',
+    [Weapon.LIGHT_HAMMER]: 'Light Hammer',
+    [Weapon.MACE]: 'Mace',
+    [Weapon.QUARTERSTAFF]: 'Quarterstaff',
+    [Weapon.SICKLE]: 'Sickle',
+    [Weapon.SPEAR]: 'Spear',
+    [Weapon.LIGHT_CROSSBOW]: 'Light Crossbow',
+    [Weapon.DART]: 'Dart',
+    [Weapon.SHORTBOW]: 'Shortbow',
+    [Weapon.SLING]: 'Sling',
+    [Weapon.BATTLEAXE]: 'Battleaxe',
+    [Weapon.FLAIL]: 'Flail',
+    [Weapon.GLAIVE]: 'Glaive',
+    [Weapon.GREATAXE]: 'Greataxe',
+    [Weapon.GREATSWORD]: 'Greatsword',
+    [Weapon.HALBERD]: 'Halberd',
+    [Weapon.LANCE]: 'Lance',
+    [Weapon.LONGSWORD]: 'Longsword',
+    [Weapon.MAUL]: 'Maul',
+    [Weapon.MORNINGSTAR]: 'Morningstar',
+    [Weapon.PIKE]: 'Pike',
+    [Weapon.RAPIER]: 'Rapier',
+    [Weapon.SCIMITAR]: 'Scimitar',
+    [Weapon.SHORTSWORD]: 'Shortsword',
+    [Weapon.TRIDENT]: 'Trident',
+    [Weapon.WAR_PICK]: 'War Pick',
+    [Weapon.WARHAMMER]: 'Warhammer',
+    [Weapon.WHIP]: 'Whip',
+    [Weapon.BLOWGUN]: 'Blowgun',
+    [Weapon.HAND_CROSSBOW]: 'Hand Crossbow',
+    [Weapon.HEAVY_CROSSBOW]: 'Heavy Crossbow',
+    [Weapon.LONGBOW]: 'Longbow',
+    [Weapon.NET]: 'Net',
+    [Weapon.ARROWS_20]: 'Arrows (20)',
+    [Weapon.BOLTS_20]: 'Bolts (20)',
+    [Weapon.ANY_SIMPLE]: 'Any Simple Weapon',
+    [Weapon.ANY_MARTIAL]: 'Any Martial Weapon',
+    [Weapon.ANY]: 'Any Weapon',
+  };
+  return displays[weapon] || 'Unknown Weapon';
+}
+
+/**
+ * Convert Armor enum to display name
+ * Examples: LEATHER -> Leather, CHAIN_MAIL -> Chain Mail
+ */
+export function getArmorDisplay(armor: Armor): string {
+  const displays: Record<Armor, string> = {
+    [Armor.UNSPECIFIED]: 'Unknown',
+    [Armor.PADDED]: 'Padded Armor',
+    [Armor.LEATHER]: 'Leather Armor',
+    [Armor.STUDDED_LEATHER]: 'Studded Leather Armor',
+    [Armor.HIDE]: 'Hide Armor',
+    [Armor.CHAIN_SHIRT]: 'Chain Shirt',
+    [Armor.SCALE_MAIL]: 'Scale Mail',
+    [Armor.BREASTPLATE]: 'Breastplate',
+    [Armor.HALF_PLATE]: 'Half Plate',
+    [Armor.RING_MAIL]: 'Ring Mail',
+    [Armor.CHAIN_MAIL]: 'Chain Mail',
+    [Armor.SPLINT]: 'Splint Armor',
+    [Armor.PLATE]: 'Plate Armor',
+    [Armor.SHIELD]: 'Shield',
+  };
+  return displays[armor] || 'Unknown Armor';
+}
+
+/**
+ * Convert Tool enum to display name
+ * Examples: SMITH_TOOLS -> Smith's Tools, THIEVES_TOOLS -> Thieves' Tools
+ */
+export function getToolDisplay(tool: Tool): string {
+  const displays: Record<Tool, string> = {
+    [Tool.UNSPECIFIED]: 'Unknown',
+    [Tool.ALCHEMIST_SUPPLIES]: "Alchemist's Supplies",
+    [Tool.BREWER_SUPPLIES]: "Brewer's Supplies",
+    [Tool.CALLIGRAPHER_SUPPLIES]: "Calligrapher's Supplies",
+    [Tool.CARPENTER_TOOLS]: "Carpenter's Tools",
+    [Tool.CARTOGRAPHER_TOOLS]: "Cartographer's Tools",
+    [Tool.COBBLER_TOOLS]: "Cobbler's Tools",
+    [Tool.COOK_UTENSILS]: "Cook's Utensils",
+    [Tool.GLASSBLOWER_TOOLS]: "Glassblower's Tools",
+    [Tool.JEWELER_TOOLS]: "Jeweler's Tools",
+    [Tool.LEATHERWORKER_TOOLS]: "Leatherworker's Tools",
+    [Tool.MASON_TOOLS]: "Mason's Tools",
+    [Tool.PAINTER_SUPPLIES]: "Painter's Supplies",
+    [Tool.POTTER_TOOLS]: "Potter's Tools",
+    [Tool.SMITH_TOOLS]: "Smith's Tools",
+    [Tool.TINKER_TOOLS]: "Tinker's Tools",
+    [Tool.WEAVER_TOOLS]: "Weaver's Tools",
+    [Tool.WOODCARVER_TOOLS]: "Woodcarver's Tools",
+    [Tool.DICE_SET]: 'Dice Set',
+    [Tool.DRAGONCHESS_SET]: 'Dragonchess Set',
+    [Tool.PLAYING_CARD_SET]: 'Playing Card Set',
+    [Tool.THREE_DRAGON_ANTE]: 'Three-Dragon Ante Set',
+    [Tool.BAGPIPES]: 'Bagpipes',
+    [Tool.DRUM]: 'Drum',
+    [Tool.DULCIMER]: 'Dulcimer',
+    [Tool.FLUTE]: 'Flute',
+    [Tool.LUTE]: 'Lute',
+    [Tool.LYRE]: 'Lyre',
+    [Tool.HORN]: 'Horn',
+    [Tool.PAN_FLUTE]: 'Pan Flute',
+    [Tool.SHAWM]: 'Shawm',
+    [Tool.VIOL]: 'Viol',
+    [Tool.DISGUISE_KIT]: 'Disguise Kit',
+    [Tool.FORGERY_KIT]: 'Forgery Kit',
+    [Tool.HERBALISM_KIT]: 'Herbalism Kit',
+    [Tool.NAVIGATOR_TOOLS]: "Navigator's Tools",
+    [Tool.POISONER_KIT]: "Poisoner's Kit",
+    [Tool.THIEVES_TOOLS]: "Thieves' Tools",
+    [Tool.VEHICLES_LAND]: 'Vehicles (Land)',
+    [Tool.VEHICLES_WATER]: 'Vehicles (Water)',
+  };
+  return displays[tool] || 'Unknown Tool';
+}
+
+/**
+ * Convert Pack enum to display name
+ * Examples: EXPLORER -> Explorer's Pack, BURGLAR -> Burglar's Pack
+ */
+export function getPackDisplay(pack: Pack): string {
+  const displays: Record<Pack, string> = {
+    [Pack.UNSPECIFIED]: 'Unknown',
+    [Pack.BURGLARS]: "Burglar's Pack",
+    [Pack.DIPLOMATS]: "Diplomat's Pack",
+    [Pack.DUNGEONEERS]: "Dungeoneer's Pack",
+    [Pack.ENTERTAINERS]: "Entertainer's Pack",
+    [Pack.EXPLORERS]: "Explorer's Pack",
+    [Pack.PRIESTS]: "Priest's Pack",
+    [Pack.SCHOLARS]: "Scholar's Pack",
+  };
+  return displays[pack] || 'Unknown Pack';
+}
+
+/**
+ * Convert Ammunition enum to display name
+ */
+export function getAmmunitionDisplay(ammo: Ammunition): string {
+  const displays: Record<Ammunition, string> = {
+    [Ammunition.UNSPECIFIED]: 'Unknown',
+    [Ammunition.ARROWS_20]: 'Arrows (20)',
+    [Ammunition.BOLTS_20]: 'Bolts (20)',
+    [Ammunition.BLOWGUN_NEEDLES_50]: 'Blowgun Needles (50)',
+    [Ammunition.SLING_BULLETS_20]: 'Sling Bullets (20)',
+  };
+  return displays[ammo] || 'Unknown Ammunition';
 }
