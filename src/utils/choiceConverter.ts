@@ -12,10 +12,7 @@ import {
   SkillSelectionSchema,
   ToolSelectionSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
-import {
-  FightingStyle,
-  Skill,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { Skill } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type {
   EquipmentChoice,
   FeatureChoice,
@@ -119,49 +116,22 @@ export function convertEquipmentChoiceToProto(
   });
 }
 
-// Feature choices will need to be implemented once we have the proper category
-// For now, features might map to FIGHTING_STYLE or other specific categories
+// Feature choices for fighting styles
 export function convertFeatureChoiceToProto(
   choice: FeatureChoice,
   source: ChoiceSource
 ): ChoiceData {
-  // Fighting styles use the 'fightingStyle' selection case
-  // Convert "feature_archery" -> "archery", "feature_defense" -> "defense", etc.
-  const cleanValue = choice.selection.replace(/^feature_/, '');
-
-  // Convert string to FightingStyle enum
-  const styleEnum = getFightingStyleEnum(cleanValue);
-
-  const result = create(ChoiceDataSchema, {
+  return create(ChoiceDataSchema, {
     choiceId: choice.choiceId,
-    category: ChoiceCategory.FIGHTING_STYLE, // Category 11
+    category: ChoiceCategory.FIGHTING_STYLE,
     source,
     selection: {
       case: 'fightingStyle',
       value: create(FightingStyleSelectionSchema, {
-        style: styleEnum,
+        style: choice.selection,
       }),
     },
   });
-
-  return result;
-}
-
-// Helper to convert fighting style string to enum
-function getFightingStyleEnum(styleName: string): FightingStyle {
-  const styleMap: Record<string, FightingStyle> = {
-    archery: FightingStyle.ARCHERY,
-    defense: FightingStyle.DEFENSE,
-    dueling: FightingStyle.DUELING,
-    great_weapon_fighting: FightingStyle.GREAT_WEAPON_FIGHTING,
-    'great-weapon-fighting': FightingStyle.GREAT_WEAPON_FIGHTING,
-    protection: FightingStyle.PROTECTION,
-    two_weapon_fighting: FightingStyle.TWO_WEAPON_FIGHTING,
-    'two-weapon-fighting': FightingStyle.TWO_WEAPON_FIGHTING,
-  };
-
-  const lowerName = styleName.toLowerCase();
-  return styleMap[lowerName] || FightingStyle.UNSPECIFIED;
 }
 
 export function convertExpertiseChoiceToProto(

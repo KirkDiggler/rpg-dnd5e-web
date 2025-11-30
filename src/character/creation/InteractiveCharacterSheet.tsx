@@ -220,7 +220,7 @@ export function InteractiveCharacterSheet({
         choices.features?.push({
           choiceId: choice.choiceId,
           featureId: String(choice.selection.value.style || ''),
-          selection: FightingStyle[choice.selection.value.style] || '',
+          selection: choice.selection.value.style,
         });
       }
       // TODO: Handle other choice types as needed

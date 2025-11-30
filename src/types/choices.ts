@@ -1,4 +1,5 @@
 import {
+  FightingStyle,
   Language,
   Skill,
   Tool,
@@ -36,7 +37,7 @@ export interface EquipmentChoice {
 export interface FeatureChoice {
   choiceId: string;
   featureId: string;
-  selection: string;
+  selection: FightingStyle;
 }
 
 export interface ExpertiseChoice {
