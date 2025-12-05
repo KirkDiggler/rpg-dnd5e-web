@@ -96,6 +96,14 @@ function CategorySelector({
     onSelect(categoryIndex, selectedItems);
   };
 
+  // Check for duplicate selections across slots
+  const hasDuplicates = (() => {
+    const selectedIds = selectedBySlot.filter(
+      (id): id is string => id !== null
+    );
+    return new Set(selectedIds).size !== selectedIds.length;
+  })();
+
   const selectStyle = {
     width: '100%',
     padding: '8px 12px',
@@ -140,6 +148,21 @@ function CategorySelector({
           </select>
         ))}
       </div>
+      {hasDuplicates && (
+        <div
+          style={{
+            marginTop: '8px',
+            padding: '8px 12px',
+            backgroundColor: 'rgba(251, 191, 36, 0.1)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '4px',
+            fontSize: '12px',
+            color: 'var(--text-muted)',
+          }}
+        >
+          ⚠️ Same item selected multiple times (allowed for dual-wielding)
+        </div>
+      )}
     </div>
   );
 }

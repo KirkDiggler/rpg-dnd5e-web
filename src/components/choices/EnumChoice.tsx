@@ -39,6 +39,9 @@ export function EnumChoice<T extends number>({
   layout,
   onSelectionChange,
 }: EnumChoiceProps<T>) {
+  // Filter out UNSPECIFIED values (value 0) - these should never be displayed to users
+  const filteredAvailable = available.filter((item) => item !== 0);
+
   // Auto-detect layout
   const effectiveLayout = layout || (getGroup ? 'grouped' : 'rows');
 
@@ -60,7 +63,7 @@ export function EnumChoice<T extends number>({
     // Group items by the group function
     const itemsByGroup: Record<string, T[]> = {};
 
-    available.forEach((item) => {
+    filteredAvailable.forEach((item) => {
       const group = getGroup(item);
       if (!itemsByGroup[group]) {
         itemsByGroup[group] = [];
@@ -205,7 +208,7 @@ export function EnumChoice<T extends number>({
         )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {available.map((item) => {
+        {filteredAvailable.map((item) => {
           const isSelected = currentSelections.includes(item);
           const isDisabled =
             !isSelected && currentSelections.length >= choice.chooseCount;
