@@ -1,9 +1,15 @@
 import type { Choice } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
+import {
+  getFightingStyleInfo,
+  getLanguageInfo,
+  getSkillAbility,
+  getSkillInfo,
+  getToolInfo,
+} from '../utils/enumRegistry';
+import { EnumChoice } from './choices/EnumChoice';
 import { EquipmentBundleChoice } from './choices/EquipmentBundleChoice';
 import { SimpleChoice } from './choices/SimpleChoice';
-import { SkillChoice } from './choices/SkillChoice';
-import { ToolChoice } from './choices/ToolChoice';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SelectionValue = any; // Generic type that can be Language[] | Skill[] | string[] based on choice type
@@ -48,24 +54,75 @@ export function ChoiceRenderer({
     );
   }
 
-  // Skills use their dedicated component
-  if (choice.choiceType === ChoiceCategory.SKILLS) {
+  // Languages - use EnumChoice
+  if (
+    choice.choiceType === ChoiceCategory.LANGUAGES &&
+    choice.options?.case === 'languageOptions'
+  ) {
     return (
-      <SkillChoice
+      <EnumChoice
         choice={choice}
-        onSelectionChange={onSelectionChange}
+        available={choice.options.value.available}
         currentSelections={currentSelections}
+        getDisplayInfo={getLanguageInfo}
+        onSelectionChange={onSelectionChange}
       />
     );
   }
 
-  // Tools still use their dedicated component
-  if (choice.choiceType === ChoiceCategory.TOOLS) {
+  // Skills - use EnumChoice with grouping
+  if (
+    choice.choiceType === ChoiceCategory.SKILLS &&
+    choice.options?.case === 'skillOptions'
+  ) {
     return (
-      <ToolChoice
+      <EnumChoice
         choice={choice}
-        onSelectionChange={onSelectionChange}
+        available={choice.options.value.available}
         currentSelections={currentSelections}
+        getDisplayInfo={getSkillInfo}
+        getGroup={getSkillAbility}
+        groupOrder={[
+          'Strength',
+          'Dexterity',
+          'Constitution',
+          'Intelligence',
+          'Wisdom',
+          'Charisma',
+        ]}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+  }
+
+  // Tools - use EnumChoice
+  if (
+    choice.choiceType === ChoiceCategory.TOOLS &&
+    choice.options?.case === 'toolOptions'
+  ) {
+    return (
+      <EnumChoice
+        choice={choice}
+        available={choice.options.value.available}
+        currentSelections={currentSelections}
+        getDisplayInfo={getToolInfo}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+  }
+
+  // Fighting Styles - use EnumChoice
+  if (
+    choice.choiceType === ChoiceCategory.FIGHTING_STYLE &&
+    choice.options?.case === 'fightingStyleOptions'
+  ) {
+    return (
+      <EnumChoice
+        choice={choice}
+        available={choice.options.value.available}
+        currentSelections={currentSelections}
+        getDisplayInfo={getFightingStyleInfo}
+        onSelectionChange={onSelectionChange}
       />
     );
   }
