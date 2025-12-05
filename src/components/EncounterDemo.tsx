@@ -12,8 +12,13 @@ import type {
   CombatState,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActionPanel } from './combat-v2';
+import {
+  CombatHistoryPanel,
+  type CombatHistoryEntry,
+  type CombatHistoryHandle,
+} from './combat/panels/CombatHistoryPanel';
 import { BattleMapPanel, type DamageNumber } from './encounter/BattleMapPanel';
 import { InitiativePanel } from './encounter/InitiativePanel';
 import { PartySetupPanel } from './encounter/PartySetupPanel';
@@ -61,6 +66,10 @@ export function EncounterDemo() {
 
   // Damage number state
   const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([]);
+
+  // Combat history
+  const combatHistoryRef = useRef<CombatHistoryHandle>(null);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
 
   const handleStartEncounter = async () => {
     try {
@@ -399,6 +408,40 @@ export function EncounterDemo() {
           });
         }
 
+        // Add entry to combat history
+        // Get names - for characters use character name, for monsters format the entityId
+        const getEntityName = (entityId: string): string => {
+          // Check if it's a player character
+          const char = availableCharacters.find((c) => c.id === entityId);
+          if (char) return char.name;
+
+          // For monsters, format the entityId nicely (e.g., "goblin-1" -> "Goblin 1")
+          return entityId
+            .split('-')
+            .map((part) =>
+              isNaN(Number(part))
+                ? part.charAt(0).toUpperCase() + part.slice(1)
+                : part
+            )
+            .join(' ');
+        };
+
+        const attackerName = attackerChar?.name || getEntityName(attackerId);
+        const targetName = getEntityName(attackTarget);
+
+        const historyEntry: CombatHistoryEntry = {
+          id: `${Date.now()}-${attackerId}-${attackTarget}`,
+          timestamp: new Date(),
+          round: combatState.round,
+          attackerId,
+          attackerName,
+          targetId: attackTarget,
+          targetName,
+          weaponName,
+          result: response.result,
+        };
+        combatHistoryRef.current?.addEntry(historyEntry);
+
         if (hit) {
           console.log(
             `Damage: ${damage} ${damageType}${critical ? ' (CRITICAL!)' : ''}`
@@ -670,6 +713,15 @@ export function EncounterDemo() {
         onCancelMove={handleCancelMove}
         debug={false} // Set to true for visibility testing
       />
+
+      {/* Combat History Panel - Shows attack result history */}
+      {combatState && (
+        <CombatHistoryPanel
+          ref={combatHistoryRef}
+          isVisible={showHistoryPanel}
+          onToggle={() => setShowHistoryPanel(!showHistoryPanel)}
+        />
+      )}
     </>
   );
 }
