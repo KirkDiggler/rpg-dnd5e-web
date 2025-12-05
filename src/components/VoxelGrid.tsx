@@ -182,7 +182,8 @@ function EntityMarker({
     : '/models/human_complete.vox'; // Low-res 13KB model for monsters
 
   // Players need smaller scale due to high-res model dimensions
-  const modelScale = isPlayer ? 0.015 : 0.02;
+  // Scale to make character ~5 feet tall (reduced from 0.015/0.02 which was 4x too large)
+  const modelScale = isPlayer ? 0.00375 : 0.005;
 
   const { model: voxelModel } = useVoxelModel({
     modelPath: shouldUseVoxel ? modelPath : '',
@@ -398,10 +399,9 @@ export function VoxelGrid(props: VoxelGridProps) {
       </style>
       <Canvas
         camera={{
-          position: [
-            -22.099228887851552, 6.343584064334879, 20.566566423746607,
-          ],
-          zoom: 71.76911159862591,
+          // Classic isometric: ~35° from horizontal, closer to action
+          position: [10, 12, 10],
+          zoom: 120,
         }}
         orthographic
       >
@@ -412,7 +412,7 @@ export function VoxelGrid(props: VoxelGridProps) {
           enableZoom={true}
           maxPolarAngle={Math.PI / 2.2} // Don't go completely horizontal
           minPolarAngle={Math.PI / 6} // Don't go too high (top-down)
-          target={[0.7799356490628112, -0.5942686854433457, -2.796867170551753]}
+          target={[0, 0, 0]}
         />
       </Canvas>
     </div>

@@ -2,8 +2,12 @@ import { useEndTurn } from '@/api/encounterHooks';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { AnimatePresence, motion } from 'framer-motion';
+import type { RefObject } from 'react';
 import { useState } from 'react';
-import { CombatHistoryPanel } from './panels/CombatHistoryPanel';
+import {
+  CombatHistoryPanel,
+  type CombatHistoryHandle,
+} from './panels/CombatHistoryPanel';
 import { DebugPanel } from './panels/DebugPanel';
 import { HealthTrackingPanel } from './panels/HealthTrackingPanel';
 
@@ -15,6 +19,7 @@ interface CombatOverlayProps {
   onActionComplete?: () => void;
   onCombatStateUpdate?: (combatState: CombatState) => void;
   onMoveAction?: () => void;
+  combatHistoryRef?: RefObject<CombatHistoryHandle | null>;
 }
 
 /**
@@ -35,6 +40,7 @@ export function CombatOverlay({
   onActionComplete,
   onCombatStateUpdate,
   onMoveAction,
+  combatHistoryRef,
 }: CombatOverlayProps) {
   // Panel visibility state
   const [showDebugPanel, setShowDebugPanel] = useState(
@@ -121,7 +127,7 @@ export function CombatOverlay({
 
           {/* Combat History Panel */}
           <CombatHistoryPanel
-            combatState={combatState}
+            ref={combatHistoryRef}
             isVisible={showHistoryPanel}
             onToggle={() => setShowHistoryPanel(!showHistoryPanel)}
           />

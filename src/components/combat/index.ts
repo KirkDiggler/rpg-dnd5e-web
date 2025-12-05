@@ -6,6 +6,10 @@ export { getPanelPositionClasses } from './utils';
 export type { CombatPanelPosition } from './utils';
 
 // Panel exports for extensibility
-export { CombatHistoryPanel } from './panels/CombatHistoryPanel';
+export {
+  CombatHistoryPanel,
+  type CombatHistoryEntry,
+  type CombatHistoryHandle,
+} from './panels/CombatHistoryPanel';
 export { DebugPanel } from './panels/DebugPanel';
 export { HealthTrackingPanel } from './panels/HealthTrackingPanel';
