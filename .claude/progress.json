@@ -157,6 +157,30 @@
         "combat-log-dice-highlighting",
         "responsive-layout"
       ]
+    },
+    {
+      "date": "2025-12-05",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 9: Integrate into EncounterDemo replacing old panel",
+      "status": "completed",
+      "commit": "cde2a84",
+      "files_modified": ["src/components/EncounterDemo.tsx"],
+      "summary": "Integrated the new CombatPanel into EncounterDemo, replacing the old ActionPanel. Added imports for CombatPanel and usePlayerTurn hook. Used usePlayerTurn to extract turnState, isPlayerTurn, and currentCharacter from combat state. Created new handler functions: handleSpell (placeholder toast), handleBackpack (opens equipment modal for current character), handleWeaponClick (triggers attack with selected weapon). Wired up all CombatPanel callbacks to existing handlers (handleAttackAction, handleMoveAction, handleActivateFeature). The old ActionPanel code is commented out for easy rollback. Removed unused handleExecuteMove and handleCancelMove functions that were specific to the old panel. The new panel only renders when currentCharacter is available (during player turns). All CI checks pass (format, lint, typecheck, build). Ready for Task 10 responsive design verification and manual testing.",
+      "tests_affected": [
+        "character-portrait-display",
+        "hp-bar-display",
+        "ac-display",
+        "condition-badges",
+        "equipped-weapons-display",
+        "weapon-click-attack",
+        "action-economy-indicators",
+        "class-specific-fighter",
+        "class-specific-wizard",
+        "class-specific-barbarian",
+        "combat-log-sidebar",
+        "combat-log-dice-highlighting",
+        "backpack-modal"
+      ]
     }
   ],
   "next_steps": [
@@ -168,7 +192,7 @@
     "Task 6: Extend damageSourceIcons.ts for condition icons (conditionIcons.ts) ✓ COMPLETED",
     "Task 7: Relocate CombatHistoryPanel to right sidebar with enhanced styling ✓ COMPLETED",
     "Task 8: Compose new CombatPanel from all sub-components ✓ COMPLETED",
-    "Task 9: Integrate into EncounterDemo replacing old panel",
-    "Task 10: Add responsive design considerations"
+    "Task 9: Integrate into EncounterDemo replacing old panel ✓ COMPLETED",
+    "Task 10: Add responsive design considerations / Manual testing"
   ]
 }

@@ -706,7 +706,32 @@
   color: #64748b; /* slate-500 - dimmed for used state */
 }
 
-/* Responsive design */
+/* Responsive design - Tablet */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .characterInfoSection {
+    flex-wrap: wrap;
+  }
+
+  .hpSection {
+    flex: 1 1 200px;
+  }
+
+  .conditionsSection {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .dynamicActionButtons {
+    gap: 10px;
+  }
+
+  .dynamicActionButton {
+    padding: 10px 14px;
+    font-size: 0.8125rem;
+  }
+}
+
+/* Responsive design - Mobile */
 @media (max-width: 768px) {
   .actionPanelContainer {
     padding: 12px 16px;
@@ -759,10 +784,14 @@
   /* Equipment Display - Stack on mobile */
   .equipmentDisplay {
     flex-direction: column;
+    gap: 16px; /* Increased spacing for easier touch targeting */
   }
 
   .weaponSlot {
     min-width: unset;
+    /* Ensure adequate touch target size for weapon slots */
+    min-height: 64px;
+    padding: 12px 14px;
   }
 
   /* Action Economy - Wrap on mobile */
@@ -923,6 +952,9 @@
     flex: 1 1 calc(50% - 6px);
     justify-content: center;
     min-width: 120px;
+    /* Ensure minimum touch target size (44x44px) for mobile accessibility */
+    min-height: 44px;
+    padding: 12px 16px;
   }
 }
 
