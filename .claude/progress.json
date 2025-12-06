@@ -47,11 +47,25 @@
         "ac-display",
         "condition-badges"
       ]
+    },
+    {
+      "date": "2025-12-05",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 2: EquipmentDisplay component",
+      "status": "completed",
+      "commit": "ffcd7be",
+      "files_modified": [
+        "src/components/combat-v2/panels/EquipmentDisplay.tsx",
+        "src/components/combat-v2/styles/combat.module.css",
+        "src/components/combat-v2/index.ts"
+      ],
+      "summary": "Created EquipmentDisplay component showing main hand and off hand weapon slots with clickable attack functionality. Displays weapon name, damage dice (e.g., '1d8'), and damage type (e.g., 'slashing'). Empty slots show 'Empty' with dashed border. Includes hover effects with red border (attack color), disabled state styling, weapon icons (⚔️), and keyboard accessibility (Enter/Space). Helper functions convert DamageType enum to display strings. Responsive design stacks slots on mobile. Follows CharacterInfoSection patterns with dark theme and CSS modules.",
+      "tests_affected": ["equipped-weapons-display", "weapon-click-attack"]
     }
   ],
   "next_steps": [
     "Task 1: Create CharacterInfoSection component (portrait, name, HP bar, AC, conditions) ✓ COMPLETED",
-    "Task 2: Create EquipmentDisplay component (main hand/off hand weapon slots)",
+    "Task 2: Create EquipmentDisplay component (main hand/off hand weapon slots) ✓ COMPLETED",
     "Task 3: Create ActionEconomyIndicators component (movement/action/bonus/reaction dots)",
     "Task 4: Create class-to-actions mapping utility (Fighter->Attack/Second Wind/Action Surge, etc.)",
     "Task 5: Create DynamicActionButtons component using class mapping",
