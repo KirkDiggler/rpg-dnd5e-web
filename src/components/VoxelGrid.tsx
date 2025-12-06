@@ -104,47 +104,43 @@ function HexCell({
   // Create edges for visible borders
   const edges = new THREE.EdgesGeometry(hexGeometry);
 
-  // Create taller invisible hit area for easier clicking
-  const hitAreaShape = createHexagonShape(0.48);
-  const hitAreaGeometry = new THREE.ExtrudeGeometry(hitAreaShape, {
-    depth: 1.5, // Tall invisible hit area
-    bevelEnabled: false,
-  });
-
   return (
-    <group position={[pos.x, 0, pos.z]} rotation={[-Math.PI / 2, 0, 0]}>
-      {/* Invisible tall hit area for easier clicking */}
+    <group position={[pos.x, 0, pos.z]}>
+      {/* Invisible cylinder hit area for easier clicking - not rotated with hex */}
       <mesh
         onClick={onClick}
         onDoubleClick={onDoubleClick}
         onPointerOver={() => onHover(true)}
         onPointerOut={() => onHover(false)}
-        geometry={hitAreaGeometry}
-        position={[0, 0, -0.05]} // Slightly below surface
+        position={[0, 0.5, 0]} // Center at half height
       >
+        <cylinderGeometry args={[0.45, 0.45, 1.0, 6]} />
         <meshBasicMaterial visible={false} />
       </mesh>
 
-      {/* Main hex tile (visual only) */}
-      <mesh ref={meshRef} geometry={hexGeometry}>
-        <meshStandardMaterial
-          color={getColor()}
-          transparent
-          opacity={isInRange ? 0.7 : 0.5}
-          metalness={0.3}
-          roughness={0.7}
-        />
-      </mesh>
+      {/* Visual hex tile */}
+      <group rotation={[-Math.PI / 2, 0, 0]}>
+        {/* Main hex tile */}
+        <mesh ref={meshRef} geometry={hexGeometry}>
+          <meshStandardMaterial
+            color={getColor()}
+            transparent
+            opacity={isInRange ? 0.7 : 0.5}
+            metalness={0.3}
+            roughness={0.7}
+          />
+        </mesh>
 
-      {/* Visible hex borders */}
-      <lineSegments ref={edgesRef} geometry={edges}>
-        <lineBasicMaterial
-          color={isHovered || isSelected ? '#ffffff' : '#64748b'}
-          linewidth={2}
-          opacity={0.8}
-          transparent
-        />
-      </lineSegments>
+        {/* Visible hex borders */}
+        <lineSegments ref={edgesRef} geometry={edges}>
+          <lineBasicMaterial
+            color={isHovered || isSelected ? '#ffffff' : '#64748b'}
+            linewidth={2}
+            opacity={0.8}
+            transparent
+          />
+        </lineSegments>
+      </group>
     </group>
   );
 }
@@ -412,9 +408,9 @@ export function VoxelGrid(props: VoxelGridProps) {
       </style>
       <Canvas
         camera={{
-          // Classic isometric angle, zoomed out to see full 20x20 grid
+          // Classic isometric angle, good starting zoom
           position: [15, 18, 15],
-          zoom: 45,
+          zoom: 70,
         }}
         orthographic
       >
