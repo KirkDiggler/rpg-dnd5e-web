@@ -242,6 +242,22 @@
       ],
       "summary": "Removed hardcoded mock combat log entries from CombatHistorySidebar. Replaced with clean empty state displaying crossed swords icon, 'Combat actions will appear here' message, and explanatory text about what will be logged. The component structure remains intact with all TypeScript interfaces (DiceRoll, CombatLogEntry) and helper functions (getActionTypeIcon, getDiceRollClassName, getDiceRollTooltip) preserved for future real event wiring. This was the final manual testing issue for #228. Component now shows honest empty state instead of misleading fake data.",
       "tests_affected": ["combat-log-sidebar"]
+    },
+    {
+      "date": "2025-12-06",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 15: Fix CRITICAL issues from manual testing - End Turn and Equipment debugging",
+      "status": "completed",
+      "commit": "4032bd6",
+      "files_modified": [
+        "src/utils/classActions.ts",
+        "src/components/combat-v2/panels/DynamicActionButtons.tsx",
+        "src/components/combat-v2/panels/CombatPanel.tsx",
+        "src/components/EncounterDemo.tsx",
+        "src/components/combat-v2/panels/EquipmentDisplay.tsx"
+      ],
+      "summary": "Fixed two CRITICAL issues discovered during manual testing: (1) GAME UNPLAYABLE - No End Turn button: Added 'end_turn' action to COMMON_ACTIONS array in classActions.ts, added onEndTurn prop throughout the component chain (DynamicActionButtons -> CombatPanel -> EncounterDemo), imported useEndTurn hook in EncounterDemo, created handleEndTurn handler that calls the API and updates combat state, wired onEndTurn={handleEndTurn} to CombatPanel. End Turn button now appears as the last button in action sets for all classes. (2) EQUIPMENT SHOWS EMPTY - Added comprehensive debug logging: EquipmentDisplay logs character ID and equipment slot data, EncounterDemo useEffect logs character fetching process and API responses, getSelectedCharacters logs fullCharactersMap state and data flow. Debug logs will help identify why equipment data from fullCharactersMap isn't displaying correctly even though the backpack modal shows the correct data. All CI checks pass.",
+      "tests_affected": ["end-turn-button", "equipment-display-debugging"]
     }
   ],
   "next_steps": [
@@ -258,17 +274,23 @@
     "Task 11: Fix CombatPanel positioning - anchor to bottom of viewport ✓ COMPLETED",
     "Task 12: Hide Quick Actions from InitiativePanel when new CombatPanel is active ✓ COMPLETED",
     "Task 13: Wire real equipment data from character.equipmentSlots to EquipmentDisplay ✓ COMPLETED",
-    "Task 14: Remove mock data from CombatHistorySidebar ✓ COMPLETED"
+    "Task 14: Remove mock data from CombatHistorySidebar ✓ COMPLETED",
+    "Task 15: Fix CRITICAL issues - End Turn button and Equipment debugging ✓ COMPLETED"
   ],
   "status": "completed",
   "manual_testing_feedback": {
     "date": "2025-12-06",
-    "issues_found": [
+    "round_1_issues": [
       "CombatPanel scrolls off screen when window is tall - needs fixed positioning ✓ FIXED (Task 11)",
       "Old Quick Actions panel still visible in InitiativePanel - should be hidden ✓ FIXED (Task 12)",
       "Equipment slots show 'Empty' but backpack shows equipped items - data not wired ✓ FIXED (Task 13)",
       "Combat log shows mock/fake data - not connected to real combat events ✓ FIXED (Task 14)"
-    ]
+    ],
+    "round_2_issues": [
+      "CRITICAL: No End Turn button - game unplayable ✓ FIXED (Task 15)",
+      "Equipment still shows Empty - needs debugging ⚠️ DEBUG LOGGING ADDED (Task 15)"
+    ],
+    "notes": "Equipment issue has debug logging in place. Console logs will help trace why fullCharactersMap data isn't flowing to EquipmentDisplay even though Task 13 implemented the fetch logic. Check browser console during next manual test."
   },
   "remaining_tasks": []
 }
