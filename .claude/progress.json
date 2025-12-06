@@ -28,9 +28,29 @@
       "Condition-to-icon mapping needs extending damageSourceIcons.ts pattern"
     ]
   },
-  "sessions": [],
+  "sessions": [
+    {
+      "date": "2025-12-05",
+      "agent": "Claude Opus 4.5",
+      "task": "Task 1: CharacterInfoSection component",
+      "status": "completed",
+      "commit": "a30d6c0",
+      "files_modified": [
+        "src/components/combat-v2/panels/CharacterInfoSection.tsx",
+        "src/components/combat-v2/styles/combat.module.css",
+        "src/components/combat-v2/index.ts"
+      ],
+      "summary": "Created CharacterInfoSection component with portrait, name/class/level, HP bar with color coding (green/yellow/red), temp HP display, AC with shield icon, and active condition badges with tooltips. Includes basic condition icon mapping (extensible for Task 6). Follows combat-v2 patterns with dark theme and responsive design.",
+      "tests_affected": [
+        "character-portrait-display",
+        "hp-bar-display",
+        "ac-display",
+        "condition-badges"
+      ]
+    }
+  ],
   "next_steps": [
-    "Task 1: Create CharacterInfoSection component (portrait, name, HP bar, AC, conditions)",
+    "Task 1: Create CharacterInfoSection component (portrait, name, HP bar, AC, conditions) ✓ COMPLETED",
     "Task 2: Create EquipmentDisplay component (main hand/off hand weapon slots)",
     "Task 3: Create ActionEconomyIndicators component (movement/action/bonus/reaction dots)",
     "Task 4: Create class-to-actions mapping utility (Fighter->Attack/Second Wind/Action Surge, etc.)",
