@@ -19,6 +19,8 @@ export { ActionPanel } from './panels/ActionPanel';
 export type { ActionPanelProps } from './panels/ActionPanel';
 export { CharacterInfoSection } from './panels/CharacterInfoSection';
 export type { CharacterInfoSectionProps } from './panels/CharacterInfoSection';
+export { DynamicActionButtons } from './panels/DynamicActionButtons';
+export type { DynamicActionButtonsProps } from './panels/DynamicActionButtons';
 export { EquipmentDisplay } from './panels/EquipmentDisplay';
 export type { EquipmentDisplayProps } from './panels/EquipmentDisplay';
 

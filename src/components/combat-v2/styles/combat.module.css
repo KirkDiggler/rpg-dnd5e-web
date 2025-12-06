@@ -776,3 +776,152 @@
     min-width: 80px;
   }
 }
+
+/* ===================================== */
+/* Dynamic Action Buttons */
+/* ===================================== */
+
+.dynamicActionButtons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.dynamicActionButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+}
+
+.dynamicActionButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  background-color: #475569; /* slate-600 */
+}
+
+.dynamicActionButton:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.dynamicActionButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.actionButtonIcon {
+  font-size: 1.25rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.actionButtonLabel {
+  line-height: 1;
+}
+
+/* Active state for toggleable abilities (e.g., Rage) */
+.actionButtonActive {
+  border-color: #fbbf24; /* amber-400 */
+  background-color: #92400e; /* amber-900 */
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
+}
+
+.actionButtonActive:hover:not(:disabled) {
+  background-color: #78350f; /* amber-950 */
+  border-color: #fcd34d; /* amber-300 */
+}
+
+/* Disabled state */
+.actionButtonDisabled {
+  background-color: #1e293b; /* slate-800 */
+  color: #64748b; /* slate-500 */
+}
+
+/* Action-specific button colors */
+.actionButtonAttack {
+  background-color: #dc2626; /* red-600 */
+  color: white;
+}
+
+.actionButtonAttack:hover:not(:disabled) {
+  background-color: #b91c1c; /* red-700 */
+}
+
+.actionButtonMove {
+  background-color: #3b82f6; /* blue-500 */
+  color: white;
+}
+
+.actionButtonMove:hover:not(:disabled) {
+  background-color: #2563eb; /* blue-600 */
+}
+
+.actionButtonSpell {
+  background-color: #7c3aed; /* violet-600 */
+  color: white;
+}
+
+.actionButtonSpell:hover:not(:disabled) {
+  background-color: #6d28d9; /* violet-700 */
+}
+
+.actionButtonAbility {
+  background-color: #ea580c; /* orange-600 */
+  color: white;
+}
+
+.actionButtonAbility:hover:not(:disabled) {
+  background-color: #c2410c; /* orange-700 */
+}
+
+.actionButtonSecond_wind,
+.actionButtonAction_surge,
+.actionButtonRage,
+.actionButtonReckless_attack,
+.actionButtonCunning_action {
+  background-color: #059669; /* emerald-600 */
+  color: white;
+}
+
+.actionButtonSecond_wind:hover:not(:disabled),
+.actionButtonAction_surge:hover:not(:disabled),
+.actionButtonRage:hover:not(:disabled),
+.actionButtonReckless_attack:hover:not(:disabled),
+.actionButtonCunning_action:hover:not(:disabled) {
+  background-color: #047857; /* emerald-700 */
+}
+
+.actionButtonBackpack {
+  background-color: #64748b; /* slate-500 */
+  color: white;
+}
+
+.actionButtonBackpack:hover:not(:disabled) {
+  background-color: #475569; /* slate-600 */
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .dynamicActionButtons {
+    justify-content: center;
+  }
+
+  .dynamicActionButton {
+    flex: 1 1 calc(50% - 6px);
+    justify-content: center;
+    min-width: 120px;
+  }
+}
