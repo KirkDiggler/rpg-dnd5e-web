@@ -230,6 +230,18 @@
       ],
       "summary": "Fixed equipment display data wiring issue. Root cause: useListCharacters returns basic Character objects without full equipmentSlots data populated. The Character protobuf type has the field, but ListCharacters API doesn't populate it. Solution: Added useEffect to fetch full character data via GetCharacter API when combat starts. Created fullCharactersMap state (Map<string, Character>) to store complete character data with equipment. Modified getSelectedCharacters to prefer full character data from the map during combat. The equipment slots now properly display equipped weapons (name, damage dice, damage type) instead of showing 'Empty'. All CI checks pass.",
       "tests_affected": ["equipped-weapons-display"]
+    },
+    {
+      "date": "2025-12-06",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 14: Remove mock data from CombatHistorySidebar",
+      "status": "completed",
+      "commit": "f010916",
+      "files_modified": [
+        "src/components/combat-v2/panels/CombatHistorySidebar.tsx"
+      ],
+      "summary": "Removed hardcoded mock combat log entries from CombatHistorySidebar. Replaced with clean empty state displaying crossed swords icon, 'Combat actions will appear here' message, and explanatory text about what will be logged. The component structure remains intact with all TypeScript interfaces (DiceRoll, CombatLogEntry) and helper functions (getActionTypeIcon, getDiceRollClassName, getDiceRollTooltip) preserved for future real event wiring. This was the final manual testing issue for #228. Component now shows honest empty state instead of misleading fake data.",
+      "tests_affected": ["combat-log-sidebar"]
     }
   ],
   "next_steps": [
@@ -245,19 +257,18 @@
     "Task 10: Add responsive design considerations / Manual testing ✓ COMPLETED",
     "Task 11: Fix CombatPanel positioning - anchor to bottom of viewport ✓ COMPLETED",
     "Task 12: Hide Quick Actions from InitiativePanel when new CombatPanel is active ✓ COMPLETED",
-    "Task 13: Wire real equipment data from character.equipmentSlots to EquipmentDisplay ✓ COMPLETED"
+    "Task 13: Wire real equipment data from character.equipmentSlots to EquipmentDisplay ✓ COMPLETED",
+    "Task 14: Remove mock data from CombatHistorySidebar ✓ COMPLETED"
   ],
-  "status": "in_progress",
+  "status": "completed",
   "manual_testing_feedback": {
     "date": "2025-12-06",
     "issues_found": [
       "CombatPanel scrolls off screen when window is tall - needs fixed positioning ✓ FIXED (Task 11)",
       "Old Quick Actions panel still visible in InitiativePanel - should be hidden ✓ FIXED (Task 12)",
       "Equipment slots show 'Empty' but backpack shows equipped items - data not wired ✓ FIXED (Task 13)",
-      "Combat log shows mock/fake data - not connected to real combat events"
+      "Combat log shows mock/fake data - not connected to real combat events ✓ FIXED (Task 14)"
     ]
   },
-  "remaining_tasks": [
-    "Task 14: Remove mock data from CombatHistorySidebar - either wire to real events or show empty state"
-  ]
+  "remaining_tasks": []
 }
