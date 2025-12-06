@@ -12,7 +12,7 @@ import type {
   CombatState,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CombatPanel } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
 import { BattleMapPanel, type DamageNumber } from './encounter/BattleMapPanel';
@@ -42,6 +42,11 @@ export function EncounterDemo() {
   const [encounterId, setEncounterId] = useState<string | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [combatState, setCombatState] = useState<CombatState | null>(null);
+
+  // Full character data with equipment (separate from list data)
+  const [fullCharactersMap, setFullCharactersMap] = useState<
+    Map<string, Character>
+  >(new Map());
 
   // Character selection state
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>(
@@ -512,16 +517,52 @@ export function EncounterDemo() {
     }
   };
 
+  // Fetch full character data with equipment when combat starts
+  useEffect(() => {
+    if (encounterId && selectedCharacterIds.length > 0) {
+      // Fetch full character data for all selected characters
+      selectedCharacterIds.forEach(async (characterId) => {
+        try {
+          const request = { characterId };
+          const { characterClient } = await import('@/api/client');
+          const { create } = await import('@bufbuild/protobuf');
+          const { GetCharacterRequestSchema } = await import(
+            '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb'
+          );
+
+          const getCharRequest = create(GetCharacterRequestSchema, request);
+          const response = await characterClient.getCharacter(getCharRequest);
+
+          if (response.character) {
+            setFullCharactersMap((prev) => {
+              const newMap = new Map(prev);
+              newMap.set(characterId, response.character!);
+              return newMap;
+            });
+          }
+        } catch (error) {
+          console.error(
+            `Failed to fetch full character data for ${characterId}:`,
+            error
+          );
+        }
+      });
+    }
+  }, [encounterId, selectedCharacterIds]);
+
   const getSelectedCharacters = (): Character[] => {
-    // During combat, return the characters that were selected for the encounter
-    // The entity IDs in combat state don't match character IDs, so we use the original selection
+    // During combat, prefer full character data with equipment if available
     if (combatState && combatState.turnOrder.length > 0) {
-      return availableCharacters.filter((char) =>
-        selectedCharacterIds.includes(char.id)
-      );
+      return selectedCharacterIds
+        .map(
+          (id) =>
+            fullCharactersMap.get(id) ||
+            availableCharacters.find((char) => char.id === id)
+        )
+        .filter((char): char is Character => char !== undefined);
     }
 
-    // Before combat, use the selected characters for party setup
+    // Before combat, use available characters
     return availableCharacters.filter((char) =>
       selectedCharacterIds.includes(char.id)
     );
