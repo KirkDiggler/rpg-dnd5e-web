@@ -30,6 +30,15 @@ export function EquipmentDisplay({
   onWeaponClick,
   disabled = false,
 }: EquipmentDisplayProps) {
+  // Debug logging to check character data structure
+  console.log('[EquipmentDisplay] Character data:', {
+    characterId: character.id,
+    hasEquipmentSlots: !!character.equipmentSlots,
+    equipmentSlots: character.equipmentSlots,
+    mainHand: character.equipmentSlots?.mainHand,
+    offHand: character.equipmentSlots?.offHand,
+  });
+
   const mainHand = character.equipmentSlots?.mainHand;
   const offHand = character.equipmentSlots?.offHand;
 

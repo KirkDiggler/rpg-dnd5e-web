@@ -1228,13 +1228,27 @@
 /* ===================================== */
 
 .combatPanel {
+  /* Fixed positioning - anchor to bottom of viewport */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2500; /* Above game content, below modals */
+
+  /* Layout */
   display: flex;
   justify-content: center;
   padding: 16px;
+
+  /* Styling */
   background-color: #0f172a; /* slate-900 - darker background */
   background-color: var(--bg-primary, #0f172a);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border-top: 2px solid #475569; /* Border at top for visual separation */
+  border-top: 2px solid var(--border-color, #475569);
+  box-shadow: 0 -8px 25px -5px rgba(0, 0, 0, 0.4); /* Shadow above panel */
+
+  /* Interaction */
+  pointer-events: auto;
 }
 
 /* Container with max-width for readability */

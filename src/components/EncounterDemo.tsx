@@ -628,6 +628,7 @@ export function EncounterDemo() {
                     onEntitySelect={handleEntityClick}
                     onEquipmentOpen={setEquipmentCharacterId}
                     onCombatStateUpdate={handleCombatStateUpdate}
+                    hideQuickActions={!!currentCharacter} // Hide when new CombatPanel is showing
                   />
                 )}
               </div>
