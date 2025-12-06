@@ -1,0 +1,102 @@
+{
+  "tests": [
+    {
+      "id": "character-portrait-display",
+      "feature": "character-info-section",
+      "prompt": "During combat, verify the bottom panel displays: character portrait/icon, name, and class/level (e.g., 'Thorin - Level 3 Fighter').",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "hp-bar-display",
+      "feature": "character-info-section",
+      "prompt": "During combat, verify HP bar shows current/max values (e.g., '45/52 HP') with visual bar that changes color based on health percentage (green > yellow > red).",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "ac-display",
+      "feature": "character-info-section",
+      "prompt": "During combat, verify Armor Class is prominently displayed with shield icon (e.g., 'AC 16').",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "condition-badges",
+      "feature": "character-info-section",
+      "prompt": "When character has active conditions (Rage, Blessed, Poisoned, etc.), verify badges appear with appropriate icons. Badges should show condition name on hover.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "action-economy-indicators",
+      "feature": "action-economy",
+      "prompt": "Verify action economy indicators show: movement remaining (e.g., '30/30 ft'), action available (filled/empty dot), bonus action available (filled/empty dot), reaction available (filled/empty dot).",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "equipped-weapons-display",
+      "feature": "equipment-display",
+      "prompt": "Verify main hand and off hand weapon slots are displayed with weapon name, damage dice (e.g., 'Longsword 1d8 slashing'). Empty slots should show 'Empty' or similar.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "weapon-click-attack",
+      "feature": "equipment-display",
+      "prompt": "Clicking an equipped weapon should initiate an attack (same as clicking Attack button). Verify weapon slots are interactive.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "class-specific-fighter",
+      "feature": "dynamic-actions",
+      "prompt": "For a Fighter character, verify action buttons show: Attack, Move, Second Wind (if available), Action Surge (if available), Backpack. NOT generic spell button.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "class-specific-wizard",
+      "feature": "dynamic-actions",
+      "prompt": "For a Wizard character, verify action buttons show: Attack, Move, Spell (opens spell list), Backpack. Should NOT show Rage or Second Wind.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "class-specific-barbarian",
+      "feature": "dynamic-actions",
+      "prompt": "For a Barbarian character, verify action buttons show: Attack, Move, Rage (toggleable), Reckless Attack (if available), Backpack.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "backpack-modal",
+      "feature": "dynamic-actions",
+      "prompt": "Clicking Backpack button opens inventory modal showing character's items. Should be accessible for all classes.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "combat-log-sidebar",
+      "feature": "combat-history",
+      "prompt": "Verify CombatHistoryPanel is positioned in right sidebar (not overlapping main battle map). Should be scrollable with recent entries visible.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "combat-log-dice-highlighting",
+      "feature": "combat-history",
+      "prompt": "In combat log entries, verify dice rolls are highlighted: natural 1s in red, natural 20s (crits) in gold. Damage sources show appropriate icons.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "responsive-layout",
+      "feature": "responsive-design",
+      "prompt": "On smaller screens, verify the combat panel adapts gracefully - equipment might collapse, but core actions remain accessible.",
+      "passes": false,
+      "last_checked": null
+    }
+  ]
+}
