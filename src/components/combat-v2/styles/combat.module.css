@@ -597,6 +597,115 @@
   line-height: 1.2;
 }
 
+/* ===================================== */
+/* Action Economy Indicators */
+/* ===================================== */
+
+.actionEconomySection {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px;
+  background-color: #1e293b; /* slate-800 fallback */
+  background-color: var(--bg-secondary, #1e293b);
+  border-radius: 8px;
+  border: 1px solid #475569; /* slate-600 fallback */
+  border: 1px solid var(--border-color, #475569);
+}
+
+.actionEconomyItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.actionEconomyLabel {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+/* Movement Display */
+.movementDisplay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 100px;
+}
+
+.movementBarContainer {
+  width: 100%;
+  height: 6px;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.movementBarFill {
+  height: 100%;
+  border-radius: 3px;
+  transition:
+    width 0.3s ease,
+    background-color 0.3s ease;
+}
+
+.movementText {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  white-space: nowrap;
+}
+
+/* Action Dots */
+.actionDot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease;
+  cursor: help;
+}
+
+.actionDot:hover {
+  transform: scale(1.1);
+}
+
+.actionDotAvailable {
+  background-color: #10b981; /* emerald-500 */
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.actionDotUsed {
+  background-color: #334155; /* slate-700 */
+  border: 2px solid #475569; /* slate-600 */
+}
+
+.actionDotIcon {
+  font-size: 1.25rem;
+  line-height: 1;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  user-select: none;
+}
+
+.actionDotUsed .actionDotIcon {
+  color: #64748b; /* slate-500 - dimmed for used state */
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .actionPanelContainer {
@@ -654,5 +763,16 @@
 
   .weaponSlot {
     min-width: unset;
+  }
+
+  /* Action Economy - Wrap on mobile */
+  .actionEconomySection {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .movementDisplay {
+    min-width: 80px;
   }
 }

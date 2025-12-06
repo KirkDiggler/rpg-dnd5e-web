@@ -13,6 +13,8 @@
  */
 
 // Panels
+export { ActionEconomyIndicators } from './panels/ActionEconomyIndicators';
+export type { ActionEconomyIndicatorsProps } from './panels/ActionEconomyIndicators';
 export { ActionPanel } from './panels/ActionPanel';
 export type { ActionPanelProps } from './panels/ActionPanel';
 export { CharacterInfoSection } from './panels/CharacterInfoSection';
