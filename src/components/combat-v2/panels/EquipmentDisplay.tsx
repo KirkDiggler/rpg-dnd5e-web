@@ -2,10 +2,7 @@ import type {
   Character,
   InventoryItem,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import {
-  DamageType,
-  WeaponCategory,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { DamageType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import styles from '../styles/combat.module.css';
 
 export interface EquipmentDisplayProps {
@@ -32,12 +29,6 @@ export function EquipmentDisplay({
 }: EquipmentDisplayProps) {
   const mainHand = character.equipmentSlots?.mainHand;
   const offHand = character.equipmentSlots?.offHand;
-
-  // Debug logging to trace equipment data
-  console.log('[EquipmentDisplay] Character ID:', character.id);
-  console.log('[EquipmentDisplay] Equipment slots:', character.equipmentSlots);
-  console.log('[EquipmentDisplay] Main hand:', mainHand);
-  console.log('[EquipmentDisplay] Off hand:', offHand);
 
   return (
     <div className={styles.equipmentDisplay}>
@@ -74,8 +65,9 @@ function WeaponSlot({ slot, label, item, onClick, disabled }: WeaponSlotProps) {
       ? equipment.equipmentData.value
       : undefined;
 
-  const isEmpty = !equipment || !weaponData;
-  const isClickable = !isEmpty && !disabled && onClick;
+  const isEmpty = !item || !item.itemId;
+  const isWeapon = !!weaponData;
+  const isClickable = isWeapon && !disabled && onClick;
 
   const handleClick = () => {
     if (isClickable && onClick) {
@@ -83,10 +75,21 @@ function WeaponSlot({ slot, label, item, onClick, disabled }: WeaponSlotProps) {
     }
   };
 
-  // Determine weapon icon based on weapon category
-  const weaponIcon = weaponData
-    ? getWeaponIcon(weaponData.weaponCategory)
-    : '✋';
+  // Determine icon based on item type
+  const getItemIcon = () => {
+    if (!item || !item.itemId) return '✋';
+    if (weaponData) return '⚔️';
+    // Check if it's armor or shield by name
+    const name = item.itemId.toLowerCase();
+    if (name.includes('shield')) return '🛡️';
+    if (
+      name.includes('armor') ||
+      name.includes('mail') ||
+      name.includes('plate')
+    )
+      return '🛡️';
+    return '📦'; // Generic item
+  };
 
   return (
     <div
@@ -106,7 +109,7 @@ function WeaponSlot({ slot, label, item, onClick, disabled }: WeaponSlotProps) {
       }
     >
       <div className={styles.weaponSlotHeader}>
-        <span className={styles.weaponSlotIcon}>{weaponIcon}</span>
+        <span className={styles.weaponSlotIcon}>{getItemIcon()}</span>
         <span className={styles.weaponSlotLabel}>{label}</span>
       </div>
 
@@ -114,32 +117,31 @@ function WeaponSlot({ slot, label, item, onClick, disabled }: WeaponSlotProps) {
         <div className={styles.weaponSlotContent}>
           <span className={styles.weaponSlotEmpty}>Empty</span>
         </div>
-      ) : (
+      ) : isWeapon ? (
         <div className={styles.weaponSlotContent}>
-          <div className={styles.weaponName}>{equipment.name}</div>
+          <div className={styles.weaponName}>
+            {equipment?.name || item.itemId}
+          </div>
           <div className={styles.weaponDamage}>
             {weaponData.damageDice}{' '}
             {getDamageTypeDisplay(weaponData.damageType)}
           </div>
         </div>
+      ) : (
+        <div className={styles.weaponSlotContent}>
+          <div className={styles.weaponName}>
+            {equipment?.name || item.itemId}
+          </div>
+          <div
+            className={styles.weaponDamage}
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {equipment?.equipmentData?.case === 'armorData' ? 'Armor' : 'Item'}
+          </div>
+        </div>
       )}
     </div>
   );
-}
-
-/**
- * Get weapon icon based on category
- */
-function getWeaponIcon(category: WeaponCategory): string {
-  // For now, using simple logic: melee vs ranged
-  // Could be extended to use weapon properties for more accuracy
-  switch (category) {
-    case WeaponCategory.SIMPLE:
-    case WeaponCategory.MARTIAL:
-      return '⚔️'; // Default to melee icon (most common)
-    default:
-      return '⚔️';
-  }
 }
 
 /**

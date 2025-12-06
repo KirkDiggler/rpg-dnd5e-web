@@ -1,5 +1,6 @@
 import { getClassDisplayName } from '@/utils/displayNames';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Ability } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import styles from '../styles/combat.module.css';
 
 export interface CharacterInfoSectionProps {
@@ -78,13 +79,27 @@ export function CharacterInfoSection({ character }: CharacterInfoSectionProps) {
         )}
       </div>
 
-      {/* AC Display */}
+      {/* AC and Saving Throws */}
       <div className={styles.acSection}>
         <div className={styles.acIcon}>🛡️</div>
         <div className={styles.acValue}>
-          <span className={styles.acLabel}>AC</span>
           <span className={styles.acNumber}>{ac}</span>
         </div>
+        {/* Saving throw proficiencies - compact badges */}
+        {character.proficiencies?.savingThrows &&
+          character.proficiencies.savingThrows.length > 0 && (
+            <div className={styles.savingThrowBadges}>
+              {character.proficiencies.savingThrows.map((ability) => (
+                <span
+                  key={ability}
+                  className={styles.savingThrowBadge}
+                  title={`${getAbilityName(ability)} Save Proficiency`}
+                >
+                  {getAbilityAbbrev(ability)}
+                </span>
+              ))}
+            </div>
+          )}
       </div>
 
       {/* Active Conditions */}
@@ -146,4 +161,36 @@ function getConditionIcon(conditionName: string): string {
   };
 
   return iconMap[name] || '❓';
+}
+
+/**
+ * Get ability abbreviation (STR, DEX, etc.)
+ */
+function getAbilityAbbrev(ability: Ability): string {
+  const abbrevMap: Record<Ability, string> = {
+    [Ability.UNSPECIFIED]: '?',
+    [Ability.STRENGTH]: 'STR',
+    [Ability.DEXTERITY]: 'DEX',
+    [Ability.CONSTITUTION]: 'CON',
+    [Ability.INTELLIGENCE]: 'INT',
+    [Ability.WISDOM]: 'WIS',
+    [Ability.CHARISMA]: 'CHA',
+  };
+  return abbrevMap[ability] || '?';
+}
+
+/**
+ * Get full ability name
+ */
+function getAbilityName(ability: Ability): string {
+  const nameMap: Record<Ability, string> = {
+    [Ability.UNSPECIFIED]: 'Unknown',
+    [Ability.STRENGTH]: 'Strength',
+    [Ability.DEXTERITY]: 'Dexterity',
+    [Ability.CONSTITUTION]: 'Constitution',
+    [Ability.INTELLIGENCE]: 'Intelligence',
+    [Ability.WISDOM]: 'Wisdom',
+    [Ability.CHARISMA]: 'Charisma',
+  };
+  return nameMap[ability] || 'Unknown';
 }
