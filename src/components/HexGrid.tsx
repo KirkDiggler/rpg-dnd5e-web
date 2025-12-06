@@ -510,14 +510,17 @@ export function HexGrid({
   });
 
   return (
-    <div className="hex-grid-container">
+    <div
+      className="hex-grid-container"
+      style={{ maxHeight: 'calc(100vh - 420px)', overflow: 'auto' }}
+    >
       <svg
         width={svgWidth}
         height={svgHeight}
         viewBox={`0 0 ${svgWidth} ${svgHeight}`}
         style={{
           maxWidth: '100%',
-          height: 'auto',
+          maxHeight: 'calc(100vh - 450px)',
           background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
           border: '2px solid var(--border-primary)',
           borderRadius: '12px',
@@ -537,70 +540,44 @@ export function HexGrid({
         {damageNumberElements}
       </svg>
 
-      {/* Improved Legend */}
+      {/* Compact Legend */}
       <div
-        className="mt-4 p-3 rounded-lg"
+        className="mt-2 px-2 py-1 rounded"
         style={{ backgroundColor: 'var(--bg-secondary)' }}
       >
-        <div className="flex flex-wrap gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center">
-              <div
-                className="w-5 h-5 rounded-full"
-                style={{
-                  background:
-                    'radial-gradient(circle, #3B82F6 0%, #2563eb 100%)',
-                  border: '2px solid #3B82F6',
-                }}
-              />
-            </div>
-            <span style={{ color: 'var(--text-primary)' }}>
-              Player Characters
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap gap-3 text-xs">
+          <div className="flex items-center gap-1">
             <div
-              className="w-5 h-5 rounded-full"
-              style={{
-                background: 'radial-gradient(circle, #EF4444 0%, #dc2626 100%)',
-                border: '2px solid #EF4444',
-              }}
+              className="w-3 h-3 rounded-full"
+              style={{ background: '#3B82F6' }}
             />
-            <span style={{ color: 'var(--text-primary)' }}>Enemies</span>
+            <span style={{ color: 'var(--text-muted)' }}>PC</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <div
-              className="w-5 h-5 rounded-full"
-              style={{
-                background: 'radial-gradient(circle, #10B981 0%, #059669 100%)',
-                border: '2px solid #10B981',
-              }}
+              className="w-3 h-3 rounded-full"
+              style={{ background: '#EF4444' }}
             />
-            <span style={{ color: 'var(--text-primary)' }}>Objects</span>
+            <span style={{ color: 'var(--text-muted)' }}>Enemy</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <div
-              className="w-5 h-5 rounded-full animate-pulse"
-              style={{
-                background: 'radial-gradient(circle, #FCD34D 0%, #F59E0B 100%)',
-                border: '2px solid #FCD34D',
-                boxShadow: '0 0 10px rgba(252, 211, 77, 0.5)',
-              }}
+              className="w-3 h-3 rounded-full"
+              style={{ background: '#FCD34D' }}
             />
-            <span style={{ color: 'var(--text-primary)' }}>Selected</span>
+            <span style={{ color: 'var(--text-muted)' }}>Selected</span>
           </div>
           {movementMode && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <div
-                className="w-5 h-5"
+                className="w-3 h-3"
                 style={{
                   background: 'rgba(34, 197, 94, 0.3)',
-                  border: '2px solid #22C55E',
-                  borderRadius: '2px',
+                  border: '1px solid #22C55E',
                 }}
               />
               <span style={{ color: '#22C55E' }}>
-                Valid Movement ({Math.floor(movementRange / 5)} hexes)
+                Move ({Math.floor(movementRange / 5)}hex)
               </span>
             </div>
           )}

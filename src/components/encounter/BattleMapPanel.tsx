@@ -96,7 +96,7 @@ export function BattleMapPanel({
         ) : (
           <HexGrid
             room={room}
-            cellSize={35}
+            cellSize={28}
             selectedCharacter={selectedEntity}
             attackTarget={attackTarget}
             movementMode={movementMode}
