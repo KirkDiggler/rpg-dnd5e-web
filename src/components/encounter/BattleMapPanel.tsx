@@ -40,7 +40,7 @@ export function BattleMapPanel({
   onCellClick,
   onCellDoubleClick,
 }: BattleMapPanelProps) {
-  const [view3D, setView3D] = useState(false);
+  const [view3D, setView3D] = useState(true); // Default to 3D view
 
   // Find the hovered character and entity directly from protobuf data
   const hoveredCharacter = hoveredEntity

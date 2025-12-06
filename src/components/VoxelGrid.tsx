@@ -104,17 +104,29 @@ function HexCell({
   // Create edges for visible borders
   const edges = new THREE.EdgesGeometry(hexGeometry);
 
+  // Create taller invisible hit area for easier clicking
+  const hitAreaShape = createHexagonShape(0.48);
+  const hitAreaGeometry = new THREE.ExtrudeGeometry(hitAreaShape, {
+    depth: 1.5, // Tall invisible hit area
+    bevelEnabled: false,
+  });
+
   return (
     <group position={[pos.x, 0, pos.z]} rotation={[-Math.PI / 2, 0, 0]}>
-      {/* Main hex tile */}
+      {/* Invisible tall hit area for easier clicking */}
       <mesh
-        ref={meshRef}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
         onPointerOver={() => onHover(true)}
         onPointerOut={() => onHover(false)}
-        geometry={hexGeometry}
+        geometry={hitAreaGeometry}
+        position={[0, 0, -0.05]} // Slightly below surface
       >
+        <meshBasicMaterial visible={false} />
+      </mesh>
+
+      {/* Main hex tile (visual only) */}
+      <mesh ref={meshRef} geometry={hexGeometry}>
         <meshStandardMaterial
           color={getColor()}
           transparent
@@ -182,8 +194,8 @@ function EntityMarker({
     : '/models/human_complete.vox'; // Low-res 13KB model for monsters
 
   // Players need smaller scale due to high-res model dimensions
-  // Scale to make character ~5 feet tall (reduced from 0.015/0.02 which was 4x too large)
-  const modelScale = isPlayer ? 0.00375 : 0.005;
+  // Scale reduced 2x from original for proper proportions relative to hex size
+  const modelScale = isPlayer ? 0.0075 : 0.01;
 
   const { model: voxelModel } = useVoxelModel({
     modelPath: shouldUseVoxel ? modelPath : '',
@@ -400,9 +412,9 @@ export function VoxelGrid(props: VoxelGridProps) {
       </style>
       <Canvas
         camera={{
-          // Classic isometric: ~35° from horizontal, closer to action
-          position: [10, 12, 10],
-          zoom: 120,
+          // Classic isometric angle, zoomed out to see full 20x20 grid
+          position: [15, 18, 15],
+          zoom: 45,
         }}
         orthographic
       >
