@@ -23,9 +23,7 @@
         "currentTurn.movementUsed / movementMax - movement economy"
       ]
     },
-    "gaps": [
-      "Condition-to-icon mapping needs extending damageSourceIcons.ts pattern (Task 6)"
-    ]
+    "gaps": []
   },
   "sessions": [
     {
@@ -107,6 +105,16 @@
         "class-specific-barbarian",
         "backpack-modal"
       ]
+    },
+    {
+      "date": "2025-12-05",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 6: Condition icons utility",
+      "status": "completed",
+      "commit": "ade42e4",
+      "files_modified": ["src/utils/conditionIcons.ts"],
+      "summary": "Created conditionIcons.ts utility following the classActions.ts pattern. Provides comprehensive display information (icon, label, color, description) for D&D 5e conditions and character states. Maps 15 standard D&D conditions (Blinded, Charmed, Deafened, Exhaustion, Frightened, Grappled, Incapacitated, Invisible, Paralyzed, Petrified, Poisoned, Prone, Restrained, Stunned, Unconscious), 6 class ability/buff conditions (Raging/Rage, Blessed/Bless, Concentrating, Hasted, Slowed, Inspired), and 3 combat states (Dying, Stable, Dead). Features case-insensitive matching, color coding (red for debuffs, green/blue for buffs, gray for neutral), sensible defaults for unknown conditions. Includes helper functions: getConditionDisplay() for main lookup, getAllConditions() for listing, isNegativeCondition() and isPositiveCondition() for filtering. Comprehensive JSDoc documentation with examples. Resolves data_verification gap noted in progress.json.",
+      "tests_affected": ["condition-badges"]
     }
   ],
   "next_steps": [
@@ -115,7 +123,7 @@
     "Task 3: Create ActionEconomyIndicators component (movement/action/bonus/reaction dots) ✓ COMPLETED",
     "Task 4: Create class-to-actions mapping utility (Fighter->Attack/Second Wind/Action Surge, etc.) ✓ COMPLETED",
     "Task 5: Create DynamicActionButtons component using class mapping ✓ COMPLETED",
-    "Task 6: Extend damageSourceIcons.ts for condition icons (conditionIcons.ts)",
+    "Task 6: Extend damageSourceIcons.ts for condition icons (conditionIcons.ts) ✓ COMPLETED",
     "Task 7: Relocate CombatHistoryPanel to right sidebar with enhanced styling",
     "Task 8: Compose new CombatPanel from all sub-components",
     "Task 9: Integrate into EncounterDemo replacing old panel",
