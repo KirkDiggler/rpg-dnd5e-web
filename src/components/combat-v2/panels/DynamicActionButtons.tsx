@@ -11,6 +11,7 @@ export interface DynamicActionButtonsProps {
   onSpell?: () => void;
   onFeature?: (featureId: string) => void;
   onBackpack?: () => void;
+  onEndTurn?: () => void;
   disabled?: boolean; // Global disable when not player's turn
 }
 
@@ -45,6 +46,7 @@ export function DynamicActionButtons({
   onSpell,
   onFeature,
   onBackpack,
+  onEndTurn,
   disabled = false,
 }: DynamicActionButtonsProps) {
   // Get class-specific actions
@@ -72,6 +74,7 @@ export function DynamicActionButtons({
           onSpell={onSpell}
           onFeature={onFeature}
           onBackpack={onBackpack}
+          onEndTurn={onEndTurn}
         />
       ))}
     </div>
@@ -89,6 +92,7 @@ interface ActionButtonProps {
   onSpell?: () => void;
   onFeature?: (featureId: string) => void;
   onBackpack?: () => void;
+  onEndTurn?: () => void;
 }
 
 function ActionButton({
@@ -102,6 +106,7 @@ function ActionButton({
   onSpell,
   onFeature,
   onBackpack,
+  onEndTurn,
 }: ActionButtonProps) {
   // Determine if this specific button should be disabled based on action economy
   const isActionDisabled = getActionDisabled(
@@ -130,6 +135,9 @@ function ActionButton({
         break;
       case 'backpack':
         onBackpack?.();
+        break;
+      case 'end_turn':
+        onEndTurn?.();
         break;
       default:
         // Class-specific features

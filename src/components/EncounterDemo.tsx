@@ -2,6 +2,7 @@ import {
   useActivateFeature,
   useAttack,
   useDungeonStart,
+  useEndTurn,
   useListCharacters,
   useMoveCharacter,
 } from '@/api';
@@ -26,6 +27,7 @@ export function EncounterDemo() {
   const { moveCharacter } = useMoveCharacter();
   const { attack } = useAttack();
   const { activateFeature } = useActivateFeature();
+  const { endTurn } = useEndTurn();
   const { addToast } = useToast();
   const discord = useDiscord();
   const isDevelopment = import.meta.env.MODE === 'development';
@@ -520,6 +522,10 @@ export function EncounterDemo() {
   // Fetch full character data with equipment when combat starts
   useEffect(() => {
     if (encounterId && selectedCharacterIds.length > 0) {
+      console.log(
+        '[useEffect] Fetching full character data for:',
+        selectedCharacterIds
+      );
       // Fetch full character data for all selected characters
       selectedCharacterIds.forEach(async (characterId) => {
         try {
@@ -531,12 +537,22 @@ export function EncounterDemo() {
           );
 
           const getCharRequest = create(GetCharacterRequestSchema, request);
+          console.log('[useEffect] Fetching character:', characterId);
           const response = await characterClient.getCharacter(getCharRequest);
+
+          console.log('[useEffect] Got response for', characterId, ':', {
+            hasCharacter: !!response.character,
+            equipmentSlots: response.character?.equipmentSlots,
+          });
 
           if (response.character) {
             setFullCharactersMap((prev) => {
               const newMap = new Map(prev);
               newMap.set(characterId, response.character!);
+              console.log(
+                '[useEffect] Updated fullCharactersMap, new size:',
+                newMap.size
+              );
               return newMap;
             });
           }
@@ -553,13 +569,33 @@ export function EncounterDemo() {
   const getSelectedCharacters = (): Character[] => {
     // During combat, prefer full character data with equipment if available
     if (combatState && combatState.turnOrder.length > 0) {
-      return selectedCharacterIds
-        .map(
-          (id) =>
-            fullCharactersMap.get(id) ||
-            availableCharacters.find((char) => char.id === id)
-        )
+      console.log(
+        '[getSelectedCharacters] fullCharactersMap size:',
+        fullCharactersMap.size
+      );
+      console.log(
+        '[getSelectedCharacters] fullCharactersMap keys:',
+        Array.from(fullCharactersMap.keys())
+      );
+      console.log(
+        '[getSelectedCharacters] selectedCharacterIds:',
+        selectedCharacterIds
+      );
+
+      const chars = selectedCharacterIds
+        .map((id) => {
+          const fullChar = fullCharactersMap.get(id);
+          const basicChar = availableCharacters.find((char) => char.id === id);
+          console.log(`[getSelectedCharacters] ID ${id}:`, {
+            hasFullChar: !!fullChar,
+            hasBasicChar: !!basicChar,
+            fullCharEquipment: fullChar?.equipmentSlots,
+          });
+          return fullChar || basicChar;
+        })
         .filter((char): char is Character => char !== undefined);
+
+      return chars;
     }
 
     // Before combat, use available characters
@@ -595,6 +631,32 @@ export function EncounterDemo() {
     // For now, use the existing attack handler
     console.log(`Weapon clicked: ${slot}`);
     handleAttackAction();
+  };
+
+  const handleEndTurn = async () => {
+    if (!encounterId) {
+      console.warn('Cannot end turn: no encounterId');
+      return;
+    }
+
+    try {
+      const response = await endTurn(encounterId);
+      if (response.combatState) {
+        handleCombatStateUpdate(response.combatState);
+        addToast({
+          type: 'success',
+          message: 'Turn ended',
+          duration: 2000,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to end turn:', err);
+      addToast({
+        type: 'error',
+        message: 'Failed to end turn',
+        duration: 3000,
+      });
+    }
   };
 
   return (
@@ -720,6 +782,7 @@ export function EncounterDemo() {
           onFeature={handleActivateFeature}
           onBackpack={handleBackpack}
           onWeaponClick={handleWeaponClick}
+          onEndTurn={handleEndTurn}
         />
       )}
     </>

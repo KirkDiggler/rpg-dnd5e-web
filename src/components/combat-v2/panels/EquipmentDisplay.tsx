@@ -33,6 +33,12 @@ export function EquipmentDisplay({
   const mainHand = character.equipmentSlots?.mainHand;
   const offHand = character.equipmentSlots?.offHand;
 
+  // Debug logging to trace equipment data
+  console.log('[EquipmentDisplay] Character ID:', character.id);
+  console.log('[EquipmentDisplay] Equipment slots:', character.equipmentSlots);
+  console.log('[EquipmentDisplay] Main hand:', mainHand);
+  console.log('[EquipmentDisplay] Off hand:', offHand);
+
   return (
     <div className={styles.equipmentDisplay}>
       <WeaponSlot

@@ -23,6 +23,7 @@ export interface CombatPanelProps {
   onFeature?: (featureId: string) => void;
   onBackpack?: () => void;
   onWeaponClick?: (slot: 'mainHand' | 'offHand') => void;
+  onEndTurn?: () => void;
 }
 
 /**
@@ -60,6 +61,7 @@ export function CombatPanel({
   onFeature,
   onBackpack,
   onWeaponClick,
+  onEndTurn,
 }: CombatPanelProps) {
   // Determine if actions should be globally disabled
   const actionsDisabled = !isPlayerTurn;
@@ -91,6 +93,7 @@ export function CombatPanel({
             onSpell={onSpell}
             onFeature={onFeature}
             onBackpack={onBackpack}
+            onEndTurn={onEndTurn}
             disabled={actionsDisabled}
           />
         </div>

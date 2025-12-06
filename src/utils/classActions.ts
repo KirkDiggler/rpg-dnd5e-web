@@ -57,6 +57,13 @@ const COMMON_ACTIONS: ClassAction[] = [
     actionType: 'free',
     description: 'Access your inventory',
   },
+  {
+    id: 'end_turn',
+    label: 'End Turn',
+    icon: '⏭️',
+    actionType: 'free',
+    description: 'End your turn and pass to the next combatant',
+  },
 ];
 
 /**
@@ -207,12 +214,13 @@ export function getClassActions(characterClass: Class): ClassActionsResult {
   }
 
   // Combine common actions with class-specific actions
-  // Order: Attack, Move, [Class-Specific], Backpack
+  // Order: Attack, Move, [Class-Specific], Backpack, End Turn
   const actions: ClassAction[] = [
     COMMON_ACTIONS[0], // Attack
     COMMON_ACTIONS[1], // Move
     ...classSpecificActions, // Class-specific actions in the middle
-    COMMON_ACTIONS[2], // Backpack (always last)
+    COMMON_ACTIONS[2], // Backpack
+    COMMON_ACTIONS[3], // End Turn (always last)
   ];
 
   return {
