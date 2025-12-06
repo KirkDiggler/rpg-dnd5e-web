@@ -298,6 +298,202 @@
   font-weight: bold;
 }
 
+/* ===================================== */
+/* Character Info Section */
+/* ===================================== */
+
+.characterInfoSection {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  background-color: #1e293b; /* slate-800 fallback */
+  background-color: var(--bg-secondary, #1e293b);
+  border-radius: 8px;
+  border: 1px solid #475569; /* slate-600 fallback */
+  border: 1px solid var(--border-color, #475569);
+}
+
+/* Portrait Section */
+.characterPortraitSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.characterPortrait {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    #3b82f6 0%,
+    #1e40af 100%
+  ); /* blue gradient */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #60a5fa; /* blue-400 */
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.portraitEmoji {
+  font-size: 1.5rem;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.characterNameSection {
+  display: flex;
+  flex-direction: column;
+}
+
+.characterDisplayName {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* HP Section */
+.hpSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.hpLabelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hpLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hpValues {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+}
+
+.hpBarContainer {
+  width: 100%;
+  height: 8px;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.hpBarFill {
+  height: 100%;
+  border-radius: 4px;
+  transition:
+    width 0.3s ease,
+    background-color 0.3s ease;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+}
+
+.tempHpBadge {
+  font-size: 0.75rem;
+  color: #60a5fa; /* blue-400 */
+  font-weight: 500;
+  align-self: flex-start;
+}
+
+/* AC Section */
+.acSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.acIcon {
+  font-size: 1.5rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.acValue {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.acLabel {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.acNumber {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  line-height: 1;
+}
+
+/* Conditions Section */
+.conditionsSection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.conditionBadge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: #7c3aed; /* violet-600 fallback */
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: white;
+  cursor: help;
+  transition: transform 0.2s ease;
+}
+
+.conditionBadge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4);
+}
+
+.conditionIcon {
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.conditionName {
+  line-height: 1;
+  white-space: nowrap;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .actionPanelContainer {
@@ -326,6 +522,25 @@
   .actionButton.endTurn {
     margin-left: 0;
     width: 100%;
+    justify-content: center;
+  }
+
+  /* Character Info Section - Stack vertically on mobile */
+  .characterInfoSection {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .characterPortraitSection {
+    justify-content: center;
+  }
+
+  .hpSection {
+    min-width: unset;
+  }
+
+  .conditionsSection {
     justify-content: center;
   }
 }

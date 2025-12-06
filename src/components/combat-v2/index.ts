@@ -15,6 +15,8 @@
 // Panels
 export { ActionPanel } from './panels/ActionPanel';
 export type { ActionPanelProps } from './panels/ActionPanel';
+export { CharacterInfoSection } from './panels/CharacterInfoSection';
+export type { CharacterInfoSectionProps } from './panels/CharacterInfoSection';
 
 // Hooks
 export { usePlayerTurn } from './hooks/usePlayerTurn';
