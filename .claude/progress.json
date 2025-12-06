@@ -129,6 +129,34 @@
       ],
       "summary": "Created CombatHistorySidebar component for right sidebar display of combat log with enhanced dice roll highlighting. Features: Fixed height container with scrollable content area, dice roll highlighting (Natural 1s in red with pulse animation, Natural 20s/crits in gold with pulse animation), action type icons and color coding (attack=red, spell=violet, move=blue, heal=green, damage=orange), round tracking, timestamp display, hover effects on log entries and dice rolls, custom scrollbar styling for dark theme. Component includes DiceRoll and CombatLogEntry TypeScript interfaces for type safety. Helper functions: getActionTypeIcon() for emoji icons, getDiceRollClassName() for CSS class selection, getDiceRollTooltip() for roll descriptions. CSS includes pulse animations (@keyframes pulse-red, pulse-gold) for dramatic visual effects on critical rolls. Follows combat-v2 patterns with CSS Modules, protobuf CombatState integration, dark slate color palette, and responsive mobile layout. Ready for integration in main combat panel layout (Task 8).",
       "tests_affected": ["combat-log-sidebar", "combat-log-dice-highlighting"]
+    },
+    {
+      "date": "2025-12-05",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 8: CombatPanel main composition",
+      "status": "completed",
+      "commit": "426b54c",
+      "files_modified": [
+        "src/components/combat-v2/panels/CombatPanel.tsx",
+        "src/components/combat-v2/styles/combat.module.css",
+        "src/components/combat-v2/index.ts"
+      ],
+      "summary": "Created main CombatPanel component that composes all sub-components from Tasks 1-7 into a cohesive combat interface. Two-column CSS Grid layout: ~70% main content (1fr), ~30% sidebar (400px fixed width). Main content stacks vertically: CharacterInfoSection -> EquipmentDisplay -> ActionEconomyIndicators -> DynamicActionButtons. Sidebar contains CombatHistorySidebar with fixed height (min 500px, max 700px) and scrollable content. Props interface includes character, combatState, turnState, isPlayerTurn (disables all actions when false), and callbacks (onAttack, onMove, onSpell, onFeature, onBackpack, onWeaponClick). Dark theme with slate-900 background, rounded corners (12px), and shadow for depth. Responsive design: sidebar narrows to 300px on medium screens (1024px), stacks vertically on mobile (768px) with reduced min-height (300px). CSS uses CSS Grid for precise layout control with explicit gap spacing. All CI checks pass. Ready for Task 9 integration into EncounterDemo.",
+      "tests_affected": [
+        "character-portrait-display",
+        "hp-bar-display",
+        "ac-display",
+        "condition-badges",
+        "equipped-weapons-display",
+        "weapon-click-attack",
+        "action-economy-indicators",
+        "class-specific-fighter",
+        "class-specific-wizard",
+        "class-specific-barbarian",
+        "combat-log-sidebar",
+        "combat-log-dice-highlighting",
+        "responsive-layout"
+      ]
     }
   ],
   "next_steps": [
@@ -139,7 +167,7 @@
     "Task 5: Create DynamicActionButtons component using class mapping ✓ COMPLETED",
     "Task 6: Extend damageSourceIcons.ts for condition icons (conditionIcons.ts) ✓ COMPLETED",
     "Task 7: Relocate CombatHistoryPanel to right sidebar with enhanced styling ✓ COMPLETED",
-    "Task 8: Compose new CombatPanel from all sub-components",
+    "Task 8: Compose new CombatPanel from all sub-components ✓ COMPLETED",
     "Task 9: Integrate into EncounterDemo replacing old panel",
     "Task 10: Add responsive design considerations"
   ]
