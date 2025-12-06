@@ -1267,12 +1267,12 @@
   gap: 16px;
 }
 
-/* Sidebar Column */
+/* Sidebar Column - matches main content height */
 .combatPanelSidebar {
   display: flex;
   flex-direction: column;
-  min-height: 500px; /* Fixed minimum height for sidebar */
-  max-height: 700px; /* Maximum height to prevent too tall */
+  /* Remove fixed heights - sidebar should match main content height */
+  /* The CombatHistorySidebar will handle its own scrolling */
 }
 
 /* Responsive Layout */
@@ -1280,11 +1280,6 @@
   .combatPanelContainer {
     grid-template-columns: 1fr 300px; /* Narrower sidebar on medium screens */
     gap: 16px;
-  }
-
-  .combatPanelSidebar {
-    min-height: 400px;
-    max-height: 600px;
   }
 }
 
@@ -1303,7 +1298,7 @@
   }
 
   .combatPanelSidebar {
-    min-height: 300px;
-    max-height: 400px;
+    /* On mobile, give sidebar a reasonable height when stacked */
+    max-height: 250px;
   }
 }
