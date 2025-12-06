@@ -53,38 +53,29 @@ export function BattleMapPanel({
 
   return (
     <div
-      className="rounded-lg p-4"
+      className="rounded-lg p-2"
       style={{
         backgroundColor: 'var(--card-bg)',
         border: '1px solid var(--border-primary)',
       }}
     >
-      {/* Header */}
-      <div className="flex justify-between items-center mb-4">
-        <h2
-          className="text-xl font-semibold"
-          style={{ color: 'var(--text-primary)' }}
+      {/* Compact Header - just view toggle and info */}
+      <div className="flex justify-end items-center gap-3 mb-2">
+        <button
+          onClick={() => setView3D(!view3D)}
+          className="px-2 py-1 rounded text-xs font-medium transition-colors"
+          style={{
+            backgroundColor: view3D
+              ? 'var(--accent-primary)'
+              : 'var(--bg-secondary)',
+            color: view3D ? 'white' : 'var(--text-primary)',
+            border: '1px solid var(--border-primary)',
+          }}
         >
-          Battle Map
-        </h2>
-        <div className="flex items-center gap-4">
-          {/* View Toggle */}
-          <button
-            onClick={() => setView3D(!view3D)}
-            className="px-3 py-1 rounded text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: view3D
-                ? 'var(--accent-primary)'
-                : 'var(--bg-secondary)',
-              color: view3D ? 'white' : 'var(--text-primary)',
-              border: '1px solid var(--border-primary)',
-            }}
-          >
-            {view3D ? '3D View' : '2D View'}
-          </button>
-          <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            {room.type} • {room.width}×{room.height}
-          </div>
+          {view3D ? '3D View' : '2D View'}
+        </button>
+        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          {room.type} • {room.width}×{room.height}
         </div>
       </div>
 

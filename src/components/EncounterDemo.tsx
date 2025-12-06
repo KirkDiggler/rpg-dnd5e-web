@@ -662,7 +662,7 @@ export function EncounterDemo() {
   return (
     <>
       <div
-        className="min-h-screen p-8"
+        className="min-h-screen p-4"
         style={{
           backgroundColor: 'var(--bg-primary)',
           // Add bottom padding to account for fixed CombatPanel (~320px)
@@ -670,20 +670,7 @@ export function EncounterDemo() {
         }}
       >
         <div className="max-w-[1800px] mx-auto">
-          {/* Header */}
-          <div className="mb-8 text-center">
-            <h1
-              className="text-4xl font-bold mb-2"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              Combat Encounter
-            </h1>
-            <p className="text-lg" style={{ color: 'var(--text-muted)' }}>
-              Battle your way through the dungeon
-            </p>
-          </div>
-
-          {/* Main Content */}
+          {/* Main Content - Header removed to save vertical space */}
           {!room ? (
             // Pre-encounter setup
             <PartySetupPanel
