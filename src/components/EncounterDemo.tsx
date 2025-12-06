@@ -13,7 +13,8 @@ import type {
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
-import { ActionPanel } from './combat-v2';
+import { CombatPanel } from './combat-v2';
+import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
 import { BattleMapPanel, type DamageNumber } from './encounter/BattleMapPanel';
 import { InitiativePanel } from './encounter/InitiativePanel';
 import { PartySetupPanel } from './encounter/PartySetupPanel';
@@ -447,45 +448,8 @@ export function EncounterDemo() {
     }
   };
 
-  const handleExecuteMove = async () => {
-    if (movementPath.length === 0 || !selectedEntity || !encounterId) return;
-
-    try {
-      const response = await moveCharacter(
-        encounterId,
-        selectedEntity,
-        movementPath
-      );
-      if (response.success) {
-        if (response.updatedRoom) setRoom(response.updatedRoom);
-
-        // Update combat state to reflect new movement remaining
-        if (combatState && combatState.currentTurn) {
-          const movementUsed =
-            combatState.currentTurn.movementMax - response.movementRemaining;
-          setCombatState({
-            ...combatState,
-            currentTurn: {
-              ...combatState.currentTurn,
-              movementUsed,
-            },
-          });
-        }
-
-        setMovementPath([]);
-        setMovementMode(false);
-      } else {
-        console.error('Move failed:', response.error?.message);
-      }
-    } catch (err) {
-      console.error('Failed to move character:', err);
-    }
-  };
-
-  const handleCancelMove = () => {
-    setMovementPath([]);
-    setMovementMode(false);
-  };
+  // Movement execution handlers removed - movement now handled by CombatPanel's Move button
+  // which toggles movement mode. Actual movement execution is still done via handleCellDoubleClick
 
   const handleActivateFeature = async (featureId: string) => {
     if (!encounterId || !combatState?.currentTurn?.entityId) {
@@ -561,6 +525,35 @@ export function EncounterDemo() {
     return availableCharacters.filter((char) =>
       selectedCharacterIds.includes(char.id)
     );
+  };
+
+  // Extract turn information using usePlayerTurn hook
+  const { isPlayerTurn, currentCharacter, currentTurn } = usePlayerTurn({
+    combatState,
+    selectedCharacters: getSelectedCharacters(),
+  });
+
+  // Placeholder handlers for new CombatPanel callbacks
+  const handleSpell = () => {
+    addToast({
+      type: 'info',
+      message: 'Spell selection not yet implemented',
+      duration: 3000,
+    });
+  };
+
+  const handleBackpack = () => {
+    // Open equipment modal for current character
+    if (currentCharacter) {
+      setEquipmentCharacterId(currentCharacter.id);
+    }
+  };
+
+  const handleWeaponClick = (slot: 'mainHand' | 'offHand') => {
+    // Clicking a weapon should trigger an attack with that weapon
+    // For now, use the existing attack handler
+    console.log(`Weapon clicked: ${slot}`);
+    handleAttackAction();
   };
 
   return (
@@ -653,7 +646,7 @@ export function EncounterDemo() {
         </div>
       </div>
 
-      {/* NEW Combat v2 Action Panel - OUTSIDE all containers with Portal */}
+      {/* OLD Combat v2 Action Panel - COMMENTED OUT - Replaced by new CombatPanel
       <ActionPanel
         combatState={combatState}
         encounterId={encounterId}
@@ -670,6 +663,23 @@ export function EncounterDemo() {
         onCancelMove={handleCancelMove}
         debug={false} // Set to true for visibility testing
       />
+      */}
+
+      {/* NEW Combat Panel - Full redesigned UI with character info and combat log */}
+      {currentCharacter && (
+        <CombatPanel
+          character={currentCharacter}
+          combatState={combatState}
+          turnState={currentTurn}
+          isPlayerTurn={isPlayerTurn}
+          onAttack={handleAttackAction}
+          onMove={handleMoveAction}
+          onSpell={handleSpell}
+          onFeature={handleActivateFeature}
+          onBackpack={handleBackpack}
+          onWeaponClick={handleWeaponClick}
+        />
+      )}
     </>
   );
 }
