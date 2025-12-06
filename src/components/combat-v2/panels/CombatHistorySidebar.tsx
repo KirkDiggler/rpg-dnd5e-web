@@ -42,56 +42,9 @@ export function CombatHistorySidebar({
   combatState,
   className = '',
 }: CombatHistorySidebarProps) {
-  // In a real implementation, this would be populated by combat events
-  // For now, showing example entries with dice rolls
-  const [combatLog] = useState<CombatLogEntry[]>([
-    {
-      id: '1',
-      timestamp: new Date(),
-      round: combatState.round,
-      entityId: 'char-1',
-      action: 'Attack',
-      description: 'Attacked Goblin with Longsword',
-      type: 'attack',
-      diceRolls: [
-        { value: 20, sides: 20, isNatural20: true, isCritical: true },
-        { value: 8, sides: 8 },
-        { value: 7, sides: 8 },
-      ],
-    },
-    {
-      id: '2',
-      timestamp: new Date(),
-      round: combatState.round,
-      entityId: 'char-2',
-      action: 'Attack',
-      description: 'Missed Orc with Shortbow',
-      type: 'attack',
-      diceRolls: [{ value: 1, sides: 20, isNatural1: true }],
-    },
-    {
-      id: '3',
-      timestamp: new Date(),
-      round: combatState.round,
-      entityId: 'char-1',
-      action: 'Movement',
-      description: 'Moved 25ft to (5, 3)',
-      type: 'move',
-    },
-    {
-      id: '4',
-      timestamp: new Date(),
-      round: combatState.round - 1,
-      entityId: 'char-1',
-      action: 'Attack',
-      description: 'Hit Goblin with Longsword',
-      type: 'attack',
-      diceRolls: [
-        { value: 15, sides: 20 },
-        { value: 6, sides: 8 },
-      ],
-    },
-  ]);
+  // Combat log entries will be populated by real combat events in a future iteration.
+  // For now, we maintain an empty state to show the UI structure.
+  const [combatLog] = useState<CombatLogEntry[]>([]);
 
   return (
     <div className={`${styles.combatHistorySidebar} ${className}`}>
@@ -107,7 +60,15 @@ export function CombatHistorySidebar({
       {/* Scrollable Log Entries */}
       <div className={styles.sidebarContent}>
         {combatLog.length === 0 ? (
-          <div className={styles.emptyMessage}>No actions recorded yet</div>
+          <div className={styles.emptyMessage}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚔️</div>
+            <div>Combat actions will appear here</div>
+            <div
+              style={{ fontSize: '0.75rem', marginTop: '0.5rem', opacity: 0.7 }}
+            >
+              Attacks, spells, and movements will be logged as they occur
+            </div>
+          </div>
         ) : (
           combatLog.map((entry) => (
             <div key={entry.id} className={styles.logEntry}>
