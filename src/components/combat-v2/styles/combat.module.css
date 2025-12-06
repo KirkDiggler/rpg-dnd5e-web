@@ -494,6 +494,109 @@
   white-space: nowrap;
 }
 
+/* ===================================== */
+/* Equipment Display */
+/* ===================================== */
+
+.equipmentDisplay {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Weapon Slot */
+.weaponSlot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  min-width: 160px;
+  flex: 1;
+  transition: all 0.2s ease;
+}
+
+.weaponSlotClickable {
+  cursor: pointer;
+  border-color: #64748b; /* slate-500 */
+}
+
+.weaponSlotClickable:hover {
+  border-color: #dc2626; /* red-600 - attack color */
+  background-color: #1e293b; /* slate-800 */
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+}
+
+.weaponSlotClickable:active {
+  transform: translateY(0);
+}
+
+.weaponSlotDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.weaponSlotEmpty {
+  border-style: dashed;
+  border-color: #475569; /* slate-600 */
+}
+
+/* Weapon Slot Header */
+.weaponSlotHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.weaponSlotIcon {
+  font-size: 1.25rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.weaponSlotLabel {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Weapon Slot Content */
+.weaponSlotContent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weaponName {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  line-height: 1.2;
+}
+
+.weaponDamage {
+  font-size: 0.75rem;
+  color: #cbd5e1; /* slate-300 */
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.weaponSlotEmpty {
+  font-size: 0.875rem;
+  color: #64748b; /* slate-500 */
+  font-style: italic;
+  line-height: 1.2;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .actionPanelContainer {
@@ -542,5 +645,14 @@
 
   .conditionsSection {
     justify-content: center;
+  }
+
+  /* Equipment Display - Stack on mobile */
+  .equipmentDisplay {
+    flex-direction: column;
+  }
+
+  .weaponSlot {
+    min-width: unset;
   }
 }
