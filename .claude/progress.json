@@ -191,6 +191,45 @@
       "files_modified": ["src/components/combat-v2/styles/combat.module.css"],
       "summary": "Reviewed and enhanced responsive design across all combat-v2 components. Added tablet breakpoint (769px-1024px) for improved medium-screen experience with optimized button sizing and wrapping. Enhanced mobile touch targets to meet WCAG 2.1 Level AAA standards: action buttons now min 44x44px, weapon slots min 64px height. Improved mobile spacing: equipment display gap increased to 16px, action buttons padding increased to 12px 16px. All components now provide optimal layouts across three breakpoints: desktop (>1024px), tablet (769-1024px), and mobile (<768px). Core actions (Attack, Move) remain easily tappable on all screen sizes. Equipment slots stack vertically on mobile with adequate spacing for touch interaction. Combat history sidebar adapts height appropriately. All CI checks pass.",
       "tests_affected": ["responsive-layout"]
+    },
+    {
+      "date": "2025-12-06",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 11: Fix CombatPanel positioning - anchor to bottom of viewport",
+      "status": "completed",
+      "commit": "51232de",
+      "files_modified": ["src/components/combat-v2/styles/combat.module.css"],
+      "summary": "Fixed CombatPanel positioning to anchor at bottom of viewport instead of scrolling with page content. Changed from relative to fixed positioning with explicit bottom: 0, left: 0, right: 0. Added z-index: 2500 to ensure panel stays above game content but below modals (z-index 1000+). Updated visual styling: replaced border-radius with border-top for better fixed-panel aesthetic, changed box-shadow to cast upward for depth perception. Panel now maintains consistent position regardless of page scroll or window height, ensuring combat controls are always accessible. Battle map and initiative sidebar remain visible above the panel. No layout breaks or z-index conflicts.",
+      "tests_affected": ["combat-panel-positioning", "viewport-anchoring"]
+    },
+    {
+      "date": "2025-12-06",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 12: Hide Quick Actions from InitiativePanel when new CombatPanel is active",
+      "status": "completed",
+      "commit": "51232de",
+      "files_modified": [
+        "src/components/encounter/InitiativePanel.tsx",
+        "src/components/EncounterDemo.tsx"
+      ],
+      "summary": "Eliminated UI duplication by hiding the old Quick Actions panel when the new CombatPanel is showing. Added optional hideQuickActions prop to InitiativePanel interface (defaults to false for backward compatibility). Updated QuickActions rendering to conditionally show based on !hideQuickActions && selectedCharacterIds.length > 0. In EncounterDemo, pass hideQuickActions={!!currentCharacter} to InitiativePanel - when currentCharacter exists (player's turn), the new CombatPanel renders and old Quick Actions are hidden. This prevents showing both the old End Turn / Equipment buttons and the new combat panel simultaneously. Clean separation between old and new UI states.",
+      "tests_affected": [
+        "initiative-panel-quick-actions",
+        "combat-panel-integration"
+      ]
+    },
+    {
+      "date": "2025-12-06",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 13: Wire real equipment data to EquipmentDisplay",
+      "status": "completed",
+      "commit": "7cb003a",
+      "files_modified": [
+        "src/components/EncounterDemo.tsx",
+        "src/components/combat-v2/panels/EquipmentDisplay.tsx"
+      ],
+      "summary": "Fixed equipment display data wiring issue. Root cause: useListCharacters returns basic Character objects without full equipmentSlots data populated. The Character protobuf type has the field, but ListCharacters API doesn't populate it. Solution: Added useEffect to fetch full character data via GetCharacter API when combat starts. Created fullCharactersMap state (Map<string, Character>) to store complete character data with equipment. Modified getSelectedCharacters to prefer full character data from the map during combat. The equipment slots now properly display equipped weapons (name, damage dice, damage type) instead of showing 'Empty'. All CI checks pass.",
+      "tests_affected": ["equipped-weapons-display"]
     }
   ],
   "next_steps": [
