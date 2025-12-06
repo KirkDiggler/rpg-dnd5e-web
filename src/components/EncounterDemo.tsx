@@ -663,7 +663,11 @@ export function EncounterDemo() {
     <>
       <div
         className="min-h-screen p-8"
-        style={{ backgroundColor: 'var(--bg-primary)' }}
+        style={{
+          backgroundColor: 'var(--bg-primary)',
+          // Add bottom padding to account for fixed CombatPanel (~320px)
+          paddingBottom: currentCharacter ? '340px' : undefined,
+        }}
       >
         <div className="max-w-[1800px] mx-auto">
           {/* Header */}
