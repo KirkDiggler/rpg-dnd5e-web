@@ -1190,3 +1190,74 @@
     padding: 8px 10px;
   }
 }
+
+/* ===================================== */
+/* Combat Panel - Main Composition */
+/* ===================================== */
+
+.combatPanel {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  background-color: #0f172a; /* slate-900 - darker background */
+  background-color: var(--bg-primary, #0f172a);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Container with max-width for readability */
+.combatPanelContainer {
+  display: grid;
+  grid-template-columns: 1fr 400px; /* ~70% main content, ~30% sidebar */
+  gap: 20px;
+  width: 100%;
+  max-width: 1400px;
+}
+
+/* Main Content Column */
+.combatPanelMainContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Sidebar Column */
+.combatPanelSidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 500px; /* Fixed minimum height for sidebar */
+  max-height: 700px; /* Maximum height to prevent too tall */
+}
+
+/* Responsive Layout */
+@media (max-width: 1024px) {
+  .combatPanelContainer {
+    grid-template-columns: 1fr 300px; /* Narrower sidebar on medium screens */
+    gap: 16px;
+  }
+
+  .combatPanelSidebar {
+    min-height: 400px;
+    max-height: 600px;
+  }
+}
+
+@media (max-width: 768px) {
+  .combatPanel {
+    padding: 12px;
+  }
+
+  .combatPanelContainer {
+    grid-template-columns: 1fr; /* Stack vertically on mobile */
+    gap: 12px;
+  }
+
+  .combatPanelMainContent {
+    gap: 12px;
+  }
+
+  .combatPanelSidebar {
+    min-height: 300px;
+    max-height: 400px;
+  }
+}

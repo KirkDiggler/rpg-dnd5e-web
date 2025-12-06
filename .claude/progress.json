@@ -115,6 +115,20 @@
       "files_modified": ["src/utils/conditionIcons.ts"],
       "summary": "Created conditionIcons.ts utility following the classActions.ts pattern. Provides comprehensive display information (icon, label, color, description) for D&D 5e conditions and character states. Maps 15 standard D&D conditions (Blinded, Charmed, Deafened, Exhaustion, Frightened, Grappled, Incapacitated, Invisible, Paralyzed, Petrified, Poisoned, Prone, Restrained, Stunned, Unconscious), 6 class ability/buff conditions (Raging/Rage, Blessed/Bless, Concentrating, Hasted, Slowed, Inspired), and 3 combat states (Dying, Stable, Dead). Features case-insensitive matching, color coding (red for debuffs, green/blue for buffs, gray for neutral), sensible defaults for unknown conditions. Includes helper functions: getConditionDisplay() for main lookup, getAllConditions() for listing, isNegativeCondition() and isPositiveCondition() for filtering. Comprehensive JSDoc documentation with examples. Resolves data_verification gap noted in progress.json.",
       "tests_affected": ["condition-badges"]
+    },
+    {
+      "date": "2025-12-05",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 7: CombatHistorySidebar component",
+      "status": "completed",
+      "commit": "9216e68",
+      "files_modified": [
+        "src/components/combat-v2/panels/CombatHistorySidebar.tsx",
+        "src/components/combat-v2/index.ts",
+        "src/components/combat-v2/styles/combat.module.css"
+      ],
+      "summary": "Created CombatHistorySidebar component for right sidebar display of combat log with enhanced dice roll highlighting. Features: Fixed height container with scrollable content area, dice roll highlighting (Natural 1s in red with pulse animation, Natural 20s/crits in gold with pulse animation), action type icons and color coding (attack=red, spell=violet, move=blue, heal=green, damage=orange), round tracking, timestamp display, hover effects on log entries and dice rolls, custom scrollbar styling for dark theme. Component includes DiceRoll and CombatLogEntry TypeScript interfaces for type safety. Helper functions: getActionTypeIcon() for emoji icons, getDiceRollClassName() for CSS class selection, getDiceRollTooltip() for roll descriptions. CSS includes pulse animations (@keyframes pulse-red, pulse-gold) for dramatic visual effects on critical rolls. Follows combat-v2 patterns with CSS Modules, protobuf CombatState integration, dark slate color palette, and responsive mobile layout. Ready for integration in main combat panel layout (Task 8).",
+      "tests_affected": ["combat-log-sidebar", "combat-log-dice-highlighting"]
     }
   ],
   "next_steps": [
@@ -124,7 +138,7 @@
     "Task 4: Create class-to-actions mapping utility (Fighter->Attack/Second Wind/Action Surge, etc.) ✓ COMPLETED",
     "Task 5: Create DynamicActionButtons component using class mapping ✓ COMPLETED",
     "Task 6: Extend damageSourceIcons.ts for condition icons (conditionIcons.ts) ✓ COMPLETED",
-    "Task 7: Relocate CombatHistoryPanel to right sidebar with enhanced styling",
+    "Task 7: Relocate CombatHistoryPanel to right sidebar with enhanced styling ✓ COMPLETED",
     "Task 8: Compose new CombatPanel from all sub-components",
     "Task 9: Integrate into EncounterDemo replacing old panel",
     "Task 10: Add responsive design considerations"
