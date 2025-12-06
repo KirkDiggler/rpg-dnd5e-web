@@ -24,8 +24,7 @@
       ]
     },
     "gaps": [
-      "Class-to-actions mapping needs frontend implementation (which features show as quick actions)",
-      "Condition-to-icon mapping needs extending damageSourceIcons.ts pattern"
+      "Condition-to-icon mapping needs extending damageSourceIcons.ts pattern (Task 6)"
     ]
   },
   "sessions": [
@@ -61,13 +60,41 @@
       ],
       "summary": "Created EquipmentDisplay component showing main hand and off hand weapon slots with clickable attack functionality. Displays weapon name, damage dice (e.g., '1d8'), and damage type (e.g., 'slashing'). Empty slots show 'Empty' with dashed border. Includes hover effects with red border (attack color), disabled state styling, weapon icons (⚔️), and keyboard accessibility (Enter/Space). Helper functions convert DamageType enum to display strings. Responsive design stacks slots on mobile. Follows CharacterInfoSection patterns with dark theme and CSS modules.",
       "tests_affected": ["equipped-weapons-display", "weapon-click-attack"]
+    },
+    {
+      "date": "2025-12-05",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 3: ActionEconomyIndicators component",
+      "status": "completed",
+      "commit": "8f09953",
+      "files_modified": [
+        "src/components/combat-v2/panels/ActionEconomyIndicators.tsx",
+        "src/components/combat-v2/styles/combat.module.css",
+        "src/components/combat-v2/index.ts"
+      ],
+      "summary": "Created ActionEconomyIndicators component displaying action economy during combat. Shows movement remaining as progress bar with 'X/Y ft' label (e.g., '25/30 ft'), and action/bonus action/reaction as filled (●) or empty (○) dot indicators. Uses TurnState from CombatState.currentTurn protobuf type as data source (movementUsed, movementMax, actionUsed, bonusActionUsed, reactionAvailable). Color coding: green (#10b981) for available resources, gray (#6b7280) for used. Includes hover effects on dots (scale animation), tooltips, and responsive design that wraps on mobile. Handles null/undefined turnState gracefully (shows full resources as default). Follows CharacterInfoSection and EquipmentDisplay patterns with dark theme, CSS modules, and compact horizontal layout.",
+      "tests_affected": ["action-economy-indicators"]
+    },
+    {
+      "date": "2025-12-05",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 4: Class-to-actions mapping utility",
+      "status": "completed",
+      "commit": "0c49156",
+      "files_modified": ["src/utils/classActions.ts"],
+      "summary": "Created classActions.ts utility that maps character classes to their available quick-action buttons in combat. Implements ClassAction interface with id, label, icon (emoji), actionType (action/bonus_action/free/special), optional featureId, and description. Main function getClassActions(characterClass: Class) returns ClassActionsResult with actions array and className. Class-specific mappings: Fighter (Second Wind, Action Surge), Barbarian (Rage, Reckless Attack), Rogue (Cunning Action), Spellcasters (Spell button), Default (Ability button). All classes get common actions: Attack, Move, Backpack. Includes helper functions isSpellcaster() and getActionById(). Follows existing utility patterns from enumDisplay.ts and displayNames.ts using Class enum from protobuf protos.",
+      "tests_affected": [
+        "class-specific-fighter",
+        "class-specific-wizard",
+        "class-specific-barbarian"
+      ]
     }
   ],
   "next_steps": [
     "Task 1: Create CharacterInfoSection component (portrait, name, HP bar, AC, conditions) ✓ COMPLETED",
     "Task 2: Create EquipmentDisplay component (main hand/off hand weapon slots) ✓ COMPLETED",
-    "Task 3: Create ActionEconomyIndicators component (movement/action/bonus/reaction dots)",
-    "Task 4: Create class-to-actions mapping utility (Fighter->Attack/Second Wind/Action Surge, etc.)",
+    "Task 3: Create ActionEconomyIndicators component (movement/action/bonus/reaction dots) ✓ COMPLETED",
+    "Task 4: Create class-to-actions mapping utility (Fighter->Attack/Second Wind/Action Surge, etc.) ✓ COMPLETED",
     "Task 5: Create DynamicActionButtons component using class mapping",
     "Task 6: Extend damageSourceIcons.ts for condition icons (conditionIcons.ts)",
     "Task 7: Relocate CombatHistoryPanel to right sidebar with enhanced styling",
