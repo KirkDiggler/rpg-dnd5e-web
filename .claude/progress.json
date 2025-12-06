@@ -88,6 +88,25 @@
         "class-specific-wizard",
         "class-specific-barbarian"
       ]
+    },
+    {
+      "date": "2025-12-05",
+      "agent": "Claude Sonnet 4.5",
+      "task": "Task 5: DynamicActionButtons component",
+      "status": "completed",
+      "commit": "e441478",
+      "files_modified": [
+        "src/components/combat-v2/panels/DynamicActionButtons.tsx",
+        "src/components/combat-v2/styles/combat.module.css",
+        "src/components/combat-v2/index.ts"
+      ],
+      "summary": "Created DynamicActionButtons component that renders class-specific action buttons using the classActions utility. Features: Uses getClassActions(character.class) to get available actions, renders buttons with icons and labels, disables buttons based on action economy (action/bonus action/free), handles callbacks for different action types (onAttack, onMove, onSpell, onFeature, onBackpack), shows visual feedback for active abilities (e.g., Rage active = highlighted amber border). Button colors: Attack (red), Move (blue), Spell (violet), Class features (emerald green), Backpack (gray). Visual states: Normal (dark), Hover (lighter with scale animation), Disabled (grayed out, 40% opacity), Active (amber border with glow for toggles). Includes comprehensive CSS with action-specific button styles and responsive design that wraps buttons on mobile. Follows existing combat-v2 component patterns with proper TypeScript typing using Character['activeConditions'] for embedded types.",
+      "tests_affected": [
+        "class-specific-fighter",
+        "class-specific-wizard",
+        "class-specific-barbarian",
+        "backpack-modal"
+      ]
     }
   ],
   "next_steps": [
@@ -95,7 +114,7 @@
     "Task 2: Create EquipmentDisplay component (main hand/off hand weapon slots) ✓ COMPLETED",
     "Task 3: Create ActionEconomyIndicators component (movement/action/bonus/reaction dots) ✓ COMPLETED",
     "Task 4: Create class-to-actions mapping utility (Fighter->Attack/Second Wind/Action Surge, etc.) ✓ COMPLETED",
-    "Task 5: Create DynamicActionButtons component using class mapping",
+    "Task 5: Create DynamicActionButtons component using class mapping ✓ COMPLETED",
     "Task 6: Extend damageSourceIcons.ts for condition icons (conditionIcons.ts)",
     "Task 7: Relocate CombatHistoryPanel to right sidebar with enhanced styling",
     "Task 8: Compose new CombatPanel from all sub-components",
