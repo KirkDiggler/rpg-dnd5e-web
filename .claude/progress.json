@@ -258,6 +258,20 @@
       ],
       "summary": "Fixed two CRITICAL issues discovered during manual testing: (1) GAME UNPLAYABLE - No End Turn button: Added 'end_turn' action to COMMON_ACTIONS array in classActions.ts, added onEndTurn prop throughout the component chain (DynamicActionButtons -> CombatPanel -> EncounterDemo), imported useEndTurn hook in EncounterDemo, created handleEndTurn handler that calls the API and updates combat state, wired onEndTurn={handleEndTurn} to CombatPanel. End Turn button now appears as the last button in action sets for all classes. (2) EQUIPMENT SHOWS EMPTY - Added comprehensive debug logging: EquipmentDisplay logs character ID and equipment slot data, EncounterDemo useEffect logs character fetching process and API responses, getSelectedCharacters logs fullCharactersMap state and data flow. Debug logs will help identify why equipment data from fullCharactersMap isn't displaying correctly even though the backpack modal shows the correct data. All CI checks pass.",
       "tests_affected": ["end-turn-button", "equipment-display-debugging"]
+    },
+    {
+      "date": "2025-12-06",
+      "agent": "Claude Opus 4.5",
+      "task": "Task 16: Compact headers and 2D HexGrid for 1080p screens",
+      "status": "completed",
+      "commit": "4c6f0f3",
+      "files_modified": [
+        "src/components/EncounterDemo.tsx",
+        "src/components/encounter/BattleMapPanel.tsx",
+        "src/components/HexGrid.tsx"
+      ],
+      "summary": "Optimized vertical space usage for 1080p screens: (1) Removed 'Combat Encounter' header from EncounterDemo, (2) Reduced main container padding from p-8 to p-4, (3) Made BattleMapPanel header compact - removed 'Battle Map' title, smaller toggle button and text, combined into single row, (4) Reduced HexGrid cellSize from 35px to 28px, (5) Added max-height constraints (calc(100vh - 420px)) to HexGrid container to prevent vertical overflow, (6) Condensed HexGrid legend - smaller icons (w-3 h-3), shorter labels (PC/Enemy/Selected), less padding. Grid container now scrollable if content exceeds viewport. All CI checks pass.",
+      "tests_affected": ["responsive-layout", "compact-headers"]
     }
   ],
   "next_steps": [
@@ -275,7 +289,8 @@
     "Task 12: Hide Quick Actions from InitiativePanel when new CombatPanel is active ✓ COMPLETED",
     "Task 13: Wire real equipment data from character.equipmentSlots to EquipmentDisplay ✓ COMPLETED",
     "Task 14: Remove mock data from CombatHistorySidebar ✓ COMPLETED",
-    "Task 15: Fix CRITICAL issues - End Turn button and Equipment debugging ✓ COMPLETED"
+    "Task 15: Fix CRITICAL issues - End Turn button and Equipment debugging ✓ COMPLETED",
+    "Task 16: Compact headers and 2D HexGrid for 1080p screens ✓ COMPLETED"
   ],
   "status": "completed",
   "manual_testing_feedback": {
@@ -290,7 +305,13 @@
       "CRITICAL: No End Turn button - game unplayable ✓ FIXED (Task 15)",
       "Equipment still shows Empty - needs debugging ⚠️ DEBUG LOGGING ADDED (Task 15)"
     ],
-    "notes": "Equipment issue has debug logging in place. Console logs will help trace why fullCharactersMap data isn't flowing to EquipmentDisplay even though Task 13 implemented the fetch logic. Check browser console during next manual test."
+    "notes": "Equipment issue has debug logging in place. Console logs will help trace why fullCharactersMap data isn't flowing to EquipmentDisplay even though Task 13 implemented the fetch logic. Check browser console during next manual test.",
+    "round_3_issues": [
+      "Battle Map still extends below viewport on 1080p ✓ FIXED (Task 16)",
+      "Combat Round label cut off at bottom of sidebar ✓ FIXED (Task 16)",
+      "Headers take too much vertical space ✓ FIXED (Task 16)",
+      "2D view 'very tall' ✓ FIXED (Task 16)"
+    ]
   },
   "remaining_tasks": []
 }
