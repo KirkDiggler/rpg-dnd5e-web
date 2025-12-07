@@ -2,6 +2,7 @@ import {
   useActivateFeature,
   useAttack,
   useDungeonStart,
+  useEndTurn,
   useListCharacters,
   useMoveCharacter,
 } from '@/api';
@@ -12,8 +13,9 @@ import type {
   CombatState,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { useState } from 'react';
-import { ActionPanel } from './combat-v2';
+import { useEffect, useState } from 'react';
+import { CombatPanel, type CombatLogEntry } from './combat-v2';
+import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
 import { BattleMapPanel, type DamageNumber } from './encounter/BattleMapPanel';
 import { InitiativePanel } from './encounter/InitiativePanel';
 import { PartySetupPanel } from './encounter/PartySetupPanel';
@@ -25,6 +27,7 @@ export function EncounterDemo() {
   const { moveCharacter } = useMoveCharacter();
   const { attack } = useAttack();
   const { activateFeature } = useActivateFeature();
+  const { endTurn } = useEndTurn();
   const { addToast } = useToast();
   const discord = useDiscord();
   const isDevelopment = import.meta.env.MODE === 'development';
@@ -42,6 +45,11 @@ export function EncounterDemo() {
   const [room, setRoom] = useState<Room | null>(null);
   const [combatState, setCombatState] = useState<CombatState | null>(null);
 
+  // Full character data with equipment (separate from list data)
+  const [fullCharactersMap, setFullCharactersMap] = useState<
+    Map<string, Character>
+  >(new Map());
+
   // Character selection state
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>(
     []
@@ -58,6 +66,7 @@ export function EncounterDemo() {
   const [movementPath, setMovementPath] = useState<
     Array<{ x: number; y: number }>
   >([]);
+  const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
 
   // Damage number state
   const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([]);
@@ -294,20 +303,42 @@ export function EncounterDemo() {
   };
 
   const handleAttackAction = async () => {
-    if (!encounterId || !combatState?.currentTurn?.entityId || !attackTarget) {
+    if (!encounterId || !combatState?.currentTurn?.entityId) {
       console.warn('Missing required data for attack', {
         encounterId,
         attackerId: combatState?.currentTurn?.entityId,
-        attackTarget,
       });
       return;
+    }
+
+    // Use attackTarget if set, otherwise fall back to selectedEntity if it's a monster
+    let target = attackTarget;
+    if (!target && selectedEntity) {
+      const selectedEntityData = room?.entities[selectedEntity];
+      if (selectedEntityData?.entityType.toLowerCase() === 'monster') {
+        target = selectedEntity;
+      }
+    }
+
+    if (!target) {
+      addToast({
+        type: 'info',
+        message: 'Select a target first! Click on an enemy to target them.',
+        duration: 4000,
+      });
+      return;
+    }
+
+    // Update attackTarget state to match what we're using
+    if (target !== attackTarget) {
+      setAttackTarget(target);
     }
 
     try {
       const response = await attack(
         encounterId,
         combatState.currentTurn.entityId,
-        attackTarget
+        target
       );
 
       console.log('Attack response:', response);
@@ -335,13 +366,12 @@ export function EncounterDemo() {
         const attackLine = `Attack: ${attackRoll} ${modifierStr} = ${attackTotal} vs AC ${targetAc}`;
 
         // Get attacker's weapon name from their equipment
-        // TODO: ListCharacters doesn't include equipmentSlots - need API update to include weapon name
+        // Use fullCharactersMap which has full equipment data from GetCharacter
         const attackerId = combatState.currentTurn.entityId;
-        const attackerChar = availableCharacters.find(
-          (c) => c.id === attackerId
-        );
+        const fullAttackerChar = fullCharactersMap.get(attackerId);
         const weaponName =
-          attackerChar?.equipmentSlots?.mainHand?.equipment?.name || 'Weapon';
+          fullAttackerChar?.equipmentSlots?.mainHand?.equipment?.name ||
+          'Weapon';
 
         // Build damage breakdown string if available
         let damageLines = '';
@@ -405,12 +435,12 @@ export function EncounterDemo() {
           );
 
           // Add floating damage number
-          const damageId = `${attackTarget}-${Date.now()}`;
+          const damageId = `${target}-${Date.now()}`;
           setDamageNumbers((prev) => [
             ...prev,
             {
               id: damageId,
-              entityId: attackTarget,
+              entityId: target,
               damage,
               isCritical: critical,
             },
@@ -421,6 +451,66 @@ export function EncounterDemo() {
             setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
           }, 1500);
         }
+
+        // Add combat log entry - get display names for attacker and target
+        // For characters, use full character data; for monsters, format the entity ID
+        const getEntityDisplayName = (entityId: string): string => {
+          // Try full character data first
+          const fullChar = fullCharactersMap.get(entityId);
+          if (fullChar?.name) return fullChar.name;
+
+          // Try available characters
+          const availChar = availableCharacters.find((c) => c.id === entityId);
+          if (availChar?.name) return availChar.name;
+
+          // For monsters/NPCs, format the entity ID nicely
+          // e.g., "goblin-dummy" -> "Goblin Dummy" or just "Goblin"
+          const parts = entityId.split('-');
+          if (parts.length > 0) {
+            // Capitalize first part (monster type)
+            return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+          }
+          return entityId;
+        };
+
+        const targetName = getEntityDisplayName(target);
+        const attackerName = getEntityDisplayName(attackerId);
+
+        const logEntry: CombatLogEntry = {
+          id: `attack-${Date.now()}`,
+          timestamp: new Date(),
+          round: combatState.round,
+          actorName: attackerName,
+          targetName,
+          action: critical
+            ? 'Critical Hit!'
+            : hit
+              ? 'Attack Hit'
+              : 'Attack Miss',
+          description: hit
+            ? `${attackerName} hits ${targetName} for ${damage} ${damageType} damage`
+            : `${attackerName} misses ${targetName}`,
+          type: 'attack',
+          diceRolls: [
+            {
+              value: attackRoll,
+              sides: 20,
+              isNatural1: attackRoll === 1,
+              isNatural20: attackRoll === 20,
+              isCritical: critical,
+            },
+          ],
+          details: {
+            attackRoll,
+            attackTotal,
+            targetAc,
+            damage: hit ? damage : undefined,
+            damageType: hit ? damageType : undefined,
+            critical,
+            weaponName,
+          },
+        };
+        setCombatLog((prev) => [...prev, logEntry]);
       }
 
       // Update combat state if returned
@@ -447,45 +537,8 @@ export function EncounterDemo() {
     }
   };
 
-  const handleExecuteMove = async () => {
-    if (movementPath.length === 0 || !selectedEntity || !encounterId) return;
-
-    try {
-      const response = await moveCharacter(
-        encounterId,
-        selectedEntity,
-        movementPath
-      );
-      if (response.success) {
-        if (response.updatedRoom) setRoom(response.updatedRoom);
-
-        // Update combat state to reflect new movement remaining
-        if (combatState && combatState.currentTurn) {
-          const movementUsed =
-            combatState.currentTurn.movementMax - response.movementRemaining;
-          setCombatState({
-            ...combatState,
-            currentTurn: {
-              ...combatState.currentTurn,
-              movementUsed,
-            },
-          });
-        }
-
-        setMovementPath([]);
-        setMovementMode(false);
-      } else {
-        console.error('Move failed:', response.error?.message);
-      }
-    } catch (err) {
-      console.error('Failed to move character:', err);
-    }
-  };
-
-  const handleCancelMove = () => {
-    setMovementPath([]);
-    setMovementMode(false);
-  };
+  // Movement execution handlers removed - movement now handled by CombatPanel's Move button
+  // which toggles movement mode. Actual movement execution is still done via handleCellDoubleClick
 
   const handleActivateFeature = async (featureId: string) => {
     if (!encounterId || !combatState?.currentTurn?.entityId) {
@@ -548,42 +601,157 @@ export function EncounterDemo() {
     }
   };
 
-  const getSelectedCharacters = (): Character[] => {
-    // During combat, return the characters that were selected for the encounter
-    // The entity IDs in combat state don't match character IDs, so we use the original selection
-    if (combatState && combatState.turnOrder.length > 0) {
-      return availableCharacters.filter((char) =>
-        selectedCharacterIds.includes(char.id)
+  // Fetch full character data with equipment when combat starts
+  useEffect(() => {
+    if (encounterId && selectedCharacterIds.length > 0) {
+      console.log(
+        '[useEffect] Fetching full character data for:',
+        selectedCharacterIds
       );
+      // Fetch full character data for all selected characters
+      selectedCharacterIds.forEach(async (characterId) => {
+        try {
+          const request = { characterId };
+          const { characterClient } = await import('@/api/client');
+          const { create } = await import('@bufbuild/protobuf');
+          const { GetCharacterRequestSchema } =
+            await import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb');
+
+          const getCharRequest = create(GetCharacterRequestSchema, request);
+          console.log('[useEffect] Fetching character:', characterId);
+          const response = await characterClient.getCharacter(getCharRequest);
+
+          console.log('[useEffect] Got response for', characterId, ':', {
+            hasCharacter: !!response.character,
+            equipmentSlots: response.character?.equipmentSlots,
+          });
+
+          if (response.character) {
+            setFullCharactersMap((prev) => {
+              const newMap = new Map(prev);
+              newMap.set(characterId, response.character!);
+              console.log(
+                '[useEffect] Updated fullCharactersMap, new size:',
+                newMap.size
+              );
+              return newMap;
+            });
+          }
+        } catch (error) {
+          console.error(
+            `Failed to fetch full character data for ${characterId}:`,
+            error
+          );
+        }
+      });
+    }
+  }, [encounterId, selectedCharacterIds]);
+
+  const getSelectedCharacters = (): Character[] => {
+    // During combat, prefer full character data with equipment if available
+    if (combatState && combatState.turnOrder.length > 0) {
+      console.log(
+        '[getSelectedCharacters] fullCharactersMap size:',
+        fullCharactersMap.size
+      );
+      console.log(
+        '[getSelectedCharacters] fullCharactersMap keys:',
+        Array.from(fullCharactersMap.keys())
+      );
+      console.log(
+        '[getSelectedCharacters] selectedCharacterIds:',
+        selectedCharacterIds
+      );
+
+      const chars = selectedCharacterIds
+        .map((id) => {
+          const fullChar = fullCharactersMap.get(id);
+          const basicChar = availableCharacters.find((char) => char.id === id);
+          console.log(`[getSelectedCharacters] ID ${id}:`, {
+            hasFullChar: !!fullChar,
+            hasBasicChar: !!basicChar,
+            fullCharEquipment: fullChar?.equipmentSlots,
+          });
+          return fullChar || basicChar;
+        })
+        .filter((char): char is Character => char !== undefined);
+
+      return chars;
     }
 
-    // Before combat, use the selected characters for party setup
+    // Before combat, use available characters
     return availableCharacters.filter((char) =>
       selectedCharacterIds.includes(char.id)
     );
   };
 
+  // Extract turn information using usePlayerTurn hook
+  const { isPlayerTurn, currentCharacter, currentTurn } = usePlayerTurn({
+    combatState,
+    selectedCharacters: getSelectedCharacters(),
+  });
+
+  // Placeholder handlers for new CombatPanel callbacks
+  const handleSpell = () => {
+    addToast({
+      type: 'info',
+      message: 'Spell selection not yet implemented',
+      duration: 3000,
+    });
+  };
+
+  const handleBackpack = () => {
+    // Open equipment modal for current character
+    if (currentCharacter) {
+      setEquipmentCharacterId(currentCharacter.id);
+    }
+  };
+
+  const handleWeaponClick = (slot: 'mainHand' | 'offHand') => {
+    // Clicking a weapon should trigger an attack with that weapon
+    // For now, use the existing attack handler
+    console.log(`Weapon clicked: ${slot}`);
+    handleAttackAction();
+  };
+
+  const handleEndTurn = async () => {
+    if (!encounterId) {
+      console.warn('Cannot end turn: no encounterId');
+      return;
+    }
+
+    try {
+      const response = await endTurn(encounterId);
+      if (response.combatState) {
+        handleCombatStateUpdate(response.combatState);
+        addToast({
+          type: 'success',
+          message: 'Turn ended',
+          duration: 2000,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to end turn:', err);
+      addToast({
+        type: 'error',
+        message: 'Failed to end turn',
+        duration: 3000,
+      });
+    }
+  };
+
   return (
     <>
       <div
-        className="min-h-screen p-8"
-        style={{ backgroundColor: 'var(--bg-primary)' }}
+        className="min-h-screen p-4"
+        style={{
+          backgroundColor: 'var(--bg-primary)',
+          // Add bottom padding to account for fixed CombatPanel (~320px)
+          paddingBottom: currentCharacter ? '340px' : undefined,
+        }}
       >
         <div className="max-w-[1800px] mx-auto">
-          {/* Header */}
-          <div className="mb-8 text-center">
-            <h1
-              className="text-4xl font-bold mb-2"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              Combat Encounter
-            </h1>
-            <p className="text-lg" style={{ color: 'var(--text-muted)' }}>
-              Battle your way through the dungeon
-            </p>
-          </div>
-
-          {/* Main Content */}
+          {/* Main Content - Header removed to save vertical space */}
           {!room ? (
             // Pre-encounter setup
             <PartySetupPanel
@@ -635,6 +803,7 @@ export function EncounterDemo() {
                     onEntitySelect={handleEntityClick}
                     onEquipmentOpen={setEquipmentCharacterId}
                     onCombatStateUpdate={handleCombatStateUpdate}
+                    hideQuickActions={!!currentCharacter} // Hide when new CombatPanel is showing
                   />
                 )}
               </div>
@@ -653,7 +822,7 @@ export function EncounterDemo() {
         </div>
       </div>
 
-      {/* NEW Combat v2 Action Panel - OUTSIDE all containers with Portal */}
+      {/* OLD Combat v2 Action Panel - COMMENTED OUT - Replaced by new CombatPanel
       <ActionPanel
         combatState={combatState}
         encounterId={encounterId}
@@ -669,7 +838,25 @@ export function EncounterDemo() {
         onExecuteMove={handleExecuteMove}
         onCancelMove={handleCancelMove}
         debug={false} // Set to true for visibility testing
-      />
+      */}
+
+      {/* NEW Combat Panel - Full redesigned UI with character info and combat log */}
+      {currentCharacter && (
+        <CombatPanel
+          character={currentCharacter}
+          combatState={combatState}
+          turnState={currentTurn}
+          isPlayerTurn={isPlayerTurn}
+          combatLog={combatLog}
+          onAttack={handleAttackAction}
+          onMove={handleMoveAction}
+          onSpell={handleSpell}
+          onFeature={handleActivateFeature}
+          onBackpack={handleBackpack}
+          onWeaponClick={handleWeaponClick}
+          onEndTurn={handleEndTurn}
+        />
+      )}
     </>
   );
 }

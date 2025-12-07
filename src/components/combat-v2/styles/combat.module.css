@@ -298,7 +298,459 @@
   font-weight: bold;
 }
 
-/* Responsive design */
+/* ===================================== */
+/* Character Info Section */
+/* ===================================== */
+
+.characterInfoSection {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  background-color: #1e293b; /* slate-800 fallback */
+  background-color: var(--bg-secondary, #1e293b);
+  border-radius: 8px;
+  border: 1px solid #475569; /* slate-600 fallback */
+  border: 1px solid var(--border-color, #475569);
+}
+
+/* Portrait Section */
+.characterPortraitSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.characterPortrait {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    #3b82f6 0%,
+    #1e40af 100%
+  ); /* blue gradient */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #60a5fa; /* blue-400 */
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.portraitEmoji {
+  font-size: 1.5rem;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.characterNameSection {
+  display: flex;
+  flex-direction: column;
+}
+
+.characterDisplayName {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* HP Section */
+.hpSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.hpLabelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hpLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hpValues {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+}
+
+.hpBarContainer {
+  width: 100%;
+  height: 8px;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.hpBarFill {
+  height: 100%;
+  border-radius: 4px;
+  transition:
+    width 0.3s ease,
+    background-color 0.3s ease;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+}
+
+.tempHpBadge {
+  font-size: 0.75rem;
+  color: #60a5fa; /* blue-400 */
+  font-weight: 500;
+  align-self: flex-start;
+}
+
+/* AC Section */
+.acSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.acIcon {
+  font-size: 1.5rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.acValue {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.acLabel {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.acNumber {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  line-height: 1;
+}
+
+/* Saving Throw Badges */
+.savingThrowBadges {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.savingThrowBadge {
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: #10b981; /* emerald-500 */
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  cursor: default;
+}
+
+/* Conditions Section */
+.conditionsSection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.conditionBadge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: #7c3aed; /* violet-600 fallback */
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: white;
+  cursor: help;
+  transition: transform 0.2s ease;
+}
+
+.conditionBadge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4);
+}
+
+.conditionIcon {
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.conditionName {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* ===================================== */
+/* Equipment Display */
+/* ===================================== */
+
+.equipmentDisplay {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Weapon Slot */
+.weaponSlot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  min-width: 160px;
+  flex: 1;
+  transition: all 0.2s ease;
+}
+
+.weaponSlotClickable {
+  cursor: pointer;
+  border-color: #64748b; /* slate-500 */
+}
+
+.weaponSlotClickable:hover {
+  border-color: #dc2626; /* red-600 - attack color */
+  background-color: #1e293b; /* slate-800 */
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+}
+
+.weaponSlotClickable:active {
+  transform: translateY(0);
+}
+
+.weaponSlotDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.weaponSlotEmpty {
+  border-style: dashed;
+  border-color: #475569; /* slate-600 */
+}
+
+/* Weapon Slot Header */
+.weaponSlotHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.weaponSlotIcon {
+  font-size: 1.25rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.weaponSlotLabel {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Weapon Slot Content */
+.weaponSlotContent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weaponName {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  line-height: 1.2;
+}
+
+.weaponDamage {
+  font-size: 0.75rem;
+  color: #cbd5e1; /* slate-300 */
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.weaponSlotEmpty {
+  font-size: 0.875rem;
+  color: #64748b; /* slate-500 */
+  font-style: italic;
+  line-height: 1.2;
+}
+
+/* ===================================== */
+/* Action Economy Indicators */
+/* ===================================== */
+
+.actionEconomySection {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px;
+  background-color: #1e293b; /* slate-800 fallback */
+  background-color: var(--bg-secondary, #1e293b);
+  border-radius: 8px;
+  border: 1px solid #475569; /* slate-600 fallback */
+  border: 1px solid var(--border-color, #475569);
+}
+
+.actionEconomyItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.actionEconomyLabel {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+/* Movement Display */
+.movementDisplay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 100px;
+}
+
+.movementBarContainer {
+  width: 100%;
+  height: 6px;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.movementBarFill {
+  height: 100%;
+  border-radius: 3px;
+  transition:
+    width 0.3s ease,
+    background-color 0.3s ease;
+}
+
+.movementText {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  white-space: nowrap;
+}
+
+/* Action Dots */
+.actionDot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease;
+  cursor: help;
+}
+
+.actionDot:hover {
+  transform: scale(1.1);
+}
+
+.actionDotAvailable {
+  background-color: #10b981; /* emerald-500 */
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.actionDotUsed {
+  background-color: #334155; /* slate-700 */
+  border: 2px solid #475569; /* slate-600 */
+}
+
+.actionDotIcon {
+  font-size: 1.25rem;
+  line-height: 1;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  user-select: none;
+}
+
+.actionDotUsed .actionDotIcon {
+  color: #64748b; /* slate-500 - dimmed for used state */
+}
+
+/* Responsive design - Tablet */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .characterInfoSection {
+    flex-wrap: wrap;
+  }
+
+  .hpSection {
+    flex: 1 1 200px;
+  }
+
+  .conditionsSection {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .dynamicActionButtons {
+    gap: 10px;
+  }
+
+  .dynamicActionButton {
+    padding: 10px 14px;
+    font-size: 0.8125rem;
+  }
+}
+
+/* Responsive design - Mobile */
 @media (max-width: 768px) {
   .actionPanelContainer {
     padding: 12px 16px;
@@ -327,5 +779,590 @@
     margin-left: 0;
     width: 100%;
     justify-content: center;
+  }
+
+  /* Character Info Section - Stack vertically on mobile */
+  .characterInfoSection {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .characterPortraitSection {
+    justify-content: center;
+  }
+
+  .hpSection {
+    min-width: unset;
+  }
+
+  .conditionsSection {
+    justify-content: center;
+  }
+
+  /* Equipment Display - Stack on mobile */
+  .equipmentDisplay {
+    flex-direction: column;
+    gap: 16px; /* Increased spacing for easier touch targeting */
+  }
+
+  .weaponSlot {
+    min-width: unset;
+    /* Ensure adequate touch target size for weapon slots */
+    min-height: 64px;
+    padding: 12px 14px;
+  }
+
+  /* Action Economy - Wrap on mobile */
+  .actionEconomySection {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .movementDisplay {
+    min-width: 80px;
+  }
+}
+
+/* ===================================== */
+/* Dynamic Action Buttons */
+/* ===================================== */
+
+.dynamicActionButtons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.dynamicActionButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+}
+
+.dynamicActionButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  background-color: #475569; /* slate-600 */
+}
+
+.dynamicActionButton:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.dynamicActionButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.actionButtonIcon {
+  font-size: 1.25rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.actionButtonLabel {
+  line-height: 1;
+}
+
+/* Active state for toggleable abilities (e.g., Rage) */
+.actionButtonActive {
+  border-color: #fbbf24; /* amber-400 */
+  background-color: #92400e; /* amber-900 */
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
+}
+
+.actionButtonActive:hover:not(:disabled) {
+  background-color: #78350f; /* amber-950 */
+  border-color: #fcd34d; /* amber-300 */
+}
+
+/* Disabled state */
+.actionButtonDisabled {
+  background-color: #1e293b; /* slate-800 */
+  color: #64748b; /* slate-500 */
+}
+
+/* Action-specific button colors */
+.actionButtonAttack {
+  background-color: #dc2626; /* red-600 */
+  color: white;
+}
+
+.actionButtonAttack:hover:not(:disabled) {
+  background-color: #b91c1c; /* red-700 */
+}
+
+.actionButtonMove {
+  background-color: #3b82f6; /* blue-500 */
+  color: white;
+}
+
+.actionButtonMove:hover:not(:disabled) {
+  background-color: #2563eb; /* blue-600 */
+}
+
+.actionButtonSpell {
+  background-color: #7c3aed; /* violet-600 */
+  color: white;
+}
+
+.actionButtonSpell:hover:not(:disabled) {
+  background-color: #6d28d9; /* violet-700 */
+}
+
+.actionButtonAbility {
+  background-color: #ea580c; /* orange-600 */
+  color: white;
+}
+
+.actionButtonAbility:hover:not(:disabled) {
+  background-color: #c2410c; /* orange-700 */
+}
+
+.actionButtonSecond_wind,
+.actionButtonAction_surge,
+.actionButtonRage,
+.actionButtonReckless_attack,
+.actionButtonCunning_action {
+  background-color: #059669; /* emerald-600 */
+  color: white;
+}
+
+.actionButtonSecond_wind:hover:not(:disabled),
+.actionButtonAction_surge:hover:not(:disabled),
+.actionButtonRage:hover:not(:disabled),
+.actionButtonReckless_attack:hover:not(:disabled),
+.actionButtonCunning_action:hover:not(:disabled) {
+  background-color: #047857; /* emerald-700 */
+}
+
+.actionButtonBackpack {
+  background-color: #64748b; /* slate-500 */
+  color: white;
+}
+
+.actionButtonBackpack:hover:not(:disabled) {
+  background-color: #475569; /* slate-600 */
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .dynamicActionButtons {
+    justify-content: center;
+  }
+
+  .dynamicActionButton {
+    flex: 1 1 calc(50% - 6px);
+    justify-content: center;
+    min-width: 120px;
+    /* Ensure minimum touch target size (44x44px) for mobile accessibility */
+    min-height: 44px;
+    padding: 12px 16px;
+  }
+}
+
+/* ===================================== */
+/* Combat History Sidebar */
+/* ===================================== */
+
+.combatHistorySidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #1e293b; /* slate-800 fallback */
+  background-color: var(--bg-secondary, #1e293b);
+  border-radius: 8px;
+  border: 1px solid #475569; /* slate-600 fallback */
+  border: 1px solid var(--border-color, #475569);
+  overflow: hidden;
+}
+
+/* Sidebar Header */
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  border-bottom: 1px solid #475569; /* slate-600 fallback */
+  border-bottom: 1px solid var(--border-color, #475569);
+  flex-shrink: 0;
+}
+
+.sidebarTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+  margin: 0;
+}
+
+.sidebarIcon {
+  font-size: 1.25rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.sidebarRound {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #3b82f6; /* blue-500 fallback */
+  background-color: var(--accent-primary, #3b82f6);
+  color: white;
+}
+
+/* Sidebar Content - Scrollable */
+.sidebarContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Scrollbar styling */
+.sidebarContent::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebarContent::-webkit-scrollbar-track {
+  background-color: #1e293b; /* slate-800 */
+  border-radius: 4px;
+}
+
+.sidebarContent::-webkit-scrollbar-thumb {
+  background-color: #475569; /* slate-600 */
+  border-radius: 4px;
+}
+
+.sidebarContent::-webkit-scrollbar-thumb:hover {
+  background-color: #64748b; /* slate-500 */
+}
+
+/* Empty State */
+.emptyMessage {
+  text-align: center;
+  padding: 32px 16px;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+/* Log Entry */
+.logEntry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background-color: #334155; /* slate-700 fallback */
+  background-color: var(--bg-tertiary, #334155);
+  border-radius: 6px;
+  border-left: 3px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.logEntry:hover {
+  background-color: #475569; /* slate-600 */
+  border-left-color: #3b82f6; /* blue-500 */
+}
+
+/* Log Entry Header */
+.logEntryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logAction {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #f1f5f9; /* slate-100 fallback */
+  color: var(--text-primary, #f1f5f9);
+}
+
+.logMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logRound {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #94a3b8; /* slate-400 fallback */
+  color: var(--text-muted, #94a3b8);
+}
+
+.logTypeIcon {
+  font-size: 1rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+/* Action type colors */
+.logType_move {
+  color: #3b82f6; /* blue-500 */
+}
+
+.logType_attack {
+  color: #dc2626; /* red-600 */
+}
+
+.logType_spell {
+  color: #7c3aed; /* violet-600 */
+}
+
+.logType_endTurn {
+  color: #94a3b8; /* slate-400 */
+}
+
+.logType_damage {
+  color: #ea580c; /* orange-600 */
+}
+
+.logType_heal {
+  color: #10b981; /* emerald-500 */
+}
+
+/* Log Description */
+.logDescription {
+  font-size: 0.75rem;
+  color: #cbd5e1; /* slate-300 */
+  line-height: 1.4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Inline Dice Rolls Container */
+.diceRollsInline {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* Individual Inline Dice Roll */
+.diceRollInline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background-color: #475569; /* slate-600 */
+  color: #f1f5f9; /* slate-100 */
+}
+
+/* Log Target */
+.logTarget {
+  color: #94a3b8; /* slate-400 */
+  font-weight: 500;
+}
+
+/* Log Damage Display */
+.logDamage {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  background-color: #7f1d1d; /* red-900 */
+  color: #fca5a5; /* red-300 */
+  font-size: 0.6875rem;
+}
+
+/* Dice Rolls Container */
+.diceRollsContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Dice Roll Display */
+.diceRoll {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  background-color: #475569; /* slate-600 - default */
+  color: #f1f5f9; /* slate-100 */
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  cursor: help;
+}
+
+.diceRoll:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Natural 1 - Critical Failure (Red) */
+.diceRollNatural1 {
+  background-color: #7f1d1d; /* red-900 */
+  color: #fca5a5; /* red-300 */
+  border-color: #dc2626; /* red-600 */
+  box-shadow: 0 0 12px rgba(220, 38, 38, 0.4);
+  animation: pulse-red 2s infinite;
+}
+
+/* Natural 20 / Critical Hit (Gold) */
+.diceRollCritical {
+  background-color: #78350f; /* amber-900 */
+  color: #fcd34d; /* amber-300 */
+  border-color: #f59e0b; /* amber-500 */
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+  animation: pulse-gold 2s infinite;
+}
+
+/* Pulse animations for dramatic effect */
+@keyframes pulse-red {
+  0%,
+  100% {
+    box-shadow: 0 0 12px rgba(220, 38, 38, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.6);
+  }
+}
+
+@keyframes pulse-gold {
+  0%,
+  100% {
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.6);
+  }
+}
+
+/* Responsive - Stack differently on mobile */
+@media (max-width: 768px) {
+  .combatHistorySidebar {
+    /* On mobile, might be full-width or collapsed */
+    height: 300px;
+  }
+
+  .sidebarContent {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .logEntry {
+    padding: 8px 10px;
+  }
+}
+
+/* ===================================== */
+/* Combat Panel - Main Composition */
+/* ===================================== */
+
+.combatPanel {
+  /* Fixed positioning - anchor to bottom of viewport */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2500; /* Above game content, below modals */
+
+  /* Layout */
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+
+  /* Styling */
+  background-color: #0f172a; /* slate-900 - darker background */
+  background-color: var(--bg-primary, #0f172a);
+  border-top: 2px solid #475569; /* Border at top for visual separation */
+  border-top: 2px solid var(--border-color, #475569);
+  box-shadow: 0 -8px 25px -5px rgba(0, 0, 0, 0.4); /* Shadow above panel */
+
+  /* Interaction */
+  pointer-events: auto;
+}
+
+/* Container with max-width for readability */
+.combatPanelContainer {
+  display: grid;
+  grid-template-columns: 1fr 400px; /* ~70% main content, ~30% sidebar */
+  gap: 20px;
+  width: 100%;
+  max-width: 1400px;
+}
+
+/* Main Content Column */
+.combatPanelMainContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Sidebar Column - matches main content height */
+.combatPanelSidebar {
+  display: flex;
+  flex-direction: column;
+  /* Remove fixed heights - sidebar should match main content height */
+  /* The CombatHistorySidebar will handle its own scrolling */
+}
+
+/* Responsive Layout */
+@media (max-width: 1024px) {
+  .combatPanelContainer {
+    grid-template-columns: 1fr 300px; /* Narrower sidebar on medium screens */
+    gap: 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .combatPanel {
+    padding: 12px;
+  }
+
+  .combatPanelContainer {
+    grid-template-columns: 1fr; /* Stack vertically on mobile */
+    gap: 12px;
+  }
+
+  .combatPanelMainContent {
+    gap: 12px;
+  }
+
+  .combatPanelSidebar {
+    /* On mobile, give sidebar a reasonable height when stacked */
+    max-height: 250px;
   }
 }

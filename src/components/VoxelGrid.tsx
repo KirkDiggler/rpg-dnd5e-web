@@ -105,34 +105,42 @@ function HexCell({
   const edges = new THREE.EdgesGeometry(hexGeometry);
 
   return (
-    <group position={[pos.x, 0, pos.z]} rotation={[-Math.PI / 2, 0, 0]}>
-      {/* Main hex tile */}
+    <group position={[pos.x, 0, pos.z]}>
+      {/* Invisible cylinder hit area for easier clicking - not rotated with hex */}
       <mesh
-        ref={meshRef}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
         onPointerOver={() => onHover(true)}
         onPointerOut={() => onHover(false)}
-        geometry={hexGeometry}
+        position={[0, 0.5, 0]} // Center at half height
       >
-        <meshStandardMaterial
-          color={getColor()}
-          transparent
-          opacity={isInRange ? 0.7 : 0.5}
-          metalness={0.3}
-          roughness={0.7}
-        />
+        <cylinderGeometry args={[0.45, 0.45, 1.0, 6]} />
+        <meshBasicMaterial visible={false} />
       </mesh>
 
-      {/* Visible hex borders */}
-      <lineSegments ref={edgesRef} geometry={edges}>
-        <lineBasicMaterial
-          color={isHovered || isSelected ? '#ffffff' : '#64748b'}
-          linewidth={2}
-          opacity={0.8}
-          transparent
-        />
-      </lineSegments>
+      {/* Visual hex tile */}
+      <group rotation={[-Math.PI / 2, 0, 0]}>
+        {/* Main hex tile */}
+        <mesh ref={meshRef} geometry={hexGeometry}>
+          <meshStandardMaterial
+            color={getColor()}
+            transparent
+            opacity={isInRange ? 0.7 : 0.5}
+            metalness={0.3}
+            roughness={0.7}
+          />
+        </mesh>
+
+        {/* Visible hex borders */}
+        <lineSegments ref={edgesRef} geometry={edges}>
+          <lineBasicMaterial
+            color={isHovered || isSelected ? '#ffffff' : '#64748b'}
+            linewidth={2}
+            opacity={0.8}
+            transparent
+          />
+        </lineSegments>
+      </group>
     </group>
   );
 }
@@ -182,7 +190,8 @@ function EntityMarker({
     : '/models/human_complete.vox'; // Low-res 13KB model for monsters
 
   // Players need smaller scale due to high-res model dimensions
-  const modelScale = isPlayer ? 0.015 : 0.02;
+  // Scale to make character ~5 feet tall (reduced from 0.015/0.02 which was 4x too large)
+  const modelScale = isPlayer ? 0.00375 : 0.005;
 
   const { model: voxelModel } = useVoxelModel({
     modelPath: shouldUseVoxel ? modelPath : '',
@@ -192,19 +201,20 @@ function EntityMarker({
   });
 
   // Simple animation for selected entity
+  // Base Y of 0.15 prevents feet clipping into hex tiles
   useFrame((state) => {
     if (groupRef.current && isSelected) {
       groupRef.current.position.y =
-        0.05 + Math.sin(state.clock.elapsedTime * 2) * 0.1;
+        0.15 + Math.sin(state.clock.elapsedTime * 2) * 0.1;
     } else if (groupRef.current) {
-      groupRef.current.position.y = 0.05;
+      groupRef.current.position.y = 0.15;
     }
   });
 
   return (
     <group
       ref={groupRef}
-      position={[pos.x, 0.05, pos.z]}
+      position={[pos.x, 0.15, pos.z]}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -398,10 +408,9 @@ export function VoxelGrid(props: VoxelGridProps) {
       </style>
       <Canvas
         camera={{
-          position: [
-            -22.099228887851552, 6.343584064334879, 20.566566423746607,
-          ],
-          zoom: 71.76911159862591,
+          // Classic isometric: ~35° from horizontal, closer to action
+          position: [10, 12, 10],
+          zoom: 120,
         }}
         orthographic
       >
@@ -412,7 +421,7 @@ export function VoxelGrid(props: VoxelGridProps) {
           enableZoom={true}
           maxPolarAngle={Math.PI / 2.2} // Don't go completely horizontal
           minPolarAngle={Math.PI / 6} // Don't go too high (top-down)
-          target={[0.7799356490628112, -0.5942686854433457, -2.796867170551753]}
+          target={[0, 0, 0]}
         />
       </Canvas>
     </div>

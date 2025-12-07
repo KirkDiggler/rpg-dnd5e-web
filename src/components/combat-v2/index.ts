@@ -13,8 +13,24 @@
  */
 
 // Panels
+export { ActionEconomyIndicators } from './panels/ActionEconomyIndicators';
+export type { ActionEconomyIndicatorsProps } from './panels/ActionEconomyIndicators';
 export { ActionPanel } from './panels/ActionPanel';
 export type { ActionPanelProps } from './panels/ActionPanel';
+export { CharacterInfoSection } from './panels/CharacterInfoSection';
+export type { CharacterInfoSectionProps } from './panels/CharacterInfoSection';
+export { CombatHistorySidebar } from './panels/CombatHistorySidebar';
+export type {
+  CombatHistorySidebarProps,
+  CombatLogEntry,
+  DiceRoll,
+} from './panels/CombatHistorySidebar';
+export { CombatPanel } from './panels/CombatPanel';
+export type { CombatPanelProps } from './panels/CombatPanel';
+export { DynamicActionButtons } from './panels/DynamicActionButtons';
+export type { DynamicActionButtonsProps } from './panels/DynamicActionButtons';
+export { EquipmentDisplay } from './panels/EquipmentDisplay';
+export type { EquipmentDisplayProps } from './panels/EquipmentDisplay';
 
 // Hooks
 export { usePlayerTurn } from './hooks/usePlayerTurn';

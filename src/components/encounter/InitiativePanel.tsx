@@ -14,6 +14,7 @@ interface InitiativePanelProps {
   onEntitySelect: (entityId: string) => void;
   onEquipmentOpen: (characterId: string) => void;
   onCombatStateUpdate?: (combatState: CombatState) => void;
+  hideQuickActions?: boolean; // Hide Quick Actions when new combat panel is active
 }
 
 export function InitiativePanel({
@@ -25,6 +26,7 @@ export function InitiativePanel({
   onEntitySelect,
   onEquipmentOpen,
   onCombatStateUpdate,
+  hideQuickActions = false,
 }: InitiativePanelProps) {
   const getSelectedCharacters = (): Character[] => {
     return availableCharacters.filter((char) =>
@@ -74,8 +76,8 @@ export function InitiativePanel({
       {/* Round Tracker */}
       <RoundTracker round={combatState.round} />
 
-      {/* Quick Actions - Better Styled */}
-      {selectedCharacterIds.length > 0 && (
+      {/* Quick Actions - Better Styled - Hidden when new CombatPanel is active */}
+      {!hideQuickActions && selectedCharacterIds.length > 0 && (
         <QuickActions
           characters={getSelectedCharacters()}
           combatState={combatState}
