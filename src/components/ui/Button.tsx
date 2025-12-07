@@ -118,8 +118,10 @@ Button.displayName = 'Button';
 /**
  * Icon button variant - square button optimized for icons
  */
-export interface IconButtonProps
-  extends Omit<ButtonProps, 'icon' | 'iconAfter' | 'children'> {
+export interface IconButtonProps extends Omit<
+  ButtonProps,
+  'icon' | 'iconAfter' | 'children'
+> {
   /** Icon to display */
   icon: React.ReactNode;
   /** Accessibility label */

@@ -21,6 +21,16 @@ export interface CombatLogEntry {
   description: string;
   type: 'move' | 'attack' | 'spell' | 'end-turn' | 'damage' | 'heal' | 'info';
   diceRolls?: DiceRoll[];
+  // Rich tooltip data
+  details?: {
+    attackRoll?: number;
+    attackTotal?: number;
+    targetAc?: number;
+    damage?: number;
+    damageType?: string;
+    critical?: boolean;
+    weaponName?: string;
+  };
 }
 
 export interface CombatHistorySidebarProps {
@@ -80,37 +90,45 @@ export function CombatHistorySidebar({
           </div>
         ) : (
           logEntries.map((entry) => (
-            <div key={entry.id} className={styles.logEntry}>
+            <div
+              key={entry.id}
+              className={styles.logEntry}
+              title={buildEntryTooltip(entry)}
+            >
               {/* Entry Header */}
               <div className={styles.logEntryHeader}>
+                <span
+                  className={`${styles.logTypeIcon} ${styles[`logType_${entry.type}`]}`}
+                >
+                  {getActionTypeIcon(entry.type)}
+                </span>
                 <span className={styles.logAction}>{entry.action}</span>
-                <div className={styles.logMeta}>
-                  <span className={styles.logRound}>R{entry.round}</span>
-                  <span
-                    className={`${styles.logTypeIcon} ${styles[`logType_${entry.type}`]}`}
-                  >
-                    {getActionTypeIcon(entry.type)}
-                  </span>
-                </div>
+                <span className={styles.logRound}>R{entry.round}</span>
               </div>
 
-              {/* Description */}
-              <div className={styles.logDescription}>{entry.description}</div>
-
-              {/* Dice Rolls */}
-              {entry.diceRolls && entry.diceRolls.length > 0 && (
-                <div className={styles.diceRollsContainer}>
-                  {entry.diceRolls.map((roll, index) => (
-                    <span
-                      key={index}
-                      className={`${styles.diceRoll} ${getDiceRollClassName(roll)}`}
-                      title={getDiceRollTooltip(roll)}
-                    >
-                      {roll.value}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {/* Compact description with dice inline */}
+              <div className={styles.logDescription}>
+                {entry.diceRolls && entry.diceRolls.length > 0 && (
+                  <span className={styles.diceRollsInline}>
+                    {entry.diceRolls.map((roll, index) => (
+                      <span
+                        key={index}
+                        className={`${styles.diceRollInline} ${getDiceRollClassName(roll)}`}
+                      >
+                        {roll.value}
+                      </span>
+                    ))}
+                  </span>
+                )}
+                {entry.targetName && (
+                  <span className={styles.logTarget}>→ {entry.targetName}</span>
+                )}
+                {entry.details?.damage && (
+                  <span className={styles.logDamage}>
+                    {entry.details.damage} {entry.details.damageType}
+                  </span>
+                )}
+              </div>
             </div>
           ))
         )}
@@ -168,4 +186,64 @@ function getDiceRollTooltip(roll: DiceRoll): string {
     return `Critical damage: ${roll.value} on d${roll.sides}`;
   }
   return `${roll.value} on d${roll.sides}`;
+}
+
+/**
+ * Build rich tooltip text for a combat log entry
+ */
+function buildEntryTooltip(entry: CombatLogEntry): string {
+  const lines: string[] = [];
+
+  // Header with actor and action
+  lines.push(`${entry.actorName}: ${entry.action}`);
+
+  // Target if present
+  if (entry.targetName) {
+    lines.push(`Target: ${entry.targetName}`);
+  }
+
+  // Attack roll details
+  if (entry.details) {
+    const {
+      attackRoll,
+      attackTotal,
+      targetAc,
+      damage,
+      damageType,
+      critical,
+      weaponName,
+    } = entry.details;
+
+    if (weaponName) {
+      lines.push(`Weapon: ${weaponName}`);
+    }
+
+    if (attackRoll !== undefined && attackTotal !== undefined) {
+      const modifier = attackTotal - attackRoll;
+      const modStr = modifier >= 0 ? `+${modifier}` : `${modifier}`;
+      lines.push(`Attack Roll: ${attackRoll} ${modStr} = ${attackTotal}`);
+    }
+
+    if (targetAc !== undefined) {
+      lines.push(`Target AC: ${targetAc}`);
+    }
+
+    if (damage !== undefined && damageType) {
+      const critLabel = critical ? ' (CRITICAL!)' : '';
+      lines.push(`Damage: ${damage} ${damageType}${critLabel}`);
+    }
+  }
+
+  // Dice roll details
+  if (entry.diceRolls && entry.diceRolls.length > 0) {
+    const diceInfo = entry.diceRolls
+      .map((roll) => getDiceRollTooltip(roll))
+      .join(', ');
+    lines.push(`Dice: ${diceInfo}`);
+  }
+
+  // Round and timestamp
+  lines.push(`Round ${entry.round}`);
+
+  return lines.join('\n');
 }

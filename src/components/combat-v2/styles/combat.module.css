@@ -1153,6 +1153,51 @@
   font-size: 0.75rem;
   color: #cbd5e1; /* slate-300 */
   line-height: 1.4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Inline Dice Rolls Container */
+.diceRollsInline {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* Individual Inline Dice Roll */
+.diceRollInline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background-color: #475569; /* slate-600 */
+  color: #f1f5f9; /* slate-100 */
+}
+
+/* Log Target */
+.logTarget {
+  color: #94a3b8; /* slate-400 */
+  font-weight: 500;
+}
+
+/* Log Damage Display */
+.logDamage {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  background-color: #7f1d1d; /* red-900 */
+  color: #fca5a5; /* red-300 */
+  font-size: 0.6875rem;
 }
 
 /* Dice Rolls Container */

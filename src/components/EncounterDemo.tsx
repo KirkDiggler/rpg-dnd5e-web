@@ -303,20 +303,42 @@ export function EncounterDemo() {
   };
 
   const handleAttackAction = async () => {
-    if (!encounterId || !combatState?.currentTurn?.entityId || !attackTarget) {
+    if (!encounterId || !combatState?.currentTurn?.entityId) {
       console.warn('Missing required data for attack', {
         encounterId,
         attackerId: combatState?.currentTurn?.entityId,
-        attackTarget,
       });
       return;
+    }
+
+    // Use attackTarget if set, otherwise fall back to selectedEntity if it's a monster
+    let target = attackTarget;
+    if (!target && selectedEntity) {
+      const selectedEntityData = room?.entities[selectedEntity];
+      if (selectedEntityData?.entityType.toLowerCase() === 'monster') {
+        target = selectedEntity;
+      }
+    }
+
+    if (!target) {
+      addToast({
+        type: 'info',
+        message: 'Select a target first! Click on an enemy to target them.',
+        duration: 4000,
+      });
+      return;
+    }
+
+    // Update attackTarget state to match what we're using
+    if (target !== attackTarget) {
+      setAttackTarget(target);
     }
 
     try {
       const response = await attack(
         encounterId,
         combatState.currentTurn.entityId,
-        attackTarget
+        target
       );
 
       console.log('Attack response:', response);
@@ -344,13 +366,12 @@ export function EncounterDemo() {
         const attackLine = `Attack: ${attackRoll} ${modifierStr} = ${attackTotal} vs AC ${targetAc}`;
 
         // Get attacker's weapon name from their equipment
-        // TODO: ListCharacters doesn't include equipmentSlots - need API update to include weapon name
+        // Use fullCharactersMap which has full equipment data from GetCharacter
         const attackerId = combatState.currentTurn.entityId;
-        const attackerChar = availableCharacters.find(
-          (c) => c.id === attackerId
-        );
+        const fullAttackerChar = fullCharactersMap.get(attackerId);
         const weaponName =
-          attackerChar?.equipmentSlots?.mainHand?.equipment?.name || 'Weapon';
+          fullAttackerChar?.equipmentSlots?.mainHand?.equipment?.name ||
+          'Weapon';
 
         // Build damage breakdown string if available
         let damageLines = '';
@@ -414,12 +435,12 @@ export function EncounterDemo() {
           );
 
           // Add floating damage number
-          const damageId = `${attackTarget}-${Date.now()}`;
+          const damageId = `${target}-${Date.now()}`;
           setDamageNumbers((prev) => [
             ...prev,
             {
               id: damageId,
-              entityId: attackTarget,
+              entityId: target,
               damage,
               isCritical: critical,
             },
@@ -431,12 +452,29 @@ export function EncounterDemo() {
           }, 1500);
         }
 
-        // Add combat log entry
-        const targetChar = availableCharacters.find(
-          (c) => c.id === attackTarget
-        );
-        const targetName = targetChar?.name || attackTarget;
-        const attackerName = attackerChar?.name || attackerId;
+        // Add combat log entry - get display names for attacker and target
+        // For characters, use full character data; for monsters, format the entity ID
+        const getEntityDisplayName = (entityId: string): string => {
+          // Try full character data first
+          const fullChar = fullCharactersMap.get(entityId);
+          if (fullChar?.name) return fullChar.name;
+
+          // Try available characters
+          const availChar = availableCharacters.find((c) => c.id === entityId);
+          if (availChar?.name) return availChar.name;
+
+          // For monsters/NPCs, format the entity ID nicely
+          // e.g., "goblin-dummy" -> "Goblin Dummy" or just "Goblin"
+          const parts = entityId.split('-');
+          if (parts.length > 0) {
+            // Capitalize first part (monster type)
+            return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+          }
+          return entityId;
+        };
+
+        const targetName = getEntityDisplayName(target);
+        const attackerName = getEntityDisplayName(attackerId);
 
         const logEntry: CombatLogEntry = {
           id: `attack-${Date.now()}`,
@@ -462,6 +500,15 @@ export function EncounterDemo() {
               isCritical: critical,
             },
           ],
+          details: {
+            attackRoll,
+            attackTotal,
+            targetAc,
+            damage: hit ? damage : undefined,
+            damageType: hit ? damageType : undefined,
+            critical,
+            weaponName,
+          },
         };
         setCombatLog((prev) => [...prev, logEntry]);
       }
@@ -567,9 +614,8 @@ export function EncounterDemo() {
           const request = { characterId };
           const { characterClient } = await import('@/api/client');
           const { create } = await import('@bufbuild/protobuf');
-          const { GetCharacterRequestSchema } = await import(
-            '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb'
-          );
+          const { GetCharacterRequestSchema } =
+            await import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb');
 
           const getCharRequest = create(GetCharacterRequestSchema, request);
           console.log('[useEffect] Fetching character:', characterId);
