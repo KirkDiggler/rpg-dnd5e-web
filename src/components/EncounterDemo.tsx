@@ -838,7 +838,6 @@ export function EncounterDemo() {
         onExecuteMove={handleExecuteMove}
         onCancelMove={handleCancelMove}
         debug={false} // Set to true for visibility testing
-      />
       */}
 
       {/* NEW Combat Panel - Full redesigned UI with character info and combat log */}
