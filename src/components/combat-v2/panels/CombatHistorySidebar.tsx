@@ -1,13 +1,9 @@
 import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { useState } from 'react';
+import { useEffect, useRef } from 'react';
 import styles from '../styles/combat.module.css';
 
-export interface CombatHistorySidebarProps {
-  combatState: CombatState;
-  className?: string;
-}
-
-interface DiceRoll {
+// Export types for consumers
+export interface DiceRoll {
   value: number;
   sides: number;
   isNatural1?: boolean;
@@ -15,15 +11,22 @@ interface DiceRoll {
   isCritical?: boolean;
 }
 
-interface CombatLogEntry {
+export interface CombatLogEntry {
   id: string;
   timestamp: Date;
   round: number;
-  entityId: string;
+  actorName: string;
+  targetName?: string;
   action: string;
   description: string;
-  type: 'move' | 'attack' | 'spell' | 'end-turn' | 'damage' | 'heal';
+  type: 'move' | 'attack' | 'spell' | 'end-turn' | 'damage' | 'heal' | 'info';
   diceRolls?: DiceRoll[];
+}
+
+export interface CombatHistorySidebarProps {
+  combatState: CombatState;
+  logEntries: CombatLogEntry[];
+  className?: string;
 }
 
 /**
@@ -40,11 +43,17 @@ interface CombatLogEntry {
  */
 export function CombatHistorySidebar({
   combatState,
+  logEntries,
   className = '',
 }: CombatHistorySidebarProps) {
-  // Combat log entries will be populated by real combat events in a future iteration.
-  // For now, we maintain an empty state to show the UI structure.
-  const [combatLog] = useState<CombatLogEntry[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new entries are added
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [logEntries.length]);
 
   return (
     <div className={`${styles.combatHistorySidebar} ${className}`}>
@@ -58,8 +67,8 @@ export function CombatHistorySidebar({
       </div>
 
       {/* Scrollable Log Entries */}
-      <div className={styles.sidebarContent}>
-        {combatLog.length === 0 ? (
+      <div className={styles.sidebarContent} ref={scrollRef}>
+        {logEntries.length === 0 ? (
           <div className={styles.emptyMessage}>
             <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚔️</div>
             <div>Combat actions will appear here</div>
@@ -70,7 +79,7 @@ export function CombatHistorySidebar({
             </div>
           </div>
         ) : (
-          combatLog.map((entry) => (
+          logEntries.map((entry) => (
             <div key={entry.id} className={styles.logEntry}>
               {/* Entry Header */}
               <div className={styles.logEntryHeader}>

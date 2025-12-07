@@ -6,7 +6,10 @@ import type {
 import styles from '../styles/combat.module.css';
 import { ActionEconomyIndicators } from './ActionEconomyIndicators';
 import { CharacterInfoSection } from './CharacterInfoSection';
-import { CombatHistorySidebar } from './CombatHistorySidebar';
+import {
+  CombatHistorySidebar,
+  type CombatLogEntry,
+} from './CombatHistorySidebar';
 import { DynamicActionButtons } from './DynamicActionButtons';
 import { EquipmentDisplay } from './EquipmentDisplay';
 
@@ -15,6 +18,7 @@ export interface CombatPanelProps {
   combatState: CombatState | null;
   turnState: TurnState | null | undefined;
   isPlayerTurn: boolean;
+  combatLog?: CombatLogEntry[];
 
   // Callbacks
   onAttack?: () => void;
@@ -55,6 +59,7 @@ export function CombatPanel({
   combatState,
   turnState,
   isPlayerTurn,
+  combatLog = [],
   onAttack,
   onMove,
   onSpell,
@@ -101,7 +106,10 @@ export function CombatPanel({
         {/* Combat History Sidebar (30%) */}
         {combatState && (
           <div className={styles.combatPanelSidebar}>
-            <CombatHistorySidebar combatState={combatState} />
+            <CombatHistorySidebar
+              combatState={combatState}
+              logEntries={combatLog}
+            />
           </div>
         )}
       </div>

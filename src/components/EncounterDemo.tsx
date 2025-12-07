@@ -14,7 +14,7 @@ import type {
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useEffect, useState } from 'react';
-import { CombatPanel } from './combat-v2';
+import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
 import { BattleMapPanel, type DamageNumber } from './encounter/BattleMapPanel';
 import { InitiativePanel } from './encounter/InitiativePanel';
@@ -66,6 +66,7 @@ export function EncounterDemo() {
   const [movementPath, setMovementPath] = useState<
     Array<{ x: number; y: number }>
   >([]);
+  const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
 
   // Damage number state
   const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([]);
@@ -429,6 +430,40 @@ export function EncounterDemo() {
             setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
           }, 1500);
         }
+
+        // Add combat log entry
+        const targetChar = availableCharacters.find(
+          (c) => c.id === attackTarget
+        );
+        const targetName = targetChar?.name || attackTarget;
+        const attackerName = attackerChar?.name || attackerId;
+
+        const logEntry: CombatLogEntry = {
+          id: `attack-${Date.now()}`,
+          timestamp: new Date(),
+          round: combatState.round,
+          actorName: attackerName,
+          targetName,
+          action: critical
+            ? 'Critical Hit!'
+            : hit
+              ? 'Attack Hit'
+              : 'Attack Miss',
+          description: hit
+            ? `${attackerName} hits ${targetName} for ${damage} ${damageType} damage`
+            : `${attackerName} misses ${targetName}`,
+          type: 'attack',
+          diceRolls: [
+            {
+              value: attackRoll,
+              sides: 20,
+              isNatural1: attackRoll === 1,
+              isNatural20: attackRoll === 20,
+              isCritical: critical,
+            },
+          ],
+        };
+        setCombatLog((prev) => [...prev, logEntry]);
       }
 
       // Update combat state if returned
@@ -767,6 +802,7 @@ export function EncounterDemo() {
           combatState={combatState}
           turnState={currentTurn}
           isPlayerTurn={isPlayerTurn}
+          combatLog={combatLog}
           onAttack={handleAttackAction}
           onMove={handleMoveAction}
           onSpell={handleSpell}

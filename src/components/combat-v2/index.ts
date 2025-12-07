@@ -20,7 +20,11 @@ export type { ActionPanelProps } from './panels/ActionPanel';
 export { CharacterInfoSection } from './panels/CharacterInfoSection';
 export type { CharacterInfoSectionProps } from './panels/CharacterInfoSection';
 export { CombatHistorySidebar } from './panels/CombatHistorySidebar';
-export type { CombatHistorySidebarProps } from './panels/CombatHistorySidebar';
+export type {
+  CombatHistorySidebarProps,
+  CombatLogEntry,
+  DiceRoll,
+} from './panels/CombatHistorySidebar';
 export { CombatPanel } from './panels/CombatPanel';
 export type { CombatPanelProps } from './panels/CombatPanel';
 export { DynamicActionButtons } from './panels/DynamicActionButtons';
