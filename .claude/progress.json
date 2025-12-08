@@ -2,6 +2,22 @@
   "branch": "feature/type-safe-damage-sources",
   "issues": ["#231"],
   "goal": "Implement React components to display type-safe SourceRef damage sources using proto enums (ConditionId, FeatureId, Spell) from v0.1.55",
+  "design": {
+    "data_structure": {
+      "interface": "EnumDisplay { title: string; icon: string; description?: string; }",
+      "example": "{ title: 'Longsword', icon: '⚔️', description: '1d8 slashing damage' }"
+    },
+    "display_modes": {
+      "title": "Just the title string",
+      "icon": "Just the icon",
+      "full": "icon + title (e.g., '⚔️ Longsword')",
+      "compact": "icon with title as tooltip"
+    },
+    "exports": {
+      "component": "<WeaponDisplay weapon={...} mode='full' />",
+      "function": "getWeaponDisplay(weapon) => EnumDisplay"
+    }
+  },
   "context": {
     "proto_version": "v0.1.55",
     "design_doc": "https://github.com/KirkDiggler/rpg-toolkit/blob/main/docs/ideas/type-safe-refs/design-web.md",
