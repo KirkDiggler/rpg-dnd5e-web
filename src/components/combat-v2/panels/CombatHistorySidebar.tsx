@@ -1,3 +1,4 @@
+import { getWeaponDisplay } from '@/utils/enumDisplays';
 import type {
   CombatState,
   DamageBreakdown,
@@ -240,10 +241,24 @@ function buildEntryTooltip(entry: CombatLogEntry): string {
       damageType,
       critical,
       weaponName,
+      damageBreakdown,
     } = entry.details;
 
-    if (weaponName) {
-      lines.push(`Weapon: ${weaponName}`);
+    // Get weapon name from sourceRef if available, otherwise fall back to weaponName
+    let actualWeaponName = weaponName;
+    if (damageBreakdown?.components) {
+      for (const comp of damageBreakdown.components) {
+        if (comp.sourceRef?.source.case === 'weapon') {
+          actualWeaponName = getWeaponDisplay(
+            comp.sourceRef.source.value
+          ).title;
+          break;
+        }
+      }
+    }
+    // Only show weapon line if we have a meaningful name (not just "Weapon")
+    if (actualWeaponName && actualWeaponName !== 'Weapon') {
+      lines.push(`Weapon: ${actualWeaponName}`);
     }
 
     if (attackRoll !== undefined && attackTotal !== undefined) {

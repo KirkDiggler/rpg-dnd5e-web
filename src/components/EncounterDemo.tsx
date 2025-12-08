@@ -403,8 +403,8 @@ export function EncounterDemo() {
                 const { case: sourceCase, value } = comp.sourceRef.source;
                 switch (sourceCase) {
                   case 'weapon':
-                    // Use custom weapon name if available, otherwise enum display
-                    sourceName = weaponName || getWeaponDisplay(value).title;
+                    // Use type-safe enum display for weapon name
+                    sourceName = getWeaponDisplay(value).title;
                     break;
                   case 'ability':
                     sourceName = getAbilityDisplay(value).title;
