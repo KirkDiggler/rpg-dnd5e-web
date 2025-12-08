@@ -1,317 +1,105 @@
 {
-  "branch": "feat/228-combat-panel-redesign",
-  "issues": ["#228"],
-  "goal": "Redesign bottom combat panel with character quick-access: show character info (HP, AC, conditions), equipped weapons, class-specific action buttons, and relocate combat log to right sidebar",
-  "data_verification": {
-    "status": "verified",
-    "notes": "All required data available in protobuf types",
-    "available_fields": {
-      "character": [
-        "currentHitPoints / combatStats.hitPointMaximum - HP display",
-        "temporaryHitPoints - temp HP",
-        "combatStats.armorClass - AC display",
-        "equipmentSlots.mainHand / offHand - equipped weapons with full Equipment data",
-        "activeConditions[] - name, source, duration for condition badges",
-        "features[] - class features for determining available actions",
-        "classResources[] - rage uses, second wind, etc. with current/max",
-        "class - for class-specific action mapping"
-      ],
-      "combatState": [
-        "currentTurn.actionUsed - action economy",
-        "currentTurn.bonusActionUsed - bonus action economy",
-        "currentTurn.reactionAvailable - reaction tracking",
-        "currentTurn.movementUsed / movementMax - movement economy"
-      ]
+  "branch": "feature/type-safe-damage-sources",
+  "issues": ["#231"],
+  "goal": "Implement React components to display type-safe SourceRef damage sources using proto enums (ConditionId, FeatureId, Spell) from v0.1.55",
+  "design": {
+    "data_structure": {
+      "interface": "EnumDisplay { title: string; icon: string; description?: string; }",
+      "example": "{ title: 'Longsword', icon: '⚔️', description: '1d8 slashing damage' }"
     },
-    "gaps": []
+    "display_modes": {
+      "title": "Just the title string",
+      "icon": "Just the icon",
+      "full": "icon + title (e.g., '⚔️ Longsword')",
+      "compact": "icon with title as tooltip"
+    },
+    "exports": {
+      "component": "<WeaponDisplay weapon={...} mode='full' />",
+      "function": "getWeaponDisplay(weapon) => EnumDisplay"
+    }
+  },
+  "context": {
+    "proto_version": "v0.1.55",
+    "design_doc": "https://github.com/KirkDiggler/rpg-toolkit/blob/main/docs/ideas/type-safe-refs/design-web.md",
+    "existing_files": {
+      "damageSourceIcons.ts": "Old string-based approach - needs replacement with enum-based",
+      "conditionIcons.ts": "Condition display info - can be extended for ConditionId enum"
+    },
+    "sourceref_structure": {
+      "weapon": "Weapon enum - longsword, warhammer, etc.",
+      "ability": "Ability enum - STR, DEX, etc.",
+      "condition": "ConditionId enum - RAGING, BRUTAL_CRITICAL, SNEAK_ATTACK, etc.",
+      "feature": "FeatureId enum - BREATH_WEAPON, RADIANCE_OF_DAWN, etc.",
+      "spell": "Spell enum - existing spell definitions"
+    }
   },
   "sessions": [
     {
-      "date": "2025-12-05",
-      "agent": "Claude Opus 4.5",
-      "task": "Task 1: CharacterInfoSection component",
-      "status": "completed",
-      "commit": "a30d6c0",
-      "files_modified": [
-        "src/components/combat-v2/panels/CharacterInfoSection.tsx",
-        "src/components/combat-v2/styles/combat.module.css",
-        "src/components/combat-v2/index.ts"
+      "date": "2025-12-07",
+      "tasks_completed": ["Task 1", "Task 2"],
+      "commit": "8a87654",
+      "files_created": ["src/utils/enumDisplays.ts"],
+      "files_modified": ["package.json", "package-lock.json"],
+      "summary": "Updated protos to v0.1.55 and created comprehensive enum display maps for Weapon, Ability, ConditionId, FeatureId, and Spell enums. All display maps include icons, titles, and descriptions. All CI checks pass.",
+      "next_session": "Task 3-7: Create display components (WeaponDisplay, AbilityDisplay, etc.)"
+    },
+    {
+      "date": "2025-12-07",
+      "tasks_completed": ["Task 3", "Task 4", "Task 5", "Task 6", "Task 7"],
+      "commit": "ed50916",
+      "files_created": [
+        "src/components/enums/WeaponDisplay.tsx",
+        "src/components/enums/AbilityDisplay.tsx",
+        "src/components/enums/ConditionDisplay.tsx",
+        "src/components/enums/FeatureDisplay.tsx",
+        "src/components/enums/SpellDisplay.tsx",
+        "src/components/enums/index.ts"
       ],
-      "summary": "Created CharacterInfoSection component with portrait, name/class/level, HP bar with color coding (green/yellow/red), temp HP display, AC with shield icon, and active condition badges with tooltips. Includes basic condition icon mapping (extensible for Task 6). Follows combat-v2 patterns with dark theme and responsive design.",
-      "tests_affected": [
-        "character-portrait-display",
-        "hp-bar-display",
-        "ac-display",
-        "condition-badges"
-      ]
+      "files_modified": [],
+      "summary": "Created 5 display components (WeaponDisplay, AbilityDisplay, ConditionDisplay, FeatureDisplay, SpellDisplay) following the consistent pattern with 4 display modes (title, icon, full, compact). Each component uses the getter functions from enumDisplays.ts. All components export via index.ts with shared DisplayMode type. All CI checks pass.",
+      "next_session": "Task 8-9: Create DamageSourceBadge and DamageBreakdown components"
     },
     {
-      "date": "2025-12-05",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 2: EquipmentDisplay component",
-      "status": "completed",
-      "commit": "ffcd7be",
-      "files_modified": [
-        "src/components/combat-v2/panels/EquipmentDisplay.tsx",
-        "src/components/combat-v2/styles/combat.module.css",
-        "src/components/combat-v2/index.ts"
+      "date": "2025-12-07",
+      "tasks_completed": ["Task 8", "Task 9"],
+      "commit": "f7ea58d",
+      "files_created": [
+        "src/components/combat/DamageSourceBadge.tsx",
+        "src/components/combat/DamageBreakdown.tsx"
       ],
-      "summary": "Created EquipmentDisplay component showing main hand and off hand weapon slots with clickable attack functionality. Displays weapon name, damage dice (e.g., '1d8'), and damage type (e.g., 'slashing'). Empty slots show 'Empty' with dashed border. Includes hover effects with red border (attack color), disabled state styling, weapon icons (⚔️), and keyboard accessibility (Enter/Space). Helper functions convert DamageType enum to display strings. Responsive design stacks slots on mobile. Follows CharacterInfoSection patterns with dark theme and CSS modules.",
-      "tests_affected": ["equipped-weapons-display", "weapon-click-attack"]
+      "files_modified": ["src/components/combat/index.ts"],
+      "summary": "Created DamageSourceBadge component that dispatches SourceRef oneof to the appropriate display component (WeaponDisplay, AbilityDisplay, ConditionDisplay, FeatureDisplay, SpellDisplay). Created DamageBreakdown component that renders damage components with sources, critical indicators, and totals. Successfully verified protobuf-es uses source.case pattern for oneof handling. All CI checks pass.",
+      "next_session": "Task 10: Integrate with existing CombatHistorySidebar",
+      "notes": "Oneof handling confirmed: protobuf-es uses source.source.case === 'weapon' pattern. Used type-only imports for SourceRef, DamageComponent, and DisplayMode to satisfy verbatimModuleSyntax."
     },
     {
-      "date": "2025-12-05",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 3: ActionEconomyIndicators component",
-      "status": "completed",
-      "commit": "8f09953",
-      "files_modified": [
-        "src/components/combat-v2/panels/ActionEconomyIndicators.tsx",
-        "src/components/combat-v2/styles/combat.module.css",
-        "src/components/combat-v2/index.ts"
-      ],
-      "summary": "Created ActionEconomyIndicators component displaying action economy during combat. Shows movement remaining as progress bar with 'X/Y ft' label (e.g., '25/30 ft'), and action/bonus action/reaction as filled (●) or empty (○) dot indicators. Uses TurnState from CombatState.currentTurn protobuf type as data source (movementUsed, movementMax, actionUsed, bonusActionUsed, reactionAvailable). Color coding: green (#10b981) for available resources, gray (#6b7280) for used. Includes hover effects on dots (scale animation), tooltips, and responsive design that wraps on mobile. Handles null/undefined turnState gracefully (shows full resources as default). Follows CharacterInfoSection and EquipmentDisplay patterns with dark theme, CSS modules, and compact horizontal layout.",
-      "tests_affected": ["action-economy-indicators"]
-    },
-    {
-      "date": "2025-12-05",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 4: Class-to-actions mapping utility",
-      "status": "completed",
-      "commit": "0c49156",
-      "files_modified": ["src/utils/classActions.ts"],
-      "summary": "Created classActions.ts utility that maps character classes to their available quick-action buttons in combat. Implements ClassAction interface with id, label, icon (emoji), actionType (action/bonus_action/free/special), optional featureId, and description. Main function getClassActions(characterClass: Class) returns ClassActionsResult with actions array and className. Class-specific mappings: Fighter (Second Wind, Action Surge), Barbarian (Rage, Reckless Attack), Rogue (Cunning Action), Spellcasters (Spell button), Default (Ability button). All classes get common actions: Attack, Move, Backpack. Includes helper functions isSpellcaster() and getActionById(). Follows existing utility patterns from enumDisplay.ts and displayNames.ts using Class enum from protobuf protos.",
-      "tests_affected": [
-        "class-specific-fighter",
-        "class-specific-wizard",
-        "class-specific-barbarian"
-      ]
-    },
-    {
-      "date": "2025-12-05",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 5: DynamicActionButtons component",
-      "status": "completed",
-      "commit": "e441478",
-      "files_modified": [
-        "src/components/combat-v2/panels/DynamicActionButtons.tsx",
-        "src/components/combat-v2/styles/combat.module.css",
-        "src/components/combat-v2/index.ts"
-      ],
-      "summary": "Created DynamicActionButtons component that renders class-specific action buttons using the classActions utility. Features: Uses getClassActions(character.class) to get available actions, renders buttons with icons and labels, disables buttons based on action economy (action/bonus action/free), handles callbacks for different action types (onAttack, onMove, onSpell, onFeature, onBackpack), shows visual feedback for active abilities (e.g., Rage active = highlighted amber border). Button colors: Attack (red), Move (blue), Spell (violet), Class features (emerald green), Backpack (gray). Visual states: Normal (dark), Hover (lighter with scale animation), Disabled (grayed out, 40% opacity), Active (amber border with glow for toggles). Includes comprehensive CSS with action-specific button styles and responsive design that wraps buttons on mobile. Follows existing combat-v2 component patterns with proper TypeScript typing using Character['activeConditions'] for embedded types.",
-      "tests_affected": [
-        "class-specific-fighter",
-        "class-specific-wizard",
-        "class-specific-barbarian",
-        "backpack-modal"
-      ]
-    },
-    {
-      "date": "2025-12-05",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 6: Condition icons utility",
-      "status": "completed",
-      "commit": "ade42e4",
-      "files_modified": ["src/utils/conditionIcons.ts"],
-      "summary": "Created conditionIcons.ts utility following the classActions.ts pattern. Provides comprehensive display information (icon, label, color, description) for D&D 5e conditions and character states. Maps 15 standard D&D conditions (Blinded, Charmed, Deafened, Exhaustion, Frightened, Grappled, Incapacitated, Invisible, Paralyzed, Petrified, Poisoned, Prone, Restrained, Stunned, Unconscious), 6 class ability/buff conditions (Raging/Rage, Blessed/Bless, Concentrating, Hasted, Slowed, Inspired), and 3 combat states (Dying, Stable, Dead). Features case-insensitive matching, color coding (red for debuffs, green/blue for buffs, gray for neutral), sensible defaults for unknown conditions. Includes helper functions: getConditionDisplay() for main lookup, getAllConditions() for listing, isNegativeCondition() and isPositiveCondition() for filtering. Comprehensive JSDoc documentation with examples. Resolves data_verification gap noted in progress.json.",
-      "tests_affected": ["condition-badges"]
-    },
-    {
-      "date": "2025-12-05",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 7: CombatHistorySidebar component",
-      "status": "completed",
-      "commit": "9216e68",
+      "date": "2025-12-07",
+      "tasks_completed": ["Task 10", "Task 11"],
+      "commit": "32bf72d",
+      "files_created": [],
       "files_modified": [
         "src/components/combat-v2/panels/CombatHistorySidebar.tsx",
-        "src/components/combat-v2/index.ts",
-        "src/components/combat-v2/styles/combat.module.css"
+        "src/components/combat/panels/CombatHistoryPanel.tsx",
+        "src/components/combat/DamageSourceBadge.tsx",
+        "src/components/combat/DamageBreakdown.tsx",
+        "src/utils/damageSourceIcons.ts"
       ],
-      "summary": "Created CombatHistorySidebar component for right sidebar display of combat log with enhanced dice roll highlighting. Features: Fixed height container with scrollable content area, dice roll highlighting (Natural 1s in red with pulse animation, Natural 20s/crits in gold with pulse animation), action type icons and color coding (attack=red, spell=violet, move=blue, heal=green, damage=orange), round tracking, timestamp display, hover effects on log entries and dice rolls, custom scrollbar styling for dark theme. Component includes DiceRoll and CombatLogEntry TypeScript interfaces for type safety. Helper functions: getActionTypeIcon() for emoji icons, getDiceRollClassName() for CSS class selection, getDiceRollTooltip() for roll descriptions. CSS includes pulse animations (@keyframes pulse-red, pulse-gold) for dramatic visual effects on critical rolls. Follows combat-v2 patterns with CSS Modules, protobuf CombatState integration, dark slate color palette, and responsive mobile layout. Ready for integration in main combat panel layout (Task 8).",
-      "tests_affected": ["combat-log-sidebar", "combat-log-dice-highlighting"]
-    },
-    {
-      "date": "2025-12-05",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 8: CombatPanel main composition",
-      "status": "completed",
-      "commit": "426b54c",
-      "files_modified": [
-        "src/components/combat-v2/panels/CombatPanel.tsx",
-        "src/components/combat-v2/styles/combat.module.css",
-        "src/components/combat-v2/index.ts"
-      ],
-      "summary": "Created main CombatPanel component that composes all sub-components from Tasks 1-7 into a cohesive combat interface. Two-column CSS Grid layout: ~70% main content (1fr), ~30% sidebar (400px fixed width). Main content stacks vertically: CharacterInfoSection -> EquipmentDisplay -> ActionEconomyIndicators -> DynamicActionButtons. Sidebar contains CombatHistorySidebar with fixed height (min 500px, max 700px) and scrollable content. Props interface includes character, combatState, turnState, isPlayerTurn (disables all actions when false), and callbacks (onAttack, onMove, onSpell, onFeature, onBackpack, onWeaponClick). Dark theme with slate-900 background, rounded corners (12px), and shadow for depth. Responsive design: sidebar narrows to 300px on medium screens (1024px), stacks vertically on mobile (768px) with reduced min-height (300px). CSS uses CSS Grid for precise layout control with explicit gap spacing. All CI checks pass. Ready for Task 9 integration into EncounterDemo.",
-      "tests_affected": [
-        "character-portrait-display",
-        "hp-bar-display",
-        "ac-display",
-        "condition-badges",
-        "equipped-weapons-display",
-        "weapon-click-attack",
-        "action-economy-indicators",
-        "class-specific-fighter",
-        "class-specific-wizard",
-        "class-specific-barbarian",
-        "combat-log-sidebar",
-        "combat-log-dice-highlighting",
-        "responsive-layout"
-      ]
-    },
-    {
-      "date": "2025-12-05",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 9: Integrate into EncounterDemo replacing old panel",
-      "status": "completed",
-      "commit": "cde2a84",
-      "files_modified": ["src/components/EncounterDemo.tsx"],
-      "summary": "Integrated the new CombatPanel into EncounterDemo, replacing the old ActionPanel. Added imports for CombatPanel and usePlayerTurn hook. Used usePlayerTurn to extract turnState, isPlayerTurn, and currentCharacter from combat state. Created new handler functions: handleSpell (placeholder toast), handleBackpack (opens equipment modal for current character), handleWeaponClick (triggers attack with selected weapon). Wired up all CombatPanel callbacks to existing handlers (handleAttackAction, handleMoveAction, handleActivateFeature). The old ActionPanel code is commented out for easy rollback. Removed unused handleExecuteMove and handleCancelMove functions that were specific to the old panel. The new panel only renders when currentCharacter is available (during player turns). All CI checks pass (format, lint, typecheck, build). Ready for Task 10 responsive design verification and manual testing.",
-      "tests_affected": [
-        "character-portrait-display",
-        "hp-bar-display",
-        "ac-display",
-        "condition-badges",
-        "equipped-weapons-display",
-        "weapon-click-attack",
-        "action-economy-indicators",
-        "class-specific-fighter",
-        "class-specific-wizard",
-        "class-specific-barbarian",
-        "combat-log-sidebar",
-        "combat-log-dice-highlighting",
-        "backpack-modal"
-      ]
-    },
-    {
-      "date": "2025-12-05",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 10: Responsive design review and enhancement",
-      "status": "completed",
-      "commit": "efc4041",
-      "files_modified": ["src/components/combat-v2/styles/combat.module.css"],
-      "summary": "Reviewed and enhanced responsive design across all combat-v2 components. Added tablet breakpoint (769px-1024px) for improved medium-screen experience with optimized button sizing and wrapping. Enhanced mobile touch targets to meet WCAG 2.1 Level AAA standards: action buttons now min 44x44px, weapon slots min 64px height. Improved mobile spacing: equipment display gap increased to 16px, action buttons padding increased to 12px 16px. All components now provide optimal layouts across three breakpoints: desktop (>1024px), tablet (769-1024px), and mobile (<768px). Core actions (Attack, Move) remain easily tappable on all screen sizes. Equipment slots stack vertically on mobile with adequate spacing for touch interaction. Combat history sidebar adapts height appropriately. All CI checks pass.",
-      "tests_affected": ["responsive-layout"]
-    },
-    {
-      "date": "2025-12-06",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 11: Fix CombatPanel positioning - anchor to bottom of viewport",
-      "status": "completed",
-      "commit": "51232de",
-      "files_modified": ["src/components/combat-v2/styles/combat.module.css"],
-      "summary": "Fixed CombatPanel positioning to anchor at bottom of viewport instead of scrolling with page content. Changed from relative to fixed positioning with explicit bottom: 0, left: 0, right: 0. Added z-index: 2500 to ensure panel stays above game content but below modals (z-index 1000+). Updated visual styling: replaced border-radius with border-top for better fixed-panel aesthetic, changed box-shadow to cast upward for depth perception. Panel now maintains consistent position regardless of page scroll or window height, ensuring combat controls are always accessible. Battle map and initiative sidebar remain visible above the panel. No layout breaks or z-index conflicts.",
-      "tests_affected": ["combat-panel-positioning", "viewport-anchoring"]
-    },
-    {
-      "date": "2025-12-06",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 12: Hide Quick Actions from InitiativePanel when new CombatPanel is active",
-      "status": "completed",
-      "commit": "51232de",
-      "files_modified": [
-        "src/components/encounter/InitiativePanel.tsx",
-        "src/components/EncounterDemo.tsx"
-      ],
-      "summary": "Eliminated UI duplication by hiding the old Quick Actions panel when the new CombatPanel is showing. Added optional hideQuickActions prop to InitiativePanel interface (defaults to false for backward compatibility). Updated QuickActions rendering to conditionally show based on !hideQuickActions && selectedCharacterIds.length > 0. In EncounterDemo, pass hideQuickActions={!!currentCharacter} to InitiativePanel - when currentCharacter exists (player's turn), the new CombatPanel renders and old Quick Actions are hidden. This prevents showing both the old End Turn / Equipment buttons and the new combat panel simultaneously. Clean separation between old and new UI states.",
-      "tests_affected": [
-        "initiative-panel-quick-actions",
-        "combat-panel-integration"
-      ]
-    },
-    {
-      "date": "2025-12-06",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 13: Wire real equipment data to EquipmentDisplay",
-      "status": "completed",
-      "commit": "7cb003a",
-      "files_modified": [
-        "src/components/EncounterDemo.tsx",
-        "src/components/combat-v2/panels/EquipmentDisplay.tsx"
-      ],
-      "summary": "Fixed equipment display data wiring issue. Root cause: useListCharacters returns basic Character objects without full equipmentSlots data populated. The Character protobuf type has the field, but ListCharacters API doesn't populate it. Solution: Added useEffect to fetch full character data via GetCharacter API when combat starts. Created fullCharactersMap state (Map<string, Character>) to store complete character data with equipment. Modified getSelectedCharacters to prefer full character data from the map during combat. The equipment slots now properly display equipped weapons (name, damage dice, damage type) instead of showing 'Empty'. All CI checks pass.",
-      "tests_affected": ["equipped-weapons-display"]
-    },
-    {
-      "date": "2025-12-06",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 14: Remove mock data from CombatHistorySidebar",
-      "status": "completed",
-      "commit": "f010916",
-      "files_modified": [
-        "src/components/combat-v2/panels/CombatHistorySidebar.tsx"
-      ],
-      "summary": "Removed hardcoded mock combat log entries from CombatHistorySidebar. Replaced with clean empty state displaying crossed swords icon, 'Combat actions will appear here' message, and explanatory text about what will be logged. The component structure remains intact with all TypeScript interfaces (DiceRoll, CombatLogEntry) and helper functions (getActionTypeIcon, getDiceRollClassName, getDiceRollTooltip) preserved for future real event wiring. This was the final manual testing issue for #228. Component now shows honest empty state instead of misleading fake data.",
-      "tests_affected": ["combat-log-sidebar"]
-    },
-    {
-      "date": "2025-12-06",
-      "agent": "Claude Sonnet 4.5",
-      "task": "Task 15: Fix CRITICAL issues from manual testing - End Turn and Equipment debugging",
-      "status": "completed",
-      "commit": "4032bd6",
-      "files_modified": [
-        "src/utils/classActions.ts",
-        "src/components/combat-v2/panels/DynamicActionButtons.tsx",
-        "src/components/combat-v2/panels/CombatPanel.tsx",
-        "src/components/EncounterDemo.tsx",
-        "src/components/combat-v2/panels/EquipmentDisplay.tsx"
-      ],
-      "summary": "Fixed two CRITICAL issues discovered during manual testing: (1) GAME UNPLAYABLE - No End Turn button: Added 'end_turn' action to COMMON_ACTIONS array in classActions.ts, added onEndTurn prop throughout the component chain (DynamicActionButtons -> CombatPanel -> EncounterDemo), imported useEndTurn hook in EncounterDemo, created handleEndTurn handler that calls the API and updates combat state, wired onEndTurn={handleEndTurn} to CombatPanel. End Turn button now appears as the last button in action sets for all classes. (2) EQUIPMENT SHOWS EMPTY - Added comprehensive debug logging: EquipmentDisplay logs character ID and equipment slot data, EncounterDemo useEffect logs character fetching process and API responses, getSelectedCharacters logs fullCharactersMap state and data flow. Debug logs will help identify why equipment data from fullCharactersMap isn't displaying correctly even though the backpack modal shows the correct data. All CI checks pass.",
-      "tests_affected": ["end-turn-button", "equipment-display-debugging"]
-    },
-    {
-      "date": "2025-12-06",
-      "agent": "Claude Opus 4.5",
-      "task": "Task 16: Compact headers and 2D HexGrid for 1080p screens",
-      "status": "completed",
-      "commit": "4c6f0f3",
-      "files_modified": [
-        "src/components/EncounterDemo.tsx",
-        "src/components/encounter/BattleMapPanel.tsx",
-        "src/components/HexGrid.tsx"
-      ],
-      "summary": "Optimized vertical space usage for 1080p screens: (1) Removed 'Combat Encounter' header from EncounterDemo, (2) Reduced main container padding from p-8 to p-4, (3) Made BattleMapPanel header compact - removed 'Battle Map' title, smaller toggle button and text, combined into single row, (4) Reduced HexGrid cellSize from 35px to 28px, (5) Added max-height constraints (calc(100vh - 420px)) to HexGrid container to prevent vertical overflow, (6) Condensed HexGrid legend - smaller icons (w-3 h-3), shorter labels (PC/Enemy/Selected), less padding. Grid container now scrollable if content exceeds viewport. All CI checks pass.",
-      "tests_affected": ["responsive-layout", "compact-headers"]
+      "summary": "Integrated DamageSourceBadge into CombatHistorySidebar and CombatHistoryPanel. Enhanced DamageSourceBadge to accept DamageComponent (instead of just SourceRef) with backwards compatibility for deprecated string-based sources. Added weaponName prop for display overrides. Deprecated damageSourceIcons.ts with comprehensive JSDoc comments directing users to new components. Both sidebars now show type-safe damage sources when sourceRef is available, falling back to legacy string display for compatibility. All CI checks pass.",
+      "next_session": "Feature complete - ready for testing and PR creation",
+      "notes": "DamageSourceBadge now handles both new sourceRef (type-safe) and legacy source (string) for backwards compatibility. The formatLegacySource fallback ensures old data still displays correctly until rpg-toolkit fully migrates to SourceRef. All existing combat UI updated to use new components."
     }
   ],
   "next_steps": [
-    "Task 1: Create CharacterInfoSection component (portrait, name, HP bar, AC, conditions) ✓ COMPLETED",
-    "Task 2: Create EquipmentDisplay component (main hand/off hand weapon slots) ✓ COMPLETED",
-    "Task 3: Create ActionEconomyIndicators component (movement/action/bonus/reaction dots) ✓ COMPLETED",
-    "Task 4: Create class-to-actions mapping utility (Fighter->Attack/Second Wind/Action Surge, etc.) ✓ COMPLETED",
-    "Task 5: Create DynamicActionButtons component using class mapping ✓ COMPLETED",
-    "Task 6: Extend damageSourceIcons.ts for condition icons (conditionIcons.ts) ✓ COMPLETED",
-    "Task 7: Relocate CombatHistoryPanel to right sidebar with enhanced styling ✓ COMPLETED",
-    "Task 8: Compose new CombatPanel from all sub-components ✓ COMPLETED",
-    "Task 9: Integrate into EncounterDemo replacing old panel ✓ COMPLETED",
-    "Task 10: Add responsive design considerations / Manual testing ✓ COMPLETED",
-    "Task 11: Fix CombatPanel positioning - anchor to bottom of viewport ✓ COMPLETED",
-    "Task 12: Hide Quick Actions from InitiativePanel when new CombatPanel is active ✓ COMPLETED",
-    "Task 13: Wire real equipment data from character.equipmentSlots to EquipmentDisplay ✓ COMPLETED",
-    "Task 14: Remove mock data from CombatHistorySidebar ✓ COMPLETED",
-    "Task 15: Fix CRITICAL issues - End Turn button and Equipment debugging ✓ COMPLETED",
-    "Task 16: Compact headers and 2D HexGrid for 1080p screens ✓ COMPLETED"
-  ],
-  "status": "completed",
-  "manual_testing_feedback": {
-    "date": "2025-12-06",
-    "round_1_issues": [
-      "CombatPanel scrolls off screen when window is tall - needs fixed positioning ✓ FIXED (Task 11)",
-      "Old Quick Actions panel still visible in InitiativePanel - should be hidden ✓ FIXED (Task 12)",
-      "Equipment slots show 'Empty' but backpack shows equipped items - data not wired ✓ FIXED (Task 13)",
-      "Combat log shows mock/fake data - not connected to real combat events ✓ FIXED (Task 14)"
-    ],
-    "round_2_issues": [
-      "CRITICAL: No End Turn button - game unplayable ✓ FIXED (Task 15)",
-      "Equipment still shows Empty - needs debugging ⚠️ DEBUG LOGGING ADDED (Task 15)"
-    ],
-    "notes": "Equipment issue has debug logging in place. Console logs will help trace why fullCharactersMap data isn't flowing to EquipmentDisplay even though Task 13 implemented the fetch logic. Check browser console during next manual test.",
-    "round_3_issues": [
-      "Battle Map still extends below viewport on 1080p ✓ FIXED (Task 16)",
-      "Combat Round label cut off at bottom of sidebar ✓ FIXED (Task 16)",
-      "Headers take too much vertical space ✓ FIXED (Task 16)",
-      "2D view 'very tall' ✓ FIXED (Task 16)"
-    ]
-  },
-  "remaining_tasks": []
+    "Task 1: Update package.json to use @kirkdiggler/rpg-api-protos v0.1.55",
+    "Task 2: Create enum display maps (src/utils/enumDisplays.ts) - WEAPON_DISPLAY, ABILITY_DISPLAY, CONDITION_DISPLAY, FEATURE_DISPLAY",
+    "Task 3: Create WeaponDisplay component",
+    "Task 4: Create AbilityDisplay component",
+    "Task 5: Create ConditionDisplay component (extend existing conditionIcons.ts)",
+    "Task 6: Create FeatureDisplay component",
+    "Task 7: Create SpellDisplay component",
+    "Task 8: Create DamageSourceBadge component (handles SourceRef oneof)",
+    "Task 9: Create DamageBreakdown component for combat UI",
+    "Task 10: Integrate with existing CombatHistorySidebar",
+    "Task 11: Update damageSourceIcons.ts to use new enum-based approach or deprecate"
+  ]
 }

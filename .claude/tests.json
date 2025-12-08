@@ -1,100 +1,72 @@
 {
   "tests": [
     {
-      "id": "character-portrait-display",
-      "feature": "character-info-section",
-      "prompt": "During combat, verify the bottom panel displays: character portrait/icon, name, and class/level (e.g., 'Thorin - Level 3 Fighter').",
+      "id": "proto-version-updated",
+      "feature": "setup",
+      "prompt": "Verify @kirkdiggler/rpg-api-protos is v0.1.55 or later with SourceRef, ConditionId, FeatureId types available",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "hp-bar-display",
-      "feature": "character-info-section",
-      "prompt": "During combat, verify HP bar shows current/max values (e.g., '45/52 HP') with visual bar that changes color based on health percentage (green > yellow > red).",
+      "id": "enum-display-maps",
+      "feature": "display-maps",
+      "prompt": "WEAPON_DISPLAY, ABILITY_DISPLAY, CONDITION_DISPLAY, FEATURE_DISPLAY maps exist and cover all enum values",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "ac-display",
-      "feature": "character-info-section",
-      "prompt": "During combat, verify Armor Class is prominently displayed with shield icon (e.g., 'AC 16').",
+      "id": "weapon-display-component",
+      "feature": "components",
+      "prompt": "WeaponDisplay component renders weapon name for any Weapon enum value",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "condition-badges",
-      "feature": "character-info-section",
-      "prompt": "When character has active conditions (Rage, Blessed, Poisoned, etc.), verify badges appear with appropriate icons. Badges should show condition name on hover.",
+      "id": "ability-display-component",
+      "feature": "components",
+      "prompt": "AbilityDisplay component renders 'STR', 'DEX', etc. for Ability enum values",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "action-economy-indicators",
-      "feature": "action-economy",
-      "prompt": "Verify action economy indicators show: movement remaining (e.g., '30/30 ft'), action available (filled/empty dot), bonus action available (filled/empty dot), reaction available (filled/empty dot).",
+      "id": "condition-display-component",
+      "feature": "components",
+      "prompt": "ConditionDisplay component renders 'Rage', 'Sneak Attack', etc. for ConditionId enum values",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "equipped-weapons-display",
-      "feature": "equipment-display",
-      "prompt": "Verify main hand and off hand weapon slots are displayed with weapon name, damage dice (e.g., 'Longsword 1d8 slashing'). Empty slots should show 'Empty' or similar.",
+      "id": "feature-display-component",
+      "feature": "components",
+      "prompt": "FeatureDisplay component renders 'Breath Weapon', 'Radiance of Dawn', etc. for FeatureId enum values",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "weapon-click-attack",
-      "feature": "equipment-display",
-      "prompt": "Clicking an equipped weapon should initiate an attack (same as clicking Attack button). Verify weapon slots are interactive.",
+      "id": "spell-display-component",
+      "feature": "components",
+      "prompt": "SpellDisplay component renders spell name for Spell enum values",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "class-specific-fighter",
-      "feature": "dynamic-actions",
-      "prompt": "For a Fighter character, verify action buttons show: Attack, Move, Second Wind (if available), Action Surge (if available), Backpack. NOT generic spell button.",
+      "id": "damage-source-badge",
+      "feature": "components",
+      "prompt": "DamageSourceBadge correctly dispatches to WeaponDisplay/AbilityDisplay/etc based on SourceRef oneof case",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "class-specific-wizard",
-      "feature": "dynamic-actions",
-      "prompt": "For a Wizard character, verify action buttons show: Attack, Move, Spell (opens spell list), Backpack. Should NOT show Rage or Second Wind.",
+      "id": "damage-breakdown-component",
+      "feature": "components",
+      "prompt": "DamageBreakdown component renders list of damage components with source badges and totals",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "class-specific-barbarian",
-      "feature": "dynamic-actions",
-      "prompt": "For a Barbarian character, verify action buttons show: Attack, Move, Rage (toggleable), Reckless Attack (if available), Backpack.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "backpack-modal",
-      "feature": "dynamic-actions",
-      "prompt": "Clicking Backpack button opens inventory modal showing character's items. Should be accessible for all classes.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "combat-log-sidebar",
-      "feature": "combat-history",
-      "prompt": "Verify CombatHistoryPanel is positioned in right sidebar (not overlapping main battle map). Should be scrollable with recent entries visible.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "combat-log-dice-highlighting",
-      "feature": "combat-history",
-      "prompt": "In combat log entries, verify dice rolls are highlighted: natural 1s in red, natural 20s (crits) in gold. Damage sources show appropriate icons.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "responsive-layout",
-      "feature": "responsive-design",
-      "prompt": "On smaller screens, verify the combat panel adapts gracefully - equipment might collapse, but core actions remain accessible.",
+      "id": "ci-checks-pass",
+      "feature": "quality",
+      "prompt": "npm run ci-check passes (format, lint, typecheck, build)",
       "passes": false,
       "last_checked": null
     }

@@ -1,0 +1,46 @@
+import type { DamageComponent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import React from 'react';
+import { DamageSourceBadge } from './DamageSourceBadge';
+
+interface DamageBreakdownProps {
+  components: DamageComponent[];
+  total?: number;
+  className?: string;
+}
+
+/**
+ * Calculate the total damage from a DamageComponent's dice rolls and flat bonus.
+ */
+const getComponentDamage = (comp: DamageComponent): number => {
+  const diceSum = comp.finalDiceRolls.reduce((a, b) => a + b, 0);
+  return diceSum + comp.flatBonus;
+};
+
+export const DamageBreakdown: React.FC<DamageBreakdownProps> = ({
+  components,
+  total,
+  className,
+}) => {
+  // Calculate total from components if not provided
+  const calculatedTotal =
+    total ??
+    components.reduce((sum, comp) => sum + getComponentDamage(comp), 0);
+
+  return (
+    <div className={className}>
+      <div className="damage-components">
+        {components.map((comp, i) => (
+          <div key={i} className="damage-component flex justify-between">
+            <DamageSourceBadge component={comp} mode="full" />
+            <span className="damage-value">
+              {comp.isCritical && '⚡'}+{getComponentDamage(comp)}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="damage-total border-t mt-2 pt-2 font-bold">
+        Total: {calculatedTotal}
+      </div>
+    </div>
+  );
+};
