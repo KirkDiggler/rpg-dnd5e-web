@@ -13,3 +13,7 @@ export {
 } from './panels/CombatHistoryPanel';
 export { DebugPanel } from './panels/DebugPanel';
 export { HealthTrackingPanel } from './panels/HealthTrackingPanel';
+
+// Damage display components
+export { DamageBreakdown } from './DamageBreakdown';
+export { DamageSourceBadge } from './DamageSourceBadge';
