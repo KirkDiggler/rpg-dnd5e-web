@@ -26,9 +26,7 @@ export const DamageBreakdown: React.FC<DamageBreakdownProps> = ({
       <div className="damage-components">
         {components.map((comp, i) => (
           <div key={i} className="damage-component flex justify-between">
-            {comp.sourceRef && (
-              <DamageSourceBadge source={comp.sourceRef} mode="full" />
-            )}
+            <DamageSourceBadge component={comp} mode="full" />
             <span className="damage-value">
               {comp.isCritical && '⚡'}+
               {comp.flatBonus + comp.finalDiceRolls.reduce((a, b) => a + b, 0)}

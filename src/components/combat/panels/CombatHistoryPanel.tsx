@@ -2,10 +2,9 @@ import type {
   AttackResult,
   DamageComponent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import * as Tooltip from '@radix-ui/react-tooltip';
 import { forwardRef, useImperativeHandle, useState } from 'react';
-import { getDamageSourceDisplay } from '../../../utils/damageSourceIcons';
 import { CombatPanelBase } from '../CombatPanelBase';
+import { DamageSourceBadge } from '../DamageSourceBadge';
 import { getPanelPositionClasses } from '../utils';
 
 /**
@@ -172,12 +171,6 @@ function DamageComponentRow({
   component: DamageComponent;
   weaponName?: string;
 }) {
-  const sourceDisplay = getDamageSourceDisplay(component.source);
-  const displayName =
-    component.source === 'weapon' && weaponName
-      ? weaponName
-      : sourceDisplay.label;
-
   // Check for rerolls
   const hasRerolls = component.rerolls && component.rerolls.length > 0;
 
@@ -186,27 +179,16 @@ function DamageComponentRow({
   const bonusDisplay = buildBonusDisplay(component.flatBonus);
 
   return (
-    <Tooltip.Provider delayDuration={200}>
-      <Tooltip.Root>
-        <Tooltip.Trigger asChild>
-          <div className="flex items-center gap-1 text-slate-400 cursor-help">
-            <span>{sourceDisplay.icon}</span>
-            <span>{displayName}:</span>
-            {diceDisplay}
-            {bonusDisplay}
-          </div>
-        </Tooltip.Trigger>
-        <Tooltip.Portal>
-          <Tooltip.Content
-            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 max-w-xs"
-            sideOffset={5}
-          >
-            {sourceDisplay.description || sourceDisplay.label}
-            <Tooltip.Arrow className="fill-slate-900" />
-          </Tooltip.Content>
-        </Tooltip.Portal>
-      </Tooltip.Root>
-    </Tooltip.Provider>
+    <div className="flex items-center gap-1 text-slate-400">
+      <DamageSourceBadge
+        component={component}
+        mode="icon"
+        weaponName={weaponName}
+      />
+      <span>:</span>
+      {diceDisplay}
+      {bonusDisplay}
+    </div>
   );
 }
 

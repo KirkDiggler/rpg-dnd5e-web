@@ -6,68 +6,105 @@ import {
   WeaponDisplay,
   type DisplayMode,
 } from '@/components/enums';
-import type { SourceRef } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
+import type { DamageComponent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import React from 'react';
 
-interface DamageSourceBadgeProps {
-  source: SourceRef;
+export interface DamageSourceBadgeProps {
+  /**
+   * DamageComponent from the API - contains both sourceRef (new) and source (deprecated string)
+   */
+  component: DamageComponent;
   mode?: DisplayMode;
   className?: string;
+  /**
+   * Optional weapon name override for display (e.g., "Longsword" instead of generic "Weapon")
+   */
+  weaponName?: string;
 }
 
 export const DamageSourceBadge: React.FC<DamageSourceBadgeProps> = ({
-  source,
+  component,
   mode = 'full',
   className,
+  weaponName,
 }) => {
-  // Check which oneof case is set
-  // SourceRef has: weapon, ability, condition, feature, spell
+  // Prefer the new type-safe sourceRef if available
+  const sourceRef = component.sourceRef;
 
-  if (source.source.case === 'weapon') {
+  if (sourceRef?.source.case === 'weapon') {
     return (
       <WeaponDisplay
-        weapon={source.source.value}
+        weapon={sourceRef.source.value}
         mode={mode}
         className={className}
       />
     );
   }
-  if (source.source.case === 'ability') {
+  if (sourceRef?.source.case === 'ability') {
     return (
       <AbilityDisplay
-        ability={source.source.value}
+        ability={sourceRef.source.value}
         mode={mode}
         className={className}
       />
     );
   }
-  if (source.source.case === 'condition') {
+  if (sourceRef?.source.case === 'condition') {
     return (
       <ConditionDisplay
-        condition={source.source.value}
+        condition={sourceRef.source.value}
         mode={mode}
         className={className}
       />
     );
   }
-  if (source.source.case === 'feature') {
+  if (sourceRef?.source.case === 'feature') {
     return (
       <FeatureDisplay
-        feature={source.source.value}
+        feature={sourceRef.source.value}
         mode={mode}
         className={className}
       />
     );
   }
-  if (source.source.case === 'spell') {
+  if (sourceRef?.source.case === 'spell') {
     return (
       <SpellDisplay
-        spell={source.source.value}
+        spell={sourceRef.source.value}
         mode={mode}
         className={className}
       />
     );
   }
 
-  return <span className={className}>Unknown Source</span>;
+  // Fallback to deprecated string-based source for backwards compatibility
+  return (
+    <span className={className} title={component.source}>
+      {formatLegacySource(component.source, weaponName)}
+    </span>
+  );
 };
+
+/**
+ * Format legacy string-based source for display
+ * This provides backwards compatibility until all APIs send sourceRef
+ */
+function formatLegacySource(source: string, weaponName?: string): string {
+  // Handle common legacy sources
+  if (source === 'weapon') {
+    return weaponName ? `⚔️ ${weaponName}` : '⚔️ Weapon';
+  }
+  if (source === 'ability') {
+    return '💪 Ability';
+  }
+
+  // Format namespaced sources like "dnd5e:conditions:rage" -> "Rage"
+  const parts = source.split(':');
+  const name = parts[parts.length - 1];
+  const formatted = name
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+
+  return `✨ ${formatted}`;
+}

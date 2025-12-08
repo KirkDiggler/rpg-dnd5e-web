@@ -1,8 +1,24 @@
 /**
- * Damage source icon mapping for combat log display.
- * Maps source strings from DamageComponent to emoji icons with labels.
+ * @deprecated This file is deprecated and should not be used for new code.
+ *
+ * MIGRATION:
+ * - For damage source display: Use DamageSourceBadge component (src/components/combat/DamageSourceBadge.tsx)
+ * - For type-safe enum displays: Use enumDisplays.ts and display components in src/components/enums/
+ *
+ * This file provided string-based damage source display before the introduction of
+ * type-safe SourceRef in proto v0.1.55. All usage has been migrated to the new
+ * DamageSourceBadge component which handles both legacy string sources and new
+ * type-safe SourceRef fields.
+ *
+ * The dice roll utility functions (isNatural1, isMaxRoll, getDiceRollStyle) are
+ * also unused - dice roll highlighting is now handled inline where needed.
+ *
+ * This file will be removed in a future cleanup.
  */
 
+/**
+ * @deprecated Use DamageSourceBadge component instead
+ */
 export interface DamageSourceDisplay {
   icon: string;
   label: string;
@@ -12,6 +28,8 @@ export interface DamageSourceDisplay {
 /**
  * Get display info for a damage source.
  * Handles core sources (weapon, ability) and fighting styles.
+ *
+ * @deprecated Use DamageSourceBadge component instead
  */
 export function getDamageSourceDisplay(source: string): DamageSourceDisplay {
   // Core sources
@@ -81,6 +99,8 @@ export function getDamageSourceDisplay(source: string): DamageSourceDisplay {
 /**
  * Format a source string into a readable label.
  * Handles patterns like "dnd5e:conditions:some_effect" -> "Some Effect"
+ *
+ * @deprecated Use DamageSourceBadge component instead
  */
 function formatSourceName(source: string): string {
   // Extract the last segment after colons
@@ -96,6 +116,8 @@ function formatSourceName(source: string): string {
 
 /**
  * Check if a dice roll is a natural 1 (fumble).
+ *
+ * @deprecated Inline this simple check where needed instead
  */
 export function isNatural1(roll: number): boolean {
   return roll === 1;
@@ -104,6 +126,8 @@ export function isNatural1(roll: number): boolean {
 /**
  * Check if a dice roll is max for its die type.
  * We infer die type from common D&D dice.
+ *
+ * @deprecated Inline this check where needed instead
  */
 export function isMaxRoll(roll: number, dieMax?: number): boolean {
   if (dieMax) {
@@ -115,6 +139,8 @@ export function isMaxRoll(roll: number, dieMax?: number): boolean {
 
 /**
  * Get CSS class for dice roll styling.
+ *
+ * @deprecated Inline dice roll styling logic where needed instead
  */
 export function getDiceRollStyle(
   roll: number,

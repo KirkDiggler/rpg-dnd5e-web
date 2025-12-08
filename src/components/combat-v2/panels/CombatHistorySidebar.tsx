@@ -1,5 +1,9 @@
-import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type {
+  CombatState,
+  DamageBreakdown,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useEffect, useRef } from 'react';
+import { DamageSourceBadge } from '../../combat/DamageSourceBadge';
 import styles from '../styles/combat.module.css';
 
 // Export types for consumers
@@ -30,6 +34,8 @@ export interface CombatLogEntry {
     damageType?: string;
     critical?: boolean;
     weaponName?: string;
+    // NEW: Type-safe damage breakdown from proto
+    damageBreakdown?: DamageBreakdown;
   };
 }
 
@@ -123,11 +129,33 @@ export function CombatHistorySidebar({
                 {entry.targetName && (
                   <span className={styles.logTarget}>→ {entry.targetName}</span>
                 )}
-                {entry.details?.damage && (
+                {/* Show damage breakdown with type-safe sources if available */}
+                {entry.details?.damageBreakdown &&
+                entry.details.damageBreakdown.components.length > 0 ? (
+                  <div className={styles.logDamageBreakdown}>
+                    <span className={styles.logDamage}>
+                      {entry.details.damageBreakdown.totalDamage}{' '}
+                      {entry.details.damageType}
+                    </span>
+                    <div className={styles.logSources}>
+                      {entry.details.damageBreakdown.components.map(
+                        (comp, idx) => (
+                          <DamageSourceBadge
+                            key={idx}
+                            component={comp}
+                            mode="compact"
+                            weaponName={entry.details?.weaponName}
+                          />
+                        )
+                      )}
+                    </div>
+                  </div>
+                ) : entry.details?.damage ? (
+                  // Fallback to old simple damage display for backwards compatibility
                   <span className={styles.logDamage}>
                     {entry.details.damage} {entry.details.damageType}
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
           ))

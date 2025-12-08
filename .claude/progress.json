@@ -57,7 +57,36 @@
       ],
       "files_modified": [],
       "summary": "Created 5 display components (WeaponDisplay, AbilityDisplay, ConditionDisplay, FeatureDisplay, SpellDisplay) following the consistent pattern with 4 display modes (title, icon, full, compact). Each component uses the getter functions from enumDisplays.ts. All components export via index.ts with shared DisplayMode type. All CI checks pass.",
-      "next_session": "Task 8: Create DamageSourceBadge component (handles SourceRef oneof)"
+      "next_session": "Task 8-9: Create DamageSourceBadge and DamageBreakdown components"
+    },
+    {
+      "date": "2025-12-07",
+      "tasks_completed": ["Task 8", "Task 9"],
+      "commit": "f7ea58d",
+      "files_created": [
+        "src/components/combat/DamageSourceBadge.tsx",
+        "src/components/combat/DamageBreakdown.tsx"
+      ],
+      "files_modified": ["src/components/combat/index.ts"],
+      "summary": "Created DamageSourceBadge component that dispatches SourceRef oneof to the appropriate display component (WeaponDisplay, AbilityDisplay, ConditionDisplay, FeatureDisplay, SpellDisplay). Created DamageBreakdown component that renders damage components with sources, critical indicators, and totals. Successfully verified protobuf-es uses source.case pattern for oneof handling. All CI checks pass.",
+      "next_session": "Task 10: Integrate with existing CombatHistorySidebar",
+      "notes": "Oneof handling confirmed: protobuf-es uses source.source.case === 'weapon' pattern. Used type-only imports for SourceRef, DamageComponent, and DisplayMode to satisfy verbatimModuleSyntax."
+    },
+    {
+      "date": "2025-12-07",
+      "tasks_completed": ["Task 10", "Task 11"],
+      "commit": "TBD",
+      "files_created": [],
+      "files_modified": [
+        "src/components/combat-v2/panels/CombatHistorySidebar.tsx",
+        "src/components/combat/panels/CombatHistoryPanel.tsx",
+        "src/components/combat/DamageSourceBadge.tsx",
+        "src/components/combat/DamageBreakdown.tsx",
+        "src/utils/damageSourceIcons.ts"
+      ],
+      "summary": "Integrated DamageSourceBadge into CombatHistorySidebar and CombatHistoryPanel. Enhanced DamageSourceBadge to accept DamageComponent (instead of just SourceRef) with backwards compatibility for deprecated string-based sources. Added weaponName prop for display overrides. Deprecated damageSourceIcons.ts with comprehensive JSDoc comments directing users to new components. Both sidebars now show type-safe damage sources when sourceRef is available, falling back to legacy string display for compatibility. All CI checks pass.",
+      "next_session": "Feature complete - ready for testing and PR creation",
+      "notes": "DamageSourceBadge now handles both new sourceRef (type-safe) and legacy source (string) for backwards compatibility. The formatLegacySource fallback ensures old data still displays correctly until rpg-toolkit fully migrates to SourceRef. All existing combat UI updated to use new components."
     }
   ],
   "next_steps": [
