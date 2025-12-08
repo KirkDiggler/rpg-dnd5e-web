@@ -6,6 +6,7 @@ import {
   WeaponDisplay,
   type DisplayMode,
 } from '@/components/enums';
+import { getWeaponDisplay } from '@/utils/enumDisplays';
 import type { DamageComponent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import React from 'react';
 
@@ -32,6 +33,21 @@ export const DamageSourceBadge: React.FC<DamageSourceBadgeProps> = ({
   const sourceRef = component.sourceRef;
 
   if (sourceRef?.source.case === 'weapon') {
+    // If weaponName is provided, use it with just the icon from the enum display
+    if (weaponName) {
+      const { icon } = getWeaponDisplay(sourceRef.source.value);
+      const displayContent =
+        mode === 'title'
+          ? weaponName
+          : mode === 'icon'
+            ? icon
+            : `${icon} ${weaponName}`;
+      return (
+        <span className={className} title={weaponName}>
+          {displayContent}
+        </span>
+      );
+    }
     return (
       <WeaponDisplay
         weapon={sourceRef.source.value}

@@ -8,6 +8,14 @@ interface DamageBreakdownProps {
   className?: string;
 }
 
+/**
+ * Calculate the total damage from a DamageComponent's dice rolls and flat bonus.
+ */
+const getComponentDamage = (comp: DamageComponent): number => {
+  const diceSum = comp.finalDiceRolls.reduce((a, b) => a + b, 0);
+  return diceSum + comp.flatBonus;
+};
+
 export const DamageBreakdown: React.FC<DamageBreakdownProps> = ({
   components,
   total,
@@ -16,10 +24,7 @@ export const DamageBreakdown: React.FC<DamageBreakdownProps> = ({
   // Calculate total from components if not provided
   const calculatedTotal =
     total ??
-    components.reduce((sum, comp) => {
-      const diceSum = comp.finalDiceRolls.reduce((a, b) => a + b, 0);
-      return sum + diceSum + comp.flatBonus;
-    }, 0);
+    components.reduce((sum, comp) => sum + getComponentDamage(comp), 0);
 
   return (
     <div className={className}>
@@ -28,8 +33,7 @@ export const DamageBreakdown: React.FC<DamageBreakdownProps> = ({
           <div key={i} className="damage-component flex justify-between">
             <DamageSourceBadge component={comp} mode="full" />
             <span className="damage-value">
-              {comp.isCritical && '⚡'}+
-              {comp.flatBonus + comp.finalDiceRolls.reduce((a, b) => a + b, 0)}
+              {comp.isCritical && '⚡'}+{getComponentDamage(comp)}
             </span>
           </div>
         ))}

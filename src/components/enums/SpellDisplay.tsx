@@ -1,8 +1,7 @@
 import { getSpellDisplay } from '@/utils/enumDisplays';
 import { Spell } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import React from 'react';
-
-export type DisplayMode = 'title' | 'icon' | 'full' | 'compact';
+import type { DisplayMode } from './types';
 
 interface SpellDisplayProps {
   spell: Spell;
@@ -22,13 +21,18 @@ export const SpellDisplay: React.FC<SpellDisplayProps> = ({
       return <span className={className}>{title}</span>;
     case 'icon':
       return (
-        <span className={className} title={title}>
+        <span className={className} title={title} role="img" aria-label={title}>
           {icon}
         </span>
       );
     case 'compact':
       return (
-        <span className={className} title={description || title}>
+        <span
+          className={className}
+          title={description || title}
+          role="img"
+          aria-label={title}
+        >
           {icon}
         </span>
       );

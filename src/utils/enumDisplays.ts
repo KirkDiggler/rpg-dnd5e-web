@@ -228,7 +228,7 @@ export const WEAPON_DISPLAY: Record<Weapon, EnumDisplay> = {
  * Display information for all abilities.
  */
 export const ABILITY_DISPLAY: Record<Ability, EnumDisplay> = {
-  [Ability.UNSPECIFIED]: { title: 'Unknown', icon: '❓' },
+  [Ability.UNSPECIFIED]: { title: 'Unknown Ability', icon: '❓' },
   [Ability.STRENGTH]: {
     title: 'Strength',
     icon: '💪',
