@@ -51,10 +51,6 @@ export function CombatOverlay({
 
   // Early return if essential data is missing
   if (!combatState || !encounterId) {
-    console.log('CombatOverlay early return:', {
-      combatState: !!combatState,
-      encounterId: !!encounterId,
-    });
     return null;
   }
 
@@ -70,20 +66,6 @@ export function CombatOverlay({
   const isPlayerTurn = currentTurn && currentCharacter;
 
   const showActionPanel = isPlayerTurn && currentCharacter;
-
-  // Debug logging
-  console.log('CombatOverlay Debug:', {
-    hasCombatState: !!combatState,
-    hasEncounterId: !!encounterId,
-    currentTurn: currentTurn,
-    isPlayerTurn,
-    currentCharacter: currentCharacter?.name,
-    showActionPanel,
-    selectedCharacters: selectedCharacters.map((c) => ({
-      id: c.id,
-      name: c.name,
-    })),
-  });
 
   return (
     <div className="combat-overlay">
@@ -192,8 +174,6 @@ function CombatActionPanel({
   const remainingMovement =
     (currentTurn.movementMax || 30) - (currentTurn.movementUsed || 0);
   const hasMovement = remainingMovement > 0;
-
-  console.log('CombatActionPanel RENDERING for:', currentCharacter.name);
 
   return (
     <motion.div

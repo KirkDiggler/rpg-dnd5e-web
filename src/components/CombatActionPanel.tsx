@@ -27,23 +27,13 @@ export function CombatActionPanel({
   // Simple state for which action button is active (using string for now)
   const [activeAction, setActiveAction] = useState<string>('');
 
-  console.log('CombatActionPanel check 1:', {
-    combatState: !!combatState,
-    encounterId,
-  });
-
   if (!combatState || !encounterId) {
-    console.log(
-      'CombatActionPanel returning null: no combatState or encounterId'
-    );
     return null;
   }
 
   const currentTurn = combatState.currentTurn;
-  console.log('CombatActionPanel check 2:', { currentTurn });
 
   if (!currentTurn) {
-    console.log('CombatActionPanel returning null: no currentTurn');
     return null;
   }
 
@@ -51,15 +41,7 @@ export function CombatActionPanel({
   const playerCharacterIds = selectedCharacters.map((c) => c.id);
   const isPlayerTurn = playerCharacterIds.includes(currentTurn.entityId);
 
-  console.log('CombatActionPanel check 3:', {
-    currentTurnEntityId: currentTurn.entityId,
-    playerCharacterIds,
-    isPlayerTurn,
-    selectedCharactersCount: selectedCharacters.length,
-  });
-
   if (!isPlayerTurn) {
-    console.log('CombatActionPanel returning null: not player turn');
     return null;
   }
 
@@ -68,16 +50,9 @@ export function CombatActionPanel({
     (c) => c.id === currentTurn.entityId
   );
 
-  console.log('CombatActionPanel check 4:', {
-    currentCharacter: currentCharacter?.name,
-  });
-
   if (!currentCharacter) {
-    console.log('CombatActionPanel returning null: no current character found');
     return null;
   }
-
-  console.log('CombatActionPanel WILL RENDER for:', currentCharacter.name);
 
   const handleEndTurn = async () => {
     try {
