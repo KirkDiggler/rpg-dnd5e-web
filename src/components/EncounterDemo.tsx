@@ -72,6 +72,39 @@ function extractDamageFromMonsterTurns(
   return damages;
 }
 
+/**
+ * Update room entity positions based on monster movement paths
+ * @param room - Current room state
+ * @param turns - Monster turns containing movement paths
+ * @returns Updated room with new entity positions
+ */
+function applyMonsterMovement(room: Room, turns: MonsterTurnResult[]): Room {
+  // Clone the entities map to avoid mutating state directly
+  const updatedEntities = { ...room.entities };
+
+  for (const turn of turns) {
+    // If monster moved, update their position to final position in path
+    if (turn.movementPath.length > 0) {
+      const finalPosition = turn.movementPath[turn.movementPath.length - 1];
+      const entity = updatedEntities[turn.monsterId];
+
+      if (entity && finalPosition) {
+        // Create updated entity with new position
+        // Use the finalPosition directly since it's already a proper Position proto
+        updatedEntities[turn.monsterId] = {
+          ...entity,
+          position: finalPosition,
+        };
+      }
+    }
+  }
+
+  return {
+    ...room,
+    entities: updatedEntities,
+  };
+}
+
 export function EncounterDemo() {
   const { dungeonStart, loading, error } = useDungeonStart();
   const { moveCharacter } = useMoveCharacter();
@@ -129,9 +162,8 @@ export function EncounterDemo() {
         setEncounterId(response.encounterId);
       }
 
-      if (response.room) {
-        setRoom(response.room);
-      }
+      // Start with the room from response, may be updated below if monsters moved
+      let roomToSet = response.room;
 
       if (response.combatState) {
         setCombatState(response.combatState);
@@ -192,6 +224,16 @@ export function EncounterDemo() {
             setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
           }, 1500);
         });
+
+        // Update room with monster positions after their movement
+        if (roomToSet) {
+          roomToSet = applyMonsterMovement(roomToSet, response.monsterTurns);
+        }
+      }
+
+      // Set the room (with updated monster positions if they moved)
+      if (roomToSet) {
+        setRoom(roomToSet);
       }
     } catch (err) {
       console.error('Failed to start dungeon:', err);
@@ -908,6 +950,12 @@ export function EncounterDemo() {
             setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
           }, 1500);
         });
+
+        // Update room with monster positions after their movement
+        if (room) {
+          const updatedRoom = applyMonsterMovement(room, response.monsterTurns);
+          setRoom(updatedRoom);
+        }
       }
 
       // Check for encounter result (victory/defeat)
