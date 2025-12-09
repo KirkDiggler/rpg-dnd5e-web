@@ -15,6 +15,7 @@ import {
   getWeaponDisplay,
 } from '@/utils/enumDisplays';
 import { findHexPath, hexDistance } from '@/utils/hexUtils';
+import { monsterTurnsToLogEntries } from '@/utils/monsterTurnUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -757,6 +758,43 @@ export function EncounterDemo() {
 
     try {
       const response = await endTurn(encounterId);
+
+      // Process monster turns if present
+      if (response.monsterTurns && response.monsterTurns.length > 0) {
+        // Helper to get target name from entity ID
+        const getTargetName = (targetId: string): string => {
+          // Try full character data first
+          const fullChar = fullCharactersMap.get(targetId);
+          if (fullChar?.name) return fullChar.name;
+
+          // Try available characters
+          const availChar = availableCharacters.find((c) => c.id === targetId);
+          if (availChar?.name) return availChar.name;
+
+          // Try room entities (monsters/NPCs)
+          if (room?.entities[targetId]) {
+            // Format entity ID: "goblin-dummy" -> "Goblin"
+            const parts = targetId.split('-');
+            if (parts.length > 0) {
+              return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+            }
+          }
+
+          return targetId;
+        };
+
+        // Convert monster turns to combat log entries
+        const currentRound = combatState?.round || 1;
+        const monsterLogEntries = monsterTurnsToLogEntries(
+          response.monsterTurns,
+          currentRound,
+          getTargetName
+        );
+
+        // Add to combat log
+        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+      }
+
       if (response.combatState) {
         handleCombatStateUpdate(response.combatState);
         addToast({
