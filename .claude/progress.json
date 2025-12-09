@@ -23,7 +23,16 @@
       "end_turn_handling": "EncounterDemo.tsx handleEndTurn function"
     }
   },
-  "sessions": [],
+  "sessions": [
+    {
+      "id": "2025-12-08-001",
+      "task": "Update rpg-api-protos to v0.1.56 and merge expandable combat log",
+      "status": "completed",
+      "artifacts": ["package.json", "package-lock.json", "CLAUDE.md"],
+      "commit": "4f7b62d",
+      "notes": "Updated protos with monster turn types. Merged main to get PR #234's expandable combat log. CI passes."
+    }
+  ],
   "next_steps": [
     "Task 1: Update @kirkdiggler/rpg-api-protos dependency to include PR #87 (after it's merged)",
     "Task 2: Create utility to convert MonsterTurnResult to CombatLogEntry array",

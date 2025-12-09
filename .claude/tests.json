@@ -4,8 +4,8 @@
       "id": "proto-version-updated",
       "feature": "setup",
       "prompt": "Verify @kirkdiggler/rpg-api-protos includes MonsterTurnResult, MonsterExecutedAction, EncounterResult, HealResult types and EndTurnResponse.monster_turns field",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-08"
     },
     {
       "id": "monster-turn-to-log-utility",
