@@ -39,6 +39,22 @@
       "artifacts": ["src/utils/monsterTurnUtils.ts"],
       "commit": "ef25a18",
       "notes": "Created monsterTurnsToLogEntries() with support for attacks, heals, spells, and movement. Extracts dice rolls and damage breakdown from AttackResult. All CI checks pass."
+    },
+    {
+      "id": "2025-12-08-003",
+      "task": "Update EncounterDemo handleEndTurn to process monster_turns",
+      "status": "completed",
+      "artifacts": ["src/components/EncounterDemo.tsx"],
+      "commit": "b9c3a74",
+      "notes": "Imported monsterTurnsToLogEntries utility and integrated it into handleEndTurn. Created getTargetName helper that resolves entity IDs to display names by checking fullCharactersMap, availableCharacters, and room entities. Monster turns now appear in combat log after player ends turn. All CI checks pass."
+    },
+    {
+      "id": "2025-12-08-004",
+      "task": "Update EncounterDemo handleStartEncounter to process monster_turns",
+      "status": "completed",
+      "artifacts": ["src/components/EncounterDemo.tsx"],
+      "commit": "5e771c7",
+      "notes": "Added monster turn processing to handleStartEncounter function. Created getTargetName helper that uses availableCharacters and response.room (since fullCharactersMap isn't populated at DungeonStart time). Monster turns now appear in combat log when encounter starts and monsters go first in initiative. All CI checks pass."
     }
   ],
   "next_steps": [

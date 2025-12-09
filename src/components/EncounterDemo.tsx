@@ -19,8 +19,10 @@ import { monsterTurnsToLogEntries } from '@/utils/monsterTurnUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
+  MonsterTurnResult,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { MonsterActionType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
@@ -29,6 +31,45 @@ import { InitiativePanel } from './encounter/InitiativePanel';
 import { PartySetupPanel } from './encounter/PartySetupPanel';
 import { Equipment } from './Equipment';
 import { useToast } from './ui';
+
+/**
+ * Extract damage numbers from monster turn results
+ * @param turns - Monster turns from EndTurn or DungeonStart response
+ * @returns Array of damage info to display
+ */
+function extractDamageFromMonsterTurns(
+  turns: MonsterTurnResult[]
+): Array<{ targetId: string; damage: number; isCritical: boolean }> {
+  const damages: Array<{
+    targetId: string;
+    damage: number;
+    isCritical: boolean;
+  }> = [];
+
+  for (const turn of turns) {
+    for (const action of turn.actions) {
+      // Only process attack actions that hit
+      if (
+        (action.actionType === MonsterActionType.MELEE_ATTACK ||
+          action.actionType === MonsterActionType.RANGED_ATTACK) &&
+        action.success &&
+        action.details.case === 'attackResult'
+      ) {
+        const attackResult = action.details.value;
+        // Only add if we have a target and damage
+        if (action.targetId && attackResult.damage > 0) {
+          damages.push({
+            targetId: action.targetId,
+            damage: attackResult.damage,
+            isCritical: attackResult.critical,
+          });
+        }
+      }
+    }
+  }
+
+  return damages;
+}
 
 export function EncounterDemo() {
   const { dungeonStart, loading, error } = useDungeonStart();
@@ -130,6 +171,26 @@ export function EncounterDemo() {
 
         // Add to combat log
         setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+
+        // Extract and display damage numbers from monster attacks
+        const damages = extractDamageFromMonsterTurns(response.monsterTurns);
+        damages.forEach(({ targetId, damage, isCritical }) => {
+          const damageId = `${targetId}-${Date.now()}-${Math.random()}`;
+          setDamageNumbers((prev) => [
+            ...prev,
+            {
+              id: damageId,
+              entityId: targetId,
+              damage,
+              isCritical,
+            },
+          ]);
+
+          // Remove after animation completes (1.5 seconds)
+          setTimeout(() => {
+            setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
+          }, 1500);
+        });
       }
     } catch (err) {
       console.error('Failed to start dungeon:', err);
@@ -826,6 +887,26 @@ export function EncounterDemo() {
 
         // Add to combat log
         setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+
+        // Extract and display damage numbers from monster attacks
+        const damages = extractDamageFromMonsterTurns(response.monsterTurns);
+        damages.forEach(({ targetId, damage, isCritical }) => {
+          const damageId = `${targetId}-${Date.now()}-${Math.random()}`;
+          setDamageNumbers((prev) => [
+            ...prev,
+            {
+              id: damageId,
+              entityId: targetId,
+              damage,
+              isCritical,
+            },
+          ]);
+
+          // Remove after animation completes (1.5 seconds)
+          setTimeout(() => {
+            setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
+          }, 1500);
+        });
       }
 
       if (response.combatState) {
