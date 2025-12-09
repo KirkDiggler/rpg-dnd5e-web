@@ -31,6 +31,14 @@
       "artifacts": ["package.json", "package-lock.json", "CLAUDE.md"],
       "commit": "4f7b62d",
       "notes": "Updated protos with monster turn types. Merged main to get PR #234's expandable combat log. CI passes."
+    },
+    {
+      "id": "2025-12-08-002",
+      "task": "Create utility to convert MonsterTurnResult to CombatLogEntry array",
+      "status": "completed",
+      "artifacts": ["src/utils/monsterTurnUtils.ts"],
+      "commit": "ef25a18",
+      "notes": "Created monsterTurnsToLogEntries() with support for attacks, heals, spells, and movement. Extracts dice rolls and damage breakdown from AttackResult. All CI checks pass."
     }
   ],
   "next_steps": [
