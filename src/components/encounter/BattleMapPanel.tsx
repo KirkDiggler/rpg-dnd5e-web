@@ -1,5 +1,6 @@
 import type { DamageNumber } from '@/types/combat';
 import { formatCharacterSummary } from '@/utils/displayNames';
+import type { CubeCoord } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { Room } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
@@ -17,12 +18,12 @@ interface BattleMapPanelProps {
   attackTarget?: string | null;
   movementMode?: boolean;
   movementRange?: number;
-  movementPath?: Array<{ x: number; y: number }>;
+  movementPath?: CubeCoord[];
   damageNumbers?: DamageNumber[];
   onEntityClick: (entityId: string) => void;
   onEntityHover: (entityId: string | null) => void;
-  onCellClick: (x: number, y: number) => void;
-  onCellDoubleClick?: (x: number, y: number) => void;
+  onCellClick: (coord: CubeCoord) => void;
+  onCellDoubleClick?: (coord: CubeCoord) => void;
 }
 
 export function BattleMapPanel({

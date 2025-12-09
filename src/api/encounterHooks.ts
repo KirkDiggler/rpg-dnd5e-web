@@ -1,3 +1,4 @@
+import type { CubeCoord } from '@/utils/hexUtils';
 import { create } from '@bufbuild/protobuf';
 import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type {
@@ -68,19 +69,16 @@ export function useMoveCharacter() {
   });
 
   const moveCharacter = useCallback(
-    async (
-      encounterId: string,
-      entityId: string,
-      path: Array<{ x: number; y: number }>
-    ) => {
+    async (encounterId: string, entityId: string, path: CubeCoord[]) => {
       setState({ data: null, loading: true, error: null });
 
       try {
+        // Send cube coordinates to the server (x, y, z where x + y + z = 0)
         const request = create(MoveCharacterRequestSchema, {
           encounterId,
           entityId,
           path: path.map((pos) =>
-            create(PositionSchema, { x: pos.x, y: pos.y, z: 0 })
+            create(PositionSchema, { x: pos.x, y: pos.y, z: pos.z })
           ),
         });
 
