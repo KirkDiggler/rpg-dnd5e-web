@@ -3,63 +3,49 @@
     {
       "id": "proto-version-updated",
       "feature": "setup",
-      "prompt": "Verify @kirkdiggler/rpg-api-protos is v0.1.55 or later with SourceRef, ConditionId, FeatureId types available",
+      "prompt": "Verify @kirkdiggler/rpg-api-protos includes MonsterTurnResult, MonsterExecutedAction, EncounterResult, HealResult types and EndTurnResponse.monster_turns field",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "enum-display-maps",
-      "feature": "display-maps",
-      "prompt": "WEAPON_DISPLAY, ABILITY_DISPLAY, CONDITION_DISPLAY, FEATURE_DISPLAY maps exist and cover all enum values",
+      "id": "monster-turn-to-log-utility",
+      "feature": "utility",
+      "prompt": "A utility function exists that converts MonsterTurnResult[] to CombatLogEntry[] with proper attack/move/heal entries",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "weapon-display-component",
-      "feature": "components",
-      "prompt": "WeaponDisplay component renders weapon name for any Weapon enum value",
+      "id": "end-turn-shows-monster-actions",
+      "feature": "integration",
+      "prompt": "When EndTurn returns monster_turns, each monster's actions appear in the combat log with monster name, target, and result",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "ability-display-component",
-      "feature": "components",
-      "prompt": "AbilityDisplay component renders 'STR', 'DEX', etc. for Ability enum values",
+      "id": "dungeon-start-shows-monster-actions",
+      "feature": "integration",
+      "prompt": "When DungeonStart returns monster_turns (monsters go first), their actions appear in the combat log",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "condition-display-component",
-      "feature": "components",
-      "prompt": "ConditionDisplay component renders 'Rage', 'Sneak Attack', etc. for ConditionId enum values",
+      "id": "monster-damage-numbers",
+      "feature": "display",
+      "prompt": "When a monster hits a character, a damage number floats above that character on the battle map",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "feature-display-component",
-      "feature": "components",
-      "prompt": "FeatureDisplay component renders 'Breath Weapon', 'Radiance of Dawn', etc. for FeatureId enum values",
+      "id": "encounter-victory-handled",
+      "feature": "encounter-end",
+      "prompt": "When encounter_result indicates VICTORY, a victory message/toast is shown",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "spell-display-component",
-      "feature": "components",
-      "prompt": "SpellDisplay component renders spell name for Spell enum values",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "damage-source-badge",
-      "feature": "components",
-      "prompt": "DamageSourceBadge correctly dispatches to WeaponDisplay/AbilityDisplay/etc based on SourceRef oneof case",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "damage-breakdown-component",
-      "feature": "components",
-      "prompt": "DamageBreakdown component renders list of damage components with source badges and totals",
+      "id": "encounter-tpk-handled",
+      "feature": "encounter-end",
+      "prompt": "When encounter_result indicates TPK, a defeat message/toast is shown",
       "passes": false,
       "last_checked": null
     },

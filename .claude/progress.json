@@ -1,105 +1,35 @@
 {
-  "branch": "feature/type-safe-damage-sources",
-  "issues": ["#231"],
-  "goal": "Implement React components to display type-safe SourceRef damage sources using proto enums (ConditionId, FeatureId, Spell) from v0.1.55",
-  "design": {
-    "data_structure": {
-      "interface": "EnumDisplay { title: string; icon: string; description?: string; }",
-      "example": "{ title: 'Longsword', icon: '⚔️', description: '1d8 slashing damage' }"
-    },
-    "display_modes": {
-      "title": "Just the title string",
-      "icon": "Just the icon",
-      "full": "icon + title (e.g., '⚔️ Longsword')",
-      "compact": "icon with title as tooltip"
-    },
-    "exports": {
-      "component": "<WeaponDisplay weapon={...} mode='full' />",
-      "function": "getWeaponDisplay(weapon) => EnumDisplay"
-    }
-  },
+  "branch": "feature/monster-turn-display",
+  "issues": ["rpg-api-protos#87", "rpg-toolkit#414", "rpg-api#273"],
+  "goal": "Display monster turn results in the web UI - when EndTurn or DungeonStart returns monster actions, show them in combat log and on the battle map (damage numbers). No animation yet - just instant display.",
   "context": {
-    "proto_version": "v0.1.55",
-    "design_doc": "https://github.com/KirkDiggler/rpg-toolkit/blob/main/docs/ideas/type-safe-refs/design-web.md",
-    "existing_files": {
-      "damageSourceIcons.ts": "Old string-based approach - needs replacement with enum-based",
-      "conditionIcons.ts": "Condition display info - can be extended for ConditionId enum"
-    },
-    "sourceref_structure": {
-      "weapon": "Weapon enum - longsword, warhammer, etc.",
-      "ability": "Ability enum - STR, DEX, etc.",
-      "condition": "ConditionId enum - RAGING, BRUTAL_CRITICAL, SNEAK_ATTACK, etc.",
-      "feature": "FeatureId enum - BREATH_WEAPON, RADIANCE_OF_DAWN, etc.",
-      "spell": "Spell enum - existing spell definitions"
+    "proto_pr": "https://github.com/KirkDiggler/rpg-api-protos/pull/87",
+    "new_messages": [
+      "MonsterTurnResult - aggregates monster_id, actions, movement_path",
+      "MonsterExecutedAction - action with oneof AttackResult or HealResult",
+      "EncounterResult - combat end with reason (victory/tpk) and winner",
+      "HealResult - amount, new_hp, max_hp",
+      "MonsterActionType - enum mirroring toolkit action types",
+      "EncounterEndReason - enum for victory/tpk"
+    ],
+    "updated_responses": [
+      "EndTurnResponse.monster_turns - repeated MonsterTurnResult",
+      "EndTurnResponse.encounter_result - optional EncounterResult",
+      "DungeonStartResponse.monster_turns - repeated MonsterTurnResult"
+    ],
+    "existing_patterns": {
+      "combat_log": "CombatLogEntry interface in CombatHistorySidebar.tsx",
+      "damage_numbers": "DamageNumber interface in BattleMapPanel.tsx",
+      "end_turn_handling": "EncounterDemo.tsx handleEndTurn function"
     }
   },
-  "sessions": [
-    {
-      "date": "2025-12-07",
-      "tasks_completed": ["Task 1", "Task 2"],
-      "commit": "8a87654",
-      "files_created": ["src/utils/enumDisplays.ts"],
-      "files_modified": ["package.json", "package-lock.json"],
-      "summary": "Updated protos to v0.1.55 and created comprehensive enum display maps for Weapon, Ability, ConditionId, FeatureId, and Spell enums. All display maps include icons, titles, and descriptions. All CI checks pass.",
-      "next_session": "Task 3-7: Create display components (WeaponDisplay, AbilityDisplay, etc.)"
-    },
-    {
-      "date": "2025-12-07",
-      "tasks_completed": ["Task 3", "Task 4", "Task 5", "Task 6", "Task 7"],
-      "commit": "ed50916",
-      "files_created": [
-        "src/components/enums/WeaponDisplay.tsx",
-        "src/components/enums/AbilityDisplay.tsx",
-        "src/components/enums/ConditionDisplay.tsx",
-        "src/components/enums/FeatureDisplay.tsx",
-        "src/components/enums/SpellDisplay.tsx",
-        "src/components/enums/index.ts"
-      ],
-      "files_modified": [],
-      "summary": "Created 5 display components (WeaponDisplay, AbilityDisplay, ConditionDisplay, FeatureDisplay, SpellDisplay) following the consistent pattern with 4 display modes (title, icon, full, compact). Each component uses the getter functions from enumDisplays.ts. All components export via index.ts with shared DisplayMode type. All CI checks pass.",
-      "next_session": "Task 8-9: Create DamageSourceBadge and DamageBreakdown components"
-    },
-    {
-      "date": "2025-12-07",
-      "tasks_completed": ["Task 8", "Task 9"],
-      "commit": "f7ea58d",
-      "files_created": [
-        "src/components/combat/DamageSourceBadge.tsx",
-        "src/components/combat/DamageBreakdown.tsx"
-      ],
-      "files_modified": ["src/components/combat/index.ts"],
-      "summary": "Created DamageSourceBadge component that dispatches SourceRef oneof to the appropriate display component (WeaponDisplay, AbilityDisplay, ConditionDisplay, FeatureDisplay, SpellDisplay). Created DamageBreakdown component that renders damage components with sources, critical indicators, and totals. Successfully verified protobuf-es uses source.case pattern for oneof handling. All CI checks pass.",
-      "next_session": "Task 10: Integrate with existing CombatHistorySidebar",
-      "notes": "Oneof handling confirmed: protobuf-es uses source.source.case === 'weapon' pattern. Used type-only imports for SourceRef, DamageComponent, and DisplayMode to satisfy verbatimModuleSyntax."
-    },
-    {
-      "date": "2025-12-07",
-      "tasks_completed": ["Task 10", "Task 11"],
-      "commit": "32bf72d",
-      "files_created": [],
-      "files_modified": [
-        "src/components/combat-v2/panels/CombatHistorySidebar.tsx",
-        "src/components/combat/panels/CombatHistoryPanel.tsx",
-        "src/components/combat/DamageSourceBadge.tsx",
-        "src/components/combat/DamageBreakdown.tsx",
-        "src/utils/damageSourceIcons.ts"
-      ],
-      "summary": "Integrated DamageSourceBadge into CombatHistorySidebar and CombatHistoryPanel. Enhanced DamageSourceBadge to accept DamageComponent (instead of just SourceRef) with backwards compatibility for deprecated string-based sources. Added weaponName prop for display overrides. Deprecated damageSourceIcons.ts with comprehensive JSDoc comments directing users to new components. Both sidebars now show type-safe damage sources when sourceRef is available, falling back to legacy string display for compatibility. All CI checks pass.",
-      "next_session": "Feature complete - ready for testing and PR creation",
-      "notes": "DamageSourceBadge now handles both new sourceRef (type-safe) and legacy source (string) for backwards compatibility. The formatLegacySource fallback ensures old data still displays correctly until rpg-toolkit fully migrates to SourceRef. All existing combat UI updated to use new components."
-    }
-  ],
+  "sessions": [],
   "next_steps": [
-    "Task 1: Update package.json to use @kirkdiggler/rpg-api-protos v0.1.55",
-    "Task 2: Create enum display maps (src/utils/enumDisplays.ts) - WEAPON_DISPLAY, ABILITY_DISPLAY, CONDITION_DISPLAY, FEATURE_DISPLAY",
-    "Task 3: Create WeaponDisplay component",
-    "Task 4: Create AbilityDisplay component",
-    "Task 5: Create ConditionDisplay component (extend existing conditionIcons.ts)",
-    "Task 6: Create FeatureDisplay component",
-    "Task 7: Create SpellDisplay component",
-    "Task 8: Create DamageSourceBadge component (handles SourceRef oneof)",
-    "Task 9: Create DamageBreakdown component for combat UI",
-    "Task 10: Integrate with existing CombatHistorySidebar",
-    "Task 11: Update damageSourceIcons.ts to use new enum-based approach or deprecate"
+    "Task 1: Update @kirkdiggler/rpg-api-protos dependency to include PR #87 (after it's merged)",
+    "Task 2: Create utility to convert MonsterTurnResult to CombatLogEntry array",
+    "Task 3: Update EncounterDemo handleEndTurn to process monster_turns",
+    "Task 4: Update EncounterDemo handleStartEncounter to process monster_turns",
+    "Task 5: Add damage numbers display for monster attacks on characters",
+    "Task 6: Create encounter result handling (victory/TPK screens or messages)"
   ]
 }
