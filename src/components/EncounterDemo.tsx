@@ -17,10 +17,11 @@ import {
 import { findHexPath, hexDistance } from '@/utils/hexUtils';
 import { monsterTurnsToLogEntries } from '@/utils/monsterTurnUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type {
-  CombatState,
-  MonsterTurnResult,
-  Room,
+import {
+  EncounterEndReason,
+  type CombatState,
+  type MonsterTurnResult,
+  type Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { MonsterActionType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
@@ -909,13 +910,63 @@ export function EncounterDemo() {
         });
       }
 
+      // Check for encounter result (victory/defeat)
+      if (response.encounterResult) {
+        const { reason } = response.encounterResult;
+
+        if (reason === EncounterEndReason.VICTORY) {
+          addToast({
+            type: 'success',
+            message: 'Victory! All enemies defeated!',
+            duration: 0, // Stay until dismissed
+          });
+
+          // Optionally add to combat log
+          setCombatLog((prev) => [
+            ...prev,
+            {
+              id: `victory-${Date.now()}`,
+              timestamp: new Date(),
+              round: combatState?.round || 1,
+              actorName: 'System',
+              action: 'Victory',
+              description: 'All enemies have been defeated!',
+              type: 'info',
+            },
+          ]);
+        } else if (reason === EncounterEndReason.DEFEAT) {
+          addToast({
+            type: 'error',
+            message: 'Defeat! Your party has fallen...',
+            duration: 0, // Stay until dismissed
+          });
+
+          // Optionally add to combat log
+          setCombatLog((prev) => [
+            ...prev,
+            {
+              id: `defeat-${Date.now()}`,
+              timestamp: new Date(),
+              round: combatState?.round || 1,
+              actorName: 'System',
+              action: 'Defeat',
+              description: 'Your party has been defeated...',
+              type: 'info',
+            },
+          ]);
+        }
+      }
+
       if (response.combatState) {
         handleCombatStateUpdate(response.combatState);
-        addToast({
-          type: 'success',
-          message: 'Turn ended',
-          duration: 2000,
-        });
+        // Only show "Turn ended" toast if combat hasn't ended
+        if (!response.encounterResult) {
+          addToast({
+            type: 'success',
+            message: 'Turn ended',
+            duration: 2000,
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to end turn:', err);
