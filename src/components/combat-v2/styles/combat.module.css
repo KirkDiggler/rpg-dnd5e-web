@@ -1501,12 +1501,13 @@
   gap: 16px;
 }
 
-/* Sidebar Column - matches main content height */
+/* Sidebar Column - constrained height with scrolling */
 .combatPanelSidebar {
   display: flex;
   flex-direction: column;
-  /* Remove fixed heights - sidebar should match main content height */
-  /* The CombatHistorySidebar will handle its own scrolling */
+  /* Constrain height so combat log scrolls instead of pushing page */
+  max-height: 350px;
+  min-height: 200px;
 }
 
 /* Responsive Layout */
