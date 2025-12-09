@@ -55,6 +55,14 @@
       "artifacts": ["src/components/EncounterDemo.tsx"],
       "commit": "5e771c7",
       "notes": "Added monster turn processing to handleStartEncounter function. Created getTargetName helper that uses availableCharacters and response.room (since fullCharactersMap isn't populated at DungeonStart time). Monster turns now appear in combat log when encounter starts and monsters go first in initiative. All CI checks pass."
+    },
+    {
+      "id": "2025-12-08-005",
+      "task": "Add damage number display for monster attacks on characters",
+      "status": "completed",
+      "artifacts": ["src/components/EncounterDemo.tsx"],
+      "commit": "c767578",
+      "notes": "Created extractDamageFromMonsterTurns() helper to extract attack damage info (targetId, damage, isCritical) from MonsterTurnResult[]. Integrated damage number display into both handleStartEncounter and handleEndTurn - when monsters hit characters, damage numbers now float above the target for 1.5 seconds. Pattern matches existing player attack damage numbers. All CI checks pass."
     }
   ],
   "next_steps": [
