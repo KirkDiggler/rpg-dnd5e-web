@@ -1270,6 +1270,176 @@
   }
 }
 
+/* ===================================== */
+/* Combat Log Redesign - Attack Entries  */
+/* ===================================== */
+
+/* Clickable entry styling */
+.logEntryClickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.logEntryClickable:hover {
+  background-color: #475569; /* slate-600 */
+}
+
+.logEntryExpanded {
+  background-color: #3f4f63; /* slightly lighter */
+  border-left-color: #60a5fa; /* blue-400 */
+}
+
+/* Entry header with left/right sections */
+.logEntryHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.logRoundFull {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #64748b; /* slate-500 */
+}
+
+/* Attack content container */
+.logAttackContent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Attack line with formula */
+.logAttackLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: #cbd5e1; /* slate-300 */
+}
+
+/* Attack roll section: 19 +5 = 24 */
+.logAttackRoll {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.logModifier {
+  color: #94a3b8; /* slate-400 */
+}
+
+.logEquals {
+  color: #e2e8f0; /* slate-200 */
+  font-weight: 600;
+}
+
+/* Target with AC */
+.logTargetWithAc {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #94a3b8; /* slate-400 */
+}
+
+.logAc {
+  font-size: 0.6875rem;
+  color: #64748b; /* slate-500 */
+}
+
+/* Damage formula: 🔨5 +💪3 +⚔️2 = 10 bludg. */
+.logDamageFormula {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.logDamagePart {
+  display: inline-flex;
+  align-items: center;
+}
+
+.logPlus {
+  color: #64748b; /* slate-500 */
+  margin: 0 1px;
+}
+
+.logSourceIcon {
+  font-size: 0.75rem;
+}
+
+.logSourceValue {
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 0.6875rem;
+  color: #e2e8f0; /* slate-200 */
+}
+
+.logDamageTotal {
+  margin-left: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background-color: #7f1d1d; /* red-900 */
+  color: #fca5a5; /* red-300 */
+  font-weight: 600;
+  font-size: 0.6875rem;
+}
+
+/* Expanded breakdown section */
+.logExpandedBreakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.logBreakdownDivider {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    #475569 20%,
+    #475569 80%,
+    transparent
+  );
+  margin: 2px 0;
+}
+
+.logBreakdownRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  font-size: 0.75rem;
+}
+
+.logBreakdownIcon {
+  width: 20px;
+  text-align: center;
+}
+
+.logBreakdownName {
+  flex: 1;
+  color: #cbd5e1; /* slate-300 */
+}
+
+.logBreakdownValue {
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: #e2e8f0; /* slate-200 */
+  text-align: right;
+  min-width: 40px;
+}
+
+.logBreakdownTotal {
+  font-weight: 700;
+  color: #fca5a5; /* red-300 */
+  text-align: right;
+  padding: 2px 4px;
+}
+
 /* Responsive - Stack differently on mobile */
 @media (max-width: 768px) {
   .combatHistorySidebar {

@@ -30,14 +30,6 @@ export function EquipmentDisplay({
   const mainHand = character.equipmentSlots?.mainHand;
   const offHand = character.equipmentSlots?.offHand;
 
-  // Debug: log equipment data
-  console.log(
-    '[EquipmentDisplay] character.equipmentSlots:',
-    character.equipmentSlots
-  );
-  console.log('[EquipmentDisplay] mainHand:', mainHand);
-  console.log('[EquipmentDisplay] offHand:', offHand);
-
   return (
     <div className={styles.equipmentDisplay}>
       <WeaponSlot
@@ -72,11 +64,6 @@ function WeaponSlot({ slot, label, item, onClick, disabled }: WeaponSlotProps) {
     equipment?.equipmentData?.case === 'weaponData'
       ? equipment.equipmentData.value
       : undefined;
-
-  // Debug logging
-  console.log(`[WeaponSlot ${slot}] item:`, item);
-  console.log(`[WeaponSlot ${slot}] item?.itemId:`, item?.itemId);
-  console.log(`[WeaponSlot ${slot}] equipment:`, equipment);
 
   const isEmpty = !item || !item.itemId;
   const isWeapon = !!weaponData;
