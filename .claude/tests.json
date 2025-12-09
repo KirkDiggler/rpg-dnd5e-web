@@ -39,15 +39,15 @@
       "id": "encounter-victory-handled",
       "feature": "encounter-end",
       "prompt": "When encounter_result indicates VICTORY, a victory message/toast is shown",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-08"
     },
     {
       "id": "encounter-tpk-handled",
       "feature": "encounter-end",
       "prompt": "When encounter_result indicates TPK, a defeat message/toast is shown",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2025-12-08"
     },
     {
       "id": "ci-checks-pass",

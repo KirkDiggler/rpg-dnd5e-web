@@ -63,6 +63,14 @@
       "artifacts": ["src/components/EncounterDemo.tsx"],
       "commit": "c767578",
       "notes": "Created extractDamageFromMonsterTurns() helper to extract attack damage info (targetId, damage, isCritical) from MonsterTurnResult[]. Integrated damage number display into both handleStartEncounter and handleEndTurn - when monsters hit characters, damage numbers now float above the target for 1.5 seconds. Pattern matches existing player attack damage numbers. All CI checks pass."
+    },
+    {
+      "id": "2025-12-08-006",
+      "task": "Handle encounter_result from EndTurnResponse for victory/defeat scenarios",
+      "status": "completed",
+      "artifacts": ["src/components/EncounterDemo.tsx"],
+      "commit": "b1091bd",
+      "notes": "Imported EncounterEndReason enum from encounter_pb. Added encounter result handling in handleEndTurn - checks response.encounterResult after processing monster turns. For VICTORY: shows success toast and adds victory entry to combat log. For DEFEAT: shows error toast and adds defeat entry to combat log. Both toasts stay until dismissed. Suppresses normal 'Turn ended' toast when combat ends. All CI checks pass."
     }
   ],
   "next_steps": [
