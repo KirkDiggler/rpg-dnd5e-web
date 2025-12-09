@@ -7,6 +7,13 @@ import {
   useMoveCharacter,
 } from '@/api';
 import { useDiscord } from '@/discord';
+import {
+  getAbilityDisplay,
+  getConditionDisplay,
+  getFeatureDisplay,
+  getSpellDisplay,
+  getWeaponDisplay,
+} from '@/utils/enumDisplays';
 import { findHexPath, hexDistance } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
@@ -390,12 +397,39 @@ export function EncounterDemo() {
                     ? ` +${comp.flatBonus}`
                     : ` ${comp.flatBonus}`
                   : '';
-              // Use weapon name for "weapon" source, otherwise capitalize source
-              const source =
-                comp.source === 'weapon'
-                  ? weaponName
-                  : comp.source.charAt(0).toUpperCase() + comp.source.slice(1);
-              return `  ${source}: ${diceStr}${bonusStr}`;
+              // Use type-safe sourceRef if available, fallback to legacy source
+              let sourceName: string;
+              if (comp.sourceRef?.source.case) {
+                const { case: sourceCase, value } = comp.sourceRef.source;
+                switch (sourceCase) {
+                  case 'weapon':
+                    // Use type-safe enum display for weapon name
+                    sourceName = getWeaponDisplay(value).title;
+                    break;
+                  case 'ability':
+                    sourceName = getAbilityDisplay(value).title;
+                    break;
+                  case 'condition':
+                    sourceName = getConditionDisplay(value).title;
+                    break;
+                  case 'feature':
+                    sourceName = getFeatureDisplay(value).title;
+                    break;
+                  case 'spell':
+                    sourceName = getSpellDisplay(value).title;
+                    break;
+                  default:
+                    sourceName = 'Unknown';
+                }
+              } else {
+                // Legacy fallback
+                sourceName =
+                  comp.source === 'weapon'
+                    ? weaponName
+                    : comp.source.charAt(0).toUpperCase() +
+                      comp.source.slice(1);
+              }
+              return `  ${sourceName}: ${diceStr}${bonusStr}`;
             });
             // Calculate total from components
             const total = damageBreakdown.components.reduce((sum, comp) => {
@@ -508,6 +542,7 @@ export function EncounterDemo() {
             damageType: hit ? damageType : undefined,
             critical,
             weaponName,
+            damageBreakdown: hit ? damageBreakdown : undefined,
           },
         };
         setCombatLog((prev) => [...prev, logEntry]);
