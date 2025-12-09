@@ -9,6 +9,62 @@ import type {
 import { MonsterActionType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 
 /**
+ * Format an entity ID into a display name
+ * e.g., "goblin-dummy" -> "Goblin", "orc-warrior-1" -> "Orc"
+ *
+ * @param entityId - The entity ID to format
+ * @returns A human-readable name
+ */
+export function formatEntityId(entityId: string): string {
+  const parts = entityId.split('-');
+  if (parts.length > 0) {
+    return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+  }
+  return entityId;
+}
+
+/**
+ * Extract damage numbers from monster turn results
+ * Used to display floating damage numbers on the battle map
+ *
+ * @param turns - Monster turns from EndTurn or DungeonStart response
+ * @returns Array of damage info to display
+ */
+export function extractDamageFromMonsterTurns(
+  turns: MonsterTurnResult[]
+): Array<{ targetId: string; damage: number; isCritical: boolean }> {
+  const damages: Array<{
+    targetId: string;
+    damage: number;
+    isCritical: boolean;
+  }> = [];
+
+  for (const turn of turns) {
+    for (const action of turn.actions) {
+      // Only process attack actions that hit
+      if (
+        (action.actionType === MonsterActionType.MELEE_ATTACK ||
+          action.actionType === MonsterActionType.RANGED_ATTACK) &&
+        action.success &&
+        action.details.case === 'attackResult'
+      ) {
+        const attackResult = action.details.value;
+        // Only add if we have a target and damage
+        if (action.targetId && attackResult.damage > 0) {
+          damages.push({
+            targetId: action.targetId,
+            damage: attackResult.damage,
+            isCritical: attackResult.critical,
+          });
+        }
+      }
+    }
+  }
+
+  return damages;
+}
+
+/**
  * Convert MonsterTurnResult[] to CombatLogEntry[]
  *
  * Takes the proto monster turn results and converts them to
