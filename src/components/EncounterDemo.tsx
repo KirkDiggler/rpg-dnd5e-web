@@ -98,6 +98,39 @@ export function EncounterDemo() {
           setSelectedEntity(response.combatState.currentTurn.entityId);
         }
       }
+
+      // Process monster turns if present (monsters go first in initiative)
+      if (response.monsterTurns && response.monsterTurns.length > 0) {
+        // Helper to get target name from entity ID
+        const getTargetName = (targetId: string): string => {
+          // At DungeonStart time, fullCharactersMap might not be populated yet
+          // Try available characters first
+          const availChar = availableCharacters.find((c) => c.id === targetId);
+          if (availChar?.name) return availChar.name;
+
+          // Try room entities (monsters/NPCs) - use response.room since it's just being set
+          if (response.room?.entities[targetId]) {
+            // Format entity ID: "goblin-dummy" -> "Goblin"
+            const parts = targetId.split('-');
+            if (parts.length > 0) {
+              return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+            }
+          }
+
+          return targetId;
+        };
+
+        // Convert monster turns to combat log entries
+        const currentRound = response.combatState?.round || 1;
+        const monsterLogEntries = monsterTurnsToLogEntries(
+          response.monsterTurns,
+          currentRound,
+          getTargetName
+        );
+
+        // Add to combat log
+        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+      }
     } catch (err) {
       console.error('Failed to start dungeon:', err);
       addToast({
