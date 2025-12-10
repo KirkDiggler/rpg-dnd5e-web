@@ -1,5 +1,5 @@
 import { useEndTurn } from '@/api/encounterHooks';
-import { hexDistance } from '@/utils/hexUtils';
+import { hexDistance, type CubeCoord } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -21,7 +21,7 @@ export interface ActionPanelProps {
   onActivateFeature?: (featureId: string) => void;
   onCombatStateUpdate?: (combatState: CombatState) => void;
   movementMode?: boolean;
-  movementPath?: Array<{ x: number; y: number }>;
+  movementPath?: CubeCoord[];
   onExecuteMove?: () => void;
   onCancelMove?: () => void;
   /** Enable debug mode with bright colors for visibility testing */
@@ -110,6 +110,7 @@ export function ActionPanel({
   };
 
   // Check if attack target is adjacent (for melee attacks)
+  // Server provides cube coordinates in position.x, position.y, position.z
   const isTargetAdjacent = (() => {
     if (!attackTarget || !room || !currentTurn.entityId) return false;
 
@@ -121,8 +122,10 @@ export function ActionPanel({
     const distance = hexDistance(
       currentEntity.position.x,
       currentEntity.position.y,
+      currentEntity.position.z,
       targetEntity.position.x,
-      targetEntity.position.y
+      targetEntity.position.y,
+      targetEntity.position.z
     );
 
     return distance === 1;

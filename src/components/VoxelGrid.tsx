@@ -1,6 +1,12 @@
 import { useVoxelModel } from '@/hooks/useVoxelModel';
 import type { DamageNumber } from '@/types/combat';
-import { hexDistance } from '@/utils/hexUtils';
+import {
+  cubeKey,
+  cubeToOffset,
+  hexDistance,
+  offsetToCube,
+  type CubeCoord,
+} from '@/utils/hexUtils';
 import type { Room } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Html, OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
@@ -16,23 +22,34 @@ interface VoxelGridProps {
   damageNumbers?: DamageNumber[];
   onEntityClick?: (entityId: string) => void;
   onEntityHover?: (entityId: string | null) => void;
-  onCellClick?: (x: number, y: number) => void;
-  onCellDoubleClick?: (x: number, y: number) => void;
+  onCellClick?: (coord: CubeCoord) => void;
+  onCellDoubleClick?: (coord: CubeCoord) => void;
 }
 
 // Hex math constants (matching HexGrid.tsx)
 const SQRT_3 = Math.sqrt(3);
 
-// Convert hex grid coordinates to 3D world coordinates
-function hexToWorld(x: number, y: number): { x: number; z: number } {
-  // Pointy-top hex layout
+// Convert cube coordinates to 3D world coordinates (pointy-top hex, odd-r offset)
+// First converts to offset, then to world space
+function cubeToWorld(cube: CubeCoord): { x: number; z: number } {
+  const offset = cubeToOffset(cube);
+  return offsetToWorld(offset.col, offset.row);
+}
+
+// Convert offset coordinates to 3D world coordinates (pointy-top hex, odd-r offset)
+// odd-r: odd rows are shifted in X direction by half a hex width
+function offsetToWorld(col: number, row: number): { x: number; z: number } {
   // For a hex with radius 0.5:
   // - Width (flat to flat) = sqrt(3) * radius = sqrt(3) * 0.5
   // - Height (point to point) = 2 * radius = 1.0
   // - Vertical spacing between rows = 1.5 * radius = 0.75
   const hexRadius = 0.5;
-  const worldX = SQRT_3 * hexRadius * (x + y / 2);
-  const worldZ = 1.5 * hexRadius * y;
+  // For pointy-top hexes (odd-r offset):
+  // - Columns are spaced by sqrt(3) * radius (horizontal/X spacing)
+  // - Rows are spaced by 1.5 * radius (depth/Z spacing)
+  // - Odd rows are shifted in X by sqrt(3)/2 * radius
+  const worldX = SQRT_3 * hexRadius * (col + (row & 1) * 0.5);
+  const worldZ = 1.5 * hexRadius * row;
   return { x: worldX, z: worldZ };
 }
 
@@ -56,8 +73,8 @@ function createHexagonShape(radius: number): THREE.Shape {
 }
 
 interface GridCellProps {
-  x: number;
-  y: number;
+  col: number;
+  row: number;
   isOccupied: boolean;
   isSelected: boolean;
   isHovered: boolean;
@@ -68,8 +85,8 @@ interface GridCellProps {
 }
 
 function HexCell({
-  x,
-  y,
+  col,
+  row,
   isOccupied,
   isSelected,
   isHovered,
@@ -81,8 +98,8 @@ function HexCell({
   const meshRef = useRef<THREE.Mesh>(null);
   const edgesRef = useRef<THREE.LineSegments>(null);
 
-  // Convert grid coordinates to world position
-  const pos = hexToWorld(x, y);
+  // Convert offset coordinates to world position
+  const pos = offsetToWorld(col, row);
 
   // Determine cell color based on state
   const getColor = () => {
@@ -146,8 +163,7 @@ function HexCell({
 }
 
 interface EntityMarkerProps {
-  x: number;
-  y: number;
+  cube: CubeCoord;
   entityType: string;
   isSelected: boolean;
   onClick: () => void;
@@ -155,8 +171,7 @@ interface EntityMarkerProps {
 }
 
 function EntityMarker({
-  x,
-  y,
+  cube,
   entityType,
   isSelected,
   onClick,
@@ -164,8 +179,8 @@ function EntityMarker({
 }: EntityMarkerProps) {
   const groupRef = useRef<THREE.Group>(null);
 
-  // Convert grid coordinates to world position
-  const pos = hexToWorld(x, y);
+  // Convert cube coordinates to world position
+  const pos = cubeToWorld(cube);
 
   // Determine color based on entity type (matching 2D HexGrid colors)
   const getColor = () => {
@@ -260,53 +275,69 @@ function Scene({
   onCellClick,
   onCellDoubleClick,
 }: VoxelGridProps) {
-  const [hoveredCell, setHoveredCell] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
+  const [hoveredCell, setHoveredCell] = useState<CubeCoord | null>(null);
 
-  // Get selected entity position for range calculation
+  // Get selected entity position for range calculation (server provides cube coords)
   const selectedEntity = selectedCharacter
     ? Object.values(room.entities).find((e) => e.entityId === selectedCharacter)
     : null;
-  const selectedPosition = selectedEntity?.position;
+  const selectedCube: CubeCoord | null = selectedEntity?.position
+    ? {
+        x: selectedEntity.position.x,
+        y: selectedEntity.position.y,
+        z: selectedEntity.position.z,
+      }
+    : null;
 
-  // Calculate if a cell is in movement range (using hex distance)
-  const isInMovementRange = (x: number, y: number): boolean => {
-    if (!movementMode || !selectedPosition || !movementRange) return false;
+  // Calculate if a cell is in movement range (using hex distance with cube coords)
+  const isInMovementRange = (cellCube: CubeCoord): boolean => {
+    if (!movementMode || !selectedCube || !movementRange) return false;
 
-    const distance = hexDistance(selectedPosition.x, selectedPosition.y, x, y);
+    const distance = hexDistance(
+      selectedCube.x,
+      selectedCube.y,
+      selectedCube.z,
+      cellCube.x,
+      cellCube.y,
+      cellCube.z
+    );
     const rangeInHexes = Math.floor(movementRange / 5); // 5ft per hex (matching HexGrid.tsx)
 
     return distance > 0 && distance <= rangeInHexes;
   };
 
-  // Render hex grid cells
+  // Render hex grid cells (iterate in offset, convert to cube for logic)
   const renderGrid = () => {
     const cells = [];
-    for (let y = 0; y < room.height; y++) {
-      for (let x = 0; x < room.width; x++) {
-        const isOccupied = Object.values(room.entities).some(
-          (e) => e.position?.x === x && e.position?.y === y
-        );
-        const isSelected =
-          selectedPosition?.x === x && selectedPosition?.y === y;
-        const isHovered = hoveredCell?.x === x && hoveredCell?.y === y;
-        const isInRange = isInMovementRange(x, y);
+    for (let row = 0; row < room.height; row++) {
+      for (let col = 0; col < room.width; col++) {
+        const cellCube = offsetToCube({ col, row });
+        const cellKey = cubeKey(cellCube);
+
+        const isOccupied = Object.values(room.entities).some((e) => {
+          if (!e.position) return false;
+          return (
+            cubeKey({ x: e.position.x, y: e.position.y, z: e.position.z }) ===
+            cellKey
+          );
+        });
+        const isSelected = selectedCube && cubeKey(selectedCube) === cellKey;
+        const isHovered = hoveredCell && cubeKey(hoveredCell) === cellKey;
+        const isInRange = isInMovementRange(cellCube);
 
         cells.push(
           <HexCell
-            key={`hex-${x}-${y}`}
-            x={x}
-            y={y}
+            key={`hex-${col}-${row}`}
+            col={col}
+            row={row}
             isOccupied={isOccupied}
-            isSelected={isSelected}
-            isHovered={isHovered}
+            isSelected={!!isSelected}
+            isHovered={!!isHovered}
             isInRange={isInRange}
-            onClick={() => onCellClick?.(x, y)}
-            onDoubleClick={() => onCellDoubleClick?.(x, y)}
+            onClick={() => onCellClick?.(cellCube)}
+            onDoubleClick={() => onCellDoubleClick?.(cellCube)}
             onHover={(hover) => {
-              setHoveredCell(hover ? { x, y } : null);
+              setHoveredCell(hover ? cellCube : null);
             }}
           />
         );
@@ -320,11 +351,16 @@ function Scene({
     return Object.values(room.entities).map((entity) => {
       if (!entity.position) return null;
 
+      const entityCube: CubeCoord = {
+        x: entity.position.x,
+        y: entity.position.y,
+        z: entity.position.z,
+      };
+
       return (
         <EntityMarker
           key={entity.entityId}
-          x={entity.position.x}
-          y={entity.position.y}
+          cube={entityCube}
           entityType={entity.entityType}
           isSelected={entity.entityId === selectedCharacter}
           onClick={() => onEntityClick?.(entity.entityId)}
@@ -344,7 +380,12 @@ function Scene({
       );
       if (!entity?.position) return null;
 
-      const pos = hexToWorld(entity.position.x, entity.position.y);
+      const entityCube: CubeCoord = {
+        x: entity.position.x,
+        y: entity.position.y,
+        z: entity.position.z,
+      };
+      const pos = cubeToWorld(entityCube);
 
       return (
         <group
