@@ -1,0 +1,67 @@
+{
+  "tests": [
+    {
+      "id": "hex-math-cube-to-world",
+      "feature": "hexMath",
+      "prompt": "Call cubeToWorld with cube coord {x: 1, y: -1, z: 0}. Verify it returns a valid world position.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "hex-math-world-to-cube",
+      "feature": "hexMath",
+      "prompt": "Call worldToCube with a world position, then cubeToWorld on the result. Verify round-trip produces consistent coordinates.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "hex-math-distance",
+      "feature": "hexMath",
+      "prompt": "Call hexDistance between two adjacent hexes. Verify it returns 1. Call between hexes 3 apart, verify it returns 3.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "grid-renders",
+      "feature": "HexGridV2",
+      "prompt": "Render HexGridV2 with gridWidth=5, gridHeight=5. Verify the canvas shows a grid of hexagons.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "hex-click-reports-coords",
+      "feature": "interaction",
+      "prompt": "Click on a hex in the grid. Verify onHexClick callback is called with correct cube coordinates for that hex.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "hex-hover-highlights",
+      "feature": "interaction",
+      "prompt": "Hover over a hex. Verify the hex changes color to indicate hover state.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "entity-renders-at-position",
+      "feature": "entities",
+      "prompt": "Pass an entity with position {x: 2, y: -3, z: 1} to HexGridV2. Verify a shape renders at that hex location.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "entity-click-reports-id",
+      "feature": "entities",
+      "prompt": "Click on an entity. Verify onEntityClick callback is called with the correct entityId.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "toggle-switches-view",
+      "feature": "integration",
+      "prompt": "In BattleMapPanel, click the '3D v2' toggle. Verify it switches from VoxelGrid to HexGridV2.",
+      "passes": true,
+      "last_checked": "2025-12-13"
+    }
+  ]
+}
