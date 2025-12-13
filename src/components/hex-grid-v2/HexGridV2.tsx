@@ -7,16 +7,26 @@
  * - Invisible ground plane for hit detection
  * - HexTile for each grid cell
  * - HexEntity for each entity
+ * - Movement range border visualization
+ * - Path preview on hover
+ * - Turn order overlay
  */
 
+import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Canvas } from '@react-three/fiber';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { HexEntity } from './HexEntity';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import { HexTile } from './HexTile';
+import { MovementRangeBorder } from './MovementRangeBorder';
+import { PathPreview } from './PathPreview';
+import type { TurnOrderEntry } from './TurnOrderOverlay';
+import { TurnOrderOverlay } from './TurnOrderOverlay';
 import { useCameraControls } from './useCameraControls';
 import { useHexInteraction } from './useHexInteraction';
+import { useMovementRange } from './useMovementRange';
 
 export interface HexGridV2Props {
   gridWidth: number;
@@ -31,6 +41,15 @@ export interface HexGridV2Props {
   onHexClick?: (coord: { x: number; y: number; z: number }) => void;
   onHexHover?: (coord: { x: number; y: number; z: number } | null) => void;
   onEntityClick?: (entityId: string) => void;
+  // Combat integration props
+  encounterId?: string | null;
+  currentEntityId?: string | null;
+  movementRemaining?: number;
+  isPlayerTurn?: boolean;
+  combatState?: CombatState | null;
+  characters?: Character[];
+  onMoveComplete?: (path: CubeCoord[]) => void;
+  onAttackComplete?: (targetId: string) => void;
 }
 
 // Hex size constant - radius from center to vertex
@@ -51,7 +70,14 @@ function Scene({
   onHexClick,
   onHexHover,
   onEntityClick,
+  currentEntityId,
+  movementRemaining = 0,
+  isPlayerTurn = false,
+  onMoveComplete,
+  onAttackComplete,
 }: HexGridV2Props) {
+  const [isProcessing, setIsProcessing] = useState(false);
+
   // Calculate grid center for camera target
   const gridCenter = useMemo(() => {
     // Center hex in cube coords
@@ -76,14 +102,112 @@ function Scene({
     maxZoom: 150,
   });
 
-  // Use the interaction hook for hover/click detection
-  const { hoveredHex, selectedHex, groundPlaneProps } = useHexInteraction({
+  // Build entity map for interaction hook
+  const entitiesMap = useMemo(() => {
+    const map = new Map();
+    entities.forEach((entity) => {
+      map.set(entity.entityId, {
+        position: {
+          x: entity.position.x,
+          y: entity.position.y,
+          z: entity.position.z,
+        },
+        type: entity.type,
+      });
+    });
+    return map;
+  }, [entities]);
+
+  // Get current entity position
+  const currentEntityPosition = useMemo(() => {
+    if (!currentEntityId) return null;
+    const entity = entities.find((e) => e.entityId === currentEntityId);
+    if (!entity) return null;
+    return {
+      x: entity.position.x,
+      y: entity.position.y,
+      z: entity.position.z,
+    };
+  }, [currentEntityId, entities]);
+
+  // Check if a hex is blocked (has an entity)
+  const isBlocked = useMemo(() => {
+    return (coord: CubeCoord) => {
+      return entities.some(
+        (entity) =>
+          entity.position.x === coord.x &&
+          entity.position.y === coord.y &&
+          entity.position.z === coord.z &&
+          entity.entityId !== currentEntityId
+      );
+    };
+  }, [entities, currentEntityId]);
+
+  // Use the interaction hook for hover/click detection with path preview
+  const {
+    hoveredHex,
+    selectedHex,
+    groundPlaneProps,
+    pathPreview,
+    canAttack,
+    attackPath,
+  } = useHexInteraction({
     hexSize: HEX_SIZE,
     gridWidth,
     gridHeight,
-    onHexClick,
+    onHexClick: (coord) => {
+      // Only allow interactions on player turn and when not processing
+      if (!isPlayerTurn || isProcessing) return;
+
+      // If we have a path preview, execute move
+      if (pathPreview.length > 0 && onMoveComplete) {
+        setIsProcessing(true);
+        onMoveComplete(pathPreview);
+        // Parent component will reset isProcessing via state update
+        setTimeout(() => setIsProcessing(false), 100);
+      }
+
+      onHexClick?.(coord);
+    },
     onHexHover,
+    entityPosition: currentEntityPosition,
+    movementRemaining,
+    isBlocked,
+    entities: entitiesMap,
   });
+
+  // Use movement range hook for boundary visualization
+  const { boundaryEdges } = useMovementRange({
+    entityPosition: currentEntityPosition,
+    movementRemaining,
+    hexSize: HEX_SIZE,
+    isBlocked,
+  });
+
+  // Handle entity clicks (for attacking)
+  const handleEntityClick = (entityId: string) => {
+    if (!isPlayerTurn || isProcessing) {
+      onEntityClick?.(entityId);
+      return;
+    }
+
+    // Check if this is an enemy that can be attacked
+    const entity = entities.find((e) => e.entityId === entityId);
+    if (entity?.type === 'monster' && canAttack && attackPath.length > 0) {
+      setIsProcessing(true);
+      // First move along attack path
+      if (onMoveComplete && attackPath.length > 1) {
+        onMoveComplete(attackPath);
+      }
+      // Then attack
+      if (onAttackComplete) {
+        onAttackComplete(entityId);
+      }
+      setTimeout(() => setIsProcessing(false), 100);
+    }
+
+    onEntityClick?.(entityId);
+  };
 
   // Helper to check if a cube coord matches another
   const coordsEqual = (
@@ -130,6 +254,26 @@ function Scene({
         })
       )}
 
+      {/* Movement range border (only on player turn) */}
+      {isPlayerTurn && boundaryEdges.length > 0 && (
+        <MovementRangeBorder boundaryEdges={boundaryEdges} />
+      )}
+
+      {/* Path preview (only on player turn) */}
+      {isPlayerTurn && pathPreview.length > 0 && (
+        <PathPreview path={pathPreview} hexSize={HEX_SIZE} />
+      )}
+
+      {/* Attack path preview (only on player turn, when hovering enemy) */}
+      {isPlayerTurn && canAttack && attackPath.length > 0 && (
+        <PathPreview
+          path={attackPath}
+          hexSize={HEX_SIZE}
+          color="#ef4444"
+          opacity={0.5}
+        />
+      )}
+
       {/* Render all entities */}
       {entities.map((entity) => (
         <HexEntity
@@ -140,7 +284,7 @@ function Scene({
           type={entity.type}
           hexSize={HEX_SIZE}
           isSelected={entity.entityId === selectedEntityId}
-          onClick={onEntityClick}
+          onClick={handleEntityClick}
         />
       ))}
     </>
@@ -152,6 +296,21 @@ function Scene({
  * Sets up the Canvas and renders the scene
  */
 export function HexGridV2(props: HexGridV2Props) {
+  const { combatState, characters = [] } = props;
+
+  // Build turn order from combat state
+  const turnOrder = useMemo((): TurnOrderEntry[] => {
+    if (!combatState?.turnOrder) return [];
+    return combatState.turnOrder.map((entry) => ({
+      entityId: entry.entityId,
+      entityType: entry.entityType,
+      initiative: entry.initiative,
+    }));
+  }, [combatState]);
+
+  const activeIndex = combatState?.currentTurnIndex ?? -1;
+  const round = combatState?.round ?? 1;
+
   return (
     <div style={{ width: '100%', height: '600px', position: 'relative' }}>
       <Canvas
@@ -167,6 +326,16 @@ export function HexGridV2(props: HexGridV2Props) {
       >
         <Scene {...props} />
       </Canvas>
+
+      {/* Turn order overlay (rendered outside Canvas) */}
+      {turnOrder.length > 0 && (
+        <TurnOrderOverlay
+          turnOrder={turnOrder}
+          activeIndex={activeIndex}
+          characters={characters}
+          round={round}
+        />
+      )}
     </div>
   );
 }
