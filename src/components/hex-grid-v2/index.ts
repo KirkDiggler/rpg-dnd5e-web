@@ -22,3 +22,6 @@ export {
   type CubeCoord,
   type WorldPos,
 } from './hexMath';
+
+export { TurnOrderOverlay } from './TurnOrderOverlay';
+export type { TurnOrderEntry, TurnOrderOverlayProps } from './TurnOrderOverlay';
