@@ -76,11 +76,29 @@
         "Pre-commit checks passing (format, lint, typecheck)"
       ],
       "commit": "8ef6b2f2cbc2b39eb2050bcee5c079980c5690a1"
+    },
+    {
+      "date": "2025-12-13",
+      "summary": "Wired up click-to-move and click-to-attack in HexGridV2",
+      "completed": [
+        "Created PathPreview component - visualizes movement/attack paths with color-coded overlays",
+        "Extended HexGridV2Props with combat integration: encounterId, currentEntityId, movementRemaining, isPlayerTurn",
+        "Added API callback props: onMoveComplete(path), onAttackComplete(targetId)",
+        "Built entity map for useHexInteraction to detect blocked hexes and entity types",
+        "Integrated useMovementRange to calculate and render movement range border",
+        "Wired up click handlers: empty hex = move, enemy = move+attack (if canAttack)",
+        "Added isProcessing state to prevent double-submission during API calls",
+        "Rendered PathPreview for both movement (blue) and attack paths (red)",
+        "Integrated TurnOrderOverlay at top of grid (outside Canvas)",
+        "Only allow interactions when isPlayerTurn is true",
+        "All pre-commit checks passing (format, lint, typecheck)"
+      ],
+      "commit": "1f845254462bfcc5c9de5e9ca4a43dcb7bfe9db9"
     }
   ],
   "next_steps": [
-    "Create PathPreview component to visualize the path",
-    "Wire movement/attack to existing API hooks",
-    "Simplify ActionPanel (remove Move/Attack buttons)"
+    "Test the integration in BattleMapPanel/EncounterDemo",
+    "Wire up actual API calls (useMoveCharacter, useAttack) from parent",
+    "Consider simplifying ActionPanel now that map handles move/attack"
   ]
 }
