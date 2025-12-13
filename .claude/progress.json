@@ -15,10 +15,20 @@
       ],
       "commit": "384fd0fd5710089ecfa7689044f58a469181f47e",
       "notes": "Implemented core hex math module using cube coordinates as single source of truth. Added cubeToWorld (hex to render position), worldToCube (click to hex with axial rounding), and hexDistance. Configured vitest and wrote comprehensive test suite (15 tests, all passing). All pre-commit checks pass."
+    },
+    {
+      "id": "session-002",
+      "task": "Implement useHexInteraction.ts hook for ground plane raycast hit detection",
+      "status": "completed",
+      "artifacts": [
+        "src/components/hex-grid-v2/useHexInteraction.ts",
+        "src/components/hex-grid-v2/useHexInteraction.test.ts"
+      ],
+      "commit": "470bf3bc80a9bf8d6cce4ea5b24666bfa5fcd924",
+      "notes": "Implemented React hook for hex interaction using ground plane raycasting. Hook manages hover/selection state, accepts hex size and grid dimensions, validates hex bounds, and provides groundPlaneProps for attaching to an invisible plane mesh. Converts world positions to cube coords using worldToCube. Written with comprehensive test suite (16 tests, all passing) verifying bounds validation, coordinate conversion, and callback logic. All pre-commit checks pass."
     }
   ],
   "next_steps": [
-    "Implement useHexInteraction.ts with ground plane raycast",
     "Implement HexTile.tsx for single hex rendering",
     "Implement HexEntity.tsx for entity rendering",
     "Implement HexGridV2.tsx main component",
