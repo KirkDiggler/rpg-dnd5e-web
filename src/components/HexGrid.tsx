@@ -1,5 +1,11 @@
 import type { DamageNumber } from '@/types/combat';
-import { hexDistance } from '@/utils/hexUtils';
+import {
+  cubeKey,
+  cubeToOffset,
+  hexDistance,
+  offsetToCube,
+  type CubeCoord,
+} from '@/utils/hexUtils';
 import { GridType } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type {
   EntityPlacement,
@@ -14,10 +20,10 @@ interface HexGridProps {
   attackTarget?: string | null;
   movementMode?: boolean;
   movementRange?: number;
-  movementPath?: Array<{ x: number; y: number }>;
+  movementPath?: CubeCoord[];
   damageNumbers?: DamageNumber[];
-  onCellClick?: (x: number, y: number) => void;
-  onCellDoubleClick?: (x: number, y: number) => void;
+  onCellClick?: (coord: CubeCoord) => void;
+  onCellDoubleClick?: (coord: CubeCoord) => void;
   onEntityClick?: (entityId: string) => void;
   onEntityHover?: (entityId: string | null) => void;
 }
@@ -25,14 +31,28 @@ interface HexGridProps {
 // Hex math constants
 const SQRT_3 = Math.sqrt(3);
 
-// Convert hex grid coordinates to pixel coordinates (pointy-top hex)
-function hexToPixel(
-  x: number,
-  y: number,
+// Convert cube coordinates to pixel coordinates (pointy-top hex, odd-r offset)
+// Uses offset conversion internally for correct positioning
+function cubeToPixel(cube: CubeCoord, size: number): { x: number; y: number } {
+  const offset = cubeToOffset(cube);
+  return offsetToPixel(offset.col, offset.row, size);
+}
+
+// Convert offset coordinates to pixel coordinates (pointy-top hex, odd-r offset)
+// This is the standard pointy-top hex layout where:
+// - Rows are horizontal
+// - Odd rows are shifted right by half a hex width
+function offsetToPixel(
+  col: number,
+  row: number,
   size: number
 ): { x: number; y: number } {
-  const pixelX = size * SQRT_3 * (x + y / 2);
-  const pixelY = size * 1.5 * y;
+  // For pointy-top hexes (odd-r offset):
+  // - Horizontal spacing between column centers: sqrt(3) * size
+  // - Vertical spacing between row centers: 1.5 * size
+  // - Odd rows are shifted right by sqrt(3)/2 * size
+  const pixelX = size * SQRT_3 * (col + (row & 1) * 0.5);
+  const pixelY = size * 1.5 * row;
   return { x: pixelX, y: pixelY };
 }
 
@@ -137,10 +157,8 @@ export function HexGrid({
   onEntityClick,
   onEntityHover,
 }: HexGridProps) {
-  const [hoveredCell, setHoveredCell] = React.useState<{
-    x: number;
-    y: number;
-  } | null>(null);
+  // Track hovered cell using cube coordinates
+  const [hoveredCell, setHoveredCell] = React.useState<CubeCoord | null>(null);
   const [hoveredEntity, setHoveredEntity] = React.useState<string | null>(null);
 
   const { width, height } = room;
@@ -150,10 +168,17 @@ export function HexGrid({
   const svgHeight = cellSize * 1.5 * height + cellSize / 2 + cellSize;
 
   // Get selected character's position for movement calculations
+  // Server provides cube coordinates in position.x, position.y, position.z
   const selectedEntity = selectedCharacter
     ? Object.values(room.entities).find((e) => e.entityId === selectedCharacter)
     : null;
-  const selectedPos = selectedEntity?.position;
+  const selectedPos = selectedEntity?.position
+    ? {
+        x: selectedEntity.position.x,
+        y: selectedEntity.position.y,
+        z: selectedEntity.position.z,
+      }
+    : null;
 
   // Calculate valid movement cells (5ft per hex)
   const validMovementCells = React.useMemo(() => {
@@ -163,7 +188,7 @@ export function HexGrid({
     const valid = new Set<string>();
 
     // Calculate starting position and remaining movement
-    const startPos =
+    const startPos: CubeCoord =
       movementPath && movementPath.length > 0
         ? movementPath[movementPath.length - 1] // Start from last path position
         : selectedPos; // Or from entity's current position
@@ -171,12 +196,11 @@ export function HexGrid({
     // Calculate movement used by path
     let movementUsed = 0;
     if (movementPath && movementPath.length > 0) {
-      let prevX = selectedPos.x;
-      let prevY = selectedPos.y;
+      let prev = selectedPos;
       for (const pos of movementPath) {
-        movementUsed += hexDistance(prevX, prevY, pos.x, pos.y) * 5; // 5ft per hex
-        prevX = pos.x;
-        prevY = pos.y;
+        movementUsed +=
+          hexDistance(prev.x, prev.y, prev.z, pos.x, pos.y, pos.z) * 5; // 5ft per hex
+        prev = pos;
       }
     }
 
@@ -185,25 +209,41 @@ export function HexGrid({
 
     if (remainingHexes <= 0) return new Set(); // No movement left
 
-    // Create a Set of occupied positions for O(1) lookup
+    // Create a Set of occupied positions for O(1) lookup (using cube key)
     const occupiedPositions = new Set<string>();
     Object.values(room.entities).forEach((entity) => {
       if (entity.position) {
-        occupiedPositions.add(`${entity.position.x},${entity.position.y}`);
+        occupiedPositions.add(
+          cubeKey({
+            x: entity.position.x,
+            y: entity.position.y,
+            z: entity.position.z,
+          })
+        );
       }
     });
 
-    // Bounding box around the LAST position in path (not starting position)
-    const minX = Math.max(0, startPos.x - remainingHexes);
-    const maxX = Math.min(width - 1, startPos.x + remainingHexes);
-    const minY = Math.max(0, startPos.y - remainingHexes);
-    const maxY = Math.min(height - 1, startPos.y + remainingHexes);
+    // Convert start position to offset for bounding box calculation
+    const startOffset = cubeToOffset(startPos);
+    const minCol = Math.max(0, startOffset.col - remainingHexes);
+    const maxCol = Math.min(width - 1, startOffset.col + remainingHexes);
+    const minRow = Math.max(0, startOffset.row - remainingHexes);
+    const maxRow = Math.min(height - 1, startOffset.row + remainingHexes);
 
-    for (let y = minY; y <= maxY; y++) {
-      for (let x = minX; x <= maxX; x++) {
-        const distance = hexDistance(startPos.x, startPos.y, x, y);
+    // Iterate over offset grid and convert to cube for distance calculation
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        const cellCube = offsetToCube({ col, row });
+        const distance = hexDistance(
+          startPos.x,
+          startPos.y,
+          startPos.z,
+          cellCube.x,
+          cellCube.y,
+          cellCube.z
+        );
         if (distance <= remainingHexes && distance > 0) {
-          const cellKey = `${x},${y}`;
+          const cellKey = cubeKey(cellCube);
           // Don't allow occupied positions
           if (!occupiedPositions.has(cellKey)) {
             valid.add(cellKey);
@@ -232,17 +272,19 @@ export function HexGrid({
     );
   }
 
-  // Generate grid cells
+  // Generate grid cells (iterate in offset coordinates, convert to cube for logic)
   const gridCells = [];
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const { x: pixelX, y: pixelY } = hexToPixel(x, y, cellSize);
+  for (let row = 0; row < height; row++) {
+    for (let col = 0; col < width; col++) {
+      const cellCube = offsetToCube({ col, row });
+      const { x: pixelX, y: pixelY } = offsetToPixel(col, row, cellSize);
       const centerX = pixelX + (cellSize * SQRT_3) / 2;
       const centerY = pixelY + cellSize;
-      const isHovered = hoveredCell?.x === x && hoveredCell?.y === y;
-      const isValidMove = validMovementCells.has(`${x},${y}`);
+      const cellKey = cubeKey(cellCube);
+      const isHovered = hoveredCell && cubeKey(hoveredCell) === cellKey;
+      const isValidMove = validMovementCells.has(cellKey);
       const isInPath =
-        movementPath?.some((p) => p.x === x && p.y === y) || false;
+        movementPath?.some((p) => cubeKey(p) === cellKey) || false;
 
       let fill = 'transparent';
       let stroke = 'var(--border-primary)';
@@ -265,7 +307,7 @@ export function HexGrid({
 
       gridCells.push(
         <path
-          key={`hex-${x}-${y}`}
+          key={`hex-${col}-${row}`}
           d={hexPath(centerX, centerY, cellSize * 0.95)}
           fill={fill}
           stroke={stroke}
@@ -278,17 +320,17 @@ export function HexGrid({
                 : 'default',
             transition: 'all 0.2s ease',
           }}
-          onMouseEnter={() => setHoveredCell({ x, y })}
+          onMouseEnter={() => setHoveredCell(cellCube)}
           onMouseLeave={() => setHoveredCell(null)}
           onClick={() => {
             if (onCellClick && (!movementMode || isValidMove)) {
-              onCellClick(x, y);
+              onCellClick(cellCube);
             }
           }}
           onDoubleClick={() => {
             // Double-click always allowed - it will validate movement in the handler
             if (onCellDoubleClick) {
-              onCellDoubleClick(x, y);
+              onCellDoubleClick(cellCube);
             }
           }}
         />
@@ -301,13 +343,24 @@ export function HexGrid({
   Object.values(room.entities).forEach((entity) => {
     if (!entity.position) return;
 
-    const x = entity.position.x;
-    const y = entity.position.y;
+    // Server provides cube coordinates in position.x, position.y, position.z
+    const entityCube: CubeCoord = {
+      x: entity.position.x,
+      y: entity.position.y,
+      z: entity.position.z,
+    };
+    const entityOffset = cubeToOffset(entityCube);
 
-    // Validate coordinates are within grid bounds
-    if (x < 0 || x >= width || y < 0 || y >= height) return;
+    // Validate coordinates are within grid bounds (using offset)
+    if (
+      entityOffset.col < 0 ||
+      entityOffset.col >= width ||
+      entityOffset.row < 0 ||
+      entityOffset.row >= height
+    )
+      return;
 
-    const { x: pixelX, y: pixelY } = hexToPixel(x, y, cellSize);
+    const { x: pixelX, y: pixelY } = cubeToPixel(entityCube, cellSize);
     const centerX = pixelX + (cellSize * SQRT_3) / 2;
     const centerY = pixelY + cellSize;
 
@@ -435,7 +488,7 @@ export function HexGrid({
   // Add path step numbers
   const pathMarkers =
     movementPath?.map((pos, idx) => {
-      const { x: pixelX, y: pixelY } = hexToPixel(pos.x, pos.y, cellSize);
+      const { x: pixelX, y: pixelY } = cubeToPixel(pos, cellSize);
       const centerX = pixelX + (cellSize * SQRT_3) / 2;
       const centerY = pixelY + cellSize;
 
@@ -465,11 +518,12 @@ export function HexGrid({
     );
     if (!entity?.position) return null;
 
-    const { x: pixelX, y: pixelY } = hexToPixel(
-      entity.position.x,
-      entity.position.y,
-      cellSize
-    );
+    const entityCube: CubeCoord = {
+      x: entity.position.x,
+      y: entity.position.y,
+      z: entity.position.z,
+    };
+    const { x: pixelX, y: pixelY } = cubeToPixel(entityCube, cellSize);
     const centerX = pixelX + (cellSize * SQRT_3) / 2;
     const centerY = pixelY + cellSize;
 
