@@ -4,6 +4,7 @@ import type { CubeCoord } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { Room } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
+import { HexGridV2 } from '../hex-grid-v2';
 import { HexGrid } from '../HexGrid';
 import { VoxelGrid } from '../VoxelGrid';
 
@@ -26,6 +27,8 @@ interface BattleMapPanelProps {
   onCellDoubleClick?: (coord: CubeCoord) => void;
 }
 
+type ViewMode = '2d' | '3d' | '3d-v2';
+
 export function BattleMapPanel({
   room,
   selectedEntity,
@@ -41,7 +44,7 @@ export function BattleMapPanel({
   onCellClick,
   onCellDoubleClick,
 }: BattleMapPanelProps) {
-  const [view3D, setView3D] = useState(true); // Default to 3D view
+  const [viewMode, setViewMode] = useState<ViewMode>('3d'); // Default to 3D view
 
   // Find the hovered character and entity directly from protobuf data
   const hoveredCharacter = hoveredEntity
@@ -60,41 +63,60 @@ export function BattleMapPanel({
         border: '1px solid var(--border-primary)',
       }}
     >
-      {/* Compact Header - just view toggle and info */}
+      {/* Compact Header - view toggle and info */}
       <div className="flex justify-end items-center gap-3 mb-2">
-        <button
-          onClick={() => setView3D(!view3D)}
-          className="px-2 py-1 rounded text-xs font-medium transition-colors"
-          style={{
-            backgroundColor: view3D
-              ? 'var(--accent-primary)'
-              : 'var(--bg-secondary)',
-            color: view3D ? 'white' : 'var(--text-primary)',
-            border: '1px solid var(--border-primary)',
-          }}
-        >
-          {view3D ? '3D View' : '2D View'}
-        </button>
+        <div className="flex gap-1">
+          <button
+            onClick={() => setViewMode('2d')}
+            className="px-2 py-1 rounded text-xs font-medium transition-colors"
+            style={{
+              backgroundColor:
+                viewMode === '2d'
+                  ? 'var(--accent-primary)'
+                  : 'var(--bg-secondary)',
+              color: viewMode === '2d' ? 'white' : 'var(--text-primary)',
+              border: '1px solid var(--border-primary)',
+            }}
+          >
+            2D
+          </button>
+          <button
+            onClick={() => setViewMode('3d')}
+            className="px-2 py-1 rounded text-xs font-medium transition-colors"
+            style={{
+              backgroundColor:
+                viewMode === '3d'
+                  ? 'var(--accent-primary)'
+                  : 'var(--bg-secondary)',
+              color: viewMode === '3d' ? 'white' : 'var(--text-primary)',
+              border: '1px solid var(--border-primary)',
+            }}
+          >
+            3D
+          </button>
+          <button
+            onClick={() => setViewMode('3d-v2')}
+            className="px-2 py-1 rounded text-xs font-medium transition-colors"
+            style={{
+              backgroundColor:
+                viewMode === '3d-v2'
+                  ? 'var(--accent-primary)'
+                  : 'var(--bg-secondary)',
+              color: viewMode === '3d-v2' ? 'white' : 'var(--text-primary)',
+              border: '1px solid var(--border-primary)',
+            }}
+          >
+            3D v2
+          </button>
+        </div>
         <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
           {room.type} • {room.width}×{room.height}
         </div>
       </div>
 
-      {/* Grid - 2D or 3D */}
+      {/* Grid - 2D, 3D, or 3D v2 */}
       <div className="flex justify-center">
-        {view3D ? (
-          <VoxelGrid
-            room={room}
-            selectedCharacter={selectedEntity}
-            movementMode={movementMode}
-            movementRange={movementRange}
-            damageNumbers={damageNumbers}
-            onEntityClick={onEntityClick}
-            onEntityHover={onEntityHover}
-            onCellClick={onCellClick}
-            onCellDoubleClick={onCellDoubleClick}
-          />
-        ) : (
+        {viewMode === '2d' ? (
           <HexGrid
             room={room}
             cellSize={28}
@@ -108,6 +130,38 @@ export function BattleMapPanel({
             onEntityHover={onEntityHover}
             onCellClick={onCellClick}
             onCellDoubleClick={onCellDoubleClick}
+          />
+        ) : viewMode === '3d' ? (
+          <VoxelGrid
+            room={room}
+            selectedCharacter={selectedEntity}
+            movementMode={movementMode}
+            movementRange={movementRange}
+            damageNumbers={damageNumbers}
+            onEntityClick={onEntityClick}
+            onEntityHover={onEntityHover}
+            onCellClick={onCellClick}
+            onCellDoubleClick={onCellDoubleClick}
+          />
+        ) : (
+          <HexGridV2
+            gridWidth={room.width}
+            gridHeight={room.height}
+            entities={Object.values(room.entities || {}).map((entity) => ({
+              entityId: entity.entityId,
+              name:
+                availableCharacters.find((c) => c.id === entity.entityId)
+                  ?.name || entity.entityId,
+              position: {
+                x: entity.position?.x || 0,
+                y: entity.position?.y || 0,
+                z: entity.position?.z || 0,
+              },
+              type: entity.entityType === 'CHARACTER' ? 'player' : 'monster',
+            }))}
+            selectedEntityId={selectedEntity || undefined}
+            onHexClick={onCellClick}
+            onEntityClick={onEntityClick}
           />
         )}
       </div>

@@ -42,10 +42,18 @@
       "artifacts": ["src/components/hex-grid-v2/HexEntity.tsx"],
       "commit": "ef54cfeead489535d3dc780a9cc6f78431eb522a",
       "notes": "Implemented HexEntity component for rendering game entities on the hex grid. Uses CapsuleGeometry for simple 3D representation. Color-coded by type: player (#3182ce blue), monster (#e53e3e red). Selected state shows brighter color with emissive glow. Clickable with onClick callback, cursor changes on hover. Positioned using cubeToWorld with Y offset (0.1 + height/2) to sit above hex plane. Props match design spec: entityId, name (unused in v1), position (CubeCoord), type, hexSize, isSelected, onClick. All pre-commit checks pass."
+    },
+    {
+      "id": "session-005",
+      "task": "Implement HexGridV2.tsx main component",
+      "status": "completed",
+      "artifacts": [
+        "src/components/hex-grid-v2/HexGridV2.tsx",
+        "src/components/hex-grid-v2/index.ts"
+      ],
+      "commit": "e2f1bbb4c79deb9e4e1ac0e98ef16bac2acff98c",
+      "notes": "Implemented main HexGridV2 component that composes all hex-grid-v2 pieces. Creates Three.js Canvas with Scene component containing: OrbitControls for camera manipulation, ambient + directional lighting, invisible ground plane mesh (200x200) with useHexInteraction props for raycast detection, HexTile rendering for each grid cell (nested loops for gridWidth x gridHeight), and HexEntity rendering for each entity. Props interface matches VoxelGrid (gridWidth, gridHeight, entities, selectedEntityId, callbacks) for easy swapping. Created barrel export index.ts exporting all public components, types, and utilities. HEX_SIZE constant set to 1.0 for consistent scaling. All pre-commit checks pass."
     }
   ],
-  "next_steps": [
-    "Implement HexGridV2.tsx main component",
-    "Add toggle to BattleMapPanel to switch views"
-  ]
+  "next_steps": ["Add toggle to BattleMapPanel to switch views"]
 }
