@@ -1,17 +1,24 @@
 /**
  * Hex interaction hook for hex-grid-v2
  * Handles raycasting to ground plane for hover/click detection
+ * Provides path preview functionality for movement and combat
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { CubeCoord } from './hexMath';
-import { worldToCube } from './hexMath';
+import { findPath, worldToCube } from './hexMath';
 
 // React Three Fiber event type with intersection point
 interface R3FPointerEvent {
   point: THREE.Vector3;
   stopPropagation: () => void;
+}
+
+// Entity type for tracking entities on the grid
+export interface Entity {
+  position: CubeCoord;
+  type: 'player' | 'monster';
 }
 
 export interface UseHexInteractionProps {
@@ -20,6 +27,11 @@ export interface UseHexInteractionProps {
   gridHeight: number;
   onHexClick?: (coord: CubeCoord) => void;
   onHexHover?: (coord: CubeCoord | null) => void;
+  // Path preview parameters
+  entityPosition?: CubeCoord | null;
+  movementRemaining?: number; // in feet
+  isBlocked?: (coord: CubeCoord) => boolean;
+  entities?: Map<string, Entity>; // entity ID -> entity data
 }
 
 export interface UseHexInteractionReturn {
@@ -30,6 +42,75 @@ export interface UseHexInteractionReturn {
     onPointerLeave: () => void;
     onClick: (event: R3FPointerEvent) => void;
   };
+  // Path preview return values
+  pathPreview: CubeCoord[]; // Path from entity to hovered hex (empty if out of range)
+  hoveredEntity: { id: string; type: string } | null; // Entity under cursor
+  canAttack: boolean; // True if hovering enemy within range
+  attackPath: CubeCoord[]; // Path to adjacent hex when hovering enemy
+}
+
+/**
+ * Find the entity at a given coordinate
+ */
+function findEntityAtCoord(
+  coord: CubeCoord,
+  entities?: Map<string, Entity>
+): { id: string; type: string } | null {
+  if (!entities) return null;
+
+  for (const [id, entity] of entities.entries()) {
+    if (
+      entity.position.x === coord.x &&
+      entity.position.y === coord.y &&
+      entity.position.z === coord.z
+    ) {
+      return { id, type: entity.type };
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the nearest adjacent hex to a target, prioritizing shortest path from start
+ */
+function findNearestAdjacentHex(
+  start: CubeCoord,
+  target: CubeCoord,
+  isBlocked?: (coord: CubeCoord) => boolean
+): CubeCoord | null {
+  // Get all 6 adjacent hexes to the target
+  const directions: CubeCoord[] = [
+    { x: 1, y: -1, z: 0 }, // E
+    { x: 1, y: 0, z: -1 }, // NE
+    { x: 0, y: 1, z: -1 }, // NW
+    { x: -1, y: 1, z: 0 }, // W
+    { x: -1, y: 0, z: 1 }, // SW
+    { x: 0, y: -1, z: 1 }, // SE
+  ];
+
+  const adjacentHexes = directions.map((dir) => ({
+    x: target.x + dir.x,
+    y: target.y + dir.y,
+    z: target.z + dir.z,
+  }));
+
+  // Find the adjacent hex with the shortest path from start
+  let bestHex: CubeCoord | null = null;
+  let shortestPath: CubeCoord[] = [];
+
+  for (const hex of adjacentHexes) {
+    if (isBlocked?.(hex)) continue;
+
+    const path = findPath(start, hex, isBlocked);
+    if (path.length > 0) {
+      if (!bestHex || path.length < shortestPath.length) {
+        bestHex = hex;
+        shortestPath = path;
+      }
+    }
+  }
+
+  return bestHex;
 }
 
 /**
@@ -41,6 +122,7 @@ export interface UseHexInteractionReturn {
  * 3. Convert intersection (x, z) to cube coords via worldToCube
  * 4. Validate hex is within grid bounds
  * 5. Update state and call callbacks
+ * 6. Calculate path preview based on entity position and movement range
  */
 export function useHexInteraction({
   hexSize,
@@ -48,6 +130,10 @@ export function useHexInteraction({
   gridHeight,
   onHexClick,
   onHexHover,
+  entityPosition,
+  movementRemaining = 0,
+  isBlocked,
+  entities,
 }: UseHexInteractionProps): UseHexInteractionReturn {
   const [hoveredHex, setHoveredHex] = useState<CubeCoord | null>(null);
   const [selectedHex, setSelectedHex] = useState<CubeCoord | null>(null);
@@ -148,6 +234,84 @@ export function useHexInteraction({
     [hexSize, isValidHex, onHexClick]
   );
 
+  // Calculate path preview and entity hover state (memoized)
+  const pathPreviewState = useMemo(() => {
+    // Default state - no path preview
+    if (!hoveredHex || !entityPosition) {
+      return {
+        pathPreview: [],
+        hoveredEntity: null,
+        canAttack: false,
+        attackPath: [],
+      };
+    }
+
+    // Check if hovering over an entity
+    const entityAtHex = findEntityAtCoord(hoveredHex, entities);
+
+    if (entityAtHex) {
+      // Hovering an entity
+      if (entityAtHex.type === 'monster') {
+        // Enemy - calculate attack path
+        const nearestAdjacentHex = findNearestAdjacentHex(
+          entityPosition,
+          hoveredHex,
+          isBlocked
+        );
+
+        if (!nearestAdjacentHex) {
+          // No path to enemy
+          return {
+            pathPreview: [],
+            hoveredEntity: entityAtHex,
+            canAttack: false,
+            attackPath: [],
+          };
+        }
+
+        // Calculate path to adjacent hex
+        const pathToAdjacent = findPath(
+          entityPosition,
+          nearestAdjacentHex,
+          isBlocked
+        );
+
+        // Check if path is within movement range (5 feet per hex)
+        const pathCost = (pathToAdjacent.length - 1) * 5; // Subtract 1 for start hex
+        const isWithinRange = pathCost <= movementRemaining;
+
+        return {
+          pathPreview: [],
+          hoveredEntity: entityAtHex,
+          canAttack: isWithinRange,
+          attackPath: isWithinRange ? pathToAdjacent : [],
+        };
+      } else {
+        // Ally - just show entity info, no path
+        return {
+          pathPreview: [],
+          hoveredEntity: entityAtHex,
+          canAttack: false,
+          attackPath: [],
+        };
+      }
+    }
+
+    // Hovering empty hex - calculate movement path
+    const path = findPath(entityPosition, hoveredHex, isBlocked);
+
+    // Check if destination is within movement range
+    const pathCost = (path.length - 1) * 5; // Subtract 1 for start hex
+    const isWithinRange = pathCost <= movementRemaining && path.length > 0;
+
+    return {
+      pathPreview: isWithinRange ? path : [],
+      hoveredEntity: null,
+      canAttack: false,
+      attackPath: [],
+    };
+  }, [hoveredHex, entityPosition, entities, isBlocked, movementRemaining]);
+
   // Memoize ground plane props to avoid unnecessary re-renders
   const groundPlaneProps = useMemo(
     () => ({
@@ -162,5 +326,6 @@ export function useHexInteraction({
     hoveredHex,
     selectedHex,
     groundPlaneProps,
+    ...pathPreviewState,
   };
 }
