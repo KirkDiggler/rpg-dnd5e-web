@@ -20,10 +20,17 @@ import {
   hexDistance,
   type CubeCoord,
 } from '@/utils/hexUtils';
+import {
+  extractDamageFromMonsterTurns,
+  formatEntityId,
+  monsterTurnsToLogEntries,
+} from '@/utils/monsterTurnUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type {
-  CombatState,
-  Room,
+import {
+  EncounterEndReason,
+  type CombatState,
+  type MonsterTurnResult,
+  type Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useEffect, useState } from 'react';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
@@ -33,6 +40,39 @@ import { InitiativePanel } from './encounter/InitiativePanel';
 import { PartySetupPanel } from './encounter/PartySetupPanel';
 import { Equipment } from './Equipment';
 import { useToast } from './ui';
+
+/**
+ * Update room entity positions based on monster movement paths
+ * @param room - Current room state
+ * @param turns - Monster turns containing movement paths
+ * @returns Updated room with new entity positions
+ */
+function applyMonsterMovement(room: Room, turns: MonsterTurnResult[]): Room {
+  // Clone the entities map to avoid mutating state directly
+  const updatedEntities = { ...room.entities };
+
+  for (const turn of turns) {
+    // If monster moved, update their position to final position in path
+    if (turn.movementPath.length > 0) {
+      const finalPosition = turn.movementPath[turn.movementPath.length - 1];
+      const entity = updatedEntities[turn.monsterId];
+
+      if (entity && finalPosition) {
+        // Create updated entity with new position
+        // Use the finalPosition directly since it's already a proper Position proto
+        updatedEntities[turn.monsterId] = {
+          ...entity,
+          position: finalPosition,
+        };
+      }
+    }
+  }
+
+  return {
+    ...room,
+    entities: updatedEntities,
+  };
+}
 
 export function EncounterDemo() {
   const { dungeonStart, loading, error } = useDungeonStart();
@@ -89,9 +129,8 @@ export function EncounterDemo() {
         setEncounterId(response.encounterId);
       }
 
-      if (response.room) {
-        setRoom(response.room);
-      }
+      // Start with the room from response, may be updated below if monsters moved
+      let roomToSet = response.room;
 
       if (response.combatState) {
         setCombatState(response.combatState);
@@ -99,6 +138,65 @@ export function EncounterDemo() {
         if (response.combatState.currentTurn?.entityId) {
           setSelectedEntity(response.combatState.currentTurn.entityId);
         }
+      }
+
+      // Process monster turns if present (monsters go first in initiative)
+      if (response.monsterTurns && response.monsterTurns.length > 0) {
+        // Helper to get target name from entity ID
+        const getTargetName = (targetId: string): string => {
+          // At DungeonStart time, fullCharactersMap might not be populated yet
+          // Try available characters first
+          const availChar = availableCharacters.find((c) => c.id === targetId);
+          if (availChar?.name) return availChar.name;
+
+          // Try room entities (monsters/NPCs) - use response.room since it's just being set
+          if (response.room?.entities[targetId]) {
+            return formatEntityId(targetId);
+          }
+
+          return targetId;
+        };
+
+        // Convert monster turns to combat log entries
+        const currentRound = response.combatState?.round || 1;
+        const monsterLogEntries = monsterTurnsToLogEntries(
+          response.monsterTurns,
+          currentRound,
+          getTargetName
+        );
+
+        // Add to combat log
+        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+
+        // Extract and display damage numbers from monster attacks
+        const damages = extractDamageFromMonsterTurns(response.monsterTurns);
+        damages.forEach(({ targetId, damage, isCritical }) => {
+          const damageId = `${targetId}-${Date.now()}-${Math.random()}`;
+          setDamageNumbers((prev) => [
+            ...prev,
+            {
+              id: damageId,
+              entityId: targetId,
+              damage,
+              isCritical,
+            },
+          ]);
+
+          // Remove after animation completes (1.5 seconds)
+          setTimeout(() => {
+            setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
+          }, 1500);
+        });
+
+        // Update room with monster positions after their movement
+        if (roomToSet) {
+          roomToSet = applyMonsterMovement(roomToSet, response.monsterTurns);
+        }
+      }
+
+      // Set the room (with updated monster positions if they moved)
+      if (roomToSet) {
+        setRoom(roomToSet);
       }
     } catch (err) {
       console.error('Failed to start dungeon:', err);
@@ -521,13 +619,7 @@ export function EncounterDemo() {
           if (availChar?.name) return availChar.name;
 
           // For monsters/NPCs, format the entity ID nicely
-          // e.g., "goblin-dummy" -> "Goblin Dummy" or just "Goblin"
-          const parts = entityId.split('-');
-          if (parts.length > 0) {
-            // Capitalize first part (monster type)
-            return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
-          }
-          return entityId;
+          return formatEntityId(entityId);
         };
 
         const targetName = getEntityDisplayName(target);
@@ -780,13 +872,122 @@ export function EncounterDemo() {
 
     try {
       const response = await endTurn(encounterId);
+
+      // Process monster turns if present
+      if (response.monsterTurns && response.monsterTurns.length > 0) {
+        // Helper to get target name from entity ID
+        const getTargetName = (targetId: string): string => {
+          // Try full character data first
+          const fullChar = fullCharactersMap.get(targetId);
+          if (fullChar?.name) return fullChar.name;
+
+          // Try available characters
+          const availChar = availableCharacters.find((c) => c.id === targetId);
+          if (availChar?.name) return availChar.name;
+
+          // Try room entities (monsters/NPCs)
+          if (room?.entities[targetId]) {
+            return formatEntityId(targetId);
+          }
+
+          return targetId;
+        };
+
+        // Convert monster turns to combat log entries
+        const currentRound = combatState?.round || 1;
+        const monsterLogEntries = monsterTurnsToLogEntries(
+          response.monsterTurns,
+          currentRound,
+          getTargetName
+        );
+
+        // Add to combat log
+        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+
+        // Extract and display damage numbers from monster attacks
+        const damages = extractDamageFromMonsterTurns(response.monsterTurns);
+        damages.forEach(({ targetId, damage, isCritical }) => {
+          const damageId = `${targetId}-${Date.now()}-${Math.random()}`;
+          setDamageNumbers((prev) => [
+            ...prev,
+            {
+              id: damageId,
+              entityId: targetId,
+              damage,
+              isCritical,
+            },
+          ]);
+
+          // Remove after animation completes (1.5 seconds)
+          setTimeout(() => {
+            setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
+          }, 1500);
+        });
+
+        // Update room with monster positions after their movement
+        if (room) {
+          const updatedRoom = applyMonsterMovement(room, response.monsterTurns);
+          setRoom(updatedRoom);
+        }
+      }
+
+      // Check for encounter result (victory/defeat)
+      if (response.encounterResult) {
+        const { reason } = response.encounterResult;
+
+        if (reason === EncounterEndReason.VICTORY) {
+          addToast({
+            type: 'success',
+            message: 'Victory! All enemies defeated!',
+            duration: 0, // Stay until dismissed
+          });
+
+          // Optionally add to combat log
+          setCombatLog((prev) => [
+            ...prev,
+            {
+              id: `victory-${Date.now()}`,
+              timestamp: new Date(),
+              round: combatState?.round || 1,
+              actorName: 'System',
+              action: 'Victory',
+              description: 'All enemies have been defeated!',
+              type: 'info',
+            },
+          ]);
+        } else if (reason === EncounterEndReason.DEFEAT) {
+          addToast({
+            type: 'error',
+            message: 'Defeat! Your party has fallen...',
+            duration: 0, // Stay until dismissed
+          });
+
+          // Optionally add to combat log
+          setCombatLog((prev) => [
+            ...prev,
+            {
+              id: `defeat-${Date.now()}`,
+              timestamp: new Date(),
+              round: combatState?.round || 1,
+              actorName: 'System',
+              action: 'Defeat',
+              description: 'Your party has been defeated...',
+              type: 'info',
+            },
+          ]);
+        }
+      }
+
       if (response.combatState) {
         handleCombatStateUpdate(response.combatState);
-        addToast({
-          type: 'success',
-          message: 'Turn ended',
-          duration: 2000,
-        });
+        // Only show "Turn ended" toast if combat hasn't ended
+        if (!response.encounterResult) {
+          addToast({
+            type: 'success',
+            message: 'Turn ended',
+            duration: 2000,
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to end turn:', err);

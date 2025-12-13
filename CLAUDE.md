@@ -49,10 +49,17 @@ If any check fails, fix the issues before pushing. This prevents:
 
 When updating `@kirkdiggler/rpg-api-protos` version:
 
-1. Update version in `package.json`
-2. **MUST regenerate package-lock.json**: `rm -rf node_modules package-lock.json && npm install`
-3. Verify the correct commit hash in package-lock.json
-4. Commit BOTH package.json and package-lock.json
+```bash
+# Install specific version (preferred method)
+npm i --save github:KirkDiggler/rpg-api-protos#v0.1.56
+
+# Or if that doesn't work, regenerate everything:
+rm -rf node_modules package-lock.json && npm install
+```
+
+1. Update version in `package.json` or use the npm install command above
+2. Verify the correct commit hash in package-lock.json
+3. Commit BOTH package.json and package-lock.json
 
 **Why**: GitHub dependencies with tags don't always update properly. The lock file might keep pointing to old commits even after package.json is updated. This causes CI to use the wrong proto version.
 
