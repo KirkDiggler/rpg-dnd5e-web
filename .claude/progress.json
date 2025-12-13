@@ -94,11 +94,31 @@
         "All pre-commit checks passing (format, lint, typecheck)"
       ],
       "commit": "1f845254462bfcc5c9de5e9ca4a43dcb7bfe9db9"
+    },
+    {
+      "date": "2025-12-13",
+      "summary": "Created simplified ActionPanelV2 for HexGridV2",
+      "completed": [
+        "Created ActionPanelV2.tsx with simplified interface for HexGridV2",
+        "KEEP: Character status (name, HP, AC, saving throws, active conditions)",
+        "KEEP: Resource indicators (movement bar, action/bonus available)",
+        "KEEP: Backpack and End Turn buttons",
+        "REMOVED: Move button (map handles this)",
+        "REMOVED: Attack button (map handles this)",
+        "REMOVED: Execute/Cancel move buttons (not needed)",
+        "Added active conditions badges (Raging, Dueling) with color-coded styling",
+        "Shows proficient saving throw modifiers in header",
+        "Maintained portal-based rendering approach for visibility",
+        "Created panels/index.ts to export both ActionPanel and ActionPanelV2",
+        "Left space/structure for future class feature buttons",
+        "All pre-commit checks passing (format, lint, typecheck)"
+      ],
+      "commit": "ea63cd9f79cfe659a58f4f12fe039acc9a8ef732"
     }
   ],
   "next_steps": [
     "Test the integration in BattleMapPanel/EncounterDemo",
     "Wire up actual API calls (useMoveCharacter, useAttack) from parent",
-    "Consider simplifying ActionPanel now that map handles move/attack"
+    "Integrate ActionPanelV2 with HexGridV2 in parent component"
   ]
 }

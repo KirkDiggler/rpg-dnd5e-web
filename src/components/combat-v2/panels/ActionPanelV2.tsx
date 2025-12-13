@@ -1,10 +1,25 @@
 import { useEndTurn } from '@/api/encounterHooks';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { Ability } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePlayerTurn } from '../hooks/usePlayerTurn';
 import styles from '../styles/combat.module.css';
+
+/** Convert Ability enum to abbreviation */
+function getAbilityAbbrev(ability: Ability): string {
+  const abbrevMap: Record<Ability, string> = {
+    [Ability.UNSPECIFIED]: '?',
+    [Ability.STRENGTH]: 'STR',
+    [Ability.DEXTERITY]: 'DEX',
+    [Ability.CONSTITUTION]: 'CON',
+    [Ability.INTELLIGENCE]: 'INT',
+    [Ability.WISDOM]: 'WIS',
+    [Ability.CHARISMA]: 'CHA',
+  };
+  return abbrevMap[ability] || '?';
+}
 
 export interface ActionPanelV2Props {
   combatState: CombatState | null;
@@ -152,9 +167,9 @@ export function ActionPanelV2({
                 {currentCharacter.combatStats?.armorClass || 10}
               </span>
             </div>
-            {/* Saving throw modifiers */}
-            {currentCharacter.savingThrows && (
-              <>
+            {/* Saving throw proficiencies */}
+            {currentCharacter.proficiencies?.savingThrows &&
+              currentCharacter.proficiencies.savingThrows.length > 0 && (
                 <div
                   style={{
                     fontSize: '11px',
@@ -162,26 +177,12 @@ export function ActionPanelV2({
                     marginLeft: '8px',
                   }}
                 >
-                  Saves:
+                  Saves:{' '}
+                  {currentCharacter.proficiencies.savingThrows
+                    .map((ability) => getAbilityAbbrev(ability))
+                    .join(', ')}
                 </div>
-                {['str', 'dex', 'con', 'int', 'wis', 'cha'].map((ability) => {
-                  const save =
-                    currentCharacter.savingThrows?.[
-                      ability as keyof typeof currentCharacter.savingThrows
-                    ];
-                  if (save && save.proficient) {
-                    const modifier = save.modifier || 0;
-                    return (
-                      <div key={ability} style={{ fontSize: '11px' }}>
-                        {ability.toUpperCase()}: {modifier >= 0 ? '+' : ''}
-                        {modifier}
-                      </div>
-                    );
-                  }
-                  return null;
-                })}
-              </>
-            )}
+              )}
           </div>
         </div>
 

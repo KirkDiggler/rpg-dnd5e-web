@@ -97,8 +97,8 @@ function CombatantCard({
   const displayName = truncateName(name, position === 'center' ? 12 : 8);
 
   // HP bar (default to 100% if no character data)
-  const currentHp = character?.hitPoints?.current || 0;
-  const maxHp = character?.hitPoints?.max || 1;
+  const currentHp = character?.currentHitPoints || 0;
+  const maxHp = character?.combatStats?.hitPointMaximum || 1;
   const hpPercent = Math.max(0, Math.min(100, (currentHp / maxHp) * 100));
 
   // Size and opacity based on position

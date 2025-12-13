@@ -124,7 +124,7 @@ export function MovementRangeBorder({
   return (
     <group ref={groupRef}>
       <mesh geometry={geometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           color={color}
           emissive={color}
           emissiveIntensity={glowIntensity}

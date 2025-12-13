@@ -308,7 +308,7 @@ export function HexGridV2(props: HexGridV2Props) {
     }));
   }, [combatState]);
 
-  const activeIndex = combatState?.currentTurnIndex ?? -1;
+  const activeIndex = combatState?.activeIndex ?? -1;
   const round = combatState?.round ?? 1;
 
   return (
