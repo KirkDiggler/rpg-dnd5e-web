@@ -800,19 +800,6 @@ export function EncounterDemo() {
   const getSelectedCharacters = (): Character[] => {
     // During combat, prefer full character data with equipment if available
     if (combatState && combatState.turnOrder.length > 0) {
-      console.log(
-        '[getSelectedCharacters] fullCharactersMap size:',
-        fullCharactersMap.size
-      );
-      console.log(
-        '[getSelectedCharacters] fullCharactersMap keys:',
-        Array.from(fullCharactersMap.keys())
-      );
-      console.log(
-        '[getSelectedCharacters] selectedCharacterIds:',
-        selectedCharacterIds
-      );
-
       const chars = selectedCharacterIds
         .map((id) => {
           const fullChar = fullCharactersMap.get(id);
