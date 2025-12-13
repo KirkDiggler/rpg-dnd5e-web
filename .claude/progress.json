@@ -1,67 +1,15 @@
 {
-  "branch": "feature/hex-grid-v2",
+  "branch": "feature/hexgrid-v2-interactions",
   "issues": [],
-  "goal": "Rebuild 3D hex grid with solid, precise interactions using cube coords and raycast hit detection",
-  "sessions": [
-    {
-      "id": "session-001",
-      "task": "Implement hexMath.ts with cube coordinate conversion and distance functions",
-      "status": "completed",
-      "artifacts": [
-        "src/components/hex-grid-v2/hexMath.ts",
-        "src/components/hex-grid-v2/hexMath.test.ts",
-        "vite.config.ts (added vitest configuration)",
-        "package.json (added test scripts)"
-      ],
-      "commit": "384fd0fd5710089ecfa7689044f58a469181f47e",
-      "notes": "Implemented core hex math module using cube coordinates as single source of truth. Added cubeToWorld (hex to render position), worldToCube (click to hex with axial rounding), and hexDistance. Configured vitest and wrote comprehensive test suite (15 tests, all passing). All pre-commit checks pass."
-    },
-    {
-      "id": "session-002",
-      "task": "Implement useHexInteraction.ts hook for ground plane raycast hit detection",
-      "status": "completed",
-      "artifacts": [
-        "src/components/hex-grid-v2/useHexInteraction.ts",
-        "src/components/hex-grid-v2/useHexInteraction.test.ts"
-      ],
-      "commit": "470bf3bc80a9bf8d6cce4ea5b24666bfa5fcd924",
-      "notes": "Implemented React hook for hex interaction using ground plane raycasting. Hook manages hover/selection state, accepts hex size and grid dimensions, validates hex bounds, and provides groundPlaneProps for attaching to an invisible plane mesh. Converts world positions to cube coords using worldToCube. Written with comprehensive test suite (16 tests, all passing) verifying bounds validation, coordinate conversion, and callback logic. All pre-commit checks pass."
-    },
-    {
-      "id": "session-003",
-      "task": "Implement HexTile.tsx for single hex rendering",
-      "status": "completed",
-      "artifacts": ["src/components/hex-grid-v2/HexTile.tsx"],
-      "commit": "6d9b442bbaecf97825b89d795e613cfdafc3af90",
-      "notes": "Implemented HexTile visual component using Three.js ShapeGeometry for flat hexagons. Uses pointy-top orientation with vertices at 0°, 60°, 120°, 180°, 240°, 300°. Supports three visual states: default (#4a5568 gray), hovered (#718096 lighter gray), selected (#48bb78 green). Hexagons lay flat on XZ plane with -90° X rotation. Uses cubeToWorld for positioning. Optimized with useMemo for geometry and position calculations. All pre-commit checks pass."
-    },
-    {
-      "id": "session-004",
-      "task": "Implement HexEntity.tsx for entity rendering",
-      "status": "completed",
-      "artifacts": ["src/components/hex-grid-v2/HexEntity.tsx"],
-      "commit": "ef54cfeead489535d3dc780a9cc6f78431eb522a",
-      "notes": "Implemented HexEntity component for rendering game entities on the hex grid. Uses CapsuleGeometry for simple 3D representation. Color-coded by type: player (#3182ce blue), monster (#e53e3e red). Selected state shows brighter color with emissive glow. Clickable with onClick callback, cursor changes on hover. Positioned using cubeToWorld with Y offset (0.1 + height/2) to sit above hex plane. Props match design spec: entityId, name (unused in v1), position (CubeCoord), type, hexSize, isSelected, onClick. All pre-commit checks pass."
-    },
-    {
-      "id": "session-005",
-      "task": "Implement HexGridV2.tsx main component",
-      "status": "completed",
-      "artifacts": [
-        "src/components/hex-grid-v2/HexGridV2.tsx",
-        "src/components/hex-grid-v2/index.ts"
-      ],
-      "commit": "e2f1bbb4c79deb9e4e1ac0e98ef16bac2acff98c",
-      "notes": "Implemented main HexGridV2 component that composes all hex-grid-v2 pieces. Creates Three.js Canvas with Scene component containing: OrbitControls for camera manipulation, ambient + directional lighting, invisible ground plane mesh (200x200) with useHexInteraction props for raycast detection, HexTile rendering for each grid cell (nested loops for gridWidth x gridHeight), and HexEntity rendering for each entity. Props interface matches VoxelGrid (gridWidth, gridHeight, entities, selectedEntityId, callbacks) for easy swapping. Created barrel export index.ts exporting all public components, types, and utilities. HEX_SIZE constant set to 1.0 for consistent scaling. All pre-commit checks pass."
-    },
-    {
-      "id": "session-006",
-      "task": "Integrate HexGridV2 into BattleMapPanel with 3D v2 toggle",
-      "status": "completed",
-      "artifacts": ["src/components/encounter/BattleMapPanel.tsx"],
-      "commit": "2ed2c7bd63b8da35c4ef2fab5e0e71d9cf0ea050",
-      "notes": "Added third view mode ('3d-v2') to BattleMapPanel alongside existing 2D and 3D views. Updated toggle UI from single button to three-button group (2D, 3D, 3D v2). Imported HexGridV2 and rendered it when '3d-v2' is selected. Transformed Room.entities protobuf data to match HexGridV2Props interface: mapped entity positions to cube coords, resolved character names from availableCharacters, mapped CHARACTER entity type to 'player' and others to 'monster'. Passed gridWidth, gridHeight, entities array, selectedEntityId, onHexClick, and onEntityClick callbacks. Feature complete - users can now switch between all three grid views. All pre-commit checks pass."
-    }
-  ],
-  "next_steps": []
+  "goal": "Add tactical RPG-style movement and combat interactions to HexGridV2 - path preview on hover, click-to-move, click-enemy-to-attack, movement range border, turn order overlay",
+  "sessions": [],
+  "next_steps": [
+    "Add A* pathfinding to hexMath utilities",
+    "Create useMovementRange hook for calculating reachable hexes",
+    "Add path preview state to useHexInteraction",
+    "Create MovementRangeBorder component for glowing perimeter",
+    "Create TurnOrderOverlay component",
+    "Wire movement/attack to existing API hooks",
+    "Simplify ActionPanel (remove Move/Attack buttons)"
+  ]
 }
