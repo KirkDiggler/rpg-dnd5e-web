@@ -25,7 +25,8 @@ const COLORS = {
 
 /**
  * Creates a flat hexagon shape for pointy-top orientation
- * Vertices at angles: 0°, 60°, 120°, 180°, 240°, 300° from center
+ * Vertices at angles: 30°, 90°, 150°, 210°, 270°, 330° from center
+ * (Starting at 30° puts a vertex at the top for pointy-top)
  *
  * @param hexSize - The hex radius (distance from center to vertex)
  * @returns A THREE.Shape representing a hexagon
@@ -34,9 +35,9 @@ function createHexagonShape(hexSize: number): THREE.Shape {
   const shape = new THREE.Shape();
 
   // Generate 6 vertices for pointy-top hex
-  // Starting at 0° (right vertex) and going counter-clockwise
+  // Starting at 30° (top vertex) and going counter-clockwise
   for (let i = 0; i < 6; i++) {
-    const angleDeg = 60 * i;
+    const angleDeg = 30 + 60 * i; // Start at 30° for pointy-top
     const angleRad = (Math.PI / 180) * angleDeg;
     const x = hexSize * Math.cos(angleRad);
     const y = hexSize * Math.sin(angleRad);

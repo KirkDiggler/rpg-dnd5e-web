@@ -9,11 +9,13 @@
  * - HexEntity for each entity
  */
 
-import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
+import { useMemo } from 'react';
+import * as THREE from 'three';
 import { HexEntity } from './HexEntity';
-import type { CubeCoord } from './hexMath';
+import { cubeToWorld, type CubeCoord } from './hexMath';
 import { HexTile } from './HexTile';
+import { useCameraControls } from './useCameraControls';
 import { useHexInteraction } from './useHexInteraction';
 
 export interface HexGridV2Props {
@@ -50,6 +52,30 @@ function Scene({
   onHexHover,
   onEntityClick,
 }: HexGridV2Props) {
+  // Calculate grid center for camera target
+  const gridCenter = useMemo(() => {
+    // Center hex in cube coords
+    const centerX = Math.floor(gridWidth / 2);
+    const centerZ = Math.floor(gridHeight / 2);
+    const centerY = -centerX - centerZ;
+    // Convert to world coords
+    const worldPos = cubeToWorld(
+      { x: centerX, y: centerY, z: centerZ },
+      HEX_SIZE
+    );
+    return new THREE.Vector3(worldPos.x, 0, worldPos.z);
+  }, [gridWidth, gridHeight]);
+
+  // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
+  useCameraControls({
+    target: gridCenter,
+    polarAngle: Math.PI / 3, // 60 degrees from vertical (30 degrees from horizontal)
+    panSpeed: 0.3,
+    rotateSpeed: 0.02,
+    minZoom: 30,
+    maxZoom: 150,
+  });
+
   // Use the interaction hook for hover/click detection
   const { hoveredHex, selectedHex, groundPlaneProps } = useHexInteraction({
     hexSize: HEX_SIZE,
@@ -70,15 +96,6 @@ function Scene({
 
   return (
     <>
-      {/* Camera setup - orthographic looking down */}
-      <OrbitControls
-        enableRotate={true}
-        enablePan={true}
-        enableZoom={true}
-        maxPolarAngle={Math.PI / 2} // Prevent going below the ground
-        minPolarAngle={0}
-      />
-
       {/* Lighting */}
       <ambientLight intensity={0.6} />
       <directionalLight position={[10, 10, 5]} intensity={0.8} />
@@ -136,14 +153,20 @@ function Scene({
  */
 export function HexGridV2(props: HexGridV2Props) {
   return (
-    <Canvas
-      camera={{
-        position: [0, 15, 10],
-        fov: 50,
-      }}
-      style={{ width: '100%', height: '100%' }}
-    >
-      <Scene {...props} />
-    </Canvas>
+    <div style={{ width: '100%', height: '600px', position: 'relative' }}>
+      <Canvas
+        orthographic
+        camera={{
+          // Steeper isometric angle like Stolen Realm
+          position: [8, 16, 8],
+          zoom: 80,
+          near: 0.1,
+          far: 1000,
+        }}
+        style={{ width: '100%', height: '100%' }}
+      >
+        <Scene {...props} />
+      </Canvas>
+    </div>
   );
 }
