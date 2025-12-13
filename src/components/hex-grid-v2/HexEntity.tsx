@@ -52,7 +52,7 @@ function createEntityGeometry(hexSize: number): THREE.CapsuleGeometry {
 
 export function HexEntity({
   entityId,
-  // name prop not used in v1 - will be used for tooltips/labels later
+  // name prop not destructured - will be used for tooltips/labels in future
   position,
   type,
   hexSize,

@@ -9,7 +9,7 @@
  */
 
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
 interface CameraControlsOptions {
@@ -60,7 +60,7 @@ export function useCameraControls({
   const distance = useRef(20);
 
   // Update camera position based on spherical coordinates
-  const updateCamera = () => {
+  const updateCamera = useCallback(() => {
     const x =
       target.x +
       distance.current * Math.sin(polarAngle) * Math.cos(azimuth.current);
@@ -71,7 +71,7 @@ export function useCameraControls({
 
     camera.position.set(x, y, z);
     camera.lookAt(target);
-  };
+  }, [target, polarAngle, camera]);
 
   // Handle keyboard events
   useEffect(() => {
@@ -161,8 +161,8 @@ export function useCameraControls({
       canvas.removeEventListener('wheel', handleWheel);
       canvas.removeEventListener('contextmenu', handleContextMenu);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, camera, minZoom, maxZoom]);
+    // target included so effect re-initializes if target reference changes
+  }, [gl, camera, minZoom, maxZoom, target, polarAngle, updateCamera]);
 
   // Update each frame based on key state
   useFrame(() => {
@@ -216,8 +216,7 @@ export function useCameraControls({
   // Initialize camera position
   useEffect(() => {
     updateCamera();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [updateCamera]);
 
   return { target, azimuth, distance };
 }

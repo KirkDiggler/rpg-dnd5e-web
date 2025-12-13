@@ -25,8 +25,11 @@ const COLORS = {
 
 /**
  * Creates a flat hexagon shape for pointy-top orientation
- * Vertices at angles: 30°, 90°, 150°, 210°, 270°, 330° from center
- * (Starting at 30° puts a vertex at the top for pointy-top)
+ *
+ * Vertices at angles: 30°, 90°, 150°, 210°, 270°, 330°
+ * (measured counter-clockwise from the positive X-axis, standard math convention)
+ *
+ * Starting at 30° places the first vertex at top-right, creating pointy-top orientation.
  *
  * @param hexSize - The hex radius (distance from center to vertex)
  * @returns A THREE.Shape representing a hexagon

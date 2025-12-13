@@ -157,7 +157,7 @@ export function HexGridV2(props: HexGridV2Props) {
       <Canvas
         orthographic
         camera={{
-          // Steeper isometric angle like Stolen Realm
+          // Steep isometric angle for good hex visibility
           position: [8, 16, 8],
           zoom: 80,
           near: 0.1,
