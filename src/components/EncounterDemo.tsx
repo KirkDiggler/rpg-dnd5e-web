@@ -110,7 +110,9 @@ export function EncounterDemo() {
     string | null
   >(null);
   const [movementMode, setMovementMode] = useState(false);
-  const [movementPath, setMovementPath] = useState<CubeCoord[]>([]);
+  const [movementPath, setMovementPath] = useState<
+    Array<{ x: number; y: number }>
+  >([]);
   const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
 
   // Damage number state
@@ -234,16 +236,13 @@ export function EncounterDemo() {
       clickedEntity.entityType.toLowerCase() === 'monster'
     ) {
       // Check if adjacent (within 1 hex for melee)
-      // Server provides cube coordinates in position.x, position.y, position.z
       const currentEntity = room?.entities[currentTurnEntityId];
       if (currentEntity?.position && clickedEntity.position) {
         const distance = hexDistance(
           currentEntity.position.x,
           currentEntity.position.y,
-          currentEntity.position.z,
           clickedEntity.position.x,
-          clickedEntity.position.y,
-          clickedEntity.position.z
+          clickedEntity.position.y
         );
 
         // Set as attack target (can be adjacent or not - button will handle enabling)
@@ -261,18 +260,18 @@ export function EncounterDemo() {
     setHoveredEntity(entityId);
   };
 
-  const handleCellClick = async (clickedCube: CubeCoord) => {
+  const handleCellClick = async (x: number, y: number) => {
     if (movementMode && selectedEntity && encounterId) {
       const entityPos = room?.entities[selectedEntity]?.position;
       if (!entityPos) return;
 
-      // Get the last position in the path, or entity's current position (as cube coords)
-      const lastPos: CubeCoord =
+      // Get the last position in the path, or entity's current position
+      const lastPos =
         movementPath.length > 0
           ? movementPath[movementPath.length - 1]
-          : { x: entityPos.x, y: entityPos.y, z: entityPos.z };
+          : { x: entityPos.x, y: entityPos.y };
 
-      // Get occupied positions (excluding the target) using cube keys
+      // Get occupied positions (excluding the target)
       const occupiedPositions = new Set<string>();
       if (room?.entities) {
         Object.values(room.entities).forEach((entity) => {
@@ -281,19 +280,13 @@ export function EncounterDemo() {
             entity.blocksMovement &&
             entity.entityId !== selectedEntity
           ) {
-            occupiedPositions.add(
-              cubeKey({
-                x: entity.position.x,
-                y: entity.position.y,
-                z: entity.position.z,
-              })
-            );
+            occupiedPositions.add(`${entity.position.x},${entity.position.y}`);
           }
         });
       }
 
       // Find path from last position to clicked hex
-      const newSegment = findHexPath(lastPos, clickedCube, occupiedPositions);
+      const newSegment = findHexPath(lastPos, { x, y }, occupiedPositions);
 
       // Validate total movement cost
       const pathCost = (movementPath.length + newSegment.length) * 5; // 5ft per hex
@@ -311,7 +304,7 @@ export function EncounterDemo() {
   };
 
   // Double-click: move directly to target hex in one action
-  const handleCellDoubleClick = async (clickedCube: CubeCoord) => {
+  const handleCellDoubleClick = async (x: number, y: number) => {
     // Need a selected entity and encounter
     const currentTurnEntityId = combatState?.currentTurn?.entityId;
     if (!currentTurnEntityId || !encounterId) return;
@@ -319,7 +312,7 @@ export function EncounterDemo() {
     const entityPos = room?.entities[currentTurnEntityId]?.position;
     if (!entityPos) return;
 
-    // Get occupied positions (excluding the current turn entity) using cube keys
+    // Get occupied positions (excluding the current turn entity)
     const occupiedPositions = new Set<string>();
     if (room?.entities) {
       Object.values(room.entities).forEach((entity) => {
@@ -328,26 +321,15 @@ export function EncounterDemo() {
           entity.blocksMovement &&
           entity.entityId !== currentTurnEntityId
         ) {
-          occupiedPositions.add(
-            cubeKey({
-              x: entity.position.x,
-              y: entity.position.y,
-              z: entity.position.z,
-            })
-          );
+          occupiedPositions.add(`${entity.position.x},${entity.position.y}`);
         }
       });
     }
 
     // Find path from entity position to clicked hex (ignore any existing path for double-click)
-    const entityCube: CubeCoord = {
-      x: entityPos.x,
-      y: entityPos.y,
-      z: entityPos.z,
-    };
     const pathToTarget = findHexPath(
-      entityCube,
-      clickedCube,
+      { x: entityPos.x, y: entityPos.y },
+      { x, y },
       occupiedPositions
     );
 
