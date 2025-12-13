@@ -156,12 +156,13 @@ describe('useHexInteraction logic', () => {
     });
   });
 
-  describe('Three.js Event mock structure', () => {
+  describe('R3F Event mock structure', () => {
     it('creates valid event structure for testing', () => {
-      // This verifies our understanding of the Three.js Event structure
+      // This verifies our understanding of the R3F pointer event structure
       const mockEvent = {
         point: new THREE.Vector3(0, 0, 0),
-      } as THREE.Event;
+        stopPropagation: () => {},
+      };
 
       expect(mockEvent.point).toBeInstanceOf(THREE.Vector3);
       expect(mockEvent.point.x).toBe(0);

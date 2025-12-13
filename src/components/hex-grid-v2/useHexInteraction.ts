@@ -8,6 +8,12 @@ import * as THREE from 'three';
 import type { CubeCoord } from './hexMath';
 import { worldToCube } from './hexMath';
 
+// React Three Fiber event type with intersection point
+interface R3FPointerEvent {
+  point: THREE.Vector3;
+  stopPropagation: () => void;
+}
+
 export interface UseHexInteractionProps {
   hexSize: number;
   gridWidth: number;
@@ -20,9 +26,9 @@ export interface UseHexInteractionReturn {
   hoveredHex: CubeCoord | null;
   selectedHex: CubeCoord | null;
   groundPlaneProps: {
-    onPointerMove: (event: THREE.Event) => void;
+    onPointerMove: (event: R3FPointerEvent) => void;
     onPointerLeave: () => void;
-    onClick: (event: THREE.Event) => void;
+    onClick: (event: R3FPointerEvent) => void;
   };
 }
 
@@ -80,9 +86,9 @@ export function useHexInteraction({
    * Three.js provides the intersection point in event.point
    */
   const handlePointerMove = useCallback(
-    (event: THREE.Event) => {
+    (event: R3FPointerEvent) => {
       // Extract world position from raycast intersection
-      const intersection = event.point as THREE.Vector3;
+      const intersection = event.point;
       const worldPos = { x: intersection.x, z: intersection.z };
 
       // Convert to cube coordinates
@@ -122,9 +128,9 @@ export function useHexInteraction({
    * Handle click on ground plane
    */
   const handleClick = useCallback(
-    (event: THREE.Event) => {
+    (event: R3FPointerEvent) => {
       // Extract world position from raycast intersection
-      const intersection = event.point as THREE.Vector3;
+      const intersection = event.point;
       const worldPos = { x: intersection.x, z: intersection.z };
 
       // Convert to cube coordinates
