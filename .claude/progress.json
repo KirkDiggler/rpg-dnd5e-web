@@ -1,0 +1,14 @@
+{
+  "branch": "feature/hex-grid-v2",
+  "issues": [],
+  "goal": "Rebuild 3D hex grid with solid, precise interactions using cube coords and raycast hit detection",
+  "sessions": [],
+  "next_steps": [
+    "Implement hexMath.ts with cubeToWorld, worldToCube, hexDistance",
+    "Implement useHexInteraction.ts with ground plane raycast",
+    "Implement HexTile.tsx for single hex rendering",
+    "Implement HexEntity.tsx for entity rendering",
+    "Implement HexGridV2.tsx main component",
+    "Add toggle to BattleMapPanel to switch views"
+  ]
+}
