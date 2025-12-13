@@ -419,6 +419,65 @@ export function EncounterDemo() {
     }
   };
 
+  // Handler for HexGridV2 click-to-move
+  const handleMoveComplete = async (path: CubeCoord[]) => {
+    const currentTurnEntityId = combatState?.currentTurn?.entityId;
+    if (!currentTurnEntityId || !encounterId || path.length === 0) return;
+
+    try {
+      const response = await moveCharacter(
+        encounterId,
+        currentTurnEntityId,
+        path
+      );
+      if (response.success) {
+        if (response.updatedRoom) setRoom(response.updatedRoom);
+
+        // Update combat state to reflect new movement remaining
+        if (combatState && combatState.currentTurn) {
+          const movementUsed =
+            combatState.currentTurn.movementMax - response.movementRemaining;
+          setCombatState({
+            ...combatState,
+            currentTurn: {
+              ...combatState.currentTurn,
+              movementUsed,
+            },
+          });
+        }
+
+        addToast({
+          type: 'success',
+          message: `Moved ${path.length * 5}ft`,
+          duration: 2000,
+        });
+      } else {
+        addToast({
+          type: 'error',
+          message: response.error?.message || 'Move failed',
+          duration: 3000,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to move character:', err);
+      addToast({
+        type: 'error',
+        message: 'Failed to move character',
+        duration: 3000,
+      });
+    }
+  };
+
+  // Handler for HexGridV2 click-to-attack
+  const handleAttackComplete = async (targetId: string) => {
+    // Use the existing attack handler with the target
+    setAttackTarget(targetId);
+    // Small delay to let state update, then trigger attack
+    setTimeout(() => {
+      handleAttackAction();
+    }, 0);
+  };
+
   const handleCombatStateUpdate = (newCombatState: CombatState) => {
     setCombatState(newCombatState);
     // Update selected entity to the new current turn's entity
@@ -1033,6 +1092,11 @@ export function EncounterDemo() {
                   onEntityHover={handleEntityHover}
                   onCellClick={handleCellClick}
                   onCellDoubleClick={handleCellDoubleClick}
+                  // HexGridV2 combat integration
+                  encounterId={encounterId}
+                  combatState={combatState}
+                  onMoveComplete={handleMoveComplete}
+                  onAttackComplete={handleAttackComplete}
                 />
               </div>
 

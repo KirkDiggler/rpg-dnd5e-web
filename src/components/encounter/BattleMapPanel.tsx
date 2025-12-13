@@ -2,7 +2,10 @@ import type { DamageNumber } from '@/types/combat';
 import { formatCharacterSummary } from '@/utils/displayNames';
 import type { CubeCoord } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type { Room } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type {
+  CombatState,
+  Room,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
 import { HexGridV2 } from '../hex-grid-v2';
 import { HexGrid } from '../HexGrid';
@@ -25,6 +28,11 @@ interface BattleMapPanelProps {
   onEntityHover: (entityId: string | null) => void;
   onCellClick: (coord: CubeCoord) => void;
   onCellDoubleClick?: (coord: CubeCoord) => void;
+  // Combat integration props for HexGridV2
+  encounterId?: string | null;
+  combatState?: CombatState | null;
+  onMoveComplete?: (path: CubeCoord[]) => void;
+  onAttackComplete?: (targetId: string) => void;
 }
 
 type ViewMode = '2d' | '3d' | '3d-v2';
@@ -43,6 +51,10 @@ export function BattleMapPanel({
   onEntityHover,
   onCellClick,
   onCellDoubleClick,
+  encounterId,
+  combatState,
+  onMoveComplete,
+  onAttackComplete,
 }: BattleMapPanelProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('3d'); // Default to 3D view
 
@@ -162,6 +174,26 @@ export function BattleMapPanel({
             selectedEntityId={selectedEntity || undefined}
             onHexClick={onCellClick}
             onEntityClick={onEntityClick}
+            // Combat integration
+            encounterId={encounterId}
+            combatState={combatState}
+            characters={availableCharacters}
+            currentEntityId={combatState?.currentTurn?.entityId}
+            movementRemaining={
+              combatState?.currentTurn
+                ? (combatState.currentTurn.movementMax || 30) -
+                  (combatState.currentTurn.movementUsed || 0)
+                : 0
+            }
+            isPlayerTurn={
+              combatState?.currentTurn?.entityId
+                ? availableCharacters.some(
+                    (c) => c.id === combatState.currentTurn?.entityId
+                  )
+                : false
+            }
+            onMoveComplete={onMoveComplete}
+            onAttackComplete={onAttackComplete}
           />
         )}
       </div>
