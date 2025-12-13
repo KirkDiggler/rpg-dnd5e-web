@@ -27,12 +27,59 @@
         "All tests passing (24 tests), pre-commit checks passing"
       ],
       "commit": "228a47df92084bd3d299c443170dce111990d305"
+    },
+    {
+      "date": "2025-12-13",
+      "summary": "Enhanced useHexInteraction with path preview functionality",
+      "completed": [
+        "Added new input parameters: entityPosition, movementRemaining, isBlocked, entities",
+        "Added new return values: pathPreview, hoveredEntity, canAttack, attackPath",
+        "Implemented path preview logic for empty hexes (only shows if within movement range)",
+        "Implemented attack path calculation for enemies (finds nearest adjacent hex)",
+        "Added entity detection at hovered coordinates",
+        "Created helper functions: findEntityAtCoord, findNearestAdjacentHex",
+        "Wrote comprehensive test suite covering all scenarios (23 tests total)",
+        "All tests passing, pre-commit checks passing"
+      ],
+      "commit": "cbdbc161cafff3a4f7dd362f9142eb79644f871c"
+    },
+    {
+      "date": "2025-12-13",
+      "summary": "Created MovementRangeBorder component for glowing perimeter visualization",
+      "completed": [
+        "Implemented MovementRangeBorder.tsx component as Three.js R3F component",
+        "Consumes boundaryEdges from useMovementRange (world coordinates)",
+        "Batches all edges into single BufferGeometry for optimal performance",
+        "Renders each edge as thin rectangular mesh (ribbon) using perpendicular offset calculation",
+        "Uses emissive MeshBasicMaterial for soft glow effect (default cyan)",
+        "Positioned at y=0.05 to prevent z-fighting with ground plane",
+        "Added subtle pulsing animation using useFrame (opacity oscillates 0.7-1.0)",
+        "Fully customizable props: color, opacity, glowIntensity",
+        "Pre-commit checks passing"
+      ],
+      "commit": "dc2250fc6b9a62bf0e7c8732dc9b00f9b7b2f7b4"
+    },
+    {
+      "date": "2025-12-13",
+      "summary": "Created TurnOrderOverlay component for turn order visualization",
+      "completed": [
+        "Implemented TurnOrderOverlay.tsx as regular React component (not Three.js)",
+        "Horizontal strip layout: current turn in center, 2-3 upcoming right, 1-2 previous left",
+        "Each combatant card shows: class/monster emoji, truncated name, HP bar",
+        "HP bar is color-coded: green > 50%, yellow > 25%, red <= 25%",
+        "Active turn has glowing green border with box-shadow effect",
+        "Previous turns are faded (opacity: 0.6)",
+        "Round number badge displayed on the left side",
+        "Semi-transparent dark background with backdrop blur",
+        "Smooth CSS transitions for all state changes",
+        "Component uses InitiativeEntry proto type from encounter_pb.ts",
+        "Pre-commit checks passing (format, lint, typecheck)"
+      ],
+      "commit": "8ef6b2f2cbc2b39eb2050bcee5c079980c5690a1"
     }
   ],
   "next_steps": [
-    "Add path preview state to useHexInteraction",
-    "Create MovementRangeBorder component for glowing perimeter",
-    "Create TurnOrderOverlay component",
+    "Create PathPreview component to visualize the path",
     "Wire movement/attack to existing API hooks",
     "Simplify ActionPanel (remove Move/Attack buttons)"
   ]
