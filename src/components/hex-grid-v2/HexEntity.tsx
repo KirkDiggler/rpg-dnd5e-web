@@ -5,7 +5,6 @@
  * For v1: simple geometry to prove positioning works. Voxel models come later.
  */
 
-import { ThreeEvent } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
@@ -75,7 +74,7 @@ export function HexEntity({
   const color = isSelected ? COLORS[type].selected : COLORS[type].default;
 
   // Handle click events
-  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+  const handleClick = (event: { stopPropagation: () => void }) => {
     event.stopPropagation(); // Prevent hex click from firing
     if (onClick) {
       onClick(entityId);
