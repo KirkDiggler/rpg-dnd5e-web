@@ -12,6 +12,7 @@ import {
 } from './CombatHistorySidebar';
 import { DynamicActionButtons } from './DynamicActionButtons';
 import { EquipmentDisplay } from './EquipmentDisplay';
+import { HoverInfoPanel, type HoveredEntity } from './HoverInfoPanel';
 
 export interface CombatPanelProps {
   character: Character;
@@ -19,6 +20,10 @@ export interface CombatPanelProps {
   turnState: TurnState | null | undefined;
   isPlayerTurn: boolean;
   combatLog?: CombatLogEntry[];
+
+  // Hover info props
+  hoveredEntity?: HoveredEntity | null;
+  characters?: Character[];
 
   // Callbacks
   onAttack?: () => void;
@@ -60,6 +65,8 @@ export function CombatPanel({
   turnState,
   isPlayerTurn,
   combatLog = [],
+  hoveredEntity,
+  characters = [],
   onAttack,
   onMove,
   onSpell,
@@ -74,7 +81,14 @@ export function CombatPanel({
   return (
     <div className={styles.combatPanel}>
       <div className={styles.combatPanelContainer}>
-        {/* Main Content Column (70%) */}
+        {/* Left Column: Hover Info Panel */}
+        <HoverInfoPanel
+          hoveredEntity={hoveredEntity || null}
+          currentCharacter={character}
+          characters={characters}
+        />
+
+        {/* Main Content Column */}
         <div className={styles.combatPanelMainContent}>
           {/* Character Info Section */}
           <CharacterInfoSection character={character} />

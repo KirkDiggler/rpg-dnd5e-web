@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePlayerTurn } from '../hooks/usePlayerTurn';
 import styles from '../styles/combat.module.css';
+import { HoverInfoPanel, type HoveredEntity } from './HoverInfoPanel';
 
 /** Convert Ability enum to abbreviation */
 function getAbilityAbbrev(ability: Ability): string {
@@ -29,6 +30,10 @@ export interface ActionPanelV2Props {
   onBackpackOpen?: () => void;
   /** Enable debug mode with bright colors for visibility testing */
   debug?: boolean;
+  /** Currently hovered entity from the hex grid */
+  hoveredEntity?: HoveredEntity | null;
+  /** All characters for hover info lookup */
+  characters?: Character[];
 }
 
 /**
@@ -56,6 +61,8 @@ export function ActionPanelV2({
   onCombatStateUpdate,
   onBackpackOpen,
   debug = false,
+  hoveredEntity,
+  characters = [],
 }: ActionPanelV2Props) {
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
     null
@@ -142,179 +149,201 @@ export function ActionPanelV2({
         pointerEvents: 'auto',
       }}
     >
-      <div className={styles.actionPanelContainer}>
-        {/* Header Section */}
-        <div className={styles.actionPanelHeader}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <h3 className={styles.characterName}>
-              {currentCharacter.name}'s Turn
-            </h3>
-            <span className={styles.roundBadge}>
-              Round {combatState?.round || 1}
-            </span>
-          </div>
+      {/* Three-column layout: HoverInfo | Main Content | Combat Log (future) */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '16px',
+          padding: '12px 16px',
+          alignItems: 'flex-start',
+        }}
+      >
+        {/* Left Column: Hover Info Panel */}
+        <HoverInfoPanel
+          hoveredEntity={hoveredEntity || null}
+          currentCharacter={currentCharacter}
+          characters={characters}
+        />
 
-          <div className={styles.characterStats}>
-            <div>
-              HP:{' '}
-              <span className={styles.statValue}>
-                {currentCharacter.currentHitPoints}
-              </span>
-            </div>
-            <div>
-              AC:{' '}
-              <span className={styles.statValue}>
-                {currentCharacter.combatStats?.armorClass || 10}
-              </span>
-            </div>
-            {/* Saving throw proficiencies */}
-            {currentCharacter.proficiencies?.savingThrows &&
-              currentCharacter.proficiencies.savingThrows.length > 0 && (
-                <div
-                  style={{
-                    fontSize: '11px',
-                    color: 'var(--text-muted)',
-                    marginLeft: '8px',
-                  }}
-                >
-                  Saves:{' '}
-                  {currentCharacter.proficiencies.savingThrows
-                    .map((ability) => getAbilityAbbrev(ability))
-                    .join(', ')}
-                </div>
-              )}
-          </div>
-        </div>
-
-        {/* Active Conditions */}
-        {(isRaging || hasDueling) && (
-          <div
-            style={{
-              display: 'flex',
-              gap: '8px',
-              padding: '8px 16px',
-              borderBottom: '1px solid var(--border-color)',
-            }}
-          >
-            {isRaging && (
-              <span
-                style={{
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                  border: '1px solid rgba(239, 68, 68, 0.5)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: '#fca5a5',
-                }}
-              >
-                🔥 Raging
-              </span>
-            )}
-            {hasDueling && (
-              <span
-                style={{
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                  border: '1px solid rgba(59, 130, 246, 0.5)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: '#93c5fd',
-                }}
-              >
-                ⚔️ Dueling
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Resources Section */}
-        <div className={styles.resourcesSection}>
-          {/* Movement */}
-          <div className={styles.resourceItem}>
-            <span className={styles.resourceLabel}>Movement:</span>
-            <div className={styles.movementBar}>
+        {/* Center Column: Main Action Panel Content */}
+        <div style={{ flex: 1 }}>
+          <div className={styles.actionPanelContainer}>
+            {/* Header Section */}
+            <div className={styles.actionPanelHeader}>
               <div
-                className={`${styles.movementBarFill} ${
-                  resources.movementRemaining > 0
-                    ? styles.hasMovement
-                    : styles.noMovement
-                }`}
+                style={{ display: 'flex', alignItems: 'center', gap: '16px' }}
+              >
+                <h3 className={styles.characterName}>
+                  {currentCharacter.name}'s Turn
+                </h3>
+                <span className={styles.roundBadge}>
+                  Round {combatState?.round || 1}
+                </span>
+              </div>
+
+              <div className={styles.characterStats}>
+                <div>
+                  HP:{' '}
+                  <span className={styles.statValue}>
+                    {currentCharacter.currentHitPoints}
+                  </span>
+                </div>
+                <div>
+                  AC:{' '}
+                  <span className={styles.statValue}>
+                    {currentCharacter.combatStats?.armorClass || 10}
+                  </span>
+                </div>
+                {/* Saving throw proficiencies */}
+                {currentCharacter.proficiencies?.savingThrows &&
+                  currentCharacter.proficiencies.savingThrows.length > 0 && (
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        color: 'var(--text-muted)',
+                        marginLeft: '8px',
+                      }}
+                    >
+                      Saves:{' '}
+                      {currentCharacter.proficiencies.savingThrows
+                        .map((ability) => getAbilityAbbrev(ability))
+                        .join(', ')}
+                    </div>
+                  )}
+              </div>
+            </div>
+
+            {/* Active Conditions */}
+            {(isRaging || hasDueling) && (
+              <div
                 style={{
-                  width: `${(resources.movementRemaining / resources.movementMax) * 100}%`,
+                  display: 'flex',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  borderBottom: '1px solid var(--border-color)',
                 }}
-              />
-            </div>
-            <span className={styles.movementText}>
-              {resources.movementRemaining}ft
-            </span>
-          </div>
+              >
+                {isRaging && (
+                  <span
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                      border: '1px solid rgba(239, 68, 68, 0.5)',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: '#fca5a5',
+                    }}
+                  >
+                    🔥 Raging
+                  </span>
+                )}
+                {hasDueling && (
+                  <span
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                      border: '1px solid rgba(59, 130, 246, 0.5)',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: '#93c5fd',
+                    }}
+                  >
+                    ⚔️ Dueling
+                  </span>
+                )}
+              </div>
+            )}
 
-          {/* Action */}
-          <div className={styles.resourceItem}>
-            <span className={styles.resourceLabel}>Action:</span>
-            <div
-              className={`${styles.statusIcon} ${
-                resources.hasAction ? styles.available : styles.used
-              }`}
-            >
-              {resources.hasAction ? '✓' : '✗'}
-            </div>
-          </div>
+            {/* Resources Section */}
+            <div className={styles.resourcesSection}>
+              {/* Movement */}
+              <div className={styles.resourceItem}>
+                <span className={styles.resourceLabel}>Movement:</span>
+                <div className={styles.movementBar}>
+                  <div
+                    className={`${styles.movementBarFill} ${
+                      resources.movementRemaining > 0
+                        ? styles.hasMovement
+                        : styles.noMovement
+                    }`}
+                    style={{
+                      width: `${(resources.movementRemaining / resources.movementMax) * 100}%`,
+                    }}
+                  />
+                </div>
+                <span className={styles.movementText}>
+                  {resources.movementRemaining}ft
+                </span>
+              </div>
 
-          {/* Bonus Action */}
-          <div className={styles.resourceItem}>
-            <span className={styles.resourceLabel}>Bonus:</span>
-            <div
-              className={`${styles.statusIcon} ${
-                resources.hasBonusAction ? styles.available : styles.used
-              }`}
-            >
-              {resources.hasBonusAction ? '✓' : '✗'}
+              {/* Action */}
+              <div className={styles.resourceItem}>
+                <span className={styles.resourceLabel}>Action:</span>
+                <div
+                  className={`${styles.statusIcon} ${
+                    resources.hasAction ? styles.available : styles.used
+                  }`}
+                >
+                  {resources.hasAction ? '✓' : '✗'}
+                </div>
+              </div>
+
+              {/* Bonus Action */}
+              <div className={styles.resourceItem}>
+                <span className={styles.resourceLabel}>Bonus:</span>
+                <div
+                  className={`${styles.statusIcon} ${
+                    resources.hasBonusAction ? styles.available : styles.used
+                  }`}
+                >
+                  {resources.hasBonusAction ? '✓' : '✗'}
+                </div>
+              </div>
+            </div>
+
+            {/* Actions Section */}
+            <div className={styles.actionsSection}>
+              {/* Future: Class feature buttons will go here */}
+              {/* Example: Rage button for Barbarians */}
+              {hasRageFeature && !isRaging && (
+                <button
+                  disabled={!resources.hasBonusAction}
+                  className={`${styles.actionButton} ${styles.attack} ${
+                    !resources.hasBonusAction ? styles.disabled : ''
+                  }`}
+                  title={
+                    !resources.hasBonusAction
+                      ? 'No bonus action'
+                      : 'Activate Rage (Bonus Action)'
+                  }
+                >
+                  🔥 Rage
+                </button>
+              )}
+
+              {/* Backpack Button */}
+              <button
+                onClick={onBackpackOpen}
+                className={`${styles.actionButton} ${styles.ability}`}
+              >
+                🎒 Backpack
+              </button>
+
+              {/* End Turn Button */}
+              <button
+                onClick={handleEndTurn}
+                disabled={endTurnLoading}
+                className={`${styles.actionButton} ${styles.endTurn}`}
+              >
+                {endTurnLoading ? '⏳ Ending...' : 'End Turn'}
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Actions Section */}
-        <div className={styles.actionsSection}>
-          {/* Future: Class feature buttons will go here */}
-          {/* Example: Rage button for Barbarians */}
-          {hasRageFeature && !isRaging && (
-            <button
-              disabled={!resources.hasBonusAction}
-              className={`${styles.actionButton} ${styles.attack} ${
-                !resources.hasBonusAction ? styles.disabled : ''
-              }`}
-              title={
-                !resources.hasBonusAction
-                  ? 'No bonus action'
-                  : 'Activate Rage (Bonus Action)'
-              }
-            >
-              🔥 Rage
-            </button>
-          )}
-
-          {/* Backpack Button */}
-          <button
-            onClick={onBackpackOpen}
-            className={`${styles.actionButton} ${styles.ability}`}
-          >
-            🎒 Backpack
-          </button>
-
-          {/* End Turn Button */}
-          <button
-            onClick={handleEndTurn}
-            disabled={endTurnLoading}
-            className={`${styles.actionButton} ${styles.endTurn}`}
-          >
-            {endTurnLoading ? '⏳ Ending...' : 'End Turn'}
-          </button>
-        </div>
-
-        {/* Combat Log - Placeholder for future implementation */}
+        {/* Right Column: Combat Log - Placeholder for future implementation */}
         {/* TODO: Add combat log display here */}
       </div>
     </div>

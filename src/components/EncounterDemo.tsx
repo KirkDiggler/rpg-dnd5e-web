@@ -112,6 +112,10 @@ export function EncounterDemo() {
     string | null
   >(null);
   const [movementMode, setMovementMode] = useState(false);
+  const [hoveredEntity, setHoveredEntity] = useState<{
+    id: string;
+    type: string;
+  } | null>(null);
   const [movementPath, setMovementPath] = useState<CubeCoord[]>([]);
   const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
 
@@ -912,6 +916,7 @@ export function EncounterDemo() {
                 combatState={combatState}
                 onMoveComplete={handleMoveComplete}
                 onAttackComplete={handleAttackComplete}
+                onHoverChange={setHoveredEntity}
               />
             </div>
           )}
@@ -954,6 +959,8 @@ export function EncounterDemo() {
           turnState={currentTurn}
           isPlayerTurn={isPlayerTurn}
           combatLog={combatLog}
+          hoveredEntity={hoveredEntity}
+          characters={availableCharacters}
           onAttack={handleAttackAction}
           onMove={handleMoveAction}
           onSpell={handleSpell}

@@ -1537,3 +1537,94 @@
     max-height: 250px;
   }
 }
+
+/* ============================================
+ * Hover Info Panel
+ * Shows entity info when hovering on hex grid
+ * ============================================ */
+
+.hoverInfoPanel {
+  /* Layout */
+  min-width: 160px;
+  max-width: 200px;
+  padding: 12px;
+
+  /* Background */
+  background-color: var(--bg-tertiary, #0f172a);
+  border-radius: 8px;
+
+  /* Border - colored by entity type */
+  border: 2px solid var(--border-color, #475569);
+
+  /* Transition for border color changes */
+  transition: border-color 0.2s ease;
+}
+
+/* Ally border (blue/cyan) */
+.hoverInfoAlly {
+  border-color: #22d3ee; /* cyan-400 */
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.3);
+}
+
+/* Enemy border (red) */
+.hoverInfoEnemy {
+  border-color: #ef4444; /* red-500 */
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+}
+
+.hoverInfoContent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hoverInfoName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #f1f5f9);
+  line-height: 1.2;
+}
+
+.hoverInfoSubtext {
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+}
+
+.hoverInfoStats {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.hoverInfoHp {
+  color: #4ade80; /* green-400 */
+  font-weight: 500;
+}
+
+.hoverInfoAc {
+  color: #60a5fa; /* blue-400 */
+  font-weight: 500;
+}
+
+.hoverInfoConditions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.hoverInfoCondition {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: rgba(251, 191, 36, 0.2); /* amber with transparency */
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  color: #fcd34d; /* amber-300 */
+}
+
+.hoverInfoPlaceholder {
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+  font-style: italic;
+}
