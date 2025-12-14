@@ -937,12 +937,23 @@ export function EncounterDemo() {
                   // Set encounter ID and room from the CombatStarted event
                   setEncounterId(id);
 
-                  // Extract character IDs from party members for combat panel
-                  const characterIds = event.party
+                  // Extract characters from party members and store them
+                  const partyCharacters = event.party
                     .filter((member) => member.character?.id)
-                    .map((member) => member.character!.id);
-                  if (characterIds.length > 0) {
-                    setSelectedCharacterIds(characterIds);
+                    .map((member) => member.character!);
+
+                  if (partyCharacters.length > 0) {
+                    // Set character IDs for selection
+                    setSelectedCharacterIds(partyCharacters.map((c) => c.id));
+
+                    // Add characters to fullCharactersMap so getSelectedCharacters finds them
+                    setFullCharactersMap((prev) => {
+                      const newMap = new Map(prev);
+                      partyCharacters.forEach((char) => {
+                        newMap.set(char.id, char);
+                      });
+                      return newMap;
+                    });
                   }
 
                   // Set combat state from the event
