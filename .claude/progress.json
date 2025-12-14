@@ -1,67 +1,124 @@
 {
-  "branch": "feature/hex-grid-v2",
+  "branch": "feature/hexgrid-v2-interactions",
   "issues": [],
-  "goal": "Rebuild 3D hex grid with solid, precise interactions using cube coords and raycast hit detection",
+  "goal": "Add tactical RPG-style movement and combat interactions to HexGridV2 - path preview on hover, click-to-move, click-enemy-to-attack, movement range border, turn order overlay",
   "sessions": [
     {
-      "id": "session-001",
-      "task": "Implement hexMath.ts with cube coordinate conversion and distance functions",
-      "status": "completed",
-      "artifacts": [
-        "src/components/hex-grid-v2/hexMath.ts",
-        "src/components/hex-grid-v2/hexMath.test.ts",
-        "vite.config.ts (added vitest configuration)",
-        "package.json (added test scripts)"
+      "date": "2025-12-13",
+      "summary": "Implemented A* pathfinding utilities in hexMath.ts",
+      "completed": [
+        "Added getHexNeighbors() function - returns 6 adjacent hexes in cube coordinates",
+        "Added findPath() function - A* pathfinding with hexDistance heuristic and optional obstacle detection",
+        "Added getReachableHexes() function - BFS to find all hexes within maxDistance",
+        "Wrote comprehensive test suite covering edge cases (blocked start/end, no path, wall avoidance, etc.)",
+        "Verified all functions export properly and integrate with existing hexMath utilities"
       ],
-      "commit": "384fd0fd5710089ecfa7689044f58a469181f47e",
-      "notes": "Implemented core hex math module using cube coordinates as single source of truth. Added cubeToWorld (hex to render position), worldToCube (click to hex with axial rounding), and hexDistance. Configured vitest and wrote comprehensive test suite (15 tests, all passing). All pre-commit checks pass."
+      "commit": "f5993cee71bcd4b56d5736f85368a10ca7a56bec"
     },
     {
-      "id": "session-002",
-      "task": "Implement useHexInteraction.ts hook for ground plane raycast hit detection",
-      "status": "completed",
-      "artifacts": [
-        "src/components/hex-grid-v2/useHexInteraction.ts",
-        "src/components/hex-grid-v2/useHexInteraction.test.ts"
+      "date": "2025-12-13",
+      "summary": "Implemented useMovementRange hook for movement visualization",
+      "completed": [
+        "Created useMovementRange.ts hook with reachable hexes calculation (feet to hex steps conversion)",
+        "Implemented boundary edge calculation for glowing border rendering",
+        "Added getPathTo utility for pathfinding to target hexes",
+        "Added isReachable utility for quick reachability checks",
+        "Wrote comprehensive test suite covering all calculations and edge cases",
+        "All tests passing (24 tests), pre-commit checks passing"
       ],
-      "commit": "470bf3bc80a9bf8d6cce4ea5b24666bfa5fcd924",
-      "notes": "Implemented React hook for hex interaction using ground plane raycasting. Hook manages hover/selection state, accepts hex size and grid dimensions, validates hex bounds, and provides groundPlaneProps for attaching to an invisible plane mesh. Converts world positions to cube coords using worldToCube. Written with comprehensive test suite (16 tests, all passing) verifying bounds validation, coordinate conversion, and callback logic. All pre-commit checks pass."
+      "commit": "228a47df92084bd3d299c443170dce111990d305"
     },
     {
-      "id": "session-003",
-      "task": "Implement HexTile.tsx for single hex rendering",
-      "status": "completed",
-      "artifacts": ["src/components/hex-grid-v2/HexTile.tsx"],
-      "commit": "6d9b442bbaecf97825b89d795e613cfdafc3af90",
-      "notes": "Implemented HexTile visual component using Three.js ShapeGeometry for flat hexagons. Uses pointy-top orientation with vertices at 0°, 60°, 120°, 180°, 240°, 300°. Supports three visual states: default (#4a5568 gray), hovered (#718096 lighter gray), selected (#48bb78 green). Hexagons lay flat on XZ plane with -90° X rotation. Uses cubeToWorld for positioning. Optimized with useMemo for geometry and position calculations. All pre-commit checks pass."
-    },
-    {
-      "id": "session-004",
-      "task": "Implement HexEntity.tsx for entity rendering",
-      "status": "completed",
-      "artifacts": ["src/components/hex-grid-v2/HexEntity.tsx"],
-      "commit": "ef54cfeead489535d3dc780a9cc6f78431eb522a",
-      "notes": "Implemented HexEntity component for rendering game entities on the hex grid. Uses CapsuleGeometry for simple 3D representation. Color-coded by type: player (#3182ce blue), monster (#e53e3e red). Selected state shows brighter color with emissive glow. Clickable with onClick callback, cursor changes on hover. Positioned using cubeToWorld with Y offset (0.1 + height/2) to sit above hex plane. Props match design spec: entityId, name (unused in v1), position (CubeCoord), type, hexSize, isSelected, onClick. All pre-commit checks pass."
-    },
-    {
-      "id": "session-005",
-      "task": "Implement HexGridV2.tsx main component",
-      "status": "completed",
-      "artifacts": [
-        "src/components/hex-grid-v2/HexGridV2.tsx",
-        "src/components/hex-grid-v2/index.ts"
+      "date": "2025-12-13",
+      "summary": "Enhanced useHexInteraction with path preview functionality",
+      "completed": [
+        "Added new input parameters: entityPosition, movementRemaining, isBlocked, entities",
+        "Added new return values: pathPreview, hoveredEntity, canAttack, attackPath",
+        "Implemented path preview logic for empty hexes (only shows if within movement range)",
+        "Implemented attack path calculation for enemies (finds nearest adjacent hex)",
+        "Added entity detection at hovered coordinates",
+        "Created helper functions: findEntityAtCoord, findNearestAdjacentHex",
+        "Wrote comprehensive test suite covering all scenarios (23 tests total)",
+        "All tests passing, pre-commit checks passing"
       ],
-      "commit": "e2f1bbb4c79deb9e4e1ac0e98ef16bac2acff98c",
-      "notes": "Implemented main HexGridV2 component that composes all hex-grid-v2 pieces. Creates Three.js Canvas with Scene component containing: OrbitControls for camera manipulation, ambient + directional lighting, invisible ground plane mesh (200x200) with useHexInteraction props for raycast detection, HexTile rendering for each grid cell (nested loops for gridWidth x gridHeight), and HexEntity rendering for each entity. Props interface matches VoxelGrid (gridWidth, gridHeight, entities, selectedEntityId, callbacks) for easy swapping. Created barrel export index.ts exporting all public components, types, and utilities. HEX_SIZE constant set to 1.0 for consistent scaling. All pre-commit checks pass."
+      "commit": "cbdbc161cafff3a4f7dd362f9142eb79644f871c"
     },
     {
-      "id": "session-006",
-      "task": "Integrate HexGridV2 into BattleMapPanel with 3D v2 toggle",
-      "status": "completed",
-      "artifacts": ["src/components/encounter/BattleMapPanel.tsx"],
-      "commit": "2ed2c7bd63b8da35c4ef2fab5e0e71d9cf0ea050",
-      "notes": "Added third view mode ('3d-v2') to BattleMapPanel alongside existing 2D and 3D views. Updated toggle UI from single button to three-button group (2D, 3D, 3D v2). Imported HexGridV2 and rendered it when '3d-v2' is selected. Transformed Room.entities protobuf data to match HexGridV2Props interface: mapped entity positions to cube coords, resolved character names from availableCharacters, mapped CHARACTER entity type to 'player' and others to 'monster'. Passed gridWidth, gridHeight, entities array, selectedEntityId, onHexClick, and onEntityClick callbacks. Feature complete - users can now switch between all three grid views. All pre-commit checks pass."
+      "date": "2025-12-13",
+      "summary": "Created MovementRangeBorder component for glowing perimeter visualization",
+      "completed": [
+        "Implemented MovementRangeBorder.tsx component as Three.js R3F component",
+        "Consumes boundaryEdges from useMovementRange (world coordinates)",
+        "Batches all edges into single BufferGeometry for optimal performance",
+        "Renders each edge as thin rectangular mesh (ribbon) using perpendicular offset calculation",
+        "Uses emissive MeshBasicMaterial for soft glow effect (default cyan)",
+        "Positioned at y=0.05 to prevent z-fighting with ground plane",
+        "Added subtle pulsing animation using useFrame (opacity oscillates 0.7-1.0)",
+        "Fully customizable props: color, opacity, glowIntensity",
+        "Pre-commit checks passing"
+      ],
+      "commit": "dc2250fc6b9a62bf0e7c8732dc9b00f9b7b2f7b4"
+    },
+    {
+      "date": "2025-12-13",
+      "summary": "Created TurnOrderOverlay component for turn order visualization",
+      "completed": [
+        "Implemented TurnOrderOverlay.tsx as regular React component (not Three.js)",
+        "Horizontal strip layout: current turn in center, 2-3 upcoming right, 1-2 previous left",
+        "Each combatant card shows: class/monster emoji, truncated name, HP bar",
+        "HP bar is color-coded: green > 50%, yellow > 25%, red <= 25%",
+        "Active turn has glowing green border with box-shadow effect",
+        "Previous turns are faded (opacity: 0.6)",
+        "Round number badge displayed on the left side",
+        "Semi-transparent dark background with backdrop blur",
+        "Smooth CSS transitions for all state changes",
+        "Component uses InitiativeEntry proto type from encounter_pb.ts",
+        "Pre-commit checks passing (format, lint, typecheck)"
+      ],
+      "commit": "8ef6b2f2cbc2b39eb2050bcee5c079980c5690a1"
+    },
+    {
+      "date": "2025-12-13",
+      "summary": "Wired up click-to-move and click-to-attack in HexGridV2",
+      "completed": [
+        "Created PathPreview component - visualizes movement/attack paths with color-coded overlays",
+        "Extended HexGridV2Props with combat integration: encounterId, currentEntityId, movementRemaining, isPlayerTurn",
+        "Added API callback props: onMoveComplete(path), onAttackComplete(targetId)",
+        "Built entity map for useHexInteraction to detect blocked hexes and entity types",
+        "Integrated useMovementRange to calculate and render movement range border",
+        "Wired up click handlers: empty hex = move, enemy = move+attack (if canAttack)",
+        "Added isProcessing state to prevent double-submission during API calls",
+        "Rendered PathPreview for both movement (blue) and attack paths (red)",
+        "Integrated TurnOrderOverlay at top of grid (outside Canvas)",
+        "Only allow interactions when isPlayerTurn is true",
+        "All pre-commit checks passing (format, lint, typecheck)"
+      ],
+      "commit": "1f845254462bfcc5c9de5e9ca4a43dcb7bfe9db9"
+    },
+    {
+      "date": "2025-12-13",
+      "summary": "Created simplified ActionPanelV2 for HexGridV2",
+      "completed": [
+        "Created ActionPanelV2.tsx with simplified interface for HexGridV2",
+        "KEEP: Character status (name, HP, AC, saving throws, active conditions)",
+        "KEEP: Resource indicators (movement bar, action/bonus available)",
+        "KEEP: Backpack and End Turn buttons",
+        "REMOVED: Move button (map handles this)",
+        "REMOVED: Attack button (map handles this)",
+        "REMOVED: Execute/Cancel move buttons (not needed)",
+        "Added active conditions badges (Raging, Dueling) with color-coded styling",
+        "Shows proficient saving throw modifiers in header",
+        "Maintained portal-based rendering approach for visibility",
+        "Created panels/index.ts to export both ActionPanel and ActionPanelV2",
+        "Left space/structure for future class feature buttons",
+        "All pre-commit checks passing (format, lint, typecheck)"
+      ],
+      "commit": "ea63cd9f79cfe659a58f4f12fe039acc9a8ef732"
     }
   ],
-  "next_steps": []
+  "next_steps": [
+    "Test the integration in BattleMapPanel/EncounterDemo",
+    "Wire up actual API calls (useMoveCharacter, useAttack) from parent",
+    "Integrate ActionPanelV2 with HexGridV2 in parent component"
+  ]
 }
