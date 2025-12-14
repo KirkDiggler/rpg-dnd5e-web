@@ -1488,10 +1488,10 @@
 /* Container with max-width for readability */
 .combatPanelContainer {
   display: grid;
-  grid-template-columns: 1fr 400px; /* ~70% main content, ~30% sidebar */
+  grid-template-columns: 200px 1fr 400px; /* hover info | main content | sidebar */
   gap: 20px;
   width: 100%;
-  max-width: 1400px;
+  max-width: 1600px;
 }
 
 /* Main Content Column */
@@ -1511,10 +1511,17 @@
 }
 
 /* Responsive Layout */
+@media (max-width: 1200px) {
+  .combatPanelContainer {
+    grid-template-columns: 180px 1fr 350px; /* Narrower columns on medium screens */
+    gap: 16px;
+  }
+}
+
 @media (max-width: 1024px) {
   .combatPanelContainer {
-    grid-template-columns: 1fr 300px; /* Narrower sidebar on medium screens */
-    gap: 16px;
+    grid-template-columns: 160px 1fr 300px; /* Even narrower */
+    gap: 12px;
   }
 }
 
@@ -1544,10 +1551,9 @@
  * ============================================ */
 
 .hoverInfoPanel {
-  /* Layout */
-  min-width: 160px;
-  max-width: 200px;
+  /* Layout - let grid control width */
   padding: 12px;
+  height: fit-content;
 
   /* Background */
   background-color: var(--bg-tertiary, #0f172a);
