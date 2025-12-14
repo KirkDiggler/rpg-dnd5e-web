@@ -932,16 +932,25 @@ export function EncounterDemo() {
                 currentPlayerId={playerId}
                 currentPlayerName={playerName}
                 onBack={() => setGameMode('select')}
-                onStartCombat={(id) => {
-                  // TODO: Handle multiplayer combat start
-                  // For now, just log and show a toast
-                  console.log('Starting multiplayer combat:', id);
-                  addToast({
-                    type: 'info',
-                    message:
-                      'Multiplayer combat coming soon! API integration needed.',
-                    duration: 3000,
-                  });
+                onStartCombat={(id, event) => {
+                  console.log('Starting multiplayer combat:', id, event);
+                  // Set encounter ID and room from the CombatStarted event
+                  setEncounterId(id);
+                  if (event.room) {
+                    setRoom(event.room);
+                    addToast({
+                      type: 'success',
+                      message: 'Combat started!',
+                      duration: 2000,
+                    });
+                  } else {
+                    console.error('CombatStartedEvent missing room data');
+                    addToast({
+                      type: 'error',
+                      message: 'Failed to start combat: missing room data',
+                      duration: 3000,
+                    });
+                  }
                 }}
               />
             ) : (

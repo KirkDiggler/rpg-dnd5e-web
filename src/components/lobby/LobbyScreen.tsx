@@ -7,6 +7,7 @@ import {
 } from '@/api/lobbyHooks';
 import { useEncounterStream } from '@/api/useEncounterStream';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { CombatStartedEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
 import { CreateGameTab } from './CreateGameTab';
 import { JoinGameTab } from './JoinGameTab';
@@ -22,7 +23,7 @@ interface LobbyScreenProps {
   currentPlayerId: string;
   currentPlayerName: string;
   onBack: () => void;
-  onStartCombat: (encounterId: string) => void;
+  onStartCombat: (encounterId: string, event: CombatStartedEvent) => void;
 }
 
 /**
@@ -103,10 +104,10 @@ export function LobbyScreen({
       }
     },
 
-    onCombatStarted: () => {
-      // Transition to combat view
+    onCombatStarted: (event) => {
+      // Transition to combat view with the event data (contains room, combat state, etc.)
       if (encounterId) {
-        onStartCombat(encounterId);
+        onStartCombat(encounterId, event);
       }
     },
   });
