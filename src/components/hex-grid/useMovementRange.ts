@@ -1,5 +1,5 @@
 /**
- * Movement range hook for hex-grid-v2
+ * Movement range hook for hex-grid
  * Calculates reachable hexes and boundary edges for movement visualization
  */
 

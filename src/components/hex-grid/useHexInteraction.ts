@@ -1,5 +1,5 @@
 /**
- * Hex interaction hook for hex-grid-v2
+ * Hex interaction hook for hex-grid
  * Handles raycasting to ground plane for hover/click detection
  * Provides path preview functionality for movement and combat
  */

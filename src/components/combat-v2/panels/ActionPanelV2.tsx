@@ -32,7 +32,7 @@ export interface ActionPanelV2Props {
 }
 
 /**
- * ActionPanelV2 - Simplified combat action UI for HexGridV2
+ * ActionPanelV2 - Simplified combat action UI for HexGrid
  *
  * The map handles move/attack directly via clicks, so this panel focuses on:
  * - Character status display (HP, AC, conditions, etc.)

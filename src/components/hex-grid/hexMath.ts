@@ -1,5 +1,5 @@
 /**
- * Hex grid math utilities for hex-grid-v2
+ * Hex grid math utilities
  * Uses cube coordinates as the single source of truth
  *
  * Cube coordinates: x, y, z where x + y + z = 0

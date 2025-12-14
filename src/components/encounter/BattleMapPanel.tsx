@@ -4,13 +4,13 @@ import type {
   CombatState,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { HexGridV2 } from '../hex-grid-v2';
+import { HexGrid } from '../hex-grid';
 
 interface BattleMapPanelProps {
   room: Room;
   selectedEntity: string | null;
   availableCharacters: Character[];
-  // Combat integration props for HexGridV2
+  // Combat integration props for HexGrid
   encounterId?: string | null;
   combatState?: CombatState | null;
   onEntityClick: (entityId: string) => void;
@@ -39,7 +39,7 @@ export function BattleMapPanel({
         height: '100%',
       }}
     >
-      <HexGridV2
+      <HexGrid
         gridWidth={room.width}
         gridHeight={room.height}
         entities={Object.values(room.entities || {}).map((entity) => ({

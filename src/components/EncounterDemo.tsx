@@ -285,7 +285,7 @@ export function EncounterDemo() {
     }
   };
 
-  // Handler for HexGridV2 click-to-move
+  // Handler for HexGrid click-to-move
   const handleMoveComplete = async (path: CubeCoord[]) => {
     const currentTurnEntityId = combatState?.currentTurn?.entityId;
     if (!currentTurnEntityId || !encounterId || path.length === 0) return;
@@ -334,7 +334,7 @@ export function EncounterDemo() {
     }
   };
 
-  // Handler for HexGridV2 click-to-attack
+  // Handler for HexGrid click-to-attack
   const handleAttackComplete = async (targetId: string) => {
     // Use the existing attack handler with the target
     setAttackTarget(targetId);

@@ -1,5 +1,5 @@
 /**
- * Custom camera controls for HexGridV2
+ * Custom camera controls for HexGrid
  *
  * - WASD to pan
  * - Q/E to rotate (Y-axis only)

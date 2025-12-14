@@ -1,5 +1,5 @@
 /**
- * HexGridV2 - Main component for the v2 hex grid
+ * HexGrid - Main component for the hex grid battle map
  *
  * Creates a Three.js scene with:
  * - Orthographic camera looking down at the board
@@ -28,7 +28,7 @@ import { useCameraControls } from './useCameraControls';
 import { useHexInteraction } from './useHexInteraction';
 import { useMovementRange } from './useMovementRange';
 
-export interface HexGridV2Props {
+export interface HexGridProps {
   gridWidth: number;
   gridHeight: number;
   entities: Array<{
@@ -75,7 +75,7 @@ function Scene({
   isPlayerTurn = false,
   onMoveComplete,
   onAttackComplete,
-}: HexGridV2Props) {
+}: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Calculate grid center for camera target
@@ -302,10 +302,10 @@ function Scene({
 }
 
 /**
- * Main HexGridV2 component
+ * Main HexGrid component
  * Sets up the Canvas and renders the scene
  */
-export function HexGridV2(props: HexGridV2Props) {
+export function HexGrid(props: HexGridProps) {
   const { combatState, characters = [] } = props;
 
   // Build turn order from combat state

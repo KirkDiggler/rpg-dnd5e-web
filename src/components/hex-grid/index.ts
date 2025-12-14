@@ -1,9 +1,9 @@
 /**
- * Barrel export for hex-grid-v2 components
+ * Barrel export for hex-grid components
  */
 
-export { HexGridV2 } from './HexGridV2';
-export type { HexGridV2Props } from './HexGridV2';
+export { HexGrid } from './HexGrid';
+export type { HexGridProps } from './HexGrid';
 
 export { HexEntity } from './HexEntity';
 export type { HexEntityProps } from './HexEntity';
