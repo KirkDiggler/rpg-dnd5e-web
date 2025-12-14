@@ -122,16 +122,16 @@ export function WaitingRoom({
         <button
           onClick={onToggleReady}
           disabled={!selectedCharacterId}
-          className="w-full px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
+          className="w-full px-6 py-4 rounded-lg font-bold text-lg transition-all disabled:opacity-50 hover:brightness-110 active:scale-[0.98]"
           style={{
-            backgroundColor: isReady
-              ? 'var(--accent-success, #22c55e)'
-              : 'var(--bg-secondary)',
-            border: isReady ? 'none' : '2px solid var(--border-primary)',
-            color: isReady ? 'white' : 'var(--text-primary)',
+            backgroundColor: isReady ? '#22c55e' : '#3b82f6',
+            color: 'white',
+            boxShadow: isReady
+              ? '0 4px 14px rgba(34, 197, 94, 0.4)'
+              : '0 4px 14px rgba(59, 130, 246, 0.4)',
           }}
         >
-          {isReady ? '✓ Ready' : 'Ready Up'}
+          {isReady ? '✓ Ready!' : 'Ready Up'}
         </button>
 
         {/* Start Combat (host only) */}
@@ -139,19 +139,21 @@ export function WaitingRoom({
           <button
             onClick={onStartCombat}
             disabled={!allReady || startLoading}
-            className="w-full px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
+            className="w-full px-6 py-4 rounded-lg font-bold text-lg transition-all disabled:opacity-50 hover:brightness-110 active:scale-[0.98]"
             style={{
               backgroundColor:
-                allReady && !startLoading
-                  ? 'var(--accent-primary)'
-                  : 'var(--bg-secondary)',
+                allReady && !startLoading ? '#f59e0b' : '#4b5563',
               color: 'white',
+              boxShadow:
+                allReady && !startLoading
+                  ? '0 4px 14px rgba(245, 158, 11, 0.4)'
+                  : 'none',
             }}
           >
             {startLoading
               ? 'Starting...'
               : allReady
-                ? 'Start Combat'
+                ? '⚔️ Start Combat!'
                 : `Waiting (${readyCount}/${partyMembers.length})`}
           </button>
         )}
@@ -160,7 +162,7 @@ export function WaitingRoom({
       {/* Leave Button */}
       <button
         onClick={onLeave}
-        className="w-full px-4 py-2 rounded-lg text-sm transition-colors"
+        className="w-full px-4 py-3 rounded-lg text-sm transition-all hover:bg-red-500/20 hover:border-red-500/50 hover:text-red-400"
         style={{
           backgroundColor: 'transparent',
           border: '1px solid var(--border-primary)',
