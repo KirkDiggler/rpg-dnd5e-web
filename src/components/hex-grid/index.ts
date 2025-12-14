@@ -16,6 +16,8 @@ export type {
 } from './useHexInteraction';
 
 export {
+  HEX_DIRECTIONS,
+  coordToKey,
   cubeToWorld,
   hexDistance,
   worldToCube,

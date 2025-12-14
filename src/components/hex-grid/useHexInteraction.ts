@@ -7,7 +7,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { CubeCoord } from './hexMath';
-import { findPath, worldToCube } from './hexMath';
+import { findPath, HEX_DIRECTIONS, worldToCube } from './hexMath';
 
 // React Three Fiber event type with intersection point
 interface R3FPointerEvent {
@@ -78,17 +78,8 @@ function findNearestAdjacentHex(
   target: CubeCoord,
   isBlocked?: (coord: CubeCoord) => boolean
 ): CubeCoord | null {
-  // Get all 6 adjacent hexes to the target
-  const directions: CubeCoord[] = [
-    { x: 1, y: -1, z: 0 }, // E
-    { x: 1, y: 0, z: -1 }, // NE
-    { x: 0, y: 1, z: -1 }, // NW
-    { x: -1, y: 1, z: 0 }, // W
-    { x: -1, y: 0, z: 1 }, // SW
-    { x: 0, y: -1, z: 1 }, // SE
-  ];
-
-  const adjacentHexes = directions.map((dir) => ({
+  // Get all 6 adjacent hexes to the target using shared direction constants
+  const adjacentHexes = HEX_DIRECTIONS.map((dir) => ({
     x: target.x + dir.x,
     y: target.y + dir.y,
     z: target.z + dir.z,
@@ -277,8 +268,13 @@ export function useHexInteraction({
         );
 
         // Check if path is within movement range (5 feet per hex)
-        const pathCost = (pathToAdjacent.length - 1) * 5; // Subtract 1 for start hex
-        const isWithinRange = pathCost <= movementRemaining;
+        // Guard against empty path (would result in negative cost)
+        const pathCost =
+          pathToAdjacent.length > 0
+            ? (pathToAdjacent.length - 1) * 5
+            : Infinity;
+        const isWithinRange =
+          pathToAdjacent.length > 0 && pathCost <= movementRemaining;
 
         return {
           pathPreview: [],

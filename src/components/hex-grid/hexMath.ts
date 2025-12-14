@@ -23,6 +23,19 @@ export interface WorldPos {
 const SQRT_3 = Math.sqrt(3);
 
 /**
+ * Direction vectors for the 6 hex neighbors
+ * Order: E, NE, NW, W, SW, SE (clockwise from east)
+ */
+export const HEX_DIRECTIONS: readonly CubeCoord[] = [
+  { x: 1, y: -1, z: 0 }, // E
+  { x: 1, y: 0, z: -1 }, // NE
+  { x: 0, y: 1, z: -1 }, // NW
+  { x: -1, y: 1, z: 0 }, // W
+  { x: -1, y: 0, z: 1 }, // SW
+  { x: 0, y: -1, z: 1 }, // SE
+] as const;
+
+/**
  * Convert cube coordinates to world position for rendering
  *
  * For pointy-top hexagons with size (radius) r:
@@ -134,16 +147,7 @@ export function hexDistance(a: CubeCoord, b: CubeCoord): number {
  * @returns Array of 6 adjacent hex coordinates
  */
 export function getHexNeighbors(coord: CubeCoord): CubeCoord[] {
-  const directions: CubeCoord[] = [
-    { x: 1, y: -1, z: 0 }, // E
-    { x: 1, y: 0, z: -1 }, // NE
-    { x: 0, y: 1, z: -1 }, // NW
-    { x: -1, y: 1, z: 0 }, // W
-    { x: -1, y: 0, z: 1 }, // SW
-    { x: 0, y: -1, z: 1 }, // SE
-  ];
-
-  return directions.map((dir) => ({
+  return HEX_DIRECTIONS.map((dir) => ({
     x: coord.x + dir.x,
     y: coord.y + dir.y,
     z: coord.z + dir.z,
@@ -156,7 +160,7 @@ export function getHexNeighbors(coord: CubeCoord): CubeCoord[] {
  * @param coord - The cube coordinate
  * @returns String key in format "x,y,z"
  */
-function coordToKey(coord: CubeCoord): string {
+export function coordToKey(coord: CubeCoord): string {
   return `${coord.x},${coord.y},${coord.z}`;
 }
 

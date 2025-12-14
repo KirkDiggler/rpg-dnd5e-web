@@ -15,7 +15,7 @@
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Canvas } from '@react-three/fiber';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { HexEntity } from './HexEntity';
 import { cubeToWorld, type CubeCoord } from './hexMath';
@@ -131,8 +131,9 @@ function Scene({
   }, [currentEntityId, entities]);
 
   // Check if a hex is blocked (outside bounds or has an entity)
-  const isBlocked = useMemo(() => {
-    return (coord: CubeCoord) => {
+  // Uses useCallback to ensure stable function reference for downstream memoization
+  const isBlocked = useCallback(
+    (coord: CubeCoord) => {
       // Check grid bounds (x must be in [0, gridWidth), z must be in [0, gridHeight))
       if (
         coord.x < 0 ||
@@ -150,8 +151,9 @@ function Scene({
           entity.position.z === coord.z &&
           entity.entityId !== currentEntityId
       );
-    };
-  }, [entities, currentEntityId, gridWidth, gridHeight]);
+    },
+    [entities, currentEntityId, gridWidth, gridHeight]
+  );
 
   // Use the interaction hook for hover/click detection with path preview
   const {

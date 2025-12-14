@@ -5,7 +5,13 @@
 
 import { useMemo } from 'react';
 import type { CubeCoord, WorldPos } from './hexMath';
-import { cubeToWorld, findPath, getReachableHexes } from './hexMath';
+import {
+  coordToKey,
+  cubeToWorld,
+  findPath,
+  getReachableHexes,
+  HEX_DIRECTIONS,
+} from './hexMath';
 
 export interface UseMovementRangeProps {
   entityPosition: CubeCoord | null; // Current entity position
@@ -24,13 +30,6 @@ export interface UseMovementRangeReturn {
   boundaryEdges: BoundaryEdge[]; // Edges to draw glowing border
   getPathTo: (target: CubeCoord) => CubeCoord[]; // Path from entity to target
   isReachable: (coord: CubeCoord) => boolean; // Quick reachability check
-}
-
-/**
- * Convert a cube coordinate to a string key for Set/Map storage
- */
-function coordToKey(coord: CubeCoord): string {
-  return `${coord.x},${coord.y},${coord.z}`;
 }
 
 /**
@@ -71,17 +70,8 @@ function calculateBoundaryEdges(
 ): BoundaryEdge[] {
   const edges: BoundaryEdge[] = [];
 
-  // Direction vectors for the 6 neighbors (same order as getHexNeighbors)
-  const neighborDirections: CubeCoord[] = [
-    { x: 1, y: -1, z: 0 }, // E
-    { x: 1, y: 0, z: -1 }, // NE
-    { x: 0, y: 1, z: -1 }, // NW
-    { x: -1, y: 1, z: 0 }, // W
-    { x: -1, y: 0, z: 1 }, // SW
-    { x: 0, y: -1, z: 1 }, // SE
-  ];
-
   // For each direction, which two vertices form the shared edge
+  // Direction order matches HEX_DIRECTIONS: E, NE, NW, W, SW, SE
   // Vertices are indexed 0-5 starting from 30° going clockwise:
   //   0 (30°)  → bottom-right
   //   1 (90°)  → bottom
@@ -109,7 +99,7 @@ function calculateBoundaryEdges(
 
     // Check each of the 6 neighbors
     for (let i = 0; i < 6; i++) {
-      const dir = neighborDirections[i];
+      const dir = HEX_DIRECTIONS[i];
       const neighbor: CubeCoord = {
         x: coord.x + dir.x,
         y: coord.y + dir.y,
