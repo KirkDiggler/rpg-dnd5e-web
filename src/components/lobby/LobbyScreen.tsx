@@ -1,3 +1,11 @@
+import {
+  useCreateEncounter,
+  useJoinEncounter,
+  useLeaveEncounter,
+  useSetReady,
+  useStartCombat,
+} from '@/api/lobbyHooks';
+import { useEncounterStream } from '@/api/useEncounterStream';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useState } from 'react';
 import { CreateGameTab } from './CreateGameTab';
@@ -18,25 +26,13 @@ interface LobbyScreenProps {
 }
 
 /**
- * Generate a random 6-character join code
- */
-function generateJoinCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Avoid confusing chars like 0/O, 1/I
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
-
-/**
  * LobbyScreen - Main container for multiplayer lobby functionality
  *
  * States:
  * - 'tabs': Showing Create/Join tabs
  * - 'waiting': In a lobby waiting room
  *
- * For Phase 1, uses mock data. API integration in Phase 2.
+ * Integrates with encounter streaming for real-time multiplayer synchronization.
  */
 export function LobbyScreen({
   availableCharacters,
@@ -50,7 +46,7 @@ export function LobbyScreen({
   const [lobbyState, setLobbyState] = useState<LobbyState>('tabs');
   const [activeTab, setActiveTab] = useState<TabId>('create');
 
-  // Lobby Data (will come from API in Phase 2)
+  // Lobby Data
   const [encounterId, setEncounterId] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState('');
   const [isHost, setIsHost] = useState(false);
@@ -60,136 +56,190 @@ export function LobbyScreen({
   );
   const [isReady, setIsReady] = useState(false);
 
-  // Loading states
-  const [createLoading, setCreateLoading] = useState(false);
-  const [joinLoading, setJoinLoading] = useState(false);
-  const [startLoading, setStartLoading] = useState(false);
-  const [joinError, setJoinError] = useState<string | null>(null);
+  // API Hooks
+  const { createEncounter, loading: createLoading } = useCreateEncounter();
+  const {
+    joinEncounter,
+    loading: joinLoading,
+    error: joinError,
+  } = useJoinEncounter();
+  const { setReady: callSetReady } = useSetReady();
+  const { startCombat: callStartCombat, loading: startLoading } =
+    useStartCombat();
+  const { leaveEncounter } = useLeaveEncounter();
 
-  // Mock: Create a new lobby
+  // Streaming hook - connects when encounterId is set
+  const { connectionState } = useEncounterStream(encounterId, currentPlayerId, {
+    onPlayerJoined: (event) => {
+      setPartyMembers((prev) => [
+        ...prev,
+        {
+          playerId: event.playerId,
+          playerName: event.playerName,
+          character: event.character,
+          isReady: false,
+          isHost: false,
+        },
+      ]);
+    },
+
+    onPlayerLeft: (event) => {
+      setPartyMembers((prev) =>
+        prev.filter((m) => m.playerId !== event.playerId)
+      );
+    },
+
+    onPlayerReady: (event) => {
+      setPartyMembers((prev) =>
+        prev.map((m) =>
+          m.playerId === event.playerId
+            ? { ...m, isReady: event.isReady, character: event.character }
+            : m
+        )
+      );
+      // Sync local ready state if it's us
+      if (event.playerId === currentPlayerId) {
+        setIsReady(event.isReady);
+      }
+    },
+
+    onCombatStarted: () => {
+      // Transition to combat view
+      if (encounterId) {
+        onStartCombat(encounterId);
+      }
+    },
+  });
+
+  // Create a new lobby
   const handleCreateLobby = async () => {
     if (!selectedCharacterId) return;
 
-    setCreateLoading(true);
-    // TODO: Replace with actual API call
-    // const response = await createEncounter(selectedCharacterId);
+    try {
+      const response = await createEncounter([selectedCharacterId]);
 
-    // Mock response
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const mockEncounterId = `encounter-${Date.now()}`;
-    const mockJoinCode = generateJoinCode();
-    const selectedChar = availableCharacters.find(
-      (c) => c.id === selectedCharacterId
-    );
+      // Set encounter state from response
+      setEncounterId(response.encounterId);
+      setJoinCode(response.joinCode);
+      setIsHost(true);
 
-    setEncounterId(mockEncounterId);
-    setJoinCode(mockJoinCode);
-    setIsHost(true);
-    setPartyMembers([
-      {
-        playerId: currentPlayerId,
-        playerName: currentPlayerName,
-        character: selectedChar,
-        isReady: false,
-        isHost: true,
-      },
-    ]);
-    setLobbyState('waiting');
-    setCreateLoading(false);
+      // Initialize party members with host (us)
+      const selectedChar = availableCharacters.find(
+        (c) => c.id === selectedCharacterId
+      );
+      setPartyMembers([
+        {
+          playerId: currentPlayerId,
+          playerName: currentPlayerName,
+          character: selectedChar,
+          isReady: false,
+          isHost: true,
+        },
+      ]);
+
+      setLobbyState('waiting');
+    } catch (error) {
+      console.error('Failed to create encounter:', error);
+    }
   };
 
-  // Mock: Join an existing lobby
+  // Join an existing lobby
   const handleJoinLobby = async (code: string) => {
-    setJoinLoading(true);
-    setJoinError(null);
+    try {
+      // Join without a character initially - can select in waiting room
+      const response = await joinEncounter(code, []);
 
-    // TODO: Replace with actual API call
-    // const response = await joinEncounter(code);
+      // Set encounter state from response
+      setEncounterId(response.encounterId);
+      setJoinCode(code);
+      setIsHost(false);
 
-    // Mock: Simulate join (50% chance of success for demo)
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const success = Math.random() > 0.3; // 70% success rate for demo
+      // Initialize party members from response
+      // The response contains the current party state
+      const partyFromResponse: PartyMember[] = response.party.map((p) => ({
+        playerId: p.playerId,
+        playerName: p.playerName,
+        character: p.character,
+        isReady: p.isReady,
+        isHost: p.isHost,
+      }));
 
-    if (!success) {
-      setJoinError('Invalid join code. Please check and try again.');
-      setJoinLoading(false);
-      return;
+      setPartyMembers(partyFromResponse);
+      setLobbyState('waiting');
+    } catch (error) {
+      console.error('Failed to join encounter:', error);
+      // Error is already set in the hook state
     }
-
-    // Mock successful join
-    const mockEncounterId = `encounter-${code}`;
-    setEncounterId(mockEncounterId);
-    setJoinCode(code);
-    setIsHost(false);
-    setSelectedCharacterId(null);
-    setPartyMembers([
-      {
-        playerId: 'host-player',
-        playerName: 'Host Player',
-        character: undefined, // Mock: host character unknown
-        isReady: true,
-        isHost: true,
-      },
-      {
-        playerId: currentPlayerId,
-        playerName: currentPlayerName,
-        character: undefined,
-        isReady: false,
-        isHost: false,
-      },
-    ]);
-    setLobbyState('waiting');
-    setJoinLoading(false);
   };
 
   // Handle character selection in waiting room
-  const handleSelectCharacter = (characterId: string) => {
-    const character = availableCharacters.find((c) => c.id === characterId);
+  const handleSelectCharacter = async (characterId: string) => {
+    if (!encounterId) return;
+
     setSelectedCharacterId(characterId);
 
-    // Update party members to show our character
-    setPartyMembers((prev) =>
-      prev.map((m) =>
-        m.playerId === currentPlayerId ? { ...m, character } : m
-      )
-    );
+    // Call setReady with the new character
+    // This will trigger a PlayerReady event from the stream which updates state
+    try {
+      await callSetReady(encounterId, currentPlayerId, isReady);
+    } catch (error) {
+      console.error('Failed to update character:', error);
+    }
   };
 
   // Handle ready toggle
-  const handleToggleReady = () => {
+  const handleToggleReady = async () => {
+    if (!encounterId) return;
+
     const newReady = !isReady;
-    setIsReady(newReady);
 
-    // Update party members
-    setPartyMembers((prev) =>
-      prev.map((m) =>
-        m.playerId === currentPlayerId ? { ...m, isReady: newReady } : m
-      )
-    );
-
-    // TODO: Call setReady API
+    // Call setReady API - stream will update state via PlayerReady event
+    try {
+      await callSetReady(encounterId, currentPlayerId, newReady);
+    } catch (error) {
+      console.error('Failed to toggle ready:', error);
+    }
   };
 
   // Handle start combat
   const handleStartCombat = async () => {
     if (!encounterId) return;
 
-    setStartLoading(true);
-    // TODO: Call startCombat API
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    onStartCombat(encounterId);
+    // Call startCombat API - stream will deliver CombatStarted event
+    // which triggers navigation via onCombatStarted callback
+    try {
+      await callStartCombat(encounterId);
+    } catch (error) {
+      console.error('Failed to start combat:', error);
+    }
   };
 
   // Handle leave
-  const handleLeave = () => {
-    // TODO: Call leaveEncounter API
-    setLobbyState('tabs');
-    setEncounterId(null);
-    setJoinCode('');
-    setIsHost(false);
-    setPartyMembers([]);
-    setSelectedCharacterId(null);
-    setIsReady(false);
+  const handleLeave = async () => {
+    if (!encounterId) return;
+
+    try {
+      await leaveEncounter(encounterId, currentPlayerId);
+
+      // Clear local state
+      setLobbyState('tabs');
+      setEncounterId(null);
+      setJoinCode('');
+      setIsHost(false);
+      setPartyMembers([]);
+      setSelectedCharacterId(null);
+      setIsReady(false);
+    } catch (error) {
+      console.error('Failed to leave encounter:', error);
+      // Clear state anyway
+      setLobbyState('tabs');
+      setEncounterId(null);
+      setJoinCode('');
+      setIsHost(false);
+      setPartyMembers([]);
+      setSelectedCharacterId(null);
+      setIsReady(false);
+    }
   };
 
   return (
@@ -200,6 +250,22 @@ export function LobbyScreen({
         border: '2px solid var(--border-primary)',
       }}
     >
+      {/* Connection status banner */}
+      {connectionState === 'disconnected' && (
+        <div className="bg-yellow-500/20 text-yellow-200 px-4 py-2 text-center mb-4 rounded">
+          Reconnecting...
+        </div>
+      )}
+
+      {connectionState === 'error' && (
+        <div className="bg-red-500/20 text-red-200 px-4 py-2 text-center mb-4 rounded">
+          Connection lost.{' '}
+          <button onClick={handleLeave} className="underline">
+            Return to menu
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <button
@@ -270,7 +336,7 @@ export function LobbyScreen({
             <JoinGameTab
               onJoinLobby={handleJoinLobby}
               loading={joinLoading}
-              error={joinError}
+              error={joinError?.message ?? null}
             />
           )}
         </>
