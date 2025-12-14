@@ -34,11 +34,22 @@
       "artifacts": ["src/components/lobby/LobbyScreen.tsx"],
       "commit": "10b48f6",
       "notes": "Replaced all mock implementations with real API calls. Added useEncounterStream with callbacks for PlayerJoined, PlayerLeft, PlayerReady, and CombatStarted events. No optimistic updates - stream is source of truth. Added connection status UI (reconnecting/error banners). All pre-commit checks pass."
+    },
+    {
+      "id": "2025-12-14-005",
+      "task": "Fix lobby UI styling",
+      "status": "completed",
+      "artifacts": [
+        "src/components/lobby/LobbyScreen.tsx",
+        "src/components/lobby/WaitingRoom.tsx"
+      ],
+      "commit": "1ed25b7",
+      "notes": "Fixed wide button issue by adding flex centering wrapper with max-w-md. Stacked action buttons vertically for cleaner layout."
     }
   ],
   "next_steps": [
-    "Update PartyMemberCard to show disconnected indicator (onPlayerDisconnected/onPlayerReconnected events)",
-    "Test end-to-end with backend",
+    "Test end-to-end with backend (waiting for PlayerReady event conversion fix)",
+    "Update PartyMemberCard to show disconnected indicator",
     "Consider adding visual loading states during API calls"
   ]
 }
