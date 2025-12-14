@@ -245,10 +245,12 @@ export function LobbyScreen({
   return (
     <div className="flex justify-center w-full py-8">
       <div
-        className="rounded-lg shadow-xl p-6 w-full max-w-md"
+        className="rounded-lg shadow-xl p-6"
         style={{
           backgroundColor: 'var(--card-bg)',
           border: '2px solid var(--border-primary)',
+          width: '100%',
+          maxWidth: '28rem', // 448px - same as max-w-md
         }}
       >
         {/* Connection status banner */}
