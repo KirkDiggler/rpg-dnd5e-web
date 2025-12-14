@@ -21,7 +21,6 @@ import {
   type CubeCoord,
 } from '@/utils/hexUtils';
 import {
-  extractDamageFromMonsterTurns,
   formatEntityId,
   monsterTurnsToLogEntries,
 } from '@/utils/monsterTurnUtils';
@@ -35,8 +34,7 @@ import {
 import { useEffect, useState } from 'react';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
-import { BattleMapPanel, type DamageNumber } from './encounter/BattleMapPanel';
-import { InitiativePanel } from './encounter/InitiativePanel';
+import { BattleMapPanel } from './encounter/BattleMapPanel';
 import { PartySetupPanel } from './encounter/PartySetupPanel';
 import { Equipment } from './Equipment';
 import { useToast } from './ui';
@@ -107,7 +105,6 @@ export function EncounterDemo() {
     []
   );
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
-  const [hoveredEntity, setHoveredEntity] = useState<string | null>(null);
   const [attackTarget, setAttackTarget] = useState<string | null>(null);
 
   // UI state
@@ -117,9 +114,6 @@ export function EncounterDemo() {
   const [movementMode, setMovementMode] = useState(false);
   const [movementPath, setMovementPath] = useState<CubeCoord[]>([]);
   const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
-
-  // Damage number state
-  const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([]);
 
   const handleStartEncounter = async () => {
     try {
@@ -167,26 +161,6 @@ export function EncounterDemo() {
 
         // Add to combat log
         setCombatLog((prev) => [...prev, ...monsterLogEntries]);
-
-        // Extract and display damage numbers from monster attacks
-        const damages = extractDamageFromMonsterTurns(response.monsterTurns);
-        damages.forEach(({ targetId, damage, isCritical }) => {
-          const damageId = `${targetId}-${Date.now()}-${Math.random()}`;
-          setDamageNumbers((prev) => [
-            ...prev,
-            {
-              id: damageId,
-              entityId: targetId,
-              damage,
-              isCritical,
-            },
-          ]);
-
-          // Remove after animation completes (1.5 seconds)
-          setTimeout(() => {
-            setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
-          }, 1500);
-        });
 
         // Update room with monster positions after their movement
         if (roomToSet) {
@@ -262,10 +236,6 @@ export function EncounterDemo() {
     setSelectedEntity(entityId);
   };
 
-  const handleEntityHover = (entityId: string | null) => {
-    setHoveredEntity(entityId);
-  };
-
   const handleCellClick = async (clickedCube: CubeCoord) => {
     if (movementMode && selectedEntity && encounterId) {
       const entityPos = room?.entities[selectedEntity]?.position;
@@ -312,110 +282,6 @@ export function EncounterDemo() {
 
       // Add the new segment to the path
       setMovementPath((prev) => [...prev, ...newSegment]);
-    }
-  };
-
-  // Double-click: move directly to target hex in one action
-  const handleCellDoubleClick = async (clickedCube: CubeCoord) => {
-    // Need a selected entity and encounter
-    const currentTurnEntityId = combatState?.currentTurn?.entityId;
-    if (!currentTurnEntityId || !encounterId) return;
-
-    const entityPos = room?.entities[currentTurnEntityId]?.position;
-    if (!entityPos) return;
-
-    // Get occupied positions (excluding the current turn entity) using cube keys
-    const occupiedPositions = new Set<string>();
-    if (room?.entities) {
-      Object.values(room.entities).forEach((entity) => {
-        if (
-          entity.position &&
-          entity.blocksMovement &&
-          entity.entityId !== currentTurnEntityId
-        ) {
-          occupiedPositions.add(
-            cubeKey({
-              x: entity.position.x,
-              y: entity.position.y,
-              z: entity.position.z,
-            })
-          );
-        }
-      });
-    }
-
-    // Find path from entity position to clicked hex (ignore any existing path for double-click)
-    const entityCube: CubeCoord = {
-      x: entityPos.x,
-      y: entityPos.y,
-      z: entityPos.z,
-    };
-    const pathToTarget = findHexPath(
-      entityCube,
-      clickedCube,
-      occupiedPositions
-    );
-
-    // Validate total movement cost
-    const pathCost = pathToTarget.length * 5;
-    const maxMovement = combatState?.currentTurn?.movementMax || 30;
-    const usedMovement = combatState?.currentTurn?.movementUsed || 0;
-
-    if (pathCost > maxMovement - usedMovement) {
-      addToast({
-        type: 'error',
-        message: `Not enough movement! Need ${pathCost}ft, have ${maxMovement - usedMovement}ft remaining`,
-        duration: 3000,
-      });
-      return;
-    }
-
-    if (pathToTarget.length === 0) return;
-
-    try {
-      const response = await moveCharacter(
-        encounterId,
-        currentTurnEntityId,
-        pathToTarget
-      );
-      if (response.success) {
-        if (response.updatedRoom) setRoom(response.updatedRoom);
-
-        // Update combat state to reflect new movement remaining
-        if (combatState && combatState.currentTurn) {
-          const movementUsed =
-            combatState.currentTurn.movementMax - response.movementRemaining;
-          setCombatState({
-            ...combatState,
-            currentTurn: {
-              ...combatState.currentTurn,
-              movementUsed,
-            },
-          });
-        }
-
-        setMovementPath([]);
-        setMovementMode(false);
-
-        addToast({
-          type: 'success',
-          message: `Moved ${pathToTarget.length * 5}ft`,
-          duration: 2000,
-        });
-      } else {
-        addToast({
-          type: 'error',
-          message: response.error?.message || 'Move failed',
-          duration: 3000,
-        });
-      }
-    } catch (err) {
-      console.error('Failed to move character:', err);
-      addToast({
-        type: 'error',
-        message: 'Failed to move character',
-        duration: 3000,
-      });
     }
   };
 
@@ -647,23 +513,6 @@ export function EncounterDemo() {
           console.log(
             `Damage: ${damage} ${damageType}${critical ? ' (CRITICAL!)' : ''}`
           );
-
-          // Add floating damage number
-          const damageId = `${target}-${Date.now()}`;
-          setDamageNumbers((prev) => [
-            ...prev,
-            {
-              id: damageId,
-              entityId: target,
-              damage,
-              isCritical: critical,
-            },
-          ]);
-
-          // Remove after animation completes (1.5 seconds)
-          setTimeout(() => {
-            setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
-          }, 1500);
         }
 
         // Add combat log entry - get display names for attacker and target
@@ -950,26 +799,6 @@ export function EncounterDemo() {
         // Add to combat log
         setCombatLog((prev) => [...prev, ...monsterLogEntries]);
 
-        // Extract and display damage numbers from monster attacks
-        const damages = extractDamageFromMonsterTurns(response.monsterTurns);
-        damages.forEach(({ targetId, damage, isCritical }) => {
-          const damageId = `${targetId}-${Date.now()}-${Math.random()}`;
-          setDamageNumbers((prev) => [
-            ...prev,
-            {
-              id: damageId,
-              entityId: targetId,
-              damage,
-              isCritical,
-            },
-          ]);
-
-          // Remove after animation completes (1.5 seconds)
-          setTimeout(() => {
-            setDamageNumbers((prev) => prev.filter((dn) => dn.id !== damageId));
-          }, 1500);
-        });
-
         // Update room with monster positions after their movement
         if (room) {
           const updatedRoom = applyMonsterMovement(room, response.monsterTurns);
@@ -1069,61 +898,21 @@ export function EncounterDemo() {
               error={error}
             />
           ) : (
-            // Active encounter - use flex for reliable side-by-side layout
+            // Active encounter - battle map fills available space
             // Calculate height: viewport minus combat panel (~280px) minus padding (32px top + bottom)
-            <div
-              style={{
-                display: 'flex',
-                gap: '1.5rem',
-                height: 'calc(100vh - 340px)',
-              }}
-            >
-              {/* Battle map - takes remaining space */}
-              <div style={{ flex: '1 1 0%', minWidth: 0, height: '100%' }}>
-                <BattleMapPanel
-                  room={room}
-                  selectedEntity={selectedEntity}
-                  hoveredEntity={hoveredEntity}
-                  availableCharacters={availableCharacters}
-                  attackTarget={attackTarget}
-                  movementMode={movementMode}
-                  movementRange={
-                    combatState?.currentTurn?.movementMax
-                      ? combatState.currentTurn.movementMax -
-                        (combatState.currentTurn.movementUsed || 0)
-                      : 0
-                  }
-                  movementPath={movementPath}
-                  damageNumbers={damageNumbers}
-                  onEntityClick={handleEntityClick}
-                  onEntityHover={handleEntityHover}
-                  onCellClick={handleCellClick}
-                  onCellDoubleClick={handleCellDoubleClick}
-                  // HexGridV2 combat integration
-                  encounterId={encounterId}
-                  combatState={combatState}
-                  onMoveComplete={handleMoveComplete}
-                  onAttackComplete={handleAttackComplete}
-                />
-              </div>
-
-              {/* Initiative & controls - fixed width sidebar */}
-              <div style={{ width: '320px', flexShrink: 0 }}>
-                {combatState && (
-                  <InitiativePanel
-                    combatState={combatState}
-                    selectedEntity={selectedEntity}
-                    selectedCharacterIds={selectedCharacterIds}
-                    availableCharacters={availableCharacters}
-                    equipmentCharacterId={equipmentCharacterId}
-                    encounterId={encounterId}
-                    onEntitySelect={handleEntityClick}
-                    onEquipmentOpen={setEquipmentCharacterId}
-                    onCombatStateUpdate={handleCombatStateUpdate}
-                    hideQuickActions={!!currentCharacter} // Hide when new CombatPanel is showing
-                  />
-                )}
-              </div>
+            <div style={{ height: 'calc(100vh - 340px)' }}>
+              <BattleMapPanel
+                room={room}
+                selectedEntity={selectedEntity}
+                availableCharacters={availableCharacters}
+                onEntityClick={handleEntityClick}
+                onCellClick={handleCellClick}
+                // Combat integration
+                encounterId={encounterId}
+                combatState={combatState}
+                onMoveComplete={handleMoveComplete}
+                onAttackComplete={handleAttackComplete}
+              />
             </div>
           )}
 
