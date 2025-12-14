@@ -10,13 +10,21 @@
       "artifacts": ["docs/plans/2025-12-14-encounter-streaming-hook-design.md"],
       "commit": "589bde5",
       "notes": "Brainstormed design: dedicated hook with callbacks, auto-reconnect, stream as source of truth"
+    },
+    {
+      "id": "2025-12-14-002",
+      "task": "Implement useEncounterStream hook",
+      "status": "completed",
+      "artifacts": ["src/api/useEncounterStream.ts"],
+      "commit": "45cd611",
+      "notes": "Implemented streaming hook with auto-reconnect, event dispatching, and connection state management. Uses proto types directly, follows design doc exactly."
     }
   ],
   "next_steps": [
-    "Create useEncounterStream hook with reconnection logic",
-    "Create lobbyHooks.ts with unary RPC hooks",
-    "Update LobbyScreen.tsx to use real API calls",
-    "Add connection status UI",
+    "Create lobbyHooks.ts with unary RPC hooks (CreateEncounter, JoinEncounter, SetReady, StartCombat, LeaveEncounter)",
+    "Update LobbyScreen.tsx to use useEncounterStream and lobbyHooks",
+    "Add connection status UI (reconnecting banner, error state)",
+    "Update PartyMemberCard to show disconnected indicator",
     "Test end-to-end with backend"
   ]
 }
