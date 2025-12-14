@@ -73,6 +73,9 @@ export function BattleMapPanel({
       style={{
         backgroundColor: 'var(--card-bg)',
         border: '1px solid var(--border-primary)',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       {/* Compact Header - view toggle and info */}
@@ -129,7 +132,10 @@ export function BattleMapPanel({
       {/* Grid - 2D, 3D, or 3D v2 */}
       <div
         className="flex justify-center"
-        style={{ height: viewMode === '3d-v2' ? '500px' : 'auto' }}
+        style={{
+          height: viewMode === '3d-v2' ? '100%' : 'auto',
+          flex: viewMode === '3d-v2' ? 1 : undefined,
+        }}
       >
         {viewMode === '2d' ? (
           <HexGrid

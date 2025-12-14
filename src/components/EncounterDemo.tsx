@@ -1070,9 +1070,16 @@ export function EncounterDemo() {
             />
           ) : (
             // Active encounter - use flex for reliable side-by-side layout
-            <div style={{ display: 'flex', gap: '1.5rem' }}>
+            // Calculate height: viewport minus combat panel (~280px) minus padding (32px top + bottom)
+            <div
+              style={{
+                display: 'flex',
+                gap: '1.5rem',
+                height: 'calc(100vh - 340px)',
+              }}
+            >
               {/* Battle map - takes remaining space */}
-              <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+              <div style={{ flex: '1 1 0%', minWidth: 0, height: '100%' }}>
                 <BattleMapPanel
                   room={room}
                   selectedEntity={selectedEntity}
