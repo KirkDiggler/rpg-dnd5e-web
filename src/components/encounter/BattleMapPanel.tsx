@@ -127,7 +127,10 @@ export function BattleMapPanel({
       </div>
 
       {/* Grid - 2D, 3D, or 3D v2 */}
-      <div className="flex justify-center">
+      <div
+        className="flex justify-center"
+        style={{ height: viewMode === '3d-v2' ? '500px' : 'auto' }}
+      >
         {viewMode === '2d' ? (
           <HexGrid
             room={room}

@@ -22,8 +22,6 @@ import { cubeToWorld, type CubeCoord } from './hexMath';
 import { HexTile } from './HexTile';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
-import type { TurnOrderEntry } from './TurnOrderOverlay';
-import { TurnOrderOverlay } from './TurnOrderOverlay';
 import { useCameraControls } from './useCameraControls';
 import { useHexInteraction } from './useHexInteraction';
 import { useMovementRange } from './useMovementRange';
@@ -130,9 +128,19 @@ function Scene({
     };
   }, [currentEntityId, entities]);
 
-  // Check if a hex is blocked (has an entity)
+  // Check if a hex is blocked (outside bounds or has an entity)
   const isBlocked = useMemo(() => {
     return (coord: CubeCoord) => {
+      // Check grid bounds (x must be in [0, gridWidth), z must be in [0, gridHeight))
+      if (
+        coord.x < 0 ||
+        coord.x >= gridWidth ||
+        coord.z < 0 ||
+        coord.z >= gridHeight
+      ) {
+        return true;
+      }
+      // Check for other entities
       return entities.some(
         (entity) =>
           entity.position.x === coord.x &&
@@ -141,7 +149,7 @@ function Scene({
           entity.entityId !== currentEntityId
       );
     };
-  }, [entities, currentEntityId]);
+  }, [entities, currentEntityId, gridWidth, gridHeight]);
 
   // Use the interaction hook for hover/click detection with path preview
   const {
@@ -296,23 +304,8 @@ function Scene({
  * Sets up the Canvas and renders the scene
  */
 export function HexGridV2(props: HexGridV2Props) {
-  const { combatState, characters = [] } = props;
-
-  // Build turn order from combat state
-  const turnOrder = useMemo((): TurnOrderEntry[] => {
-    if (!combatState?.turnOrder) return [];
-    return combatState.turnOrder.map((entry) => ({
-      entityId: entry.entityId,
-      entityType: entry.entityType,
-      initiative: entry.initiative,
-    }));
-  }, [combatState]);
-
-  const activeIndex = combatState?.activeIndex ?? -1;
-  const round = combatState?.round ?? 1;
-
   return (
-    <div style={{ width: '100%', height: '600px', position: 'relative' }}>
+    <div style={{ width: '100%', height: '100%', minHeight: '400px' }}>
       <Canvas
         orthographic
         camera={{
@@ -326,16 +319,6 @@ export function HexGridV2(props: HexGridV2Props) {
       >
         <Scene {...props} />
       </Canvas>
-
-      {/* Turn order overlay (rendered outside Canvas) */}
-      {turnOrder.length > 0 && (
-        <TurnOrderOverlay
-          turnOrder={turnOrder}
-          activeIndex={activeIndex}
-          characters={characters}
-          round={round}
-        />
-      )}
     </div>
   );
 }
