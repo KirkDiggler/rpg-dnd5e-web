@@ -18,10 +18,17 @@
       "artifacts": ["src/api/useEncounterStream.ts"],
       "commit": "45cd611",
       "notes": "Implemented streaming hook with auto-reconnect, event dispatching, and connection state management. Uses proto types directly, follows design doc exactly."
+    },
+    {
+      "id": "2025-12-14-003",
+      "task": "Create lobbyHooks.ts with unary RPC hooks",
+      "status": "completed",
+      "artifacts": ["src/api/lobbyHooks.ts"],
+      "commit": "90482da",
+      "notes": "Implemented all five lobby hooks (useCreateEncounter, useJoinEncounter, useSetReady, useStartCombat, useLeaveEncounter) following the AsyncState pattern from encounterHooks.ts. No optimistic updates - stream is source of truth. All pre-commit checks pass."
     }
   ],
   "next_steps": [
-    "Create lobbyHooks.ts with unary RPC hooks (CreateEncounter, JoinEncounter, SetReady, StartCombat, LeaveEncounter)",
     "Update LobbyScreen.tsx to use useEncounterStream and lobbyHooks",
     "Add connection status UI (reconnecting banner, error state)",
     "Update PartyMemberCard to show disconnected indicator",
