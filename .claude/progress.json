@@ -8,7 +8,7 @@
       "task": "Design streaming hook architecture",
       "status": "completed",
       "artifacts": ["docs/plans/2025-12-14-encounter-streaming-hook-design.md"],
-      "commit": null,
+      "commit": "589bde5",
       "notes": "Brainstormed design: dedicated hook with callbacks, auto-reconnect, stream as source of truth"
     }
   ],
