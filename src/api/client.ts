@@ -5,11 +5,37 @@ import { DiceService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dic
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { EncounterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 
+import { getDiscordToken, getPlayerId } from './auth';
+
 // Get API host from environment - handle Discord Activity proxy
 const isDiscordActivity = window.location.hostname.includes('discordsays.com');
 const API_HOST = isDiscordActivity
   ? '/.proxy'
   : import.meta.env.VITE_API_HOST || window.location.origin;
+
+/**
+ * Auth interceptor - adds Discord token to all gRPC requests.
+ *
+ * Header format: "authorization: Discord <token>"
+ *
+ * In development mode without Discord auth, uses VITE_DEV_PLAYER_ID
+ * with a special "Dev" scheme for local testing.
+ */
+const authInterceptor: Interceptor = (next) => async (req) => {
+  const token = getDiscordToken();
+  const playerId = getPlayerId();
+
+  if (token) {
+    // Real Discord authentication
+    req.header.set('authorization', `Discord ${token}`);
+  } else if (playerId && import.meta.env.MODE === 'development') {
+    // Development fallback - pass player ID directly for local testing
+    // The server can recognize this scheme and bypass Discord validation
+    req.header.set('authorization', `Dev ${playerId}`);
+  }
+
+  return next(req);
+};
 
 // Logging interceptor for debugging
 const loggingInterceptor: Interceptor = (next) => async (req) => {
@@ -43,10 +69,11 @@ const loggingInterceptor: Interceptor = (next) => async (req) => {
   }
 };
 
-// Create the transport
+// Create the transport with auth and logging interceptors
+// Auth runs first to add headers, then logging captures the full request
 const transport = createGrpcWebTransport({
   baseUrl: API_HOST,
-  interceptors: [loggingInterceptor],
+  interceptors: [authInterceptor, loggingInterceptor],
 });
 
 // Create the character service client

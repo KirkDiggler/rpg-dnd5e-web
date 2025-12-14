@@ -1,5 +1,8 @@
 import type { DiscordSDK } from '@discord/embedded-app-sdk';
 import React, { useCallback, useEffect, useState } from 'react';
+
+import { clearAuth, setAuth } from '@/api/auth';
+
 import { DiscordContext } from './context';
 import {
   getEnvironmentInfo,
@@ -123,12 +126,17 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
             global_name: auth.user.global_name || undefined,
           });
           console.log('👤 User authenticated:', auth.user.username);
+
+          // Update auth store for gRPC interceptor
+          setAuth(access_token, auth.user.id);
         }
 
         // Fetch initial participants
         await handleRefreshParticipants(sdkToUse);
       } catch (err) {
         console.error('🔴 Discord authentication failed:', err);
+        // Clear auth state on failure
+        clearAuth();
         // Store error for display
         let errorMessage = 'Unknown error';
         if (err instanceof Error) {
