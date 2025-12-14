@@ -82,14 +82,20 @@ function calculateBoundaryEdges(
   ];
 
   // For each direction, which two vertices form the shared edge
-  // Vertices are indexed 0-5 in clockwise order starting from top-right
+  // Vertices are indexed 0-5 starting from 30° going clockwise:
+  //   0 (30°)  → bottom-right
+  //   1 (90°)  → bottom
+  //   2 (150°) → bottom-left
+  //   3 (210°) → top-left
+  //   4 (270°) → top
+  //   5 (330°) → top-right
   const edgeVertexPairs: [number, number][] = [
-    [0, 1], // E edge: vertices 0 (30°) to 1 (90°)
-    [5, 0], // NE edge: vertices 5 (330°) to 0 (30°)
-    [4, 5], // NW edge: vertices 4 (270°) to 5 (330°)
-    [3, 4], // W edge: vertices 3 (210°) to 4 (270°)
-    [2, 3], // SW edge: vertices 2 (150°) to 3 (210°)
-    [1, 2], // SE edge: vertices 1 (90°) to 2 (150°)
+    [5, 0], // E edge: right side (vertex 5 top-right to vertex 0 bottom-right)
+    [4, 5], // NE edge: top-right (vertex 4 top to vertex 5 top-right)
+    [3, 4], // NW edge: top-left (vertex 3 top-left to vertex 4 top)
+    [2, 3], // W edge: left side (vertex 2 bottom-left to vertex 3 top-left)
+    [1, 2], // SW edge: bottom-left (vertex 1 bottom to vertex 2 bottom-left)
+    [0, 1], // SE edge: bottom-right (vertex 0 bottom-right to vertex 1 bottom)
   ];
 
   // Check each reachable hex

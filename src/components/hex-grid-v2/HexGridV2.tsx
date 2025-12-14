@@ -22,6 +22,8 @@ import { cubeToWorld, type CubeCoord } from './hexMath';
 import { HexTile } from './HexTile';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
+import type { TurnOrderEntry } from './TurnOrderOverlay';
+import { TurnOrderOverlay } from './TurnOrderOverlay';
 import { useCameraControls } from './useCameraControls';
 import { useHexInteraction } from './useHexInteraction';
 import { useMovementRange } from './useMovementRange';
@@ -304,8 +306,30 @@ function Scene({
  * Sets up the Canvas and renders the scene
  */
 export function HexGridV2(props: HexGridV2Props) {
+  const { combatState, characters = [] } = props;
+
+  // Build turn order from combat state
+  const turnOrder = useMemo((): TurnOrderEntry[] => {
+    if (!combatState?.turnOrder) return [];
+    return combatState.turnOrder.map((entry) => ({
+      entityId: entry.entityId,
+      entityType: entry.entityType,
+      initiative: entry.initiative,
+    }));
+  }, [combatState]);
+
+  const activeIndex = combatState?.activeIndex ?? -1;
+  const round = combatState?.round ?? 1;
+
   return (
-    <div style={{ width: '100%', height: '100%', minHeight: '400px' }}>
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        minHeight: '400px',
+        position: 'relative',
+      }}
+    >
       <Canvas
         orthographic
         camera={{
@@ -319,6 +343,16 @@ export function HexGridV2(props: HexGridV2Props) {
       >
         <Scene {...props} />
       </Canvas>
+
+      {/* Turn order carousel overlay at top */}
+      {turnOrder.length > 0 && (
+        <TurnOrderOverlay
+          turnOrder={turnOrder}
+          activeIndex={activeIndex}
+          characters={characters}
+          round={round}
+        />
+      )}
     </div>
   );
 }
