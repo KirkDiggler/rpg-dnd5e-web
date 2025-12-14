@@ -936,6 +936,20 @@ export function EncounterDemo() {
                   console.log('Starting multiplayer combat:', id, event);
                   // Set encounter ID and room from the CombatStarted event
                   setEncounterId(id);
+
+                  // Extract character IDs from party members for combat panel
+                  const characterIds = event.party
+                    .filter((member) => member.character?.id)
+                    .map((member) => member.character!.id);
+                  if (characterIds.length > 0) {
+                    setSelectedCharacterIds(characterIds);
+                  }
+
+                  // Set combat state from the event
+                  if (event.combatState) {
+                    setCombatState(event.combatState);
+                  }
+
                   if (event.room) {
                     setRoom(event.room);
                     addToast({
