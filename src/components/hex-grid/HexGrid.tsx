@@ -15,7 +15,7 @@
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Canvas } from '@react-three/fiber';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { HexEntity } from './HexEntity';
 import { cubeToWorld, type CubeCoord } from './hexMath';
@@ -50,6 +50,9 @@ export interface HexGridProps {
   characters?: Character[];
   onMoveComplete?: (path: CubeCoord[]) => void;
   onAttackComplete?: (targetId: string) => void;
+  onHoverChange?: (
+    entity: { id: string; type: string; name: string } | null
+  ) => void;
 }
 
 // Hex size constant - radius from center to vertex
@@ -75,6 +78,7 @@ function Scene({
   isPlayerTurn = false,
   onMoveComplete,
   onAttackComplete,
+  onHoverChange,
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -113,6 +117,7 @@ function Scene({
           z: entity.position.z,
         },
         type: entity.type,
+        name: entity.name,
       });
     });
     return map;
@@ -163,6 +168,7 @@ function Scene({
     pathPreview,
     canAttack,
     attackPath,
+    hoveredEntity,
   } = useHexInteraction({
     hexSize: HEX_SIZE,
     gridWidth,
@@ -187,6 +193,11 @@ function Scene({
     isBlocked,
     entities: entitiesMap,
   });
+
+  // Notify parent when hovered entity changes
+  useEffect(() => {
+    onHoverChange?.(hoveredEntity);
+  }, [hoveredEntity, onHoverChange]);
 
   // Use movement range hook for boundary visualization
   const { boundaryEdges } = useMovementRange({

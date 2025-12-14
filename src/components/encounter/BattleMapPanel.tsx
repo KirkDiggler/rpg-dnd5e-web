@@ -17,6 +17,9 @@ interface BattleMapPanelProps {
   onCellClick: (coord: CubeCoord) => void;
   onMoveComplete?: (path: CubeCoord[]) => void;
   onAttackComplete?: (targetId: string) => void;
+  onHoverChange?: (
+    entity: { id: string; type: string; name: string } | null
+  ) => void;
 }
 
 export function BattleMapPanel({
@@ -29,6 +32,7 @@ export function BattleMapPanel({
   onCellClick,
   onMoveComplete,
   onAttackComplete,
+  onHoverChange,
 }: BattleMapPanelProps) {
   return (
     <div
@@ -77,6 +81,7 @@ export function BattleMapPanel({
         }
         onMoveComplete={onMoveComplete}
         onAttackComplete={onAttackComplete}
+        onHoverChange={onHoverChange}
       />
     </div>
   );

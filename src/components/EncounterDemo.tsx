@@ -112,6 +112,17 @@ export function EncounterDemo() {
     string | null
   >(null);
   const [movementMode, setMovementMode] = useState(false);
+  const [hoveredEntity, setHoveredEntity] = useState<{
+    id: string;
+    type: string;
+    name: string;
+  } | null>(null);
+  // Click-to-lock: when user clicks an entity, lock hover panel to that entity
+  const [selectedHoverEntity, setSelectedHoverEntity] = useState<{
+    id: string;
+    type: string;
+    name: string;
+  } | null>(null);
   const [movementPath, setMovementPath] = useState<CubeCoord[]>([]);
   const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
 
@@ -194,6 +205,20 @@ export function EncounterDemo() {
     // Get clicked entity
     const clickedEntity = room?.entities[entityId];
     if (!clickedEntity) return;
+
+    // Set the selected hover entity for click-to-lock in the info panel
+    // Get the entity name from availableCharacters or format the entity ID for monsters
+    const entityName =
+      availableCharacters.find((c) => c.id === entityId)?.name ||
+      formatEntityId(entityId);
+    setSelectedHoverEntity({
+      id: entityId,
+      type:
+        clickedEntity.entityType.toLowerCase() === 'monster'
+          ? 'monster'
+          : 'player',
+      name: entityName,
+    });
 
     const currentTurnEntityId = combatState?.currentTurn?.entityId;
 
@@ -912,6 +937,7 @@ export function EncounterDemo() {
                 combatState={combatState}
                 onMoveComplete={handleMoveComplete}
                 onAttackComplete={handleAttackComplete}
+                onHoverChange={setHoveredEntity}
               />
             </div>
           )}
@@ -954,6 +980,9 @@ export function EncounterDemo() {
           turnState={currentTurn}
           isPlayerTurn={isPlayerTurn}
           combatLog={combatLog}
+          hoveredEntity={hoveredEntity}
+          selectedHoverEntity={selectedHoverEntity}
+          characters={availableCharacters}
           onAttack={handleAttackAction}
           onMove={handleMoveAction}
           onSpell={handleSpell}
