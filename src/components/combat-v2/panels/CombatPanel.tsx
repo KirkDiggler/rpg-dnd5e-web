@@ -23,6 +23,7 @@ export interface CombatPanelProps {
 
   // Hover info props
   hoveredEntity?: HoveredEntity | null;
+  selectedHoverEntity?: HoveredEntity | null;
   characters?: Character[];
 
   // Callbacks
@@ -66,6 +67,7 @@ export function CombatPanel({
   isPlayerTurn,
   combatLog = [],
   hoveredEntity,
+  selectedHoverEntity,
   characters = [],
   onAttack,
   onMove,
@@ -84,6 +86,7 @@ export function CombatPanel({
         {/* Left Column: Hover Info Panel */}
         <HoverInfoPanel
           hoveredEntity={hoveredEntity || null}
+          selectedEntity={selectedHoverEntity || null}
           currentCharacter={character}
           characters={characters}
         />

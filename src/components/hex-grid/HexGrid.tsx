@@ -50,7 +50,9 @@ export interface HexGridProps {
   characters?: Character[];
   onMoveComplete?: (path: CubeCoord[]) => void;
   onAttackComplete?: (targetId: string) => void;
-  onHoverChange?: (entity: { id: string; type: string } | null) => void;
+  onHoverChange?: (
+    entity: { id: string; type: string; name: string } | null
+  ) => void;
 }
 
 // Hex size constant - radius from center to vertex
@@ -115,6 +117,7 @@ function Scene({
           z: entity.position.z,
         },
         type: entity.type,
+        name: entity.name,
       });
     });
     return map;

@@ -19,6 +19,7 @@ interface R3FPointerEvent {
 export interface Entity {
   position: CubeCoord;
   type: 'player' | 'monster';
+  name: string;
 }
 
 export interface UseHexInteractionProps {
@@ -34,6 +35,12 @@ export interface UseHexInteractionProps {
   entities?: Map<string, Entity>; // entity ID -> entity data
 }
 
+export interface HoveredEntityInfo {
+  id: string;
+  type: string;
+  name: string;
+}
+
 export interface UseHexInteractionReturn {
   hoveredHex: CubeCoord | null;
   selectedHex: CubeCoord | null;
@@ -44,7 +51,7 @@ export interface UseHexInteractionReturn {
   };
   // Path preview return values
   pathPreview: CubeCoord[]; // Path from entity to hovered hex (empty if out of range)
-  hoveredEntity: { id: string; type: string } | null; // Entity under cursor
+  hoveredEntity: HoveredEntityInfo | null; // Entity under cursor
   canAttack: boolean; // True if hovering enemy within range
   attackPath: CubeCoord[]; // Path to adjacent hex when hovering enemy
 }
@@ -55,7 +62,7 @@ export interface UseHexInteractionReturn {
 function findEntityAtCoord(
   coord: CubeCoord,
   entities?: Map<string, Entity>
-): { id: string; type: string } | null {
+): HoveredEntityInfo | null {
   if (!entities) return null;
 
   for (const [id, entity] of entities.entries()) {
@@ -64,7 +71,7 @@ function findEntityAtCoord(
       entity.position.y === coord.y &&
       entity.position.z === coord.z
     ) {
-      return { id, type: entity.type };
+      return { id, type: entity.type, name: entity.name };
     }
   }
   return null;

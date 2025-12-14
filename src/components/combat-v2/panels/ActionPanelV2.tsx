@@ -161,6 +161,7 @@ export function ActionPanelV2({
         {/* Left Column: Hover Info Panel */}
         <HoverInfoPanel
           hoveredEntity={hoveredEntity || null}
+          selectedEntity={null}
           currentCharacter={currentCharacter}
           characters={characters}
         />

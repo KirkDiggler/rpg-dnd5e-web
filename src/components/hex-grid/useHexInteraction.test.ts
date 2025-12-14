@@ -203,7 +203,10 @@ describe('useHexInteraction logic', () => {
       const enemyPosition: CubeCoord = { x: 2, y: -2, z: 0 };
 
       const entities = new Map<string, Entity>([
-        ['enemy1', { position: enemyPosition, type: 'monster' }],
+        [
+          'enemy1',
+          { position: enemyPosition, type: 'monster', name: 'Goblin' },
+        ],
       ]);
 
       // Test entity detection logic
@@ -278,7 +281,7 @@ describe('useHexInteraction logic', () => {
       const allyPosition: CubeCoord = { x: 2, y: -2, z: 0 };
 
       const entities = new Map<string, Entity>([
-        ['ally1', { position: allyPosition, type: 'player' }],
+        ['ally1', { position: allyPosition, type: 'player', name: 'Theron' }],
       ]);
 
       // Test ally logic - should not calculate attack path

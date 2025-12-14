@@ -17,27 +17,18 @@ import styles from '../styles/combat.module.css';
 export interface HoveredEntity {
   id: string;
   type: string; // 'player' | 'monster'
+  name: string;
 }
 
 export interface HoverInfoPanelProps {
   /** Currently hovered entity from the hex grid */
   hoveredEntity: HoveredEntity | null;
-  /** Current turn character (shown when not hovering) */
+  /** Selected/clicked entity (persists until another is clicked) */
+  selectedEntity: HoveredEntity | null;
+  /** Current turn character (shown when not hovering or selected) */
   currentCharacter: Character | null;
   /** All characters for looking up ally info */
   characters: Character[];
-}
-
-/** Format entity ID to a readable name (e.g., "goblin_1" -> "Goblin 1") */
-function formatEntityName(entityId: string): string {
-  return entityId
-    .split('_')
-    .map((part) => {
-      // Capitalize first letter, keep numbers as-is
-      if (/^\d+$/.test(part)) return part;
-      return part.charAt(0).toUpperCase() + part.slice(1);
-    })
-    .join(' ');
 }
 
 /** Get class display name from character */
@@ -80,10 +71,10 @@ function PlayerInfo({ character }: { character: Character }) {
 }
 
 /** Render monster/enemy info */
-function MonsterInfo({ entityId }: { entityId: string }) {
+function MonsterInfo({ name }: { name: string }) {
   return (
     <div className={styles.hoverInfoContent}>
-      <div className={styles.hoverInfoName}>{formatEntityName(entityId)}</div>
+      <div className={styles.hoverInfoName}>{name}</div>
       <div className={styles.hoverInfoSubtext}>Enemy</div>
     </div>
   );
@@ -91,40 +82,42 @@ function MonsterInfo({ entityId }: { entityId: string }) {
 
 export function HoverInfoPanel({
   hoveredEntity,
+  selectedEntity,
   currentCharacter,
   characters,
 }: HoverInfoPanelProps) {
+  // Priority: hovered > selected > current turn character
+  const displayEntity = hoveredEntity || selectedEntity;
+
   // Determine what to display
   let content: React.ReactNode;
   let borderClass = styles.hoverInfoAlly; // Default to ally (blue/green)
 
-  if (hoveredEntity) {
-    // Hovering over something
-    if (hoveredEntity.type === 'player') {
+  if (displayEntity) {
+    // Showing an entity (hovered or selected)
+    if (displayEntity.type === 'player') {
       // Find the character data
-      const character = characters.find((c) => c.id === hoveredEntity.id);
+      const character = characters.find((c) => c.id === displayEntity.id);
       if (character) {
         content = <PlayerInfo character={character} />;
         borderClass = styles.hoverInfoAlly;
       } else {
-        // Character not found - show basic info
+        // Character not found - show basic info with name
         content = (
           <div className={styles.hoverInfoContent}>
-            <div className={styles.hoverInfoName}>
-              {formatEntityName(hoveredEntity.id)}
-            </div>
+            <div className={styles.hoverInfoName}>{displayEntity.name}</div>
             <div className={styles.hoverInfoSubtext}>Ally</div>
           </div>
         );
         borderClass = styles.hoverInfoAlly;
       }
     } else {
-      // Monster/enemy
-      content = <MonsterInfo entityId={hoveredEntity.id} />;
+      // Monster/enemy - use name from entity
+      content = <MonsterInfo name={displayEntity.name} />;
       borderClass = styles.hoverInfoEnemy;
     }
   } else if (currentCharacter) {
-    // Not hovering - show current turn character
+    // Not hovering or selected - show current turn character
     content = <PlayerInfo character={currentCharacter} />;
     borderClass = styles.hoverInfoAlly;
   } else {
