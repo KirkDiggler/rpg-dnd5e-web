@@ -117,12 +117,12 @@ export function WaitingRoom({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-3">
+      <div className="space-y-3">
         {/* Ready Toggle */}
         <button
           onClick={onToggleReady}
           disabled={!selectedCharacterId}
-          className="flex-1 px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
+          className="w-full px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
           style={{
             backgroundColor: isReady
               ? 'var(--accent-success, #22c55e)'
@@ -139,7 +139,7 @@ export function WaitingRoom({
           <button
             onClick={onStartCombat}
             disabled={!allReady || startLoading}
-            className="flex-1 px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
+            className="w-full px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
             style={{
               backgroundColor:
                 allReady && !startLoading

@@ -26,12 +26,19 @@
       "artifacts": ["src/api/lobbyHooks.ts"],
       "commit": "90482da",
       "notes": "Implemented all five lobby hooks (useCreateEncounter, useJoinEncounter, useSetReady, useStartCombat, useLeaveEncounter) following the AsyncState pattern from encounterHooks.ts. No optimistic updates - stream is source of truth. All pre-commit checks pass."
+    },
+    {
+      "id": "2025-12-14-004",
+      "task": "Integrate hooks and streaming in LobbyScreen.tsx",
+      "status": "completed",
+      "artifacts": ["src/components/lobby/LobbyScreen.tsx"],
+      "commit": "10b48f6",
+      "notes": "Replaced all mock implementations with real API calls. Added useEncounterStream with callbacks for PlayerJoined, PlayerLeft, PlayerReady, and CombatStarted events. No optimistic updates - stream is source of truth. Added connection status UI (reconnecting/error banners). All pre-commit checks pass."
     }
   ],
   "next_steps": [
-    "Update LobbyScreen.tsx to use useEncounterStream and lobbyHooks",
-    "Add connection status UI (reconnecting banner, error state)",
-    "Update PartyMemberCard to show disconnected indicator",
-    "Test end-to-end with backend"
+    "Update PartyMemberCard to show disconnected indicator (onPlayerDisconnected/onPlayerReconnected events)",
+    "Test end-to-end with backend",
+    "Consider adding visual loading states during API calls"
   ]
 }

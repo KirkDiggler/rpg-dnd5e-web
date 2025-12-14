@@ -243,119 +243,122 @@ export function LobbyScreen({
   };
 
   return (
-    <div
-      className="rounded-lg shadow-xl p-6 max-w-lg mx-auto"
-      style={{
-        backgroundColor: 'var(--card-bg)',
-        border: '2px solid var(--border-primary)',
-      }}
-    >
-      {/* Connection status banner */}
-      {connectionState === 'disconnected' && (
-        <div className="bg-yellow-500/20 text-yellow-200 px-4 py-2 text-center mb-4 rounded">
-          Reconnecting...
-        </div>
-      )}
+    <div className="flex justify-center w-full py-8">
+      <div
+        className="rounded-lg shadow-xl p-6 w-full max-w-md"
+        style={{
+          backgroundColor: 'var(--card-bg)',
+          border: '2px solid var(--border-primary)',
+        }}
+      >
+        {/* Connection status banner */}
+        {connectionState === 'disconnected' && (
+          <div className="bg-yellow-500/20 text-yellow-200 px-4 py-2 text-center mb-4 rounded">
+            Reconnecting...
+          </div>
+        )}
 
-      {connectionState === 'error' && (
-        <div className="bg-red-500/20 text-red-200 px-4 py-2 text-center mb-4 rounded">
-          Connection lost.{' '}
-          <button onClick={handleLeave} className="underline">
-            Return to menu
-          </button>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <button
-          onClick={lobbyState === 'waiting' ? handleLeave : onBack}
-          className="text-sm"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          ← {lobbyState === 'waiting' ? 'Leave Lobby' : 'Back'}
-        </button>
-        <h2
-          className="text-xl font-semibold"
-          style={{ color: 'var(--text-primary)' }}
-        >
-          {lobbyState === 'waiting' ? 'Game Lobby' : 'Multiplayer'}
-        </h2>
-        <div className="w-16" /> {/* Spacer for centering */}
-      </div>
-
-      {lobbyState === 'tabs' ? (
-        <>
-          {/* Tab buttons */}
-          <div
-            className="flex mb-6 rounded-lg overflow-hidden"
-            style={{
-              backgroundColor: 'var(--bg-secondary)',
-              border: '1px solid var(--border-primary)',
-            }}
-          >
-            <button
-              onClick={() => setActiveTab('create')}
-              className="flex-1 px-4 py-3 font-medium transition-colors"
-              style={{
-                backgroundColor:
-                  activeTab === 'create'
-                    ? 'var(--accent-primary)'
-                    : 'transparent',
-                color: activeTab === 'create' ? 'white' : 'var(--text-primary)',
-              }}
-            >
-              Create Game
-            </button>
-            <button
-              onClick={() => setActiveTab('join')}
-              className="flex-1 px-4 py-3 font-medium transition-colors"
-              style={{
-                backgroundColor:
-                  activeTab === 'join'
-                    ? 'var(--accent-primary)'
-                    : 'transparent',
-                color: activeTab === 'join' ? 'white' : 'var(--text-primary)',
-              }}
-            >
-              Join Game
+        {connectionState === 'error' && (
+          <div className="bg-red-500/20 text-red-200 px-4 py-2 text-center mb-4 rounded">
+            Connection lost.{' '}
+            <button onClick={handleLeave} className="underline">
+              Return to menu
             </button>
           </div>
+        )}
 
-          {/* Tab content */}
-          {activeTab === 'create' ? (
-            <CreateGameTab
-              characters={availableCharacters}
-              selectedCharacterId={selectedCharacterId}
-              onSelectCharacter={setSelectedCharacterId}
-              onCreateLobby={handleCreateLobby}
-              loading={createLoading}
-              charactersLoading={charactersLoading}
-            />
-          ) : (
-            <JoinGameTab
-              onJoinLobby={handleJoinLobby}
-              loading={joinLoading}
-              error={joinError?.message ?? null}
-            />
-          )}
-        </>
-      ) : (
-        <WaitingRoom
-          joinCode={joinCode}
-          partyMembers={partyMembers}
-          currentPlayerId={currentPlayerId}
-          isHost={isHost}
-          availableCharacters={availableCharacters}
-          selectedCharacterId={selectedCharacterId}
-          isReady={isReady}
-          onSelectCharacter={handleSelectCharacter}
-          onToggleReady={handleToggleReady}
-          onStartCombat={handleStartCombat}
-          onLeave={handleLeave}
-          startLoading={startLoading}
-        />
-      )}
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={lobbyState === 'waiting' ? handleLeave : onBack}
+            className="text-sm"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            ← {lobbyState === 'waiting' ? 'Leave Lobby' : 'Back'}
+          </button>
+          <h2
+            className="text-xl font-semibold"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {lobbyState === 'waiting' ? 'Game Lobby' : 'Multiplayer'}
+          </h2>
+          <div className="w-16" /> {/* Spacer for centering */}
+        </div>
+
+        {lobbyState === 'tabs' ? (
+          <>
+            {/* Tab buttons */}
+            <div
+              className="flex mb-6 rounded-lg overflow-hidden"
+              style={{
+                backgroundColor: 'var(--bg-secondary)',
+                border: '1px solid var(--border-primary)',
+              }}
+            >
+              <button
+                onClick={() => setActiveTab('create')}
+                className="flex-1 px-4 py-3 font-medium transition-colors"
+                style={{
+                  backgroundColor:
+                    activeTab === 'create'
+                      ? 'var(--accent-primary)'
+                      : 'transparent',
+                  color:
+                    activeTab === 'create' ? 'white' : 'var(--text-primary)',
+                }}
+              >
+                Create Game
+              </button>
+              <button
+                onClick={() => setActiveTab('join')}
+                className="flex-1 px-4 py-3 font-medium transition-colors"
+                style={{
+                  backgroundColor:
+                    activeTab === 'join'
+                      ? 'var(--accent-primary)'
+                      : 'transparent',
+                  color: activeTab === 'join' ? 'white' : 'var(--text-primary)',
+                }}
+              >
+                Join Game
+              </button>
+            </div>
+
+            {/* Tab content */}
+            {activeTab === 'create' ? (
+              <CreateGameTab
+                characters={availableCharacters}
+                selectedCharacterId={selectedCharacterId}
+                onSelectCharacter={setSelectedCharacterId}
+                onCreateLobby={handleCreateLobby}
+                loading={createLoading}
+                charactersLoading={charactersLoading}
+              />
+            ) : (
+              <JoinGameTab
+                onJoinLobby={handleJoinLobby}
+                loading={joinLoading}
+                error={joinError?.message ?? null}
+              />
+            )}
+          </>
+        ) : (
+          <WaitingRoom
+            joinCode={joinCode}
+            partyMembers={partyMembers}
+            currentPlayerId={currentPlayerId}
+            isHost={isHost}
+            availableCharacters={availableCharacters}
+            selectedCharacterId={selectedCharacterId}
+            isReady={isReady}
+            onSelectCharacter={handleSelectCharacter}
+            onToggleReady={handleToggleReady}
+            onStartCombat={handleStartCombat}
+            onLeave={handleLeave}
+            startLoading={startLoading}
+          />
+        )}
+      </div>
     </div>
   );
 }
