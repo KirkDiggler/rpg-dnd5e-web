@@ -37,7 +37,10 @@ import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
 import { BattleMapPanel } from './encounter/BattleMapPanel';
 import { PartySetupPanel } from './encounter/PartySetupPanel';
 import { Equipment } from './Equipment';
+import { GameModeSelector, LobbyScreen } from './lobby';
 import { useToast } from './ui';
+
+type GameMode = 'select' | 'solo' | 'multiplayer';
 
 /**
  * Update room entity positions based on monster movement paths
@@ -125,6 +128,10 @@ export function EncounterDemo() {
   } | null>(null);
   const [movementPath, setMovementPath] = useState<CubeCoord[]>([]);
   const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
+  const [gameMode, setGameMode] = useState<GameMode>('select');
+
+  // Get player name from Discord or use default
+  const playerName = discord.user?.username || 'Player';
 
   const handleStartEncounter = async () => {
     try {
@@ -912,16 +919,52 @@ export function EncounterDemo() {
         <div className="max-w-[1800px] mx-auto">
           {/* Main Content - Header removed to save vertical space */}
           {!room ? (
-            // Pre-encounter setup
-            <PartySetupPanel
-              availableCharacters={availableCharacters}
-              selectedCharacterIds={selectedCharacterIds}
-              onCharacterToggle={handleCharacterToggle}
-              onStartEncounter={handleStartEncounter}
-              loading={loading}
-              charactersLoading={charactersLoading}
-              error={error}
-            />
+            // Pre-encounter: show mode selection or setup screens
+            gameMode === 'select' ? (
+              <GameModeSelector
+                onSelectSolo={() => setGameMode('solo')}
+                onSelectMultiplayer={() => setGameMode('multiplayer')}
+              />
+            ) : gameMode === 'multiplayer' ? (
+              <LobbyScreen
+                availableCharacters={availableCharacters}
+                charactersLoading={charactersLoading}
+                currentPlayerId={playerId}
+                currentPlayerName={playerName}
+                onBack={() => setGameMode('select')}
+                onStartCombat={(id) => {
+                  // TODO: Handle multiplayer combat start
+                  // For now, just log and show a toast
+                  console.log('Starting multiplayer combat:', id);
+                  addToast({
+                    type: 'info',
+                    message:
+                      'Multiplayer combat coming soon! API integration needed.',
+                    duration: 3000,
+                  });
+                }}
+              />
+            ) : (
+              // Solo mode - existing party setup
+              <div>
+                <button
+                  onClick={() => setGameMode('select')}
+                  className="mb-4 text-sm"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  ← Back to Mode Selection
+                </button>
+                <PartySetupPanel
+                  availableCharacters={availableCharacters}
+                  selectedCharacterIds={selectedCharacterIds}
+                  onCharacterToggle={handleCharacterToggle}
+                  onStartEncounter={handleStartEncounter}
+                  loading={loading}
+                  charactersLoading={charactersLoading}
+                  error={error}
+                />
+              </div>
+            )
           ) : (
             // Active encounter - battle map fills available space
             // Calculate height: viewport minus combat panel (~280px) minus padding (32px top + bottom)
