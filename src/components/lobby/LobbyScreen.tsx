@@ -39,10 +39,12 @@ export function LobbyScreen({
   availableCharacters,
   charactersLoading,
   currentPlayerId,
-  currentPlayerName,
+  currentPlayerName: _playerName,
   onBack,
   onStartCombat,
 }: LobbyScreenProps) {
+  // _playerName is kept for API compatibility but not currently used
+  void _playerName;
   // UI State
   const [lobbyState, setLobbyState] = useState<LobbyState>('tabs');
   const [activeTab, setActiveTab] = useState<TabId>('create');
@@ -72,16 +74,18 @@ export function LobbyScreen({
   // Streaming hook - connects when encounterId is set
   const { connectionState } = useEncounterStream(encounterId, currentPlayerId, {
     onPlayerJoined: (event) => {
-      setPartyMembers((prev) => [
-        ...prev,
-        {
-          playerId: event.playerId,
-          playerName: event.playerName,
-          character: event.character,
-          isReady: false,
-          isHost: false,
-        },
-      ]);
+      // PlayerJoinedEvent has a 'member' field containing PartyMember
+      if (event.member) {
+        setPartyMembers((prev) => [
+          ...prev,
+          {
+            playerId: event.member!.playerId,
+            character: event.member!.character,
+            isReady: event.member!.isReady,
+            isHost: event.member!.isHost,
+          },
+        ]);
+      }
     },
 
     onPlayerLeft: (event) => {
@@ -91,11 +95,10 @@ export function LobbyScreen({
     },
 
     onPlayerReady: (event) => {
+      // PlayerReadyEvent only has playerId and isReady (no character)
       setPartyMembers((prev) =>
         prev.map((m) =>
-          m.playerId === event.playerId
-            ? { ...m, isReady: event.isReady, character: event.character }
-            : m
+          m.playerId === event.playerId ? { ...m, isReady: event.isReady } : m
         )
       );
       // Sync local ready state if it's us
@@ -131,7 +134,6 @@ export function LobbyScreen({
       setPartyMembers([
         {
           playerId: currentPlayerId,
-          playerName: currentPlayerName,
           character: selectedChar,
           isReady: false,
           isHost: true,
@@ -159,7 +161,6 @@ export function LobbyScreen({
       // The response contains the current party state
       const partyFromResponse: PartyMember[] = response.party.map((p) => ({
         playerId: p.playerId,
-        playerName: p.playerName,
         character: p.character,
         isReady: p.isReady,
         isHost: p.isHost,

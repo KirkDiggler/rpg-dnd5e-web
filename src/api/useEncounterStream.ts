@@ -70,56 +70,59 @@ function dispatchEvent(
   event: EncounterEvent,
   options: UseEncounterStreamOptions
 ) {
-  const eventCase = event.event.case;
-  const eventData = event.event.value;
+  const eventPayload = event.event;
 
-  console.log('🔵 Stream event received:', eventCase, eventData);
+  console.log(
+    '🔵 Stream event received:',
+    eventPayload.case,
+    eventPayload.value
+  );
 
-  switch (eventCase) {
+  switch (eventPayload.case) {
     case 'playerJoined':
-      options.onPlayerJoined?.(eventData);
+      options.onPlayerJoined?.(eventPayload.value);
       break;
     case 'playerLeft':
-      options.onPlayerLeft?.(eventData);
+      options.onPlayerLeft?.(eventPayload.value);
       break;
     case 'playerReady':
-      options.onPlayerReady?.(eventData);
+      options.onPlayerReady?.(eventPayload.value);
       break;
     case 'playerDisconnected':
-      options.onPlayerDisconnected?.(eventData);
+      options.onPlayerDisconnected?.(eventPayload.value);
       break;
     case 'playerReconnected':
-      options.onPlayerReconnected?.(eventData);
+      options.onPlayerReconnected?.(eventPayload.value);
       break;
     case 'combatStarted':
-      options.onCombatStarted?.(eventData);
+      options.onCombatStarted?.(eventPayload.value);
       break;
     case 'combatPaused':
-      options.onCombatPaused?.(eventData);
+      options.onCombatPaused?.(eventPayload.value);
       break;
     case 'combatResumed':
-      options.onCombatResumed?.(eventData);
+      options.onCombatResumed?.(eventPayload.value);
       break;
     case 'combatEnded':
-      options.onCombatEnded?.(eventData);
+      options.onCombatEnded?.(eventPayload.value);
       break;
     case 'movementCompleted':
-      options.onMovementCompleted?.(eventData);
+      options.onMovementCompleted?.(eventPayload.value);
       break;
     case 'attackResolved':
-      options.onAttackResolved?.(eventData);
+      options.onAttackResolved?.(eventPayload.value);
       break;
     case 'featureActivated':
-      options.onFeatureActivated?.(eventData);
+      options.onFeatureActivated?.(eventPayload.value);
       break;
     case 'turnEnded':
-      options.onTurnEnded?.(eventData);
+      options.onTurnEnded?.(eventPayload.value);
       break;
     case 'monsterTurnCompleted':
-      options.onMonsterTurnCompleted?.(eventData);
+      options.onMonsterTurnCompleted?.(eventPayload.value);
       break;
     default:
-      console.warn('Unknown event type:', eventCase);
+      console.warn('Unknown event type:', eventPayload.case);
   }
 }
 
@@ -165,8 +168,8 @@ export function useEncounterStream(
   optionsRef.current = options;
 
   const retryCountRef = useRef(0);
-  const retryTimeoutRef = useRef<NodeJS.Timeout>();
-  const abortControllerRef = useRef<AbortController>();
+  const retryTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
 
   useEffect(() => {
     if (!encounterId) {
