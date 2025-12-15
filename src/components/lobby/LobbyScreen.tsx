@@ -148,9 +148,11 @@ export function LobbyScreen({
 
   // Join an existing lobby
   const handleJoinLobby = async (code: string) => {
+    if (!selectedCharacterId) return;
+
     try {
-      // Join without a character initially - can select in waiting room
-      const response = await joinEncounter(code, []);
+      // Join with selected character
+      const response = await joinEncounter(code, [selectedCharacterId]);
 
       // Set encounter state from response
       setEncounterId(response.encounterId);
@@ -340,8 +342,12 @@ export function LobbyScreen({
               />
             ) : (
               <JoinGameTab
+                characters={availableCharacters}
+                selectedCharacterId={selectedCharacterId}
+                onSelectCharacter={setSelectedCharacterId}
                 onJoinLobby={handleJoinLobby}
                 loading={joinLoading}
+                charactersLoading={charactersLoading}
                 error={joinError?.message ?? null}
               />
             )}
