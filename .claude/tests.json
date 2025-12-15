@@ -1,51 +1,44 @@
 {
   "tests": [
     {
-      "id": "path-preview-hover",
-      "feature": "movement",
-      "prompt": "Hover over an empty hex during your turn. Verify a path preview highlights the route from current position to hovered hex.",
+      "id": "create-lobby",
+      "feature": "lobby-creation",
+      "prompt": "Host creates a lobby. Verify: encounterId and joinCode are returned, player appears in party list as host, stream connects.",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "click-to-move",
-      "feature": "movement",
-      "prompt": "Click an empty hex during your turn. Verify entity moves to that hex and movement remaining decreases.",
+      "id": "join-lobby",
+      "feature": "lobby-join",
+      "prompt": "Second player joins with join code. Verify: both players see each other in party list via stream events.",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "movement-range-border",
-      "feature": "movement",
-      "prompt": "During your turn, verify a glowing border shows around all reachable hexes based on remaining movement.",
+      "id": "ready-toggle",
+      "feature": "ready-status",
+      "prompt": "Player toggles ready. Verify: ready status updates for all players via stream event (not optimistically).",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "click-enemy-attack",
-      "feature": "combat",
-      "prompt": "Click an enemy within movement+attack range. Verify entity moves to adjacent hex and attacks.",
+      "id": "start-combat",
+      "feature": "combat-start",
+      "prompt": "Host starts combat when all ready. Verify: CombatStarted event triggers transition to combat view.",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "attack-indicator",
-      "feature": "combat",
-      "prompt": "Hover over an enemy during your turn. Verify path shows to adjacent hex and enemy has attack indicator.",
+      "id": "reconnection",
+      "feature": "connection-resilience",
+      "prompt": "Stream disconnects briefly. Verify: auto-reconnect happens, connection state shows 'reconnecting', then 'connected'.",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "turn-order-overlay",
-      "feature": "ui",
-      "prompt": "Verify a compact turn order strip shows at top of hex grid with current combatant and upcoming turns.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "action-panel-simplified",
-      "feature": "ui",
-      "prompt": "Verify action panel shows End Turn, Backpack, and resources but NOT Move/Attack buttons.",
+      "id": "leave-lobby",
+      "feature": "lobby-leave",
+      "prompt": "Player leaves lobby. Verify: other players see them removed via stream event.",
       "passes": false,
       "last_checked": null
     }

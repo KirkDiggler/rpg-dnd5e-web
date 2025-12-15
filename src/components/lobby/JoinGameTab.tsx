@@ -79,16 +79,17 @@ export function JoinGameTab({ onJoinLobby, loading, error }: JoinGameTabProps) {
       <button
         type="submit"
         disabled={loading || code.length < 6}
-        className="w-full px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
+        className="w-full px-6 py-4 rounded-lg font-bold text-lg transition-all disabled:opacity-50 hover:brightness-110 active:scale-[0.98]"
         style={{
-          backgroundColor:
-            loading || code.length < 6
-              ? 'var(--bg-secondary)'
-              : 'var(--accent-primary)',
+          backgroundColor: loading || code.length < 6 ? '#4b5563' : '#8b5cf6',
           color: 'white',
+          boxShadow:
+            loading || code.length < 6
+              ? 'none'
+              : '0 4px 14px rgba(139, 92, 246, 0.4)',
         }}
       >
-        {loading ? 'Joining...' : 'Join Game'}
+        {loading ? 'Joining...' : '🎮 Join Game'}
       </button>
     </form>
   );

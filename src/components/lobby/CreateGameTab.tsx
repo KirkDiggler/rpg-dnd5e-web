@@ -71,16 +71,18 @@ export function CreateGameTab({
       <button
         onClick={onCreateLobby}
         disabled={loading || !selectedCharacterId}
-        className="w-full px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50"
+        className="w-full px-6 py-4 rounded-lg font-bold text-lg transition-all disabled:opacity-50 hover:brightness-110 active:scale-[0.98]"
         style={{
           backgroundColor:
-            loading || !selectedCharacterId
-              ? 'var(--bg-secondary)'
-              : 'var(--accent-primary)',
+            loading || !selectedCharacterId ? '#4b5563' : '#8b5cf6',
           color: 'white',
+          boxShadow:
+            loading || !selectedCharacterId
+              ? 'none'
+              : '0 4px 14px rgba(139, 92, 246, 0.4)',
         }}
       >
-        {loading ? 'Creating Lobby...' : 'Create Lobby'}
+        {loading ? 'Creating Lobby...' : '🎮 Create Lobby'}
       </button>
     </div>
   );

@@ -46,18 +46,32 @@ export function BattleMapPanel({
       <HexGrid
         gridWidth={room.width}
         gridHeight={room.height}
-        entities={Object.values(room.entities || {}).map((entity) => ({
-          entityId: entity.entityId,
-          name:
-            availableCharacters.find((c) => c.id === entity.entityId)?.name ||
-            entity.entityId,
-          position: {
-            x: entity.position?.x || 0,
-            y: entity.position?.y || 0,
-            z: entity.position?.z || 0,
-          },
-          type: entity.entityType === 'CHARACTER' ? 'player' : 'monster',
-        }))}
+        entities={Object.values(room.entities || {}).map((entity) => {
+          // Map proto entity type to display type
+          let displayType: 'player' | 'monster' | 'obstacle';
+          const entityType = entity.entityType?.toUpperCase() || '';
+          if (entityType === 'CHARACTER') {
+            displayType = 'player';
+          } else if (entityType === 'MONSTER') {
+            displayType = 'monster';
+          } else {
+            // PILLAR, OBSTACLE, or any other type becomes obstacle
+            displayType = 'obstacle';
+          }
+
+          return {
+            entityId: entity.entityId,
+            name:
+              availableCharacters.find((c) => c.id === entity.entityId)?.name ||
+              entity.entityId,
+            position: {
+              x: entity.position?.x || 0,
+              y: entity.position?.y || 0,
+              z: entity.position?.z || 0,
+            },
+            type: displayType,
+          };
+        })}
         selectedEntityId={selectedEntity || undefined}
         onHexClick={onCellClick}
         onEntityClick={onEntityClick}
