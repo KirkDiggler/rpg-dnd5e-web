@@ -73,6 +73,8 @@ function dispatchEvent(
   const eventCase = event.event.case;
   const eventData = event.event.value;
 
+  console.log('🔵 Stream event received:', eventCase, eventData);
+
   switch (eventCase) {
     case 'playerJoined':
       options.onPlayerJoined?.(eventData);

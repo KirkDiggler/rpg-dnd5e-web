@@ -13,7 +13,7 @@ export interface HexEntityProps {
   entityId: string;
   name: string;
   position: CubeCoord;
-  type: 'player' | 'monster';
+  type: 'player' | 'monster' | 'obstacle';
   hexSize: number;
   isSelected?: boolean;
   onClick?: (entityId: string) => void;
@@ -28,6 +28,10 @@ const COLORS = {
   monster: {
     default: '#e53e3e', // red
     selected: '#fc8181', // brighter red
+  },
+  obstacle: {
+    default: '#805ad5', // purple
+    selected: '#b794f4', // brighter purple
   },
 };
 

@@ -35,7 +35,7 @@ export interface HexGridProps {
     entityId: string;
     name: string;
     position: { x: number; y: number; z: number };
-    type: 'player' | 'monster';
+    type: 'player' | 'monster' | 'obstacle';
   }>;
   selectedEntityId?: string;
   onHexClick?: (coord: { x: number; y: number; z: number }) => void;
@@ -99,7 +99,7 @@ function Scene({
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
     target: gridCenter,
-    polarAngle: Math.PI / 3, // 60 degrees from vertical (30 degrees from horizontal)
+    polarAngle: Math.PI / 4, // 45 degrees from vertical (45 degrees from horizontal) - lower angle like Stolen Realm
     panSpeed: 0.3,
     rotateSpeed: 0.02,
     minZoom: 30,
@@ -346,8 +346,8 @@ export function HexGrid(props: HexGridProps) {
       <Canvas
         orthographic
         camera={{
-          // Steep isometric angle for good hex visibility
-          position: [8, 16, 8],
+          // Lower isometric angle similar to Stolen Realm
+          position: [8, 10, 8],
           zoom: 80,
           near: 0.1,
           far: 1000,

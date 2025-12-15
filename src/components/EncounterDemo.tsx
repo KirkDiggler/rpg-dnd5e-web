@@ -708,22 +708,13 @@ export function EncounterDemo() {
             await import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb');
 
           const getCharRequest = create(GetCharacterRequestSchema, request);
-          console.log('[useEffect] Fetching character:', characterId);
           const response = await characterClient.getCharacter(getCharRequest);
-
-          console.log('[useEffect] Got response for', characterId, ':', {
-            hasCharacter: !!response.character,
-            equipmentSlots: response.character?.equipmentSlots,
-          });
 
           if (response.character) {
             setFullCharactersMap((prev) => {
               const newMap = new Map(prev);
               newMap.set(characterId, response.character!);
-              console.log(
-                '[useEffect] Updated fullCharactersMap, new size:',
-                newMap.size
-              );
+
               return newMap;
             });
           }
@@ -744,11 +735,7 @@ export function EncounterDemo() {
         .map((id) => {
           const fullChar = fullCharactersMap.get(id);
           const basicChar = availableCharacters.find((char) => char.id === id);
-          console.log(`[getSelectedCharacters] ID ${id}:`, {
-            hasFullChar: !!fullChar,
-            hasBasicChar: !!basicChar,
-            fullCharEquipment: fullChar?.equipmentSlots,
-          });
+
           return fullChar || basicChar;
         })
         .filter((char): char is Character => char !== undefined);
@@ -933,7 +920,11 @@ export function EncounterDemo() {
                 currentPlayerName={playerName}
                 onBack={() => setGameMode('select')}
                 onStartCombat={(id, event) => {
-                  console.log('Starting multiplayer combat:', id, event);
+                  console.log('Starting multiplayer combat:', id);
+                  console.log('CombatStartedEvent:', event);
+                  console.log('Event party:', event.party);
+                  console.log('Event combatState:', event.combatState);
+                  console.log('Event room:', event.room);
                   // Set encounter ID and room from the CombatStarted event
                   setEncounterId(id);
 
