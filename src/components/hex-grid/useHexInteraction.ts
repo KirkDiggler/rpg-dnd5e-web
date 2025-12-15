@@ -18,7 +18,7 @@ interface R3FPointerEvent {
 // Entity type for tracking entities on the grid
 export interface Entity {
   position: CubeCoord;
-  type: 'player' | 'monster';
+  type: 'player' | 'monster' | 'obstacle';
   name: string;
 }
 

@@ -1,124 +1,55 @@
 {
-  "branch": "feature/hexgrid-v2-interactions",
-  "issues": [],
-  "goal": "Add tactical RPG-style movement and combat interactions to HexGridV2 - path preview on hover, click-to-move, click-enemy-to-attack, movement range border, turn order overlay",
+  "branch": "feature/encounter-streaming",
+  "issues": ["rpg-api#280"],
+  "goal": "Implement encounter streaming hook and lobby API integration for multiplayer synchronization",
   "sessions": [
     {
-      "date": "2025-12-13",
-      "summary": "Implemented A* pathfinding utilities in hexMath.ts",
-      "completed": [
-        "Added getHexNeighbors() function - returns 6 adjacent hexes in cube coordinates",
-        "Added findPath() function - A* pathfinding with hexDistance heuristic and optional obstacle detection",
-        "Added getReachableHexes() function - BFS to find all hexes within maxDistance",
-        "Wrote comprehensive test suite covering edge cases (blocked start/end, no path, wall avoidance, etc.)",
-        "Verified all functions export properly and integrate with existing hexMath utilities"
-      ],
-      "commit": "f5993cee71bcd4b56d5736f85368a10ca7a56bec"
+      "id": "2025-12-14-001",
+      "task": "Design streaming hook architecture",
+      "status": "completed",
+      "artifacts": ["docs/plans/2025-12-14-encounter-streaming-hook-design.md"],
+      "commit": "589bde5",
+      "notes": "Brainstormed design: dedicated hook with callbacks, auto-reconnect, stream as source of truth"
     },
     {
-      "date": "2025-12-13",
-      "summary": "Implemented useMovementRange hook for movement visualization",
-      "completed": [
-        "Created useMovementRange.ts hook with reachable hexes calculation (feet to hex steps conversion)",
-        "Implemented boundary edge calculation for glowing border rendering",
-        "Added getPathTo utility for pathfinding to target hexes",
-        "Added isReachable utility for quick reachability checks",
-        "Wrote comprehensive test suite covering all calculations and edge cases",
-        "All tests passing (24 tests), pre-commit checks passing"
-      ],
-      "commit": "228a47df92084bd3d299c443170dce111990d305"
+      "id": "2025-12-14-002",
+      "task": "Implement useEncounterStream hook",
+      "status": "completed",
+      "artifacts": ["src/api/useEncounterStream.ts"],
+      "commit": "45cd611",
+      "notes": "Implemented streaming hook with auto-reconnect, event dispatching, and connection state management. Uses proto types directly, follows design doc exactly."
     },
     {
-      "date": "2025-12-13",
-      "summary": "Enhanced useHexInteraction with path preview functionality",
-      "completed": [
-        "Added new input parameters: entityPosition, movementRemaining, isBlocked, entities",
-        "Added new return values: pathPreview, hoveredEntity, canAttack, attackPath",
-        "Implemented path preview logic for empty hexes (only shows if within movement range)",
-        "Implemented attack path calculation for enemies (finds nearest adjacent hex)",
-        "Added entity detection at hovered coordinates",
-        "Created helper functions: findEntityAtCoord, findNearestAdjacentHex",
-        "Wrote comprehensive test suite covering all scenarios (23 tests total)",
-        "All tests passing, pre-commit checks passing"
-      ],
-      "commit": "cbdbc161cafff3a4f7dd362f9142eb79644f871c"
+      "id": "2025-12-14-003",
+      "task": "Create lobbyHooks.ts with unary RPC hooks",
+      "status": "completed",
+      "artifacts": ["src/api/lobbyHooks.ts"],
+      "commit": "90482da",
+      "notes": "Implemented all five lobby hooks (useCreateEncounter, useJoinEncounter, useSetReady, useStartCombat, useLeaveEncounter) following the AsyncState pattern from encounterHooks.ts. No optimistic updates - stream is source of truth. All pre-commit checks pass."
     },
     {
-      "date": "2025-12-13",
-      "summary": "Created MovementRangeBorder component for glowing perimeter visualization",
-      "completed": [
-        "Implemented MovementRangeBorder.tsx component as Three.js R3F component",
-        "Consumes boundaryEdges from useMovementRange (world coordinates)",
-        "Batches all edges into single BufferGeometry for optimal performance",
-        "Renders each edge as thin rectangular mesh (ribbon) using perpendicular offset calculation",
-        "Uses emissive MeshBasicMaterial for soft glow effect (default cyan)",
-        "Positioned at y=0.05 to prevent z-fighting with ground plane",
-        "Added subtle pulsing animation using useFrame (opacity oscillates 0.7-1.0)",
-        "Fully customizable props: color, opacity, glowIntensity",
-        "Pre-commit checks passing"
-      ],
-      "commit": "dc2250fc6b9a62bf0e7c8732dc9b00f9b7b2f7b4"
+      "id": "2025-12-14-004",
+      "task": "Integrate hooks and streaming in LobbyScreen.tsx",
+      "status": "completed",
+      "artifacts": ["src/components/lobby/LobbyScreen.tsx"],
+      "commit": "10b48f6",
+      "notes": "Replaced all mock implementations with real API calls. Added useEncounterStream with callbacks for PlayerJoined, PlayerLeft, PlayerReady, and CombatStarted events. No optimistic updates - stream is source of truth. Added connection status UI (reconnecting/error banners). All pre-commit checks pass."
     },
     {
-      "date": "2025-12-13",
-      "summary": "Created TurnOrderOverlay component for turn order visualization",
-      "completed": [
-        "Implemented TurnOrderOverlay.tsx as regular React component (not Three.js)",
-        "Horizontal strip layout: current turn in center, 2-3 upcoming right, 1-2 previous left",
-        "Each combatant card shows: class/monster emoji, truncated name, HP bar",
-        "HP bar is color-coded: green > 50%, yellow > 25%, red <= 25%",
-        "Active turn has glowing green border with box-shadow effect",
-        "Previous turns are faded (opacity: 0.6)",
-        "Round number badge displayed on the left side",
-        "Semi-transparent dark background with backdrop blur",
-        "Smooth CSS transitions for all state changes",
-        "Component uses InitiativeEntry proto type from encounter_pb.ts",
-        "Pre-commit checks passing (format, lint, typecheck)"
+      "id": "2025-12-14-005",
+      "task": "Fix lobby UI styling",
+      "status": "completed",
+      "artifacts": [
+        "src/components/lobby/LobbyScreen.tsx",
+        "src/components/lobby/WaitingRoom.tsx"
       ],
-      "commit": "8ef6b2f2cbc2b39eb2050bcee5c079980c5690a1"
-    },
-    {
-      "date": "2025-12-13",
-      "summary": "Wired up click-to-move and click-to-attack in HexGridV2",
-      "completed": [
-        "Created PathPreview component - visualizes movement/attack paths with color-coded overlays",
-        "Extended HexGridV2Props with combat integration: encounterId, currentEntityId, movementRemaining, isPlayerTurn",
-        "Added API callback props: onMoveComplete(path), onAttackComplete(targetId)",
-        "Built entity map for useHexInteraction to detect blocked hexes and entity types",
-        "Integrated useMovementRange to calculate and render movement range border",
-        "Wired up click handlers: empty hex = move, enemy = move+attack (if canAttack)",
-        "Added isProcessing state to prevent double-submission during API calls",
-        "Rendered PathPreview for both movement (blue) and attack paths (red)",
-        "Integrated TurnOrderOverlay at top of grid (outside Canvas)",
-        "Only allow interactions when isPlayerTurn is true",
-        "All pre-commit checks passing (format, lint, typecheck)"
-      ],
-      "commit": "1f845254462bfcc5c9de5e9ca4a43dcb7bfe9db9"
-    },
-    {
-      "date": "2025-12-13",
-      "summary": "Created simplified ActionPanelV2 for HexGridV2",
-      "completed": [
-        "Created ActionPanelV2.tsx with simplified interface for HexGridV2",
-        "KEEP: Character status (name, HP, AC, saving throws, active conditions)",
-        "KEEP: Resource indicators (movement bar, action/bonus available)",
-        "KEEP: Backpack and End Turn buttons",
-        "REMOVED: Move button (map handles this)",
-        "REMOVED: Attack button (map handles this)",
-        "REMOVED: Execute/Cancel move buttons (not needed)",
-        "Added active conditions badges (Raging, Dueling) with color-coded styling",
-        "Shows proficient saving throw modifiers in header",
-        "Maintained portal-based rendering approach for visibility",
-        "Created panels/index.ts to export both ActionPanel and ActionPanelV2",
-        "Left space/structure for future class feature buttons",
-        "All pre-commit checks passing (format, lint, typecheck)"
-      ],
-      "commit": "ea63cd9f79cfe659a58f4f12fe039acc9a8ef732"
+      "commit": "1ed25b7",
+      "notes": "Fixed wide button issue by adding flex centering wrapper with max-w-md. Stacked action buttons vertically for cleaner layout."
     }
   ],
   "next_steps": [
-    "Test the integration in BattleMapPanel/EncounterDemo",
-    "Wire up actual API calls (useMoveCharacter, useAttack) from parent",
-    "Integrate ActionPanelV2 with HexGridV2 in parent component"
+    "Test end-to-end with backend (waiting for PlayerReady event conversion fix)",
+    "Update PartyMemberCard to show disconnected indicator",
+    "Consider adding visual loading states during API calls"
   ]
 }

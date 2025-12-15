@@ -3,7 +3,6 @@ import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 
 export interface PartyMember {
   playerId: string;
-  playerName: string;
   character?: Character;
   isReady: boolean;
   isHost: boolean;
@@ -27,7 +26,10 @@ export function PartyMemberCard({
   member,
   isCurrentPlayer = false,
 }: PartyMemberCardProps) {
-  const { playerName, character, isReady, isHost } = member;
+  const { playerId, character, isReady, isHost } = member;
+
+  // Use character name if available, otherwise show player ID
+  const displayName = character?.name || playerId;
 
   return (
     <div
@@ -58,7 +60,7 @@ export function PartyMemberCard({
             className="font-semibold truncate"
             style={{ color: 'var(--text-primary)' }}
           >
-            {playerName}
+            {displayName}
           </span>
           {isHost && (
             <span

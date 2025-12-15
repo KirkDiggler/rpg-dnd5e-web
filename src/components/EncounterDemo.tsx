@@ -708,22 +708,13 @@ export function EncounterDemo() {
             await import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb');
 
           const getCharRequest = create(GetCharacterRequestSchema, request);
-          console.log('[useEffect] Fetching character:', characterId);
           const response = await characterClient.getCharacter(getCharRequest);
-
-          console.log('[useEffect] Got response for', characterId, ':', {
-            hasCharacter: !!response.character,
-            equipmentSlots: response.character?.equipmentSlots,
-          });
 
           if (response.character) {
             setFullCharactersMap((prev) => {
               const newMap = new Map(prev);
               newMap.set(characterId, response.character!);
-              console.log(
-                '[useEffect] Updated fullCharactersMap, new size:',
-                newMap.size
-              );
+
               return newMap;
             });
           }
@@ -744,11 +735,7 @@ export function EncounterDemo() {
         .map((id) => {
           const fullChar = fullCharactersMap.get(id);
           const basicChar = availableCharacters.find((char) => char.id === id);
-          console.log(`[getSelectedCharacters] ID ${id}:`, {
-            hasFullChar: !!fullChar,
-            hasBasicChar: !!basicChar,
-            fullCharEquipment: fullChar?.equipmentSlots,
-          });
+
           return fullChar || basicChar;
         })
         .filter((char): char is Character => char !== undefined);
@@ -932,16 +919,54 @@ export function EncounterDemo() {
                 currentPlayerId={playerId}
                 currentPlayerName={playerName}
                 onBack={() => setGameMode('select')}
-                onStartCombat={(id) => {
-                  // TODO: Handle multiplayer combat start
-                  // For now, just log and show a toast
+                onStartCombat={(id, event) => {
                   console.log('Starting multiplayer combat:', id);
-                  addToast({
-                    type: 'info',
-                    message:
-                      'Multiplayer combat coming soon! API integration needed.',
-                    duration: 3000,
-                  });
+                  console.log('CombatStartedEvent:', event);
+                  console.log('Event party:', event.party);
+                  console.log('Event combatState:', event.combatState);
+                  console.log('Event room:', event.room);
+                  // Set encounter ID and room from the CombatStarted event
+                  setEncounterId(id);
+
+                  // Extract characters from party members and store them
+                  const partyCharacters = event.party
+                    .filter((member) => member.character?.id)
+                    .map((member) => member.character!);
+
+                  if (partyCharacters.length > 0) {
+                    // Set character IDs for selection
+                    setSelectedCharacterIds(partyCharacters.map((c) => c.id));
+
+                    // Add characters to fullCharactersMap so getSelectedCharacters finds them
+                    setFullCharactersMap((prev) => {
+                      const newMap = new Map(prev);
+                      partyCharacters.forEach((char) => {
+                        newMap.set(char.id, char);
+                      });
+                      return newMap;
+                    });
+                  }
+
+                  // Set combat state from the event
+                  if (event.combatState) {
+                    setCombatState(event.combatState);
+                  }
+
+                  if (event.room) {
+                    setRoom(event.room);
+                    addToast({
+                      type: 'success',
+                      message: 'Combat started!',
+                      duration: 2000,
+                    });
+                  } else {
+                    console.error('CombatStartedEvent missing room data');
+                    addToast({
+                      type: 'error',
+                      message: 'Failed to start combat: missing room data',
+                      duration: 3000,
+                    });
+                  }
                 }}
               />
             ) : (
