@@ -10,11 +10,18 @@
       "artifacts": ["src/components/Equipment.tsx"],
       "commit": "22122d6",
       "notes": "Redesigned Equipment.tsx: side-by-side layout (slots left, inventory right), compact slot rows with icons, item type icons (weapon/armor/shield), visual highlighting on selection, compact stats footer. CI passes."
+    },
+    {
+      "id": "2025-12-16-002",
+      "task": "Add Equipment button to WaitingRoom for lobby integration",
+      "status": "completed",
+      "artifacts": ["src/components/lobby/WaitingRoom.tsx"],
+      "commit": "b1a8e4a",
+      "notes": "Added Check Equipment button to WaitingRoom, opens compact Equipment modal, disabled when ready."
     }
   ],
   "next_steps": [
-    "Manual test: verify no-scroll layout works",
-    "Issue #249: Add Equipment button to lobby screen",
-    "Issue #250: Multiplayer polish (depends on API #292 which is done)"
+    "Manual test: verify Equipment accessible from lobby",
+    "Issue #250: Multiplayer polish (party members visible, turn indicators)"
   ]
 }
