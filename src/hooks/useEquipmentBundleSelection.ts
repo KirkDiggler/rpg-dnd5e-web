@@ -14,11 +14,25 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { useCallback, useState } from 'react';
 
-export function useEquipmentBundleSelection(choice: Choice) {
-  const [selectedBundleId, setSelectedBundleId] = useState<string | null>(null);
+export function useEquipmentBundleSelection(
+  choice: Choice,
+  initialBundleId?: string | null,
+  initialItemIds?: string[]
+) {
+  const [selectedBundleId, setSelectedBundleId] = useState<string | null>(
+    initialBundleId ?? null
+  );
+  // Initialize category selections with initial items (all in category 0 for now)
   const [categorySelections, setCategorySelections] = useState<
     Map<number, Equipment[]>
-  >(new Map());
+  >(() => {
+    if (initialItemIds && initialItemIds.length > 0) {
+      // Create Equipment-like objects with just the id (CategorySelector only needs .id)
+      const items = initialItemIds.map((id) => ({ id, name: id }) as Equipment);
+      return new Map([[0, items]]);
+    }
+    return new Map();
+  });
 
   // When user selects a bundle
   const selectBundle = useCallback((bundleId: string) => {

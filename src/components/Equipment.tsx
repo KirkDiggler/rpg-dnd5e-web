@@ -7,25 +7,20 @@ import {
   EquipmentSlot,
   type InventoryItem,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { AlertTriangle, Package, Shield, Sword } from 'lucide-react';
+import {
+  AlertTriangle,
+  Backpack,
+  CircleDot,
+  Package,
+  Shield,
+  Shirt,
+  Sword,
+  X,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 // Import our new UI components
-import {
-  Button,
-  Card,
-  CardGrid,
-  CardHeader,
-  Container,
-  EmptyState,
-  ErrorDisplay,
-  Grid,
-  GridItem,
-  Modal,
-  ModalFooter,
-  Panel,
-  PanelHeader,
-} from './ui';
+import { Button, EmptyState, ErrorDisplay, Modal, ModalFooter } from './ui';
 
 interface EquipmentProps {
   characterId: string;
@@ -35,30 +30,123 @@ interface EquipmentProps {
 // Helper function to get slot display name and icon
 function getSlotInfo(slot: EquipmentSlot): {
   name: string;
+  shortName: string;
   icon: React.ReactNode;
 } {
   const slotInfo: Partial<
-    Record<EquipmentSlot, { name: string; icon: React.ReactNode }>
+    Record<
+      EquipmentSlot,
+      { name: string; shortName: string; icon: React.ReactNode }
+    >
   > = {
     [EquipmentSlot.UNSPECIFIED]: {
       name: 'Unspecified',
-      icon: <Package size={16} />,
+      shortName: '?',
+      icon: <Package size={18} />,
     },
-    [EquipmentSlot.MAIN_HAND]: { name: 'Main Hand', icon: <Sword size={16} /> },
-    [EquipmentSlot.OFF_HAND]: { name: 'Off Hand', icon: <Shield size={16} /> },
-    [EquipmentSlot.ARMOR]: { name: 'Armor', icon: <Shield size={16} /> },
-    [EquipmentSlot.HELMET]: { name: 'Helmet', icon: <Shield size={16} /> },
-    [EquipmentSlot.BOOTS]: { name: 'Boots', icon: <Shield size={16} /> },
-    [EquipmentSlot.GLOVES]: { name: 'Gloves', icon: <Shield size={16} /> },
-    [EquipmentSlot.CLOAK]: { name: 'Cloak', icon: <Shield size={16} /> },
-    [EquipmentSlot.AMULET]: { name: 'Amulet', icon: <Shield size={16} /> },
-    [EquipmentSlot.RING_1]: { name: 'Ring 1', icon: <Shield size={16} /> },
-    [EquipmentSlot.RING_2]: { name: 'Ring 2', icon: <Shield size={16} /> },
-    [EquipmentSlot.BELT]: { name: 'Belt', icon: <Shield size={16} /> },
+    [EquipmentSlot.MAIN_HAND]: {
+      name: 'Main Hand',
+      shortName: 'Main',
+      icon: <Sword size={18} />,
+    },
+    [EquipmentSlot.OFF_HAND]: {
+      name: 'Off Hand',
+      shortName: 'Off',
+      icon: <Shield size={18} />,
+    },
+    [EquipmentSlot.ARMOR]: {
+      name: 'Armor',
+      shortName: 'Armor',
+      icon: <Shirt size={18} />,
+    },
+    [EquipmentSlot.HELMET]: {
+      name: 'Helmet',
+      shortName: 'Helm',
+      icon: <CircleDot size={18} />,
+    },
+    [EquipmentSlot.BOOTS]: {
+      name: 'Boots',
+      shortName: 'Boots',
+      icon: <Package size={18} />,
+    },
+    [EquipmentSlot.GLOVES]: {
+      name: 'Gloves',
+      shortName: 'Gloves',
+      icon: <Package size={18} />,
+    },
+    [EquipmentSlot.CLOAK]: {
+      name: 'Cloak',
+      shortName: 'Cloak',
+      icon: <Package size={18} />,
+    },
+    [EquipmentSlot.AMULET]: {
+      name: 'Amulet',
+      shortName: 'Amulet',
+      icon: <CircleDot size={18} />,
+    },
+    [EquipmentSlot.RING_1]: {
+      name: 'Ring 1',
+      shortName: 'Ring',
+      icon: <CircleDot size={18} />,
+    },
+    [EquipmentSlot.RING_2]: {
+      name: 'Ring 2',
+      shortName: 'Ring',
+      icon: <CircleDot size={18} />,
+    },
+    [EquipmentSlot.BELT]: {
+      name: 'Belt',
+      shortName: 'Belt',
+      icon: <Package size={18} />,
+    },
   };
   return (
-    slotInfo[slot] || { name: 'Unknown Slot', icon: <Package size={16} /> }
+    slotInfo[slot] || {
+      name: 'Unknown Slot',
+      shortName: '?',
+      icon: <Package size={18} />,
+    }
   );
+}
+
+// Helper function to get item type icon based on item name
+function getItemIcon(itemName: string): React.ReactNode {
+  const name = itemName.toLowerCase();
+
+  if (
+    name.includes('sword') ||
+    name.includes('axe') ||
+    name.includes('dagger') ||
+    name.includes('rapier') ||
+    name.includes('scimitar') ||
+    name.includes('mace') ||
+    name.includes('hammer') ||
+    name.includes('club') ||
+    name.includes('spear') ||
+    name.includes('staff') ||
+    name.includes('bow') ||
+    name.includes('crossbow') ||
+    name.includes('weapon')
+  ) {
+    return <Sword size={16} className="text-red-400" />;
+  }
+
+  if (name.includes('shield')) {
+    return <Shield size={16} className="text-blue-400" />;
+  }
+
+  if (
+    name.includes('armor') ||
+    name.includes('mail') ||
+    name.includes('plate') ||
+    name.includes('leather') ||
+    name.includes('hide') ||
+    name.includes('breastplate')
+  ) {
+    return <Shirt size={16} className="text-gray-400" />;
+  }
+
+  return <Backpack size={16} className="text-amber-400" />;
 }
 
 // Helper function to get available slots for an item
@@ -242,298 +330,256 @@ export function Equipment({ characterId, onClose }: EquipmentProps) {
     }
   };
 
-  // Render equipment slot
-  const renderEquipmentSlot = (slot: EquipmentSlot) => {
-    const { name, icon } = getSlotInfo(slot);
-
-    // Get equipped item for this slot
-    let equippedItem = null;
-    if (inventoryData?.equipmentSlots) {
-      switch (slot) {
-        case EquipmentSlot.MAIN_HAND:
-          equippedItem = inventoryData.equipmentSlots.mainHand;
-          break;
-        case EquipmentSlot.OFF_HAND:
-          equippedItem = inventoryData.equipmentSlots.offHand;
-          break;
-        case EquipmentSlot.ARMOR:
-          equippedItem = inventoryData.equipmentSlots.armor;
-          break;
-        default:
-          equippedItem = null;
-      }
+  // Get equipped item for a slot
+  const getEquippedItem = (slot: EquipmentSlot) => {
+    if (!inventoryData?.equipmentSlots) return null;
+    switch (slot) {
+      case EquipmentSlot.MAIN_HAND:
+        return inventoryData.equipmentSlots.mainHand;
+      case EquipmentSlot.OFF_HAND:
+        return inventoryData.equipmentSlots.offHand;
+      case EquipmentSlot.ARMOR:
+        return inventoryData.equipmentSlots.armor;
+      default:
+        return null;
     }
+  };
 
-    // Check if this slot can accept the selected item
+  // Compact equipment slot component
+  const CompactSlot = ({ slot }: { slot: EquipmentSlot }) => {
+    const { name, icon } = getSlotInfo(slot);
+    const equippedItem = getEquippedItem(slot);
     const canAcceptItem = selectedItem
       ? getAvailableSlots(selectedItem.name).includes(slot)
       : false;
     const isHighlighted = selectedItem && canAcceptItem;
 
     return (
-      <Card
-        key={slot}
-        variant={isHighlighted ? 'default' : 'elevated'}
-        interactive={!!equippedItem || !!isHighlighted}
-        onClick={() => {
-          if (isHighlighted) {
-            handleSlotClick(slot);
-          }
-        }}
-        header={
-          <CardHeader
-            title={name}
-            icon={icon}
-            actions={
-              equippedItem && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleUnequipItem(slot);
-                  }}
-                  loading={isLoading}
-                  disabled={isLoading}
-                >
-                  Unequip
-                </Button>
-              )
-            }
-          />
-        }
+      <div
+        onClick={() => isHighlighted && handleSlotClick(slot)}
+        className={`
+          flex items-center gap-3 p-3 rounded-lg border transition-all
+          ${isHighlighted ? 'border-blue-500 bg-blue-500/10 cursor-pointer' : 'border-gray-700 bg-gray-800/50'}
+          ${equippedItem ? 'hover:bg-gray-700/50' : ''}
+        `}
       >
-        {isHighlighted && !equippedItem ? (
-          <div
-            className="text-center p-4"
-            style={{ color: 'var(--accent-primary)' }}
-          >
-            <p className="font-semibold">
-              Click to equip {selectedItem?.name} here
-            </p>
+        {/* Slot icon */}
+        <div
+          className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
+            isHighlighted
+              ? 'bg-blue-500/20 text-blue-400'
+              : 'bg-gray-700 text-gray-400'
+          }`}
+        >
+          {icon}
+        </div>
+
+        {/* Slot content */}
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-gray-500 uppercase tracking-wide">
+            {name}
           </div>
-        ) : equippedItem ? (
-          <div>
-            <h4
-              className="font-medium mb-2"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {equippedItem.itemId}
-            </h4>
-            <div
-              className="flex items-center gap-2 text-sm"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              {equippedItem.quantity > 1 && (
-                <span>×{equippedItem.quantity}</span>
-              )}
-              {equippedItem.isAttuned && (
-                <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
-                  Attuned
-                </span>
-              )}
+          {equippedItem ? (
+            <div className="text-sm text-white truncate font-medium">
+              {equippedItem.customName || equippedItem.itemId}
             </div>
-          </div>
-        ) : (
-          <EmptyState
-            icon={<div className="text-2xl opacity-50">⚪</div>}
-            title={
-              isHighlighted
-                ? `Click to equip ${selectedItem?.name}`
-                : 'Empty Slot'
-            }
+          ) : isHighlighted ? (
+            <div className="text-sm text-blue-400">Click to equip</div>
+          ) : (
+            <div className="text-sm text-gray-600 italic">Empty</div>
+          )}
+        </div>
+
+        {/* Unequip button */}
+        {equippedItem && (
+          <Button
             size="sm"
-          />
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleUnequipItem(slot);
+            }}
+            disabled={isLoading}
+            className="flex-shrink-0"
+          >
+            <X size={16} />
+          </Button>
         )}
-      </Card>
+      </div>
     );
   };
 
-  // Render inventory item
-  const renderInventoryItem = (item: InventoryItem, index: number) => {
+  // Compact inventory item row
+  const CompactInventoryItem = ({
+    item,
+    index,
+  }: {
+    item: InventoryItem;
+    index: number;
+  }) => {
     const isSelected = selectedItem?.id === item.itemId;
     const itemName = item.customName || item.itemId;
 
     return (
-      <Card
+      <div
         key={`${item.itemId}-${index}`}
-        variant="default"
-        interactive
-        selected={isSelected}
         onClick={() => {
           setSelectedItem(
             isSelected ? null : { id: item.itemId, name: itemName }
           );
         }}
-        header={
-          <CardHeader
-            title={itemName}
-            subtitle={item.quantity > 1 ? `×${item.quantity}` : undefined}
-            actions={
-              item.isAttuned && (
-                <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
-                  Attuned
-                </span>
-              )
-            }
-          />
-        }
-        footer={
-          isSelected && (
-            <div
-              className="text-center p-2"
-              style={{ color: 'var(--accent-primary)' }}
-            >
-              <p className="text-sm font-semibold">
-                Now click a slot above to equip
-              </p>
-              <p className="text-xs opacity-75 mt-1">
-                Valid slots:{' '}
-                {getAvailableSlots(itemName)
-                  .map((s) => getSlotInfo(s).name)
-                  .join(', ')}
-              </p>
-            </div>
-          )
-        }
+        className={`
+          flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all
+          ${isSelected ? 'bg-blue-500/20 ring-1 ring-blue-500' : 'hover:bg-gray-700/50'}
+        `}
       >
-        <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          {isSelected ? 'Select a slot to equip this item' : 'Click to equip'}
+        {/* Item icon */}
+        <div className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center bg-gray-700">
+          {getItemIcon(itemName)}
         </div>
-      </Card>
+
+        {/* Item info */}
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-white truncate">{itemName}</div>
+          <div className="text-xs text-gray-500 flex items-center gap-2">
+            {item.quantity > 1 && <span>×{item.quantity}</span>}
+            {item.isAttuned && <span className="text-yellow-500">Attuned</span>}
+            {isSelected && (
+              <span className="text-blue-400">
+                →{' '}
+                {getAvailableSlots(itemName)
+                  .map((s) => getSlotInfo(s).shortName)
+                  .join(', ')}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Selection indicator */}
+        {isSelected && (
+          <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+            <svg
+              className="w-3 h-3 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={3}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+          </div>
+        )}
+      </div>
     );
   };
 
   return (
     <Modal
       isOpen
-      title="Equipment Management"
+      title="Equipment"
       onClose={onClose}
-      size="xl"
+      size="lg"
       loading={isLoading}
       error={hasError?.message}
       footer={<ModalFooter onCancel={onClose} cancelText="Close" />}
     >
-      <Container size="full" padding="none">
-        {!isLoading && !hasError && (
-          <div className="space-y-6">
-            {/* Equipment Slots Section */}
-            <Panel>
-              <PanelHeader title="Equipped Items" icon={<Shield size={20} />} />
+      {!isLoading && !hasError && (
+        <div className="flex gap-4 min-h-[300px]">
+          {/* Left: Equipment Slots */}
+          <div className="w-64 flex-shrink-0">
+            <div className="flex items-center gap-2 mb-3 text-gray-400">
+              <Shield size={16} />
+              <span className="text-sm font-medium uppercase tracking-wide">
+                Equipped
+              </span>
+            </div>
 
-              {inventoryData ? (
-                <CardGrid columns={3} gap="md">
-                  {[
-                    EquipmentSlot.MAIN_HAND,
-                    EquipmentSlot.OFF_HAND,
-                    EquipmentSlot.ARMOR,
-                  ].map(renderEquipmentSlot)}
-                </CardGrid>
-              ) : (
-                <EmptyState
-                  title="No Equipment Data"
-                  description="Unable to load equipment information"
-                  icon={<AlertTriangle size={48} />}
-                />
-              )}
-            </Panel>
-
-            {/* Inventory Section */}
-            <Panel>
-              <PanelHeader
-                title={`Inventory (${inventoryData?.inventory?.length || 0} items)`}
-                icon={<Package size={20} />}
+            {inventoryData ? (
+              <div className="space-y-2">
+                <CompactSlot slot={EquipmentSlot.MAIN_HAND} />
+                <CompactSlot slot={EquipmentSlot.OFF_HAND} />
+                <CompactSlot slot={EquipmentSlot.ARMOR} />
+              </div>
+            ) : (
+              <EmptyState
+                title="No Equipment Data"
+                description="Unable to load"
+                icon={<AlertTriangle size={32} />}
+                size="sm"
               />
+            )}
 
-              {!inventoryData || inventoryData.inventory.length === 0 ? (
-                <EmptyState
-                  title="No Items in Inventory"
-                  description="Your inventory is empty. Find some loot to fill it up!"
-                  icon={<Package size={48} />}
-                />
-              ) : (
-                <CardGrid columns={3} gap="md">
-                  {inventoryData.inventory.map(renderInventoryItem)}
-                </CardGrid>
-              )}
-            </Panel>
-
-            {/* Character Stats */}
-            <Grid cols={2} gap="lg">
-              {/* Encumbrance */}
-              {inventoryData?.encumbrance && (
-                <GridItem>
-                  <Panel variant="outlined">
-                    <PanelHeader title="Encumbrance" />
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span style={{ color: 'var(--text-muted)' }}>
-                          Current Weight
-                        </span>
-                        <span style={{ color: 'var(--text-primary)' }}>
-                          {inventoryData.encumbrance.currentWeight} /{' '}
-                          {inventoryData.encumbrance.carryingCapacity} lbs
-                        </span>
-                      </div>
-                      <div
-                        className="w-full bg-gray-300 rounded-full h-2"
-                        style={{ backgroundColor: 'var(--bg-primary)' }}
-                      >
-                        <div
-                          className="h-2 rounded-full transition-all"
-                          style={{
-                            width: `${Math.min(
-                              100,
-                              (inventoryData.encumbrance.currentWeight /
-                                inventoryData.encumbrance.carryingCapacity) *
-                                100
-                            )}%`,
-                            backgroundColor:
-                              inventoryData.encumbrance.currentWeight >
-                              inventoryData.encumbrance.carryingCapacity
-                                ? '#dc2626'
-                                : 'var(--accent-primary)',
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </Panel>
-                </GridItem>
-              )}
-
-              {/* Attunement */}
-              {inventoryData && (
-                <GridItem>
-                  <Panel variant="outlined">
-                    <PanelHeader title="Attunement Slots" />
-                    <div className="text-sm">
-                      <span style={{ color: 'var(--text-primary)' }}>
-                        {inventoryData.attunementSlotsUsed || 0} /{' '}
-                        {inventoryData.attunementSlotsMax || 3}
-                      </span>
-                      <span
-                        className="ml-2"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        slots used
-                      </span>
-                    </div>
-                  </Panel>
-                </GridItem>
-              )}
-            </Grid>
+            {/* Compact stats footer */}
+            {inventoryData && (
+              <div className="mt-4 pt-3 border-t border-gray-700 text-xs text-gray-500 space-y-1">
+                {inventoryData.encumbrance && (
+                  <div className="flex justify-between">
+                    <span>Weight</span>
+                    <span className="text-gray-400">
+                      {inventoryData.encumbrance.currentWeight}/
+                      {inventoryData.encumbrance.carryingCapacity} lbs
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Attunement</span>
+                  <span className="text-gray-400">
+                    {inventoryData.attunementSlotsUsed || 0}/
+                    {inventoryData.attunementSlotsMax || 3}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
-        )}
 
-        {/* Error State */}
-        {hasError && !isLoading && (
-          <ErrorDisplay
-            title="Equipment Error"
-            message={hasError.message}
-            onRetry={() => refreshInventory()}
-          />
-        )}
-      </Container>
+          {/* Right: Inventory */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-3 text-gray-400">
+              <Backpack size={16} />
+              <span className="text-sm font-medium uppercase tracking-wide">
+                Inventory ({inventoryData?.inventory?.length || 0})
+              </span>
+              {selectedItem && (
+                <span className="ml-auto text-xs text-blue-400">
+                  Click a slot to equip
+                </span>
+              )}
+            </div>
+
+            {!inventoryData || inventoryData.inventory.length === 0 ? (
+              <EmptyState
+                title="Empty Inventory"
+                description="Find some loot!"
+                icon={<Package size={32} />}
+                size="sm"
+              />
+            ) : (
+              <div className="space-y-1 max-h-[280px] overflow-y-auto pr-2">
+                {inventoryData.inventory.map((item, index) => (
+                  <CompactInventoryItem
+                    key={`${item.itemId}-${index}`}
+                    item={item}
+                    index={index}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {hasError && !isLoading && (
+        <ErrorDisplay
+          title="Equipment Error"
+          message={hasError.message}
+          onRetry={() => refreshInventory()}
+        />
+      )}
     </Modal>
   );
 }

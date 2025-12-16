@@ -7,6 +7,7 @@ import {
   Armor,
   Language,
   Skill,
+  Tool,
   Weapon,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
@@ -125,6 +126,7 @@ export function ClassSelectionModal({
   const currentClassChoices = classChoicesMap[choiceKey] || {
     skills: [],
     languages: [],
+    tools: [],
     equipment: [],
     features: [],
     expertise: [],
@@ -211,8 +213,16 @@ export function ClassSelectionModal({
 
       // Initialize with existing choices if provided
       if (existingChoices && currentClassParam) {
+        // Find the actual class name to use as key (handles both name and ID)
+        const foundClass = classes.find(
+          (cls) =>
+            cls.name === currentClassParam ||
+            String(cls.classId) === currentClassParam
+        );
+        const classKey = foundClass?.name || currentClassParam;
+
         setClassChoicesMap({
-          [currentClassParam]: existingChoices,
+          [classKey]: existingChoices,
         });
       }
 
@@ -357,8 +367,27 @@ export function ClassSelectionModal({
       }
     }
 
+    // Validate tool proficiency choices
+    const toolChoices =
+      choicesSource?.filter(
+        (choice) => choice.choiceType === ChoiceCategory.TOOLS
+      ) || [];
+
+    for (const choice of toolChoices) {
+      const toolChoice = currentClassChoices.tools?.find(
+        (tc) => tc.choiceId === choice.id
+      );
+      const selected = toolChoice?.tools || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} tool${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
     // For now, we'll skip validation of other choice types that don't use enums yet
-    // TODO: Add validation for tools, weapon proficiencies, armor proficiencies, feats, features
+    // TODO: Add validation for weapon proficiencies, armor proficiencies, feats, features
     // when they are updated to use structured types
 
     // Always pass the base class, but if subclass is selected, pass it with subclass info
@@ -1256,6 +1285,84 @@ export function ClassSelectionModal({
                       );
                     })()}
 
+                    {/* Tool Proficiency Choices */}
+                    {(() => {
+                      const toolChoices =
+                        choicesSource?.filter(
+                          (choice) => choice.choiceType === ChoiceCategory.TOOLS
+                        ) || [];
+
+                      if (toolChoices.length === 0) return null;
+
+                      return (
+                        <div>
+                          <h4
+                            style={{
+                              color: textPrimary,
+                              fontSize: '18px',
+                              fontWeight: 'bold',
+                              marginBottom: '12px',
+                              fontFamily: 'Cinzel, serif',
+                            }}
+                          >
+                            Choose Your Tool Proficiencies{' '}
+                            <span
+                              style={{ color: '#ef4444', fontSize: '16px' }}
+                            >
+                              *
+                            </span>
+                          </h4>
+                          {toolChoices.map((choice) => (
+                            <div
+                              key={choice.id}
+                              style={{ marginBottom: '16px' }}
+                            >
+                              <ChoiceRenderer
+                                choice={choice}
+                                currentSelections={
+                                  currentClassChoices.tools?.find(
+                                    (tc) => tc.choiceId === choice.id
+                                  )?.tools || []
+                                }
+                                onSelectionChange={(_choiceId, selections) => {
+                                  // selections are now Tool enums directly
+                                  const toolEnums = selections as Tool[];
+
+                                  setClassChoicesMap((prev) => {
+                                    const currentChoices = prev[choiceKey] || {
+                                      skills: [],
+                                      tools: [],
+                                      equipment: [],
+                                      features: [],
+                                    };
+                                    const updatedTools =
+                                      currentChoices.tools?.filter(
+                                        (tc) => tc.choiceId !== choice.id
+                                      ) || [];
+
+                                    if (toolEnums.length > 0) {
+                                      updatedTools.push({
+                                        choiceId: choice.id,
+                                        tools: toolEnums,
+                                      });
+                                    }
+
+                                    return {
+                                      ...prev,
+                                      [choiceKey]: {
+                                        ...currentChoices,
+                                        tools: updatedTools,
+                                      },
+                                    };
+                                  });
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     {/* Class Features */}
                     {(() => {
                       const featureChoices =
@@ -1367,95 +1474,116 @@ export function ClassSelectionModal({
                               *
                             </span>
                           </h4>
-                          {equipmentChoices.map((choice) => (
-                            <div
-                              key={choice.id}
-                              style={{ marginBottom: '16px' }}
-                            >
-                              <ChoiceRenderer
-                                choice={choice}
-                                currentSelections={
-                                  currentClassChoices.equipment?.find(
-                                    (ec) => ec.choiceId === choice.id
-                                  )?.bundleId
-                                    ? [
-                                        currentClassChoices.equipment?.find(
-                                          (ec) => ec.choiceId === choice.id
-                                        )?.bundleId,
-                                      ]
-                                    : ([] as string[])
-                                }
-                                onSelectionChange={(_choiceId, selections) => {
-                                  setClassChoicesMap((prev) => {
-                                    const currentChoices = prev[choiceKey] || {
-                                      skills: [],
-                                      equipment: [],
-                                      features: [],
-                                    };
-                                    const updatedEquipment =
-                                      currentChoices.equipment?.filter(
-                                        (ec) => ec.choiceId !== choice.id
-                                      ) || [];
-
-                                    if (selections.length > 0) {
-                                      // Extract bundleId from the first selection
-                                      const firstSel = selections[0];
-                                      const bundleId = firstSel.split(':')[0];
-
-                                      // Parse category selections from remaining items
-                                      // Format: "cat{index}:{id}:{name}"
-                                      const categorySelections: Array<{
-                                        categoryIndex: number;
-                                        equipmentIds: string[];
-                                      }> = [];
-
-                                      selections
-                                        .slice(1)
-                                        .forEach((sel: string) => {
-                                          if (sel.startsWith('cat')) {
-                                            const parts = sel.split(':');
-                                            const catIndex = parseInt(
-                                              parts[0].replace('cat', '')
-                                            );
-                                            const equipId = parts[1];
-
-                                            // Find or create category entry
-                                            let catEntry =
-                                              categorySelections.find(
-                                                (c) =>
-                                                  c.categoryIndex === catIndex
-                                              );
-                                            if (!catEntry) {
-                                              catEntry = {
-                                                categoryIndex: catIndex,
-                                                equipmentIds: [],
-                                              };
-                                              categorySelections.push(catEntry);
-                                            }
-                                            catEntry.equipmentIds.push(equipId);
-                                          }
-                                        });
-
-                                      const equipmentChoice: EquipmentChoice = {
-                                        choiceId: choice.id,
-                                        bundleId: bundleId,
-                                        categorySelections,
-                                      };
-                                      updatedEquipment.push(equipmentChoice);
-                                    }
-
-                                    return {
-                                      ...prev,
-                                      [choiceKey]: {
-                                        ...currentChoices,
-                                        equipment: updatedEquipment,
-                                      },
-                                    };
+                          {equipmentChoices.map((choice) => {
+                            const foundEquipment =
+                              currentClassChoices.equipment?.find(
+                                (ec) => ec.choiceId === choice.id
+                              );
+                            // Build currentSelections array: [bundleId, 'cat0:id:name', ...]
+                            const equipmentSelections: string[] = [];
+                            if (foundEquipment?.bundleId) {
+                              equipmentSelections.push(foundEquipment.bundleId);
+                              // Add category selections in the expected format
+                              foundEquipment.categorySelections?.forEach(
+                                (cat) => {
+                                  cat.equipmentIds.forEach((id) => {
+                                    equipmentSelections.push(
+                                      `cat${cat.categoryIndex}:${id}:${id}`
+                                    );
                                   });
-                                }}
-                              />
-                            </div>
-                          ))}
+                                }
+                              );
+                            }
+                            return (
+                              <div
+                                key={choice.id}
+                                style={{ marginBottom: '16px' }}
+                              >
+                                <ChoiceRenderer
+                                  choice={choice}
+                                  currentSelections={equipmentSelections}
+                                  onSelectionChange={(
+                                    _choiceId,
+                                    selections
+                                  ) => {
+                                    setClassChoicesMap((prev) => {
+                                      const currentChoices = prev[
+                                        choiceKey
+                                      ] || {
+                                        skills: [],
+                                        equipment: [],
+                                        features: [],
+                                      };
+                                      const updatedEquipment =
+                                        currentChoices.equipment?.filter(
+                                          (ec) => ec.choiceId !== choice.id
+                                        ) || [];
+
+                                      if (selections.length > 0) {
+                                        // Extract bundleId from the first selection
+                                        const firstSel = selections[0];
+                                        const bundleId = firstSel.split(':')[0];
+
+                                        // Parse category selections from remaining items
+                                        // Format: "cat{index}:{id}:{name}"
+                                        const categorySelections: Array<{
+                                          categoryIndex: number;
+                                          equipmentIds: string[];
+                                        }> = [];
+
+                                        selections
+                                          .slice(1)
+                                          .forEach((sel: string) => {
+                                            if (sel.startsWith('cat')) {
+                                              const parts = sel.split(':');
+                                              const catIndex = parseInt(
+                                                parts[0].replace('cat', '')
+                                              );
+                                              const equipId = parts[1];
+
+                                              // Find or create category entry
+                                              let catEntry =
+                                                categorySelections.find(
+                                                  (c) =>
+                                                    c.categoryIndex === catIndex
+                                                );
+                                              if (!catEntry) {
+                                                catEntry = {
+                                                  categoryIndex: catIndex,
+                                                  equipmentIds: [],
+                                                };
+                                                categorySelections.push(
+                                                  catEntry
+                                                );
+                                              }
+                                              catEntry.equipmentIds.push(
+                                                equipId
+                                              );
+                                            }
+                                          });
+
+                                        const equipmentChoice: EquipmentChoice =
+                                          {
+                                            choiceId: choice.id,
+                                            bundleId: bundleId,
+                                            categorySelections,
+                                          };
+                                        updatedEquipment.push(equipmentChoice);
+                                      }
+
+                                      return {
+                                        ...prev,
+                                        [choiceKey]: {
+                                          ...currentChoices,
+                                          equipment: updatedEquipment,
+                                        },
+                                      };
+                                    });
+                                  }}
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     })()}
@@ -1543,13 +1671,14 @@ export function ClassSelectionModal({
                       );
                     })()}
 
-                    {/* Other Choice Types (Tools, Weapon Proficiencies, etc.) */}
+                    {/* Other Choice Types (Weapon Proficiencies, etc.) */}
                     {(() => {
                       const otherChoices =
                         choicesSource?.filter(
                           (choice) =>
                             choice.choiceType !== ChoiceCategory.SKILLS &&
                             choice.choiceType !== ChoiceCategory.LANGUAGES &&
+                            choice.choiceType !== ChoiceCategory.TOOLS &&
                             choice.choiceType !== ChoiceCategory.EQUIPMENT &&
                             choice.choiceType !== ChoiceCategory.FIGHTING_STYLE
                         ) || [];

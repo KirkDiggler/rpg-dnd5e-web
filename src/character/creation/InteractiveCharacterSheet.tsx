@@ -176,6 +176,7 @@ export function InteractiveCharacterSheet({
     const choices: ClassModalChoices = {
       skills: [],
       languages: [],
+      tools: [],
       equipment: [],
       features: [],
       expertise: [],
@@ -189,12 +190,31 @@ export function InteractiveCharacterSheet({
         choice.category === ChoiceCategory.EQUIPMENT &&
         choice.selection?.case === 'equipment'
       ) {
-        // TODO: Convert equipment selection to new EquipmentChoice structure
-        // For now, create a minimal valid EquipmentChoice
+        // Restore equipment choice with bundleId from optionId
+        // Extract item IDs from the saved items - handle both string IDs and enum values
+        const itemIds: string[] = [];
+        choice.selection.value.items?.forEach((item) => {
+          if (
+            item.equipment?.case === 'otherEquipmentId' &&
+            item.equipment.value
+          ) {
+            // String ID case
+            itemIds.push(item.equipment.value);
+          } else if (
+            item.equipment?.case &&
+            item.equipment?.value !== undefined
+          ) {
+            // Enum case (weapon, armor, etc.) - convert enum number to string
+            itemIds.push(String(item.equipment.value));
+          }
+        });
         choices.equipment?.push({
           choiceId: choice.choiceId,
-          bundleId: '',
-          categorySelections: [],
+          bundleId: choice.optionId || '',
+          categorySelections:
+            itemIds.length > 0
+              ? [{ categoryIndex: 0, equipmentIds: itemIds }]
+              : [],
         });
       } else if (
         choice.category === ChoiceCategory.SKILLS &&
@@ -213,6 +233,17 @@ export function InteractiveCharacterSheet({
           languages: choice.selection.value.languages || [],
         });
       } else if (
+        choice.category === ChoiceCategory.TOOLS ||
+        choice.selection?.case === 'tools'
+      ) {
+        // Match on either category OR selection.case (API may not preserve category)
+        if (choice.selection?.case === 'tools') {
+          choices.tools?.push({
+            choiceId: choice.choiceId,
+            tools: choice.selection.value.tools || [],
+          });
+        }
+      } else if (
         choice.category === ChoiceCategory.FIGHTING_STYLE &&
         choice.selection?.case === 'fightingStyle'
       ) {
@@ -223,7 +254,6 @@ export function InteractiveCharacterSheet({
           selection: choice.selection.value.style,
         });
       }
-      // TODO: Handle other choice types as needed
     });
 
     return choices;
@@ -1623,6 +1653,15 @@ export function InteractiveCharacterSheet({
             choices.equipment.forEach((equipChoice) => {
               choiceData.push(
                 convertEquipmentChoiceToProto(equipChoice, ChoiceSource.CLASS)
+              );
+            });
+          }
+
+          // Convert tool proficiency choices
+          if (choices.tools) {
+            choices.tools.forEach((toolChoice) => {
+              choiceData.push(
+                convertToolChoiceToProto(toolChoice, ChoiceSource.CLASS)
               );
             });
           }

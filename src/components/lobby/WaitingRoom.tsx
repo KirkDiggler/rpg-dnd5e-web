@@ -1,5 +1,8 @@
 import { formatCharacterSummary } from '@/utils/displayNames';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { Backpack } from 'lucide-react';
+import { useState } from 'react';
+import { Equipment } from '../Equipment';
 import { JoinCodeDisplay } from './JoinCodeDisplay';
 import { PartyMemberCard, type PartyMember } from './PartyMemberCard';
 
@@ -43,6 +46,7 @@ export function WaitingRoom({
   onLeave,
   startLoading,
 }: WaitingRoomProps) {
+  const [showEquipment, setShowEquipment] = useState(false);
   const allReady = partyMembers.every((m) => m.isReady);
   const readyCount = partyMembers.filter((m) => m.isReady).length;
 
@@ -116,6 +120,23 @@ export function WaitingRoom({
         )}
       </div>
 
+      {/* Equipment Button */}
+      {selectedCharacterId && (
+        <button
+          onClick={() => setShowEquipment(true)}
+          disabled={isReady}
+          className="w-full px-4 py-3 rounded-lg flex items-center justify-center gap-2 transition-all hover:brightness-110 disabled:opacity-50"
+          style={{
+            backgroundColor: 'var(--bg-secondary)',
+            border: '1px solid var(--border-primary)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          <Backpack size={18} />
+          Check Equipment
+        </button>
+      )}
+
       {/* Action Buttons */}
       <div className="space-y-3">
         {/* Ready Toggle */}
@@ -171,6 +192,14 @@ export function WaitingRoom({
       >
         Leave Lobby
       </button>
+
+      {/* Equipment Modal */}
+      {showEquipment && selectedCharacterId && (
+        <Equipment
+          characterId={selectedCharacterId}
+          onClose={() => setShowEquipment(false)}
+        />
+      )}
     </div>
   );
 }

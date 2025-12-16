@@ -34,9 +34,26 @@ export function ChoiceRenderer({
     choice.choiceType === ChoiceCategory.EQUIPMENT &&
     choice.options?.case === 'equipmentOptions'
   ) {
+    // Extract initial bundle ID from currentSelections (first element is the bundleId)
+    // Format: [bundleId, 'cat0:itemId:name', 'cat0:itemId2:name2', ...]
+    const initialBundleId =
+      Array.isArray(currentSelections) && currentSelections.length > 0
+        ? currentSelections[0]
+        : null;
+    // Extract item IDs from category selections (skip first element which is bundleId)
+    const initialItemIds =
+      Array.isArray(currentSelections) && currentSelections.length > 1
+        ? currentSelections.slice(1).map((sel: string) => {
+            // Format is "cat{index}:{id}:{name}" - extract the id
+            const parts = sel.split(':');
+            return parts.length >= 2 ? parts[1] : sel;
+          })
+        : undefined;
     return (
       <EquipmentBundleChoice
         choice={choice}
+        initialBundleId={initialBundleId}
+        initialItemIds={initialItemIds}
         onSelectionChange={(bundleId, categorySelections) => {
           // Convert EquipmentBundleChoice format back to standard format
           // Store equipment selections with both id and name: "cat0:id:name"
