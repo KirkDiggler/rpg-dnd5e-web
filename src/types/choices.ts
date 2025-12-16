@@ -74,11 +74,12 @@ export interface RaceModalChoices {
 export interface ClassModalChoices {
   skills?: SkillChoice[];
   languages?: LanguageChoice[]; // Language choices for subclasses like Knowledge Domain
+  tools?: ToolChoice[]; // Tool proficiency choices (Monk, Bard, etc.)
   equipment?: EquipmentChoice[];
   features?: FeatureChoice[];
   expertise?: ExpertiseChoice[];
   traits?: TraitChoice[];
-  proficiencies?: string[]; // Tool and other proficiency choices
+  proficiencies?: string[]; // Other proficiency choices (weapons, armor)
 }
 
 export interface BackgroundModalChoices {

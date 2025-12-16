@@ -7,6 +7,7 @@ import {
   Armor,
   Language,
   Skill,
+  Tool,
   Weapon,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
@@ -125,6 +126,7 @@ export function ClassSelectionModal({
   const currentClassChoices = classChoicesMap[choiceKey] || {
     skills: [],
     languages: [],
+    tools: [],
     equipment: [],
     features: [],
     expertise: [],
@@ -357,8 +359,27 @@ export function ClassSelectionModal({
       }
     }
 
+    // Validate tool proficiency choices
+    const toolChoices =
+      choicesSource?.filter(
+        (choice) => choice.choiceType === ChoiceCategory.TOOLS
+      ) || [];
+
+    for (const choice of toolChoices) {
+      const toolChoice = currentClassChoices.tools?.find(
+        (tc) => tc.choiceId === choice.id
+      );
+      const selected = toolChoice?.tools || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} tool${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
     // For now, we'll skip validation of other choice types that don't use enums yet
-    // TODO: Add validation for tools, weapon proficiencies, armor proficiencies, feats, features
+    // TODO: Add validation for weapon proficiencies, armor proficiencies, feats, features
     // when they are updated to use structured types
 
     // Always pass the base class, but if subclass is selected, pass it with subclass info
@@ -1256,6 +1277,84 @@ export function ClassSelectionModal({
                       );
                     })()}
 
+                    {/* Tool Proficiency Choices */}
+                    {(() => {
+                      const toolChoices =
+                        choicesSource?.filter(
+                          (choice) => choice.choiceType === ChoiceCategory.TOOLS
+                        ) || [];
+
+                      if (toolChoices.length === 0) return null;
+
+                      return (
+                        <div>
+                          <h4
+                            style={{
+                              color: textPrimary,
+                              fontSize: '18px',
+                              fontWeight: 'bold',
+                              marginBottom: '12px',
+                              fontFamily: 'Cinzel, serif',
+                            }}
+                          >
+                            Choose Your Tool Proficiencies{' '}
+                            <span
+                              style={{ color: '#ef4444', fontSize: '16px' }}
+                            >
+                              *
+                            </span>
+                          </h4>
+                          {toolChoices.map((choice) => (
+                            <div
+                              key={choice.id}
+                              style={{ marginBottom: '16px' }}
+                            >
+                              <ChoiceRenderer
+                                choice={choice}
+                                currentSelections={
+                                  currentClassChoices.tools?.find(
+                                    (tc) => tc.choiceId === choice.id
+                                  )?.tools || []
+                                }
+                                onSelectionChange={(_choiceId, selections) => {
+                                  // selections are now Tool enums directly
+                                  const toolEnums = selections as Tool[];
+
+                                  setClassChoicesMap((prev) => {
+                                    const currentChoices = prev[choiceKey] || {
+                                      skills: [],
+                                      tools: [],
+                                      equipment: [],
+                                      features: [],
+                                    };
+                                    const updatedTools =
+                                      currentChoices.tools?.filter(
+                                        (tc) => tc.choiceId !== choice.id
+                                      ) || [];
+
+                                    if (toolEnums.length > 0) {
+                                      updatedTools.push({
+                                        choiceId: choice.id,
+                                        tools: toolEnums,
+                                      });
+                                    }
+
+                                    return {
+                                      ...prev,
+                                      [choiceKey]: {
+                                        ...currentChoices,
+                                        tools: updatedTools,
+                                      },
+                                    };
+                                  });
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     {/* Class Features */}
                     {(() => {
                       const featureChoices =
@@ -1543,13 +1642,14 @@ export function ClassSelectionModal({
                       );
                     })()}
 
-                    {/* Other Choice Types (Tools, Weapon Proficiencies, etc.) */}
+                    {/* Other Choice Types (Weapon Proficiencies, etc.) */}
                     {(() => {
                       const otherChoices =
                         choicesSource?.filter(
                           (choice) =>
                             choice.choiceType !== ChoiceCategory.SKILLS &&
                             choice.choiceType !== ChoiceCategory.LANGUAGES &&
+                            choice.choiceType !== ChoiceCategory.TOOLS &&
                             choice.choiceType !== ChoiceCategory.EQUIPMENT &&
                             choice.choiceType !== ChoiceCategory.FIGHTING_STYLE
                         ) || [];
