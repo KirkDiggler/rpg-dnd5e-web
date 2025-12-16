@@ -1,44 +1,37 @@
 {
   "tests": [
     {
-      "id": "create-lobby",
-      "feature": "lobby-creation",
-      "prompt": "Host creates a lobby. Verify: encounterId and joinCode are returned, player appears in party list as host, stream connects.",
+      "id": "no-scroll-view",
+      "feature": "equipment-compact",
+      "prompt": "Open the equipment UI. Can you see both equipment slots and inventory without scrolling?",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "join-lobby",
-      "feature": "lobby-join",
-      "prompt": "Second player joins with join code. Verify: both players see each other in party list via stream events.",
+      "id": "item-type-icons",
+      "feature": "equipment-compact",
+      "prompt": "Look at the inventory items. Do different item types (weapons, armor, shields) have distinct icons?",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "ready-toggle",
-      "feature": "ready-status",
-      "prompt": "Player toggles ready. Verify: ready status updates for all players via stream event (not optimistically).",
+      "id": "equip-unequip-works",
+      "feature": "equipment-compact",
+      "prompt": "Select an inventory item and click a slot to equip it. Then unequip it. Does the flow work smoothly?",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "start-combat",
-      "feature": "combat-start",
-      "prompt": "Host starts combat when all ready. Verify: CombatStarted event triggers transition to combat view.",
+      "id": "lobby-integration",
+      "feature": "lobby-flow",
+      "prompt": "From the lobby screen before readying up, can you access the equipment UI to check/change gear?",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "reconnection",
-      "feature": "connection-resilience",
-      "prompt": "Stream disconnects briefly. Verify: auto-reconnect happens, connection state shows 'reconnecting', then 'connected'.",
-      "passes": false,
-      "last_checked": null
-    },
-    {
-      "id": "leave-lobby",
-      "feature": "lobby-leave",
-      "prompt": "Player leaves lobby. Verify: other players see them removed via stream event.",
+      "id": "multiplayer-characters",
+      "feature": "multiplayer-polish",
+      "prompt": "In a multiplayer game, can you see all party members with their ready states and character info?",
       "passes": false,
       "last_checked": null
     }

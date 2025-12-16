@@ -1,55 +1,21 @@
 {
-  "branch": "feature/encounter-streaming",
-  "issues": ["rpg-api#280"],
-  "goal": "Implement encounter streaming hook and lobby API integration for multiplayer synchronization",
+  "branch": "feature/248-equipment-ui-compact",
+  "issues": ["#248", "#249", "#250"],
+  "goal": "Create compact equipment UI for dungeon milestone - no scrolling between slots and inventory, add item type icons, enable lobby integration",
   "sessions": [
     {
-      "id": "2025-12-14-001",
-      "task": "Design streaming hook architecture",
-      "status": "completed",
-      "artifacts": ["docs/plans/2025-12-14-encounter-streaming-hook-design.md"],
-      "commit": "589bde5",
-      "notes": "Brainstormed design: dedicated hook with callbacks, auto-reconnect, stream as source of truth"
-    },
-    {
-      "id": "2025-12-14-002",
-      "task": "Implement useEncounterStream hook",
-      "status": "completed",
-      "artifacts": ["src/api/useEncounterStream.ts"],
-      "commit": "45cd611",
-      "notes": "Implemented streaming hook with auto-reconnect, event dispatching, and connection state management. Uses proto types directly, follows design doc exactly."
-    },
-    {
-      "id": "2025-12-14-003",
-      "task": "Create lobbyHooks.ts with unary RPC hooks",
-      "status": "completed",
-      "artifacts": ["src/api/lobbyHooks.ts"],
-      "commit": "90482da",
-      "notes": "Implemented all five lobby hooks (useCreateEncounter, useJoinEncounter, useSetReady, useStartCombat, useLeaveEncounter) following the AsyncState pattern from encounterHooks.ts. No optimistic updates - stream is source of truth. All pre-commit checks pass."
-    },
-    {
-      "id": "2025-12-14-004",
-      "task": "Integrate hooks and streaming in LobbyScreen.tsx",
-      "status": "completed",
-      "artifacts": ["src/components/lobby/LobbyScreen.tsx"],
-      "commit": "10b48f6",
-      "notes": "Replaced all mock implementations with real API calls. Added useEncounterStream with callbacks for PlayerJoined, PlayerLeft, PlayerReady, and CombatStarted events. No optimistic updates - stream is source of truth. Added connection status UI (reconnecting/error banners). All pre-commit checks pass."
-    },
-    {
-      "id": "2025-12-14-005",
-      "task": "Fix lobby UI styling",
-      "status": "completed",
-      "artifacts": [
-        "src/components/lobby/LobbyScreen.tsx",
-        "src/components/lobby/WaitingRoom.tsx"
-      ],
-      "commit": "1ed25b7",
-      "notes": "Fixed wide button issue by adding flex centering wrapper with max-w-md. Stacked action buttons vertically for cleaner layout."
+      "id": "2025-12-16-001",
+      "task": "Audit Equipment.tsx and create compact side-by-side layout",
+      "status": "in_progress",
+      "artifacts": [],
+      "commit": null,
+      "notes": "Current layout: Modal with stacked sections (slots on top, inventory below) using CardGrid columns=3. Need side-by-side layout."
     }
   ],
   "next_steps": [
-    "Test end-to-end with backend (waiting for PlayerReady event conversion fix)",
-    "Update PartyMemberCard to show disconnected indicator",
-    "Consider adding visual loading states during API calls"
+    "Implement side-by-side layout (slots left, inventory right)",
+    "Create compact slot components with proper icons",
+    "Create compact inventory list with item type indicators",
+    "Test no-scroll on various screen sizes"
   ]
 }
