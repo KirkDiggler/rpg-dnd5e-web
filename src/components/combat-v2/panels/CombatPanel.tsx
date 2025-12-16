@@ -82,6 +82,29 @@ export function CombatPanel({
 
   return (
     <div className={styles.combatPanel}>
+      {/* Turn Status Banner - prominent indicator for multiplayer */}
+      <div
+        style={{
+          background: isPlayerTurn
+            ? 'linear-gradient(90deg, #10B981, #059669)'
+            : 'rgba(100, 116, 139, 0.8)',
+          color: isPlayerTurn ? 'white' : '#94a3b8',
+          padding: '6px 16px',
+          textAlign: 'center',
+          fontWeight: isPlayerTurn ? 'bold' : 'normal',
+          fontSize: isPlayerTurn ? '13px' : '11px',
+          textTransform: 'uppercase',
+          letterSpacing: isPlayerTurn ? '2px' : '1px',
+          boxShadow: isPlayerTurn
+            ? '0 2px 8px rgba(16, 185, 129, 0.4)'
+            : 'none',
+        }}
+      >
+        {isPlayerTurn
+          ? `⚔️ Your Turn — ${character.name}`
+          : '⏳ Waiting for other player...'}
+      </div>
+
       <div className={styles.combatPanelContainer}>
         {/* Left Column: Hover Info Panel */}
         <HoverInfoPanel
