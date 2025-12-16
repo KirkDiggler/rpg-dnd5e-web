@@ -10,6 +10,7 @@ import {
 import {
   AlertTriangle,
   Backpack,
+  Check,
   CircleDot,
   Package,
   Shield,
@@ -356,7 +357,15 @@ export function Equipment({ characterId, onClose }: EquipmentProps) {
 
     return (
       <div
+        role={isHighlighted ? 'button' : undefined}
+        tabIndex={isHighlighted ? 0 : undefined}
         onClick={() => isHighlighted && handleSlotClick(slot)}
+        onKeyDown={(e) => {
+          if (isHighlighted && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            handleSlotClick(slot);
+          }
+        }}
         className={`
           flex items-center gap-3 p-3 rounded-lg border transition-all
           ${isHighlighted ? 'border-blue-500 bg-blue-500/10 cursor-pointer' : 'border-gray-700 bg-gray-800/50'}
@@ -380,7 +389,10 @@ export function Equipment({ characterId, onClose }: EquipmentProps) {
             {name}
           </div>
           {equippedItem ? (
-            <div className="text-sm text-white truncate font-medium">
+            <div
+              className="text-sm text-white truncate font-medium"
+              title={equippedItem.customName || equippedItem.itemId}
+            >
               {equippedItem.customName || equippedItem.itemId}
             </div>
           ) : isHighlighted ? (
@@ -401,6 +413,7 @@ export function Equipment({ characterId, onClose }: EquipmentProps) {
             }}
             disabled={isLoading}
             className="flex-shrink-0"
+            aria-label="Unequip item"
           >
             <X size={16} />
           </Button>
@@ -423,10 +436,20 @@ export function Equipment({ characterId, onClose }: EquipmentProps) {
     return (
       <div
         key={`${item.itemId}-${index}`}
+        role="button"
+        tabIndex={0}
         onClick={() => {
           setSelectedItem(
             isSelected ? null : { id: item.itemId, name: itemName }
           );
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setSelectedItem(
+              isSelected ? null : { id: item.itemId, name: itemName }
+            );
+          }
         }}
         className={`
           flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all
@@ -440,7 +463,9 @@ export function Equipment({ characterId, onClose }: EquipmentProps) {
 
         {/* Item info */}
         <div className="flex-1 min-w-0">
-          <div className="text-sm text-white truncate">{itemName}</div>
+          <div className="text-sm text-white truncate" title={itemName}>
+            {itemName}
+          </div>
           <div className="text-xs text-gray-500 flex items-center gap-2">
             {item.quantity > 1 && <span>×{item.quantity}</span>}
             {item.isAttuned && <span className="text-yellow-500">Attuned</span>}
@@ -458,19 +483,7 @@ export function Equipment({ characterId, onClose }: EquipmentProps) {
         {/* Selection indicator */}
         {isSelected && (
           <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
-            <svg
-              className="w-3 h-3 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={3}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
+            <Check size={12} className="text-white" strokeWidth={3} />
           </div>
         )}
       </div>
