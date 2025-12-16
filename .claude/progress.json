@@ -1,7 +1,7 @@
 {
   "branch": "feature/248-equipment-ui-compact",
   "issues": ["#248", "#249", "#250"],
-  "goal": "Create compact equipment UI for dungeon milestone - no scrolling between slots and inventory, add item type icons, enable lobby integration",
+  "goal": "Create compact equipment UI for dungeon milestone - no scrolling between slots and inventory, add item type icons, enable lobby integration, multiplayer polish",
   "sessions": [
     {
       "id": "2025-12-16-001",
@@ -9,7 +9,7 @@
       "status": "completed",
       "artifacts": ["src/components/Equipment.tsx"],
       "commit": "22122d6",
-      "notes": "Redesigned Equipment.tsx: side-by-side layout (slots left, inventory right), compact slot rows with icons, item type icons (weapon/armor/shield), visual highlighting on selection, compact stats footer. CI passes."
+      "notes": "Redesigned Equipment.tsx: side-by-side layout (slots left, inventory right), compact slot rows with icons, item type icons (weapon/armor/shield), visual highlighting on selection, compact stats footer."
     },
     {
       "id": "2025-12-16-002",
@@ -18,10 +18,29 @@
       "artifacts": ["src/components/lobby/WaitingRoom.tsx"],
       "commit": "b1a8e4a",
       "notes": "Added Check Equipment button to WaitingRoom, opens compact Equipment modal, disabled when ready."
+    },
+    {
+      "id": "2025-12-16-003",
+      "task": "Add Monk tool proficiency selection (user contribution)",
+      "status": "completed",
+      "artifacts": [
+        "src/character/creation/ClassSelectionModal.tsx",
+        "src/types/choices.ts"
+      ],
+      "commit": "4d55db9",
+      "notes": "Added tool choice handling for Monk class selection."
+    },
+    {
+      "id": "2025-12-16-004",
+      "task": "Add turn status banner for multiplayer combat",
+      "status": "completed",
+      "artifacts": ["src/components/combat-v2/panels/CombatPanel.tsx"],
+      "commit": "eec681f",
+      "notes": "Added YOUR TURN / Waiting banner at top of CombatPanel for multiplayer clarity."
     }
   ],
   "next_steps": [
-    "Manual test: verify Equipment accessible from lobby",
-    "Issue #250: Multiplayer polish (party members visible, turn indicators)"
+    "Manual test: verify multiplayer flow end-to-end",
+    "Clean up .claude/ artifacts before merge"
   ]
 }
