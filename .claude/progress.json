@@ -5,17 +5,16 @@
   "sessions": [
     {
       "id": "2025-12-16-001",
-      "task": "Audit Equipment.tsx and create compact side-by-side layout",
-      "status": "in_progress",
-      "artifacts": [],
-      "commit": null,
-      "notes": "Current layout: Modal with stacked sections (slots on top, inventory below) using CardGrid columns=3. Need side-by-side layout."
+      "task": "Implement compact side-by-side Equipment UI layout",
+      "status": "completed",
+      "artifacts": ["src/components/Equipment.tsx"],
+      "commit": "22122d6",
+      "notes": "Redesigned Equipment.tsx: side-by-side layout (slots left, inventory right), compact slot rows with icons, item type icons (weapon/armor/shield), visual highlighting on selection, compact stats footer. CI passes."
     }
   ],
   "next_steps": [
-    "Implement side-by-side layout (slots left, inventory right)",
-    "Create compact slot components with proper icons",
-    "Create compact inventory list with item type indicators",
-    "Test no-scroll on various screen sizes"
+    "Manual test: verify no-scroll layout works",
+    "Issue #249: Add Equipment button to lobby screen",
+    "Issue #250: Multiplayer polish (depends on API #292 which is done)"
   ]
 }
