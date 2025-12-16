@@ -213,8 +213,16 @@ export function ClassSelectionModal({
 
       // Initialize with existing choices if provided
       if (existingChoices && currentClassParam) {
+        // Find the actual class name to use as key (handles both name and ID)
+        const foundClass = classes.find(
+          (cls) =>
+            cls.name === currentClassParam ||
+            String(cls.classId) === currentClassParam
+        );
+        const classKey = foundClass?.name || currentClassParam;
+
         setClassChoicesMap({
-          [currentClassParam]: existingChoices,
+          [classKey]: existingChoices,
         });
       }
 
@@ -1466,95 +1474,116 @@ export function ClassSelectionModal({
                               *
                             </span>
                           </h4>
-                          {equipmentChoices.map((choice) => (
-                            <div
-                              key={choice.id}
-                              style={{ marginBottom: '16px' }}
-                            >
-                              <ChoiceRenderer
-                                choice={choice}
-                                currentSelections={
-                                  currentClassChoices.equipment?.find(
-                                    (ec) => ec.choiceId === choice.id
-                                  )?.bundleId
-                                    ? [
-                                        currentClassChoices.equipment?.find(
-                                          (ec) => ec.choiceId === choice.id
-                                        )?.bundleId,
-                                      ]
-                                    : ([] as string[])
-                                }
-                                onSelectionChange={(_choiceId, selections) => {
-                                  setClassChoicesMap((prev) => {
-                                    const currentChoices = prev[choiceKey] || {
-                                      skills: [],
-                                      equipment: [],
-                                      features: [],
-                                    };
-                                    const updatedEquipment =
-                                      currentChoices.equipment?.filter(
-                                        (ec) => ec.choiceId !== choice.id
-                                      ) || [];
-
-                                    if (selections.length > 0) {
-                                      // Extract bundleId from the first selection
-                                      const firstSel = selections[0];
-                                      const bundleId = firstSel.split(':')[0];
-
-                                      // Parse category selections from remaining items
-                                      // Format: "cat{index}:{id}:{name}"
-                                      const categorySelections: Array<{
-                                        categoryIndex: number;
-                                        equipmentIds: string[];
-                                      }> = [];
-
-                                      selections
-                                        .slice(1)
-                                        .forEach((sel: string) => {
-                                          if (sel.startsWith('cat')) {
-                                            const parts = sel.split(':');
-                                            const catIndex = parseInt(
-                                              parts[0].replace('cat', '')
-                                            );
-                                            const equipId = parts[1];
-
-                                            // Find or create category entry
-                                            let catEntry =
-                                              categorySelections.find(
-                                                (c) =>
-                                                  c.categoryIndex === catIndex
-                                              );
-                                            if (!catEntry) {
-                                              catEntry = {
-                                                categoryIndex: catIndex,
-                                                equipmentIds: [],
-                                              };
-                                              categorySelections.push(catEntry);
-                                            }
-                                            catEntry.equipmentIds.push(equipId);
-                                          }
-                                        });
-
-                                      const equipmentChoice: EquipmentChoice = {
-                                        choiceId: choice.id,
-                                        bundleId: bundleId,
-                                        categorySelections,
-                                      };
-                                      updatedEquipment.push(equipmentChoice);
-                                    }
-
-                                    return {
-                                      ...prev,
-                                      [choiceKey]: {
-                                        ...currentChoices,
-                                        equipment: updatedEquipment,
-                                      },
-                                    };
+                          {equipmentChoices.map((choice) => {
+                            const foundEquipment =
+                              currentClassChoices.equipment?.find(
+                                (ec) => ec.choiceId === choice.id
+                              );
+                            // Build currentSelections array: [bundleId, 'cat0:id:name', ...]
+                            const equipmentSelections: string[] = [];
+                            if (foundEquipment?.bundleId) {
+                              equipmentSelections.push(foundEquipment.bundleId);
+                              // Add category selections in the expected format
+                              foundEquipment.categorySelections?.forEach(
+                                (cat) => {
+                                  cat.equipmentIds.forEach((id) => {
+                                    equipmentSelections.push(
+                                      `cat${cat.categoryIndex}:${id}:${id}`
+                                    );
                                   });
-                                }}
-                              />
-                            </div>
-                          ))}
+                                }
+                              );
+                            }
+                            return (
+                              <div
+                                key={choice.id}
+                                style={{ marginBottom: '16px' }}
+                              >
+                                <ChoiceRenderer
+                                  choice={choice}
+                                  currentSelections={equipmentSelections}
+                                  onSelectionChange={(
+                                    _choiceId,
+                                    selections
+                                  ) => {
+                                    setClassChoicesMap((prev) => {
+                                      const currentChoices = prev[
+                                        choiceKey
+                                      ] || {
+                                        skills: [],
+                                        equipment: [],
+                                        features: [],
+                                      };
+                                      const updatedEquipment =
+                                        currentChoices.equipment?.filter(
+                                          (ec) => ec.choiceId !== choice.id
+                                        ) || [];
+
+                                      if (selections.length > 0) {
+                                        // Extract bundleId from the first selection
+                                        const firstSel = selections[0];
+                                        const bundleId = firstSel.split(':')[0];
+
+                                        // Parse category selections from remaining items
+                                        // Format: "cat{index}:{id}:{name}"
+                                        const categorySelections: Array<{
+                                          categoryIndex: number;
+                                          equipmentIds: string[];
+                                        }> = [];
+
+                                        selections
+                                          .slice(1)
+                                          .forEach((sel: string) => {
+                                            if (sel.startsWith('cat')) {
+                                              const parts = sel.split(':');
+                                              const catIndex = parseInt(
+                                                parts[0].replace('cat', '')
+                                              );
+                                              const equipId = parts[1];
+
+                                              // Find or create category entry
+                                              let catEntry =
+                                                categorySelections.find(
+                                                  (c) =>
+                                                    c.categoryIndex === catIndex
+                                                );
+                                              if (!catEntry) {
+                                                catEntry = {
+                                                  categoryIndex: catIndex,
+                                                  equipmentIds: [],
+                                                };
+                                                categorySelections.push(
+                                                  catEntry
+                                                );
+                                              }
+                                              catEntry.equipmentIds.push(
+                                                equipId
+                                              );
+                                            }
+                                          });
+
+                                        const equipmentChoice: EquipmentChoice =
+                                          {
+                                            choiceId: choice.id,
+                                            bundleId: bundleId,
+                                            categorySelections,
+                                          };
+                                        updatedEquipment.push(equipmentChoice);
+                                      }
+
+                                      return {
+                                        ...prev,
+                                        [choiceKey]: {
+                                          ...currentChoices,
+                                          equipment: updatedEquipment,
+                                        },
+                                      };
+                                    });
+                                  }}
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     })()}

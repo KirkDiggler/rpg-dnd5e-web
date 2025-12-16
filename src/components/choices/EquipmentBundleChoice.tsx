@@ -18,6 +18,8 @@ interface EquipmentBundleChoiceProps {
     bundleId: string | null,
     categorySelections: Map<number, Equipment[]>
   ) => void;
+  initialBundleId?: string | null;
+  initialItemIds?: string[];
 }
 
 // Component for selecting from a category - supports multiple selections when choose > 1
@@ -170,6 +172,8 @@ function CategorySelector({
 export function EquipmentBundleChoice({
   choice,
   onSelectionChange,
+  initialBundleId,
+  initialItemIds,
 }: EquipmentBundleChoiceProps) {
   const {
     selectedBundleId,
@@ -178,7 +182,7 @@ export function EquipmentBundleChoice({
     selectCategoryItems,
     getSelectedBundle,
     isComplete,
-  } = useEquipmentBundleSelection(choice);
+  } = useEquipmentBundleSelection(choice, initialBundleId, initialItemIds);
 
   // Extract bundles from choice
   const bundles =

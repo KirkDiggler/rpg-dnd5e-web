@@ -23,6 +23,7 @@ import {
   convertFeatureChoiceToProto,
   convertLanguageChoiceToProto,
   convertSkillChoiceToProto,
+  convertToolChoiceToProto,
 } from '../../../utils/choiceConverter';
 import { ClassSelectionModal } from '../ClassSelectionModal';
 import { RaceSelectionModal } from '../RaceSelectionModal';
@@ -139,6 +140,17 @@ export function RaceClassSection() {
         for (const equipmentChoice of choices.equipment) {
           const choiceData = convertEquipmentChoiceToProto(
             equipmentChoice,
+            ChoiceSource.CLASS
+          );
+          choiceDataArray.push(choiceData);
+        }
+      }
+
+      // Convert tool proficiency choices
+      if (choices.tools) {
+        for (const toolChoice of choices.tools) {
+          const choiceData = convertToolChoiceToProto(
+            toolChoice,
             ChoiceSource.CLASS
           );
           choiceDataArray.push(choiceData);
