@@ -1,13 +1,14 @@
 /**
  * HexEntity - Visual component for a game entity positioned on a hex
  *
- * Renders a simple 3D shape (cylinder/capsule) at the specified hex position.
- * For v1: simple geometry to prove positioning works. Voxel models come later.
+ * Renders character models (players/monsters) or simple shapes (obstacles)
+ * at the specified hex position.
  */
 
-import { useMemo, useRef } from 'react';
+import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
+import { MediumHumanoid } from './MediumHumanoid';
 
 export interface HexEntityProps {
   entityId: string;
@@ -35,13 +36,16 @@ const COLORS = {
   },
 };
 
-// Entity dimensions relative to hex size
+// Entity dimensions relative to hex size (used for obstacles/fallback)
 const ENTITY_HEIGHT = 1.5; // Height of the cylinder
 const ENTITY_RADIUS_SCALE = 0.3; // Radius as fraction of hex size
 const Y_OFFSET = 0.1; // Small Y offset to sit above the hex plane
 
+// Character model Y offset (characters stand on the ground)
+const CHARACTER_Y_OFFSET = 0.05;
+
 /**
- * Creates a capsule-like shape for the entity
+ * Creates a capsule-like shape for the entity (used for obstacles)
  * Using CapsuleGeometry for a simple 3D representation
  *
  * @param hexSize - The hex radius (for scaling)
@@ -52,6 +56,25 @@ function createEntityGeometry(hexSize: number): THREE.CapsuleGeometry {
   const height = ENTITY_HEIGHT;
   // CapsuleGeometry(radius, length, capSegments, radialSegments)
   return new THREE.CapsuleGeometry(radius, height, 8, 16);
+}
+
+/**
+ * Simple loading placeholder while OBJ models load
+ */
+function LoadingPlaceholder({
+  color,
+  hexSize,
+}: {
+  color: string;
+  hexSize: number;
+}) {
+  const geometry = useMemo(() => createEntityGeometry(hexSize), [hexSize]);
+
+  return (
+    <mesh geometry={geometry}>
+      <meshStandardMaterial color={color} transparent opacity={0.5} />
+    </mesh>
+  );
 }
 
 export function HexEntity({
@@ -71,7 +94,7 @@ export function HexEntity({
     [position, hexSize]
   );
 
-  // Create the entity geometry
+  // Create the entity geometry (used for obstacles)
   const geometry = useMemo(() => createEntityGeometry(hexSize), [hexSize]);
 
   // Determine color based on type and selection state
@@ -85,23 +108,48 @@ export function HexEntity({
     }
   };
 
-  // Position entity at hex center with Y offset
-  // The capsule is already oriented vertically (Y-up), so no rotation needed
-  const yPosition = Y_OFFSET + ENTITY_HEIGHT / 2; // Center of capsule at correct height
+  // Common interaction props for both character models and obstacles
+  const interactionProps = {
+    onClick: handleClick,
+    onPointerOver: (e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      document.body.style.cursor = 'pointer';
+    },
+    onPointerOut: () => {
+      document.body.style.cursor = 'auto';
+    },
+  };
+
+  // Use character model for players and monsters
+  if (type === 'player' || type === 'monster') {
+    return (
+      <group
+        position={[worldPos.x, CHARACTER_Y_OFFSET, worldPos.z]}
+        {...interactionProps}
+      >
+        <Suspense
+          fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
+        >
+          <MediumHumanoid
+            color={color}
+            isSelected={isSelected}
+            variant={type === 'monster' ? 'goblin' : 'human'}
+            facingRotation={type === 'player' ? Math.PI : 0}
+          />
+        </Suspense>
+      </group>
+    );
+  }
+
+  // Use capsule geometry for obstacles
+  const yPosition = Y_OFFSET + ENTITY_HEIGHT / 2;
 
   return (
     <mesh
       ref={meshRef}
       position={[worldPos.x, yPosition, worldPos.z]}
       geometry={geometry}
-      onClick={handleClick}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        document.body.style.cursor = 'pointer';
-      }}
-      onPointerOut={() => {
-        document.body.style.cursor = 'auto';
-      }}
+      {...interactionProps}
     >
       <meshStandardMaterial
         color={color}
