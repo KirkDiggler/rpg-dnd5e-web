@@ -56,6 +56,19 @@ function CharacterPart({
   // Clone the loaded object so each instance is independent
   const clonedObj = useMemo(() => obj.clone(), [obj]);
 
+  // Memoize material to avoid recreation on every render
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: color,
+        roughness: 0.7,
+        metalness: 0.1,
+        emissive: isSelected ? color : '#000000',
+        emissiveIntensity: isSelected ? 0.2 : 0,
+      }),
+    [color, isSelected]
+  );
+
   useEffect(() => {
     if (partRef.current) {
       // CRITICAL: Set rotation order to ZYX (Blender XYZ -> Three.js ZYX)
@@ -77,20 +90,21 @@ function CharacterPart({
     }
   }, [config]);
 
-  // Apply materials to all meshes in the loaded object
+  // Apply memoized material to all meshes in the loaded object
   useEffect(() => {
     clonedObj.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        child.material = new THREE.MeshStandardMaterial({
-          color: color,
-          roughness: 0.7,
-          metalness: 0.1,
-          emissive: isSelected ? color : '#000000',
-          emissiveIntensity: isSelected ? 0.2 : 0,
-        });
+        child.material = material;
       }
     });
-  }, [clonedObj, color, isSelected]);
+  }, [clonedObj, material]);
+
+  // Cleanup material on unmount
+  useEffect(() => {
+    return () => {
+      material.dispose();
+    };
+  }, [material]);
 
   return (
     <group ref={partRef}>
