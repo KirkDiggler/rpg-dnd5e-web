@@ -27,6 +27,7 @@ export {
   useDungeonStart,
   useEndTurn,
   useMoveCharacter,
+  useOpenDoor,
 } from './encounterHooks';
 
 // Re-export encounter input types
@@ -68,9 +69,11 @@ export {
 
 // Re-export encounter types
 export type {
+  DoorInfo,
   DungeonStartRequest,
   DungeonStartResponse,
   EntityPlacement,
+  OpenDoorResponse,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 

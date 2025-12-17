@@ -7,6 +7,7 @@ import type {
   DungeonStartResponse,
   EndTurnResponse,
   MoveCharacterResponse,
+  OpenDoorResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
   ActivateFeatureRequestSchema,
@@ -14,6 +15,7 @@ import {
   DungeonStartRequestSchema,
   EndTurnRequestSchema,
   MoveCharacterRequestSchema,
+  OpenDoorRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type {
   DungeonDifficulty,
@@ -232,6 +234,45 @@ export function useDungeonStart() {
 
   return {
     dungeonStart,
+    loading: state.loading,
+    error: state.error,
+    data: state.data,
+  };
+}
+
+// Hook for OpenDoor
+export function useOpenDoor() {
+  const [state, setState] = useState<AsyncState<OpenDoorResponse>>({
+    data: null,
+    loading: false,
+    error: null,
+  });
+
+  const openDoor = useCallback(
+    async (dungeonId: string, connectionId: string) => {
+      setState({ data: null, loading: true, error: null });
+
+      try {
+        const request = create(OpenDoorRequestSchema, {
+          dungeonId,
+          connectionId,
+        });
+
+        const response = await encounterClient.openDoor(request);
+        setState({ data: response, loading: false, error: null });
+        return response;
+      } catch (error) {
+        const errorObj =
+          error instanceof Error ? error : new Error(String(error));
+        setState({ data: null, loading: false, error: errorObj });
+        throw errorObj;
+      }
+    },
+    []
+  );
+
+  return {
+    openDoor,
     loading: state.loading,
     error: state.error,
     data: state.data,

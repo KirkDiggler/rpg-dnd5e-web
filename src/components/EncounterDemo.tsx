@@ -5,6 +5,7 @@ import {
   useEndTurn,
   useListCharacters,
   useMoveCharacter,
+  useOpenDoor,
 } from '@/api';
 import { useDiscord } from '@/discord';
 import {
@@ -28,6 +29,7 @@ import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import {
   EncounterEndReason,
   type CombatState,
+  type DoorInfo,
   type MonsterTurnResult,
   type Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
@@ -87,6 +89,7 @@ export function EncounterDemo() {
   const { attack } = useAttack();
   const { activateFeature } = useActivateFeature();
   const { endTurn } = useEndTurn();
+  const { openDoor, loading: doorLoading } = useOpenDoor();
   const { addToast } = useToast();
   const discord = useDiscord();
   const isDevelopment = import.meta.env.MODE === 'development';
@@ -103,6 +106,11 @@ export function EncounterDemo() {
   const [encounterId, setEncounterId] = useState<string | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [combatState, setCombatState] = useState<CombatState | null>(null);
+
+  // Dungeon/door state
+  const [dungeonId, setDungeonId] = useState<string | null>(null);
+  const [doors, setDoors] = useState<DoorInfo[]>([]);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Full character data with equipment (separate from list data)
   const [fullCharactersMap, setFullCharactersMap] = useState<
@@ -155,6 +163,14 @@ export function EncounterDemo() {
 
       if (response.encounterId) {
         setEncounterId(response.encounterId);
+      }
+
+      // Capture dungeon ID and doors for room navigation
+      if (response.dungeonId) {
+        setDungeonId(response.dungeonId);
+      }
+      if (response.doors) {
+        setDoors(response.doors);
       }
 
       // Start with the room from response, may be updated below if monsters moved
@@ -707,6 +723,110 @@ export function EncounterDemo() {
     }
   };
 
+  // Door click handler for room navigation
+  const handleDoorClick = async (connectionId: string) => {
+    if (!dungeonId) {
+      console.warn('Cannot open door: no dungeonId');
+      return;
+    }
+
+    setIsTransitioning(true);
+
+    // Brief fade out
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    try {
+      const response = await openDoor(dungeonId, connectionId);
+
+      if (!response.success) {
+        setIsTransitioning(false);
+        addToast({
+          type: 'error',
+          message: response.error || 'Failed to open door',
+          duration: 3000,
+        });
+        return;
+      }
+
+      // Update all state with new room
+      if (response.encounterId) {
+        setEncounterId(response.encounterId);
+      }
+
+      // Start with the room from response, may be updated below if monsters moved
+      let roomToSet = response.room;
+
+      if (response.combatState) {
+        setCombatState(response.combatState);
+        // Select the current turn entity by default
+        if (response.combatState.currentTurn?.entityId) {
+          setSelectedEntity(response.combatState.currentTurn.entityId);
+        }
+      }
+
+      // Update doors for the new room
+      if (response.doors) {
+        setDoors(response.doors);
+      }
+
+      // Process monster turns if present (monsters go first in initiative in new room)
+      if (response.monsterTurns && response.monsterTurns.length > 0) {
+        // Helper to get target name from entity ID
+        const getTargetName = (targetId: string): string => {
+          const availChar = availableCharacters.find((c) => c.id === targetId);
+          if (availChar?.name) return availChar.name;
+
+          if (response.room?.entities[targetId]) {
+            return formatEntityId(targetId);
+          }
+
+          return targetId;
+        };
+
+        // Convert monster turns to combat log entries
+        const currentRound = response.combatState?.round || 1;
+        const monsterLogEntries = monsterTurnsToLogEntries(
+          response.monsterTurns,
+          currentRound,
+          getTargetName
+        );
+
+        // Add to combat log
+        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+
+        // Update room with monster positions after their movement
+        if (roomToSet) {
+          roomToSet = applyMonsterMovement(roomToSet, response.monsterTurns);
+        }
+      }
+
+      // Set the room (with updated monster positions if they moved)
+      if (roomToSet) {
+        setRoom(roomToSet);
+      }
+
+      // Clear movement state for new room
+      setMovementMode(false);
+      setMovementPath([]);
+      setAttackTarget(null);
+
+      addToast({
+        type: 'success',
+        message: 'Entered new room',
+        duration: 2000,
+      });
+    } catch (err) {
+      console.error('Failed to open door:', err);
+      addToast({
+        type: 'error',
+        message: 'Failed to open door',
+        duration: 3000,
+      });
+    } finally {
+      setIsTransitioning(false);
+    }
+  };
+
   // Fetch full character data with equipment when combat starts
   useEffect(() => {
     if (encounterId && selectedCharacterIds.length > 0) {
@@ -1024,6 +1144,10 @@ export function EncounterDemo() {
                 onMoveComplete={handleMoveComplete}
                 onAttackComplete={handleAttackComplete}
                 onHoverChange={setHoveredEntity}
+                // Door props
+                doors={doors}
+                onDoorClick={handleDoorClick}
+                isDoorLoading={doorLoading}
               />
             </div>
           )}
@@ -1076,6 +1200,17 @@ export function EncounterDemo() {
           onBackpack={handleBackpack}
           onWeaponClick={handleWeaponClick}
           onEndTurn={handleEndTurn}
+        />
+      )}
+
+      {/* Room transition overlay */}
+      {isTransitioning && (
+        <div
+          className="fixed inset-0 bg-black pointer-events-none z-50"
+          style={{
+            opacity: isTransitioning ? 1 : 0,
+            transition: 'opacity 300ms ease-in-out',
+          }}
         />
       )}
     </>

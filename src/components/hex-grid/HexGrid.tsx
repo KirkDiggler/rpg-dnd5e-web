@@ -13,10 +13,14 @@
  */
 
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type {
+  CombatState,
+  DoorInfo,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
+import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import { HexTile } from './HexTile';
@@ -53,6 +57,13 @@ export interface HexGridProps {
   onHoverChange?: (
     entity: { id: string; type: string; name: string } | null
   ) => void;
+  // Door props
+  doors?: DoorInfo[];
+  onDoorClick?: (connectionId: string) => void;
+  isDoorLoading?: boolean;
+  onDoorHoverChange?: (
+    door: { connectionId: string; physicalHint: string } | null
+  ) => void;
 }
 
 // Hex size constant - radius from center to vertex
@@ -79,6 +90,10 @@ function Scene({
   onMoveComplete,
   onAttackComplete,
   onHoverChange,
+  doors = [],
+  onDoorClick,
+  isDoorLoading = false,
+  onDoorHoverChange,
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -276,6 +291,33 @@ function Scene({
           );
         })
       )}
+
+      {/* Render doors (after tiles, before movement range) */}
+      {doors.map((door) => {
+        if (!door.position) return null;
+        const doorPosition: CubeCoord = {
+          x: door.position.x,
+          y: door.position.y,
+          z: door.position.z,
+        };
+        return (
+          <HexDoor
+            key={door.connectionId}
+            connectionId={door.connectionId}
+            position={doorPosition}
+            physicalHint={door.physicalHint}
+            isOpen={door.isOpen}
+            isLoading={isDoorLoading}
+            hexSize={HEX_SIZE}
+            onClick={(connectionId) => {
+              if (!isPlayerTurn || isProcessing || isDoorLoading) return;
+              onDoorClick?.(connectionId);
+            }}
+            onHoverChange={onDoorHoverChange}
+            disabled={!isPlayerTurn || isProcessing}
+          />
+        );
+      })}
 
       {/* Movement range border (only on player turn) */}
       {isPlayerTurn && boundaryEdges.length > 0 && (
