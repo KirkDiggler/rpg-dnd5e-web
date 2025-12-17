@@ -31,6 +31,11 @@ import {
   type MonsterTurnResult,
   type Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import {
+  DungeonDifficulty,
+  DungeonLength,
+  DungeonTheme,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
@@ -38,6 +43,7 @@ import { BattleMapPanel } from './encounter/BattleMapPanel';
 import { PartySetupPanel } from './encounter/PartySetupPanel';
 import { Equipment } from './Equipment';
 import { GameModeSelector, LobbyScreen } from './lobby';
+import type { DungeonConfig } from './lobby/dungeonConfig';
 import { useToast } from './ui';
 
 type GameMode = 'select' | 'solo' | 'multiplayer';
@@ -129,13 +135,23 @@ export function EncounterDemo() {
   const [movementPath, setMovementPath] = useState<CubeCoord[]>([]);
   const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
   const [gameMode, setGameMode] = useState<GameMode>('select');
+  const [dungeonConfig, setDungeonConfig] = useState<DungeonConfig>({
+    theme: DungeonTheme.CAVE,
+    difficulty: DungeonDifficulty.MEDIUM,
+    length: DungeonLength.MEDIUM,
+  });
 
   // Get player name from Discord or use default
   const playerName = discord.user?.username || 'Player';
 
   const handleStartEncounter = async () => {
     try {
-      const response = await dungeonStart(selectedCharacterIds);
+      const response = await dungeonStart({
+        characterIds: selectedCharacterIds,
+        theme: dungeonConfig.theme,
+        difficulty: dungeonConfig.difficulty,
+        length: dungeonConfig.length,
+      });
 
       if (response.encounterId) {
         setEncounterId(response.encounterId);
@@ -982,6 +998,8 @@ export function EncounterDemo() {
                 <PartySetupPanel
                   availableCharacters={availableCharacters}
                   selectedCharacterIds={selectedCharacterIds}
+                  dungeonConfig={dungeonConfig}
+                  onDungeonConfigChange={setDungeonConfig}
                   onCharacterToggle={handleCharacterToggle}
                   onStartEncounter={handleStartEncounter}
                   loading={loading}

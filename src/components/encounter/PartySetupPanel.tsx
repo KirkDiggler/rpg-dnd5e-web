@@ -1,9 +1,13 @@
 import { formatCharacterSummary } from '@/utils/displayNames';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { DungeonConfig } from '../lobby/dungeonConfig';
+import { DungeonConfigSelector } from '../lobby/DungeonConfigSelector';
 
 interface PartySetupPanelProps {
   availableCharacters: Character[];
   selectedCharacterIds: string[];
+  dungeonConfig: DungeonConfig;
+  onDungeonConfigChange: (config: DungeonConfig) => void;
   onCharacterToggle: (characterId: string) => void;
   onStartEncounter: () => void;
   loading: boolean;
@@ -14,6 +18,8 @@ interface PartySetupPanelProps {
 export function PartySetupPanel({
   availableCharacters,
   selectedCharacterIds,
+  dungeonConfig,
+  onDungeonConfigChange,
   onCharacterToggle,
   onStartEncounter,
   loading,
@@ -86,6 +92,17 @@ export function PartySetupPanel({
               onRemove={onCharacterToggle}
             />
           )}
+
+          {/* Dungeon Configuration */}
+          <div className="mb-4">
+            <DungeonConfigSelector
+              theme={dungeonConfig.theme}
+              difficulty={dungeonConfig.difficulty}
+              length={dungeonConfig.length}
+              onConfigChange={onDungeonConfigChange}
+              isHost={true}
+            />
+          </div>
         </>
       )}
 

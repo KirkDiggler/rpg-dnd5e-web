@@ -15,8 +15,21 @@ import {
   EndTurnRequestSchema,
   MoveCharacterRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type {
+  DungeonDifficulty,
+  DungeonLength,
+  DungeonTheme,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useCallback, useState } from 'react';
 import { encounterClient } from './client';
+
+// Input type for dungeon start configuration
+export interface DungeonStartInput {
+  characterIds: string[];
+  theme?: DungeonTheme;
+  difficulty?: DungeonDifficulty;
+  length?: DungeonLength;
+}
 
 // Hook state types
 interface AsyncState<T> {
@@ -193,12 +206,15 @@ export function useDungeonStart() {
   });
 
   const dungeonStart = useCallback(
-    async (characterIds: string[]): Promise<DungeonStartResponse> => {
+    async (input: DungeonStartInput): Promise<DungeonStartResponse> => {
       setState({ data: null, loading: true, error: null });
 
       try {
         const request = create(DungeonStartRequestSchema, {
-          characterIds,
+          characterIds: input.characterIds,
+          theme: input.theme,
+          difficulty: input.difficulty,
+          length: input.length,
         });
 
         const response = await encounterClient.dungeonStart(request);
