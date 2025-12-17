@@ -1,10 +1,19 @@
 import {
+  DungeonDifficulty,
+  DungeonLength,
+  DungeonTheme,
   FightingStyle,
   Language,
   Skill,
   Tool,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { EnumDisplayInfo } from '../components/choices/EnumChoice';
+
+// Extended display info for dungeon config options
+export interface DungeonDisplayInfo extends EnumDisplayInfo {
+  icon: string;
+  detail?: string; // e.g., room count for length
+}
 
 // Fighting Styles - have descriptions
 export const fightingStyleRegistry: Record<FightingStyle, EnumDisplayInfo> = {
@@ -166,4 +175,98 @@ export function getSkillAbility(skill: Skill): string {
 
 export function getToolInfo(tool: Tool): EnumDisplayInfo {
   return toolRegistry[tool] || { name: 'Unknown' };
+}
+
+// Dungeon Theme - visual themes for dungeon runs
+export const dungeonThemeRegistry: Record<DungeonTheme, DungeonDisplayInfo> = {
+  [DungeonTheme.UNSPECIFIED]: {
+    name: 'Unknown',
+    icon: '❓',
+  },
+  [DungeonTheme.CRYPT]: {
+    name: 'Crypt',
+    icon: '💀',
+    description: 'Undead enemies, structured stone, tombs',
+  },
+  [DungeonTheme.CAVE]: {
+    name: 'Cave',
+    icon: '🐾',
+    description: 'Beast enemies, organic shapes, natural caverns',
+  },
+  [DungeonTheme.RUINS]: {
+    name: 'Ruins',
+    icon: '🏛️',
+    description: 'Mixed creatures, ancient structures',
+  },
+};
+
+// Dungeon Difficulty - controls encounter CR scaling
+export const dungeonDifficultyRegistry: Record<
+  DungeonDifficulty,
+  DungeonDisplayInfo
+> = {
+  [DungeonDifficulty.UNSPECIFIED]: {
+    name: 'Unknown',
+    icon: '❓',
+  },
+  [DungeonDifficulty.EASY]: {
+    name: 'Easy',
+    icon: '☠',
+    description: 'Lower CR encounters',
+  },
+  [DungeonDifficulty.MEDIUM]: {
+    name: 'Medium',
+    icon: '☠☠',
+    description: 'Standard CR encounters',
+  },
+  [DungeonDifficulty.HARD]: {
+    name: 'Hard',
+    icon: '☠☠☠',
+    description: 'Higher CR encounters',
+  },
+};
+
+// Dungeon Length - number of rooms
+export const dungeonLengthRegistry: Record<DungeonLength, DungeonDisplayInfo> =
+  {
+    [DungeonLength.UNSPECIFIED]: {
+      name: 'Unknown',
+      icon: '❓',
+    },
+    [DungeonLength.SHORT]: {
+      name: 'Short',
+      icon: '🚪',
+      detail: '3-4 rooms',
+      description: 'Quick run',
+    },
+    [DungeonLength.MEDIUM]: {
+      name: 'Medium',
+      icon: '🚪🚪',
+      detail: '5-7 rooms',
+      description: 'Standard run',
+    },
+    [DungeonLength.LONG]: {
+      name: 'Long',
+      icon: '🚪🚪🚪',
+      detail: '8-10 rooms',
+      description: 'Extended run',
+    },
+  };
+
+export function getDungeonThemeInfo(theme: DungeonTheme): DungeonDisplayInfo {
+  return dungeonThemeRegistry[theme] || { name: 'Unknown', icon: '❓' };
+}
+
+export function getDungeonDifficultyInfo(
+  difficulty: DungeonDifficulty
+): DungeonDisplayInfo {
+  return (
+    dungeonDifficultyRegistry[difficulty] || { name: 'Unknown', icon: '❓' }
+  );
+}
+
+export function getDungeonLengthInfo(
+  length: DungeonLength
+): DungeonDisplayInfo {
+  return dungeonLengthRegistry[length] || { name: 'Unknown', icon: '❓' };
 }

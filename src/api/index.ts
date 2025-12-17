@@ -29,6 +29,9 @@ export {
   useMoveCharacter,
 } from './encounterHooks';
 
+// Re-export encounter input types
+export type { DungeonStartInput } from './encounterHooks';
+
 // Re-export equipment hooks
 export {
   useEquipItem,
@@ -55,6 +58,9 @@ export {
   Alignment,
   Background,
   Class,
+  DungeonDifficulty,
+  DungeonLength,
+  DungeonTheme,
   Language,
   Race,
   Skill,

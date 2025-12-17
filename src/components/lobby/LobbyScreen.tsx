@@ -10,6 +10,7 @@ import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import type { CombatStartedEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
 import { CreateGameTab } from './CreateGameTab';
+import { DEFAULT_DUNGEON_CONFIG, type DungeonConfig } from './dungeonConfig';
 import { JoinGameTab } from './JoinGameTab';
 import type { PartyMember } from './PartyMemberCard';
 import { WaitingRoom } from './WaitingRoom';
@@ -58,6 +59,9 @@ export function LobbyScreen({
     null
   );
   const [isReady, setIsReady] = useState(false);
+  const [dungeonConfig, setDungeonConfig] = useState<DungeonConfig>(
+    DEFAULT_DUNGEON_CONFIG
+  );
 
   // API Hooks
   const { createEncounter, loading: createLoading } = useCreateEncounter();
@@ -233,6 +237,7 @@ export function LobbyScreen({
       setPartyMembers([]);
       setSelectedCharacterId(null);
       setIsReady(false);
+      setDungeonConfig(DEFAULT_DUNGEON_CONFIG);
     } catch (error) {
       console.error('Failed to leave encounter:', error);
       // Clear state anyway
@@ -243,6 +248,7 @@ export function LobbyScreen({
       setPartyMembers([]);
       setSelectedCharacterId(null);
       setIsReady(false);
+      setDungeonConfig(DEFAULT_DUNGEON_CONFIG);
     }
   };
 
@@ -361,6 +367,8 @@ export function LobbyScreen({
             availableCharacters={availableCharacters}
             selectedCharacterId={selectedCharacterId}
             isReady={isReady}
+            dungeonConfig={dungeonConfig}
+            onDungeonConfigChange={setDungeonConfig}
             onSelectCharacter={handleSelectCharacter}
             onToggleReady={handleToggleReady}
             onStartCombat={handleStartCombat}

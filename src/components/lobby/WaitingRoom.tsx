@@ -3,6 +3,8 @@ import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import { Backpack } from 'lucide-react';
 import { useState } from 'react';
 import { Equipment } from '../Equipment';
+import type { DungeonConfig } from './dungeonConfig';
+import { DungeonConfigSelector } from './DungeonConfigSelector';
 import { JoinCodeDisplay } from './JoinCodeDisplay';
 import { PartyMemberCard, type PartyMember } from './PartyMemberCard';
 
@@ -14,6 +16,8 @@ interface WaitingRoomProps {
   availableCharacters: Character[];
   selectedCharacterId: string | null;
   isReady: boolean;
+  dungeonConfig: DungeonConfig;
+  onDungeonConfigChange: (config: DungeonConfig) => void;
   onSelectCharacter: (characterId: string) => void;
   onToggleReady: () => void;
   onStartCombat: () => void;
@@ -40,6 +44,8 @@ export function WaitingRoom({
   availableCharacters,
   selectedCharacterId,
   isReady,
+  dungeonConfig,
+  onDungeonConfigChange,
   onSelectCharacter,
   onToggleReady,
   onStartCombat,
@@ -59,6 +65,15 @@ export function WaitingRoom({
         </p>
         <JoinCodeDisplay code={joinCode} />
       </div>
+
+      {/* Dungeon Configuration Section */}
+      <DungeonConfigSelector
+        theme={dungeonConfig.theme}
+        difficulty={dungeonConfig.difficulty}
+        length={dungeonConfig.length}
+        onConfigChange={onDungeonConfigChange}
+        isHost={isHost}
+      />
 
       {/* Party Members Section */}
       <div>
