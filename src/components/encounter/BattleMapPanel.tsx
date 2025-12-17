@@ -2,6 +2,7 @@ import type { CubeCoord } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
+  DoorInfo,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { HexGrid } from '../hex-grid';
@@ -20,6 +21,10 @@ interface BattleMapPanelProps {
   onHoverChange?: (
     entity: { id: string; type: string; name: string } | null
   ) => void;
+  // Door props
+  doors?: DoorInfo[];
+  onDoorClick?: (connectionId: string) => void;
+  isDoorLoading?: boolean;
 }
 
 export function BattleMapPanel({
@@ -33,6 +38,9 @@ export function BattleMapPanel({
   onMoveComplete,
   onAttackComplete,
   onHoverChange,
+  doors,
+  onDoorClick,
+  isDoorLoading,
 }: BattleMapPanelProps) {
   return (
     <div
@@ -96,6 +104,9 @@ export function BattleMapPanel({
         onMoveComplete={onMoveComplete}
         onAttackComplete={onAttackComplete}
         onHoverChange={onHoverChange}
+        doors={doors}
+        onDoorClick={onDoorClick}
+        isDoorLoading={isDoorLoading}
       />
     </div>
   );
