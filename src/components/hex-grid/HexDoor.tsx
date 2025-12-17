@@ -7,7 +7,7 @@
  */
 
 import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 
@@ -71,6 +71,14 @@ export function HexDoor({
     }
   });
 
+  // Reset opacity when loading completes
+  useEffect(() => {
+    if (!isLoading && meshRef.current) {
+      const material = meshRef.current.material as THREE.MeshStandardMaterial;
+      material.opacity = isOpen ? 0.6 : 1.0;
+    }
+  }, [isLoading, isOpen]);
+
   // Determine color based on state
   const color = useMemo(() => {
     if (isLoading) return COLORS.loading;
@@ -91,7 +99,7 @@ export function HexDoor({
   const handlePointerOver = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     setIsHovered(true);
-    if (!disabled) {
+    if (!disabled && !isLoading) {
       document.body.style.cursor = 'pointer';
     }
     onHoverChange?.({ connectionId, physicalHint });
@@ -128,7 +136,7 @@ export function HexDoor({
           <edgesGeometry
             args={[new THREE.PlaneGeometry(doorWidth, doorHeight)]}
           />
-          <lineBasicMaterial color={COLORS.open} linewidth={2} />
+          <lineBasicMaterial color={COLORS.open} />
         </lineSegments>
       )}
     </group>

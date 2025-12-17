@@ -152,6 +152,32 @@ export function EncounterDemo() {
   // Get player name from Discord or use default
   const playerName = discord.user?.username || 'Player';
 
+  /**
+   * Get display name for an entity ID
+   * Checks fullCharactersMap, availableCharacters, and room entities in order.
+   * Can optionally use a specific room (e.g., from a response) instead of current state.
+   */
+  const getEntityDisplayName = (
+    entityId: string,
+    roomOverride?: Room | null
+  ): string => {
+    // Try full character data first (most complete)
+    const fullChar = fullCharactersMap.get(entityId);
+    if (fullChar?.name) return fullChar.name;
+
+    // Try available characters
+    const availChar = availableCharacters.find((c) => c.id === entityId);
+    if (availChar?.name) return availChar.name;
+
+    // Try room entities (monsters/NPCs)
+    const roomToCheck = roomOverride ?? room;
+    if (roomToCheck?.entities[entityId]) {
+      return formatEntityId(entityId);
+    }
+
+    return entityId;
+  };
+
   const handleStartEncounter = async () => {
     try {
       const response = await dungeonStart({
@@ -186,27 +212,12 @@ export function EncounterDemo() {
 
       // Process monster turns if present (monsters go first in initiative)
       if (response.monsterTurns && response.monsterTurns.length > 0) {
-        // Helper to get target name from entity ID
-        const getTargetName = (targetId: string): string => {
-          // At DungeonStart time, fullCharactersMap might not be populated yet
-          // Try available characters first
-          const availChar = availableCharacters.find((c) => c.id === targetId);
-          if (availChar?.name) return availChar.name;
-
-          // Try room entities (monsters/NPCs) - use response.room since it's just being set
-          if (response.room?.entities[targetId]) {
-            return formatEntityId(targetId);
-          }
-
-          return targetId;
-        };
-
         // Convert monster turns to combat log entries
         const currentRound = response.combatState?.round || 1;
         const monsterLogEntries = monsterTurnsToLogEntries(
           response.monsterTurns,
           currentRound,
-          getTargetName
+          (targetId) => getEntityDisplayName(targetId, response.room)
         );
 
         // Add to combat log
@@ -580,20 +591,6 @@ export function EncounterDemo() {
         }
 
         // Add combat log entry - get display names for attacker and target
-        // For characters, use full character data; for monsters, format the entity ID
-        const getEntityDisplayName = (entityId: string): string => {
-          // Try full character data first
-          const fullChar = fullCharactersMap.get(entityId);
-          if (fullChar?.name) return fullChar.name;
-
-          // Try available characters
-          const availChar = availableCharacters.find((c) => c.id === entityId);
-          if (availChar?.name) return availChar.name;
-
-          // For monsters/NPCs, format the entity ID nicely
-          return formatEntityId(entityId);
-        };
-
         const targetName = getEntityDisplayName(target);
         const attackerName = getEntityDisplayName(attackerId);
 
@@ -771,24 +768,12 @@ export function EncounterDemo() {
 
       // Process monster turns if present (monsters go first in initiative in new room)
       if (response.monsterTurns && response.monsterTurns.length > 0) {
-        // Helper to get target name from entity ID
-        const getTargetName = (targetId: string): string => {
-          const availChar = availableCharacters.find((c) => c.id === targetId);
-          if (availChar?.name) return availChar.name;
-
-          if (response.room?.entities[targetId]) {
-            return formatEntityId(targetId);
-          }
-
-          return targetId;
-        };
-
         // Convert monster turns to combat log entries
         const currentRound = response.combatState?.round || 1;
         const monsterLogEntries = monsterTurnsToLogEntries(
           response.monsterTurns,
           currentRound,
-          getTargetName
+          (targetId) => getEntityDisplayName(targetId, response.room)
         );
 
         // Add to combat log
@@ -925,30 +910,12 @@ export function EncounterDemo() {
 
       // Process monster turns if present
       if (response.monsterTurns && response.monsterTurns.length > 0) {
-        // Helper to get target name from entity ID
-        const getTargetName = (targetId: string): string => {
-          // Try full character data first
-          const fullChar = fullCharactersMap.get(targetId);
-          if (fullChar?.name) return fullChar.name;
-
-          // Try available characters
-          const availChar = availableCharacters.find((c) => c.id === targetId);
-          if (availChar?.name) return availChar.name;
-
-          // Try room entities (monsters/NPCs)
-          if (room?.entities[targetId]) {
-            return formatEntityId(targetId);
-          }
-
-          return targetId;
-        };
-
         // Convert monster turns to combat log entries
         const currentRound = combatState?.round || 1;
         const monsterLogEntries = monsterTurnsToLogEntries(
           response.monsterTurns,
           currentRound,
-          getTargetName
+          getEntityDisplayName
         );
 
         // Add to combat log
@@ -1207,10 +1174,7 @@ export function EncounterDemo() {
       {isTransitioning && (
         <div
           className="fixed inset-0 bg-black pointer-events-none z-50"
-          style={{
-            opacity: isTransitioning ? 1 : 0,
-            transition: 'opacity 300ms ease-in-out',
-          }}
+          style={{ opacity: 1 }}
         />
       )}
     </>
