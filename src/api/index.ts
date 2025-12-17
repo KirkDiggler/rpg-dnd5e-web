@@ -30,6 +30,9 @@ export {
   useOpenDoor,
 } from './encounterHooks';
 
+// Re-export encounter stream hook
+export { useEncounterStream } from './useEncounterStream';
+
 // Re-export encounter input types
 export type { DungeonStartInput } from './encounterHooks';
 

@@ -5,6 +5,8 @@ import type {
   CombatPausedEvent,
   CombatResumedEvent,
   CombatStartedEvent,
+  DungeonFailureEvent,
+  DungeonVictoryEvent,
   EncounterEvent,
   FeatureActivatedEvent,
   MonsterTurnCompletedEvent,
@@ -14,6 +16,7 @@ import type {
   PlayerLeftEvent,
   PlayerReadyEvent,
   PlayerReconnectedEvent,
+  RoomRevealedEvent,
   TurnEndedEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { StreamEncounterEventsRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
@@ -49,6 +52,11 @@ interface UseEncounterStreamOptions {
   onFeatureActivated?: (event: FeatureActivatedEvent) => void;
   onTurnEnded?: (event: TurnEndedEvent) => void;
   onMonsterTurnCompleted?: (event: MonsterTurnCompletedEvent) => void;
+
+  // Dungeon events
+  onRoomRevealed?: (event: RoomRevealedEvent) => void;
+  onDungeonVictory?: (event: DungeonVictoryEvent) => void;
+  onDungeonFailure?: (event: DungeonFailureEvent) => void;
 }
 
 interface UseEncounterStreamResult {
@@ -120,6 +128,15 @@ function dispatchEvent(
       break;
     case 'monsterTurnCompleted':
       options.onMonsterTurnCompleted?.(eventPayload.value);
+      break;
+    case 'roomRevealed':
+      options.onRoomRevealed?.(eventPayload.value);
+      break;
+    case 'dungeonVictory':
+      options.onDungeonVictory?.(eventPayload.value);
+      break;
+    case 'dungeonFailure':
+      options.onDungeonFailure?.(eventPayload.value);
       break;
     default:
       console.warn('Unknown event type:', eventPayload.case);

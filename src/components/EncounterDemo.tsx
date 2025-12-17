@@ -2,6 +2,7 @@ import {
   useActivateFeature,
   useAttack,
   useDungeonStart,
+  useEncounterStream,
   useEndTurn,
   useListCharacters,
   useMoveCharacter,
@@ -30,17 +31,20 @@ import {
   EncounterEndReason,
   type CombatState,
   type DoorInfo,
+  type DungeonVictoryEvent,
   type MonsterTurnResult,
   type Room,
+  type RoomRevealedEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
   DungeonDifficulty,
   DungeonLength,
   DungeonTheme,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
+import { DungeonResultOverlay } from './dungeon';
 import { BattleMapPanel } from './encounter/BattleMapPanel';
 import { PartySetupPanel } from './encounter/PartySetupPanel';
 import { Equipment } from './Equipment';
@@ -111,6 +115,10 @@ export function EncounterDemo() {
   const [dungeonId, setDungeonId] = useState<string | null>(null);
   const [doors, setDoors] = useState<DoorInfo[]>([]);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [roomsCleared, setRoomsCleared] = useState(0);
+  const [dungeonResult, setDungeonResult] = useState<
+    'victory' | 'failure' | null
+  >(null);
 
   // Full character data with equipment (separate from list data)
   const [fullCharactersMap, setFullCharactersMap] = useState<
@@ -151,6 +159,49 @@ export function EncounterDemo() {
 
   // Get player name from Discord or use default
   const playerName = discord.user?.username || 'Player';
+
+  // Dungeon stream event handlers
+  const handleRoomRevealed = useCallback((event: RoomRevealedEvent) => {
+    // Trigger fade transition
+    setIsTransitioning(true);
+
+    setTimeout(() => {
+      // Update all room state
+      setRoom(event.room ?? null);
+      setCombatState(event.combatState ?? null);
+      setDoors(event.doors ?? []);
+      setRoomsCleared((prev) => prev + 1);
+
+      // Select the current turn entity
+      if (event.combatState?.currentTurn?.entityId) {
+        setSelectedEntity(event.combatState.currentTurn.entityId);
+      }
+
+      // Clear movement state for new room
+      setMovementMode(false);
+      setMovementPath([]);
+      setAttackTarget(null);
+
+      // End fade
+      setIsTransitioning(false);
+    }, 300);
+  }, []);
+
+  const handleDungeonVictory = useCallback((event: DungeonVictoryEvent) => {
+    setRoomsCleared(event.roomsCleared);
+    setDungeonResult('victory');
+  }, []);
+
+  const handleDungeonFailure = useCallback(() => {
+    setDungeonResult('failure');
+  }, []);
+
+  // Subscribe to encounter stream for multiplayer sync
+  useEncounterStream(encounterId, playerId, {
+    onRoomRevealed: handleRoomRevealed,
+    onDungeonVictory: handleDungeonVictory,
+    onDungeonFailure: handleDungeonFailure,
+  });
 
   /**
    * Get display name for an entity ID
@@ -721,85 +772,24 @@ export function EncounterDemo() {
   };
 
   // Door click handler for room navigation
+  // Room transition happens via onRoomRevealed stream callback, not RPC response
   const handleDoorClick = async (connectionId: string) => {
     if (!dungeonId) {
       console.warn('Cannot open door: no dungeonId');
       return;
     }
 
-    setIsTransitioning(true);
-
-    // Brief fade out
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
     try {
       const response = await openDoor(dungeonId, connectionId);
 
       if (!response.success) {
-        setIsTransitioning(false);
         addToast({
           type: 'error',
           message: response.error || 'Failed to open door',
           duration: 3000,
         });
-        return;
       }
-
-      // Update all state with new room
-      if (response.encounterId) {
-        setEncounterId(response.encounterId);
-      }
-
-      // Start with the room from response, may be updated below if monsters moved
-      let roomToSet = response.room;
-
-      if (response.combatState) {
-        setCombatState(response.combatState);
-        // Select the current turn entity by default
-        if (response.combatState.currentTurn?.entityId) {
-          setSelectedEntity(response.combatState.currentTurn.entityId);
-        }
-      }
-
-      // Update doors for the new room
-      if (response.doors) {
-        setDoors(response.doors);
-      }
-
-      // Process monster turns if present (monsters go first in initiative in new room)
-      if (response.monsterTurns && response.monsterTurns.length > 0) {
-        // Convert monster turns to combat log entries
-        const currentRound = response.combatState?.round || 1;
-        const monsterLogEntries = monsterTurnsToLogEntries(
-          response.monsterTurns,
-          currentRound,
-          (targetId) => getEntityDisplayName(targetId, response.room)
-        );
-
-        // Add to combat log
-        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
-
-        // Update room with monster positions after their movement
-        if (roomToSet) {
-          roomToSet = applyMonsterMovement(roomToSet, response.monsterTurns);
-        }
-      }
-
-      // Set the room (with updated monster positions if they moved)
-      if (roomToSet) {
-        setRoom(roomToSet);
-      }
-
-      // Clear movement state for new room
-      setMovementMode(false);
-      setMovementPath([]);
-      setAttackTarget(null);
-
-      addToast({
-        type: 'success',
-        message: 'Entered new room',
-        duration: 2000,
-      });
+      // Success case: do nothing here - wait for RoomRevealedEvent via stream
     } catch (err) {
       console.error('Failed to open door:', err);
       addToast({
@@ -807,8 +797,6 @@ export function EncounterDemo() {
         message: 'Failed to open door',
         duration: 3000,
       });
-    } finally {
-      setIsTransitioning(false);
     }
   };
 
@@ -1175,6 +1163,47 @@ export function EncounterDemo() {
         <div
           className="fixed inset-0 bg-black pointer-events-none z-50"
           style={{ opacity: 1 }}
+        />
+      )}
+
+      {/* Dungeon completion overlay */}
+      {dungeonResult && (
+        <DungeonResultOverlay
+          result={dungeonResult}
+          roomsCleared={roomsCleared}
+          theme={dungeonConfig.theme}
+          difficulty={dungeonConfig.difficulty}
+          onReturnToLobby={() => {
+            // Reset all dungeon state
+            setDungeonResult(null);
+            setRoom(null);
+            setEncounterId(null);
+            setDungeonId(null);
+            setCombatState(null);
+            setDoors([]);
+            setRoomsCleared(0);
+            setCombatLog([]);
+            setSelectedEntity(null);
+            setGameMode('select');
+          }}
+          onRetry={
+            dungeonResult === 'failure'
+              ? () => {
+                  // Reset dungeon state but keep config, restart
+                  setDungeonResult(null);
+                  setRoom(null);
+                  setEncounterId(null);
+                  setDungeonId(null);
+                  setCombatState(null);
+                  setDoors([]);
+                  setRoomsCleared(0);
+                  setCombatLog([]);
+                  setSelectedEntity(null);
+                  // Trigger new dungeon start with same config
+                  handleStartEncounter();
+                }
+              : undefined
+          }
         />
       )}
     </>
