@@ -51,7 +51,12 @@ export function DungeonResultOverlay({
   const difficultyDisplay = getDifficultyDisplay(difficulty);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dungeon-result-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+    >
       <div
         className={`mx-4 w-full max-w-md rounded-lg border-2 p-8 text-center ${
           isVictory
@@ -61,6 +66,7 @@ export function DungeonResultOverlay({
       >
         {/* Header */}
         <h1
+          id="dungeon-result-title"
           className={`mb-6 text-4xl font-bold ${
             isVictory ? 'text-yellow-400' : 'text-red-400'
           }`}

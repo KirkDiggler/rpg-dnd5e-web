@@ -203,6 +203,19 @@ export function EncounterDemo() {
     onDungeonFailure: handleDungeonFailure,
   });
 
+  // Reset all dungeon-related state
+  const resetDungeonState = useCallback(() => {
+    setDungeonResult(null);
+    setRoom(null);
+    setEncounterId(null);
+    setDungeonId(null);
+    setCombatState(null);
+    setDoors([]);
+    setRoomsCleared(0);
+    setCombatLog([]);
+    setSelectedEntity(null);
+  }, []);
+
   /**
    * Get display name for an entity ID
    * Checks fullCharactersMap, availableCharacters, and room entities in order.
@@ -788,8 +801,9 @@ export function EncounterDemo() {
           message: response.error || 'Failed to open door',
           duration: 3000,
         });
+        return;
       }
-      // Success case: do nothing here - wait for RoomRevealedEvent via stream
+      // Success: wait for RoomRevealedEvent via stream
     } catch (err) {
       console.error('Failed to open door:', err);
       addToast({
@@ -1174,32 +1188,13 @@ export function EncounterDemo() {
           theme={dungeonConfig.theme}
           difficulty={dungeonConfig.difficulty}
           onReturnToLobby={() => {
-            // Reset all dungeon state
-            setDungeonResult(null);
-            setRoom(null);
-            setEncounterId(null);
-            setDungeonId(null);
-            setCombatState(null);
-            setDoors([]);
-            setRoomsCleared(0);
-            setCombatLog([]);
-            setSelectedEntity(null);
+            resetDungeonState();
             setGameMode('select');
           }}
           onRetry={
             dungeonResult === 'failure'
               ? () => {
-                  // Reset dungeon state but keep config, restart
-                  setDungeonResult(null);
-                  setRoom(null);
-                  setEncounterId(null);
-                  setDungeonId(null);
-                  setCombatState(null);
-                  setDoors([]);
-                  setRoomsCleared(0);
-                  setCombatLog([]);
-                  setSelectedEntity(null);
-                  // Trigger new dungeon start with same config
+                  resetDungeonState();
                   handleStartEncounter();
                 }
               : undefined
