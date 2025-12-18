@@ -13,6 +13,8 @@ export interface FeatureActionButtonProps {
   bonusActionAvailable?: boolean;
   /** Whether the button should be globally disabled (not player's turn) */
   disabled?: boolean;
+  /** Whether button is read-only (shown but not clickable - for unknown action types) */
+  readOnly?: boolean;
   /** Callback when the feature is activated */
   onActivate?: (featureId: string) => void;
 }
@@ -36,6 +38,7 @@ export function FeatureActionButton({
   actionAvailable = true,
   bonusActionAvailable = true,
   disabled = false,
+  readOnly = false,
   onActivate,
 }: FeatureActionButtonProps) {
   const icon = getFeatureIcon(feature.id);
@@ -52,19 +55,23 @@ export function FeatureActionButton({
   const usageData = parseUsageData(feature);
   const hasUsesRemaining = usageData ? usageData.remaining > 0 : true;
 
+  // Read-only buttons are clickable but activate the feature
+  // (useful when action_type not yet populated - we don't know the cost)
   const isButtonDisabled =
     disabled || isDisabledByActionEconomy || isActive || !hasUsesRemaining;
 
   const handleClick = () => {
-    if (!isButtonDisabled && onActivate) {
-      onActivate(feature.id);
-    }
+    // Read-only buttons are still clickable - just no action economy check
+    if (disabled || isActive) return;
+    if (!readOnly && isButtonDisabled) return;
+    onActivate?.(feature.id);
   };
 
   const buttonClasses = [
     styles.featureActionButton,
     isActive ? styles.active : '',
-    isButtonDisabled ? styles.disabled : '',
+    isButtonDisabled && !readOnly ? styles.disabled : '',
+    readOnly ? styles.readOnly : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -74,8 +81,8 @@ export function FeatureActionButton({
       type="button"
       className={buttonClasses}
       onClick={handleClick}
-      disabled={isButtonDisabled}
-      title={getTooltip(feature, isActive, isDisabledByActionEconomy)}
+      disabled={disabled || isActive}
+      title={getTooltip(feature, isActive, isDisabledByActionEconomy, readOnly)}
     >
       <span className={styles.featureIcon}>{icon}</span>
       <span className={styles.featureName}>
@@ -131,19 +138,24 @@ function parseUsageData(
 function getTooltip(
   feature: CharacterFeature,
   isActive: boolean,
-  isDisabledByActionEconomy: boolean
+  isDisabledByActionEconomy: boolean,
+  readOnly: boolean
 ): string {
   if (isActive) {
     return `${feature.name} is active`;
   }
 
-  if (isDisabledByActionEconomy) {
+  if (isDisabledByActionEconomy && !readOnly) {
     const actionName = getActionTypeName(feature.actionType);
     return `No ${actionName} available`;
   }
 
   const actionName = getActionTypeName(feature.actionType);
   const baseTooltip = feature.description || feature.name;
+
+  if (readOnly) {
+    return `${baseTooltip} (action type unknown)`;
+  }
 
   if (actionName) {
     return `${baseTooltip} (${actionName})`;

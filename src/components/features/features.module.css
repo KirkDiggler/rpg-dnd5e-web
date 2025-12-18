@@ -44,6 +44,11 @@
   transform: none;
 }
 
+.featureActionButton.readOnly {
+  border-style: dashed;
+  opacity: 0.8;
+}
+
 .featureIcon {
   font-size: 16px;
 }

@@ -37,18 +37,14 @@ export function FeatureActions({
   const features = character.features || [];
   const activeConditions = character.activeConditions || [];
 
-  // Filter to only activatable features (those with action types)
-  // UNSPECIFIED or passive features are not shown as buttons
-  const activatableFeatures = features.filter(
-    (f) => f.actionType !== ActionType.UNSPECIFIED
-  );
-
-  if (activatableFeatures.length === 0) {
+  // Show all features - even those without action_type set
+  // Features with UNSPECIFIED action_type are shown but as read-only
+  if (features.length === 0) {
     return null;
   }
 
   // Group by action type for visual organization
-  const grouped = groupByActionType(activatableFeatures);
+  const grouped = groupByActionType(features);
 
   return (
     <div className={styles.featureActions}>
@@ -119,6 +115,24 @@ export function FeatureActions({
           ))}
         </div>
       )}
+
+      {/* Unspecified action type - show but read-only until API populates action_type */}
+      {grouped.unspecified.length > 0 && (
+        <div className={styles.featureGroup}>
+          {grouped.unspecified.map((feature) => (
+            <FeatureActionButton
+              key={feature.id}
+              feature={feature}
+              isActive={isFeatureActive(feature.id, activeConditions)}
+              actionAvailable={actionAvailable}
+              bonusActionAvailable={bonusActionAvailable}
+              disabled={disabled}
+              readOnly
+              onActivate={onActivateFeature}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -130,6 +144,7 @@ interface GroupedFeatures {
   bonusAction: FeaturesList;
   reaction: FeaturesList;
   free: FeaturesList;
+  unspecified: FeaturesList;
 }
 
 function groupByActionType(
@@ -140,6 +155,7 @@ function groupByActionType(
     bonusAction: [],
     reaction: [],
     free: [],
+    unspecified: [],
   };
 
   for (const feature of features) {
@@ -156,8 +172,10 @@ function groupByActionType(
       case ActionType.FREE:
         grouped.free.push(feature);
         break;
+      case ActionType.UNSPECIFIED:
       default:
-        // Skip UNSPECIFIED
+        // Show unspecified features as read-only
+        grouped.unspecified.push(feature);
         break;
     }
   }
