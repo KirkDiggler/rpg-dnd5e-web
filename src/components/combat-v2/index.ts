@@ -27,8 +27,6 @@ export type {
 } from './panels/CombatHistorySidebar';
 export { CombatPanel } from './panels/CombatPanel';
 export type { CombatPanelProps } from './panels/CombatPanel';
-export { DynamicActionButtons } from './panels/DynamicActionButtons';
-export type { DynamicActionButtonsProps } from './panels/DynamicActionButtons';
 export { EquipmentDisplay } from './panels/EquipmentDisplay';
 export type { EquipmentDisplayProps } from './panels/EquipmentDisplay';
 

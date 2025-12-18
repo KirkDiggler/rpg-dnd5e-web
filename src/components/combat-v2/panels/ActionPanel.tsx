@@ -1,4 +1,9 @@
 import { useEndTurn } from '@/api/encounterHooks';
+import {
+  ConditionsDisplay,
+  EquipmentSlots,
+  FeatureActions,
+} from '@/components/features';
 import { hexDistance, type CubeCoord } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
@@ -137,16 +142,6 @@ export function ActionPanel({
   // 3. Target is adjacent (for now, only melee)
   const canAttack = resources.hasAction && attackTarget && isTargetAdjacent;
 
-  // Check if character has Rage feature
-  const hasRageFeature =
-    currentCharacter?.features?.some((f) => f.id === 'rage') ?? false;
-
-  // Check if character is already raging
-  const isRaging =
-    currentCharacter?.activeConditions?.some(
-      (c) => c.name === 'raging' || c.name === 'Raging'
-    ) ?? false;
-
   const panelContent = (
     <div
       className={`${styles.actionPanel} ${debug ? styles.debug : ''}`}
@@ -189,8 +184,12 @@ export function ActionPanel({
                 {currentCharacter.combatStats?.armorClass || 10}
               </span>
             </div>
+            <EquipmentSlots character={currentCharacter} />
           </div>
         </div>
+
+        {/* Conditions Row */}
+        <ConditionsDisplay character={currentCharacter} />
 
         {/* Resources Section */}
         <div className={styles.resourcesSection}>
@@ -241,6 +240,31 @@ export function ActionPanel({
 
         {/* Actions Section */}
         <div className={styles.actionsSection}>
+          {/* Attack Button */}
+          <button
+            onClick={onAttackAction}
+            disabled={!canAttack}
+            className={`${styles.actionButton} ${styles.attack} ${
+              !canAttack ? styles.disabled : ''
+            }`}
+            title={
+              !resources.hasAction
+                ? 'No action available'
+                : !attackTarget
+                  ? 'Select a target'
+                  : !isTargetAdjacent
+                    ? 'Target not adjacent'
+                    : 'Attack target'
+            }
+          >
+            ⚔️ Attack
+            {attackTarget && !isTargetAdjacent && (
+              <span style={{ fontSize: '10px', marginLeft: '4px' }}>
+                (too far)
+              </span>
+            )}
+          </button>
+
           {/* Move Button */}
           <button
             onClick={onMoveAction}
@@ -276,72 +300,21 @@ export function ActionPanel({
             </div>
           )}
 
-          {/* Attack Button */}
-          <button
-            onClick={onAttackAction}
-            disabled={!canAttack}
-            className={`${styles.actionButton} ${styles.attack} ${
-              !canAttack ? styles.disabled : ''
-            }`}
-            title={
-              !resources.hasAction
-                ? 'No action available'
-                : !attackTarget
-                  ? 'Select a target'
-                  : !isTargetAdjacent
-                    ? 'Target not adjacent'
-                    : 'Attack target'
-            }
-          >
-            ⚔️ Attack
-            {attackTarget && !isTargetAdjacent && (
-              <span style={{ fontSize: '10px', marginLeft: '4px' }}>
-                (too far)
-              </span>
-            )}
-          </button>
+          {/* Class Feature Actions - driven by character.features from API */}
+          <FeatureActions
+            character={currentCharacter}
+            actionAvailable={resources.hasAction}
+            bonusActionAvailable={resources.hasBonusAction}
+            onActivateFeature={onActivateFeature}
+          />
 
-          {/* Spell Button */}
+          {/* Inventory Button */}
           <button
-            disabled={!resources.hasAction && !resources.hasBonusAction}
-            className={`${styles.actionButton} ${styles.spell} ${
-              !resources.hasAction && !resources.hasBonusAction
-                ? styles.disabled
-                : ''
-            }`}
+            className={`${styles.actionButton} ${styles.ability}`}
+            title="Open inventory"
           >
-            ✨ Spell
+            🎒 Inventory
           </button>
-
-          {/* Ability Button */}
-          <button
-            disabled={!resources.hasAction}
-            className={`${styles.actionButton} ${styles.ability} ${
-              !resources.hasAction ? styles.disabled : ''
-            }`}
-          >
-            💪 Ability
-          </button>
-
-          {/* Rage Button - Only show for characters with Rage feature */}
-          {hasRageFeature && (
-            <button
-              onClick={() => onActivateFeature?.('rage')}
-              disabled={!resources.hasBonusAction || isRaging}
-              className={`${styles.actionButton} ${styles.attack} ${
-                isRaging ? styles.active : ''
-              } ${!resources.hasBonusAction || isRaging ? styles.disabled : ''}`}
-              title={
-                isRaging
-                  ? 'Already raging'
-                  : !resources.hasBonusAction
-                    ? 'No bonus action'
-                    : 'Activate Rage (Bonus Action)'
-              }
-            >
-              🔥 {isRaging ? 'Raging!' : 'Rage'}
-            </button>
-          )}
 
           {/* End Turn Button */}
           <button
