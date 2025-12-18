@@ -1,3 +1,4 @@
+import { ConditionsDisplay, FeatureActions } from '@/components/features';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -10,7 +11,6 @@ import {
   CombatHistorySidebar,
   type CombatLogEntry,
 } from './CombatHistorySidebar';
-import { DynamicActionButtons } from './DynamicActionButtons';
 import { EquipmentDisplay } from './EquipmentDisplay';
 import { HoverInfoPanel, type HoveredEntity } from './HoverInfoPanel';
 
@@ -29,7 +29,6 @@ export interface CombatPanelProps {
   // Callbacks
   onAttack?: () => void;
   onMove?: () => void;
-  onSpell?: () => void;
   onFeature?: (featureId: string) => void;
   onBackpack?: () => void;
   onWeaponClick?: (slot: 'mainHand' | 'offHand') => void;
@@ -71,7 +70,6 @@ export function CombatPanel({
   characters = [],
   onAttack,
   onMove,
-  onSpell,
   onFeature,
   onBackpack,
   onWeaponClick,
@@ -126,21 +124,64 @@ export function CombatPanel({
             disabled={actionsDisabled}
           />
 
+          {/* Active Conditions Display */}
+          <ConditionsDisplay character={character} />
+
           {/* Action Economy Indicators */}
           <ActionEconomyIndicators turnState={turnState} />
 
-          {/* Dynamic Action Buttons */}
-          <DynamicActionButtons
-            character={character}
-            turnState={turnState}
-            onAttack={onAttack}
-            onMove={onMove}
-            onSpell={onSpell}
-            onFeature={onFeature}
-            onBackpack={onBackpack}
-            onEndTurn={onEndTurn}
-            disabled={actionsDisabled}
-          />
+          {/* Action Buttons */}
+          <div className={styles.dynamicActionButtons}>
+            {/* Core Actions */}
+            <button
+              className={`${styles.dynamicActionButton} ${styles.actionButtonAttack}`}
+              onClick={onAttack}
+              disabled={actionsDisabled || turnState?.actionUsed}
+              title="Attack target"
+            >
+              <span className={styles.actionButtonIcon}>⚔️</span>
+              <span className={styles.actionButtonLabel}>Attack</span>
+            </button>
+
+            <button
+              className={`${styles.dynamicActionButton} ${styles.actionButtonMove}`}
+              onClick={onMove}
+              disabled={actionsDisabled}
+              title="Move your character"
+            >
+              <span className={styles.actionButtonIcon}>🏃</span>
+              <span className={styles.actionButtonLabel}>Move</span>
+            </button>
+
+            {/* Class Feature Actions - driven by character.features from API */}
+            <FeatureActions
+              character={character}
+              actionAvailable={!turnState?.actionUsed}
+              bonusActionAvailable={!turnState?.bonusActionUsed}
+              disabled={actionsDisabled}
+              onActivateFeature={onFeature}
+            />
+
+            <button
+              className={`${styles.dynamicActionButton}`}
+              onClick={onBackpack}
+              disabled={actionsDisabled}
+              title="Open inventory"
+            >
+              <span className={styles.actionButtonIcon}>🎒</span>
+              <span className={styles.actionButtonLabel}>Inventory</span>
+            </button>
+
+            <button
+              className={`${styles.dynamicActionButton} ${styles.actionButtonEndTurn}`}
+              onClick={onEndTurn}
+              disabled={actionsDisabled}
+              title="End your turn"
+            >
+              <span className={styles.actionButtonIcon}>⏭️</span>
+              <span className={styles.actionButtonLabel}>End Turn</span>
+            </button>
+          </div>
         </div>
 
         {/* Combat History Sidebar (30%) */}

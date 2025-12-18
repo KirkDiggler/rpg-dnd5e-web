@@ -879,14 +879,6 @@ export function EncounterDemo() {
   });
 
   // Placeholder handlers for new CombatPanel callbacks
-  const handleSpell = () => {
-    addToast({
-      type: 'info',
-      message: 'Spell selection not yet implemented',
-      duration: 3000,
-    });
-  };
-
   const handleBackpack = () => {
     // Open equipment modal for current character
     if (currentCharacter) {
@@ -1164,7 +1156,6 @@ export function EncounterDemo() {
           characters={availableCharacters}
           onAttack={handleAttackAction}
           onMove={handleMoveAction}
-          onSpell={handleSpell}
           onFeature={handleActivateFeature}
           onBackpack={handleBackpack}
           onWeaponClick={handleWeaponClick}

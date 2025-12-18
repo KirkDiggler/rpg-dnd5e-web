@@ -1,0 +1,154 @@
+/* Feature Actions */
+.featureActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.featureGroup {
+  display: flex;
+  gap: 8px;
+}
+
+.featureActionButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-secondary, #334155);
+  border: 1px solid var(--border-color, #475569);
+  border-radius: 6px;
+  color: var(--text-primary, #f1f5f9);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.featureActionButton:hover:not(:disabled) {
+  background: var(--bg-hover, #475569);
+  border-color: var(--border-hover, #64748b);
+  transform: translateY(-1px);
+}
+
+.featureActionButton.active {
+  background: var(--accent-success, #22c55e);
+  border-color: var(--accent-success, #22c55e);
+  color: white;
+}
+
+.featureActionButton.disabled,
+.featureActionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.featureActionButton.readOnly {
+  border-style: dashed;
+  opacity: 0.8;
+}
+
+.featureIcon {
+  font-size: 16px;
+}
+
+.featureName {
+  font-weight: 500;
+}
+
+.featureUsage {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-left: 4px;
+}
+
+/* Conditions Display */
+.conditionsDisplay {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.conditionBadge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.conditionIcon {
+  font-size: 12px;
+}
+
+.conditionName {
+  text-transform: capitalize;
+}
+
+/* Condition category colors */
+.conditionClass {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+.conditionFightingStyle {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.conditionRacial {
+  background: rgba(168, 85, 247, 0.2);
+  color: #d8b4fe;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.conditionDebuff {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.conditionDefault {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+/* Equipment Slots */
+.equipmentSlots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.equipmentSlot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--bg-secondary, #334155);
+  border: 1px solid var(--border-color, #475569);
+  border-radius: 4px;
+  cursor: help;
+  transition: all 0.15s ease;
+}
+
+.equipmentSlot:hover {
+  background: var(--bg-hover, #475569);
+  border-color: var(--border-hover, #64748b);
+}
+
+.equipmentSlotEmpty {
+  opacity: 0.4;
+}
+
+.equipmentSlotIcon {
+  font-size: 14px;
+}
