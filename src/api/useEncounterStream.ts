@@ -27,6 +27,7 @@ import {
   DungeonFailureEventSchema,
   DungeonVictoryEventSchema,
   FeatureActivatedEventSchema,
+  GetEncounterHistoryRequestSchema,
   GetEncounterStateRequestSchema,
   MonsterTurnCompletedEventSchema,
   MovementCompletedEventSchema,
@@ -49,6 +50,11 @@ type ConnectionState =
 interface UseEncounterStreamOptions {
   // State sync callback - called with snapshot before processing buffered events
   onStateSync?: (snapshot: GetEncounterStateResponse) => void;
+
+  // Historical events callback - called with events that happened before we connected
+  // These are fetched via GetEncounterHistory and represent past events (monster turns, etc.)
+  // Events are in chronological order and should be replayed for event log/animations
+  onHistoricalEvents?: (events: EncounterEvent[]) => void;
 
   // Lobby events
   onPlayerJoined?: (event: PlayerJoinedEvent) => void;
@@ -211,6 +217,23 @@ async function fetchSnapshot(
 }
 
 /**
+ * Fetches historical events up to the given event ID
+ * Used to populate event log with events that happened before we connected
+ */
+async function fetchHistory(
+  encounterId: string,
+  upToEventId: string
+): Promise<EncounterEvent[]> {
+  const request = create(GetEncounterHistoryRequestSchema, {
+    encounterId,
+    upToEventId,
+    limit: 0, // No limit - get all events
+  });
+  const response = await encounterClient.getEncounterHistory(request);
+  return response.events;
+}
+
+/**
  * useEncounterStream subscribes to real-time encounter events via gRPC server streaming.
  *
  * This hook enables multiplayer synchronization by connecting to the encounter event stream
@@ -325,6 +348,33 @@ export function useEncounterStream(
               snapshot.lastEventId
             );
 
+            // Fetch historical events (monster turns, etc.) that happened before we connected
+            try {
+              console.log(
+                '🔄 Fetching historical events up to:',
+                snapshot.lastEventId
+              );
+              const historicalEvents = await fetchHistory(
+                encounterId,
+                snapshot.lastEventId
+              );
+              console.log(
+                `🔄 Retrieved ${historicalEvents.length} historical events`
+              );
+
+              // Notify consumer of historical events for event log/replay
+              if (historicalEvents.length > 0) {
+                optionsRef.current.onHistoricalEvents?.(historicalEvents);
+              }
+            } catch (historyErr) {
+              // History fetch failed - continue without it (non-critical)
+              console.warn(
+                'Failed to fetch historical events, continuing:',
+                historyErr
+              );
+            }
+
+            // Process buffered events that are newer than the snapshot
             const newEvents = eventBufferRef.current.filter(
               (e) => e.eventId > snapshot.lastEventId!
             );
