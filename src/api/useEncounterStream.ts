@@ -325,6 +325,17 @@ export function useEncounterStream(
         try {
           const snapshot = await fetchSnapshot(encounterId, playerId);
 
+          // Debug: Log full snapshot to see what we received
+          console.log('🔄 Snapshot received:', {
+            encounterId: snapshot.encounterId,
+            state: snapshot.state,
+            lastEventId: snapshot.lastEventId,
+            hasRoom: !!snapshot.room,
+            hasCombatState: !!snapshot.combatState,
+            partySize: snapshot.party?.length || 0,
+            monstersCount: snapshot.monsters?.length || 0,
+          });
+
           // Apply snapshot via callback
           optionsRef.current.onStateSync?.(snapshot);
 
@@ -334,7 +345,7 @@ export function useEncounterStream(
           if (!snapshot.lastEventId) {
             // No lastEventId - process all buffered events
             console.log(
-              `🔄 Snapshot received without lastEventId, processing all ${bufferedCount} buffered events`
+              `⚠️ Snapshot has NO lastEventId - historical events cannot be fetched. Processing all ${bufferedCount} buffered events`
             );
 
             for (const event of eventBufferRef.current) {
