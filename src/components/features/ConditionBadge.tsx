@@ -109,7 +109,9 @@ function getTooltip(
   if (data) {
     if (isRagingData(data)) {
       parts.push(`+${data.damage_bonus} melee damage`);
-      parts.push(`Turn ${data.turns_active + 1}`);
+      parts.push(
+        `Active for ${data.turns_active} turn${data.turns_active === 1 ? '' : 's'}`
+      );
       parts.push('Resistance: B/P/S');
     } else if (isSneakAttackData(data)) {
       parts.push(`+${data.damage_dice}d6 damage`);

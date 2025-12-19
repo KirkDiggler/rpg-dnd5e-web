@@ -124,6 +124,11 @@ function CompactWeaponSlot({
           : undefined
       }
       title={`${label} Hand: ${getDisplayName()}${getDamageInfo() ? ` (${getDamageInfo()})` : ''}`}
+      aria-label={
+        isClickable && isWeapon
+          ? `Attack with ${getDisplayName()}${getDamageInfo() ? ` (${getDamageInfo()})` : ''}`
+          : undefined
+      }
     >
       <span className={styles.compactWeaponIcon}>{getItemIcon()}</span>
       <span className={styles.compactWeaponLabel}>{label}</span>

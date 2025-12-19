@@ -1584,7 +1584,8 @@
   width: 320px;
   height: 240px; /* Fixed height to prevent overflow */
   z-index: 2550;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Action button group */

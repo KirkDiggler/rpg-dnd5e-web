@@ -189,6 +189,14 @@ export function conditionIdToString(id: ConditionId): string {
       return 'fighting_style_defense';
     case ConditionId.FIGHTING_STYLE_PROTECTION:
       return 'fighting_style_protection';
+    case ConditionId.UNARMORED_DEFENSE:
+      return 'unarmored_defense';
+    case ConditionId.IMPROVED_CRITICAL:
+      return 'improved_critical';
+    case ConditionId.MARTIAL_ARTS:
+      return 'martial_arts';
+    case ConditionId.UNARMORED_MOVEMENT:
+      return 'unarmored_movement';
     default:
       return 'unknown';
   }
