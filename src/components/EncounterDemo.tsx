@@ -280,23 +280,21 @@ export function EncounterDemo() {
     (event: AttackResolvedEvent) => {
       console.log('⚔️ AttackResolved event received:', event);
 
-      // Update attacker character if provided
-      if (event.updatedAttacker?.id) {
-        setFullCharactersMap((prev) => {
-          const newMap = new Map(prev);
-          newMap.set(event.updatedAttacker!.id, event.updatedAttacker!);
-          return newMap;
-        });
-      }
+      // Update attacker and/or target characters if provided
+      setFullCharactersMap((prev) => {
+        if (!event.updatedAttacker?.id && !event.updatedTarget?.id) {
+          return prev;
+        }
 
-      // Update target character if provided
-      if (event.updatedTarget?.id) {
-        setFullCharactersMap((prev) => {
-          const newMap = new Map(prev);
-          newMap.set(event.updatedTarget!.id, event.updatedTarget!);
-          return newMap;
-        });
-      }
+        const newMap = new Map(prev);
+        if (event.updatedAttacker?.id) {
+          newMap.set(event.updatedAttacker.id, event.updatedAttacker);
+        }
+        if (event.updatedTarget?.id) {
+          newMap.set(event.updatedTarget.id, event.updatedTarget);
+        }
+        return newMap;
+      });
 
       // Update room if provided (entity state may have changed)
       if (event.updatedRoom) {
