@@ -1,92 +1,101 @@
-/* Feature Actions */
+/* Feature Actions - compact inline */
 .featureActions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
 .featureGroup {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
+/* Unified with combat panel action buttons */
 .featureActionButton {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: var(--bg-secondary, #334155);
-  border: 1px solid var(--border-color, #475569);
-  border-radius: 6px;
-  color: var(--text-primary, #f1f5f9);
-  font-size: 14px;
+  gap: 4px;
+  padding: 6px 12px;
+  background-color: #a855f7; /* purple-500 - class features */
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .featureActionButton:hover:not(:disabled) {
-  background: var(--bg-hover, #475569);
-  border-color: var(--border-hover, #64748b);
-  transform: translateY(-1px);
+  background-color: #9333ea; /* purple-600 */
 }
 
 .featureActionButton.active {
-  background: var(--accent-success, #22c55e);
-  border-color: var(--accent-success, #22c55e);
-  color: white;
+  background-color: #22c55e; /* green-500 */
+}
+
+.featureActionButton.active:hover:not(:disabled) {
+  background-color: #16a34a; /* green-600 */
 }
 
 .featureActionButton.disabled,
 .featureActionButton:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
-  transform: none;
 }
 
 .featureActionButton.readOnly {
-  border-style: dashed;
-  opacity: 0.8;
+  border: 1px dashed #a855f7;
+  background-color: transparent;
+  color: #a855f7;
 }
 
 .featureIcon {
-  font-size: 16px;
+  font-size: 0.875rem;
 }
 
 .featureName {
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .featureUsage {
-  font-size: 12px;
-  opacity: 0.8;
-  margin-left: 4px;
+  font-size: 0.625rem;
+  opacity: 0.9;
+  margin-left: 2px;
 }
 
-/* Conditions Display */
+/* Conditions Display - compact badges */
 .conditionsDisplay {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
 }
 
 .conditionBadge {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.625rem;
+  font-weight: 600;
 }
 
 .conditionIcon {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .conditionName {
   text-transform: capitalize;
+}
+
+.conditionSubtitle {
+  font-size: 0.5rem;
+  opacity: 0.8;
+  margin-left: 1px;
 }
 
 /* Condition category colors */

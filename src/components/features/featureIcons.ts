@@ -65,11 +65,13 @@ export const CONDITION_ICONS: Record<string, string> = {
 };
 
 /**
- * Get the icon for a feature by id.
+ * Get the icon for a feature by name.
  * Returns a default icon if not found.
  */
-export function getFeatureIcon(featureId: string): string {
-  return FEATURE_ICONS[featureId] || '✨';
+export function getFeatureIcon(featureName: string): string {
+  // Normalize to lowercase snake_case for lookup
+  const normalized = featureName.toLowerCase().replace(/\s+/g, '_');
+  return FEATURE_ICONS[normalized] || FEATURE_ICONS[featureName] || '✨';
 }
 
 /**
