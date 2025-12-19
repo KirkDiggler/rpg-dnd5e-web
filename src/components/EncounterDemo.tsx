@@ -1196,27 +1196,10 @@ export function EncounterDemo() {
     try {
       const response = await endTurn(encounterId);
 
-      // Process monster turns if present
-      if (response.monsterTurns && response.monsterTurns.length > 0) {
-        // Convert monster turns to combat log entries
-        const currentRound = combatState?.round || 1;
-        const monsterLogEntries = monsterTurnsToLogEntries(
-          response.monsterTurns,
-          currentRound,
-          getEntityDisplayName
-        );
+      // Monster turns, combat state, and room updates are handled via stream events
+      // (handleMonsterTurnCompleted, handleTurnEnded) to ensure all players see the same state.
+      // We only handle encounter results here since they may not come via stream.
 
-        // Add to combat log
-        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
-
-        // Update room with monster positions after their movement
-        if (room) {
-          const updatedRoom = applyMonsterMovement(room, response.monsterTurns);
-          setRoom(updatedRoom);
-        }
-      }
-
-      // Check for encounter result (victory/defeat)
       if (response.encounterResult) {
         const { reason } = response.encounterResult;
 
@@ -1227,7 +1210,6 @@ export function EncounterDemo() {
             duration: 0, // Stay until dismissed
           });
 
-          // Optionally add to combat log
           setCombatLog((prev) => [
             ...prev,
             {
@@ -1247,7 +1229,6 @@ export function EncounterDemo() {
             duration: 0, // Stay until dismissed
           });
 
-          // Optionally add to combat log
           setCombatLog((prev) => [
             ...prev,
             {
@@ -1261,18 +1242,13 @@ export function EncounterDemo() {
             },
           ]);
         }
-      }
-
-      if (response.combatState) {
-        handleCombatStateUpdate(response.combatState);
-        // Only show "Turn ended" toast if combat hasn't ended
-        if (!response.encounterResult) {
-          addToast({
-            type: 'success',
-            message: 'Turn ended',
-            duration: 2000,
-          });
-        }
+      } else {
+        // Show turn ended toast (stream handles the actual state update)
+        addToast({
+          type: 'success',
+          message: 'Turn ended',
+          duration: 2000,
+        });
       }
     } catch (err) {
       console.error('Failed to end turn:', err);
