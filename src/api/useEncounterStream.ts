@@ -301,31 +301,46 @@ export function useEncounterStream(
 
         try {
           const snapshot = await fetchSnapshot(encounterId, playerId);
-          lastEventIdRef.current = snapshot.lastEventId;
-          console.log(
-            '🔄 Snapshot received, lastEventId:',
-            snapshot.lastEventId
-          );
 
           // Apply snapshot via callback
           optionsRef.current.onStateSync?.(snapshot);
 
-          // Process buffered events (filter already-seen by ULID comparison)
+          // Process buffered events depending on presence of lastEventId
           const bufferedCount = eventBufferRef.current.length;
-          const newEvents = eventBufferRef.current.filter(
-            (e) => e.eventId > lastEventIdRef.current!
-          );
-          console.log(
-            `🔄 Processing ${newEvents.length} new events from ${bufferedCount} buffered`
-          );
 
-          for (const event of newEvents) {
-            dispatchEvent(event, optionsRef.current);
+          if (!snapshot.lastEventId) {
+            // No lastEventId - process all buffered events
+            console.log(
+              `🔄 Snapshot received without lastEventId, processing all ${bufferedCount} buffered events`
+            );
+
+            for (const event of eventBufferRef.current) {
+              dispatchEvent(event, optionsRef.current);
+            }
+          } else {
+            // Filter by lastEventId (ULID comparison)
+            lastEventIdRef.current = snapshot.lastEventId;
+            console.log(
+              '🔄 Snapshot received, lastEventId:',
+              snapshot.lastEventId
+            );
+
+            const newEvents = eventBufferRef.current.filter(
+              (e) => e.eventId > snapshot.lastEventId!
+            );
+            console.log(
+              `🔄 Processing ${newEvents.length} new events from ${bufferedCount} buffered`
+            );
+
+            for (const event of newEvents) {
+              dispatchEvent(event, optionsRef.current);
+            }
           }
 
-          // Clear buffer and exit sync mode
-          eventBufferRef.current = [];
+          // Exit sync mode BEFORE clearing buffer to prevent race condition
+          // Any new events arriving now will be dispatched directly
           isSyncingRef.current = false;
+          eventBufferRef.current = [];
 
           setConnectionState('connected');
           retryCountRef.current = 0;

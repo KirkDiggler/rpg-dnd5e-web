@@ -202,7 +202,9 @@ function createAttackLogEntry(
     targetName,
     action: hit ? 'Attack Hit' : 'Attack Miss',
     description: hit
-      ? `${monsterName} hits ${targetName || 'target'} for ${attackResult?.damage || 0} damage`
+      ? attackResult
+        ? `${monsterName} hits ${targetName || 'target'} for ${attackResult.damage} damage`
+        : `${monsterName} hits ${targetName || 'target'}`
       : `${monsterName} misses ${targetName || 'target'}`,
     type: 'attack',
     diceRolls,
