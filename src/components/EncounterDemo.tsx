@@ -478,8 +478,63 @@ export function EncounterDemo() {
     [addToast]
   );
 
+  // State sync handler - called with snapshot on connect/reconnect
+  const handleStateSync = useCallback(
+    (
+      snapshot: import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb').GetEncounterStateResponse
+    ) => {
+      console.log('🔄 State sync received:', snapshot);
+
+      // Apply combat state from snapshot
+      if (snapshot.combatState) {
+        setCombatState(snapshot.combatState);
+
+        // Select current turn entity
+        if (snapshot.combatState.currentTurn?.entityId) {
+          setSelectedEntity(snapshot.combatState.currentTurn.entityId);
+        }
+      }
+
+      // Apply room from snapshot
+      if (snapshot.room) {
+        setRoom(snapshot.room);
+      }
+
+      // Apply party members' characters
+      if (snapshot.party && snapshot.party.length > 0) {
+        const partyCharacters = snapshot.party
+          .filter((member) => member.character?.id)
+          .map((member) => member.character!);
+
+        if (partyCharacters.length > 0) {
+          // Update selected character IDs
+          setSelectedCharacterIds(partyCharacters.map((c) => c.id));
+
+          // Add characters to fullCharactersMap
+          setFullCharactersMap((prev) => {
+            const newMap = new Map(prev);
+            partyCharacters.forEach((char) => {
+              newMap.set(char.id, char);
+            });
+            return newMap;
+          });
+        }
+      }
+
+      // Clear any stale UI state
+      setMovementMode(false);
+      setMovementPath([]);
+      setAttackTarget(null);
+
+      console.log('🔄 State sync complete');
+    },
+    []
+  );
+
   // Subscribe to encounter stream for multiplayer sync
   useEncounterStream(encounterId, playerId, {
+    // State sync (load-then-stream pattern)
+    onStateSync: handleStateSync,
     // Dungeon events
     onRoomRevealed: handleRoomRevealed,
     onDungeonVictory: handleDungeonVictory,
@@ -507,6 +562,21 @@ export function EncounterDemo() {
     setCombatLog([]);
     setSelectedEntity(null);
   }, []);
+
+  // Prevent body scrolling when in combat
+  useEffect(() => {
+    if (room) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [room]);
 
   /**
    * Get display name for an entity ID

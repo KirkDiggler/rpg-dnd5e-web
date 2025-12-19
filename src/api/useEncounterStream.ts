@@ -9,6 +9,7 @@ import type {
   DungeonVictoryEvent,
   EncounterEvent,
   FeatureActivatedEvent,
+  GetEncounterStateResponse,
   MonsterTurnCompletedEvent,
   MovementCompletedEvent,
   PlayerDisconnectedEvent,
@@ -26,6 +27,7 @@ import {
   DungeonFailureEventSchema,
   DungeonVictoryEventSchema,
   FeatureActivatedEventSchema,
+  GetEncounterStateRequestSchema,
   MonsterTurnCompletedEventSchema,
   MovementCompletedEventSchema,
   PlayerJoinedEventSchema,
@@ -39,11 +41,15 @@ import { encounterClient } from './client';
 type ConnectionState =
   | 'idle'
   | 'connecting'
+  | 'syncing' // Buffering events while loading snapshot
   | 'connected'
   | 'disconnected'
   | 'error';
 
 interface UseEncounterStreamOptions {
+  // State sync callback - called with snapshot before processing buffered events
+  onStateSync?: (snapshot: GetEncounterStateResponse) => void;
+
   // Lobby events
   onPlayerJoined?: (event: PlayerJoinedEvent) => void;
   onPlayerLeft?: (event: PlayerLeftEvent) => void;
@@ -191,6 +197,20 @@ function dispatchEvent(
 }
 
 /**
+ * Fetches the current encounter state snapshot for load-then-stream pattern
+ */
+async function fetchSnapshot(
+  encounterId: string,
+  playerId: string
+): Promise<GetEncounterStateResponse> {
+  const request = create(GetEncounterStateRequestSchema, {
+    encounterId,
+    playerId,
+  });
+  return encounterClient.getEncounterState(request);
+}
+
+/**
  * useEncounterStream subscribes to real-time encounter events via gRPC server streaming.
  *
  * This hook enables multiplayer synchronization by connecting to the encounter event stream
@@ -235,15 +255,31 @@ export function useEncounterStream(
   const retryTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
 
+  // Buffer refs for load-then-stream pattern
+  const eventBufferRef = useRef<EncounterEvent[]>([]);
+  const lastEventIdRef = useRef<string | null>(null);
+  const isSyncingRef = useRef(false);
+
   useEffect(() => {
     if (!encounterId) {
       setConnectionState('idle');
       return;
     }
 
+    console.log(
+      '🔄 useEncounterStream effect triggered, encounterId:',
+      encounterId
+    );
+
     const connect = async () => {
+      console.log('🔄 connect() called, starting stream connection...');
       setConnectionState('connecting');
       setError(null);
+
+      // Reset sync state for new connection
+      eventBufferRef.current = [];
+      lastEventIdRef.current = null;
+      isSyncingRef.current = true;
 
       abortControllerRef.current = new AbortController();
 
@@ -253,15 +289,89 @@ export function useEncounterStream(
           playerId,
         });
 
-        // Server streaming call
-        for await (const event of encounterClient.streamEncounterEvents(
-          request,
-          { signal: abortControllerRef.current.signal }
-        )) {
-          setConnectionState('connected');
-          retryCountRef.current = 0; // Reset on successful message
+        console.log('🔄 Creating stream iterator...');
+        // Start stream - events will be buffered during sync
+        const streamIterator = encounterClient.streamEncounterEvents(request, {
+          signal: abortControllerRef.current.signal,
+        });
 
-          dispatchEvent(event, optionsRef.current);
+        // Fetch snapshot while stream connects
+        setConnectionState('syncing');
+        console.log('🔄 Fetching encounter state snapshot...');
+
+        try {
+          const snapshot = await fetchSnapshot(encounterId, playerId);
+
+          // Apply snapshot via callback
+          optionsRef.current.onStateSync?.(snapshot);
+
+          // Process buffered events depending on presence of lastEventId
+          const bufferedCount = eventBufferRef.current.length;
+
+          if (!snapshot.lastEventId) {
+            // No lastEventId - process all buffered events
+            console.log(
+              `🔄 Snapshot received without lastEventId, processing all ${bufferedCount} buffered events`
+            );
+
+            for (const event of eventBufferRef.current) {
+              dispatchEvent(event, optionsRef.current);
+            }
+          } else {
+            // Filter by lastEventId (ULID comparison)
+            lastEventIdRef.current = snapshot.lastEventId;
+            console.log(
+              '🔄 Snapshot received, lastEventId:',
+              snapshot.lastEventId
+            );
+
+            const newEvents = eventBufferRef.current.filter(
+              (e) => e.eventId > snapshot.lastEventId!
+            );
+            console.log(
+              `🔄 Processing ${newEvents.length} new events from ${bufferedCount} buffered`
+            );
+
+            for (const event of newEvents) {
+              dispatchEvent(event, optionsRef.current);
+            }
+          }
+
+          // Exit sync mode BEFORE clearing buffer to prevent race condition
+          // Any new events arriving now will be dispatched directly
+          isSyncingRef.current = false;
+          eventBufferRef.current = [];
+
+          setConnectionState('connected');
+          retryCountRef.current = 0;
+        } catch (snapshotErr) {
+          // Snapshot fetch failed - continue without sync (graceful degradation)
+          console.warn(
+            'Failed to fetch snapshot, continuing without sync:',
+            snapshotErr
+          );
+          isSyncingRef.current = false;
+
+          // Process all buffered events since we don't have a lastEventId
+          for (const event of eventBufferRef.current) {
+            dispatchEvent(event, optionsRef.current);
+          }
+          eventBufferRef.current = [];
+
+          setConnectionState('connected');
+          retryCountRef.current = 0;
+        }
+
+        // Continue processing live events
+        for await (const event of streamIterator) {
+          if (isSyncingRef.current) {
+            // Still syncing - buffer the event
+            eventBufferRef.current.push(event);
+            console.log('🔵 Buffering event during sync:', event.eventId);
+          } else {
+            // Normal operation - dispatch immediately
+            dispatchEvent(event, optionsRef.current);
+          }
         }
 
         // Stream ended normally (server closed)

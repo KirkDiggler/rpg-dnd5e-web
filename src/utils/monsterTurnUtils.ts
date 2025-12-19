@@ -178,6 +178,9 @@ function createAttackLogEntry(
   const attackResult =
     action.details.case === 'attackResult' ? action.details.value : undefined;
 
+  // Use attackResult.hit if available, fall back to action.success
+  const hit = attackResult?.hit ?? action.success;
+
   // Extract dice rolls if we have attack result
   const diceRolls: DiceRoll[] | undefined = attackResult
     ? [
@@ -197,8 +200,12 @@ function createAttackLogEntry(
     round,
     actorName: monsterName,
     targetName,
-    action: action.success ? 'Attack Hit' : 'Attack Miss',
-    description: `${monsterName} attacked${targetName ? ` ${targetName}` : ''}`,
+    action: hit ? 'Attack Hit' : 'Attack Miss',
+    description: hit
+      ? attackResult
+        ? `${monsterName} hits ${targetName || 'target'} for ${attackResult.damage} damage`
+        : `${monsterName} hits ${targetName || 'target'}`
+      : `${monsterName} misses ${targetName || 'target'}`,
     type: 'attack',
     diceRolls,
     details: attackResult
@@ -206,8 +213,8 @@ function createAttackLogEntry(
           attackRoll: attackResult.attackRoll,
           attackTotal: attackResult.attackTotal,
           targetAc: attackResult.targetAc,
-          damage: attackResult.damage,
-          damageType: attackResult.damageType,
+          damage: hit ? attackResult.damage : undefined,
+          damageType: hit ? attackResult.damageType : undefined,
           critical: attackResult.critical,
           damageBreakdown: attackResult.damageBreakdown,
         }
