@@ -29,12 +29,19 @@ import {
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   EncounterEndReason,
+  type AttackResolvedEvent,
+  type CombatStartedEvent,
   type CombatState,
   type DoorInfo,
   type DungeonVictoryEvent,
+  type FeatureActivatedEvent,
+  type MonsterTurnCompletedEvent,
   type MonsterTurnResult,
+  type MovementCompletedEvent,
+  type PlayerJoinedEvent,
   type Room,
   type RoomRevealedEvent,
+  type TurnEndedEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
   DungeonDifficulty,
@@ -196,11 +203,296 @@ export function EncounterDemo() {
     setDungeonResult('failure');
   }, []);
 
+  // Multiplayer sync: Turn ended - update combat state and room
+  const handleTurnEnded = useCallback((event: TurnEndedEvent) => {
+    console.log('🔄 TurnEnded event received:', event);
+
+    // Update combat state from the event
+    if (event.combatState) {
+      setCombatState(event.combatState);
+
+      // Select the new current turn entity
+      if (event.combatState.currentTurn?.entityId) {
+        setSelectedEntity(event.combatState.currentTurn.entityId);
+      }
+
+      // Clear movement mode and attack target on turn change
+      setMovementMode(false);
+      setMovementPath([]);
+      setAttackTarget(null);
+    }
+
+    // TODO: Update room when updatedRoom is added to TurnEndedEvent (rpg-api#324)
+    // if (event.updatedRoom) {
+    //   setRoom(event.updatedRoom);
+    // }
+  }, []);
+
+  // Multiplayer sync: Monster turn completed - show monster actions
+  const handleMonsterTurnCompleted = useCallback(
+    (event: MonsterTurnCompletedEvent) => {
+      console.log('👹 MonsterTurnCompleted event received:', event);
+
+      // Convert monster turn to combat log entry
+      if (event.monsterTurn) {
+        const currentRound = combatState?.round || 1;
+        const monsterLogEntries = monsterTurnsToLogEntries(
+          [event.monsterTurn],
+          currentRound,
+          (targetId) => {
+            // Use inline name resolution since getEntityDisplayName isn't available yet
+            const fullChar = fullCharactersMap.get(targetId);
+            if (fullChar?.name) return fullChar.name;
+            const availChar = availableCharacters.find(
+              (c) => c.id === targetId
+            );
+            if (availChar?.name) return availChar.name;
+            return formatEntityId(targetId);
+          }
+        );
+
+        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+      }
+
+      // Update characters if provided
+      if (event.updatedCharacters && event.updatedCharacters.length > 0) {
+        setFullCharactersMap((prev) => {
+          const newMap = new Map(prev);
+          event.updatedCharacters.forEach((char) => {
+            if (char.id) {
+              newMap.set(char.id, char);
+            }
+          });
+          return newMap;
+        });
+      }
+
+      // Update room if provided (monster positions changed)
+      if (event.updatedRoom) {
+        setRoom(event.updatedRoom);
+      }
+    },
+    [combatState?.round, fullCharactersMap, availableCharacters]
+  );
+
+  // Multiplayer sync: Attack resolved - sync attack results and HP
+  const handleAttackResolved = useCallback(
+    (event: AttackResolvedEvent) => {
+      console.log('⚔️ AttackResolved event received:', event);
+
+      // Update attacker and/or target characters if provided
+      setFullCharactersMap((prev) => {
+        if (!event.updatedAttacker?.id && !event.updatedTarget?.id) {
+          return prev;
+        }
+
+        const newMap = new Map(prev);
+        if (event.updatedAttacker?.id) {
+          newMap.set(event.updatedAttacker.id, event.updatedAttacker);
+        }
+        if (event.updatedTarget?.id) {
+          newMap.set(event.updatedTarget.id, event.updatedTarget);
+        }
+        return newMap;
+      });
+
+      // Update room if provided (entity state may have changed)
+      if (event.updatedRoom) {
+        setRoom(event.updatedRoom);
+      }
+
+      // Add combat log entry for the attack
+      if (event.result) {
+        const attackerName =
+          fullCharactersMap.get(event.attackerId)?.name ||
+          availableCharacters.find((c) => c.id === event.attackerId)?.name ||
+          formatEntityId(event.attackerId);
+        const targetName =
+          fullCharactersMap.get(event.targetId)?.name ||
+          availableCharacters.find((c) => c.id === event.targetId)?.name ||
+          formatEntityId(event.targetId);
+
+        const { hit, damage, damageType, critical, attackRoll } = event.result;
+
+        const logEntry: CombatLogEntry = {
+          id: `attack-stream-${Date.now()}`,
+          timestamp: new Date(),
+          round: combatState?.round || 1,
+          actorName: attackerName,
+          targetName,
+          action: critical
+            ? 'Critical Hit!'
+            : hit
+              ? 'Attack Hit'
+              : 'Attack Miss',
+          description: hit
+            ? `${attackerName} hits ${targetName} for ${damage} ${damageType} damage`
+            : `${attackerName} misses ${targetName}`,
+          type: 'attack',
+          diceRolls: attackRoll
+            ? [
+                {
+                  value: attackRoll,
+                  sides: 20,
+                  isNatural1: attackRoll === 1,
+                  isNatural20: attackRoll === 20,
+                  isCritical: critical,
+                },
+              ]
+            : undefined,
+          details: {
+            attackRoll,
+            damage: hit ? damage : undefined,
+            damageType: hit ? damageType : undefined,
+            critical,
+          },
+        };
+        setCombatLog((prev) => [...prev, logEntry]);
+      }
+    },
+    [combatState?.round, fullCharactersMap, availableCharacters]
+  );
+
+  // Multiplayer sync: Movement completed - sync entity positions
+  const handleMovementCompleted = useCallback(
+    (event: MovementCompletedEvent) => {
+      console.log('🚶 MovementCompleted event received:', event);
+
+      // Update room with new entity positions
+      if (event.updatedRoom) {
+        setRoom(event.updatedRoom);
+      }
+    },
+    []
+  );
+
+  // Multiplayer sync: Feature activated - sync feature usage
+  const handleFeatureActivated = useCallback(
+    (event: FeatureActivatedEvent) => {
+      console.log('✨ FeatureActivated event received:', event);
+
+      // Update character if provided
+      if (event.updatedCharacter?.id) {
+        setFullCharactersMap((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(event.updatedCharacter!.id, event.updatedCharacter!);
+          return newMap;
+        });
+      }
+
+      // Add combat log entry for feature activation
+      const characterName =
+        fullCharactersMap.get(event.characterId)?.name ||
+        availableCharacters.find((c) => c.id === event.characterId)?.name ||
+        'Unknown';
+
+      const logEntry: CombatLogEntry = {
+        id: `feature-stream-${Date.now()}`,
+        timestamp: new Date(),
+        round: combatState?.round || 1,
+        actorName: characterName,
+        action: 'Feature Activated',
+        description: event.message || `${characterName} activated a feature`,
+        type: 'info', // Use 'info' type for feature activations
+      };
+      setCombatLog((prev) => [...prev, logEntry]);
+    },
+    [combatState?.round, fullCharactersMap, availableCharacters]
+  );
+
+  // Multiplayer sync: Player joined - add new player's character
+  const handlePlayerJoined = useCallback(
+    (event: PlayerJoinedEvent) => {
+      console.log('👤 PlayerJoined event received:', event);
+
+      // Add the new player's character to our map
+      const character = event.member?.character;
+      if (character?.id) {
+        setFullCharactersMap((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(character.id, character);
+          return newMap;
+        });
+
+        // Add to selected character IDs if not already present
+        setSelectedCharacterIds((prev) => {
+          if (prev.includes(character.id)) return prev;
+          return [...prev, character.id];
+        });
+
+        addToast({
+          type: 'info',
+          message: `A player joined with ${character.name || 'a character'}`,
+          duration: 3000,
+        });
+      }
+    },
+    [addToast]
+  );
+
+  // Multiplayer sync: Combat started - initialize combat for joining players
+  const handleCombatStarted = useCallback(
+    (event: CombatStartedEvent) => {
+      console.log('⚔️ CombatStarted event received:', event);
+
+      // Set room from event
+      if (event.room) {
+        setRoom(event.room);
+      }
+
+      // Set combat state
+      if (event.combatState) {
+        setCombatState(event.combatState);
+
+        // Select current turn entity
+        if (event.combatState.currentTurn?.entityId) {
+          setSelectedEntity(event.combatState.currentTurn.entityId);
+        }
+      }
+
+      // Add party members' characters to our map
+      if (event.party && event.party.length > 0) {
+        const partyCharacters = event.party
+          .filter((member) => member.character?.id)
+          .map((member) => member.character!);
+
+        if (partyCharacters.length > 0) {
+          setSelectedCharacterIds(partyCharacters.map((c) => c.id));
+
+          setFullCharactersMap((prev) => {
+            const newMap = new Map(prev);
+            partyCharacters.forEach((char) => {
+              newMap.set(char.id, char);
+            });
+            return newMap;
+          });
+        }
+      }
+
+      addToast({
+        type: 'success',
+        message: 'Combat started!',
+        duration: 2000,
+      });
+    },
+    [addToast]
+  );
+
   // Subscribe to encounter stream for multiplayer sync
   useEncounterStream(encounterId, playerId, {
+    // Dungeon events
     onRoomRevealed: handleRoomRevealed,
     onDungeonVictory: handleDungeonVictory,
     onDungeonFailure: handleDungeonFailure,
+    // Combat sync events
+    onTurnEnded: handleTurnEnded,
+    onMonsterTurnCompleted: handleMonsterTurnCompleted,
+    onAttackResolved: handleAttackResolved,
+    onMovementCompleted: handleMovementCompleted,
+    onFeatureActivated: handleFeatureActivated,
+    // Player sync events
+    onPlayerJoined: handlePlayerJoined,
+    onCombatStarted: handleCombatStarted,
   });
 
   // Reset all dungeon-related state
@@ -902,27 +1194,10 @@ export function EncounterDemo() {
     try {
       const response = await endTurn(encounterId);
 
-      // Process monster turns if present
-      if (response.monsterTurns && response.monsterTurns.length > 0) {
-        // Convert monster turns to combat log entries
-        const currentRound = combatState?.round || 1;
-        const monsterLogEntries = monsterTurnsToLogEntries(
-          response.monsterTurns,
-          currentRound,
-          getEntityDisplayName
-        );
+      // Monster turns, combat state, and room updates are handled via stream events
+      // (handleMonsterTurnCompleted, handleTurnEnded) to ensure all players see the same state.
+      // We only handle encounter results here since they may not come via stream.
 
-        // Add to combat log
-        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
-
-        // Update room with monster positions after their movement
-        if (room) {
-          const updatedRoom = applyMonsterMovement(room, response.monsterTurns);
-          setRoom(updatedRoom);
-        }
-      }
-
-      // Check for encounter result (victory/defeat)
       if (response.encounterResult) {
         const { reason } = response.encounterResult;
 
@@ -933,7 +1208,6 @@ export function EncounterDemo() {
             duration: 0, // Stay until dismissed
           });
 
-          // Optionally add to combat log
           setCombatLog((prev) => [
             ...prev,
             {
@@ -953,7 +1227,6 @@ export function EncounterDemo() {
             duration: 0, // Stay until dismissed
           });
 
-          // Optionally add to combat log
           setCombatLog((prev) => [
             ...prev,
             {
@@ -967,18 +1240,13 @@ export function EncounterDemo() {
             },
           ]);
         }
-      }
-
-      if (response.combatState) {
-        handleCombatStateUpdate(response.combatState);
-        // Only show "Turn ended" toast if combat hasn't ended
-        if (!response.encounterResult) {
-          addToast({
-            type: 'success',
-            message: 'Turn ended',
-            duration: 2000,
-          });
-        }
+      } else {
+        // Show turn ended toast (stream handles the actual state update)
+        addToast({
+          type: 'success',
+          message: 'Turn ended',
+          duration: 2000,
+        });
       }
     } catch (err) {
       console.error('Failed to end turn:', err);
