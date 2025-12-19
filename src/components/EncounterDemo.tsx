@@ -34,6 +34,7 @@ import {
   type CombatState,
   type DoorInfo,
   type DungeonVictoryEvent,
+  type EncounterEvent,
   type FeatureActivatedEvent,
   type MonsterTurnCompletedEvent,
   type MonsterTurnResult,
@@ -531,10 +532,116 @@ export function EncounterDemo() {
     []
   );
 
+  // Historical events handler - processes events that happened before we connected
+  // This captures monster turns and other events for the event log
+  const handleHistoricalEvents = useCallback(
+    (events: EncounterEvent[]) => {
+      console.log('📜 Historical events received:', events.length);
+
+      // Process each historical event and add to combat log
+      for (const event of events) {
+        const payload = event.event;
+        console.log(
+          '📜 Processing historical event:',
+          payload.case,
+          event.eventId
+        );
+
+        // Handle monster turn completed events - these are what we're mainly after
+        if (
+          payload.case === 'monsterTurnCompleted' &&
+          payload.value.monsterTurn
+        ) {
+          const currentRound = combatState?.round || 1;
+          const monsterLogEntries = monsterTurnsToLogEntries(
+            [payload.value.monsterTurn],
+            currentRound,
+            (targetId) => {
+              const fullChar = fullCharactersMap.get(targetId);
+              if (fullChar?.name) return fullChar.name;
+              const availChar = availableCharacters.find(
+                (c) => c.id === targetId
+              );
+              if (availChar?.name) return availChar.name;
+              return formatEntityId(targetId);
+            }
+          );
+          setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+        }
+
+        // Handle attack resolved events
+        if (payload.case === 'attackResolved' && payload.value.result) {
+          const { attackerId, targetId, result } = payload.value;
+          const attackerName =
+            fullCharactersMap.get(attackerId)?.name ||
+            availableCharacters.find((c) => c.id === attackerId)?.name ||
+            formatEntityId(attackerId);
+          const targetName =
+            fullCharactersMap.get(targetId)?.name ||
+            availableCharacters.find((c) => c.id === targetId)?.name ||
+            formatEntityId(targetId);
+
+          const { hit, damage, damageType, critical, attackRoll } = result;
+
+          const logEntry: CombatLogEntry = {
+            id: `attack-history-${event.eventId}`,
+            timestamp: new Date(Number(event.timestamp)),
+            round: combatState?.round || 1,
+            actorName: attackerName,
+            targetName,
+            action: critical
+              ? 'Critical Hit!'
+              : hit
+                ? 'Attack Hit'
+                : 'Attack Miss',
+            description: hit
+              ? `${attackerName} hits ${targetName} for ${damage} ${damageType} damage`
+              : `${attackerName} misses ${targetName}`,
+            type: 'attack',
+            diceRolls: attackRoll
+              ? [
+                  {
+                    value: attackRoll,
+                    sides: 20,
+                    isNatural1: attackRoll === 1,
+                    isNatural20: attackRoll === 20,
+                    isCritical: critical,
+                  },
+                ]
+              : undefined,
+            details: {
+              attackRoll,
+              damage: hit ? damage : undefined,
+              damageType: hit ? damageType : undefined,
+              critical,
+            },
+          };
+          setCombatLog((prev) => [...prev, logEntry]);
+        }
+
+        // Handle combat started events
+        if (payload.case === 'combatStarted') {
+          const logEntry: CombatLogEntry = {
+            id: `combat-started-history-${event.eventId}`,
+            timestamp: new Date(Number(event.timestamp)),
+            round: 1,
+            actorName: 'System',
+            action: 'Combat Started',
+            description: 'Initiative rolled, combat begins!',
+            type: 'info',
+          };
+          setCombatLog((prev) => [...prev, logEntry]);
+        }
+      }
+    },
+    [combatState?.round, fullCharactersMap, availableCharacters]
+  );
+
   // Subscribe to encounter stream for multiplayer sync
   useEncounterStream(encounterId, playerId, {
     // State sync (load-then-stream pattern)
     onStateSync: handleStateSync,
+    onHistoricalEvents: handleHistoricalEvents,
     // Dungeon events
     onRoomRevealed: handleRoomRevealed,
     onDungeonVictory: handleDungeonVictory,
