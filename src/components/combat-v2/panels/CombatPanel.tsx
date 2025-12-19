@@ -36,28 +36,11 @@ export interface CombatPanelProps {
 }
 
 /**
- * CombatPanel - Main combat interface composing all sub-components
+ * CombatPanel - Compact combat interface
  *
- * This is the unified combat panel that brings together:
- * 1. Character information (portrait, HP, AC, conditions)
- * 2. Equipment display (main hand / off hand weapons)
- * 3. Action economy indicators (movement, action, bonus, reaction)
- * 4. Dynamic action buttons (class-specific actions)
- * 5. Combat history sidebar (scrollable combat log)
- *
- * Layout:
- * - Two-column layout: ~70% main content (character info/actions), ~30% sidebar (combat log)
- * - Main content area stacks: CharacterInfo -> Equipment -> ActionEconomy -> ActionButtons
- * - Sidebar is fixed-height, scrollable
- * - Dark theme consistent with combat-v2 components
- * - Responsive design that adapts to mobile
- *
- * Props:
- * - character: Full character data (protobuf Character type)
- * - combatState: Current combat state (for combat log and round tracking)
- * - turnState: Current turn state (for action economy)
- * - isPlayerTurn: Whether it's the player's turn (disables actions when false)
- * - Callbacks: onAttack, onMove, onSpell, onFeature, onBackpack, onWeaponClick
+ * Layout: Single row with all combat info
+ * - Floating overlays: HoverInfoPanel (left), CombatLog (right) - over the map
+ * - Bottom panel: Character info, equipment, conditions, action economy, actions
  */
 export function CombatPanel({
   character,
@@ -75,124 +58,119 @@ export function CombatPanel({
   onWeaponClick,
   onEndTurn,
 }: CombatPanelProps) {
-  // Determine if actions should be globally disabled
   const actionsDisabled = !isPlayerTurn;
+  const showHoverPanel = hoveredEntity || selectedHoverEntity;
 
   return (
     <div className={styles.combatPanel}>
-      {/* Turn Status Banner - prominent indicator for multiplayer */}
-      <div
-        style={{
-          background: isPlayerTurn
-            ? 'linear-gradient(90deg, #10B981, #059669)'
-            : 'rgba(100, 116, 139, 0.8)',
-          color: isPlayerTurn ? 'white' : '#94a3b8',
-          padding: '6px 16px',
-          textAlign: 'center',
-          fontWeight: isPlayerTurn ? 'bold' : 'normal',
-          fontSize: isPlayerTurn ? '13px' : '11px',
-          textTransform: 'uppercase',
-          letterSpacing: isPlayerTurn ? '2px' : '1px',
-          boxShadow: isPlayerTurn
-            ? '0 2px 8px rgba(16, 185, 129, 0.4)'
-            : 'none',
-        }}
-      >
-        {isPlayerTurn
-          ? `⚔️ Your Turn — ${character.name}`
-          : '⏳ Waiting for other player...'}
-      </div>
-
-      <div className={styles.combatPanelContainer}>
-        {/* Left Column: Hover Info Panel */}
-        <HoverInfoPanel
-          hoveredEntity={hoveredEntity || null}
-          selectedEntity={selectedHoverEntity || null}
-          currentCharacter={character}
-          characters={characters}
-        />
-
-        {/* Main Content Column */}
-        <div className={styles.combatPanelMainContent}>
-          {/* Character Info Section */}
-          <CharacterInfoSection character={character} />
-
-          {/* Equipment Display */}
-          <EquipmentDisplay
-            character={character}
-            onWeaponClick={onWeaponClick}
-            disabled={actionsDisabled}
+      {/* Floating Hover Info Panel - bottom left, above panel */}
+      {showHoverPanel && (
+        <div className={styles.floatingHoverPanel}>
+          <HoverInfoPanel
+            hoveredEntity={hoveredEntity || null}
+            selectedEntity={selectedHoverEntity || null}
+            currentCharacter={character}
+            characters={characters}
           />
+        </div>
+      )}
 
-          {/* Active Conditions Display */}
-          <ConditionsDisplay character={character} />
+      {/* Floating Combat Log - right side, over the map */}
+      {combatState && (
+        <div className={styles.floatingCombatLog}>
+          <CombatHistorySidebar
+            combatState={combatState}
+            logEntries={combatLog}
+          />
+        </div>
+      )}
 
-          {/* Action Economy Indicators */}
-          <ActionEconomyIndicators turnState={turnState} />
-
-          {/* Action Buttons */}
-          <div className={styles.dynamicActionButtons}>
-            {/* Core Actions */}
-            <button
-              className={`${styles.dynamicActionButton} ${styles.actionButtonAttack}`}
-              onClick={onAttack}
-              disabled={actionsDisabled || turnState?.actionUsed}
-              title="Attack target"
-            >
-              <span className={styles.actionButtonIcon}>⚔️</span>
-              <span className={styles.actionButtonLabel}>Attack</span>
-            </button>
-
-            <button
-              className={`${styles.dynamicActionButton} ${styles.actionButtonMove}`}
-              onClick={onMove}
-              disabled={actionsDisabled}
-              title="Move your character"
-            >
-              <span className={styles.actionButtonIcon}>🏃</span>
-              <span className={styles.actionButtonLabel}>Move</span>
-            </button>
-
-            {/* Class Feature Actions - driven by character.features from API */}
-            <FeatureActions
-              character={character}
-              actionAvailable={!turnState?.actionUsed}
-              bonusActionAvailable={!turnState?.bonusActionUsed}
-              disabled={actionsDisabled}
-              onActivateFeature={onFeature}
-            />
-
-            <button
-              className={`${styles.dynamicActionButton}`}
-              onClick={onBackpack}
-              disabled={actionsDisabled}
-              title="Open inventory"
-            >
-              <span className={styles.actionButtonIcon}>🎒</span>
-              <span className={styles.actionButtonLabel}>Inventory</span>
-            </button>
-
-            <button
-              className={`${styles.dynamicActionButton} ${styles.actionButtonEndTurn}`}
-              onClick={onEndTurn}
-              disabled={actionsDisabled}
-              title="End your turn"
-            >
-              <span className={styles.actionButtonIcon}>⏭️</span>
-              <span className={styles.actionButtonLabel}>End Turn</span>
-            </button>
-          </div>
+      {/* Main Panel Content - single row layout */}
+      <div className={styles.combatPanelContent}>
+        {/* Turn Badge */}
+        <div
+          className={styles.turnBadge}
+          style={{
+            background: isPlayerTurn
+              ? 'linear-gradient(90deg, #10B981, #059669)'
+              : 'rgba(100, 116, 139, 0.8)',
+            color: isPlayerTurn ? 'white' : '#94a3b8',
+          }}
+        >
+          {isPlayerTurn ? '⚔️ YOUR TURN' : '⏳ WAITING'}
         </div>
 
-        {/* Combat History Sidebar (30%) */}
-        {combatState && (
-          <div className={styles.combatPanelSidebar}>
-            <CombatHistorySidebar
-              combatState={combatState}
-              logEntries={combatLog}
-            />
-          </div>
-        )}
+        {/* Character Info */}
+        <CharacterInfoSection character={character} />
+
+        {/* Divider */}
+        <div className={styles.panelDivider} />
+
+        {/* Equipment */}
+        <EquipmentDisplay
+          character={character}
+          onWeaponClick={onWeaponClick}
+          disabled={actionsDisabled}
+        />
+
+        {/* Conditions */}
+        <ConditionsDisplay character={character} />
+
+        {/* Divider */}
+        <div className={styles.panelDivider} />
+
+        {/* Action Economy */}
+        <ActionEconomyIndicators turnState={turnState} />
+
+        {/* Divider */}
+        <div className={styles.panelDivider} />
+
+        {/* Action Buttons */}
+        <div className={styles.actionButtonGroup}>
+          <button
+            className={`${styles.actionBtn} ${styles.actionBtnAttack}`}
+            onClick={onAttack}
+            disabled={actionsDisabled || turnState?.actionUsed}
+            title="Attack target"
+          >
+            ⚔️ Attack
+          </button>
+
+          <button
+            className={`${styles.actionBtn} ${styles.actionBtnMove}`}
+            onClick={onMove}
+            disabled={actionsDisabled}
+            title="Move your character"
+          >
+            🏃 Move
+          </button>
+
+          <FeatureActions
+            character={character}
+            actionAvailable={!turnState?.actionUsed}
+            bonusActionAvailable={!turnState?.bonusActionUsed}
+            disabled={actionsDisabled}
+            onActivateFeature={onFeature}
+          />
+
+          <button
+            className={styles.actionBtn}
+            onClick={onBackpack}
+            disabled={actionsDisabled}
+            title="Open inventory"
+          >
+            🎒
+          </button>
+
+          <button
+            className={`${styles.actionBtn} ${styles.actionBtnEndTurn}`}
+            onClick={onEndTurn}
+            disabled={actionsDisabled}
+            title="End your turn"
+          >
+            End Turn
+          </button>
+        </div>
       </div>
     </div>
   );

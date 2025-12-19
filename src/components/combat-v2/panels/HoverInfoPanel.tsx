@@ -83,52 +83,40 @@ function MonsterInfo({ name }: { name: string }) {
 export function HoverInfoPanel({
   hoveredEntity,
   selectedEntity,
-  currentCharacter,
   characters,
 }: HoverInfoPanelProps) {
-  // Priority: hovered > selected > current turn character
+  // Only show when actually hovering or have a selected entity
   const displayEntity = hoveredEntity || selectedEntity;
+
+  // Don't render anything if nothing is hovered/selected
+  if (!displayEntity) {
+    return null;
+  }
 
   // Determine what to display
   let content: React.ReactNode;
   let borderClass = styles.hoverInfoAlly; // Default to ally (blue/green)
 
-  if (displayEntity) {
-    // Showing an entity (hovered or selected)
-    if (displayEntity.type === 'player') {
-      // Find the character data
-      const character = characters.find((c) => c.id === displayEntity.id);
-      if (character) {
-        content = <PlayerInfo character={character} />;
-        borderClass = styles.hoverInfoAlly;
-      } else {
-        // Character not found - show basic info with name
-        content = (
-          <div className={styles.hoverInfoContent}>
-            <div className={styles.hoverInfoName}>{displayEntity.name}</div>
-            <div className={styles.hoverInfoSubtext}>Ally</div>
-          </div>
-        );
-        borderClass = styles.hoverInfoAlly;
-      }
+  if (displayEntity.type === 'player') {
+    // Find the character data
+    const character = characters.find((c) => c.id === displayEntity.id);
+    if (character) {
+      content = <PlayerInfo character={character} />;
+      borderClass = styles.hoverInfoAlly;
     } else {
-      // Monster/enemy - use name from entity
-      content = <MonsterInfo name={displayEntity.name} />;
-      borderClass = styles.hoverInfoEnemy;
-    }
-  } else if (currentCharacter) {
-    // Not hovering or selected - show current turn character
-    content = <PlayerInfo character={currentCharacter} />;
-    borderClass = styles.hoverInfoAlly;
-  } else {
-    // Nothing to show
-    content = (
-      <div className={styles.hoverInfoContent}>
-        <div className={styles.hoverInfoPlaceholder}>
-          Hover over an entity for info
+      // Character not found - show basic info with name
+      content = (
+        <div className={styles.hoverInfoContent}>
+          <div className={styles.hoverInfoName}>{displayEntity.name}</div>
+          <div className={styles.hoverInfoSubtext}>Ally</div>
         </div>
-      </div>
-    );
+      );
+      borderClass = styles.hoverInfoAlly;
+    }
+  } else {
+    // Monster/enemy - use name from entity
+    content = <MonsterInfo name={displayEntity.name} />;
+    borderClass = styles.hoverInfoEnemy;
   }
 
   return (

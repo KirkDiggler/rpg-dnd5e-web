@@ -302,29 +302,28 @@
 /* Character Info Section */
 /* ===================================== */
 
+/* Character info section - uses unified compact panel style */
 .characterInfoSection {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px;
-  background-color: #1e293b; /* slate-800 fallback */
-  background-color: var(--bg-secondary, #1e293b);
-  border-radius: 8px;
-  border: 1px solid #475569; /* slate-600 fallback */
-  border: 1px solid var(--border-color, #475569);
+  gap: 8px;
+  padding: 6px 10px;
+  background-color: transparent;
+  flex: 1;
+  flex-wrap: wrap;
 }
 
 /* Portrait Section */
 .characterPortraitSection {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
 .characterPortrait {
-  width: 48px;
-  height: 48px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: linear-gradient(
     135deg,
@@ -335,12 +334,10 @@
   align-items: center;
   justify-content: center;
   border: 2px solid #60a5fa; /* blue-400 */
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 .portraitEmoji {
-  font-size: 1.5rem;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+  font-size: 1rem;
 }
 
 .characterNameSection {
@@ -357,79 +354,65 @@
   line-height: 1.2;
 }
 
-/* HP Section */
+/* HP Section - compact inline */
 .hpSection {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-width: 140px;
+  align-items: center;
+  gap: 6px;
+  min-width: 100px;
 }
 
 .hpLabelRow {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 4px;
 }
 
 .hpLabel {
-  font-size: 0.75rem;
+  font-size: 0.625rem;
   font-weight: 600;
-  color: #94a3b8; /* slate-400 fallback */
-  color: var(--text-muted, #94a3b8);
+  color: #94a3b8;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .hpValues {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 700;
-  color: #f1f5f9; /* slate-100 fallback */
-  color: var(--text-primary, #f1f5f9);
+  color: #f1f5f9;
 }
 
 .hpBarContainer {
-  width: 100%;
-  height: 8px;
-  background-color: #334155; /* slate-700 fallback */
-  background-color: var(--bg-tertiary, #334155);
-  border-radius: 4px;
+  flex: 1;
+  height: 4px;
+  background-color: #334155;
+  border-radius: 2px;
   overflow: hidden;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+  min-width: 60px;
 }
 
 .hpBarFill {
   height: 100%;
-  border-radius: 4px;
-  transition:
-    width 0.3s ease,
-    background-color 0.3s ease;
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  transition: width 0.2s ease;
 }
 
 .tempHpBadge {
-  font-size: 0.75rem;
-  color: #60a5fa; /* blue-400 */
+  font-size: 0.625rem;
+  color: #60a5fa;
   font-weight: 500;
-  align-self: flex-start;
 }
 
-/* AC Section */
+/* AC Section - compact inline display */
 .acSection {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background-color: #334155; /* slate-700 fallback */
-  background-color: var(--bg-tertiary, #334155);
-  border-radius: 6px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
 .acIcon {
-  font-size: 1.5rem;
+  font-size: 1rem;
   line-height: 1;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
 }
 
 .acValue {
@@ -449,7 +432,7 @@
 }
 
 .acNumber {
-  font-size: 1.25rem;
+  font-size: 0.875rem;
   font-weight: 700;
   color: #f1f5f9; /* slate-100 fallback */
   color: var(--text-primary, #f1f5f9);
@@ -475,36 +458,66 @@
   cursor: default;
 }
 
-/* Conditions Section */
+/* Ability Scores Section */
+.abilityScoresSection {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Ability score - compact with icon */
+.abilityScore {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  cursor: default;
+}
+
+.abilityIcon {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.abilityLabel {
+  font-size: 0.5rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.abilityModifier {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+/* Conditions Section - compact badges */
 .conditionsSection {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
 .conditionBadge {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background-color: #7c3aed; /* violet-600 fallback */
-  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
+  gap: 3px;
+  padding: 2px 6px;
+  background-color: #7c3aed;
+  border-radius: 3px;
+  font-size: 0.625rem;
+  font-weight: 600;
   color: white;
   cursor: help;
-  transition: transform 0.2s ease;
 }
 
 .conditionBadge:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4);
+  background-color: #6d28d9;
 }
 
 .conditionIcon {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   line-height: 1;
 }
 
@@ -521,6 +534,71 @@
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+/* Compact Equipment Display - Inline horizontal */
+.equipmentDisplayCompact {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Compact weapon slot - inline */
+.compactWeaponSlot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: #334155;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.compactWeaponSlotClickable {
+  cursor: pointer;
+  border-color: #64748b; /* slate-500 */
+}
+
+.compactWeaponSlotClickable:hover {
+  border-color: #dc2626; /* red-600 - attack color */
+  background-color: #1e293b; /* slate-800 */
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.2);
+}
+
+.compactWeaponSlotDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.compactWeaponSlotEmpty {
+  border-style: dashed;
+  border-color: #475569; /* slate-600 */
+}
+
+.compactWeaponIcon {
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.compactWeaponLabel {
+  font-size: 0.5rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.compactWeaponName {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.compactWeaponDamage {
+  font-size: 0.625rem;
+  color: #cbd5e1;
+  font-weight: 500;
 }
 
 /* Weapon Slot */
@@ -620,104 +698,84 @@
 /* Action Economy Indicators */
 /* ===================================== */
 
+/* Action economy - compact inline display */
 .actionEconomySection {
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 12px;
-  background-color: #1e293b; /* slate-800 fallback */
-  background-color: var(--bg-secondary, #1e293b);
-  border-radius: 8px;
-  border: 1px solid #475569; /* slate-600 fallback */
-  border: 1px solid var(--border-color, #475569);
+  gap: 12px;
 }
 
+/* Action economy item - inline label + indicator */
 .actionEconomyItem {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
 .actionEconomyLabel {
   font-size: 0.625rem;
   font-weight: 600;
-  color: #94a3b8; /* slate-400 fallback */
-  color: var(--text-muted, #94a3b8);
+  color: #94a3b8;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
-/* Movement Display */
+/* Movement Display - compact inline */
 .movementDisplay {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  min-width: 100px;
+  gap: 6px;
+  min-width: 90px;
 }
 
 .movementBarContainer {
-  width: 100%;
-  height: 6px;
-  background-color: #334155; /* slate-700 fallback */
-  background-color: var(--bg-tertiary, #334155);
-  border-radius: 3px;
+  flex: 1;
+  height: 4px;
+  background-color: #334155;
+  border-radius: 2px;
   overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .movementBarFill {
   height: 100%;
-  border-radius: 3px;
-  transition:
-    width 0.3s ease,
-    background-color 0.3s ease;
+  border-radius: 2px;
+  transition: width 0.2s ease;
 }
 
 .movementText {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  color: #f1f5f9; /* slate-100 fallback */
-  color: var(--text-primary, #f1f5f9);
+  color: #f1f5f9;
   white-space: nowrap;
 }
 
-/* Action Dots */
+/* Action Dots - compact indicators */
 .actionDot {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  transition:
-    background-color 0.2s ease,
-    transform 0.2s ease;
+  transition: background-color 0.2s ease;
   cursor: help;
-}
-
-.actionDot:hover {
-  transform: scale(1.1);
 }
 
 .actionDotAvailable {
   background-color: #10b981; /* emerald-500 */
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
 }
 
 .actionDotUsed {
   background-color: #334155; /* slate-700 */
-  border: 2px solid #475569; /* slate-600 */
+  border: 1px solid #475569; /* slate-600 */
 }
 
 .actionDotIcon {
-  font-size: 1.25rem;
+  font-size: 0.75rem;
   line-height: 1;
-  color: #f1f5f9; /* slate-100 fallback */
-  color: var(--text-primary, #f1f5f9);
+  color: #f1f5f9;
   user-select: none;
 }
 
@@ -831,7 +889,7 @@
 
 .dynamicActionButtons {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
   align-items: center;
 }
@@ -839,12 +897,12 @@
 .dynamicActionButton {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  border-radius: 8px;
-  font-size: 0.875rem;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
   font-weight: 600;
-  border: 2px solid transparent;
+  border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
@@ -871,9 +929,8 @@
 }
 
 .actionButtonIcon {
-  font-size: 1.25rem;
+  font-size: 1rem;
   line-height: 1;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
 }
 
 .actionButtonLabel {
@@ -1469,79 +1526,139 @@
   right: 0;
   z-index: 2500; /* Above game content, below modals */
 
-  /* Layout */
-  display: flex;
-  justify-content: center;
-  padding: 16px;
-
   /* Styling */
-  background-color: #0f172a; /* slate-900 - darker background */
-  background-color: var(--bg-primary, #0f172a);
-  border-top: 2px solid #475569; /* Border at top for visual separation */
-  border-top: 2px solid var(--border-color, #475569);
-  box-shadow: 0 -8px 25px -5px rgba(0, 0, 0, 0.4); /* Shadow above panel */
+  background-color: #0f172a; /* slate-900 */
+  border-top: 1px solid #334155; /* slate-700 */
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
 
   /* Interaction */
   pointer-events: auto;
 }
 
-/* Container with max-width for readability */
-.combatPanelContainer {
-  display: grid;
-  grid-template-columns: 200px 1fr 400px; /* hover info | main content | sidebar */
-  gap: 20px;
-  width: 100%;
+/* Main panel content - single horizontal row */
+.combatPanelContent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
   max-width: 1600px;
+  margin: 0 auto;
+  flex-wrap: wrap;
 }
 
-/* Main Content Column */
-.combatPanelMainContent {
+/* Turn badge - compact indicator */
+.turnBadge {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Divider between sections */
+.panelDivider {
+  width: 1px;
+  height: 28px;
+  background-color: #475569; /* slate-600 */
+  flex-shrink: 0;
+}
+
+/* Floating hover panel - bottom left, above panel */
+.floatingHoverPanel {
+  position: absolute;
+  bottom: 100%;
+  left: 16px;
+  margin-bottom: 8px;
+  z-index: 2600;
+}
+
+/* Floating combat log - right side, over the map */
+.floatingCombatLog {
+  position: absolute;
+  bottom: 100%;
+  right: 16px;
+  margin-bottom: 8px;
+  width: 320px;
+  height: 240px; /* Fixed height to prevent overflow */
+  z-index: 2550;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Action button group */
+.actionButtonGroup {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
-/* Sidebar Column - constrained height with scrolling */
-.combatPanelSidebar {
+/* Unified action button style */
+.actionBtn {
   display: flex;
-  flex-direction: column;
-  /* Constrain height so combat log scrolls instead of pushing page */
-  max-height: 350px;
-  min-height: 200px;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  background-color: #334155; /* slate-700 */
+  color: #f1f5f9; /* slate-100 */
 }
 
-/* Responsive Layout */
-@media (max-width: 1200px) {
-  .combatPanelContainer {
-    grid-template-columns: 180px 1fr 350px; /* Narrower columns on medium screens */
-    gap: 16px;
-  }
+.actionBtn:hover:not(:disabled) {
+  background-color: #475569; /* slate-600 */
 }
 
+.actionBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.actionBtnAttack {
+  background-color: #dc2626; /* red-600 */
+}
+.actionBtnAttack:hover:not(:disabled) {
+  background-color: #b91c1c; /* red-700 */
+}
+
+.actionBtnMove {
+  background-color: #3b82f6; /* blue-500 */
+}
+.actionBtnMove:hover:not(:disabled) {
+  background-color: #2563eb; /* blue-600 */
+}
+
+.actionBtnEndTurn {
+  background-color: #16a34a; /* green-600 */
+}
+.actionBtnEndTurn:hover:not(:disabled) {
+  background-color: #15803d; /* green-700 */
+}
+
+/* Responsive */
 @media (max-width: 1024px) {
-  .combatPanelContainer {
-    grid-template-columns: 160px 1fr 300px; /* Even narrower */
-    gap: 12px;
+  .combatPanelContent {
+    gap: 10px;
+    padding: 8px 12px;
+  }
+
+  .floatingCombatLog {
+    width: 280px;
   }
 }
 
 @media (max-width: 768px) {
-  .combatPanel {
-    padding: 12px;
-  }
-
-  .combatPanelContainer {
-    grid-template-columns: 1fr; /* Stack vertically on mobile */
-    gap: 12px;
-  }
-
-  .combatPanelMainContent {
-    gap: 12px;
-  }
-
-  .combatPanelSidebar {
-    /* On mobile, give sidebar a reasonable height when stacked */
-    max-height: 250px;
+  .combatPanelContent {
+    gap: 8px;
+    padding: 8px;
   }
 }
 

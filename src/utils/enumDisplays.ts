@@ -296,6 +296,46 @@ export const CONDITION_DISPLAY: Record<ConditionId, EnumDisplay> = {
     icon: '✨',
     description: 'Paladin divine smite damage',
   },
+  [ConditionId.FIGHTING_STYLE_GREAT_WEAPON_FIGHTING]: {
+    title: 'Great Weapon Fighting',
+    icon: '⚔️',
+    description: 'Reroll 1s and 2s on damage dice',
+  },
+  [ConditionId.FIGHTING_STYLE_ARCHERY]: {
+    title: 'Archery',
+    icon: '🏹',
+    description: '+2 to attack rolls with ranged weapons',
+  },
+  [ConditionId.FIGHTING_STYLE_DEFENSE]: {
+    title: 'Defense',
+    icon: '🛡️',
+    description: '+1 AC while wearing armor',
+  },
+  [ConditionId.FIGHTING_STYLE_PROTECTION]: {
+    title: 'Protection',
+    icon: '🛡️',
+    description: 'Impose disadvantage on attacks against adjacent allies',
+  },
+  [ConditionId.UNARMORED_DEFENSE]: {
+    title: 'Unarmored Defense',
+    icon: '🥋',
+    description: 'Add modifier to AC while unarmored',
+  },
+  [ConditionId.IMPROVED_CRITICAL]: {
+    title: 'Improved Critical',
+    icon: '⚔️',
+    description: 'Critical hits on 19-20',
+  },
+  [ConditionId.MARTIAL_ARTS]: {
+    title: 'Martial Arts',
+    icon: '👊',
+    description: 'Monk martial arts damage',
+  },
+  [ConditionId.UNARMORED_MOVEMENT]: {
+    title: 'Unarmored Movement',
+    icon: '💨',
+    description: 'Bonus speed while unarmored',
+  },
 };
 
 /**

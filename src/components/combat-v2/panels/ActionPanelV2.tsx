@@ -118,7 +118,8 @@ export function ActionPanelV2({
 
   // Check if character has Rage feature
   const hasRageFeature =
-    currentCharacter?.features?.some((f) => f.id === 'rage') ?? false;
+    currentCharacter?.features?.some((f) => f.name.toLowerCase() === 'rage') ??
+    false;
 
   // Check if character is already raging
   const isRaging =

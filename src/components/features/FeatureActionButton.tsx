@@ -1,3 +1,4 @@
+import { hasUsageData, parseFeatureData } from '@/types/featureData';
 import type { CharacterFeature } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { ActionType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { getFeatureIcon } from './featureIcons';
@@ -41,7 +42,7 @@ export function FeatureActionButton({
   readOnly = false,
   onActivate,
 }: FeatureActionButtonProps) {
-  const icon = getFeatureIcon(feature.id);
+  const icon = getFeatureIcon(feature.name);
 
   // Determine if button should be disabled based on action economy
   const isDisabledByActionEconomy = getIsDisabledByActionEconomy(
@@ -64,7 +65,7 @@ export function FeatureActionButton({
     // Read-only buttons are still clickable - just no action economy check
     if (disabled || isActive) return;
     if (!readOnly && isButtonDisabled) return;
-    onActivate?.(feature.id);
+    onActivate?.(feature.name);
   };
 
   const buttonClasses = [
@@ -121,14 +122,21 @@ function getIsDisabledByActionEconomy(
 }
 
 /**
- * Parse usage data from feature (placeholder for #303)
+ * Parse usage data from feature.featureData
  */
 function parseUsageData(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _feature: CharacterFeature
+  feature: CharacterFeature
 ): { remaining: number; max: number } | null {
-  // TODO: Parse from feature.data when #303 is implemented
-  // For now return null (no usage tracking)
+  const data = parseFeatureData(feature.featureData);
+  if (!data) return null;
+
+  if (hasUsageData(data)) {
+    return {
+      remaining: data.uses,
+      max: data.max_uses,
+    };
+  }
+
   return null;
 }
 

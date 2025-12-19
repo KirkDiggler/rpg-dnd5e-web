@@ -31,17 +31,17 @@ export function EquipmentDisplay({
   const offHand = character.equipmentSlots?.offHand;
 
   return (
-    <div className={styles.equipmentDisplay}>
-      <WeaponSlot
+    <div className={styles.equipmentDisplayCompact}>
+      <CompactWeaponSlot
         slot="mainHand"
-        label="Main Hand"
+        label="Main"
         item={mainHand}
         onClick={onWeaponClick}
         disabled={disabled}
       />
-      <WeaponSlot
+      <CompactWeaponSlot
         slot="offHand"
-        label="Off Hand"
+        label="Off"
         item={offHand}
         onClick={onWeaponClick}
         disabled={disabled}
@@ -58,7 +58,14 @@ interface WeaponSlotProps {
   disabled: boolean;
 }
 
-function WeaponSlot({ slot, label, item, onClick, disabled }: WeaponSlotProps) {
+/** Compact inline weapon slot for space-efficient display */
+function CompactWeaponSlot({
+  slot,
+  label,
+  item,
+  onClick,
+  disabled,
+}: WeaponSlotProps) {
   const equipment = item?.equipment;
   const weaponData =
     equipment?.equipmentData?.case === 'weaponData'
@@ -79,7 +86,6 @@ function WeaponSlot({ slot, label, item, onClick, disabled }: WeaponSlotProps) {
   const getItemIcon = () => {
     if (!item || !item.itemId) return '✋';
     if (weaponData) return '⚔️';
-    // Check if it's armor or shield by name
     const name = item.itemId.toLowerCase();
     if (name.includes('shield')) return '🛡️';
     if (
@@ -88,12 +94,22 @@ function WeaponSlot({ slot, label, item, onClick, disabled }: WeaponSlotProps) {
       name.includes('plate')
     )
       return '🛡️';
-    return '📦'; // Generic item
+    return '📦';
+  };
+
+  const getDisplayName = () => {
+    if (isEmpty) return 'Empty';
+    return equipment?.name || item.itemId || 'Unknown';
+  };
+
+  const getDamageInfo = () => {
+    if (!weaponData) return null;
+    return `${weaponData.damageDice} ${getDamageTypeAbbrev(weaponData.damageType)}`;
   };
 
   return (
     <div
-      className={`${styles.weaponSlot} ${isEmpty ? styles.weaponSlotEmpty : ''} ${isClickable ? styles.weaponSlotClickable : ''} ${disabled ? styles.weaponSlotDisabled : ''}`}
+      className={`${styles.compactWeaponSlot} ${isClickable ? styles.compactWeaponSlotClickable : ''} ${disabled ? styles.compactWeaponSlotDisabled : ''} ${isEmpty ? styles.compactWeaponSlotEmpty : ''}`}
       onClick={handleClick}
       role={isClickable ? 'button' : undefined}
       tabIndex={isClickable ? 0 : undefined}
@@ -107,63 +123,40 @@ function WeaponSlot({ slot, label, item, onClick, disabled }: WeaponSlotProps) {
             }
           : undefined
       }
+      title={`${label} Hand: ${getDisplayName()}${getDamageInfo() ? ` (${getDamageInfo()})` : ''}`}
+      aria-label={
+        isClickable && isWeapon
+          ? `Attack with ${getDisplayName()}${getDamageInfo() ? ` (${getDamageInfo()})` : ''}`
+          : undefined
+      }
     >
-      <div className={styles.weaponSlotHeader}>
-        <span className={styles.weaponSlotIcon}>{getItemIcon()}</span>
-        <span className={styles.weaponSlotLabel}>{label}</span>
-      </div>
-
-      {isEmpty ? (
-        <div className={styles.weaponSlotContent}>
-          <span className={styles.weaponSlotEmpty}>Empty</span>
-        </div>
-      ) : isWeapon ? (
-        <div className={styles.weaponSlotContent}>
-          <div className={styles.weaponName}>
-            {equipment?.name || item.itemId}
-          </div>
-          <div className={styles.weaponDamage}>
-            {weaponData.damageDice}{' '}
-            {getDamageTypeDisplay(weaponData.damageType)}
-          </div>
-        </div>
-      ) : (
-        <div className={styles.weaponSlotContent}>
-          <div className={styles.weaponName}>
-            {equipment?.name || item.itemId}
-          </div>
-          <div
-            className={styles.weaponDamage}
-            style={{ color: 'var(--text-muted)' }}
-          >
-            {equipment?.equipmentData?.case === 'armorData' ? 'Armor' : 'Item'}
-          </div>
-        </div>
+      <span className={styles.compactWeaponIcon}>{getItemIcon()}</span>
+      <span className={styles.compactWeaponLabel}>{label}</span>
+      <span className={styles.compactWeaponName}>{getDisplayName()}</span>
+      {getDamageInfo() && (
+        <span className={styles.compactWeaponDamage}>{getDamageInfo()}</span>
       )}
     </div>
   );
 }
 
-/**
- * Convert DamageType enum to display string
- */
-function getDamageTypeDisplay(damageType: DamageType): string {
-  const damageTypeMap: Record<DamageType, string> = {
-    [DamageType.UNSPECIFIED]: 'unspecified',
-    [DamageType.BLUDGEONING]: 'bludgeoning',
-    [DamageType.PIERCING]: 'piercing',
-    [DamageType.SLASHING]: 'slashing',
+/** Get abbreviated damage type */
+function getDamageTypeAbbrev(damageType: DamageType): string {
+  const abbrevMap: Record<DamageType, string> = {
+    [DamageType.UNSPECIFIED]: '',
+    [DamageType.BLUDGEONING]: 'bludg.',
+    [DamageType.PIERCING]: 'pierc.',
+    [DamageType.SLASHING]: 'slash.',
     [DamageType.ACID]: 'acid',
     [DamageType.COLD]: 'cold',
     [DamageType.FIRE]: 'fire',
     [DamageType.FORCE]: 'force',
-    [DamageType.LIGHTNING]: 'lightning',
-    [DamageType.NECROTIC]: 'necrotic',
+    [DamageType.LIGHTNING]: 'light.',
+    [DamageType.NECROTIC]: 'necro.',
     [DamageType.POISON]: 'poison',
-    [DamageType.PSYCHIC]: 'psychic',
-    [DamageType.RADIANT]: 'radiant',
-    [DamageType.THUNDER]: 'thunder',
+    [DamageType.PSYCHIC]: 'psych.',
+    [DamageType.RADIANT]: 'radi.',
+    [DamageType.THUNDER]: 'thund.',
   };
-
-  return damageTypeMap[damageType] || 'unknown';
+  return abbrevMap[damageType] || '';
 }

@@ -1,3 +1,14 @@
+import {
+  getMartialArtsDie,
+  getUnarmoredMovementBonus,
+  isBrutalCriticalData,
+  isMartialArtsData,
+  isRagingData,
+  isSneakAttackData,
+  isUnarmoredMovementData,
+  parseConditionData,
+  type ConditionData,
+} from '@/types/conditionData';
 import type { Condition } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import {
   getConditionCategory,
@@ -23,14 +34,17 @@ export function ConditionBadge({ condition }: ConditionBadgeProps) {
   const icon = getConditionIcon(condition.name);
   const category = getConditionCategory(condition.source);
   const categoryClass = getCategoryClass(category);
+  const data = parseConditionData(condition.conditionData);
+  const subtitle = getSubtitle(data);
 
   return (
     <div
       className={`${styles.conditionBadge} ${categoryClass}`}
-      title={getTooltip(condition)}
+      title={getTooltip(condition, data)}
     >
       <span className={styles.conditionIcon}>{icon}</span>
       <span className={styles.conditionName}>{condition.name}</span>
+      {subtitle && <span className={styles.conditionSubtitle}>{subtitle}</span>}
     </div>
   );
 }
@@ -54,10 +68,63 @@ function getCategoryClass(category: ConditionCategory): string {
 }
 
 /**
- * Generate tooltip for the condition
+ * Get a compact subtitle for displaying key stats on the badge
  */
-function getTooltip(condition: Condition): string {
+function getSubtitle(data: ConditionData | undefined): string | null {
+  if (!data) return null;
+
+  if (isRagingData(data)) {
+    return `+${data.damage_bonus}`;
+  }
+
+  if (isSneakAttackData(data)) {
+    return `${data.damage_dice}d6`;
+  }
+
+  if (isBrutalCriticalData(data)) {
+    return `+${data.extra_dice}d`;
+  }
+
+  if (isMartialArtsData(data)) {
+    return getMartialArtsDie(data.monk_level);
+  }
+
+  if (isUnarmoredMovementData(data)) {
+    return `+${getUnarmoredMovementBonus(data.monk_level)}ft`;
+  }
+
+  return null;
+}
+
+/**
+ * Generate tooltip for the condition with rich data
+ */
+function getTooltip(
+  condition: Condition,
+  data: ConditionData | undefined
+): string {
   const parts: string[] = [condition.name];
+
+  // Add rich data details to tooltip
+  if (data) {
+    if (isRagingData(data)) {
+      parts.push(`+${data.damage_bonus} melee damage`);
+      parts.push(
+        `Active for ${data.turns_active} turn${data.turns_active === 1 ? '' : 's'}`
+      );
+      parts.push('Resistance: B/P/S');
+    } else if (isSneakAttackData(data)) {
+      parts.push(`+${data.damage_dice}d6 damage`);
+      parts.push('Requires advantage or adjacent ally');
+    } else if (isBrutalCriticalData(data)) {
+      parts.push(`+${data.extra_dice} weapon die on critical`);
+    } else if (isMartialArtsData(data)) {
+      parts.push(`Unarmed: ${getMartialArtsDie(data.monk_level)}`);
+      parts.push('Use DEX for monk weapons');
+    } else if (isUnarmoredMovementData(data)) {
+      parts.push(`+${getUnarmoredMovementBonus(data.monk_level)} ft speed`);
+    }
+  }
 
   if (condition.notes) {
     parts.push(condition.notes);

@@ -22,12 +22,45 @@ export interface CharacterInfoSectionProps {
  * - Yellow: 25-50% HP
  * - Red: < 25% HP
  */
+/** Calculate ability modifier from score */
+function getModifier(score: number): number {
+  return Math.floor((score - 10) / 2);
+}
+
+/** Format modifier with sign */
+function formatModifier(score: number): string {
+  const mod = getModifier(score);
+  return mod >= 0 ? `+${mod}` : `${mod}`;
+}
+
+/** Get icon for ability */
+function getAbilityIcon(label: string): string {
+  const icons: Record<string, string> = {
+    STR: '💪',
+    DEX: '🏃',
+    CON: '❤️',
+    INT: '🧠',
+    WIS: '👁️',
+    CHA: '✨',
+  };
+  return icons[label] || '📊';
+}
+
+/** Compact ability score display */
+function AbilityScore({ label, score }: { label: string; score: number }) {
+  return (
+    <div className={styles.abilityScore} title={`${label}: ${score}`}>
+      <span className={styles.abilityIcon}>{getAbilityIcon(label)}</span>
+      <span className={styles.abilityModifier}>{formatModifier(score)}</span>
+    </div>
+  );
+}
+
 export function CharacterInfoSection({ character }: CharacterInfoSectionProps) {
   const maxHP = character.combatStats?.hitPointMaximum || 1;
   const currentHP = character.currentHitPoints || 0;
   const tempHP = character.temporaryHitPoints || 0;
   const ac = character.combatStats?.armorClass || 10;
-  const activeConditions = character.activeConditions || [];
 
   // Calculate HP percentage for color
   const hpPercentage = (currentHP / maxHP) * 100;
@@ -57,14 +90,12 @@ export function CharacterInfoSection({ character }: CharacterInfoSectionProps) {
         </div>
       </div>
 
-      {/* HP Bar */}
+      {/* HP Bar - compact inline */}
       <div className={styles.hpSection}>
-        <div className={styles.hpLabelRow}>
-          <span className={styles.hpLabel}>HP</span>
-          <span className={styles.hpValues}>
-            {currentHP}/{maxHP}
-          </span>
-        </div>
+        <span className={styles.hpLabel}>HP</span>
+        <span className={styles.hpValues}>
+          {currentHP}/{maxHP}
+        </span>
         <div className={styles.hpBarContainer}>
           <div
             className={styles.hpBarFill}
@@ -74,9 +105,7 @@ export function CharacterInfoSection({ character }: CharacterInfoSectionProps) {
             }}
           />
         </div>
-        {tempHP > 0 && (
-          <div className={styles.tempHpBadge}>+{tempHP} temp HP</div>
-        )}
+        {tempHP > 0 && <span className={styles.tempHpBadge}>+{tempHP}</span>}
       </div>
 
       {/* AC and Saving Throws */}
@@ -102,65 +131,25 @@ export function CharacterInfoSection({ character }: CharacterInfoSectionProps) {
           )}
       </div>
 
-      {/* Active Conditions */}
-      {activeConditions.length > 0 && (
-        <div className={styles.conditionsSection}>
-          {activeConditions.map((condition, index) => (
-            <div
-              key={`${condition.name}-${index}`}
-              className={styles.conditionBadge}
-              title={`${condition.name}${condition.source ? ` (${condition.source})` : ''}${
-                condition.duration !== undefined && condition.duration > 0
-                  ? ` - ${condition.duration} rounds`
-                  : ''
-              }`}
-            >
-              <span className={styles.conditionIcon}>
-                {getConditionIcon(condition.name || '')}
-              </span>
-              <span className={styles.conditionName}>{condition.name}</span>
-            </div>
-          ))}
+      {/* Ability Scores - compact inline display */}
+      {character.abilityScores && (
+        <div className={styles.abilityScoresSection}>
+          <AbilityScore label="STR" score={character.abilityScores.strength} />
+          <AbilityScore label="DEX" score={character.abilityScores.dexterity} />
+          <AbilityScore
+            label="CON"
+            score={character.abilityScores.constitution}
+          />
+          <AbilityScore
+            label="INT"
+            score={character.abilityScores.intelligence}
+          />
+          <AbilityScore label="WIS" score={character.abilityScores.wisdom} />
+          <AbilityScore label="CHA" score={character.abilityScores.charisma} />
         </div>
       )}
     </div>
   );
-}
-
-/**
- * Get emoji icon for condition
- * TODO: Extend this with proper icon mapping (Task 6: conditionIcons.ts)
- */
-function getConditionIcon(conditionName: string): string {
-  const name = conditionName.toLowerCase();
-
-  // Basic mapping for common conditions
-  const iconMap: Record<string, string> = {
-    raging: '🔥',
-    rage: '🔥',
-    blessed: '✨',
-    bless: '✨',
-    poisoned: '☠️',
-    poison: '☠️',
-    stunned: '💫',
-    stun: '💫',
-    paralyzed: '⚡',
-    charmed: '💖',
-    frightened: '😱',
-    invisible: '👻',
-    prone: '🔻',
-    restrained: '⛓️',
-    grappled: '🤝',
-    blinded: '👁️',
-    deafened: '🔇',
-    exhausted: '😴',
-    exhaustion: '😴',
-    petrified: '🗿',
-    unconscious: '💤',
-    incapacitated: '🚫',
-  };
-
-  return iconMap[name] || '❓';
 }
 
 /**
