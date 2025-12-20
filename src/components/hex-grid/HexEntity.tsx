@@ -5,10 +5,11 @@
  * at the specified hex position.
  */
 
+import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
-import { MediumHumanoid } from './MediumHumanoid';
+import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 
 export interface HexEntityProps {
   entityId: string;
@@ -18,6 +19,8 @@ export interface HexEntityProps {
   hexSize: number;
   isSelected?: boolean;
   onClick?: (entityId: string) => void;
+  /** Character data for texture/shader customization */
+  character?: Character;
 }
 
 // Visual state colors
@@ -77,6 +80,16 @@ function LoadingPlaceholder({
   );
 }
 
+/**
+ * Map race enum to a default skin tone
+ * This is a simple heuristic - players will eventually customize this
+ */
+function getDefaultSkinTone(): SkinTone {
+  // Default to medium for now
+  // Future: could vary by race (e.g., elves -> pale, dwarves -> tan)
+  return 'medium';
+}
+
 export function HexEntity({
   entityId,
   // name prop not destructured - will be used for tooltips/labels in future
@@ -85,6 +98,7 @@ export function HexEntity({
   hexSize,
   isSelected = false,
   onClick,
+  character,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -122,6 +136,13 @@ export function HexEntity({
 
   // Use character model for players and monsters
   if (type === 'player' || type === 'monster') {
+    // Extract character data for rendering
+    const characterClass = character?.class;
+    const characterRace = character?.race;
+    const skinTone = getDefaultSkinTone();
+    // TODO: Extract equipped armor when armor textures are available
+    // const equippedArmor = character?.equipmentSlots?.armor?.equipment?.armor;
+
     return (
       <group
         position={[worldPos.x, CHARACTER_Y_OFFSET, worldPos.z]}
@@ -135,6 +156,10 @@ export function HexEntity({
             isSelected={isSelected}
             variant={type === 'monster' ? 'goblin' : 'human'}
             facingRotation={type === 'player' ? Math.PI : 0}
+            race={characterRace}
+            characterClass={characterClass}
+            skinTone={skinTone}
+            showOutline={true}
           />
         </Suspense>
       </group>

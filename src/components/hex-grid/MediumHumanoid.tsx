@@ -31,6 +31,7 @@ import { createOutlineMaterial } from '@/shaders/OutlineShader';
 import {
   Armor,
   Class,
+  Race,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useLoader } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
@@ -51,6 +52,8 @@ export interface MediumHumanoidProps {
   variant?: 'human' | 'goblin';
   /** Y-axis rotation in radians (default: 0, use Math.PI to face opposite direction) */
   facingRotation?: number;
+  /** Character race - for future race-specific model variants */
+  race?: Race;
   /** Character class - determines default textures */
   characterClass?: Class;
   /** Equipped armor - overrides class textures for armored parts */

@@ -94,8 +94,18 @@ function Scene({
   onDoorClick,
   isDoorLoading = false,
   onDoorHoverChange,
+  characters = [],
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Create character lookup map by ID for efficient entity -> character mapping
+  const characterMap = useMemo(() => {
+    const map = new Map<string, (typeof characters)[0]>();
+    for (const character of characters) {
+      map.set(character.id, character);
+    }
+    return map;
+  }, [characters]);
 
   // Calculate grid center for camera target
   const gridCenter = useMemo(() => {
@@ -350,6 +360,7 @@ function Scene({
           hexSize={HEX_SIZE}
           isSelected={entity.entityId === selectedEntityId}
           onClick={handleEntityClick}
+          character={characterMap.get(entity.entityId)}
         />
       ))}
     </>
