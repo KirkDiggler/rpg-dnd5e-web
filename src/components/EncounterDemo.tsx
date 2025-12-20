@@ -545,7 +545,10 @@ export function EncounterDemo() {
     (events: EncounterEvent[]) => {
       console.log('📜 Historical events received:', events.length);
 
-      // Process each historical event and add to combat log
+      // Build all new log entries first
+      const newEntries: CombatLogEntry[] = [];
+
+      // Process each historical event and collect log entries
       for (const event of events) {
         const payload = event.event;
         console.log(
@@ -573,7 +576,7 @@ export function EncounterDemo() {
               return formatEntityId(targetId);
             }
           );
-          setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+          newEntries.push(...monsterLogEntries);
         }
 
         // Handle attack resolved events
@@ -623,7 +626,7 @@ export function EncounterDemo() {
               critical,
             },
           };
-          setCombatLog((prev) => [...prev, logEntry]);
+          newEntries.push(logEntry);
         }
 
         // Handle combat started events
@@ -637,8 +640,19 @@ export function EncounterDemo() {
             description: 'Initiative rolled, combat begins!',
             type: 'info',
           };
-          setCombatLog((prev) => [...prev, logEntry]);
+          newEntries.push(logEntry);
         }
+      }
+
+      // Add entries to log, deduplicating by ID to prevent React key warnings
+      if (newEntries.length > 0) {
+        setCombatLog((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEntries = newEntries.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...prev, ...uniqueNewEntries];
+        });
       }
     },
     [combatState?.round, fullCharactersMap, availableCharacters]
