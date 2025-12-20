@@ -132,12 +132,10 @@ export class OutlineManager {
   }
 
   dispose(): void {
+    // Only dispose resources owned by the outline system.
+    // Geometries are shared with the original character meshes and should
+    // be disposed when the character itself is disposed.
     this.outlineMaterial.dispose();
-    this.outlineGroup.traverse((child) => {
-      if ((child as THREE.Mesh).geometry) {
-        (child as THREE.Mesh).geometry.dispose();
-      }
-    });
   }
 }
 

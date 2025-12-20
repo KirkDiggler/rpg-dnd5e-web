@@ -37,7 +37,10 @@ export const CLASS_TEXTURE_FOLDERS: Partial<Record<Class, string>> = {
 
 /**
  * Maps Armor enum values to texture folder names.
- * Only armor types with custom textures are included.
+ * NOTE: These mappings define the expected folder structure, but texture FILES
+ * may not exist yet. The KNOWN_TEXTURES registry below determines which textures
+ * are actually available. Armor textures will be enabled by adding entries to
+ * KNOWN_TEXTURES['armor/...'] as the texture files are created.
  */
 export const ARMOR_TEXTURE_FOLDERS: Partial<Record<Armor, string>> = {
   [Armor.LEATHER]: 'leather',
@@ -46,7 +49,6 @@ export const ARMOR_TEXTURE_FOLDERS: Partial<Record<Armor, string>> = {
   [Armor.CHAIN_SHIRT]: 'chainmail', // Uses chainmail textures
   [Armor.HALF_PLATE]: 'half-plate',
   [Armor.BREASTPLATE]: 'half-plate', // Uses half-plate textures
-  // Expand as textures are created for more armor types
 };
 
 /**
@@ -194,6 +196,8 @@ export function resolveTexturePath(
   }
 
   // 2. Check class-specific
+  // Skip class lookup if UNSPECIFIED (0) - this is the proto default when no class is set.
+  // Valid class values (FIGHTER=1, MONK=2, etc.) will be looked up in CLASS_TEXTURE_FOLDERS.
   if (characterClass !== Class.UNSPECIFIED) {
     const classPath = getClassTexturePath(characterClass, bodyPart);
     if (classPath) return classPath;

@@ -1041,7 +1041,8 @@
 .combatHistorySidebar {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 200px;
+  max-height: 400px;
   background-color: #1e293b; /* slate-800 fallback */
   background-color: var(--bg-secondary, #1e293b);
   border-radius: 8px;
@@ -1501,7 +1502,8 @@
 @media (max-width: 768px) {
   .combatHistorySidebar {
     /* On mobile, might be full-width or collapsed */
-    height: 300px;
+    min-height: 150px;
+    max-height: 300px;
   }
 
   .sidebarContent {
@@ -1582,10 +1584,10 @@
   right: 16px;
   margin-bottom: 8px;
   width: 320px;
-  height: 240px; /* Fixed height to prevent overflow */
+  max-height: 400px; /* Increased height for more log entries */
   z-index: 2550;
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* Let the inner sidebar handle scrolling */
+  overflow: visible;
 }
 
 /* Action button group */
