@@ -453,6 +453,11 @@ export function EncounterDemo() {
         }
       }
 
+      // Set monsters from event (for monsterType texture selection)
+      if (event.monsters && event.monsters.length > 0) {
+        setMonsters(event.monsters);
+      }
+
       // Add party members' characters to our map
       if (event.party && event.party.length > 0) {
         const partyCharacters = event.party
