@@ -6,6 +6,7 @@
  */
 
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
@@ -21,6 +22,8 @@ export interface HexEntityProps {
   onClick?: (entityId: string) => void;
   /** Character data for texture/shader customization */
   character?: Character;
+  /** Monster data for texture selection (includes monsterType) */
+  monster?: MonsterCombatState;
 }
 
 // Visual state colors
@@ -99,6 +102,7 @@ export function HexEntity({
   isSelected = false,
   onClick,
   character,
+  monster,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -140,6 +144,8 @@ export function HexEntity({
     const characterClass = character?.class;
     const characterRace = character?.race;
     const skinTone = getDefaultSkinTone();
+    // Extract monster type for texture selection
+    const monsterType = monster?.monsterType;
     // TODO: Extract equipped armor when armor textures are available
     // const equippedArmor = character?.equipmentSlots?.armor?.equipment?.armor;
 
@@ -158,6 +164,7 @@ export function HexEntity({
             facingRotation={type === 'player' ? Math.PI : 0}
             race={characterRace}
             characterClass={characterClass}
+            monsterType={monsterType}
             skinTone={skinTone}
             showOutline={true}
           />

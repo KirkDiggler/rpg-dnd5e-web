@@ -36,6 +36,7 @@ import {
   type DungeonVictoryEvent,
   type EncounterEvent,
   type FeatureActivatedEvent,
+  type MonsterCombatState,
   type MonsterTurnCompletedEvent,
   type MonsterTurnResult,
   type MovementCompletedEvent,
@@ -118,6 +119,7 @@ export function EncounterDemo() {
   const [encounterId, setEncounterId] = useState<string | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [combatState, setCombatState] = useState<CombatState | null>(null);
+  const [monsters, setMonsters] = useState<MonsterCombatState[]>([]);
 
   // Dungeon/door state
   const [dungeonId, setDungeonId] = useState<string | null>(null);
@@ -501,6 +503,11 @@ export function EncounterDemo() {
         setRoom(snapshot.room);
       }
 
+      // Apply monsters from snapshot (for monsterType texture selection)
+      if (snapshot.monsters) {
+        setMonsters(snapshot.monsters);
+      }
+
       // Apply party members' characters
       if (snapshot.party && snapshot.party.length > 0) {
         const partyCharacters = snapshot.party
@@ -664,6 +671,7 @@ export function EncounterDemo() {
     setEncounterId(null);
     setDungeonId(null);
     setCombatState(null);
+    setMonsters([]);
     setDoors([]);
     setRoomsCleared(0);
     setCombatLog([]);
@@ -1547,6 +1555,7 @@ export function EncounterDemo() {
                 // Combat integration
                 encounterId={encounterId}
                 combatState={combatState}
+                monsters={monsters}
                 onMoveComplete={handleMoveComplete}
                 onAttackComplete={handleAttackComplete}
                 onHoverChange={setHoveredEntity}

@@ -21,7 +21,12 @@ import {
   MEDIUM_HUMANOID_CONFIG,
   type CharacterPartConfig,
 } from '@/config/characterModels';
-import { resolveTexturePath, type BodyPart } from '@/config/characterTextures';
+import {
+  getMonsterHeadVariant,
+  resolveMonsterTexturePath,
+  resolveTexturePath,
+  type BodyPart,
+} from '@/config/characterTextures';
 import {
   ColorPalettes,
   createAdvancedCharacterShader,
@@ -31,6 +36,7 @@ import { createOutlineMaterial } from '@/shaders/OutlineShader';
 import {
   Armor,
   Class,
+  MonsterType,
   Race,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useLoader } from '@react-three/fiber';
@@ -56,6 +62,8 @@ export interface MediumHumanoidProps {
   race?: Race;
   /** Character class - determines default textures */
   characterClass?: Class;
+  /** Monster type - determines monster-specific textures */
+  monsterType?: MonsterType;
   /** Equipped armor - overrides class textures for armored parts */
   equippedArmor?: Armor;
   /** Skin tone for color swapping (default: 'medium') */
@@ -372,14 +380,25 @@ export function MediumHumanoid({
   variant = 'human',
   facingRotation = 0,
   characterClass,
+  monsterType,
   equippedArmor,
   skinTone = 'medium',
   showOutline = true,
 }: MediumHumanoidProps) {
   const groupRef = useRef<THREE.Group>(null);
 
+  // Determine effective variant: use monster's head type if monster, else use provided variant
+  const effectiveVariant = useMemo(() => {
+    if (monsterType !== undefined && monsterType !== MonsterType.UNSPECIFIED) {
+      return getMonsterHeadVariant(monsterType);
+    }
+    return variant;
+  }, [monsterType, variant]);
+
   const modelConfig =
-    variant === 'goblin' ? GOBLIN_HUMANOID_CONFIG : MEDIUM_HUMANOID_CONFIG;
+    effectiveVariant === 'goblin'
+      ? GOBLIN_HUMANOID_CONFIG
+      : MEDIUM_HUMANOID_CONFIG;
 
   // Compute shader options based on props
   const shaderOptions = useMemo<AdvancedCharacterShaderOptions>(
@@ -393,7 +412,21 @@ export function MediumHumanoid({
   );
 
   // Compute texture paths for each body part
+  // Uses monster textures if monsterType is set, otherwise character textures
   const texturePaths = useMemo(() => {
+    // Monster texture resolution
+    if (monsterType !== undefined && monsterType !== MonsterType.UNSPECIFIED) {
+      const paths: Record<string, string | undefined> = {};
+      for (const [partName, partConfig] of Object.entries(modelConfig.parts)) {
+        const bodyPart = getBodyPartFromFile(partConfig.file);
+        if (bodyPart) {
+          paths[partName] = resolveMonsterTexturePath(bodyPart, monsterType);
+        }
+      }
+      return paths;
+    }
+
+    // Character texture resolution
     if (!characterClass) {
       return {};
     }
@@ -410,7 +443,7 @@ export function MediumHumanoid({
       }
     }
     return paths;
-  }, [characterClass, equippedArmor, modelConfig.parts]);
+  }, [characterClass, equippedArmor, monsterType, modelConfig.parts]);
 
   return (
     // Outer group for facing direction (Y-axis rotation in world space)
