@@ -151,12 +151,14 @@ export function EncounterDemo() {
     id: string;
     type: string;
     name: string;
+    monsterType?: number;
   } | null>(null);
   // Click-to-lock: when user clicks an entity, lock hover panel to that entity
   const [selectedHoverEntity, setSelectedHoverEntity] = useState<{
     id: string;
     type: string;
     name: string;
+    monsterType?: number;
   } | null>(null);
   const [movementPath, setMovementPath] = useState<CubeCoord[]>([]);
   const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);

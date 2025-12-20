@@ -148,6 +148,9 @@ function Scene({
   const entitiesMap = useMemo(() => {
     const map = new Map();
     entities.forEach((entity) => {
+      // Look up monster type if this is a monster entity
+      const monster =
+        entity.type === 'monster' ? monsterMap.get(entity.entityId) : undefined;
       map.set(entity.entityId, {
         position: {
           x: entity.position.x,
@@ -156,10 +159,11 @@ function Scene({
         },
         type: entity.type,
         name: entity.name,
+        monsterType: monster?.monsterType,
       });
     });
     return map;
-  }, [entities]);
+  }, [entities, monsterMap]);
 
   // Get current entity position
   const currentEntityPosition = useMemo(() => {

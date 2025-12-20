@@ -1,5 +1,6 @@
 import {
   Class,
+  MonsterType,
   Race,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 
@@ -47,4 +48,30 @@ export function formatCharacterSummary(
   classEnum: Class
 ): string {
   return `Level ${level} ${getRaceDisplayName(race)} ${getClassDisplayName(classEnum)}`;
+}
+
+// Monster type display names
+export function getMonsterTypeDisplayName(monsterType: MonsterType): string {
+  const monsterNames: Partial<Record<MonsterType, string>> = {
+    [MonsterType.UNSPECIFIED]: 'Unknown',
+    // Undead
+    [MonsterType.SKELETON]: 'Skeleton',
+    [MonsterType.SKELETON_ARCHER]: 'Skeleton Archer',
+    [MonsterType.SKELETON_CAPTAIN]: 'Skeleton Captain',
+    [MonsterType.ZOMBIE]: 'Zombie',
+    [MonsterType.GHOUL]: 'Ghoul',
+    // Beasts
+    [MonsterType.GIANT_RAT]: 'Giant Rat',
+    [MonsterType.GIANT_SPIDER]: 'Giant Spider',
+    [MonsterType.GIANT_WOLF_SPIDER]: 'Giant Wolf Spider',
+    [MonsterType.WOLF]: 'Wolf',
+    [MonsterType.BROWN_BEAR]: 'Brown Bear',
+    // Humanoids
+    [MonsterType.BANDIT]: 'Bandit',
+    [MonsterType.BANDIT_ARCHER]: 'Bandit Archer',
+    [MonsterType.BANDIT_CAPTAIN]: 'Bandit Captain',
+    [MonsterType.THUG]: 'Thug',
+    [MonsterType.GOBLIN]: 'Goblin',
+  };
+  return monsterNames[monsterType] || 'Unknown Monster';
 }
