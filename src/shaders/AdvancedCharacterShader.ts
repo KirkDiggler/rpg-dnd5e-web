@@ -1,0 +1,425 @@
+/**
+ * Advanced Character Shader Module
+ * Version: 2.0
+ * Date: 2025-12-18
+ *
+ * Combines multiple shader effects for complete character customization:
+ * 1. Color Swapping (skin, trim, team colors, etc.)
+ * 2. Emissive Glow (magic items, runes, glowing eyes)
+ * 3. Hit Flash (damage feedback)
+ * 4. Transparency (invisibility, stealth, fade in/out)
+ * 5. Team Colors (faction/guild identification)
+ * 6. Outline Effect (see OutlineShader.ts)
+ *
+ * Marker Color Convention:
+ * - Pure White   #FFFFFF - Skin/primary swappable
+ * - Pure Red     #FF0000 - Trim/accent swappable
+ * - Pure Green   #00FF00 - Metal/detail swappable
+ * - Pure Blue    #0000FF - Team/faction swappable
+ * - Pure Cyan    #00FFFF - Emissive/glow regions
+ * - Pure Magenta #FF00FF - Secondary accent swappable
+ */
+
+import * as THREE from 'three';
+
+export interface AdvancedCharacterShaderOptions {
+  /** Primary color (replaces white marker) */
+  skinColor?: number | THREE.Color;
+  /** Trim color (replaces red marker) */
+  trimColor?: number | THREE.Color;
+  /** Metal color (replaces green marker) */
+  metalColor?: number | THREE.Color;
+  /** Team color (replaces blue marker) */
+  teamColor?: number | THREE.Color;
+  /** Emissive color (replaces cyan marker) */
+  glowColor?: number | THREE.Color;
+  /** Accent color (replaces magenta marker) */
+  accentColor?: number | THREE.Color;
+  /** Glow brightness multiplier (default: 2.0) */
+  glowIntensity?: number;
+  /** Overall transparency (0.0-1.0, default: 1.0) */
+  opacity?: number;
+  /** Hit flash intensity (0.0-1.0, default: 0.0) */
+  flashAmount?: number;
+}
+
+const DEFAULT_OPTIONS: Required<AdvancedCharacterShaderOptions> = {
+  skinColor: 0xd5a88c, // Medium skin
+  trimColor: 0x8b4513, // Brown trim
+  metalColor: 0xc0c0c0, // Silver metal
+  teamColor: 0x0000ff, // Blue team
+  glowColor: 0x00ffff, // Cyan glow
+  accentColor: 0xff00ff, // Magenta accent
+  glowIntensity: 2.0,
+  opacity: 1.0,
+  flashAmount: 0.0,
+};
+
+/**
+ * Creates an advanced character shader with multiple effects
+ *
+ * @param texture - The character texture (with marker colors)
+ * @param options - Configuration options
+ * @returns THREE.ShaderMaterial
+ *
+ * @example
+ * const shader = createAdvancedCharacterShader(texture, {
+ *     skinColor: 0xD5A88C,
+ *     trimColor: 0x8B0000,
+ *     teamColor: 0x0000FF,
+ *     glowColor: 0x00FFFF,
+ *     glowIntensity: 3.0
+ * });
+ */
+export function createAdvancedCharacterShader(
+  texture: THREE.Texture,
+  options: AdvancedCharacterShaderOptions = {}
+): THREE.ShaderMaterial {
+  const config = { ...DEFAULT_OPTIONS, ...options };
+
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      // Texture
+      characterTexture: { value: texture },
+
+      // Swappable colors (marker replacement)
+      skinColor: { value: new THREE.Color(config.skinColor) },
+      trimColor: { value: new THREE.Color(config.trimColor) },
+      metalColor: { value: new THREE.Color(config.metalColor) },
+      teamColor: { value: new THREE.Color(config.teamColor) },
+      glowColor: { value: new THREE.Color(config.glowColor) },
+      accentColor: { value: new THREE.Color(config.accentColor) },
+
+      // Effect parameters
+      glowIntensity: { value: config.glowIntensity },
+      opacity: { value: config.opacity },
+      flashAmount: { value: config.flashAmount },
+    },
+
+    vertexShader: `
+            // Output to fragment shader
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            varying vec3 vViewPosition;
+
+            void main() {
+                // Pass UV coordinates for texture sampling
+                vUv = uv;
+
+                // Pass normals for lighting
+                vNormal = normalize(normalMatrix * normal);
+
+                // Calculate view position for advanced lighting
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                vViewPosition = -mvPosition.xyz;
+
+                // Standard vertex transformation
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `,
+
+    fragmentShader: `
+            // Inputs from vertex shader
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            varying vec3 vViewPosition;
+
+            // Uniforms
+            uniform sampler2D characterTexture;
+
+            // Swappable colors
+            uniform vec3 skinColor;
+            uniform vec3 trimColor;
+            uniform vec3 metalColor;
+            uniform vec3 teamColor;
+            uniform vec3 glowColor;
+            uniform vec3 accentColor;
+
+            // Effects
+            uniform float glowIntensity;
+            uniform float opacity;
+            uniform float flashAmount;
+
+            // Marker color detection helper
+            bool isColor(vec4 texColor, float r, float g, float b) {
+                // Use threshold to account for texture compression
+                float threshold = 0.01;
+                return abs(texColor.r - r) < threshold &&
+                       abs(texColor.g - g) < threshold &&
+                       abs(texColor.b - b) < threshold;
+            }
+
+            void main() {
+                // Sample the character texture
+                vec4 texColor = texture2D(characterTexture, vUv);
+
+                vec3 finalColor;
+                bool isEmissive = false;
+
+                // Check marker colors and replace
+
+                // Pure white (#FFFFFF) - Skin/primary color
+                if (isColor(texColor, 1.0, 1.0, 1.0)) {
+                    finalColor = skinColor;
+                }
+                // Pure red (#FF0000) - Trim color
+                else if (isColor(texColor, 1.0, 0.0, 0.0)) {
+                    finalColor = trimColor;
+                }
+                // Pure green (#00FF00) - Metal color
+                else if (isColor(texColor, 0.0, 1.0, 0.0)) {
+                    finalColor = metalColor;
+                }
+                // Pure blue (#0000FF) - Team color
+                else if (isColor(texColor, 0.0, 0.0, 1.0)) {
+                    finalColor = teamColor;
+                }
+                // Pure cyan (#00FFFF) - Emissive/glow
+                else if (isColor(texColor, 0.0, 1.0, 1.0)) {
+                    finalColor = glowColor;
+                    isEmissive = true;  // This region glows!
+                }
+                // Pure magenta (#FF00FF) - Accent color
+                else if (isColor(texColor, 1.0, 0.0, 1.0)) {
+                    finalColor = accentColor;
+                }
+                // Keep original texture color
+                else {
+                    finalColor = texColor.rgb;
+                }
+
+                // === LIGHTING ===
+                if (!isEmissive) {
+                    // Simple directional lighting for non-emissive regions
+                    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
+                    float diffuse = max(dot(vNormal, lightDir), 0.0);
+                    float lighting = 0.6 + 0.4 * diffuse; // Ambient + diffuse
+                    finalColor *= lighting;
+                } else {
+                    // Emissive regions glow (boost brightness)
+                    finalColor *= glowIntensity;
+                }
+
+                // === HIT FLASH EFFECT ===
+                // Mix toward white based on flash amount
+                finalColor = mix(finalColor, vec3(1.0), flashAmount);
+
+                // === OUTPUT ===
+                gl_FragColor = vec4(finalColor, opacity);
+            }
+        `,
+
+    // Material properties
+    transparent: true, // Enable transparency
+    side: THREE.DoubleSide, // Render both sides
+    depthWrite: true,
+    depthTest: true,
+  });
+}
+
+/**
+ * Pre-defined color palettes
+ */
+export const ColorPalettes = {
+  // Skin tones
+  SkinTones: {
+    pale: 0xf1d4c0,
+    light: 0xe8c3a8,
+    medium: 0xd5a88c,
+    tan: 0xc68e6d,
+    dark: 0x9d6b4d,
+    deep: 0x704937,
+  },
+
+  // Trim/leather colors
+  TrimColors: {
+    brown: 0x8b4513,
+    black: 0x1c1c1c,
+    darkRed: 0x8b0000,
+    darkGreen: 0x006400,
+    darkBlue: 0x00008b,
+    purple: 0x800080,
+    orange: 0xff8c00,
+  },
+
+  // Metal colors
+  MetalColors: {
+    silver: 0xc0c0c0,
+    gold: 0xffd700,
+    bronze: 0xcd7f32,
+    copper: 0xb87333,
+    iron: 0x808080,
+    steel: 0xb0c4de,
+  },
+
+  // Team/faction colors
+  TeamColors: {
+    red: 0xff0000,
+    blue: 0x0000ff,
+    green: 0x00ff00,
+    yellow: 0xffff00,
+    purple: 0x800080,
+    orange: 0xff8c00,
+    cyan: 0x00ffff,
+    white: 0xffffff,
+  },
+
+  // Emissive/glow colors
+  GlowColors: {
+    cyan: 0x00ffff,
+    magenta: 0xff00ff,
+    yellow: 0xffff00,
+    green: 0x00ff00,
+    blue: 0x0088ff,
+    red: 0xff0000,
+    white: 0xffffff,
+  },
+
+  // Eye colors
+  EyeColors: {
+    brown: 0x4a2511,
+    blue: 0x4a90e2,
+    green: 0x4caf50,
+    hazel: 0x8b7355,
+    gray: 0x708090,
+    amber: 0xffbf00,
+    violet: 0x8a2be2,
+  },
+
+  // Hair colors
+  HairColors: {
+    black: 0x1c1c1c,
+    brown: 0x4a2511,
+    blonde: 0xe6c35c,
+    red: 0xa0522d,
+    auburn: 0x8b4513,
+    gray: 0x808080,
+    white: 0xe0e0e0,
+    platinum: 0xe5e4e2,
+  },
+} as const;
+
+export type ColorType = 'skin' | 'trim' | 'metal' | 'team' | 'glow' | 'accent';
+
+/**
+ * Helper: Update a specific color uniform
+ */
+export function setCharacterColor(
+  shader: THREE.ShaderMaterial,
+  colorType: ColorType,
+  color: number | THREE.Color
+): void {
+  const uniformName = `${colorType}Color`;
+
+  if (!shader.uniforms[uniformName]) {
+    console.warn(`Unknown color type: ${colorType}`);
+    return;
+  }
+
+  if (color instanceof THREE.Color) {
+    shader.uniforms[uniformName].value.copy(color);
+  } else {
+    shader.uniforms[uniformName].value.set(color);
+  }
+}
+
+/**
+ * Helper: Trigger hit flash effect
+ */
+export function triggerHitFlash(
+  shader: THREE.ShaderMaterial,
+  duration = 300
+): void {
+  // Set flash to full
+  shader.uniforms.flashAmount.value = 1.0;
+
+  // Fade out over duration
+  const startTime = Date.now();
+
+  function animate(): void {
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(elapsed / duration, 1.0);
+
+    // Ease out
+    shader.uniforms.flashAmount.value = 1.0 - progress;
+
+    if (progress < 1.0) {
+      requestAnimationFrame(animate);
+    }
+  }
+
+  animate();
+}
+
+/**
+ * Helper: Fade character in/out
+ */
+export function fadeCharacter(
+  shader: THREE.ShaderMaterial,
+  targetOpacity: number,
+  duration = 1000
+): void {
+  const startOpacity = shader.uniforms.opacity.value as number;
+  const startTime = Date.now();
+
+  function animate(): void {
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(elapsed / duration, 1.0);
+
+    // Ease in-out
+    const eased =
+      progress < 0.5
+        ? 2 * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+    shader.uniforms.opacity.value =
+      startOpacity + (targetOpacity - startOpacity) * eased;
+
+    if (progress < 1.0) {
+      requestAnimationFrame(animate);
+    }
+  }
+
+  animate();
+}
+
+/**
+ * Helper: Pulse glow effect
+ * Returns a stop function to cancel the animation
+ */
+export function pulseGlow(
+  shader: THREE.ShaderMaterial,
+  minIntensity = 1.5,
+  maxIntensity = 3.0,
+  speed = 2.0
+): () => void {
+  const startTime = Date.now();
+  let animationId: number;
+
+  function animate(): void {
+    const time = (Date.now() - startTime) / 1000;
+    const intensity =
+      minIntensity +
+      (maxIntensity - minIntensity) * (Math.sin(time * speed) * 0.5 + 0.5);
+    shader.uniforms.glowIntensity.value = intensity;
+    animationId = requestAnimationFrame(animate);
+  }
+
+  animate();
+
+  // Return stop function
+  return () => {
+    cancelAnimationFrame(animationId);
+    shader.uniforms.glowIntensity.value = 2.0; // Reset to default
+  };
+}
+
+/**
+ * Helper: Make character invisible (stealth)
+ */
+export function setInvisible(
+  shader: THREE.ShaderMaterial,
+  invisible = true
+): void {
+  fadeCharacter(shader, invisible ? 0.3 : 1.0, 500);
+}
