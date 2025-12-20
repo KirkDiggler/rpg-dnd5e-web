@@ -3,6 +3,7 @@ import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import type {
   CombatState,
   DoorInfo,
+  MonsterCombatState,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { HexGrid } from '../hex-grid';
@@ -14,6 +15,8 @@ interface BattleMapPanelProps {
   // Combat integration props for HexGrid
   encounterId?: string | null;
   combatState?: CombatState | null;
+  /** Monster combat state for texture selection (includes monsterType) */
+  monsters?: MonsterCombatState[];
   onEntityClick: (entityId: string) => void;
   onCellClick: (coord: CubeCoord) => void;
   onMoveComplete?: (path: CubeCoord[]) => void;
@@ -33,6 +36,7 @@ export function BattleMapPanel({
   availableCharacters,
   encounterId,
   combatState,
+  monsters,
   onEntityClick,
   onCellClick,
   onMoveComplete,
@@ -87,6 +91,7 @@ export function BattleMapPanel({
         encounterId={encounterId}
         combatState={combatState}
         characters={availableCharacters}
+        monsters={monsters}
         currentEntityId={combatState?.currentTurn?.entityId}
         movementRemaining={
           combatState?.currentTurn

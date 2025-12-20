@@ -20,6 +20,7 @@ export interface Entity {
   position: CubeCoord;
   type: 'player' | 'monster' | 'obstacle';
   name: string;
+  monsterType?: number; // MonsterType enum value for monsters
 }
 
 export interface UseHexInteractionProps {
@@ -39,6 +40,7 @@ export interface HoveredEntityInfo {
   id: string;
   type: string;
   name: string;
+  monsterType?: number; // MonsterType enum value for monsters
 }
 
 export interface UseHexInteractionReturn {
@@ -71,7 +73,12 @@ function findEntityAtCoord(
       entity.position.y === coord.y &&
       entity.position.z === coord.z
     ) {
-      return { id, type: entity.type, name: entity.name };
+      return {
+        id,
+        type: entity.type,
+        name: entity.name,
+        monsterType: entity.monsterType,
+      };
     }
   }
   return null;

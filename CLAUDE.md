@@ -17,6 +17,33 @@ This catches:
 
 **The pre-push hook will enforce this, but run it manually to save time!**
 
+## 🚨 CRITICAL: NEVER Use --no-verify 🚨
+
+**NEVER use `--no-verify` on git commit or git push.**
+
+```bash
+# ❌ NEVER DO THIS
+git commit --no-verify
+git push --no-verify
+
+# ✅ ALWAYS DO THIS - wait for hooks to complete
+git commit -m "message"
+git push
+```
+
+**Why this matters:**
+
+- Pre-commit and pre-push hooks exist as safety nets
+- "I just ran the checks manually" is not an excuse - hooks catch what you might have missed
+- Bypassing hooks normalizes skipping safeguards
+- If hooks are slow or hanging, investigate why - don't bypass them
+
+**If you find yourself wanting to use --no-verify, STOP and ask:**
+
+1. Why am I trying to skip the safety checks?
+2. Did something change after I ran checks manually?
+3. Is there an actual problem with the hooks I should fix?
+
 ## Project Overview
 
 This is **rpg-dnd5e-web**, a React-based web UI for D&D 5e gameplay designed as a Discord Activity. It connects to the rpg-api gRPC server to provide character creation, combat, and game board visualization.

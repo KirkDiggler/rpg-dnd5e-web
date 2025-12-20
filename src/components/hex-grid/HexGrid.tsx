@@ -16,6 +16,7 @@ import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import type {
   CombatState,
   DoorInfo,
+  MonsterCombatState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -52,6 +53,8 @@ export interface HexGridProps {
   isPlayerTurn?: boolean;
   combatState?: CombatState | null;
   characters?: Character[];
+  /** Monster combat state for texture selection (includes monsterType) */
+  monsters?: MonsterCombatState[];
   onMoveComplete?: (path: CubeCoord[]) => void;
   onAttackComplete?: (targetId: string) => void;
   onHoverChange?: (
@@ -94,8 +97,28 @@ function Scene({
   onDoorClick,
   isDoorLoading = false,
   onDoorHoverChange,
+  characters = [],
+  monsters = [],
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Create character lookup map by ID for efficient entity -> character mapping
+  const characterMap = useMemo(() => {
+    const map = new Map<string, (typeof characters)[0]>();
+    for (const character of characters) {
+      map.set(character.id, character);
+    }
+    return map;
+  }, [characters]);
+
+  // Create monster lookup map by ID for efficient entity -> monsterType mapping
+  const monsterMap = useMemo(() => {
+    const map = new Map<string, (typeof monsters)[0]>();
+    for (const monster of monsters) {
+      map.set(monster.monsterId, monster);
+    }
+    return map;
+  }, [monsters]);
 
   // Calculate grid center for camera target
   const gridCenter = useMemo(() => {
@@ -125,6 +148,9 @@ function Scene({
   const entitiesMap = useMemo(() => {
     const map = new Map();
     entities.forEach((entity) => {
+      // Look up monster type if this is a monster entity
+      const monster =
+        entity.type === 'monster' ? monsterMap.get(entity.entityId) : undefined;
       map.set(entity.entityId, {
         position: {
           x: entity.position.x,
@@ -133,10 +159,11 @@ function Scene({
         },
         type: entity.type,
         name: entity.name,
+        monsterType: monster?.monsterType,
       });
     });
     return map;
-  }, [entities]);
+  }, [entities, monsterMap]);
 
   // Get current entity position
   const currentEntityPosition = useMemo(() => {
@@ -350,6 +377,8 @@ function Scene({
           hexSize={HEX_SIZE}
           isSelected={entity.entityId === selectedEntityId}
           onClick={handleEntityClick}
+          character={characterMap.get(entity.entityId)}
+          monster={monsterMap.get(entity.entityId)}
         />
       ))}
     </>

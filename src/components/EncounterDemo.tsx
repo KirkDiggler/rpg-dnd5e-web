@@ -36,6 +36,7 @@ import {
   type DungeonVictoryEvent,
   type EncounterEvent,
   type FeatureActivatedEvent,
+  type MonsterCombatState,
   type MonsterTurnCompletedEvent,
   type MonsterTurnResult,
   type MovementCompletedEvent,
@@ -118,6 +119,7 @@ export function EncounterDemo() {
   const [encounterId, setEncounterId] = useState<string | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [combatState, setCombatState] = useState<CombatState | null>(null);
+  const [monsters, setMonsters] = useState<MonsterCombatState[]>([]);
 
   // Dungeon/door state
   const [dungeonId, setDungeonId] = useState<string | null>(null);
@@ -149,12 +151,14 @@ export function EncounterDemo() {
     id: string;
     type: string;
     name: string;
+    monsterType?: number;
   } | null>(null);
   // Click-to-lock: when user clicks an entity, lock hover panel to that entity
   const [selectedHoverEntity, setSelectedHoverEntity] = useState<{
     id: string;
     type: string;
     name: string;
+    monsterType?: number;
   } | null>(null);
   const [movementPath, setMovementPath] = useState<CubeCoord[]>([]);
   const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
@@ -451,6 +455,11 @@ export function EncounterDemo() {
         }
       }
 
+      // Set monsters from event (for monsterType texture selection)
+      if (event.monsters && event.monsters.length > 0) {
+        setMonsters(event.monsters);
+      }
+
       // Add party members' characters to our map
       if (event.party && event.party.length > 0) {
         const partyCharacters = event.party
@@ -501,6 +510,11 @@ export function EncounterDemo() {
         setRoom(snapshot.room);
       }
 
+      // Apply monsters from snapshot (for monsterType texture selection)
+      if (snapshot.monsters) {
+        setMonsters(snapshot.monsters);
+      }
+
       // Apply party members' characters
       if (snapshot.party && snapshot.party.length > 0) {
         const partyCharacters = snapshot.party
@@ -538,7 +552,10 @@ export function EncounterDemo() {
     (events: EncounterEvent[]) => {
       console.log('📜 Historical events received:', events.length);
 
-      // Process each historical event and add to combat log
+      // Build all new log entries first
+      const newEntries: CombatLogEntry[] = [];
+
+      // Process each historical event and collect log entries
       for (const event of events) {
         const payload = event.event;
         console.log(
@@ -566,7 +583,7 @@ export function EncounterDemo() {
               return formatEntityId(targetId);
             }
           );
-          setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+          newEntries.push(...monsterLogEntries);
         }
 
         // Handle attack resolved events
@@ -616,7 +633,7 @@ export function EncounterDemo() {
               critical,
             },
           };
-          setCombatLog((prev) => [...prev, logEntry]);
+          newEntries.push(logEntry);
         }
 
         // Handle combat started events
@@ -630,8 +647,19 @@ export function EncounterDemo() {
             description: 'Initiative rolled, combat begins!',
             type: 'info',
           };
-          setCombatLog((prev) => [...prev, logEntry]);
+          newEntries.push(logEntry);
         }
+      }
+
+      // Add entries to log, deduplicating by ID to prevent React key warnings
+      if (newEntries.length > 0) {
+        setCombatLog((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEntries = newEntries.filter(
+            (e) => !existingIds.has(e.id)
+          );
+          return [...prev, ...uniqueNewEntries];
+        });
       }
     },
     [combatState?.round, fullCharactersMap, availableCharacters]
@@ -664,6 +692,7 @@ export function EncounterDemo() {
     setEncounterId(null);
     setDungeonId(null);
     setCombatState(null);
+    setMonsters([]);
     setDoors([]);
     setRoomsCleared(0);
     setCombatLog([]);
@@ -1547,6 +1576,7 @@ export function EncounterDemo() {
                 // Combat integration
                 encounterId={encounterId}
                 combatState={combatState}
+                monsters={monsters}
                 onMoveComplete={handleMoveComplete}
                 onAttackComplete={handleAttackComplete}
                 onHoverChange={setHoveredEntity}

@@ -10,14 +10,19 @@
  * - Red for enemies (monsters)
  */
 
-import { getClassDisplayName } from '@/utils/displayNames';
+import {
+  getClassDisplayName,
+  getMonsterTypeDisplayName,
+} from '@/utils/displayNames';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { MonsterType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import styles from '../styles/combat.module.css';
 
 export interface HoveredEntity {
   id: string;
   type: string; // 'player' | 'monster'
   name: string;
+  monsterType?: number; // MonsterType enum value for monsters
 }
 
 export interface HoverInfoPanelProps {
@@ -71,11 +76,23 @@ function PlayerInfo({ character }: { character: Character }) {
 }
 
 /** Render monster/enemy info */
-function MonsterInfo({ name }: { name: string }) {
+function MonsterInfo({
+  name,
+  monsterType,
+}: {
+  name: string;
+  monsterType?: number;
+}) {
+  // Show monster type name if available, otherwise just "Enemy"
+  const typeLabel =
+    monsterType !== undefined && monsterType !== MonsterType.UNSPECIFIED
+      ? getMonsterTypeDisplayName(monsterType as MonsterType)
+      : 'Enemy';
+
   return (
     <div className={styles.hoverInfoContent}>
       <div className={styles.hoverInfoName}>{name}</div>
-      <div className={styles.hoverInfoSubtext}>Enemy</div>
+      <div className={styles.hoverInfoSubtext}>{typeLabel}</div>
     </div>
   );
 }
@@ -114,8 +131,13 @@ export function HoverInfoPanel({
       borderClass = styles.hoverInfoAlly;
     }
   } else {
-    // Monster/enemy - use name from entity
-    content = <MonsterInfo name={displayEntity.name} />;
+    // Monster/enemy - use name and monster type from entity
+    content = (
+      <MonsterInfo
+        name={displayEntity.name}
+        monsterType={displayEntity.monsterType}
+      />
+    );
     borderClass = styles.hoverInfoEnemy;
   }
 

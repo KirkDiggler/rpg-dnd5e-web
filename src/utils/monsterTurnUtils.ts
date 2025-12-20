@@ -10,17 +10,33 @@ import { MonsterActionType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/
 
 /**
  * Format an entity ID into a display name
- * e.g., "goblin-dummy" -> "Goblin", "orc-warrior-1" -> "Orc"
+ * e.g., "skeleton-1" -> "Skeleton 1", "giant-spider-2" -> "Giant Spider 2"
+ *
+ * Handles format: type[-subtype]-instanceNumber
+ * The last part (if numeric) is the instance number
  *
  * @param entityId - The entity ID to format
- * @returns A human-readable name
+ * @returns A human-readable name with type and instance number
  */
 export function formatEntityId(entityId: string): string {
   const parts = entityId.split('-');
-  if (parts.length > 0) {
-    return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+  if (parts.length === 0) return entityId;
+
+  // Check if last part is a number (instance ID)
+  const lastPart = parts[parts.length - 1];
+  const isLastPartNumeric = /^\d+$/.test(lastPart);
+
+  if (isLastPartNumeric && parts.length > 1) {
+    // Format type parts (everything except the number)
+    const typeParts = parts.slice(0, -1);
+    const formattedType = typeParts
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+    return `${formattedType} ${lastPart}`;
   }
-  return entityId;
+
+  // No instance number, just capitalize first part
+  return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
 }
 
 /**
@@ -178,8 +194,20 @@ function createAttackLogEntry(
   const attackResult =
     action.details.case === 'attackResult' ? action.details.value : undefined;
 
-  // Use attackResult.hit if available, fall back to action.success
-  const hit = attackResult?.hit ?? action.success;
+  // Determine if the attack hit:
+  // 1. If we have an attackResult, prefer its hit field (handles false correctly)
+  // 2. For proto3, boolean false might not be sent, so also check attackTotal vs targetAc
+  // 3. Fall back to action.success only when no attackResult
+  let hit: boolean;
+  if (attackResult !== undefined) {
+    // If hit field is explicitly set, use it; otherwise infer from totals
+    hit =
+      attackResult.hit !== undefined
+        ? attackResult.hit
+        : attackResult.attackTotal >= attackResult.targetAc;
+  } else {
+    hit = action.success;
+  }
 
   // Extract dice rolls if we have attack result
   const diceRolls: DiceRoll[] | undefined = attackResult
