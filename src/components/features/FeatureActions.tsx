@@ -60,7 +60,7 @@ export function FeatureActions({
               key={`${feature.id}-${feature.name}`}
               feature={feature}
               isActive={isFeatureActiveByCondition(
-                feature.name,
+                feature.id,
                 activeConditions
               )}
               actionAvailable={actionAvailable}
@@ -80,7 +80,7 @@ export function FeatureActions({
               key={`${feature.id}-${feature.name}`}
               feature={feature}
               isActive={isFeatureActiveByCondition(
-                feature.name,
+                feature.id,
                 activeConditions
               )}
               actionAvailable={actionAvailable}
@@ -100,7 +100,7 @@ export function FeatureActions({
               key={`${feature.id}-${feature.name}`}
               feature={feature}
               isActive={isFeatureActiveByCondition(
-                feature.name,
+                feature.id,
                 activeConditions
               )}
               actionAvailable={actionAvailable}
@@ -120,7 +120,7 @@ export function FeatureActions({
               key={`${feature.id}-${feature.name}`}
               feature={feature}
               isActive={isFeatureActiveByCondition(
-                feature.name,
+                feature.id,
                 activeConditions
               )}
               actionAvailable={actionAvailable}
@@ -140,7 +140,7 @@ export function FeatureActions({
               key={`${feature.id}-${feature.name}`}
               feature={feature}
               isActive={isFeatureActiveByCondition(
-                feature.name,
+                feature.id,
                 activeConditions
               )}
               actionAvailable={actionAvailable}

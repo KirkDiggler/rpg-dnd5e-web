@@ -35,7 +35,7 @@ export function FeatureBadge({
   const icon = enumDisplay?.icon || getDefaultIcon(feature.source);
 
   // Check if this feature is currently active via its corresponding condition
-  const isActive = isFeatureActiveByCondition(feature.name, activeConditions);
+  const isActive = isFeatureActiveByCondition(feature.id, activeConditions);
 
   // Parse feature data for usage display
   const data = parseFeatureData(feature.featureData);

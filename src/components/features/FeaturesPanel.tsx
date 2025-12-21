@@ -43,7 +43,7 @@ export function FeaturesPanel({
       <div className={styles.featuresGrid}>
         {features.map((feature, index) => (
           <FeatureBadge
-            key={feature.name || index}
+            key={`feature-${feature.id || index}`}
             feature={feature}
             activeConditions={activeConditions}
           />
