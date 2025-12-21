@@ -21,6 +21,7 @@ import type {
   DungeonDifficulty,
   DungeonLength,
   DungeonTheme,
+  FeatureId,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useCallback, useState } from 'react';
 import { encounterClient } from './client';
@@ -168,7 +169,7 @@ export function useActivateFeature() {
   });
 
   const activateFeature = useCallback(
-    async (encounterId: string, characterId: string, featureId: string) => {
+    async (encounterId: string, characterId: string, featureId: FeatureId) => {
       setState({ data: null, loading: true, error: null });
 
       try {

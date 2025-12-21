@@ -1,6 +1,9 @@
 import { hasUsageData, parseFeatureData } from '@/types/featureData';
 import type { CharacterFeature } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ActionType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import {
+  ActionType,
+  type FeatureId,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { getFeatureIcon } from './featureIcons';
 import styles from './features.module.css';
 
@@ -17,7 +20,7 @@ export interface FeatureActionButtonProps {
   /** Whether button is read-only (shown but not clickable - for unknown action types) */
   readOnly?: boolean;
   /** Callback when the feature is activated */
-  onActivate?: (featureId: string) => void;
+  onActivate?: (featureId: FeatureId) => void;
 }
 
 /**
@@ -65,7 +68,7 @@ export function FeatureActionButton({
     // Read-only buttons are still clickable - just no action economy check
     if (disabled || isActive) return;
     if (!readOnly && isButtonDisabled) return;
-    onActivate?.(feature.name);
+    onActivate?.(feature.id);
   };
 
   const buttonClasses = [

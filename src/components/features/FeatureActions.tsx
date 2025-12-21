@@ -1,5 +1,9 @@
+import { isFeatureActiveByCondition } from '@/utils/featureConditionMapping';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ActionType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import {
+  ActionType,
+  type FeatureId,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { FeatureActionButton } from './FeatureActionButton';
 import styles from './features.module.css';
 
@@ -13,7 +17,7 @@ export interface FeatureActionsProps {
   /** Whether buttons should be globally disabled (not player's turn) */
   disabled?: boolean;
   /** Callback when a feature is activated */
-  onActivateFeature?: (featureId: string) => void;
+  onActivateFeature?: (featureId: FeatureId) => void;
 }
 
 /**
@@ -53,9 +57,12 @@ export function FeatureActions({
         <div className={styles.featureGroup}>
           {grouped.bonusAction.map((feature) => (
             <FeatureActionButton
-              key={feature.name}
+              key={`${feature.id}-${feature.name}`}
               feature={feature}
-              isActive={isFeatureActive(feature.name, activeConditions)}
+              isActive={isFeatureActiveByCondition(
+                feature.id,
+                activeConditions
+              )}
               actionAvailable={actionAvailable}
               bonusActionAvailable={bonusActionAvailable}
               disabled={disabled}
@@ -70,9 +77,12 @@ export function FeatureActions({
         <div className={styles.featureGroup}>
           {grouped.action.map((feature) => (
             <FeatureActionButton
-              key={feature.name}
+              key={`${feature.id}-${feature.name}`}
               feature={feature}
-              isActive={isFeatureActive(feature.name, activeConditions)}
+              isActive={isFeatureActiveByCondition(
+                feature.id,
+                activeConditions
+              )}
               actionAvailable={actionAvailable}
               bonusActionAvailable={bonusActionAvailable}
               disabled={disabled}
@@ -87,9 +97,12 @@ export function FeatureActions({
         <div className={styles.featureGroup}>
           {grouped.free.map((feature) => (
             <FeatureActionButton
-              key={feature.name}
+              key={`${feature.id}-${feature.name}`}
               feature={feature}
-              isActive={isFeatureActive(feature.name, activeConditions)}
+              isActive={isFeatureActiveByCondition(
+                feature.id,
+                activeConditions
+              )}
               actionAvailable={actionAvailable}
               bonusActionAvailable={bonusActionAvailable}
               disabled={disabled}
@@ -104,9 +117,12 @@ export function FeatureActions({
         <div className={styles.featureGroup}>
           {grouped.reaction.map((feature) => (
             <FeatureActionButton
-              key={feature.name}
+              key={`${feature.id}-${feature.name}`}
               feature={feature}
-              isActive={isFeatureActive(feature.name, activeConditions)}
+              isActive={isFeatureActiveByCondition(
+                feature.id,
+                activeConditions
+              )}
               actionAvailable={actionAvailable}
               bonusActionAvailable={bonusActionAvailable}
               disabled={disabled}
@@ -121,9 +137,12 @@ export function FeatureActions({
         <div className={styles.featureGroup}>
           {grouped.unspecified.map((feature) => (
             <FeatureActionButton
-              key={feature.name}
+              key={`${feature.id}-${feature.name}`}
               feature={feature}
-              isActive={isFeatureActive(feature.name, activeConditions)}
+              isActive={isFeatureActiveByCondition(
+                feature.id,
+                activeConditions
+              )}
               actionAvailable={actionAvailable}
               bonusActionAvailable={bonusActionAvailable}
               disabled={disabled}
@@ -181,27 +200,4 @@ function groupByActionType(
   }
 
   return grouped;
-}
-
-/**
- * Check if a feature is currently active by looking at active conditions.
- * Maps feature names to their corresponding condition names.
- */
-function isFeatureActive(
-  featureName: string,
-  activeConditions: NonNullable<Character['activeConditions']>
-): boolean {
-  // Map feature names to condition names that indicate they're active
-  // Use lowercase for comparison
-  const normalizedName = featureName.toLowerCase();
-  const featureToConditionMap: Record<string, string[]> = {
-    rage: ['raging', 'Raging'],
-    // Add more mappings as needed
-  };
-
-  const conditionNames = featureToConditionMap[normalizedName];
-  if (!conditionNames) return false;
-
-  const activeConditionNames = activeConditions.map((c) => c.name || '');
-  return conditionNames.some((name) => activeConditionNames.includes(name));
 }

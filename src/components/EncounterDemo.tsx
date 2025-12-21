@@ -49,6 +49,7 @@ import {
   DungeonDifficulty,
   DungeonLength,
   DungeonTheme,
+  type FeatureId,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
@@ -1221,7 +1222,7 @@ export function EncounterDemo() {
   // Movement execution handlers removed - movement now handled by CombatPanel's Move button
   // which toggles movement mode. Actual movement execution is still done via handleCellDoubleClick
 
-  const handleActivateFeature = async (featureId: string) => {
+  const handleActivateFeature = async (featureId: FeatureId) => {
     if (!encounterId || !combatState?.currentTurn?.entityId) {
       console.warn('Missing required data for feature activation', {
         encounterId,

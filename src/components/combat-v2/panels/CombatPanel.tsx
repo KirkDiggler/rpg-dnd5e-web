@@ -4,6 +4,7 @@ import type {
   CombatState,
   TurnState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { FeatureId } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import styles from '../styles/combat.module.css';
 import { ActionEconomyIndicators } from './ActionEconomyIndicators';
 import { CharacterInfoSection } from './CharacterInfoSection';
@@ -29,7 +30,7 @@ export interface CombatPanelProps {
   // Callbacks
   onAttack?: () => void;
   onMove?: () => void;
-  onFeature?: (featureId: string) => void;
+  onFeature?: (featureId: FeatureId) => void;
   onBackpack?: () => void;
   onWeaponClick?: (slot: 'mainHand' | 'offHand') => void;
   onEndTurn?: () => void;
