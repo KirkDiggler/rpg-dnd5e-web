@@ -10,6 +10,7 @@
  * - Red for enemies (monsters)
  */
 
+import { ConditionsDisplay, FeaturesPanel } from '@/components/features';
 import {
   getClassDisplayName,
   getMonsterTypeDisplayName,
@@ -45,8 +46,9 @@ function getClassDisplay(character: Character): string {
 
 /** Render player character info */
 function PlayerInfo({ character }: { character: Character }) {
-  const conditions = character.activeConditions || [];
   const maxHp = character.combatStats?.hitPointMaximum || 1;
+  const hasConditions = (character.activeConditions?.length ?? 0) > 0;
+  const hasFeatures = (character.features?.length ?? 0) > 0;
 
   return (
     <div className={styles.hoverInfoContent}>
@@ -62,13 +64,16 @@ function PlayerInfo({ character }: { character: Character }) {
           AC {character.combatStats?.armorClass || 10}
         </span>
       </div>
-      {conditions.length > 0 && (
-        <div className={styles.hoverInfoConditions}>
-          {conditions.map((condition, i) => (
-            <span key={i} className={styles.hoverInfoCondition}>
-              {condition.name}
-            </span>
-          ))}
+      {/* Active conditions using enum-based display */}
+      {hasConditions && (
+        <div className={styles.hoverInfoSection}>
+          <ConditionsDisplay character={character} />
+        </div>
+      )}
+      {/* Character features using enum-based display */}
+      {hasFeatures && (
+        <div className={styles.hoverInfoSection}>
+          <FeaturesPanel character={character} />
         </div>
       )}
     </div>
