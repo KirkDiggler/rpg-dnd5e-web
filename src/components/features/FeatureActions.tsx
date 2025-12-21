@@ -1,6 +1,9 @@
 import { isFeatureActiveByCondition } from '@/utils/featureConditionMapping';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { ActionType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import {
+  ActionType,
+  type FeatureId,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { FeatureActionButton } from './FeatureActionButton';
 import styles from './features.module.css';
 
@@ -14,7 +17,7 @@ export interface FeatureActionsProps {
   /** Whether buttons should be globally disabled (not player's turn) */
   disabled?: boolean;
   /** Callback when a feature is activated */
-  onActivateFeature?: (featureId: string) => void;
+  onActivateFeature?: (featureId: FeatureId) => void;
 }
 
 /**

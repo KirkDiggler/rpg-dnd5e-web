@@ -5,9 +5,10 @@
  * allows the UI to check if a feature is currently active by looking at
  * the character's active conditions.
  *
- * Note: FeatureId enum only contains damage-dealing features (Breath Weapon,
- * Channel Divinity, etc.). Condition-applying features like Rage use name-based
- * matching until the proto is updated with a more comprehensive FeatureId enum.
+ * The FeatureId enum now includes all activatable class/racial features
+ * (Rage, Second Wind, Action Surge, etc.). Feature activation sends the
+ * FeatureId enum value; this file maps feature names to ConditionId for
+ * checking if the resulting condition is active.
  */
 
 import type { Condition } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';

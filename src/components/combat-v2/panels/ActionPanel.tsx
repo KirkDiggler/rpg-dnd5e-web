@@ -10,6 +10,7 @@ import type {
   CombatState,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { FeatureId } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePlayerTurn } from '../hooks/usePlayerTurn';
@@ -23,7 +24,7 @@ export interface ActionPanelProps {
   attackTarget?: string | null;
   onMoveAction?: () => void;
   onAttackAction?: () => void;
-  onActivateFeature?: (featureId: string) => void;
+  onActivateFeature?: (featureId: FeatureId) => void;
   onCombatStateUpdate?: (combatState: CombatState) => void;
   movementMode?: boolean;
   movementPath?: CubeCoord[];

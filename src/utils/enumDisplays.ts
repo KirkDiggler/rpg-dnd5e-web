@@ -373,10 +373,55 @@ export const FEATURE_DISPLAY: Record<FeatureId, EnumDisplay> = {
     icon: '🛡️',
     description: 'Monk deflect and throw missiles',
   },
+  [FeatureId.FLURRY_OF_BLOWS]: {
+    title: 'Flurry of Blows',
+    icon: '👊',
+    description: 'Monk - 2 unarmed strikes (1 ki)',
+  },
+  [FeatureId.PATIENT_DEFENSE]: {
+    title: 'Patient Defense',
+    icon: '🛡️',
+    description: 'Monk - Dodge action (1 ki)',
+  },
+  [FeatureId.STEP_OF_THE_WIND]: {
+    title: 'Step of the Wind',
+    icon: '💨',
+    description: 'Monk - Disengage or Dash (1 ki)',
+  },
   [FeatureId.STARRY_FORM_ARCHER]: {
     title: 'Starry Form - Archer',
     icon: '⭐',
     description: 'Stars Druid constellation damage',
+  },
+  [FeatureId.RAGE]: {
+    title: 'Rage',
+    icon: '😤',
+    description: 'Barbarian - enter rage',
+  },
+  [FeatureId.RECKLESS_ATTACK]: {
+    title: 'Reckless Attack',
+    icon: '⚔️',
+    description: 'Barbarian - advantage on attacks, enemies get advantage',
+  },
+  [FeatureId.SECOND_WIND]: {
+    title: 'Second Wind',
+    icon: '💚',
+    description: 'Fighter - heal 1d10 + level',
+  },
+  [FeatureId.ACTION_SURGE]: {
+    title: 'Action Surge',
+    icon: '⚡',
+    description: 'Fighter - gain additional action',
+  },
+  [FeatureId.SNEAK_ATTACK]: {
+    title: 'Sneak Attack',
+    icon: '🗡️',
+    description: 'Rogue - extra damage on finesse/ranged',
+  },
+  [FeatureId.DIVINE_SMITE]: {
+    title: 'Divine Smite',
+    icon: '✨',
+    description: 'Paladin - spend spell slot for extra damage',
   },
 };
 
