@@ -57,7 +57,7 @@ export function FeatureActions({
         <div className={styles.featureGroup}>
           {grouped.bonusAction.map((feature) => (
             <FeatureActionButton
-              key={feature.name}
+              key={`${feature.id}-${feature.name}`}
               feature={feature}
               isActive={isFeatureActiveByCondition(
                 feature.name,
@@ -77,7 +77,7 @@ export function FeatureActions({
         <div className={styles.featureGroup}>
           {grouped.action.map((feature) => (
             <FeatureActionButton
-              key={feature.name}
+              key={`${feature.id}-${feature.name}`}
               feature={feature}
               isActive={isFeatureActiveByCondition(
                 feature.name,
@@ -97,7 +97,7 @@ export function FeatureActions({
         <div className={styles.featureGroup}>
           {grouped.free.map((feature) => (
             <FeatureActionButton
-              key={feature.name}
+              key={`${feature.id}-${feature.name}`}
               feature={feature}
               isActive={isFeatureActiveByCondition(
                 feature.name,
@@ -117,7 +117,7 @@ export function FeatureActions({
         <div className={styles.featureGroup}>
           {grouped.reaction.map((feature) => (
             <FeatureActionButton
-              key={feature.name}
+              key={`${feature.id}-${feature.name}`}
               feature={feature}
               isActive={isFeatureActiveByCondition(
                 feature.name,
@@ -137,7 +137,7 @@ export function FeatureActions({
         <div className={styles.featureGroup}>
           {grouped.unspecified.map((feature) => (
             <FeatureActionButton
-              key={feature.name}
+              key={`${feature.id}-${feature.name}`}
               feature={feature}
               isActive={isFeatureActiveByCondition(
                 feature.name,
