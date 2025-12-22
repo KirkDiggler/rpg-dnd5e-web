@@ -56,13 +56,10 @@ import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
 import { DungeonResultOverlay } from './dungeon';
 import { BattleMapPanel } from './encounter/BattleMapPanel';
-import { PartySetupPanel } from './encounter/PartySetupPanel';
 import { Equipment } from './Equipment';
-import { GameModeSelector, LobbyScreen } from './lobby';
+import { LobbyScreen } from './lobby';
 import type { DungeonConfig } from './lobby/dungeonConfig';
 import { useToast } from './ui';
-
-type GameMode = 'select' | 'solo' | 'multiplayer';
 
 /**
  * Update room entity positions based on monster movement paths
@@ -97,8 +94,13 @@ function applyMonsterMovement(room: Room, turns: MonsterTurnResult[]): Room {
   };
 }
 
-export function EncounterDemo() {
-  const { dungeonStart, loading, error } = useDungeonStart();
+interface LobbyViewProps {
+  characterId?: string | null;
+  onBack?: () => void;
+}
+
+export function LobbyView({ characterId, onBack }: LobbyViewProps) {
+  const { dungeonStart } = useDungeonStart();
   const { moveCharacter } = useMoveCharacter();
   const { attack } = useAttack();
   const { activateFeature } = useActivateFeature();
@@ -136,9 +138,9 @@ export function EncounterDemo() {
     Map<string, Character>
   >(new Map());
 
-  // Character selection state
+  // Character selection state - initialize with passed characterId if provided
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>(
-    []
+    characterId ? [characterId] : []
   );
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
   const [attackTarget, setAttackTarget] = useState<string | null>(null);
@@ -163,8 +165,8 @@ export function EncounterDemo() {
   } | null>(null);
   const [movementPath, setMovementPath] = useState<CubeCoord[]>([]);
   const [combatLog, setCombatLog] = useState<CombatLogEntry[]>([]);
-  const [gameMode, setGameMode] = useState<GameMode>('select');
-  const [dungeonConfig, setDungeonConfig] = useState<DungeonConfig>({
+  // Default dungeon config - will be configurable from WaitingRoom in the future
+  const [dungeonConfig] = useState<DungeonConfig>({
     theme: DungeonTheme.CAVE,
     difficulty: DungeonDifficulty.MEDIUM,
     length: DungeonLength.MEDIUM,
@@ -804,14 +806,6 @@ export function EncounterDemo() {
         duration: 4000,
       });
     }
-  };
-
-  const handleCharacterToggle = (characterId: string) => {
-    setSelectedCharacterIds((prev) =>
-      prev.includes(characterId)
-        ? prev.filter((id) => id !== characterId)
-        : [...prev, characterId]
-    );
   };
 
   const handleEntityClick = (entityId: string) => {
@@ -1476,94 +1470,77 @@ export function EncounterDemo() {
         }}
       >
         <div className="max-w-[1800px] mx-auto">
+          {/* Back button when provided */}
+          {onBack && !room && (
+            <button
+              onClick={onBack}
+              className="mb-4 px-4 py-2 rounded-lg text-lg transition-all hover:scale-105"
+              style={{
+                backgroundColor: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                border: '2px solid var(--border-primary)',
+              }}
+            >
+              ← Back to Home
+            </button>
+          )}
+
           {/* Main Content - Header removed to save vertical space */}
           {!room ? (
-            // Pre-encounter: show mode selection or setup screens
-            gameMode === 'select' ? (
-              <GameModeSelector
-                onSelectSolo={() => setGameMode('solo')}
-                onSelectMultiplayer={() => setGameMode('multiplayer')}
-              />
-            ) : gameMode === 'multiplayer' ? (
-              <LobbyScreen
-                availableCharacters={availableCharacters}
-                charactersLoading={charactersLoading}
-                currentPlayerId={playerId}
-                currentPlayerName={playerName}
-                onBack={() => setGameMode('select')}
-                onStartCombat={(id, event) => {
-                  console.log('Starting multiplayer combat:', id);
-                  console.log('CombatStartedEvent:', event);
-                  console.log('Event party:', event.party);
-                  console.log('Event combatState:', event.combatState);
-                  console.log('Event room:', event.room);
-                  // Set encounter ID and room from the CombatStarted event
-                  setEncounterId(id);
+            // Pre-encounter: show lobby screen directly
+            <LobbyScreen
+              availableCharacters={availableCharacters}
+              charactersLoading={charactersLoading}
+              currentPlayerId={playerId}
+              currentPlayerName={playerName}
+              preSelectedCharacterId={characterId}
+              onBack={onBack || (() => {})}
+              onStartCombat={(id, event) => {
+                console.log('Starting multiplayer combat:', id);
+                // Set encounter ID and room from the CombatStarted event
+                setEncounterId(id);
 
-                  // Extract characters from party members and store them
-                  const partyCharacters = event.party
-                    .filter((member) => member.character?.id)
-                    .map((member) => member.character!);
+                // Extract characters from party members and store them
+                const partyCharacters = event.party
+                  .filter((member) => member.character?.id)
+                  .map((member) => member.character!);
 
-                  if (partyCharacters.length > 0) {
-                    // Set character IDs for selection
-                    setSelectedCharacterIds(partyCharacters.map((c) => c.id));
+                if (partyCharacters.length > 0) {
+                  // Set character IDs for selection
+                  setSelectedCharacterIds(partyCharacters.map((c) => c.id));
 
-                    // Add characters to fullCharactersMap so getSelectedCharacters finds them
-                    setFullCharactersMap((prev) => {
-                      const newMap = new Map(prev);
-                      partyCharacters.forEach((char) => {
-                        newMap.set(char.id, char);
-                      });
-                      return newMap;
+                  // Add characters to fullCharactersMap so getSelectedCharacters finds them
+                  setFullCharactersMap((prev) => {
+                    const newMap = new Map(prev);
+                    partyCharacters.forEach((char) => {
+                      newMap.set(char.id, char);
                     });
-                  }
+                    return newMap;
+                  });
+                }
 
-                  // Set combat state from the event
-                  if (event.combatState) {
-                    setCombatState(event.combatState);
-                  }
+                // Set combat state from the event
+                if (event.combatState) {
+                  setCombatState(event.combatState);
+                }
 
-                  if (event.room) {
-                    setRoom(event.room);
-                    addToast({
-                      type: 'success',
-                      message: 'Combat started!',
-                      duration: 2000,
-                    });
-                  } else {
-                    console.error('CombatStartedEvent missing room data');
-                    addToast({
-                      type: 'error',
-                      message: 'Failed to start combat: missing room data',
-                      duration: 3000,
-                    });
-                  }
-                }}
-              />
-            ) : (
-              // Solo mode - existing party setup
-              <div>
-                <button
-                  onClick={() => setGameMode('select')}
-                  className="mb-4 text-sm"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  ← Back to Mode Selection
-                </button>
-                <PartySetupPanel
-                  availableCharacters={availableCharacters}
-                  selectedCharacterIds={selectedCharacterIds}
-                  dungeonConfig={dungeonConfig}
-                  onDungeonConfigChange={setDungeonConfig}
-                  onCharacterToggle={handleCharacterToggle}
-                  onStartEncounter={handleStartEncounter}
-                  loading={loading}
-                  charactersLoading={charactersLoading}
-                  error={error}
-                />
-              </div>
-            )
+                if (event.room) {
+                  setRoom(event.room);
+                  addToast({
+                    type: 'success',
+                    message: 'Combat started!',
+                    duration: 2000,
+                  });
+                } else {
+                  console.error('CombatStartedEvent missing room data');
+                  addToast({
+                    type: 'error',
+                    message: 'Failed to start combat: missing room data',
+                    duration: 3000,
+                  });
+                }
+              }}
+            />
           ) : (
             // Active encounter - battle map fills available space
             // Calculate height: viewport minus combat panel (~280px) minus padding (32px top + bottom)
@@ -1656,7 +1633,8 @@ export function EncounterDemo() {
           difficulty={dungeonConfig.difficulty}
           onReturnToLobby={() => {
             resetDungeonState();
-            setGameMode('select');
+            // Go back to home screen
+            if (onBack) onBack();
           }}
           onRetry={
             dungeonResult === 'failure'

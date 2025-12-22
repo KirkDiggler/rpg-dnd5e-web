@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/Button';
 import { formatCharacterSummary } from '@/utils/displayNames';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Backpack } from 'lucide-react';
@@ -137,76 +138,66 @@ export function WaitingRoom({
 
       {/* Equipment Button */}
       {selectedCharacterId && (
-        <button
+        <Button
+          variant="secondary"
+          size="lg"
+          fullWidth
           onClick={() => setShowEquipment(true)}
           disabled={isReady}
-          className="w-full px-4 py-3 rounded-lg flex items-center justify-center gap-2 transition-all hover:brightness-110 disabled:opacity-50"
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            border: '1px solid var(--border-primary)',
-            color: 'var(--text-primary)',
-          }}
+          icon={<Backpack size={18} />}
+          className="rounded-xl"
         >
-          <Backpack size={18} />
           Check Equipment
-        </button>
+        </Button>
       )}
 
       {/* Action Buttons */}
       <div className="space-y-3">
         {/* Ready Toggle */}
-        <button
+        <Button
+          size="xl"
+          fullWidth
           onClick={onToggleReady}
           disabled={!selectedCharacterId}
-          className="w-full px-6 py-4 rounded-lg font-bold text-lg transition-all disabled:opacity-50 hover:brightness-110 active:scale-[0.98]"
+          className="rounded-xl"
           style={{
             backgroundColor: isReady ? '#22c55e' : '#3b82f6',
-            color: 'white',
-            boxShadow: isReady
-              ? '0 4px 14px rgba(34, 197, 94, 0.4)'
-              : '0 4px 14px rgba(59, 130, 246, 0.4)',
           }}
         >
           {isReady ? '✓ Ready!' : 'Ready Up'}
-        </button>
+        </Button>
 
         {/* Start Combat (host only) */}
         {isHost && (
-          <button
+          <Button
+            size="xl"
+            fullWidth
             onClick={onStartCombat}
             disabled={!allReady || startLoading}
-            className="w-full px-6 py-4 rounded-lg font-bold text-lg transition-all disabled:opacity-50 hover:brightness-110 active:scale-[0.98]"
+            loading={startLoading}
+            className="rounded-xl"
             style={{
               backgroundColor:
                 allReady && !startLoading ? '#f59e0b' : '#4b5563',
-              color: 'white',
-              boxShadow:
-                allReady && !startLoading
-                  ? '0 4px 14px rgba(245, 158, 11, 0.4)'
-                  : 'none',
             }}
           >
-            {startLoading
-              ? 'Starting...'
-              : allReady
-                ? '⚔️ Start Combat!'
-                : `Waiting (${readyCount}/${partyMembers.length})`}
-          </button>
+            {allReady
+              ? '⚔️ Start Combat!'
+              : `Waiting (${readyCount}/${partyMembers.length})`}
+          </Button>
         )}
       </div>
 
       {/* Leave Button */}
-      <button
+      <Button
+        variant="ghost"
+        size="lg"
+        fullWidth
         onClick={onLeave}
-        className="w-full px-4 py-3 rounded-lg text-sm transition-all hover:bg-red-500/20 hover:border-red-500/50 hover:text-red-400"
-        style={{
-          backgroundColor: 'transparent',
-          border: '1px solid var(--border-primary)',
-          color: 'var(--text-muted)',
-        }}
+        className="rounded-xl text-red-400 hover:bg-red-500/20"
       >
         Leave Lobby
-      </button>
+      </Button>
 
       {/* Equipment Modal */}
       {showEquipment && selectedCharacterId && (
