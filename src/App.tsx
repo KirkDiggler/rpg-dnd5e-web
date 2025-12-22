@@ -2,29 +2,37 @@ import { create } from '@bufbuild/protobuf';
 import { FinalizeDraftRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
+import {
+  useFinalizeDraft,
+  useListCharacters,
+  useListDrafts,
+} from './api/hooks';
 import './App.css';
-import { useFinalizeDraft } from './api/hooks';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
-import { CharacterList } from './components/CharacterList';
-import { EncounterDemo } from './components/EncounterDemo';
+import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
+import { LobbyView } from './components/LobbyView';
 import { ThemeSelector } from './components/ThemeSelector';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
-type AppView =
-  | 'character-list'
-  | 'character-creation'
-  | 'character-sheet'
-  | 'encounter-demo';
+type AppView = 'home' | 'character-creation' | 'character-sheet' | 'lobby';
 
 function AppContent() {
-  const [currentView, setCurrentView] = useState<AppView>('character-list');
+  const [currentView, setCurrentView] = useState<AppView>('home');
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [currentCharacterId, setCurrentCharacterId] = useState<string | null>(
     null
   );
+  // Track selected item in carousel (can be character or draft)
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<
+    'character' | 'draft' | null
+  >(null);
+  // Character to play with in lobby
+  const [lobbyCharacterId, setLobbyCharacterId] = useState<string | null>(null);
+
   const discord = useDiscord();
   const draft = useCharacterDraft();
   const { finalizeDraft, loading: finalizing } = useFinalizeDraft();
@@ -73,15 +81,16 @@ function AppContent() {
 
       if (response.character) {
         console.log('Character created:', response.character.id);
-        // Navigate to the new character sheet
-        setCurrentCharacterId(response.character.id);
-        setCurrentView('character-sheet');
+        // Go back to home with the new character selected
+        setSelectedId(response.character.id);
+        setSelectedType('character');
+        setCurrentView('home');
         // Reset draft after successful navigation
         draft.reset();
       } else {
-        // If no character was created, reset draft and go back to character list
+        // If no character was created, reset draft and go back to home
         draft.reset();
-        setCurrentView('character-list');
+        setCurrentView('home');
       }
     } catch (error) {
       console.error('Failed to finalize character:', error);
@@ -90,7 +99,7 @@ function AppContent() {
 
   const handleCancelCreation = () => {
     draft.reset();
-    setCurrentView('character-list');
+    setCurrentView('home');
   };
 
   const handleViewCharacter = (characterId: string) => {
@@ -98,9 +107,39 @@ function AppContent() {
     setCurrentView('character-sheet');
   };
 
-  const handleBackToCharacterList = () => {
+  const handleBackToHome = () => {
     setCurrentCharacterId(null);
-    setCurrentView('character-list');
+    setLobbyCharacterId(null);
+    setCurrentView('home');
+  };
+
+  // Carousel selection handler
+  const handleCarouselSelect = (id: string, type: 'character' | 'draft') => {
+    setSelectedId(id);
+    setSelectedType(type);
+  };
+
+  // Play button handler - go to lobby with selected character
+  const handlePlay = (characterId: string) => {
+    setLobbyCharacterId(characterId);
+    setCurrentView('lobby');
+  };
+
+  // Delete handlers
+  const handleDeleteCharacter = (characterId: string) => {
+    // Clear selection if the deleted character was selected
+    if (selectedId === characterId) {
+      setSelectedId(null);
+      setSelectedType(null);
+    }
+  };
+
+  const handleDeleteDraft = (draftId: string) => {
+    // Clear selection if the deleted draft was selected
+    if (selectedId === draftId) {
+      setSelectedId(null);
+      setSelectedType(null);
+    }
   };
 
   return (
@@ -113,40 +152,15 @@ function AppContent() {
         animate={{ opacity: 1, y: 0 }}
         className={currentView === 'character-sheet' ? '' : 'max-w-7xl mx-auto'}
       >
-        {/* Theme Selector and Demo Toggle - Hide on character sheet */}
-        {currentView !== 'character-sheet' && (
-          <div className="flex justify-between items-center mb-6">
-            <button
-              onClick={() =>
-                setCurrentView(
-                  currentView === 'encounter-demo'
-                    ? 'character-list'
-                    : 'encounter-demo'
-                )
-              }
-              className="px-4 py-2 rounded-lg transition-colors"
-              style={{
-                backgroundColor:
-                  currentView === 'encounter-demo'
-                    ? 'var(--accent-primary)'
-                    : 'var(--bg-secondary)',
-                color:
-                  currentView === 'encounter-demo'
-                    ? 'white'
-                    : 'var(--text-primary)',
-                border: '1px solid var(--border-primary)',
-              }}
-            >
-              {currentView === 'encounter-demo'
-                ? '← Back to Character List'
-                : '⚔️ Enter Combat'}
-            </button>
+        {/* Header - Hide on character sheet and lobby */}
+        {currentView !== 'character-sheet' && currentView !== 'lobby' && (
+          <div className="flex justify-end items-center mb-6">
             <ThemeSelector />
           </div>
         )}
 
-        {/* Show header only when not viewing character sheet */}
-        {currentView !== 'character-sheet' && (
+        {/* Show title only on home view */}
+        {currentView === 'home' && (
           <header className="mb-8 text-center">
             <h1
               className="text-5xl font-bold mb-2 text-shadow"
@@ -191,20 +205,26 @@ function AppContent() {
               <p className="mt-4 text-red-500">{discord.error}</p>
             )}
           </motion.div>
-        ) : currentView === 'encounter-demo' ? (
-          <EncounterDemo />
-        ) : currentView === 'character-list' ? (
-          <CharacterList
+        ) : currentView === 'lobby' ? (
+          <LobbyView characterId={lobbyCharacterId} onBack={handleBackToHome} />
+        ) : currentView === 'home' ? (
+          <HomeView
             playerId={playerId || 'test-player'}
             sessionId="test-session"
-            onCreateCharacter={handleCreateCharacter}
-            onResumeDraft={handleResumeDraft}
-            onViewCharacter={handleViewCharacter}
+            selectedId={selectedId}
+            selectedType={selectedType}
+            onSelect={handleCarouselSelect}
+            onCreateClick={handleCreateCharacter}
+            onPlay={handlePlay}
+            onViewSheet={handleViewCharacter}
+            onContinueDraft={handleResumeDraft}
+            onDelete={handleDeleteCharacter}
+            onDeleteDraft={handleDeleteDraft}
           />
         ) : currentView === 'character-sheet' && currentCharacterId ? (
           <CharacterSheet
             characterId={currentCharacterId}
-            onBack={handleBackToCharacterList}
+            onBack={handleBackToHome}
           />
         ) : draft.loading || finalizing ? (
           <div className="flex items-center justify-center h-screen">
@@ -245,6 +265,73 @@ function AppContent() {
           </motion.div>
         )}
       </motion.div>
+    </div>
+  );
+}
+
+// HomeView component - combines carousel and selected panel
+interface HomeViewProps {
+  playerId: string;
+  sessionId: string;
+  selectedId: string | null;
+  selectedType: 'character' | 'draft' | null;
+  onSelect: (id: string, type: 'character' | 'draft') => void;
+  onCreateClick: () => void;
+  onPlay: (characterId: string) => void;
+  onViewSheet: (characterId: string) => void;
+  onContinueDraft: (draftId: string) => void;
+  onDelete: (characterId: string) => void;
+  onDeleteDraft: (draftId: string) => void;
+}
+
+function HomeView({
+  playerId,
+  sessionId,
+  selectedId,
+  selectedType,
+  onSelect,
+  onCreateClick,
+  onPlay,
+  onViewSheet,
+  onContinueDraft,
+  onDelete,
+  onDeleteDraft,
+}: HomeViewProps) {
+  // Fetch characters and drafts to find selected item data
+  const { data: characters } = useListCharacters({ playerId, sessionId });
+  const { data: drafts } = useListDrafts({ playerId, sessionId });
+
+  // Find the selected character or draft
+  const selectedCharacter =
+    selectedType === 'character' && selectedId
+      ? characters.find((c) => c.id === selectedId) || null
+      : null;
+  const selectedDraft =
+    selectedType === 'draft' && selectedId
+      ? drafts.find((d) => d.id === selectedId) || null
+      : null;
+
+  return (
+    <div className="space-y-8">
+      {/* Character Carousel */}
+      <CharacterCarousel
+        playerId={playerId}
+        sessionId={sessionId}
+        selectedId={selectedId}
+        onSelect={onSelect}
+        onCreateClick={onCreateClick}
+      />
+
+      {/* Selected Character Panel */}
+      <SelectedCharacterPanel
+        character={selectedCharacter}
+        draft={selectedDraft}
+        onPlay={onPlay}
+        onViewSheet={onViewSheet}
+        onContinueDraft={onContinueDraft}
+        onDelete={onDelete}
+        onDeleteDraft={onDeleteDraft}
+      />
     </div>
   );
 }

@@ -6,57 +6,57 @@ import {
   useStartCombat,
 } from '@/api/lobbyHooks';
 import { useEncounterStream } from '@/api/useEncounterStream';
+import { Button } from '@/components/ui/Button';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { CombatStartedEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
-import { CreateGameTab } from './CreateGameTab';
 import { DEFAULT_DUNGEON_CONFIG, type DungeonConfig } from './dungeonConfig';
-import { JoinGameTab } from './JoinGameTab';
 import type { PartyMember } from './PartyMemberCard';
 import { WaitingRoom } from './WaitingRoom';
 
-type LobbyState = 'tabs' | 'waiting';
-type TabId = 'create' | 'join';
+type LobbyState = 'main' | 'waiting';
 
 interface LobbyScreenProps {
   availableCharacters: Character[];
   charactersLoading: boolean;
   currentPlayerId: string;
   currentPlayerName: string;
+  preSelectedCharacterId?: string | null;
   onBack: () => void;
   onStartCombat: (encounterId: string, event: CombatStartedEvent) => void;
 }
 
 /**
- * LobbyScreen - Main container for multiplayer lobby functionality
+ * LobbyScreen - Simplified multiplayer lobby
  *
- * States:
- * - 'tabs': Showing Create/Join tabs
- * - 'waiting': In a lobby waiting room
- *
- * Integrates with encounter streaming for real-time multiplayer synchronization.
+ * Single view with:
+ * - Large CREATE GAME button (primary action)
+ * - Join section with code input (secondary action)
  */
 export function LobbyScreen({
   availableCharacters,
   charactersLoading,
   currentPlayerId,
   currentPlayerName: _playerName,
+  preSelectedCharacterId,
   onBack,
   onStartCombat,
 }: LobbyScreenProps) {
   // _playerName is kept for API compatibility but not currently used
   void _playerName;
+
   // UI State
-  const [lobbyState, setLobbyState] = useState<LobbyState>('tabs');
-  const [activeTab, setActiveTab] = useState<TabId>('create');
+  const [lobbyState, setLobbyState] = useState<LobbyState>('main');
+  const [joinCode, setJoinCode] = useState('');
+  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   // Lobby Data
   const [encounterId, setEncounterId] = useState<string | null>(null);
-  const [joinCode, setJoinCode] = useState('');
   const [isHost, setIsHost] = useState(false);
   const [partyMembers, setPartyMembers] = useState<PartyMember[]>([]);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(
-    null
+    preSelectedCharacterId || null
   );
   const [isReady, setIsReady] = useState(false);
   const [dungeonConfig, setDungeonConfig] = useState<DungeonConfig>(
@@ -65,20 +65,20 @@ export function LobbyScreen({
 
   // API Hooks
   const { createEncounter, loading: createLoading } = useCreateEncounter();
-  const {
-    joinEncounter,
-    loading: joinLoading,
-    error: joinError,
-  } = useJoinEncounter();
+  const { joinEncounter, loading: joinLoading } = useJoinEncounter();
   const { setReady: callSetReady } = useSetReady();
   const { startCombat: callStartCombat, loading: startLoading } =
     useStartCombat();
   const { leaveEncounter } = useLeaveEncounter();
 
+  // Get the selected character data
+  const selectedCharacter = availableCharacters.find(
+    (c) => c.id === selectedCharacterId
+  );
+
   // Streaming hook - connects when encounterId is set
   const { connectionState } = useEncounterStream(encounterId, currentPlayerId, {
     onPlayerJoined: (event) => {
-      // PlayerJoinedEvent has a 'member' field containing PartyMember
       if (event.member) {
         setPartyMembers((prev) => [
           ...prev,
@@ -99,20 +99,17 @@ export function LobbyScreen({
     },
 
     onPlayerReady: (event) => {
-      // PlayerReadyEvent only has playerId and isReady (no character)
       setPartyMembers((prev) =>
         prev.map((m) =>
           m.playerId === event.playerId ? { ...m, isReady: event.isReady } : m
         )
       );
-      // Sync local ready state if it's us
       if (event.playerId === currentPlayerId) {
         setIsReady(event.isReady);
       }
     },
 
     onCombatStarted: (event) => {
-      // Transition to combat view with the event data (contains room, combat state, etc.)
       if (encounterId) {
         onStartCombat(encounterId, event);
       }
@@ -126,19 +123,15 @@ export function LobbyScreen({
     try {
       const response = await createEncounter([selectedCharacterId]);
 
-      // Set encounter state from response
       setEncounterId(response.encounterId);
       setJoinCode(response.joinCode);
       setIsHost(true);
 
       // Initialize party members with host (us)
-      const selectedChar = availableCharacters.find(
-        (c) => c.id === selectedCharacterId
-      );
       setPartyMembers([
         {
           playerId: currentPlayerId,
-          character: selectedChar,
+          character: selectedCharacter,
           isReady: false,
           isHost: true,
         },
@@ -151,20 +144,19 @@ export function LobbyScreen({
   };
 
   // Join an existing lobby
-  const handleJoinLobby = async (code: string) => {
-    if (!selectedCharacterId) return;
+  const handleJoinLobby = async () => {
+    if (!selectedCharacterId || joinCodeInput.length !== 6) return;
+
+    setJoinError(null);
 
     try {
-      // Join with selected character
+      const code = joinCodeInput.trim().toUpperCase();
       const response = await joinEncounter(code, [selectedCharacterId]);
 
-      // Set encounter state from response
       setEncounterId(response.encounterId);
       setJoinCode(code);
       setIsHost(false);
 
-      // Initialize party members from response
-      // The response contains the current party state
       const partyFromResponse: PartyMember[] = response.party.map((p) => ({
         playerId: p.playerId,
         character: p.character,
@@ -176,7 +168,7 @@ export function LobbyScreen({
       setLobbyState('waiting');
     } catch (error) {
       console.error('Failed to join encounter:', error);
-      // Error is already set in the hook state
+      setJoinError('Invalid code or lobby not found');
     }
   };
 
@@ -186,8 +178,6 @@ export function LobbyScreen({
 
     setSelectedCharacterId(characterId);
 
-    // Call setReady with the new character
-    // This will trigger a PlayerReady event from the stream which updates state
     try {
       await callSetReady(encounterId, currentPlayerId, isReady);
     } catch (error) {
@@ -201,7 +191,6 @@ export function LobbyScreen({
 
     const newReady = !isReady;
 
-    // Call setReady API - stream will update state via PlayerReady event
     try {
       await callSetReady(encounterId, currentPlayerId, newReady);
     } catch (error) {
@@ -213,8 +202,6 @@ export function LobbyScreen({
   const handleStartCombat = async () => {
     if (!encounterId) return;
 
-    // Call startCombat API - stream will deliver CombatStarted event
-    // which triggers navigation via onCombatStarted callback
     try {
       await callStartCombat(encounterId);
     } catch (error) {
@@ -228,39 +215,40 @@ export function LobbyScreen({
 
     try {
       await leaveEncounter(encounterId, currentPlayerId);
-
-      // Clear local state
-      setLobbyState('tabs');
-      setEncounterId(null);
-      setJoinCode('');
-      setIsHost(false);
-      setPartyMembers([]);
-      setSelectedCharacterId(null);
-      setIsReady(false);
-      setDungeonConfig(DEFAULT_DUNGEON_CONFIG);
-    } catch (error) {
-      console.error('Failed to leave encounter:', error);
-      // Clear state anyway
-      setLobbyState('tabs');
-      setEncounterId(null);
-      setJoinCode('');
-      setIsHost(false);
-      setPartyMembers([]);
-      setSelectedCharacterId(null);
-      setIsReady(false);
-      setDungeonConfig(DEFAULT_DUNGEON_CONFIG);
+    } catch {
+      // Clear state regardless of error
     }
+
+    // Clear local state
+    setLobbyState('main');
+    setEncounterId(null);
+    setJoinCode('');
+    setJoinCodeInput('');
+    setIsHost(false);
+    setPartyMembers([]);
+    setIsReady(false);
+    setDungeonConfig(DEFAULT_DUNGEON_CONFIG);
   };
+
+  const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.toUpperCase().slice(0, 6);
+    setJoinCodeInput(value);
+    setJoinError(null);
+  };
+
+  const canJoin =
+    joinCodeInput.length === 6 && selectedCharacterId && !joinLoading;
+  const canCreate = selectedCharacterId && !createLoading;
 
   return (
     <div className="flex justify-center w-full py-8">
       <div
-        className="rounded-lg shadow-xl p-6"
+        className="rounded-xl shadow-xl p-8"
         style={{
           backgroundColor: 'var(--card-bg)',
           border: '2px solid var(--border-primary)',
           width: '100%',
-          maxWidth: '28rem', // 448px - same as max-w-md
+          maxWidth: '32rem',
         }}
       >
         {/* Connection status banner */}
@@ -279,83 +267,147 @@ export function LobbyScreen({
           </div>
         )}
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={lobbyState === 'waiting' ? handleLeave : onBack}
-            className="text-sm"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            ← {lobbyState === 'waiting' ? 'Leave Lobby' : 'Back'}
-          </button>
-          <h2
-            className="text-xl font-semibold"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            {lobbyState === 'waiting' ? 'Game Lobby' : 'Multiplayer'}
-          </h2>
-          <div className="w-16" /> {/* Spacer for centering */}
-        </div>
-
-        {lobbyState === 'tabs' ? (
+        {lobbyState === 'main' ? (
           <>
-            {/* Tab buttons */}
-            <div
-              className="flex mb-6 rounded-lg overflow-hidden"
-              style={{
-                backgroundColor: 'var(--bg-secondary)',
-                border: '1px solid var(--border-primary)',
-              }}
-            >
-              <button
-                onClick={() => setActiveTab('create')}
-                className="flex-1 px-4 py-3 font-medium transition-colors"
+            {/* Header */}
+            <div className="flex items-center justify-between mb-8">
+              <Button variant="ghost" size="md" onClick={onBack}>
+                ← Back
+              </Button>
+              <h2
+                className="text-2xl font-bold"
                 style={{
-                  backgroundColor:
-                    activeTab === 'create'
-                      ? 'var(--accent-primary)'
-                      : 'transparent',
-                  color:
-                    activeTab === 'create' ? 'white' : 'var(--text-primary)',
+                  fontFamily: 'Cinzel, serif',
+                  color: 'var(--text-primary)',
                 }}
               >
-                Create Game
-              </button>
-              <button
-                onClick={() => setActiveTab('join')}
-                className="flex-1 px-4 py-3 font-medium transition-colors"
-                style={{
-                  backgroundColor:
-                    activeTab === 'join'
-                      ? 'var(--accent-primary)'
-                      : 'transparent',
-                  color: activeTab === 'join' ? 'white' : 'var(--text-primary)',
-                }}
-              >
-                Join Game
-              </button>
+                Game Lobby
+              </h2>
+              <div className="w-20" /> {/* Spacer for centering */}
             </div>
 
-            {/* Tab content */}
-            {activeTab === 'create' ? (
-              <CreateGameTab
-                characters={availableCharacters}
-                selectedCharacterId={selectedCharacterId}
-                onSelectCharacter={setSelectedCharacterId}
-                onCreateLobby={handleCreateLobby}
-                loading={createLoading}
-                charactersLoading={charactersLoading}
-              />
-            ) : (
-              <JoinGameTab
-                characters={availableCharacters}
-                selectedCharacterId={selectedCharacterId}
-                onSelectCharacter={setSelectedCharacterId}
-                onJoinLobby={handleJoinLobby}
-                loading={joinLoading}
-                charactersLoading={charactersLoading}
-                error={joinError?.message ?? null}
-              />
+            {/* Character info */}
+            {selectedCharacter && (
+              <div
+                className="text-center mb-8 p-4 rounded-lg"
+                style={{ backgroundColor: 'var(--bg-secondary)' }}
+              >
+                <p
+                  className="text-sm mb-1"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Playing as
+                </p>
+                <p
+                  className="text-xl font-bold"
+                  style={{
+                    fontFamily: 'Cinzel, serif',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  {selectedCharacter.name}
+                </p>
+              </div>
+            )}
+
+            {/* Loading state */}
+            {charactersLoading && (
+              <div
+                className="text-center py-8"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                Loading characters...
+              </div>
+            )}
+
+            {/* No character warning */}
+            {!charactersLoading && !selectedCharacterId && (
+              <div
+                className="text-center py-8 mb-6 rounded-lg border-2 border-dashed"
+                style={{
+                  borderColor: 'var(--border-primary)',
+                  backgroundColor: 'var(--bg-secondary)',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <p className="mb-2">No character selected</p>
+                <p className="text-sm">
+                  Go back and select a character to play
+                </p>
+              </div>
+            )}
+
+            {/* Create Game - Primary Action */}
+            {selectedCharacterId && (
+              <div className="space-y-6">
+                <Button
+                  size="xl"
+                  variant="primary"
+                  fullWidth
+                  onClick={handleCreateLobby}
+                  loading={createLoading}
+                  disabled={!canCreate}
+                  className="rounded-xl py-6 text-xl"
+                >
+                  Create Game
+                </Button>
+
+                {/* Divider */}
+                <div className="flex items-center gap-4">
+                  <div
+                    className="flex-1 h-px"
+                    style={{ backgroundColor: 'var(--border-primary)' }}
+                  />
+                  <span style={{ color: 'var(--text-muted)' }}>or</span>
+                  <div
+                    className="flex-1 h-px"
+                    style={{ backgroundColor: 'var(--border-primary)' }}
+                  />
+                </div>
+
+                {/* Join Game Section */}
+                <div>
+                  <p
+                    className="text-center mb-4"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Have a code?
+                  </p>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={joinCodeInput}
+                      onChange={handleCodeChange}
+                      placeholder="ABC123"
+                      className="flex-1 px-4 py-4 rounded-xl text-center text-xl font-mono font-bold tracking-widest uppercase"
+                      style={{
+                        backgroundColor: 'var(--bg-secondary)',
+                        border: '2px solid var(--border-primary)',
+                        color: 'var(--text-primary)',
+                      }}
+                      autoComplete="off"
+                    />
+                    <Button
+                      size="xl"
+                      variant="secondary"
+                      onClick={handleJoinLobby}
+                      loading={joinLoading}
+                      disabled={!canJoin}
+                      className="rounded-xl px-8"
+                    >
+                      Join
+                    </Button>
+                  </div>
+                  {joinError && (
+                    <p
+                      className="mt-2 text-center text-sm"
+                      style={{ color: 'var(--danger)' }}
+                    >
+                      {joinError}
+                    </p>
+                  )}
+                </div>
+              </div>
             )}
           </>
         ) : (
