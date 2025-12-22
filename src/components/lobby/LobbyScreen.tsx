@@ -226,6 +226,7 @@ export function LobbyScreen({
     setJoinCodeInput('');
     setIsHost(false);
     setPartyMembers([]);
+    setSelectedCharacterId(preSelectedCharacterId || null);
     setIsReady(false);
     setDungeonConfig(DEFAULT_DUNGEON_CONFIG);
   };
@@ -379,6 +380,7 @@ export function LobbyScreen({
                       value={joinCodeInput}
                       onChange={handleCodeChange}
                       placeholder="ABC123"
+                      aria-label="Enter 6-character join code"
                       className="flex-1 px-4 py-4 rounded-xl text-center text-xl font-mono font-bold tracking-widest uppercase"
                       style={{
                         backgroundColor: 'var(--bg-secondary)',

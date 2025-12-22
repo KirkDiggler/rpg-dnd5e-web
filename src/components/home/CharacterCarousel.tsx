@@ -5,26 +5,7 @@ import type {
 import { Class } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
 import { useListCharacters, useListDrafts } from '../../api/hooks';
-
-// Helper to convert Class enum to display name
-function getClassDisplayName(classEnum: Class): string {
-  const classNames: Record<Class, string> = {
-    [Class.UNSPECIFIED]: 'Unknown',
-    [Class.BARBARIAN]: 'Barbarian',
-    [Class.BARD]: 'Bard',
-    [Class.CLERIC]: 'Cleric',
-    [Class.DRUID]: 'Druid',
-    [Class.FIGHTER]: 'Fighter',
-    [Class.MONK]: 'Monk',
-    [Class.PALADIN]: 'Paladin',
-    [Class.RANGER]: 'Ranger',
-    [Class.ROGUE]: 'Rogue',
-    [Class.SORCERER]: 'Sorcerer',
-    [Class.WARLOCK]: 'Warlock',
-    [Class.WIZARD]: 'Wizard',
-  };
-  return classNames[classEnum] || 'Unknown Class';
-}
+import { getClassDisplayName } from '../../utils/displayNames';
 
 // Get class emoji for avatar placeholder
 function getClassEmoji(classEnum: Class): string {
@@ -199,10 +180,18 @@ export function CharacterCarousel({
             position === Math.floor(items.length / 2) &&
             item.type !== 'create');
 
+        const ariaLabel =
+          item.type === 'create'
+            ? 'Create new character'
+            : item.type === 'draft'
+              ? `Continue draft: ${item.data.name || 'Unnamed'}`
+              : `Select character: ${item.data.name}`;
+
         return (
           <motion.button
             key={item.id}
             onClick={() => handleItemClick(item)}
+            aria-label={ariaLabel}
             animate={{
               scale: styles.scale,
               opacity: styles.opacity,
