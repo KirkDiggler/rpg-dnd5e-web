@@ -12,6 +12,7 @@ import type {
   RollAbilityScoresRequest,
   RollAbilityScoresResponse,
   UpdateAbilityScoresRequest,
+  UpdateAppearanceRequest,
   UpdateBackgroundRequest,
   UpdateClassRequest,
   UpdateNameRequest,
@@ -808,4 +809,33 @@ export function useListBackgrounds({
   }, [fetchBackgrounds, enabled]);
 
   return { ...state, refetch: fetchBackgrounds };
+}
+
+/**
+ * Hook to update draft appearance
+ */
+export function useUpdateDraftAppearance() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const updateAppearance = useCallback(
+    async (request: UpdateAppearanceRequest) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await characterClient.updateAppearance(request);
+        return response;
+      } catch (err) {
+        const error =
+          err instanceof Error ? err : new Error('Failed to update appearance');
+        setError(error);
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  return { updateAppearance, loading, error };
 }

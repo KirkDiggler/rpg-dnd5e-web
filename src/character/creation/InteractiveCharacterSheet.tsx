@@ -43,6 +43,7 @@ import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
 import { RaceSelectionModal } from './RaceSelectionModal';
 import { AbilityScoresSectionV2 } from './sections/AbilityScoresSectionV2';
+import { AppearanceSection } from './sections/AppearanceSection';
 import { SpellSelectionModal } from './SpellSelectionModal';
 import { useCharacterDraft } from './useCharacterDraft';
 
@@ -1453,6 +1454,20 @@ export function InteractiveCharacterSheet({
           {/* Ability Scores - Server Side Rolling */}
           <div className="space-y-4">
             <AbilityScoresSectionV2 />
+          </div>
+
+          {/* Appearance Customization */}
+          <div
+            className="p-6 rounded-lg border"
+            style={{
+              backgroundColor: 'var(--bg-secondary)',
+              borderColor: 'var(--border-primary)',
+            }}
+          >
+            <AppearanceSection
+              draftId={draft.draftId}
+              initialAppearance={draft.draft?.appearance}
+            />
           </div>
 
           {/* Character Summary */}
