@@ -38,12 +38,12 @@ import {
   getWeaponDisplay,
   getWeaponProficiencyCategoryDisplay,
 } from '../../utils/enumDisplay';
+import { AppearanceSelectionModal } from './AppearanceSelectionModal';
 import { BackgroundSelectionModal } from './BackgroundSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
 import { RaceSelectionModal } from './RaceSelectionModal';
 import { AbilityScoresSectionV2 } from './sections/AbilityScoresSectionV2';
-import { AppearanceSection } from './sections/AppearanceSection';
 import { SpellSelectionModal } from './SpellSelectionModal';
 import { useCharacterDraft } from './useCharacterDraft';
 
@@ -167,6 +167,7 @@ export function InteractiveCharacterSheet({
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
   const [isSpellModalOpen, setIsSpellModalOpen] = useState(false);
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
+  const [isAppearanceModalOpen, setIsAppearanceModalOpen] = useState(false);
   const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
   const draft = useCharacterDraft();
   const { setBackground } = draft;
@@ -761,7 +762,7 @@ export function InteractiveCharacterSheet({
             >
               Character Identity
             </h2>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Race Selection */}
               <div className="space-y-4">
                 <motion.div
@@ -1448,26 +1449,114 @@ export function InteractiveCharacterSheet({
                   </div>
                 )}
               </div>
+
+              {/* Appearance Selection */}
+              <div className="space-y-4">
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  className="cursor-pointer p-4 rounded-lg border-2 border-dashed transition-all hover:border-solid"
+                  style={{
+                    backgroundColor: draft.draft?.appearance
+                      ? 'var(--card-bg)'
+                      : 'var(--bg-secondary)',
+                    borderColor: draft.draft?.appearance
+                      ? 'var(--accent-primary)'
+                      : 'var(--border-primary)',
+                    cursor:
+                      !draft.draftId || draft.loading || draft.saving
+                        ? 'not-allowed'
+                        : 'pointer',
+                    opacity:
+                      !draft.draftId || draft.loading || draft.saving ? 0.6 : 1,
+                  }}
+                  onClick={() => {
+                    if (!draft.loading && !draft.saving && draft.draftId) {
+                      setIsAppearanceModalOpen(true);
+                    }
+                  }}
+                >
+                  <div className="text-center space-y-2">
+                    <div className="text-3xl">🎨</div>
+                    <div>
+                      <h3
+                        className="text-lg font-bold"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
+                        {draft.draft?.appearance
+                          ? 'Appearance'
+                          : 'Customize Appearance'}
+                      </h3>
+                      <p
+                        className="text-xs"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {draft.draft?.appearance
+                          ? 'Click to change'
+                          : 'Set colors'}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Show appearance preview if set */}
+                {draft.draft?.appearance && (
+                  <div
+                    className="rounded-lg p-3 border"
+                    style={{
+                      backgroundColor: 'var(--bg-secondary)',
+                      borderColor: 'var(--border-primary)',
+                    }}
+                  >
+                    <h4
+                      className="text-xs font-semibold mb-2"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
+                      Color Scheme
+                    </h4>
+                    <div className="flex gap-2 justify-center">
+                      <div
+                        className="w-6 h-6 rounded border"
+                        style={{
+                          backgroundColor: draft.draft.appearance.skinTone,
+                          borderColor: 'var(--border-primary)',
+                        }}
+                        title="Skin Tone"
+                      />
+                      <div
+                        className="w-6 h-6 rounded border"
+                        style={{
+                          backgroundColor: draft.draft.appearance.primaryColor,
+                          borderColor: 'var(--border-primary)',
+                        }}
+                        title="Primary Color"
+                      />
+                      <div
+                        className="w-6 h-6 rounded border"
+                        style={{
+                          backgroundColor:
+                            draft.draft.appearance.secondaryColor,
+                          borderColor: 'var(--border-primary)',
+                        }}
+                        title="Accent Color"
+                      />
+                      <div
+                        className="w-6 h-6 rounded border"
+                        style={{
+                          backgroundColor: draft.draft.appearance.eyeColor,
+                          borderColor: 'var(--border-primary)',
+                        }}
+                        title="Eye Color"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Ability Scores - Server Side Rolling */}
           <div className="space-y-4">
             <AbilityScoresSectionV2 />
-          </div>
-
-          {/* Appearance Customization */}
-          <div
-            className="p-6 rounded-lg border"
-            style={{
-              backgroundColor: 'var(--bg-secondary)',
-              borderColor: 'var(--border-primary)',
-            }}
-          >
-            <AppearanceSection
-              draftId={draft.draftId}
-              initialAppearance={draft.draft?.appearance}
-            />
           </div>
 
           {/* Character Summary */}
@@ -1757,6 +1846,24 @@ export function InteractiveCharacterSheet({
           setIsBackgroundModalOpen(false);
         }}
         onClose={() => setIsBackgroundModalOpen(false)}
+      />
+
+      {/* Appearance Selection Modal */}
+      <AppearanceSelectionModal
+        isOpen={isAppearanceModalOpen}
+        currentAppearance={draft.draft?.appearance}
+        characterClass={
+          isClassInfo(draft.classInfo) ? draft.classInfo.classId : undefined
+        }
+        onConfirm={async (appearance) => {
+          await draft.updateAppearance(appearance);
+          addToast({
+            type: 'success',
+            message: 'Appearance updated',
+            duration: 2000,
+          });
+        }}
+        onClose={() => setIsAppearanceModalOpen(false)}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 import type {
+  Appearance,
   BackgroundInfo,
   CharacterDraft,
   ClassInfo,
@@ -48,6 +49,7 @@ export interface CharacterDraftState {
   ) => Promise<void>;
   setName: (name: string) => Promise<void>;
   setAbilityScores: (scores: Record<string, number>) => Promise<void>;
+  updateAppearance: (appearance: Partial<Appearance>) => Promise<void>;
   finalizeDraft: () => Promise<string>; // Returns character ID
 
   // Choice management

@@ -7,9 +7,11 @@ import type {
   SubclassInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
+  AppearanceSchema,
   CreateDraftRequestSchema,
   FinalizeDraftRequestSchema,
   UpdateAbilityScoresRequestSchema,
+  UpdateAppearanceRequestSchema,
   UpdateBackgroundRequestSchema,
   UpdateClassRequestSchema,
   UpdateNameRequestSchema,
@@ -43,6 +45,7 @@ import {
   useListClasses,
   useListRaces,
   useUpdateDraftAbilityScores,
+  useUpdateDraftAppearance,
   useUpdateDraftBackground,
   useUpdateDraftClass,
   useUpdateDraftName,
@@ -138,6 +141,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   const { updateBackground: updateBackgroundAPI } = useUpdateDraftBackground();
   const { updateAbilityScores: updateAbilityScoresAPI } =
     useUpdateDraftAbilityScores();
+  const { updateAppearance: updateAppearanceAPI } = useUpdateDraftAppearance();
   const { finalizeDraft: finalizeDraftAPI } = useFinalizeDraft();
 
   // Helper to collect all proficiencies from a race
@@ -1124,6 +1128,55 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     [draftId, updateAbilityScoresAPI]
   );
 
+  const updateAppearance = useCallback(
+    async (appearance: {
+      skinTone?: string;
+      primaryColor?: string;
+      secondaryColor?: string;
+      eyeColor?: string;
+    }) => {
+      // Update local state optimistically
+      setDraft((prev) =>
+        prev
+          ? ({
+              ...prev,
+              appearance: create(AppearanceSchema, {
+                skinTone: appearance.skinTone || '',
+                primaryColor: appearance.primaryColor || '',
+                secondaryColor: appearance.secondaryColor || '',
+                eyeColor: appearance.eyeColor || '',
+              }),
+            } as CharacterDraft)
+          : prev
+      );
+
+      // Save to API if draft exists
+      if (draftId) {
+        setSaving(true);
+        try {
+          const request = create(UpdateAppearanceRequestSchema, {
+            draftId,
+            appearance: create(AppearanceSchema, {
+              skinTone: appearance.skinTone || '',
+              primaryColor: appearance.primaryColor || '',
+              secondaryColor: appearance.secondaryColor || '',
+              eyeColor: appearance.eyeColor || '',
+            }),
+          });
+          await updateAppearanceAPI(request);
+        } catch (err) {
+          setError(
+            err instanceof Error ? err : new Error('Failed to save appearance')
+          );
+          throw err;
+        } finally {
+          setSaving(false);
+        }
+      }
+    },
+    [draftId, updateAppearanceAPI]
+  );
+
   const reset = useCallback(() => {
     setDraftId(null);
     setDraft(null);
@@ -1190,6 +1243,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
     setBackground,
     setName,
     setAbilityScores,
+    updateAppearance,
     finalizeDraft,
     addRaceChoice,
     addClassChoice,
