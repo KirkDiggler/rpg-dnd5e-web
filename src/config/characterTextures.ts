@@ -26,13 +26,16 @@ export type BodyPart =
   | 'head_goblin';
 
 /**
- * Maps Class enum values to texture folder names.
- * Only classes with custom textures are included.
+ * Maps Class enum values to texture suffix names.
+ * Uses the new shader package naming convention: torso_medium_fighter.png
  */
-export const CLASS_TEXTURE_FOLDERS: Partial<Record<Class, string>> = {
+export const CLASS_TEXTURE_SUFFIXES: Partial<Record<Class, string>> = {
   [Class.FIGHTER]: 'fighter',
+  [Class.BARBARIAN]: 'barbarian',
   [Class.MONK]: 'monk',
-  // Expand as textures are created for more classes
+  [Class.BARD]: 'bard',
+  [Class.ROGUE]: 'rogue',
+  // Other classes will use fighter textures as fallback
 };
 
 /**
@@ -82,6 +85,16 @@ export const MONSTER_TEXTURE_FOLDERS: Partial<Record<MonsterType, string>> = {
 };
 
 /**
+ * Body parts that have textures in the new shader package (all 5 classes)
+ */
+const NEW_TEXTURE_PARTS: Set<BodyPart> = new Set([
+  'torso_medium',
+  'arm_upper_medium',
+  'forearm_medium',
+  'leg_medium',
+]);
+
+/**
  * Known textures per category.
  * Used to check if a texture exists before returning its path.
  */
@@ -89,14 +102,15 @@ const KNOWN_TEXTURES: Record<string, Set<BodyPart>> = {
   // Base textures (bare skin fallback)
   base: new Set(['arm_upper_medium', 'forearm_medium']),
 
-  // Class textures
-  'class/fighter': new Set([
-    'torso_medium',
-    'arm_upper_medium',
-    'forearm_medium',
-    'leg_medium',
-  ]),
-  'class/monk': new Set(['torso_medium', 'leg_medium']),
+  // Medium textures (new shader package format - all 5 classes)
+  medium: NEW_TEXTURE_PARTS,
+
+  // Legacy class folder format (keeping for backwards compatibility)
+  'class/fighter': NEW_TEXTURE_PARTS,
+  'class/barbarian': NEW_TEXTURE_PARTS,
+  'class/monk': NEW_TEXTURE_PARTS,
+  'class/bard': NEW_TEXTURE_PARTS,
+  'class/rogue': NEW_TEXTURE_PARTS,
 
   // Armor textures (to be added when armor textures are created)
   // 'armor/leather': new Set(['torso_medium', 'leg_medium']),
@@ -135,19 +149,26 @@ function getArmorTexturePath(
 }
 
 /**
- * Get the texture path for a class, if it exists.
+ * Get the texture path for a class using new shader package naming convention.
+ * Format: /models/characters/textures/medium/torso_medium_fighter.png
  */
 function getClassTexturePath(
   characterClass: Class,
   bodyPart: BodyPart
 ): string | undefined {
-  const folder = CLASS_TEXTURE_FOLDERS[characterClass];
-  if (!folder) return undefined;
+  // Get class suffix (fighter, barbarian, etc.)
+  let suffix = CLASS_TEXTURE_SUFFIXES[characterClass];
 
-  const category = `class/${folder}`;
-  if (!textureExists(category, bodyPart)) return undefined;
+  // Use fighter as fallback for classes without dedicated textures
+  if (!suffix) {
+    suffix = 'fighter';
+  }
 
-  return `${CHARACTER_TEXTURES_BASE_PATH}/${category}/${bodyPart}.png`;
+  // Check if this body part has textures in the medium folder
+  if (!textureExists('medium', bodyPart)) return undefined;
+
+  // New naming convention: torso_medium_fighter.png
+  return `${CHARACTER_TEXTURES_BASE_PATH}/medium/${bodyPart}_${suffix}.png`;
 }
 
 /**
@@ -197,7 +218,7 @@ export function resolveTexturePath(
 
   // 2. Check class-specific
   // Skip class lookup if UNSPECIFIED (0) - this is the proto default when no class is set.
-  // Valid class values (FIGHTER=1, MONK=2, etc.) will be looked up in CLASS_TEXTURE_FOLDERS.
+  // Valid class values (FIGHTER=1, MONK=2, etc.) will be looked up in CLASS_TEXTURE_SUFFIXES.
   if (characterClass !== Class.UNSPECIFIED) {
     const classPath = getClassTexturePath(characterClass, bodyPart);
     if (classPath) return classPath;
@@ -209,10 +230,11 @@ export function resolveTexturePath(
 
 /**
  * Check if a class has any custom textures.
- * Useful for determining if shader-based rendering should be used.
+ * All 5 supported classes now have textures, plus any class will fall back to fighter.
  */
 export function classHasTextures(characterClass: Class): boolean {
-  return characterClass in CLASS_TEXTURE_FOLDERS;
+  // All classes now have textures (at least fighter as fallback)
+  return characterClass !== Class.UNSPECIFIED;
 }
 
 /**
@@ -226,12 +248,9 @@ export function armorHasTextures(armor: Armor): boolean {
  * Get all body parts that have textures for a given class.
  */
 export function getTexturedBodyParts(characterClass: Class): BodyPart[] {
-  const folder = CLASS_TEXTURE_FOLDERS[characterClass];
-  if (!folder) return [];
-
-  const category = `class/${folder}`;
-  const parts = KNOWN_TEXTURES[category];
-  return parts ? Array.from(parts) : [];
+  // All supported classes use the medium texture set
+  if (characterClass === Class.UNSPECIFIED) return [];
+  return Array.from(NEW_TEXTURE_PARTS);
 }
 
 // =============================================================================

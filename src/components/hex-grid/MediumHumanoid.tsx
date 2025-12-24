@@ -430,12 +430,14 @@ export function MediumHumanoid({
       : MEDIUM_HUMANOID_CONFIG;
 
   // Compute shader options based on props
+  // Uses new Qubicle marker color convention from shader package v3.0
   const shaderOptions = useMemo<AdvancedCharacterShaderOptions>(
     () => ({
       skinColor: getSkinColor(skinTone),
-      trimColor: hexToNumber(primaryColor, ColorPalettes.TrimColors.brown),
-      metalColor: ColorPalettes.MetalColors.silver,
-      accentColor: hexToNumber(secondaryColor, ColorPalettes.MetalColors.gold),
+      primaryColor: hexToNumber(primaryColor, 0x8b0000), // Dark red default
+      secondaryColor: hexToNumber(secondaryColor, 0xffd700), // Gold default
+      tertiaryColor: 0x000000, // Black for minor details
+      detailColor: 0xc0c0c0, // Silver for fine decorative
       glowIntensity: 2.0,
     }),
     [skinTone, primaryColor, secondaryColor]

@@ -1,58 +1,57 @@
 /**
  * Advanced Character Shader Module
- * Version: 2.0
- * Date: 2025-12-18
+ * Version: 3.0
+ * Date: 2025-12-24
  *
  * Combines multiple shader effects for complete character customization:
- * 1. Color Swapping (skin, trim, team colors, etc.)
+ * 1. Color Swapping (skin, armor primary/secondary, eyes)
  * 2. Emissive Glow (magic items, runes, glowing eyes)
  * 3. Hit Flash (damage feedback)
  * 4. Transparency (invisibility, stealth, fade in/out)
- * 5. Team Colors (faction/guild identification)
- * 6. Outline Effect (see OutlineShader.ts)
  *
- * Marker Color Convention:
- * - Pure White   #FFFFFF - Skin/primary swappable
- * - Pure Red     #FF0000 - Trim/accent swappable
- * - Pure Green   #00FF00 - Metal/detail swappable
- * - Pure Blue    #0000FF - Team/faction swappable
- * - Pure Cyan    #00FFFF - Emissive/glow regions
- * - Pure Magenta #FF00FF - Secondary accent swappable
+ * Qubicle Marker Color Convention (from shader package):
+ * - White    #FFFFFF - Skin color (exposed skin areas)
+ * - Magenta  #F704FF - Primary color (main armor, can glow)
+ * - Yellow   #E5FF02 - Secondary color (accent trim)
+ * - Cyan     #1EDFFF - Tertiary color (minor details)
+ * - Green    #2BFF06 - Detail color (fine decorative elements)
+ *
+ * Everything else renders as-is (browns, grays, metallics painted in Qubicle).
  */
 
 import * as THREE from 'three';
 
 export interface AdvancedCharacterShaderOptions {
-  /** Primary color (replaces white marker) */
+  /** Skin color (replaces white #FFFFFF marker) */
   skinColor?: number | THREE.Color;
-  /** Trim color (replaces red marker) */
-  trimColor?: number | THREE.Color;
-  /** Metal color (replaces green marker) */
-  metalColor?: number | THREE.Color;
-  /** Team color (replaces blue marker) */
-  teamColor?: number | THREE.Color;
-  /** Emissive color (replaces cyan marker) */
-  glowColor?: number | THREE.Color;
-  /** Accent color (replaces magenta marker) */
-  accentColor?: number | THREE.Color;
+  /** Primary color - main armor (replaces magenta #F704FF marker) */
+  primaryColor?: number | THREE.Color;
+  /** Secondary color - accent trim (replaces yellow #E5FF02 marker) */
+  secondaryColor?: number | THREE.Color;
+  /** Tertiary color - minor details (replaces cyan #1EDFFF marker) */
+  tertiaryColor?: number | THREE.Color;
+  /** Detail color - fine decorative (replaces green #2BFF06 marker) */
+  detailColor?: number | THREE.Color;
   /** Glow brightness multiplier (default: 2.0) */
   glowIntensity?: number;
   /** Overall transparency (0.0-1.0, default: 1.0) */
   opacity?: number;
   /** Hit flash intensity (0.0-1.0, default: 0.0) */
   flashAmount?: number;
+  /** Enable emissive glow on primary color regions */
+  primaryGlow?: boolean;
 }
 
 const DEFAULT_OPTIONS: Required<AdvancedCharacterShaderOptions> = {
   skinColor: 0xd5a88c, // Medium skin
-  trimColor: 0x8b4513, // Brown trim
-  metalColor: 0xc0c0c0, // Silver metal
-  teamColor: 0x0000ff, // Blue team
-  glowColor: 0x00ffff, // Cyan glow
-  accentColor: 0xff00ff, // Magenta accent
+  primaryColor: 0x8b0000, // Dark red armor
+  secondaryColor: 0xffd700, // Gold accent
+  tertiaryColor: 0x000000, // Black
+  detailColor: 0xc0c0c0, // Silver
   glowIntensity: 2.0,
   opacity: 1.0,
   flashAmount: 0.0,
+  primaryGlow: false,
 };
 
 /**
@@ -84,16 +83,16 @@ export function createAdvancedCharacterShader(
 
       // Swappable colors (marker replacement)
       skinColor: { value: new THREE.Color(config.skinColor) },
-      trimColor: { value: new THREE.Color(config.trimColor) },
-      metalColor: { value: new THREE.Color(config.metalColor) },
-      teamColor: { value: new THREE.Color(config.teamColor) },
-      glowColor: { value: new THREE.Color(config.glowColor) },
-      accentColor: { value: new THREE.Color(config.accentColor) },
+      primaryColor: { value: new THREE.Color(config.primaryColor) },
+      secondaryColor: { value: new THREE.Color(config.secondaryColor) },
+      tertiaryColor: { value: new THREE.Color(config.tertiaryColor) },
+      detailColor: { value: new THREE.Color(config.detailColor) },
 
       // Effect parameters
       glowIntensity: { value: config.glowIntensity },
       opacity: { value: config.opacity },
       flashAmount: { value: config.flashAmount },
+      primaryGlow: { value: config.primaryGlow ? 1.0 : 0.0 },
     },
 
     vertexShader: `
@@ -127,23 +126,22 @@ export function createAdvancedCharacterShader(
             // Uniforms
             uniform sampler2D characterTexture;
 
-            // Swappable colors
-            uniform vec3 skinColor;
-            uniform vec3 trimColor;
-            uniform vec3 metalColor;
-            uniform vec3 teamColor;
-            uniform vec3 glowColor;
-            uniform vec3 accentColor;
+            // Swappable colors (Qubicle marker colors)
+            uniform vec3 skinColor;      // White #FFFFFF
+            uniform vec3 primaryColor;   // Magenta #F704FF
+            uniform vec3 secondaryColor; // Yellow #E5FF02
+            uniform vec3 tertiaryColor;  // Cyan #1EDFFF
+            uniform vec3 detailColor;    // Green #2BFF06
 
             // Effects
             uniform float glowIntensity;
             uniform float opacity;
             uniform float flashAmount;
+            uniform float primaryGlow;
 
-            // Marker color detection helper
+            // Marker color detection helper with threshold for texture compression
             bool isColor(vec4 texColor, float r, float g, float b) {
-                // Use threshold to account for texture compression
-                float threshold = 0.01;
+                float threshold = 0.02;
                 return abs(texColor.r - r) < threshold &&
                        abs(texColor.g - g) < threshold &&
                        abs(texColor.b - b) < threshold;
@@ -156,32 +154,34 @@ export function createAdvancedCharacterShader(
                 vec3 finalColor;
                 bool isEmissive = false;
 
-                // Check marker colors and replace
+                // Check Qubicle marker colors and replace
 
-                // Pure white (#FFFFFF) - Skin/primary color
+                // White #FFFFFF - Skin color (exposed skin areas)
                 if (isColor(texColor, 1.0, 1.0, 1.0)) {
                     finalColor = skinColor;
                 }
-                // Pure red (#FF0000) - Trim color
-                else if (isColor(texColor, 1.0, 0.0, 0.0)) {
-                    finalColor = trimColor;
+                // Magenta #F704FF - Primary color (main armor)
+                // 247/255=0.969, 4/255=0.016, 255/255=1.0
+                else if (isColor(texColor, 0.969, 0.016, 1.0)) {
+                    finalColor = primaryColor;
+                    if (primaryGlow > 0.5) {
+                        isEmissive = true;
+                    }
                 }
-                // Pure green (#00FF00) - Metal color
-                else if (isColor(texColor, 0.0, 1.0, 0.0)) {
-                    finalColor = metalColor;
+                // Yellow #E5FF02 - Secondary color (accent trim)
+                // 229/255=0.898, 255/255=1.0, 2/255=0.008
+                else if (isColor(texColor, 0.898, 1.0, 0.008)) {
+                    finalColor = secondaryColor;
                 }
-                // Pure blue (#0000FF) - Team color
-                else if (isColor(texColor, 0.0, 0.0, 1.0)) {
-                    finalColor = teamColor;
+                // Cyan #1EDFFF - Tertiary color (minor details)
+                // 30/255=0.118, 223/255=0.875, 255/255=1.0
+                else if (isColor(texColor, 0.118, 0.875, 1.0)) {
+                    finalColor = tertiaryColor;
                 }
-                // Pure cyan (#00FFFF) - Emissive/glow
-                else if (isColor(texColor, 0.0, 1.0, 1.0)) {
-                    finalColor = glowColor;
-                    isEmissive = true;  // This region glows!
-                }
-                // Pure magenta (#FF00FF) - Accent color
-                else if (isColor(texColor, 1.0, 0.0, 1.0)) {
-                    finalColor = accentColor;
+                // Green #2BFF06 - Detail color (fine decorative)
+                // 43/255=0.169, 255/255=1.0, 6/255=0.024
+                else if (isColor(texColor, 0.169, 1.0, 0.024)) {
+                    finalColor = detailColor;
                 }
                 // Keep original texture color
                 else {
@@ -299,7 +299,12 @@ export const ColorPalettes = {
   },
 } as const;
 
-export type ColorType = 'skin' | 'trim' | 'metal' | 'team' | 'glow' | 'accent';
+export type ColorType =
+  | 'skin'
+  | 'primary'
+  | 'secondary'
+  | 'tertiary'
+  | 'detail';
 
 /**
  * Helper: Update a specific color uniform
