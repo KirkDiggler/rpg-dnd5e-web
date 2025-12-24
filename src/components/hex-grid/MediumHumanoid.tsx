@@ -228,10 +228,11 @@ function TexturedCharacterPart({
   const clonedObj = useMemo(() => obj.clone(), [obj]);
 
   // Configure texture for pixel art (no smoothing)
+  // CRITICAL: Use NoColorSpace to preserve exact marker colors for shader detection
   useMemo(() => {
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
-    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.colorSpace = THREE.NoColorSpace;
   }, [texture]);
 
   // Create shader material with options

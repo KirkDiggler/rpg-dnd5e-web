@@ -3,11 +3,11 @@
  *
  * Allows players to customize:
  * - Skin tone (preset swatches)
- * - Primary armor color (color picker)
- * - Secondary accent color (color picker)
- * - Eye color (color picker)
+ * - Primary armor color (color picker with presets)
+ * - Secondary accent color (color picker with presets)
+ * - Eye color (color picker with presets)
  *
- * Used in character creation and character sheet editing.
+ * Used in character creation modal with live 3D preview.
  */
 
 import {
@@ -36,7 +36,7 @@ interface ColorPickerFieldProps {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  presets?: Array<{ name: string; hex: string }>;
+  presets: Array<{ name: string; hex: string }>;
   readonly?: boolean;
 }
 
@@ -49,101 +49,124 @@ function ColorPickerField({
 }: ColorPickerFieldProps) {
   const [isOpen, setIsOpen] = useState(false);
 
+  // Find matching preset name
+  const presetName = presets.find(
+    (p) => p.hex.toLowerCase() === value.toLowerCase()
+  )?.name;
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <label
-        className="block text-sm font-medium"
-        style={{ color: 'var(--text-secondary)' }}
+        className="block text-sm font-semibold uppercase tracking-wide"
+        style={{ color: 'var(--text-primary)' }}
       >
         {label}
       </label>
 
-      <div className="relative">
-        {/* Color swatch button */}
-        <button
-          type="button"
-          onClick={() => !readonly && setIsOpen(!isOpen)}
-          disabled={readonly}
-          className={cn(
-            'flex items-center gap-3 w-full p-2 rounded-lg border transition-colors',
-            readonly
-              ? 'cursor-not-allowed opacity-60'
-              : 'cursor-pointer hover:border-blue-400'
-          )}
-          style={{
-            backgroundColor: 'var(--bg-secondary)',
-            borderColor: 'var(--border-primary)',
-          }}
-        >
+      {/* Current color display - large clickable button */}
+      <button
+        type="button"
+        onClick={() => !readonly && setIsOpen(!isOpen)}
+        disabled={readonly}
+        className={cn(
+          'w-full flex items-center gap-4 p-3 rounded-xl border-2 transition-all',
+          readonly
+            ? 'cursor-not-allowed opacity-60'
+            : 'cursor-pointer hover:border-blue-400 hover:shadow-lg active:scale-[0.98]'
+        )}
+        style={{
+          backgroundColor: 'var(--bg-tertiary)',
+          borderColor: isOpen
+            ? 'var(--accent-primary)'
+            : 'var(--border-primary)',
+        }}
+      >
+        {/* Large color swatch */}
+        <div
+          className="w-12 h-12 rounded-lg border-2 border-white/30 shadow-md flex-shrink-0"
+          style={{ backgroundColor: value }}
+        />
+        <div className="flex-1 text-left">
           <div
-            className="w-8 h-8 rounded-md border-2 border-white/20 shadow-inner"
-            style={{ backgroundColor: value }}
-          />
-          <span
-            className="font-mono text-sm uppercase"
+            className="text-sm font-medium"
             style={{ color: 'var(--text-primary)' }}
           >
+            {presetName || 'Custom Color'}
+          </div>
+          <div
+            className="text-xs font-mono uppercase"
+            style={{ color: 'var(--text-muted)' }}
+          >
             {value}
-          </span>
-        </button>
+          </div>
+        </div>
+        <div className="text-lg" style={{ color: 'var(--text-muted)' }}>
+          {isOpen ? '▲' : '▼'}
+        </div>
+      </button>
 
-        {/* Color picker dropdown */}
-        {isOpen && !readonly && (
-          <>
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setIsOpen(false)}
+      {/* Quick preset swatches */}
+      <div className="flex flex-wrap gap-2">
+        {presets.map((preset) => (
+          <button
+            key={preset.hex}
+            type="button"
+            onClick={() => {
+              if (!readonly) {
+                onChange(preset.hex);
+              }
+            }}
+            disabled={readonly}
+            className={cn(
+              'w-10 h-10 rounded-lg border-2 transition-all flex-shrink-0',
+              readonly && 'cursor-not-allowed opacity-60',
+              value.toLowerCase() === preset.hex.toLowerCase()
+                ? 'border-white ring-2 ring-blue-400 scale-110 shadow-lg'
+                : 'border-white/20 hover:border-white/60 hover:scale-105'
+            )}
+            style={{ backgroundColor: preset.hex }}
+            title={preset.name}
+          />
+        ))}
+      </div>
+
+      {/* Color picker dropdown */}
+      {isOpen && !readonly && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
+          />
+
+          {/* Picker panel */}
+          <div
+            className="relative z-50 p-4 rounded-xl shadow-2xl border-2 mt-2"
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderColor: 'var(--border-primary)',
+            }}
+          >
+            <HexColorPicker
+              color={value}
+              onChange={onChange}
+              style={{ width: '100%' }}
             />
 
-            {/* Picker panel */}
-            <div
-              className="absolute top-full left-0 mt-2 z-50 p-3 rounded-lg shadow-xl border"
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="mt-4 w-full py-2.5 text-sm font-semibold rounded-lg transition-colors"
               style={{
-                backgroundColor: 'var(--bg-primary)',
-                borderColor: 'var(--border-primary)',
+                backgroundColor: 'var(--accent-primary)',
+                color: 'white',
               }}
             >
-              <HexColorPicker color={value} onChange={onChange} />
-
-              {/* Preset swatches */}
-              {presets && presets.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-white/10">
-                  <div className="text-xs text-gray-400 mb-2">Quick picks</div>
-                  <div className="flex flex-wrap gap-1">
-                    {presets.map((preset) => (
-                      <button
-                        key={preset.hex}
-                        type="button"
-                        onClick={() => {
-                          onChange(preset.hex);
-                        }}
-                        className={cn(
-                          'w-6 h-6 rounded border-2 transition-transform hover:scale-110',
-                          value.toLowerCase() === preset.hex.toLowerCase()
-                            ? 'border-white'
-                            : 'border-white/20'
-                        )}
-                        style={{ backgroundColor: preset.hex }}
-                        title={preset.name}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Close button */}
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="mt-3 w-full py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-              >
-                Done
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+              Done
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -155,16 +178,21 @@ interface SkinToneFieldProps {
 }
 
 function SkinToneField({ value, onChange, readonly }: SkinToneFieldProps) {
+  const selectedPreset = SKIN_TONE_PRESETS.find(
+    (p) => p.hex.toLowerCase() === value.toLowerCase()
+  );
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <label
-        className="block text-sm font-medium"
-        style={{ color: 'var(--text-secondary)' }}
+        className="block text-sm font-semibold uppercase tracking-wide"
+        style={{ color: 'var(--text-primary)' }}
       >
         Skin Tone
       </label>
 
-      <div className="flex gap-2">
+      {/* Skin tone swatches - larger buttons */}
+      <div className="flex gap-3 flex-wrap">
         {SKIN_TONE_PRESETS.map((preset) => (
           <button
             key={preset.hex}
@@ -172,11 +200,11 @@ function SkinToneField({ value, onChange, readonly }: SkinToneFieldProps) {
             onClick={() => !readonly && onChange(preset.hex)}
             disabled={readonly}
             className={cn(
-              'w-10 h-10 rounded-lg border-2 transition-all',
+              'w-12 h-12 rounded-xl border-2 transition-all',
               readonly && 'cursor-not-allowed opacity-60',
               value.toLowerCase() === preset.hex.toLowerCase()
-                ? 'border-white scale-110 shadow-lg'
-                : 'border-transparent hover:border-white/50 hover:scale-105'
+                ? 'border-white ring-2 ring-blue-400 scale-110 shadow-lg'
+                : 'border-white/20 hover:border-white/60 hover:scale-105'
             )}
             style={{ backgroundColor: preset.hex }}
             title={preset.name}
@@ -184,10 +212,12 @@ function SkinToneField({ value, onChange, readonly }: SkinToneFieldProps) {
         ))}
       </div>
 
-      <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-        {SKIN_TONE_PRESETS.find(
-          (p) => p.hex.toLowerCase() === value.toLowerCase()
-        )?.name || 'Custom'}
+      {/* Selected name */}
+      <div
+        className="text-sm font-medium"
+        style={{ color: 'var(--text-secondary)' }}
+      >
+        {selectedPreset?.name || 'Custom'}
       </div>
     </div>
   );
@@ -210,8 +240,8 @@ export function AppearanceEditor({
   );
 
   return (
-    <div className={cn('space-y-6', className)}>
-      {/* Skin Tone - swatches only */}
+    <div className={cn('space-y-8', className)}>
+      {/* Skin Tone */}
       <SkinToneField
         value={appearance.skinTone}
         onChange={(value) => handleChange('skinTone', value)}
@@ -220,7 +250,7 @@ export function AppearanceEditor({
 
       {/* Primary Armor Color */}
       <ColorPickerField
-        label="Armor Primary"
+        label="Primary Color"
         value={appearance.primaryColor}
         onChange={(value) => handleChange('primaryColor', value)}
         presets={ARMOR_COLOR_PRESETS}
@@ -229,7 +259,7 @@ export function AppearanceEditor({
 
       {/* Secondary Accent Color */}
       <ColorPickerField
-        label="Armor Accent"
+        label="Accent Color"
         value={appearance.secondaryColor}
         onChange={(value) => handleChange('secondaryColor', value)}
         presets={ACCENT_COLOR_PRESETS}
