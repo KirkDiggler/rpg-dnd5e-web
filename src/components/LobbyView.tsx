@@ -230,10 +230,10 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       setAttackTarget(null);
     }
 
-    // TODO: Update room when updatedRoom is added to TurnEndedEvent (rpg-api#324)
-    // if (event.updatedRoom) {
-    //   setRoom(event.updatedRoom);
-    // }
+    // Update room with entity positions after turn
+    if (event.updatedRoom) {
+      setRoom(event.updatedRoom);
+    }
   }, []);
 
   // Multiplayer sync: Monster turn completed - show monster actions
@@ -361,7 +361,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     [combatState?.round, fullCharactersMap, availableCharacters]
   );
 
-  // Multiplayer sync: Movement completed - sync entity positions
+  // Multiplayer sync: Movement completed - sync entity positions and movement resources
   const handleMovementCompleted = useCallback(
     (event: MovementCompletedEvent) => {
       console.log('🚶 MovementCompleted event received:', event);
@@ -370,6 +370,24 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       if (event.updatedRoom) {
         setRoom(event.updatedRoom);
       }
+
+      // Sync movement resources to combat state
+      // Only update if this is the current turn's entity
+      setCombatState((prev) => {
+        if (!prev?.currentTurn) return prev;
+        if (prev.currentTurn.entityId !== event.entityId) return prev;
+
+        const movementUsed =
+          prev.currentTurn.movementMax - event.movementRemaining;
+
+        return {
+          ...prev,
+          currentTurn: {
+            ...prev.currentTurn,
+            movementUsed,
+          },
+        };
+      });
     },
     []
   );
@@ -918,6 +936,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   };
 
   // Handler for HexGrid click-to-move
+  // State updates come from MovementCompleted event, not response (multiplayer sync)
   const handleMoveComplete = async (path: CubeCoord[]) => {
     const currentTurnEntityId = combatState?.currentTurn?.entityId;
     if (!currentTurnEntityId || !encounterId || path.length === 0) return;
@@ -929,21 +948,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         path
       );
       if (response.success) {
-        if (response.updatedRoom) setRoom(response.updatedRoom);
-
-        // Update combat state to reflect new movement remaining
-        if (combatState && combatState.currentTurn) {
-          const movementUsed =
-            combatState.currentTurn.movementMax - response.movementRemaining;
-          setCombatState({
-            ...combatState,
-            currentTurn: {
-              ...combatState.currentTurn,
-              movementUsed,
-            },
-          });
-        }
-
+        // Room and combat state will be updated via MovementCompleted event
         addToast({
           type: 'success',
           message: `Moved ${path.length * 5}ft`,
