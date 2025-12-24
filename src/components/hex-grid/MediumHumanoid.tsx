@@ -66,8 +66,14 @@ export interface MediumHumanoidProps {
   monsterType?: MonsterType;
   /** Equipped armor - overrides class textures for armored parts */
   equippedArmor?: Armor;
-  /** Skin tone for color swapping (default: 'medium') */
-  skinTone?: SkinTone;
+  /** Skin tone for color swapping (default: 'medium') - can be SkinTone name or hex string */
+  skinTone?: SkinTone | string;
+  /** Primary armor color - hex string (default: brown) */
+  primaryColor?: string;
+  /** Secondary accent color - hex string (default: gold) */
+  secondaryColor?: string;
+  /** Eye color - hex string (default: brown) */
+  eyeColor?: string;
   /** Show cel-shaded outline (default: true) */
   showOutline?: boolean;
 }
@@ -98,10 +104,30 @@ function getBodyPartFromFile(filename: string): BodyPart | undefined {
 }
 
 /**
- * Get skin color from skin tone name
+ * Get skin color from skin tone name or hex string
  */
-function getSkinColor(skinTone: SkinTone): number {
-  return ColorPalettes.SkinTones[skinTone];
+function getSkinColor(skinTone: SkinTone | string): number {
+  // If it's a preset name, use the palette
+  if (skinTone in ColorPalettes.SkinTones) {
+    return ColorPalettes.SkinTones[skinTone as SkinTone];
+  }
+  // Otherwise treat as hex string
+  if (typeof skinTone === 'string' && skinTone.startsWith('#')) {
+    return parseInt(skinTone.replace('#', ''), 16);
+  }
+  // Default to medium
+  return ColorPalettes.SkinTones.medium;
+}
+
+/**
+ * Convert hex string to number for Three.js
+ */
+function hexToNumber(hex: string | undefined, fallback: number): number {
+  if (!hex) return fallback;
+  if (hex.startsWith('#')) {
+    return parseInt(hex.replace('#', ''), 16);
+  }
+  return fallback;
 }
 
 interface CharacterPartBaseProps {
@@ -383,6 +409,9 @@ export function MediumHumanoid({
   monsterType,
   equippedArmor,
   skinTone = 'medium',
+  primaryColor,
+  secondaryColor,
+  // Note: eyeColor is accepted but not yet implemented - eyes need separate texture handling
   showOutline = true,
 }: MediumHumanoidProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -404,11 +433,12 @@ export function MediumHumanoid({
   const shaderOptions = useMemo<AdvancedCharacterShaderOptions>(
     () => ({
       skinColor: getSkinColor(skinTone),
-      trimColor: ColorPalettes.TrimColors.brown,
+      trimColor: hexToNumber(primaryColor, ColorPalettes.TrimColors.brown),
       metalColor: ColorPalettes.MetalColors.silver,
+      accentColor: hexToNumber(secondaryColor, ColorPalettes.MetalColors.gold),
       glowIntensity: 2.0,
     }),
-    [skinTone]
+    [skinTone, primaryColor, secondaryColor]
   );
 
   // Compute texture paths for each body part
