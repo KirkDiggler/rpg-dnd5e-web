@@ -7,6 +7,7 @@ import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { CharacterHeader } from './components/CharacterHeader';
 import { DnDAbilityScores } from './components/DnDAbilityScores';
+import { DnDAppearance } from './components/DnDAppearance';
 import { DnDCombatStats } from './components/DnDCombatStats';
 import { DnDEquipment } from './components/DnDEquipment';
 import { DnDFeatures } from './components/DnDFeatures';
@@ -271,6 +272,11 @@ export function CharacterSheet({ characterId, onBack }: CharacterSheetProps) {
           <div className="mt-6 space-y-6">
             {/* Attacks & Spellcasting */}
             <AttacksSection character={character} />
+
+            {/* Appearance */}
+            <div className="max-w-md">
+              <DnDAppearance character={character} />
+            </div>
 
             {/* Equipment, Features, etc. */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
