@@ -378,6 +378,30 @@ function OutlineMesh({ config, basePath }: OutlineMeshProps) {
 }
 
 /**
+ * Convert skin tone to hex color string for solid color fallback
+ */
+function getSkinColorHex(skinTone: SkinTone | string): string {
+  // If it's a preset name, use the palette
+  if (skinTone in ColorPalettes.SkinTones) {
+    const value = ColorPalettes.SkinTones[skinTone as SkinTone];
+    return '#' + value.toString(16).padStart(6, '0');
+  }
+  // Otherwise treat as hex string
+  if (typeof skinTone === 'string' && skinTone.startsWith('#')) {
+    return skinTone;
+  }
+  // Default to medium
+  return '#' + ColorPalettes.SkinTones.medium.toString(16).padStart(6, '0');
+}
+
+/**
+ * Check if a body part is a head (should use skin color as fallback)
+ */
+function isHeadPart(filename: string): boolean {
+  return filename.startsWith('head_');
+}
+
+/**
  * MediumHumanoid - Assembled character from OBJ parts
  *
  * Usage:
@@ -507,7 +531,9 @@ export function MediumHumanoid({
             key={partName}
             config={partConfig}
             basePath={CHARACTER_MODELS_BASE_PATH}
-            color={color}
+            color={
+              isHeadPart(partConfig.file) ? getSkinColorHex(skinTone) : color
+            }
             texturePath={texturePaths[partName]}
             shaderOptions={shaderOptions}
             isSelected={isSelected}

@@ -178,10 +178,6 @@ interface SkinToneFieldProps {
 }
 
 function SkinToneField({ value, onChange, readonly }: SkinToneFieldProps) {
-  const selectedPreset = SKIN_TONE_PRESETS.find(
-    (p) => p.hex.toLowerCase() === value.toLowerCase()
-  );
-
   return (
     <div className="space-y-3">
       <label
@@ -191,33 +187,46 @@ function SkinToneField({ value, onChange, readonly }: SkinToneFieldProps) {
         Skin Tone
       </label>
 
-      {/* Skin tone swatches - larger buttons */}
-      <div className="flex gap-3 flex-wrap">
-        {SKIN_TONE_PRESETS.map((preset) => (
-          <button
-            key={preset.hex}
-            type="button"
-            onClick={() => !readonly && onChange(preset.hex)}
-            disabled={readonly}
-            className={cn(
-              'w-12 h-12 rounded-xl border-2 transition-all',
-              readonly && 'cursor-not-allowed opacity-60',
-              value.toLowerCase() === preset.hex.toLowerCase()
-                ? 'border-white ring-2 ring-blue-400 scale-110 shadow-lg'
-                : 'border-white/20 hover:border-white/60 hover:scale-105'
-            )}
-            style={{ backgroundColor: preset.hex }}
-            title={preset.name}
-          />
-        ))}
-      </div>
-
-      {/* Selected name */}
-      <div
-        className="text-sm font-medium"
-        style={{ color: 'var(--text-secondary)' }}
-      >
-        {selectedPreset?.name || 'Custom'}
+      {/* Skin tone swatches - proper buttons with labels */}
+      <div className="grid grid-cols-3 gap-2">
+        {SKIN_TONE_PRESETS.map((preset) => {
+          const isSelected = value.toLowerCase() === preset.hex.toLowerCase();
+          return (
+            <button
+              key={preset.hex}
+              type="button"
+              onClick={() => !readonly && onChange(preset.hex)}
+              disabled={readonly}
+              className={cn(
+                'flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all',
+                readonly && 'cursor-not-allowed opacity-60',
+                isSelected
+                  ? 'border-blue-400 ring-2 ring-blue-400/50 shadow-lg'
+                  : 'border-white/20 hover:border-white/50 hover:bg-white/5'
+              )}
+              style={{
+                backgroundColor: isSelected
+                  ? 'rgba(59, 130, 246, 0.1)'
+                  : 'transparent',
+              }}
+            >
+              {/* Color swatch */}
+              <div
+                className="w-10 h-10 rounded-full border-2 border-white/30 shadow-md"
+                style={{ backgroundColor: preset.hex }}
+              />
+              {/* Label */}
+              <span
+                className={cn(
+                  'text-xs font-medium',
+                  isSelected ? 'text-blue-300' : 'text-gray-400'
+                )}
+              >
+                {preset.name}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -266,14 +275,26 @@ export function AppearanceEditor({
         readonly={readonly}
       />
 
-      {/* Eye Color */}
-      <ColorPickerField
-        label="Eye Color"
-        value={appearance.eyeColor}
-        onChange={(value) => handleChange('eyeColor', value)}
-        presets={EYE_COLOR_PRESETS}
-        readonly={readonly}
-      />
+      {/* Eye Color - Coming soon (requires separate eye geometry in model) */}
+      <div className="relative">
+        <ColorPickerField
+          label="Eye Color"
+          value={appearance.eyeColor}
+          onChange={(value) => handleChange('eyeColor', value)}
+          presets={EYE_COLOR_PRESETS}
+          readonly={true}
+        />
+        <div
+          className="absolute top-0 right-0 text-xs px-2 py-0.5 rounded-full"
+          style={{
+            backgroundColor: 'var(--accent-primary)',
+            color: 'white',
+            opacity: 0.9,
+          }}
+        >
+          Coming Soon
+        </div>
+      </div>
     </div>
   );
 }
