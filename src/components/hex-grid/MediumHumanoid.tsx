@@ -66,8 +66,14 @@ export interface MediumHumanoidProps {
   monsterType?: MonsterType;
   /** Equipped armor - overrides class textures for armored parts */
   equippedArmor?: Armor;
-  /** Skin tone for color swapping (default: 'medium') */
-  skinTone?: SkinTone;
+  /** Skin tone for color swapping (default: 'medium') - can be SkinTone name or hex string */
+  skinTone?: SkinTone | string;
+  /** Primary armor color - hex string (default: brown) */
+  primaryColor?: string;
+  /** Secondary accent color - hex string (default: gold) */
+  secondaryColor?: string;
+  /** Eye color - hex string (default: brown) */
+  eyeColor?: string;
   /** Show cel-shaded outline (default: true) */
   showOutline?: boolean;
 }
@@ -98,10 +104,30 @@ function getBodyPartFromFile(filename: string): BodyPart | undefined {
 }
 
 /**
- * Get skin color from skin tone name
+ * Get skin color from skin tone name or hex string
  */
-function getSkinColor(skinTone: SkinTone): number {
-  return ColorPalettes.SkinTones[skinTone];
+function getSkinColor(skinTone: SkinTone | string): number {
+  // If it's a preset name, use the palette
+  if (skinTone in ColorPalettes.SkinTones) {
+    return ColorPalettes.SkinTones[skinTone as SkinTone];
+  }
+  // Otherwise treat as hex string
+  if (typeof skinTone === 'string' && skinTone.startsWith('#')) {
+    return parseInt(skinTone.replace('#', ''), 16);
+  }
+  // Default to medium
+  return ColorPalettes.SkinTones.medium;
+}
+
+/**
+ * Convert hex string to number for Three.js
+ */
+function hexToNumber(hex: string | undefined, fallback: number): number {
+  if (!hex) return fallback;
+  if (hex.startsWith('#')) {
+    return parseInt(hex.replace('#', ''), 16);
+  }
+  return fallback;
 }
 
 interface CharacterPartBaseProps {
@@ -202,10 +228,11 @@ function TexturedCharacterPart({
   const clonedObj = useMemo(() => obj.clone(), [obj]);
 
   // Configure texture for pixel art (no smoothing)
+  // CRITICAL: Use NoColorSpace to preserve exact marker colors for shader detection
   useMemo(() => {
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
-    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.colorSpace = THREE.NoColorSpace;
   }, [texture]);
 
   // Create shader material with options
@@ -351,6 +378,30 @@ function OutlineMesh({ config, basePath }: OutlineMeshProps) {
 }
 
 /**
+ * Convert skin tone to hex color string for solid color fallback
+ */
+function getSkinColorHex(skinTone: SkinTone | string): string {
+  // If it's a preset name, use the palette
+  if (skinTone in ColorPalettes.SkinTones) {
+    const value = ColorPalettes.SkinTones[skinTone as SkinTone];
+    return '#' + value.toString(16).padStart(6, '0');
+  }
+  // Otherwise treat as hex string
+  if (typeof skinTone === 'string' && skinTone.startsWith('#')) {
+    return skinTone;
+  }
+  // Default to medium
+  return '#' + ColorPalettes.SkinTones.medium.toString(16).padStart(6, '0');
+}
+
+/**
+ * Check if a body part is a head (should use skin color as fallback)
+ */
+function isHeadPart(filename: string): boolean {
+  return filename.startsWith('head_');
+}
+
+/**
  * MediumHumanoid - Assembled character from OBJ parts
  *
  * Usage:
@@ -383,6 +434,9 @@ export function MediumHumanoid({
   monsterType,
   equippedArmor,
   skinTone = 'medium',
+  primaryColor,
+  secondaryColor,
+  // Note: eyeColor is accepted but not yet implemented - eyes need separate texture handling
   showOutline = true,
 }: MediumHumanoidProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -401,14 +455,17 @@ export function MediumHumanoid({
       : MEDIUM_HUMANOID_CONFIG;
 
   // Compute shader options based on props
+  // Uses new Qubicle marker color convention from shader package v3.0
   const shaderOptions = useMemo<AdvancedCharacterShaderOptions>(
     () => ({
       skinColor: getSkinColor(skinTone),
-      trimColor: ColorPalettes.TrimColors.brown,
-      metalColor: ColorPalettes.MetalColors.silver,
+      primaryColor: hexToNumber(primaryColor, 0x8b0000), // Dark red default
+      secondaryColor: hexToNumber(secondaryColor, 0xffd700), // Gold default
+      tertiaryColor: 0x000000, // Black for minor details
+      detailColor: 0xc0c0c0, // Silver for fine decorative
       glowIntensity: 2.0,
     }),
-    [skinTone]
+    [skinTone, primaryColor, secondaryColor]
   );
 
   // Compute texture paths for each body part
@@ -474,7 +531,9 @@ export function MediumHumanoid({
             key={partName}
             config={partConfig}
             basePath={CHARACTER_MODELS_BASE_PATH}
-            color={color}
+            color={
+              isHeadPart(partConfig.file) ? getSkinColorHex(skinTone) : color
+            }
             texturePath={texturePaths[partName]}
             shaderOptions={shaderOptions}
             isSelected={isSelected}
