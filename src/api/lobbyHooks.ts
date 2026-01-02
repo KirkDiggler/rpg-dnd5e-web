@@ -1,3 +1,4 @@
+import type { DungeonConfig } from '@/components/lobby/dungeonConfig';
 import { create } from '@bufbuild/protobuf';
 import type {
   CreateEncounterResponse,
@@ -13,11 +14,6 @@ import {
   SetReadyRequestSchema,
   StartCombatRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import type {
-  DungeonDifficulty,
-  DungeonLength,
-  DungeonTheme,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useCallback, useState } from 'react';
 import { encounterClient } from './client';
 
@@ -26,13 +22,6 @@ interface AsyncState<T> {
   data: T | null;
   loading: boolean;
   error: Error | null;
-}
-
-// Dungeon configuration for starting combat
-interface DungeonConfig {
-  theme: DungeonTheme;
-  difficulty: DungeonDifficulty;
-  length: DungeonLength;
 }
 
 /**
