@@ -203,7 +203,7 @@ export function LobbyScreen({
     if (!encounterId) return;
 
     try {
-      await callStartCombat(encounterId);
+      await callStartCombat(encounterId, dungeonConfig);
     } catch (error) {
       console.error('Failed to start combat:', error);
     }

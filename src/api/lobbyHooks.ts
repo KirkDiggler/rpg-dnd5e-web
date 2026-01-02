@@ -1,3 +1,4 @@
+import type { DungeonConfig } from '@/components/lobby/dungeonConfig';
 import { create } from '@bufbuild/protobuf';
 import type {
   CreateEncounterResponse,
@@ -198,7 +199,7 @@ export function useSetReady() {
  * const { startCombat, loading } = useStartCombat();
  *
  * const handleStart = async () => {
- *   await startCombat('encounter-id');
+ *   await startCombat('encounter-id', { theme, difficulty, length });
  *   // Don't navigate - stream will deliver CombatStarted event
  * };
  * ```
@@ -210,24 +211,30 @@ export function useStartCombat() {
     error: null,
   });
 
-  const startCombat = useCallback(async (encounterId: string) => {
-    setState({ data: null, loading: true, error: null });
+  const startCombat = useCallback(
+    async (encounterId: string, config: DungeonConfig) => {
+      setState({ data: null, loading: true, error: null });
 
-    try {
-      const request = create(StartCombatRequestSchema, {
-        encounterId,
-      });
+      try {
+        const request = create(StartCombatRequestSchema, {
+          encounterId,
+          theme: config.theme,
+          difficulty: config.difficulty,
+          length: config.length,
+        });
 
-      const response = await encounterClient.startCombat(request);
-      setState({ data: response, loading: false, error: null });
-      return response;
-    } catch (error) {
-      const errorObj =
-        error instanceof Error ? error : new Error(String(error));
-      setState({ data: null, loading: false, error: errorObj });
-      throw errorObj;
-    }
-  }, []);
+        const response = await encounterClient.startCombat(request);
+        setState({ data: response, loading: false, error: null });
+        return response;
+      } catch (error) {
+        const errorObj =
+          error instanceof Error ? error : new Error(String(error));
+        setState({ data: null, loading: false, error: errorObj });
+        throw errorObj;
+      }
+    },
+    []
+  );
 
   return {
     startCombat,
