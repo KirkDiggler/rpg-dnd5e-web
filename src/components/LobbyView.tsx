@@ -461,10 +461,12 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: CombatStartedEvent) => {
       console.log('⚔️ CombatStarted event received:', event);
 
-      // Set room from event
-      if (event.room) {
-        setRoom(event.room);
-      }
+      // Set dungeon state for room navigation
+      setDungeonId(event.dungeonId || null);
+      setDoors(event.doors ?? []);
+
+      // Start with room from event, may be updated if monsters moved
+      let roomToSet = event.room;
 
       // Set combat state
       if (event.combatState) {
@@ -479,6 +481,37 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       // Set monsters from event (for monsterType texture selection)
       if (event.monsters && event.monsters.length > 0) {
         setMonsters(event.monsters);
+      }
+
+      // Process monster turns if present (monsters won initiative)
+      if (event.monsterTurns && event.monsterTurns.length > 0) {
+        const currentRound = event.combatState?.round || 1;
+        const monsterLogEntries = monsterTurnsToLogEntries(
+          event.monsterTurns,
+          currentRound,
+          (targetId) => {
+            // Use inline name resolution
+            const fullChar = fullCharactersMap.get(targetId);
+            if (fullChar?.name) return fullChar.name;
+            const availChar = availableCharacters.find(
+              (c) => c.id === targetId
+            );
+            if (availChar?.name) return availChar.name;
+            return formatEntityId(targetId);
+          }
+        );
+
+        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+
+        // Update room with monster positions after their movement
+        if (roomToSet) {
+          roomToSet = applyMonsterMovement(roomToSet, event.monsterTurns);
+        }
+      }
+
+      // Set the room (with updated monster positions if they moved)
+      if (roomToSet) {
+        setRoom(roomToSet);
       }
 
       // Add party members' characters to our map
@@ -506,7 +539,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         duration: 2000,
       });
     },
-    [addToast]
+    [addToast, fullCharactersMap, availableCharacters]
   );
 
   // State sync handler - called with snapshot on connect/reconnect
@@ -515,6 +548,10 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       snapshot: import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb').GetEncounterStateResponse
     ) => {
       console.log('🔄 State sync received:', snapshot);
+
+      // Apply dungeon state for room navigation
+      setDungeonId(snapshot.dungeonId || null);
+      setDoors(snapshot.doors ?? []);
 
       // Apply combat state from snapshot
       if (snapshot.combatState) {
@@ -1502,8 +1539,12 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
               onBack={onBack || (() => {})}
               onStartCombat={(id, event) => {
                 console.log('Starting multiplayer combat:', id);
-                // Set encounter ID and room from the CombatStarted event
+                // Set encounter ID from the CombatStarted event
                 setEncounterId(id);
+
+                // Set dungeon state for room navigation
+                setDungeonId(event.dungeonId || null);
+                setDoors(event.doors ?? []);
 
                 // Extract characters from party members and store them
                 const partyCharacters = event.party
@@ -1524,13 +1565,54 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                   });
                 }
 
+                // Set monsters from event (for monsterType texture selection)
+                if (event.monsters && event.monsters.length > 0) {
+                  setMonsters(event.monsters);
+                }
+
                 // Set combat state from the event
                 if (event.combatState) {
                   setCombatState(event.combatState);
+
+                  // Select current turn entity
+                  if (event.combatState.currentTurn?.entityId) {
+                    setSelectedEntity(event.combatState.currentTurn.entityId);
+                  }
                 }
 
-                if (event.room) {
-                  setRoom(event.room);
+                // Start with room from event, may be updated if monsters moved
+                let roomToSet = event.room;
+
+                // Process monster turns if present (monsters won initiative)
+                if (event.monsterTurns && event.monsterTurns.length > 0) {
+                  const currentRound = event.combatState?.round || 1;
+                  const monsterLogEntries = monsterTurnsToLogEntries(
+                    event.monsterTurns,
+                    currentRound,
+                    (targetId) => {
+                      // Use party characters for name resolution
+                      const partyChar = partyCharacters.find(
+                        (c) => c.id === targetId
+                      );
+                      if (partyChar?.name) return partyChar.name;
+                      return formatEntityId(targetId);
+                    }
+                  );
+
+                  setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+
+                  // Update room with monster positions after their movement
+                  if (roomToSet) {
+                    roomToSet = applyMonsterMovement(
+                      roomToSet,
+                      event.monsterTurns
+                    );
+                  }
+                }
+
+                // Set the room (with updated monster positions if they moved)
+                if (roomToSet) {
+                  setRoom(roomToSet);
                   addToast({
                     type: 'success',
                     message: 'Combat started!',
