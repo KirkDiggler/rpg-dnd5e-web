@@ -440,8 +440,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           return newMap;
         });
 
-        // Only add to selectedCharacterIds if this is the local player's character
-        if (event.member?.playerId === playerId) {
+        // Only add to selectedCharacterIds if this is the local player's character.
+        // Guard against empty or missing playerId to avoid false positives.
+        if (playerId && event.member?.playerId === playerId) {
           setSelectedCharacterIds((prev) => {
             if (prev.includes(character.id)) return prev;
             return [...prev, character.id];
@@ -570,13 +571,19 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           });
         }
 
-        // Only the local player's character goes to selectedCharacterIds
-        const localPlayerCharacter = event.party.find(
-          (member) => member.playerId === playerId && member.character?.id
-        )?.character;
+        // Only the local player's character goes to selectedCharacterIds.
+        // Guard against empty playerId to avoid false positives.
+        const localPlayerCharacter = playerId
+          ? event.party.find(
+              (member) => member.playerId === playerId && member.character?.id
+            )?.character
+          : undefined;
 
         if (localPlayerCharacter) {
           setSelectedCharacterIds([localPlayerCharacter.id]);
+        } else {
+          // Clear stale selection if local player not found in party
+          setSelectedCharacterIds([]);
         }
       }
 
@@ -637,14 +644,23 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           });
         }
 
-        // Only the local player's character goes to selectedCharacterIds
-        const localPlayerCharacter = snapshot.party.find(
-          (member) => member.playerId === playerId && member.character?.id
-        )?.character;
+        // Only the local player's character goes to selectedCharacterIds.
+        // Guard against empty playerId to avoid false positives.
+        const localPlayerCharacter = playerId
+          ? snapshot.party.find(
+              (member) => member.playerId === playerId && member.character?.id
+            )?.character
+          : undefined;
 
         if (localPlayerCharacter) {
           setSelectedCharacterIds([localPlayerCharacter.id]);
+        } else {
+          // Clear stale selection if local player not found in party
+          setSelectedCharacterIds([]);
         }
+      } else {
+        // No party information in snapshot; ensure no stale selection remains
+        setSelectedCharacterIds([]);
       }
 
       // Clear any stale UI state
@@ -1589,14 +1605,20 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                   });
                 }
 
-                // Only the local player's character goes to selectedCharacterIds
-                const localPlayerCharacter = event.party.find(
-                  (member) =>
-                    member.playerId === playerId && member.character?.id
-                )?.character;
+                // Only the local player's character goes to selectedCharacterIds.
+                // Guard against empty playerId to avoid false positives.
+                const localPlayerCharacter = playerId
+                  ? event.party.find(
+                      (member) =>
+                        member.playerId === playerId && member.character?.id
+                    )?.character
+                  : undefined;
 
                 if (localPlayerCharacter) {
                   setSelectedCharacterIds([localPlayerCharacter.id]);
+                } else {
+                  // Clear stale selection if local player not found in party
+                  setSelectedCharacterIds([]);
                 }
 
                 // Set monsters from event (for monsterType texture selection)
