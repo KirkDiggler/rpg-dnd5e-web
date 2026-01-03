@@ -456,6 +456,62 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     [addToast]
   );
 
+  /**
+   * Get display name for an entity ID
+   * Checks fullCharactersMap, availableCharacters, and room entities in order.
+   * Can optionally use a specific room (e.g., from a response) instead of current state.
+   */
+  const getEntityDisplayName = (
+    entityId: string,
+    roomOverride?: Room | null
+  ): string => {
+    // Try full character data first (most complete)
+    const fullChar = fullCharactersMap.get(entityId);
+    if (fullChar?.name) return fullChar.name;
+
+    // Try available characters
+    const availChar = availableCharacters.find((c) => c.id === entityId);
+    if (availChar?.name) return availChar.name;
+
+    // Try room entities (monsters/NPCs)
+    const roomToCheck = roomOverride ?? room;
+    if (roomToCheck?.entities[entityId]) {
+      return formatEntityId(entityId);
+    }
+
+    return entityId;
+  };
+
+  /**
+   * Process monster turns from combat start events.
+   * Converts turns to log entries and applies monster movement to the room.
+   * @returns Updated room with monster positions applied
+   */
+  const processMonsterTurns = (
+    monsterTurns: MonsterTurnResult[],
+    combatState: CombatState | undefined,
+    eventRoom: Room | undefined
+  ): Room | undefined => {
+    if (!monsterTurns || monsterTurns.length === 0) {
+      return eventRoom;
+    }
+
+    const currentRound = combatState?.round || 1;
+    const monsterLogEntries = monsterTurnsToLogEntries(
+      monsterTurns,
+      currentRound,
+      (targetId) => getEntityDisplayName(targetId, eventRoom)
+    );
+
+    setCombatLog((prev) => [...prev, ...monsterLogEntries]);
+
+    // Apply monster movement to room
+    if (eventRoom) {
+      return applyMonsterMovement(eventRoom, monsterTurns);
+    }
+    return eventRoom;
+  };
+
   // Multiplayer sync: Combat started - initialize combat for joining players
   const handleCombatStarted = useCallback(
     (event: CombatStartedEvent) => {
@@ -484,30 +540,11 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       }
 
       // Process monster turns if present (monsters won initiative)
-      if (event.monsterTurns && event.monsterTurns.length > 0) {
-        const currentRound = event.combatState?.round || 1;
-        const monsterLogEntries = monsterTurnsToLogEntries(
-          event.monsterTurns,
-          currentRound,
-          (targetId) => {
-            // Use inline name resolution
-            const fullChar = fullCharactersMap.get(targetId);
-            if (fullChar?.name) return fullChar.name;
-            const availChar = availableCharacters.find(
-              (c) => c.id === targetId
-            );
-            if (availChar?.name) return availChar.name;
-            return formatEntityId(targetId);
-          }
-        );
-
-        setCombatLog((prev) => [...prev, ...monsterLogEntries]);
-
-        // Update room with monster positions after their movement
-        if (roomToSet) {
-          roomToSet = applyMonsterMovement(roomToSet, event.monsterTurns);
-        }
-      }
+      roomToSet = processMonsterTurns(
+        event.monsterTurns,
+        event.combatState,
+        roomToSet
+      );
 
       // Set the room (with updated monster positions if they moved)
       if (roomToSet) {
@@ -539,7 +576,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         duration: 2000,
       });
     },
-    [addToast, fullCharactersMap, availableCharacters]
+    [addToast, processMonsterTurns]
   );
 
   // State sync handler - called with snapshot on connect/reconnect
@@ -771,32 +808,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       document.documentElement.style.overflow = '';
     };
   }, [room]);
-
-  /**
-   * Get display name for an entity ID
-   * Checks fullCharactersMap, availableCharacters, and room entities in order.
-   * Can optionally use a specific room (e.g., from a response) instead of current state.
-   */
-  const getEntityDisplayName = (
-    entityId: string,
-    roomOverride?: Room | null
-  ): string => {
-    // Try full character data first (most complete)
-    const fullChar = fullCharactersMap.get(entityId);
-    if (fullChar?.name) return fullChar.name;
-
-    // Try available characters
-    const availChar = availableCharacters.find((c) => c.id === entityId);
-    if (availChar?.name) return availChar.name;
-
-    // Try room entities (monsters/NPCs)
-    const roomToCheck = roomOverride ?? room;
-    if (roomToCheck?.entities[entityId]) {
-      return formatEntityId(entityId);
-    }
-
-    return entityId;
-  };
 
   const handleStartEncounter = async () => {
     try {
@@ -1580,35 +1591,12 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                   }
                 }
 
-                // Start with room from event, may be updated if monsters moved
-                let roomToSet = event.room;
-
-                // Process monster turns if present (monsters won initiative)
-                if (event.monsterTurns && event.monsterTurns.length > 0) {
-                  const currentRound = event.combatState?.round || 1;
-                  const monsterLogEntries = monsterTurnsToLogEntries(
-                    event.monsterTurns,
-                    currentRound,
-                    (targetId) => {
-                      // Use party characters for name resolution
-                      const partyChar = partyCharacters.find(
-                        (c) => c.id === targetId
-                      );
-                      if (partyChar?.name) return partyChar.name;
-                      return formatEntityId(targetId);
-                    }
-                  );
-
-                  setCombatLog((prev) => [...prev, ...monsterLogEntries]);
-
-                  // Update room with monster positions after their movement
-                  if (roomToSet) {
-                    roomToSet = applyMonsterMovement(
-                      roomToSet,
-                      event.monsterTurns
-                    );
-                  }
-                }
+                // Process monster turns and get updated room
+                const roomToSet = processMonsterTurns(
+                  event.monsterTurns,
+                  event.combatState,
+                  event.room
+                );
 
                 // Set the room (with updated monster positions if they moved)
                 if (roomToSet) {
