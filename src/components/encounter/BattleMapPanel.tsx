@@ -11,7 +11,10 @@ import { HexGrid } from '../hex-grid';
 interface BattleMapPanelProps {
   room: Room;
   selectedEntity: string | null;
+  /** Local player's available characters (for isPlayerTurn check) */
   availableCharacters: Character[];
+  /** All party characters including other players (for display/lookup) */
+  allPartyCharacters: Character[];
   // Combat integration props for HexGrid
   encounterId?: string | null;
   combatState?: CombatState | null;
@@ -34,6 +37,7 @@ export function BattleMapPanel({
   room,
   selectedEntity,
   availableCharacters,
+  allPartyCharacters,
   encounterId,
   combatState,
   monsters,
@@ -74,7 +78,7 @@ export function BattleMapPanel({
           return {
             entityId: entity.entityId,
             name:
-              availableCharacters.find((c) => c.id === entity.entityId)?.name ||
+              allPartyCharacters.find((c) => c.id === entity.entityId)?.name ||
               entity.entityId,
             position: {
               x: entity.position?.x || 0,
@@ -90,7 +94,7 @@ export function BattleMapPanel({
         // Combat integration
         encounterId={encounterId}
         combatState={combatState}
-        characters={availableCharacters}
+        characters={allPartyCharacters}
         monsters={monsters}
         currentEntityId={combatState?.currentTurn?.entityId}
         movementRemaining={
