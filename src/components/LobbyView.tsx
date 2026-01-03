@@ -431,7 +431,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: PlayerJoinedEvent) => {
       console.log('👤 PlayerJoined event received:', event);
 
-      // Add the new player's character to our map
+      // Add the new player's character to fullCharactersMap for display
       const character = event.member?.character;
       if (character?.id) {
         setFullCharactersMap((prev) => {
@@ -440,11 +440,14 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           return newMap;
         });
 
-        // Add to selected character IDs if not already present
-        setSelectedCharacterIds((prev) => {
-          if (prev.includes(character.id)) return prev;
-          return [...prev, character.id];
-        });
+        // Only add to selectedCharacterIds if this is the local player's character.
+        // Guard against empty or missing playerId to avoid false positives.
+        if (playerId && event.member?.playerId === playerId) {
+          setSelectedCharacterIds((prev) => {
+            if (prev.includes(character.id)) return prev;
+            return [...prev, character.id];
+          });
+        }
 
         addToast({
           type: 'info',
@@ -453,7 +456,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         });
       }
     },
-    [addToast]
+    [addToast, playerId]
   );
 
   /**
@@ -553,13 +556,12 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
       // Add party members' characters to our map
       if (event.party && event.party.length > 0) {
+        // All party characters go to fullCharactersMap for display
         const partyCharacters = event.party
           .filter((member) => member.character?.id)
           .map((member) => member.character!);
 
         if (partyCharacters.length > 0) {
-          setSelectedCharacterIds(partyCharacters.map((c) => c.id));
-
           setFullCharactersMap((prev) => {
             const newMap = new Map(prev);
             partyCharacters.forEach((char) => {
@@ -567,6 +569,21 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
             });
             return newMap;
           });
+        }
+
+        // Only the local player's character goes to selectedCharacterIds.
+        // Guard against empty playerId to avoid false positives.
+        const localPlayerCharacter = playerId
+          ? event.party.find(
+              (member) => member.playerId === playerId && member.character?.id
+            )?.character
+          : undefined;
+
+        if (localPlayerCharacter) {
+          setSelectedCharacterIds([localPlayerCharacter.id]);
+        } else {
+          // Clear stale selection if local player not found in party
+          setSelectedCharacterIds([]);
         }
       }
 
@@ -576,7 +593,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         duration: 2000,
       });
     },
-    [addToast, processMonsterTurns]
+    [addToast, processMonsterTurns, playerId]
   );
 
   // State sync handler - called with snapshot on connect/reconnect
@@ -612,15 +629,12 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
       // Apply party members' characters
       if (snapshot.party && snapshot.party.length > 0) {
+        // All party characters go to fullCharactersMap for display
         const partyCharacters = snapshot.party
           .filter((member) => member.character?.id)
           .map((member) => member.character!);
 
         if (partyCharacters.length > 0) {
-          // Update selected character IDs
-          setSelectedCharacterIds(partyCharacters.map((c) => c.id));
-
-          // Add characters to fullCharactersMap
           setFullCharactersMap((prev) => {
             const newMap = new Map(prev);
             partyCharacters.forEach((char) => {
@@ -629,6 +643,24 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
             return newMap;
           });
         }
+
+        // Only the local player's character goes to selectedCharacterIds.
+        // Guard against empty playerId to avoid false positives.
+        const localPlayerCharacter = playerId
+          ? snapshot.party.find(
+              (member) => member.playerId === playerId && member.character?.id
+            )?.character
+          : undefined;
+
+        if (localPlayerCharacter) {
+          setSelectedCharacterIds([localPlayerCharacter.id]);
+        } else {
+          // Clear stale selection if local player not found in party
+          setSelectedCharacterIds([]);
+        }
+      } else {
+        // No party information in snapshot; ensure no stale selection remains
+        setSelectedCharacterIds([]);
       }
 
       // Clear any stale UI state
@@ -638,7 +670,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
       console.log('🔄 State sync complete');
     },
-    []
+    [playerId]
   );
 
   // Historical events handler - processes events that happened before we connected
@@ -1563,10 +1595,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                   .map((member) => member.character!);
 
                 if (partyCharacters.length > 0) {
-                  // Set character IDs for selection
-                  setSelectedCharacterIds(partyCharacters.map((c) => c.id));
-
-                  // Add characters to fullCharactersMap so getSelectedCharacters finds them
+                  // Add all characters to fullCharactersMap for display
                   setFullCharactersMap((prev) => {
                     const newMap = new Map(prev);
                     partyCharacters.forEach((char) => {
@@ -1574,6 +1603,22 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                     });
                     return newMap;
                   });
+                }
+
+                // Only the local player's character goes to selectedCharacterIds.
+                // Guard against empty playerId to avoid false positives.
+                const localPlayerCharacter = playerId
+                  ? event.party.find(
+                      (member) =>
+                        member.playerId === playerId && member.character?.id
+                    )?.character
+                  : undefined;
+
+                if (localPlayerCharacter) {
+                  setSelectedCharacterIds([localPlayerCharacter.id]);
+                } else {
+                  // Clear stale selection if local player not found in party
+                  setSelectedCharacterIds([]);
                 }
 
                 // Set monsters from event (for monsterType texture selection)
@@ -1624,6 +1669,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                 room={room}
                 selectedEntity={selectedEntity}
                 availableCharacters={availableCharacters}
+                allPartyCharacters={Array.from(fullCharactersMap.values())}
                 onEntityClick={handleEntityClick}
                 onCellClick={handleCellClick}
                 // Combat integration
