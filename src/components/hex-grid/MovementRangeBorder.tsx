@@ -6,8 +6,7 @@
  * each boundary edge segment.
  */
 
-import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import * as THREE from 'three';
 import type { BoundaryEdge } from './useMovementRange';
 
@@ -43,8 +42,6 @@ export function MovementRangeBorder({
   opacity = DEFAULT_OPACITY,
   glowIntensity = DEFAULT_GLOW_INTENSITY,
 }: MovementRangeBorderProps) {
-  const groupRef = useRef<THREE.Group>(null);
-
   // Create geometry for all edges batched together
   const geometry = useMemo(() => {
     if (boundaryEdges.length === 0) return null;
@@ -102,27 +99,12 @@ export function MovementRangeBorder({
     return bufferGeometry;
   }, [boundaryEdges]);
 
-  // Optional: Add subtle pulsing animation
-  useFrame((state) => {
-    if (groupRef.current) {
-      // Subtle pulse: oscillate opacity between 0.7 and 1.0
-      const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.15 + 0.85;
-      groupRef.current.children.forEach((child) => {
-        if (
-          child instanceof THREE.Mesh &&
-          child.material instanceof THREE.MeshBasicMaterial
-        ) {
-          child.material.opacity = opacity * pulse;
-        }
-      });
-    }
-  });
-
   // Don't render if no edges
   if (!geometry) return null;
 
+  // Static border - no animation needed for turn-based game
   return (
-    <group ref={groupRef}>
+    <group>
       <mesh geometry={geometry}>
         <meshStandardMaterial
           color={color}
