@@ -6,7 +6,7 @@
  * Clickable to navigate to adjacent rooms during player's turn.
  */
 
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
@@ -49,6 +49,7 @@ export function HexDoor({
   onHoverChange,
   disabled,
 }: HexDoorProps) {
+  const { invalidate } = useThree();
   const meshRef = useRef<THREE.Mesh>(null);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -69,6 +70,7 @@ export function HexDoor({
     const material = meshRef.current.material as THREE.MeshStandardMaterial;
     // Pulse between 0.5 and 1.0 opacity
     material.opacity = 0.5 + 0.5 * Math.sin(state.clock.elapsedTime * 4);
+    invalidate(); // Request next frame for animation
   });
 
   // Reset opacity when loading completes

@@ -35,7 +35,7 @@ export function useCameraControls({
   minZoom = 20,
   maxZoom = 200,
 }: CameraControlsOptions) {
-  const { camera, gl } = useThree();
+  const { camera, gl, invalidate } = useThree();
 
   // Track which keys are pressed
   const keys = useRef({
@@ -126,6 +126,7 @@ export function useCameraControls({
         azimuth.current -= deltaX * 0.01;
         mouse.current.lastX = e.clientX;
         updateCamera();
+        invalidate(); // Request re-render for on-demand frameloop
       }
     };
 
@@ -138,6 +139,7 @@ export function useCameraControls({
           Math.min(maxZoom, camera.zoom - e.deltaY * 0.1)
         );
         camera.updateProjectionMatrix();
+        invalidate(); // Request re-render for on-demand frameloop
       } else {
         // For perspective camera, adjust distance
         distance.current = Math.max(
@@ -145,6 +147,7 @@ export function useCameraControls({
           Math.min(100, distance.current + e.deltaY * 0.05)
         );
         updateCamera();
+        invalidate(); // Request re-render for on-demand frameloop
       }
     };
 
@@ -166,7 +169,16 @@ export function useCameraControls({
       canvas.removeEventListener('contextmenu', handleContextMenu);
     };
     // target included so effect re-initializes if target reference changes
-  }, [gl, camera, minZoom, maxZoom, target, polarAngle, updateCamera]);
+  }, [
+    gl,
+    camera,
+    minZoom,
+    maxZoom,
+    target,
+    polarAngle,
+    updateCamera,
+    invalidate,
+  ]);
 
   // Update each frame based on key state
   useFrame(() => {
@@ -215,6 +227,7 @@ export function useCameraControls({
 
     if (changed) {
       updateCamera();
+      invalidate(); // Request next frame while keys are held
     }
   });
 
