@@ -3,10 +3,12 @@
  *
  * Renders hex-shaped pillars along the wall path from start to end.
  * Each hex the wall passes through gets a full hex pillar.
+ * Uses the same hex geometry as tiles (ShapeGeometry + ExtrudeGeometry) for perfect alignment.
  */
 
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import { useMemo } from 'react';
+import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 
 export interface HexWallProps {
@@ -29,6 +31,31 @@ function getMaterialColor(material: string): string {
     default:
       return '#444444';
   }
+}
+
+/**
+ * Creates a hex shape matching the tile geometry exactly
+ * Uses the same vertex calculation as InstancedHexTiles (30 + 60*i degrees)
+ */
+function createHexShape(hexSize: number): THREE.Shape {
+  const shape = new THREE.Shape();
+  const scale = 0.95; // Slightly smaller than tiles for visual distinction
+
+  for (let i = 0; i < 6; i++) {
+    const angleDeg = 30 + 60 * i;
+    const angleRad = (Math.PI / 180) * angleDeg;
+    const x = hexSize * scale * Math.cos(angleRad);
+    const y = hexSize * scale * Math.sin(angleRad);
+
+    if (i === 0) {
+      shape.moveTo(x, y);
+    } else {
+      shape.lineTo(x, y);
+    }
+  }
+
+  shape.closePath();
+  return shape;
 }
 
 /**
@@ -109,6 +136,16 @@ export function HexWall({ wall, hexSize }: HexWallProps) {
     [hexPositions, hexSize]
   );
 
+  // Create hex geometry matching tile alignment exactly
+  const geometry = useMemo(() => {
+    const shape = createHexShape(hexSize);
+    const extrudeSettings = {
+      depth: WALL_HEIGHT,
+      bevelEnabled: false,
+    };
+    return new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  }, [hexSize]);
+
   const color = getMaterialColor(wall.material || 'stone');
 
   if (worldPositions.length === 0) {
@@ -116,17 +153,17 @@ export function HexWall({ wall, hexSize }: HexWallProps) {
   }
 
   // Render a hex pillar at each position along the wall
+  // Rotation: -PI/2 on X to lay the extrusion flat (matches tile rotation)
+  // Then the extrusion grows upward from y=0
   return (
     <>
       {worldPositions.map((pos, index) => (
         <mesh
           key={`${hexPositions[index].x}-${hexPositions[index].y}-${hexPositions[index].z}`}
-          position={[pos.x, WALL_HEIGHT / 2, pos.z]}
-          rotation={[0, Math.PI / 6, 0]}
+          position={[pos.x, 0, pos.z]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          geometry={geometry}
         >
-          <cylinderGeometry
-            args={[hexSize * 0.9, hexSize * 0.9, WALL_HEIGHT, 6]}
-          />
           <meshStandardMaterial color={color} />
         </mesh>
       ))}

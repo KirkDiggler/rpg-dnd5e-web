@@ -254,6 +254,59 @@ function Scene({
     isBlocked,
   });
 
+  // Extract door positions for tile coloring
+  const doorPositions = useMemo((): CubeCoord[] => {
+    return doors
+      .filter((door) => door.position)
+      .map((door) => ({
+        x: door.position!.x,
+        y: door.position!.y,
+        z: door.position!.z,
+      }));
+  }, [doors]);
+
+  // Extract wall positions for tile coloring (all hexes along each wall)
+  const wallPositions = useMemo((): CubeCoord[] => {
+    const positions: CubeCoord[] = [];
+    for (const wall of walls) {
+      if (!wall.start || !wall.end) continue;
+      // Get all hexes along the wall using line interpolation
+      const start = { x: wall.start.x, y: wall.start.y, z: wall.start.z };
+      const end = { x: wall.end.x, y: wall.end.y, z: wall.end.z };
+      const distance = Math.max(
+        Math.abs(start.x - end.x),
+        Math.abs(start.y - end.y),
+        Math.abs(start.z - end.z)
+      );
+      if (distance === 0) {
+        positions.push(start);
+      } else {
+        for (let i = 0; i <= distance; i++) {
+          const t = i / distance;
+          const x = start.x + (end.x - start.x) * t;
+          const y = start.y + (end.y - start.y) * t;
+          const z = start.z + (end.z - start.z) * t;
+          // Round to nearest hex (cube round)
+          let rx = Math.round(x);
+          let ry = Math.round(y);
+          let rz = Math.round(z);
+          const xDiff = Math.abs(rx - x);
+          const yDiff = Math.abs(ry - y);
+          const zDiff = Math.abs(rz - z);
+          if (xDiff > yDiff && xDiff > zDiff) {
+            rx = -ry - rz;
+          } else if (yDiff > zDiff) {
+            ry = -rx - rz;
+          } else {
+            rz = -rx - ry;
+          }
+          positions.push({ x: rx, y: ry, z: rz });
+        }
+      }
+    }
+    return positions;
+  }, [walls]);
+
   // Handle entity clicks (for attacking)
   const handleEntityClick = (entityId: string) => {
     if (!isPlayerTurn || isProcessing) {
@@ -302,6 +355,8 @@ function Scene({
         hexSize={HEX_SIZE}
         hoveredHex={hoveredHex}
         selectedHex={selectedHex}
+        doorPositions={doorPositions}
+        wallPositions={wallPositions}
       />
 
       {/* Render walls (after tiles, before doors) */}

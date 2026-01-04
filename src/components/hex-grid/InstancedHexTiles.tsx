@@ -18,13 +18,19 @@ interface InstancedHexTilesProps {
   hexSize: number;
   hoveredHex: CubeCoord | null;
   selectedHex: CubeCoord | null;
+  /** Door positions to color as door tiles */
+  doorPositions?: CubeCoord[];
+  /** Wall positions to color as wall tiles */
+  wallPositions?: CubeCoord[];
 }
 
 // Visual state colors
 const COLORS = {
-  default: new THREE.Color('#4a5568'), // gray
+  default: new THREE.Color('#4a5568'), // gray - playable tiles
   hovered: new THREE.Color('#718096'), // lighter gray
   selected: new THREE.Color('#48bb78'), // green
+  door: new THREE.Color('#8B4513'), // saddle brown - door tiles
+  wall: new THREE.Color('#444444'), // dark gray - wall tiles
 };
 
 /**
@@ -67,12 +73,23 @@ function cubesEqual(a: CubeCoord | null, b: CubeCoord): boolean {
   return a.x === b.x && a.y === b.y && a.z === b.z;
 }
 
+/**
+ * Check if a coordinate is in a list of positions
+ */
+function isInPositionList(coord: CubeCoord, positions: CubeCoord[]): boolean {
+  return positions.some(
+    (p) => p.x === coord.x && p.y === coord.y && p.z === coord.z
+  );
+}
+
 export function InstancedHexTiles({
   gridWidth,
   gridHeight,
   hexSize,
   hoveredHex,
   selectedHex,
+  doorPositions = [],
+  wallPositions = [],
 }: InstancedHexTilesProps) {
   const { invalidate } = useThree();
   const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -131,7 +148,7 @@ export function InstancedHexTiles({
     invalidate(); // Request render for on-demand frameloop
   }, [gridWidth, gridHeight, hexSize, geometry, material, invalidate]);
 
-  // Update instance colors when hover/selected changes
+  // Update instance colors when hover/selected/door/wall changes
   useEffect(() => {
     if (!meshRef.current) return;
 
@@ -150,6 +167,10 @@ export function InstancedHexTiles({
           color = COLORS.selected;
         } else if (cubesEqual(hoveredHex, cube)) {
           color = COLORS.hovered;
+        } else if (isInPositionList(cube, doorPositions)) {
+          color = COLORS.door;
+        } else if (isInPositionList(cube, wallPositions)) {
+          color = COLORS.wall;
         } else {
           color = COLORS.default;
         }
@@ -171,6 +192,8 @@ export function InstancedHexTiles({
     gridHeight,
     hoveredHex,
     selectedHex,
+    doorPositions,
+    wallPositions,
     instanceCount,
     invalidate,
   ]);
