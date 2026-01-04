@@ -7,6 +7,7 @@
  * Performance improvement: O(n) draw calls -> O(1) draw call
  */
 
+import { useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
@@ -73,6 +74,7 @@ export function InstancedHexTiles({
   hoveredHex,
   selectedHex,
 }: InstancedHexTilesProps) {
+  const { invalidate } = useThree();
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const instanceCount = gridWidth * gridHeight;
 
@@ -88,7 +90,17 @@ export function InstancedHexTiles({
     []
   );
 
-  // Initialize instance matrices and colors
+  // Cleanup geometry and material on unmount only
+  useEffect(() => {
+    const geo = geometry;
+    const mat = material;
+    return () => {
+      geo.dispose();
+      mat.dispose();
+    };
+  }, [geometry, material]);
+
+  // Initialize instance matrices
   useEffect(() => {
     if (!meshRef.current) return;
 
@@ -116,13 +128,8 @@ export function InstancedHexTiles({
     }
 
     mesh.instanceMatrix.needsUpdate = true;
-
-    // Cleanup
-    return () => {
-      geometry.dispose();
-      material.dispose();
-    };
-  }, [gridWidth, gridHeight, hexSize, geometry, material]);
+    invalidate(); // Request render for on-demand frameloop
+  }, [gridWidth, gridHeight, hexSize, geometry, material, invalidate]);
 
   // Update instance colors when hover/selected changes
   useEffect(() => {
@@ -158,7 +165,15 @@ export function InstancedHexTiles({
     // Set colors via instance color attribute
     mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
     mesh.instanceColor.needsUpdate = true;
-  }, [gridWidth, gridHeight, hoveredHex, selectedHex, instanceCount]);
+    invalidate(); // Request render for on-demand frameloop
+  }, [
+    gridWidth,
+    gridHeight,
+    hoveredHex,
+    selectedHex,
+    instanceCount,
+    invalidate,
+  ]);
 
   return (
     <instancedMesh

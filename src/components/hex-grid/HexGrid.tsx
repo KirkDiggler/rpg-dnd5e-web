@@ -19,7 +19,7 @@ import type {
   MonsterCombatState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Canvas } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
@@ -372,30 +372,40 @@ function Scene({
 export function HexGrid(props: HexGridProps) {
   const { combatState, characters = [] } = props;
   const [isContextLost, setIsContextLost] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Handle WebGL context loss/restore for GPU protection
   const handleCanvasCreated = useCallback(
     ({ gl }: { gl: THREE.WebGLRenderer }) => {
-      const canvas = gl.domElement;
-
-      const handleContextLost = (event: Event) => {
-        event.preventDefault();
-        console.warn('WebGL context lost - GPU may be overloaded');
-        setIsContextLost(true);
-      };
-
-      const handleContextRestored = () => {
-        console.info('WebGL context restored');
-        setIsContextLost(false);
-      };
-
-      canvas.addEventListener('webglcontextlost', handleContextLost);
-      canvas.addEventListener('webglcontextrestored', handleContextRestored);
-
-      // Cleanup on unmount (Canvas handles this via gl disposal)
+      canvasRef.current = gl.domElement;
     },
     []
   );
+
+  // Set up context loss event listeners with proper cleanup
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      console.warn('WebGL context lost - GPU may be overloaded');
+      setIsContextLost(true);
+    };
+
+    const handleContextRestored = () => {
+      console.info('WebGL context restored');
+      setIsContextLost(false);
+    };
+
+    canvas.addEventListener('webglcontextlost', handleContextLost);
+    canvas.addEventListener('webglcontextrestored', handleContextRestored);
+
+    return () => {
+      canvas.removeEventListener('webglcontextlost', handleContextLost);
+      canvas.removeEventListener('webglcontextrestored', handleContextRestored);
+    };
+  });
 
   // Build turn order from combat state
   const turnOrder = useMemo((): TurnOrderEntry[] => {
