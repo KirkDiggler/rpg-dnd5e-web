@@ -27,7 +27,7 @@ export interface HexDoorProps {
 }
 
 // Door visual constants (in world space units)
-const DOOR_HEIGHT = 0.6; // Slightly shorter than walls (0.8) for visual distinction
+const DOOR_HEIGHT = 0.8; // Same height as walls for consistent appearance
 
 // Colors for door states
 const COLORS = {
