@@ -14,9 +14,10 @@ export interface HexWallProps {
   hexSize: number;
 }
 
-// Wall visual constants
+// Wall visual constants (in world space units, matches hex size scale)
 const WALL_HEIGHT = 0.8;
 const DEFAULT_WALL_THICKNESS = 0.15;
+const MIN_WALL_LENGTH = 0.01; // Below this length, render as pillar instead of wall
 
 // Placeholder colors by material type
 function getMaterialColor(material: string): string {
@@ -77,10 +78,10 @@ export function HexWall({ wall, hexSize }: HexWallProps) {
   }
 
   // Handle zero-length walls (pillars) - render as a small cube
-  const isPillar = geometry.length < 0.01;
+  const isPillar = geometry.length < MIN_WALL_LENGTH;
   const thickness =
-    wall.thickness > 0 ? wall.thickness : DEFAULT_WALL_THICKNESS;
-  const color = getMaterialColor(wall.material);
+    (wall.thickness ?? 0) > 0 ? wall.thickness : DEFAULT_WALL_THICKNESS;
+  const color = getMaterialColor(wall.material || 'stone');
 
   if (isPillar) {
     // Render as a pillar (small cube) at the start position

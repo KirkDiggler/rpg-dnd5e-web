@@ -305,9 +305,10 @@ function Scene({
       />
 
       {/* Render walls (after tiles, before doors) */}
-      {walls.map((wall, index) => (
-        <HexWall key={`wall-${index}`} wall={wall} hexSize={HEX_SIZE} />
-      ))}
+      {walls.map((wall) => {
+        const key = `wall-${wall.start?.x ?? 0}-${wall.start?.z ?? 0}-${wall.end?.x ?? 0}-${wall.end?.z ?? 0}`;
+        return <HexWall key={key} wall={wall} hexSize={HEX_SIZE} />;
+      })}
 
       {/* Render doors (after tiles, before movement range) */}
       {doors.map((door) => {
