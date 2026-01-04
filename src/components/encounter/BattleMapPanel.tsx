@@ -116,6 +116,7 @@ export function BattleMapPanel({
         doors={doors}
         onDoorClick={onDoorClick}
         isDoorLoading={isDoorLoading}
+        walls={room.walls}
       />
     </div>
   );

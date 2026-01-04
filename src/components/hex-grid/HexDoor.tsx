@@ -1,14 +1,16 @@
 /**
  * HexDoor - Visual component for door connections between dungeon rooms
  *
- * Renders a flat rectangle on a hex tile representing a door/connection.
- * Supports visual states: closed (solid brown), open (outline), loading (pulsing).
+ * Renders a hex-shaped pillar representing a door/connection.
+ * Uses the same geometry as HexWall for visual consistency.
+ * Supports visual states: closed (solid brown), open (green), loading (pulsing).
  * Clickable to navigate to adjacent rooms during player's turn.
  */
 
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { createHexPillarGeometry } from './hexGeometry';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 
 export interface HexDoorProps {
@@ -25,10 +27,8 @@ export interface HexDoorProps {
   disabled: boolean;
 }
 
-// Door visual constants
-const DOOR_WIDTH_RATIO = 0.5; // Relative to hex size
-const DOOR_HEIGHT_RATIO = 0.3;
-const DOOR_Y_OFFSET = 0.02; // Slightly above hex tile to prevent z-fighting
+// Door height in world space units (matches wall height for consistency)
+const DOOR_HEIGHT = 0.8;
 
 // Colors for door states
 const COLORS = {
@@ -59,9 +59,11 @@ export function HexDoor({
     [position, hexSize]
   );
 
-  // Door dimensions
-  const doorWidth = hexSize * DOOR_WIDTH_RATIO;
-  const doorHeight = hexSize * DOOR_HEIGHT_RATIO;
+  // Create hex geometry using shared utility for consistency with walls
+  const geometry = useMemo(
+    () => createHexPillarGeometry(hexSize, DOOR_HEIGHT),
+    [hexSize]
+  );
 
   // Animate loading state with pulsing opacity
   // Only run animation when actually loading to avoid GPU overhead
@@ -113,34 +115,23 @@ export function HexDoor({
     onHoverChange?.(null);
   };
 
+  // Render hex pillar door
+  // Rotation: -PI/2 on X to lay the extrusion flat, then it grows upward
   return (
-    <group position={[worldPos.x, DOOR_Y_OFFSET, worldPos.z]}>
-      {/* Door plane - flat on the hex */}
-      <mesh
-        ref={meshRef}
-        rotation={[-Math.PI / 2, 0, 0]}
-        onClick={handleClick}
-        onPointerOver={handlePointerOver}
-        onPointerOut={handlePointerOut}
-      >
-        <planeGeometry args={[doorWidth, doorHeight]} />
-        <meshStandardMaterial
-          color={color}
-          transparent={isLoading || isOpen}
-          opacity={isOpen ? 0.6 : 1.0}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-
-      {/* Door border for open state */}
-      {isOpen && (
-        <lineSegments rotation={[-Math.PI / 2, 0, 0]}>
-          <edgesGeometry
-            args={[new THREE.PlaneGeometry(doorWidth, doorHeight)]}
-          />
-          <lineBasicMaterial color={COLORS.open} />
-        </lineSegments>
-      )}
-    </group>
+    <mesh
+      ref={meshRef}
+      position={[worldPos.x, 0, worldPos.z]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      geometry={geometry}
+      onClick={handleClick}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
+    >
+      <meshStandardMaterial
+        color={color}
+        transparent={isLoading || isOpen}
+        opacity={isOpen ? 0.6 : 1.0}
+      />
+    </mesh>
   );
 }

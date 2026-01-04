@@ -12,6 +12,7 @@
  * - Turn order overlay
  */
 
+import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -23,7 +24,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
-import { cubeToWorld, type CubeCoord } from './hexMath';
+import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
+import { HexWall } from './HexWall';
 import { InstancedHexTiles } from './InstancedHexTiles';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
@@ -67,6 +69,8 @@ export interface HexGridProps {
   onDoorHoverChange?: (
     door: { connectionId: string; physicalHint: string } | null
   ) => void;
+  // Wall props
+  walls?: Wall[];
 }
 
 // Hex size constant - radius from center to vertex
@@ -99,6 +103,7 @@ function Scene({
   onDoorHoverChange,
   characters = [],
   monsters = [],
+  walls = [],
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -249,6 +254,33 @@ function Scene({
     isBlocked,
   });
 
+  // Extract door positions for tile coloring
+  const doorPositions = useMemo((): CubeCoord[] => {
+    return doors
+      .filter((door) => door.position)
+      .map((door) => ({
+        x: door.position!.x,
+        y: door.position!.y,
+        z: door.position!.z,
+      }));
+  }, [doors]);
+
+  // Extract wall positions for tile coloring (all hexes along each wall)
+  const wallPositions = useMemo((): CubeCoord[] => {
+    const positions: CubeCoord[] = [];
+    for (const wall of walls) {
+      if (!wall.start || !wall.end) continue;
+      const start: CubeCoord = {
+        x: wall.start.x,
+        y: wall.start.y,
+        z: wall.start.z,
+      };
+      const end: CubeCoord = { x: wall.end.x, y: wall.end.y, z: wall.end.z };
+      positions.push(...getHexLine(start, end));
+    }
+    return positions;
+  }, [walls]);
+
   // Handle entity clicks (for attacking)
   const handleEntityClick = (entityId: string) => {
     if (!isPlayerTurn || isProcessing) {
@@ -297,7 +329,15 @@ function Scene({
         hexSize={HEX_SIZE}
         hoveredHex={hoveredHex}
         selectedHex={selectedHex}
+        doorPositions={doorPositions}
+        wallPositions={wallPositions}
       />
+
+      {/* Render walls (after tiles, before doors) */}
+      {walls.map((wall) => {
+        const key = `wall-${wall.start?.x ?? 0}-${wall.start?.y ?? 0}-${wall.start?.z ?? 0}-${wall.end?.x ?? 0}-${wall.end?.y ?? 0}-${wall.end?.z ?? 0}`;
+        return <HexWall key={key} wall={wall} hexSize={HEX_SIZE} />;
+      })}
 
       {/* Render doors (after tiles, before movement range) */}
       {doors.map((door) => {
