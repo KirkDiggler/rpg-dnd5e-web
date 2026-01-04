@@ -1,4 +1,4 @@
-import { create, toJson } from '@bufbuild/protobuf';
+import { create } from '@bufbuild/protobuf';
 import type {
   AttackResolvedEvent,
   CombatEndedEvent,
@@ -21,20 +21,9 @@ import type {
   TurnEndedEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
-  AttackResolvedEventSchema,
-  CombatEndedEventSchema,
-  CombatStartedEventSchema,
-  DungeonFailureEventSchema,
-  DungeonVictoryEventSchema,
-  FeatureActivatedEventSchema,
   GetEncounterHistoryRequestSchema,
   GetEncounterStateRequestSchema,
-  MonsterTurnCompletedEventSchema,
-  MovementCompletedEventSchema,
-  PlayerJoinedEventSchema,
-  RoomRevealedEventSchema,
   StreamEncounterEventsRequestSchema,
-  TurnEndedEventSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useEffect, useRef, useState } from 'react';
 import { encounterClient } from './client';
@@ -97,43 +86,6 @@ const RECONNECT_CONFIG = {
 };
 
 /**
- * Logs an event with full JSON representation for debugging
- */
-function logEventDetails(eventCase: string, value: unknown): void {
-  // Map event types to their schemas for JSON conversion
-  const schemaMap: Record<string, unknown> = {
-    playerJoined: PlayerJoinedEventSchema,
-    combatStarted: CombatStartedEventSchema,
-    combatEnded: CombatEndedEventSchema,
-    movementCompleted: MovementCompletedEventSchema,
-    attackResolved: AttackResolvedEventSchema,
-    featureActivated: FeatureActivatedEventSchema,
-    turnEnded: TurnEndedEventSchema,
-    monsterTurnCompleted: MonsterTurnCompletedEventSchema,
-    roomRevealed: RoomRevealedEventSchema,
-    dungeonVictory: DungeonVictoryEventSchema,
-    dungeonFailure: DungeonFailureEventSchema,
-  };
-
-  const schema = schemaMap[eventCase];
-  if (schema && value) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const json = toJson(schema as any, value as any);
-      console.log(
-        `🔵 Stream event [${eventCase}]:`,
-        JSON.stringify(json, null, 2)
-      );
-    } catch {
-      // Fallback to raw value if toJson fails
-      console.log(`🔵 Stream event [${eventCase}]:`, value);
-    }
-  } else {
-    console.log(`🔵 Stream event [${eventCase}]:`, value);
-  }
-}
-
-/**
  * Dispatches an encounter event to the appropriate callback handler
  */
 function dispatchEvent(
@@ -141,9 +93,6 @@ function dispatchEvent(
   options: UseEncounterStreamOptions
 ) {
   const eventPayload = event.event;
-
-  // Log full event details for debugging
-  logEventDetails(eventPayload.case ?? 'unknown', eventPayload.value);
 
   switch (eventPayload.case) {
     case 'playerJoined':

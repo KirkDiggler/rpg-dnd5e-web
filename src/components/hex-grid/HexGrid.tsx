@@ -12,6 +12,7 @@
  * - Turn order overlay
  */
 
+import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -24,6 +25,7 @@ import * as THREE from 'three';
 import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
 import { cubeToWorld, type CubeCoord } from './hexMath';
+import { HexWall } from './HexWall';
 import { InstancedHexTiles } from './InstancedHexTiles';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
@@ -67,6 +69,8 @@ export interface HexGridProps {
   onDoorHoverChange?: (
     door: { connectionId: string; physicalHint: string } | null
   ) => void;
+  // Wall props
+  walls?: Wall[];
 }
 
 // Hex size constant - radius from center to vertex
@@ -99,6 +103,7 @@ function Scene({
   onDoorHoverChange,
   characters = [],
   monsters = [],
+  walls = [],
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -298,6 +303,11 @@ function Scene({
         hoveredHex={hoveredHex}
         selectedHex={selectedHex}
       />
+
+      {/* Render walls (after tiles, before doors) */}
+      {walls.map((wall, index) => (
+        <HexWall key={`wall-${index}`} wall={wall} hexSize={HEX_SIZE} />
+      ))}
 
       {/* Render doors (after tiles, before movement range) */}
       {doors.map((door) => {
