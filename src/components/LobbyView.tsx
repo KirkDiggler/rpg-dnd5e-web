@@ -1550,8 +1550,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         className="min-h-screen p-4"
         style={{
           backgroundColor: 'var(--bg-primary)',
-          // Add bottom padding to account for fixed CombatPanel (~320px)
-          paddingBottom: currentCharacter ? '340px' : undefined,
+          // Add bottom padding to account for fixed CombatPanel (~70px actual height)
+          // The floating combat log overlays the map, so no extra space needed for it
+          paddingBottom: currentCharacter ? '80px' : undefined,
         }}
       >
         <div className="max-w-[1800px] mx-auto">
@@ -1663,8 +1664,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
             />
           ) : (
             // Active encounter - battle map fills available space
-            // Calculate height: viewport minus combat panel (~280px) minus padding (32px top + bottom)
-            <div style={{ height: 'calc(100vh - 340px)' }}>
+            // Height: viewport - combat panel (~70px) - top padding (16px) - small buffer
+            <div style={{ height: 'calc(100vh - 100px)' }}>
               <BattleMapPanel
                 room={room}
                 selectedEntity={selectedEntity}
