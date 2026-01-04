@@ -96,7 +96,7 @@ export function worldToCube(world: WorldPos, hexSize: number): CubeCoord {
  * @param cube - Fractional cube coordinates
  * @returns The nearest integer cube coordinate
  */
-function cubeRound(cube: CubeCoord): CubeCoord {
+export function cubeRound(cube: CubeCoord): CubeCoord {
   // Round each component
   let rx = Math.round(cube.x);
   let ry = Math.round(cube.y);
@@ -297,4 +297,35 @@ export function getReachableHexes(
   }
 
   return reachable;
+}
+
+/**
+ * Get all hex positions along a line from start to end
+ *
+ * Uses the standard hex line-drawing algorithm: linear interpolation
+ * between cube coordinates with rounding at each step.
+ *
+ * @param start - Starting hex coordinate
+ * @param end - Ending hex coordinate
+ * @returns Array of all hex coordinates along the line (inclusive)
+ */
+export function getHexLine(start: CubeCoord, end: CubeCoord): CubeCoord[] {
+  const distance = hexDistance(start, end);
+
+  if (distance === 0) {
+    return [start];
+  }
+
+  const hexes: CubeCoord[] = [];
+  for (let i = 0; i <= distance; i++) {
+    const t = i / distance;
+    // Lerp each coordinate
+    const x = start.x + (end.x - start.x) * t;
+    const y = start.y + (end.y - start.y) * t;
+    const z = start.z + (end.z - start.z) * t;
+    // Round to nearest hex
+    hexes.push(cubeRound({ x, y, z }));
+  }
+
+  return hexes;
 }

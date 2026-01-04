@@ -10,6 +10,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { createHexPillarGeometry } from './hexGeometry';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 
 export interface HexDoorProps {
@@ -26,8 +27,8 @@ export interface HexDoorProps {
   disabled: boolean;
 }
 
-// Door visual constants (in world space units)
-const DOOR_HEIGHT = 0.8; // Same height as walls for consistent appearance
+// Door height in world space units (matches wall height for consistency)
+const DOOR_HEIGHT = 0.8;
 
 // Colors for door states
 const COLORS = {
@@ -36,31 +37,6 @@ const COLORS = {
   hover: '#D2691E', // Chocolate - highlighted
   loading: '#DAA520', // Goldenrod - processing
 };
-
-/**
- * Creates a hex shape matching the tile geometry exactly
- * Uses the same vertex calculation as InstancedHexTiles (30 + 60*i degrees)
- */
-function createHexShape(hexSize: number): THREE.Shape {
-  const shape = new THREE.Shape();
-  const scale = 0.95; // Matches wall scale for consistency
-
-  for (let i = 0; i < 6; i++) {
-    const angleDeg = 30 + 60 * i;
-    const angleRad = (Math.PI / 180) * angleDeg;
-    const x = hexSize * scale * Math.cos(angleRad);
-    const y = hexSize * scale * Math.sin(angleRad);
-
-    if (i === 0) {
-      shape.moveTo(x, y);
-    } else {
-      shape.lineTo(x, y);
-    }
-  }
-
-  shape.closePath();
-  return shape;
-}
 
 export function HexDoor({
   connectionId,
@@ -83,15 +59,11 @@ export function HexDoor({
     [position, hexSize]
   );
 
-  // Create hex geometry matching tile/wall alignment
-  const geometry = useMemo(() => {
-    const shape = createHexShape(hexSize);
-    const extrudeSettings = {
-      depth: DOOR_HEIGHT,
-      bevelEnabled: false,
-    };
-    return new THREE.ExtrudeGeometry(shape, extrudeSettings);
-  }, [hexSize]);
+  // Create hex geometry using shared utility for consistency with walls
+  const geometry = useMemo(
+    () => createHexPillarGeometry(hexSize, DOOR_HEIGHT),
+    [hexSize]
+  );
 
   // Animate loading state with pulsing opacity
   // Only run animation when actually loading to avoid GPU overhead

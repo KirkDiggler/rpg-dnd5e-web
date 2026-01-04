@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
-import { cubeToWorld, type CubeCoord } from './hexMath';
+import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
 import { HexWall } from './HexWall';
 import { InstancedHexTiles } from './InstancedHexTiles';
 import { MovementRangeBorder } from './MovementRangeBorder';
@@ -270,39 +270,13 @@ function Scene({
     const positions: CubeCoord[] = [];
     for (const wall of walls) {
       if (!wall.start || !wall.end) continue;
-      // Get all hexes along the wall using line interpolation
-      const start = { x: wall.start.x, y: wall.start.y, z: wall.start.z };
-      const end = { x: wall.end.x, y: wall.end.y, z: wall.end.z };
-      const distance = Math.max(
-        Math.abs(start.x - end.x),
-        Math.abs(start.y - end.y),
-        Math.abs(start.z - end.z)
-      );
-      if (distance === 0) {
-        positions.push(start);
-      } else {
-        for (let i = 0; i <= distance; i++) {
-          const t = i / distance;
-          const x = start.x + (end.x - start.x) * t;
-          const y = start.y + (end.y - start.y) * t;
-          const z = start.z + (end.z - start.z) * t;
-          // Round to nearest hex (cube round)
-          let rx = Math.round(x);
-          let ry = Math.round(y);
-          let rz = Math.round(z);
-          const xDiff = Math.abs(rx - x);
-          const yDiff = Math.abs(ry - y);
-          const zDiff = Math.abs(rz - z);
-          if (xDiff > yDiff && xDiff > zDiff) {
-            rx = -ry - rz;
-          } else if (yDiff > zDiff) {
-            ry = -rx - rz;
-          } else {
-            rz = -rx - ry;
-          }
-          positions.push({ x: rx, y: ry, z: rz });
-        }
-      }
+      const start: CubeCoord = {
+        x: wall.start.x,
+        y: wall.start.y,
+        z: wall.start.z,
+      };
+      const end: CubeCoord = { x: wall.end.x, y: wall.end.y, z: wall.end.z };
+      positions.push(...getHexLine(start, end));
     }
     return positions;
   }, [walls]);
@@ -361,7 +335,7 @@ function Scene({
 
       {/* Render walls (after tiles, before doors) */}
       {walls.map((wall) => {
-        const key = `wall-${wall.start?.x ?? 0}-${wall.start?.z ?? 0}-${wall.end?.x ?? 0}-${wall.end?.z ?? 0}`;
+        const key = `wall-${wall.start?.x ?? 0}-${wall.start?.y ?? 0}-${wall.start?.z ?? 0}-${wall.end?.x ?? 0}-${wall.end?.y ?? 0}-${wall.end?.z ?? 0}`;
         return <HexWall key={key} wall={wall} hexSize={HEX_SIZE} />;
       })}
 

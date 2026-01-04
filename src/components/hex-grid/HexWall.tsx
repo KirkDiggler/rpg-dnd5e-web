@@ -3,23 +3,24 @@
  *
  * Renders hex-shaped pillars along the wall path from start to end.
  * Each hex the wall passes through gets a full hex pillar.
- * Uses the same hex geometry as tiles (ShapeGeometry + ExtrudeGeometry) for perfect alignment.
+ * Uses shared hex geometry for visual consistency with tiles and doors.
  */
 
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { cubeToWorld, type CubeCoord } from './hexMath';
+import { createHexPillarGeometry } from './hexGeometry';
+import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
 
 export interface HexWallProps {
   wall: Wall;
   hexSize: number;
 }
 
-// Wall visual constants (in world space units, matches hex size scale)
+// Wall height in world space units (matches hex size scale)
 const WALL_HEIGHT = 0.8;
 
-// Placeholder colors by material type
+// Color lookup by material type
 function getMaterialColor(material: string): string {
   switch (material) {
     case 'stone':
@@ -33,86 +34,8 @@ function getMaterialColor(material: string): string {
   }
 }
 
-/**
- * Creates a hex shape matching the tile geometry exactly
- * Uses the same vertex calculation as InstancedHexTiles (30 + 60*i degrees)
- */
-function createHexShape(hexSize: number): THREE.Shape {
-  const shape = new THREE.Shape();
-  const scale = 0.95; // Slightly smaller than tiles for visual distinction
-
-  for (let i = 0; i < 6; i++) {
-    const angleDeg = 30 + 60 * i;
-    const angleRad = (Math.PI / 180) * angleDeg;
-    const x = hexSize * scale * Math.cos(angleRad);
-    const y = hexSize * scale * Math.sin(angleRad);
-
-    if (i === 0) {
-      shape.moveTo(x, y);
-    } else {
-      shape.lineTo(x, y);
-    }
-  }
-
-  shape.closePath();
-  return shape;
-}
-
-/**
- * Get all hex positions along a line from start to end using cube coordinate lerp
- * This is the standard hex line-drawing algorithm
- */
-function getHexesAlongLine(start: CubeCoord, end: CubeCoord): CubeCoord[] {
-  const distance = Math.max(
-    Math.abs(start.x - end.x),
-    Math.abs(start.y - end.y),
-    Math.abs(start.z - end.z)
-  );
-
-  if (distance === 0) {
-    return [start];
-  }
-
-  const hexes: CubeCoord[] = [];
-  for (let i = 0; i <= distance; i++) {
-    const t = i / distance;
-    // Lerp each coordinate
-    const x = start.x + (end.x - start.x) * t;
-    const y = start.y + (end.y - start.y) * t;
-    const z = start.z + (end.z - start.z) * t;
-    // Round to nearest hex
-    hexes.push(cubeRound({ x, y, z }));
-  }
-
-  return hexes;
-}
-
-/**
- * Round fractional cube coordinates to nearest valid hex
- */
-function cubeRound(cube: { x: number; y: number; z: number }): CubeCoord {
-  let rx = Math.round(cube.x);
-  let ry = Math.round(cube.y);
-  let rz = Math.round(cube.z);
-
-  const xDiff = Math.abs(rx - cube.x);
-  const yDiff = Math.abs(ry - cube.y);
-  const zDiff = Math.abs(rz - cube.z);
-
-  // Adjust the component with largest rounding error to maintain x + y + z = 0
-  if (xDiff > yDiff && xDiff > zDiff) {
-    rx = -ry - rz;
-  } else if (yDiff > zDiff) {
-    ry = -rx - rz;
-  } else {
-    rz = -rx - ry;
-  }
-
-  return { x: rx, y: ry, z: rz };
-}
-
 export function HexWall({ wall, hexSize }: HexWallProps) {
-  // Get all hex positions along the wall
+  // Get all hex positions along the wall using shared line algorithm
   const hexPositions = useMemo(() => {
     if (!wall.start || !wall.end) return [];
 
@@ -127,7 +50,7 @@ export function HexWall({ wall, hexSize }: HexWallProps) {
       z: wall.end.z,
     };
 
-    return getHexesAlongLine(start, end);
+    return getHexLine(start, end);
   }, [wall.start, wall.end]);
 
   // Convert to world positions
@@ -136,17 +59,20 @@ export function HexWall({ wall, hexSize }: HexWallProps) {
     [hexPositions, hexSize]
   );
 
-  // Create hex geometry matching tile alignment exactly
-  const geometry = useMemo(() => {
-    const shape = createHexShape(hexSize);
-    const extrudeSettings = {
-      depth: WALL_HEIGHT,
-      bevelEnabled: false,
-    };
-    return new THREE.ExtrudeGeometry(shape, extrudeSettings);
-  }, [hexSize]);
+  // Create shared hex geometry for all pillars
+  const geometry = useMemo(
+    () => createHexPillarGeometry(hexSize, WALL_HEIGHT),
+    [hexSize]
+  );
 
-  const color = getMaterialColor(wall.material || 'stone');
+  // Create shared material (same color for all segments of this wall)
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: getMaterialColor(wall.material || 'stone'),
+      }),
+    [wall.material]
+  );
 
   if (worldPositions.length === 0) {
     return null;
@@ -163,9 +89,8 @@ export function HexWall({ wall, hexSize }: HexWallProps) {
           position={[pos.x, 0, pos.z]}
           rotation={[-Math.PI / 2, 0, 0]}
           geometry={geometry}
-        >
-          <meshStandardMaterial color={color} />
-        </mesh>
+          material={material}
+        />
       ))}
     </>
   );
