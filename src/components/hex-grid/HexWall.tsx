@@ -88,10 +88,17 @@ export function HexWall({ wall, hexSize }: HexWallProps) {
   const color = getMaterialColor(wall.material || 'stone');
 
   if (isPillar) {
-    // Render as a pillar (small cube) at the start position
+    // Render as a hex-shaped pillar that fills the whole hex
+    // CylinderGeometry with 6 radialSegments = hexagon
+    // Rotate 30 degrees (PI/6) for pointy-top orientation matching our hex grid
     return (
-      <mesh position={[startWorld.x, WALL_HEIGHT / 2, startWorld.z]}>
-        <boxGeometry args={[thickness * 2, WALL_HEIGHT, thickness * 2]} />
+      <mesh
+        position={[startWorld.x, WALL_HEIGHT / 2, startWorld.z]}
+        rotation={[0, Math.PI / 6, 0]}
+      >
+        <cylinderGeometry
+          args={[hexSize * 0.9, hexSize * 0.9, WALL_HEIGHT, 6]}
+        />
         <meshStandardMaterial color={color} />
       </mesh>
     );
