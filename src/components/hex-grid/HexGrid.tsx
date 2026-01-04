@@ -304,32 +304,10 @@ function Scene({
         selectedHex={selectedHex}
       />
 
-      {/* Render walls (after tiles, before doors) - skip walls that pass through door positions */}
-      {walls
-        .filter((wall) => {
-          if (!wall.start || !wall.end) return true;
-          // Check if any door lies on or near this wall segment
-          const wallPassesThroughDoor = doors.some((door) => {
-            if (!door.position) return false;
-            const d = door.position;
-            const s = wall.start!;
-            const e = wall.end!;
-            // Check if door is collinear with wall segment (on the line between start and end)
-            // Using cross product: if (d - s) x (e - s) ≈ 0, points are collinear
-            // For cube coords, check if door is between start and end on each axis
-            const minX = Math.min(s.x, e.x);
-            const maxX = Math.max(s.x, e.x);
-            const minZ = Math.min(s.z, e.z);
-            const maxZ = Math.max(s.z, e.z);
-            const doorOnSegment =
-              d.x >= minX && d.x <= maxX && d.z >= minZ && d.z <= maxZ;
-            return doorOnSegment;
-          });
-          return !wallPassesThroughDoor;
-        })
-        .map((wall, index) => (
-          <HexWall key={`wall-${index}`} wall={wall} hexSize={HEX_SIZE} />
-        ))}
+      {/* Render walls (after tiles, before doors) */}
+      {walls.map((wall, index) => (
+        <HexWall key={`wall-${index}`} wall={wall} hexSize={HEX_SIZE} />
+      ))}
 
       {/* Render doors (after tiles, before movement range) */}
       {doors.map((door) => {

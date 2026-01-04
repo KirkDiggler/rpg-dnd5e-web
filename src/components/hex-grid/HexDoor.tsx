@@ -28,7 +28,7 @@ export interface HexDoorProps {
 // Door visual constants
 const DOOR_WIDTH_RATIO = 0.5; // Relative to hex size
 const DOOR_HEIGHT_RATIO = 0.3;
-const DOOR_Y_OFFSET = 0.02; // Slightly above hex tile to prevent z-fighting
+const DOOR_Y_OFFSET = 0.85; // Above wall height (0.8) so doors are visible
 
 // Colors for door states
 const COLORS = {
