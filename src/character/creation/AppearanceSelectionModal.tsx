@@ -44,6 +44,7 @@ function CharacterPreview({
 }) {
   return (
     <Canvas
+      frameloop="demand"
       camera={{ position: [0, 1.5, 3], fov: 45 }}
       style={{ background: 'transparent' }}
     >

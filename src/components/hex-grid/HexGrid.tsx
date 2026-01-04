@@ -24,7 +24,7 @@ import * as THREE from 'three';
 import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
 import { cubeToWorld, type CubeCoord } from './hexMath';
-import { HexTile } from './HexTile';
+import { InstancedHexTiles } from './InstancedHexTiles';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
 import type { TurnOrderEntry } from './TurnOrderOverlay';
@@ -274,15 +274,6 @@ function Scene({
     onEntityClick?.(entityId);
   };
 
-  // Helper to check if a cube coord matches another
-  const coordsEqual = (
-    a: CubeCoord | null,
-    b: { x: number; y: number; z: number }
-  ): boolean => {
-    if (a === null) return false;
-    return a.x === b.x && a.y === b.y && a.z === b.z;
-  };
-
   return (
     <>
       {/* Lighting */}
@@ -299,25 +290,14 @@ function Scene({
         <meshBasicMaterial visible={false} />
       </mesh>
 
-      {/* Render all hex tiles */}
-      {Array.from({ length: gridHeight }, (_, z) =>
-        Array.from({ length: gridWidth }, (_, x) => {
-          const y = -x - z;
-          const position: CubeCoord = { x, y, z };
-          const isHovered = coordsEqual(hoveredHex, position);
-          const isSelected = coordsEqual(selectedHex, position);
-
-          return (
-            <HexTile
-              key={`hex-${x}-${y}-${z}`}
-              position={position}
-              hexSize={HEX_SIZE}
-              isHovered={isHovered}
-              isSelected={isSelected}
-            />
-          );
-        })
-      )}
+      {/* Render all hex tiles using instanced mesh (single draw call) */}
+      <InstancedHexTiles
+        gridWidth={gridWidth}
+        gridHeight={gridHeight}
+        hexSize={HEX_SIZE}
+        hoveredHex={hoveredHex}
+        selectedHex={selectedHex}
+      />
 
       {/* Render doors (after tiles, before movement range) */}
       {doors.map((door) => {
@@ -391,6 +371,31 @@ function Scene({
  */
 export function HexGrid(props: HexGridProps) {
   const { combatState, characters = [] } = props;
+  const [isContextLost, setIsContextLost] = useState(false);
+
+  // Handle WebGL context loss/restore for GPU protection
+  const handleCanvasCreated = useCallback(
+    ({ gl }: { gl: THREE.WebGLRenderer }) => {
+      const canvas = gl.domElement;
+
+      const handleContextLost = (event: Event) => {
+        event.preventDefault();
+        console.warn('WebGL context lost - GPU may be overloaded');
+        setIsContextLost(true);
+      };
+
+      const handleContextRestored = () => {
+        console.info('WebGL context restored');
+        setIsContextLost(false);
+      };
+
+      canvas.addEventListener('webglcontextlost', handleContextLost);
+      canvas.addEventListener('webglcontextrestored', handleContextRestored);
+
+      // Cleanup on unmount (Canvas handles this via gl disposal)
+    },
+    []
+  );
 
   // Build turn order from combat state
   const turnOrder = useMemo((): TurnOrderEntry[] => {
@@ -414,19 +419,58 @@ export function HexGrid(props: HexGridProps) {
         overflow: 'hidden',
       }}
     >
-      <Canvas
-        orthographic
-        camera={{
-          // Lower isometric angle similar to Stolen Realm
-          position: [8, 10, 8],
-          zoom: 80,
-          near: 0.1,
-          far: 1000,
-        }}
-        style={{ width: '100%', height: '100%' }}
-      >
-        <Scene {...props} />
-      </Canvas>
+      {isContextLost ? (
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'var(--bg-secondary, #1a1a2e)',
+            color: 'var(--text-primary, #fff)',
+            padding: '2rem',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
+          <h2 style={{ margin: '0 0 0.5rem 0' }}>Graphics Error</h2>
+          <p style={{ color: 'var(--text-muted, #888)', margin: '0 0 1rem 0' }}>
+            Your GPU couldn&apos;t handle the rendering load.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '0.5rem 1.5rem',
+              backgroundColor: 'var(--accent-primary, #5865F2)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '1rem',
+            }}
+          >
+            Reload Page
+          </button>
+        </div>
+      ) : (
+        <Canvas
+          orthographic
+          frameloop="demand"
+          onCreated={handleCanvasCreated}
+          camera={{
+            // Lower isometric angle similar to Stolen Realm
+            position: [8, 10, 8],
+            zoom: 80,
+            near: 0.1,
+            far: 1000,
+          }}
+          style={{ width: '100%', height: '100%' }}
+        >
+          <Scene {...props} />
+        </Canvas>
+      )}
 
       {/* Turn order carousel overlay at top */}
       {turnOrder.length > 0 && (
