@@ -63,12 +63,12 @@ export function HexDoor({
   const doorHeight = hexSize * DOOR_HEIGHT_RATIO;
 
   // Animate loading state with pulsing opacity
+  // Only run animation when actually loading to avoid GPU overhead
   useFrame((state) => {
-    if (meshRef.current && isLoading) {
-      const material = meshRef.current.material as THREE.MeshStandardMaterial;
-      // Pulse between 0.5 and 1.0 opacity
-      material.opacity = 0.5 + 0.5 * Math.sin(state.clock.elapsedTime * 4);
-    }
+    if (!isLoading || !meshRef.current) return;
+    const material = meshRef.current.material as THREE.MeshStandardMaterial;
+    // Pulse between 0.5 and 1.0 opacity
+    material.opacity = 0.5 + 0.5 * Math.sin(state.clock.elapsedTime * 4);
   });
 
   // Reset opacity when loading completes

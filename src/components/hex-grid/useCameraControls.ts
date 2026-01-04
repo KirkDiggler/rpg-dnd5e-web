@@ -53,6 +53,10 @@ export function useCameraControls({
     lastX: 0,
   });
 
+  // Reusable vectors for camera movement (avoid allocations in useFrame)
+  const forward = useRef(new THREE.Vector3());
+  const right = useRef(new THREE.Vector3());
+
   // Current azimuthal angle (rotation around Y axis)
   const azimuth = useRef(Math.PI / 4); // Start at 45 degrees
 
@@ -166,44 +170,45 @@ export function useCameraControls({
 
   // Update each frame based on key state
   useFrame(() => {
+    // Early return if no keys pressed - avoid unnecessary work
+    const { w, a, s, d, q, e } = keys.current;
+    if (!w && !a && !s && !d && !q && !e) return;
+
     let changed = false;
 
     // WASD panning - move the target point
     // Direction is relative to current camera rotation
-    const forward = new THREE.Vector3(
+    // Reuse vectors from refs to avoid allocations
+    forward.current.set(
       -Math.cos(azimuth.current),
       0,
       -Math.sin(azimuth.current)
     );
-    const right = new THREE.Vector3(
-      Math.sin(azimuth.current),
-      0,
-      -Math.cos(azimuth.current)
-    );
+    right.current.set(Math.sin(azimuth.current), 0, -Math.cos(azimuth.current));
 
-    if (keys.current.w) {
-      target.addScaledVector(forward, panSpeed);
+    if (w) {
+      target.addScaledVector(forward.current, panSpeed);
       changed = true;
     }
-    if (keys.current.s) {
-      target.addScaledVector(forward, -panSpeed);
+    if (s) {
+      target.addScaledVector(forward.current, -panSpeed);
       changed = true;
     }
-    if (keys.current.a) {
-      target.addScaledVector(right, -panSpeed);
+    if (a) {
+      target.addScaledVector(right.current, -panSpeed);
       changed = true;
     }
-    if (keys.current.d) {
-      target.addScaledVector(right, panSpeed);
+    if (d) {
+      target.addScaledVector(right.current, panSpeed);
       changed = true;
     }
 
     // Q/E rotation
-    if (keys.current.q) {
+    if (q) {
       azimuth.current += rotateSpeed;
       changed = true;
     }
-    if (keys.current.e) {
+    if (e) {
       azimuth.current -= rotateSpeed;
       changed = true;
     }
