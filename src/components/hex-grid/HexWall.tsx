@@ -18,6 +18,7 @@ export interface HexWallProps {
 const WALL_HEIGHT = 0.8;
 const DEFAULT_WALL_THICKNESS = 0.15;
 const MIN_WALL_LENGTH = 0.01; // Below this length, render as pillar instead of wall
+const WALL_OUTWARD_OFFSET = 0.5; // Push walls outward from hex center to sit on edge
 
 // Placeholder colors by material type
 function getMaterialColor(material: string): string {
@@ -54,22 +55,25 @@ export function HexWall({ wall, hexSize }: HexWallProps) {
     [wall.end, hexSize]
   );
 
-  // Calculate wall geometry
+  // Calculate wall geometry with outward offset
   const geometry = useMemo(() => {
     if (!startWorld || !endWorld) return null;
 
-    const midX = (startWorld.x + endWorld.x) / 2;
-    const midZ = (startWorld.z + endWorld.z) / 2;
-    const length = Math.hypot(
-      endWorld.x - startWorld.x,
-      endWorld.z - startWorld.z
-    );
-    const angle = Math.atan2(
-      endWorld.z - startWorld.z,
-      endWorld.x - startWorld.x
-    );
+    const dx = endWorld.x - startWorld.x;
+    const dz = endWorld.z - startWorld.z;
+    const length = Math.hypot(dx, dz);
+    const angle = Math.atan2(dz, dx);
 
-    return { midX, midZ, length, angle };
+    // Calculate perpendicular direction (rotated 90 degrees)
+    // This pushes the wall outward from the room interior
+    const perpX = length > 0 ? -dz / length : 0;
+    const perpZ = length > 0 ? dx / length : 0;
+
+    // Offset midpoint perpendicular to wall direction
+    const midX = (startWorld.x + endWorld.x) / 2 + perpX * WALL_OUTWARD_OFFSET;
+    const midZ = (startWorld.z + endWorld.z) / 2 + perpZ * WALL_OUTWARD_OFFSET;
+
+    return { midX, midZ, length, angle, perpX, perpZ };
   }, [startWorld, endWorld]);
 
   // Early return after all hooks are called
