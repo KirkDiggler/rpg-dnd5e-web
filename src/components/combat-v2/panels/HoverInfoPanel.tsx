@@ -16,6 +16,7 @@ import {
   getMonsterTypeDisplayName,
 } from '@/utils/displayNames';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { MonsterType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import styles from '../styles/combat.module.css';
 
@@ -35,6 +36,8 @@ export interface HoverInfoPanelProps {
   currentCharacter: Character | null;
   /** All characters for looking up ally info */
   characters: Character[];
+  /** All monsters for looking up monster stats */
+  monsters?: MonsterCombatState[];
 }
 
 /** Get class display name from character */
@@ -80,13 +83,40 @@ function PlayerInfo({ character }: { character: Character }) {
   );
 }
 
+/**
+ * Get health category based on HP percentage
+ * In D&D, players don't know exact enemy HP, but can see how damaged they look
+ */
+function getHealthCategory(
+  currentHp: number,
+  maxHp: number
+): { label: string; color: string } {
+  if (maxHp <= 0) return { label: 'Unknown', color: 'var(--text-muted)' };
+
+  const percentage = (currentHp / maxHp) * 100;
+
+  if (percentage >= 100) {
+    return { label: 'Uninjured', color: '#22c55e' }; // green
+  } else if (percentage >= 75) {
+    return { label: 'Lightly Wounded', color: '#84cc16' }; // lime
+  } else if (percentage >= 50) {
+    return { label: 'Injured', color: '#eab308' }; // yellow
+  } else if (percentage >= 25) {
+    return { label: 'Badly Wounded', color: '#f97316' }; // orange
+  } else if (percentage > 0) {
+    return { label: 'Near Death', color: '#ef4444' }; // red
+  } else {
+    return { label: 'Dead', color: '#6b7280' }; // gray
+  }
+}
+
 /** Render monster/enemy info */
 function MonsterInfo({
-  name,
   monsterType,
+  monster,
 }: {
-  name: string;
   monsterType?: number;
+  monster?: MonsterCombatState;
 }) {
   // Show monster type name if available, otherwise just "Enemy"
   const typeLabel =
@@ -94,10 +124,22 @@ function MonsterInfo({
       ? getMonsterTypeDisplayName(monsterType as MonsterType)
       : 'Enemy';
 
+  // Get health category if we have monster data
+  const healthInfo = monster
+    ? getHealthCategory(monster.currentHitPoints, monster.maxHitPoints)
+    : null;
+
   return (
     <div className={styles.hoverInfoContent}>
-      <div className={styles.hoverInfoName}>{name}</div>
-      <div className={styles.hoverInfoSubtext}>{typeLabel}</div>
+      <div className={styles.hoverInfoName}>{typeLabel}</div>
+      {healthInfo && (
+        <div
+          className={styles.hoverInfoSubtext}
+          style={{ color: healthInfo.color }}
+        >
+          {healthInfo.label}
+        </div>
+      )}
     </div>
   );
 }
@@ -106,6 +148,7 @@ export function HoverInfoPanel({
   hoveredEntity,
   selectedEntity,
   characters,
+  monsters = [],
 }: HoverInfoPanelProps) {
   // Only show when actually hovering or have a selected entity
   const displayEntity = hoveredEntity || selectedEntity;
@@ -136,12 +179,10 @@ export function HoverInfoPanel({
       borderClass = styles.hoverInfoAlly;
     }
   } else {
-    // Monster/enemy - use name and monster type from entity
+    // Monster/enemy - look up full monster data for health display
+    const monster = monsters.find((m) => m.monsterId === displayEntity.id);
     content = (
-      <MonsterInfo
-        name={displayEntity.name}
-        monsterType={displayEntity.monsterType}
-      />
+      <MonsterInfo monsterType={displayEntity.monsterType} monster={monster} />
     );
     borderClass = styles.hoverInfoEnemy;
   }

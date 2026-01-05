@@ -62,13 +62,15 @@ export function CharacterCarousel({
   const loading = charactersLoading || draftsLoading;
   const error = charactersError || draftsError;
 
-  // Build carousel items: characters first, then drafts, then create card
+  // Build carousel items: characters first (filter out level 0), then drafts, then create card
   const items: CarouselItem[] = [
-    ...characters.map((c) => ({
-      type: 'character' as const,
-      data: c,
-      id: c.id,
-    })),
+    ...characters
+      .filter((c) => c.level > 0) // Exclude incomplete characters
+      .map((c) => ({
+        type: 'character' as const,
+        data: c,
+        id: c.id,
+      })),
     ...drafts.map((d) => ({ type: 'draft' as const, data: d, id: d.id })),
     { type: 'create' as const, id: 'create' },
   ];

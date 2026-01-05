@@ -2,6 +2,7 @@ import { ConditionsDisplay, FeatureActions } from '@/components/features';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
+  MonsterCombatState,
   TurnState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { FeatureId } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
@@ -26,6 +27,7 @@ export interface CombatPanelProps {
   hoveredEntity?: HoveredEntity | null;
   selectedHoverEntity?: HoveredEntity | null;
   characters?: Character[];
+  monsters?: MonsterCombatState[];
 
   // Callbacks
   onAttack?: () => void;
@@ -52,6 +54,7 @@ export function CombatPanel({
   hoveredEntity,
   selectedHoverEntity,
   characters = [],
+  monsters = [],
   onAttack,
   onMove,
   onFeature,
@@ -72,6 +75,7 @@ export function CombatPanel({
             selectedEntity={selectedHoverEntity || null}
             currentCharacter={character}
             characters={characters}
+            monsters={monsters}
           />
         </div>
       )}

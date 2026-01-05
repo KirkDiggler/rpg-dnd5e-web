@@ -1097,7 +1097,7 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
         (prev) =>
           ({
             ...prev,
-            abilityScores,
+            baseAbilityScores: abilityScores,
           }) as CharacterDraft
       );
 

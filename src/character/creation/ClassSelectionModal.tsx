@@ -5,6 +5,7 @@ import type {
 import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
   Armor,
+  Class,
   Language,
   Skill,
   Tool,
@@ -21,6 +22,14 @@ import {
   getWeaponProficiencyCategoryDisplay,
 } from '../../utils/enumDisplay';
 import { VisualCarousel } from './components/VisualCarousel';
+
+// Only show these classes in the selection (pre-alpha simplification)
+const ALLOWED_CLASSES = new Set([
+  Class.FIGHTER,
+  Class.MONK,
+  Class.ROGUE,
+  Class.BARBARIAN,
+]);
 
 // Helper to get CSS variable values for portals
 function getCSSVariable(name: string, fallback: string): string {
@@ -92,7 +101,11 @@ export function ClassSelectionModal({
   onSelect,
   onClose,
 }: ClassSelectionModalProps) {
-  const { data: classes, loading, error } = useListClasses();
+  const { data: allClasses, loading, error } = useListClasses();
+
+  // Filter to only show allowed classes (pre-alpha simplification)
+  const classes = allClasses.filter((c) => ALLOWED_CLASSES.has(c.classId));
+
   const [selectedClassIndex, setSelectedClassIndex] = useState(0);
   const [selectedSubclassIndex, setSelectedSubclassIndex] = useState<
     number | null
