@@ -195,8 +195,9 @@ function createAttackLogEntry(
     action.details.case === 'attackResult' ? action.details.value : undefined;
 
   // Determine if the attack hit:
-  // Use attackResult.hit directly if available, otherwise fall back to action.success
-  // Note: In protobuf-es, boolean fields default to false, so we can use them directly
+  // Prefer attackResult.hit when an attackResult is present; otherwise fall back to action.success.
+  // Note: attackResult may be undefined (no attack details), in which case we use action.success.
+  // When attackResult exists, hit is a boolean that defaults to false in protobuf-es.
   const hit = attackResult?.hit ?? action.success;
 
   // Extract dice rolls if we have attack result

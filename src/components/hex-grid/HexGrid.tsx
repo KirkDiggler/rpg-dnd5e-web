@@ -335,7 +335,7 @@ function Scene({
 
       {/* Render walls (after tiles, before doors) */}
       {walls.map((wall) => {
-        const key = `wall-${wall.start?.x ?? 0}-${wall.start?.y ?? 0}-${wall.start?.z ?? 0}-${wall.end?.x ?? 0}-${wall.end?.y ?? 0}-${wall.end?.z ?? 0}`;
+        const key = `wall-${wall.start?.x ?? 'u'}-${wall.start?.y ?? 'u'}-${wall.start?.z ?? 'u'}-${wall.end?.x ?? 'u'}-${wall.end?.y ?? 'u'}-${wall.end?.z ?? 'u'}`;
         return <HexWall key={key} wall={wall} hexSize={HEX_SIZE} />;
       })}
 

@@ -93,6 +93,11 @@ function getHealthCategory(
 ): { label: string; color: string } {
   if (maxHp <= 0) return { label: 'Unknown', color: 'var(--text-muted)' };
 
+  // Handle dead/negative HP first (D&D allows going below 0)
+  if (currentHp <= 0) {
+    return { label: 'Dead', color: '#6b7280' }; // gray
+  }
+
   const percentage = (currentHp / maxHp) * 100;
 
   if (percentage >= 100) {
@@ -103,10 +108,8 @@ function getHealthCategory(
     return { label: 'Injured', color: '#eab308' }; // yellow
   } else if (percentage >= 25) {
     return { label: 'Badly Wounded', color: '#f97316' }; // orange
-  } else if (percentage > 0) {
-    return { label: 'Near Death', color: '#ef4444' }; // red
   } else {
-    return { label: 'Dead', color: '#6b7280' }; // gray
+    return { label: 'Near Death', color: '#ef4444' }; // red
   }
 }
 

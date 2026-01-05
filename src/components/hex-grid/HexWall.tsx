@@ -7,7 +7,7 @@
  */
 
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { createHexPillarGeometry } from './hexGeometry';
 import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
@@ -73,6 +73,14 @@ export function HexWall({ wall, hexSize }: HexWallProps) {
       }),
     [wall.material]
   );
+
+  // Cleanup geometry and material on unmount or when dependencies change
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+      material.dispose();
+    };
+  }, [geometry, material]);
 
   if (worldPositions.length === 0) {
     return null;
