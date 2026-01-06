@@ -15,7 +15,7 @@ import {
   UpdateAbilityScoresRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
-import { CheckCircle, Dices, RefreshCw } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
 import { CharacterDraftContext } from '../CharacterDraftContextDef';
 
@@ -36,21 +36,21 @@ const ABILITY_NAMES: Array<{ key: AbilityKey; label: string; abbr: string }> = [
   { key: 'charisma', label: 'Charisma', abbr: 'CHA' },
 ];
 
-interface DiceRollDisplayProps {
+interface ScoreDisplayProps {
   roll: DiceRoll;
   isAssigned: boolean;
   isSelected: boolean;
   onClick: () => void;
 }
 
-function DiceRollDisplay({
+function ScoreDisplay({
   roll,
   isAssigned,
   isSelected,
   onClick,
-}: DiceRollDisplayProps) {
-  const actualTotal = calculateAbilityScoreValue(roll);
-  const modifier = getAbilityModifier(actualTotal);
+}: ScoreDisplayProps) {
+  const score = calculateAbilityScoreValue(roll);
+  const modifier = getAbilityModifier(score);
   const modifierStr = formatModifier(modifier);
 
   return (
@@ -76,57 +76,9 @@ function DiceRollDisplay({
           : 'var(--border-primary)',
       }}
     >
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-2xl font-bold">{actualTotal}</span>
+      <div className="flex items-center justify-between">
+        <span className="text-2xl font-bold">{score}</span>
         <span className="text-sm text-muted">{modifierStr}</span>
-      </div>
-      <div className="flex gap-1 text-xs">
-        {(() => {
-          // WORKAROUND: Server currently returns only kept dice + dropped values
-          // See issue: https://github.com/KirkDiggler/rpg-api/issues/196
-          // Server returns: { dice: [4,6,4], dropped: [3] } for a 4d6 roll
-          // We need to reconstruct the full roll for display
-
-          let displayDice = [...roll.dice];
-          const droppedIndices = new Set<number>();
-
-          if (roll.dropped && roll.dropped.length > 0) {
-            // Reconstruct the full roll by adding dropped dice back
-            // Note: This assumes 4d6 drop lowest (1 die dropped)
-            displayDice = [...roll.dice, ...roll.dropped].sort((a, b) => b - a);
-
-            // Find which index has the dropped value
-            // For 4d6 drop lowest, it's always the lowest value
-            const lowestValue = Math.min(...displayDice);
-            const lowestIndex = displayDice.indexOf(lowestValue);
-            droppedIndices.add(lowestIndex);
-          } else if (roll.dice.length === 4) {
-            // Legacy path: For 4d6 with no server-side dropping
-            const lowestValue = Math.min(...displayDice);
-            const lowestIndex = displayDice.indexOf(lowestValue);
-            droppedIndices.add(lowestIndex);
-          }
-
-          return displayDice.map((die, idx) => {
-            const isDropped = droppedIndices.has(idx);
-
-            return (
-              <span
-                key={idx}
-                className={`px-1 py-0.5 rounded ${
-                  isDropped ? 'opacity-50 line-through' : ''
-                }`}
-                style={{
-                  backgroundColor: isDropped
-                    ? 'var(--bg-tertiary)'
-                    : 'var(--bg-secondary)',
-                }}
-              >
-                {die}
-              </span>
-            );
-          });
-        })()}
       </div>
       {isAssigned && <div className="text-xs text-muted mt-1">Assigned</div>}
     </motion.div>
@@ -227,10 +179,8 @@ export function AbilityScoresSectionV2({
   const {
     rolls,
     assignments,
-    loading,
     error,
     loadExistingRolls,
-    rollAbilityScores,
     assignRoll,
     unassignRoll,
     isRollAssigned,
@@ -279,24 +229,6 @@ export function AbilityScoresSectionV2({
       } else {
         setSelectedAbility(abilityKey === selectedAbility ? null : abilityKey);
       }
-    }
-  };
-
-  // Roll individual ability score
-  const handleRollOne = async () => {
-    try {
-      await rollAbilityScores(1);
-    } catch (error) {
-      console.error('Failed to roll:', error);
-    }
-  };
-
-  // Roll all ability scores at once
-  const handleRollAll = async () => {
-    try {
-      await rollAbilityScores(6);
-    } catch (error) {
-      console.error('Failed to roll all:', error);
     }
   };
 
@@ -421,35 +353,12 @@ export function AbilityScoresSectionV2({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2
-          className="text-2xl font-bold font-serif"
-          style={{ color: 'var(--text-primary)' }}
-        >
-          Ability Scores
-        </h2>
-
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            onClick={handleRollOne}
-            size="sm"
-            disabled={loading || rolls.length >= 6}
-          >
-            <Dices className="w-4 h-4 mr-1" />
-            Roll One
-          </Button>
-          <Button
-            variant="primary"
-            onClick={handleRollAll}
-            size="sm"
-            disabled={loading || rolls.length > 0}
-          >
-            <RefreshCw className="w-4 h-4 mr-1" />
-            Roll All (6)
-          </Button>
-        </div>
-      </div>
+      <h2
+        className="text-2xl font-bold font-serif"
+        style={{ color: 'var(--text-primary)' }}
+      >
+        Ability Scores
+      </h2>
 
       {error && (
         <div
@@ -468,26 +377,26 @@ export function AbilityScoresSectionV2({
         style={{ backgroundColor: 'var(--bg-secondary)' }}
       >
         <p className="text-sm text-muted mb-2">
-          Roll dice using the buttons above, then assign them to abilities by
-          clicking a roll and then an ability slot.
+          Assign scores to abilities by clicking a score and then an ability
+          slot. Click an assigned ability to unassign it.
         </p>
         <p className="text-sm text-muted">
-          Each roll uses 4d6, dropping the lowest die.
+          Standard Array: 15, 14, 13, 12, 10, 8
         </p>
       </div>
 
-      {/* Unassigned Rolls */}
+      {/* Available Scores */}
       {rolls.length > 0 && (
         <div>
           <h3
             className="text-lg font-semibold mb-3"
             style={{ color: 'var(--text-primary)' }}
           >
-            Available Rolls
+            Available Scores
           </h3>
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {rolls.map((roll) => (
-              <DiceRollDisplay
+              <ScoreDisplay
                 key={roll.rollId}
                 roll={roll}
                 isAssigned={isRollAssigned(roll.rollId)}
