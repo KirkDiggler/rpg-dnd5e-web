@@ -57,7 +57,7 @@ function ScoreDisplay({
     <motion.div
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
         isAssigned
           ? 'opacity-50 cursor-not-allowed'
           : isSelected
@@ -76,11 +76,13 @@ function ScoreDisplay({
           : 'var(--border-primary)',
       }}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-2xl font-bold">{score}</span>
-        <span className="text-sm text-muted">{modifierStr}</span>
+      <div className="text-center">
+        <div className="text-2xl font-bold">{score}</div>
+        <div className="text-sm text-muted">{modifierStr}</div>
       </div>
-      {isAssigned && <div className="text-xs text-muted mt-1">Assigned</div>}
+      {isAssigned && (
+        <div className="text-xs text-muted mt-1 text-center">Assigned</div>
+      )}
     </motion.div>
   );
 }
@@ -385,7 +387,7 @@ export function AbilityScoresSectionV2({
         </p>
       </div>
 
-      {/* Available Scores */}
+      {/* Available Scores - Standard array has exactly 6 values */}
       {rolls.length > 0 && (
         <div>
           <h3
@@ -394,8 +396,8 @@ export function AbilityScoresSectionV2({
           >
             Available Scores
           </h3>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-            {rolls.map((roll) => (
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+            {rolls.slice(0, 6).map((roll) => (
               <ScoreDisplay
                 key={roll.rollId}
                 roll={roll}
