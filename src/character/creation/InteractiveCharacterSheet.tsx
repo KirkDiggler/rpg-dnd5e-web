@@ -16,6 +16,7 @@ import {
   Language,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
+import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ClassModalChoices, RaceModalChoices } from '../../types/choices';
 import {
@@ -692,28 +693,31 @@ export function InteractiveCharacterSheet({
         >
           {/* Header */}
           <div className="flex items-center justify-between">
-            <div>
-              <h1
-                className="text-3xl font-bold font-serif"
-                style={{ color: 'var(--text-primary)' }}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={onCancel}
+                className="p-3 rounded-lg border-2 transition-all hover:scale-105"
+                style={{
+                  backgroundColor: 'var(--bg-secondary)',
+                  borderColor: 'var(--border-primary)',
+                  color: 'var(--text-primary)',
+                }}
+                title="Back to character list"
               >
-                Interactive Character Sheet
-              </h1>
-              <p className="text-lg" style={{ color: 'var(--text-muted)' }}>
-                Click on sections to make choices
-              </p>
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <div>
+                <h1
+                  className="text-3xl font-bold font-serif"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  Character Creation
+                </h1>
+                <p className="text-lg" style={{ color: 'var(--text-muted)' }}>
+                  Click on sections to make choices
+                </p>
+              </div>
             </div>
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 rounded-lg border transition-colors"
-              style={{
-                backgroundColor: 'var(--bg-secondary)',
-                borderColor: 'var(--border-primary)',
-                color: 'var(--text-primary)',
-              }}
-            >
-              Cancel
-            </button>
           </div>
 
           {/* Character Name */}
