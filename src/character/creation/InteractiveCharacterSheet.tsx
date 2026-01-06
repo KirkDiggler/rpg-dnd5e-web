@@ -650,7 +650,7 @@ export function InteractiveCharacterSheet({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
-      {/* Progress Tracker */}
+      {/* Progress Tracker with Back Button */}
       <div className="max-w-7xl mx-auto mb-6">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -662,8 +662,22 @@ export function InteractiveCharacterSheet({
             borderRadius: '0.75rem',
           }}
         >
-          <div className="overflow-x-auto">
-            <ProgressTracker steps={steps} orientation="horizontal" />
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onCancel}
+              className="p-2 rounded-lg border-2 transition-all hover:scale-105 flex-shrink-0"
+              style={{
+                backgroundColor: 'var(--bg-secondary)',
+                borderColor: 'var(--border-primary)',
+                color: 'var(--text-primary)',
+              }}
+              title="Back to character list"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex-1 overflow-x-auto">
+              <ProgressTracker steps={steps} orientation="horizontal" />
+            </div>
           </div>
           {draft.draft?.progress?.completionPercentage !== undefined && (
             <div className="mt-3 text-center">
@@ -691,35 +705,6 @@ export function InteractiveCharacterSheet({
             boxShadow: 'var(--shadow-modal)',
           }}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={onCancel}
-                className="p-3 rounded-lg border-2 transition-all hover:scale-105"
-                style={{
-                  backgroundColor: 'var(--bg-secondary)',
-                  borderColor: 'var(--border-primary)',
-                  color: 'var(--text-primary)',
-                }}
-                title="Back to character list"
-              >
-                <ArrowLeft className="w-6 h-6" />
-              </button>
-              <div>
-                <h1
-                  className="text-3xl font-bold font-serif"
-                  style={{ color: 'var(--text-primary)' }}
-                >
-                  Character Creation
-                </h1>
-                <p className="text-lg" style={{ color: 'var(--text-muted)' }}>
-                  Click on sections to make choices
-                </p>
-              </div>
-            </div>
-          </div>
-
           {/* Character Name */}
           <div className="space-y-4">
             <h2
