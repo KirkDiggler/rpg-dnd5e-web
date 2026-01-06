@@ -112,11 +112,14 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const playerId = discord.user?.id || (isDevelopment ? 'test-player' : '');
 
   // Fetch user's characters
-  const { data: availableCharacters = [], loading: charactersLoading } =
+  const { data: allCharacters = [], loading: charactersLoading } =
     useListCharacters({
       playerId,
       sessionId: isDevelopment ? 'test-session' : undefined,
     });
+
+  // Filter out incomplete characters (level 0 = draft/incomplete)
+  const availableCharacters = allCharacters.filter((c) => c.level > 0);
 
   // Game state
   const [encounterId, setEncounterId] = useState<string | null>(null);
@@ -1729,6 +1732,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           hoveredEntity={hoveredEntity}
           selectedHoverEntity={selectedHoverEntity}
           characters={availableCharacters}
+          monsters={monsters}
           onAttack={handleAttackAction}
           onMove={handleMoveAction}
           onFeature={handleActivateFeature}

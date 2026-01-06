@@ -65,6 +65,13 @@ export function HexDoor({
     [hexSize]
   );
 
+  // Cleanup geometry on unmount or when hexSize changes
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
+
   // Animate loading state with pulsing opacity
   // Only run animation when actually loading to avoid GPU overhead
   useFrame((state) => {

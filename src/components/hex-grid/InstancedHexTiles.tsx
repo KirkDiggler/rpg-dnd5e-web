@@ -74,12 +74,17 @@ function cubesEqual(a: CubeCoord | null, b: CubeCoord): boolean {
 }
 
 /**
- * Check if a coordinate is in a list of positions
+ * Convert cube coordinate to string key for Set lookup
  */
-function isInPositionList(coord: CubeCoord, positions: CubeCoord[]): boolean {
-  return positions.some(
-    (p) => p.x === coord.x && p.y === coord.y && p.z === coord.z
-  );
+function cubeToKey(coord: CubeCoord): string {
+  return `${coord.x},${coord.y},${coord.z}`;
+}
+
+/**
+ * Convert array of positions to Set for O(1) lookup
+ */
+function positionsToSet(positions: CubeCoord[]): Set<string> {
+  return new Set(positions.map(cubeToKey));
 }
 
 export function InstancedHexTiles({
@@ -154,6 +159,10 @@ export function InstancedHexTiles({
 
     const mesh = meshRef.current;
 
+    // Convert positions to Sets for O(1) lookup instead of O(n) array iteration
+    const doorSet = positionsToSet(doorPositions);
+    const wallSet = positionsToSet(wallPositions);
+
     // Create or update color attribute
     const colors = new Float32Array(instanceCount * 3);
 
@@ -161,15 +170,16 @@ export function InstancedHexTiles({
     for (let z = 0; z < gridHeight; z++) {
       for (let x = 0; x < gridWidth; x++) {
         const cube = indexToCube(x, z);
+        const cubeKey = cubeToKey(cube);
 
         let color: THREE.Color;
         if (cubesEqual(selectedHex, cube)) {
           color = COLORS.selected;
         } else if (cubesEqual(hoveredHex, cube)) {
           color = COLORS.hovered;
-        } else if (isInPositionList(cube, doorPositions)) {
+        } else if (doorSet.has(cubeKey)) {
           color = COLORS.door;
-        } else if (isInPositionList(cube, wallPositions)) {
+        } else if (wallSet.has(cubeKey)) {
           color = COLORS.wall;
         } else {
           color = COLORS.default;

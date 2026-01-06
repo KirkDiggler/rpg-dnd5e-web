@@ -142,7 +142,7 @@ function Scene({
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
     target: gridCenter,
-    polarAngle: Math.PI / 4, // 45 degrees from vertical (45 degrees from horizontal) - lower angle like Stolen Realm
+    polarAngle: Math.PI / 3.5, // ~51 degrees from vertical - slightly lower tactical angle
     panSpeed: 0.3,
     rotateSpeed: 0.02,
     minZoom: 30,
@@ -335,7 +335,7 @@ function Scene({
 
       {/* Render walls (after tiles, before doors) */}
       {walls.map((wall) => {
-        const key = `wall-${wall.start?.x ?? 0}-${wall.start?.y ?? 0}-${wall.start?.z ?? 0}-${wall.end?.x ?? 0}-${wall.end?.y ?? 0}-${wall.end?.z ?? 0}`;
+        const key = `wall-${wall.start?.x ?? 'u'}-${wall.start?.y ?? 'u'}-${wall.start?.z ?? 'u'}-${wall.end?.x ?? 'u'}-${wall.end?.y ?? 'u'}-${wall.end?.z ?? 'u'}`;
         return <HexWall key={key} wall={wall} hexSize={HEX_SIZE} />;
       })}
 
