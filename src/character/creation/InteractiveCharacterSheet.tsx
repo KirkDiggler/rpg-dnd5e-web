@@ -1,6 +1,7 @@
 import type { Step } from '@/components/ProgressTracker';
 import { ProgressTracker } from '@/components/ProgressTracker';
 import { useToast } from '@/components/ui';
+import { Button } from '@/components/ui/Button';
 import type {
   ClassInfo,
   RaceInfo,
@@ -16,6 +17,7 @@ import {
   Language,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { motion } from 'framer-motion';
+import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ClassModalChoices, RaceModalChoices } from '../../types/choices';
 import {
@@ -48,7 +50,7 @@ import { SpellSelectionModal } from './SpellSelectionModal';
 import { useCharacterDraft } from './useCharacterDraft';
 
 interface InteractiveCharacterSheetProps {
-  onComplete: () => void;
+  onComplete: (characterId: string) => void;
   onCancel: () => void;
 }
 
@@ -408,10 +410,9 @@ export function InteractiveCharacterSheet({
     if (!isCharacterValid()) return;
 
     try {
-      await draft.finalizeDraft();
-      // For now, just call onComplete
-      // In the future, this could navigate to the character sheet with the returned ID
-      onComplete();
+      const characterId = await draft.finalizeDraft();
+      // Pass the character ID to the completion handler
+      onComplete(characterId);
     } catch (error) {
       console.error('Failed to finalize character:', error);
       // Error is already handled by the context, just log it here
@@ -650,7 +651,7 @@ export function InteractiveCharacterSheet({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
-      {/* Progress Tracker */}
+      {/* Progress Tracker with Back Button */}
       <div className="max-w-7xl mx-auto mb-6">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -662,8 +663,18 @@ export function InteractiveCharacterSheet({
             borderRadius: '0.75rem',
           }}
         >
-          <div className="overflow-x-auto">
-            <ProgressTracker steps={steps} orientation="horizontal" />
+          <div className="flex items-center gap-4">
+            <Button
+              variant="secondary"
+              size="md"
+              icon={<ArrowLeft className="w-4 h-4" />}
+              onClick={onCancel}
+            >
+              Back to Home
+            </Button>
+            <div className="flex-1 overflow-x-auto">
+              <ProgressTracker steps={steps} orientation="horizontal" />
+            </div>
           </div>
           {draft.draft?.progress?.completionPercentage !== undefined && (
             <div className="mt-3 text-center">
@@ -691,32 +702,6 @@ export function InteractiveCharacterSheet({
             boxShadow: 'var(--shadow-modal)',
           }}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1
-                className="text-3xl font-bold font-serif"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                Interactive Character Sheet
-              </h1>
-              <p className="text-lg" style={{ color: 'var(--text-muted)' }}>
-                Click on sections to make choices
-              </p>
-            </div>
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 rounded-lg border transition-colors"
-              style={{
-                backgroundColor: 'var(--bg-secondary)',
-                borderColor: 'var(--border-primary)',
-                color: 'var(--text-primary)',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-
           {/* Character Name */}
           <div className="space-y-4">
             <h2

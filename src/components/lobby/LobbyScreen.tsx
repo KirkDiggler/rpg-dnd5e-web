@@ -39,11 +39,13 @@ export function LobbyScreen({
   currentPlayerId,
   currentPlayerName: _playerName,
   preSelectedCharacterId,
-  onBack,
+  onBack: _onBack,
   onStartCombat,
 }: LobbyScreenProps) {
-  // _playerName is kept for API compatibility but not currently used
+  // _playerName and _onBack are kept for API compatibility but not currently used
+  // Back button is handled by parent LobbyView component
   void _playerName;
+  void _onBack;
 
   // UI State
   const [lobbyState, setLobbyState] = useState<LobbyState>('main');
@@ -271,10 +273,7 @@ export function LobbyScreen({
         {lobbyState === 'main' ? (
           <>
             {/* Header */}
-            <div className="flex items-center justify-between mb-8">
-              <Button variant="ghost" size="md" onClick={onBack}>
-                ← Back
-              </Button>
+            <div className="text-center mb-8">
               <h2
                 className="text-2xl font-bold"
                 style={{
@@ -284,7 +283,6 @@ export function LobbyScreen({
               >
                 Game Lobby
               </h2>
-              <div className="w-20" /> {/* Spacer for centering */}
             </div>
 
             {/* Character info */}

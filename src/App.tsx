@@ -1,12 +1,6 @@
-import { create } from '@bufbuild/protobuf';
-import { FinalizeDraftRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
-import {
-  useFinalizeDraft,
-  useListCharacters,
-  useListDrafts,
-} from './api/hooks';
+import { useListCharacters, useListDrafts } from './api/hooks';
 import './App.css';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
@@ -35,7 +29,6 @@ function AppContent() {
 
   const discord = useDiscord();
   const draft = useCharacterDraft();
-  const { finalizeDraft, loading: finalizing } = useFinalizeDraft();
 
   // In production, require Discord auth. In dev, allow test player
   const isDevelopment = import.meta.env.MODE === 'development';
@@ -65,36 +58,12 @@ function AppContent() {
     }
   };
 
-  const handleCharacterCreated = async () => {
-    if (!draft.draftId) {
-      console.error('No draft ID available');
-      return;
-    }
-
-    try {
-      // Finalize the draft to create a character
-      const request = create(FinalizeDraftRequestSchema, {
-        draftId: draft.draftId,
-      });
-
-      const response = await finalizeDraft(request);
-
-      if (response.character) {
-        console.log('Character created:', response.character.id);
-        // Go back to home with the new character selected
-        setSelectedId(response.character.id);
-        setSelectedType('character');
-        setCurrentView('home');
-        // Reset draft after successful navigation
-        draft.reset();
-      } else {
-        // If no character was created, reset draft and go back to home
-        draft.reset();
-        setCurrentView('home');
-      }
-    } catch (error) {
-      console.error('Failed to finalize character:', error);
-    }
+  const handleCharacterCreated = (characterId: string) => {
+    console.log('Character created:', characterId);
+    // Go back to home with the new character selected
+    setSelectedId(characterId);
+    setSelectedType('character');
+    setCurrentView('home');
   };
 
   const handleCancelCreation = () => {
@@ -226,12 +195,12 @@ function AppContent() {
             characterId={currentCharacterId}
             onBack={handleBackToHome}
           />
-        ) : draft.loading || finalizing ? (
+        ) : draft.loading || draft.saving ? (
           <div className="flex items-center justify-center h-screen">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-primary mx-auto mb-4"></div>
               <p className="text-lg">
-                {finalizing ? 'Creating character...' : 'Loading draft...'}
+                {draft.saving ? 'Creating character...' : 'Loading draft...'}
               </p>
             </div>
           </div>

@@ -51,6 +51,7 @@ import {
   DungeonTheme,
   type FeatureId,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
@@ -60,6 +61,7 @@ import { Equipment } from './Equipment';
 import { LobbyScreen } from './lobby';
 import type { DungeonConfig } from './lobby/dungeonConfig';
 import { useToast } from './ui';
+import { Button } from './ui/Button';
 
 /**
  * Update room entity positions based on monster movement paths
@@ -1561,17 +1563,16 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         <div className="max-w-[1800px] mx-auto">
           {/* Back button when provided */}
           {onBack && !room && (
-            <button
-              onClick={onBack}
-              className="mb-4 px-4 py-2 rounded-lg text-lg transition-all hover:scale-105"
-              style={{
-                backgroundColor: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
-                border: '2px solid var(--border-primary)',
-              }}
-            >
-              ← Back to Home
-            </button>
+            <div className="mb-4">
+              <Button
+                variant="secondary"
+                size="md"
+                icon={<ArrowLeft className="w-4 h-4" />}
+                onClick={onBack}
+              >
+                Back to Home
+              </Button>
+            </div>
           )}
 
           {/* Main Content - Header removed to save vertical space */}
