@@ -48,7 +48,7 @@ import { SpellSelectionModal } from './SpellSelectionModal';
 import { useCharacterDraft } from './useCharacterDraft';
 
 interface InteractiveCharacterSheetProps {
-  onComplete: () => void;
+  onComplete: (characterId: string) => void;
   onCancel: () => void;
 }
 
@@ -408,10 +408,9 @@ export function InteractiveCharacterSheet({
     if (!isCharacterValid()) return;
 
     try {
-      await draft.finalizeDraft();
-      // For now, just call onComplete
-      // In the future, this could navigate to the character sheet with the returned ID
-      onComplete();
+      const characterId = await draft.finalizeDraft();
+      // Pass the character ID to the completion handler
+      onComplete(characterId);
     } catch (error) {
       console.error('Failed to finalize character:', error);
       // Error is already handled by the context, just log it here
