@@ -1,6 +1,7 @@
 import type { Step } from '@/components/ProgressTracker';
 import { ProgressTracker } from '@/components/ProgressTracker';
 import { useToast } from '@/components/ui';
+import { Button } from '@/components/ui/Button';
 import type {
   ClassInfo,
   RaceInfo,
@@ -663,18 +664,14 @@ export function InteractiveCharacterSheet({
           }}
         >
           <div className="flex items-center gap-4">
-            <button
+            <Button
+              variant="secondary"
+              size="md"
+              icon={<ArrowLeft className="w-4 h-4" />}
               onClick={onCancel}
-              className="p-2 rounded-lg border-2 transition-all hover:scale-105 flex-shrink-0"
-              style={{
-                backgroundColor: 'var(--bg-secondary)',
-                borderColor: 'var(--border-primary)',
-                color: 'var(--text-primary)',
-              }}
-              title="Back to character list"
             >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+              Back to Home
+            </Button>
             <div className="flex-1 overflow-x-auto">
               <ProgressTracker steps={steps} orientation="horizontal" />
             </div>
