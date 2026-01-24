@@ -104,8 +104,17 @@ function WeaponMesh({
     return () => {
       material.dispose();
       outlineMaterial?.dispose();
+      const disposeGeometries = (root: THREE.Object3D) => {
+        root.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.geometry.dispose();
+          }
+        });
+      };
+      disposeGeometries(clonedObj);
+      if (outlineObj) disposeGeometries(outlineObj);
     };
-  }, [material, outlineMaterial]);
+  }, [material, outlineMaterial, clonedObj, outlineObj]);
 
   return (
     <>

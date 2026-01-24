@@ -11,13 +11,11 @@ import type {
   ShieldType,
   WeaponType,
 } from '@/config/attachmentModels';
+import { isTwoHandedWeapon, WEAPON_CONFIGS } from '@/config/attachmentModels';
 import type { HeadVariant } from '@/config/characterModels';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import {
-  Race,
-  Weapon,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { Race } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
@@ -77,21 +75,7 @@ const RACE_TO_HEAD_VARIANT: Partial<Record<Race, HeadVariant>> = {
   [Race.GNOME]: 'halfling',
 };
 
-/** Map Weapon proto enum to our WeaponType for 3D models */
-const WEAPON_ENUM_TO_TYPE: Partial<Record<Weapon, WeaponType>> = {
-  [Weapon.DAGGER]: 'dagger',
-  [Weapon.SHORTSWORD]: 'sword_short',
-  [Weapon.LONGSWORD]: 'sword_long',
-  [Weapon.GREATSWORD]: 'sword_great',
-  [Weapon.HANDAXE]: 'axe_hand',
-  [Weapon.BATTLEAXE]: 'axe_battle',
-  [Weapon.GREATAXE]: 'axe_great',
-  [Weapon.CLUB]: 'club',
-  [Weapon.GREATCLUB]: 'club',
-  [Weapon.GLAIVE]: 'glaive',
-};
-
-/** Map equipment name strings to WeaponType (fallback) */
+/** Map equipment name to WeaponType for 3D models */
 const WEAPON_NAME_TO_TYPE: Record<string, WeaponType> = {
   dagger: 'dagger',
   shortsword: 'sword_short',
@@ -163,14 +147,7 @@ function resolveWeaponType(
   const equip = item.equipment;
   if (equip.equipmentData.case !== 'weaponData') return undefined;
 
-  // Try Weapon enum mapping first
-  const weaponData = equip.equipmentData.value;
-  if ('weapon' in weaponData) {
-    const mapped = WEAPON_ENUM_TO_TYPE[weaponData.weapon as unknown as Weapon];
-    if (mapped) return mapped;
-  }
-
-  // Fall back to name-based matching
+  // Match by equipment name (proto WeaponData has no weapon enum field)
   const name = equip.name.toLowerCase().trim();
   return WEAPON_NAME_TO_TYPE[name];
 }
@@ -255,8 +232,14 @@ export function HexEntity({
 
     // Resolve equipped weapons and shield from character data
     const mainHandWeapon = resolveWeaponType(character, 'mainHand');
-    const offHandWeapon = resolveWeaponType(character, 'offHand');
-    const shield = resolveShield(character);
+
+    // Two-handed weapons occupy both hands - no off-hand or shield
+    const isTwoHanded =
+      mainHandWeapon && isTwoHandedWeapon(WEAPON_CONFIGS[mainHandWeapon]);
+    const offHandWeapon = isTwoHanded
+      ? undefined
+      : resolveWeaponType(character, 'offHand');
+    const shield = isTwoHanded ? undefined : resolveShield(character);
 
     return (
       <group
