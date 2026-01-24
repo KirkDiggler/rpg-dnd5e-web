@@ -88,6 +88,16 @@ rm -rf node_modules package-lock.json && npm install
 2. Verify the correct commit hash in package-lock.json
 3. Commit BOTH package.json and package-lock.json
 
+**Checking latest proto version:** Proto types are installed locally from GitHub. Use `gh` CLI to check the latest release:
+
+```bash
+# Check latest proto version available
+gh release list -R KirkDiggler/rpg-api-protos --limit 5
+
+# Check what version we have installed
+grep rpg-api-protos package.json
+```
+
 **Why**: GitHub dependencies with tags don't always update properly. The lock file might keep pointing to old commits even after package.json is updated. This causes CI to use the wrong proto version.
 
 ## 🚨 IMPORTANT: React StrictMode and Double API Calls

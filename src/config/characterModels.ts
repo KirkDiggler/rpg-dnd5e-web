@@ -107,6 +107,20 @@ export const MEDIUM_HUMANOID_CONFIG: CharacterModelConfig = {
 };
 
 /**
+ * Head variant file lookup.
+ * Maps variant names to OBJ filenames. Position/rotation stays the same as the base head.
+ */
+export const HEAD_VARIANTS: Record<string, string> = {
+  human: 'head_human.obj',
+  goblin: 'head_goblin.obj',
+  dwarf: 'head_dwarf.obj',
+  elf: 'head_elf.obj',
+  halfling: 'head_halfling.obj',
+};
+
+export type HeadVariant = keyof typeof HEAD_VARIANTS;
+
+/**
  * Goblin variant - uses goblin head instead of human head
  */
 export const GOBLIN_HUMANOID_CONFIG: CharacterModelConfig = {
