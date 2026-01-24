@@ -5,8 +5,19 @@
  * at the specified hex position.
  */
 
+import type {
+  FacialHairStyle,
+  HairStyle,
+  ShieldType,
+  WeaponType,
+} from '@/config/attachmentModels';
+import type { HeadVariant } from '@/config/characterModels';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import {
+  Race,
+  Weapon,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
@@ -24,6 +35,12 @@ export interface HexEntityProps {
   character?: Character;
   /** Monster data for texture selection (includes monsterType) */
   monster?: MonsterCombatState;
+  /** Override hair style (proto doesn't have this field yet) */
+  hairStyle?: HairStyle;
+  /** Override hair color as hex string (proto doesn't have this field yet) */
+  hairColor?: string;
+  /** Override facial hair style (proto doesn't have this field yet) */
+  facialHairStyle?: FacialHairStyle;
 }
 
 // Visual state colors
@@ -49,6 +66,52 @@ const Y_OFFSET = 0.1; // Small Y offset to sit above the hex plane
 
 // Character model Y offset (characters stand on the ground)
 const CHARACTER_Y_OFFSET = 0.05;
+
+/** Map Race enum to head variant for 3D model */
+const RACE_TO_HEAD_VARIANT: Partial<Record<Race, HeadVariant>> = {
+  [Race.HUMAN]: 'human',
+  [Race.ELF]: 'elf',
+  [Race.HALF_ELF]: 'elf',
+  [Race.DWARF]: 'dwarf',
+  [Race.HALFLING]: 'halfling',
+  [Race.GNOME]: 'halfling',
+};
+
+/** Map Weapon proto enum to our WeaponType for 3D models */
+const WEAPON_ENUM_TO_TYPE: Partial<Record<Weapon, WeaponType>> = {
+  [Weapon.DAGGER]: 'dagger',
+  [Weapon.SHORTSWORD]: 'sword_short',
+  [Weapon.LONGSWORD]: 'sword_long',
+  [Weapon.GREATSWORD]: 'sword_great',
+  [Weapon.HANDAXE]: 'axe_hand',
+  [Weapon.BATTLEAXE]: 'axe_battle',
+  [Weapon.GREATAXE]: 'axe_great',
+  [Weapon.CLUB]: 'club',
+  [Weapon.GREATCLUB]: 'club',
+  [Weapon.GLAIVE]: 'glaive',
+};
+
+/** Map equipment name strings to WeaponType (fallback) */
+const WEAPON_NAME_TO_TYPE: Record<string, WeaponType> = {
+  dagger: 'dagger',
+  shortsword: 'sword_short',
+  longsword: 'sword_long',
+  greatsword: 'sword_great',
+  handaxe: 'axe_hand',
+  battleaxe: 'axe_battle',
+  greataxe: 'axe_great',
+  club: 'club',
+  greatclub: 'club',
+  glaive: 'glaive',
+};
+
+/** Map shield name to ShieldType */
+const SHIELD_NAME_TO_TYPE: Record<string, ShieldType> = {
+  shield: 'shield_round',
+  'round shield': 'shield_round',
+  'kite shield': 'shield_kite',
+  'tower shield': 'shield_tower',
+};
 
 /**
  * Creates a capsule-like shape for the entity (used for obstacles)
@@ -83,19 +146,53 @@ function LoadingPlaceholder({
   );
 }
 
-/**
- * Map race enum to a default skin tone
- * This is a simple heuristic - players will eventually customize this
- */
-function getDefaultSkinTone(): SkinTone {
-  // Default to medium for now
-  // Future: could vary by race (e.g., elves -> pale, dwarves -> tan)
-  return 'medium';
+/** Resolve head variant from race */
+function getHeadVariant(race?: Race): HeadVariant | undefined {
+  if (race === undefined || race === Race.UNSPECIFIED) return undefined;
+  return RACE_TO_HEAD_VARIANT[race];
+}
+
+/** Extract weapon type from an equipment slot */
+function resolveWeaponType(
+  character: Character | undefined,
+  slot: 'mainHand' | 'offHand'
+): WeaponType | undefined {
+  const item = character?.equipmentSlots?.[slot];
+  if (!item?.equipment) return undefined;
+
+  const equip = item.equipment;
+  if (equip.equipmentData.case !== 'weaponData') return undefined;
+
+  // Try Weapon enum mapping first
+  const weaponData = equip.equipmentData.value;
+  if ('weapon' in weaponData) {
+    const mapped = WEAPON_ENUM_TO_TYPE[weaponData.weapon as unknown as Weapon];
+    if (mapped) return mapped;
+  }
+
+  // Fall back to name-based matching
+  const name = equip.name.toLowerCase().trim();
+  return WEAPON_NAME_TO_TYPE[name];
+}
+
+/** Check if off-hand has a shield equipped */
+function resolveShield(
+  character: Character | undefined
+): ShieldType | undefined {
+  const item = character?.equipmentSlots?.offHand;
+  if (!item?.equipment) return undefined;
+
+  const equip = item.equipment;
+  if (equip.equipmentData.case === 'armorData') {
+    const name = equip.name.toLowerCase().trim();
+    return SHIELD_NAME_TO_TYPE[name] ?? 'shield_round';
+  }
+
+  return undefined;
 }
 
 export function HexEntity({
   entityId,
-  // name prop not destructured - will be used for tooltips/labels in future
   position,
   type,
   hexSize,
@@ -103,6 +200,9 @@ export function HexEntity({
   onClick,
   character,
   monster,
+  hairStyle,
+  hairColor,
+  facialHairStyle,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -140,14 +240,23 @@ export function HexEntity({
 
   // Use character model for players and monsters
   if (type === 'player' || type === 'monster') {
-    // Extract character data for rendering
     const characterClass = character?.class;
     const characterRace = character?.race;
-    const skinTone = getDefaultSkinTone();
-    // Extract monster type for texture selection
     const monsterType = monster?.monsterType;
-    // TODO: Extract equipped armor when armor textures are available
-    // const equippedArmor = character?.equipmentSlots?.armor?.equipment?.armor;
+
+    // Resolve appearance from proto data
+    const appearance = character?.appearance;
+    const skinTone: SkinTone | string = appearance?.skinTone || 'medium';
+    const primaryColor = appearance?.primaryColor || undefined;
+    const secondaryColor = appearance?.secondaryColor || undefined;
+
+    // Resolve head variant from race
+    const headVariant = getHeadVariant(characterRace);
+
+    // Resolve equipped weapons and shield from character data
+    const mainHandWeapon = resolveWeaponType(character, 'mainHand');
+    const offHandWeapon = resolveWeaponType(character, 'offHand');
+    const shield = resolveShield(character);
 
     return (
       <group
@@ -161,11 +270,20 @@ export function HexEntity({
             color={color}
             isSelected={isSelected}
             variant={type === 'monster' ? 'goblin' : 'human'}
+            headVariant={headVariant}
             facingRotation={type === 'player' ? Math.PI : 0}
             race={characterRace}
             characterClass={characterClass}
             monsterType={monsterType}
             skinTone={skinTone}
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            hairStyle={hairStyle}
+            hairColor={hairColor}
+            facialHairStyle={facialHairStyle}
+            mainHandWeapon={mainHandWeapon}
+            offHandWeapon={offHandWeapon}
+            shield={shield}
             showOutline={true}
           />
         </Suspense>

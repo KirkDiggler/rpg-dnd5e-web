@@ -15,14 +15,22 @@
  * 2. Part rotation order: 'ZYX' (Blender XYZ Euler -> Three.js convention)
  */
 
+import type {
+  FacialHairStyle,
+  HairStyle,
+  ShieldType,
+  WeaponType,
+} from '@/config/attachmentModels';
 import {
   CHARACTER_MODELS_BASE_PATH,
-  GOBLIN_HUMANOID_CONFIG,
+  HEAD_VARIANTS,
   MEDIUM_HUMANOID_CONFIG,
   type CharacterPartConfig,
+  type HeadVariant,
 } from '@/config/characterModels';
 import {
   getMonsterHeadVariant,
+  resolveHeadTexturePath,
   resolveMonsterTexturePath,
   resolveTexturePath,
   type BodyPart,
@@ -40,9 +48,12 @@ import {
   Race,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useLoader } from '@react-three/fiber';
-import { useEffect, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { CharacterHair } from './CharacterHair';
+import { CharacterShield } from './CharacterShield';
+import { CharacterWeapon } from './CharacterWeapon';
 
 /** Skin tone options matching ColorPalettes.SkinTones */
 export type SkinTone = 'pale' | 'light' | 'medium' | 'tan' | 'dark' | 'deep';
@@ -56,6 +67,8 @@ export interface MediumHumanoidProps {
   isSelected?: boolean;
   /** Use goblin head variant */
   variant?: 'human' | 'goblin';
+  /** Head model variant (human, goblin, dwarf, elf, halfling) */
+  headVariant?: HeadVariant;
   /** Y-axis rotation in radians (default: 0, use Math.PI to face opposite direction) */
   facingRotation?: number;
   /** Character race - for future race-specific model variants */
@@ -74,6 +87,18 @@ export interface MediumHumanoidProps {
   secondaryColor?: string;
   /** Eye color - hex string (default: brown) */
   eyeColor?: string;
+  /** Hair style to render */
+  hairStyle?: HairStyle;
+  /** Hair color - hex string (default: brown) */
+  hairColor?: string;
+  /** Facial hair style to render */
+  facialHairStyle?: FacialHairStyle;
+  /** Weapon in main hand (right) */
+  mainHandWeapon?: WeaponType;
+  /** Weapon in off hand (left) */
+  offHandWeapon?: WeaponType;
+  /** Shield (uses left hand, mutually exclusive with offHandWeapon) */
+  shield?: ShieldType;
   /** Show cel-shaded outline (default: true) */
   showOutline?: boolean;
 }
@@ -99,6 +124,9 @@ function getBodyPartFromFile(filename: string): BodyPart | undefined {
     'foot_medium',
     'head_human',
     'head_goblin',
+    'head_dwarf',
+    'head_elf',
+    'head_halfling',
   ];
   return validParts.includes(name as BodyPart) ? (name as BodyPart) : undefined;
 }
@@ -429,6 +457,7 @@ export function MediumHumanoid({
   color = '#8B4513',
   isSelected = false,
   variant = 'human',
+  headVariant,
   facingRotation = 0,
   characterClass,
   monsterType,
@@ -437,22 +466,39 @@ export function MediumHumanoid({
   primaryColor,
   secondaryColor,
   // Note: eyeColor is accepted but not yet implemented - eyes need separate texture handling
+  hairStyle,
+  hairColor,
+  facialHairStyle,
+  mainHandWeapon,
+  offHandWeapon,
+  shield,
   showOutline = true,
 }: MediumHumanoidProps) {
   const groupRef = useRef<THREE.Group>(null);
 
-  // Determine effective variant: use monster's head type if monster, else use provided variant
-  const effectiveVariant = useMemo(() => {
+  // Determine effective head variant: headVariant prop > monster head > variant prop
+  const effectiveHeadVariant = useMemo((): HeadVariant => {
+    if (headVariant) return headVariant;
     if (monsterType !== undefined && monsterType !== MonsterType.UNSPECIFIED) {
       return getMonsterHeadVariant(monsterType);
     }
     return variant;
-  }, [monsterType, variant]);
+  }, [headVariant, monsterType, variant]);
 
-  const modelConfig =
-    effectiveVariant === 'goblin'
-      ? GOBLIN_HUMANOID_CONFIG
-      : MEDIUM_HUMANOID_CONFIG;
+  // Build model config with the resolved head variant
+  const modelConfig = useMemo(() => {
+    const headFile = HEAD_VARIANTS[effectiveHeadVariant] ?? HEAD_VARIANTS.human;
+    return {
+      ...MEDIUM_HUMANOID_CONFIG,
+      parts: {
+        ...MEDIUM_HUMANOID_CONFIG.parts,
+        head: {
+          ...MEDIUM_HUMANOID_CONFIG.parts.head,
+          file: headFile,
+        },
+      },
+    };
+  }, [effectiveHeadVariant]);
 
   // Compute shader options based on props
   // Uses new Qubicle marker color convention from shader package v3.0
@@ -468,12 +514,21 @@ export function MediumHumanoid({
     [skinTone, primaryColor, secondaryColor]
   );
 
+  // Resolve hair color to a number for the shader
+  const resolvedHairColor = useMemo(() => {
+    if (hairColor && hairColor.startsWith('#')) {
+      return parseInt(hairColor.replace('#', ''), 16);
+    }
+    return ColorPalettes.HairColors.brown;
+  }, [hairColor]);
+
   // Compute texture paths for each body part
   // Uses monster textures if monsterType is set, otherwise character textures
   const texturePaths = useMemo(() => {
+    const paths: Record<string, string | undefined> = {};
+
     // Monster texture resolution
     if (monsterType !== undefined && monsterType !== MonsterType.UNSPECIFIED) {
-      const paths: Record<string, string | undefined> = {};
       for (const [partName, partConfig] of Object.entries(modelConfig.parts)) {
         const bodyPart = getBodyPartFromFile(partConfig.file);
         if (bodyPart) {
@@ -484,23 +539,29 @@ export function MediumHumanoid({
     }
 
     // Character texture resolution
-    if (!characterClass) {
-      return {};
-    }
-
-    const paths: Record<string, string | undefined> = {};
     for (const [partName, partConfig] of Object.entries(modelConfig.parts)) {
-      const bodyPart = getBodyPartFromFile(partConfig.file);
-      if (bodyPart) {
-        paths[partName] = resolveTexturePath(
-          bodyPart,
-          characterClass,
-          equippedArmor
-        );
+      if (partName === 'head') {
+        // Use head-specific texture path
+        paths[partName] = resolveHeadTexturePath(effectiveHeadVariant);
+      } else {
+        const bodyPart = getBodyPartFromFile(partConfig.file);
+        if (bodyPart && characterClass) {
+          paths[partName] = resolveTexturePath(
+            bodyPart,
+            characterClass,
+            equippedArmor
+          );
+        }
       }
     }
     return paths;
-  }, [characterClass, equippedArmor, monsterType, modelConfig.parts]);
+  }, [
+    characterClass,
+    equippedArmor,
+    monsterType,
+    modelConfig.parts,
+    effectiveHeadVariant,
+  ]);
 
   return (
     // Outer group for facing direction (Y-axis rotation in world space)
@@ -539,6 +600,47 @@ export function MediumHumanoid({
             isSelected={isSelected}
           />
         ))}
+
+        {/* Hair and facial hair */}
+        {(hairStyle || facialHairStyle) && (
+          <Suspense fallback={null}>
+            <CharacterHair
+              hairStyle={hairStyle}
+              facialHairStyle={facialHairStyle}
+              hairColor={resolvedHairColor}
+              showOutline={showOutline}
+            />
+          </Suspense>
+        )}
+
+        {/* Main hand weapon (right) */}
+        {mainHandWeapon && (
+          <Suspense fallback={null}>
+            <CharacterWeapon
+              weaponType={mainHandWeapon}
+              hand="right"
+              showOutline={showOutline}
+            />
+          </Suspense>
+        )}
+
+        {/* Off hand weapon (left) - only if no shield */}
+        {offHandWeapon && !shield && (
+          <Suspense fallback={null}>
+            <CharacterWeapon
+              weaponType={offHandWeapon}
+              hand="left"
+              showOutline={showOutline}
+            />
+          </Suspense>
+        )}
+
+        {/* Shield (left hand) */}
+        {shield && (
+          <Suspense fallback={null}>
+            <CharacterShield shieldType={shield} showOutline={showOutline} />
+          </Suspense>
+        )}
       </group>
     </group>
   );

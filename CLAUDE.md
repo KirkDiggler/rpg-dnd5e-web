@@ -88,6 +88,16 @@ rm -rf node_modules package-lock.json && npm install
 2. Verify the correct commit hash in package-lock.json
 3. Commit BOTH package.json and package-lock.json
 
+**Checking latest proto version:** Proto types are installed locally from GitHub. Use `gh` CLI to check the latest release:
+
+```bash
+# Check latest proto version available
+gh release list -R KirkDiggler/rpg-api-protos --limit 5
+
+# Check what version we have installed
+grep rpg-api-protos package.json
+```
+
 **Why**: GitHub dependencies with tags don't always update properly. The lock file might keep pointing to old commits even after package.json is updated. This causes CI to use the wrong proto version.
 
 ## 🚨 IMPORTANT: React StrictMode and Double API Calls
@@ -165,11 +175,50 @@ React StrictMode (enabled in `src/main.tsx`) intentionally double-mounts compone
 - Visual progress indicators
 - Validation at each step
 
-### Game Board Considerations
+### Asset Pipeline
 
-- Canvas or SVG rendering (TBD)
+Source assets live in `rpg-project/assets/`. This is how they map here:
+
+| Source                    | Destination                                 | Notes                  |
+| ------------------------- | ------------------------------------------- | ---------------------- |
+| `assets/models/body/`     | `public/models/characters/`                 | OBJ body parts         |
+| `assets/models/heads/`    | `public/models/characters/`                 | Race head variants     |
+| `assets/models/weapons/`  | `public/models/characters/`                 | Weapon OBJs            |
+| `assets/textures/medium/` | `public/models/characters/textures/medium/` | Per-class textures     |
+| `assets/textures/base/`   | `public/models/characters/textures/base/`   | Bare skin fallbacks    |
+| `assets/coords/`          | Consumed by `src/config/characterModels.ts` | Position/rotation JSON |
+| `assets/shaders/`         | Adapted into `src/shaders/*.ts`             | JS → TypeScript        |
+
+**Key files:**
+
+- `src/config/characterModels.ts` - Model paths, part positions/rotations (Blender Z-up → Three.js Y-up)
+- `src/config/characterTextures.ts` - Texture resolution with fallback chain (class → base → solid color)
+- `src/shaders/AdvancedCharacterShader.ts` - Marker color detection + runtime swapping
+- `src/shaders/OutlineShader.ts` - Cel-shading outline effect
+- `src/components/hex-grid/MediumHumanoid.tsx` - Assembles 12 OBJ parts with textures + shaders
+
+**Texture marker colors** (shader detects and replaces at runtime):
+
+- `#FFFFFF` → Skin color
+- `#F704FF` (Magenta) → Primary armor color
+- `#E5FF02` (Yellow) → Secondary accent
+- `#1EDFFF` (Cyan) → Tertiary details
+- `#2BFF06` (Green) → Fine decorative elements
+
+**Loading pattern:** `useLoader(OBJLoader, path)` from React Three Fiber. Textures use `NearestFilter` + `NoColorSpace` for pixel art + accurate shader color detection.
+
+**Adding new assets:**
+
+1. Copy from `rpg-project/assets/` to `public/models/characters/`
+2. Update `KNOWN_TEXTURES` in `src/config/characterTextures.ts`
+3. Add coordinate configs to `src/config/characterModels.ts` if new model parts
+
+### Game Board
+
+- React Three Fiber for 3D hex-grid rendering
+- Cube coordinates (q, r, s) for hex positioning
 - Turn-based, no real-time requirements
-- Static animations for actions
+- Voxel aesthetic with shader-based customization
 - Mobile-friendly interactions
 
 ## Key Features for Phase 1

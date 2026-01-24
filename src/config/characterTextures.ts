@@ -23,7 +23,10 @@ export type BodyPart =
   | 'leg_medium'
   | 'foot_medium'
   | 'head_human'
-  | 'head_goblin';
+  | 'head_goblin'
+  | 'head_dwarf'
+  | 'head_elf'
+  | 'head_halfling';
 
 /**
  * Maps Class enum values to texture suffix names.
@@ -99,6 +102,15 @@ const NEW_TEXTURE_PARTS: Set<BodyPart> = new Set([
  * Used to check if a texture exists before returning its path.
  */
 const KNOWN_TEXTURES: Record<string, Set<BodyPart>> = {
+  // Head textures (all race variants)
+  heads: new Set([
+    'head_human',
+    'head_goblin',
+    'head_dwarf',
+    'head_elf',
+    'head_halfling',
+  ]),
+
   // Base textures (bare skin fallback)
   base: new Set(['arm_upper_medium', 'forearm_medium']),
 
@@ -344,4 +356,19 @@ export function getMonsterHeadVariant(
   }
   // All other monsters use human head for now
   return 'human';
+}
+
+/**
+ * Resolve the texture path for a head variant.
+ * Head textures use skin-tone marker colors (#FFFFFF) for the shader.
+ *
+ * @param headVariant - The head variant name (human, goblin, dwarf, elf, halfling)
+ * @returns The texture path or undefined if no texture exists
+ */
+export function resolveHeadTexturePath(
+  headVariant: string
+): string | undefined {
+  const bodyPart = `head_${headVariant}` as BodyPart;
+  if (!textureExists('heads', bodyPart)) return undefined;
+  return `${CHARACTER_TEXTURES_BASE_PATH}/heads/${bodyPart}.png`;
 }
