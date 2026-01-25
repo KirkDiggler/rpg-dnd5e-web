@@ -148,19 +148,19 @@ export function ClassSelectionModal({
   };
 
   // Auto-expand sections based on selection state
+  // Use primitive values for dependencies to avoid infinite loops
+  const selectedClassName = selectedClass?.name;
+  const hasSelectedSubclass = currentSubclass !== null;
+
   useEffect(() => {
-    if (selectedClass && !hasSubclasses) {
+    if (selectedClassName && !hasSubclasses) {
       // For classes without subclasses, expand details immediately
       setExpandedSections((prev) => ({
         ...prev,
         details: true,
         choices: true,
       }));
-    } else if (
-      selectedClass &&
-      hasSubclasses &&
-      selectedSubclassIndex === null
-    ) {
+    } else if (selectedClassName && hasSubclasses && !hasSelectedSubclass) {
       // For classes with subclasses, expand subclass selection
       setExpandedSections((prev) => ({
         ...prev,
@@ -168,7 +168,7 @@ export function ClassSelectionModal({
         details: false,
         choices: false,
       }));
-    } else if (selectedClass && currentSubclass) {
+    } else if (selectedClassName && hasSelectedSubclass) {
       // Once subclass is selected, expand details and choices
       setExpandedSections((prev) => ({
         ...prev,
@@ -176,7 +176,7 @@ export function ClassSelectionModal({
         choices: true,
       }));
     }
-  }, [selectedClass, hasSubclasses, selectedSubclassIndex, currentSubclass]);
+  }, [selectedClassName, hasSubclasses, hasSelectedSubclass]);
 
   // Reset selected index when modal opens
   useEffect(() => {
