@@ -1757,3 +1757,18 @@
   color: var(--text-muted, #94a3b8);
   font-style: italic;
 }
+
+/* ============================================
+ * Available Actions Display
+ * Shows available combat abilities and actions
+ * ============================================ */
+
+.availableActionsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: var(--bg-tertiary, #334155);
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #475569);
+}

@@ -49,6 +49,7 @@ import {
   DungeonDifficulty,
   DungeonLength,
   DungeonTheme,
+  EntityType,
   type FeatureId,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { ArrowLeft } from 'lucide-react';
@@ -924,9 +925,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     setSelectedHoverEntity({
       id: entityId,
       type:
-        clickedEntity.entityType.toLowerCase() === 'monster'
-          ? 'monster'
-          : 'player',
+        clickedEntity.entityType === EntityType.MONSTER ? 'monster' : 'player',
       name: entityName,
     });
 
@@ -945,7 +944,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     // If it's a monster/enemy and we have a current turn entity, mark as attack target
     if (
       currentTurnEntityId &&
-      clickedEntity.entityType.toLowerCase() === 'monster'
+      clickedEntity.entityType === EntityType.MONSTER
     ) {
       // Check if adjacent (within 1 hex for melee)
       // Server provides cube coordinates in position.x, position.y, position.z
@@ -1090,7 +1089,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     let target = attackTarget;
     if (!target && selectedEntity) {
       const selectedEntityData = room?.entities[selectedEntity];
-      if (selectedEntityData?.entityType.toLowerCase() === 'monster') {
+      if (selectedEntityData?.entityType === EntityType.MONSTER) {
         target = selectedEntity;
       }
     }

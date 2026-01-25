@@ -2,22 +2,30 @@ import type { CubeCoord } from '@/utils/hexUtils';
 import { create } from '@bufbuild/protobuf';
 import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type {
+  ActivateCombatAbilityResponse,
   ActivateFeatureResponse,
   AttackResponse,
   DungeonStartResponse,
   EndTurnResponse,
+  ExecuteActionResponse,
   MoveCharacterResponse,
   OpenDoorResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
+  ActivateCombatAbilityRequestSchema,
   ActivateFeatureRequestSchema,
   AttackRequestSchema,
   DungeonStartRequestSchema,
   EndTurnRequestSchema,
+  ExecuteActionRequestSchema,
   MoveCharacterRequestSchema,
+  MoveInputSchema,
   OpenDoorRequestSchema,
+  StrikeInputSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type {
+  ActionId,
+  CombatAbilityId,
   DungeonDifficulty,
   DungeonLength,
   DungeonTheme,
@@ -274,6 +282,154 @@ export function useOpenDoor() {
 
   return {
     openDoor,
+    loading: state.loading,
+    error: state.error,
+    data: state.data,
+  };
+}
+
+// Hook for ActivateCombatAbility
+export function useActivateCombatAbility() {
+  const [state, setState] = useState<AsyncState<ActivateCombatAbilityResponse>>(
+    {
+      data: null,
+      loading: false,
+      error: null,
+    }
+  );
+
+  const activateCombatAbility = useCallback(
+    async (
+      encounterId: string,
+      entityId: string,
+      abilityId: CombatAbilityId,
+      targetId?: string
+    ) => {
+      setState({ data: null, loading: true, error: null });
+
+      try {
+        const request = create(ActivateCombatAbilityRequestSchema, {
+          encounterId,
+          entityId,
+          abilityId,
+          targetId: targetId || '',
+        });
+
+        const response = await encounterClient.activateCombatAbility(request);
+        setState({ data: response, loading: false, error: null });
+        return response;
+      } catch (error) {
+        const errorObj =
+          error instanceof Error ? error : new Error(String(error));
+        setState({ data: null, loading: false, error: errorObj });
+        throw errorObj;
+      }
+    },
+    []
+  );
+
+  return {
+    activateCombatAbility,
+    loading: state.loading,
+    error: state.error,
+    data: state.data,
+  };
+}
+
+// Input types for ExecuteAction
+export interface StrikeActionInput {
+  targetId: string;
+  weaponId?: string;
+}
+
+export interface MoveActionInput {
+  path: CubeCoord[];
+}
+
+// Hook for ExecuteAction
+export function useExecuteAction() {
+  const [state, setState] = useState<AsyncState<ExecuteActionResponse>>({
+    data: null,
+    loading: false,
+    error: null,
+  });
+
+  const executeStrike = useCallback(
+    async (
+      encounterId: string,
+      entityId: string,
+      actionId: ActionId,
+      input: StrikeActionInput
+    ) => {
+      setState({ data: null, loading: true, error: null });
+
+      try {
+        const request = create(ExecuteActionRequestSchema, {
+          encounterId,
+          entityId,
+          actionId,
+          input: {
+            case: 'strike',
+            value: create(StrikeInputSchema, {
+              targetId: input.targetId,
+              weaponId: input.weaponId || '',
+            }),
+          },
+        });
+
+        const response = await encounterClient.executeAction(request);
+        setState({ data: response, loading: false, error: null });
+        return response;
+      } catch (error) {
+        const errorObj =
+          error instanceof Error ? error : new Error(String(error));
+        setState({ data: null, loading: false, error: errorObj });
+        throw errorObj;
+      }
+    },
+    []
+  );
+
+  const executeMove = useCallback(
+    async (
+      encounterId: string,
+      entityId: string,
+      actionId: ActionId,
+      input: MoveActionInput
+    ) => {
+      setState({ data: null, loading: true, error: null });
+
+      try {
+        const request = create(ExecuteActionRequestSchema, {
+          encounterId,
+          entityId,
+          actionId,
+          input: {
+            case: 'move',
+            value: create(MoveInputSchema, {
+              path: input.path.map((pos) =>
+                create(PositionSchema, { x: pos.x, y: pos.y, z: pos.z })
+              ),
+            }),
+          },
+        });
+
+        const response = await encounterClient.executeAction(request);
+        setState({ data: response, loading: false, error: null });
+        return response;
+      } catch (error) {
+        const errorObj =
+          error instanceof Error ? error : new Error(String(error));
+        setState({ data: null, loading: false, error: errorObj });
+        throw errorObj;
+      }
+    },
+    []
+  );
+
+  return {
+    executeStrike,
+    executeMove,
     loading: state.loading,
     error: state.error,
     data: state.data,
