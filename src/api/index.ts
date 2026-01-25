@@ -22,13 +22,18 @@ export {
 
 // Re-export encounter hooks
 export {
+  useActivateCombatAbility,
   useActivateFeature,
   useAttack,
   useDungeonStart,
   useEndTurn,
+  useExecuteAction,
   useMoveCharacter,
   useOpenDoor,
 } from './encounterHooks';
+
+// Re-export encounter hook input types
+export type { MoveActionInput, StrikeActionInput } from './encounterHooks';
 
 // Re-export encounter stream hook
 export { useEncounterStream } from './useEncounterStream';

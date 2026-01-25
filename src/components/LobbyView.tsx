@@ -1,9 +1,10 @@
 import {
+  useActivateCombatAbility,
   useActivateFeature,
-  useAttack,
   useDungeonStart,
   useEncounterStream,
   useEndTurn,
+  useExecuteAction,
   useListCharacters,
   useMoveCharacter,
   useOpenDoor,
@@ -30,6 +31,8 @@ import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import {
   EncounterEndReason,
   type AttackResolvedEvent,
+  type AvailableAbility,
+  type AvailableAction,
   type CombatStartedEvent,
   type CombatState,
   type DoorInfo,
@@ -46,6 +49,8 @@ import {
   type TurnEndedEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
+  ActionId,
+  CombatAbilityId,
   DungeonDifficulty,
   DungeonLength,
   DungeonTheme,
@@ -105,7 +110,8 @@ interface LobbyViewProps {
 export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const { dungeonStart } = useDungeonStart();
   const { moveCharacter } = useMoveCharacter();
-  const { attack } = useAttack();
+  const { activateCombatAbility } = useActivateCombatAbility();
+  const { executeStrike } = useExecuteAction();
   const { activateFeature } = useActivateFeature();
   const { endTurn } = useEndTurn();
   const { openDoor, loading: doorLoading } = useOpenDoor();
@@ -150,6 +156,14 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   );
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
   const [attackTarget, setAttackTarget] = useState<string | null>(null);
+
+  // Two-level action economy state
+  const [availableAbilities, setAvailableAbilities] = useState<
+    AvailableAbility[]
+  >([]);
+  const [availableActions, setAvailableActions] = useState<AvailableAction[]>(
+    []
+  );
 
   // UI state
   const [equipmentCharacterId, setEquipmentCharacterId] = useState<
@@ -202,6 +216,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       setMovementMode(false);
       setMovementPath([]);
       setAttackTarget(null);
+      // Reset two-level action economy for new room
+      setAvailableAbilities([]);
+      setAvailableActions([]);
 
       // End fade
       setIsTransitioning(false);
@@ -234,6 +251,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       setMovementMode(false);
       setMovementPath([]);
       setAttackTarget(null);
+      // Reset two-level action economy for new turn
+      setAvailableAbilities([]);
+      setAvailableActions([]);
     }
 
     // Update room with entity positions after turn
@@ -1066,6 +1086,10 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   };
 
   const handleCombatStateUpdate = (newCombatState: CombatState) => {
+    const turnChanged =
+      newCombatState.currentTurn?.entityId !==
+      combatState?.currentTurn?.entityId;
+
     setCombatState(newCombatState);
     // Update selected entity to the new current turn's entity
     if (newCombatState.currentTurn?.entityId) {
@@ -1074,6 +1098,23 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     // Clear movement mode and attack target when turn changes
     setMovementMode(false);
     setAttackTarget(null);
+
+    // Reset action economy when turn changes to a different entity
+    if (turnChanged) {
+      setAvailableAbilities([]);
+      setAvailableActions([]);
+    }
+  };
+
+  // Helper to check if we have available strikes
+  const hasAvailableStrike = () => {
+    return availableActions.some(
+      (action) =>
+        (action.actionId === ActionId.STRIKE ||
+          action.actionId === ActionId.OFF_HAND_STRIKE ||
+          action.actionId === ActionId.FLURRY_STRIKE) &&
+        action.canUse
+    );
   };
 
   const handleAttackAction = async () => {
@@ -1084,6 +1125,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       });
       return;
     }
+
+    const entityId = combatState.currentTurn.entityId;
 
     // Use attackTarget if set, otherwise fall back to selectedEntity if it's a monster
     let target = attackTarget;
@@ -1109,15 +1152,53 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     }
 
     try {
-      const response = await attack(
+      // Step 1: If we don't have strikes available, activate the ATTACK ability first
+      if (!hasAvailableStrike()) {
+        console.log('🎯 No strikes available, activating ATTACK ability...');
+        const activateResponse = await activateCombatAbility(
+          encounterId,
+          entityId,
+          CombatAbilityId.ATTACK
+        );
+
+        if (!activateResponse.success) {
+          addToast({
+            type: 'error',
+            message: activateResponse.error || 'Failed to activate attack',
+            duration: 4000,
+          });
+          return;
+        }
+
+        console.log('✅ ATTACK activated:', activateResponse.grantedCapacity);
+
+        // Update available abilities and actions from the response
+        setAvailableAbilities(activateResponse.availableAbilities);
+        setAvailableActions(activateResponse.availableActions);
+
+        // Update combat state if provided
+        if (activateResponse.combatState) {
+          setCombatState(activateResponse.combatState);
+        }
+      }
+
+      // Step 2: Execute the strike action
+      console.log('⚔️ Executing STRIKE against', target);
+      const response = await executeStrike(
         encounterId,
-        combatState.currentTurn.entityId,
-        target
+        entityId,
+        ActionId.STRIKE,
+        { targetId: target }
       );
 
-      console.log('Attack response:', response);
+      console.log('Strike response:', response);
 
-      if (response.result) {
+      // Update available abilities and actions from the response
+      setAvailableAbilities(response.availableAbilities);
+      setAvailableActions(response.availableActions);
+
+      // Handle strike result
+      if (response.result?.case === 'strikeResult' && response.result.value) {
         const {
           hit,
           damage,
@@ -1127,7 +1208,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           attackTotal,
           targetAc,
           damageBreakdown,
-        } = response.result;
+        } = response.result.value;
         console.log(
           `Attack ${hit ? 'HIT' : 'MISSED'}! (${attackTotal} vs AC ${targetAc})`
         );
@@ -1141,8 +1222,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
         // Get attacker's weapon name from their equipment
         // Use fullCharactersMap which has full equipment data from GetCharacter
-        const attackerId = combatState.currentTurn.entityId;
-        const fullAttackerChar = fullCharactersMap.get(attackerId);
+        const fullAttackerChar = fullCharactersMap.get(entityId);
         const weaponName =
           fullAttackerChar?.equipmentSlots?.mainHand?.equipment?.name ||
           'Weapon';
@@ -1238,7 +1318,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
         // Add combat log entry - get display names for attacker and target
         const targetName = getEntityDisplayName(target);
-        const attackerName = getEntityDisplayName(attackerId);
+        const attackerName = getEntityDisplayName(entityId);
 
         const logEntry: CombatLogEntry = {
           id: `attack-${Date.now()}`,
@@ -1733,6 +1813,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           selectedHoverEntity={selectedHoverEntity}
           characters={availableCharacters}
           monsters={monsters}
+          availableAbilities={availableAbilities}
+          availableActions={availableActions}
           onAttack={handleAttackAction}
           onMove={handleMoveAction}
           onFeature={handleActivateFeature}

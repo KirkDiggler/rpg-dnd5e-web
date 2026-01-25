@@ -1,13 +1,20 @@
 import { ConditionsDisplay, FeatureActions } from '@/components/features';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
+  AvailableAbility,
+  AvailableAction,
   CombatState,
   MonsterCombatState,
   TurnState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import type { FeatureId } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import {
+  type ActionId,
+  type CombatAbilityId,
+  type FeatureId,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import styles from '../styles/combat.module.css';
 import { ActionEconomyIndicators } from './ActionEconomyIndicators';
+import { AvailableActionsDisplay } from './AvailableActionsDisplay';
 import { CharacterInfoSection } from './CharacterInfoSection';
 import {
   CombatHistorySidebar,
@@ -29,6 +36,10 @@ export interface CombatPanelProps {
   characters?: Character[];
   monsters?: MonsterCombatState[];
 
+  // Two-level action economy
+  availableAbilities?: AvailableAbility[];
+  availableActions?: AvailableAction[];
+
   // Callbacks
   onAttack?: () => void;
   onMove?: () => void;
@@ -36,6 +47,8 @@ export interface CombatPanelProps {
   onBackpack?: () => void;
   onWeaponClick?: (slot: 'mainHand' | 'offHand') => void;
   onEndTurn?: () => void;
+  onAbilityClick?: (abilityId: CombatAbilityId) => void;
+  onActionClick?: (actionId: ActionId) => void;
 }
 
 /**
@@ -55,12 +68,16 @@ export function CombatPanel({
   selectedHoverEntity,
   characters = [],
   monsters = [],
+  availableAbilities = [],
+  availableActions = [],
   onAttack,
   onMove,
   onFeature,
   onBackpack,
   onWeaponClick,
   onEndTurn,
+  onAbilityClick,
+  onActionClick,
 }: CombatPanelProps) {
   const actionsDisabled = !isPlayerTurn;
   const showHoverPanel = hoveredEntity || selectedHoverEntity;
@@ -129,6 +146,19 @@ export function CombatPanel({
 
         {/* Divider */}
         <div className={styles.panelDivider} />
+
+        {/* Available Actions from Two-Level System */}
+        {(availableAbilities.length > 0 || availableActions.length > 0) && (
+          <>
+            <AvailableActionsDisplay
+              availableAbilities={availableAbilities}
+              availableActions={availableActions}
+              onAbilityClick={onAbilityClick}
+              onActionClick={onActionClick}
+            />
+            <div className={styles.panelDivider} />
+          </>
+        )}
 
         {/* Action Buttons */}
         <div className={styles.actionButtonGroup}>
