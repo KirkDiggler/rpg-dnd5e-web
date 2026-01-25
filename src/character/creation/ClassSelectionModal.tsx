@@ -11,7 +11,7 @@ import {
   Tool,
   Weapon,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { ChoiceRenderer } from '../../components/ChoiceRenderer';
@@ -104,7 +104,11 @@ export function ClassSelectionModal({
   const { data: allClasses, loading, error } = useListClasses();
 
   // Filter to only show allowed classes (pre-alpha simplification)
-  const classes = allClasses.filter((c) => ALLOWED_CLASSES.has(c.classId));
+  // Memoize to prevent new array reference on every render (which would cause infinite useEffect loop)
+  const classes = useMemo(
+    () => allClasses.filter((c) => ALLOWED_CLASSES.has(c.classId)),
+    [allClasses]
+  );
 
   const [selectedClassIndex, setSelectedClassIndex] = useState(0);
   const [selectedSubclassIndex, setSelectedSubclassIndex] = useState<
