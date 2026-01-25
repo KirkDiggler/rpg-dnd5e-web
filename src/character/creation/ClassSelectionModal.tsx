@@ -113,7 +113,7 @@ export function ClassSelectionModal({
   const [expandedSections, setExpandedSections] = useState({
     subclasses: false,
     details: false,
-    choices: false,
+    choices: true, // Default to expanded so users see skill/equipment choices
   });
 
   // Track choices per class
@@ -183,11 +183,11 @@ export function ClassSelectionModal({
     if (isOpen) {
       setErrorMessage('');
 
-      // Reset expanded sections
+      // Reset expanded sections (keep choices expanded by default)
       setExpandedSections({
         subclasses: false,
         details: false,
-        choices: false,
+        choices: true,
       });
 
       // Clear previous choices when opening modal
