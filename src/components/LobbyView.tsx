@@ -1375,11 +1375,121 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     }
   };
 
-  const handleMoveAction = () => {
-    setMovementMode((prev) => !prev);
-    if (movementMode) {
-      setMovementPath([]); // Clear path when exiting movement mode
+  // Handle combat ability activation (Attack, Dash, Dodge, etc.)
+  const handleAbilityClick = async (abilityId: CombatAbilityId) => {
+    if (!encounterId || !combatState?.currentTurn?.entityId) {
+      console.warn('Missing required data for ability activation');
+      return;
     }
+
+    const entityId = combatState.currentTurn.entityId;
+
+    // Special handling for ATTACK - need target selection flow
+    if (abilityId === CombatAbilityId.ATTACK) {
+      // If we have a target, do the full attack flow
+      if (attackTarget) {
+        await handleAttackAction();
+        return;
+      }
+      // Otherwise, just activate and let user select target
+      try {
+        console.log('🎯 Activating ATTACK ability...');
+        const response = await activateCombatAbility(
+          encounterId,
+          entityId,
+          CombatAbilityId.ATTACK
+        );
+
+        if (response.success) {
+          console.log('✅ ATTACK activated:', response.grantedCapacity);
+          setAvailableAbilities(response.availableAbilities);
+          setAvailableActions(response.availableActions);
+          if (response.combatState) {
+            setCombatState(response.combatState);
+          }
+          addToast({
+            type: 'info',
+            message: 'Attack ready! Click an enemy to strike.',
+            duration: 3000,
+          });
+        } else {
+          addToast({
+            type: 'error',
+            message: response.error || 'Failed to activate attack',
+            duration: 4000,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to activate ability:', err);
+        addToast({
+          type: 'error',
+          message: 'Failed to activate ability',
+          duration: 4000,
+        });
+      }
+      return;
+    }
+
+    // For other abilities (Dash, Dodge, etc.), just activate them
+    try {
+      console.log(`🎯 Activating ${CombatAbilityId[abilityId]}...`);
+      const response = await activateCombatAbility(
+        encounterId,
+        entityId,
+        abilityId
+      );
+
+      if (response.success) {
+        console.log(`✅ ${CombatAbilityId[abilityId]} activated`);
+        setAvailableAbilities(response.availableAbilities);
+        setAvailableActions(response.availableActions);
+        if (response.combatState) {
+          setCombatState(response.combatState);
+        }
+        addToast({
+          type: 'success',
+          message:
+            response.grantedCapacity ||
+            `${CombatAbilityId[abilityId]} activated!`,
+          duration: 2000,
+        });
+      } else {
+        addToast({
+          type: 'error',
+          message: response.error || 'Failed to activate ability',
+          duration: 4000,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to activate ability:', err);
+      addToast({
+        type: 'error',
+        message: 'Failed to activate ability',
+        duration: 4000,
+      });
+    }
+  };
+
+  // Handle action execution (Strike, Off-hand Strike, etc.)
+  const handleActionClick = async (actionId: ActionId) => {
+    // For strike actions, we need a target
+    if (
+      actionId === ActionId.STRIKE ||
+      actionId === ActionId.OFF_HAND_STRIKE ||
+      actionId === ActionId.FLURRY_STRIKE
+    ) {
+      if (!attackTarget) {
+        addToast({
+          type: 'info',
+          message: 'Select a target first! Click an enemy to target them.',
+          duration: 3000,
+        });
+        return;
+      }
+      // Use the existing attack action flow which handles strikes
+      await handleAttackAction();
+    }
+    // TODO: Handle other action types (Move action, etc.)
   };
 
   // Movement execution handlers removed - movement now handled by CombatPanel's Move button
@@ -1815,8 +1925,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           monsters={monsters}
           availableAbilities={availableAbilities}
           availableActions={availableActions}
-          onAttack={handleAttackAction}
-          onMove={handleMoveAction}
+          onAbilityClick={handleAbilityClick}
+          onActionClick={handleActionClick}
           onFeature={handleActivateFeature}
           onBackpack={handleBackpack}
           onWeaponClick={handleWeaponClick}

@@ -1,4 +1,4 @@
-import { ConditionsDisplay, FeatureActions } from '@/components/features';
+import { ConditionsDisplay } from '@/components/features';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   AvailableAbility,
@@ -14,13 +14,14 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import styles from '../styles/combat.module.css';
 import { ActionEconomyIndicators } from './ActionEconomyIndicators';
-import { AvailableActionsDisplay } from './AvailableActionsDisplay';
 import { CharacterInfoSection } from './CharacterInfoSection';
+import { CombatAbilitiesPanel } from './CombatAbilitiesPanel';
 import {
   CombatHistorySidebar,
   type CombatLogEntry,
 } from './CombatHistorySidebar';
 import { EquipmentDisplay } from './EquipmentDisplay';
+import { FeaturesListPanel } from './FeaturesListPanel';
 import { HoverInfoPanel, type HoveredEntity } from './HoverInfoPanel';
 
 export interface CombatPanelProps {
@@ -41,13 +42,13 @@ export interface CombatPanelProps {
   availableActions?: AvailableAction[];
 
   // Callbacks
-  onAttack?: () => void;
-  onMove?: () => void;
   onFeature?: (featureId: FeatureId) => void;
   onBackpack?: () => void;
   onWeaponClick?: (slot: 'mainHand' | 'offHand') => void;
   onEndTurn?: () => void;
+  /** Called when a combat ability is clicked (Attack, Dash, Dodge, etc.) */
   onAbilityClick?: (abilityId: CombatAbilityId) => void;
+  /** Called when an available action is clicked (Strike, Off-hand Strike, etc.) */
   onActionClick?: (actionId: ActionId) => void;
 }
 
@@ -70,8 +71,6 @@ export function CombatPanel({
   monsters = [],
   availableAbilities = [],
   availableActions = [],
-  onAttack,
-  onMove,
   onFeature,
   onBackpack,
   onWeaponClick,
@@ -147,47 +146,31 @@ export function CombatPanel({
         {/* Divider */}
         <div className={styles.panelDivider} />
 
-        {/* Available Actions from Two-Level System */}
-        {(availableAbilities.length > 0 || availableActions.length > 0) && (
-          <>
-            <AvailableActionsDisplay
-              availableAbilities={availableAbilities}
-              availableActions={availableActions}
-              onAbilityClick={onAbilityClick}
-              onActionClick={onActionClick}
-            />
-            <div className={styles.panelDivider} />
-          </>
-        )}
+        {/* Combat Abilities - Data-driven, shows all base abilities */}
+        <CombatAbilitiesPanel
+          actionEconomy={turnState?.actionEconomy}
+          availableAbilities={availableAbilities}
+          availableActions={availableActions}
+          disabled={actionsDisabled}
+          onAbilityClick={onAbilityClick}
+          onActionClick={onActionClick}
+        />
 
-        {/* Action Buttons */}
+        {/* Divider */}
+        <div className={styles.panelDivider} />
+
+        {/* Character Features - Raw list display */}
+        <FeaturesListPanel
+          character={character}
+          disabled={actionsDisabled}
+          onFeatureClick={onFeature}
+        />
+
+        {/* Divider */}
+        <div className={styles.panelDivider} />
+
+        {/* Utility Buttons */}
         <div className={styles.actionButtonGroup}>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnAttack}`}
-            onClick={onAttack}
-            disabled={actionsDisabled || turnState?.actionUsed}
-            title="Attack target"
-          >
-            ⚔️ Attack
-          </button>
-
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnMove}`}
-            onClick={onMove}
-            disabled={actionsDisabled}
-            title="Move your character"
-          >
-            🏃 Move
-          </button>
-
-          <FeatureActions
-            character={character}
-            actionAvailable={!turnState?.actionUsed}
-            bonusActionAvailable={!turnState?.bonusActionUsed}
-            disabled={actionsDisabled}
-            onActivateFeature={onFeature}
-          />
-
           <button
             className={styles.actionBtn}
             onClick={onBackpack}
