@@ -979,11 +979,26 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           clickedEntity.position.z
         );
 
-        // Set as attack target (can be adjacent or not - button will handle enabling)
+        // Set as attack target
         setAttackTarget(entityId);
         console.log(
           `Target selected: ${entityId}, distance: ${distance} hexes, adjacent: ${distance === 1}`
         );
+
+        // If we have strikes available, auto-execute the attack
+        const hasStrike = availableActions.some(
+          (action) =>
+            (action.actionId === ActionId.STRIKE ||
+              action.actionId === ActionId.OFF_HAND_STRIKE ||
+              action.actionId === ActionId.FLURRY_STRIKE) &&
+            action.canUse
+        );
+        if (hasStrike) {
+          console.log('🎯 Strikes available, executing attack on', entityId);
+          // Pass target directly to avoid state timing issues
+          handleAttackAction(entityId);
+          return;
+        }
       }
     }
 
@@ -1117,7 +1132,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     );
   };
 
-  const handleAttackAction = async () => {
+  const handleAttackAction = async (overrideTarget?: string) => {
     if (!encounterId || !combatState?.currentTurn?.entityId) {
       console.warn('Missing required data for attack', {
         encounterId,
@@ -1128,8 +1143,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
     const entityId = combatState.currentTurn.entityId;
 
-    // Use attackTarget if set, otherwise fall back to selectedEntity if it's a monster
-    let target = attackTarget;
+    // Use override target, then attackTarget state, then selectedEntity if it's a monster
+    let target = overrideTarget || attackTarget;
     if (!target && selectedEntity) {
       const selectedEntityData = room?.entities[selectedEntity];
       if (selectedEntityData?.entityType === EntityType.MONSTER) {
