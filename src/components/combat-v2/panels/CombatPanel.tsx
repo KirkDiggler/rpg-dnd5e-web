@@ -148,7 +148,7 @@ export function CombatPanel({
 
         {/* Combat Abilities - Data-driven, shows all base abilities */}
         <CombatAbilitiesPanel
-          actionEconomy={turnState?.actionEconomy}
+          turnState={turnState}
           availableAbilities={availableAbilities}
           availableActions={availableActions}
           disabled={actionsDisabled}

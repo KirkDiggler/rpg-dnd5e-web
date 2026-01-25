@@ -1,7 +1,7 @@
 import type {
-  ActionEconomy,
   AvailableAbility,
   AvailableAction,
+  TurnState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
   ActionId,
@@ -69,7 +69,7 @@ const BASE_COMBAT_ABILITIES: {
 ];
 
 export interface CombatAbilitiesPanelProps {
-  actionEconomy: ActionEconomy | null | undefined;
+  turnState: TurnState | null | undefined;
   availableAbilities: AvailableAbility[];
   availableActions: AvailableAction[];
   disabled?: boolean;
@@ -85,21 +85,35 @@ export interface CombatAbilitiesPanelProps {
  * 2. Available actions after ability activation (STRIKE, OFF_HAND_STRIKE, etc.)
  */
 export function CombatAbilitiesPanel({
-  actionEconomy,
+  turnState,
   availableAbilities,
   availableActions,
   disabled = false,
   onAbilityClick,
   onActionClick,
 }: CombatAbilitiesPanelProps) {
-  // Compute ability availability from ActionEconomy
+  // Extract action economy - use new actionEconomy field if available, fallback to deprecated fields
+  const actionEconomy = turnState?.actionEconomy;
+
+  // Derive availability from either new or deprecated fields
+  const actionAvailable = actionEconomy
+    ? actionEconomy.standardActionAvailable
+    : turnState
+      ? !turnState.actionUsed
+      : true;
+  const bonusActionAvailable = actionEconomy
+    ? actionEconomy.bonusActionAvailable
+    : turnState
+      ? !turnState.bonusActionUsed
+      : true;
+  const dodgeActive = actionEconomy?.dodgeActive ?? false;
+  const disengageActive = actionEconomy?.disengageActive ?? false;
+  const offHandAttacksRemaining = actionEconomy?.offHandAttacksRemaining ?? 0;
+
+  // Compute ability availability
   const getAbilityAvailability = (
     abilityId: CombatAbilityId
   ): { canUse: boolean; reason: string } => {
-    if (!actionEconomy) {
-      return { canUse: false, reason: 'No action economy data' };
-    }
-
     // Check if API provided availability (overrides computed)
     const apiAbility = availableAbilities.find(
       (a) => a.abilityId === abilityId
@@ -108,38 +122,35 @@ export function CombatAbilitiesPanel({
       return { canUse: apiAbility.canUse, reason: apiAbility.reason };
     }
 
-    // Compute from ActionEconomy
+    // Compute from derived values
     const base = BASE_COMBAT_ABILITIES.find((a) => a.id === abilityId);
     if (!base) {
       return { canUse: false, reason: 'Unknown ability' };
     }
 
     if (base.actionType === 'action') {
-      if (!actionEconomy.standardActionAvailable) {
+      if (!actionAvailable) {
         return { canUse: false, reason: 'Action already used' };
       }
       // Special case: Dodge already active
-      if (abilityId === CombatAbilityId.DODGE && actionEconomy.dodgeActive) {
+      if (abilityId === CombatAbilityId.DODGE && dodgeActive) {
         return { canUse: false, reason: 'Already dodging' };
       }
       // Special case: Disengage already active
-      if (
-        abilityId === CombatAbilityId.DISENGAGE &&
-        actionEconomy.disengageActive
-      ) {
+      if (abilityId === CombatAbilityId.DISENGAGE && disengageActive) {
         return { canUse: false, reason: 'Already disengaged' };
       }
       return { canUse: true, reason: '' };
     }
 
     if (base.actionType === 'bonus') {
-      if (!actionEconomy.bonusActionAvailable) {
+      if (!bonusActionAvailable) {
         return { canUse: false, reason: 'Bonus action already used' };
       }
       // Off-hand attack requires having off-hand attacks remaining
       if (
         abilityId === CombatAbilityId.OFFHAND_ATTACK &&
-        actionEconomy.offHandAttacksRemaining <= 0
+        offHandAttacksRemaining <= 0
       ) {
         return { canUse: false, reason: 'No off-hand attacks available' };
       }
