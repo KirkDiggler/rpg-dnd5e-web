@@ -194,11 +194,8 @@ export function CombatAbilitiesPanel({
         </div>
       </div>
 
-      {/* Bonus Actions */}
-      {bonusAbilities.some(
-        (a) =>
-          getAbilityAvailability(a.id).canUse || availableAbilities.length > 0
-      ) && (
+      {/* Bonus Actions - show if any bonus ability can be used */}
+      {bonusAbilities.some((a) => getAbilityAvailability(a.id).canUse) && (
         <div className={styles.abilitySection}>
           <div className={styles.abilitySectionHeader}>Bonus Actions</div>
           <div className={styles.abilityGrid}>

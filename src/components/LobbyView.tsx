@@ -1188,8 +1188,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         console.log('✅ ATTACK activated:', activateResponse.grantedCapacity);
 
         // Update available abilities and actions from the response
-        setAvailableAbilities(activateResponse.availableAbilities);
-        setAvailableActions(activateResponse.availableActions);
+        setAvailableAbilities(activateResponse.availableAbilities ?? []);
+        setAvailableActions(activateResponse.availableActions ?? []);
 
         // Update combat state if provided
         if (activateResponse.combatState) {
@@ -1209,8 +1209,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       console.log('Strike response:', response);
 
       // Update available abilities and actions from the response
-      setAvailableAbilities(response.availableAbilities);
-      setAvailableActions(response.availableActions);
+      setAvailableAbilities(response.availableAbilities ?? []);
+      setAvailableActions(response.availableActions ?? []);
 
       // Handle strike result
       if (response.result?.case === 'strikeResult' && response.result.value) {
@@ -1417,8 +1417,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
         if (response.success) {
           console.log('✅ ATTACK activated:', response.grantedCapacity);
-          setAvailableAbilities(response.availableAbilities);
-          setAvailableActions(response.availableActions);
+          setAvailableAbilities(response.availableAbilities ?? []);
+          setAvailableActions(response.availableActions ?? []);
           if (response.combatState) {
             setCombatState(response.combatState);
           }
@@ -1456,8 +1456,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
       if (response.success) {
         console.log(`✅ ${CombatAbilityId[abilityId]} activated`);
-        setAvailableAbilities(response.availableAbilities);
-        setAvailableActions(response.availableActions);
+        setAvailableAbilities(response.availableAbilities ?? []);
+        setAvailableActions(response.availableActions ?? []);
         if (response.combatState) {
           setCombatState(response.combatState);
         }
@@ -1503,8 +1503,26 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       }
       // Use the existing attack action flow which handles strikes
       await handleAttackAction();
+      return;
     }
-    // TODO: Handle other action types (Move action, etc.)
+
+    // Handle other action types that aren't yet implemented in this flow
+    // Movement is handled directly via hex grid clicks
+    if (actionId === ActionId.MOVE) {
+      addToast({
+        type: 'info',
+        message: 'Click on a hex to move your character.',
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Default for any other unhandled action types
+    addToast({
+      type: 'info',
+      message: 'This action type is not yet implemented.',
+      duration: 3000,
+    });
   };
 
   // Movement execution handlers removed - movement now handled by CombatPanel's Move button
