@@ -11,7 +11,7 @@ import {
   Tool,
   Weapon,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListClasses } from '../../api/hooks';
 import { ChoiceRenderer } from '../../components/ChoiceRenderer';
@@ -104,7 +104,11 @@ export function ClassSelectionModal({
   const { data: allClasses, loading, error } = useListClasses();
 
   // Filter to only show allowed classes (pre-alpha simplification)
-  const classes = allClasses.filter((c) => ALLOWED_CLASSES.has(c.classId));
+  // Memoize to prevent new array reference on every render (which would cause infinite useEffect loop)
+  const classes = useMemo(
+    () => allClasses.filter((c) => ALLOWED_CLASSES.has(c.classId)),
+    [allClasses]
+  );
 
   const [selectedClassIndex, setSelectedClassIndex] = useState(0);
   const [selectedSubclassIndex, setSelectedSubclassIndex] = useState<
@@ -113,7 +117,7 @@ export function ClassSelectionModal({
   const [expandedSections, setExpandedSections] = useState({
     subclasses: false,
     details: false,
-    choices: false,
+    choices: true, // Default to expanded so users see skill/equipment choices
   });
 
   // Track choices per class
@@ -148,19 +152,19 @@ export function ClassSelectionModal({
   };
 
   // Auto-expand sections based on selection state
+  // Use primitive values for dependencies to avoid infinite loops
+  const selectedClassName = selectedClass?.name;
+  const hasSelectedSubclass = currentSubclass !== null;
+
   useEffect(() => {
-    if (selectedClass && !hasSubclasses) {
+    if (selectedClassName && !hasSubclasses) {
       // For classes without subclasses, expand details immediately
       setExpandedSections((prev) => ({
         ...prev,
         details: true,
         choices: true,
       }));
-    } else if (
-      selectedClass &&
-      hasSubclasses &&
-      selectedSubclassIndex === null
-    ) {
+    } else if (selectedClassName && hasSubclasses && !hasSelectedSubclass) {
       // For classes with subclasses, expand subclass selection
       setExpandedSections((prev) => ({
         ...prev,
@@ -168,7 +172,7 @@ export function ClassSelectionModal({
         details: false,
         choices: false,
       }));
-    } else if (selectedClass && currentSubclass) {
+    } else if (selectedClassName && hasSelectedSubclass) {
       // Once subclass is selected, expand details and choices
       setExpandedSections((prev) => ({
         ...prev,
@@ -176,18 +180,18 @@ export function ClassSelectionModal({
         choices: true,
       }));
     }
-  }, [selectedClass, hasSubclasses, selectedSubclassIndex, currentSubclass]);
+  }, [selectedClassName, hasSubclasses, hasSelectedSubclass]);
 
   // Reset selected index when modal opens
   useEffect(() => {
     if (isOpen) {
       setErrorMessage('');
 
-      // Reset expanded sections
+      // Reset expanded sections (keep choices expanded by default)
       setExpandedSections({
         subclasses: false,
         details: false,
-        choices: false,
+        choices: true,
       });
 
       // Clear previous choices when opening modal

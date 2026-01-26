@@ -6,6 +6,7 @@ import type {
   MonsterCombatState,
   Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { HexGrid } from '../hex-grid';
 
 interface BattleMapPanelProps {
@@ -65,10 +66,9 @@ export function BattleMapPanel({
         entities={Object.values(room.entities || {}).map((entity) => {
           // Map proto entity type to display type
           let displayType: 'player' | 'monster' | 'obstacle';
-          const entityType = entity.entityType?.toUpperCase() || '';
-          if (entityType === 'CHARACTER') {
+          if (entity.entityType === EntityType.CHARACTER) {
             displayType = 'player';
-          } else if (entityType === 'MONSTER') {
+          } else if (entity.entityType === EntityType.MONSTER) {
             displayType = 'monster';
           } else {
             // PILLAR, OBSTACLE, or any other type becomes obstacle
