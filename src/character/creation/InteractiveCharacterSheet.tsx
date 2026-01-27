@@ -174,12 +174,9 @@ export function InteractiveCharacterSheet({
   const [localName, setLocalName] = useState('');
   const draft = useCharacterDraft();
 
-  // Sync local name with draft name (only when draft changes externally)
+  // Sync local name with draft name (including clearing it when the draft resets)
   useEffect(() => {
-    if (draft.draft?.name !== undefined && draft.draft.name !== localName) {
-      setLocalName(draft.draft.name);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setLocalName(draft.draft?.name ?? '');
   }, [draft.draft?.name]);
   const { setBackground } = draft;
   const { addToast } = useToast();
@@ -724,10 +721,19 @@ export function InteractiveCharacterSheet({
                 type="text"
                 value={localName}
                 onChange={(e) => setLocalName(e.target.value)}
-                onBlur={(e) => draft.setName(e.target.value)}
+                onBlur={(e) => {
+                  const newName = e.target.value;
+                  if (newName !== draft.draft?.name) {
+                    draft.setName(newName);
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    draft.setName(e.currentTarget.value);
+                    e.preventDefault();
+                    const newName = e.currentTarget.value;
+                    if (newName !== draft.draft?.name) {
+                      draft.setName(newName);
+                    }
                     e.currentTarget.blur();
                   }
                 }}
