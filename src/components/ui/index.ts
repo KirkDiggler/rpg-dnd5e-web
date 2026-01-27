@@ -29,6 +29,9 @@ export {
   DialogTrigger,
 } from './Dialog';
 
+export { ConfirmDialog } from './ConfirmDialog';
+export type { ConfirmDialogProps } from './ConfirmDialog';
+
 // Layout components
 export * from './Layout';
 

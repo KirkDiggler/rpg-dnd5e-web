@@ -5,6 +5,7 @@ import {
   useEncounterStream,
   useEndTurn,
   useExecuteAction,
+  useLeaveEncounter,
   useListCharacters,
   useMoveCharacter,
   useOpenDoor,
@@ -66,7 +67,7 @@ import { BattleMapPanel } from './encounter/BattleMapPanel';
 import { Equipment } from './Equipment';
 import { LobbyScreen } from './lobby';
 import type { DungeonConfig } from './lobby/dungeonConfig';
-import { useToast } from './ui';
+import { ConfirmDialog, useToast } from './ui';
 import { Button } from './ui/Button';
 
 /**
@@ -115,6 +116,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const { activateFeature } = useActivateFeature();
   const { endTurn } = useEndTurn();
   const { openDoor, loading: doorLoading } = useOpenDoor();
+  const { leaveEncounter, loading: leaveLoading } = useLeaveEncounter();
   const { addToast } = useToast();
   const discord = useDiscord();
   const isDevelopment = import.meta.env.MODE === 'development';
@@ -144,6 +146,11 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const [dungeonResult, setDungeonResult] = useState<
     'victory' | 'failure' | null
   >(null);
+
+  // Navigation state
+  const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
+  // Track if combat has ended (victory/defeat) but player hasn't left yet
+  const [combatEnded, setCombatEnded] = useState(false);
 
   // Full character data with equipment (separate from list data)
   const [fullCharactersMap, setFullCharactersMap] = useState<
@@ -225,12 +232,23 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     }, 300);
   }, []);
 
-  const handleDungeonVictory = useCallback((event: DungeonVictoryEvent) => {
-    setRoomsCleared(event.roomsCleared);
-    setDungeonResult('victory');
-  }, []);
+  const handleDungeonVictory = useCallback(
+    (event: DungeonVictoryEvent) => {
+      setRoomsCleared(event.roomsCleared);
+      // Don't immediately show overlay - let player explore/loot
+      setCombatEnded(true);
+      addToast({
+        type: 'success',
+        message:
+          '🎉 Victory! All enemies defeated. You may now explore or leave.',
+        duration: 5000,
+      });
+    },
+    [addToast]
+  );
 
   const handleDungeonFailure = useCallback(() => {
+    // Defeat still shows immediately since there's nothing to explore
     setDungeonResult('failure');
   }, []);
 
@@ -841,6 +859,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   // Reset all dungeon-related state
   const resetDungeonState = useCallback(() => {
     setDungeonResult(null);
+    setCombatEnded(false);
     setRoom(null);
     setEncounterId(null);
     setDungeonId(null);
@@ -850,6 +869,35 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     setRoomsCleared(0);
     setCombatLog([]);
     setSelectedEntity(null);
+  }, []);
+
+  // Handle abandoning the encounter mid-combat
+  const handleAbandonEncounter = useCallback(async () => {
+    if (!encounterId) return;
+
+    try {
+      await leaveEncounter(encounterId, playerId);
+      addToast({
+        type: 'info',
+        message: 'You have left the encounter.',
+        duration: 3000,
+      });
+      resetDungeonState();
+      setShowAbandonConfirm(false);
+    } catch (err) {
+      console.error('Failed to leave encounter:', err);
+      addToast({
+        type: 'error',
+        message: 'Failed to leave encounter',
+        duration: 3000,
+      });
+    }
+  }, [encounterId, playerId, leaveEncounter, addToast, resetDungeonState]);
+
+  // Handle leaving after victory (shows the result overlay)
+  const handleLeaveDungeon = useCallback(() => {
+    // Now show the victory overlay
+    setDungeonResult('victory');
   }, []);
 
   // Prevent body scrolling when in combat
@@ -1958,12 +2006,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           monsters={monsters}
           availableAbilities={availableAbilities}
           availableActions={availableActions}
+          combatEnded={combatEnded}
           onAbilityClick={handleAbilityClick}
           onActionClick={handleActionClick}
           onFeature={handleActivateFeature}
           onBackpack={handleBackpack}
           onWeaponClick={handleWeaponClick}
           onEndTurn={handleEndTurn}
+          onAbandon={() => setShowAbandonConfirm(true)}
+          onLeaveDungeon={handleLeaveDungeon}
         />
       )}
 
@@ -1997,6 +2048,19 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           }
         />
       )}
+
+      {/* Abandon confirmation dialog */}
+      <ConfirmDialog
+        open={showAbandonConfirm}
+        onOpenChange={setShowAbandonConfirm}
+        title="Abandon Encounter?"
+        description="Are you sure you want to abandon this encounter? You will lose any progress and return to the lobby."
+        confirmLabel="Abandon"
+        cancelLabel="Stay"
+        confirmVariant="danger"
+        onConfirm={handleAbandonEncounter}
+        loading={leaveLoading}
+      />
     </>
   );
 }
