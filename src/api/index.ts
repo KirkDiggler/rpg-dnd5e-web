@@ -32,6 +32,15 @@ export {
   useOpenDoor,
 } from './encounterHooks';
 
+// Re-export lobby hooks
+export {
+  useCreateEncounter,
+  useJoinEncounter,
+  useLeaveEncounter,
+  useSetReady,
+  useStartCombat,
+} from './lobbyHooks';
+
 // Re-export encounter hook input types
 export type { MoveActionInput, StrikeActionInput } from './encounterHooks';
 

@@ -26,10 +26,20 @@ const DialogContent = forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <DialogPortal>
-    <DialogOverlay />
+    {/* Overlay - z-index 3000 per combat.module.css z-index strategy */}
+    <DialogOverlay style={{ zIndex: 3000 }} />
+    {/* Content - z-index 3010, above overlay and combat panels */}
     <DialogPrimitive.Content ref={ref} asChild {...props}>
       <motion.div
         className={cn('modal-content', className)}
+        style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 3010,
+          margin: 0, // Override base.css margin
+        }}
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}

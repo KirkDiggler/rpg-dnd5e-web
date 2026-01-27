@@ -41,6 +41,10 @@ export interface CombatPanelProps {
   availableAbilities?: AvailableAbility[];
   availableActions?: AvailableAction[];
 
+  // Encounter state
+  /** If true, combat has ended (victory/defeat) but player hasn't left yet */
+  combatEnded?: boolean;
+
   // Callbacks
   onFeature?: (featureId: FeatureId) => void;
   onBackpack?: () => void;
@@ -50,6 +54,10 @@ export interface CombatPanelProps {
   onAbilityClick?: (abilityId: CombatAbilityId) => void;
   /** Called when an available action is clicked (Strike, Off-hand Strike, etc.) */
   onActionClick?: (actionId: ActionId) => void;
+  /** Called when player wants to abandon/leave the encounter */
+  onAbandon?: () => void;
+  /** Called when player wants to leave after victory */
+  onLeaveDungeon?: () => void;
 }
 
 /**
@@ -71,14 +79,17 @@ export function CombatPanel({
   monsters = [],
   availableAbilities = [],
   availableActions = [],
+  combatEnded = false,
   onFeature,
   onBackpack,
   onWeaponClick,
   onEndTurn,
   onAbilityClick,
   onActionClick,
+  onAbandon,
+  onLeaveDungeon,
 }: CombatPanelProps) {
-  const actionsDisabled = !isPlayerTurn;
+  const actionsDisabled = !isPlayerTurn || combatEnded;
   const showHoverPanel = hoveredEntity || selectedHoverEntity;
 
   return (
@@ -180,14 +191,38 @@ export function CombatPanel({
             🎒
           </button>
 
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnEndTurn}`}
-            onClick={onEndTurn}
-            disabled={actionsDisabled}
-            title="End your turn"
-          >
-            End Turn
-          </button>
+          {/* Show Leave Dungeon when combat ended, otherwise show End Turn */}
+          {combatEnded ? (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnEndTurn}`}
+              onClick={onLeaveDungeon}
+              title="Leave the dungeon"
+              style={{ background: 'linear-gradient(90deg, #F59E0B, #D97706)' }}
+            >
+              🚪 Leave Dungeon
+            </button>
+          ) : (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnEndTurn}`}
+              onClick={onEndTurn}
+              disabled={actionsDisabled}
+              title="End your turn"
+            >
+              End Turn
+            </button>
+          )}
+
+          {/* Abandon button - always available during combat */}
+          {!combatEnded && onAbandon && (
+            <button
+              className={styles.actionBtn}
+              onClick={onAbandon}
+              title="Abandon encounter"
+              style={{ color: '#EF4444' }}
+            >
+              🏃
+            </button>
+          )}
         </div>
       </div>
     </div>
