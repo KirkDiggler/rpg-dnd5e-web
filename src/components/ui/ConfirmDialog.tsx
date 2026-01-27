@@ -61,12 +61,9 @@ export function ConfirmDialog({
             {cancelLabel}
           </Button>
           <Button
-            variant={confirmVariant === 'danger' ? 'primary' : 'primary'}
+            variant={confirmVariant}
             onClick={handleConfirm}
             disabled={loading}
-            className={
-              confirmVariant === 'danger' ? 'bg-red-600 hover:bg-red-500' : ''
-            }
           >
             {loading ? 'Loading...' : confirmLabel}
           </Button>

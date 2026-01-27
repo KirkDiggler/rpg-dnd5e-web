@@ -5,10 +5,11 @@
  * All z-index values are explicit and well-documented to prevent layering issues.
  * 
  * Z-Index Management:
- * - Modal backdrop: 1000
- * - Modal content: 1010
+ * - Game content: 0-999
  * - Combat overlays: 2000-2999
- * - Action panel: 2500 (always visible over game content but under modals)
+ * - Action panel: 2500 (always visible over game content)
+ * - Modal backdrop: 3000
+ * - Modal content: 3010
  * - Debug overlays: 9999 (development only)
  */
 

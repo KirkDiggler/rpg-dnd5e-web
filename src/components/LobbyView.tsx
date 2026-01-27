@@ -891,6 +891,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         message: 'Failed to leave encounter',
         duration: 3000,
       });
+      setShowAbandonConfirm(false);
     }
   }, [encounterId, playerId, leaveEncounter, addToast, resetDungeonState]);
 
