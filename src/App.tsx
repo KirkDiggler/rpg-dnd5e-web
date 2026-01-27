@@ -195,13 +195,11 @@ function AppContent() {
             characterId={currentCharacterId}
             onBack={handleBackToHome}
           />
-        ) : draft.loading || draft.saving ? (
+        ) : draft.loading ? (
           <div className="flex items-center justify-center h-screen">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-primary mx-auto mb-4"></div>
-              <p className="text-lg">
-                {draft.saving ? 'Creating character...' : 'Loading draft...'}
-              </p>
+              <p className="text-lg">Loading draft...</p>
             </div>
           </div>
         ) : (

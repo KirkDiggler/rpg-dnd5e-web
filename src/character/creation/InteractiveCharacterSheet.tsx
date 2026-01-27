@@ -171,7 +171,13 @@ export function InteractiveCharacterSheet({
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
   const [isAppearanceModalOpen, setIsAppearanceModalOpen] = useState(false);
   const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
+  const [localName, setLocalName] = useState('');
   const draft = useCharacterDraft();
+
+  // Sync local name with draft name (including clearing it when the draft resets)
+  useEffect(() => {
+    setLocalName(draft.draft?.name ?? '');
+  }, [draft.draft?.name]);
   const { setBackground } = draft;
   const { addToast } = useToast();
 
@@ -713,13 +719,29 @@ export function InteractiveCharacterSheet({
             <div className="relative">
               <input
                 type="text"
-                value={draft.draft?.name || ''}
-                onChange={(e) => draft.setName(e.target.value)}
+                value={localName}
+                onChange={(e) => setLocalName(e.target.value)}
+                onBlur={(e) => {
+                  const newName = e.target.value;
+                  if (newName !== draft.draft?.name) {
+                    draft.setName(newName);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const newName = e.currentTarget.value;
+                    if (newName !== draft.draft?.name) {
+                      draft.setName(newName);
+                    }
+                    e.currentTarget.blur();
+                  }
+                }}
                 placeholder="Enter your character's name..."
                 className="w-full p-4 text-xl font-serif rounded-lg border-2 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2"
                 style={{
                   backgroundColor: 'var(--bg-secondary)',
-                  borderColor: draft.draft?.name
+                  borderColor: localName
                     ? 'var(--accent-primary)'
                     : 'var(--border-primary)',
                   color: 'var(--text-primary)',
