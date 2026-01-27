@@ -364,7 +364,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           availableCharacters.find((c) => c.id === event.targetId)?.name ||
           formatEntityId(event.targetId);
 
-        const { hit, damage, damageType, critical, attackRoll } = event.result;
+        const {
+          hit,
+          damage,
+          damageType,
+          critical,
+          attackRoll,
+          attackTotal,
+          targetAc,
+        } = event.result;
 
         const logEntry: CombatLogEntry = {
           id: `attack-stream-${Date.now()}`,
@@ -394,6 +402,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
             : undefined,
           details: {
             attackRoll,
+            attackTotal,
+            targetAc,
             damage: hit ? damage : undefined,
             damageType: hit ? damageType : undefined,
             critical,
@@ -769,7 +779,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
             availableCharacters.find((c) => c.id === targetId)?.name ||
             formatEntityId(targetId);
 
-          const { hit, damage, damageType, critical, attackRoll } = result;
+          const {
+            hit,
+            damage,
+            damageType,
+            critical,
+            attackRoll,
+            attackTotal,
+            targetAc,
+          } = result;
 
           const logEntry: CombatLogEntry = {
             id: `attack-history-${event.eventId}`,
@@ -799,6 +817,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
               : undefined,
             details: {
               attackRoll,
+              attackTotal,
+              targetAc,
               damage: hit ? damage : undefined,
               damageType: hit ? damageType : undefined,
               critical,
