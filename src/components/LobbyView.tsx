@@ -11,6 +11,7 @@ import {
   useOpenDoor,
 } from '@/api';
 import { useDiscord } from '@/discord';
+import { useDungeonMap } from '@/hooks/useDungeonMap';
 import {
   getAbilityDisplay,
   getConditionDisplay,
@@ -134,9 +135,18 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
   // Game state
   const [encounterId, setEncounterId] = useState<string | null>(null);
-  const [room, setRoom] = useState<Room | null>(null);
   const [combatState, setCombatState] = useState<CombatState | null>(null);
   const [monsters, setMonsters] = useState<MonsterCombatState[]>([]);
+
+  // Accumulated dungeon map state (Phase 2: multi-room rendering)
+  // Replaces single `room` state — accumulates all revealed rooms
+  const {
+    // dungeonMap is available for Phase 3 multi-room rendering
+    currentRoom: room,
+    addRoom: addRoomToMap,
+    updateEntities: updateMapEntities,
+    reset: resetDungeonMap,
+  } = useDungeonMap();
 
   // Dungeon/door state
   const [dungeonId, setDungeonId] = useState<string | null>(null);
@@ -203,34 +213,39 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const playerName = discord.user?.username || 'Player';
 
   // Dungeon stream event handlers
-  const handleRoomRevealed = useCallback((event: RoomRevealedEvent) => {
-    // Trigger fade transition
-    setIsTransitioning(true);
+  const handleRoomRevealed = useCallback(
+    (event: RoomRevealedEvent) => {
+      // Trigger fade transition
+      setIsTransitioning(true);
 
-    setTimeout(() => {
-      // Update all room state
-      setRoom(event.room ?? null);
-      setCombatState(event.combatState ?? null);
-      setDoors(event.doors ?? []);
-      setRoomsCleared((prev) => prev + 1);
+      setTimeout(() => {
+        // Accumulate new room into dungeon map
+        if (event.room) {
+          addRoomToMap(event.room, event.doors ?? []);
+        }
+        setCombatState(event.combatState ?? null);
+        setDoors(event.doors ?? []);
+        setRoomsCleared((prev) => prev + 1);
 
-      // Select the current turn entity
-      if (event.combatState?.currentTurn?.entityId) {
-        setSelectedEntity(event.combatState.currentTurn.entityId);
-      }
+        // Select the current turn entity
+        if (event.combatState?.currentTurn?.entityId) {
+          setSelectedEntity(event.combatState.currentTurn.entityId);
+        }
 
-      // Clear movement state for new room
-      setMovementMode(false);
-      setMovementPath([]);
-      setAttackTarget(null);
-      // Reset two-level action economy for new room
-      setAvailableAbilities([]);
-      setAvailableActions([]);
+        // Clear movement state for new room
+        setMovementMode(false);
+        setMovementPath([]);
+        setAttackTarget(null);
+        // Reset two-level action economy for new room
+        setAvailableAbilities([]);
+        setAvailableActions([]);
 
-      // End fade
-      setIsTransitioning(false);
-    }, 300);
-  }, []);
+        // End fade
+        setIsTransitioning(false);
+      }, 300);
+    },
+    [addRoomToMap]
+  );
 
   const handleDungeonVictory = useCallback(
     (event: DungeonVictoryEvent) => {
@@ -253,32 +268,35 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   }, []);
 
   // Multiplayer sync: Turn ended - update combat state and room
-  const handleTurnEnded = useCallback((event: TurnEndedEvent) => {
-    console.log('🔄 TurnEnded event received:', event);
+  const handleTurnEnded = useCallback(
+    (event: TurnEndedEvent) => {
+      console.log('🔄 TurnEnded event received:', event);
 
-    // Update combat state from the event
-    if (event.combatState) {
-      setCombatState(event.combatState);
+      // Update combat state from the event
+      if (event.combatState) {
+        setCombatState(event.combatState);
 
-      // Select the new current turn entity
-      if (event.combatState.currentTurn?.entityId) {
-        setSelectedEntity(event.combatState.currentTurn.entityId);
+        // Select the new current turn entity
+        if (event.combatState.currentTurn?.entityId) {
+          setSelectedEntity(event.combatState.currentTurn.entityId);
+        }
+
+        // Clear movement mode and attack target on turn change
+        setMovementMode(false);
+        setMovementPath([]);
+        setAttackTarget(null);
+        // Reset two-level action economy for new turn
+        setAvailableAbilities([]);
+        setAvailableActions([]);
       }
 
-      // Clear movement mode and attack target on turn change
-      setMovementMode(false);
-      setMovementPath([]);
-      setAttackTarget(null);
-      // Reset two-level action economy for new turn
-      setAvailableAbilities([]);
-      setAvailableActions([]);
-    }
-
-    // Update room with entity positions after turn
-    if (event.updatedRoom) {
-      setRoom(event.updatedRoom);
-    }
-  }, []);
+      // Update entity positions in dungeon map after turn
+      if (event.updatedRoom) {
+        updateMapEntities(event.updatedRoom);
+      }
+    },
+    [updateMapEntities]
+  );
 
   // Multiplayer sync: Monster turn completed - show monster actions
   const handleMonsterTurnCompleted = useCallback(
@@ -319,12 +337,17 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         });
       }
 
-      // Update room if provided (monster positions changed)
+      // Update entity positions in dungeon map (monster positions changed)
       if (event.updatedRoom) {
-        setRoom(event.updatedRoom);
+        updateMapEntities(event.updatedRoom);
       }
     },
-    [combatState?.round, fullCharactersMap, availableCharacters]
+    [
+      combatState?.round,
+      fullCharactersMap,
+      availableCharacters,
+      updateMapEntities,
+    ]
   );
 
   // Multiplayer sync: Attack resolved - sync attack results and HP
@@ -348,9 +371,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         return newMap;
       });
 
-      // Update room if provided (entity state may have changed)
+      // Update entity positions in dungeon map (entity state may have changed)
       if (event.updatedRoom) {
-        setRoom(event.updatedRoom);
+        updateMapEntities(event.updatedRoom);
       }
 
       // Add combat log entry for the attack
@@ -402,7 +425,12 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setCombatLog((prev) => [...prev, logEntry]);
       }
     },
-    [combatState?.round, fullCharactersMap, availableCharacters]
+    [
+      combatState?.round,
+      fullCharactersMap,
+      availableCharacters,
+      updateMapEntities,
+    ]
   );
 
   // Multiplayer sync: Movement completed - sync entity positions and movement resources
@@ -410,9 +438,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: MovementCompletedEvent) => {
       console.log('🚶 MovementCompleted event received:', event);
 
-      // Update room with new entity positions
+      // Update entity positions in dungeon map
       if (event.updatedRoom) {
-        setRoom(event.updatedRoom);
+        updateMapEntities(event.updatedRoom);
       }
 
       // Sync movement resources to combat state
@@ -433,7 +461,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         };
       });
     },
-    []
+    [updateMapEntities]
   );
 
   // Multiplayer sync: Feature activated - sync feature usage
@@ -593,9 +621,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         roomToSet
       );
 
-      // Set the room (with updated monster positions if they moved)
+      // Add first room to dungeon map (with updated monster positions if they moved)
       if (roomToSet) {
-        setRoom(roomToSet);
+        addRoomToMap(roomToSet, event.doors ?? []);
       }
 
       // Add party members' characters to our map
@@ -637,7 +665,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         duration: 2000,
       });
     },
-    [addToast, processMonsterTurns, playerId]
+    [addToast, processMonsterTurns, playerId, addRoomToMap]
   );
 
   // State sync handler - called with snapshot on connect/reconnect
@@ -661,9 +689,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         }
       }
 
-      // Apply room from snapshot
+      // Apply room from snapshot into dungeon map
       if (snapshot.room) {
-        setRoom(snapshot.room);
+        addRoomToMap(snapshot.room, snapshot.doors ?? []);
       }
 
       // Apply monsters from snapshot (for monsterType texture selection)
@@ -714,7 +742,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
       console.log('🔄 State sync complete');
     },
-    [playerId]
+    [playerId, addRoomToMap]
   );
 
   // Historical events handler - processes events that happened before we connected
@@ -860,7 +888,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const resetDungeonState = useCallback(() => {
     setDungeonResult(null);
     setCombatEnded(false);
-    setRoom(null);
+    resetDungeonMap();
     setEncounterId(null);
     setDungeonId(null);
     setCombatState(null);
@@ -869,7 +897,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     setRoomsCleared(0);
     setCombatLog([]);
     setSelectedEntity(null);
-  }, []);
+  }, [resetDungeonMap]);
 
   // Handle abandoning the encounter mid-combat
   const handleAbandonEncounter = useCallback(async () => {
@@ -967,9 +995,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         }
       }
 
-      // Set the room (with updated monster positions if they moved)
+      // Add first room to dungeon map (with updated monster positions if they moved)
       if (roomToSet) {
-        setRoom(roomToSet);
+        addRoomToMap(roomToSet, response.doors ?? []);
       }
     } catch (err) {
       console.error('Failed to start dungeon:', err);
@@ -1919,9 +1947,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                   event.room
                 );
 
-                // Set the room (with updated monster positions if they moved)
+                // Add first room to dungeon map (with updated monster positions)
                 if (roomToSet) {
-                  setRoom(roomToSet);
+                  addRoomToMap(roomToSet, event.doors ?? []);
                   addToast({
                     type: 'success',
                     message: 'Combat started!',
