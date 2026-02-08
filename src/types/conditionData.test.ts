@@ -10,6 +10,7 @@ import {
   isRagingData,
   isSneakAttackData,
   isUnarmoredDefenseData,
+  isUnarmoredMovementData,
   parseConditionData,
 } from './conditionData';
 
@@ -151,6 +152,21 @@ describe('conditionData', () => {
     it('isImprovedCriticalData returns false without threshold', () => {
       const data = { character_id: 'c1', monk_level: 5 };
       expect(isImprovedCriticalData(data)).toBe(false);
+    });
+
+    it('isUnarmoredMovementData detects by monk_level', () => {
+      const data = { character_id: 'c1', monk_level: 6 };
+      expect(isUnarmoredMovementData(data)).toBe(true);
+    });
+
+    it('isUnarmoredMovementData returns false with threshold', () => {
+      const data = { character_id: 'c1', monk_level: 6, threshold: 19 };
+      expect(isUnarmoredMovementData(data)).toBe(false);
+    });
+
+    it('isUnarmoredMovementData returns false without monk_level', () => {
+      const data = { character_id: 'c1' };
+      expect(isUnarmoredMovementData(data)).toBe(false);
     });
   });
 

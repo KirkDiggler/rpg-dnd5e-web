@@ -64,8 +64,8 @@ describe('diceCalculations', () => {
       expect(getAbilityModifier(1)).toBe(-5);
     });
 
-    it('handles edge case score of 1 (minimum)', () => {
-      expect(getAbilityModifier(1)).toBe(-5);
+    it('handles edge case high score of 30 (maximum)', () => {
+      expect(getAbilityModifier(30)).toBe(10);
     });
   });
 
