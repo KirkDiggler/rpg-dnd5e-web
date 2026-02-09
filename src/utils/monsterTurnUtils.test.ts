@@ -47,6 +47,10 @@ describe('monsterTurnUtils', () => {
     it('handles entity with zero instance number', () => {
       expect(formatEntityId('zombie-0')).toBe('Zombie 0');
     });
+
+    it('capitalizes all parts when no numeric suffix', () => {
+      expect(formatEntityId('giant-spider')).toBe('Giant Spider');
+    });
   });
 
   describe('extractDamageFromMonsterTurns', () => {

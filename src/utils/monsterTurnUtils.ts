@@ -35,8 +35,10 @@ export function formatEntityId(entityId: string): string {
     return `${formattedType} ${lastPart}`;
   }
 
-  // No instance number, just capitalize first part
-  return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+  // No instance number, capitalize all parts
+  return parts
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 /**
