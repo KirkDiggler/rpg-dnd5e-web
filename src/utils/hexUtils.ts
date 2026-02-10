@@ -78,9 +78,11 @@ export function findHexPath(
   to: CubeCoord,
   occupiedPositions: Set<string>
 ): CubeCoord[] {
-  // If already adjacent or same, return direct path
+  // If same position, no movement needed
   const dist = hexDistance(from.x, from.y, from.z, to.x, to.y, to.z);
-  if (dist <= 1) return [to];
+  if (dist === 0) return [];
+  // If already adjacent, one step
+  if (dist === 1) return [to];
 
   // Simple straight-line pathing (greedy approach)
   const path: CubeCoord[] = [];
