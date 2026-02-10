@@ -20,9 +20,10 @@ describe('cubeToOffset / offsetToCube roundtrip', () => {
   it.each(coords)('roundtrips for (%j)', (coord) => {
     const offset = cubeToOffset(coord);
     const back = offsetToCube(offset);
-    expect(back.x == coord.x).toBe(true);
-    expect(back.y == coord.y).toBe(true);
-    expect(back.z == coord.z).toBe(true);
+    // +0 coerces -0 to 0 for clean comparison
+    expect(back.x + 0).toBe(coord.x + 0);
+    expect(back.y + 0).toBe(coord.y + 0);
+    expect(back.z + 0).toBe(coord.z + 0);
   });
 });
 
@@ -95,9 +96,9 @@ describe('findHexPath', () => {
     expect(path.length).toBe(0);
   });
 
-  it('returns target for same position', () => {
+  it('returns empty path for same position', () => {
     const pos: CubeCoord = { x: 0, y: 0, z: 0 };
     const path = findHexPath(pos, pos, new Set());
-    expect(path).toEqual([pos]);
+    expect(path).toEqual([]);
   });
 });

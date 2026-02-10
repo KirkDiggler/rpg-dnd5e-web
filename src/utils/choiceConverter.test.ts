@@ -124,23 +124,21 @@ describe('convertExpertiseChoiceToProto', () => {
     }
   });
 
-  it('BUG: multi-word skills with underscores do not match due to asymmetric regex stripping', () => {
-    // The converter strips non-alpha chars from the INPUT ("animal_handling" → "animalhandling")
-    // but only lowercases the enum KEY ("ANIMAL_HANDLING" → "animal_handling")
-    // So "animalhandling" !== "animal_handling" — these never match.
-    // This is a known bug; single-word skills (athletics, stealth) work fine.
-    const result = convertExpertiseChoiceToProto(
-      'exp-1',
-      ['animal_handling'],
-      ChoiceSource.CLASS
-    );
-    if (result.selection?.case === 'expertise') {
-      expect(result.selection.value.skills).not.toContain(
-        Skill.ANIMAL_HANDLING
+  // BUG: regex strips underscores from input ("animal_handling" → "animalhandling")
+  // but enum key keeps them ("ANIMAL_HANDLING" → "animal_handling"), so they never match.
+  it.fails(
+    'multi-word skills with underscores should map to enums (blocked by asymmetric regex)',
+    () => {
+      const result = convertExpertiseChoiceToProto(
+        'exp-1',
+        ['animal_handling'],
+        ChoiceSource.CLASS
       );
-      expect(result.selection.value.skills.length).toBe(0);
+      if (result.selection?.case === 'expertise') {
+        expect(result.selection.value.skills).toContain(Skill.ANIMAL_HANDLING);
+      }
     }
-  });
+  );
 });
 
 describe('round-trip conversions', () => {
