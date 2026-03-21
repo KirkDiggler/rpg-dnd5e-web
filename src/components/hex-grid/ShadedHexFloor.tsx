@@ -12,13 +12,13 @@ import { useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
+import type { AbsoluteFloorTile } from '@/hooks/useDungeonMap';
 import { FloorBuilder, FloorColors } from '@/rendering/FloorBuilder';
 
 import { cubeToWorld, type CubeCoord } from './hexMath';
 
 interface ShadedHexFloorProps {
-  gridWidth: number;
-  gridHeight: number;
+  floorTiles: Map<string, AbsoluteFloorTile>;
   hexSize: number;
   hoveredHex: CubeCoord | null;
   selectedHex: CubeCoord | null;
@@ -35,14 +35,6 @@ const HIGHLIGHT_COLORS = {
   door: new THREE.Color(0x8b4513),
   wall: new THREE.Color(0x444444),
 };
-
-/**
- * Convert grid index to cube coordinates (matches InstancedHexTiles exactly)
- */
-function indexToCube(x: number, z: number): CubeCoord {
-  const y = -x - z;
-  return { x, y, z };
-}
 
 /**
  * Check if two cube coordinates are equal
@@ -67,8 +59,7 @@ function positionsToSet(positions: CubeCoord[]): Set<string> {
 }
 
 export function ShadedHexFloor({
-  gridWidth,
-  gridHeight,
+  floorTiles,
   hexSize,
   hoveredHex,
   selectedHex,
@@ -79,7 +70,7 @@ export function ShadedHexFloor({
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
   const groupRef = useRef<THREE.Group>(null);
   const builderRef = useRef<FloorBuilder | null>(null);
-  const instanceCount = gridWidth * gridHeight;
+  const instanceCount = floorTiles.size;
 
   // Store base colors for resetting after highlight removal
   const baseColorsRef = useRef<Float32Array | null>(null);
@@ -87,6 +78,7 @@ export function ShadedHexFloor({
   // Create floor mesh imperatively using FloorBuilder for geometry and materials
   useEffect(() => {
     if (!groupRef.current) return;
+    if (instanceCount === 0) return;
 
     // FloorBuilder needs hexWidth and hexHeight that match cubeToWorld math.
     // cubeToWorld: worldX = hexSize * sqrt(3) * (cube.x + cube.z/2)
@@ -133,28 +125,28 @@ export function ShadedHexFloor({
 
     const mesh = new THREE.InstancedMesh(geometry, material, instanceCount);
 
-    // Set up instance matrices using the SAME iteration as InstancedHexTiles
+    // Set up instance matrices from floorTiles map
     const matrix = new THREE.Matrix4();
     const baseColors = new Float32Array(instanceCount * 3);
     const baseColorObj = new THREE.Color(baseColor);
 
     let instanceIndex = 0;
-    for (let z = 0; z < gridHeight; z++) {
-      for (let x = 0; x < gridWidth; x++) {
-        const cube = indexToCube(x, z);
-        const worldPos = cubeToWorld(cube, hexSize);
+    for (const [, tile] of floorTiles) {
+      const worldPos = cubeToWorld(
+        { x: tile.x, y: tile.y, z: tile.z },
+        hexSize
+      );
 
-        matrix.setPosition(worldPos.x, 0, worldPos.z);
-        mesh.setMatrixAt(instanceIndex, matrix);
+      matrix.setPosition(worldPos.x, 0, worldPos.z);
+      mesh.setMatrixAt(instanceIndex, matrix);
 
-        // Add slight color variation per tile
-        const variation = 1 + (Math.random() - 0.5) * 0.1;
-        baseColors[instanceIndex * 3] = baseColorObj.r * variation;
-        baseColors[instanceIndex * 3 + 1] = baseColorObj.g * variation;
-        baseColors[instanceIndex * 3 + 2] = baseColorObj.b * variation;
+      // Add slight color variation per tile
+      const variation = 1 + (Math.random() - 0.5) * 0.1;
+      baseColors[instanceIndex * 3] = baseColorObj.r * variation;
+      baseColors[instanceIndex * 3 + 1] = baseColorObj.g * variation;
+      baseColors[instanceIndex * 3 + 2] = baseColorObj.b * variation;
 
-        instanceIndex++;
-      }
+      instanceIndex++;
     }
 
     mesh.instanceColor = new THREE.InstancedBufferAttribute(baseColors, 3);
@@ -178,7 +170,7 @@ export function ShadedHexFloor({
       meshRef.current = null;
       baseColorsRef.current = null;
     };
-  }, [gridWidth, gridHeight, hexSize, instanceCount, invalidate]);
+  }, [floorTiles, hexSize, instanceCount, invalidate]);
 
   // Update instance colors when hover/selected/door/wall changes
   useEffect(() => {
@@ -193,39 +185,35 @@ export function ShadedHexFloor({
     const colors = new Float32Array(baseColors);
 
     let instanceIndex = 0;
-    for (let z = 0; z < gridHeight; z++) {
-      for (let x = 0; x < gridWidth; x++) {
-        const cube = indexToCube(x, z);
-        const key = cubeToKey(cube);
+    for (const [key, tile] of floorTiles) {
+      const cube: CubeCoord = { x: tile.x, y: tile.y, z: tile.z };
 
-        let overrideColor: THREE.Color | null = null;
+      let overrideColor: THREE.Color | null = null;
 
-        if (cubesEqual(selectedHex, cube)) {
-          overrideColor = HIGHLIGHT_COLORS.selected;
-        } else if (cubesEqual(hoveredHex, cube)) {
-          overrideColor = HIGHLIGHT_COLORS.hovered;
-        } else if (doorSet.has(key)) {
-          overrideColor = HIGHLIGHT_COLORS.door;
-        } else if (wallSet.has(key)) {
-          overrideColor = HIGHLIGHT_COLORS.wall;
-        }
-
-        if (overrideColor) {
-          colors[instanceIndex * 3] = overrideColor.r;
-          colors[instanceIndex * 3 + 1] = overrideColor.g;
-          colors[instanceIndex * 3 + 2] = overrideColor.b;
-        }
-
-        instanceIndex++;
+      if (cubesEqual(selectedHex, cube)) {
+        overrideColor = HIGHLIGHT_COLORS.selected;
+      } else if (cubesEqual(hoveredHex, cube)) {
+        overrideColor = HIGHLIGHT_COLORS.hovered;
+      } else if (doorSet.has(key)) {
+        overrideColor = HIGHLIGHT_COLORS.door;
+      } else if (wallSet.has(key)) {
+        overrideColor = HIGHLIGHT_COLORS.wall;
       }
+
+      if (overrideColor) {
+        colors[instanceIndex * 3] = overrideColor.r;
+        colors[instanceIndex * 3 + 1] = overrideColor.g;
+        colors[instanceIndex * 3 + 2] = overrideColor.b;
+      }
+
+      instanceIndex++;
     }
 
     mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
     mesh.instanceColor.needsUpdate = true;
     invalidate();
   }, [
-    gridWidth,
-    gridHeight,
+    floorTiles,
     hoveredHex,
     selectedHex,
     doorPositions,
