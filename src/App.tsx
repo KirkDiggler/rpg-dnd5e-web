@@ -222,22 +222,24 @@ function AppContent() {
         )}
 
         {/* Dev tools buttons */}
-        <div className="fixed bottom-4 right-4 z-50 flex gap-2">
-          <button
-            onClick={handleOpenConcepts}
-            className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
-            title="Open Concepts Lab"
-          >
-            🧪
-          </button>
-          <button
-            onClick={() => setShowDebugPanel(!showDebugPanel)}
-            className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
-            title={showDebugPanel ? 'Hide Debug Panel' : 'Show Debug Panel'}
-          >
-            {showDebugPanel ? '🔧✕' : '🔧'}
-          </button>
-        </div>
+        {isDevelopment && (
+          <div className="fixed bottom-4 right-4 z-50 flex gap-2">
+            <button
+              onClick={handleOpenConcepts}
+              className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
+              title="Open Concepts Lab"
+            >
+              🧪
+            </button>
+            <button
+              onClick={() => setShowDebugPanel(!showDebugPanel)}
+              className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
+              title={showDebugPanel ? 'Hide Debug Panel' : 'Show Debug Panel'}
+            >
+              {showDebugPanel ? '🔧✕' : '🔧'}
+            </button>
+          </div>
+        )}
 
         {/* Discord debug panel - show based on state */}
         {showDebugPanel && (
