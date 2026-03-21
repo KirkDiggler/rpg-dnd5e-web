@@ -9,9 +9,15 @@ import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { LobbyView } from './components/LobbyView';
 import { ThemeSelector } from './components/ThemeSelector';
+import { ConceptsView } from './concepts/ConceptsView';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
-type AppView = 'home' | 'character-creation' | 'character-sheet' | 'lobby';
+type AppView =
+  | 'home'
+  | 'character-creation'
+  | 'character-sheet'
+  | 'lobby'
+  | 'concepts';
 
 function AppContent() {
   const [currentView, setCurrentView] = useState<AppView>('home');
@@ -80,6 +86,10 @@ function AppContent() {
     setCurrentCharacterId(null);
     setLobbyCharacterId(null);
     setCurrentView('home');
+  };
+
+  const handleOpenConcepts = () => {
+    setCurrentView('concepts');
   };
 
   // Carousel selection handler
@@ -176,6 +186,8 @@ function AppContent() {
           </motion.div>
         ) : currentView === 'lobby' ? (
           <LobbyView characterId={lobbyCharacterId} onBack={handleBackToHome} />
+        ) : currentView === 'concepts' ? (
+          <ConceptsView onBack={handleBackToHome} />
         ) : currentView === 'home' ? (
           <HomeView
             playerId={playerId || 'test-player'}
@@ -209,8 +221,15 @@ function AppContent() {
           />
         )}
 
-        {/* Debug panel toggle button */}
-        <div className="fixed bottom-4 right-4 z-50">
+        {/* Dev tools buttons */}
+        <div className="fixed bottom-4 right-4 z-50 flex gap-2">
+          <button
+            onClick={handleOpenConcepts}
+            className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
+            title="Open Concepts Lab"
+          >
+            🧪
+          </button>
           <button
             onClick={() => setShowDebugPanel(!showDebugPanel)}
             className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
