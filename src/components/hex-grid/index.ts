@@ -11,6 +11,10 @@ export { HexTile } from './HexTile';
 export { HexWall } from './HexWall';
 export type { HexWallProps } from './HexWall';
 
+export { ShadedHexFloor } from './ShadedHexFloor';
+export { ShadedHexWall } from './ShadedHexWall';
+export type { ShadedHexWallProps } from './ShadedHexWall';
+
 export { useHexInteraction } from './useHexInteraction';
 export type {
   UseHexInteractionProps,

@@ -28,6 +28,9 @@ dist-ssr
 *.sln
 *.sw?
 
+# Worktrees
+.worktrees/
+
 # API Data Snapshots (uncomment to exclude once stale)
 # These are development artifacts - point-in-time captures of API responses
 # Useful for offline development but can become outdated

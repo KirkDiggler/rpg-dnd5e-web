@@ -25,10 +25,10 @@ import * as THREE from 'three';
 import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
 import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
-import { HexWall } from './HexWall';
-import { InstancedHexTiles } from './InstancedHexTiles';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
+import { ShadedHexFloor } from './ShadedHexFloor';
+import { ShadedHexWall } from './ShadedHexWall';
 import type { TurnOrderEntry } from './TurnOrderOverlay';
 import { TurnOrderOverlay } from './TurnOrderOverlay';
 import { useCameraControls } from './useCameraControls';
@@ -322,8 +322,8 @@ function Scene({
         <meshBasicMaterial visible={false} />
       </mesh>
 
-      {/* Render all hex tiles using instanced mesh (single draw call) */}
-      <InstancedHexTiles
+      {/* Render all hex tiles using auto-shaded instanced mesh */}
+      <ShadedHexFloor
         gridWidth={gridWidth}
         gridHeight={gridHeight}
         hexSize={HEX_SIZE}
@@ -336,7 +336,7 @@ function Scene({
       {/* Render walls (after tiles, before doors) */}
       {walls.map((wall) => {
         const key = `wall-${wall.start?.x ?? 'u'}-${wall.start?.y ?? 'u'}-${wall.start?.z ?? 'u'}-${wall.end?.x ?? 'u'}-${wall.end?.y ?? 'u'}-${wall.end?.z ?? 'u'}`;
-        return <HexWall key={key} wall={wall} hexSize={HEX_SIZE} />;
+        return <ShadedHexWall key={key} wall={wall} hexSize={HEX_SIZE} />;
       })}
 
       {/* Render doors (after tiles, before movement range) */}

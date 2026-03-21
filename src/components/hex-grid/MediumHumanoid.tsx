@@ -47,7 +47,7 @@ import {
   MonsterType,
   Race,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import { useLoader } from '@react-three/fiber';
+import { useFrame, useLoader } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
@@ -265,13 +265,19 @@ function TexturedCharacterPart({
 
   // Create shader material with options
   const material = useMemo(() => {
-    const opts: AdvancedCharacterShaderOptions = {
-      ...shaderOptions,
-      // Boost glow when selected
-      glowIntensity: isSelected ? 3.0 : (shaderOptions.glowIntensity ?? 2.0),
-    };
-    return createAdvancedCharacterShader(texture, opts);
-  }, [texture, shaderOptions, isSelected]);
+    return createAdvancedCharacterShader(texture, shaderOptions);
+  }, [texture, shaderOptions]);
+
+  // Update time uniform for animated effects (selection pulse, fire aura)
+  useFrame(({ invalidate }, delta) => {
+    if (material.uniforms.time) {
+      material.uniforms.time.value += delta;
+      // Request next frame if we have animated effects (demand-mode canvas)
+      if (isSelected) {
+        invalidate();
+      }
+    }
+  });
 
   useEffect(() => {
     if (partRef.current) {
@@ -501,7 +507,7 @@ export function MediumHumanoid({
   }, [effectiveHeadVariant]);
 
   // Compute shader options based on props
-  // Uses new Qubicle marker color convention from shader package v3.0
+  // Uses new Qubicle marker color convention from shader package v4.0
   const shaderOptions = useMemo<AdvancedCharacterShaderOptions>(
     () => ({
       skinColor: getSkinColor(skinTone),
@@ -510,8 +516,11 @@ export function MediumHumanoid({
       tertiaryColor: 0x000000, // Black for minor details
       detailColor: 0xc0c0c0, // Silver for fine decorative
       glowIntensity: 2.0,
+      shadingVariance: 0.15,
+      selected: isSelected ? 1.0 : 0.0,
+      selectionIntensity: 0.5,
     }),
-    [skinTone, primaryColor, secondaryColor]
+    [skinTone, primaryColor, secondaryColor, isSelected]
   );
 
   // Resolve hair color to a number for the shader
