@@ -38,6 +38,10 @@ LobbyView -> BattleMapPanel(dungeonMap, currentRoomId) -> HexGrid(floorTiles, al
 - **InstancedHexTiles** iterates floorTiles map, places one instance per tile at absolute position via `cubeToWorld()`
 - The `room` prop stays available for current-room context (e.g., which room the active character is in)
 
+## Coordinate Space
+
+Entity positions and wall positions from the API are **already absolute** — the toolkit's `localToAbsolute()` converts entity positions during persistence, so by the time they reach the client they are in dungeon-absolute cube coordinates. `useDungeonMap.mergeRoom()` stores them directly without further offset. Floor tiles are generated from room origin + dimensions (also absolute). All coordinates in `DungeonMapState` are dungeon-absolute.
+
 ## Component Changes
 
 ### InstancedHexTiles.tsx
@@ -58,6 +62,7 @@ LobbyView -> BattleMapPanel(dungeonMap, currentRoomId) -> HexGrid(floorTiles, al
 
 - Recreate instanced mesh when `floorTiles.size` changes (room reveal is infrequent)
 - Accept brief flicker on reveal; optimize later if needed
+- Clear `hoveredHex`/`selectedHex` state on tile count change to avoid stale references
 
 ### HexGrid.tsx
 
@@ -79,15 +84,32 @@ LobbyView -> BattleMapPanel(dungeonMap, currentRoomId) -> HexGrid(floorTiles, al
 
 - Computed from bounding box of all tiles (min/max world positions, midpoint)
 
-**Pathfinding:**
+**Pathfinding (`findHexPath` in hexUtils.ts):**
 
-- `findHexPath` already works with cube coords + blocked callback
-- Only change: "is walkable" predicate uses floorTiles set instead of grid bounds
-- Paths can cross room boundaries naturally
+- Currently has no walkability check — only checks `occupiedPositions`
+- Add a `walkable: Set<string>` parameter so neighbors outside the map are rejected
+- Pass the floorTiles key set as `walkable` from callers
+- This enables paths to cross room boundaries while preventing off-map pathing
 
 **Interaction (hover, click, movement range):**
 
 - All use cube coords already — validity check switches from grid bounds to map membership
+
+### useHexInteraction.ts
+
+**Props change:**
+
+- Remove: `gridWidth`, `gridHeight`
+- Add: `floorTiles: Map<string, AbsoluteFloorTile>` (or a `Set<string>` of valid tile keys)
+
+**`isValidHex` callback:**
+
+- Currently checks `coord.x >= 0 && coord.x < gridWidth && coord.z >= 0 && coord.z < gridHeight`
+- Change to `floorTiles.has(coordKey(coord))` — valid if the tile exists in the accumulated map
+
+**`useMovementRange` (consumed via isBlocked):**
+
+- No direct changes needed — it receives `isBlocked` from HexGrid, which will now use floorTiles membership
 
 ### BattleMapPanel.tsx
 
@@ -122,11 +144,18 @@ LobbyView -> BattleMapPanel(dungeonMap, currentRoomId) -> HexGrid(floorTiles, al
 
 - Manual scroll wheel zoom only. No auto zoom-to-fit for now.
 
+### Auto-center trigger mechanism
+
+- `useCameraControls` gets a new optional prop: `focusTarget: THREE.Vector3 | null`
+- When `focusTarget` changes (new turn starts), set an internal lerp target
+- `useFrame` interpolates camera position + lookAt toward the focus target over ~0.5s
+- If user pans (WASD/drag) during lerp, cancel the lerp immediately (user takes control)
+- Callers compute `focusTarget` from active character position via `cubeToWorld()`
+
 ### WASD stuck-key bug fix
 
-- Investigate in `useCameraControls`
-- Likely cause: keydown fires but keyup missed on window blur/focus change
-- Fix: clear pressed keys on `blur` event or validate key state each frame
+- Root cause: `keydown` fires but `keyup` is missed when window loses focus (alt-tab, overlay)
+- Fix: Add `blur` event listener on `window` that resets all keys in `keys.current` to `false`
 
 ## Door Interaction
 
@@ -138,7 +167,17 @@ The existing flow handles room reveals:
 
 "Going back" is panning the camera. All revealed rooms remain rendered with their entities.
 
-Ensure already-opened doors don't trigger OpenDoor again (check door open state).
+Ensure already-opened doors don't trigger OpenDoor again — check `door.isOpen` in the door click handler (HexGrid.tsx or LobbyView.tsx `handleDoorClick`).
+
+## Acceptance Criteria
+
+- Two rooms rendered simultaneously with tiles at correct absolute positions
+- Path preview crosses room boundaries
+- Camera lerps to active character position within ~0.5s on turn start
+- WASD panning does not stick after alt-tab or focus loss
+- Opening a door renders the new room adjacent without replacing the existing one
+- Already-opened doors do not re-trigger OpenDoor RPC
+- Movement range visualization works across room boundaries
 
 ## Out of Scope
 
@@ -150,10 +189,12 @@ Ensure already-opened doors don't trigger OpenDoor again (check door open state)
 
 ## Files Modified
 
-| File                                            | Change                                                          |
-| ----------------------------------------------- | --------------------------------------------------------------- |
-| `src/components/hex-grid/InstancedHexTiles.tsx` | floorTiles prop, absolute positioning                           |
-| `src/components/hex-grid/HexGrid.tsx`           | floorTiles prop, bounds via set membership, bounding box center |
-| `src/components/encounter/BattleMapPanel.tsx`   | dungeonMap prop, extract accumulated state                      |
-| `src/components/LobbyView.tsx`                  | Pass dungeonMap to BattleMapPanel                               |
-| `src/components/hex-grid/useCameraControls.ts`  | Auto-center on turn, WASD bug fix                               |
+| File                                            | Change                                                           |
+| ----------------------------------------------- | ---------------------------------------------------------------- |
+| `src/components/hex-grid/InstancedHexTiles.tsx` | floorTiles prop, absolute positioning                            |
+| `src/components/hex-grid/HexGrid.tsx`           | floorTiles prop, bounds via set membership, bounding box center  |
+| `src/components/encounter/BattleMapPanel.tsx`   | dungeonMap prop, extract accumulated state                       |
+| `src/components/LobbyView.tsx`                  | Pass dungeonMap to BattleMapPanel                                |
+| `src/components/hex-grid/useHexInteraction.ts`  | floorTiles prop replaces gridWidth/gridHeight, isValidHex update |
+| `src/utils/hexUtils.ts`                         | Add `walkable` set param to `findHexPath`                        |
+| `src/components/hex-grid/useCameraControls.ts`  | focusTarget prop, lerp logic, WASD blur fix                      |
