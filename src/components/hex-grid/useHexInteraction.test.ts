@@ -6,11 +6,27 @@
  * requires a browser environment.
  */
 
+import type { AbsoluteFloorTile } from '@/hooks/useDungeonMap';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { CubeCoord } from './hexMath';
 import { findPath, worldToCube } from './hexMath';
 import type { Entity } from './useHexInteraction';
+
+/** Helper to create a floorTiles map for a rectangular grid */
+function makeFloorTiles(
+  width: number,
+  height: number
+): Map<string, AbsoluteFloorTile> {
+  const tiles = new Map<string, AbsoluteFloorTile>();
+  for (let z = 0; z < height; z++) {
+    for (let x = 0; x < width; x++) {
+      const y = -x - z;
+      tiles.set(`${x},${y},${z}`, { x, y, z, roomId: 'room-1' });
+    }
+  }
+  return tiles;
+}
 
 describe('useHexInteraction logic', () => {
   describe('worldToCube conversion for hit detection', () => {
@@ -51,46 +67,39 @@ describe('useHexInteraction logic', () => {
   describe('bounds validation logic', () => {
     const isValidHex = (
       coord: CubeCoord,
-      gridWidth: number,
-      gridHeight: number
+      floorTiles: Map<string, AbsoluteFloorTile>
     ): boolean => {
-      return (
-        coord.x >= 0 &&
-        coord.x < gridWidth &&
-        coord.z >= 0 &&
-        coord.z < gridHeight &&
-        coord.y === -coord.x - coord.z
-      );
+      return floorTiles.has(`${coord.x},${coord.y},${coord.z}`);
     };
 
     it('accepts valid hex within bounds', () => {
       const coord: CubeCoord = { x: 2, y: -3, z: 1 };
-      expect(isValidHex(coord, 5, 5)).toBe(true);
+      expect(isValidHex(coord, makeFloorTiles(5, 5))).toBe(true);
     });
 
     it('rejects hex with x >= gridWidth', () => {
       const coord: CubeCoord = { x: 5, y: -5, z: 0 };
-      expect(isValidHex(coord, 5, 5)).toBe(false);
+      expect(isValidHex(coord, makeFloorTiles(5, 5))).toBe(false);
     });
 
     it('rejects hex with z >= gridHeight', () => {
       const coord: CubeCoord = { x: 0, y: -5, z: 5 };
-      expect(isValidHex(coord, 5, 5)).toBe(false);
+      expect(isValidHex(coord, makeFloorTiles(5, 5))).toBe(false);
     });
 
     it('rejects hex with negative x', () => {
       const coord: CubeCoord = { x: -1, y: 1, z: 0 };
-      expect(isValidHex(coord, 5, 5)).toBe(false);
+      expect(isValidHex(coord, makeFloorTiles(5, 5))).toBe(false);
     });
 
     it('rejects hex with negative z', () => {
       const coord: CubeCoord = { x: 0, y: 1, z: -1 };
-      expect(isValidHex(coord, 5, 5)).toBe(false);
+      expect(isValidHex(coord, makeFloorTiles(5, 5))).toBe(false);
     });
 
-    it('rejects hex that violates cube invariant', () => {
-      const coord: CubeCoord = { x: 1, y: 1, z: 1 }; // x + y + z != 0
-      expect(isValidHex(coord, 5, 5)).toBe(false);
+    it('rejects hex not present in floorTiles', () => {
+      const coord: CubeCoord = { x: 1, y: 1, z: 1 }; // not in any valid rectangular grid
+      expect(isValidHex(coord, makeFloorTiles(5, 5))).toBe(false);
     });
   });
 
