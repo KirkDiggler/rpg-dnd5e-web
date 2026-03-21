@@ -76,7 +76,8 @@ export function cubeKey(coord: CubeCoord): string {
 export function findHexPath(
   from: CubeCoord,
   to: CubeCoord,
-  occupiedPositions: Set<string>
+  occupiedPositions: Set<string>,
+  walkable?: Set<string>
 ): CubeCoord[] {
   // If already adjacent or same, return direct path
   const dist = hexDistance(from.x, from.y, from.z, to.x, to.y, to.z);
@@ -97,6 +98,7 @@ export function findHexPath(
     for (const neighbor of neighbors) {
       const key = cubeKey(neighbor);
       if (occupiedPositions.has(key)) continue; // Skip occupied cells
+      if (walkable && !walkable.has(key)) continue; // Skip non-walkable cells
 
       const dist = hexDistance(
         neighbor.x,
