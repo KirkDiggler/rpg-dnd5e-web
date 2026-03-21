@@ -182,6 +182,7 @@ function createSolidColorTexture(color: number): THREE.CanvasTexture {
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;
+  texture.colorSpace = THREE.NoColorSpace;
 
   return texture;
 }
