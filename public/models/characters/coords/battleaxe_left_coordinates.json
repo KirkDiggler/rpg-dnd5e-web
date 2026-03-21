@@ -1,0 +1,36 @@
+{
+  "exported_from": "Blender",
+  "blender_version": "5.0.1",
+  "date": "2026-01-20 00:01:34",
+  "coordinate_system": "threejs_y_up",
+  "objects": {
+    "weapon_axe_battle": {
+      "position": {
+        "x": -8.0,
+        "y": 66.0,
+        "z": 16.0
+      },
+      "rotation_euler": {
+        "x": -0.6306,
+        "y": 0.003,
+        "z": -1.5495
+      },
+      "rotation_degrees": {
+        "x": -36.13,
+        "y": 0.17,
+        "z": -88.78
+      },
+      "rotation_threejs": {
+        "x": -2.2014,
+        "y": -1.5495,
+        "z": -0.003
+      },
+      "scale": {
+        "x": 1.0,
+        "y": 1.0,
+        "z": 1.0
+      }
+    }
+  },
+  "notes": ""
+}
