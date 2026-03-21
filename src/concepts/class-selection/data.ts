@@ -1,3 +1,14 @@
+export interface LevelFeature {
+  name: string;
+  type: 'feature' | 'condition' | 'resource' | 'subclass';
+  description: string;
+}
+
+export interface LevelProgression {
+  level: number;
+  features: LevelFeature[];
+}
+
 export interface AbilityGuidance {
   ability: string;
   priority: 'primary' | 'secondary' | 'tertiary';
@@ -37,6 +48,7 @@ export interface EnrichedClassInfo {
     options: string[];
     tips: string;
   };
+  levelProgression: LevelProgression[];
 }
 
 export const MONK_DATA: EnrichedClassInfo = {
@@ -122,4 +134,75 @@ export const MONK_DATA: EnrichedClassInfo = {
     ],
     tips: 'Acrobatics and Stealth complement your mobile combat style. Acrobatics lets you escape grapples using DEX (your best stat), and Stealth pairs with your lack of armor penalties. Insight (WIS-based) is also strong since WIS is your secondary ability.',
   },
+  levelProgression: [
+    {
+      level: 1,
+      features: [
+        {
+          name: 'Unarmored Defense',
+          type: 'condition',
+          description:
+            'While wearing no armor and not wielding a shield, your AC equals 10 + DEX modifier + WIS modifier. This is always active — no action needed.',
+        },
+        {
+          name: 'Martial Arts',
+          type: 'condition',
+          description:
+            'When you use a monk weapon or unarmed strike, you can use DEX instead of STR for attack and damage rolls. Your unarmed strikes deal 1d4 damage instead of the normal 1. When you take the Attack action with a monk weapon or unarmed strike, you can make one unarmed strike as a bonus action.',
+        },
+      ],
+    },
+    {
+      level: 2,
+      features: [
+        {
+          name: 'Ki',
+          type: 'resource',
+          description:
+            'You gain 2 ki points (equals your monk level). Ki fuels special abilities and recharges on a short or long rest. Ki save DC = 8 + proficiency bonus + WIS modifier.',
+        },
+        {
+          name: 'Flurry of Blows',
+          type: 'feature',
+          description:
+            'After you take the Attack action, spend 1 ki point to make two unarmed strikes as a bonus action (instead of the usual one from Martial Arts).',
+        },
+        {
+          name: 'Patient Defense',
+          type: 'feature',
+          description:
+            'Spend 1 ki point to take the Dodge action as a bonus action. Attacks against you have disadvantage until your next turn.',
+        },
+        {
+          name: 'Step of the Wind',
+          type: 'feature',
+          description:
+            'Spend 1 ki point to take the Disengage or Dash action as a bonus action. Your jump distance is doubled for the turn.',
+        },
+        {
+          name: 'Unarmored Movement',
+          type: 'condition',
+          description:
+            'Your speed increases by 10 feet while you are not wearing armor or wielding a shield. This stacks with your racial speed.',
+        },
+      ],
+    },
+    {
+      level: 3,
+      features: [
+        {
+          name: 'Monastic Tradition',
+          type: 'subclass',
+          description:
+            'Choose your subclass: Way of the Open Hand (enhanced strikes and control), Way of Shadow (stealth and darkness abilities), or Way of the Four Elements (elemental ki powers).',
+        },
+        {
+          name: 'Deflect Missiles',
+          type: 'feature',
+          description:
+            'When hit by a ranged weapon attack, reduce the damage by 1d10 + DEX modifier + monk level. If you reduce the damage to 0, you can spend 1 ki point to throw the projectile back as a ranged attack.',
+        },
+      ],
+    },
+  ],
 };
