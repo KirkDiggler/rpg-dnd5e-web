@@ -2,6 +2,7 @@ import { AbilityScoreGuidance } from './AbilityScoreGuidance';
 import { ClassOverview } from './ClassOverview';
 import { MONK_DATA } from './data';
 import { EquipmentGuidance } from './EquipmentGuidance';
+import { LevelProgression } from './LevelProgression';
 import { ProficiencyDetails } from './ProficiencyDetails';
 import { SavingThrowContext } from './SavingThrowContext';
 
@@ -20,6 +21,9 @@ export function ClassSelectionConcept() {
 
       {/* Class overview — the "sell" */}
       <ClassOverview classInfo={classInfo} />
+
+      {/* Level progression — what you get at each level */}
+      <LevelProgression progression={classInfo.levelProgression} />
 
       {/* Two-column grid for mechanical details */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
