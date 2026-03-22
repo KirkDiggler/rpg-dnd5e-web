@@ -1081,12 +1081,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
         // If we have strikes available, auto-execute the attack
         const hasStrike = availableActions.some(
-          (action) =>
-            (action.actionId === ActionId.STRIKE ||
-              action.actionId === ActionId.OFF_HAND_STRIKE ||
-              action.actionId === ActionId.FLURRY_STRIKE ||
-              action.actionId === ActionId.UNARMED_STRIKE) &&
-            action.canUse
+          (action) => isStrikeAction(action.actionId) && action.canUse
         );
         if (hasStrike) {
           console.log('🎯 Strikes available, executing attack on', entityId);
@@ -1221,30 +1216,23 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     }
   };
 
-  // Helper to check if we have available strikes
-  const hasAvailableStrike = () => {
-    return availableActions.some(
-      (action) =>
-        (action.actionId === ActionId.STRIKE ||
-          action.actionId === ActionId.OFF_HAND_STRIKE ||
-          action.actionId === ActionId.FLURRY_STRIKE ||
-          action.actionId === ActionId.UNARMED_STRIKE) &&
-        action.canUse
-    );
-  };
+  // Single source of truth for which action IDs are strike-type actions
+  const isStrikeAction = (actionId: ActionId): boolean =>
+    actionId === ActionId.STRIKE ||
+    actionId === ActionId.OFF_HAND_STRIKE ||
+    actionId === ActionId.FLURRY_STRIKE ||
+    actionId === ActionId.UNARMED_STRIKE;
 
-  // Helper to get the first available strike action ID
-  const getFirstAvailableStrikeAction = (): ActionId | undefined => {
-    const strike = availableActions.find(
-      (action) =>
-        (action.actionId === ActionId.STRIKE ||
-          action.actionId === ActionId.OFF_HAND_STRIKE ||
-          action.actionId === ActionId.FLURRY_STRIKE ||
-          action.actionId === ActionId.UNARMED_STRIKE) &&
-        action.canUse
+  // Helper to check if we have available strikes
+  const hasAvailableStrike = () =>
+    availableActions.some(
+      (action) => isStrikeAction(action.actionId) && action.canUse
     );
-    return strike?.actionId;
-  };
+
+  // Find the first available strike from a list of actions (avoids stale state)
+  const findFirstStrike = (actions: AvailableAction[]): ActionId | undefined =>
+    actions.find((action) => isStrikeAction(action.actionId) && action.canUse)
+      ?.actionId;
 
   const handleAttackAction = async (
     overrideTarget?: string,
@@ -1284,6 +1272,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     }
 
     try {
+      // Track strike from fresh activation response (avoids stale React state)
+      let freshStrikeId: ActionId | undefined;
+
       // Step 1: If we don't have strikes available, activate the ATTACK ability first
       if (!hasAvailableStrike()) {
         console.log('🎯 No strikes available, activating ATTACK ability...');
@@ -1305,19 +1296,24 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         console.log('✅ ATTACK activated:', activateResponse.grantedCapacity);
 
         // Update available abilities and actions from the response
+        const freshActions = activateResponse.availableActions ?? [];
         setAvailableAbilities(activateResponse.availableAbilities ?? []);
-        setAvailableActions(activateResponse.availableActions ?? []);
+        setAvailableActions(freshActions);
 
         // Update combat state if provided
         if (activateResponse.combatState) {
           setCombatState(activateResponse.combatState);
         }
+
+        // Pick strike from the fresh response (not stale React state)
+        if (!overrideActionId) {
+          freshStrikeId = findFirstStrike(freshActions);
+        }
       }
 
       // Step 2: Execute the strike action
-      // Use the action ID that was clicked, or find the first available strike
       const strikeActionId =
-        overrideActionId || getFirstAvailableStrikeAction() || ActionId.STRIKE;
+        overrideActionId || freshStrikeId || ActionId.STRIKE;
       console.log('⚔️ Executing', ActionId[strikeActionId], 'against', target);
       const response = await executeStrike(
         encounterId,
@@ -1608,12 +1604,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   // Handle action execution (Strike, Off-hand Strike, etc.)
   const handleActionClick = async (actionId: ActionId) => {
     // For strike actions, we need a target
-    if (
-      actionId === ActionId.STRIKE ||
-      actionId === ActionId.OFF_HAND_STRIKE ||
-      actionId === ActionId.FLURRY_STRIKE ||
-      actionId === ActionId.UNARMED_STRIKE
-    ) {
+    if (isStrikeAction(actionId)) {
       if (!attackTarget) {
         addToast({
           type: 'info',
