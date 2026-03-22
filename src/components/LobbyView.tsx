@@ -1084,7 +1084,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           (action) =>
             (action.actionId === ActionId.STRIKE ||
               action.actionId === ActionId.OFF_HAND_STRIKE ||
-              action.actionId === ActionId.FLURRY_STRIKE) &&
+              action.actionId === ActionId.FLURRY_STRIKE ||
+              action.actionId === ActionId.UNARMED_STRIKE) &&
             action.canUse
         );
         if (hasStrike) {
@@ -1226,12 +1227,29 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       (action) =>
         (action.actionId === ActionId.STRIKE ||
           action.actionId === ActionId.OFF_HAND_STRIKE ||
-          action.actionId === ActionId.FLURRY_STRIKE) &&
+          action.actionId === ActionId.FLURRY_STRIKE ||
+          action.actionId === ActionId.UNARMED_STRIKE) &&
         action.canUse
     );
   };
 
-  const handleAttackAction = async (overrideTarget?: string) => {
+  // Helper to get the first available strike action ID
+  const getFirstAvailableStrikeAction = (): ActionId | undefined => {
+    const strike = availableActions.find(
+      (action) =>
+        (action.actionId === ActionId.STRIKE ||
+          action.actionId === ActionId.OFF_HAND_STRIKE ||
+          action.actionId === ActionId.FLURRY_STRIKE ||
+          action.actionId === ActionId.UNARMED_STRIKE) &&
+        action.canUse
+    );
+    return strike?.actionId;
+  };
+
+  const handleAttackAction = async (
+    overrideTarget?: string,
+    overrideActionId?: ActionId
+  ) => {
     if (!encounterId || !combatState?.currentTurn?.entityId) {
       console.warn('Missing required data for attack', {
         encounterId,
@@ -1297,11 +1315,14 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       }
 
       // Step 2: Execute the strike action
-      console.log('⚔️ Executing STRIKE against', target);
+      // Use the action ID that was clicked, or find the first available strike
+      const strikeActionId =
+        overrideActionId || getFirstAvailableStrikeAction() || ActionId.STRIKE;
+      console.log('⚔️ Executing', ActionId[strikeActionId], 'against', target);
       const response = await executeStrike(
         encounterId,
         entityId,
-        ActionId.STRIKE,
+        strikeActionId,
         { targetId: target }
       );
 
@@ -1590,7 +1611,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     if (
       actionId === ActionId.STRIKE ||
       actionId === ActionId.OFF_HAND_STRIKE ||
-      actionId === ActionId.FLURRY_STRIKE
+      actionId === ActionId.FLURRY_STRIKE ||
+      actionId === ActionId.UNARMED_STRIKE
     ) {
       if (!attackTarget) {
         addToast({
@@ -1600,8 +1622,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         });
         return;
       }
-      // Use the existing attack action flow which handles strikes
-      await handleAttackAction();
+      // Pass through the specific action ID (Strike, Off-Hand Strike, Unarmed Strike, etc.)
+      await handleAttackAction(undefined, actionId);
       return;
     }
 
