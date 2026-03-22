@@ -289,6 +289,19 @@ Source assets live in `rpg-project/assets/`. This is how they map here:
 4. Write tests for new features
 5. Use the CI check script added in `scripts/ci-check.sh`
 
+## Agent-Discovered Knowledge
+
+Read `.claude/knowledge/context/` for patterns, lessons learned, and
+decisions discovered by previous work sessions. These complement the
+hand-curated conventions above.
+
+When you discover a new pattern or learn something non-obvious during
+your work, append it to the appropriate file in `.claude/knowledge/context/`.
+When a pattern is deprecated or a lesson superseded, move the entry
+from `context/` to `archive/`.
+
+See `rpg-project/schemas/` for type definitions (lesson-learned, pattern, decision).
+
 ## PR Review Workflow
 
 ### Checking for Review Comments
