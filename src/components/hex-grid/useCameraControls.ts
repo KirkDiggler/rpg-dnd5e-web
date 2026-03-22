@@ -93,12 +93,23 @@ export function useCameraControls({
       }
     };
 
+    const handleBlur = () => {
+      keys.current.w = false;
+      keys.current.a = false;
+      keys.current.s = false;
+      keys.current.d = false;
+      keys.current.q = false;
+      keys.current.e = false;
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
     };
   }, []);
 
