@@ -7,14 +7,14 @@
  * Performance improvement: O(n) draw calls -> O(1) draw call
  */
 
+import type { AbsoluteFloorTile } from '@/hooks/useDungeonMap';
 import { useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 
 interface InstancedHexTilesProps {
-  gridWidth: number;
-  gridHeight: number;
+  floorTiles: Map<string, AbsoluteFloorTile>;
   hexSize: number;
   hoveredHex: CubeCoord | null;
   selectedHex: CubeCoord | null;
@@ -58,14 +58,6 @@ function createHexagonGeometry(hexSize: number): THREE.ShapeGeometry {
 }
 
 /**
- * Convert grid index to cube coordinates
- */
-function indexToCube(x: number, z: number): CubeCoord {
-  const y = -x - z;
-  return { x, y, z };
-}
-
-/**
  * Check if two cube coordinates are equal
  */
 function cubesEqual(a: CubeCoord | null, b: CubeCoord): boolean {
@@ -88,8 +80,7 @@ function positionsToSet(positions: CubeCoord[]): Set<string> {
 }
 
 export function InstancedHexTiles({
-  gridWidth,
-  gridHeight,
+  floorTiles,
   hexSize,
   hoveredHex,
   selectedHex,
@@ -98,7 +89,7 @@ export function InstancedHexTiles({
 }: InstancedHexTilesProps) {
   const { invalidate } = useThree();
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const instanceCount = gridWidth * gridHeight;
+  const instanceCount = floorTiles.size;
 
   // Create geometry once
   const geometry = useMemo(() => createHexagonGeometry(hexSize), [hexSize]);
@@ -125,33 +116,30 @@ export function InstancedHexTiles({
   // Initialize instance matrices
   useEffect(() => {
     if (!meshRef.current) return;
-
     const mesh = meshRef.current;
     const matrix = new THREE.Matrix4();
-    const rotation = new THREE.Euler(-Math.PI / 2, 0, 0); // Lay flat on XZ plane
+    const rotation = new THREE.Euler(-Math.PI / 2, 0, 0);
     const quaternion = new THREE.Quaternion().setFromEuler(rotation);
     const scale = new THREE.Vector3(1, 1, 1);
 
-    // Set up instance matrices (positions)
     let instanceIndex = 0;
-    for (let z = 0; z < gridHeight; z++) {
-      for (let x = 0; x < gridWidth; x++) {
-        const cube = indexToCube(x, z);
-        const worldPos = cubeToWorld(cube, hexSize);
-
-        matrix.compose(
-          new THREE.Vector3(worldPos.x, 0, worldPos.z),
-          quaternion,
-          scale
-        );
-        mesh.setMatrixAt(instanceIndex, matrix);
-        instanceIndex++;
-      }
+    for (const [, tile] of floorTiles) {
+      const worldPos = cubeToWorld(
+        { x: tile.x, y: tile.y, z: tile.z },
+        hexSize
+      );
+      matrix.compose(
+        new THREE.Vector3(worldPos.x, 0, worldPos.z),
+        quaternion,
+        scale
+      );
+      mesh.setMatrixAt(instanceIndex, matrix);
+      instanceIndex++;
     }
 
     mesh.instanceMatrix.needsUpdate = true;
-    invalidate(); // Request render for on-demand frameloop
-  }, [gridWidth, gridHeight, hexSize, geometry, material, invalidate]);
+    invalidate();
+  }, [floorTiles, hexSize, geometry, material, invalidate]);
 
   // Update instance colors when hover/selected/door/wall changes
   useEffect(() => {
@@ -167,39 +155,35 @@ export function InstancedHexTiles({
     const colors = new Float32Array(instanceCount * 3);
 
     let instanceIndex = 0;
-    for (let z = 0; z < gridHeight; z++) {
-      for (let x = 0; x < gridWidth; x++) {
-        const cube = indexToCube(x, z);
-        const cubeKey = cubeToKey(cube);
+    for (const [key] of floorTiles) {
+      const [tx, ty, tz] = key.split(',').map(Number);
+      const cube: CubeCoord = { x: tx, y: ty, z: tz };
 
-        let color: THREE.Color;
-        if (cubesEqual(selectedHex, cube)) {
-          color = COLORS.selected;
-        } else if (cubesEqual(hoveredHex, cube)) {
-          color = COLORS.hovered;
-        } else if (doorSet.has(cubeKey)) {
-          color = COLORS.door;
-        } else if (wallSet.has(cubeKey)) {
-          color = COLORS.wall;
-        } else {
-          color = COLORS.default;
-        }
-
-        colors[instanceIndex * 3] = color.r;
-        colors[instanceIndex * 3 + 1] = color.g;
-        colors[instanceIndex * 3 + 2] = color.b;
-
-        instanceIndex++;
+      let color: THREE.Color;
+      if (cubesEqual(selectedHex, cube)) {
+        color = COLORS.selected;
+      } else if (cubesEqual(hoveredHex, cube)) {
+        color = COLORS.hovered;
+      } else if (doorSet.has(key)) {
+        color = COLORS.door;
+      } else if (wallSet.has(key)) {
+        color = COLORS.wall;
+      } else {
+        color = COLORS.default;
       }
+
+      colors[instanceIndex * 3] = color.r;
+      colors[instanceIndex * 3 + 1] = color.g;
+      colors[instanceIndex * 3 + 2] = color.b;
+      instanceIndex++;
     }
 
     // Set colors via instance color attribute
     mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
     mesh.instanceColor.needsUpdate = true;
-    invalidate(); // Request render for on-demand frameloop
+    invalidate();
   }, [
-    gridWidth,
-    gridHeight,
+    floorTiles,
     hoveredHex,
     selectedHex,
     doorPositions,

@@ -4,6 +4,7 @@
  * Provides path preview functionality for movement and combat
  */
 
+import type { AbsoluteFloorTile } from '@/hooks/useDungeonMap';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { CubeCoord } from './hexMath';
@@ -25,8 +26,7 @@ export interface Entity {
 
 export interface UseHexInteractionProps {
   hexSize: number;
-  gridWidth: number;
-  gridHeight: number;
+  floorTiles: Map<string, AbsoluteFloorTile>;
   onHexClick?: (coord: CubeCoord) => void;
   onHexHover?: (coord: CubeCoord | null) => void;
   // Path preview parameters
@@ -131,8 +131,7 @@ function findNearestAdjacentHex(
  */
 export function useHexInteraction({
   hexSize,
-  gridWidth,
-  gridHeight,
+  floorTiles,
   onHexClick,
   onHexHover,
   entityPosition,
@@ -147,21 +146,13 @@ export function useHexInteraction({
   const lastHoveredRef = useRef<CubeCoord | null>(null);
 
   /**
-   * Check if a cube coordinate is within the grid bounds
-   * Grid dimensions: width = hexes across (x range), height = hexes down (z range)
-   * Valid coords: x in [0, gridWidth), z in [0, gridHeight), y = -x - z
+   * Check if a cube coordinate is a valid floor tile in the dungeon map
    */
   const isValidHex = useCallback(
     (coord: CubeCoord): boolean => {
-      return (
-        coord.x >= 0 &&
-        coord.x < gridWidth &&
-        coord.z >= 0 &&
-        coord.z < gridHeight &&
-        coord.y === -coord.x - coord.z // Validate cube invariant
-      );
+      return floorTiles.has(`${coord.x},${coord.y},${coord.z}`);
     },
-    [gridWidth, gridHeight]
+    [floorTiles]
   );
 
   /**

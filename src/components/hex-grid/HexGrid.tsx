@@ -12,6 +12,7 @@
  * - Turn order overlay
  */
 
+import type { AbsoluteFloorTile } from '@/hooks/useDungeonMap';
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
@@ -36,8 +37,7 @@ import { useHexInteraction } from './useHexInteraction';
 import { useMovementRange } from './useMovementRange';
 
 export interface HexGridProps {
-  gridWidth: number;
-  gridHeight: number;
+  floorTiles: Map<string, AbsoluteFloorTile>;
   entities: Array<{
     entityId: string;
     name: string;
@@ -84,8 +84,7 @@ const GROUND_PLANE_SIZE = 200;
  * Separated so we can use React Three Fiber hooks
  */
 function Scene({
-  gridWidth,
-  gridHeight,
+  floorTiles,
   entities,
   selectedEntityId,
   onHexClick,
@@ -127,17 +126,35 @@ function Scene({
 
   // Calculate grid center for camera target
   const gridCenter = useMemo(() => {
-    // Center hex in cube coords
-    const centerX = Math.floor(gridWidth / 2);
-    const centerZ = Math.floor(gridHeight / 2);
-    const centerY = -centerX - centerZ;
-    // Convert to world coords
-    const worldPos = cubeToWorld(
-      { x: centerX, y: centerY, z: centerZ },
-      HEX_SIZE
-    );
+    if (floorTiles.size === 0) {
+      return new THREE.Vector3(0, 0, 0);
+    }
+    let minX = Infinity,
+      maxX = -Infinity;
+    let minZ = Infinity,
+      maxZ = -Infinity;
+    for (const [, tile] of floorTiles) {
+      const worldPos = cubeToWorld(
+        { x: tile.x, y: tile.y, z: tile.z },
+        HEX_SIZE
+      );
+      minX = Math.min(minX, worldPos.x);
+      maxX = Math.max(maxX, worldPos.x);
+      minZ = Math.min(minZ, worldPos.z);
+      maxZ = Math.max(maxZ, worldPos.z);
+    }
+    return new THREE.Vector3((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+  }, [floorTiles]);
+
+  // Compute camera focus target on turn change only (not on movement during turn)
+  const focusTarget = useMemo(() => {
+    if (!currentEntityId) return null;
+    const entity = entities.find((e) => e.entityId === currentEntityId);
+    if (!entity) return null;
+    const worldPos = cubeToWorld(entity.position, HEX_SIZE);
     return new THREE.Vector3(worldPos.x, 0, worldPos.z);
-  }, [gridWidth, gridHeight]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only trigger on turn change
+  }, [currentEntityId]);
 
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
@@ -147,6 +164,7 @@ function Scene({
     rotateSpeed: 0.02,
     minZoom: 30,
     maxZoom: 150,
+    focusTarget,
   });
 
   // Build entity map for interaction hook
@@ -182,20 +200,14 @@ function Scene({
     };
   }, [currentEntityId, entities]);
 
-  // Check if a hex is blocked (outside bounds or has an entity)
+  // Check if a hex is blocked (not a floor tile or has an entity)
   // Uses useCallback to ensure stable function reference for downstream memoization
   const isBlocked = useCallback(
     (coord: CubeCoord) => {
-      // Check grid bounds (x must be in [0, gridWidth), z must be in [0, gridHeight))
-      if (
-        coord.x < 0 ||
-        coord.x >= gridWidth ||
-        coord.z < 0 ||
-        coord.z >= gridHeight
-      ) {
+      const key = `${coord.x},${coord.y},${coord.z}`;
+      if (!floorTiles.has(key)) {
         return true;
       }
-      // Check for other entities
       return entities.some(
         (entity) =>
           entity.position.x === coord.x &&
@@ -204,7 +216,7 @@ function Scene({
           entity.entityId !== currentEntityId
       );
     },
-    [entities, currentEntityId, gridWidth, gridHeight]
+    [entities, currentEntityId, floorTiles]
   );
 
   // Use the interaction hook for hover/click detection with path preview
@@ -218,8 +230,7 @@ function Scene({
     hoveredEntity,
   } = useHexInteraction({
     hexSize: HEX_SIZE,
-    gridWidth,
-    gridHeight,
+    floorTiles,
     onHexClick: (coord) => {
       // Only allow interactions on player turn and when not processing
       if (!isPlayerTurn || isProcessing) return;
@@ -324,8 +335,7 @@ function Scene({
 
       {/* Render all hex tiles using auto-shaded instanced mesh */}
       <ShadedHexFloor
-        gridWidth={gridWidth}
-        gridHeight={gridHeight}
+        floorTiles={floorTiles}
         hexSize={HEX_SIZE}
         hoveredHex={hoveredHex}
         selectedHex={selectedHex}
@@ -333,11 +343,22 @@ function Scene({
         wallPositions={wallPositions}
       />
 
-      {/* Render walls (after tiles, before doors) */}
-      {walls.map((wall) => {
-        const key = `wall-${wall.start?.x ?? 'u'}-${wall.start?.y ?? 'u'}-${wall.start?.z ?? 'u'}-${wall.end?.x ?? 'u'}-${wall.end?.y ?? 'u'}-${wall.end?.z ?? 'u'}`;
-        return <ShadedHexWall key={key} wall={wall} hexSize={HEX_SIZE} />;
-      })}
+      {/* Render walls (after tiles, before doors) — deduplicate by coordinate key */}
+      {walls
+        .filter((wall, index, arr) => {
+          const key = `${wall.start?.x},${wall.start?.y},${wall.start?.z}-${wall.end?.x},${wall.end?.y},${wall.end?.z}`;
+          return (
+            arr.findIndex(
+              (w) =>
+                `${w.start?.x},${w.start?.y},${w.start?.z}-${w.end?.x},${w.end?.y},${w.end?.z}` ===
+                key
+            ) === index
+          );
+        })
+        .map((wall) => {
+          const key = `wall-${wall.start?.x ?? 'u'}-${wall.start?.y ?? 'u'}-${wall.start?.z ?? 'u'}-${wall.end?.x ?? 'u'}-${wall.end?.y ?? 'u'}-${wall.end?.z ?? 'u'}`;
+          return <ShadedHexWall key={key} wall={wall} hexSize={HEX_SIZE} />;
+        })}
 
       {/* Render doors (after tiles, before movement range) */}
       {doors.map((door) => {
@@ -357,7 +378,8 @@ function Scene({
             isLoading={isDoorLoading}
             hexSize={HEX_SIZE}
             onClick={(connectionId) => {
-              if (!isPlayerTurn || isProcessing || isDoorLoading) return;
+              if (!isPlayerTurn || isProcessing || isDoorLoading || door.isOpen)
+                return;
               onDoorClick?.(connectionId);
             }}
             onHoverChange={onDoorHoverChange}

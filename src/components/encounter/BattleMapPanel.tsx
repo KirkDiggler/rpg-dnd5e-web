@@ -1,16 +1,16 @@
+import type { DungeonMapState } from '@/hooks/useDungeonMap';
 import type { CubeCoord } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
-  DoorInfo,
   MonsterCombatState,
-  Room,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { useMemo } from 'react';
 import { HexGrid } from '../hex-grid';
 
 interface BattleMapPanelProps {
-  room: Room;
+  dungeonMap: DungeonMapState;
   selectedEntity: string | null;
   /** Local player's available characters (for isPlayerTurn check) */
   availableCharacters: Character[];
@@ -28,14 +28,12 @@ interface BattleMapPanelProps {
   onHoverChange?: (
     entity: { id: string; type: string; name: string } | null
   ) => void;
-  // Door props
-  doors?: DoorInfo[];
   onDoorClick?: (connectionId: string) => void;
   isDoorLoading?: boolean;
 }
 
 export function BattleMapPanel({
-  room,
+  dungeonMap,
   selectedEntity,
   availableCharacters,
   allPartyCharacters,
@@ -47,10 +45,44 @@ export function BattleMapPanel({
   onMoveComplete,
   onAttackComplete,
   onHoverChange,
-  doors,
   onDoorClick,
   isDoorLoading,
 }: BattleMapPanelProps) {
+  // Build entities array from accumulated dungeonMap entities
+  const entities = useMemo(() => {
+    return Array.from(dungeonMap.entities.values()).map((entity) => {
+      let displayType: 'player' | 'monster' | 'obstacle';
+      if (entity.entityType === EntityType.CHARACTER) {
+        displayType = 'player';
+      } else if (entity.entityType === EntityType.MONSTER) {
+        displayType = 'monster';
+      } else {
+        displayType = 'obstacle';
+      }
+      return {
+        entityId: entity.entityId,
+        name:
+          allPartyCharacters.find((c) => c.id === entity.entityId)?.name ||
+          entity.entityId,
+        position: {
+          x: entity.position?.x || 0,
+          y: entity.position?.y || 0,
+          z: entity.position?.z || 0,
+        },
+        type: displayType,
+      };
+    });
+  }, [dungeonMap.entities, allPartyCharacters]);
+
+  // Convert doors map to array for HexGrid
+  const doorsArray = useMemo(
+    () => Array.from(dungeonMap.doors.values()),
+    [dungeonMap.doors]
+  );
+
+  // Collect all walls from dungeonMap
+  const walls = dungeonMap.walls;
+
   return (
     <div
       className="rounded-lg"
@@ -61,37 +93,11 @@ export function BattleMapPanel({
       }}
     >
       <HexGrid
-        gridWidth={room.width}
-        gridHeight={room.height}
-        entities={Object.values(room.entities || {}).map((entity) => {
-          // Map proto entity type to display type
-          let displayType: 'player' | 'monster' | 'obstacle';
-          if (entity.entityType === EntityType.CHARACTER) {
-            displayType = 'player';
-          } else if (entity.entityType === EntityType.MONSTER) {
-            displayType = 'monster';
-          } else {
-            // PILLAR, OBSTACLE, or any other type becomes obstacle
-            displayType = 'obstacle';
-          }
-
-          return {
-            entityId: entity.entityId,
-            name:
-              allPartyCharacters.find((c) => c.id === entity.entityId)?.name ||
-              entity.entityId,
-            position: {
-              x: entity.position?.x || 0,
-              y: entity.position?.y || 0,
-              z: entity.position?.z || 0,
-            },
-            type: displayType,
-          };
-        })}
+        floorTiles={dungeonMap.floorTiles}
+        entities={entities}
         selectedEntityId={selectedEntity || undefined}
         onHexClick={onCellClick}
         onEntityClick={onEntityClick}
-        // Combat integration
         encounterId={encounterId}
         combatState={combatState}
         characters={allPartyCharacters}
@@ -113,10 +119,10 @@ export function BattleMapPanel({
         onMoveComplete={onMoveComplete}
         onAttackComplete={onAttackComplete}
         onHoverChange={onHoverChange}
-        doors={doors}
+        doors={doorsArray}
         onDoorClick={onDoorClick}
         isDoorLoading={isDoorLoading}
-        walls={room.walls}
+        walls={walls}
       />
     </div>
   );

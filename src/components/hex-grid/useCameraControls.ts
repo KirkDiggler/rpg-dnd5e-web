@@ -25,6 +25,8 @@ interface CameraControlsOptions {
   minZoom?: number;
   /** Maximum zoom level */
   maxZoom?: number;
+  /** When set, camera lerps target to this position. Cleared on manual pan. */
+  focusTarget?: THREE.Vector3 | null;
 }
 
 export function useCameraControls({
@@ -34,6 +36,7 @@ export function useCameraControls({
   rotateSpeed = 0.03,
   minZoom = 20,
   maxZoom = 200,
+  focusTarget,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
 
@@ -62,6 +65,16 @@ export function useCameraControls({
 
   // Current distance from target
   const distance = useRef(20);
+
+  // Track lerp target for auto-center
+  const lerpTarget = useRef<THREE.Vector3 | null>(null);
+
+  // Update lerp target when focusTarget changes
+  useEffect(() => {
+    if (focusTarget) {
+      lerpTarget.current = focusTarget.clone();
+    }
+  }, [focusTarget]);
 
   // Update camera position based on spherical coordinates
   const updateCamera = useCallback(() => {
@@ -93,12 +106,23 @@ export function useCameraControls({
       }
     };
 
+    const handleBlur = () => {
+      keys.current.w = false;
+      keys.current.a = false;
+      keys.current.s = false;
+      keys.current.d = false;
+      keys.current.q = false;
+      keys.current.e = false;
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
     };
   }, []);
 
@@ -181,9 +205,43 @@ export function useCameraControls({
   ]);
 
   // Update each frame based on key state
-  useFrame(() => {
-    // Early return if no keys pressed - avoid unnecessary work
+  useFrame((_, delta) => {
     const { w, a, s, d, q, e } = keys.current;
+
+    // If user is panning, cancel any active lerp
+    if ((w || a || s || d) && lerpTarget.current) {
+      lerpTarget.current = null;
+    }
+
+    // Handle lerp to focus target (exponential smoothing)
+    if (lerpTarget.current) {
+      const factor = 1 - Math.pow(0.001, delta);
+      target.lerp(lerpTarget.current, factor);
+      updateCamera();
+      invalidate();
+
+      // Snap when close enough
+      if (target.distanceTo(lerpTarget.current) < 0.01) {
+        target.copy(lerpTarget.current);
+        lerpTarget.current = null;
+        updateCamera();
+      }
+      // Still process rotation during lerp
+      if (q) {
+        azimuth.current += rotateSpeed;
+        updateCamera();
+        invalidate();
+      }
+      if (e) {
+        azimuth.current -= rotateSpeed;
+        updateCamera();
+        invalidate();
+      }
+      return;
+    }
+
+    // Normal WASD handling
+    // Early return if no keys pressed - avoid unnecessary work
     if (!w && !a && !s && !d && !q && !e) return;
 
     let changed = false;

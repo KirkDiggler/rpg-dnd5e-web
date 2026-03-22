@@ -37,7 +37,6 @@ import {
   type AvailableAction,
   type CombatStartedEvent,
   type CombatState,
-  type DoorInfo,
   type DungeonVictoryEvent,
   type EncounterEvent,
   type FeatureActivatedEvent,
@@ -60,7 +59,7 @@ import {
   type FeatureId,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { ArrowLeft } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
 import { DungeonResultOverlay } from './dungeon';
@@ -141,16 +140,21 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   // Accumulated dungeon map state (Phase 2: multi-room rendering)
   // Replaces single `room` state — accumulates all revealed rooms
   const {
-    // dungeonMap is available for Phase 3 multi-room rendering
+    dungeonMap,
     currentRoom: room,
     addRoom: addRoomToMap,
     updateEntities: updateMapEntities,
     reset: resetDungeonMap,
   } = useDungeonMap();
 
+  // Walkable tile keys for cross-room pathfinding
+  const walkableTileKeys = useMemo(
+    () => new Set(dungeonMap.floorTiles.keys()),
+    [dungeonMap.floorTiles]
+  );
+
   // Dungeon/door state
   const [dungeonId, setDungeonId] = useState<string | null>(null);
-  const [doors, setDoors] = useState<DoorInfo[]>([]);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [roomsCleared, setRoomsCleared] = useState(0);
   const [dungeonResult, setDungeonResult] = useState<
@@ -224,7 +228,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           addRoomToMap(event.room, event.doors ?? []);
         }
         setCombatState(event.combatState ?? null);
-        setDoors(event.doors ?? []);
         setRoomsCleared((prev) => prev + 1);
 
         // Select the current turn entity
@@ -604,7 +607,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
       // Set dungeon state for room navigation
       setDungeonId(event.dungeonId || null);
-      setDoors(event.doors ?? []);
 
       // Start with room from event, may be updated if monsters moved
       let roomToSet = event.room;
@@ -687,7 +689,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
       // Apply dungeon state for room navigation
       setDungeonId(snapshot.dungeonId || null);
-      setDoors(snapshot.doors ?? []);
 
       // Apply combat state from snapshot
       if (snapshot.combatState) {
@@ -913,7 +914,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     setDungeonId(null);
     setCombatState(null);
     setMonsters([]);
-    setDoors([]);
     setRoomsCleared(0);
     setCombatLog([]);
     setSelectedEntity(null);
@@ -977,12 +977,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setEncounterId(response.encounterId);
       }
 
-      // Capture dungeon ID and doors for room navigation
+      // Capture dungeon ID for room navigation
       if (response.dungeonId) {
         setDungeonId(response.dungeonId);
-      }
-      if (response.doors) {
-        setDoors(response.doors);
       }
 
       // Start with the room from response, may be updated below if monsters moved
@@ -1134,7 +1131,12 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       }
 
       // Find path from last position to clicked hex
-      const newSegment = findHexPath(lastPos, clickedCube, occupiedPositions);
+      const newSegment = findHexPath(
+        lastPos,
+        clickedCube,
+        occupiedPositions,
+        walkableTileKeys
+      );
 
       // Validate total movement cost
       const pathCost = (movementPath.length + newSegment.length) * 5; // 5ft per hex
@@ -1911,7 +1913,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
                 // Set dungeon state for room navigation
                 setDungeonId(event.dungeonId || null);
-                setDoors(event.doors ?? []);
 
                 // Extract characters from party members and store them
                 const partyCharacters = event.party
@@ -1990,21 +1991,18 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
             // Height: viewport - combat panel (~70px) - top padding (16px) - small buffer
             <div style={{ height: 'calc(100vh - 100px)' }}>
               <BattleMapPanel
-                room={room}
+                dungeonMap={dungeonMap}
                 selectedEntity={selectedEntity}
                 availableCharacters={availableCharacters}
                 allPartyCharacters={Array.from(fullCharactersMap.values())}
                 onEntityClick={handleEntityClick}
                 onCellClick={handleCellClick}
-                // Combat integration
                 encounterId={encounterId}
                 combatState={combatState}
                 monsters={monsters}
                 onMoveComplete={handleMoveComplete}
                 onAttackComplete={handleAttackComplete}
                 onHoverChange={setHoveredEntity}
-                // Door props
-                doors={doors}
                 onDoorClick={handleDoorClick}
                 isDoorLoading={doorLoading}
               />
