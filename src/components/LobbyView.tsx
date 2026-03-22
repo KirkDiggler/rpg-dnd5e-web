@@ -914,7 +914,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     setDungeonId(null);
     setCombatState(null);
     setMonsters([]);
-    setDoors([]);
     setRoomsCleared(0);
     setCombatLog([]);
     setSelectedEntity(null);

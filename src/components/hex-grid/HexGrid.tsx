@@ -367,7 +367,8 @@ function Scene({
             isLoading={isDoorLoading}
             hexSize={HEX_SIZE}
             onClick={(connectionId) => {
-              if (!isPlayerTurn || isProcessing || isDoorLoading) return;
+              if (!isPlayerTurn || isProcessing || isDoorLoading || door.isOpen)
+                return;
               onDoorClick?.(connectionId);
             }}
             onHoverChange={onDoorHoverChange}
