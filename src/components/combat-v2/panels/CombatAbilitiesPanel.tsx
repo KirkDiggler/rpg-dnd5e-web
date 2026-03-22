@@ -106,8 +106,10 @@ export function CombatAbilitiesPanel({
     : turnState
       ? !turnState.bonusActionUsed
       : true;
-  const dodgeActive = actionEconomy?.dodgeActive ?? false;
-  const disengageActive = actionEconomy?.disengageActive ?? false;
+  // Dodge/disengage active states are now tracked by the absence of
+  // standardActionAvailable rather than dedicated fields
+  const dodgeActive = false;
+  const disengageActive = false;
   const offHandAttacksRemaining = actionEconomy?.offHandAttacksRemaining ?? 0;
 
   // Compute ability availability

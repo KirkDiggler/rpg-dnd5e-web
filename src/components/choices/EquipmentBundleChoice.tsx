@@ -1,4 +1,3 @@
-import type { Equipment } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   Choice,
   EquipmentCategoryChoice,
@@ -7,10 +6,12 @@ import {
   EquipmentType,
   WeaponCategory,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import type { Equipment } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/equipment_types_pb';
 import { Package } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useListEquipmentByType } from '../../api/hooks';
 import { useEquipmentBundleSelection } from '../../hooks/useEquipmentBundleSelection';
+import { EquipmentCard } from '../equipment/EquipmentCard';
 
 interface EquipmentBundleChoiceProps {
   choice: Choice;
@@ -132,23 +133,36 @@ function CategorySelector({
         {category.label || `Choose ${chooseCount} item(s)`}:
       </label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {Array.from({ length: chooseCount }, (_, slotIndex) => (
-          <select
-            key={slotIndex}
-            value={selectedBySlot[slotIndex] || ''}
-            onChange={(e) => handleSlotChange(slotIndex, e.target.value)}
-            style={selectStyle}
-          >
-            <option value="">
-              -- Select {chooseCount > 1 ? `item ${slotIndex + 1}` : 'item'} --
-            </option>
-            {equipment?.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        ))}
+        {Array.from({ length: chooseCount }, (_, slotIndex) => {
+          const selectedItem = selectedBySlot[slotIndex]
+            ? equipment?.find((e) => e.id === selectedBySlot[slotIndex])
+            : undefined;
+
+          return (
+            <div key={slotIndex}>
+              <select
+                value={selectedBySlot[slotIndex] || ''}
+                onChange={(e) => handleSlotChange(slotIndex, e.target.value)}
+                style={selectStyle}
+              >
+                <option value="">
+                  -- Select {chooseCount > 1 ? `item ${slotIndex + 1}` : 'item'}{' '}
+                  --
+                </option>
+                {equipment?.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              {selectedItem && (
+                <div style={{ marginTop: '6px' }}>
+                  <EquipmentCard equipment={selectedItem} compact />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       {hasDuplicates && (
         <div
@@ -287,7 +301,11 @@ export function EquipmentBundleChoice({
                     }}
                   >
                     Includes:{' '}
-                    {bundle.items.map((item) => item.selectionId).join(', ')}
+                    {bundle.items
+                      .map(
+                        (item) => item.equipmentDetail?.name ?? item.selectionId
+                      )
+                      .join(', ')}
                   </div>
                 )}
                 {bundle.categoryChoices.length > 0 && (
@@ -307,6 +325,29 @@ export function EquipmentBundleChoice({
           );
         })}
       </div>
+
+      {/* Equipment details for selected bundle's fixed items */}
+      {selectedBundle &&
+        selectedBundle.items.some((item) => item.equipmentDetail) && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            {selectedBundle.items.map(
+              (item) =>
+                item.equipmentDetail && (
+                  <EquipmentCard
+                    key={item.selectionId}
+                    equipment={item.equipmentDetail}
+                    compact
+                  />
+                )
+            )}
+          </div>
+        )}
 
       {/* Category selections for selected bundle */}
       {selectedBundle && selectedBundle.categoryChoices.length > 0 && (
