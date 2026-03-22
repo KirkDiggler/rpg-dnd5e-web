@@ -146,6 +146,16 @@ function Scene({
     return new THREE.Vector3((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
   }, [floorTiles]);
 
+  // Compute camera focus target on turn change only (not on movement during turn)
+  const focusTarget = useMemo(() => {
+    if (!currentEntityId) return null;
+    const entity = entities.find((e) => e.entityId === currentEntityId);
+    if (!entity) return null;
+    const worldPos = cubeToWorld(entity.position, HEX_SIZE);
+    return new THREE.Vector3(worldPos.x, 0, worldPos.z);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only trigger on turn change
+  }, [currentEntityId]);
+
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
     target: gridCenter,
@@ -154,6 +164,7 @@ function Scene({
     rotateSpeed: 0.02,
     minZoom: 30,
     maxZoom: 150,
+    focusTarget,
   });
 
   // Build entity map for interaction hook
