@@ -106,8 +106,6 @@ export function CombatAbilitiesPanel({
     : turnState
       ? !turnState.bonusActionUsed
       : true;
-  const dodgeActive = actionEconomy?.dodgeActive ?? false;
-  const disengageActive = actionEconomy?.disengageActive ?? false;
   const offHandAttacksRemaining = actionEconomy?.offHandAttacksRemaining ?? 0;
 
   // Compute ability availability
@@ -131,14 +129,6 @@ export function CombatAbilitiesPanel({
     if (base.actionType === 'action') {
       if (!actionAvailable) {
         return { canUse: false, reason: 'Action already used' };
-      }
-      // Special case: Dodge already active
-      if (abilityId === CombatAbilityId.DODGE && dodgeActive) {
-        return { canUse: false, reason: 'Already dodging' };
-      }
-      // Special case: Disengage already active
-      if (abilityId === CombatAbilityId.DISENGAGE && disengageActive) {
-        return { canUse: false, reason: 'Already disengaged' };
       }
       return { canUse: true, reason: '' };
     }
