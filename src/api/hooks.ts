@@ -6,7 +6,6 @@ import type {
   ClassInfo,
   CreateDraftRequest,
   DeleteDraftRequest,
-  Equipment,
   FinalizeDraftRequest,
   RaceInfo,
   RollAbilityScoresRequest,
@@ -32,6 +31,7 @@ import {
   ListRacesRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { EquipmentType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import type { Equipment } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/equipment_types_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { characterClient } from './client';
 
