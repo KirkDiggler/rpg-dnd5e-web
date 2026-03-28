@@ -4,8 +4,11 @@ import {
   type Character,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
+  Alignment,
+  Background,
   Class,
   Race,
+  Subrace,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { describe, expect, it } from 'vitest';
 import { mergeCharacterUpdate } from './characterMerge';
@@ -107,6 +110,62 @@ describe('mergeCharacterUpdate', () => {
 
     const result = mergeCharacterUpdate(existing, incoming);
     expect(result.name).toBe('Aragorn');
+  });
+
+  it('preserves subrace from existing when incoming has UNSPECIFIED', () => {
+    const existing = makeCharacter({
+      id: 'char-1',
+      race: Race.ELF,
+      subrace: Subrace.HIGH_ELF,
+      currentHitPoints: 20,
+    });
+
+    const incoming = makeCharacter({
+      id: 'char-1',
+      race: Race.UNSPECIFIED,
+      subrace: Subrace.UNSPECIFIED,
+      currentHitPoints: 14,
+    });
+
+    const result = mergeCharacterUpdate(existing, incoming);
+    expect(result.subrace).toBe(Subrace.HIGH_ELF);
+    expect(result.currentHitPoints).toBe(14);
+  });
+
+  it('preserves background from existing when incoming has UNSPECIFIED', () => {
+    const existing = makeCharacter({
+      id: 'char-1',
+      background: Background.ACOLYTE,
+      currentHitPoints: 20,
+    });
+
+    const incoming = makeCharacter({
+      id: 'char-1',
+      background: Background.UNSPECIFIED,
+      currentHitPoints: 16,
+    });
+
+    const result = mergeCharacterUpdate(existing, incoming);
+    expect(result.background).toBe(Background.ACOLYTE);
+    expect(result.currentHitPoints).toBe(16);
+  });
+
+  it('preserves alignment from existing when incoming has UNSPECIFIED', () => {
+    const existing = makeCharacter({
+      id: 'char-1',
+      alignment: Alignment.CHAOTIC_GOOD,
+      currentHitPoints: 20,
+    });
+
+    const incoming = makeCharacter({
+      id: 'char-1',
+      alignment: Alignment.UNSPECIFIED,
+      currentHitPoints: 18,
+    });
+
+    const result = mergeCharacterUpdate(existing, incoming);
+    expect(result.alignment).toBe(Alignment.CHAOTIC_GOOD);
+    expect(result.currentHitPoints).toBe(18);
   });
 
   it('uses incoming values when they are non-default', () => {

@@ -15,8 +15,11 @@
 
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
+  Alignment,
+  Background,
   Class,
   Race,
+  Subrace,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 
 /**
@@ -25,7 +28,10 @@ import {
  *
  * Visual-critical fields that get preserved from existing data when incoming is empty:
  * - race (enum: 0 = UNSPECIFIED)
+ * - subrace (enum: 0 = UNSPECIFIED)
  * - class (enum: 0 = UNSPECIFIED)
+ * - background (enum: 0 = UNSPECIFIED)
+ * - alignment (enum: 0 = UNSPECIFIED)
  * - appearance (optional message: undefined)
  * - equipmentSlots (optional message: undefined)
  * - name (string: empty = not set)
@@ -56,12 +62,33 @@ export function mergeCharacterUpdate(
         ? existing.race
         : incoming.race,
 
+    // Preserve subrace if incoming has default (UNSPECIFIED = 0)
+    subrace:
+      incoming.subrace === Subrace.UNSPECIFIED &&
+      existing.subrace !== Subrace.UNSPECIFIED
+        ? existing.subrace
+        : incoming.subrace,
+
     // Preserve class if incoming has default (UNSPECIFIED = 0)
     class:
       incoming.class === Class.UNSPECIFIED &&
       existing.class !== Class.UNSPECIFIED
         ? existing.class
         : incoming.class,
+
+    // Preserve background if incoming has default (UNSPECIFIED = 0)
+    background:
+      incoming.background === Background.UNSPECIFIED &&
+      existing.background !== Background.UNSPECIFIED
+        ? existing.background
+        : incoming.background,
+
+    // Preserve alignment if incoming has default (UNSPECIFIED = 0)
+    alignment:
+      incoming.alignment === Alignment.UNSPECIFIED &&
+      existing.alignment !== Alignment.UNSPECIFIED
+        ? existing.alignment
+        : incoming.alignment,
 
     // Preserve appearance if incoming doesn't have it
     appearance: incoming.appearance ?? existing.appearance,
