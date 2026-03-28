@@ -12,6 +12,7 @@ import {
 } from '@/api';
 import { useDiscord } from '@/discord';
 import { useDungeonMap } from '@/hooks/useDungeonMap';
+import { mergeCharacterUpdate } from '@/utils/characterMerge';
 import {
   getAbilityDisplay,
   getConditionDisplay,
@@ -327,13 +328,16 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setCombatLog((prev) => [...prev, ...monsterLogEntries]);
       }
 
-      // Update characters if provided
+      // Update characters if provided — merge to preserve visual state (class, race, appearance)
       if (event.updatedCharacters && event.updatedCharacters.length > 0) {
         setFullCharactersMap((prev) => {
           const newMap = new Map(prev);
           event.updatedCharacters.forEach((char) => {
             if (char.id) {
-              newMap.set(char.id, char);
+              newMap.set(
+                char.id,
+                mergeCharacterUpdate(prev.get(char.id), char)
+              );
             }
           });
           return newMap;
@@ -358,7 +362,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: AttackResolvedEvent) => {
       console.log('⚔️ AttackResolved event received:', event);
 
-      // Update attacker and/or target characters if provided
+      // Update attacker and/or target characters if provided — merge to preserve visual state
       setFullCharactersMap((prev) => {
         if (!event.updatedAttacker?.id && !event.updatedTarget?.id) {
           return prev;
@@ -366,10 +370,22 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
         const newMap = new Map(prev);
         if (event.updatedAttacker?.id) {
-          newMap.set(event.updatedAttacker.id, event.updatedAttacker);
+          newMap.set(
+            event.updatedAttacker.id,
+            mergeCharacterUpdate(
+              prev.get(event.updatedAttacker.id),
+              event.updatedAttacker
+            )
+          );
         }
         if (event.updatedTarget?.id) {
-          newMap.set(event.updatedTarget.id, event.updatedTarget);
+          newMap.set(
+            event.updatedTarget.id,
+            mergeCharacterUpdate(
+              prev.get(event.updatedTarget.id),
+              event.updatedTarget
+            )
+          );
         }
         return newMap;
       });
@@ -482,11 +498,17 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: FeatureActivatedEvent) => {
       console.log('✨ FeatureActivated event received:', event);
 
-      // Update character if provided
+      // Update character if provided — merge to preserve visual state
       if (event.updatedCharacter?.id) {
         setFullCharactersMap((prev) => {
           const newMap = new Map(prev);
-          newMap.set(event.updatedCharacter!.id, event.updatedCharacter!);
+          newMap.set(
+            event.updatedCharacter!.id,
+            mergeCharacterUpdate(
+              prev.get(event.updatedCharacter!.id),
+              event.updatedCharacter!
+            )
+          );
           return newMap;
         });
       }
