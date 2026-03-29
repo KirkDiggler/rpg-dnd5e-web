@@ -48,31 +48,56 @@ export function BattleMapPanel({
   onDoorClick,
   isDoorLoading,
 }: BattleMapPanelProps) {
-  // Build entities array from accumulated dungeonMap entities
-  const entities = useMemo(() => {
-    return Array.from(dungeonMap.entities.values()).map((entity) => {
-      let displayType: 'player' | 'monster' | 'obstacle';
-      if (entity.entityType === EntityType.CHARACTER) {
-        displayType = 'player';
-      } else if (entity.entityType === EntityType.MONSTER) {
-        displayType = 'monster';
-      } else {
-        displayType = 'obstacle';
+  // Build a set of dead monster IDs so we can exclude them from the grid
+  const deadMonsterIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (monsters) {
+      for (const m of monsters) {
+        if (m.currentHitPoints <= 0) {
+          ids.add(m.monsterId);
+        }
       }
-      return {
-        entityId: entity.entityId,
-        name:
-          allPartyCharacters.find((c) => c.id === entity.entityId)?.name ||
-          entity.entityId,
-        position: {
-          x: entity.position?.x || 0,
-          y: entity.position?.y || 0,
-          z: entity.position?.z || 0,
-        },
-        type: displayType,
-      };
-    });
-  }, [dungeonMap.entities, allPartyCharacters]);
+    }
+    return ids;
+  }, [monsters]);
+
+  // Build entities array from accumulated dungeonMap entities,
+  // filtering out monsters that have been killed (HP <= 0)
+  const entities = useMemo(() => {
+    return Array.from(dungeonMap.entities.values())
+      .filter((entity) => {
+        // Remove dead monsters from the grid
+        if (
+          entity.entityType === EntityType.MONSTER &&
+          deadMonsterIds.has(entity.entityId)
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .map((entity) => {
+        let displayType: 'player' | 'monster' | 'obstacle';
+        if (entity.entityType === EntityType.CHARACTER) {
+          displayType = 'player';
+        } else if (entity.entityType === EntityType.MONSTER) {
+          displayType = 'monster';
+        } else {
+          displayType = 'obstacle';
+        }
+        return {
+          entityId: entity.entityId,
+          name:
+            allPartyCharacters.find((c) => c.id === entity.entityId)?.name ||
+            entity.entityId,
+          position: {
+            x: entity.position?.x || 0,
+            y: entity.position?.y || 0,
+            z: entity.position?.z || 0,
+          },
+          type: displayType,
+        };
+      });
+  }, [dungeonMap.entities, allPartyCharacters, deadMonsterIds]);
 
   // Convert doors map to array for HexGrid
   const doorsArray = useMemo(
@@ -80,8 +105,11 @@ export function BattleMapPanel({
     [dungeonMap.doors]
   );
 
-  // Collect all walls from dungeonMap
-  const walls = dungeonMap.walls;
+  // Convert walls map to array for HexGrid
+  const walls = useMemo(
+    () => Array.from(dungeonMap.walls.values()),
+    [dungeonMap.walls]
+  );
 
   return (
     <div
