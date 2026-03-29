@@ -613,6 +613,132 @@ describe('updateEntitiesFromRoom', () => {
     expect(newState.entities.get('char-1')?.position?.x).toBe(2);
   });
 
+  it('removes dead monsters when API removes them from room entities', () => {
+    let state = createEmptyState();
+
+    // Room starts with a character and a monster
+    const room = createRoom({
+      id: 'room-1',
+      width: 3,
+      height: 2,
+      entities: {
+        'char-1': {
+          entityId: 'char-1',
+          x: 0,
+          y: 0,
+          z: 0,
+          type: EntityType.CHARACTER,
+        },
+        'mob-1': {
+          entityId: 'mob-1',
+          x: 2,
+          y: -2,
+          z: 0,
+          type: EntityType.MONSTER,
+        },
+      },
+    });
+    state = mergeRoom(state, room, []);
+    expect(state.entities.size).toBe(2);
+
+    // Monster killed: API sends updated room without the dead monster
+    const updatedRoom = createRoom({
+      id: 'room-1',
+      width: 3,
+      height: 2,
+      entities: {
+        'char-1': {
+          entityId: 'char-1',
+          x: 1,
+          y: -1,
+          z: 0,
+          type: EntityType.CHARACTER,
+        },
+      },
+    });
+    state = updateEntitiesFromRoom(state, updatedRoom);
+
+    // Monster should be removed, only character remains
+    expect(state.entities.size).toBe(1);
+    expect(state.entities.has('char-1')).toBe(true);
+    expect(state.entities.has('mob-1')).toBe(false);
+  });
+
+  it('does not remove entities from other rooms when updating one room', () => {
+    let state = createEmptyState();
+
+    // Room 1 has a monster
+    const room1 = createRoom({
+      id: 'room-1',
+      width: 3,
+      height: 2,
+      entities: {
+        'mob-1': {
+          entityId: 'mob-1',
+          x: 1,
+          y: -1,
+          z: 0,
+          type: EntityType.MONSTER,
+        },
+      },
+    });
+    state = mergeRoom(state, room1, []);
+
+    // Room 2 has a character and another monster
+    const room2 = createRoom({
+      id: 'room-2',
+      width: 2,
+      height: 2,
+      originX: 4,
+      originZ: 0,
+      entities: {
+        'char-1': {
+          entityId: 'char-1',
+          x: 4,
+          y: -4,
+          z: 0,
+          type: EntityType.CHARACTER,
+        },
+        'mob-2': {
+          entityId: 'mob-2',
+          x: 5,
+          y: -5,
+          z: 0,
+          type: EntityType.MONSTER,
+        },
+      },
+    });
+    state = mergeRoom(state, room2, []);
+    expect(state.entities.size).toBe(3);
+
+    // Kill mob-2 in room 2 — room 1's mob-1 should NOT be affected
+    const updatedRoom2 = createRoom({
+      id: 'room-2',
+      width: 2,
+      height: 2,
+      originX: 4,
+      originZ: 0,
+      entities: {
+        'char-1': {
+          entityId: 'char-1',
+          x: 4,
+          y: -4,
+          z: 0,
+          type: EntityType.CHARACTER,
+        },
+      },
+    });
+    state = updateEntitiesFromRoom(state, updatedRoom2);
+
+    // mob-1 from room 1 should still exist
+    expect(state.entities.has('mob-1')).toBe(true);
+    // mob-2 from room 2 should be removed
+    expect(state.entities.has('mob-2')).toBe(false);
+    // char-1 should still exist
+    expect(state.entities.has('char-1')).toBe(true);
+    expect(state.entities.size).toBe(2);
+  });
+
   it('updates stored room data', () => {
     let state = createEmptyState();
 
