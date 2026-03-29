@@ -395,6 +395,23 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         updateMapEntities(event.updatedRoom);
       }
 
+      // Update monster HP when a hit lands on a monster target
+      if (event.result?.hit && event.result.damage > 0) {
+        setMonsters((prev) =>
+          prev.map((m) =>
+            m.monsterId === event.targetId
+              ? {
+                  ...m,
+                  currentHitPoints: Math.max(
+                    0,
+                    m.currentHitPoints - event.result!.damage
+                  ),
+                }
+              : m
+          )
+        );
+      }
+
       // Add combat log entry for the attack
       if (event.result) {
         const attackerName =
@@ -1466,6 +1483,18 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         if (hit) {
           console.log(
             `Damage: ${damage} ${damageType}${critical ? ' (CRITICAL!)' : ''}`
+          );
+
+          // Update monster HP in local state so hover panel reflects damage
+          setMonsters((prev) =>
+            prev.map((m) =>
+              m.monsterId === target
+                ? {
+                    ...m,
+                    currentHitPoints: Math.max(0, m.currentHitPoints - damage),
+                  }
+                : m
+            )
           );
         }
 
