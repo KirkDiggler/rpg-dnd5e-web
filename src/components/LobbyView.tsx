@@ -1105,7 +1105,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         // This ensures bonus strikes (OFF_HAND_STRIKE, UNARMED_STRIKE) are used correctly
         // after a primary attack, instead of defaulting to STRIKE.
         const firstStrike = findFirstStrike(availableActions);
-        if (firstStrike) {
+        if (firstStrike !== undefined) {
           console.log(
             '🎯 Strike available:',
             ActionId[firstStrike],
