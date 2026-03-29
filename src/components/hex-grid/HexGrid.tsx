@@ -12,7 +12,7 @@
  * - Turn order overlay
  */
 
-import type { AbsoluteFloorTile } from '@/hooks/useDungeonMap';
+import { wallKey, type AbsoluteFloorTile } from '@/hooks/useDungeonMap';
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
@@ -345,8 +345,9 @@ function Scene({
 
       {/* Render walls (after tiles, before doors) — already deduplicated in useDungeonMap */}
       {walls.map((wall) => {
-        const key = `wall-${wall.start?.x ?? 'u'}-${wall.start?.y ?? 'u'}-${wall.start?.z ?? 'u'}-${wall.end?.x ?? 'u'}-${wall.end?.y ?? 'u'}-${wall.end?.z ?? 'u'}`;
-        return <ShadedHexWall key={key} wall={wall} hexSize={HEX_SIZE} />;
+        return (
+          <ShadedHexWall key={wallKey(wall)} wall={wall} hexSize={HEX_SIZE} />
+        );
       })}
 
       {/* Render doors (after tiles, before movement range) */}

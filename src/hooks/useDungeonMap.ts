@@ -148,7 +148,10 @@ export function mergeRoom(
   // Keyed by normalized coordinates to automatically deduplicate shared boundary walls
   if (!isUpdate && room.walls) {
     for (const wall of room.walls) {
-      newWalls.set(wallKey(wall), wall);
+      const key = wallKey(wall);
+      if (!newWalls.has(key)) {
+        newWalls.set(key, wall);
+      }
     }
   }
 
