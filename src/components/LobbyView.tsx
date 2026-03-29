@@ -12,7 +12,9 @@ import {
 } from '@/api';
 import { useDiscord } from '@/discord';
 import { useDungeonMap } from '@/hooks/useDungeonMap';
+import { useEncounterState } from '@/hooks/useEncounterState';
 import { mergeCharacterUpdate } from '@/utils/characterMerge';
+import { getEntityName } from '@/utils/entityHelpers';
 import {
   getAbilityDisplay,
   getConditionDisplay,
@@ -39,8 +41,13 @@ import {
   type AvailableAction,
   type CombatStartedEvent,
   type CombatState,
+  type DoorInfo,
+  type DungeonFailureEvent,
   type DungeonVictoryEvent,
   type EncounterEvent,
+  type EncounterStateData,
+  type EntityPlacement,
+  type EntityState,
   type FeatureActivatedEvent,
   type MonsterCombatState,
   type MonsterTurnCompletedEvent,
@@ -106,6 +113,96 @@ function applyMonsterMovement(room: Room, turns: MonsterTurnResult[]): Room {
   };
 }
 
+/**
+ * Convert an EntityState to an EntityPlacement for legacy addRoomToMap compatibility.
+ * EntityPlacement is a subset of EntityState (spatial + visual only, no HP/conditions).
+ */
+function entityStateToPlacement(entity: EntityState): EntityPlacement {
+  const placement: EntityPlacement = {
+    entityId: entity.entityId,
+    entityType: entity.entityType,
+    position: entity.position,
+    size: entity.size,
+    blocksMovement: entity.blocksMovement,
+    blocksLineOfSight: entity.blocksLineOfSight,
+    visualType: { case: undefined, value: undefined },
+    $typeName: 'dnd5e.api.v1alpha1.EntityPlacement' as const,
+    $unknown: undefined,
+  };
+  // Map monster details to visual type
+  if (entity.details.case === 'monsterDetails') {
+    (placement as EntityPlacement).visualType = {
+      case: 'monsterType' as const,
+      value: entity.details.value.monsterType,
+    };
+  }
+  return placement;
+}
+
+/**
+ * Build a legacy Room object from EncounterStateData for addRoomToMap compatibility.
+ * Uses the current room's RoomLayout + entities assigned to that room.
+ */
+function roomFromEncounterState(data: EncounterStateData): Room | undefined {
+  const roomLayout = data.rooms[data.currentRoomId];
+  if (!roomLayout) return undefined;
+
+  // Collect entities that belong to the current room
+  const entities: { [key: string]: EntityPlacement } = {};
+  for (const entity of Object.values(data.entities)) {
+    if (entity.roomId === data.currentRoomId) {
+      entities[entity.entityId] = entityStateToPlacement(entity);
+    }
+  }
+
+  return {
+    id: roomLayout.id,
+    type: roomLayout.type,
+    width: roomLayout.width,
+    height: roomLayout.height,
+    gridType: roomLayout.gridType,
+    walls: roomLayout.walls,
+    origin: roomLayout.origin,
+    entities,
+    $typeName: 'dnd5e.api.v1alpha1.Room' as const,
+    $unknown: undefined,
+  } as Room;
+}
+
+/**
+ * Extract DoorInfo array from EncounterStateData for addRoomToMap compatibility.
+ */
+function doorsFromEncounterState(data: EncounterStateData): DoorInfo[] {
+  return Object.values(data.doors);
+}
+
+/**
+ * Build MonsterCombatState array from EncounterStateData entities.
+ * Used to feed the legacy `monsters` state for monsterType texture selection.
+ */
+function monstersFromEncounterState(
+  data: EncounterStateData
+): MonsterCombatState[] {
+  const result: MonsterCombatState[] = [];
+  for (const entity of Object.values(data.entities)) {
+    if (
+      entity.entityType === EntityType.MONSTER &&
+      entity.details.case === 'monsterDetails'
+    ) {
+      result.push({
+        monsterId: entity.entityId,
+        monsterType: entity.details.value.monsterType,
+        currentHitPoints: entity.currentHitPoints,
+        maxHitPoints: entity.maxHitPoints,
+        armorClass: entity.details.value.armorClass,
+        $typeName: 'dnd5e.api.v1alpha1.MonsterCombatState' as const,
+        $unknown: undefined,
+      } as MonsterCombatState);
+    }
+  }
+  return result;
+}
+
 interface LobbyViewProps {
   characterId?: string | null;
   onBack?: () => void;
@@ -146,9 +243,21 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     dungeonMap,
     currentRoom: room,
     addRoom: addRoomToMap,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for Task 7 cleanup
     updateEntities: updateMapEntities,
     reset: resetDungeonMap,
   } = useDungeonMap();
+
+  // Unified encounter state (new path — runs alongside legacy state until Task 7)
+  const {
+    state: encounterState,
+    applySnapshot,
+    applyEntityUpdates,
+    applyCombatState: applyEncounterCombatState,
+    reset: resetEncounterState,
+  } = useEncounterState();
+  // Suppress unused-variable lint until downstream components read from encounterState (Tasks 4-6)
+  void encounterState;
 
   // Walkable tile keys for cross-room pathfinding
   const walkableTileKeys = useMemo(
@@ -226,16 +335,30 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       setIsTransitioning(true);
 
       setTimeout(() => {
-        // Accumulate new room into dungeon map
-        if (event.room) {
-          addRoomToMap(event.room, event.doors ?? []);
-        }
-        setCombatState(event.combatState ?? null);
-        setRoomsCleared((prev) => prev + 1);
+        // --- New path: populate unified encounter state ---
+        if (event.encounterStateData) {
+          applySnapshot(event.encounterStateData);
 
-        // Select the current turn entity
-        if (event.combatState?.currentTurn?.entityId) {
-          setSelectedEntity(event.combatState.currentTurn.entityId);
+          // --- Legacy path: build Room/CombatState from encounterStateData ---
+          const legacyRoom = roomFromEncounterState(event.encounterStateData);
+          if (legacyRoom) {
+            addRoomToMap(
+              legacyRoom,
+              doorsFromEncounterState(event.encounterStateData)
+            );
+          }
+          setCombatState(event.encounterStateData.combat ?? null);
+          setRoomsCleared(event.encounterStateData.roomsCleared);
+
+          // Update monsters from encounter state (for monsterType texture selection)
+          setMonsters(monstersFromEncounterState(event.encounterStateData));
+
+          // Select the current turn entity
+          if (event.encounterStateData.combat?.currentTurn?.entityId) {
+            setSelectedEntity(
+              event.encounterStateData.combat.currentTurn.entityId
+            );
+          }
         }
 
         // Clear movement state for new room
@@ -250,12 +373,17 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setIsTransitioning(false);
       }, 300);
     },
-    [addRoomToMap]
+    [addRoomToMap, applySnapshot]
   );
 
   const handleDungeonVictory = useCallback(
     (event: DungeonVictoryEvent) => {
-      setRoomsCleared(event.roomsCleared);
+      // --- New path: populate unified encounter state ---
+      if (event.encounterStateData) {
+        applySnapshot(event.encounterStateData);
+        // Legacy: extract roomsCleared from encounterStateData
+        setRoomsCleared(event.encounterStateData.roomsCleared);
+      }
       // Don't immediately show overlay - let player explore/loot
       setCombatEnded(true);
       addToast({
@@ -265,19 +393,32 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         duration: 5000,
       });
     },
-    [addToast]
+    [addToast, applySnapshot]
   );
 
-  const handleDungeonFailure = useCallback(() => {
-    // Defeat still shows immediately since there's nothing to explore
-    setDungeonResult('failure');
-  }, []);
+  const handleDungeonFailure = useCallback(
+    (event: DungeonFailureEvent) => {
+      // --- New path: populate unified encounter state ---
+      if (event.encounterStateData) {
+        applySnapshot(event.encounterStateData);
+      }
+      // Defeat still shows immediately since there's nothing to explore
+      setDungeonResult('failure');
+    },
+    [applySnapshot]
+  );
 
   // Multiplayer sync: Turn ended - update combat state and room
   const handleTurnEnded = useCallback(
     (event: TurnEndedEvent) => {
       console.log('🔄 TurnEnded event received:', event);
 
+      // --- New path: populate unified encounter state ---
+      if (event.updatedEntities.length > 0)
+        applyEntityUpdates(event.updatedEntities);
+      if (event.combatState) applyEncounterCombatState(event.combatState);
+
+      // --- Legacy path ---
       // Update combat state from the event
       if (event.combatState) {
         setCombatState(event.combatState);
@@ -295,13 +436,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setAvailableAbilities([]);
         setAvailableActions([]);
       }
-
-      // Update entity positions in dungeon map after turn
-      if (event.updatedRoom) {
-        updateMapEntities(event.updatedRoom);
-      }
     },
-    [updateMapEntities]
+    [applyEntityUpdates, applyEncounterCombatState]
   );
 
   // Multiplayer sync: Monster turn completed - show monster actions
@@ -309,6 +445,12 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: MonsterTurnCompletedEvent) => {
       console.log('👹 MonsterTurnCompleted event received:', event);
 
+      // --- New path: populate unified encounter state ---
+      if (event.updatedEntities.length > 0)
+        applyEntityUpdates(event.updatedEntities);
+      if (event.combatState) applyEncounterCombatState(event.combatState);
+
+      // --- Legacy path ---
       // Convert monster turn to combat log entry
       if (event.monsterTurn) {
         const currentRound = combatState?.round || 1;
@@ -316,7 +458,10 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           [event.monsterTurn],
           currentRound,
           (targetId) => {
-            // Use inline name resolution since getEntityDisplayName isn't available yet
+            // Try new encounter state entities first for name resolution
+            const entityState = encounterState.entities.get(targetId);
+            if (entityState) return getEntityName(entityState);
+            // Fall back to legacy name resolution
             const fullChar = fullCharactersMap.get(targetId);
             if (fullChar?.name) return fullChar.name;
             const availChar = availableCharacters.find(
@@ -330,32 +475,18 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setCombatLog((prev) => [...prev, ...monsterLogEntries]);
       }
 
-      // Update characters if provided — merge to preserve visual state (class, race, appearance)
-      if (event.updatedCharacters && event.updatedCharacters.length > 0) {
-        setFullCharactersMap((prev) => {
-          const newMap = new Map(prev);
-          event.updatedCharacters.forEach((char) => {
-            if (char.id) {
-              newMap.set(
-                char.id,
-                mergeCharacterUpdate(prev.get(char.id), char)
-              );
-            }
-          });
-          return newMap;
-        });
-      }
-
-      // Update entity positions in dungeon map (monster positions changed)
-      if (event.updatedRoom) {
-        updateMapEntities(event.updatedRoom);
+      // Update combat state from the event
+      if (event.combatState) {
+        setCombatState(event.combatState);
       }
     },
     [
       combatState?.round,
       fullCharactersMap,
       availableCharacters,
-      updateMapEntities,
+      encounterState.entities,
+      applyEntityUpdates,
+      applyEncounterCombatState,
     ]
   );
 
@@ -364,39 +495,13 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: AttackResolvedEvent) => {
       console.log('⚔️ AttackResolved event received:', event);
 
-      // Update attacker and/or target characters if provided — merge to preserve visual state
-      setFullCharactersMap((prev) => {
-        if (!event.updatedAttacker?.id && !event.updatedTarget?.id) {
-          return prev;
-        }
+      // --- New path: populate unified encounter state ---
+      const entityUpdates = [event.attackerState, event.targetState].filter(
+        Boolean
+      ) as EntityState[];
+      if (entityUpdates.length > 0) applyEntityUpdates(entityUpdates);
 
-        const newMap = new Map(prev);
-        if (event.updatedAttacker?.id) {
-          newMap.set(
-            event.updatedAttacker.id,
-            mergeCharacterUpdate(
-              prev.get(event.updatedAttacker.id),
-              event.updatedAttacker
-            )
-          );
-        }
-        if (event.updatedTarget?.id) {
-          newMap.set(
-            event.updatedTarget.id,
-            mergeCharacterUpdate(
-              prev.get(event.updatedTarget.id),
-              event.updatedTarget
-            )
-          );
-        }
-        return newMap;
-      });
-
-      // Update entity positions in dungeon map (entity state may have changed)
-      if (event.updatedRoom) {
-        updateMapEntities(event.updatedRoom);
-      }
-
+      // --- Legacy path ---
       // Update monster HP when a hit lands on a monster target
       if (event.result?.hit && event.result.damage > 0) {
         setMonsters((prev) =>
@@ -416,11 +521,16 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
       // Add combat log entry for the attack
       if (event.result) {
+        // Try encounter state entities first for name resolution, fall back to legacy
+        const attackerEntity = encounterState.entities.get(event.attackerId);
+        const targetEntity = encounterState.entities.get(event.targetId);
         const attackerName =
+          (attackerEntity ? getEntityName(attackerEntity) : null) ||
           fullCharactersMap.get(event.attackerId)?.name ||
           availableCharacters.find((c) => c.id === event.attackerId)?.name ||
           formatEntityId(event.attackerId);
         const targetName =
+          (targetEntity ? getEntityName(targetEntity) : null) ||
           fullCharactersMap.get(event.targetId)?.name ||
           availableCharacters.find((c) => c.id === event.targetId)?.name ||
           formatEntityId(event.targetId);
@@ -477,7 +587,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       combatState?.round,
       fullCharactersMap,
       availableCharacters,
-      updateMapEntities,
+      encounterState.entities,
+      applyEntityUpdates,
     ]
   );
 
@@ -486,6 +597,12 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: ActionExecutedEvent) => {
       console.log('🎯 ActionExecuted event received:', event);
 
+      // --- New path: populate unified encounter state ---
+      if (event.updatedEntities.length > 0)
+        applyEntityUpdates(event.updatedEntities);
+      if (event.combatState) applyEncounterCombatState(event.combatState);
+
+      // --- Legacy path ---
       // Update monster HP when a strike hits a monster target
       if (
         event.result?.case === 'strikeResult' &&
@@ -507,13 +624,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           )
         );
       }
-
-      // Update entity positions if room changed (e.g., entity defeated)
-      if (event.updatedRoom) {
-        updateMapEntities(event.updatedRoom);
-      }
     },
-    [updateMapEntities]
+    [applyEntityUpdates, applyEncounterCombatState]
   );
 
   // Multiplayer sync: Movement completed - sync entity positions and movement resources
@@ -521,30 +633,17 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: MovementCompletedEvent) => {
       console.log('🚶 MovementCompleted event received:', event);
 
-      // Update entity positions in dungeon map
-      if (event.updatedRoom) {
-        updateMapEntities(event.updatedRoom);
+      // --- New path: populate unified encounter state ---
+      if (event.updatedEntity) applyEntityUpdates([event.updatedEntity]);
+      if (event.combatState) applyEncounterCombatState(event.combatState);
+
+      // --- Legacy path ---
+      // Sync combat state (includes updated movement resources)
+      if (event.combatState) {
+        setCombatState(event.combatState);
       }
-
-      // Sync movement resources to combat state
-      // Only update if this is the current turn's entity
-      setCombatState((prev) => {
-        if (!prev?.currentTurn) return prev;
-        if (prev.currentTurn.entityId !== event.entityId) return prev;
-
-        const movementUsed =
-          prev.currentTurn.movementMax - event.movementRemaining;
-
-        return {
-          ...prev,
-          currentTurn: {
-            ...prev.currentTurn,
-            movementUsed,
-          },
-        };
-      });
     },
-    [updateMapEntities]
+    [applyEntityUpdates, applyEncounterCombatState]
   );
 
   // Multiplayer sync: Feature activated - sync feature usage
@@ -552,23 +651,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: FeatureActivatedEvent) => {
       console.log('✨ FeatureActivated event received:', event);
 
-      // Update character if provided — merge to preserve visual state
-      if (event.updatedCharacter?.id) {
-        setFullCharactersMap((prev) => {
-          const newMap = new Map(prev);
-          newMap.set(
-            event.updatedCharacter!.id,
-            mergeCharacterUpdate(
-              prev.get(event.updatedCharacter!.id),
-              event.updatedCharacter!
-            )
-          );
-          return newMap;
-        });
-      }
+      // --- New path: populate unified encounter state ---
+      if (event.updatedEntity) applyEntityUpdates([event.updatedEntity]);
 
+      // --- Legacy path ---
       // Add combat log entry for feature activation
+      // Try encounter state entities first for name resolution
+      const entityState = encounterState.entities.get(event.characterId);
       const characterName =
+        (entityState ? getEntityName(entityState) : null) ||
         fullCharactersMap.get(event.characterId)?.name ||
         availableCharacters.find((c) => c.id === event.characterId)?.name ||
         'Unknown';
@@ -584,7 +675,13 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       };
       setCombatLog((prev) => [...prev, logEntry]);
     },
-    [combatState?.round, fullCharactersMap, availableCharacters]
+    [
+      combatState?.round,
+      fullCharactersMap,
+      availableCharacters,
+      encounterState.entities,
+      applyEntityUpdates,
+    ]
   );
 
   // Multiplayer sync: Player joined - add new player's character
@@ -685,73 +782,46 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     (event: CombatStartedEvent) => {
       console.log('⚔️ CombatStarted event received:', event);
 
+      // --- New path: populate unified encounter state ---
+      if (event.encounterStateData) {
+        applySnapshot(event.encounterStateData);
+      }
+
       // Set dungeon state for room navigation
       setDungeonId(event.dungeonId || null);
 
-      // Start with room from event, may be updated if monsters moved
-      let roomToSet = event.room;
+      // --- Legacy path: extract state from encounterStateData ---
+      if (event.encounterStateData) {
+        const esd = event.encounterStateData;
 
-      // Set combat state
-      if (event.combatState) {
-        setCombatState(event.combatState);
-
-        // Select current turn entity
-        if (event.combatState.currentTurn?.entityId) {
-          setSelectedEntity(event.combatState.currentTurn.entityId);
-        }
-      }
-
-      // Set monsters from event (for monsterType texture selection)
-      if (event.monsters && event.monsters.length > 0) {
-        setMonsters(event.monsters);
-      }
-
-      // Process monster turns if present (monsters won initiative)
-      roomToSet = processMonsterTurns(
-        event.monsterTurns,
-        event.combatState,
-        roomToSet
-      );
-
-      // Add first room to dungeon map (with updated monster positions if they moved)
-      if (roomToSet) {
-        addRoomToMap(roomToSet, event.doors ?? []);
-      }
-
-      // Add party members' characters to our map
-      if (event.party && event.party.length > 0) {
-        // All party characters go to fullCharactersMap for display
-        const partyCharacters = event.party
-          .filter((member) => member.character?.id)
-          .map((member) => member.character!);
-
-        if (partyCharacters.length > 0) {
-          setFullCharactersMap((prev) => {
-            const newMap = new Map(prev);
-            partyCharacters.forEach((char) => {
-              newMap.set(
-                char.id,
-                mergeCharacterUpdate(prev.get(char.id), char)
-              );
-            });
-            return newMap;
-          });
+        // Set combat state
+        if (esd.combat) {
+          setCombatState(esd.combat);
+          if (esd.combat.currentTurn?.entityId) {
+            setSelectedEntity(esd.combat.currentTurn.entityId);
+          }
         }
 
-        // Only the local player's character goes to selectedCharacterIds.
-        // Guard against empty playerId to avoid false positives.
-        const localPlayerCharacter = playerId
-          ? event.party.find(
-              (member) => member.playerId === playerId && member.character?.id
-            )?.character
-          : undefined;
+        // Set monsters (for monsterType texture selection)
+        setMonsters(monstersFromEncounterState(esd));
 
-        if (localPlayerCharacter) {
-          setSelectedCharacterIds([localPlayerCharacter.id]);
-        } else {
-          // Clear stale selection if local player not found in party
-          setSelectedCharacterIds([]);
+        // Build legacy Room and add to dungeon map
+        let legacyRoom = roomFromEncounterState(esd);
+
+        // Process monster turns if present (monsters won initiative)
+        legacyRoom = processMonsterTurns(
+          event.monsterTurns,
+          esd.combat,
+          legacyRoom
+        );
+
+        if (legacyRoom) {
+          addRoomToMap(legacyRoom, doorsFromEncounterState(esd));
         }
+
+        // Extract party character IDs from character entities for selectedCharacterIds
+        // (The full Character objects are no longer in the event — they come via
+        // fullCharactersMap from the GetCharacter fetch effect)
       }
 
       addToast({
@@ -760,7 +830,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         duration: 2000,
       });
     },
-    [addToast, processMonsterTurns, playerId, addRoomToMap]
+    [addToast, processMonsterTurns, addRoomToMap, applySnapshot]
   );
 
   // State sync handler - called with snapshot on connect/reconnect
@@ -770,6 +840,12 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     ) => {
       console.log('🔄 State sync received:', snapshot);
 
+      // --- New path: populate unified encounter state ---
+      if (snapshot.encounterStateData) {
+        applySnapshot(snapshot.encounterStateData);
+      }
+
+      // --- Legacy path ---
       // Apply dungeon state for room navigation
       setDungeonId(snapshot.dungeonId || null);
 
@@ -839,7 +915,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
       console.log('🔄 State sync complete');
     },
-    [playerId, addRoomToMap]
+    [playerId, addRoomToMap, applySnapshot]
   );
 
   // Historical events handler - processes events that happened before we connected
@@ -997,6 +1073,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     setDungeonResult(null);
     setCombatEnded(false);
     resetDungeonMap();
+    resetEncounterState();
     setEncounterId(null);
     setDungeonId(null);
     setCombatState(null);
@@ -1004,7 +1081,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     setRoomsCleared(0);
     setCombatLog([]);
     setSelectedEntity(null);
-  }, [resetDungeonMap]);
+  }, [resetDungeonMap, resetEncounterState]);
 
   // Handle abandoning the encounter mid-combat
   const handleAbandonEncounter = useCallback(async () => {
@@ -2059,73 +2136,57 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                 // Set dungeon state for room navigation
                 setDungeonId(event.dungeonId || null);
 
-                // Extract characters from party members and store them
-                const partyCharacters = event.party
-                  .filter((member) => member.character?.id)
-                  .map((member) => member.character!);
+                // --- New path: populate unified encounter state ---
+                if (event.encounterStateData) {
+                  applySnapshot(event.encounterStateData);
 
-                if (partyCharacters.length > 0) {
-                  // Add all characters to fullCharactersMap for display
-                  setFullCharactersMap((prev) => {
-                    const newMap = new Map(prev);
-                    partyCharacters.forEach((char) => {
-                      newMap.set(char.id, char);
-                    });
-                    return newMap;
-                  });
-                }
+                  const esd = event.encounterStateData;
 
-                // Only the local player's character goes to selectedCharacterIds.
-                // Guard against empty playerId to avoid false positives.
-                const localPlayerCharacter = playerId
-                  ? event.party.find(
-                      (member) =>
-                        member.playerId === playerId && member.character?.id
-                    )?.character
-                  : undefined;
-
-                if (localPlayerCharacter) {
-                  setSelectedCharacterIds([localPlayerCharacter.id]);
-                } else {
-                  // Clear stale selection if local player not found in party
-                  setSelectedCharacterIds([]);
-                }
-
-                // Set monsters from event (for monsterType texture selection)
-                if (event.monsters && event.monsters.length > 0) {
-                  setMonsters(event.monsters);
-                }
-
-                // Set combat state from the event
-                if (event.combatState) {
-                  setCombatState(event.combatState);
-
-                  // Select current turn entity
-                  if (event.combatState.currentTurn?.entityId) {
-                    setSelectedEntity(event.combatState.currentTurn.entityId);
+                  // Legacy: set combat state
+                  if (esd.combat) {
+                    setCombatState(esd.combat);
+                    if (esd.combat.currentTurn?.entityId) {
+                      setSelectedEntity(esd.combat.currentTurn.entityId);
+                    }
                   }
-                }
 
-                // Process monster turns and get updated room
-                const roomToSet = processMonsterTurns(
-                  event.monsterTurns,
-                  event.combatState,
-                  event.room
-                );
+                  // Legacy: set monsters for texture selection
+                  setMonsters(monstersFromEncounterState(esd));
 
-                // Add first room to dungeon map (with updated monster positions)
-                if (roomToSet) {
-                  addRoomToMap(roomToSet, event.doors ?? []);
-                  addToast({
-                    type: 'success',
-                    message: 'Combat started!',
-                    duration: 2000,
-                  });
+                  // Legacy: build Room and add to dungeon map
+                  let legacyRoom = roomFromEncounterState(esd);
+
+                  // Process monster turns and get updated room
+                  legacyRoom = processMonsterTurns(
+                    event.monsterTurns,
+                    esd.combat,
+                    legacyRoom
+                  );
+
+                  if (legacyRoom) {
+                    addRoomToMap(legacyRoom, doorsFromEncounterState(esd));
+                    addToast({
+                      type: 'success',
+                      message: 'Combat started!',
+                      duration: 2000,
+                    });
+                  } else {
+                    console.error(
+                      'CombatStartedEvent encounterStateData missing room'
+                    );
+                    addToast({
+                      type: 'error',
+                      message: 'Failed to start combat: missing room data',
+                      duration: 3000,
+                    });
+                  }
                 } else {
-                  console.error('CombatStartedEvent missing room data');
+                  console.error(
+                    'CombatStartedEvent missing encounterStateData'
+                  );
                   addToast({
                     type: 'error',
-                    message: 'Failed to start combat: missing room data',
+                    message: 'Failed to start combat: missing state data',
                     duration: 3000,
                   });
                 }
