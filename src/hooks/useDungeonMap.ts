@@ -185,6 +185,10 @@ export function mergeRoom(
 /**
  * Update entity positions in the dungeon map (e.g., after movement, monster turns).
  * This updates the accumulated entities map without changing room/floor data.
+ *
+ * Also removes entities that were in the previous version of this room but are
+ * no longer present (e.g., monsters that died and were removed by the API).
+ *
  * Exported for testing.
  */
 export function updateEntitiesFromRoom(
@@ -193,6 +197,19 @@ export function updateEntitiesFromRoom(
 ): DungeonMapState {
   const newEntities = new Map(state.entities);
 
+  // Remove entities that were in the previous version of this room but are
+  // no longer present (e.g., dead monsters removed by the API)
+  const previousRoom = state.rooms.get(room.id);
+  if (previousRoom?.entities) {
+    const updatedEntityIds = new Set(Object.keys(room.entities ?? {}));
+    for (const entityId of Object.keys(previousRoom.entities)) {
+      if (!updatedEntityIds.has(entityId)) {
+        newEntities.delete(entityId);
+      }
+    }
+  }
+
+  // Add/update entities from the new room data
   if (room.entities) {
     for (const [entityId, entity] of Object.entries(room.entities)) {
       newEntities.set(entityId, entity);
