@@ -57,6 +57,7 @@ import {
   DungeonLength,
   DungeonTheme,
   EntityType,
+  Weapon,
   type FeatureId,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { ArrowLeft } from 'lucide-react';
@@ -1384,11 +1385,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         const attackLine = `Attack: ${attackRoll} ${modifierStr} = ${attackTotal} vs AC ${targetAc}`;
 
         // Get attacker's weapon name from their equipment
-        // Use fullCharactersMap which has full equipment data from GetCharacter
+        // Unarmed strikes and flurry strikes have no equipped weapon
+        const isUnarmed =
+          strikeActionId === ActionId.UNARMED_STRIKE ||
+          strikeActionId === ActionId.FLURRY_STRIKE;
         const fullAttackerChar = fullCharactersMap.get(entityId);
-        const weaponName =
-          fullAttackerChar?.equipmentSlots?.mainHand?.equipment?.name ||
-          'Weapon';
+        const weaponName = isUnarmed
+          ? 'Unarmed Strike'
+          : fullAttackerChar?.equipmentSlots?.mainHand?.equipment?.name ||
+            'Weapon';
 
         // Build damage breakdown string if available
         let damageLines = '';
@@ -1414,7 +1419,11 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                 switch (sourceCase) {
                   case 'weapon':
                     // Use type-safe enum display for weapon name
-                    sourceName = getWeaponDisplay(value).title;
+                    // If the backend leaves the weapon UNSPECIFIED, fall back to the resolved weaponName
+                    sourceName =
+                      value === Weapon.UNSPECIFIED
+                        ? weaponName
+                        : getWeaponDisplay(value).title;
                     break;
                   case 'ability':
                     sourceName = getAbilityDisplay(value).title;
