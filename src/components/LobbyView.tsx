@@ -61,7 +61,7 @@ import {
   type FeatureId,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { ArrowLeft } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
 import { DungeonResultOverlay } from './dungeon';
@@ -557,11 +557,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       console.log('👤 PlayerJoined event received:', event);
 
       // Add the new player's character to fullCharactersMap for display
+      // Merge to preserve equipment/visual data if we already have this character
       const character = event.member?.character;
       if (character?.id) {
         setFullCharactersMap((prev) => {
           const newMap = new Map(prev);
-          newMap.set(character.id, character);
+          newMap.set(
+            character.id,
+            mergeCharacterUpdate(prev.get(character.id), character)
+          );
           return newMap;
         });
 
@@ -689,7 +693,10 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           setFullCharactersMap((prev) => {
             const newMap = new Map(prev);
             partyCharacters.forEach((char) => {
-              newMap.set(char.id, char);
+              newMap.set(
+                char.id,
+                mergeCharacterUpdate(prev.get(char.id), char)
+              );
             });
             return newMap;
           });
@@ -750,7 +757,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setMonsters(snapshot.monsters);
       }
 
-      // Apply party members' characters
+      // Apply party members' characters — merge to preserve equipment/visual data
       if (snapshot.party && snapshot.party.length > 0) {
         // All party characters go to fullCharactersMap for display
         const partyCharacters = snapshot.party
@@ -761,7 +768,10 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           setFullCharactersMap((prev) => {
             const newMap = new Map(prev);
             partyCharacters.forEach((char) => {
-              newMap.set(char.id, char);
+              newMap.set(
+                char.id,
+                mergeCharacterUpdate(prev.get(char.id), char)
+              );
             });
             return newMap;
           });
@@ -1791,30 +1801,54 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     }
   };
 
-  // Fetch full character data with equipment when combat starts
-  useEffect(() => {
-    if (encounterId && selectedCharacterIds.length > 0) {
-      console.log(
-        '[useEffect] Fetching full character data for:',
-        selectedCharacterIds
-      );
-      // Fetch full character data for all selected characters
-      selectedCharacterIds.forEach(async (characterId) => {
-        try {
-          const request = { characterId };
-          const { characterClient } = await import('@/api/client');
-          const { create } = await import('@bufbuild/protobuf');
-          const { GetCharacterRequestSchema } =
-            await import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb');
+  // Fetch full character data (with equipment) for all party members when combat starts.
+  // The encounter stream's party data may omit equipmentSlots, so we fetch each
+  // character individually to ensure weapon/shield attachments render on the 3D model.
+  // Track which IDs we've already fetched to avoid infinite re-fetch loops.
+  const fetchedCharacterIdsRef = useRef<Set<string>>(new Set());
+  const prevEncounterIdRef = useRef<string | null>(null);
 
-          const getCharRequest = create(GetCharacterRequestSchema, request);
+  useEffect(() => {
+    if (!encounterId) return;
+
+    // Reset fetched set when encounter changes
+    if (prevEncounterIdRef.current !== encounterId) {
+      fetchedCharacterIdsRef.current = new Set();
+      prevEncounterIdRef.current = encounterId;
+    }
+
+    // Find party members we haven't fetched full data for yet
+    const idsToFetch = Array.from(fullCharactersMap.keys()).filter(
+      (id) => !fetchedCharacterIdsRef.current.has(id)
+    );
+    if (idsToFetch.length === 0) return;
+
+    // Mark as fetched immediately to prevent duplicate requests
+    idsToFetch.forEach((id) => fetchedCharacterIdsRef.current.add(id));
+
+    console.log('[useEffect] Fetching full character data for:', idsToFetch);
+
+    // Hoist dynamic imports before the loop to avoid re-importing on each iteration
+    const fetchCharacters = async () => {
+      const { characterClient } = await import('@/api/client');
+      const { create } = await import('@bufbuild/protobuf');
+      const { GetCharacterRequestSchema } =
+        await import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb');
+
+      idsToFetch.forEach(async (characterId) => {
+        try {
+          const getCharRequest = create(GetCharacterRequestSchema, {
+            characterId,
+          });
           const response = await characterClient.getCharacter(getCharRequest);
 
           if (response.character) {
             setFullCharactersMap((prev) => {
               const newMap = new Map(prev);
-              newMap.set(characterId, response.character!);
-
+              newMap.set(
+                characterId,
+                mergeCharacterUpdate(prev.get(characterId), response.character!)
+              );
               return newMap;
             });
           }
@@ -1825,8 +1859,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           );
         }
       });
-    }
-  }, [encounterId, selectedCharacterIds]);
+    };
+    fetchCharacters();
+  }, [encounterId, fullCharactersMap]);
 
   const getSelectedCharacters = (): Character[] => {
     // During combat, prefer full character data with equipment if available
