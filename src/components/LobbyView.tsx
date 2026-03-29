@@ -1790,35 +1790,39 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
     console.log('[useEffect] Fetching full character data for:', idsToFetch);
 
-    idsToFetch.forEach(async (characterId) => {
-      try {
-        const { characterClient } = await import('@/api/client');
-        const { create } = await import('@bufbuild/protobuf');
-        const { GetCharacterRequestSchema } =
-          await import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb');
+    // Hoist dynamic imports before the loop to avoid re-importing on each iteration
+    const fetchCharacters = async () => {
+      const { characterClient } = await import('@/api/client');
+      const { create } = await import('@bufbuild/protobuf');
+      const { GetCharacterRequestSchema } =
+        await import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb');
 
-        const getCharRequest = create(GetCharacterRequestSchema, {
-          characterId,
-        });
-        const response = await characterClient.getCharacter(getCharRequest);
-
-        if (response.character) {
-          setFullCharactersMap((prev) => {
-            const newMap = new Map(prev);
-            newMap.set(
-              characterId,
-              mergeCharacterUpdate(prev.get(characterId), response.character!)
-            );
-            return newMap;
+      idsToFetch.forEach(async (characterId) => {
+        try {
+          const getCharRequest = create(GetCharacterRequestSchema, {
+            characterId,
           });
+          const response = await characterClient.getCharacter(getCharRequest);
+
+          if (response.character) {
+            setFullCharactersMap((prev) => {
+              const newMap = new Map(prev);
+              newMap.set(
+                characterId,
+                mergeCharacterUpdate(prev.get(characterId), response.character!)
+              );
+              return newMap;
+            });
+          }
+        } catch (error) {
+          console.error(
+            `Failed to fetch full character data for ${characterId}:`,
+            error
+          );
         }
-      } catch (error) {
-        console.error(
-          `Failed to fetch full character data for ${characterId}:`,
-          error
-        );
-      }
-    });
+      });
+    };
+    fetchCharacters();
   }, [encounterId, fullCharactersMap]);
 
   const getSelectedCharacters = (): Character[] => {
