@@ -32,8 +32,8 @@ export interface DungeonMapState {
   /** All floor tile positions (dungeon-absolute coordinates) keyed by "x,y,z" */
   floorTiles: Map<string, AbsoluteFloorTile>;
 
-  /** All walls across revealed rooms (already in absolute coords from API) */
-  walls: Wall[];
+  /** All walls across revealed rooms, keyed by normalized coordinate string to prevent duplicates */
+  walls: Map<string, Wall>;
 
   /** All entities across all rooms, keyed by entity ID */
   entities: Map<string, EntityPlacement>;
@@ -56,11 +56,30 @@ function coordKey(x: number, y: number, z: number): string {
   return `${x},${y},${z}`;
 }
 
+/**
+ * Create a canonical key for a wall segment.
+ * Normalizes direction so that (A->B) and (B->A) produce the same key,
+ * preventing duplicate walls when adjacent rooms both report a shared boundary.
+ */
+export function wallKey(wall: Wall): string {
+  const sx = wall.start?.x ?? 0;
+  const sy = wall.start?.y ?? 0;
+  const sz = wall.start?.z ?? 0;
+  const ex = wall.end?.x ?? 0;
+  const ey = wall.end?.y ?? 0;
+  const ez = wall.end?.z ?? 0;
+
+  // Sort lexicographically so direction doesn't matter
+  const startStr = `${sx},${sy},${sz}`;
+  const endStr = `${ex},${ey},${ez}`;
+  return startStr < endStr ? `${startStr}-${endStr}` : `${endStr}-${startStr}`;
+}
+
 /** Create an empty dungeon map state. Exported for testing. */
 export function createEmptyState(): DungeonMapState {
   return {
     floorTiles: new Map(),
-    walls: [],
+    walls: new Map(),
     entities: new Map(),
     doors: new Map(),
     revealedRoomIds: new Set(),
@@ -111,9 +130,7 @@ export function mergeRoom(
 
   // Clone state for immutable update
   const newFloorTiles = new Map(state.floorTiles);
-  // On update, keep existing walls (walls don't carry roomId so we can't filter).
-  // On new room, spread to clone the array for immutability.
-  const newWalls = [...state.walls];
+  const newWalls = new Map(state.walls);
   const newEntities = new Map(state.entities);
   const newDoors = new Map(state.doors);
   const newRevealedRoomIds = new Set(state.revealedRoomIds);
@@ -128,8 +145,11 @@ export function mergeRoom(
   }
 
   // Add walls (already in absolute coordinates from API Phase 1)
+  // Keyed by normalized coordinates to automatically deduplicate shared boundary walls
   if (!isUpdate && room.walls) {
-    newWalls.push(...room.walls);
+    for (const wall of room.walls) {
+      newWalls.set(wallKey(wall), wall);
+    }
   }
 
   // Merge entities (keyed by ID — handles movement between rooms)
