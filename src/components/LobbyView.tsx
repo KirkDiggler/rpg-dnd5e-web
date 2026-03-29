@@ -1485,17 +1485,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
             `Damage: ${damage} ${damageType}${critical ? ' (CRITICAL!)' : ''}`
           );
 
-          // Update monster HP in local state so hover panel reflects damage
-          setMonsters((prev) =>
-            prev.map((m) =>
-              m.monsterId === target
-                ? {
-                    ...m,
-                    currentHitPoints: Math.max(0, m.currentHitPoints - damage),
-                  }
-                : m
-            )
-          );
+          // Monster HP is updated via the AttackResolved stream handler (single source of truth)
         }
 
         // Add combat log entry - get display names for attacker and target
