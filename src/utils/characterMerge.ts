@@ -90,11 +90,36 @@ export function mergeCharacterUpdate(
         ? existing.alignment
         : incoming.alignment,
 
-    // Preserve appearance if incoming doesn't have it
-    appearance: incoming.appearance ?? existing.appearance,
+    // Preserve appearance if incoming doesn't have it or is an empty proto message.
+    // An empty Appearance (all string fields default to "") is treated as "not set"
+    // to prevent a partial combat event from wiping out the visual appearance.
+    appearance: (() => {
+      const a = incoming.appearance;
+      const hasAppearance =
+        a && (a.skinTone || a.primaryColor || a.secondaryColor || a.eyeColor);
+      return hasAppearance ? a : existing.appearance;
+    })(),
 
-    // Preserve equipment slots if incoming doesn't have them
-    equipmentSlots: incoming.equipmentSlots ?? existing.equipmentSlots,
+    // Preserve equipment slots if incoming doesn't have them or is an empty proto
+    // message. An empty EquipmentSlots (all optional slots undefined) is treated
+    // as "not set" to prevent a partial combat event from clearing equipped items.
+    equipmentSlots: (() => {
+      const s = incoming.equipmentSlots;
+      const hasEquipmentSlots =
+        s &&
+        (s.mainHand ||
+          s.offHand ||
+          s.armor ||
+          s.helmet ||
+          s.boots ||
+          s.gloves ||
+          s.cloak ||
+          s.amulet ||
+          s.ring1 ||
+          s.ring2 ||
+          s.belt);
+      return hasEquipmentSlots ? s : existing.equipmentSlots;
+    })(),
 
     // Preserve name if incoming is empty
     name: incoming.name || existing.name,

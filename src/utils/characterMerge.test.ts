@@ -1,4 +1,4 @@
-import { create } from '@bufbuild/protobuf';
+import { create, type MessageInitShape } from '@bufbuild/protobuf';
 import {
   CharacterSchema,
   type Character,
@@ -16,11 +16,10 @@ import { mergeCharacterUpdate } from './characterMerge';
 /**
  * Helper: create a Character proto with the given overrides.
  */
-function makeCharacter(overrides: Partial<Character>): Character {
-  return {
-    ...create(CharacterSchema, {}),
-    ...overrides,
-  } as Character;
+function makeCharacter(
+  overrides: MessageInitShape<typeof CharacterSchema>
+): Character {
+  return create(CharacterSchema, overrides);
 }
 
 describe('mergeCharacterUpdate', () => {
@@ -77,6 +76,36 @@ describe('mergeCharacterUpdate', () => {
     expect(result.currentHitPoints).toBe(5);
   });
 
+  it('preserves appearance from existing when incoming is an empty proto message', () => {
+    const existing = makeCharacter({
+      id: 'char-1',
+      appearance: {
+        skinTone: '#D5A88C',
+        primaryColor: '#8B0000',
+        secondaryColor: '#FFD700',
+        eyeColor: '#00FF00',
+      } as Character['appearance'],
+    });
+
+    // Server sends an empty Appearance message — all string fields default to ""
+    const incoming = makeCharacter({
+      id: 'char-1',
+      appearance: {
+        skinTone: '',
+        primaryColor: '',
+        secondaryColor: '',
+        eyeColor: '',
+      } as Character['appearance'],
+      currentHitPoints: 5,
+    });
+
+    const result = mergeCharacterUpdate(existing, incoming);
+    expect(result.appearance?.skinTone).toBe('#D5A88C');
+    expect(result.appearance?.primaryColor).toBe('#8B0000');
+    expect(result.appearance?.eyeColor).toBe('#00FF00');
+    expect(result.currentHitPoints).toBe(5);
+  });
+
   it('preserves equipmentSlots from existing when incoming has none', () => {
     const existing = makeCharacter({
       id: 'char-1',
@@ -88,6 +117,26 @@ describe('mergeCharacterUpdate', () => {
     const incoming = makeCharacter({
       id: 'char-1',
       equipmentSlots: undefined,
+      currentHitPoints: 8,
+    });
+
+    const result = mergeCharacterUpdate(existing, incoming);
+    expect(result.equipmentSlots?.mainHand?.equipment?.name).toBe('Longsword');
+    expect(result.currentHitPoints).toBe(8);
+  });
+
+  it('preserves equipmentSlots from existing when incoming is an empty proto message', () => {
+    const existing = makeCharacter({
+      id: 'char-1',
+      equipmentSlots: {
+        mainHand: { equipment: { name: 'Longsword' } },
+      } as Character['equipmentSlots'],
+    });
+
+    // Server sends an empty EquipmentSlots message — all optional slots are undefined
+    const incoming = makeCharacter({
+      id: 'char-1',
+      equipmentSlots: {} as Character['equipmentSlots'],
       currentHitPoints: 8,
     });
 
