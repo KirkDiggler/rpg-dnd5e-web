@@ -10,6 +10,7 @@ import type {
   DamageBreakdown,
   DamageComponent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { Weapon } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useRef, useState } from 'react';
 import styles from '../styles/combat.module.css';
 
@@ -370,10 +371,14 @@ function getSourceDisplay(
     const { case: sourceCase, value } = component.sourceRef.source;
     switch (sourceCase) {
       case 'weapon': {
-        const display = getWeaponDisplay(value);
+        // If the backend leaves the weapon UNSPECIFIED, fall back to the resolved weaponName
+        const name =
+          value === Weapon.UNSPECIFIED
+            ? weaponName || 'Weapon'
+            : getWeaponDisplay(value).title;
         return {
           icon: '🔨',
-          name: display.title,
+          name,
           value: valueStr,
         };
       }

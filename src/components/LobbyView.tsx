@@ -1419,7 +1419,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                 switch (sourceCase) {
                   case 'weapon':
                     // Use type-safe enum display for weapon name
-                    // Weapon.UNSPECIFIED means unarmed — use the resolved weaponName
+                    // If the backend leaves the weapon UNSPECIFIED, fall back to the resolved weaponName
                     sourceName =
                       value === Weapon.UNSPECIFIED
                         ? weaponName
