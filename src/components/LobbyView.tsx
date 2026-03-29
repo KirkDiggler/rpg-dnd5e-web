@@ -1101,14 +1101,19 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           `Target selected: ${entityId}, distance: ${distance} hexes, adjacent: ${distance === 1}`
         );
 
-        // If we have strikes available, auto-execute the attack
-        const hasStrike = availableActions.some(
-          (action) => isStrikeAction(action.actionId) && action.canUse
-        );
-        if (hasStrike) {
-          console.log('🎯 Strikes available, executing attack on', entityId);
-          // Pass target directly to avoid state timing issues
-          handleAttackAction(entityId);
+        // If we have strikes available, auto-execute the attack with the correct action ID.
+        // This ensures bonus strikes (OFF_HAND_STRIKE, UNARMED_STRIKE) are used correctly
+        // after a primary attack, instead of defaulting to STRIKE.
+        const firstStrike = findFirstStrike(availableActions);
+        if (firstStrike !== undefined) {
+          console.log(
+            '🎯 Strike available:',
+            ActionId[firstStrike],
+            '- executing attack on',
+            entityId
+          );
+          // Pass both target and action ID directly to avoid state timing issues
+          handleAttackAction(entityId, firstStrike);
           return;
         }
       }
@@ -1209,12 +1214,11 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
   // Handler for HexGrid click-to-attack
   const handleAttackComplete = async (targetId: string) => {
-    // Use the existing attack handler with the target
-    setAttackTarget(targetId);
-    // Small delay to let state update, then trigger attack
-    setTimeout(() => {
-      handleAttackAction();
-    }, 0);
+    // Pass target directly as override to avoid React state timing issues.
+    // Also pass the first available strike action to correctly handle
+    // bonus strikes (OFF_HAND_STRIKE, UNARMED_STRIKE) after a primary attack.
+    const strikeId = findFirstStrike(availableActions);
+    handleAttackAction(targetId, strikeId);
   };
 
   const handleCombatStateUpdate = (newCombatState: CombatState) => {
@@ -1333,9 +1337,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         }
       }
 
-      // Step 2: Execute the strike action
+      // Step 2: Execute the strike action.
+      // Use override first, then fresh activation result, then current available strikes,
+      // then fall back to STRIKE. This ensures bonus strikes (OFF_HAND_STRIKE, UNARMED_STRIKE)
+      // are used correctly when auto-executing after target selection.
       const strikeActionId =
-        overrideActionId || freshStrikeId || ActionId.STRIKE;
+        overrideActionId ||
+        freshStrikeId ||
+        findFirstStrike(availableActions) ||
+        ActionId.STRIKE;
       console.log('⚔️ Executing', ActionId[strikeActionId], 'against', target);
       const response = await executeStrike(
         encounterId,
