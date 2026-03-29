@@ -80,8 +80,11 @@ export function BattleMapPanel({
     [dungeonMap.doors]
   );
 
-  // Collect all walls from dungeonMap
-  const walls = dungeonMap.walls;
+  // Convert walls map to array for HexGrid
+  const walls = useMemo(
+    () => Array.from(dungeonMap.walls.values()),
+    [dungeonMap.walls]
+  );
 
   return (
     <div

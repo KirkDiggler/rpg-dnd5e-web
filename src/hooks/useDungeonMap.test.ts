@@ -30,6 +30,7 @@ import {
   generateFloorTiles,
   mergeRoom,
   updateEntitiesFromRoom,
+  wallKey,
 } from './useDungeonMap';
 
 /** Helper to create a Room proto message */
@@ -116,7 +117,7 @@ describe('createEmptyState', () => {
     const state = createEmptyState();
 
     expect(state.floorTiles.size).toBe(0);
-    expect(state.walls).toHaveLength(0);
+    expect(state.walls.size).toBe(0);
     expect(state.entities.size).toBe(0);
     expect(state.doors.size).toBe(0);
     expect(state.revealedRoomIds.size).toBe(0);
@@ -292,7 +293,7 @@ describe('mergeRoom', () => {
 
       const result = mergeRoom(state, room, []);
 
-      expect(result.walls).toHaveLength(1);
+      expect(result.walls.size).toBe(1);
     });
   });
 
@@ -371,7 +372,7 @@ describe('mergeRoom', () => {
       });
       state = mergeRoom(state, room2, []);
 
-      expect(state.walls).toHaveLength(2);
+      expect(state.walls.size).toBe(2);
     });
 
     it('accumulates doors from both rooms', () => {
@@ -650,5 +651,105 @@ describe('updateEntitiesFromRoom', () => {
 
     // Stored room should be the updated one
     expect(state.rooms.get('room-1')).toBe(updatedRoom);
+  });
+});
+
+describe('wallKey', () => {
+  it('produces same key regardless of direction', () => {
+    const wallAB = create(WallSchema, {
+      start: create(PositionSchema, { x: 0, y: 0, z: 0 }),
+      end: create(PositionSchema, { x: 3, y: -3, z: 0 }),
+    });
+    const wallBA = create(WallSchema, {
+      start: create(PositionSchema, { x: 3, y: -3, z: 0 }),
+      end: create(PositionSchema, { x: 0, y: 0, z: 0 }),
+    });
+
+    expect(wallKey(wallAB)).toBe(wallKey(wallBA));
+  });
+
+  it('produces different keys for different walls', () => {
+    const wall1 = create(WallSchema, {
+      start: create(PositionSchema, { x: 0, y: 0, z: 0 }),
+      end: create(PositionSchema, { x: 3, y: -3, z: 0 }),
+    });
+    const wall2 = create(WallSchema, {
+      start: create(PositionSchema, { x: 1, y: -1, z: 0 }),
+      end: create(PositionSchema, { x: 4, y: -4, z: 0 }),
+    });
+
+    expect(wallKey(wall1)).not.toBe(wallKey(wall2));
+  });
+});
+
+describe('mergeRoom wall deduplication', () => {
+  it('deduplicates identical walls shared between rooms', () => {
+    let state = createEmptyState();
+
+    // Shared boundary wall: both rooms report the same wall segment
+    const sharedWall = {
+      startX: 3,
+      startY: -3,
+      startZ: 0,
+      endX: 3,
+      endY: -4,
+      endZ: 1,
+    };
+
+    const room1 = createRoom({
+      id: 'room-1',
+      width: 3,
+      height: 2,
+      walls: [
+        { startX: 0, startY: 0, startZ: 0, endX: 2, endY: -2, endZ: 0 },
+        sharedWall,
+      ],
+    });
+    state = mergeRoom(state, room1, []);
+    expect(state.walls.size).toBe(2);
+
+    const room2 = createRoom({
+      id: 'room-2',
+      width: 2,
+      height: 2,
+      originX: 4,
+      originZ: 0,
+      walls: [
+        sharedWall, // duplicate of room 1's boundary wall
+        { startX: 5, startY: -5, startZ: 0, endX: 5, endY: -6, endZ: 1 },
+      ],
+    });
+    state = mergeRoom(state, room2, []);
+
+    // 2 from room1 + 1 new from room2 = 3 (shared wall not duplicated)
+    expect(state.walls.size).toBe(3);
+  });
+
+  it('deduplicates reversed-direction walls shared between rooms', () => {
+    let state = createEmptyState();
+
+    const room1 = createRoom({
+      id: 'room-1',
+      width: 3,
+      height: 2,
+      walls: [{ startX: 3, startY: -3, startZ: 0, endX: 3, endY: -4, endZ: 1 }],
+    });
+    state = mergeRoom(state, room1, []);
+
+    const room2 = createRoom({
+      id: 'room-2',
+      width: 2,
+      height: 2,
+      originX: 4,
+      originZ: 0,
+      walls: [
+        // Same wall but start/end swapped
+        { startX: 3, startY: -4, startZ: 1, endX: 3, endY: -3, endZ: 0 },
+      ],
+    });
+    state = mergeRoom(state, room2, []);
+
+    // Should be 1, not 2 — the reversed wall is the same physical wall
+    expect(state.walls.size).toBe(1);
   });
 });
