@@ -4,6 +4,7 @@ import type {
   AvailableAbility,
   AvailableAction,
   CombatState,
+  EntityState,
   MonsterCombatState,
   TurnState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
@@ -36,6 +37,7 @@ export interface CombatPanelProps {
   selectedHoverEntity?: HoveredEntity | null;
   characters?: Character[];
   monsters?: MonsterCombatState[];
+  encounterEntities?: Map<string, EntityState>;
 
   // Two-level action economy
   availableAbilities?: AvailableAbility[];
@@ -77,6 +79,7 @@ export function CombatPanel({
   selectedHoverEntity,
   characters = [],
   monsters = [],
+  encounterEntities,
   availableAbilities = [],
   availableActions = [],
   combatEnded = false,
@@ -103,6 +106,7 @@ export function CombatPanel({
             currentCharacter={character}
             characters={characters}
             monsters={monsters}
+            encounterEntities={encounterEntities}
           />
         </div>
       )}

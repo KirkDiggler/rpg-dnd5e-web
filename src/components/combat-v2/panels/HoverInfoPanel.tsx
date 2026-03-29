@@ -15,8 +15,15 @@ import {
   getClassDisplayName,
   getMonsterTypeDisplayName,
 } from '@/utils/displayNames';
+import {
+  getHealthCategory as getEntityHealthCategory,
+  getEntityName,
+} from '@/utils/entityHelpers';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type {
+  EntityState,
+  MonsterCombatState,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { MonsterType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import styles from '../styles/combat.module.css';
 
@@ -38,6 +45,8 @@ export interface HoverInfoPanelProps {
   characters: Character[];
   /** All monsters for looking up monster stats */
   monsters?: MonsterCombatState[];
+  /** Unified entity state - preferred over legacy characters/monsters for HP display */
+  encounterEntities?: Map<string, EntityState>;
 }
 
 /** Get class display name from character */
@@ -152,6 +161,7 @@ export function HoverInfoPanel({
   selectedEntity,
   characters,
   monsters = [],
+  encounterEntities,
 }: HoverInfoPanelProps) {
   // Only show when actually hovering or have a selected entity
   const displayEntity = hoveredEntity || selectedEntity;
@@ -165,29 +175,86 @@ export function HoverInfoPanel({
   let content: React.ReactNode;
   let borderClass = styles.hoverInfoAlly; // Default to ally (blue/green)
 
-  if (displayEntity.type === 'player') {
-    // Find the character data
-    const character = characters.find((c) => c.id === displayEntity.id);
-    if (character) {
-      content = <PlayerInfo character={character} />;
-      borderClass = styles.hoverInfoAlly;
-    } else {
-      // Character not found - show basic info with name
+  // When unified entity state is available, use it for all entity display
+  if (encounterEntities) {
+    const entity = encounterEntities.get(displayEntity.id);
+    if (entity) {
+      const health = getEntityHealthCategory(entity);
+      const isMonster = entity.details.case === 'monsterDetails';
+      borderClass = isMonster ? styles.hoverInfoEnemy : styles.hoverInfoAlly;
+
       content = (
         <div className={styles.hoverInfoContent}>
-          <div className={styles.hoverInfoName}>{displayEntity.name}</div>
-          <div className={styles.hoverInfoSubtext}>Ally</div>
+          <div className={styles.hoverInfoName}>{getEntityName(entity)}</div>
+          {isMonster ? (
+            // Monster: show type and health category
+            <>
+              {entity.details.case === 'monsterDetails' && (
+                <div className={styles.hoverInfoSubtext}>
+                  {getMonsterTypeDisplayName(entity.details.value.monsterType)}
+                </div>
+              )}
+              <div
+                className={styles.hoverInfoSubtext}
+                style={{ color: health.color }}
+              >
+                {health.label}
+              </div>
+            </>
+          ) : (
+            // Character: show class, HP, AC, conditions
+            <>
+              {entity.details.case === 'characterDetails' && (
+                <div className={styles.hoverInfoSubtext}>
+                  {getClassDisplayName(entity.details.value.characterClass)} ·
+                  Lvl {entity.details.value.level}
+                </div>
+              )}
+              <div className={styles.hoverInfoStats}>
+                <span className={styles.hoverInfoHp}>
+                  ♥ {entity.currentHitPoints}/{entity.maxHitPoints}
+                </span>
+                {entity.details.case === 'characterDetails' && (
+                  <span className={styles.hoverInfoAc}>
+                    AC {entity.details.value.armorClass}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
         </div>
       );
-      borderClass = styles.hoverInfoAlly;
     }
-  } else {
-    // Monster/enemy - look up full monster data for health display
-    const monster = monsters.find((m) => m.monsterId === displayEntity.id);
-    content = (
-      <MonsterInfo monsterType={displayEntity.monsterType} monster={monster} />
-    );
-    borderClass = styles.hoverInfoEnemy;
+  }
+
+  if (!content) {
+    if (displayEntity.type === 'player') {
+      // Find the character data
+      const character = characters.find((c) => c.id === displayEntity.id);
+      if (character) {
+        content = <PlayerInfo character={character} />;
+        borderClass = styles.hoverInfoAlly;
+      } else {
+        // Character not found - show basic info with name
+        content = (
+          <div className={styles.hoverInfoContent}>
+            <div className={styles.hoverInfoName}>{displayEntity.name}</div>
+            <div className={styles.hoverInfoSubtext}>Ally</div>
+          </div>
+        );
+        borderClass = styles.hoverInfoAlly;
+      }
+    } else {
+      // Monster/enemy - look up full monster data for health display
+      const monster = monsters.find((m) => m.monsterId === displayEntity.id);
+      content = (
+        <MonsterInfo
+          monsterType={displayEntity.monsterType}
+          monster={monster}
+        />
+      );
+      borderClass = styles.hoverInfoEnemy;
+    }
   }
 
   return (
