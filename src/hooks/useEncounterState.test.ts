@@ -57,7 +57,7 @@ function makeSnapshot(opts: {
     ReturnType<typeof create<typeof RoomLayoutSchema>>
   > = {};
   for (const roomId of opts.rooms ?? []) {
-    rooms[roomId] = create(RoomLayoutSchema, { roomId });
+    rooms[roomId] = create(RoomLayoutSchema, { id: roomId });
   }
 
   const doors: Record<

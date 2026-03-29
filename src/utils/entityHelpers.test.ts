@@ -70,9 +70,7 @@ describe('entityHelpers', () => {
 
     it('returns false when entity has a different condition', () => {
       const entity = makeMonster({
-        activeConditions: [
-          create(ConditionSchema, { id: ConditionId.POISONED }),
-        ],
+        activeConditions: [create(ConditionSchema, { id: ConditionId.RAGING })],
       });
       expect(hasCondition(entity, ConditionId.UNCONSCIOUS)).toBe(false);
     });
@@ -80,7 +78,7 @@ describe('entityHelpers', () => {
     it('returns true when entity has multiple conditions including the target', () => {
       const entity = makeMonster({
         activeConditions: [
-          create(ConditionSchema, { id: ConditionId.POISONED }),
+          create(ConditionSchema, { id: ConditionId.RAGING }),
           create(ConditionSchema, { id: ConditionId.UNCONSCIOUS }),
         ],
       });
@@ -133,9 +131,7 @@ describe('entityHelpers', () => {
 
     it('returns false when entity has other conditions but not UNCONSCIOUS', () => {
       const entity = makeCharacter({
-        activeConditions: [
-          create(ConditionSchema, { id: ConditionId.POISONED }),
-        ],
+        activeConditions: [create(ConditionSchema, { id: ConditionId.RAGING })],
       });
       expect(isUnconscious(entity)).toBe(false);
     });
@@ -233,13 +229,13 @@ describe('entityHelpers', () => {
         entityType: EntityType.OBSTACLE,
         currentHitPoints: 0,
         maxHitPoints: 0,
+        blocksMovement: true,
+        blocksLineOfSight: true,
         activeConditions: [],
         details: {
           case: 'obstacleDetails',
           value: {
             obstacleType: 1,
-            blocksMovement: true,
-            blocksLineOfSight: true,
           },
         },
       });

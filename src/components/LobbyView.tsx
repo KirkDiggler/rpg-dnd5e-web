@@ -191,6 +191,7 @@ function monstersFromEncounterState(
     ) {
       result.push({
         monsterId: entity.entityId,
+        monsterName: entity.details.value.name,
         monsterType: entity.details.value.monsterType,
         currentHitPoints: entity.currentHitPoints,
         maxHitPoints: entity.maxHitPoints,
@@ -243,8 +244,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     dungeonMap,
     currentRoom: room,
     addRoom: addRoomToMap,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for Task 7 cleanup
-    updateEntities: updateMapEntities,
     reset: resetDungeonMap,
   } = useDungeonMap();
 
