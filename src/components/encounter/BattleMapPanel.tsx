@@ -1,8 +1,10 @@
 import type { DungeonMapState } from '@/hooks/useDungeonMap';
+import { getEntityName, isDead } from '@/utils/entityHelpers';
 import type { CubeCoord } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
+  EntityState,
   MonsterCombatState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
@@ -21,6 +23,8 @@ interface BattleMapPanelProps {
   combatState?: CombatState | null;
   /** Monster combat state for texture selection (includes monsterType) */
   monsters?: MonsterCombatState[];
+  /** Unified entity state from useEncounterState - preferred over legacy props */
+  encounterEntities?: Map<string, EntityState>;
   onEntityClick: (entityId: string) => void;
   onCellClick: (coord: CubeCoord) => void;
   onMoveComplete?: (path: CubeCoord[]) => void;
@@ -40,6 +44,7 @@ export function BattleMapPanel({
   encounterId,
   combatState,
   monsters,
+  encounterEntities,
   onEntityClick,
   onCellClick,
   onMoveComplete,
@@ -61,9 +66,43 @@ export function BattleMapPanel({
     return ids;
   }, [monsters]);
 
-  // Build entities array from accumulated dungeonMap entities,
-  // filtering out monsters that have been killed (HP <= 0)
+  // Build entities array, preferring unified entity state when available.
+  // Falls back to accumulated dungeonMap entities (legacy path).
   const entities = useMemo(() => {
+    // Prefer unified entity state when available
+    if (encounterEntities && encounterEntities.size > 0) {
+      return Array.from(encounterEntities.values())
+        .filter((entity) => !isDead(entity))
+        .filter((entity) => {
+          // Only show entities in the current room (if they have a roomId)
+          if (entity.roomId && dungeonMap.currentRoomId) {
+            return entity.roomId === dungeonMap.currentRoomId;
+          }
+          return true;
+        })
+        .map((entity) => {
+          let displayType: 'player' | 'monster' | 'obstacle';
+          if (entity.entityType === EntityType.CHARACTER) {
+            displayType = 'player';
+          } else if (entity.entityType === EntityType.MONSTER) {
+            displayType = 'monster';
+          } else {
+            displayType = 'obstacle';
+          }
+          return {
+            entityId: entity.entityId,
+            name: getEntityName(entity),
+            position: {
+              x: entity.position?.x || 0,
+              y: entity.position?.y || 0,
+              z: entity.position?.z || 0,
+            },
+            type: displayType,
+          };
+        });
+    }
+
+    // Fallback to legacy dungeonMap.entities
     return Array.from(dungeonMap.entities.values())
       .filter((entity) => {
         // Remove dead monsters from the grid
@@ -97,7 +136,13 @@ export function BattleMapPanel({
           type: displayType,
         };
       });
-  }, [dungeonMap.entities, allPartyCharacters, deadMonsterIds]);
+  }, [
+    encounterEntities,
+    dungeonMap.entities,
+    dungeonMap.currentRoomId,
+    allPartyCharacters,
+    deadMonsterIds,
+  ]);
 
   // Convert doors map to array for HexGrid
   const doorsArray = useMemo(
