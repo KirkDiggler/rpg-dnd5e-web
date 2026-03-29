@@ -1,5 +1,6 @@
 import { create } from '@bufbuild/protobuf';
 import type {
+  ActionExecutedEvent,
   AttackResolvedEvent,
   CombatEndedEvent,
   CombatPausedEvent,
@@ -63,6 +64,7 @@ interface UseEncounterStreamOptions {
   // Combat action events (for BattleMap)
   onMovementCompleted?: (event: MovementCompletedEvent) => void;
   onAttackResolved?: (event: AttackResolvedEvent) => void;
+  onActionExecuted?: (event: ActionExecutedEvent) => void;
   onFeatureActivated?: (event: FeatureActivatedEvent) => void;
   onTurnEnded?: (event: TurnEndedEvent) => void;
   onMonsterTurnCompleted?: (event: MonsterTurnCompletedEvent) => void;
@@ -127,6 +129,9 @@ function dispatchEvent(
       break;
     case 'attackResolved':
       options.onAttackResolved?.(eventPayload.value);
+      break;
+    case 'actionExecuted':
+      options.onActionExecuted?.(eventPayload.value);
       break;
     case 'featureActivated':
       options.onFeatureActivated?.(eventPayload.value);

@@ -33,6 +33,7 @@ import {
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   EncounterEndReason,
+  type ActionExecutedEvent,
   type AttackResolvedEvent,
   type AvailableAbility,
   type AvailableAction,
@@ -478,6 +479,41 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       availableCharacters,
       updateMapEntities,
     ]
+  );
+
+  // Multiplayer sync: Action executed (new action system) - sync monster HP for other players
+  const handleActionExecuted = useCallback(
+    (event: ActionExecutedEvent) => {
+      console.log('🎯 ActionExecuted event received:', event);
+
+      // Update monster HP when a strike hits a monster target
+      if (
+        event.result?.case === 'strikeResult' &&
+        event.result.value.hit &&
+        event.result.value.damage > 0
+      ) {
+        const strikeDamage = event.result.value.damage;
+        setMonsters((prev) =>
+          prev.map((m) =>
+            m.monsterId === event.targetId
+              ? {
+                  ...m,
+                  currentHitPoints: Math.max(
+                    0,
+                    m.currentHitPoints - strikeDamage
+                  ),
+                }
+              : m
+          )
+        );
+      }
+
+      // Update entity positions if room changed (e.g., entity defeated)
+      if (event.updatedRoom) {
+        updateMapEntities(event.updatedRoom);
+      }
+    },
+    [updateMapEntities]
   );
 
   // Multiplayer sync: Movement completed - sync entity positions and movement resources
@@ -948,6 +984,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     onTurnEnded: handleTurnEnded,
     onMonsterTurnCompleted: handleMonsterTurnCompleted,
     onAttackResolved: handleAttackResolved,
+    onActionExecuted: handleActionExecuted,
     onMovementCompleted: handleMovementCompleted,
     onFeatureActivated: handleFeatureActivated,
     // Player sync events
@@ -1513,8 +1550,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           console.log(
             `Damage: ${damage} ${damageType}${critical ? ' (CRITICAL!)' : ''}`
           );
-
-          // Monster HP is updated via the AttackResolved stream handler (single source of truth)
+          // Monster HP is updated via the handleActionExecuted stream handler,
+          // which fires for both local and remote players' ExecuteAction calls.
         }
 
         // Add combat log entry - get display names for attacker and target
