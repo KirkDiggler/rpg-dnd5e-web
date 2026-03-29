@@ -2201,6 +2201,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                 selectedEntity={selectedEntity}
                 availableCharacters={availableCharacters}
                 allPartyCharacters={Array.from(fullCharactersMap.values())}
+                encounterEntities={encounterState.entities}
                 onEntityClick={handleEntityClick}
                 onCellClick={handleCellClick}
                 encounterId={encounterId}
@@ -2257,6 +2258,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           selectedHoverEntity={selectedHoverEntity}
           characters={availableCharacters}
           monsters={monsters}
+          encounterEntities={encounterState.entities}
           availableAbilities={availableAbilities}
           availableActions={availableActions}
           combatEnded={combatEnded}
