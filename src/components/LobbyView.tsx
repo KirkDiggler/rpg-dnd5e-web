@@ -255,8 +255,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     applyCombatState: applyEncounterCombatState,
     reset: resetEncounterState,
   } = useEncounterState();
-  // Suppress unused-variable lint until downstream components read from encounterState (Tasks 4-6)
-  void encounterState;
 
   // Walkable tile keys for cross-room pathfinding
   const walkableTileKeys = useMemo(
@@ -1390,6 +1388,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       combatState?.currentTurn?.entityId;
 
     setCombatState(newCombatState);
+    applyEncounterCombatState(newCombatState);
     // Update selected entity to the new current turn's entity
     if (newCombatState.currentTurn?.entityId) {
       setSelectedEntity(newCombatState.currentTurn.entityId);
@@ -1489,9 +1488,10 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setAvailableAbilities(activateResponse.availableAbilities ?? []);
         setAvailableActions(freshActions);
 
-        // Update combat state if provided
+        // Update combat state if provided (both legacy and unified paths)
         if (activateResponse.combatState) {
           setCombatState(activateResponse.combatState);
+          applyEncounterCombatState(activateResponse.combatState);
         }
 
         // Pick strike from the fresh response (not stale React state)
@@ -1694,9 +1694,10 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setCombatLog((prev) => [...prev, logEntry]);
       }
 
-      // Update combat state if returned
+      // Update combat state if returned (both legacy and unified paths)
       if (response.combatState) {
         handleCombatStateUpdate(response.combatState);
+        applyEncounterCombatState(response.combatState);
       }
 
       // Clear attack target after successful attack
@@ -1742,6 +1743,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           setAvailableActions(response.availableActions ?? []);
           if (response.combatState) {
             setCombatState(response.combatState);
+            applyEncounterCombatState(response.combatState);
           }
           addToast({
             type: 'info',
@@ -1781,6 +1783,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setAvailableActions(response.availableActions ?? []);
         if (response.combatState) {
           setCombatState(response.combatState);
+          applyEncounterCombatState(response.combatState);
         }
         addToast({
           type: 'success',
