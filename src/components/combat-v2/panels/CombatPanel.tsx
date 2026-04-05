@@ -4,6 +4,7 @@ import type {
   AvailableAbility,
   AvailableAction,
   CombatState,
+  EntityState,
   MonsterCombatState,
   TurnState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
@@ -36,6 +37,7 @@ export interface CombatPanelProps {
   selectedHoverEntity?: HoveredEntity | null;
   characters?: Character[];
   monsters?: MonsterCombatState[];
+  encounterEntities?: Map<string, EntityState>;
 
   // Two-level action economy
   availableAbilities?: AvailableAbility[];
@@ -77,6 +79,7 @@ export function CombatPanel({
   selectedHoverEntity,
   characters = [],
   monsters = [],
+  encounterEntities,
   availableAbilities = [],
   availableActions = [],
   combatEnded = false,
@@ -92,6 +95,11 @@ export function CombatPanel({
   const actionsDisabled = !isPlayerTurn || combatEnded;
   const showHoverPanel = hoveredEntity || selectedHoverEntity;
 
+  // Read HP from unified entity state when available (overrides stale Character proto)
+  const characterEntity = encounterEntities?.get(character.id);
+  const currentHpOverride = characterEntity?.currentHitPoints;
+  const maxHpOverride = characterEntity?.maxHitPoints;
+
   return (
     <div className={styles.combatPanel}>
       {/* Floating Hover Info Panel - bottom left, above panel */}
@@ -103,6 +111,7 @@ export function CombatPanel({
             currentCharacter={character}
             characters={characters}
             monsters={monsters}
+            encounterEntities={encounterEntities}
           />
         </div>
       )}
@@ -133,7 +142,11 @@ export function CombatPanel({
         </div>
 
         {/* Character Info */}
-        <CharacterInfoSection character={character} />
+        <CharacterInfoSection
+          character={character}
+          currentHpOverride={currentHpOverride}
+          maxHpOverride={maxHpOverride}
+        />
 
         {/* Divider */}
         <div className={styles.panelDivider} />

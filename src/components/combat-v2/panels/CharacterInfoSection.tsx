@@ -5,6 +5,12 @@ import styles from '../styles/combat.module.css';
 
 export interface CharacterInfoSectionProps {
   character: Character;
+  /** Override current HP from unified entity state (takes precedence over character.currentHitPoints) */
+  currentHpOverride?: number;
+  /** Override max HP from unified entity state */
+  maxHpOverride?: number;
+  /** Override temp HP from unified entity state */
+  tempHpOverride?: number;
 }
 
 /**
@@ -56,10 +62,15 @@ function AbilityScore({ label, score }: { label: string; score: number }) {
   );
 }
 
-export function CharacterInfoSection({ character }: CharacterInfoSectionProps) {
-  const maxHP = character.combatStats?.hitPointMaximum || 1;
-  const currentHP = character.currentHitPoints || 0;
-  const tempHP = character.temporaryHitPoints || 0;
+export function CharacterInfoSection({
+  character,
+  currentHpOverride,
+  maxHpOverride,
+  tempHpOverride,
+}: CharacterInfoSectionProps) {
+  const maxHP = maxHpOverride ?? character.combatStats?.hitPointMaximum ?? 1;
+  const currentHP = currentHpOverride ?? character.currentHitPoints ?? 0;
+  const tempHP = tempHpOverride ?? character.temporaryHitPoints ?? 0;
   const ac = character.combatStats?.armorClass || 10;
 
   // Calculate HP percentage for color

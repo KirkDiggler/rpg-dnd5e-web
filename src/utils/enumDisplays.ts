@@ -336,6 +336,27 @@ export const CONDITION_DISPLAY: Record<ConditionId, EnumDisplay> = {
     icon: '💨',
     description: 'Bonus speed while unarmored',
   },
+  [ConditionId.UNCONSCIOUS]: {
+    title: 'Unconscious',
+    icon: '😴',
+    description: 'Incapacitated and unaware of surroundings',
+  },
+  [ConditionId.RECKLESS_ATTACK]: {
+    title: 'Reckless Attack',
+    icon: '⚔️',
+    description:
+      'Advantage on attacks, but attacks against you also have advantage',
+  },
+  [ConditionId.DODGING]: {
+    title: 'Dodging',
+    icon: '🏃',
+    description: 'Attacks against you have disadvantage',
+  },
+  [ConditionId.DISENGAGING]: {
+    title: 'Disengaging',
+    icon: '🚶',
+    description: 'Movement does not provoke opportunity attacks',
+  },
 };
 
 /**
