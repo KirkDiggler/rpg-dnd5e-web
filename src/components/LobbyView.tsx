@@ -1019,6 +1019,28 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
         // Handle combat started events
         if (payload.case === 'combatStarted') {
+          // Apply the snapshot so entities, rooms, and combat state render
+          if (payload.value.encounterStateData) {
+            applySnapshot(payload.value.encounterStateData);
+
+            // Set dungeon state for room navigation
+            setDungeonId(payload.value.dungeonId || null);
+
+            // Legacy path: build Room from encounterStateData for floor/wall rendering
+            const esd = payload.value.encounterStateData;
+            if (esd.combat) {
+              setCombatState(esd.combat);
+              if (esd.combat.currentTurn?.entityId) {
+                setSelectedEntity(esd.combat.currentTurn.entityId);
+              }
+            }
+            setMonsters(monstersFromEncounterState(esd));
+            const legacyRoom = roomFromEncounterState(esd);
+            if (legacyRoom) {
+              addRoomToMap(legacyRoom, doorsFromEncounterState(esd));
+            }
+          }
+
           const logEntry: CombatLogEntry = {
             id: `combat-started-history-${event.eventId}`,
             timestamp: new Date(Number(event.timestamp)),
