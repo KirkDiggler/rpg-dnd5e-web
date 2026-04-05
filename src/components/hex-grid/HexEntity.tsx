@@ -144,14 +144,25 @@ function resolveWeaponType(
   slot: 'mainHand' | 'offHand'
 ): WeaponType | undefined {
   const item = character?.equipmentSlots?.[slot];
-  if (!item?.equipment) return undefined;
+  if (!item) return undefined;
 
-  const equip = item.equipment;
-  if (equip.equipmentData.case !== 'weaponData') return undefined;
+  // Primary path: use denormalized equipment data when available
+  if (item.equipment) {
+    const equip = item.equipment;
+    if (equip.equipmentData.case !== 'weaponData') return undefined;
+    const name = equip.name.toLowerCase().trim();
+    return WEAPON_NAME_TO_TYPE[name];
+  }
 
-  // Match by equipment name (proto WeaponData has no weapon enum field)
-  const name = equip.name.toLowerCase().trim();
-  return WEAPON_NAME_TO_TYPE[name];
+  // Fallback: the API may only send itemId without denormalized equipment data
+  // (e.g., GetCharacter doesn't populate the equipment field on InventoryItem).
+  // The itemId values (e.g., "shortsword", "longsword") match WEAPON_NAME_TO_TYPE keys.
+  if (item.itemId) {
+    const id = item.itemId.toLowerCase().trim();
+    return WEAPON_NAME_TO_TYPE[id];
+  }
+
+  return undefined;
 }
 
 /** Check if off-hand has a shield equipped */
@@ -159,12 +170,23 @@ function resolveShield(
   character: Character | undefined
 ): ShieldType | undefined {
   const item = character?.equipmentSlots?.offHand;
-  if (!item?.equipment) return undefined;
+  if (!item) return undefined;
 
-  const equip = item.equipment;
-  if (equip.equipmentData.case === 'armorData') {
-    const name = equip.name.toLowerCase().trim();
-    return SHIELD_NAME_TO_TYPE[name] ?? 'shield_round';
+  // Primary path: use denormalized equipment data when available
+  if (item.equipment) {
+    const equip = item.equipment;
+    if (equip.equipmentData.case === 'armorData') {
+      const name = equip.name.toLowerCase().trim();
+      return SHIELD_NAME_TO_TYPE[name] ?? 'shield_round';
+    }
+    return undefined;
+  }
+
+  // Fallback: use itemId directly when equipment data is not populated.
+  // The toolkit uses armor.Shield ("shield") as the itemId for shields.
+  if (item.itemId) {
+    const id = item.itemId.toLowerCase().trim();
+    return SHIELD_NAME_TO_TYPE[id] ?? undefined;
   }
 
   return undefined;
