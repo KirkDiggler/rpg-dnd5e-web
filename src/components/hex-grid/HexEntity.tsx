@@ -39,6 +39,8 @@ export interface HexEntityProps {
   hairColor?: string;
   /** Override facial hair style (proto doesn't have this field yet) */
   facialHairStyle?: FacialHairStyle;
+  /** Whether the entity is dead (show visual dead state, disable interaction) */
+  isDead?: boolean;
 }
 
 // Visual state colors
@@ -180,6 +182,7 @@ export function HexEntity({
   hairStyle,
   hairColor,
   facialHairStyle,
+  isDead = false,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -192,28 +195,37 @@ export function HexEntity({
   // Create the entity geometry (used for obstacles)
   const geometry = useMemo(() => createEntityGeometry(hexSize), [hexSize]);
 
-  // Determine color based on type and selection state
-  const color = isSelected ? COLORS[type].selected : COLORS[type].default;
+  // Determine color based on type, selection state, and dead state
+  const color = isDead
+    ? '#666666'
+    : isSelected
+      ? COLORS[type].selected
+      : COLORS[type].default;
 
-  // Handle click events
+  // Handle click events - dead entities are not interactive
   const handleClick = (event: { stopPropagation: () => void }) => {
     event.stopPropagation(); // Prevent hex click from firing
-    if (onClick) {
+    if (!isDead && onClick) {
       onClick(entityId);
     }
   };
 
   // Common interaction props for both character models and obstacles
-  const interactionProps = {
-    onClick: handleClick,
-    onPointerOver: (e: { stopPropagation: () => void }) => {
-      e.stopPropagation();
-      document.body.style.cursor = 'pointer';
-    },
-    onPointerOut: () => {
-      document.body.style.cursor = 'auto';
-    },
-  };
+  // Dead entities get no hover/pointer interaction
+  const interactionProps = isDead
+    ? {
+        onClick: (e: { stopPropagation: () => void }) => e.stopPropagation(),
+      }
+    : {
+        onClick: handleClick,
+        onPointerOver: (e: { stopPropagation: () => void }) => {
+          e.stopPropagation();
+          document.body.style.cursor = 'pointer';
+        },
+        onPointerOut: () => {
+          document.body.style.cursor = 'auto';
+        },
+      };
 
   // Use character model for players and monsters
   if (type === 'player' || type === 'monster') {
@@ -246,30 +258,33 @@ export function HexEntity({
         position={[worldPos.x, CHARACTER_Y_OFFSET, worldPos.z]}
         {...interactionProps}
       >
-        <Suspense
-          fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
-        >
-          <MediumHumanoid
-            color={color}
-            isSelected={isSelected}
-            variant={type === 'monster' ? 'goblin' : 'human'}
-            headVariant={headVariant}
-            facingRotation={type === 'player' ? Math.PI : 0}
-            race={characterRace}
-            characterClass={characterClass}
-            monsterType={monsterType}
-            skinTone={skinTone}
-            primaryColor={primaryColor}
-            secondaryColor={secondaryColor}
-            hairStyle={hairStyle}
-            hairColor={hairColor}
-            facialHairStyle={facialHairStyle}
-            mainHandWeapon={mainHandWeapon}
-            offHandWeapon={offHandWeapon}
-            shield={shield}
-            showOutline={true}
-          />
-        </Suspense>
+        {/* Dead entities rendered with tilt and reduced opacity */}
+        <group rotation={isDead ? [0, 0, Math.PI / 3] : [0, 0, 0]}>
+          <Suspense
+            fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
+          >
+            <MediumHumanoid
+              color={color}
+              isSelected={!isDead && isSelected}
+              variant={type === 'monster' ? 'goblin' : 'human'}
+              headVariant={headVariant}
+              facingRotation={type === 'player' ? Math.PI : 0}
+              race={characterRace}
+              characterClass={characterClass}
+              monsterType={monsterType}
+              skinTone={isDead ? '#555' : skinTone}
+              primaryColor={isDead ? '#444' : primaryColor}
+              secondaryColor={isDead ? '#333' : secondaryColor}
+              hairStyle={hairStyle}
+              hairColor={isDead ? '#333' : hairColor}
+              facialHairStyle={facialHairStyle}
+              mainHandWeapon={mainHandWeapon}
+              offHandWeapon={offHandWeapon}
+              shield={shield}
+              showOutline={!isDead}
+            />
+          </Suspense>
+        </group>
       </group>
     );
   }

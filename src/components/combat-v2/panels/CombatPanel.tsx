@@ -95,6 +95,11 @@ export function CombatPanel({
   const actionsDisabled = !isPlayerTurn || combatEnded;
   const showHoverPanel = hoveredEntity || selectedHoverEntity;
 
+  // Read HP from unified entity state when available (overrides stale Character proto)
+  const characterEntity = encounterEntities?.get(character.id);
+  const currentHpOverride = characterEntity?.currentHitPoints;
+  const maxHpOverride = characterEntity?.maxHitPoints;
+
   return (
     <div className={styles.combatPanel}>
       {/* Floating Hover Info Panel - bottom left, above panel */}
@@ -137,7 +142,11 @@ export function CombatPanel({
         </div>
 
         {/* Character Info */}
-        <CharacterInfoSection character={character} />
+        <CharacterInfoSection
+          character={character}
+          currentHpOverride={currentHpOverride}
+          maxHpOverride={maxHpOverride}
+        />
 
         {/* Divider */}
         <div className={styles.panelDivider} />

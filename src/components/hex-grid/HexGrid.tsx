@@ -43,6 +43,7 @@ export interface HexGridProps {
     name: string;
     position: { x: number; y: number; z: number };
     type: 'player' | 'monster' | 'obstacle';
+    isDead?: boolean;
   }>;
   selectedEntityId?: string;
   onHexClick?: (coord: { x: number; y: number; z: number }) => void;
@@ -167,10 +168,12 @@ function Scene({
     focusTarget,
   });
 
-  // Build entity map for interaction hook
+  // Build entity map for interaction hook (excludes dead entities so they
+  // cannot be hovered, targeted, or path-blocked)
   const entitiesMap = useMemo(() => {
     const map = new Map();
     entities.forEach((entity) => {
+      if (entity.isDead) return; // Dead entities are not interactive
       // Look up monster type if this is a monster entity
       const monster =
         entity.type === 'monster' ? monsterMap.get(entity.entityId) : undefined;
@@ -210,6 +213,7 @@ function Scene({
       }
       return entities.some(
         (entity) =>
+          !entity.isDead &&
           entity.position.x === coord.x &&
           entity.position.y === coord.y &&
           entity.position.z === coord.z &&
@@ -411,6 +415,7 @@ function Scene({
           onClick={handleEntityClick}
           character={characterMap.get(entity.entityId)}
           monster={monsterMap.get(entity.entityId)}
+          isDead={entity.isDead}
         />
       ))}
     </>

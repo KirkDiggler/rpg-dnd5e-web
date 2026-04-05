@@ -72,7 +72,6 @@ export function BattleMapPanel({
     // Prefer unified entity state when available
     if (encounterEntities && encounterEntities.size > 0) {
       return Array.from(encounterEntities.values())
-        .filter((entity) => !isDead(entity))
         .filter((entity) => {
           // Only show entities in the current room (if they have a roomId)
           if (entity.roomId && dungeonMap.currentRoomId) {
@@ -98,44 +97,37 @@ export function BattleMapPanel({
               z: entity.position?.z || 0,
             },
             type: displayType,
+            isDead: isDead(entity),
           };
         });
     }
 
     // Fallback to legacy dungeonMap.entities
-    return Array.from(dungeonMap.entities.values())
-      .filter((entity) => {
-        // Remove dead monsters from the grid
-        if (
+    return Array.from(dungeonMap.entities.values()).map((entity) => {
+      let displayType: 'player' | 'monster' | 'obstacle';
+      if (entity.entityType === EntityType.CHARACTER) {
+        displayType = 'player';
+      } else if (entity.entityType === EntityType.MONSTER) {
+        displayType = 'monster';
+      } else {
+        displayType = 'obstacle';
+      }
+      return {
+        entityId: entity.entityId,
+        name:
+          allPartyCharacters.find((c) => c.id === entity.entityId)?.name ||
+          entity.entityId,
+        position: {
+          x: entity.position?.x || 0,
+          y: entity.position?.y || 0,
+          z: entity.position?.z || 0,
+        },
+        type: displayType,
+        isDead:
           entity.entityType === EntityType.MONSTER &&
-          deadMonsterIds.has(entity.entityId)
-        ) {
-          return false;
-        }
-        return true;
-      })
-      .map((entity) => {
-        let displayType: 'player' | 'monster' | 'obstacle';
-        if (entity.entityType === EntityType.CHARACTER) {
-          displayType = 'player';
-        } else if (entity.entityType === EntityType.MONSTER) {
-          displayType = 'monster';
-        } else {
-          displayType = 'obstacle';
-        }
-        return {
-          entityId: entity.entityId,
-          name:
-            allPartyCharacters.find((c) => c.id === entity.entityId)?.name ||
-            entity.entityId,
-          position: {
-            x: entity.position?.x || 0,
-            y: entity.position?.y || 0,
-            z: entity.position?.z || 0,
-          },
-          type: displayType,
-        };
-      });
+          deadMonsterIds.has(entity.entityId),
+      };
+    });
   }, [
     encounterEntities,
     dungeonMap.entities,
