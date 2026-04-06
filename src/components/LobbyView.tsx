@@ -14,6 +14,11 @@ import { useDiscord } from '@/discord';
 import { useDungeonMap } from '@/hooks/useDungeonMap';
 import { useEncounterState } from '@/hooks/useEncounterState';
 import { mergeCharacterUpdate } from '@/utils/characterMerge';
+import {
+  doorsFromEncounterState,
+  monstersFromEncounterState,
+  roomFromEncounterState,
+} from '@/utils/encounterStateTransforms';
 import { getEntityName } from '@/utils/entityHelpers';
 import {
   getAbilityDisplay,
@@ -41,12 +46,9 @@ import {
   type AvailableAction,
   type CombatStartedEvent,
   type CombatState,
-  type DoorInfo,
   type DungeonFailureEvent,
   type DungeonVictoryEvent,
   type EncounterEvent,
-  type EncounterStateData,
-  type EntityPlacement,
   type EntityState,
   type FeatureActivatedEvent,
   type MonsterCombatState,
@@ -111,97 +113,6 @@ function applyMonsterMovement(room: Room, turns: MonsterTurnResult[]): Room {
     ...room,
     entities: updatedEntities,
   };
-}
-
-/**
- * Convert an EntityState to an EntityPlacement for legacy addRoomToMap compatibility.
- * EntityPlacement is a subset of EntityState (spatial + visual only, no HP/conditions).
- */
-function entityStateToPlacement(entity: EntityState): EntityPlacement {
-  const placement: EntityPlacement = {
-    entityId: entity.entityId,
-    entityType: entity.entityType,
-    position: entity.position,
-    size: entity.size,
-    blocksMovement: entity.blocksMovement,
-    blocksLineOfSight: entity.blocksLineOfSight,
-    visualType: { case: undefined, value: undefined },
-    $typeName: 'dnd5e.api.v1alpha1.EntityPlacement' as const,
-    $unknown: undefined,
-  };
-  // Map monster details to visual type
-  if (entity.details.case === 'monsterDetails') {
-    (placement as EntityPlacement).visualType = {
-      case: 'monsterType' as const,
-      value: entity.details.value.monsterType,
-    };
-  }
-  return placement;
-}
-
-/**
- * Build a legacy Room object from EncounterStateData for addRoomToMap compatibility.
- * Uses the current room's RoomLayout + entities assigned to that room.
- */
-function roomFromEncounterState(data: EncounterStateData): Room | undefined {
-  const roomLayout = data.rooms[data.currentRoomId];
-  if (!roomLayout) return undefined;
-
-  // Collect entities that belong to the current room
-  const entities: { [key: string]: EntityPlacement } = {};
-  for (const entity of Object.values(data.entities)) {
-    if (entity.roomId === data.currentRoomId) {
-      entities[entity.entityId] = entityStateToPlacement(entity);
-    }
-  }
-
-  return {
-    id: roomLayout.id,
-    type: roomLayout.type,
-    width: roomLayout.width,
-    height: roomLayout.height,
-    gridType: roomLayout.gridType,
-    walls: roomLayout.walls,
-    origin: roomLayout.origin,
-    entities,
-    $typeName: 'dnd5e.api.v1alpha1.Room' as const,
-    $unknown: undefined,
-  } as Room;
-}
-
-/**
- * Extract DoorInfo array from EncounterStateData for addRoomToMap compatibility.
- */
-function doorsFromEncounterState(data: EncounterStateData): DoorInfo[] {
-  return Object.values(data.doors);
-}
-
-/**
- * Build MonsterCombatState array from EncounterStateData entities.
- * Used to feed the legacy `monsters` state for monsterType texture selection.
- */
-function monstersFromEncounterState(
-  data: EncounterStateData
-): MonsterCombatState[] {
-  const result: MonsterCombatState[] = [];
-  for (const entity of Object.values(data.entities)) {
-    if (
-      entity.entityType === EntityType.MONSTER &&
-      entity.details.case === 'monsterDetails'
-    ) {
-      result.push({
-        monsterId: entity.entityId,
-        monsterName: entity.details.value.name,
-        monsterType: entity.details.value.monsterType,
-        currentHitPoints: entity.currentHitPoints,
-        maxHitPoints: entity.maxHitPoints,
-        armorClass: entity.details.value.armorClass,
-        $typeName: 'dnd5e.api.v1alpha1.MonsterCombatState' as const,
-        $unknown: undefined,
-      } as MonsterCombatState);
-    }
-  }
-  return result;
 }
 
 interface LobbyViewProps {
