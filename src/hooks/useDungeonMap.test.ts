@@ -879,3 +879,64 @@ describe('mergeRoom wall deduplication', () => {
     expect(state.walls.size).toBe(1);
   });
 });
+
+describe('multi-room reveal scenario (issue #376)', () => {
+  it('adds floor tiles for both rooms when mergeRoom is called for each', () => {
+    // Simulates what handleRoomRevealed does after the fix:
+    // allRoomsFromEncounterState returns [room2, room1] (current room last),
+    // and addRoomToMap is called for each. Both rooms' tiles must end up in the map.
+    let state = createEmptyState();
+
+    // room-1 is the player's current room (5x4 = 20 tiles at origin)
+    const room1 = createRoom({
+      id: 'room-1',
+      width: 5,
+      height: 4,
+      originX: 0,
+      originZ: 0,
+    });
+
+    // room-2 is the newly revealed room (3x3 = 9 tiles, offset origin)
+    const room2 = createRoom({
+      id: 'room-2',
+      width: 3,
+      height: 3,
+      originX: 6,
+      originZ: 0,
+    });
+
+    // Add non-current room first, then current room last (matches allRoomsFromEncounterState order)
+    state = mergeRoom(state, room2, []);
+    state = mergeRoom(state, room1, []);
+
+    // Both rooms must have contributed floor tiles
+    expect(state.revealedRoomIds.has('room-1')).toBe(true);
+    expect(state.revealedRoomIds.has('room-2')).toBe(true);
+
+    // room-1 contributes 5*4=20 tiles, room-2 contributes 3*3=9 tiles
+    expect(state.floorTiles.size).toBe(29);
+
+    // currentRoomId must be room-1 (added last — player's actual room)
+    expect(state.currentRoomId).toBe('room-1');
+
+    // Spot-check a tile from room-2 is present
+    const room2Tile = state.floorTiles.get('6,-6,0');
+    expect(room2Tile).toBeDefined();
+    expect(room2Tile?.roomId).toBe('room-2');
+  });
+
+  it('mergeRoom deduplicates tiles when called again for an already-revealed room', () => {
+    // Ensures the existing deduplication logic is preserved: if a room is already
+    // in the map, a second mergeRoom call updates entities/doors but does not
+    // re-add floor tiles.
+    let state = createEmptyState();
+
+    const room1 = createRoom({ id: 'room-1', width: 3, height: 2 });
+    state = mergeRoom(state, room1, []);
+    expect(state.floorTiles.size).toBe(6);
+
+    // Second call for the same room must not grow the tile count
+    state = mergeRoom(state, room1, []);
+    expect(state.floorTiles.size).toBe(6);
+  });
+});

@@ -170,6 +170,51 @@ function roomFromEncounterState(data: EncounterStateData): Room | undefined {
 }
 
 /**
+ * Build legacy Room objects from EncounterStateData for ALL revealed rooms.
+ * Used in handleRoomRevealed to ensure newly revealed rooms (not just currentRoomId)
+ * are added to the dungeon map.
+ *
+ * Returns rooms with the current room last so that mergeRoom sets currentRoomId
+ * correctly to the player's actual location.
+ */
+function allRoomsFromEncounterState(data: EncounterStateData): Room[] {
+  const rooms: Room[] = [];
+
+  for (const [roomId, roomLayout] of Object.entries(data.rooms)) {
+    if (!roomLayout) continue;
+    if (roomId === data.currentRoomId) continue; // add current room last
+
+    const entities: { [key: string]: EntityPlacement } = {};
+    for (const entity of Object.values(data.entities)) {
+      if (entity.roomId === roomId) {
+        entities[entity.entityId] = entityStateToPlacement(entity);
+      }
+    }
+
+    rooms.push({
+      id: roomLayout.id,
+      type: roomLayout.type,
+      width: roomLayout.width,
+      height: roomLayout.height,
+      gridType: roomLayout.gridType,
+      walls: roomLayout.walls,
+      origin: roomLayout.origin,
+      entities,
+      $typeName: 'dnd5e.api.v1alpha1.Room' as const,
+      $unknown: undefined,
+    } as Room);
+  }
+
+  // Add current room last so mergeRoom sets currentRoomId to the player's room
+  const currentRoom = roomFromEncounterState(data);
+  if (currentRoom) {
+    rooms.push(currentRoom);
+  }
+
+  return rooms;
+}
+
+/**
  * Extract DoorInfo array from EncounterStateData for addRoomToMap compatibility.
  */
 function doorsFromEncounterState(data: EncounterStateData): DoorInfo[] {
@@ -337,12 +382,13 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           applySnapshot(event.encounterStateData);
 
           // --- Legacy path: build Room/CombatState from encounterStateData ---
-          const legacyRoom = roomFromEncounterState(event.encounterStateData);
-          if (legacyRoom) {
-            addRoomToMap(
-              legacyRoom,
-              doorsFromEncounterState(event.encounterStateData)
-            );
+          // Iterate ALL rooms in the snapshot so newly revealed rooms (not just
+          // currentRoomId) get added to the dungeon map. mergeRoom handles
+          // deduplication for rooms already present.
+          const allRooms = allRoomsFromEncounterState(event.encounterStateData);
+          const doors = doorsFromEncounterState(event.encounterStateData);
+          for (const room of allRooms) {
+            addRoomToMap(room, doors);
           }
           setCombatState(event.encounterStateData.combat ?? null);
           setRoomsCleared(event.encounterStateData.roomsCleared);
