@@ -87,25 +87,27 @@ Correct snapshot/delta design: `applySnapshotToState` does a full replace;
 
 ## Transform / util layer
 
-### encounterStateTransforms — B+
+### LobbyView transform functions (pending extraction) — B
 
-The critical path for multi-room rendering. Pure functions with no side
-effects and a real test suite (25 tests in `encounterStateTransforms.test.ts`
-covering `entityStateToPlacement`, `roomFromEncounterState`,
-`allRoomsFromEncounterState`, `doorsFromEncounterState`, and the full pipeline
-with `mergeRoom`).
+**Note:** `utils/encounterStateTransforms.ts` does not exist on main. The five
+transform functions (`entityStateToPlacement`, `roomFromEncounterState`,
+`allRoomsFromEncounterState`, `doorsFromEncounterState`,
+`monstersFromEncounterState`) currently live as module-level functions inside
+`LobbyView.tsx`. PR #378 (`test/room-reveal-transforms`, paused) extracts them
+and adds 25 tests. The grade reflects the functions as they exist on main today.
 
-Gaps:
+The functions themselves are pure with no side effects. `monstersFromEncounterState`
+is correctly typed as `MonsterCombatState[]`. Gaps:
 
 - `entityStateToPlacement` manually reconstructs an `EntityPlacement` by
   copying fields from `EntityState`. Any new proto field on `EntityPlacement`
   that is also on `EntityState` must be manually added here; no compile-time
   reminder.
-- `monstersFromEncounterState` has an implicit `any[]` return type. Should be
-  `MonsterCombatState[]`.
-- `allRoomsFromEncounterState` is correctly implemented and tested, but is
-  NOT currently called in the `handleRoomRevealed` path (PR #377 is the fix).
-  The live code in `LobbyView` still calls `roomFromEncounterState` there.
+- `allRoomsFromEncounterState` does not exist on main — it is being added by
+  PR #377 alongside the extraction. On main, `handleRoomRevealed` still calls
+  `roomFromEncounterState` (single-room, incorrect for multi-room dungeons).
+- Zero tests on main. The 25 tests live on branch `test/room-reveal-transforms`
+  only and will land when PR #378 merges.
 
 ### hexUtils / hexMath — B
 
@@ -134,7 +136,7 @@ Gaps:
 Correct behavior across the scenarios tested (Round 1 scenario works).
 But structurally it is the riskiest file in the codebase:
 
-- 2,256 lines, 45 hook calls.
+- 2,345 lines, 45 hook calls.
 - Runs two parallel state paths ("legacy" and "new") with 41 inline comments
   marking the seam. Any event handler that diverges between the two paths
   silently produces inconsistent UI.
@@ -211,7 +213,8 @@ is used correctly. The CLAUDE.md lock-file discipline (delete
 `node_modules + package-lock.json` on version bumps) is documented.
 
 Gap: `$typeName` and `$unknown` fields must be manually set when constructing
-proto-compatible objects (e.g., in `encounterStateTransforms.ts`). This is a
+proto-compatible objects (e.g., in the transform functions inside `LobbyView.tsx`,
+or `utils/encounterStateTransforms.ts` once PR #378 merges). This is a
 protobuf-es v2 constraint, not a design flaw, but it is a foot-gun for new
 contributors.
 
@@ -229,15 +232,17 @@ Gaps:
 
 ### vitest / test infrastructure — C+
 
-15 test files, 323 tests, all passing. The test infrastructure itself is
-clean: vitest 4.x, no flaky tests observed, tests run in ~1.5s. The
-`encounterStateTransforms.test.ts` (25 tests) is the most complete suite and
-serves as a template.
+14 test files, 298 tests, all passing (verified 2026-05-02 by running
+`npm test`). The test infrastructure itself is clean: vitest 4.x, no flaky
+tests observed, tests run in ~1.5s. `useDungeonMap.test.ts` and
+`hexUtils.test.ts` are the most complete suites and serve as templates for
+new tests. (The 25-test `encounterStateTransforms.test.ts` is on branch
+`test/room-reveal-transforms` only — not on main.)
 
 The fundamental gap: test coverage is entirely at the utility-function layer.
 Zero component tests. Zero stream/hook integration tests. The most complex
 and most bug-prone code paths (`useEncounterStream`, `LobbyView` event
-handlers, `BattleMapPanel` rendering) are untested. 323 tests is a
+handlers, `BattleMapPanel` rendering) are untested. 298 tests is a
 beachhead, not a safety net.
 
 ---

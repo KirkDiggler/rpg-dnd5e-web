@@ -50,4 +50,4 @@ If Discord auth fails in production (`discord.user` is undefined), `playerId` be
 
 ## DiscordDebugPanel
 
-`DiscordDebugPanel.tsx` renders in development mode and shows the current Discord auth state, user ID, and SDK version. It is always rendered in dev (no toggle). Useful during development but has no production equivalent.
+`DiscordDebugPanel.tsx` shows the current Discord auth state, user ID, and SDK version. `App.tsx` renders it behind a `showDebugPanel` state variable toggled by a button in the corner — it is hidden by default and can be shown in any environment. Not dev-only.

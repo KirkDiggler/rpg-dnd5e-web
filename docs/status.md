@@ -19,11 +19,10 @@ let it rot.
   upstream stream-delivery bug (see Known Rough Edges below).
 
 - **PR #378** (`test/room-reveal-transforms`, open since 2026-04-06) — Extracts
-  25 pure-function vitest tests for `encounterStateTransforms` and the
-  `encounterStateTransforms.ts` util file itself. **Correction (2026-05-02):**
-  commit `15f232e` is only on the PR branch — it has NOT merged to main.
-  `git branch --contains 15f232e` confirms this. The 298 tests currently passing
-  on main do not include these 25. Paused alongside #377.
+  four transform functions from `LobbyView.tsx` to `utils/encounterStateTransforms.ts`
+  and adds 25 vitest tests. **Not merged to main.** Commit `15f232e` is on the
+  PR branch only (`git branch --contains 15f232e` confirms). The 298 tests
+  currently on main do not include these 25. Paused alongside #377.
 
 - **PR #370** (`fix/hex-entity-equipment-fallback`, open since 2026-03-29) —
   Resolves weapons/shields from itemId fallback when equipment data is missing.
@@ -105,24 +104,20 @@ let it rot.
   some were removed during the new-path landing in PR #371). This is a refactor
   target but should not be touched until the stream bug is confirmed resolved.
 
-- **`roomFromEncounterState` still called in `handleRoomRevealed`** — Even
-  after PR #377 merges, the `handleRoomRevealed` path uses the single-room
-  transform. The `allRoomsFromEncounterState` function (and its tests) exist
-  but are only wired at the LobbyView `handleStateSync` level, not the
-  `handleRoomRevealed` level. PR #377 is supposed to fix this, but it is
-  paused.
+- **`roomFromEncounterState` still called in `handleRoomRevealed`** — On main,
+  `handleRoomRevealed` uses the single-room transform. `allRoomsFromEncounterState`
+  does not exist on main — it is being added by PR #377 (paused) alongside
+  PR #378's extraction. Until those branches merge, the multi-room reveal path
+  is incomplete.
 
 ### Proto integration
 
-- **`entityStateToPlacement` manual mapping** — `encounterStateTransforms.ts`
-  hand-maps `EntityState` fields to `EntityPlacement`. This is unavoidable
-  (they are different proto messages) but any proto field additions require
-  updating this function or rendering silently breaks. There is no compile-time
-  guard.
-
-- **`monstersFromEncounterState` returns an untyped `result[]`** — The return
-  value is typed as `any[]` equivalent (inferred from push). Should be typed
-  as `MonsterCombatState[]` explicitly.
+- **`entityStateToPlacement` manual mapping** — `entityStateToPlacement` in
+  `LobbyView.tsx` hand-maps `EntityState` fields to `EntityPlacement`. This is
+  unavoidable (they are different proto messages) but any proto field additions
+  require updating this function or rendering silently breaks. There is no
+  compile-time guard. (When PR #378 merges, this function moves to
+  `utils/encounterStateTransforms.ts`.)
 
 ### Testing
 
@@ -142,26 +137,27 @@ let it rot.
   `LobbyView`. If Discord fails to load in production, playerId silently
   becomes `''` rather than surfacing an error.
 
-- **`DiscordDebugPanel` is always-rendered in dev** — Useful, but there is no
-  way to toggle it off without changing the build mode.
+- **`DiscordDebugPanel` is behind a toggle button** — `App.tsx` keeps it behind
+  `showDebugPanel` state and exposes a button to show/hide it. Available in all
+  environments, not dev-only.
 
 ## Per-subsystem confidence
 
-| Subsystem                                                                  | Confidence                                                                                                  |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| [useEncounterStream](#stream-delivery-highest-priority-for-next-milestone) | Low — stream delivery of `RoomRevealed` unconfirmed; buffer/reconnect logic untested                        |
-| [useDungeonMap](#)                                                         | Medium-high — clean accumulation logic, good tests, wall dedup works                                        |
-| [useEncounterState](#)                                                     | Medium — recently landed, snapshot/delta logic is clean, still dual-pathed with legacy                      |
-| [encounterStateTransforms](#)                                              | Medium-high — 25 tests, pure functions, but `allRoomsFromEncounterState` not yet wired in the critical path |
-| [LobbyView](#lobbyview-complexity)                                         | Low-medium — correct behavior but structurally brittle; 2 k+ lines, dual paths                              |
-| [combat-v2 panels (CombatPanel, CombatHistorySidebar)](#)                  | Medium — feature complete for Round 1 scenario; no component tests                                          |
-| [encounter/BattleMapPanel](#)                                              | Medium — functional; entity state wired, no tests                                                           |
-| [hex-grid (HexGrid, HexTile, MediumHumanoid)](#)                           | Medium — movement range and interaction tested; rendering untested                                          |
-| [gRPC client / encounterHooks](#)                                          | Medium — clean hook wrappers; no tests                                                                      |
-| [proto integration (@kirkdiggler/rpg-api-protos v0.1.86)](#)               | Medium-high — types used directly, no duplication; lock-file discipline needed                              |
-| [Discord Activity wiring](#discord-activity-wiring)                        | Medium — works in prod path, dev fallback is fragile                                                        |
-| [/concepts route](#)                                                       | Medium — useful sandbox; decoupled from production                                                          |
-| [vitest coverage](#testing)                                                | Low — 323 tests but all utility-layer; zero component coverage                                              |
+| Subsystem                                                                                                    | Confidence                                                                                     |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| [useEncounterStream](#stream-delivery-highest-priority-for-next-milestone)                                   | Low — stream delivery of `RoomRevealed` unconfirmed; buffer/reconnect logic untested           |
+| [useDungeonMap](#use-dungeon-map)                                                                            | Medium-high — clean accumulation logic, good tests, wall dedup works                           |
+| [useEncounterState](#use-encounter-state)                                                                    | Medium — recently landed, snapshot/delta logic is clean, still dual-pathed with legacy         |
+| [LobbyView transform functions](#lobbyview-complexity)                                                       | Medium — pure functions in `LobbyView.tsx`; 25 tests pending merge (PR #378 only, not on main) |
+| [LobbyView](#lobbyview-complexity)                                                                           | Low-medium — correct behavior but structurally brittle; 2 k+ lines, dual paths                 |
+| [combat-v2 panels (CombatPanel, CombatHistorySidebar)](#combat-v2--combatpanel-combathistorysidebar)         | Medium — feature complete for Round 1 scenario; no component tests                             |
+| [encounter/BattleMapPanel](#encounterb-attlemappanel)                                                        | Medium — functional; entity state wired, no tests                                              |
+| [hex-grid (HexGrid, HexTile, MediumHumanoid)](#hex-grid-components-hexgrid-hextile-hexentity-mediumhumanoid) | Medium — movement range and interaction tested; rendering untested                             |
+| [gRPC client / encounterHooks](#grpc-client--encounterhooks)                                                 | Medium — clean hook wrappers; no tests                                                         |
+| [proto integration (@kirkdiggler/rpg-api-protos v0.1.86)](#proto-integration-rpg-api-protos-v0186)           | Medium-high — types used directly, no duplication; lock-file discipline needed                 |
+| [Discord Activity wiring](#discord-activity-wiring)                                                          | Medium — works in prod path, dev fallback is fragile                                           |
+| [/concepts route](#concepts-route)                                                                           | Medium — useful sandbox; decoupled from production                                             |
+| [vitest coverage](#testing)                                                                                  | Low — 298 tests but all utility-layer; zero component coverage                                 |
 
 ## Upcoming work
 
@@ -185,4 +181,4 @@ Milestone goal: multi-room dungeon scenario working end-to-end in browser.
 - [rpg-api integration test: open_door_test.go](https://github.com/KirkDiggler/rpg-api/blob/main/internal/integration/encounter/open_door_test.go)
 - [PR #377 — add all rooms on RoomRevealed](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/377)
 - [PR #378 — extract transforms + 25 vitest tests](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/378)
-- [rpg-project/CLAUDE.md](/home/kirk/personal/rpg-project/CLAUDE.md)
+- [rpg-project/CLAUDE.md](https://github.com/KirkDiggler/rpg-project/blob/main/CLAUDE.md)
