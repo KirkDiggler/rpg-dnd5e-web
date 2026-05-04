@@ -879,3 +879,140 @@ describe('mergeRoom wall deduplication', () => {
     expect(state.walls.size).toBe(1);
   });
 });
+
+/**
+ * Regression tests for issue #385: multi-room rendering after OpenDoor.
+ *
+ * Verifies that mergeRoom accumulates tiles/walls from both rooms when using
+ * real API-style origins (room 1 at (0,0,0), room 2 at (0,-17,17) per live
+ * encounter data from enc-_1777937073462760373_f7440384 at v0.1.91).
+ */
+describe('multi-room accumulation (regression #385)', () => {
+  it('accumulates floor tiles from rooms at dungeon-absolute origins', () => {
+    let state = createEmptyState();
+
+    // Room 1: origin (0,0,0), 7x7 (49 tiles)
+    const room1 = createRoom({
+      id: 'room-1',
+      width: 7,
+      height: 7,
+      originX: 0,
+      originZ: 0,
+    });
+    state = mergeRoom(state, room1, []);
+    expect(state.floorTiles.size).toBe(49);
+
+    // Room 2: origin (0,-17,17) mirroring live API data, 5x5 (25 tiles)
+    const room2 = createRoom({
+      id: 'room-2',
+      width: 5,
+      height: 5,
+      originX: 0,
+      originZ: 17,
+    });
+    state = mergeRoom(state, room2, []);
+
+    // Both rooms' tiles must be present (49 + 25 = 74 non-overlapping tiles)
+    expect(state.floorTiles.size).toBe(74);
+
+    // Room 1 tile at origin
+    expect(state.floorTiles.has('0,0,0')).toBe(true);
+    // Room 2 tile at its origin (0, -17, 17)
+    expect(state.floorTiles.has('0,-17,17')).toBe(true);
+  });
+
+  it('accumulates walls from both rooms', () => {
+    let state = createEmptyState();
+
+    const room1 = createRoom({
+      id: 'room-1',
+      width: 7,
+      height: 7,
+      walls: [{ startX: 0, startY: 0, startZ: 0, endX: 1, endY: -1, endZ: 0 }],
+    });
+    state = mergeRoom(state, room1, []);
+
+    const room2 = createRoom({
+      id: 'room-2',
+      width: 5,
+      height: 5,
+      originX: 0,
+      originZ: 17,
+      walls: [
+        { startX: 0, startY: -17, startZ: 17, endX: 1, endY: -18, endZ: 17 },
+      ],
+    });
+    state = mergeRoom(state, room2, []);
+
+    // One wall from each room
+    expect(state.walls.size).toBe(2);
+  });
+
+  it('currentRoomId is updated to most recently added room', () => {
+    let state = createEmptyState();
+
+    state = mergeRoom(
+      state,
+      createRoom({ id: 'room-1', width: 7, height: 7 }),
+      []
+    );
+    expect(state.currentRoomId).toBe('room-1');
+
+    state = mergeRoom(
+      state,
+      createRoom({
+        id: 'room-2',
+        width: 5,
+        height: 5,
+        originX: 0,
+        originZ: 17,
+      }),
+      []
+    );
+    expect(state.currentRoomId).toBe('room-2');
+    expect(state.revealedRoomIds.size).toBe(2);
+  });
+
+  it('entities from both rooms are present in accumulated state', () => {
+    let state = createEmptyState();
+
+    const room1 = createRoom({
+      id: 'room-1',
+      width: 7,
+      height: 7,
+      entities: {
+        'player-1': {
+          entityId: 'player-1',
+          x: 1,
+          y: -1,
+          z: 0,
+          type: EntityType.CHARACTER,
+        },
+      },
+    });
+    state = mergeRoom(state, room1, []);
+
+    const room2 = createRoom({
+      id: 'room-2',
+      width: 5,
+      height: 5,
+      originX: 0,
+      originZ: 17,
+      entities: {
+        'monster-1': {
+          entityId: 'monster-1',
+          x: 0,
+          y: -17,
+          z: 17,
+          type: EntityType.MONSTER,
+        },
+      },
+    });
+    state = mergeRoom(state, room2, []);
+
+    // Both entities must be accessible for multi-room rendering
+    expect(state.entities.size).toBe(2);
+    expect(state.entities.has('player-1')).toBe(true);
+    expect(state.entities.has('monster-1')).toBe(true);
+  });
+});

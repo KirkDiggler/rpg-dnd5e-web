@@ -69,37 +69,32 @@ export function BattleMapPanel({
   // Build entities array, preferring unified entity state when available.
   // Falls back to accumulated dungeonMap entities (legacy path).
   const entities = useMemo(() => {
-    // Prefer unified entity state when available
+    // Prefer unified entity state when available.
+    // Render ALL entities across all revealed rooms — positions are dungeon-absolute
+    // and the hex grid's floor tile set acts as the visual boundary.
+    // Filtering to currentRoomId here was the regression introduced in #371.
     if (encounterEntities && encounterEntities.size > 0) {
-      return Array.from(encounterEntities.values())
-        .filter((entity) => {
-          // Only show entities in the current room (if they have a roomId)
-          if (entity.roomId && dungeonMap.currentRoomId) {
-            return entity.roomId === dungeonMap.currentRoomId;
-          }
-          return true;
-        })
-        .map((entity) => {
-          let displayType: 'player' | 'monster' | 'obstacle';
-          if (entity.entityType === EntityType.CHARACTER) {
-            displayType = 'player';
-          } else if (entity.entityType === EntityType.MONSTER) {
-            displayType = 'monster';
-          } else {
-            displayType = 'obstacle';
-          }
-          return {
-            entityId: entity.entityId,
-            name: getEntityName(entity),
-            position: {
-              x: entity.position?.x || 0,
-              y: entity.position?.y || 0,
-              z: entity.position?.z || 0,
-            },
-            type: displayType,
-            isDead: isDead(entity),
-          };
-        });
+      return Array.from(encounterEntities.values()).map((entity) => {
+        let displayType: 'player' | 'monster' | 'obstacle';
+        if (entity.entityType === EntityType.CHARACTER) {
+          displayType = 'player';
+        } else if (entity.entityType === EntityType.MONSTER) {
+          displayType = 'monster';
+        } else {
+          displayType = 'obstacle';
+        }
+        return {
+          entityId: entity.entityId,
+          name: getEntityName(entity),
+          position: {
+            x: entity.position?.x || 0,
+            y: entity.position?.y || 0,
+            z: entity.position?.z || 0,
+          },
+          type: displayType,
+          isDead: isDead(entity),
+        };
+      });
     }
 
     // Fallback to legacy dungeonMap.entities
@@ -131,7 +126,6 @@ export function BattleMapPanel({
   }, [
     encounterEntities,
     dungeonMap.entities,
-    dungeonMap.currentRoomId,
     allPartyCharacters,
     deadMonsterIds,
   ]);
