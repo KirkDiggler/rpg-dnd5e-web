@@ -140,7 +140,6 @@ React StrictMode (enabled in `src/main.tsx`) intentionally double-mounts compone
 
 - Make your API operations idempotent
 - Focus on real issues, not development quirks
-- Read the journey doc at `docs/journey/2025-08-04-strictmode-double-calls-and-abort-controller.md` for the full story
 
 ## Development Commands
 
