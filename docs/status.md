@@ -19,9 +19,11 @@ let it rot.
   upstream stream-delivery bug (see Known Rough Edges below).
 
 - **PR #378** (`test/room-reveal-transforms`, open since 2026-04-06) — Extracts
-  25 pure-function vitest tests for `encounterStateTransforms`. These tests
-  already merged to main via the standalone commit `15f232e`; the PR adds the
-  broader test infrastructure. Paused alongside #377.
+  25 pure-function vitest tests for `encounterStateTransforms` and the
+  `encounterStateTransforms.ts` util file itself. **Correction (2026-05-02):**
+  commit `15f232e` is only on the PR branch — it has NOT merged to main.
+  `git branch --contains 15f232e` confirms this. The 298 tests currently passing
+  on main do not include these 25. Paused alongside #377.
 
 - **PR #370** (`fix/hex-entity-equipment-fallback`, open since 2026-03-29) —
   Resolves weapons/shields from itemId fallback when equipment data is missing.
@@ -95,10 +97,12 @@ let it rot.
 
 ### LobbyView complexity
 
-- **2,256 lines, 45 hook calls** — `LobbyView.tsx` is the single largest file
+- **2,345 lines, 45 hook calls** — `LobbyView.tsx` is the single largest file
   in the codebase and does too much: stream wiring, all event handlers,
   combat action dispatch, movement pathfinding, turn logic, and rendering
-  routing. The dual legacy/new-path code makes this worse. This is a refactor
+  routing. The dual legacy/new-path code makes this worse. Legacy comment
+  occurrences: 26 (grep-verified 2026-05-02; an earlier pass counted 41 —
+  some were removed during the new-path landing in PR #371). This is a refactor
   target but should not be touched until the stream bug is confirmed resolved.
 
 - **`roomFromEncounterState` still called in `handleRoomRevealed`** — Even
@@ -122,7 +126,8 @@ let it rot.
 
 ### Testing
 
-- **No component-level tests** — 15 test files, 323 tests, but all target
+- **No component-level tests** — 14 test files, 298 tests (verified 2026-05-02
+  by running npm test; prior count of 323 was incorrect), but all target
   pure utility functions and hooks. Zero coverage of `LobbyView`, `BattleMapPanel`,
   `CombatPanel`, `HexGrid`, or any component that renders JSX.
 
