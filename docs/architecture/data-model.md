@@ -9,7 +9,7 @@ confidence: high — verified by reading encounterHooks.ts, useEncounterState.ts
 
 ## Proto packages consumed
 
-All types flow in from `@kirkdiggler/rpg-api-protos` (currently v0.1.86). The web layer consumes two proto namespaces:
+All types flow in from `@kirkdiggler/rpg-api-protos` (currently v0.1.91). The web layer consumes two proto namespaces:
 
 | Proto package        | Generated path                           | What we use                                                                                                      |
 | -------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -93,4 +93,4 @@ These are justified. They are UI concerns not representable in proto. They shoul
 
 ## Proto version discipline
 
-`@kirkdiggler/rpg-api-protos` is installed from GitHub (`github:KirkDiggler/rpg-api-protos#v0.1.86`). Version bumps require regenerating the lock file: `rm -rf node_modules package-lock.json && npm install`. The `CLAUDE.md` documents this. Failure to regenerate can cause CI to use stale proto code despite `package.json` being updated.
+`@kirkdiggler/rpg-api-protos` is installed from GitHub (`github:KirkDiggler/rpg-api-protos#v0.1.91`). Version bumps require regenerating the lock file: `rm -rf node_modules package-lock.json && npm install`. The `CLAUDE.md` documents this. Failure to regenerate can cause CI to use stale proto code despite `package.json` being updated.

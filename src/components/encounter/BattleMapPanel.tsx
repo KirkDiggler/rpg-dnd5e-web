@@ -1,5 +1,4 @@
 import type { DungeonMapState } from '@/hooks/useDungeonMap';
-import { getEntityName, isDead } from '@/utils/entityHelpers';
 import type { CubeCoord } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
@@ -7,9 +6,12 @@ import type {
   EntityState,
   MonsterCombatState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useMemo } from 'react';
 import { HexGrid } from '../hex-grid';
+import {
+  buildEntitiesFromDungeonMap,
+  buildEntitiesFromEncounterState,
+} from './entityBuildUtils';
 
 interface BattleMapPanelProps {
   dungeonMap: DungeonMapState;
@@ -66,72 +68,21 @@ export function BattleMapPanel({
     return ids;
   }, [monsters]);
 
-  // Build entities array, preferring unified entity state when available.
+  // Build entities array for HexGrid.
+  // Prefers unified encounter state (all rooms, dungeon-absolute positions).
   // Falls back to accumulated dungeonMap entities (legacy path).
   const entities = useMemo(() => {
-    // Prefer unified entity state when available
     if (encounterEntities && encounterEntities.size > 0) {
-      return Array.from(encounterEntities.values())
-        .filter((entity) => {
-          // Only show entities in the current room (if they have a roomId)
-          if (entity.roomId && dungeonMap.currentRoomId) {
-            return entity.roomId === dungeonMap.currentRoomId;
-          }
-          return true;
-        })
-        .map((entity) => {
-          let displayType: 'player' | 'monster' | 'obstacle';
-          if (entity.entityType === EntityType.CHARACTER) {
-            displayType = 'player';
-          } else if (entity.entityType === EntityType.MONSTER) {
-            displayType = 'monster';
-          } else {
-            displayType = 'obstacle';
-          }
-          return {
-            entityId: entity.entityId,
-            name: getEntityName(entity),
-            position: {
-              x: entity.position?.x || 0,
-              y: entity.position?.y || 0,
-              z: entity.position?.z || 0,
-            },
-            type: displayType,
-            isDead: isDead(entity),
-          };
-        });
+      return buildEntitiesFromEncounterState(encounterEntities);
     }
-
-    // Fallback to legacy dungeonMap.entities
-    return Array.from(dungeonMap.entities.values()).map((entity) => {
-      let displayType: 'player' | 'monster' | 'obstacle';
-      if (entity.entityType === EntityType.CHARACTER) {
-        displayType = 'player';
-      } else if (entity.entityType === EntityType.MONSTER) {
-        displayType = 'monster';
-      } else {
-        displayType = 'obstacle';
-      }
-      return {
-        entityId: entity.entityId,
-        name:
-          allPartyCharacters.find((c) => c.id === entity.entityId)?.name ||
-          entity.entityId,
-        position: {
-          x: entity.position?.x || 0,
-          y: entity.position?.y || 0,
-          z: entity.position?.z || 0,
-        },
-        type: displayType,
-        isDead:
-          entity.entityType === EntityType.MONSTER &&
-          deadMonsterIds.has(entity.entityId),
-      };
-    });
+    return buildEntitiesFromDungeonMap(
+      dungeonMap.entities,
+      allPartyCharacters,
+      deadMonsterIds
+    );
   }, [
     encounterEntities,
     dungeonMap.entities,
-    dungeonMap.currentRoomId,
     allPartyCharacters,
     deadMonsterIds,
   ]);

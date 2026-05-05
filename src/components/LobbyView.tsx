@@ -140,17 +140,26 @@ function entityStateToPlacement(entity: EntityState): EntityPlacement {
 }
 
 /**
- * Build a legacy Room object from EncounterStateData for addRoomToMap compatibility.
- * Uses the current room's RoomLayout + entities assigned to that room.
+ * Extract DoorInfo array from EncounterStateData for addRoomToMap compatibility.
  */
-function roomFromEncounterState(data: EncounterStateData): Room | undefined {
-  const roomLayout = data.rooms[data.currentRoomId];
+function doorsFromEncounterState(data: EncounterStateData): DoorInfo[] {
+  return Object.values(data.doors);
+}
+
+/**
+ * Build a legacy Room object from a RoomLayout + EncounterStateData for a specific room.
+ * Filters entities to only those belonging to the given roomId.
+ */
+function roomFromLayout(
+  data: EncounterStateData,
+  roomId: string
+): Room | undefined {
+  const roomLayout = data.rooms[roomId];
   if (!roomLayout) return undefined;
 
-  // Collect entities that belong to the current room
   const entities: { [key: string]: EntityPlacement } = {};
   for (const entity of Object.values(data.entities)) {
-    if (entity.roomId === data.currentRoomId) {
+    if (entity.roomId === roomId) {
       entities[entity.entityId] = entityStateToPlacement(entity);
     }
   }
@@ -170,10 +179,54 @@ function roomFromEncounterState(data: EncounterStateData): Room | undefined {
 }
 
 /**
- * Extract DoorInfo array from EncounterStateData for addRoomToMap compatibility.
+ * Hydrate all revealed rooms from EncounterStateData into useDungeonMap.
+ *
+ * EncounterStateData.rooms is cumulative — it contains every revealed room's
+ * RoomLayout keyed by room ID. We must call addRoom for each revealed room so
+ * useDungeonMap accumulates floor tiles, walls, and entities for all of them.
+ *
+ * mergeRoom is idempotent for rooms already present (skips tile/wall generation),
+ * so calling addRoom for a previously-merged room is safe on reconnect.
+ *
+ * The current room is added last so dungeonMap.currentRoomId ends up correct.
  */
-function doorsFromEncounterState(data: EncounterStateData): DoorInfo[] {
-  return Object.values(data.doors);
+function addAllRoomsFromSnapshot(
+  data: EncounterStateData,
+  addRoom: (room: Room, doors: DoorInfo[]) => void
+): void {
+  const doors = doorsFromEncounterState(data);
+
+  // Add non-current rooms first (order doesn't matter for tiles, but
+  // currentRoomId must end up pointing to data.currentRoomId after all calls)
+  for (const roomId of data.revealedRoomIds) {
+    if (roomId === data.currentRoomId) continue;
+    const room = roomFromLayout(data, roomId);
+    console.log(
+      `[addAllRoomsFromSnapshot] non-current room ${roomId}:`,
+      room
+        ? { width: room.width, height: room.height, origin: room.origin }
+        : 'NOT FOUND in data.rooms'
+    );
+    if (room) {
+      addRoom(room, doors);
+    }
+  }
+
+  // Add the current room last so dungeonMap.currentRoomId is correct
+  const currentRoom = roomFromLayout(data, data.currentRoomId);
+  console.log(
+    `[addAllRoomsFromSnapshot] current room ${data.currentRoomId}:`,
+    currentRoom
+      ? {
+          width: currentRoom.width,
+          height: currentRoom.height,
+          origin: currentRoom.origin,
+        }
+      : 'NOT FOUND in data.rooms'
+  );
+  if (currentRoom) {
+    addRoom(currentRoom, doors);
+  }
 }
 
 /**
@@ -334,27 +387,36 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       setTimeout(() => {
         // --- New path: populate unified encounter state ---
         if (event.encounterStateData) {
-          applySnapshot(event.encounterStateData);
+          const esd = event.encounterStateData;
+          console.log('[RoomRevealed] encounterStateData:', {
+            revealedRoomIds: esd.revealedRoomIds,
+            currentRoomId: esd.currentRoomId,
+            roomKeys: Object.keys(esd.rooms),
+            roomOrigins: Object.fromEntries(
+              Object.entries(esd.rooms).map(([id, r]) => [
+                id,
+                r.origin
+                  ? `(${r.origin.x},${r.origin.y},${r.origin.z})`
+                  : 'undefined',
+              ])
+            ),
+            entityCount: Object.keys(esd.entities).length,
+          });
+          applySnapshot(esd);
 
-          // --- Legacy path: build Room/CombatState from encounterStateData ---
-          const legacyRoom = roomFromEncounterState(event.encounterStateData);
-          if (legacyRoom) {
-            addRoomToMap(
-              legacyRoom,
-              doorsFromEncounterState(event.encounterStateData)
-            );
-          }
-          setCombatState(event.encounterStateData.combat ?? null);
-          setRoomsCleared(event.encounterStateData.roomsCleared);
+          // --- Legacy path: hydrate all revealed rooms into dungeonMap ---
+          // encounterStateData.rooms is cumulative — add every revealed room so
+          // floor tiles and walls for all rooms exist in the accumulated map.
+          addAllRoomsFromSnapshot(esd, addRoomToMap);
+          setCombatState(esd.combat ?? null);
+          setRoomsCleared(esd.roomsCleared);
 
           // Update monsters from encounter state (for monsterType texture selection)
-          setMonsters(monstersFromEncounterState(event.encounterStateData));
+          setMonsters(monstersFromEncounterState(esd));
 
           // Select the current turn entity
-          if (event.encounterStateData.combat?.currentTurn?.entityId) {
-            setSelectedEntity(
-              event.encounterStateData.combat.currentTurn.entityId
-            );
+          if (esd.combat?.currentTurn?.entityId) {
+            setSelectedEntity(esd.combat.currentTurn.entityId);
           }
         }
 
@@ -802,18 +864,23 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         // Set monsters (for monsterType texture selection)
         setMonsters(monstersFromEncounterState(esd));
 
-        // Build legacy Room and add to dungeon map
-        let legacyRoom = roomFromEncounterState(esd);
+        // Hydrate all revealed rooms into dungeonMap for floor/wall rendering
+        addAllRoomsFromSnapshot(esd, addRoomToMap);
 
-        // Process monster turns if present (monsters won initiative)
-        legacyRoom = processMonsterTurns(
-          event.monsterTurns,
-          esd.combat,
-          legacyRoom
-        );
-
-        if (legacyRoom) {
-          addRoomToMap(legacyRoom, doorsFromEncounterState(esd));
+        // Process monster turns for initial position updates if present
+        // (monsters won initiative — apply their movement on top of snapshot)
+        if (event.monsterTurns?.length) {
+          const syntheticRoom = roomFromLayout(esd, esd.currentRoomId);
+          if (syntheticRoom) {
+            const updatedRoom = processMonsterTurns(
+              event.monsterTurns,
+              esd.combat,
+              syntheticRoom
+            );
+            if (updatedRoom) {
+              addRoomToMap(updatedRoom, doorsFromEncounterState(esd));
+            }
+          }
         }
 
         // Extract party character IDs from character entities for selectedCharacterIds
@@ -856,13 +923,19 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         }
       }
 
-      // Apply room from snapshot into dungeon map
-      if (snapshot.room) {
+      // Apply all revealed rooms from snapshot into dungeon map.
+      // Prefer encounterStateData (cumulative, all rooms) over legacy snapshot.room
+      // (single room only). Fall back to snapshot.room for old API responses.
+      if (snapshot.encounterStateData) {
+        addAllRoomsFromSnapshot(snapshot.encounterStateData, addRoomToMap);
+      } else if (snapshot.room) {
         addRoomToMap(snapshot.room, snapshot.doors ?? []);
       }
 
       // Apply monsters from snapshot (for monsterType texture selection)
-      if (snapshot.monsters) {
+      if (snapshot.encounterStateData) {
+        setMonsters(monstersFromEncounterState(snapshot.encounterStateData));
+      } else if (snapshot.monsters) {
         setMonsters(snapshot.monsters);
       }
 
@@ -1024,7 +1097,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
             // Set dungeon state for room navigation
             setDungeonId(payload.value.dungeonId || null);
 
-            // Legacy path: build Room from encounterStateData for floor/wall rendering
+            // Legacy path: build all rooms from encounterStateData for floor/wall rendering
             const esd = payload.value.encounterStateData;
             if (esd.combat) {
               setCombatState(esd.combat);
@@ -1033,10 +1106,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
               }
             }
             setMonsters(monstersFromEncounterState(esd));
-            const legacyRoom = roomFromEncounterState(esd);
-            if (legacyRoom) {
-              addRoomToMap(legacyRoom, doorsFromEncounterState(esd));
-            }
+            addAllRoomsFromSnapshot(esd, addRoomToMap);
           }
 
           const logEntry: CombatLogEntry = {
@@ -1063,7 +1133,13 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         });
       }
     },
-    [combatState?.round, fullCharactersMap, availableCharacters]
+    [
+      combatState?.round,
+      fullCharactersMap,
+      availableCharacters,
+      addRoomToMap,
+      applySnapshot,
+    ]
   );
 
   // Subscribe to encounter stream for multiplayer sync
@@ -1210,8 +1286,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   };
 
   const handleEntityClick = (entityId: string) => {
-    // Get clicked entity
-    const clickedEntity = room?.entities[entityId];
+    // Use cumulative encounterState.entities so clicks work across all revealed rooms,
+    // not just the current room. The web never gates on roomId — send all clicks to API.
+    const clickedEntity = encounterState.entities.get(entityId);
     if (!clickedEntity) return;
 
     // Set the selected hover entity for click-to-lock in the info panel
@@ -1245,7 +1322,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     ) {
       // Check if adjacent (within 1 hex for melee)
       // Server provides cube coordinates in position.x, position.y, position.z
-      const currentEntity = room?.entities[currentTurnEntityId];
+      const currentEntity = encounterState.entities.get(currentTurnEntityId);
       if (currentEntity?.position && clickedEntity.position) {
         const distance = hexDistance(
           currentEntity.position.x,
@@ -1285,7 +1362,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
   const handleCellClick = async (clickedCube: CubeCoord) => {
     if (movementMode && selectedEntity && encounterId) {
-      const entityPos = room?.entities[selectedEntity]?.position;
+      // Use cumulative encounterState.entities so movement works across all revealed rooms.
+      const entityPos = encounterState.entities.get(selectedEntity)?.position;
       if (!entityPos) return;
 
       // Get the last position in the path, or entity's current position (as cube coords)
@@ -1294,25 +1372,24 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           ? movementPath[movementPath.length - 1]
           : { x: entityPos.x, y: entityPos.y, z: entityPos.z };
 
-      // Get occupied positions (excluding the target) using cube keys
+      // Get occupied positions (excluding the moving entity) using cube keys.
+      // Iterates all entities across all rooms so cross-room obstacles block pathfinding.
       const occupiedPositions = new Set<string>();
-      if (room?.entities) {
-        Object.values(room.entities).forEach((entity) => {
-          if (
-            entity.position &&
-            entity.blocksMovement &&
-            entity.entityId !== selectedEntity
-          ) {
-            occupiedPositions.add(
-              cubeKey({
-                x: entity.position.x,
-                y: entity.position.y,
-                z: entity.position.z,
-              })
-            );
-          }
-        });
-      }
+      encounterState.entities.forEach((entity) => {
+        if (
+          entity.position &&
+          entity.blocksMovement &&
+          entity.entityId !== selectedEntity
+        ) {
+          occupiedPositions.add(
+            cubeKey({
+              x: entity.position.x,
+              y: entity.position.y,
+              z: entity.position.z,
+            })
+          );
+        }
+      });
 
       // Find path from last position to clicked hex
       const newSegment = findHexPath(
@@ -1436,10 +1513,11 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
     const entityId = combatState.currentTurn.entityId;
 
-    // Use override target, then attackTarget state, then selectedEntity if it's a monster
+    // Use override target, then attackTarget state, then selectedEntity if it's a monster.
+    // Read from cumulative encounterState.entities — not the single-room legacy field.
     let target = overrideTarget || attackTarget;
     if (!target && selectedEntity) {
-      const selectedEntityData = room?.entities[selectedEntity];
+      const selectedEntityData = encounterState.entities.get(selectedEntity);
       if (selectedEntityData?.entityType === EntityType.MONSTER) {
         target = selectedEntity;
       }
@@ -2177,33 +2255,27 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                   // Legacy: set monsters for texture selection
                   setMonsters(monstersFromEncounterState(esd));
 
-                  // Legacy: build Room and add to dungeon map
-                  let legacyRoom = roomFromEncounterState(esd);
+                  // Legacy: hydrate all revealed rooms into dungeonMap
+                  addAllRoomsFromSnapshot(esd, addRoomToMap);
 
-                  // Process monster turns and get updated room
-                  legacyRoom = processMonsterTurns(
-                    event.monsterTurns,
-                    esd.combat,
-                    legacyRoom
-                  );
-
-                  if (legacyRoom) {
-                    addRoomToMap(legacyRoom, doorsFromEncounterState(esd));
-                    addToast({
-                      type: 'success',
-                      message: 'Combat started!',
-                      duration: 2000,
-                    });
-                  } else {
-                    console.error(
-                      'CombatStartedEvent encounterStateData missing room'
+                  // Process monster turns for initial position if monsters won initiative
+                  const syntheticRoom = roomFromLayout(esd, esd.currentRoomId);
+                  if (syntheticRoom && event.monsterTurns?.length) {
+                    const updatedRoom = processMonsterTurns(
+                      event.monsterTurns,
+                      esd.combat,
+                      syntheticRoom
                     );
-                    addToast({
-                      type: 'error',
-                      message: 'Failed to start combat: missing room data',
-                      duration: 3000,
-                    });
+                    if (updatedRoom) {
+                      addRoomToMap(updatedRoom, doorsFromEncounterState(esd));
+                    }
                   }
+
+                  addToast({
+                    type: 'success',
+                    message: 'Combat started!',
+                    duration: 2000,
+                  });
                 } else {
                   console.error(
                     'CombatStartedEvent missing encounterStateData'

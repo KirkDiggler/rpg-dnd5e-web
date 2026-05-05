@@ -154,7 +154,7 @@ let it rot.
 | [encounter/BattleMapPanel](#encounterb-attlemappanel)                                                        | Medium — functional; entity state wired, no tests                                              |
 | [hex-grid (HexGrid, HexTile, MediumHumanoid)](#hex-grid-components-hexgrid-hextile-hexentity-mediumhumanoid) | Medium — movement range and interaction tested; rendering untested                             |
 | [gRPC client / encounterHooks](#grpc-client--encounterhooks)                                                 | Medium — clean hook wrappers; no tests                                                         |
-| [proto integration (@kirkdiggler/rpg-api-protos v0.1.86)](#proto-integration-rpg-api-protos-v0186)           | Medium-high — types used directly, no duplication; lock-file discipline needed                 |
+| [proto integration (@kirkdiggler/rpg-api-protos v0.1.91)](#proto-integration-rpg-api-protos-v0191)           | Medium-high — types used directly, no duplication; lock-file discipline needed                 |
 | [Discord Activity wiring](#discord-activity-wiring)                                                          | Medium — works in prod path, dev fallback is fragile                                           |
 | [/concepts route](#concepts-route)                                                                           | Medium — useful sandbox; decoupled from production                                             |
 | [vitest coverage](#testing)                                                                                  | Low — 298 tests but all utility-layer; zero component coverage                                 |
