@@ -9,6 +9,7 @@
  */
 
 import { create } from '@bufbuild/protobuf';
+import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import {
   CombatStateSchema,
   DoorInfoSchema,
@@ -25,6 +26,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applySnapshotToState,
   createEmptyEncounterState,
+  mergeEntityPosition,
   mergeEntityUpdates,
   updateCombatState,
 } from './useEncounterState';
@@ -328,6 +330,100 @@ describe('mergeEntityUpdates', () => {
 
     expect(next.encounterId).toBe('enc-stable');
     expect(next.dungeonId).toBe('dng-stable');
+    expect(next.rooms.size).toBe(1);
+    expect(next.doors.size).toBe(1);
+    expect(next.currentRoomId).toBe('room-1');
+    expect(next.revealedRoomIds).toEqual(['room-1']);
+    expect(next.roomsCleared).toBe(2);
+  });
+});
+
+describe('mergeEntityPosition', () => {
+  it('updates position of an existing entity', () => {
+    const snapshot = makeSnapshot({
+      entities: {
+        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
+      },
+    });
+    const prev = applySnapshotToState(snapshot);
+    const newPos = create(PositionSchema, { x: 3, y: -1, z: -2 });
+
+    const next = mergeEntityPosition(prev, 'char-1', newPos);
+
+    expect(next.entities.get('char-1')?.position).toEqual(newPos);
+  });
+
+  it('preserves other fields on the updated entity', () => {
+    const snapshot = makeSnapshot({});
+    let prev = applySnapshotToState(snapshot);
+    // Seed an entity with non-position fields populated
+    const seeded = create(EntityStateSchema, {
+      entityId: 'char-1',
+      entityType: EntityType.CHARACTER,
+      currentHitPoints: 12,
+      maxHitPoints: 20,
+    });
+    prev = mergeEntityUpdates(prev, [seeded]);
+
+    const newPos = create(PositionSchema, { x: 5, y: -3, z: -2 });
+    const next = mergeEntityPosition(prev, 'char-1', newPos);
+
+    const updated = next.entities.get('char-1');
+    expect(updated?.position).toEqual(newPos);
+    expect(updated?.currentHitPoints).toBe(12);
+    expect(updated?.maxHitPoints).toBe(20);
+    expect(updated?.entityType).toBe(EntityType.CHARACTER);
+  });
+
+  it('returns prev unchanged when entity is not present', () => {
+    const snapshot = makeSnapshot({
+      entities: {
+        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
+      },
+    });
+    const prev = applySnapshotToState(snapshot);
+    const newPos = create(PositionSchema, { x: 1, y: 0, z: -1 });
+
+    const next = mergeEntityPosition(prev, 'char-missing', newPos);
+
+    // Same reference — pure no-op when entity isn't tracked
+    expect(next).toBe(prev);
+  });
+
+  it('does not mutate the previous state', () => {
+    const snapshot = makeSnapshot({
+      entities: {
+        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
+      },
+    });
+    const prev = applySnapshotToState(snapshot);
+    const originalEntity = prev.entities.get('char-1');
+    const newPos = create(PositionSchema, { x: 7, y: -3, z: -4 });
+
+    mergeEntityPosition(prev, 'char-1', newPos);
+
+    // Original state's entity reference unchanged
+    expect(prev.entities.get('char-1')).toBe(originalEntity);
+  });
+
+  it('does not affect rooms, doors, or combat fields', () => {
+    const snapshot = makeSnapshot({
+      encounterId: 'enc-stable',
+      entities: {
+        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
+      },
+      rooms: ['room-1'],
+      doors: ['conn-1'],
+      currentRoomId: 'room-1',
+      revealedRoomIds: ['room-1'],
+      roomsCleared: 2,
+    });
+    const prev = applySnapshotToState(snapshot);
+    const newPos = create(PositionSchema, { x: 2, y: 1, z: -3 });
+
+    const next = mergeEntityPosition(prev, 'char-1', newPos);
+
+    expect(next.encounterId).toBe('enc-stable');
     expect(next.rooms.size).toBe(1);
     expect(next.doors.size).toBe(1);
     expect(next.currentRoomId).toBe('room-1');

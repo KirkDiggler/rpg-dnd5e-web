@@ -252,6 +252,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     state: encounterState,
     applySnapshot,
     applyEntityUpdates,
+    applyEntityPositionUpdate,
     applyCombatState: applyEncounterCombatState,
     reset: resetEncounterState,
   } = useEncounterState();
@@ -631,7 +632,20 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       console.log('🚶 MovementCompleted event received:', event);
 
       // --- New path: populate unified encounter state ---
-      if (event.updatedEntity) applyEntityUpdates([event.updatedEntity]);
+      if (event.updatedEntity) {
+        // Preferred: API sent a full entity snapshot. Use it as-is.
+        applyEntityUpdates([event.updatedEntity]);
+      } else if (event.entityId && event.path.length > 0) {
+        // Fallback: API sent only a path (e.g. player moves currently omit
+        // updatedEntity — see rpg-api fix/cross-room-state-wave2). Mirror the
+        // applyMonsterMovement pattern: use the final path coordinate as the
+        // new position for the existing entity. No-op if the entity is not
+        // already in encounter state.
+        const finalPosition = event.path[event.path.length - 1];
+        if (finalPosition) {
+          applyEntityPositionUpdate(event.entityId, finalPosition);
+        }
+      }
       if (event.combatState) applyEncounterCombatState(event.combatState);
 
       // --- Legacy path ---
@@ -640,7 +654,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setCombatState(event.combatState);
       }
     },
-    [applyEntityUpdates, applyEncounterCombatState]
+    [applyEntityUpdates, applyEntityPositionUpdate, applyEncounterCombatState]
   );
 
   // Multiplayer sync: Feature activated - sync feature usage
