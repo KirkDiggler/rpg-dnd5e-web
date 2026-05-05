@@ -205,7 +205,7 @@ main README.
 
 ## Infrastructure
 
-### Proto integration (rpg-api-protos v0.1.86) — B+
+### Proto integration (rpg-api-protos v0.1.91) — B+
 
 Types are used directly from generated protos — no hand-rolled TypeScript
 interfaces duplicating proto shapes. `@bufbuild/protobuf` `create()` pattern
