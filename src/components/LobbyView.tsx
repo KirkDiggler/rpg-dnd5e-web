@@ -201,6 +201,12 @@ function addAllRoomsFromSnapshot(
   for (const roomId of data.revealedRoomIds) {
     if (roomId === data.currentRoomId) continue;
     const room = roomFromLayout(data, roomId);
+    console.log(
+      `[addAllRoomsFromSnapshot] non-current room ${roomId}:`,
+      room
+        ? { width: room.width, height: room.height, origin: room.origin }
+        : 'NOT FOUND in data.rooms'
+    );
     if (room) {
       addRoom(room, doors);
     }
@@ -208,6 +214,16 @@ function addAllRoomsFromSnapshot(
 
   // Add the current room last so dungeonMap.currentRoomId is correct
   const currentRoom = roomFromLayout(data, data.currentRoomId);
+  console.log(
+    `[addAllRoomsFromSnapshot] current room ${data.currentRoomId}:`,
+    currentRoom
+      ? {
+          width: currentRoom.width,
+          height: currentRoom.height,
+          origin: currentRoom.origin,
+        }
+      : 'NOT FOUND in data.rooms'
+  );
   if (currentRoom) {
     addRoom(currentRoom, doors);
   }
