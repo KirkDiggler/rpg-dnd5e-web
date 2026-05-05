@@ -21,7 +21,14 @@ interface MovementRangeBorderProps {
 const DEFAULT_COLOR = '#00bcd4'; // Cyan
 const DEFAULT_OPACITY = 0.8;
 const DEFAULT_GLOW_INTENSITY = 2.0;
-const BORDER_Y_OFFSET = 0.05; // Slightly above ground to prevent z-fighting
+// Y offset must clear the floor extrusion top to be visible. ShadedHexFloor
+// extrudes hex tiles from y=0.05 to y=0.15 (depth 0.1, then translated by
+// 0.05). The previous 0.05 placed the border at the floor's BOTTOM face —
+// invisible from above and only peeking through z-fighting from below,
+// matching Kirk's "renders below the floor" Wave 2 playtest report.
+// Raise to 0.17 so it sits above the floor's top face with a small margin
+// that prevents z-fighting against PathPreview at 0.16.
+const BORDER_Y_OFFSET = 0.17;
 const LINE_WIDTH = 0.08; // Width of the border line
 
 /**

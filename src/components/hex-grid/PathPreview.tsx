@@ -18,7 +18,12 @@ interface PathPreviewProps {
 
 const DEFAULT_COLOR = '#3b82f6'; // blue
 const DEFAULT_OPACITY = 0.4;
-const PATH_Y_OFFSET = 0.03; // Slightly above ground
+// Y offset must clear the floor extrusion top to be visible. ShadedHexFloor
+// extrudes from y=0.05 to y=0.15. The previous 0.03 sat under the floor
+// entirely — same Wave 2 "below the floor" symptom as MovementRangeBorder.
+// Sits just above the floor top, slightly below MovementRangeBorder (0.17)
+// so the cyan range outline reads on top when both render the same edge.
+const PATH_Y_OFFSET = 0.16;
 
 /**
  * Creates a flat hexagon shape for pointy-top orientation
