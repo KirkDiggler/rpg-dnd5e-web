@@ -140,17 +140,21 @@ function entityStateToPlacement(entity: EntityState): EntityPlacement {
 }
 
 /**
- * Build a legacy Room object from EncounterStateData for addRoomToMap compatibility.
- * Uses the current room's RoomLayout + entities assigned to that room.
+ * Build a legacy Room object from a single RoomLayout in EncounterStateData.
+ * `roomId` selects which room to materialize; entities are filtered to that
+ * room via `entity.roomId`.
  */
-function roomFromEncounterState(data: EncounterStateData): Room | undefined {
-  const roomLayout = data.rooms[data.currentRoomId];
+function buildLegacyRoom(
+  data: EncounterStateData,
+  roomId: string
+): Room | undefined {
+  const roomLayout = data.rooms[roomId];
   if (!roomLayout) return undefined;
 
-  // Collect entities that belong to the current room
+  // Collect entities that belong to this specific room
   const entities: { [key: string]: EntityPlacement } = {};
   for (const entity of Object.values(data.entities)) {
-    if (entity.roomId === data.currentRoomId) {
+    if (entity.roomId === roomId) {
       entities[entity.entityId] = entityStateToPlacement(entity);
     }
   }
@@ -167,6 +171,50 @@ function roomFromEncounterState(data: EncounterStateData): Room | undefined {
     $typeName: 'dnd5e.api.v1alpha1.Room' as const,
     $unknown: undefined,
   } as Room;
+}
+
+/**
+ * Build a legacy Room object from EncounterStateData for addRoomToMap compatibility.
+ * Uses the current room's RoomLayout + entities assigned to that room.
+ */
+function roomFromEncounterState(data: EncounterStateData): Room | undefined {
+  return buildLegacyRoom(data, data.currentRoomId);
+}
+
+/**
+ * Build legacy Room objects for every revealed room in EncounterStateData,
+ * ordered with the current room LAST.
+ *
+ * Why this exists: when the api emits `RoomRevealed` (player opened a door),
+ * `data.currentRoomId` is still the player's CURRENT room — opening a door
+ * does not move the player. The just-revealed room lives in `data.rooms`
+ * but `currentRoomId` does NOT point at it. Building only the current room
+ * (the prior `roomFromEncounterState` behavior) means `addRoomToMap` never
+ * sees the revealed room's RoomLayout, so its floor tiles never get
+ * generated and the revealed room ends up empty inside.
+ *
+ * Iterating every entry in `data.rooms` here mirrors the
+ * "revealed rooms are first-class" pattern already followed by
+ * `BattleMapPanel` (renders entities from every revealed room) and
+ * `openDoorWalkableKeys` (treats every open door as walkable). Current room
+ * is forced last so that `mergeRoom`'s `currentRoomId: room.id` write ends
+ * up correct.
+ *
+ * Returns rooms in deterministic order (alphabetical by id, current room
+ * forced to the end). Rooms with no RoomLayout are skipped.
+ */
+function roomsFromEncounterState(data: EncounterStateData): Room[] {
+  const allIds = Object.keys(data.rooms).sort();
+  const ordered = [
+    ...allIds.filter((id) => id !== data.currentRoomId),
+    ...(allIds.includes(data.currentRoomId) ? [data.currentRoomId] : []),
+  ];
+  const rooms: Room[] = [];
+  for (const id of ordered) {
+    const room = buildLegacyRoom(data, id);
+    if (room) rooms.push(room);
+  }
+  return rooms;
 }
 
 /**
@@ -350,12 +398,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           applySnapshot(event.encounterStateData);
 
           // --- Legacy path: build Room/CombatState from encounterStateData ---
-          const legacyRoom = roomFromEncounterState(event.encounterStateData);
-          if (legacyRoom) {
-            addRoomToMap(
-              legacyRoom,
-              doorsFromEncounterState(event.encounterStateData)
-            );
+          // Iterate every revealed room so the freshly-revealed room's floor
+          // tiles get generated. `data.currentRoomId` still points at the
+          // player's current room here — the revealed room only exists in
+          // `data.rooms`. See roomsFromEncounterState for full reasoning.
+          const doors = doorsFromEncounterState(event.encounterStateData);
+          for (const legacyRoom of roomsFromEncounterState(
+            event.encounterStateData
+          )) {
+            addRoomToMap(legacyRoom, doors);
           }
           setCombatState(event.encounterStateData.combat ?? null);
           setRoomsCleared(event.encounterStateData.roomsCleared);
