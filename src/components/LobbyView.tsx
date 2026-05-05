@@ -371,23 +371,36 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       setTimeout(() => {
         // --- New path: populate unified encounter state ---
         if (event.encounterStateData) {
-          applySnapshot(event.encounterStateData);
+          const esd = event.encounterStateData;
+          console.log('[RoomRevealed] encounterStateData:', {
+            revealedRoomIds: esd.revealedRoomIds,
+            currentRoomId: esd.currentRoomId,
+            roomKeys: Object.keys(esd.rooms),
+            roomOrigins: Object.fromEntries(
+              Object.entries(esd.rooms).map(([id, r]) => [
+                id,
+                r.origin
+                  ? `(${r.origin.x},${r.origin.y},${r.origin.z})`
+                  : 'undefined',
+              ])
+            ),
+            entityCount: Object.keys(esd.entities).length,
+          });
+          applySnapshot(esd);
 
           // --- Legacy path: hydrate all revealed rooms into dungeonMap ---
           // encounterStateData.rooms is cumulative — add every revealed room so
           // floor tiles and walls for all rooms exist in the accumulated map.
-          addAllRoomsFromSnapshot(event.encounterStateData, addRoomToMap);
-          setCombatState(event.encounterStateData.combat ?? null);
-          setRoomsCleared(event.encounterStateData.roomsCleared);
+          addAllRoomsFromSnapshot(esd, addRoomToMap);
+          setCombatState(esd.combat ?? null);
+          setRoomsCleared(esd.roomsCleared);
 
           // Update monsters from encounter state (for monsterType texture selection)
-          setMonsters(monstersFromEncounterState(event.encounterStateData));
+          setMonsters(monstersFromEncounterState(esd));
 
           // Select the current turn entity
-          if (event.encounterStateData.combat?.currentTurn?.entityId) {
-            setSelectedEntity(
-              event.encounterStateData.combat.currentTurn.entityId
-            );
+          if (esd.combat?.currentTurn?.entityId) {
+            setSelectedEntity(esd.combat.currentTurn.entityId);
           }
         }
 
@@ -1257,8 +1270,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   };
 
   const handleEntityClick = (entityId: string) => {
-    // Get clicked entity
-    const clickedEntity = room?.entities[entityId];
+    // Use cumulative encounterState.entities so clicks work across all revealed rooms,
+    // not just the current room. The web never gates on roomId — send all clicks to API.
+    const clickedEntity = encounterState.entities.get(entityId);
     if (!clickedEntity) return;
 
     // Set the selected hover entity for click-to-lock in the info panel
@@ -1292,7 +1306,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     ) {
       // Check if adjacent (within 1 hex for melee)
       // Server provides cube coordinates in position.x, position.y, position.z
-      const currentEntity = room?.entities[currentTurnEntityId];
+      const currentEntity = encounterState.entities.get(currentTurnEntityId);
       if (currentEntity?.position && clickedEntity.position) {
         const distance = hexDistance(
           currentEntity.position.x,
@@ -1332,7 +1346,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
   const handleCellClick = async (clickedCube: CubeCoord) => {
     if (movementMode && selectedEntity && encounterId) {
-      const entityPos = room?.entities[selectedEntity]?.position;
+      // Use cumulative encounterState.entities so movement works across all revealed rooms.
+      const entityPos = encounterState.entities.get(selectedEntity)?.position;
       if (!entityPos) return;
 
       // Get the last position in the path, or entity's current position (as cube coords)
@@ -1341,25 +1356,24 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           ? movementPath[movementPath.length - 1]
           : { x: entityPos.x, y: entityPos.y, z: entityPos.z };
 
-      // Get occupied positions (excluding the target) using cube keys
+      // Get occupied positions (excluding the moving entity) using cube keys.
+      // Iterates all entities across all rooms so cross-room obstacles block pathfinding.
       const occupiedPositions = new Set<string>();
-      if (room?.entities) {
-        Object.values(room.entities).forEach((entity) => {
-          if (
-            entity.position &&
-            entity.blocksMovement &&
-            entity.entityId !== selectedEntity
-          ) {
-            occupiedPositions.add(
-              cubeKey({
-                x: entity.position.x,
-                y: entity.position.y,
-                z: entity.position.z,
-              })
-            );
-          }
-        });
-      }
+      encounterState.entities.forEach((entity) => {
+        if (
+          entity.position &&
+          entity.blocksMovement &&
+          entity.entityId !== selectedEntity
+        ) {
+          occupiedPositions.add(
+            cubeKey({
+              x: entity.position.x,
+              y: entity.position.y,
+              z: entity.position.z,
+            })
+          );
+        }
+      });
 
       // Find path from last position to clicked hex
       const newSegment = findHexPath(
@@ -1483,10 +1497,11 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
     const entityId = combatState.currentTurn.entityId;
 
-    // Use override target, then attackTarget state, then selectedEntity if it's a monster
+    // Use override target, then attackTarget state, then selectedEntity if it's a monster.
+    // Read from cumulative encounterState.entities — not the single-room legacy field.
     let target = overrideTarget || attackTarget;
     if (!target && selectedEntity) {
-      const selectedEntityData = room?.entities[selectedEntity];
+      const selectedEntityData = encounterState.entities.get(selectedEntity);
       if (selectedEntityData?.entityType === EntityType.MONSTER) {
         target = selectedEntity;
       }
