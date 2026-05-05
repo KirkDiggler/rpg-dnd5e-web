@@ -329,6 +329,18 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   // Dungeon stream event handlers
   const handleRoomRevealed = useCallback(
     (event: RoomRevealedEvent) => {
+      console.log('🚪 RoomRevealed event received:', {
+        connectionId: event.connectionId,
+        revealedRoomId: event.encounterStateData?.currentRoomId,
+        roomCount: event.encounterStateData
+          ? Object.keys(event.encounterStateData.rooms).length
+          : 0,
+        revealedRoomIds: event.encounterStateData?.revealedRoomIds,
+        entityCount: event.encounterStateData
+          ? Object.keys(event.encounterStateData.entities).length
+          : 0,
+      });
+
       // Trigger fade transition
       setIsTransitioning(true);
 

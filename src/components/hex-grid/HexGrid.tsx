@@ -12,7 +12,11 @@
  * - Turn order overlay
  */
 
-import { wallKey, type AbsoluteFloorTile } from '@/hooks/useDungeonMap';
+import {
+  openDoorWalkableKeys,
+  wallKey,
+  type AbsoluteFloorTile,
+} from '@/hooks/useDungeonMap';
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
@@ -203,12 +207,22 @@ function Scene({
     };
   }, [currentEntityId, entities]);
 
-  // Check if a hex is blocked (not a floor tile or has an entity)
+  // Build a Set of door-position keys so OPEN doors are walkable even when
+  // their hex is not a floor tile (the door sits on the boundary between
+  // rooms and is omitted from both rooms' floor-tile bboxes). Without this,
+  // A* sees the door as an impassable wall and refuses to path between
+  // revealed rooms — the "my pathing on the client never lets me cross" bug.
+  // Closed doors stay impassable to pathfinding; the door-click flow is what
+  // opens them.
+  const doorOpenKeys = useMemo(() => openDoorWalkableKeys(doors), [doors]);
+
+  // Check if a hex is blocked (not a floor tile or has an entity).
+  // Open doors are treated as walkable even when not a floor tile.
   // Uses useCallback to ensure stable function reference for downstream memoization
   const isBlocked = useCallback(
     (coord: CubeCoord) => {
       const key = `${coord.x},${coord.y},${coord.z}`;
-      if (!floorTiles.has(key)) {
+      if (!floorTiles.has(key) && !doorOpenKeys.has(key)) {
         return true;
       }
       return entities.some(
@@ -220,7 +234,7 @@ function Scene({
           entity.entityId !== currentEntityId
       );
     },
-    [entities, currentEntityId, floorTiles]
+    [entities, currentEntityId, floorTiles, doorOpenKeys]
   );
 
   // Use the interaction hook for hover/click detection with path preview

@@ -57,6 +57,24 @@ function coordKey(x: number, y: number, z: number): string {
 }
 
 /**
+ * Build a Set of cube-coord keys for every OPEN door.
+ * Used by HexGrid's `isBlocked` to treat open doors as walkable, since the
+ * door's hex sits on the boundary between two rooms and is not part of either
+ * room's floor-tile bbox. Closed doors are excluded — they remain "walls" to
+ * pathfinding until the player opens them via the door click flow.
+ *
+ * Exported for unit testing without rendering HexGrid.
+ */
+export function openDoorWalkableKeys(doors: Iterable<DoorInfo>): Set<string> {
+  const set = new Set<string>();
+  for (const door of doors) {
+    if (!door.position || !door.isOpen) continue;
+    set.add(coordKey(door.position.x, door.position.y, door.position.z));
+  }
+  return set;
+}
+
+/**
  * Create a canonical key for a wall segment.
  * Normalizes direction so that (A->B) and (B->A) produce the same key,
  * preventing duplicate walls when adjacent rooms both report a shared boundary.

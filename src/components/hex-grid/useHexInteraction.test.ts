@@ -324,4 +324,74 @@ describe('useHexInteraction logic', () => {
       expect(hasBlockedHex).toBe(false);
     });
   });
+
+  describe('cross-room pathing through doors (Wave 2)', () => {
+    /**
+     * Mirrors the HexGrid `isBlocked` shape: a hex is blocked unless it's in
+     * `floorTiles` OR in `openDoorKeys`. This is the contract that lets A*
+     * find a path from room A through an open door into room B. Without it,
+     * the door tile (which is in NEITHER room's floor-tile bbox) reads as a
+     * wall and pathing fails — the "client never lets me cross" bug.
+     */
+    function makeIsBlocked(opts: {
+      floorTiles: Map<string, AbsoluteFloorTile>;
+      openDoorKeys: Set<string>;
+    }) {
+      return (coord: CubeCoord) => {
+        const key = `${coord.x},${coord.y},${coord.z}`;
+        return !opts.floorTiles.has(key) && !opts.openDoorKeys.has(key);
+      };
+    }
+
+    it('finds a path from room A through an open door into room B', () => {
+      // Room A floor tiles {(0,0,0), (1,-1,0)}, Room B floor tiles
+      // {(3,-3,0), (4,-4,0)}, door at (2,-2,0).
+      const tiles: Array<[string, AbsoluteFloorTile]> = [
+        ['0,0,0', { x: 0, y: 0, z: 0, roomId: 'A' }],
+        ['1,-1,0', { x: 1, y: -1, z: 0, roomId: 'A' }],
+        ['3,-3,0', { x: 3, y: -3, z: 0, roomId: 'B' }],
+        ['4,-4,0', { x: 4, y: -4, z: 0, roomId: 'B' }],
+      ];
+      const floorTiles = new Map<string, AbsoluteFloorTile>(tiles);
+      const openDoorKeys = new Set<string>(['2,-2,0']);
+
+      const isBlocked = makeIsBlocked({ floorTiles, openDoorKeys });
+
+      const path = findPath(
+        { x: 0, y: 0, z: 0 },
+        { x: 4, y: -4, z: 0 },
+        isBlocked
+      );
+
+      // Path includes start, through door, to end
+      expect(path.length).toBeGreaterThan(0);
+      expect(path[0]).toEqual({ x: 0, y: 0, z: 0 });
+      expect(path[path.length - 1]).toEqual({ x: 4, y: -4, z: 0 });
+      const onPath = (c: CubeCoord) =>
+        path.some((p) => p.x === c.x && p.y === c.y && p.z === c.z);
+      expect(onPath({ x: 2, y: -2, z: 0 })).toBe(true);
+    });
+
+    it('refuses to path when the door is closed', () => {
+      const tiles: Array<[string, AbsoluteFloorTile]> = [
+        ['0,0,0', { x: 0, y: 0, z: 0, roomId: 'A' }],
+        ['1,-1,0', { x: 1, y: -1, z: 0, roomId: 'A' }],
+        ['3,-3,0', { x: 3, y: -3, z: 0, roomId: 'B' }],
+        ['4,-4,0', { x: 4, y: -4, z: 0, roomId: 'B' }],
+      ];
+      const floorTiles = new Map<string, AbsoluteFloorTile>(tiles);
+      const openDoorKeys = new Set<string>(); // door is closed
+
+      const isBlocked = makeIsBlocked({ floorTiles, openDoorKeys });
+
+      const path = findPath(
+        { x: 0, y: 0, z: 0 },
+        { x: 4, y: -4, z: 0 },
+        isBlocked
+      );
+
+      // No path — closed door is impassable
+      expect(path).toEqual([]);
+    });
+  });
 });

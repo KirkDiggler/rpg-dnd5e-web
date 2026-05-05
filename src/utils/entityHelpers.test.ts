@@ -1,4 +1,5 @@
 import { create } from '@bufbuild/protobuf';
+import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import { ConditionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
@@ -12,6 +13,7 @@ import {
   hasCondition,
   isDead,
   isUnconscious,
+  mapEntitiesForRender,
 } from './entityHelpers';
 
 // Helper to create a basic monster entity
@@ -240,6 +242,104 @@ describe('entityHelpers', () => {
         },
       });
       expect(getEntityName(entity)).toBe('obstacle-1');
+    });
+  });
+
+  describe('mapEntitiesForRender', () => {
+    it('maps every entity regardless of roomId (no filter)', () => {
+      // Player in room A, monster in room B — multi-room render scenario
+      const player = create(EntityStateSchema, {
+        entityId: 'player-1',
+        entityType: EntityType.CHARACTER,
+        roomId: 'room-A',
+        position: create(PositionSchema, { x: 0, y: 0, z: 0 }),
+        currentHitPoints: 30,
+        maxHitPoints: 30,
+        activeConditions: [],
+        details: {
+          case: 'characterDetails',
+          value: {
+            name: 'Thorin',
+            race: 1,
+            characterClass: 1,
+            level: 1,
+            armorClass: 15,
+          },
+        },
+      });
+      const monsterRoomB = create(EntityStateSchema, {
+        entityId: 'monster-58b260da',
+        entityType: EntityType.MONSTER,
+        roomId: 'room-B',
+        position: create(PositionSchema, { x: 5, y: -22, z: 17 }),
+        currentHitPoints: 7,
+        maxHitPoints: 7,
+        activeConditions: [],
+        details: {
+          case: 'monsterDetails',
+          value: { name: 'Goblin', monsterType: 24, armorClass: 13 },
+        },
+      });
+
+      const result = mapEntitiesForRender([player, monsterRoomB]);
+
+      // Both entities present — the regression at BattleMapPanel.tsx:75-81
+      // would have dropped one based on currentRoomId.
+      expect(result).toHaveLength(2);
+      const ids = result.map((e) => e.entityId);
+      expect(ids).toContain('player-1');
+      expect(ids).toContain('monster-58b260da');
+    });
+
+    it('translates EntityType into display type', () => {
+      const player = makeCharacter({ entityId: 'p1' });
+      const monster = makeMonster({ entityId: 'm1' });
+      const obstacle = create(EntityStateSchema, {
+        entityId: 'o1',
+        entityType: EntityType.OBSTACLE,
+        details: {
+          case: 'obstacleDetails',
+          value: { obstacleType: 1 },
+        },
+        activeConditions: [],
+      });
+
+      const result = mapEntitiesForRender([player, monster, obstacle]);
+      const byId = new Map(result.map((e) => [e.entityId, e]));
+      expect(byId.get('p1')!.type).toBe('player');
+      expect(byId.get('m1')!.type).toBe('monster');
+      expect(byId.get('o1')!.type).toBe('obstacle');
+    });
+
+    it('marks dead monsters but keeps them in the result', () => {
+      const deadMonster = makeMonster({
+        entityId: 'm1',
+        currentHitPoints: 0,
+      });
+      const result = mapEntitiesForRender([deadMonster]);
+      expect(result).toHaveLength(1);
+      expect(result[0].isDead).toBe(true);
+    });
+
+    it('defaults missing position to {0,0,0}', () => {
+      // Construct without position — proto messages can omit optional fields
+      const entity = create(EntityStateSchema, {
+        entityId: 'no-pos',
+        entityType: EntityType.CHARACTER,
+        activeConditions: [],
+        details: {
+          case: 'characterDetails',
+          value: {
+            name: 'Ghost',
+            race: 1,
+            characterClass: 1,
+            level: 1,
+            armorClass: 10,
+          },
+        },
+      });
+      const result = mapEntitiesForRender([entity]);
+      expect(result[0].position).toEqual({ x: 0, y: 0, z: 0 });
     });
   });
 });
