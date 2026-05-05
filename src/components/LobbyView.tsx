@@ -32,6 +32,7 @@ import {
   formatEntityId,
   monsterTurnsToLogEntries,
 } from '@/utils/monsterTurnUtils';
+import { getMovementRemainingFromCombat } from '@/utils/movementUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   EncounterEndReason,
@@ -692,7 +693,22 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   // Multiplayer sync: Movement completed - sync entity positions and movement resources
   const handleMovementCompleted = useCallback(
     (event: MovementCompletedEvent) => {
-      console.log('🚶 MovementCompleted event received:', event);
+      // [wave2-debug] Surface what the api carried for movement budget so we
+      // can confirm `actionEconomy.movementRemaining` arrived non-zero.
+      // Reading through the deprecated subtraction was the Wave 2 OpenDoor
+      // regression — log both so divergences are obvious in the console.
+      const ae = event.combatState?.currentTurn?.actionEconomy;
+      const dep = event.combatState?.currentTurn;
+      console.log('🚶 MovementCompleted event received:', {
+        entityId: event.entityId,
+        pathLen: event.path.length,
+        hasUpdatedEntity: !!event.updatedEntity,
+        movementRemaining_canonical: ae?.movementRemaining,
+        movementMax_canonical: ae?.movementMax,
+        movementUsed_deprecated: dep?.movementUsed,
+        movementMax_deprecated: dep?.movementMax,
+        currentTurnEntityId: dep?.entityId,
+      });
 
       // --- New path: populate unified encounter state ---
       if (event.updatedEntity) {
@@ -1399,12 +1415,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         walkableTileKeys
       );
 
-      // Validate total movement cost
+      // Validate total movement cost. Read remaining feet through
+      // getMovementRemainingFromCombat, which prefers the canonical
+      // `actionEconomy.movementRemaining` field over the deprecated
+      // `movementMax - movementUsed` subtraction (the latter desyncs after
+      // OpenDoor — see utils/movementUtils.ts).
       const pathCost = (movementPath.length + newSegment.length) * 5; // 5ft per hex
-      const maxMovement = combatState?.currentTurn?.movementMax || 30;
-      const usedMovement = combatState?.currentTurn?.movementUsed || 0;
+      const movementRemaining = getMovementRemainingFromCombat(combatState);
 
-      if (pathCost > maxMovement - usedMovement) {
+      if (pathCost > movementRemaining) {
         console.warn('Not enough movement remaining');
         return; // Don't add to path
       }

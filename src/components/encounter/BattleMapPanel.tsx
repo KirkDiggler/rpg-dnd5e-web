@@ -1,6 +1,7 @@
 import type { DungeonMapState } from '@/hooks/useDungeonMap';
 import { mapEntitiesForRender } from '@/utils/entityHelpers';
 import type { CubeCoord } from '@/utils/hexUtils';
+import { getMovementRemainingFromCombat } from '@/utils/movementUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -148,12 +149,15 @@ export function BattleMapPanel({
         characters={allPartyCharacters}
         monsters={monsters}
         currentEntityId={combatState?.currentTurn?.entityId}
-        movementRemaining={
-          combatState?.currentTurn
-            ? (combatState.currentTurn.movementMax || 30) -
-              (combatState.currentTurn.movementUsed || 0)
-            : 0
-        }
+        // Read from `actionEconomy.movementRemaining` (canonical) with a
+        // fallback to the deprecated `movementMax - movementUsed` subtraction.
+        // The deprecated fields desync after OpenDoor (Wave 2 regression):
+        // they reported 0 ft remaining while actionEconomy correctly carried
+        // 30 ft. Reading the deprecated path was the root cause of "no range
+        // indicator after opening a door", "cannot path into the revealed
+        // room", and "cannot attack monster requiring even one step of
+        // movement". See utils/movementUtils.ts for the resolution order.
+        movementRemaining={getMovementRemainingFromCombat(combatState)}
         isPlayerTurn={
           combatState?.currentTurn?.entityId
             ? availableCharacters.some(

@@ -276,12 +276,40 @@ function Scene({
   }, [hoveredEntity, onHoverChange]);
 
   // Use movement range hook for boundary visualization
-  const { boundaryEdges } = useMovementRange({
+  const { boundaryEdges, reachableHexes } = useMovementRange({
     entityPosition: currentEntityPosition,
     movementRemaining,
     hexSize: HEX_SIZE,
     isBlocked,
   });
+
+  // [wave2-debug] Surface reachable-tiles size when movement-range
+  // visualization is expected to render. If `reachableHexes.size === 0` while
+  // `isPlayerTurn` is true, something upstream is reporting "no movement
+  // left" — the fix is in utils/movementUtils.ts (canonical actionEconomy
+  // path). Logged once per change.
+  useEffect(() => {
+    if (!isPlayerTurn) return;
+    const sample = Array.from(reachableHexes).slice(0, 3);
+    console.log('[wave2-debug] movement range:', {
+      isPlayerTurn,
+      currentEntityId,
+      currentEntityPosition,
+      movementRemaining,
+      reachableSize: reachableHexes.size,
+      reachableSample: sample,
+      floorTilesSize: floorTiles.size,
+      doorOpenKeysSize: doorOpenKeys.size,
+    });
+  }, [
+    isPlayerTurn,
+    currentEntityId,
+    currentEntityPosition,
+    movementRemaining,
+    reachableHexes,
+    floorTiles.size,
+    doorOpenKeys.size,
+  ]);
 
   // Extract door positions for tile coloring
   const doorPositions = useMemo((): CubeCoord[] => {
