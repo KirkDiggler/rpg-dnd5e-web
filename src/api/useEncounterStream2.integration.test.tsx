@@ -1,10 +1,13 @@
-import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { create } from '@bufbuild/protobuf';
+import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEncounterState } from '../hooks/useEncounterState';
 import { hexKey, protoPositionToHex } from '../utils/hexCoord';
 import { createFakeStream, type FakeStream } from './fakeEncounterStream2';
+import { v2PositionToV1 } from './positionConvert';
 
 function makeEvent(caseName: string, value: unknown): EncounterEvent {
   return { event: { case: caseName, value } } as unknown as EncounterEvent;
@@ -44,16 +47,8 @@ function useTestHarness(encounterId: string) {
     },
     onEntityMoved: (e) => {
       const last = e.actualPath[e.actualPath.length - 1];
-      // v2 Position and v1 Position are both {x,y,z} structs but different
-      // TS brands. Double-cast through unknown to satisfy the type checker.
-      // Mirrors LobbyView's wiring at the equivalent dispatch site.
       if (last)
-        state.applyEntityPositionUpdate(
-          e.entityId,
-          last as unknown as Parameters<
-            typeof state.applyEntityPositionUpdate
-          >[1]
-        );
+        state.applyEntityPositionUpdate(e.entityId, v2PositionToV1(last));
     },
     onGeometryRevealed: (e) => {
       const positions = e.hexes
@@ -63,11 +58,11 @@ function useTestHarness(encounterId: string) {
     },
     onEntityAppeared: (e) => {
       if (!e.entity || !e.entity.position) return;
-      // v1alpha2 Entity.id ↔ v1 EntityState.entityId; minimal stub for slice 2
-      const stub = {
+      const stub = create(EntityStateSchema, {
         entityId: e.entity.id,
-        position: e.entity.position,
-      } as unknown as EntityState;
+        position: v2PositionToV1(e.entity.position),
+        entityType: EntityType.UNSPECIFIED,
+      });
       state.applyEntityAppeared(stub);
     },
     onEntityDisappeared: (e) => {
@@ -114,11 +109,12 @@ describe('useEncounterStream2 + useEncounterState — integration', () => {
       )
     );
     await waitFor(() => {
-      expect(result.current.entities.get('alice')?.position).toEqual({
-        x: 2,
-        y: -2,
-        z: 0,
-      });
+      // v2PositionToV1 uses create(PositionSchema) which adds $typeName;
+      // individual field assertions avoid proto-branding false negatives.
+      const pos = result.current.entities.get('alice')?.position;
+      expect(pos?.x).toBe(2);
+      expect(pos?.y).toBe(-2);
+      expect(pos?.z).toBe(0);
     });
   });
 
@@ -207,11 +203,12 @@ describe('useEncounterStream2 + useEncounterState — integration', () => {
       )
     );
     await waitFor(() => {
-      expect(result.current.entities.get('mover')?.position).toEqual({
-        x: 1,
-        y: -1,
-        z: 0,
-      });
+      // v2PositionToV1 uses create(PositionSchema) which adds $typeName;
+      // individual field assertions avoid proto-branding false negatives.
+      const pos = result.current.entities.get('mover')?.position;
+      expect(pos?.x).toBe(1);
+      expect(pos?.y).toBe(-1);
+      expect(pos?.z).toBe(0);
     });
 
     act(() =>
@@ -242,7 +239,11 @@ describe('useEncounterStream2 + useEncounterState — integration', () => {
     await waitFor(() => {
       const m = result.current.entities.get('mover');
       expect(m?.ghost).toBeFalsy();
-      expect(m?.position).toEqual({ x: 5, y: -3, z: -2 });
+      // v2PositionToV1 uses create(PositionSchema) which adds $typeName;
+      // individual field assertions avoid proto-branding false negatives.
+      expect(m?.position?.x).toBe(5);
+      expect(m?.position?.y).toBe(-3);
+      expect(m?.position?.z).toBe(-2);
     });
   });
 });
