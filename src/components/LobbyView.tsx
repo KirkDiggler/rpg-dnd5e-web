@@ -1210,9 +1210,11 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
   // Subscribe to v1alpha2 encounter stream (runs alongside v1 in slice 2)
   useEncounterStream2(encounterId, playerId, {
-    onSnapshotDelivered: (event) => {
-      // v1alpha2 stream barrier — payload empty in slice 1; just log
-      console.log('[v2] snapshot delivered, encounter:', event.encounter);
+    onSnapshotDelivered: () => {
+      // v1alpha2 stream-up barrier. Payload `encounter` is empty in slice 1
+      // (toolkit Snapshot doesn't map yet); fires on every connect/reconnect.
+      // Don't log the payload — empty proto noise on every reconnect.
+      console.log('[v2] snapshot delivered');
     },
     onEntityMoved: (event) => {
       // Teleport-to-final per spec; ignore intermediate path hexes in slice 2
@@ -1237,11 +1239,19 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       if (!event.entity || !event.entity.position) return;
       // v1alpha2 Entity uses `id` (not `entityId`); applyEntityAppeared takes
       // v1's EntityState shape. Construct the minimum-viable EntityState from
-      // the v2 Entity — slice 2 only renders position; future slices that
-      // need richer fields (HP, type, etc.) can extend this translation.
+      // the v2 Entity — slice 2 only renders position. Default the fields that
+      // existing readers (getEntityName, entityDisplayType, hasCondition, etc.)
+      // dereference, so a stub-only entity doesn't crash when consumed:
+      //   - details: oneof wrapper with case=undefined (no character/monster details)
+      //   - activeConditions: empty array (hasCondition iterates this)
+      //   - entityType: UNSPECIFIED (entityDisplayType falls through to obstacle)
+      // Future slices that need richer v2→v1 mapping can extend the translation.
       const stub = {
         entityId: event.entity.id,
         position: event.entity.position,
+        entityType: EntityType.UNSPECIFIED,
+        details: { case: undefined, value: undefined },
+        activeConditions: [],
       } as unknown as EntityState;
       applyEntityAppeared(stub);
     },
