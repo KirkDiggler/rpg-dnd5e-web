@@ -14,6 +14,7 @@ import {
   CombatStateSchema,
   DoorInfoSchema,
   EncounterStateDataSchema,
+  type EntityState,
   EntityStateSchema,
   RoomLayoutSchema,
   TurnStateSchema,
@@ -23,7 +24,11 @@ import {
   EntityType,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { describe, expect, it } from 'vitest';
+import { hexKey } from '../utils/hexCoord';
 import {
+  applyEntityAppeared,
+  applyEntityDisappeared,
+  applyHexRevealed,
   applySnapshotToState,
   createEmptyEncounterState,
   mergeEntityPosition,
@@ -518,5 +523,139 @@ describe('updateCombatState', () => {
     expect(next.revealedRoomIds).toEqual(['room-1']);
     expect(next.roomsCleared).toBe(5);
     expect(next.dungeonState).toBe(DungeonState.ACTIVE);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helper for v1alpha2 tests
+// ---------------------------------------------------------------------------
+
+function makeTestEntity(
+  id: string,
+  pos: { x: number; y: number; z: number }
+): EntityState {
+  return create(EntityStateSchema, {
+    entityId: id,
+    position: create(PositionSchema, { x: pos.x, y: pos.y, z: pos.z }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// v1alpha2 reducer additions
+// ---------------------------------------------------------------------------
+
+describe('v1alpha2 reducer additions', () => {
+  describe('applyHexRevealed', () => {
+    it('adds hexes to revealedHexes without dropping existing reveals', () => {
+      const prev = createEmptyEncounterState();
+      const after1 = applyHexRevealed(prev, [{ q: 0, r: 0, s: 0 }]);
+      expect(after1.revealedHexes.has(hexKey({ q: 0, r: 0, s: 0 }))).toBe(true);
+
+      const after2 = applyHexRevealed(after1, [{ q: 1, r: -1, s: 0 }]);
+      expect(after2.revealedHexes.has(hexKey({ q: 0, r: 0, s: 0 }))).toBe(true);
+      expect(after2.revealedHexes.has(hexKey({ q: 1, r: -1, s: 0 }))).toBe(
+        true
+      );
+    });
+
+    it('is idempotent on duplicate hexes', () => {
+      const prev = applyHexRevealed(createEmptyEncounterState(), [
+        { q: 2, r: -1, s: -1 },
+      ]);
+      const after = applyHexRevealed(prev, [{ q: 2, r: -1, s: -1 }]);
+      expect(after.revealedHexes.size).toBe(1);
+    });
+  });
+
+  describe('applyEntityAppeared', () => {
+    it('adds a new entity at first-visible position with ghost cleared', () => {
+      const prev = createEmptyEncounterState();
+      const entity = makeTestEntity('goblin-1', { x: 3, y: -2, z: -1 });
+      const after = applyEntityAppeared(prev, entity);
+      const stored = after.entities.get('goblin-1');
+      expect(stored).toBeDefined();
+      expect(stored?.ghost).toBeFalsy();
+    });
+
+    it('clears the ghost flag on a previously-disappeared entity', () => {
+      const entity = makeTestEntity('alice', { x: 0, y: 0, z: 0 });
+      const withEntity = mergeEntityUpdates(createEmptyEncounterState(), [
+        entity,
+      ]);
+      const ghosted = applyEntityDisappeared(withEntity, 'alice', {
+        q: 1,
+        r: -1,
+        s: 0,
+      });
+      expect(ghosted.entities.get('alice')?.ghost).toBe(true);
+
+      const reappeared = applyEntityAppeared(
+        ghosted,
+        makeTestEntity('alice', { x: 5, y: -3, z: -2 })
+      );
+      expect(reappeared.entities.get('alice')?.ghost).toBeFalsy();
+    });
+  });
+
+  describe('applyEntityDisappeared', () => {
+    it('keeps entity in store, sets ghost=true, updates position to last_known', () => {
+      const entity = makeTestEntity('bob', { x: 0, y: 0, z: 0 });
+      const prev = mergeEntityUpdates(createEmptyEncounterState(), [entity]);
+      const after = applyEntityDisappeared(prev, 'bob', {
+        q: 4,
+        r: -2,
+        s: -2,
+      });
+      const stored = after.entities.get('bob');
+      expect(stored?.ghost).toBe(true);
+      expect(stored?.position?.x).toBe(4);
+      expect(stored?.position?.y).toBe(-2);
+      expect(stored?.position?.z).toBe(-2);
+    });
+
+    it('is a no-op if the entity is not in state (defensive)', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyEntityDisappeared(prev, 'unknown', {
+        q: 0,
+        r: 0,
+        s: 0,
+      });
+      expect(after.entities.size).toBe(0);
+    });
+  });
+
+  describe('appear/disappear sequences', () => {
+    it('survives appeared → moved → disappeared → appeared cleanly', () => {
+      let state = createEmptyEncounterState();
+      state = applyEntityAppeared(
+        state,
+        makeTestEntity('mover', { x: 0, y: 0, z: 0 })
+      );
+      expect(state.entities.get('mover')?.ghost).toBeFalsy();
+
+      state = mergeEntityPosition(
+        state,
+        'mover',
+        create(PositionSchema, { x: 1, y: -1, z: 0 })
+      );
+      expect(state.entities.get('mover')?.position?.x).toBe(1);
+      expect(state.entities.get('mover')?.position?.y).toBe(-1);
+      expect(state.entities.get('mover')?.position?.z).toBe(0);
+
+      state = applyEntityDisappeared(state, 'mover', { q: 2, r: -1, s: -1 });
+      expect(state.entities.get('mover')?.ghost).toBe(true);
+      expect(state.entities.get('mover')?.position?.x).toBe(2);
+      expect(state.entities.get('mover')?.position?.y).toBe(-1);
+      expect(state.entities.get('mover')?.position?.z).toBe(-1);
+
+      state = applyEntityAppeared(
+        state,
+        makeTestEntity('mover', { x: 5, y: -3, z: -2 })
+      );
+      expect(state.entities.get('mover')?.ghost).toBeFalsy();
+      expect(state.entities.get('mover')?.position?.x).toBe(5);
+      expect(state.entities.get('mover')?.position?.y).toBe(-3);
+      expect(state.entities.get('mover')?.position?.z).toBe(-2);
+    });
   });
 });
