@@ -43,6 +43,9 @@ beforeEach(() => {
 
 afterEach(() => {
   hoisted.fakeRef.current = null;
+  // Defensive: ensure fake timers don't bleed into the next test if the
+  // reconnect test fails before reaching its inline vi.useRealTimers() call.
+  vi.useRealTimers();
 });
 
 describe('useEncounterStream2', () => {
@@ -133,6 +136,11 @@ describe('useEncounterStream2', () => {
   });
 
   it('reconnects with exponential backoff on stream error', async () => {
+    // Known: act() warnings appear here because fake.error() and
+    // vi.advanceTimersByTime() wake microtasks that scheduleReconnect/connect
+    // run on. The async setConnectionState calls escape the synchronous act()
+    // boundary; vi.waitFor compensates. This is a known rough edge in the
+    // React Testing Library + Vitest fake-timers combination, not a test bug.
     vi.useFakeTimers();
     const { result } = renderHook(() =>
       useEncounterStream2('enc-1', 'alice', {})
