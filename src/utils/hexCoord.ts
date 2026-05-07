@@ -1,8 +1,13 @@
 /**
- * Cube hex coordinates (q, r, s) used by src/components/hex-grid/hexMath.ts.
+ * Cube hex coordinates (q, r, s) — the v1alpha2 coordinate-transform path.
  * The cube invariant q + r + s = 0 holds for valid hexes.
+ *
+ * Distinct from src/rendering/FloorBuilder.ts's `HexCoord` (2-field axial
+ * `{q, r}`) and src/components/hex-grid/hexMath.ts's `CubeCoord` (3-field
+ * `{x, y, z}`). The intentional rename to `CubeHexCoord` avoids structural-
+ * typing collisions with those neighbors.
  */
-export interface HexCoord {
+export interface CubeHexCoord {
   q: number;
   r: number;
   s: number;
@@ -20,17 +25,17 @@ export interface ProtoPosition {
   z: number;
 }
 
-export function protoPositionToHex(pos: ProtoPosition): HexCoord {
+export function protoPositionToHex(pos: ProtoPosition): CubeHexCoord {
   return { q: pos.x, r: pos.y, s: pos.z };
 }
 
-export function hexToProtoPosition(hex: HexCoord): ProtoPosition {
+export function hexToProtoPosition(hex: CubeHexCoord): ProtoPosition {
   return { x: hex.q, y: hex.r, z: hex.s };
 }
 
 /**
  * Stable string key for a hex coord — usable in Set<string> / Map<string, T>.
  */
-export function hexKey(hex: HexCoord): string {
+export function hexKey(hex: CubeHexCoord): string {
   return `${hex.q},${hex.r},${hex.s}`;
 }
