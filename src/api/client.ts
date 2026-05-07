@@ -4,6 +4,7 @@ import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { DiceService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { EncounterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { EncounterService as EncounterServiceV2 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 
 import { getDiscordToken, getPlayerId } from './auth';
 
@@ -84,3 +85,6 @@ export const diceClient = createClient(DiceService, transport);
 
 // Create the encounter service client
 export const encounterClient = createClient(EncounterService, transport);
+
+// Create the v1alpha2 encounter service client
+export const encounterClientV2 = createClient(EncounterServiceV2, transport);
