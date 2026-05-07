@@ -32,6 +32,7 @@ import {
   formatEntityId,
   monsterTurnsToLogEntries,
 } from '@/utils/monsterTurnUtils';
+import { getMovementRemainingFromCombat } from '@/utils/movementUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   EncounterEndReason,
@@ -140,17 +141,21 @@ function entityStateToPlacement(entity: EntityState): EntityPlacement {
 }
 
 /**
- * Build a legacy Room object from EncounterStateData for addRoomToMap compatibility.
- * Uses the current room's RoomLayout + entities assigned to that room.
+ * Build a legacy Room object from a single RoomLayout in EncounterStateData.
+ * `roomId` selects which room to materialize; entities are filtered to that
+ * room via `entity.roomId`.
  */
-function roomFromEncounterState(data: EncounterStateData): Room | undefined {
-  const roomLayout = data.rooms[data.currentRoomId];
+function buildLegacyRoom(
+  data: EncounterStateData,
+  roomId: string
+): Room | undefined {
+  const roomLayout = data.rooms[roomId];
   if (!roomLayout) return undefined;
 
-  // Collect entities that belong to the current room
+  // Collect entities that belong to this specific room
   const entities: { [key: string]: EntityPlacement } = {};
   for (const entity of Object.values(data.entities)) {
-    if (entity.roomId === data.currentRoomId) {
+    if (entity.roomId === roomId) {
       entities[entity.entityId] = entityStateToPlacement(entity);
     }
   }
@@ -167,6 +172,54 @@ function roomFromEncounterState(data: EncounterStateData): Room | undefined {
     $typeName: 'dnd5e.api.v1alpha1.Room' as const,
     $unknown: undefined,
   } as Room;
+}
+
+/**
+ * Build a legacy Room object from EncounterStateData for addRoomToMap compatibility.
+ * Uses the current room's RoomLayout + entities assigned to that room.
+ */
+function roomFromEncounterState(data: EncounterStateData): Room | undefined {
+  return buildLegacyRoom(data, data.currentRoomId);
+}
+
+/**
+ * Build legacy Room objects for every revealed room in EncounterStateData,
+ * ordered with the current room LAST.
+ *
+ * Why this exists: when the api emits `RoomRevealed` (player opened a door),
+ * `data.currentRoomId` is still the player's CURRENT room — opening a door
+ * does not move the player. The just-revealed room lives in `data.rooms`
+ * but `currentRoomId` does NOT point at it. Building only the current room
+ * (the prior `roomFromEncounterState` behavior) means `addRoomToMap` never
+ * sees the revealed room's RoomLayout, so its floor tiles never get
+ * generated and the revealed room ends up empty inside.
+ *
+ * Iterating `data.revealedRoomIds` here mirrors the "revealed rooms are
+ * first-class" pattern already followed by `BattleMapPanel` (renders
+ * entities from every revealed room) and `openDoorWalkableKeys` (treats
+ * every open door as walkable). Current room is forced last so that
+ * `mergeRoom`'s `currentRoomId: room.id` write ends up correct.
+ *
+ * Defensive: iterates `revealedRoomIds` rather than `Object.keys(data.rooms)`
+ * so we never materialize a room layout that arrived but wasn't revealed
+ * (the API contract says `data.rooms` only contains revealed rooms today,
+ * but we don't depend on that). Rooms with no RoomLayout are skipped.
+ *
+ * Returns rooms in deterministic order (alphabetical by id, current room
+ * forced to the end).
+ */
+function roomsFromEncounterState(data: EncounterStateData): Room[] {
+  const revealed = data.revealedRoomIds.filter((id) => data.rooms[id]).sort();
+  const ordered = [
+    ...revealed.filter((id) => id !== data.currentRoomId),
+    ...(revealed.includes(data.currentRoomId) ? [data.currentRoomId] : []),
+  ];
+  const rooms: Room[] = [];
+  for (const id of ordered) {
+    const room = buildLegacyRoom(data, id);
+    if (room) rooms.push(room);
+  }
+  return rooms;
 }
 
 /**
@@ -252,6 +305,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     state: encounterState,
     applySnapshot,
     applyEntityUpdates,
+    applyEntityPositionUpdate,
     applyCombatState: applyEncounterCombatState,
     reset: resetEncounterState,
   } = useEncounterState();
@@ -328,6 +382,18 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   // Dungeon stream event handlers
   const handleRoomRevealed = useCallback(
     (event: RoomRevealedEvent) => {
+      console.log('🚪 RoomRevealed event received:', {
+        connectionId: event.connectionId,
+        currentRoomId: event.encounterStateData?.currentRoomId,
+        roomCount: event.encounterStateData
+          ? Object.keys(event.encounterStateData.rooms).length
+          : 0,
+        revealedRoomIds: event.encounterStateData?.revealedRoomIds,
+        entityCount: event.encounterStateData
+          ? Object.keys(event.encounterStateData.entities).length
+          : 0,
+      });
+
       // Trigger fade transition
       setIsTransitioning(true);
 
@@ -337,12 +403,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
           applySnapshot(event.encounterStateData);
 
           // --- Legacy path: build Room/CombatState from encounterStateData ---
-          const legacyRoom = roomFromEncounterState(event.encounterStateData);
-          if (legacyRoom) {
-            addRoomToMap(
-              legacyRoom,
-              doorsFromEncounterState(event.encounterStateData)
-            );
+          // Iterate every revealed room so the freshly-revealed room's floor
+          // tiles get generated. `data.currentRoomId` still points at the
+          // player's current room here — the revealed room only exists in
+          // `data.rooms`. See roomsFromEncounterState for full reasoning.
+          const doors = doorsFromEncounterState(event.encounterStateData);
+          for (const legacyRoom of roomsFromEncounterState(
+            event.encounterStateData
+          )) {
+            addRoomToMap(legacyRoom, doors);
           }
           setCombatState(event.encounterStateData.combat ?? null);
           setRoomsCleared(event.encounterStateData.roomsCleared);
@@ -628,10 +697,38 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   // Multiplayer sync: Movement completed - sync entity positions and movement resources
   const handleMovementCompleted = useCallback(
     (event: MovementCompletedEvent) => {
-      console.log('🚶 MovementCompleted event received:', event);
+      // [wave2-debug] Surface what the api carried for movement budget so we
+      // can confirm `actionEconomy.movementRemaining` arrived non-zero.
+      // Reading through the deprecated subtraction was the Wave 2 OpenDoor
+      // regression — log both so divergences are obvious in the console.
+      const ae = event.combatState?.currentTurn?.actionEconomy;
+      const dep = event.combatState?.currentTurn;
+      console.log('🚶 MovementCompleted event received:', {
+        entityId: event.entityId,
+        pathLen: event.path.length,
+        hasUpdatedEntity: !!event.updatedEntity,
+        movementRemaining_canonical: ae?.movementRemaining,
+        movementMax_canonical: ae?.movementMax,
+        movementUsed_deprecated: dep?.movementUsed,
+        movementMax_deprecated: dep?.movementMax,
+        currentTurnEntityId: dep?.entityId,
+      });
 
       // --- New path: populate unified encounter state ---
-      if (event.updatedEntity) applyEntityUpdates([event.updatedEntity]);
+      if (event.updatedEntity) {
+        // Preferred: API sent a full entity snapshot. Use it as-is.
+        applyEntityUpdates([event.updatedEntity]);
+      } else if (event.entityId && event.path.length > 0) {
+        // Fallback: API sent only a path (e.g. player moves currently omit
+        // updatedEntity — see rpg-api fix/cross-room-state-wave2). Mirror the
+        // applyMonsterMovement pattern: use the final path coordinate as the
+        // new position for the existing entity. No-op if the entity is not
+        // already in encounter state.
+        const finalPosition = event.path[event.path.length - 1];
+        if (finalPosition) {
+          applyEntityPositionUpdate(event.entityId, finalPosition);
+        }
+      }
       if (event.combatState) applyEncounterCombatState(event.combatState);
 
       // --- Legacy path ---
@@ -640,7 +737,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         setCombatState(event.combatState);
       }
     },
-    [applyEntityUpdates, applyEncounterCombatState]
+    [applyEntityUpdates, applyEntityPositionUpdate, applyEncounterCombatState]
   );
 
   // Multiplayer sync: Feature activated - sync feature usage
@@ -802,18 +899,26 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         // Set monsters (for monsterType texture selection)
         setMonsters(monstersFromEncounterState(esd));
 
-        // Build legacy Room and add to dungeon map
+        // Build legacy Room and add to dungeon map. processMonsterTurns
+        // applies monster movement to the current room only (its scope) —
+        // other revealed rooms are added as-is.
         let legacyRoom = roomFromEncounterState(esd);
-
-        // Process monster turns if present (monsters won initiative)
         legacyRoom = processMonsterTurns(
           event.monsterTurns,
           esd.combat,
           legacyRoom
         );
 
+        const doors = doorsFromEncounterState(esd);
+        // Add other revealed rooms first; current room added last so
+        // mergeRoom's currentRoomId write resolves correctly.
+        for (const room of roomsFromEncounterState(esd)) {
+          if (room.id !== esd.currentRoomId) {
+            addRoomToMap(room, doors);
+          }
+        }
         if (legacyRoom) {
-          addRoomToMap(legacyRoom, doorsFromEncounterState(esd));
+          addRoomToMap(legacyRoom, doors);
         }
 
         // Extract party character IDs from character entities for selectedCharacterIds
@@ -856,8 +961,17 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         }
       }
 
-      // Apply room from snapshot into dungeon map
-      if (snapshot.room) {
+      // Apply rooms from snapshot into dungeon map. Prefer multi-room
+      // iteration from encounterStateData (matches the RoomRevealed flow);
+      // fall back to legacy single-room `snapshot.room` only when
+      // encounterStateData is absent.
+      if (snapshot.encounterStateData) {
+        const esd = snapshot.encounterStateData;
+        const doors = doorsFromEncounterState(esd);
+        for (const room of roomsFromEncounterState(esd)) {
+          addRoomToMap(room, doors);
+        }
+      } else if (snapshot.room) {
         addRoomToMap(snapshot.room, snapshot.doors ?? []);
       }
 
@@ -1322,12 +1436,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
         walkableTileKeys
       );
 
-      // Validate total movement cost
+      // Validate total movement cost. Read remaining feet through
+      // getMovementRemainingFromCombat, which prefers the canonical
+      // `actionEconomy.movementRemaining` field over the deprecated
+      // `movementMax - movementUsed` subtraction (the latter desyncs after
+      // OpenDoor — see utils/movementUtils.ts).
       const pathCost = (movementPath.length + newSegment.length) * 5; // 5ft per hex
-      const maxMovement = combatState?.currentTurn?.movementMax || 30;
-      const usedMovement = combatState?.currentTurn?.movementUsed || 0;
+      const movementRemaining = getMovementRemainingFromCombat(combatState);
 
-      if (pathCost > maxMovement - usedMovement) {
+      if (pathCost > movementRemaining) {
         console.warn('Not enough movement remaining');
         return; // Don't add to path
       }
@@ -2177,10 +2294,11 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                   // Legacy: set monsters for texture selection
                   setMonsters(monstersFromEncounterState(esd));
 
-                  // Legacy: build Room and add to dungeon map
+                  // Legacy: build Room and add to dungeon map.
+                  // processMonsterTurns scope is the current room only;
+                  // other revealed rooms are added as-is for multi-room
+                  // rendering parity with handleCombatStarted.
                   let legacyRoom = roomFromEncounterState(esd);
-
-                  // Process monster turns and get updated room
                   legacyRoom = processMonsterTurns(
                     event.monsterTurns,
                     esd.combat,
@@ -2188,7 +2306,13 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                   );
 
                   if (legacyRoom) {
-                    addRoomToMap(legacyRoom, doorsFromEncounterState(esd));
+                    const doors = doorsFromEncounterState(esd);
+                    for (const room of roomsFromEncounterState(esd)) {
+                      if (room.id !== esd.currentRoomId) {
+                        addRoomToMap(room, doors);
+                      }
+                    }
+                    addRoomToMap(legacyRoom, doors);
                     addToast({
                       type: 'success',
                       message: 'Combat started!',

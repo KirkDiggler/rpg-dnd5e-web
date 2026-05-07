@@ -29,6 +29,7 @@ import {
   createEmptyState,
   generateFloorTiles,
   mergeRoom,
+  openDoorWalkableKeys,
   updateEntitiesFromRoom,
   wallKey,
 } from './useDungeonMap';
@@ -877,5 +878,61 @@ describe('mergeRoom wall deduplication', () => {
 
     // Should be 1, not 2 — the reversed wall is the same physical wall
     expect(state.walls.size).toBe(1);
+  });
+});
+
+describe('openDoorWalkableKeys', () => {
+  it('returns only OPEN doors as walkable cube keys', () => {
+    const closed = createDoor('conn-closed', 5, -5, 0, false);
+    const open = createDoor('conn-open', 0, -17, 17, true);
+
+    const keys = openDoorWalkableKeys([closed, open]);
+
+    expect(keys.size).toBe(1);
+    expect(keys.has('0,-17,17')).toBe(true);
+    expect(keys.has('5,-5,0')).toBe(false);
+  });
+
+  it('returns empty set when no doors', () => {
+    expect(openDoorWalkableKeys([]).size).toBe(0);
+  });
+
+  it('skips doors with no position', () => {
+    const noPos = create(DoorInfoSchema, {
+      connectionId: 'no-pos',
+      isOpen: true,
+    });
+    const keys = openDoorWalkableKeys([noPos]);
+    expect(keys.size).toBe(0);
+  });
+
+  it('used as walkable in a room-A → room-B path: door tile traversable when open', () => {
+    // Two rooms separated by a door tile that is in NEITHER room's bbox.
+    // Room A: 2x1 at origin (0,0,0) → tiles {(0,0,0), (1,-1,0)}
+    // Room B: 2x1 at origin (3,_,0) → tiles {(3,-3,0), (4,-4,0)}
+    // Door at (2,-2,0) bridges them. Without openDoorWalkableKeys, the door
+    // tile is a "wall" to A* and pathing fails.
+    let state = createEmptyState();
+    state = mergeRoom(
+      state,
+      createRoom({ id: 'room-A', width: 2, height: 1 }),
+      []
+    );
+    state = mergeRoom(
+      state,
+      createRoom({ id: 'room-B', width: 2, height: 1, originX: 3, originZ: 0 }),
+      [createDoor('conn-AB', 2, -2, 0, true)]
+    );
+
+    const walkable = openDoorWalkableKeys(state.doors.values());
+    expect(walkable.has('2,-2,0')).toBe(true);
+
+    // Combined walkable set is what HexGrid's isBlocked treats as passable.
+    const combined = new Set<string>([...state.floorTiles.keys(), ...walkable]);
+    expect(combined.has('0,0,0')).toBe(true); // room A start
+    expect(combined.has('1,-1,0')).toBe(true); // room A
+    expect(combined.has('2,-2,0')).toBe(true); // open door
+    expect(combined.has('3,-3,0')).toBe(true); // room B
+    expect(combined.has('4,-4,0')).toBe(true); // room B end
   });
 });

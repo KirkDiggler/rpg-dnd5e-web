@@ -74,6 +74,56 @@ export function getHealthCategory(entity: EntityState): HealthCategory {
 }
 
 /**
+ * Renderable shape consumed by HexGrid / BattleMapPanel.
+ * Pure data — no dependence on render state.
+ */
+export interface RenderableEntity {
+  entityId: string;
+  name: string;
+  position: { x: number; y: number; z: number };
+  type: 'player' | 'monster' | 'obstacle';
+  isDead: boolean;
+}
+
+function entityDisplayType(
+  entity: EntityState
+): 'player' | 'monster' | 'obstacle' {
+  if (entity.entityType === EntityType.CHARACTER) return 'player';
+  if (entity.entityType === EntityType.MONSTER) return 'monster';
+  return 'obstacle';
+}
+
+/**
+ * Map every EntityState in the unified encounter store into the renderable
+ * shape consumed by HexGrid. Iterates over ALL entities — does not filter by
+ * `entity.roomId`. Multi-room rendering depends on the player and monsters in
+ * other revealed rooms staying on screen even when `currentRoomId` changes.
+ *
+ * Use this for the unified-state path (preferred). The legacy
+ * `dungeonMap.entities` fallback in BattleMapPanel uses a slightly different
+ * shape (no `getEntityName`, has `deadMonsterIds` set) and is not covered here.
+ */
+export function mapEntitiesForRender(
+  entities: Iterable<EntityState>
+): RenderableEntity[] {
+  const result: RenderableEntity[] = [];
+  for (const entity of entities) {
+    result.push({
+      entityId: entity.entityId,
+      name: getEntityName(entity),
+      position: {
+        x: entity.position?.x || 0,
+        y: entity.position?.y || 0,
+        z: entity.position?.z || 0,
+      },
+      type: entityDisplayType(entity),
+      isDead: isDead(entity),
+    });
+  }
+  return result;
+}
+
+/**
  * Extracts the display name from an entity's details oneof.
  * Falls back to entityId if details are not character or monster.
  */

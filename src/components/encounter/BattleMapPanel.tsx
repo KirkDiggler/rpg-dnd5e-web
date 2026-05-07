@@ -1,6 +1,7 @@
 import type { DungeonMapState } from '@/hooks/useDungeonMap';
-import { getEntityName, isDead } from '@/utils/entityHelpers';
+import { mapEntitiesForRender } from '@/utils/entityHelpers';
 import type { CubeCoord } from '@/utils/hexUtils';
+import { getMovementRemainingFromCombat } from '@/utils/movementUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -68,38 +69,19 @@ export function BattleMapPanel({
 
   // Build entities array, preferring unified entity state when available.
   // Falls back to accumulated dungeonMap entities (legacy path).
+  //
+  // Render every entity in the unified state regardless of `entity.roomId`.
+  // `dungeonMap.floorTiles` accumulates tiles for every revealed room, so once
+  // a room is revealed its entities are first-class and must render alongside
+  // the player's current room. Filtering by `currentRoomId` here was the cause
+  // of "the new room is always empty" / "player vanishes when door opens" —
+  // see Wave 2 cross-room render bug. Per `feedback_no_logic_in_web`, the web
+  // renders what the API sends; visibility decisions belong to the API.
   const entities = useMemo(() => {
-    // Prefer unified entity state when available
+    // Prefer unified entity state when available — render every entity, no
+    // filter on `entity.roomId`. See header comment above.
     if (encounterEntities && encounterEntities.size > 0) {
-      return Array.from(encounterEntities.values())
-        .filter((entity) => {
-          // Only show entities in the current room (if they have a roomId)
-          if (entity.roomId && dungeonMap.currentRoomId) {
-            return entity.roomId === dungeonMap.currentRoomId;
-          }
-          return true;
-        })
-        .map((entity) => {
-          let displayType: 'player' | 'monster' | 'obstacle';
-          if (entity.entityType === EntityType.CHARACTER) {
-            displayType = 'player';
-          } else if (entity.entityType === EntityType.MONSTER) {
-            displayType = 'monster';
-          } else {
-            displayType = 'obstacle';
-          }
-          return {
-            entityId: entity.entityId,
-            name: getEntityName(entity),
-            position: {
-              x: entity.position?.x || 0,
-              y: entity.position?.y || 0,
-              z: entity.position?.z || 0,
-            },
-            type: displayType,
-            isDead: isDead(entity),
-          };
-        });
+      return mapEntitiesForRender(encounterEntities.values());
     }
 
     // Fallback to legacy dungeonMap.entities
@@ -131,7 +113,6 @@ export function BattleMapPanel({
   }, [
     encounterEntities,
     dungeonMap.entities,
-    dungeonMap.currentRoomId,
     allPartyCharacters,
     deadMonsterIds,
   ]);
@@ -168,12 +149,15 @@ export function BattleMapPanel({
         characters={allPartyCharacters}
         monsters={monsters}
         currentEntityId={combatState?.currentTurn?.entityId}
-        movementRemaining={
-          combatState?.currentTurn
-            ? (combatState.currentTurn.movementMax || 30) -
-              (combatState.currentTurn.movementUsed || 0)
-            : 0
-        }
+        // Read from `actionEconomy.movementRemaining` (canonical) with a
+        // fallback to the deprecated `movementMax - movementUsed` subtraction.
+        // The deprecated fields desync after OpenDoor (Wave 2 regression):
+        // they reported 0 ft remaining while actionEconomy correctly carried
+        // 30 ft. Reading the deprecated path was the root cause of "no range
+        // indicator after opening a door", "cannot path into the revealed
+        // room", and "cannot attack monster requiring even one step of
+        // movement". See utils/movementUtils.ts for the resolution order.
+        movementRemaining={getMovementRemainingFromCombat(combatState)}
         isPlayerTurn={
           combatState?.currentTurn?.entityId
             ? availableCharacters.some(

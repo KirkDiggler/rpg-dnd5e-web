@@ -9,6 +9,7 @@
  * Part of the unified entity state refactor (rpg-dnd5e-web feat-unified-entity-state).
  */
 
+import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type {
   CombatState,
   DoorInfo,
@@ -91,6 +92,32 @@ export function mergeEntityUpdates(
 }
 
 /**
+ * Update only the position of an entity already present in state.
+ *
+ * Used as a fallback consumer for MovementCompletedEvent when the API does
+ * not include a full updatedEntity but does include a path[] — we synthesize
+ * the position update from path[path.length-1]. Mirrors the legacy
+ * applyMonsterMovement pattern (clone-with-new-position) but writes to the
+ * unified entity store.
+ *
+ * If the entity is not present, returns prev unchanged — we don't fabricate
+ * entities from a position alone.
+ *
+ * Exported for testing.
+ */
+export function mergeEntityPosition(
+  prev: LocalEncounterState,
+  entityId: string,
+  position: Position
+): LocalEncounterState {
+  const existing = prev.entities.get(entityId);
+  if (!existing) return prev;
+  const newEntities = new Map(prev.entities);
+  newEntities.set(entityId, { ...existing, position });
+  return { ...prev, entities: newEntities };
+}
+
+/**
  * Replace combat state without touching entities or other fields.
  * Exported for testing.
  */
@@ -107,6 +134,12 @@ export interface UseEncounterStateResult {
   applySnapshot: (proto: EncounterStateData) => void;
   /** Merge entity deltas by ID without losing unaffected entities (delta event) */
   applyEntityUpdates: (updates: EntityState[]) => void;
+  /**
+   * Update only the position of an existing entity. Used as a fallback for
+   * MovementCompletedEvent when the API omits updatedEntity but sends path[].
+   * No-op if the entity is not already in state.
+   */
+  applyEntityPositionUpdate: (entityId: string, position: Position) => void;
   /** Update combat state only (turn progression events) */
   applyCombatState: (combat: CombatState) => void;
   /** Reset to empty state (new encounter or disconnect) */
@@ -130,6 +163,13 @@ export function useEncounterState(): UseEncounterStateResult {
     setState((prev) => mergeEntityUpdates(prev, updates));
   }, []);
 
+  const applyEntityPositionUpdate = useCallback(
+    (entityId: string, position: Position) => {
+      setState((prev) => mergeEntityPosition(prev, entityId, position));
+    },
+    []
+  );
+
   const applyCombatState = useCallback((combat: CombatState) => {
     setState((prev) => updateCombatState(prev, combat));
   }, []);
@@ -142,6 +182,7 @@ export function useEncounterState(): UseEncounterStateResult {
     state,
     applySnapshot,
     applyEntityUpdates,
+    applyEntityPositionUpdate,
     applyCombatState,
     reset,
   };

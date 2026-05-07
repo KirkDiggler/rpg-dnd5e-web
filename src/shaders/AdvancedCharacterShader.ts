@@ -159,16 +159,45 @@ export function createAdvancedCharacterShader(
             varying vec2 vUv;
             varying vec3 vNormal;
             varying vec3 vViewPosition;
+            varying vec3 vInstanceColor;
 
+            // NOTE on instancing:
+            // Three.js auto-defines USE_INSTANCING (and declares
+            // \`attribute mat4 instanceMatrix;\`) when this material is used on
+            // an InstancedMesh. Same for USE_INSTANCING_COLOR + instanceColor.
+            // Without the instanceMatrix multiply below, every InstancedMesh
+            // instance renders at the geometry's local origin — i.e. all
+            // floor tiles stack on top of each other at world (0,0,0). This
+            // was the "only the (0,0,0) hex shows" Wave 2 bug.
             void main() {
                 // Pass UV coordinates for texture sampling
                 vUv = uv;
 
-                // Pass normals for lighting
-                vNormal = normalize(normalMatrix * normal);
+                // Per-instance color (defaults to white when not instanced)
+                #ifdef USE_INSTANCING_COLOR
+                    vInstanceColor = instanceColor;
+                #else
+                    vInstanceColor = vec3(1.0);
+                #endif
+
+                // Apply instanceMatrix for InstancedMesh instances. For
+                // non-instanced meshes, this branch is compiled out and the
+                // standard non-instanced path runs (preserves character /
+                // hair / non-instanced wall rendering).
+                #ifdef USE_INSTANCING
+                    vec4 instancedPosition = instanceMatrix * vec4(position, 1.0);
+                    vec4 mvPosition = modelViewMatrix * instancedPosition;
+
+                    // Transform normal through instanceMatrix's rotation/scale
+                    // (mat3 strips translation). This keeps lighting correct
+                    // when instances rotate or scale individually.
+                    vNormal = normalize(normalMatrix * (mat3(instanceMatrix) * normal));
+                #else
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    vNormal = normalize(normalMatrix * normal);
+                #endif
 
                 // Calculate view position for advanced lighting
-                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                 vViewPosition = -mvPosition.xyz;
 
                 // Standard vertex transformation
@@ -181,6 +210,9 @@ export function createAdvancedCharacterShader(
             varying vec2 vUv;
             varying vec3 vNormal;
             varying vec3 vViewPosition;
+            // Per-instance color, defaults to vec3(1.0) for non-instanced
+            // meshes. Used for InstancedMesh tile shading variation.
+            varying vec3 vInstanceColor;
 
             // Uniforms
             uniform sampler2D characterTexture;
@@ -334,6 +366,18 @@ export function createAdvancedCharacterShader(
                 else {
                     finalColor = texColor.rgb;
                 }
+
+                // Per-instance color override for InstancedMesh tiles. Floor
+                // tiles use a solid-color texture, so marker matching above
+                // is a no-op for them; the per-tile shading variation and
+                // hover/selected/door/wall highlights live in instanceColor.
+                // For non-instanced meshes (characters, hair, non-instanced
+                // walls), USE_INSTANCING_COLOR is undefined and this branch
+                // is compiled out, so the marker-color pipeline above is
+                // preserved unchanged.
+                #ifdef USE_INSTANCING_COLOR
+                    finalColor = vInstanceColor;
+                #endif
 
                 // === LIGHTING ===
                 vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
