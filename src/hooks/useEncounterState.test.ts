@@ -101,6 +101,8 @@ describe('createEmptyEncounterState', () => {
     expect(state.doors).toBeInstanceOf(Map);
     expect(state.doors.size).toBe(0);
     expect(state.revealedRoomIds).toEqual([]);
+    expect(state.revealedHexes).toBeInstanceOf(Set);
+    expect(state.revealedHexes.size).toBe(0);
     expect(state.combat).toBeNull();
     expect(state.currentRoomId).toBe('');
     expect(state.roomsCleared).toBe(0);
@@ -575,6 +577,9 @@ describe('v1alpha2 reducer additions', () => {
       const stored = after.entities.get('goblin-1');
       expect(stored).toBeDefined();
       expect(stored?.ghost).toBeFalsy();
+      expect(stored?.position?.x).toBe(3);
+      expect(stored?.position?.y).toBe(-2);
+      expect(stored?.position?.z).toBe(-1);
     });
 
     it('clears the ghost flag on a previously-disappeared entity', () => {
@@ -621,6 +626,10 @@ describe('v1alpha2 reducer additions', () => {
         s: 0,
       });
       expect(after.entities.size).toBe(0);
+      // Reference identity preserved on no-op — matches mergeEntityPosition's
+      // pattern; prevents needless React re-renders if a stream loop fires
+      // EntityDisappeared for an entity we never saw.
+      expect(after).toBe(prev);
     });
   });
 
