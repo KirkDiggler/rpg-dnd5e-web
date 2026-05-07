@@ -71,6 +71,8 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEncounterStream2 } from '../api/useEncounterStream2';
+import { protoPositionToHex } from '../utils/hexCoord';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
 import { DungeonResultOverlay } from './dungeon';
@@ -308,6 +310,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     applyEntityPositionUpdate,
     applyCombatState: applyEncounterCombatState,
     reset: resetEncounterState,
+    applyHexRevealed,
+    applyEntityAppeared,
+    applyEntityDisappeared,
   } = useEncounterState();
 
   // Walkable tile keys for cross-room pathfinding
@@ -380,6 +385,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const playerName = discord.user?.username || 'Player';
 
   // Dungeon stream event handlers
+  // @ts-expect-error TS6133 -- slice 3 will remove this handler when v1 RoomRevealed is dropped
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for slice 3 removal
   const handleRoomRevealed = useCallback(
     (event: RoomRevealedEvent) => {
       console.log('🚪 RoomRevealed event received:', {
@@ -695,6 +702,8 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   );
 
   // Multiplayer sync: Movement completed - sync entity positions and movement resources
+  // @ts-expect-error TS6133 -- slice 3 will remove this handler when v1 MovementCompleted is dropped
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for slice 3 removal
   const handleMovementCompleted = useCallback(
     (event: MovementCompletedEvent) => {
       // [wave2-debug] Surface what the api carried for movement budget so we
@@ -1186,7 +1195,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     onStateSync: handleStateSync,
     onHistoricalEvents: handleHistoricalEvents,
     // Dungeon events
-    onRoomRevealed: handleRoomRevealed,
     onDungeonVictory: handleDungeonVictory,
     onDungeonFailure: handleDungeonFailure,
     // Combat sync events
@@ -1194,11 +1202,56 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     onMonsterTurnCompleted: handleMonsterTurnCompleted,
     onAttackResolved: handleAttackResolved,
     onActionExecuted: handleActionExecuted,
-    onMovementCompleted: handleMovementCompleted,
     onFeatureActivated: handleFeatureActivated,
     // Player sync events
     onPlayerJoined: handlePlayerJoined,
     onCombatStarted: handleCombatStarted,
+  });
+
+  // Subscribe to v1alpha2 encounter stream (runs alongside v1 in slice 2)
+  useEncounterStream2(encounterId, playerId, {
+    onSnapshotDelivered: (event) => {
+      // v1alpha2 stream barrier — payload empty in slice 1; just log
+      console.log('[v2] snapshot delivered, encounter:', event.encounter);
+    },
+    onEntityMoved: (event) => {
+      // Teleport-to-final per spec; ignore intermediate path hexes in slice 2
+      const last = event.actualPath[event.actualPath.length - 1];
+      if (!last) return;
+      // v2 Position and v1 Position are both {x,y,z} structs but different
+      // TS brands. Double-cast through unknown to satisfy the type checker.
+      applyEntityPositionUpdate(
+        event.entityId,
+        last as unknown as Parameters<typeof applyEntityPositionUpdate>[1]
+      );
+    },
+    onGeometryRevealed: (event) => {
+      // GeometryRevealed.hexes is Hex[]; each Hex wraps a Position via .position.
+      // Skip any hex that's missing position (defensive — shouldn't happen).
+      const positions = event.hexes
+        .map((h) => h.position)
+        .filter((p): p is NonNullable<typeof p> => p !== undefined);
+      applyHexRevealed(positions.map(protoPositionToHex));
+    },
+    onEntityAppeared: (event) => {
+      if (!event.entity || !event.entity.position) return;
+      // v1alpha2 Entity uses `id` (not `entityId`); applyEntityAppeared takes
+      // v1's EntityState shape. Construct the minimum-viable EntityState from
+      // the v2 Entity — slice 2 only renders position; future slices that
+      // need richer fields (HP, type, etc.) can extend this translation.
+      const stub = {
+        entityId: event.entity.id,
+        position: event.entity.position,
+      } as unknown as EntityState;
+      applyEntityAppeared(stub);
+    },
+    onEntityDisappeared: (event) => {
+      if (!event.lastKnownPosition) return;
+      applyEntityDisappeared(
+        event.entityId,
+        protoPositionToHex(event.lastKnownPosition)
+      );
+    },
   });
 
   // Reset all dungeon-related state
