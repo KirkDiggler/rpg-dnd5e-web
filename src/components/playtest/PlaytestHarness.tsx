@@ -1,5 +1,6 @@
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
+import { setAuth } from '../../api/auth';
 import { useEncounterStream2 } from '../../api/useEncounterStream2';
 import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
 import { useEncounterState } from '../../hooks/useEncounterState';
@@ -19,6 +20,15 @@ export function PlaytestHarness() {
   const params = new URLSearchParams(window.location.search);
   const encounterId = params.get('encounterId') || 'dev-encounter';
   const playerId = params.get('playerId');
+
+  // The grpc auth interceptor reads playerId from the auth store to set the
+  // `Authorization: Dev <playerId>` header. The lobby flow primes this via
+  // DiscordProvider; harness flow has no provider, so we sync it here BEFORE
+  // useEncounterStream2 mounts. Sync (not useEffect) so the first request
+  // can't race with auth being unset.
+  if (playerId) {
+    setAuth(null, playerId);
+  }
 
   const entityId = playerId ? `char-${playerId}` : '';
 
