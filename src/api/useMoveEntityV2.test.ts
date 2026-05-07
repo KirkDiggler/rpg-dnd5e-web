@@ -45,13 +45,17 @@ describe('useMoveEntityV2', () => {
     expect(response).toBe(fakeResponse);
     expect(hoisted.moveEntityFn).toHaveBeenCalledOnce();
 
-    const [req] = hoisted.moveEntityFn.mock.calls[0];
-    expect(req.encounterId).toBe('enc-1');
-    expect(req.entityId).toBe('char-alice');
-    expect(req.proposedPath).toHaveLength(3);
-    expect(req.proposedPath[0]).toMatchObject({ x: 0, y: 0, z: 0 });
-    expect(req.proposedPath[1]).toMatchObject({ x: 1, y: -1, z: 0 });
-    expect(req.proposedPath[2]).toMatchObject({ x: 2, y: -2, z: 0 });
+    expect(hoisted.moveEntityFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encounterId: 'enc-1',
+        entityId: 'char-alice',
+        proposedPath: [
+          expect.objectContaining({ x: 0, y: 0, z: 0 }),
+          expect.objectContaining({ x: 1, y: -1, z: 0 }),
+          expect.objectContaining({ x: 2, y: -2, z: 0 }),
+        ],
+      })
+    );
   });
 
   it('sets loading=true during the call and false after success', async () => {

@@ -146,7 +146,7 @@ describe('PlaytestHarness', () => {
           entity: {
             id: 'char-alice',
             position: { x: 0, y: 0, z: 0 },
-          } as EntityState,
+          } as unknown as EntityState,
         })
       )
     );
@@ -165,11 +165,17 @@ describe('PlaytestHarness', () => {
       expect(hoisted.moveEntityFn).toHaveBeenCalledOnce();
     });
 
-    const [req] = hoisted.moveEntityFn.mock.calls[0];
-    expect(req.encounterId).toBe('enc-1');
-    expect(req.entityId).toBe('char-alice');
     // path = [current(0,0,0), target(0,0,0)] — 2 elements
-    expect(req.proposedPath).toHaveLength(2);
+    expect(hoisted.moveEntityFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encounterId: 'enc-1',
+        entityId: 'char-alice',
+        proposedPath: [
+          expect.objectContaining({ x: 0, y: 0, z: 0 }),
+          expect.objectContaining({ x: 0, y: 0, z: 0 }),
+        ],
+      })
+    );
   });
 
   it('shows move error when RPC fails', async () => {
