@@ -16,6 +16,7 @@ import type {
  * slice 1 — DO NOT apply it as state. Treat as a stream-up sync barrier.
  */
 export interface EncounterStream2Options {
+  /** slice-1: encounter field is empty; treat as connect-confirm only. */
   onSnapshotDelivered?: (event: SnapshotDelivered) => void;
   onEntityMoved?: (event: EntityMoved) => void;
   onGeometryRevealed?: (event: GeometryRevealed) => void;
@@ -50,10 +51,14 @@ export function dispatchEncounterStream2Event(
       options.onEntityDisappeared?.(payload.value);
       break;
     default:
-      // Unknown event type — toolkit/proto gap. Log + continue so the stream
-      // doesn't tear down. File as an issue if seen in playtest.
+      // Either out-of-slice-2-scope but known to the proto (entityDamaged,
+      // turnStarted, encounterEnded, etc. — the proto defines 22 event cases;
+      // slice 2 handles 5) OR a genuinely unknown case from a proto version
+      // mismatch. Either way: warn + continue so the stream doesn't tear down.
+      // Add a case arm + callback when the feature lands in a future slice.
+      // The cast strips the narrowed-to-undefined `case` so we can log it.
       console.warn(
-        '[useEncounterStream2] unknown event case:',
+        '[useEncounterStream2] unhandled event case:',
         (payload as { case?: string }).case
       );
   }
