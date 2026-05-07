@@ -44,6 +44,9 @@ function useTestHarness(encounterId: string) {
     },
     onEntityMoved: (e) => {
       const last = e.actualPath[e.actualPath.length - 1];
+      // v2 Position and v1 Position are both {x,y,z} structs but different
+      // TS brands. Double-cast through unknown to satisfy the type checker.
+      // Mirrors LobbyView's wiring at the equivalent dispatch site.
       if (last)
         state.applyEntityPositionUpdate(
           e.entityId,
