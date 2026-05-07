@@ -2413,6 +2413,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                 availableCharacters={availableCharacters}
                 allPartyCharacters={Array.from(fullCharactersMap.values())}
                 encounterEntities={encounterState.entities}
+                revealedHexes={encounterState.revealedHexes}
                 onEntityClick={handleEntityClick}
                 onCellClick={handleCellClick}
                 encounterId={encounterId}

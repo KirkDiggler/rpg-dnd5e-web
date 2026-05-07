@@ -48,6 +48,8 @@ export interface HexGridProps {
     position: { x: number; y: number; z: number };
     type: 'player' | 'monster' | 'obstacle';
     isDead?: boolean;
+    /** True when entity is outside LoS (v1alpha2 ghost). Render at last-known position with ghost visuals. */
+    isGhost?: boolean;
   }>;
   selectedEntityId?: string;
   onHexClick?: (coord: { x: number; y: number; z: number }) => void;
@@ -430,6 +432,7 @@ function Scene({
           character={characterMap.get(entity.entityId)}
           monster={monsterMap.get(entity.entityId)}
           isDead={entity.isDead}
+          isGhost={entity.isGhost}
         />
       ))}
     </>

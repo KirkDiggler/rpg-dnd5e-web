@@ -1,4 +1,4 @@
-import type { DungeonMapState } from '@/hooks/useDungeonMap';
+import type { AbsoluteFloorTile, DungeonMapState } from '@/hooks/useDungeonMap';
 import { mapEntitiesForRender } from '@/utils/entityHelpers';
 import type { CubeCoord } from '@/utils/hexUtils';
 import { getMovementRemainingFromCombat } from '@/utils/movementUtils';
@@ -26,6 +26,12 @@ interface BattleMapPanelProps {
   monsters?: MonsterCombatState[];
   /** Unified entity state from useEncounterState - preferred over legacy props */
   encounterEntities?: Map<string, EntityState>;
+  /**
+   * v1alpha2 per-hex reveal set. Hexes here are rendered even if their room is
+   * not yet in revealedRoomIds. Layered on top of dungeonMap.floorTiles (which
+   * covers room-level reveals). Hex visible if either source covers it.
+   */
+  revealedHexes?: Set<string>;
   onEntityClick: (entityId: string) => void;
   onCellClick: (coord: CubeCoord) => void;
   onMoveComplete?: (path: CubeCoord[]) => void;
@@ -46,6 +52,7 @@ export function BattleMapPanel({
   combatState,
   monsters,
   encounterEntities,
+  revealedHexes,
   onEntityClick,
   onCellClick,
   onMoveComplete,
@@ -117,6 +124,27 @@ export function BattleMapPanel({
     deadMonsterIds,
   ]);
 
+  // Layer revealedHexes (v1alpha2 per-hex granularity) on top of dungeonMap.floorTiles
+  // (which covers room-level reveals from revealedRoomIds). A hex is visible if
+  // either source covers it — room-level via floorTiles, or per-hex via revealedHexes.
+  //
+  // revealedHexes keys are "q,r,s" (matching cube coord x,y,z). For hexes only
+  // in revealedHexes we synthesize a minimal AbsoluteFloorTile with roomId ''.
+  // v1 path: revealedHexes is undefined → floorTiles passes through unchanged.
+  const mergedFloorTiles = useMemo((): Map<string, AbsoluteFloorTile> => {
+    if (!revealedHexes || revealedHexes.size === 0) {
+      return dungeonMap.floorTiles;
+    }
+    const merged = new Map(dungeonMap.floorTiles);
+    for (const key of revealedHexes) {
+      if (!merged.has(key)) {
+        const [x, y, z] = key.split(',').map(Number);
+        merged.set(key, { x, y, z, roomId: '' });
+      }
+    }
+    return merged;
+  }, [dungeonMap.floorTiles, revealedHexes]);
+
   // Convert doors map to array for HexGrid
   const doorsArray = useMemo(
     () => Array.from(dungeonMap.doors.values()),
@@ -139,7 +167,7 @@ export function BattleMapPanel({
       }}
     >
       <HexGrid
-        floorTiles={dungeonMap.floorTiles}
+        floorTiles={mergedFloorTiles}
         entities={entities}
         selectedEntityId={selectedEntity || undefined}
         onHexClick={onCellClick}

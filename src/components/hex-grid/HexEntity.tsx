@@ -41,6 +41,8 @@ export interface HexEntityProps {
   facialHairStyle?: FacialHairStyle;
   /** Whether the entity is dead (show visual dead state, disable interaction) */
   isDead?: boolean;
+  /** Whether the entity is outside LoS (v1alpha2). Render at last-known position with ghost shader (semi-transparent, desaturated). */
+  isGhost?: boolean;
 }
 
 // Visual state colors
@@ -183,6 +185,7 @@ export function HexEntity({
   hairColor,
   facialHairStyle,
   isDead = false,
+  isGhost = false,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -258,7 +261,7 @@ export function HexEntity({
         position={[worldPos.x, CHARACTER_Y_OFFSET, worldPos.z]}
         {...interactionProps}
       >
-        {/* Dead entities rendered with tilt and reduced opacity */}
+        {/* Dead entities rendered with tilt; ghost entities rendered with ghost shader */}
         <group rotation={isDead ? [0, 0, Math.PI / 3] : [0, 0, 0]}>
           <Suspense
             fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
@@ -282,6 +285,7 @@ export function HexEntity({
               offHandWeapon={offHandWeapon}
               shield={shield}
               showOutline={!isDead}
+              ghostAmount={isGhost ? 1.0 : 0.0}
             />
           </Suspense>
         </group>
