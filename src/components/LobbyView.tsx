@@ -33,9 +33,11 @@ import {
   monsterTurnsToLogEntries,
 } from '@/utils/monsterTurnUtils';
 import { getMovementRemainingFromCombat } from '@/utils/movementUtils';
+import { create } from '@bufbuild/protobuf';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   EncounterEndReason,
+  EntityStateSchema,
   type ActionExecutedEvent,
   type AttackResolvedEvent,
   type AvailableAbility,
@@ -53,10 +55,8 @@ import {
   type MonsterCombatState,
   type MonsterTurnCompletedEvent,
   type MonsterTurnResult,
-  type MovementCompletedEvent,
   type PlayerJoinedEvent,
   type Room,
-  type RoomRevealedEvent,
   type TurnEndedEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
@@ -71,6 +71,8 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { v2PositionToV1 } from '../api/positionConvert';
+import { useDevPlayerIdAuth } from '../api/useDevPlayerIdAuth';
 import { useEncounterStream2 } from '../api/useEncounterStream2';
 import { protoPositionToHex } from '../utils/hexCoord';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
@@ -281,6 +283,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const devPlayerIdOverride = isDevelopment
     ? new URLSearchParams(window.location.search).get('playerId')
     : null;
+  // Sync dev override into gRPC auth store so outbound RPCs carry the right
+  // player ID. useLayoutEffect fires before child effects, preventing races.
+  useDevPlayerIdAuth(devPlayerIdOverride);
   const playerId =
     discord.user?.id ||
     devPlayerIdOverride ||
@@ -331,7 +336,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
   // Dungeon/door state
   const [dungeonId, setDungeonId] = useState<string | null>(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isTransitioning] = useState(false); // TODO slice 3: remove with v1 RoomRevealed handler
   const [roomsCleared, setRoomsCleared] = useState(0);
   const [dungeonResult, setDungeonResult] = useState<
     'victory' | 'failure' | null
@@ -393,69 +398,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const playerName = discord.user?.username || 'Player';
 
   // Dungeon stream event handlers
-  // @ts-expect-error TS6133 -- slice 3 will remove this handler when v1 RoomRevealed is dropped
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for slice 3 removal
-  const handleRoomRevealed = useCallback(
-    (event: RoomRevealedEvent) => {
-      console.log('🚪 RoomRevealed event received:', {
-        connectionId: event.connectionId,
-        currentRoomId: event.encounterStateData?.currentRoomId,
-        roomCount: event.encounterStateData
-          ? Object.keys(event.encounterStateData.rooms).length
-          : 0,
-        revealedRoomIds: event.encounterStateData?.revealedRoomIds,
-        entityCount: event.encounterStateData
-          ? Object.keys(event.encounterStateData.entities).length
-          : 0,
-      });
-
-      // Trigger fade transition
-      setIsTransitioning(true);
-
-      setTimeout(() => {
-        // --- New path: populate unified encounter state ---
-        if (event.encounterStateData) {
-          applySnapshot(event.encounterStateData);
-
-          // --- Legacy path: build Room/CombatState from encounterStateData ---
-          // Iterate every revealed room so the freshly-revealed room's floor
-          // tiles get generated. `data.currentRoomId` still points at the
-          // player's current room here — the revealed room only exists in
-          // `data.rooms`. See roomsFromEncounterState for full reasoning.
-          const doors = doorsFromEncounterState(event.encounterStateData);
-          for (const legacyRoom of roomsFromEncounterState(
-            event.encounterStateData
-          )) {
-            addRoomToMap(legacyRoom, doors);
-          }
-          setCombatState(event.encounterStateData.combat ?? null);
-          setRoomsCleared(event.encounterStateData.roomsCleared);
-
-          // Update monsters from encounter state (for monsterType texture selection)
-          setMonsters(monstersFromEncounterState(event.encounterStateData));
-
-          // Select the current turn entity
-          if (event.encounterStateData.combat?.currentTurn?.entityId) {
-            setSelectedEntity(
-              event.encounterStateData.combat.currentTurn.entityId
-            );
-          }
-        }
-
-        // Clear movement state for new room
-        setMovementMode(false);
-        setMovementPath([]);
-        setAttackTarget(null);
-        // Reset two-level action economy for new room
-        setAvailableAbilities([]);
-        setAvailableActions([]);
-
-        // End fade
-        setIsTransitioning(false);
-      }, 300);
-    },
-    [addRoomToMap, applySnapshot]
-  );
 
   const handleDungeonVictory = useCallback(
     (event: DungeonVictoryEvent) => {
@@ -707,54 +649,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       }
     },
     [applyEntityUpdates, applyEncounterCombatState]
-  );
-
-  // Multiplayer sync: Movement completed - sync entity positions and movement resources
-  // @ts-expect-error TS6133 -- slice 3 will remove this handler when v1 MovementCompleted is dropped
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for slice 3 removal
-  const handleMovementCompleted = useCallback(
-    (event: MovementCompletedEvent) => {
-      // [wave2-debug] Surface what the api carried for movement budget so we
-      // can confirm `actionEconomy.movementRemaining` arrived non-zero.
-      // Reading through the deprecated subtraction was the Wave 2 OpenDoor
-      // regression — log both so divergences are obvious in the console.
-      const ae = event.combatState?.currentTurn?.actionEconomy;
-      const dep = event.combatState?.currentTurn;
-      console.log('🚶 MovementCompleted event received:', {
-        entityId: event.entityId,
-        pathLen: event.path.length,
-        hasUpdatedEntity: !!event.updatedEntity,
-        movementRemaining_canonical: ae?.movementRemaining,
-        movementMax_canonical: ae?.movementMax,
-        movementUsed_deprecated: dep?.movementUsed,
-        movementMax_deprecated: dep?.movementMax,
-        currentTurnEntityId: dep?.entityId,
-      });
-
-      // --- New path: populate unified encounter state ---
-      if (event.updatedEntity) {
-        // Preferred: API sent a full entity snapshot. Use it as-is.
-        applyEntityUpdates([event.updatedEntity]);
-      } else if (event.entityId && event.path.length > 0) {
-        // Fallback: API sent only a path (e.g. player moves currently omit
-        // updatedEntity — see rpg-api fix/cross-room-state-wave2). Mirror the
-        // applyMonsterMovement pattern: use the final path coordinate as the
-        // new position for the existing entity. No-op if the entity is not
-        // already in encounter state.
-        const finalPosition = event.path[event.path.length - 1];
-        if (finalPosition) {
-          applyEntityPositionUpdate(event.entityId, finalPosition);
-        }
-      }
-      if (event.combatState) applyEncounterCombatState(event.combatState);
-
-      // --- Legacy path ---
-      // Sync combat state (includes updated movement resources)
-      if (event.combatState) {
-        setCombatState(event.combatState);
-      }
-    },
-    [applyEntityUpdates, applyEntityPositionUpdate, applyEncounterCombatState]
   );
 
   // Multiplayer sync: Feature activated - sync feature usage
@@ -1228,12 +1122,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       // Teleport-to-final per spec; ignore intermediate path hexes in slice 2
       const last = event.actualPath[event.actualPath.length - 1];
       if (!last) return;
-      // v2 Position and v1 Position are both {x,y,z} structs but different
-      // TS brands. Double-cast through unknown to satisfy the type checker.
-      applyEntityPositionUpdate(
-        event.entityId,
-        last as unknown as Parameters<typeof applyEntityPositionUpdate>[1]
-      );
+      applyEntityPositionUpdate(event.entityId, v2PositionToV1(last));
     },
     onGeometryRevealed: (event) => {
       // GeometryRevealed.hexes is Hex[]; each Hex wraps a Position via .position.
@@ -1246,21 +1135,16 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     onEntityAppeared: (event) => {
       if (!event.entity || !event.entity.position) return;
       // v1alpha2 Entity uses `id` (not `entityId`); applyEntityAppeared takes
-      // v1's EntityState shape. Construct the minimum-viable EntityState from
-      // the v2 Entity — slice 2 only renders position. Default the fields that
-      // existing readers (getEntityName, entityDisplayType, hasCondition, etc.)
-      // dereference, so a stub-only entity doesn't crash when consumed:
-      //   - details: oneof wrapper with case=undefined (no character/monster details)
-      //   - activeConditions: empty array (hasCondition iterates this)
-      //   - entityType: UNSPECIFIED (entityDisplayType falls through to obstacle)
+      // v1's EntityState shape. Construct a schema-typed EntityState stub from
+      // the v2 Entity — slice 2 only renders position. Schema construction gives
+      // proto3 defaults (0/""/[]/undefined) for unset fields, so downstream
+      // readers like HoverInfoPanel don't see bare undefined on numeric fields.
       // Future slices that need richer v2→v1 mapping can extend the translation.
-      const stub = {
+      const stub = create(EntityStateSchema, {
         entityId: event.entity.id,
-        position: event.entity.position,
+        position: v2PositionToV1(event.entity.position),
         entityType: EntityType.UNSPECIFIED,
-        details: { case: undefined, value: undefined },
-        activeConditions: [],
-      } as unknown as EntityState;
+      });
       applyEntityAppeared(stub);
     },
     onEntityDisappeared: (event) => {

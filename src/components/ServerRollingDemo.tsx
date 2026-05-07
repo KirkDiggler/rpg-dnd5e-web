@@ -1,5 +1,6 @@
 import { AbilityScoresSectionV2 } from '@/character/creation/sections/AbilityScoresSectionV2';
 
+import { useDevPlayerIdAuth } from '@/api/useDevPlayerIdAuth';
 import { useDiscord } from '@/discord';
 
 export function ServerRollingDemo() {
@@ -13,6 +14,9 @@ export function ServerRollingDemo() {
   const devPlayerIdOverride = isDevelopment
     ? new URLSearchParams(window.location.search).get('playerId')
     : null;
+  // Sync dev override into gRPC auth store so outbound RPCs carry the right
+  // player ID. useLayoutEffect fires before child effects, preventing races.
+  useDevPlayerIdAuth(devPlayerIdOverride);
   const playerId =
     discord.user?.id ||
     devPlayerIdOverride ||

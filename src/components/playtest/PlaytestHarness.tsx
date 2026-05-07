@@ -1,6 +1,9 @@
-import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { create } from '@bufbuild/protobuf';
+import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useState } from 'react';
-import { setAuth } from '../../api/auth';
+import { v2PositionToV1 } from '../../api/positionConvert';
+import { useDevPlayerIdAuth } from '../../api/useDevPlayerIdAuth';
 import { useEncounterStream2 } from '../../api/useEncounterStream2';
 import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
 import { useEncounterState } from '../../hooks/useEncounterState';
@@ -21,14 +24,10 @@ export function PlaytestHarness() {
   const encounterId = params.get('encounterId') || 'dev-encounter';
   const playerId = params.get('playerId');
 
-  // The grpc auth interceptor reads playerId from the auth store to set the
-  // `Authorization: Dev <playerId>` header. The lobby flow primes this via
-  // DiscordProvider; harness flow has no provider, so we sync it here BEFORE
-  // useEncounterStream2 mounts. Sync (not useEffect) so the first request
-  // can't race with auth being unset.
-  if (playerId) {
-    setAuth(null, playerId);
-  }
+  // Sync dev playerId override into the gRPC auth store before stream mounts.
+  // useLayoutEffect fires before any child useEffect, preventing a race where
+  // the first request goes out without the override applied.
+  useDevPlayerIdAuth(playerId);
 
   const entityId = playerId ? `char-${playerId}` : '';
 
@@ -61,9 +60,7 @@ export function PlaytestHarness() {
         if (last) {
           encounterState.applyEntityPositionUpdate(
             e.entityId,
-            last as unknown as Parameters<
-              typeof encounterState.applyEntityPositionUpdate
-            >[1]
+            v2PositionToV1(last)
           );
         }
         const pos = last ? `(${last.x},${last.y},${last.z})` : '(no path)';
@@ -78,10 +75,11 @@ export function PlaytestHarness() {
       },
       onEntityAppeared: (e) => {
         if (!e.entity || !e.entity.position) return;
-        const stub = {
+        const stub = create(EntityStateSchema, {
           entityId: e.entity.id,
-          position: e.entity.position,
-        } as unknown as EntityState;
+          position: v2PositionToV1(e.entity.position),
+          entityType: EntityType.UNSPECIFIED,
+        });
         encounterState.applyEntityAppeared(stub);
         addLog(`EntityAppeared ${e.entity.id}`);
       },

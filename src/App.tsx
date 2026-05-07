@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { useListCharacters, useListDrafts } from './api/hooks';
+import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
 import './App.css';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
@@ -53,6 +54,9 @@ function AppContent() {
   const devPlayerIdOverride = isDevelopment
     ? new URLSearchParams(window.location.search).get('playerId')
     : null;
+  // Sync dev override into gRPC auth store so outbound RPCs carry the right
+  // player ID. useLayoutEffect fires before child effects, preventing races.
+  useDevPlayerIdAuth(devPlayerIdOverride);
   const playerId =
     discord.user?.id ||
     devPlayerIdOverride ||
