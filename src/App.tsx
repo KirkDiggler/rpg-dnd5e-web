@@ -38,7 +38,15 @@ function AppContent() {
 
   // In production, require Discord auth. In dev, allow test player
   const isDevelopment = import.meta.env.MODE === 'development';
-  const playerId = discord.user?.id || (isDevelopment ? 'test-player' : null);
+  // Dev override: ?playerId=alice|bob lets two tabs run as different players
+  // without Discord (slice 2 playtest infrastructure)
+  const devPlayerIdOverride = isDevelopment
+    ? new URLSearchParams(window.location.search).get('playerId')
+    : null;
+  const playerId =
+    discord.user?.id ||
+    devPlayerIdOverride ||
+    (isDevelopment ? 'test-player' : null);
 
   const handleCreateCharacter = async () => {
     try {

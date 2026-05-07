@@ -276,7 +276,15 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const { addToast } = useToast();
   const discord = useDiscord();
   const isDevelopment = import.meta.env.MODE === 'development';
-  const playerId = discord.user?.id || (isDevelopment ? 'test-player' : '');
+  // Dev override: ?playerId=alice|bob lets two tabs run as different players
+  // without Discord (slice 2 playtest infrastructure)
+  const devPlayerIdOverride = isDevelopment
+    ? new URLSearchParams(window.location.search).get('playerId')
+    : null;
+  const playerId =
+    discord.user?.id ||
+    devPlayerIdOverride ||
+    (isDevelopment ? 'test-player' : '');
 
   // Fetch user's characters
   const { data: allCharacters = [], loading: charactersLoading } =

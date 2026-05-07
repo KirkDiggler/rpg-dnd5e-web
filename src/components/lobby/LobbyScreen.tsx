@@ -170,7 +170,12 @@ export function LobbyScreen({
       setLobbyState('waiting');
     } catch (error) {
       console.error('Failed to join encounter:', error);
-      setJoinError('Invalid code or lobby not found');
+      // Surface the actual error so users see what went wrong (e.g. "player
+      // already in encounter", not just a generic "invalid code"). Connect-RPC
+      // errors expose .message; fall back to a generic string.
+      const message =
+        error instanceof Error ? error.message : 'Failed to join encounter';
+      setJoinError(message);
     }
   };
 
