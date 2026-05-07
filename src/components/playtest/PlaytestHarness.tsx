@@ -107,12 +107,25 @@ export function PlaytestHarness() {
 
   const myEntity = encounterState.state.entities.get(entityId);
   const myPosition = myEntity?.position;
-  const canMove = !!myPosition;
+
+  // Slice 1's SnapshotDelivered.encounter field is empty by design, so the
+  // harness has no current position until the first move triggers events.
+  // Without a fallback the move button stays permanently disabled. These
+  // hardcoded values match the manually-seeded encounter (`enc:v2:dev-encounter`
+  // in Redis) so the first move can dispatch correctly. After it lands,
+  // EntityMoved updates real state and the fallback is unused.
+  const SEEDED_FALLBACK: Record<string, { x: number; y: number; z: number }> = {
+    alice: { x: 0, y: 0, z: 0 },
+    bob: { x: 1, y: -1, z: 0 },
+  };
+  const fallback = playerId ? SEEDED_FALLBACK[playerId] : undefined;
+  const usingFallback = !myPosition && !!fallback;
+  const canMove = !!myPosition || !!fallback;
 
   const handleMove = async () => {
     const currentPos = myPosition
       ? { x: myPosition.x ?? 0, y: myPosition.y ?? 0, z: myPosition.z ?? 0 }
-      : { x: 0, y: 0, z: 0 };
+      : (fallback ?? { x: 0, y: 0, z: 0 });
     const target = { x: targetQ, y: targetR, z: targetS };
     try {
       await moveEntity(encounterId, entityId, [currentPos, target]);
@@ -231,6 +244,11 @@ export function PlaytestHarness() {
           {!canMove && (
             <div style={{ color: '#666', fontSize: 12, marginBottom: 8 }}>
               (waiting for first event — position unknown)
+            </div>
+          )}
+          {usingFallback && (
+            <div style={{ color: '#aa8', fontSize: 12, marginBottom: 8 }}>
+              (using seeded fallback position — no events received yet)
             </div>
           )}
           <div
