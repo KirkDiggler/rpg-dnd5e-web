@@ -23,14 +23,26 @@ import {
   DungeonState,
   EntityType,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import type {
+  EntityDamaged,
+  ModeChanged,
+  StatusApplied,
+  TurnStarted,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
+import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
 import {
   applyDoorOpened,
   applyEntityAppeared,
+  applyEntityDamaged,
   applyEntityDisappeared,
   applyHexRevealed,
+  applyModeChanged,
   applySnapshotToState,
+  applyStatusApplied,
+  applyTurnEnded,
+  applyTurnStarted,
   createEmptyEncounterState,
   mergeEntityPosition,
   mergeEntityUpdates,
@@ -106,6 +118,13 @@ describe('createEmptyEncounterState', () => {
     expect(state.revealedHexes.size).toBe(0);
     expect(state.openDoors).toBeInstanceOf(Set);
     expect(state.openDoors.size).toBe(0);
+    expect(state.entityHP).toBeInstanceOf(Map);
+    expect(state.entityHP.size).toBe(0);
+    expect(state.entityStatuses).toBeInstanceOf(Map);
+    expect(state.entityStatuses.size).toBe(0);
+    expect(state.mode).toBe(EncounterMode.UNSPECIFIED);
+    expect(state.activeEntityId).toBe('');
+    expect(state.round).toBe(0);
     expect(state.combat).toBeNull();
     expect(state.currentRoomId).toBe('');
     expect(state.roomsCleared).toBe(0);
@@ -546,6 +565,53 @@ function makeTestEntity(
 }
 
 // ---------------------------------------------------------------------------
+// Helpers for combat reducer tests — minimal proto-shape stubs. We don't
+// build via create(...) because these are read-only test inputs and the
+// reducers don't validate $typeName.
+// ---------------------------------------------------------------------------
+
+function makeDamaged(
+  entityId: string,
+  current: number,
+  max: number,
+  amount = 0
+): EntityDamaged {
+  return {
+    entityId,
+    amount,
+    hpAfter: { current, max, temp: 0 },
+  } as unknown as EntityDamaged;
+}
+
+function makeStatusApplied(
+  entityId: string,
+  module: string,
+  type: string,
+  id: string,
+  displayName = id
+): StatusApplied {
+  return {
+    entityId,
+    status: {
+      source: { module, type, id },
+      displayName,
+    },
+  } as unknown as StatusApplied;
+}
+
+function makeModeChanged(
+  from: EncounterMode,
+  to: EncounterMode,
+  reason = ''
+): ModeChanged {
+  return { from, to, reason } as unknown as ModeChanged;
+}
+
+function makeTurnStarted(entityId: string, round: number): TurnStarted {
+  return { entityId, round } as unknown as TurnStarted;
+}
+
+// ---------------------------------------------------------------------------
 // v1alpha2 reducer additions
 // ---------------------------------------------------------------------------
 
@@ -732,6 +798,12 @@ describe('v1alpha2 reducer additions', () => {
       let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
       state = applyDoorOpened(state, 'door-1');
       state = applyHexRevealed(state, [{ q: 1, r: -1, s: 0 }]);
+      state = applyEntityDamaged(state, makeDamaged('goblin-1', 5, 5));
+      state = applyTurnStarted(state, makeTurnStarted('char-alice', 1));
+      state = applyModeChanged(
+        state,
+        makeModeChanged(EncounterMode.FREE_ROAM, EncounterMode.TURN_BASED)
+      );
 
       const switched = applySnapshotToState(
         makeSnapshot({ encounterId: 'enc-2' }),
@@ -740,6 +812,11 @@ describe('v1alpha2 reducer additions', () => {
 
       expect(switched.openDoors.size).toBe(0);
       expect(switched.revealedHexes.size).toBe(0);
+      expect(switched.entityHP.size).toBe(0);
+      expect(switched.entityStatuses.size).toBe(0);
+      expect(switched.mode).toBe(EncounterMode.UNSPECIFIED);
+      expect(switched.activeEntityId).toBe('');
+      expect(switched.round).toBe(0);
     });
 
     it('starts with empty v2 delta state when prev is omitted (first snapshot)', () => {
@@ -748,6 +825,47 @@ describe('v1alpha2 reducer additions', () => {
       );
       expect(state.openDoors.size).toBe(0);
       expect(state.revealedHexes.size).toBe(0);
+      expect(state.entityHP.size).toBe(0);
+      expect(state.entityStatuses.size).toBe(0);
+      expect(state.mode).toBe(EncounterMode.UNSPECIFIED);
+      expect(state.activeEntityId).toBe('');
+      expect(state.round).toBe(0);
+    });
+
+    it('preserves v2 combat delta state across same-encounter v1 snapshot', () => {
+      // Wave 2.8: combat events (HP, status, mode, active actor, round) flow
+      // only on the v2 stream; v1 snapshots don't carry them and don't
+      // replay deltas. Same survival rule as openDoors / revealedHexes.
+      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
+      state = applyEntityDamaged(state, makeDamaged('goblin-1', 5, 7));
+      state = applyEntityDamaged(state, makeDamaged('char-alice', 3, 14));
+      state = applyStatusApplied(
+        state,
+        makeStatusApplied('char-alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      state = applyModeChanged(
+        state,
+        makeModeChanged(EncounterMode.FREE_ROAM, EncounterMode.TURN_BASED)
+      );
+      state = applyTurnStarted(state, makeTurnStarted('char-alice', 2));
+
+      const refreshed = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+
+      expect(refreshed.entityHP.get('goblin-1')).toEqual({
+        current: 5,
+        max: 7,
+      });
+      expect(refreshed.entityHP.get('char-alice')).toEqual({
+        current: 3,
+        max: 14,
+      });
+      expect(refreshed.entityStatuses.get('char-alice')).toHaveLength(1);
+      expect(refreshed.mode).toBe(EncounterMode.TURN_BASED);
+      expect(refreshed.activeEntityId).toBe('char-alice');
+      expect(refreshed.round).toBe(2);
     });
   });
 
@@ -783,6 +901,281 @@ describe('v1alpha2 reducer additions', () => {
       expect(state.entities.get('mover')?.position?.x).toBe(5);
       expect(state.entities.get('mover')?.position?.y).toBe(-3);
       expect(state.entities.get('mover')?.position?.z).toBe(-2);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wave 2.8 combat reducers
+// ---------------------------------------------------------------------------
+
+describe('Wave 2.8 combat reducers', () => {
+  describe('applyEntityDamaged', () => {
+    it('sets entity HP from hp_after', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyEntityDamaged(prev, makeDamaged('goblin-1', 2, 7, 5));
+      expect(after.entityHP.get('goblin-1')).toEqual({ current: 2, max: 7 });
+    });
+
+    it('preserves HP for other entities', () => {
+      let state = createEmptyEncounterState();
+      state = applyEntityDamaged(state, makeDamaged('alice', 10, 14));
+      state = applyEntityDamaged(state, makeDamaged('goblin-1', 0, 7, 5));
+      expect(state.entityHP.get('alice')).toEqual({ current: 10, max: 14 });
+      expect(state.entityHP.get('goblin-1')).toEqual({ current: 0, max: 7 });
+    });
+
+    it('overwrites HP on subsequent damage events for the same entity', () => {
+      let state = createEmptyEncounterState();
+      state = applyEntityDamaged(state, makeDamaged('alice', 12, 14));
+      state = applyEntityDamaged(state, makeDamaged('alice', 8, 14));
+      expect(state.entityHP.get('alice')).toEqual({ current: 8, max: 14 });
+    });
+
+    it('is idempotent on identical hp_after (returns same reference)', () => {
+      const prev = applyEntityDamaged(
+        createEmptyEncounterState(),
+        makeDamaged('alice', 8, 14)
+      );
+      const next = applyEntityDamaged(prev, makeDamaged('alice', 8, 14));
+      expect(next).toBe(prev);
+    });
+
+    it('is a no-op when hp_after is missing (defensive)', () => {
+      const prev = createEmptyEncounterState();
+      const event = {
+        entityId: 'alice',
+        amount: 3,
+      } as unknown as EntityDamaged;
+      const next = applyEntityDamaged(prev, event);
+      expect(next).toBe(prev);
+      expect(next.entityHP.size).toBe(0);
+    });
+
+    it('does not mutate the previous state', () => {
+      const prev = createEmptyEncounterState();
+      applyEntityDamaged(prev, makeDamaged('alice', 5, 14));
+      expect(prev.entityHP.size).toBe(0);
+    });
+
+    it('does not touch entityStatuses, mode, or activeEntityId', () => {
+      let prev = createEmptyEncounterState();
+      prev = applyTurnStarted(prev, makeTurnStarted('alice', 3));
+      prev = applyStatusApplied(
+        prev,
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      const next = applyEntityDamaged(prev, makeDamaged('alice', 5, 14));
+      expect(next.activeEntityId).toBe('alice');
+      expect(next.round).toBe(3);
+      expect(next.entityStatuses.get('alice')).toHaveLength(1);
+    });
+  });
+
+  describe('applyStatusApplied', () => {
+    it('appends a new condition to the entity status list', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyStatusApplied(
+        prev,
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned', 'Poisoned')
+      );
+      const list = after.entityStatuses.get('alice');
+      expect(list).toHaveLength(1);
+      expect(list?.[0].source.id).toBe('poisoned');
+      expect(list?.[0].displayName).toBe('Poisoned');
+    });
+
+    it('replaces an existing condition with the same source ref', () => {
+      let state = createEmptyEncounterState();
+      state = applyStatusApplied(
+        state,
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned', 'Old')
+      );
+      state = applyStatusApplied(
+        state,
+        makeStatusApplied(
+          'alice',
+          'dnd5e',
+          'condition',
+          'poisoned',
+          'Refreshed'
+        )
+      );
+      const list = state.entityStatuses.get('alice');
+      expect(list).toHaveLength(1);
+      expect(list?.[0].displayName).toBe('Refreshed');
+    });
+
+    it('stacks distinct conditions on the same entity', () => {
+      let state = createEmptyEncounterState();
+      state = applyStatusApplied(
+        state,
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      state = applyStatusApplied(
+        state,
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'frightened')
+      );
+      const list = state.entityStatuses.get('alice');
+      expect(list).toHaveLength(2);
+      expect(list?.map((s) => s.source.id).sort()).toEqual([
+        'frightened',
+        'poisoned',
+      ]);
+    });
+
+    it('is a no-op when status is missing (defensive)', () => {
+      const prev = createEmptyEncounterState();
+      const event = { entityId: 'alice' } as unknown as StatusApplied;
+      const next = applyStatusApplied(prev, event);
+      expect(next).toBe(prev);
+    });
+
+    it('does not mutate the previous state', () => {
+      const prev = createEmptyEncounterState();
+      applyStatusApplied(
+        prev,
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      expect(prev.entityStatuses.size).toBe(0);
+    });
+
+    it('captures sourceEntityId when present', () => {
+      const event = {
+        entityId: 'alice',
+        status: {
+          source: { module: 'dnd5e', type: 'condition', id: 'poisoned' },
+          displayName: 'Poisoned',
+        },
+        sourceEntityId: 'goblin-1',
+      } as unknown as StatusApplied;
+      const after = applyStatusApplied(createEmptyEncounterState(), event);
+      expect(after.entityStatuses.get('alice')?.[0].sourceEntityId).toBe(
+        'goblin-1'
+      );
+    });
+  });
+
+  describe('applyModeChanged', () => {
+    it('updates the mode field to the new value', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyModeChanged(
+        prev,
+        makeModeChanged(EncounterMode.FREE_ROAM, EncounterMode.TURN_BASED)
+      );
+      expect(after.mode).toBe(EncounterMode.TURN_BASED);
+    });
+
+    it('is idempotent when mode is unchanged (returns same reference)', () => {
+      let state = applyModeChanged(
+        createEmptyEncounterState(),
+        makeModeChanged(EncounterMode.UNSPECIFIED, EncounterMode.TURN_BASED)
+      );
+      const before = state;
+      state = applyModeChanged(
+        state,
+        makeModeChanged(EncounterMode.TURN_BASED, EncounterMode.TURN_BASED)
+      );
+      expect(state).toBe(before);
+    });
+
+    it('does not touch HP, statuses, activeEntityId, round', () => {
+      let prev = createEmptyEncounterState();
+      prev = applyEntityDamaged(prev, makeDamaged('alice', 8, 14));
+      prev = applyStatusApplied(
+        prev,
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      prev = applyTurnStarted(prev, makeTurnStarted('alice', 2));
+
+      const next = applyModeChanged(
+        prev,
+        makeModeChanged(EncounterMode.TURN_BASED, EncounterMode.FREE_ROAM)
+      );
+      expect(next.mode).toBe(EncounterMode.FREE_ROAM);
+      expect(next.entityHP.get('alice')).toEqual({ current: 8, max: 14 });
+      expect(next.entityStatuses.get('alice')).toHaveLength(1);
+      expect(next.activeEntityId).toBe('alice');
+      expect(next.round).toBe(2);
+    });
+
+    it('does not mutate the previous state', () => {
+      const prev = createEmptyEncounterState();
+      applyModeChanged(
+        prev,
+        makeModeChanged(EncounterMode.UNSPECIFIED, EncounterMode.TURN_BASED)
+      );
+      expect(prev.mode).toBe(EncounterMode.UNSPECIFIED);
+    });
+  });
+
+  describe('applyTurnStarted', () => {
+    it('sets activeEntityId and round', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyTurnStarted(prev, makeTurnStarted('char-alice', 1));
+      expect(after.activeEntityId).toBe('char-alice');
+      expect(after.round).toBe(1);
+    });
+
+    it('updates the active actor on subsequent turns', () => {
+      let state = createEmptyEncounterState();
+      state = applyTurnStarted(state, makeTurnStarted('char-alice', 1));
+      state = applyTurnStarted(state, makeTurnStarted('goblin-1', 1));
+      expect(state.activeEntityId).toBe('goblin-1');
+      expect(state.round).toBe(1);
+    });
+
+    it('advances the round when the turn cycle wraps', () => {
+      let state = applyTurnStarted(
+        createEmptyEncounterState(),
+        makeTurnStarted('char-alice', 1)
+      );
+      state = applyTurnStarted(state, makeTurnStarted('char-alice', 2));
+      expect(state.round).toBe(2);
+    });
+
+    it('is idempotent on a same-actor / same-round event (returns same reference)', () => {
+      const prev = applyTurnStarted(
+        createEmptyEncounterState(),
+        makeTurnStarted('char-alice', 1)
+      );
+      const next = applyTurnStarted(prev, makeTurnStarted('char-alice', 1));
+      expect(next).toBe(prev);
+    });
+
+    it('does not touch HP, statuses, mode', () => {
+      let prev = createEmptyEncounterState();
+      prev = applyEntityDamaged(prev, makeDamaged('alice', 8, 14));
+      prev = applyStatusApplied(
+        prev,
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      prev = applyModeChanged(
+        prev,
+        makeModeChanged(EncounterMode.UNSPECIFIED, EncounterMode.TURN_BASED)
+      );
+
+      const next = applyTurnStarted(prev, makeTurnStarted('char-alice', 1));
+      expect(next.entityHP.get('alice')).toEqual({ current: 8, max: 14 });
+      expect(next.entityStatuses.get('alice')).toHaveLength(1);
+      expect(next.mode).toBe(EncounterMode.TURN_BASED);
+    });
+  });
+
+  describe('applyTurnEnded', () => {
+    it('does not clear activeEntityId or round (TurnStarted is authoritative)', () => {
+      // Per the reducer doc: clearing here would race the TurnStarted that
+      // follows on the wire and cause UI flicker. TurnEnded is currently a
+      // no-op on local state.
+      let state = applyTurnStarted(
+        createEmptyEncounterState(),
+        makeTurnStarted('char-alice', 2)
+      );
+      const before = state;
+      state = applyTurnEnded(state);
+      expect(state).toBe(before);
+      expect(state.activeEntityId).toBe('char-alice');
+      expect(state.round).toBe(2);
     });
   });
 });

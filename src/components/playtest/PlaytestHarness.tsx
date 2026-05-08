@@ -1,14 +1,30 @@
 import { create } from '@bufbuild/protobuf';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import type { ActionTarget } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
+import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useState } from 'react';
 import { v2PositionToV1 } from '../../api/positionConvert';
 import { useDevPlayerIdAuth } from '../../api/useDevPlayerIdAuth';
 import { useEncounterStream2 } from '../../api/useEncounterStream2';
+import { useEndTurnV2 } from '../../api/useEndTurnV2';
 import { useInteractV2 } from '../../api/useInteractV2';
 import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
+import { useTakeActionV2 } from '../../api/useTakeActionV2';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { protoPositionToHex } from '../../utils/hexCoord';
+
+const ATTACK_ACTION_REF = {
+  module: 'dnd5e',
+  type: 'action',
+  id: 'attack',
+} as const;
+
+const MODE_LABEL: Record<EncounterMode, string> = {
+  [EncounterMode.UNSPECIFIED]: 'UNSPECIFIED',
+  [EncounterMode.FREE_ROAM]: 'FREE_ROAM',
+  [EncounterMode.TURN_BASED]: 'TURN_BASED',
+};
 
 function formatTime(d: Date): string {
   return d.toTimeString().slice(0, 8);
@@ -37,6 +53,7 @@ export function PlaytestHarness() {
   const [targetR, setTargetR] = useState(0);
   const [targetS, setTargetS] = useState(0);
   const [targetDoorId, setTargetDoorId] = useState('');
+  const [attackTargetId, setAttackTargetId] = useState('');
 
   const encounterState = useEncounterState();
   const {
@@ -49,6 +66,16 @@ export function PlaytestHarness() {
     loading: interactLoading,
     error: interactError,
   } = useInteractV2();
+  const {
+    takeAction,
+    loading: takeActionLoading,
+    error: takeActionError,
+  } = useTakeActionV2();
+  const {
+    endTurn,
+    loading: endTurnLoading,
+    error: endTurnError,
+  } = useEndTurnV2();
 
   const addLog = (msg: string) => {
     const entry = `[${formatTime(new Date())}] ${msg}`;
@@ -106,6 +133,31 @@ export function PlaytestHarness() {
         encounterState.applyDoorOpened(e.doorEntityId);
         addLog(`DoorOpened ${e.doorEntityId}`);
       },
+      onEntityDamaged: (e) => {
+        encounterState.applyEntityDamaged(e);
+        const hp = e.hpAfter;
+        const hpStr = hp ? ` hp_after=${hp.current}/${hp.max}` : '';
+        addLog(`EntityDamaged ${e.entityId} amount=${e.amount}${hpStr}`);
+      },
+      onStatusApplied: (e) => {
+        encounterState.applyStatusApplied(e);
+        const id = e.status?.source?.id ?? '?';
+        addLog(`StatusApplied ${e.entityId} <- ${id}`);
+      },
+      onModeChanged: (e) => {
+        encounterState.applyModeChanged(e);
+        addLog(
+          `ModeChanged ${MODE_LABEL[e.from]} → ${MODE_LABEL[e.to]} (${e.reason || '—'})`
+        );
+      },
+      onTurnStarted: (e) => {
+        encounterState.applyTurnStarted(e);
+        addLog(`TurnStarted ${e.entityId} round=${e.round}`);
+      },
+      onTurnEnded: (e) => {
+        encounterState.applyTurnEnded();
+        addLog(`TurnEnded ${e.entityId}`);
+      },
     }
   );
 
@@ -157,9 +209,47 @@ export function PlaytestHarness() {
     }
   };
 
+  const handleAttack = async () => {
+    const id = attackTargetId.trim();
+    if (!id) return;
+    // Construct the v2 ActionTarget oneof for entity-target attacks.
+    // The proto's `kind` is a oneof; setting case='entityId' picks the
+    // single-target variant.
+    const target = {
+      kind: { case: 'entityId', value: id },
+    } as unknown as ActionTarget;
+    try {
+      await takeAction({
+        encounterId,
+        actorEntityId: entityId,
+        actionRef: ATTACK_ACTION_REF,
+        target,
+      });
+      addLog(`TakeAction(attack) → ${id}`);
+    } catch {
+      // error is surfaced via takeActionError state
+    }
+  };
+
+  const handleEndTurn = async () => {
+    try {
+      await endTurn(encounterId, entityId);
+      addLog(`EndTurn → ${entityId}`);
+    } catch {
+      // error is surfaced via endTurnError state
+    }
+  };
+
   const entitiesArray = Array.from(encounterState.state.entities.entries());
   const revealedKeys = Array.from(encounterState.state.revealedHexes);
   const openDoorKeys = Array.from(encounterState.state.openDoors);
+  const myHP = encounterState.state.entityHP.get(entityId);
+  const myStatuses = encounterState.state.entityStatuses.get(entityId) ?? [];
+  const isMyTurn =
+    encounterState.state.mode === EncounterMode.TURN_BASED &&
+    encounterState.state.activeEntityId === entityId;
+  const combatEnabled =
+    encounterState.state.mode === EncounterMode.TURN_BASED && isMyTurn;
 
   return (
     <div
@@ -181,6 +271,7 @@ export function PlaytestHarness() {
           borderRadius: 4,
           display: 'flex',
           gap: 24,
+          flexWrap: 'wrap',
         }}
       >
         <span>
@@ -190,6 +281,19 @@ export function PlaytestHarness() {
           connection: <strong>{stream.connectionState}</strong>
         </span>
         <span>entityId: {entityId}</span>
+        <span>
+          mode: <strong>{MODE_LABEL[encounterState.state.mode]}</strong>
+        </span>
+        <span>
+          active:{' '}
+          <strong>{encounterState.state.activeEntityId || '(none)'}</strong>
+        </span>
+        <span>
+          round: <strong>{encounterState.state.round}</strong>
+        </span>
+        <span>
+          HP: <strong>{myHP ? `${myHP.current}/${myHP.max}` : '—'}</strong>
+        </span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -399,6 +503,128 @@ export function PlaytestHarness() {
           {interactError && (
             <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
               Interact error: {interactError.message}
+            </div>
+          )}
+
+          {/* Combat controls (Wave 2.8 verification scaffold; deleted in slice 3) */}
+          <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Combat</h3>
+          <div style={{ fontSize: 12, color: '#777', marginBottom: 8 }}>
+            Statuses ({myStatuses.length}):{' '}
+            {myStatuses.length === 0
+              ? '(none)'
+              : myStatuses.map((s) => s.source.id).join(', ')}
+          </div>
+          {/* Per-entity HP table for visible monsters (Wave 2.8 ships goblin-1 only). */}
+          {encounterState.state.entityHP.size > 0 && (
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                marginBottom: 8,
+                fontSize: 12,
+              }}
+            >
+              <thead>
+                <tr style={{ color: '#888', textAlign: 'left' }}>
+                  <th style={{ padding: '4px 8px' }}>id</th>
+                  <th style={{ padding: '4px 8px' }}>HP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(encounterState.state.entityHP.entries()).map(
+                  ([id, hp]) => (
+                    <tr key={id} style={{ borderTop: '1px solid #333' }}>
+                      <td style={{ padding: '4px 8px' }}>{id}</td>
+                      <td style={{ padding: '4px 8px' }}>
+                        {hp.current}/{hp.max}
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          )}
+          {!isMyTurn &&
+            encounterState.state.mode === EncounterMode.TURN_BASED && (
+              <div style={{ color: '#aa8', fontSize: 12, marginBottom: 8 }}>
+                (waiting for your turn — active actor:{' '}
+                {encounterState.state.activeEntityId || 'none'})
+              </div>
+            )}
+          {encounterState.state.mode !== EncounterMode.TURN_BASED && (
+            <div style={{ color: '#666', fontSize: 12, marginBottom: 8 }}>
+              (combat actions enabled only in TURN_BASED mode)
+            </div>
+          )}
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <label style={{ fontSize: 12 }}>
+              Target id{' '}
+              <input
+                type="text"
+                value={attackTargetId}
+                onChange={(e) => setAttackTargetId(e.target.value)}
+                placeholder="goblin-1"
+                aria-label="attack target id"
+                style={{
+                  width: 140,
+                  background: '#333',
+                  color: '#eee',
+                  border: '1px solid #555',
+                  padding: '2px 4px',
+                }}
+              />
+            </label>
+            <button
+              onClick={() => void handleAttack()}
+              disabled={
+                !combatEnabled || !attackTargetId.trim() || takeActionLoading
+              }
+              style={{
+                padding: '4px 12px',
+                background:
+                  combatEnabled && attackTargetId.trim()
+                    ? '#4a2a2a'
+                    : '#2a2a2a',
+                color: combatEnabled && attackTargetId.trim() ? '#f88' : '#666',
+                border: '1px solid #555',
+                cursor:
+                  combatEnabled && attackTargetId.trim() && !takeActionLoading
+                    ? 'pointer'
+                    : 'not-allowed',
+              }}
+            >
+              {takeActionLoading ? 'Attacking…' : 'Attack'}
+            </button>
+            <button
+              onClick={() => void handleEndTurn()}
+              disabled={!combatEnabled || endTurnLoading}
+              style={{
+                padding: '4px 12px',
+                background: combatEnabled ? '#2a4a2a' : '#2a2a2a',
+                color: combatEnabled ? '#8f8' : '#666',
+                border: '1px solid #555',
+                cursor:
+                  combatEnabled && !endTurnLoading ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {endTurnLoading ? 'Ending…' : 'End turn'}
+            </button>
+          </div>
+          {takeActionError && (
+            <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
+              TakeAction error: {takeActionError.message}
+            </div>
+          )}
+          {endTurnError && (
+            <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
+              EndTurn error: {endTurnError.message}
             </div>
           )}
         </div>

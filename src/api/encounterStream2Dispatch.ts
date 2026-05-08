@@ -2,10 +2,15 @@ import type {
   DoorOpened,
   EncounterEvent,
   EntityAppeared,
+  EntityDamaged,
   EntityDisappeared,
   EntityMoved,
   GeometryRevealed,
+  ModeChanged,
   SnapshotDelivered,
+  StatusApplied,
+  TurnEnded,
+  TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 
 /**
@@ -20,6 +25,11 @@ import type {
  * Wave 2.7; the actual reveal data (newly-visible hexes) flows on a parallel
  * GeometryRevealed (effect) event from the toolkit's deliberate two-phase
  * emission. Consumers should subscribe to BOTH; do not try to combine them.
+ *
+ * The same cause/effect split applies in Wave 2.8 for combat: the toolkit
+ * emits its `AttackResolvedEvent` (cause/narration) but the rpg-api translator
+ * drops it on the wire (no proto event for cause-only attacks); HP changes
+ * arrive as `EntityDamaged` (effect) and conditions as `StatusApplied` (effect).
  */
 export interface EncounterStream2Options {
   /** slice-1: encounter field is empty; treat as connect-confirm only. */
@@ -34,6 +44,17 @@ export interface EncounterStream2Options {
    * geometry side flows on a separate GeometryRevealed event.
    */
   onDoorOpened?: (event: DoorOpened) => void;
+  // Wave 2.8: combat events (TURN_BASED mode + attacks + turn cycle).
+  /** Authoritative HP update; carries `hp_after` and `amount`. */
+  onEntityDamaged?: (event: EntityDamaged) => void;
+  /** Condition applied to a target; carries the StatusEffect ref + display. */
+  onStatusApplied?: (event: StatusApplied) => void;
+  /** Encounter-mode transition (e.g. FREE_ROAM → TURN_BASED). */
+  onModeChanged?: (event: ModeChanged) => void;
+  /** Active actor + round update; signals "X's turn now". */
+  onTurnStarted?: (event: TurnStarted) => void;
+  /** Active actor finished; the next TurnStarted is authoritative for who's next. */
+  onTurnEnded?: (event: TurnEnded) => void;
 }
 
 /**
@@ -65,10 +86,25 @@ export function dispatchEncounterStream2Event(
     case 'doorOpened':
       options.onDoorOpened?.(payload.value);
       break;
+    case 'entityDamaged':
+      options.onEntityDamaged?.(payload.value);
+      break;
+    case 'statusApplied':
+      options.onStatusApplied?.(payload.value);
+      break;
+    case 'modeChanged':
+      options.onModeChanged?.(payload.value);
+      break;
+    case 'turnStarted':
+      options.onTurnStarted?.(payload.value);
+      break;
+    case 'turnEnded':
+      options.onTurnEnded?.(payload.value);
+      break;
     default:
-      // Either out-of-current-scope but known to the proto (entityDamaged,
-      // turnStarted, encounterEnded, etc. — the proto defines 20+ event cases;
-      // we currently handle 6) OR a genuinely unknown case from a proto
+      // Either out-of-current-scope but known to the proto (entityHealed,
+      // encounterEnded, dialogue, etc. — the proto defines 20+ event cases;
+      // we currently handle 11) OR a genuinely unknown case from a proto
       // version mismatch. Either way: warn + continue so the stream doesn't
       // tear down. Add a case arm + callback when the feature lands.
       // The cast strips the narrowed-to-undefined `case` so we can log it.

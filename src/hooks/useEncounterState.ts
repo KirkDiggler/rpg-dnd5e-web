@@ -22,8 +22,31 @@ import type {
   RoomLayout,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { DungeonState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import type {
+  EntityDamaged,
+  ModeChanged,
+  StatusApplied,
+  TurnStarted,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
+import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useState } from 'react';
 import { hexKey, type CubeHexCoord } from '../utils/hexCoord';
+
+/** v1alpha2 per-entity HP, populated from EntityDamaged.hp_after. */
+export interface EntityHP {
+  current: number;
+  max: number;
+}
+
+/** v1alpha2 condition tag, populated from StatusApplied.status. */
+export interface EntityStatus {
+  /** {module, type:"condition", id:"poisoned"} — the condition's source ref. */
+  source: { module: string; type: string; id: string };
+  /** Display label from the proto's StatusEffect.display_name (may be empty). */
+  displayName: string;
+  /** Source entity that applied the condition (may be undefined). */
+  sourceEntityId?: string;
+}
 
 /** Local representation of encounter state using JS Maps for O(1) lookups */
 export interface LocalEncounterState {
@@ -47,6 +70,35 @@ export interface LocalEncounterState {
    * decide whether to draw a door's wall as a passage.
    */
   openDoors: Set<string>;
+  /**
+   * v1alpha2 per-entity hit points keyed by entity id. Populated by
+   * `applyEntityDamaged` from EntityDamaged.hp_after. Authoritative HP for
+   * combat rendering — server-emitted, never client-computed.
+   */
+  entityHP: Map<string, EntityHP>;
+  /**
+   * v1alpha2 active conditions per entity, keyed by entity id. Populated by
+   * `applyStatusApplied`. Conditions with the same `source` ref replace each
+   * other; multiple distinct conditions stack.
+   */
+  entityStatuses: Map<string, EntityStatus[]>;
+  /**
+   * v1alpha2 encounter mode. UNSPECIFIED until ModeChanged or a snapshot
+   * sets it. Combat controls in the harness gate on this being TURN_BASED.
+   */
+  mode: EncounterMode;
+  /**
+   * v1alpha2 active actor's entity id (whose turn it is). Empty string when
+   * not in TURN_BASED. Set by TurnStarted; not cleared by TurnEnded — the
+   * next TurnStarted overwrites it. The harness's "is it my turn?" check
+   * compares this to the local player's character id.
+   */
+  activeEntityId: string;
+  /**
+   * v1alpha2 turn-based round number. Set by TurnStarted; persists between
+   * turns of the same round.
+   */
+  round: number;
   dungeonState: DungeonState;
   roomsCleared: number;
 }
@@ -64,6 +116,11 @@ export function createEmptyEncounterState(): LocalEncounterState {
     combat: null,
     doors: new Map(),
     openDoors: new Set(),
+    entityHP: new Map(),
+    entityStatuses: new Map(),
+    mode: EncounterMode.UNSPECIFIED,
+    activeEntityId: '',
+    round: 0,
     dungeonState: DungeonState.UNSPECIFIED,
     roomsCleared: 0,
   };
@@ -75,15 +132,17 @@ export function createEmptyEncounterState(): LocalEncounterState {
  *
  * v2-only delta state preservation: `applySnapshot` is called on v1alpha1
  * sync events (LobbyView wires it onto multiple v1 paths). v1 snapshots do
- * NOT carry v2 deltas like `openDoors` or `revealedHexes` — those flow only
- * via the v2 StreamEncounter (DoorOpened, GeometryRevealed) and are not
- * replayed on reconnect or v1 state-sync events. If we rebuilt the whole
- * state on every snapshot we'd silently wipe every v2 door we'd opened in
- * the session.
+ * NOT carry v2 deltas like `openDoors`, `revealedHexes`, `entityHP`,
+ * `entityStatuses`, `mode`, `activeEntityId`, or `round` — those flow only
+ * via the v2 StreamEncounter (DoorOpened, GeometryRevealed, EntityDamaged,
+ * StatusApplied, ModeChanged, TurnStarted, TurnEnded) and are not replayed
+ * on reconnect or v1 state-sync events. If we rebuilt the whole state on
+ * every snapshot we'd silently wipe every v2 delta we'd accumulated in the
+ * session.
  *
  * Mitigation: when `prev` is provided AND the snapshot is for the SAME
- * encounter (same encounterId), carry forward v2-only fields (`openDoors`,
- * `revealedHexes`). On encounter switch (different encounterId) we reset.
+ * encounter (same encounterId), carry forward all v2-only fields. On
+ * encounter switch (different encounterId) we reset.
  *
  * Exported for testing.
  */
@@ -111,6 +170,14 @@ export function applySnapshotToState(
     // v2 door state comes back via the stream's DoorOpened deltas; preserve
     // across same-encounter v1 snapshots (deltas aren't replayed on sync).
     openDoors: sameEncounter ? prev.openDoors : new Set(),
+    // v2 combat state (HP, statuses, mode, active actor, round) flow only via
+    // EntityDamaged / StatusApplied / ModeChanged / TurnStarted events;
+    // preserve across same-encounter v1 snapshots (deltas aren't replayed).
+    entityHP: sameEncounter ? prev.entityHP : new Map(),
+    entityStatuses: sameEncounter ? prev.entityStatuses : new Map(),
+    mode: sameEncounter ? prev.mode : EncounterMode.UNSPECIFIED,
+    activeEntityId: sameEncounter ? prev.activeEntityId : '',
+    round: sameEncounter ? prev.round : 0,
     dungeonState: proto.dungeonState,
     roomsCleared: proto.roomsCleared,
   };
@@ -236,6 +303,134 @@ export function applyDoorOpened(
 }
 
 /**
+ * Apply an EntityDamaged event: writes the target's HP from `hp_after`.
+ *
+ * The server is authoritative — `event.amount` is informational; we do NOT
+ * subtract it from a client-cached value. Always read `hp_after.{current,max}`
+ * directly. Per #393's "no business logic in the web" rule, hit/miss/damage
+ * resolution happens server-side and the wire-shape carries the resulting HP.
+ *
+ * If `hp_after` is missing (defensive — proto field is optional), the entry
+ * is left untouched. Idempotent on identical hp_after values: returns the
+ * same reference to skip a re-render.
+ * Exported for testing.
+ */
+export function applyEntityDamaged(
+  prev: LocalEncounterState,
+  event: EntityDamaged
+): LocalEncounterState {
+  if (!event.hpAfter) return prev;
+  const next: EntityHP = {
+    current: event.hpAfter.current,
+    max: event.hpAfter.max,
+  };
+  const existing = prev.entityHP.get(event.entityId);
+  if (
+    existing !== undefined &&
+    existing.current === next.current &&
+    existing.max === next.max
+  ) {
+    return prev;
+  }
+  const newHP = new Map(prev.entityHP);
+  newHP.set(event.entityId, next);
+  return { ...prev, entityHP: newHP };
+}
+
+/**
+ * Apply a StatusApplied event: appends the condition to the target's status
+ * list. Conditions sharing the same source ref ({module,type,id}) replace
+ * each other (re-applying a condition extends/refreshes it server-side; the
+ * client just mirrors the latest authoritative entry). Distinct conditions
+ * stack.
+ *
+ * If `status` is missing (defensive — proto field is optional), the call is
+ * a no-op. Exported for testing.
+ */
+export function applyStatusApplied(
+  prev: LocalEncounterState,
+  event: StatusApplied
+): LocalEncounterState {
+  const status = event.status;
+  if (!status || !status.source) return prev;
+  const sourceRef = {
+    module: status.source.module,
+    type: status.source.type,
+    id: status.source.id,
+  };
+  const newStatus: EntityStatus = {
+    source: sourceRef,
+    displayName: status.displayName,
+    sourceEntityId: event.sourceEntityId,
+  };
+
+  const existingList = prev.entityStatuses.get(event.entityId) ?? [];
+  // Replace any prior entry with the same source ref; otherwise append.
+  const filtered = existingList.filter(
+    (s) =>
+      !(
+        s.source.module === sourceRef.module &&
+        s.source.type === sourceRef.type &&
+        s.source.id === sourceRef.id
+      )
+  );
+  const nextList = [...filtered, newStatus];
+
+  const newStatuses = new Map(prev.entityStatuses);
+  newStatuses.set(event.entityId, nextList);
+  return { ...prev, entityStatuses: newStatuses };
+}
+
+/**
+ * Apply a ModeChanged event: updates the encounter's mode field.
+ *
+ * Idempotent if the mode is unchanged (returns the same reference).
+ * Exported for testing.
+ */
+export function applyModeChanged(
+  prev: LocalEncounterState,
+  event: ModeChanged
+): LocalEncounterState {
+  if (prev.mode === event.to) return prev;
+  return { ...prev, mode: event.to };
+}
+
+/**
+ * Apply a TurnStarted event: updates `activeEntityId` and `round`.
+ *
+ * Idempotent on a same-actor / same-round event (returns the same reference).
+ * Exported for testing.
+ */
+export function applyTurnStarted(
+  prev: LocalEncounterState,
+  event: TurnStarted
+): LocalEncounterState {
+  if (prev.activeEntityId === event.entityId && prev.round === event.round) {
+    return prev;
+  }
+  return {
+    ...prev,
+    activeEntityId: event.entityId,
+    round: event.round,
+  };
+}
+
+/**
+ * Apply a TurnEnded event. The next TurnStarted is the authoritative source
+ * for the new active actor and round, so we do NOT clear `activeEntityId`
+ * here — clearing it would race the TurnStarted that follows on the wire and
+ * cause the harness to flicker through "(none)" between turns. This reducer
+ * is currently a no-op on local state and exists for symmetry with the wire
+ * event; future consumers (per-turn UI cleanup, animations) hook in here
+ * without changing the dispatcher contract.
+ *
+ * Exported for testing.
+ */
+export function applyTurnEnded(prev: LocalEncounterState): LocalEncounterState {
+  return prev;
+}
+
+/**
  * Replace combat state without touching entities or other fields.
  * Exported for testing.
  */
@@ -271,6 +466,17 @@ export interface UseEncounterStateResult {
   applyEntityDisappeared: (entityId: string, lastKnown: CubeHexCoord) => void;
   /** Mark a door entity as open; idempotent. */
   applyDoorOpened: (doorEntityId: string) => void;
+  // v1alpha2 combat (Wave 2.8)
+  /** Update an entity's HP from an EntityDamaged event's hp_after field. */
+  applyEntityDamaged: (event: EntityDamaged) => void;
+  /** Append (or replace by source ref) a status effect on an entity. */
+  applyStatusApplied: (event: StatusApplied) => void;
+  /** Update encounter mode from a ModeChanged event. */
+  applyModeChanged: (event: ModeChanged) => void;
+  /** Set active actor + round from a TurnStarted event. */
+  applyTurnStarted: (event: TurnStarted) => void;
+  /** Hook for TurnEnded (currently no-op; reserved for future per-turn UI). */
+  applyTurnEnded: () => void;
 }
 
 /**
@@ -328,6 +534,26 @@ export function useEncounterState(): UseEncounterStateResult {
     setState((prev) => applyDoorOpened(prev, doorEntityId));
   }, []);
 
+  const applyEntityDamagedCallback = useCallback((event: EntityDamaged) => {
+    setState((prev) => applyEntityDamaged(prev, event));
+  }, []);
+
+  const applyStatusAppliedCallback = useCallback((event: StatusApplied) => {
+    setState((prev) => applyStatusApplied(prev, event));
+  }, []);
+
+  const applyModeChangedCallback = useCallback((event: ModeChanged) => {
+    setState((prev) => applyModeChanged(prev, event));
+  }, []);
+
+  const applyTurnStartedCallback = useCallback((event: TurnStarted) => {
+    setState((prev) => applyTurnStarted(prev, event));
+  }, []);
+
+  const applyTurnEndedCallback = useCallback(() => {
+    setState((prev) => applyTurnEnded(prev));
+  }, []);
+
   return {
     state,
     applySnapshot,
@@ -339,5 +565,10 @@ export function useEncounterState(): UseEncounterStateResult {
     applyEntityAppeared: applyEntityAppearedCallback,
     applyEntityDisappeared: applyEntityDisappearedCallback,
     applyDoorOpened: applyDoorOpenedCallback,
+    applyEntityDamaged: applyEntityDamagedCallback,
+    applyStatusApplied: applyStatusAppliedCallback,
+    applyModeChanged: applyModeChangedCallback,
+    applyTurnStarted: applyTurnStartedCallback,
+    applyTurnEnded: applyTurnEndedCallback,
   };
 }

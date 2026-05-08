@@ -2,6 +2,7 @@ import { create } from '@bufbuild/protobuf';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
+import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEncounterState } from '../hooks/useEncounterState';
@@ -75,6 +76,21 @@ function useTestHarness(encounterId: string) {
     },
     onDoorOpened: (e) => {
       state.applyDoorOpened(e.doorEntityId);
+    },
+    onEntityDamaged: (e) => {
+      state.applyEntityDamaged(e);
+    },
+    onStatusApplied: (e) => {
+      state.applyStatusApplied(e);
+    },
+    onModeChanged: (e) => {
+      state.applyModeChanged(e);
+    },
+    onTurnStarted: (e) => {
+      state.applyTurnStarted(e);
+    },
+    onTurnEnded: () => {
+      state.applyTurnEnded();
     },
   });
   return state.state;
@@ -281,6 +297,92 @@ describe('useEncounterStream2 + useEncounterState — integration', () => {
       expect(m?.position?.x).toBe(5);
       expect(m?.position?.y).toBe(-3);
       expect(m?.position?.z).toBe(-2);
+    });
+  });
+
+  it('combat sequence: ModeChanged → TurnStarted → EntityDamaged → StatusApplied → TurnEnded', async () => {
+    // Wave 2.8: a player's combat round threads five distinct event types
+    // through the dispatcher into the unified state. Verifies the dispatch
+    // graph wires every reducer correctly and the v2 combat delta state
+    // accumulates as expected.
+    const { result } = renderHook(() => useTestHarness('enc-1'));
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: 'ambush',
+        })
+      )
+    );
+    await waitFor(() => {
+      expect(result.current.mode).toBe(EncounterMode.TURN_BASED);
+    });
+
+    act(() =>
+      fake.push(
+        makeEvent('turnStarted', {
+          entityId: 'alice',
+          round: 1,
+        })
+      )
+    );
+    await waitFor(() => {
+      expect(result.current.activeEntityId).toBe('alice');
+      expect(result.current.round).toBe(1);
+    });
+
+    act(() =>
+      fake.push(
+        makeEvent('entityDamaged', {
+          entityId: 'goblin-1',
+          amount: 5,
+          hpAfter: { current: 2, max: 7 },
+          sourceEntityId: 'alice',
+        })
+      )
+    );
+    await waitFor(() => {
+      expect(result.current.entityHP.get('goblin-1')).toEqual({
+        current: 2,
+        max: 7,
+      });
+    });
+
+    act(() =>
+      fake.push(
+        makeEvent('statusApplied', {
+          entityId: 'goblin-1',
+          status: {
+            source: { module: 'dnd5e', type: 'condition', id: 'frightened' },
+            displayName: 'Frightened',
+          },
+          sourceEntityId: 'alice',
+        })
+      )
+    );
+    await waitFor(() => {
+      expect(result.current.entityStatuses.get('goblin-1')).toHaveLength(1);
+      expect(result.current.entityStatuses.get('goblin-1')?.[0].source.id).toBe(
+        'frightened'
+      );
+    });
+
+    act(() => fake.push(makeEvent('turnEnded', { entityId: 'alice' })));
+    // TurnEnded is a no-op on local state — activeEntityId stays as alice
+    // until the next TurnStarted overwrites it.
+    await waitFor(() => {
+      expect(result.current.activeEntityId).toBe('alice');
+    });
+
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'goblin-1', round: 1 }))
+    );
+    await waitFor(() => {
+      expect(result.current.activeEntityId).toBe('goblin-1');
     });
   });
 });
