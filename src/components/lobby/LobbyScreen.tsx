@@ -11,6 +11,7 @@ import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import type { CombatStartedEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useState } from 'react';
 import { DEFAULT_DUNGEON_CONFIG, type DungeonConfig } from './dungeonConfig';
+import { friendlyJoinError } from './friendlyJoinError';
 import type { PartyMember } from './PartyMemberCard';
 import { WaitingRoom } from './WaitingRoom';
 
@@ -170,7 +171,7 @@ export function LobbyScreen({
       setLobbyState('waiting');
     } catch (error) {
       console.error('Failed to join encounter:', error);
-      setJoinError('Invalid code or lobby not found');
+      setJoinError(friendlyJoinError(error));
     }
   };
 

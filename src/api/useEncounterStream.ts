@@ -28,6 +28,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { useEffect, useRef, useState } from 'react';
 import { encounterClient } from './client';
+import { RECONNECT_CONFIG } from './streamReconnect';
 
 type ConnectionState =
   | 'idle'
@@ -79,13 +80,6 @@ interface UseEncounterStreamResult {
   connectionState: ConnectionState;
   error: Error | null;
 }
-
-const RECONNECT_CONFIG = {
-  initialDelayMs: 1000, // Start with 1 second
-  maxDelayMs: 30000, // Cap at 30 seconds
-  backoffMultiplier: 2, // Double each attempt
-  maxAttempts: 10, // Give up after 10 attempts
-};
 
 /**
  * Dispatches an encounter event to the appropriate callback handler

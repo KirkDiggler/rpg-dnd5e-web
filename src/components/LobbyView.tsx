@@ -33,9 +33,11 @@ import {
   monsterTurnsToLogEntries,
 } from '@/utils/monsterTurnUtils';
 import { getMovementRemainingFromCombat } from '@/utils/movementUtils';
+import { create } from '@bufbuild/protobuf';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   EncounterEndReason,
+  EntityStateSchema,
   type ActionExecutedEvent,
   type AttackResolvedEvent,
   type AvailableAbility,
@@ -53,10 +55,8 @@ import {
   type MonsterCombatState,
   type MonsterTurnCompletedEvent,
   type MonsterTurnResult,
-  type MovementCompletedEvent,
   type PlayerJoinedEvent,
   type Room,
-  type RoomRevealedEvent,
   type TurnEndedEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
@@ -71,6 +71,10 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { v2PositionToV1 } from '../api/positionConvert';
+import { useDevPlayerIdAuth } from '../api/useDevPlayerIdAuth';
+import { useEncounterStream2 } from '../api/useEncounterStream2';
+import { protoPositionToHex } from '../utils/hexCoord';
 import { CombatPanel, type CombatLogEntry } from './combat-v2';
 import { usePlayerTurn } from './combat-v2/hooks/usePlayerTurn';
 import { DungeonResultOverlay } from './dungeon';
@@ -274,7 +278,18 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const { addToast } = useToast();
   const discord = useDiscord();
   const isDevelopment = import.meta.env.MODE === 'development';
-  const playerId = discord.user?.id || (isDevelopment ? 'test-player' : '');
+  // Dev override: ?playerId=alice|bob lets two tabs run as different players
+  // without Discord (slice 2 playtest infrastructure)
+  const devPlayerIdOverride = isDevelopment
+    ? new URLSearchParams(window.location.search).get('playerId')
+    : null;
+  // Sync dev override into gRPC auth store so outbound RPCs carry the right
+  // player ID. useLayoutEffect fires before child effects, preventing races.
+  useDevPlayerIdAuth(devPlayerIdOverride);
+  const playerId =
+    discord.user?.id ||
+    devPlayerIdOverride ||
+    (isDevelopment ? 'test-player' : '');
 
   // Fetch user's characters
   const { data: allCharacters = [], loading: charactersLoading } =
@@ -308,6 +323,9 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     applyEntityPositionUpdate,
     applyCombatState: applyEncounterCombatState,
     reset: resetEncounterState,
+    applyHexRevealed,
+    applyEntityAppeared,
+    applyEntityDisappeared,
   } = useEncounterState();
 
   // Walkable tile keys for cross-room pathfinding
@@ -318,7 +336,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
 
   // Dungeon/door state
   const [dungeonId, setDungeonId] = useState<string | null>(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isTransitioning] = useState(false); // TODO slice 3: remove with v1 RoomRevealed handler
   const [roomsCleared, setRoomsCleared] = useState(0);
   const [dungeonResult, setDungeonResult] = useState<
     'victory' | 'failure' | null
@@ -380,67 +398,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
   const playerName = discord.user?.username || 'Player';
 
   // Dungeon stream event handlers
-  const handleRoomRevealed = useCallback(
-    (event: RoomRevealedEvent) => {
-      console.log('🚪 RoomRevealed event received:', {
-        connectionId: event.connectionId,
-        currentRoomId: event.encounterStateData?.currentRoomId,
-        roomCount: event.encounterStateData
-          ? Object.keys(event.encounterStateData.rooms).length
-          : 0,
-        revealedRoomIds: event.encounterStateData?.revealedRoomIds,
-        entityCount: event.encounterStateData
-          ? Object.keys(event.encounterStateData.entities).length
-          : 0,
-      });
-
-      // Trigger fade transition
-      setIsTransitioning(true);
-
-      setTimeout(() => {
-        // --- New path: populate unified encounter state ---
-        if (event.encounterStateData) {
-          applySnapshot(event.encounterStateData);
-
-          // --- Legacy path: build Room/CombatState from encounterStateData ---
-          // Iterate every revealed room so the freshly-revealed room's floor
-          // tiles get generated. `data.currentRoomId` still points at the
-          // player's current room here — the revealed room only exists in
-          // `data.rooms`. See roomsFromEncounterState for full reasoning.
-          const doors = doorsFromEncounterState(event.encounterStateData);
-          for (const legacyRoom of roomsFromEncounterState(
-            event.encounterStateData
-          )) {
-            addRoomToMap(legacyRoom, doors);
-          }
-          setCombatState(event.encounterStateData.combat ?? null);
-          setRoomsCleared(event.encounterStateData.roomsCleared);
-
-          // Update monsters from encounter state (for monsterType texture selection)
-          setMonsters(monstersFromEncounterState(event.encounterStateData));
-
-          // Select the current turn entity
-          if (event.encounterStateData.combat?.currentTurn?.entityId) {
-            setSelectedEntity(
-              event.encounterStateData.combat.currentTurn.entityId
-            );
-          }
-        }
-
-        // Clear movement state for new room
-        setMovementMode(false);
-        setMovementPath([]);
-        setAttackTarget(null);
-        // Reset two-level action economy for new room
-        setAvailableAbilities([]);
-        setAvailableActions([]);
-
-        // End fade
-        setIsTransitioning(false);
-      }, 300);
-    },
-    [addRoomToMap, applySnapshot]
-  );
 
   const handleDungeonVictory = useCallback(
     (event: DungeonVictoryEvent) => {
@@ -692,52 +649,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
       }
     },
     [applyEntityUpdates, applyEncounterCombatState]
-  );
-
-  // Multiplayer sync: Movement completed - sync entity positions and movement resources
-  const handleMovementCompleted = useCallback(
-    (event: MovementCompletedEvent) => {
-      // [wave2-debug] Surface what the api carried for movement budget so we
-      // can confirm `actionEconomy.movementRemaining` arrived non-zero.
-      // Reading through the deprecated subtraction was the Wave 2 OpenDoor
-      // regression — log both so divergences are obvious in the console.
-      const ae = event.combatState?.currentTurn?.actionEconomy;
-      const dep = event.combatState?.currentTurn;
-      console.log('🚶 MovementCompleted event received:', {
-        entityId: event.entityId,
-        pathLen: event.path.length,
-        hasUpdatedEntity: !!event.updatedEntity,
-        movementRemaining_canonical: ae?.movementRemaining,
-        movementMax_canonical: ae?.movementMax,
-        movementUsed_deprecated: dep?.movementUsed,
-        movementMax_deprecated: dep?.movementMax,
-        currentTurnEntityId: dep?.entityId,
-      });
-
-      // --- New path: populate unified encounter state ---
-      if (event.updatedEntity) {
-        // Preferred: API sent a full entity snapshot. Use it as-is.
-        applyEntityUpdates([event.updatedEntity]);
-      } else if (event.entityId && event.path.length > 0) {
-        // Fallback: API sent only a path (e.g. player moves currently omit
-        // updatedEntity — see rpg-api fix/cross-room-state-wave2). Mirror the
-        // applyMonsterMovement pattern: use the final path coordinate as the
-        // new position for the existing entity. No-op if the entity is not
-        // already in encounter state.
-        const finalPosition = event.path[event.path.length - 1];
-        if (finalPosition) {
-          applyEntityPositionUpdate(event.entityId, finalPosition);
-        }
-      }
-      if (event.combatState) applyEncounterCombatState(event.combatState);
-
-      // --- Legacy path ---
-      // Sync combat state (includes updated movement resources)
-      if (event.combatState) {
-        setCombatState(event.combatState);
-      }
-    },
-    [applyEntityUpdates, applyEntityPositionUpdate, applyEncounterCombatState]
   );
 
   // Multiplayer sync: Feature activated - sync feature usage
@@ -1186,7 +1097,6 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     onStateSync: handleStateSync,
     onHistoricalEvents: handleHistoricalEvents,
     // Dungeon events
-    onRoomRevealed: handleRoomRevealed,
     onDungeonVictory: handleDungeonVictory,
     onDungeonFailure: handleDungeonFailure,
     // Combat sync events
@@ -1194,11 +1104,56 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
     onMonsterTurnCompleted: handleMonsterTurnCompleted,
     onAttackResolved: handleAttackResolved,
     onActionExecuted: handleActionExecuted,
-    onMovementCompleted: handleMovementCompleted,
     onFeatureActivated: handleFeatureActivated,
     // Player sync events
     onPlayerJoined: handlePlayerJoined,
     onCombatStarted: handleCombatStarted,
+  });
+
+  // Subscribe to v1alpha2 encounter stream (runs alongside v1 in slice 2)
+  useEncounterStream2(encounterId, playerId, {
+    onSnapshotDelivered: () => {
+      // v1alpha2 stream-up barrier. Payload `encounter` is empty in slice 1
+      // (toolkit Snapshot doesn't map yet); fires on every connect/reconnect.
+      // Don't log the payload — empty proto noise on every reconnect.
+      console.log('[v2] snapshot delivered');
+    },
+    onEntityMoved: (event) => {
+      // Teleport-to-final per spec; ignore intermediate path hexes in slice 2
+      const last = event.actualPath[event.actualPath.length - 1];
+      if (!last) return;
+      applyEntityPositionUpdate(event.entityId, v2PositionToV1(last));
+    },
+    onGeometryRevealed: (event) => {
+      // GeometryRevealed.hexes is Hex[]; each Hex wraps a Position via .position.
+      // Skip any hex that's missing position (defensive — shouldn't happen).
+      const positions = event.hexes
+        .map((h) => h.position)
+        .filter((p): p is NonNullable<typeof p> => p !== undefined);
+      applyHexRevealed(positions.map(protoPositionToHex));
+    },
+    onEntityAppeared: (event) => {
+      if (!event.entity || !event.entity.position) return;
+      // v1alpha2 Entity uses `id` (not `entityId`); applyEntityAppeared takes
+      // v1's EntityState shape. Construct a schema-typed EntityState stub from
+      // the v2 Entity — slice 2 only renders position. Schema construction gives
+      // proto3 defaults (0/""/[]/undefined) for unset fields, so downstream
+      // readers like HoverInfoPanel don't see bare undefined on numeric fields.
+      // Future slices that need richer v2→v1 mapping can extend the translation.
+      const stub = create(EntityStateSchema, {
+        entityId: event.entity.id,
+        position: v2PositionToV1(event.entity.position),
+        entityType: EntityType.UNSPECIFIED,
+      });
+      applyEntityAppeared(stub);
+    },
+    onEntityDisappeared: (event) => {
+      if (!event.lastKnownPosition) return;
+      applyEntityDisappeared(
+        event.entityId,
+        protoPositionToHex(event.lastKnownPosition)
+      );
+    },
   });
 
   // Reset all dungeon-related state
@@ -2350,6 +2305,7 @@ export function LobbyView({ characterId, onBack }: LobbyViewProps) {
                 availableCharacters={availableCharacters}
                 allPartyCharacters={Array.from(fullCharactersMap.values())}
                 encounterEntities={encounterState.entities}
+                revealedHexes={encounterState.revealedHexes}
                 onEntityClick={handleEntityClick}
                 onCellClick={handleCellClick}
                 encounterId={encounterId}

@@ -16,7 +16,8 @@ import type { HeadVariant } from '@/config/characterModels';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Race } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import { Suspense, useMemo, useRef } from 'react';
+import { useThree } from '@react-three/fiber';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
@@ -41,6 +42,8 @@ export interface HexEntityProps {
   facialHairStyle?: FacialHairStyle;
   /** Whether the entity is dead (show visual dead state, disable interaction) */
   isDead?: boolean;
+  /** Whether the entity is outside LoS (v1alpha2). Render at last-known position with ghost shader (semi-transparent, desaturated). */
+  isGhost?: boolean;
 }
 
 // Visual state colors
@@ -183,8 +186,19 @@ export function HexEntity({
   hairColor,
   facialHairStyle,
   isDead = false,
+  isGhost = false,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
+  const { invalidate } = useThree();
+
+  // R3F runs the canvas in frameloop="demand" mode (HexGrid.tsx). When only
+  // the ghost flag changes (entity stays at last_known position), no other
+  // prop change triggers a re-render request — the new shader material won't
+  // appear until the next user interaction. Force a frame on isGhost
+  // transitions so the visual swap is immediate.
+  useEffect(() => {
+    invalidate();
+  }, [isGhost, invalidate]);
 
   // Convert cube coords to world position
   const worldPos = useMemo(
@@ -202,17 +216,20 @@ export function HexEntity({
       ? COLORS[type].selected
       : COLORS[type].default;
 
-  // Handle click events - dead entities are not interactive
+  // Handle click events - dead and ghost entities are not interactive.
+  // Ghosts represent last-known position outside LoS — clicking would let a
+  // player attempt to attack/select an entity they technically can't see.
+  const isInert = isDead || isGhost;
   const handleClick = (event: { stopPropagation: () => void }) => {
     event.stopPropagation(); // Prevent hex click from firing
-    if (!isDead && onClick) {
+    if (!isInert && onClick) {
       onClick(entityId);
     }
   };
 
-  // Common interaction props for both character models and obstacles
-  // Dead entities get no hover/pointer interaction
-  const interactionProps = isDead
+  // Common interaction props for both character models and obstacles.
+  // Inert entities (dead or ghost) get no hover/pointer interaction.
+  const interactionProps = isInert
     ? {
         onClick: (e: { stopPropagation: () => void }) => e.stopPropagation(),
       }
@@ -258,7 +275,7 @@ export function HexEntity({
         position={[worldPos.x, CHARACTER_Y_OFFSET, worldPos.z]}
         {...interactionProps}
       >
-        {/* Dead entities rendered with tilt and reduced opacity */}
+        {/* Dead entities rendered with tilt; ghost entities rendered with ghost shader */}
         <group rotation={isDead ? [0, 0, Math.PI / 3] : [0, 0, 0]}>
           <Suspense
             fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
@@ -282,6 +299,7 @@ export function HexEntity({
               offHandWeapon={offHandWeapon}
               shield={shield}
               showOutline={!isDead}
+              ghostAmount={isGhost ? 1.0 : 0.0}
             />
           </Suspense>
         </group>

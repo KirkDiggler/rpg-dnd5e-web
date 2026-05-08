@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { useListCharacters, useListDrafts } from './api/hooks';
+import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
 import './App.css';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
@@ -8,6 +9,7 @@ import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { LobbyView } from './components/LobbyView';
+import { PlaytestHarness } from './components/playtest/PlaytestHarness';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
 import { DiscordDebugPanel, useDiscord } from './discord';
@@ -20,6 +22,15 @@ type AppView =
   | 'concepts';
 
 function AppContent() {
+  // Stable gate: dev mode + encounterId URL param → render PlaytestHarness.
+  // Computed once on mount via useState initializer so route doesn't flicker.
+  // DELETE in slice 3 cleanup.
+  const [showPlaytestHarness] = useState(
+    () =>
+      import.meta.env.MODE === 'development' &&
+      !!new URLSearchParams(window.location.search).get('encounterId')
+  );
+
   const [currentView, setCurrentView] = useState<AppView>('home');
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [currentCharacterId, setCurrentCharacterId] = useState<string | null>(
@@ -38,7 +49,18 @@ function AppContent() {
 
   // In production, require Discord auth. In dev, allow test player
   const isDevelopment = import.meta.env.MODE === 'development';
-  const playerId = discord.user?.id || (isDevelopment ? 'test-player' : null);
+  // Dev override: ?playerId=alice|bob lets two tabs run as different players
+  // without Discord (slice 2 playtest infrastructure)
+  const devPlayerIdOverride = isDevelopment
+    ? new URLSearchParams(window.location.search).get('playerId')
+    : null;
+  // Sync dev override into gRPC auth store so outbound RPCs carry the right
+  // player ID. useLayoutEffect fires before child effects, preventing races.
+  useDevPlayerIdAuth(devPlayerIdOverride);
+  const playerId =
+    discord.user?.id ||
+    devPlayerIdOverride ||
+    (isDevelopment ? 'test-player' : null);
 
   const handleCreateCharacter = async () => {
     try {
@@ -120,6 +142,14 @@ function AppContent() {
       setSelectedType(null);
     }
   };
+
+  if (showPlaytestHarness) {
+    return (
+      <div className="min-h-screen">
+        <PlaytestHarness />
+      </div>
+    );
+  }
 
   return (
     <div

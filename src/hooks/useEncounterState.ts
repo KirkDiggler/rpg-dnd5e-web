@@ -9,7 +9,11 @@
  * Part of the unified entity state refactor (rpg-dnd5e-web feat-unified-entity-state).
  */
 
-import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
+import { create } from '@bufbuild/protobuf';
+import {
+  PositionSchema,
+  type Position,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type {
   CombatState,
   DoorInfo,
@@ -19,17 +23,20 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { DungeonState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useCallback, useState } from 'react';
+import { hexKey, type CubeHexCoord } from '../utils/hexCoord';
 
 /** Local representation of encounter state using JS Maps for O(1) lookups */
 export interface LocalEncounterState {
   encounterId: string;
   dungeonId: string;
-  /** All entities in the encounter, keyed by entity ID */
-  entities: Map<string, EntityState>;
+  /** All entities, keyed by entity ID. v2 may set entity.ghost on LoS loss. */
+  entities: Map<string, EntityState & { ghost?: boolean }>;
   /** All rooms in the dungeon, keyed by room ID */
   rooms: Map<string, RoomLayout>;
   currentRoomId: string;
   revealedRoomIds: string[];
+  /** v1alpha2-revealed hexes (per-hex granularity). UI renders revealed if either revealedHexes covers it OR the room is in revealedRoomIds. */
+  revealedHexes: Set<string>;
   combat: CombatState | null;
   /** All doors in the dungeon, keyed by connection ID */
   doors: Map<string, DoorInfo>;
@@ -46,6 +53,7 @@ export function createEmptyEncounterState(): LocalEncounterState {
     rooms: new Map(),
     currentRoomId: '',
     revealedRoomIds: [],
+    revealedHexes: new Set(),
     combat: null,
     doors: new Map(),
     dungeonState: DungeonState.UNSPECIFIED,
@@ -68,6 +76,7 @@ export function applySnapshotToState(
     rooms: new Map(Object.entries(proto.rooms ?? {})),
     currentRoomId: proto.currentRoomId,
     revealedRoomIds: proto.revealedRoomIds,
+    revealedHexes: new Set(), // v2 reveals come back via the stream's GeometryRevealed deltas
     combat: proto.combat ?? null,
     doors: new Map(Object.entries(proto.doors ?? {})),
     dungeonState: proto.dungeonState,
@@ -118,6 +127,65 @@ export function mergeEntityPosition(
 }
 
 /**
+ * Add hexes to the per-hex reveal set without dropping previously revealed hexes.
+ * Uses hexKey() for stable 'q,r,s' string keys. Idempotent — re-adding an
+ * already-revealed hex is a no-op (Set semantics).
+ * Exported for testing.
+ */
+export function applyHexRevealed(
+  prev: LocalEncounterState,
+  hexes: CubeHexCoord[]
+): LocalEncounterState {
+  const next = new Set(prev.revealedHexes);
+  for (const h of hexes) {
+    next.add(hexKey(h));
+  }
+  return { ...prev, revealedHexes: next };
+}
+
+/**
+ * Add or revive an entity in the store at its first-visible position.
+ * Clears the ghost flag unconditionally — the entity is now visible.
+ * Overwrites any prior entry with the same entityId (e.g. a ghosted entity
+ * that just re-entered the player's line of sight).
+ * Exported for testing.
+ */
+export function applyEntityAppeared(
+  prev: LocalEncounterState,
+  entity: EntityState
+): LocalEncounterState {
+  const newEntities = new Map(prev.entities);
+  newEntities.set(entity.entityId, { ...entity, ghost: false });
+  return { ...prev, entities: newEntities };
+}
+
+/**
+ * Mark an entity as ghosted (no longer visible) and update its position to
+ * the last known hex. Renders ghosts at the last place the player saw them.
+ * No-op if the entity is not currently tracked (defensive guard).
+ * Exported for testing.
+ */
+export function applyEntityDisappeared(
+  prev: LocalEncounterState,
+  entityId: string,
+  lastKnown: CubeHexCoord
+): LocalEncounterState {
+  const existing = prev.entities.get(entityId);
+  if (!existing) return prev;
+  const newEntities = new Map(prev.entities);
+  newEntities.set(entityId, {
+    ...existing,
+    ghost: true,
+    position: create(PositionSchema, {
+      x: lastKnown.q,
+      y: lastKnown.r,
+      z: lastKnown.s,
+    }),
+  });
+  return { ...prev, entities: newEntities };
+}
+
+/**
  * Replace combat state without touching entities or other fields.
  * Exported for testing.
  */
@@ -144,6 +212,13 @@ export interface UseEncounterStateResult {
   applyCombatState: (combat: CombatState) => void;
   /** Reset to empty state (new encounter or disconnect) */
   reset: () => void;
+  // v1alpha2 additions
+  /** Add hexes to the per-hex reveal set (additive, idempotent) */
+  applyHexRevealed: (hexes: CubeHexCoord[]) => void;
+  /** Add or revive an entity at its first-visible position, clearing ghost */
+  applyEntityAppeared: (entity: EntityState) => void;
+  /** Mark entity as ghosted at last known position; no-op if not tracked */
+  applyEntityDisappeared: (entityId: string, lastKnown: CubeHexCoord) => void;
 }
 
 /**
@@ -178,6 +253,21 @@ export function useEncounterState(): UseEncounterStateResult {
     setState(createEmptyEncounterState());
   }, []);
 
+  const applyHexRevealedCallback = useCallback((hexes: CubeHexCoord[]) => {
+    setState((prev) => applyHexRevealed(prev, hexes));
+  }, []);
+
+  const applyEntityAppearedCallback = useCallback((entity: EntityState) => {
+    setState((prev) => applyEntityAppeared(prev, entity));
+  }, []);
+
+  const applyEntityDisappearedCallback = useCallback(
+    (entityId: string, lastKnown: CubeHexCoord) => {
+      setState((prev) => applyEntityDisappeared(prev, entityId, lastKnown));
+    },
+    []
+  );
+
   return {
     state,
     applySnapshot,
@@ -185,5 +275,8 @@ export function useEncounterState(): UseEncounterStateResult {
     applyEntityPositionUpdate,
     applyCombatState,
     reset,
+    applyHexRevealed: applyHexRevealedCallback,
+    applyEntityAppeared: applyEntityAppearedCallback,
+    applyEntityDisappeared: applyEntityDisappearedCallback,
   };
 }

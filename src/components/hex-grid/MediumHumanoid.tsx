@@ -101,6 +101,8 @@ export interface MediumHumanoidProps {
   shield?: ShieldType;
   /** Show cel-shaded outline (default: true) */
   showOutline?: boolean;
+  /** Ghost effect intensity (0.0=solid, 1.0=full ghost). Set to 1.0 for LoS-lost entities. */
+  ghostAmount?: number;
 }
 
 /** Default scale to convert ~137 Qubicle units to roughly 1.5 Three.js units */
@@ -479,6 +481,7 @@ export function MediumHumanoid({
   offHandWeapon,
   shield,
   showOutline = true,
+  ghostAmount = 0.0,
 }: MediumHumanoidProps) {
   const groupRef = useRef<THREE.Group>(null);
 
@@ -519,8 +522,10 @@ export function MediumHumanoid({
       shadingVariance: 0.15,
       selected: isSelected ? 1.0 : 0.0,
       selectionIntensity: 0.5,
+      // Ghost effect: desaturated + semi-transparent + pale-cyan rim glow
+      ghostAmount,
     }),
-    [skinTone, primaryColor, secondaryColor, isSelected]
+    [skinTone, primaryColor, secondaryColor, isSelected, ghostAmount]
   );
 
   // Resolve hair color to a number for the shader

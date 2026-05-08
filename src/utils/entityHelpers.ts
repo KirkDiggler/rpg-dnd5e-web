@@ -83,6 +83,8 @@ export interface RenderableEntity {
   position: { x: number; y: number; z: number };
   type: 'player' | 'monster' | 'obstacle';
   isDead: boolean;
+  /** True when the entity has left the player's LoS (v1alpha2). Render at last-known position with ghost visuals. */
+  isGhost?: boolean;
 }
 
 function entityDisplayType(
@@ -104,7 +106,7 @@ function entityDisplayType(
  * shape (no `getEntityName`, has `deadMonsterIds` set) and is not covered here.
  */
 export function mapEntitiesForRender(
-  entities: Iterable<EntityState>
+  entities: Iterable<EntityState & { ghost?: boolean }>
 ): RenderableEntity[] {
   const result: RenderableEntity[] = [];
   for (const entity of entities) {
@@ -118,6 +120,7 @@ export function mapEntitiesForRender(
       },
       type: entityDisplayType(entity),
       isDead: isDead(entity),
+      isGhost: entity.ghost === true,
     });
   }
   return result;
