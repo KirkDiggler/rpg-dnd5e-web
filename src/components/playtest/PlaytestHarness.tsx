@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { v2PositionToV1 } from '../../api/positionConvert';
 import { useDevPlayerIdAuth } from '../../api/useDevPlayerIdAuth';
 import { useEncounterStream2 } from '../../api/useEncounterStream2';
+import { useInteractV2 } from '../../api/useInteractV2';
 import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { protoPositionToHex } from '../../utils/hexCoord';
@@ -35,6 +36,7 @@ export function PlaytestHarness() {
   const [targetQ, setTargetQ] = useState(0);
   const [targetR, setTargetR] = useState(0);
   const [targetS, setTargetS] = useState(0);
+  const [targetDoorId, setTargetDoorId] = useState('');
 
   const encounterState = useEncounterState();
   const {
@@ -42,6 +44,11 @@ export function PlaytestHarness() {
     loading: moveLoading,
     error: moveError,
   } = useMoveEntityV2();
+  const {
+    interact,
+    loading: interactLoading,
+    error: interactError,
+  } = useInteractV2();
 
   const addLog = (msg: string) => {
     const entry = `[${formatTime(new Date())}] ${msg}`;
@@ -92,6 +99,13 @@ export function PlaytestHarness() {
         }
         addLog(`EntityDisappeared ${e.entityId}`);
       },
+      onDoorOpened: (e) => {
+        // Cause/effect split: DoorOpened only carries the door identity in
+        // Wave 2.7; the newly-visible hexes flow on a parallel
+        // GeometryRevealed event handled above. Log both lines independently.
+        encounterState.applyDoorOpened(e.doorEntityId);
+        addLog(`DoorOpened ${e.doorEntityId}`);
+      },
     }
   );
 
@@ -132,8 +146,20 @@ export function PlaytestHarness() {
     }
   };
 
+  const handleOpenDoor = async () => {
+    const id = targetDoorId.trim();
+    if (!id) return;
+    try {
+      await interact(encounterId, id, 'open');
+      addLog(`Interact(open) → ${id}`);
+    } catch {
+      // error is surfaced via interactError state
+    }
+  };
+
   const entitiesArray = Array.from(encounterState.state.entities.entries());
   const revealedKeys = Array.from(encounterState.state.revealedHexes);
+  const openDoorKeys = Array.from(encounterState.state.openDoors);
 
   return (
     <div
@@ -319,6 +345,60 @@ export function PlaytestHarness() {
           {moveError && (
             <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
               Move error: {moveError.message}
+            </div>
+          )}
+
+          {/* Open-door controls (Wave 2.7 verification scaffold; deleted in slice 3) */}
+          <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Open door</h3>
+          <div style={{ fontSize: 12, color: '#777', marginBottom: 8 }}>
+            Open doors ({openDoorKeys.length}):{' '}
+            {openDoorKeys.length === 0 ? '(none)' : openDoorKeys.join(', ')}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <label style={{ fontSize: 12 }}>
+              Door id{' '}
+              <input
+                type="text"
+                value={targetDoorId}
+                onChange={(e) => setTargetDoorId(e.target.value)}
+                placeholder="door-east"
+                aria-label="door id"
+                style={{
+                  width: 140,
+                  background: '#333',
+                  color: '#eee',
+                  border: '1px solid #555',
+                  padding: '2px 4px',
+                }}
+              />
+            </label>
+            <button
+              onClick={() => void handleOpenDoor()}
+              disabled={!targetDoorId.trim() || interactLoading}
+              style={{
+                padding: '4px 12px',
+                background: targetDoorId.trim() ? '#2a4a2a' : '#2a2a2a',
+                color: targetDoorId.trim() ? '#8f8' : '#666',
+                border: '1px solid #555',
+                cursor:
+                  targetDoorId.trim() && !interactLoading
+                    ? 'pointer'
+                    : 'not-allowed',
+              }}
+            >
+              {interactLoading ? 'Opening…' : 'Open door'}
+            </button>
+          </div>
+          {interactError && (
+            <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
+              Interact error: {interactError.message}
             </div>
           )}
         </div>

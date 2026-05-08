@@ -38,8 +38,15 @@ export interface LocalEncounterState {
   /** v1alpha2-revealed hexes (per-hex granularity). UI renders revealed if either revealedHexes covers it OR the room is in revealedRoomIds. */
   revealedHexes: Set<string>;
   combat: CombatState | null;
-  /** All doors in the dungeon, keyed by connection ID */
+  /** All doors in the dungeon, keyed by connection ID (v1alpha1 snapshot data). */
   doors: Map<string, DoorInfo>;
+  /**
+   * v1alpha2 open-door entity IDs. Populated by `applyDoorOpened` from the
+   * DoorOpened event. Keyed by the proto's `door_entity_id` (distinct from
+   * the v1alpha1 connectionId in `doors`). Renderers consult this set to
+   * decide whether to draw a door's wall as a passage.
+   */
+  openDoors: Set<string>;
   dungeonState: DungeonState;
   roomsCleared: number;
 }
@@ -56,6 +63,7 @@ export function createEmptyEncounterState(): LocalEncounterState {
     revealedHexes: new Set(),
     combat: null,
     doors: new Map(),
+    openDoors: new Set(),
     dungeonState: DungeonState.UNSPECIFIED,
     roomsCleared: 0,
   };
@@ -64,11 +72,30 @@ export function createEmptyEncounterState(): LocalEncounterState {
 /**
  * Convert an EncounterStateData proto into a LocalEncounterState.
  * Proto Record<string, T> maps are converted to Map<string, T>.
+ *
+ * v2-only delta state preservation: `applySnapshot` is called on v1alpha1
+ * sync events (LobbyView wires it onto multiple v1 paths). v1 snapshots do
+ * NOT carry v2 deltas like `openDoors` or `revealedHexes` — those flow only
+ * via the v2 StreamEncounter (DoorOpened, GeometryRevealed) and are not
+ * replayed on reconnect or v1 state-sync events. If we rebuilt the whole
+ * state on every snapshot we'd silently wipe every v2 door we'd opened in
+ * the session.
+ *
+ * Mitigation: when `prev` is provided AND the snapshot is for the SAME
+ * encounter (same encounterId), carry forward v2-only fields (`openDoors`,
+ * `revealedHexes`). On encounter switch (different encounterId) we reset.
+ *
  * Exported for testing.
  */
 export function applySnapshotToState(
-  proto: EncounterStateData
+  proto: EncounterStateData,
+  prev?: LocalEncounterState
 ): LocalEncounterState {
+  // Same-encounter snapshot: preserve v2-only delta state. Different
+  // encounter (or no prev): start fresh — v2 deltas don't apply.
+  const sameEncounter =
+    prev !== undefined && prev.encounterId === proto.encounterId;
+
   return {
     encounterId: proto.encounterId,
     dungeonId: proto.dungeonId,
@@ -76,9 +103,14 @@ export function applySnapshotToState(
     rooms: new Map(Object.entries(proto.rooms ?? {})),
     currentRoomId: proto.currentRoomId,
     revealedRoomIds: proto.revealedRoomIds,
-    revealedHexes: new Set(), // v2 reveals come back via the stream's GeometryRevealed deltas
+    // v2 reveals come back via the stream's GeometryRevealed deltas; preserve
+    // across same-encounter v1 snapshots (deltas aren't replayed on sync).
+    revealedHexes: sameEncounter ? prev.revealedHexes : new Set(),
     combat: proto.combat ?? null,
     doors: new Map(Object.entries(proto.doors ?? {})),
+    // v2 door state comes back via the stream's DoorOpened deltas; preserve
+    // across same-encounter v1 snapshots (deltas aren't replayed on sync).
+    openDoors: sameEncounter ? prev.openDoors : new Set(),
     dungeonState: proto.dungeonState,
     roomsCleared: proto.roomsCleared,
   };
@@ -186,6 +218,24 @@ export function applyEntityDisappeared(
 }
 
 /**
+ * Mark a door as open by entity id (v1alpha2 DoorOpened.doorEntityId).
+ * Idempotent — re-opening an already-open door is a no-op (Set semantics).
+ * Does not touch the per-hex revealedHexes set; the toolkit emits a parallel
+ * GeometryRevealed event for the newly-visible cells (cause/effect split),
+ * which the existing applyHexRevealed reducer handles.
+ * Exported for testing.
+ */
+export function applyDoorOpened(
+  prev: LocalEncounterState,
+  doorEntityId: string
+): LocalEncounterState {
+  if (prev.openDoors.has(doorEntityId)) return prev;
+  const next = new Set(prev.openDoors);
+  next.add(doorEntityId);
+  return { ...prev, openDoors: next };
+}
+
+/**
  * Replace combat state without touching entities or other fields.
  * Exported for testing.
  */
@@ -219,6 +269,8 @@ export interface UseEncounterStateResult {
   applyEntityAppeared: (entity: EntityState) => void;
   /** Mark entity as ghosted at last known position; no-op if not tracked */
   applyEntityDisappeared: (entityId: string, lastKnown: CubeHexCoord) => void;
+  /** Mark a door entity as open; idempotent. */
+  applyDoorOpened: (doorEntityId: string) => void;
 }
 
 /**
@@ -231,7 +283,11 @@ export function useEncounterState(): UseEncounterStateResult {
   );
 
   const applySnapshot = useCallback((proto: EncounterStateData) => {
-    setState(applySnapshotToState(proto));
+    // Pass `prev` so v2-only delta state (openDoors, revealedHexes) survives
+    // a v1alpha1 snapshot for the same encounter. v1 snapshots don't carry
+    // these fields and v2 deltas aren't replayed on sync, so without this
+    // any v1 state-sync mid-session would silently wipe opened doors.
+    setState((prev) => applySnapshotToState(proto, prev));
   }, []);
 
   const applyEntityUpdates = useCallback((updates: EntityState[]) => {
@@ -268,6 +324,10 @@ export function useEncounterState(): UseEncounterStateResult {
     []
   );
 
+  const applyDoorOpenedCallback = useCallback((doorEntityId: string) => {
+    setState((prev) => applyDoorOpened(prev, doorEntityId));
+  }, []);
+
   return {
     state,
     applySnapshot,
@@ -278,5 +338,6 @@ export function useEncounterState(): UseEncounterStateResult {
     applyHexRevealed: applyHexRevealedCallback,
     applyEntityAppeared: applyEntityAppearedCallback,
     applyEntityDisappeared: applyEntityDisappearedCallback,
+    applyDoorOpened: applyDoorOpenedCallback,
   };
 }

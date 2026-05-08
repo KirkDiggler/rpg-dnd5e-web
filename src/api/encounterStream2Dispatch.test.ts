@@ -64,6 +64,21 @@ describe('dispatchEncounterStream2Event', () => {
     expect(onEntityDisappeared).toHaveBeenCalledTimes(1);
   });
 
+  it('routes doorOpened to onDoorOpened', () => {
+    const onDoorOpened = vi.fn();
+    const options: EncounterStream2Options = { onDoorOpened };
+    // Wave 2.7: revealedHexes/walls/removedWalls intentionally empty here;
+    // the geometry side flows on a separate GeometryRevealed event.
+    const event = makeEvent('doorOpened', {
+      doorEntityId: 'door-east',
+      revealedHexes: [],
+      revealedWalls: [],
+      removedWalls: [],
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onDoorOpened).toHaveBeenCalledTimes(1);
+  });
+
   it('logs a warning for unknown event cases without throwing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const event = makeEvent('someUnknownCase' as 'snapshotDelivered', {});

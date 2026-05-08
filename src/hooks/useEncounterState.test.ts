@@ -26,6 +26,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
 import {
+  applyDoorOpened,
   applyEntityAppeared,
   applyEntityDisappeared,
   applyHexRevealed,
@@ -103,6 +104,8 @@ describe('createEmptyEncounterState', () => {
     expect(state.revealedRoomIds).toEqual([]);
     expect(state.revealedHexes).toBeInstanceOf(Set);
     expect(state.revealedHexes.size).toBe(0);
+    expect(state.openDoors).toBeInstanceOf(Set);
+    expect(state.openDoors.size).toBe(0);
     expect(state.combat).toBeNull();
     expect(state.currentRoomId).toBe('');
     expect(state.roomsCleared).toBe(0);
@@ -630,6 +633,121 @@ describe('v1alpha2 reducer additions', () => {
       // pattern; prevents needless React re-renders if a stream loop fires
       // EntityDisappeared for an entity we never saw.
       expect(after).toBe(prev);
+    });
+  });
+
+  describe('applyDoorOpened', () => {
+    it('adds the door entity id to openDoors', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyDoorOpened(prev, 'door-east');
+      expect(after.openDoors.has('door-east')).toBe(true);
+      expect(after.openDoors.size).toBe(1);
+    });
+
+    it('preserves previously-opened doors when a new one opens', () => {
+      let state = createEmptyEncounterState();
+      state = applyDoorOpened(state, 'door-east');
+      state = applyDoorOpened(state, 'door-north');
+      expect(state.openDoors.has('door-east')).toBe(true);
+      expect(state.openDoors.has('door-north')).toBe(true);
+      expect(state.openDoors.size).toBe(2);
+    });
+
+    it('is idempotent — re-opening returns the same reference (no re-render)', () => {
+      const opened = applyDoorOpened(createEmptyEncounterState(), 'door-east');
+      const reopened = applyDoorOpened(opened, 'door-east');
+      expect(reopened).toBe(opened);
+      expect(reopened.openDoors.size).toBe(1);
+    });
+
+    it('does not mutate the previous state', () => {
+      const prev = createEmptyEncounterState();
+      applyDoorOpened(prev, 'door-east');
+      expect(prev.openDoors.size).toBe(0);
+    });
+
+    it('does not touch revealedHexes (cause/effect split)', () => {
+      // The toolkit emits DoorOpened (cause) and GeometryRevealed (effect)
+      // as two events. applyDoorOpened only updates door state; the hex
+      // reveal flows through applyHexRevealed independently.
+      let state = createEmptyEncounterState();
+      state = applyHexRevealed(state, [{ q: 1, r: -1, s: 0 }]);
+      const beforeOpen = state.revealedHexes;
+      state = applyDoorOpened(state, 'door-east');
+      expect(state.revealedHexes).toBe(beforeOpen);
+      expect(state.revealedHexes.size).toBe(1);
+    });
+  });
+
+  describe('applySnapshotToState — v2 delta preservation across v1 snapshots', () => {
+    // Regression: v1alpha1 snapshots don't carry v2-only delta fields like
+    // openDoors / revealedHexes, and v2 deltas aren't replayed on sync. The
+    // main app calls applySnapshot on multiple v1 paths (LobbyView's
+    // state-sync handlers), so a naive rebuild would silently wipe every
+    // door we'd opened mid-session. applySnapshotToState carries these
+    // fields forward when prev is for the same encounter.
+    it('preserves openDoors when applying a same-encounter v1 snapshot', () => {
+      // Seed: open a door via the v2 reducer
+      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
+      state = applyDoorOpened(state, 'door-1');
+      state = applyDoorOpened(state, 'door-east');
+      expect(state.openDoors.size).toBe(2);
+
+      // Simulate a v1 snapshot sync for the same encounter
+      const refreshed = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+
+      expect(refreshed.openDoors.has('door-1')).toBe(true);
+      expect(refreshed.openDoors.has('door-east')).toBe(true);
+      expect(refreshed.openDoors.size).toBe(2);
+    });
+
+    it('preserves revealedHexes when applying a same-encounter v1 snapshot', () => {
+      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
+      state = applyHexRevealed(state, [
+        { q: 1, r: -1, s: 0 },
+        { q: 2, r: -2, s: 0 },
+      ]);
+      expect(state.revealedHexes.size).toBe(2);
+
+      const refreshed = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+
+      expect(refreshed.revealedHexes.size).toBe(2);
+      expect(refreshed.revealedHexes.has(hexKey({ q: 1, r: -1, s: 0 }))).toBe(
+        true
+      );
+      expect(refreshed.revealedHexes.has(hexKey({ q: 2, r: -2, s: 0 }))).toBe(
+        true
+      );
+    });
+
+    it('resets v2 delta state on encounter switch (different encounterId)', () => {
+      // Crossing into a new encounter is a clean break — v2 deltas from the
+      // prior encounter must not leak into the new one.
+      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
+      state = applyDoorOpened(state, 'door-1');
+      state = applyHexRevealed(state, [{ q: 1, r: -1, s: 0 }]);
+
+      const switched = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-2' }),
+        state
+      );
+
+      expect(switched.openDoors.size).toBe(0);
+      expect(switched.revealedHexes.size).toBe(0);
+    });
+
+    it('starts with empty v2 delta state when prev is omitted (first snapshot)', () => {
+      const state = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' })
+      );
+      expect(state.openDoors.size).toBe(0);
+      expect(state.revealedHexes.size).toBe(0);
     });
   });
 
