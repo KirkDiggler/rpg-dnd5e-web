@@ -72,11 +72,30 @@ export function createEmptyEncounterState(): LocalEncounterState {
 /**
  * Convert an EncounterStateData proto into a LocalEncounterState.
  * Proto Record<string, T> maps are converted to Map<string, T>.
+ *
+ * v2-only delta state preservation: `applySnapshot` is called on v1alpha1
+ * sync events (LobbyView wires it onto multiple v1 paths). v1 snapshots do
+ * NOT carry v2 deltas like `openDoors` or `revealedHexes` — those flow only
+ * via the v2 StreamEncounter (DoorOpened, GeometryRevealed) and are not
+ * replayed on reconnect or v1 state-sync events. If we rebuilt the whole
+ * state on every snapshot we'd silently wipe every v2 door we'd opened in
+ * the session.
+ *
+ * Mitigation: when `prev` is provided AND the snapshot is for the SAME
+ * encounter (same encounterId), carry forward v2-only fields (`openDoors`,
+ * `revealedHexes`). On encounter switch (different encounterId) we reset.
+ *
  * Exported for testing.
  */
 export function applySnapshotToState(
-  proto: EncounterStateData
+  proto: EncounterStateData,
+  prev?: LocalEncounterState
 ): LocalEncounterState {
+  // Same-encounter snapshot: preserve v2-only delta state. Different
+  // encounter (or no prev): start fresh — v2 deltas don't apply.
+  const sameEncounter =
+    prev !== undefined && prev.encounterId === proto.encounterId;
+
   return {
     encounterId: proto.encounterId,
     dungeonId: proto.dungeonId,
@@ -84,10 +103,14 @@ export function applySnapshotToState(
     rooms: new Map(Object.entries(proto.rooms ?? {})),
     currentRoomId: proto.currentRoomId,
     revealedRoomIds: proto.revealedRoomIds,
-    revealedHexes: new Set(), // v2 reveals come back via the stream's GeometryRevealed deltas
+    // v2 reveals come back via the stream's GeometryRevealed deltas; preserve
+    // across same-encounter v1 snapshots (deltas aren't replayed on sync).
+    revealedHexes: sameEncounter ? prev.revealedHexes : new Set(),
     combat: proto.combat ?? null,
     doors: new Map(Object.entries(proto.doors ?? {})),
-    openDoors: new Set(), // v2 door state comes back via the stream's DoorOpened deltas
+    // v2 door state comes back via the stream's DoorOpened deltas; preserve
+    // across same-encounter v1 snapshots (deltas aren't replayed on sync).
+    openDoors: sameEncounter ? prev.openDoors : new Set(),
     dungeonState: proto.dungeonState,
     roomsCleared: proto.roomsCleared,
   };
@@ -260,7 +283,11 @@ export function useEncounterState(): UseEncounterStateResult {
   );
 
   const applySnapshot = useCallback((proto: EncounterStateData) => {
-    setState(applySnapshotToState(proto));
+    // Pass `prev` so v2-only delta state (openDoors, revealedHexes) survives
+    // a v1alpha1 snapshot for the same encounter. v1 snapshots don't carry
+    // these fields and v2 deltas aren't replayed on sync, so without this
+    // any v1 state-sync mid-session would silently wipe opened doors.
+    setState((prev) => applySnapshotToState(proto, prev));
   }, []);
 
   const applyEntityUpdates = useCallback((updates: EntityState[]) => {

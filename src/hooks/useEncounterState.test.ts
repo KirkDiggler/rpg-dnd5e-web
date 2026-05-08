@@ -679,6 +679,78 @@ describe('v1alpha2 reducer additions', () => {
     });
   });
 
+  describe('applySnapshotToState — v2 delta preservation across v1 snapshots', () => {
+    // Regression: v1alpha1 snapshots don't carry v2-only delta fields like
+    // openDoors / revealedHexes, and v2 deltas aren't replayed on sync. The
+    // main app calls applySnapshot on multiple v1 paths (LobbyView's
+    // state-sync handlers), so a naive rebuild would silently wipe every
+    // door we'd opened mid-session. applySnapshotToState carries these
+    // fields forward when prev is for the same encounter.
+    it('preserves openDoors when applying a same-encounter v1 snapshot', () => {
+      // Seed: open a door via the v2 reducer
+      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
+      state = applyDoorOpened(state, 'door-1');
+      state = applyDoorOpened(state, 'door-east');
+      expect(state.openDoors.size).toBe(2);
+
+      // Simulate a v1 snapshot sync for the same encounter
+      const refreshed = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+
+      expect(refreshed.openDoors.has('door-1')).toBe(true);
+      expect(refreshed.openDoors.has('door-east')).toBe(true);
+      expect(refreshed.openDoors.size).toBe(2);
+    });
+
+    it('preserves revealedHexes when applying a same-encounter v1 snapshot', () => {
+      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
+      state = applyHexRevealed(state, [
+        { q: 1, r: -1, s: 0 },
+        { q: 2, r: -2, s: 0 },
+      ]);
+      expect(state.revealedHexes.size).toBe(2);
+
+      const refreshed = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+
+      expect(refreshed.revealedHexes.size).toBe(2);
+      expect(refreshed.revealedHexes.has(hexKey({ q: 1, r: -1, s: 0 }))).toBe(
+        true
+      );
+      expect(refreshed.revealedHexes.has(hexKey({ q: 2, r: -2, s: 0 }))).toBe(
+        true
+      );
+    });
+
+    it('resets v2 delta state on encounter switch (different encounterId)', () => {
+      // Crossing into a new encounter is a clean break — v2 deltas from the
+      // prior encounter must not leak into the new one.
+      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
+      state = applyDoorOpened(state, 'door-1');
+      state = applyHexRevealed(state, [{ q: 1, r: -1, s: 0 }]);
+
+      const switched = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-2' }),
+        state
+      );
+
+      expect(switched.openDoors.size).toBe(0);
+      expect(switched.revealedHexes.size).toBe(0);
+    });
+
+    it('starts with empty v2 delta state when prev is omitted (first snapshot)', () => {
+      const state = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' })
+      );
+      expect(state.openDoors.size).toBe(0);
+      expect(state.revealedHexes.size).toBe(0);
+    });
+  });
+
   describe('appear/disappear sequences', () => {
     it('survives appeared → moved → disappeared → appeared cleanly', () => {
       let state = createEmptyEncounterState();
