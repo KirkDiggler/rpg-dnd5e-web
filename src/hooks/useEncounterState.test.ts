@@ -26,6 +26,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
 import {
+  applyDoorOpened,
   applyEntityAppeared,
   applyEntityDisappeared,
   applyHexRevealed,
@@ -103,6 +104,8 @@ describe('createEmptyEncounterState', () => {
     expect(state.revealedRoomIds).toEqual([]);
     expect(state.revealedHexes).toBeInstanceOf(Set);
     expect(state.revealedHexes.size).toBe(0);
+    expect(state.openDoors).toBeInstanceOf(Set);
+    expect(state.openDoors.size).toBe(0);
     expect(state.combat).toBeNull();
     expect(state.currentRoomId).toBe('');
     expect(state.roomsCleared).toBe(0);
@@ -630,6 +633,49 @@ describe('v1alpha2 reducer additions', () => {
       // pattern; prevents needless React re-renders if a stream loop fires
       // EntityDisappeared for an entity we never saw.
       expect(after).toBe(prev);
+    });
+  });
+
+  describe('applyDoorOpened', () => {
+    it('adds the door entity id to openDoors', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyDoorOpened(prev, 'door-east');
+      expect(after.openDoors.has('door-east')).toBe(true);
+      expect(after.openDoors.size).toBe(1);
+    });
+
+    it('preserves previously-opened doors when a new one opens', () => {
+      let state = createEmptyEncounterState();
+      state = applyDoorOpened(state, 'door-east');
+      state = applyDoorOpened(state, 'door-north');
+      expect(state.openDoors.has('door-east')).toBe(true);
+      expect(state.openDoors.has('door-north')).toBe(true);
+      expect(state.openDoors.size).toBe(2);
+    });
+
+    it('is idempotent — re-opening returns the same reference (no re-render)', () => {
+      const opened = applyDoorOpened(createEmptyEncounterState(), 'door-east');
+      const reopened = applyDoorOpened(opened, 'door-east');
+      expect(reopened).toBe(opened);
+      expect(reopened.openDoors.size).toBe(1);
+    });
+
+    it('does not mutate the previous state', () => {
+      const prev = createEmptyEncounterState();
+      applyDoorOpened(prev, 'door-east');
+      expect(prev.openDoors.size).toBe(0);
+    });
+
+    it('does not touch revealedHexes (cause/effect split)', () => {
+      // The toolkit emits DoorOpened (cause) and GeometryRevealed (effect)
+      // as two events. applyDoorOpened only updates door state; the hex
+      // reveal flows through applyHexRevealed independently.
+      let state = createEmptyEncounterState();
+      state = applyHexRevealed(state, [{ q: 1, r: -1, s: 0 }]);
+      const beforeOpen = state.revealedHexes;
+      state = applyDoorOpened(state, 'door-east');
+      expect(state.revealedHexes).toBe(beforeOpen);
+      expect(state.revealedHexes.size).toBe(1);
     });
   });
 

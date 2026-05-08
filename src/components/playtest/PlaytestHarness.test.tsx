@@ -1,6 +1,9 @@
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
-import type { MoveEntityResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
+import type {
+  InteractResponse,
+  MoveEntityResponse,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import {
   act,
   fireEvent,
@@ -22,6 +25,7 @@ function makeEvent(caseName: string, value: unknown): EncounterEvent {
 const hoisted = vi.hoisted(() => ({
   fakeRef: { current: null as FakeStream | null },
   moveEntityFn: vi.fn<() => Promise<MoveEntityResponse>>(),
+  interactFn: vi.fn<() => Promise<InteractResponse>>(),
 }));
 
 vi.mock('../../api/client', () => ({
@@ -33,6 +37,7 @@ vi.mock('../../api/client', () => ({
       return hoisted.fakeRef.current.iterator;
     }),
     moveEntity: hoisted.moveEntityFn,
+    interact: hoisted.interactFn,
   },
 }));
 
@@ -46,6 +51,8 @@ beforeEach(() => {
   hoisted.fakeRef.current = fake;
   hoisted.moveEntityFn.mockReset();
   hoisted.moveEntityFn.mockResolvedValue({} as MoveEntityResponse);
+  hoisted.interactFn.mockReset();
+  hoisted.interactFn.mockResolvedValue({} as InteractResponse);
 
   // Set up URL with both params
   window.history.pushState({}, '', '?encounterId=enc-1&playerId=alice');
@@ -221,6 +228,126 @@ describe('PlaytestHarness', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/EntityMoved/i)).toBeTruthy();
+    });
+  });
+
+  it('renders the open-door section with input and button disabled by default', () => {
+    render(<PlaytestHarness />);
+    // The "Open door" heading should render (the button has the same text,
+    // so use the role:heading filter to disambiguate)
+    expect(screen.getByRole('heading', { name: /^open door$/i })).toBeTruthy();
+    expect(screen.getByText(/Open doors \(0\)/)).toBeTruthy();
+    const input = screen.getByLabelText(/door id/i) as HTMLInputElement;
+    expect(input).toBeTruthy();
+    const btn = screen.getByRole('button', {
+      name: /open door/i,
+    }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it('calls interact RPC with target door id and "open" kind on click', async () => {
+    render(<PlaytestHarness />);
+
+    const input = screen.getByLabelText(/door id/i) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(input, { target: { value: 'door-east' } });
+    });
+
+    const btn = screen.getByRole('button', {
+      name: /open door/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(btn.disabled).toBe(false));
+
+    act(() => fireEvent.click(btn));
+
+    await waitFor(() => {
+      expect(hoisted.interactFn).toHaveBeenCalledOnce();
+    });
+
+    expect(hoisted.interactFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encounterId: 'enc-1',
+        targetEntityId: 'door-east',
+        interactionKind: 'open',
+      })
+    );
+  });
+
+  it('logs DoorOpened and reflects open door in the open-doors list on event', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('doorOpened', {
+          doorEntityId: 'door-east',
+          revealedHexes: [],
+          revealedWalls: [],
+          removedWalls: [],
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/DoorOpened door-east/i)).toBeTruthy();
+    });
+    expect(screen.getByText(/Open doors \(1\):.*door-east/)).toBeTruthy();
+  });
+
+  it('logs both DoorOpened and GeometryRevealed independently (cause/effect split)', async () => {
+    // Wave 2.7: the toolkit emits the cause (DoorOpened, no hexes) and the
+    // effect (GeometryRevealed, with hexes) as two separate events. The
+    // harness must surface both in the log; the dispatcher must not collapse
+    // them.
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('doorOpened', {
+          doorEntityId: 'door-east',
+          revealedHexes: [],
+          revealedWalls: [],
+          removedWalls: [],
+        })
+      )
+    );
+    act(() =>
+      fake.push(
+        makeEvent('geometryRevealed', {
+          hexes: [
+            { position: { x: 1, y: -1, z: 0 } },
+            { position: { x: 2, y: -2, z: 0 } },
+          ],
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/DoorOpened door-east/i)).toBeTruthy();
+      expect(screen.getByText(/GeometryRevealed 2 hex/i)).toBeTruthy();
+    });
+  });
+
+  it('shows interact error when RPC fails', async () => {
+    hoisted.interactFn.mockRejectedValue(new Error('door is locked'));
+
+    render(<PlaytestHarness />);
+
+    const input = screen.getByLabelText(/door id/i) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(input, { target: { value: 'door-east' } });
+    });
+
+    const btn = screen.getByRole('button', {
+      name: /open door/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(btn.disabled).toBe(false));
+
+    act(() => fireEvent.click(btn));
+
+    await waitFor(() => {
+      expect(screen.getByText(/door is locked/i)).toBeTruthy();
     });
   });
 });

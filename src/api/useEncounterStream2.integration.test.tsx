@@ -73,6 +73,9 @@ function useTestHarness(encounterId: string) {
         );
       }
     },
+    onDoorOpened: (e) => {
+      state.applyDoorOpened(e.doorEntityId);
+    },
   });
   return state.state;
 }
@@ -172,6 +175,40 @@ describe('useEncounterStream2 + useEncounterState — integration', () => {
       ).toBe(true);
       expect(
         result.current.revealedHexes.has(hexKey({ q: 6, r: -3, s: -3 }))
+      ).toBe(true);
+    });
+  });
+
+  it('DoorOpened + GeometryRevealed flow into both openDoors and revealedHexes (cause/effect split)', async () => {
+    // Wave 2.7: the toolkit emits DoorOpened (cause, no hex data) and a
+    // parallel GeometryRevealed (effect, with newly-visible hexes). The two
+    // reducers must update independently — door state on one, hex set on the
+    // other — without either swallowing the other.
+    const { result } = renderHook(() => useTestHarness('enc-1'));
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('doorOpened', {
+          doorEntityId: 'door-east',
+          revealedHexes: [],
+          revealedWalls: [],
+          removedWalls: [],
+        })
+      )
+    );
+    act(() =>
+      fake.push(
+        makeEvent('geometryRevealed', {
+          hexes: [{ position: { x: 4, y: -2, z: -2 } }],
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(result.current.openDoors.has('door-east')).toBe(true);
+      expect(
+        result.current.revealedHexes.has(hexKey({ q: 4, r: -2, s: -2 }))
       ).toBe(true);
     });
   });
