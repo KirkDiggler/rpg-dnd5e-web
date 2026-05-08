@@ -79,6 +79,68 @@ describe('dispatchEncounterStream2Event', () => {
     expect(onDoorOpened).toHaveBeenCalledTimes(1);
   });
 
+  it('routes entityDamaged to onEntityDamaged', () => {
+    const onEntityDamaged = vi.fn();
+    const options: EncounterStream2Options = { onEntityDamaged };
+    const event = makeEvent('entityDamaged', {
+      entityId: 'goblin-1',
+      amount: 5,
+      hpAfter: { current: 2, max: 7 },
+      sourceEntityId: 'char-alice',
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onEntityDamaged).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes statusApplied to onStatusApplied', () => {
+    const onStatusApplied = vi.fn();
+    const options: EncounterStream2Options = { onStatusApplied };
+    const event = makeEvent('statusApplied', {
+      entityId: 'char-alice',
+      status: {
+        source: { module: 'dnd5e', type: 'condition', id: 'poisoned' },
+        displayName: 'Poisoned',
+      },
+      sourceEntityId: 'goblin-1',
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onStatusApplied).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes modeChanged to onModeChanged', () => {
+    const onModeChanged = vi.fn();
+    const options: EncounterStream2Options = { onModeChanged };
+    // EncounterMode enum values: UNSPECIFIED=0, FREE_ROAM=1, TURN_BASED=2.
+    const event = makeEvent('modeChanged', {
+      from: 1,
+      to: 2,
+      reason: 'ambush',
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onModeChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes turnStarted to onTurnStarted', () => {
+    const onTurnStarted = vi.fn();
+    const options: EncounterStream2Options = { onTurnStarted };
+    const event = makeEvent('turnStarted', {
+      entityId: 'char-alice',
+      round: 1,
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onTurnStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes turnEnded to onTurnEnded', () => {
+    const onTurnEnded = vi.fn();
+    const options: EncounterStream2Options = { onTurnEnded };
+    const event = makeEvent('turnEnded', {
+      entityId: 'char-alice',
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onTurnEnded).toHaveBeenCalledTimes(1);
+  });
+
   it('logs a warning for unknown event cases without throwing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const event = makeEvent('someUnknownCase' as 'snapshotDelivered', {});

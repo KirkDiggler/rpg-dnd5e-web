@@ -1,9 +1,12 @@
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import type {
+  EndTurnResponse,
   InteractResponse,
   MoveEntityResponse,
+  TakeActionResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
+import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   act,
   fireEvent,
@@ -26,6 +29,8 @@ const hoisted = vi.hoisted(() => ({
   fakeRef: { current: null as FakeStream | null },
   moveEntityFn: vi.fn<() => Promise<MoveEntityResponse>>(),
   interactFn: vi.fn<() => Promise<InteractResponse>>(),
+  takeActionFn: vi.fn<() => Promise<TakeActionResponse>>(),
+  endTurnFn: vi.fn<() => Promise<EndTurnResponse>>(),
 }));
 
 vi.mock('../../api/client', () => ({
@@ -38,6 +43,8 @@ vi.mock('../../api/client', () => ({
     }),
     moveEntity: hoisted.moveEntityFn,
     interact: hoisted.interactFn,
+    takeAction: hoisted.takeActionFn,
+    endTurn: hoisted.endTurnFn,
   },
 }));
 
@@ -53,6 +60,10 @@ beforeEach(() => {
   hoisted.moveEntityFn.mockResolvedValue({} as MoveEntityResponse);
   hoisted.interactFn.mockReset();
   hoisted.interactFn.mockResolvedValue({} as InteractResponse);
+  hoisted.takeActionFn.mockReset();
+  hoisted.takeActionFn.mockResolvedValue({} as TakeActionResponse);
+  hoisted.endTurnFn.mockReset();
+  hoisted.endTurnFn.mockResolvedValue({} as EndTurnResponse);
 
   // Set up URL with both params
   window.history.pushState({}, '', '?encounterId=enc-1&playerId=alice');
@@ -348,6 +359,329 @@ describe('PlaytestHarness', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/door is locked/i)).toBeTruthy();
+    });
+  });
+
+  // ---------- Wave 2.8 combat -----------------------------------------------
+
+  it('renders mode + active actor + round in the header', async () => {
+    render(<PlaytestHarness />);
+
+    // Header initially shows UNSPECIFIED + (none) + round 0 — pre-stream defaults.
+    const header = screen
+      .getByTestId('harness-header')
+      .textContent?.toLowerCase();
+    expect(header).toContain('mode:');
+    expect(header).toContain('unspecified');
+    expect(header).toContain('active:');
+    expect(header).toContain('(none)');
+    expect(header).toContain('round:');
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: 'ambush',
+        })
+      )
+    );
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'char-alice', round: 1 }))
+    );
+
+    await waitFor(() => {
+      const updated = screen
+        .getByTestId('harness-header')
+        .textContent?.toLowerCase();
+      expect(updated).toContain('turn_based');
+      expect(updated).toContain('char-alice');
+      expect(updated).toContain('round:');
+    });
+  });
+
+  it('renders the combat section with attack + end turn buttons disabled outside TURN_BASED', () => {
+    render(<PlaytestHarness />);
+
+    expect(screen.getByRole('heading', { name: /^combat$/i })).toBeTruthy();
+    expect(
+      screen.getByText(/combat actions enabled only in TURN_BASED mode/i)
+    ).toBeTruthy();
+    const attackBtn = screen.getByRole('button', {
+      name: /^attack$/i,
+    }) as HTMLButtonElement;
+    const endTurnBtn = screen.getByRole('button', {
+      name: /^end turn$/i,
+    }) as HTMLButtonElement;
+    expect(attackBtn.disabled).toBe(true);
+    expect(endTurnBtn.disabled).toBe(true);
+  });
+
+  it('enables combat buttons only when TURN_BASED + active actor is local player', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: '',
+        })
+      )
+    );
+    // Wrong active actor: end turn stays disabled.
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'goblin-1', round: 1 }))
+    );
+    await waitFor(() => {
+      const endTurnBtn = screen.getByRole('button', {
+        name: /^end turn$/i,
+      }) as HTMLButtonElement;
+      expect(endTurnBtn.disabled).toBe(true);
+      expect(screen.getByText(/waiting for your turn/i)).toBeTruthy();
+    });
+
+    // Correct active actor: end turn enables.
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'char-alice', round: 1 }))
+    );
+    await waitFor(() => {
+      const endTurnBtn = screen.getByRole('button', {
+        name: /^end turn$/i,
+      }) as HTMLButtonElement;
+      expect(endTurnBtn.disabled).toBe(false);
+    });
+  });
+
+  it('calls takeAction with correct request shape on Attack click', async () => {
+    render(<PlaytestHarness />);
+
+    // Flip into TURN_BASED + alice's turn so combat enables
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: '',
+        })
+      )
+    );
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'char-alice', round: 1 }))
+    );
+
+    const input = screen.getByLabelText(
+      /attack target id/i
+    ) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(input, { target: { value: 'goblin-1' } });
+    });
+
+    const attackBtn = screen.getByRole('button', {
+      name: /^attack$/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(attackBtn.disabled).toBe(false));
+
+    act(() => fireEvent.click(attackBtn));
+
+    await waitFor(() => {
+      expect(hoisted.takeActionFn).toHaveBeenCalledOnce();
+    });
+
+    expect(hoisted.takeActionFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encounterId: 'enc-1',
+        actorEntityId: 'char-alice',
+        actionRef: expect.objectContaining({
+          module: 'dnd5e',
+          type: 'action',
+          id: 'attack',
+        }),
+        target: expect.objectContaining({
+          kind: expect.objectContaining({
+            case: 'entityId',
+            value: 'goblin-1',
+          }),
+        }),
+      })
+    );
+  });
+
+  it('calls endTurn with encounterId + entityId on End turn click', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: '',
+        })
+      )
+    );
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'char-alice', round: 1 }))
+    );
+
+    const endTurnBtn = screen.getByRole('button', {
+      name: /^end turn$/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(endTurnBtn.disabled).toBe(false));
+
+    act(() => fireEvent.click(endTurnBtn));
+
+    await waitFor(() => {
+      expect(hoisted.endTurnFn).toHaveBeenCalledOnce();
+    });
+
+    expect(hoisted.endTurnFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encounterId: 'enc-1',
+        entityId: 'char-alice',
+      })
+    );
+  });
+
+  it('renders HP table after EntityDamaged event', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('entityDamaged', {
+          entityId: 'goblin-1',
+          amount: 5,
+          hpAfter: { current: 2, max: 7 },
+          sourceEntityId: 'char-alice',
+        } as unknown as EntityState)
+      )
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/EntityDamaged goblin-1/i)).toBeTruthy();
+      expect(screen.getByText('2/7')).toBeTruthy();
+    });
+  });
+
+  it('logs ModeChanged, TurnStarted, EntityDamaged, StatusApplied, TurnEnded independently', async () => {
+    // Wave 2.8: each event type is its own line in the harness log. The
+    // dispatcher must not collapse them; the log must show the flow.
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: 'ambush',
+        })
+      )
+    );
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'char-alice', round: 1 }))
+    );
+    act(() =>
+      fake.push(
+        makeEvent('entityDamaged', {
+          entityId: 'goblin-1',
+          amount: 5,
+          hpAfter: { current: 2, max: 7 },
+        })
+      )
+    );
+    act(() =>
+      fake.push(
+        makeEvent('statusApplied', {
+          entityId: 'goblin-1',
+          status: {
+            source: { module: 'dnd5e', type: 'condition', id: 'frightened' },
+            displayName: 'Frightened',
+          },
+        })
+      )
+    );
+    act(() => fake.push(makeEvent('turnEnded', { entityId: 'char-alice' })));
+
+    await waitFor(() => {
+      expect(screen.getByText(/ModeChanged FREE_ROAM/i)).toBeTruthy();
+      expect(screen.getByText(/TurnStarted char-alice/i)).toBeTruthy();
+      expect(screen.getByText(/EntityDamaged goblin-1/i)).toBeTruthy();
+      expect(screen.getByText(/StatusApplied goblin-1/i)).toBeTruthy();
+      expect(screen.getByText(/TurnEnded char-alice/i)).toBeTruthy();
+    });
+  });
+
+  it('shows takeAction error when RPC fails', async () => {
+    hoisted.takeActionFn.mockRejectedValue(new Error('not your turn'));
+
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: '',
+        })
+      )
+    );
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'char-alice', round: 1 }))
+    );
+
+    const input = screen.getByLabelText(
+      /attack target id/i
+    ) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(input, { target: { value: 'goblin-1' } });
+    });
+
+    const attackBtn = screen.getByRole('button', {
+      name: /^attack$/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(attackBtn.disabled).toBe(false));
+
+    act(() => fireEvent.click(attackBtn));
+
+    await waitFor(() => {
+      expect(screen.getByText(/not your turn/i)).toBeTruthy();
+    });
+  });
+
+  it('shows endTurn error when RPC fails', async () => {
+    hoisted.endTurnFn.mockRejectedValue(new Error('cannot end turn now'));
+
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: '',
+        })
+      )
+    );
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'char-alice', round: 1 }))
+    );
+
+    const endTurnBtn = screen.getByRole('button', {
+      name: /^end turn$/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(endTurnBtn.disabled).toBe(false));
+
+    act(() => fireEvent.click(endTurnBtn));
+
+    await waitFor(() => {
+      expect(screen.getByText(/cannot end turn now/i)).toBeTruthy();
     });
   });
 });
