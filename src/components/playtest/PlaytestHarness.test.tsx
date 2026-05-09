@@ -684,4 +684,156 @@ describe('PlaytestHarness', () => {
       expect(screen.getByText(/cannot end turn now/i)).toBeTruthy();
     });
   });
+
+  // ---------- Wave 2.8 display fixes (#397, #398, #399, #400) ---------------
+
+  it('shows HP inline in entities table after EntityDamaged (fix #398)', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('entityAppeared', {
+          entity: { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
+        })
+      )
+    );
+    act(() =>
+      fake.push(
+        makeEvent('entityDamaged', {
+          entityId: 'goblin-1',
+          amount: 3,
+          hpAfter: { current: 4, max: 7 },
+        })
+      )
+    );
+
+    await waitFor(() => {
+      // HP should appear in the entities table row
+      expect(screen.getAllByText('4/7').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows entity type in entities table after EntityAppeared with v1alpha2 entity type (fix #397)', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    // Send an EntityAppeared event with a monster entity carrying type + data
+    act(() =>
+      fake.push(
+        makeEvent('entityAppeared', {
+          entity: {
+            id: 'goblin-1',
+            type: 2, // EntityType.MONSTER = 2 in v1alpha2
+            position: { x: 1, y: 0, z: -1 },
+            data: { case: 'monster', value: { monsterRef: { id: 'goblin' } } },
+          },
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/MONSTER.*goblin/i)).toBeTruthy();
+    });
+  });
+
+  it('seeds HP in entities table from EntityAppeared initial hp (fix #397 + #398)', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('entityAppeared', {
+          entity: {
+            id: 'goblin-1',
+            type: 2,
+            position: { x: 1, y: 0, z: -1 },
+            hp: { current: 7, max: 7 },
+          },
+        })
+      )
+    );
+
+    await waitFor(() => {
+      // Initial HP should appear in the entities table before any damage events
+      expect(screen.getAllByText('7/7').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('highlights active actor row distinctly from local player row (fix #400)', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    // Seed both entities
+    act(() =>
+      fake.push(
+        makeEvent('entityAppeared', {
+          entity: { id: 'char-alice', position: { x: 0, y: 0, z: 0 } },
+        })
+      )
+    );
+    act(() =>
+      fake.push(
+        makeEvent('entityAppeared', {
+          entity: { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
+        })
+      )
+    );
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: 0, // FREE_ROAM
+          to: 2, // TURN_BASED
+          reason: '',
+        })
+      )
+    );
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'goblin-1', round: 1 }))
+    );
+
+    await waitFor(() => {
+      // The active actor indicator (→) should appear next to goblin-1
+      expect(screen.getByText(/→.*goblin-1/)).toBeTruthy();
+      // char-alice row should still be present (local player) but not marked active
+      expect(screen.getByText('char-alice')).toBeTruthy();
+    });
+  });
+
+  it('shows initiative order in the header when snapshot carries turn state (fix #399)', async () => {
+    render(<PlaytestHarness />);
+
+    // Simulate a SnapshotDelivered event with encounter.turnState populated
+    act(() =>
+      fake.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            id: 'enc-1',
+            mode: 2, // TURN_BASED
+            turnState: {
+              initiativeOrder: ['char-alice', 'goblin-1'],
+              activeEntityId: 'char-alice',
+              round: 1,
+            },
+          },
+        })
+      )
+    );
+
+    await waitFor(() => {
+      const header = screen
+        .getByTestId('harness-header')
+        .textContent?.toLowerCase();
+      expect(header).toContain('initiative:');
+      expect(header).toContain('char-alice');
+      expect(header).toContain('goblin-1');
+    });
+  });
+
+  it('does not show initiative row in header when no snapshot turn state (fix #399)', () => {
+    render(<PlaytestHarness />);
+    // No snapshot delivered — initiative order section should be absent
+    const header = screen.getByTestId('harness-header');
+    expect(header.textContent?.toLowerCase()).not.toContain('initiative:');
+  });
 });
