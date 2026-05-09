@@ -4,6 +4,7 @@ import type {
   EndTurnResponse,
   InteractResponse,
   MoveEntityResponse,
+  SubmitCheckResponse,
   TakeActionResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
@@ -31,6 +32,7 @@ const hoisted = vi.hoisted(() => ({
   interactFn: vi.fn<() => Promise<InteractResponse>>(),
   takeActionFn: vi.fn<() => Promise<TakeActionResponse>>(),
   endTurnFn: vi.fn<() => Promise<EndTurnResponse>>(),
+  submitCheckFn: vi.fn<() => Promise<SubmitCheckResponse>>(),
 }));
 
 vi.mock('../../api/client', () => ({
@@ -45,6 +47,7 @@ vi.mock('../../api/client', () => ({
     interact: hoisted.interactFn,
     takeAction: hoisted.takeActionFn,
     endTurn: hoisted.endTurnFn,
+    submitCheck: hoisted.submitCheckFn,
   },
 }));
 
@@ -64,6 +67,11 @@ beforeEach(() => {
   hoisted.takeActionFn.mockResolvedValue({} as TakeActionResponse);
   hoisted.endTurnFn.mockReset();
   hoisted.endTurnFn.mockResolvedValue({} as EndTurnResponse);
+  hoisted.submitCheckFn.mockReset();
+  hoisted.submitCheckFn.mockResolvedValue({
+    success: true,
+    total: 18,
+  } as SubmitCheckResponse);
 
   // Set up URL with both params
   window.history.pushState({}, '', '?encounterId=enc-1&playerId=alice');
@@ -845,5 +853,239 @@ describe('PlaytestHarness', () => {
     // No snapshot delivered — initiative order section should be absent
     const header = screen.getByTestId('harness-header');
     expect(header.textContent?.toLowerCase()).not.toContain('initiative:');
+  });
+
+  // ---------- Wave 2.9 prompt modal ----------------------------------------
+
+  it('renders skill-check prompt section when interact returns inputRequired', async () => {
+    const skillCheckPrompt = {
+      inputRequired: {
+        kind: {
+          case: 'skillCheck',
+          value: { dc: 12, ability: 'DEX', tool: undefined },
+        },
+      },
+    } as unknown as InteractResponse;
+    hoisted.interactFn.mockResolvedValue(skillCheckPrompt);
+
+    render(<PlaytestHarness />);
+
+    const input = screen.getByLabelText(/door id/i) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(input, { target: { value: 'door-east' } });
+    });
+
+    const btn = screen.getByRole('button', {
+      name: /open door/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(btn.disabled).toBe(false));
+
+    act(() => fireEvent.click(btn));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy();
+    });
+
+    // Verify header text
+    expect(screen.getByText(/Skill check: DEX \(DC 12\)/)).toBeTruthy();
+    // Roll input and submit button are present
+    expect(screen.getByLabelText(/roll \(1-20\)/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /submit roll/i })).toBeTruthy();
+  });
+
+  it('calls submitCheck RPC with correct args on submit click', async () => {
+    const skillCheckPrompt = {
+      inputRequired: {
+        kind: {
+          case: 'skillCheck',
+          value: { dc: 15, ability: 'STR', tool: undefined },
+        },
+      },
+    } as unknown as InteractResponse;
+    hoisted.interactFn.mockResolvedValue(skillCheckPrompt);
+
+    render(<PlaytestHarness />);
+
+    const doorInput = screen.getByLabelText(/door id/i) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(doorInput, { target: { value: 'door-east' } });
+    });
+    const openBtn = screen.getByRole('button', {
+      name: /open door/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(openBtn.disabled).toBe(false));
+    act(() => fireEvent.click(openBtn));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy()
+    );
+
+    // Change the roll value
+    const rollInput = screen.getByLabelText(
+      /roll \(1-20\)/i
+    ) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(rollInput, { target: { value: '17' } });
+    });
+
+    const submitBtn = screen.getByRole('button', { name: /submit roll/i });
+    act(() => fireEvent.click(submitBtn));
+
+    await waitFor(() => {
+      expect(hoisted.submitCheckFn).toHaveBeenCalledOnce();
+    });
+
+    expect(hoisted.submitCheckFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encounterId: 'enc-1',
+        entityId: 'char-alice',
+        roll: 17,
+      })
+    );
+  });
+
+  it('shows transient result after submitCheck resolves', async () => {
+    const skillCheckPrompt = {
+      inputRequired: {
+        kind: {
+          case: 'skillCheck',
+          value: { dc: 12, ability: 'DEX', tool: undefined },
+        },
+      },
+    } as unknown as InteractResponse;
+    hoisted.interactFn.mockResolvedValue(skillCheckPrompt);
+    hoisted.submitCheckFn.mockResolvedValue({
+      success: true,
+      total: 18,
+    } as SubmitCheckResponse);
+
+    render(<PlaytestHarness />);
+
+    const doorInput = screen.getByLabelText(/door id/i) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(doorInput, { target: { value: 'door-east' } });
+    });
+    const openBtn = screen.getByRole('button', { name: /open door/i });
+    await waitFor(() =>
+      expect((openBtn as HTMLButtonElement).disabled).toBe(false)
+    );
+    act(() => fireEvent.click(openBtn));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy()
+    );
+
+    const submitBtn = screen.getByRole('button', { name: /submit roll/i });
+    act(() => fireEvent.click(submitBtn));
+
+    // Result appears immediately after resolve — the auto-clear timer fires 2s
+    // later; we just verify the result text is shown while still pending clear.
+    await waitFor(() => {
+      expect(screen.getByTestId('prompt-result')).toBeTruthy();
+    });
+    expect(screen.getByTestId('prompt-result').textContent).toContain(
+      'success!'
+    );
+  });
+
+  it('clears prompt when Dismiss button is clicked', async () => {
+    const skillCheckPrompt = {
+      inputRequired: {
+        kind: {
+          case: 'skillCheck',
+          value: { dc: 12, ability: 'DEX', tool: undefined },
+        },
+      },
+    } as unknown as InteractResponse;
+    hoisted.interactFn.mockResolvedValue(skillCheckPrompt);
+
+    render(<PlaytestHarness />);
+
+    const doorInput = screen.getByLabelText(/door id/i) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(doorInput, { target: { value: 'door-east' } });
+    });
+    const openBtn = screen.getByRole('button', { name: /open door/i });
+    await waitFor(() =>
+      expect((openBtn as HTMLButtonElement).disabled).toBe(false)
+    );
+    act(() => fireEvent.click(openBtn));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy()
+    );
+
+    // Click Dismiss — prompt should clear immediately
+    act(() =>
+      fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('skill-check-prompt')).toBeNull();
+    });
+  });
+
+  it('renders unsupported placeholder for dialogue prompt kind', async () => {
+    const dialoguePrompt = {
+      inputRequired: {
+        kind: {
+          case: 'dialogue',
+          value: { options: [] },
+        },
+      },
+    } as unknown as InteractResponse;
+    hoisted.interactFn.mockResolvedValue(dialoguePrompt);
+
+    render(<PlaytestHarness />);
+
+    const doorInput = screen.getByLabelText(/door id/i) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(doorInput, { target: { value: 'door-east' } });
+    });
+    const openBtn = screen.getByRole('button', { name: /open door/i });
+    await waitFor(() =>
+      expect((openBtn as HTMLButtonElement).disabled).toBe(false)
+    );
+    act(() => fireEvent.click(openBtn));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('unsupported-prompt')).toBeTruthy();
+    });
+    expect(screen.getByTestId('unsupported-prompt').textContent).toContain(
+      '2.10+'
+    );
+  });
+
+  it('shows tool name in skill check prompt when tool is set', async () => {
+    const promptWithTool = {
+      inputRequired: {
+        kind: {
+          case: 'skillCheck',
+          value: {
+            dc: 12,
+            ability: 'DEX',
+            tool: { module: 'dnd5e', type: 'item', id: 'thieves-tools' },
+          },
+        },
+      },
+    } as unknown as InteractResponse;
+    hoisted.interactFn.mockResolvedValue(promptWithTool);
+
+    render(<PlaytestHarness />);
+
+    const doorInput = screen.getByLabelText(/door id/i) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(doorInput, { target: { value: 'door-east' } });
+    });
+    const openBtn = screen.getByRole('button', { name: /open door/i });
+    await waitFor(() =>
+      expect((openBtn as HTMLButtonElement).disabled).toBe(false)
+    );
+    act(() => fireEvent.click(openBtn));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy();
+    });
+    expect(screen.getByText(/thieves-tools/)).toBeTruthy();
   });
 });
