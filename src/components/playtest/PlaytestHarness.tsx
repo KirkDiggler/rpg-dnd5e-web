@@ -59,10 +59,18 @@ export function PlaytestHarness() {
   const [attackTargetId, setAttackTargetId] = useState('');
   // Wave 2.9: prompt roll input and transient result display
   const [rollValue, setRollValue] = useState(10);
-  const [promptResult, setPromptResult] = useState<string | null>(null);
+  // Structured result avoids string-sniffing for color/outcome logic.
+  const [promptResult, setPromptResult] = useState<{
+    success: boolean;
+    total: number;
+    roll: number;
+  } | null>(null);
+  // Ref to the prompt that is currently being auto-cleared; guards against
+  // clearing a newer prompt when the timer from a prior submit fires late.
   const clearResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+  const clearingPromptRef = useRef<object | null>(null);
 
   const encounterState = useEncounterState();
   const {
@@ -276,6 +284,14 @@ export function PlaytestHarness() {
       const response = await interact(encounterId, id, 'open');
       addLog(`Interact(open) → ${id}`);
       if (response.inputRequired) {
+        // Cancel any in-progress auto-clear timer from a prior submit so it
+        // doesn't unexpectedly clear the new incoming prompt.
+        if (clearResultTimerRef.current) {
+          clearTimeout(clearResultTimerRef.current);
+          clearResultTimerRef.current = null;
+        }
+        clearingPromptRef.current = null;
+        setPromptResult(null);
         encounterState.setPendingPrompt(response.inputRequired);
         addLog(
           `InputRequired: ${response.inputRequired.kind?.case ?? 'unknown'}`
@@ -318,24 +334,37 @@ export function PlaytestHarness() {
   };
 
   const handleSubmitCheck = async () => {
+    // Capture the prompt being resolved. We pass this identity token to the
+    // auto-clear timer so a stale timer from a prior submit doesn't clear a
+    // newer prompt if the prompt changes before the 2s window expires.
+    const promptBeingResolved = encounterState.state.pendingPrompt;
     try {
       const response = await submitCheck({
         encounterId,
         entityId,
         roll: rollValue,
       });
-      const outcome = response.success ? 'success!' : 'failed.';
-      const resultMsg = `rolled ${rollValue.toString()}, total ${response.total.toString()}, ${outcome}`;
-      addLog(`SubmitCheck → ${resultMsg}`);
-      setPromptResult(resultMsg);
-      // Clear the result display after 2 s, then clear the prompt
+      addLog(
+        `SubmitCheck → rolled ${rollValue.toString()}, total ${response.total.toString()}, ${response.success ? 'success!' : 'failed.'}`
+      );
+      setPromptResult({
+        success: response.success,
+        total: response.total,
+        roll: rollValue,
+      });
+      // Clear any prior timer then start a new 2s window.
       if (clearResultTimerRef.current) {
         clearTimeout(clearResultTimerRef.current);
       }
+      clearingPromptRef.current = promptBeingResolved;
       clearResultTimerRef.current = setTimeout(() => {
-        setPromptResult(null);
-        encounterState.setPendingPrompt(null);
+        // Only clear the prompt if it hasn't changed since we started this timer.
+        if (clearingPromptRef.current === promptBeingResolved) {
+          setPromptResult(null);
+          encounterState.setPendingPrompt(null);
+        }
         clearResultTimerRef.current = null;
+        clearingPromptRef.current = null;
       }, 2000);
     } catch {
       // error is surfaced via submitCheckError state
@@ -690,14 +719,13 @@ export function PlaytestHarness() {
                       <div
                         data-testid="prompt-result"
                         style={{
-                          color: promptResult.includes('success')
-                            ? '#8f8'
-                            : '#f88',
+                          color: promptResult.success ? '#8f8' : '#f88',
                           fontWeight: 'bold',
                           fontSize: 13,
                         }}
                       >
-                        {promptResult}
+                        rolled {promptResult.roll}, total {promptResult.total},{' '}
+                        {promptResult.success ? 'success!' : 'failed.'}
                       </div>
                     ) : (
                       <div
@@ -713,13 +741,17 @@ export function PlaytestHarness() {
                             type="number"
                             min={1}
                             max={20}
+                            step={1}
                             value={rollValue}
                             aria-label="roll value"
                             onChange={(e) =>
                               setRollValue(
                                 Math.min(
                                   20,
-                                  Math.max(1, Number(e.target.value))
+                                  Math.max(
+                                    1,
+                                    Math.trunc(Number(e.target.value))
+                                  )
                                 )
                               )
                             }
