@@ -98,30 +98,26 @@ export function PlaytestHarness() {
             e.encounter.mode,
             e.encounter.turnState
           );
-          // Also seed entities from the snapshot's space entities list.
-          // This fires EntityAppeared for each entity in the snapshot, but the
-          // snapshot's space.entities array gives us the v1alpha2 Entity shapes
-          // with type and HP already populated.
-          for (const entity of e.encounter.space?.entities ?? []) {
-            if (!entity.position) continue;
-            const stub = create(EntityStateSchema, {
-              entityId: entity.id,
-              position: v2PositionToV1(entity.position),
-            });
-            encounterState.applyEntityAppeared(stub);
-            const monsterRefId =
-              entity.data?.case === 'monster'
-                ? entity.data.value.monsterRef?.id
-                : undefined;
-            const initialHP = entity.hp
-              ? { current: entity.hp.current, max: entity.hp.max }
-              : undefined;
-            encounterState.applyEntityMeta(
-              entity.id,
-              entity.type,
-              monsterRefId,
-              initialHP
-            );
+          // Seed entities from the snapshot's space entities list in a single
+          // batch setState call to avoid N intermediate renders for N entities.
+          const entityEntries = (e.encounter.space?.entities ?? [])
+            .filter((entity) => entity.position !== undefined)
+            .map((entity) => ({
+              entity: create(EntityStateSchema, {
+                entityId: entity.id,
+                position: v2PositionToV1(entity.position!),
+              }),
+              type: entity.type,
+              monsterRefId:
+                entity.data?.case === 'monster'
+                  ? entity.data.value.monsterRef?.id
+                  : undefined,
+              initialHP: entity.hp
+                ? { current: entity.hp.current, max: entity.hp.max }
+                : undefined,
+            }));
+          if (entityEntries.length > 0) {
+            encounterState.applyEntityAppearedBatch(entityEntries);
           }
         }
         addLog('SnapshotDelivered (stream up)');
@@ -347,12 +343,15 @@ export function PlaytestHarness() {
         <span>
           HP: <strong>{myHP ? `${myHP.current}/${myHP.max}` : '—'}</strong>
         </span>
-        {encounterState.state.initiativeOrder.length > 0 && (
-          <span>
-            initiative:{' '}
-            <strong>{encounterState.state.initiativeOrder.join(' → ')}</strong>
-          </span>
-        )}
+        {encounterState.state.mode === EncounterMode.TURN_BASED &&
+          encounterState.state.initiativeOrder.length > 0 && (
+            <span>
+              initiative:{' '}
+              <strong>
+                {encounterState.state.initiativeOrder.join(' → ')}
+              </strong>
+            </span>
+          )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -384,7 +383,10 @@ export function PlaytestHarness() {
             <tbody>
               {entitiesArray.map(([id, entity]) => {
                 const isLocalPlayer = id === entityId;
+                // Only show active-actor highlight in TURN_BASED mode to avoid
+                // stale highlighting when activeEntityId persists after mode changes.
                 const isActiveActor =
+                  encounterState.state.mode === EncounterMode.TURN_BASED &&
                   encounterState.state.activeEntityId !== '' &&
                   id === encounterState.state.activeEntityId;
                 const meta = encounterState.state.entityMeta.get(id);
@@ -609,36 +611,7 @@ export function PlaytestHarness() {
               ? '(none)'
               : myStatuses.map((s) => s.source.id).join(', ')}
           </div>
-          {/* Per-entity HP table for visible monsters (Wave 2.8 ships goblin-1 only). */}
-          {encounterState.state.entityHP.size > 0 && (
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                marginBottom: 8,
-                fontSize: 12,
-              }}
-            >
-              <thead>
-                <tr style={{ color: '#888', textAlign: 'left' }}>
-                  <th style={{ padding: '4px 8px' }}>id</th>
-                  <th style={{ padding: '4px 8px' }}>HP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from(encounterState.state.entityHP.entries()).map(
-                  ([id, hp]) => (
-                    <tr key={id} style={{ borderTop: '1px solid #333' }}>
-                      <td style={{ padding: '4px 8px' }}>{id}</td>
-                      <td style={{ padding: '4px 8px' }}>
-                        {hp.current}/{hp.max}
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          )}
+          {/* HP is now shown inline in the entities table above. */}
           {!isMyTurn &&
             encounterState.state.mode === EncounterMode.TURN_BASED && (
               <div style={{ color: '#aa8', fontSize: 12, marginBottom: 8 }}>

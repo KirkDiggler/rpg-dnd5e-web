@@ -546,10 +546,19 @@ describe('PlaytestHarness', () => {
     );
   });
 
-  it('renders HP table after EntityDamaged event', async () => {
+  it('renders HP in entities table row after EntityDamaged event', async () => {
+    // HP is now shown inline in the entities table, not a separate HP table.
+    // goblin-1 must appear first (EntityAppeared) so it has a row in the table.
     render(<PlaytestHarness />);
 
     act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('entityAppeared', {
+          entity: { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
+        })
+      )
+    );
     act(() =>
       fake.push(
         makeEvent('entityDamaged', {
@@ -563,7 +572,8 @@ describe('PlaytestHarness', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/EntityDamaged goblin-1/i)).toBeTruthy();
-      expect(screen.getByText('2/7')).toBeTruthy();
+      // HP appears inline in the entity row, not a separate table
+      expect(screen.getAllByText('2/7').length).toBeGreaterThan(0);
     });
   });
 

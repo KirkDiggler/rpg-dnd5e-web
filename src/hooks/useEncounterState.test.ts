@@ -38,6 +38,7 @@ import { hexKey } from '../utils/hexCoord';
 import {
   applyDoorOpened,
   applyEntityAppeared,
+  applyEntityAppearedBatch,
   applyEntityDamaged,
   applyEntityDisappeared,
   applyEntityMetaFromAppeared,
@@ -1313,10 +1314,32 @@ describe('applyV2SnapshotTurnState', () => {
     expect(after.mode).toBe(EncounterMode.TURN_BASED);
   });
 
-  it('only updates mode when turnState is undefined', () => {
+  it('updates mode and clears combat fields when turnState is undefined', () => {
+    // When the snapshot indicates a non-TURN_BASED mode (or TURN_BASED without
+    // a turnState), combat fields are cleared to prevent stale initiative data.
     const prev = createEmptyEncounterState();
     const after = applyV2SnapshotTurnState(
       prev,
+      EncounterMode.FREE_ROAM,
+      undefined
+    );
+    expect(after.mode).toBe(EncounterMode.FREE_ROAM);
+    expect(after.initiativeOrder).toEqual([]);
+    expect(after.activeEntityId).toBe('');
+    expect(after.round).toBe(0);
+  });
+
+  it('clears stale combat fields when transitioning out of TURN_BASED via snapshot', () => {
+    // Regression guard: a prior combat session sets initiative/active/round;
+    // a FREE_ROAM snapshot must clear those so the UI does not show old data.
+    let state = createEmptyEncounterState();
+    state = applyV2SnapshotTurnState(state, EncounterMode.TURN_BASED, {
+      initiativeOrder: ['char-alice', 'goblin-1'],
+      activeEntityId: 'char-alice',
+      round: 2,
+    });
+    const after = applyV2SnapshotTurnState(
+      state,
       EncounterMode.FREE_ROAM,
       undefined
     );
@@ -1362,6 +1385,72 @@ describe('applyV2SnapshotTurnState', () => {
     });
     expect(prev.initiativeOrder).toEqual([]);
     expect(prev.mode).toBe(EncounterMode.UNSPECIFIED);
+  });
+});
+
+describe('applyEntityAppearedBatch', () => {
+  it('applies multiple entities in one call', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityAppearedBatch(prev, [
+      {
+        entity: makeTestEntity('char-alice', { x: 0, y: 0, z: 0 }),
+        type: EntityTypeV2.CHARACTER,
+        monsterRefId: undefined,
+        initialHP: undefined,
+      },
+      {
+        entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
+        type: EntityTypeV2.MONSTER,
+        monsterRefId: 'goblin',
+        initialHP: { current: 7, max: 7 },
+      },
+    ]);
+    expect(after.entities.size).toBe(2);
+    expect(after.entityMeta.get('char-alice')?.type).toBe(
+      EntityTypeV2.CHARACTER
+    );
+    expect(after.entityMeta.get('goblin-1')?.monsterRefId).toBe('goblin');
+    expect(after.entityHP.get('goblin-1')).toEqual({ current: 7, max: 7 });
+    expect(after.entityHP.has('char-alice')).toBe(false);
+  });
+
+  it('is a no-op on empty array (returns same reference)', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityAppearedBatch(prev, []);
+    expect(after).toBe(prev);
+  });
+
+  it('does not mutate the previous state', () => {
+    const prev = createEmptyEncounterState();
+    applyEntityAppearedBatch(prev, [
+      {
+        entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
+        type: EntityTypeV2.MONSTER,
+        monsterRefId: 'goblin',
+        initialHP: { current: 7, max: 7 },
+      },
+    ]);
+    expect(prev.entities.size).toBe(0);
+    expect(prev.entityMeta.size).toBe(0);
+    expect(prev.entityHP.size).toBe(0);
+  });
+
+  it('sets ghost=false on all batch entities', () => {
+    // applyEntityAppearedBatch should clear ghost just like applyEntityAppeared
+    const entity = makeTestEntity('mover', { x: 0, y: 0, z: 0 });
+    let state = mergeEntityUpdates(createEmptyEncounterState(), [entity]);
+    state = applyEntityDisappeared(state, 'mover', { q: 1, r: -1, s: 0 });
+    expect(state.entities.get('mover')?.ghost).toBe(true);
+
+    state = applyEntityAppearedBatch(state, [
+      {
+        entity: makeTestEntity('mover', { x: 5, y: 0, z: -5 }),
+        type: EntityTypeV2.CHARACTER,
+        monsterRefId: undefined,
+        initialHP: undefined,
+      },
+    ]);
+    expect(state.entities.get('mover')?.ghost).toBeFalsy();
   });
 });
 
