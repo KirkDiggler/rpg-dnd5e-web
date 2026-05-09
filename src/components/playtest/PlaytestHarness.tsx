@@ -5,13 +5,14 @@ import {
   EncounterMode,
   EntityType,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { v2PositionToV1 } from '../../api/positionConvert';
 import { useDevPlayerIdAuth } from '../../api/useDevPlayerIdAuth';
 import { useEncounterStream2 } from '../../api/useEncounterStream2';
 import { useEndTurnV2 } from '../../api/useEndTurnV2';
 import { useInteractV2 } from '../../api/useInteractV2';
 import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
+import { useSubmitCheckV2 } from '../../api/useSubmitCheckV2';
 import { useTakeActionV2 } from '../../api/useTakeActionV2';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { protoPositionToHex } from '../../utils/hexCoord';
@@ -56,6 +57,12 @@ export function PlaytestHarness() {
   const [targetS, setTargetS] = useState(0);
   const [targetDoorId, setTargetDoorId] = useState('');
   const [attackTargetId, setAttackTargetId] = useState('');
+  // Wave 2.9: prompt roll input and transient result display
+  const [rollValue, setRollValue] = useState(10);
+  const [promptResult, setPromptResult] = useState<string | null>(null);
+  const clearResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   const encounterState = useEncounterState();
   const {
@@ -78,6 +85,11 @@ export function PlaytestHarness() {
     loading: endTurnLoading,
     error: endTurnError,
   } = useEndTurnV2();
+  const {
+    submitCheck,
+    loading: submitCheckLoading,
+    error: submitCheckError,
+  } = useSubmitCheckV2();
 
   const addLog = (msg: string) => {
     const entry = `[${formatTime(new Date())}] ${msg}`;
@@ -210,6 +222,16 @@ export function PlaytestHarness() {
     }
   );
 
+  // Clean up the auto-clear timer on unmount. Placed before the !playerId
+  // early return so this hook is always called unconditionally (Rules of Hooks).
+  useEffect(() => {
+    return () => {
+      if (clearResultTimerRef.current) {
+        clearTimeout(clearResultTimerRef.current);
+      }
+    };
+  }, []);
+
   if (!playerId) {
     return (
       <div style={{ padding: 16, color: 'red', fontFamily: 'monospace' }}>
@@ -251,8 +273,14 @@ export function PlaytestHarness() {
     const id = targetDoorId.trim();
     if (!id) return;
     try {
-      await interact(encounterId, id, 'open');
+      const response = await interact(encounterId, id, 'open');
       addLog(`Interact(open) → ${id}`);
+      if (response.inputRequired) {
+        encounterState.setPendingPrompt(response.inputRequired);
+        addLog(
+          `InputRequired: ${response.inputRequired.kind?.case ?? 'unknown'}`
+        );
+      }
     } catch {
       // error is surfaced via interactError state
     }
@@ -286,6 +314,31 @@ export function PlaytestHarness() {
       addLog(`EndTurn → ${entityId}`);
     } catch {
       // error is surfaced via endTurnError state
+    }
+  };
+
+  const handleSubmitCheck = async () => {
+    try {
+      const response = await submitCheck({
+        encounterId,
+        entityId,
+        roll: rollValue,
+      });
+      const outcome = response.success ? 'success!' : 'failed.';
+      const resultMsg = `rolled ${rollValue.toString()}, total ${response.total.toString()}, ${outcome}`;
+      addLog(`SubmitCheck → ${resultMsg}`);
+      setPromptResult(resultMsg);
+      // Clear the result display after 2 s, then clear the prompt
+      if (clearResultTimerRef.current) {
+        clearTimeout(clearResultTimerRef.current);
+      }
+      clearResultTimerRef.current = setTimeout(() => {
+        setPromptResult(null);
+        encounterState.setPendingPrompt(null);
+        clearResultTimerRef.current = null;
+      }, 2000);
+    } catch {
+      // error is surfaced via submitCheckError state
     }
   };
 
@@ -602,6 +655,142 @@ export function PlaytestHarness() {
               Interact error: {interactError.message}
             </div>
           )}
+
+          {/* Skill check prompt (Wave 2.9) */}
+          {encounterState.state.pendingPrompt !== null &&
+            (() => {
+              const prompt = encounterState.state.pendingPrompt;
+              if (prompt.kind?.case === 'skillCheck') {
+                const sc = prompt.kind.value;
+                return (
+                  <div
+                    data-testid="skill-check-prompt"
+                    style={{
+                      margin: '16px 0 8px',
+                      padding: '12px',
+                      background: '#1a1a2e',
+                      border: '1px solid #4a4aaa',
+                      borderRadius: 4,
+                    }}
+                  >
+                    <h3 style={{ margin: '0 0 8px', color: '#aaf' }}>
+                      Skill check prompt
+                    </h3>
+                    <div style={{ fontSize: 13, marginBottom: 8 }}>
+                      <strong>
+                        Skill check: {sc.ability} (DC {sc.dc})
+                      </strong>
+                      {sc.tool && (
+                        <span style={{ color: '#aaa', marginLeft: 8 }}>
+                          — requires: {sc.tool.id}
+                        </span>
+                      )}
+                    </div>
+                    {promptResult !== null ? (
+                      <div
+                        data-testid="prompt-result"
+                        style={{
+                          color: promptResult.includes('success')
+                            ? '#8f8'
+                            : '#f88',
+                          fontWeight: 'bold',
+                          fontSize: 13,
+                        }}
+                      >
+                        {promptResult}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 8,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <label style={{ fontSize: 12 }}>
+                          Roll (1-20){' '}
+                          <input
+                            type="number"
+                            min={1}
+                            max={20}
+                            value={rollValue}
+                            aria-label="roll value"
+                            onChange={(e) =>
+                              setRollValue(
+                                Math.min(
+                                  20,
+                                  Math.max(1, Number(e.target.value))
+                                )
+                              )
+                            }
+                            style={{
+                              width: 60,
+                              background: '#333',
+                              color: '#eee',
+                              border: '1px solid #555',
+                              padding: '2px 4px',
+                            }}
+                          />
+                        </label>
+                        <button
+                          onClick={() => void handleSubmitCheck()}
+                          disabled={submitCheckLoading}
+                          style={{
+                            padding: '4px 12px',
+                            background: '#2a2a4a',
+                            color: '#aaf',
+                            border: '1px solid #4a4aaa',
+                            cursor: submitCheckLoading
+                              ? 'not-allowed'
+                              : 'pointer',
+                          }}
+                        >
+                          {submitCheckLoading ? 'Submitting…' : 'Submit roll'}
+                        </button>
+                        <button
+                          onClick={() => encounterState.setPendingPrompt(null)}
+                          style={{
+                            padding: '4px 8px',
+                            background: '#2a2a2a',
+                            color: '#888',
+                            border: '1px solid #444',
+                            cursor: 'pointer',
+                            fontSize: 11,
+                          }}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    )}
+                    {submitCheckError && (
+                      <div
+                        style={{ color: '#f88', marginTop: 8, fontSize: 12 }}
+                      >
+                        SubmitCheck error: {submitCheckError.message}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              // dialogue / targetSelect — Wave 2.10+
+              return (
+                <div
+                  data-testid="unsupported-prompt"
+                  style={{
+                    margin: '16px 0 8px',
+                    padding: '8px 12px',
+                    background: '#1a1a1a',
+                    border: '1px solid #555',
+                    borderRadius: 4,
+                    color: '#888',
+                    fontSize: 12,
+                  }}
+                >
+                  Prompt type {prompt.kind?.case ?? 'unknown'}: not yet
+                  supported (Wave 2.10+)
+                </div>
+              );
+            })()}
 
           {/* Combat controls (Wave 2.8 verification scaffold; deleted in slice 3) */}
           <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Combat</h3>

@@ -28,6 +28,7 @@ import type {
   StatusApplied,
   TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
+import type { InputRequired } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
   EntityType,
@@ -133,6 +134,13 @@ export interface LocalEncounterState {
   round: number;
   dungeonState: DungeonState;
   roomsCleared: number;
+  /**
+   * v1alpha2 pending prompt from Interact or TakeAction response. Callers set
+   * this explicitly via `setPendingPrompt(response.inputRequired)` after an RPC
+   * returns with inputRequired set, and clear it via `setPendingPrompt(null)`
+   * after SubmitCheck resolves. Never auto-set inside hooks — keeps hooks pure.
+   */
+  pendingPrompt: InputRequired | null;
 }
 
 /** Create an empty LocalEncounterState. Exported for testing. */
@@ -157,6 +165,7 @@ export function createEmptyEncounterState(): LocalEncounterState {
     round: 0,
     dungeonState: DungeonState.UNSPECIFIED,
     roomsCleared: 0,
+    pendingPrompt: null,
   };
 }
 
@@ -220,6 +229,10 @@ export function applySnapshotToState(
     round: sameEncounter ? prev.round : 0,
     dungeonState: proto.dungeonState,
     roomsCleared: proto.roomsCleared,
+    // pendingPrompt is caller-private; it doesn't flow through v1 snapshots.
+    // Preserve it across same-encounter syncs so a mid-session snapshot doesn't
+    // silently clear a prompt the player hasn't answered yet.
+    pendingPrompt: sameEncounter ? prev.pendingPrompt : null,
   };
 }
 
@@ -596,6 +609,20 @@ export function applyTurnEnded(prev: LocalEncounterState): LocalEncounterState {
 }
 
 /**
+ * Set or clear the pending prompt. Pass `null` to dismiss after SubmitCheck
+ * resolves; pass the InputRequired proto from an Interact/TakeAction response
+ * to surface it. Callers drive this explicitly — the hook never auto-sets it.
+ * Exported for testing.
+ */
+export function setPendingPromptReducer(
+  prev: LocalEncounterState,
+  prompt: InputRequired | null
+): LocalEncounterState {
+  if (prev.pendingPrompt === prompt) return prev;
+  return { ...prev, pendingPrompt: prompt };
+}
+
+/**
  * Replace combat state without touching entities or other fields.
  * Exported for testing.
  */
@@ -666,6 +693,13 @@ export interface UseEncounterStateResult {
       | { initiativeOrder: string[]; activeEntityId: string; round: number }
       | undefined
   ) => void;
+  // v1alpha2 prompts (Wave 2.9)
+  /**
+   * Set or clear the pending InputRequired prompt. Pass the proto from an
+   * Interact/TakeAction response to display the prompt; pass null to dismiss it
+   * after SubmitCheck resolves. Never called automatically inside hooks.
+   */
+  setPendingPrompt: (prompt: InputRequired | null) => void;
   // v1alpha2 combat (Wave 2.8)
   /** Update an entity's HP from an EntityDamaged event's hp_after field. */
   applyEntityDamaged: (event: EntityDamaged) => void;
@@ -782,6 +816,13 @@ export function useEncounterState(): UseEncounterStateResult {
     []
   );
 
+  const setPendingPromptCallback = useCallback(
+    (prompt: InputRequired | null) => {
+      setState((prev) => setPendingPromptReducer(prev, prompt));
+    },
+    []
+  );
+
   const applyEntityDamagedCallback = useCallback((event: EntityDamaged) => {
     setState((prev) => applyEntityDamaged(prev, event));
   }, []);
@@ -816,6 +857,7 @@ export function useEncounterState(): UseEncounterStateResult {
     applyEntityMeta: applyEntityMetaCallback,
     applyEntityAppearedBatch: applyEntityAppearedBatchCallback,
     applyV2SnapshotTurnState: applyV2SnapshotTurnStateCallback,
+    setPendingPrompt: setPendingPromptCallback,
     applyEntityDamaged: applyEntityDamagedCallback,
     applyStatusApplied: applyStatusAppliedCallback,
     applyModeChanged: applyModeChangedCallback,

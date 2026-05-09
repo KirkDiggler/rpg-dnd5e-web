@@ -32,6 +32,8 @@ import type {
 import {
   EncounterMode,
   EntityType as EntityTypeV2,
+  InputRequiredSchema,
+  SkillCheckPromptSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
@@ -52,6 +54,7 @@ import {
   createEmptyEncounterState,
   mergeEntityPosition,
   mergeEntityUpdates,
+  setPendingPromptReducer,
   updateCombatState,
 } from './useEncounterState';
 
@@ -1524,5 +1527,104 @@ describe('applySnapshotToState — entityMeta + initiativeOrder delta preservati
 
     expect(switched.entityMeta.size).toBe(0);
     expect(switched.initiativeOrder).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wave 2.9 pending-prompt reducer
+// ---------------------------------------------------------------------------
+
+describe('Wave 2.9 setPendingPromptReducer', () => {
+  const makeSkillCheckPrompt = () =>
+    create(InputRequiredSchema, {
+      kind: {
+        case: 'skillCheck',
+        value: create(SkillCheckPromptSchema, {
+          dc: 12,
+          ability: 'DEX',
+        }),
+      },
+    });
+
+  it('starts with pendingPrompt=null in empty state', () => {
+    const state = createEmptyEncounterState();
+    expect(state.pendingPrompt).toBeNull();
+  });
+
+  it('sets pendingPrompt when passed a prompt', () => {
+    const prompt = makeSkillCheckPrompt();
+    const prev = createEmptyEncounterState();
+    const next = setPendingPromptReducer(prev, prompt);
+    expect(next.pendingPrompt).toBe(prompt);
+  });
+
+  it('clears pendingPrompt when passed null', () => {
+    const prompt = makeSkillCheckPrompt();
+    let state = createEmptyEncounterState();
+    state = setPendingPromptReducer(state, prompt);
+    expect(state.pendingPrompt).not.toBeNull();
+
+    const cleared = setPendingPromptReducer(state, null);
+    expect(cleared.pendingPrompt).toBeNull();
+  });
+
+  it('returns the same reference when prompt is unchanged (idempotent)', () => {
+    const prompt = makeSkillCheckPrompt();
+    const prev = setPendingPromptReducer(createEmptyEncounterState(), prompt);
+    const next = setPendingPromptReducer(prev, prompt);
+    expect(next).toBe(prev);
+  });
+
+  it('null → null also returns the same reference', () => {
+    const prev = createEmptyEncounterState();
+    const next = setPendingPromptReducer(prev, null);
+    expect(next).toBe(prev);
+  });
+
+  it('does not mutate the previous state', () => {
+    const prev = createEmptyEncounterState();
+    const prompt = makeSkillCheckPrompt();
+    setPendingPromptReducer(prev, prompt);
+    expect(prev.pendingPrompt).toBeNull();
+  });
+
+  it('does not touch unrelated state fields (entities, mode, round)', () => {
+    let state = createEmptyEncounterState();
+    state = applyTurnStarted(state, {
+      entityId: 'char-alice',
+      round: 2,
+    } as unknown as TurnStarted);
+    const prompt = makeSkillCheckPrompt();
+    const next = setPendingPromptReducer(state, prompt);
+    expect(next.activeEntityId).toBe('char-alice');
+    expect(next.round).toBe(2);
+    expect(next.pendingPrompt).toBe(prompt);
+  });
+
+  it('pendingPrompt is preserved across same-encounter snapshot', () => {
+    const prompt = makeSkillCheckPrompt();
+    let state = createEmptyEncounterState();
+    state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }), state);
+    state = setPendingPromptReducer(state, prompt);
+    expect(state.pendingPrompt).toBe(prompt);
+
+    const refreshed = applySnapshotToState(
+      makeSnapshot({ encounterId: 'enc-1' }),
+      state
+    );
+    expect(refreshed.pendingPrompt).toBe(prompt);
+  });
+
+  it('pendingPrompt is cleared on encounter switch', () => {
+    const prompt = makeSkillCheckPrompt();
+    let state = createEmptyEncounterState();
+    state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }), state);
+    state = setPendingPromptReducer(state, prompt);
+
+    const switched = applySnapshotToState(
+      makeSnapshot({ encounterId: 'enc-2' }),
+      state
+    );
+    expect(switched.pendingPrompt).toBeNull();
   });
 });
