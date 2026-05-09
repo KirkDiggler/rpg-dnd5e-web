@@ -29,20 +29,26 @@ import type {
   StatusApplied,
   TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
-import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  EncounterMode,
+  EntityType as EntityTypeV2,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
 import {
   applyDoorOpened,
   applyEntityAppeared,
+  applyEntityAppearedBatch,
   applyEntityDamaged,
   applyEntityDisappeared,
+  applyEntityMetaFromAppeared,
   applyHexRevealed,
   applyModeChanged,
   applySnapshotToState,
   applyStatusApplied,
   applyTurnEnded,
   applyTurnStarted,
+  applyV2SnapshotTurnState,
   createEmptyEncounterState,
   mergeEntityPosition,
   mergeEntityUpdates,
@@ -1177,5 +1183,346 @@ describe('Wave 2.8 combat reducers', () => {
       expect(state.activeEntityId).toBe('char-alice');
       expect(state.round).toBe(2);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wave 2.8 display fixes (#397, #399)
+// ---------------------------------------------------------------------------
+
+describe('applyEntityMetaFromAppeared', () => {
+  it('stores type and monsterRefId for a monster entity', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityMetaFromAppeared(
+      prev,
+      'goblin-1',
+      EntityTypeV2.MONSTER,
+      'goblin',
+      undefined
+    );
+    const meta = after.entityMeta.get('goblin-1');
+    expect(meta?.type).toBe(EntityTypeV2.MONSTER);
+    expect(meta?.monsterRefId).toBe('goblin');
+  });
+
+  it('stores type without monsterRefId for a character entity', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityMetaFromAppeared(
+      prev,
+      'char-alice',
+      EntityTypeV2.CHARACTER,
+      undefined,
+      undefined
+    );
+    const meta = after.entityMeta.get('char-alice');
+    expect(meta?.type).toBe(EntityTypeV2.CHARACTER);
+    expect(meta?.monsterRefId).toBeUndefined();
+  });
+
+  it('seeds entityHP when initialHP is provided', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityMetaFromAppeared(
+      prev,
+      'goblin-1',
+      EntityTypeV2.MONSTER,
+      'goblin',
+      { current: 7, max: 7 }
+    );
+    expect(after.entityHP.get('goblin-1')).toEqual({ current: 7, max: 7 });
+  });
+
+  it('does not touch entityHP when initialHP is undefined', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityMetaFromAppeared(
+      prev,
+      'goblin-1',
+      EntityTypeV2.MONSTER,
+      'goblin',
+      undefined
+    );
+    expect(after.entityHP.size).toBe(0);
+  });
+
+  it('overwrites existing meta on re-appear (server is authoritative)', () => {
+    let state = createEmptyEncounterState();
+    state = applyEntityMetaFromAppeared(
+      state,
+      'goblin-1',
+      EntityTypeV2.MONSTER,
+      'goblin',
+      undefined
+    );
+    state = applyEntityMetaFromAppeared(
+      state,
+      'goblin-1',
+      EntityTypeV2.MONSTER,
+      'hobgoblin',
+      { current: 11, max: 11 }
+    );
+    expect(state.entityMeta.get('goblin-1')?.monsterRefId).toBe('hobgoblin');
+    expect(state.entityHP.get('goblin-1')).toEqual({ current: 11, max: 11 });
+  });
+
+  it('does not mutate the previous state', () => {
+    const prev = createEmptyEncounterState();
+    applyEntityMetaFromAppeared(
+      prev,
+      'goblin-1',
+      EntityTypeV2.MONSTER,
+      'goblin',
+      { current: 5, max: 7 }
+    );
+    expect(prev.entityMeta.size).toBe(0);
+    expect(prev.entityHP.size).toBe(0);
+  });
+
+  it('preserves other entity meta entries', () => {
+    let state = createEmptyEncounterState();
+    state = applyEntityMetaFromAppeared(
+      state,
+      'char-alice',
+      EntityTypeV2.CHARACTER,
+      undefined,
+      undefined
+    );
+    state = applyEntityMetaFromAppeared(
+      state,
+      'goblin-1',
+      EntityTypeV2.MONSTER,
+      'goblin',
+      undefined
+    );
+    expect(state.entityMeta.size).toBe(2);
+    expect(state.entityMeta.get('char-alice')?.type).toBe(
+      EntityTypeV2.CHARACTER
+    );
+    expect(state.entityMeta.get('goblin-1')?.type).toBe(EntityTypeV2.MONSTER);
+  });
+});
+
+describe('applyV2SnapshotTurnState', () => {
+  it('sets initiativeOrder, activeEntityId, round, and mode from snapshot turn state', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyV2SnapshotTurnState(prev, EncounterMode.TURN_BASED, {
+      initiativeOrder: ['char-alice', 'goblin-1'],
+      activeEntityId: 'char-alice',
+      round: 1,
+    });
+    expect(after.initiativeOrder).toEqual(['char-alice', 'goblin-1']);
+    expect(after.activeEntityId).toBe('char-alice');
+    expect(after.round).toBe(1);
+    expect(after.mode).toBe(EncounterMode.TURN_BASED);
+  });
+
+  it('updates mode and clears combat fields when turnState is undefined', () => {
+    // When the snapshot indicates a non-TURN_BASED mode (or TURN_BASED without
+    // a turnState), combat fields are cleared to prevent stale initiative data.
+    const prev = createEmptyEncounterState();
+    const after = applyV2SnapshotTurnState(
+      prev,
+      EncounterMode.FREE_ROAM,
+      undefined
+    );
+    expect(after.mode).toBe(EncounterMode.FREE_ROAM);
+    expect(after.initiativeOrder).toEqual([]);
+    expect(after.activeEntityId).toBe('');
+    expect(after.round).toBe(0);
+  });
+
+  it('clears stale combat fields when transitioning out of TURN_BASED via snapshot', () => {
+    // Regression guard: a prior combat session sets initiative/active/round;
+    // a FREE_ROAM snapshot must clear those so the UI does not show old data.
+    let state = createEmptyEncounterState();
+    state = applyV2SnapshotTurnState(state, EncounterMode.TURN_BASED, {
+      initiativeOrder: ['char-alice', 'goblin-1'],
+      activeEntityId: 'char-alice',
+      round: 2,
+    });
+    const after = applyV2SnapshotTurnState(
+      state,
+      EncounterMode.FREE_ROAM,
+      undefined
+    );
+    expect(after.mode).toBe(EncounterMode.FREE_ROAM);
+    expect(after.initiativeOrder).toEqual([]);
+    expect(after.activeEntityId).toBe('');
+    expect(after.round).toBe(0);
+  });
+
+  it('returns same reference when mode and turnState are both unchanged (no-op)', () => {
+    const prev = createEmptyEncounterState();
+    // prev.mode is UNSPECIFIED and turnState is undefined — no change
+    const after = applyV2SnapshotTurnState(
+      prev,
+      EncounterMode.UNSPECIFIED,
+      undefined
+    );
+    expect(after).toBe(prev);
+  });
+
+  it('does not touch HP, entityStatuses, or entity map', () => {
+    let prev = createEmptyEncounterState();
+    prev = applyEntityDamaged(prev, makeDamaged('goblin-1', 5, 7));
+    prev = applyStatusApplied(
+      prev,
+      makeStatusApplied('char-alice', 'dnd5e', 'condition', 'poisoned')
+    );
+    const after = applyV2SnapshotTurnState(prev, EncounterMode.TURN_BASED, {
+      initiativeOrder: ['char-alice', 'goblin-1'],
+      activeEntityId: 'char-alice',
+      round: 1,
+    });
+    expect(after.entityHP.get('goblin-1')).toEqual({ current: 5, max: 7 });
+    expect(after.entityStatuses.get('char-alice')).toHaveLength(1);
+  });
+
+  it('does not mutate the previous state', () => {
+    const prev = createEmptyEncounterState();
+    applyV2SnapshotTurnState(prev, EncounterMode.TURN_BASED, {
+      initiativeOrder: ['goblin-1'],
+      activeEntityId: 'goblin-1',
+      round: 1,
+    });
+    expect(prev.initiativeOrder).toEqual([]);
+    expect(prev.mode).toBe(EncounterMode.UNSPECIFIED);
+  });
+});
+
+describe('applyEntityAppearedBatch', () => {
+  it('applies multiple entities in one call', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityAppearedBatch(prev, [
+      {
+        entity: makeTestEntity('char-alice', { x: 0, y: 0, z: 0 }),
+        type: EntityTypeV2.CHARACTER,
+        monsterRefId: undefined,
+        initialHP: undefined,
+      },
+      {
+        entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
+        type: EntityTypeV2.MONSTER,
+        monsterRefId: 'goblin',
+        initialHP: { current: 7, max: 7 },
+      },
+    ]);
+    expect(after.entities.size).toBe(2);
+    expect(after.entityMeta.get('char-alice')?.type).toBe(
+      EntityTypeV2.CHARACTER
+    );
+    expect(after.entityMeta.get('goblin-1')?.monsterRefId).toBe('goblin');
+    expect(after.entityHP.get('goblin-1')).toEqual({ current: 7, max: 7 });
+    expect(after.entityHP.has('char-alice')).toBe(false);
+  });
+
+  it('is a no-op on empty array (returns same reference)', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityAppearedBatch(prev, []);
+    expect(after).toBe(prev);
+  });
+
+  it('does not mutate the previous state', () => {
+    const prev = createEmptyEncounterState();
+    applyEntityAppearedBatch(prev, [
+      {
+        entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
+        type: EntityTypeV2.MONSTER,
+        monsterRefId: 'goblin',
+        initialHP: { current: 7, max: 7 },
+      },
+    ]);
+    expect(prev.entities.size).toBe(0);
+    expect(prev.entityMeta.size).toBe(0);
+    expect(prev.entityHP.size).toBe(0);
+  });
+
+  it('sets ghost=false on all batch entities', () => {
+    // applyEntityAppearedBatch should clear ghost just like applyEntityAppeared
+    const entity = makeTestEntity('mover', { x: 0, y: 0, z: 0 });
+    let state = mergeEntityUpdates(createEmptyEncounterState(), [entity]);
+    state = applyEntityDisappeared(state, 'mover', { q: 1, r: -1, s: 0 });
+    expect(state.entities.get('mover')?.ghost).toBe(true);
+
+    state = applyEntityAppearedBatch(state, [
+      {
+        entity: makeTestEntity('mover', { x: 5, y: 0, z: -5 }),
+        type: EntityTypeV2.CHARACTER,
+        monsterRefId: undefined,
+        initialHP: undefined,
+      },
+    ]);
+    expect(state.entities.get('mover')?.ghost).toBeFalsy();
+  });
+});
+
+describe('createEmptyEncounterState — new Wave 2.8 display fields', () => {
+  it('initializes entityMeta as empty Map', () => {
+    const state = createEmptyEncounterState();
+    expect(state.entityMeta).toBeInstanceOf(Map);
+    expect(state.entityMeta.size).toBe(0);
+  });
+
+  it('initializes initiativeOrder as empty array', () => {
+    const state = createEmptyEncounterState();
+    expect(state.initiativeOrder).toEqual([]);
+  });
+});
+
+describe('applySnapshotToState — entityMeta + initiativeOrder delta preservation', () => {
+  it('preserves entityMeta across same-encounter v1 snapshot', () => {
+    let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
+    state = applyEntityMetaFromAppeared(
+      state,
+      'goblin-1',
+      EntityTypeV2.MONSTER,
+      'goblin',
+      { current: 7, max: 7 }
+    );
+
+    const refreshed = applySnapshotToState(
+      makeSnapshot({ encounterId: 'enc-1' }),
+      state
+    );
+
+    expect(refreshed.entityMeta.get('goblin-1')?.monsterRefId).toBe('goblin');
+  });
+
+  it('preserves initiativeOrder across same-encounter v1 snapshot', () => {
+    let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
+    state = applyV2SnapshotTurnState(state, EncounterMode.TURN_BASED, {
+      initiativeOrder: ['char-alice', 'goblin-1'],
+      activeEntityId: 'char-alice',
+      round: 1,
+    });
+
+    const refreshed = applySnapshotToState(
+      makeSnapshot({ encounterId: 'enc-1' }),
+      state
+    );
+
+    expect(refreshed.initiativeOrder).toEqual(['char-alice', 'goblin-1']);
+  });
+
+  it('resets entityMeta and initiativeOrder on encounter switch', () => {
+    let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
+    state = applyEntityMetaFromAppeared(
+      state,
+      'goblin-1',
+      EntityTypeV2.MONSTER,
+      'goblin',
+      undefined
+    );
+    state = applyV2SnapshotTurnState(state, EncounterMode.TURN_BASED, {
+      initiativeOrder: ['char-alice', 'goblin-1'],
+      activeEntityId: 'char-alice',
+      round: 1,
+    });
+
+    const switched = applySnapshotToState(
+      makeSnapshot({ encounterId: 'enc-2' }),
+      state
+    );
+
+    expect(switched.entityMeta.size).toBe(0);
+    expect(switched.initiativeOrder).toEqual([]);
   });
 });

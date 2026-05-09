@@ -28,7 +28,10 @@ import type {
   StatusApplied,
   TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
-import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  EncounterMode,
+  EntityType,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useState } from 'react';
 import { hexKey, type CubeHexCoord } from '../utils/hexCoord';
 
@@ -36,6 +39,21 @@ import { hexKey, type CubeHexCoord } from '../utils/hexCoord';
 export interface EntityHP {
   current: number;
   max: number;
+}
+
+/**
+ * v1alpha2 entity identity metadata, populated from EntityAppeared.entity.
+ * Carries type and monster ref id so the harness can label entity rows without
+ * storing the full v1alpha2 Entity proto alongside the v1alpha1 EntityState.
+ */
+export interface EntityMeta {
+  /** v1alpha2 EntityType discriminator (CHARACTER, MONSTER, etc.). */
+  type: EntityType;
+  /**
+   * For MONSTER entities: the monster_ref id (e.g. "goblin").
+   * Undefined for non-monster entities.
+   */
+  monsterRefId?: string;
 }
 
 /** v1alpha2 condition tag, populated from StatusApplied.status. */
@@ -83,6 +101,20 @@ export interface LocalEncounterState {
    */
   entityStatuses: Map<string, EntityStatus[]>;
   /**
+   * v1alpha2 entity identity metadata keyed by entity id. Populated by
+   * `applyEntityMetaFromAppeared` (reducer) / `applyEntityMeta` (hook callback)
+   * from EntityAppeared.entity fields. Carries type and monster ref id; kept
+   * separate from the v1alpha1 EntityState store so neither v1 nor v2 entity
+   * shapes need to import the other.
+   */
+  entityMeta: Map<string, EntityMeta>;
+  /**
+   * v1alpha2 initiative order — the ordered list of entity ids for the current
+   * round. Populated from SnapshotDelivered.encounter.turnState.initiativeOrder.
+   * Empty array when not in TURN_BASED mode or when no snapshot has arrived.
+   */
+  initiativeOrder: string[];
+  /**
    * v1alpha2 encounter mode. UNSPECIFIED until ModeChanged or a snapshot
    * sets it. Combat controls in the harness gate on this being TURN_BASED.
    */
@@ -118,6 +150,8 @@ export function createEmptyEncounterState(): LocalEncounterState {
     openDoors: new Set(),
     entityHP: new Map(),
     entityStatuses: new Map(),
+    entityMeta: new Map(),
+    initiativeOrder: [],
     mode: EncounterMode.UNSPECIFIED,
     activeEntityId: '',
     round: 0,
@@ -175,6 +209,12 @@ export function applySnapshotToState(
     // preserve across same-encounter v1 snapshots (deltas aren't replayed).
     entityHP: sameEncounter ? prev.entityHP : new Map(),
     entityStatuses: sameEncounter ? prev.entityStatuses : new Map(),
+    // v2 entity identity metadata (type, monster ref) flows only via
+    // EntityAppeared — not replayed on v1 snapshots. Preserve across same-encounter syncs.
+    entityMeta: sameEncounter ? prev.entityMeta : new Map(),
+    // Initiative order comes from SnapshotDelivered.encounter.turnState; the
+    // v1 snapshot path doesn't carry it. Preserve on same-encounter syncs.
+    initiativeOrder: sameEncounter ? prev.initiativeOrder : [],
     mode: sameEncounter ? prev.mode : EncounterMode.UNSPECIFIED,
     activeEntityId: sameEncounter ? prev.activeEntityId : '',
     round: sameEncounter ? prev.round : 0,
@@ -256,6 +296,131 @@ export function applyEntityAppeared(
   const newEntities = new Map(prev.entities);
   newEntities.set(entity.entityId, { ...entity, ghost: false });
   return { ...prev, entities: newEntities };
+}
+
+/**
+ * Apply a batch of entity appearances — each carrying both the v1alpha1
+ * positional stub AND v1alpha2 meta (type, monsterRefId, initialHP) — in a
+ * single state update. Use this instead of calling applyEntityAppeared +
+ * applyEntityMeta per entity in a loop (which triggers N intermediate renders
+ * and N Map clone operations for N entities).
+ *
+ * Exported for testing.
+ */
+export function applyEntityAppearedBatch(
+  prev: LocalEncounterState,
+  entries: Array<{
+    entity: EntityState;
+    type: EntityType;
+    monsterRefId: string | undefined;
+    initialHP: { current: number; max: number } | undefined;
+  }>
+): LocalEncounterState {
+  if (entries.length === 0) return prev;
+  const newEntities = new Map(prev.entities);
+  const newMeta = new Map(prev.entityMeta);
+  const newHP = new Map(prev.entityHP);
+  let hpChanged = false;
+  for (const { entity, type, monsterRefId, initialHP } of entries) {
+    newEntities.set(entity.entityId, { ...entity, ghost: false });
+    newMeta.set(entity.entityId, { type, monsterRefId });
+    if (initialHP !== undefined) {
+      newHP.set(entity.entityId, {
+        current: initialHP.current,
+        max: initialHP.max,
+      });
+      hpChanged = true;
+    }
+  }
+  return {
+    ...prev,
+    entities: newEntities,
+    entityMeta: newMeta,
+    entityHP: hpChanged ? newHP : prev.entityHP,
+  };
+}
+
+/**
+ * Record v1alpha2 entity identity metadata from an EntityAppeared event.
+ *
+ * Stores type and (for monsters) monsterRef.id in `entityMeta` so the harness
+ * can render a type column and monster identifier without storing the full
+ * v1alpha2 Entity proto. Also seeds `entityHP` if the entity carries initial
+ * HP — this populates HP in the entities table before any damage events land,
+ * fixing the issue where snapshot-seeded monsters showed no HP until first hit.
+ *
+ * Idempotent on a same-entity / same-meta re-appear: the meta entry is always
+ * overwritten (the server's word is authoritative). Exported for testing.
+ */
+export function applyEntityMetaFromAppeared(
+  prev: LocalEncounterState,
+  entityId: string,
+  type: EntityType,
+  monsterRefId: string | undefined,
+  initialHP: { current: number; max: number } | undefined
+): LocalEncounterState {
+  const newMeta = new Map(prev.entityMeta);
+  newMeta.set(entityId, { type, monsterRefId });
+
+  // Always overwrite HP when the entity carries initial HP — EntityAppeared is
+  // the entity's birth event and the server is authoritative. If a damage event
+  // has already set HP before EntityAppeared fires (unusual but possible in
+  // reconnect scenarios), the damage event's value will be overwritten. In
+  // practice EntityAppeared always precedes damage events for a given entity.
+  if (initialHP !== undefined) {
+    const newHP = new Map(prev.entityHP);
+    newHP.set(entityId, { current: initialHP.current, max: initialHP.max });
+    return { ...prev, entityMeta: newMeta, entityHP: newHP };
+  }
+
+  return { ...prev, entityMeta: newMeta };
+}
+
+/**
+ * Apply v1alpha2 encounter mode + turn state from a SnapshotDelivered event.
+ * Updates `mode`, `initiativeOrder`, `activeEntityId`, and `round` from the
+ * snapshot without touching HP / statuses / doors / hexes (those flow only
+ * via delta events).
+ *
+ * When `turnState` is undefined OR `encounterMode` is not TURN_BASED,
+ * initiative-order fields are cleared to prevent stale combat data from
+ * showing in the UI after an encounter exits TURN_BASED mode. Exported for testing.
+ */
+export function applyV2SnapshotTurnState(
+  prev: LocalEncounterState,
+  encounterMode: EncounterMode,
+  turnState:
+    | { initiativeOrder: string[]; activeEntityId: string; round: number }
+    | undefined
+): LocalEncounterState {
+  const modeChanged = prev.mode !== encounterMode;
+  const inTurnBased = encounterMode === EncounterMode.TURN_BASED;
+
+  // When not in TURN_BASED (or turnState absent), clear combat fields so the UI
+  // does not show stale initiative data from a prior combat. Return prev unchanged
+  // only if there is truly nothing to update (avoids a spurious React re-render).
+  if (!inTurnBased || turnState === undefined) {
+    const nothingChanged =
+      !modeChanged &&
+      prev.initiativeOrder.length === 0 &&
+      prev.activeEntityId === '' &&
+      prev.round === 0;
+    if (nothingChanged) return prev;
+    return {
+      ...prev,
+      mode: encounterMode,
+      initiativeOrder: [],
+      activeEntityId: '',
+      round: 0,
+    };
+  }
+  return {
+    ...prev,
+    mode: encounterMode,
+    initiativeOrder: turnState.initiativeOrder,
+    activeEntityId: turnState.activeEntityId,
+    round: turnState.round,
+  };
 }
 
 /**
@@ -466,6 +631,41 @@ export interface UseEncounterStateResult {
   applyEntityDisappeared: (entityId: string, lastKnown: CubeHexCoord) => void;
   /** Mark a door entity as open; idempotent. */
   applyDoorOpened: (doorEntityId: string) => void;
+  /**
+   * Store v1alpha2 entity identity metadata from EntityAppeared.entity.
+   * Also seeds entityHP from entity.hp when the entity carries initial HP.
+   * Call after applyEntityAppeared so the v1alpha1 stub and v2 meta are both stored.
+   */
+  applyEntityMeta: (
+    entityId: string,
+    type: EntityType,
+    monsterRefId: string | undefined,
+    initialHP: { current: number; max: number } | undefined
+  ) => void;
+  /**
+   * Apply a batch of entity appearances in a single state update to avoid N
+   * intermediate renders when seeding multiple entities from a snapshot.
+   * Each entry carries the v1alpha1 positional stub plus v1alpha2 type/HP/meta.
+   */
+  applyEntityAppearedBatch: (
+    entries: Array<{
+      entity: EntityState;
+      type: EntityType;
+      monsterRefId: string | undefined;
+      initialHP: { current: number; max: number } | undefined;
+    }>
+  ) => void;
+  /**
+   * Apply v1alpha2 turn state from a SnapshotDelivered event.
+   * Updates initiativeOrder, activeEntityId, round, and mode without touching
+   * HP / statuses / doors (those flow only via delta events).
+   */
+  applyV2SnapshotTurnState: (
+    encounterMode: EncounterMode,
+    turnState:
+      | { initiativeOrder: string[]; activeEntityId: string; round: number }
+      | undefined
+  ) => void;
   // v1alpha2 combat (Wave 2.8)
   /** Update an entity's HP from an EntityDamaged event's hp_after field. */
   applyEntityDamaged: (event: EntityDamaged) => void;
@@ -534,6 +734,54 @@ export function useEncounterState(): UseEncounterStateResult {
     setState((prev) => applyDoorOpened(prev, doorEntityId));
   }, []);
 
+  const applyEntityMetaCallback = useCallback(
+    (
+      entityId: string,
+      type: EntityType,
+      monsterRefId: string | undefined,
+      initialHP: { current: number; max: number } | undefined
+    ) => {
+      setState((prev) =>
+        applyEntityMetaFromAppeared(
+          prev,
+          entityId,
+          type,
+          monsterRefId,
+          initialHP
+        )
+      );
+    },
+    []
+  );
+
+  const applyEntityAppearedBatchCallback = useCallback(
+    (
+      entries: Array<{
+        entity: EntityState;
+        type: EntityType;
+        monsterRefId: string | undefined;
+        initialHP: { current: number; max: number } | undefined;
+      }>
+    ) => {
+      setState((prev) => applyEntityAppearedBatch(prev, entries));
+    },
+    []
+  );
+
+  const applyV2SnapshotTurnStateCallback = useCallback(
+    (
+      encounterMode: EncounterMode,
+      turnState:
+        | { initiativeOrder: string[]; activeEntityId: string; round: number }
+        | undefined
+    ) => {
+      setState((prev) =>
+        applyV2SnapshotTurnState(prev, encounterMode, turnState)
+      );
+    },
+    []
+  );
+
   const applyEntityDamagedCallback = useCallback((event: EntityDamaged) => {
     setState((prev) => applyEntityDamaged(prev, event));
   }, []);
@@ -565,6 +813,9 @@ export function useEncounterState(): UseEncounterStateResult {
     applyEntityAppeared: applyEntityAppearedCallback,
     applyEntityDisappeared: applyEntityDisappearedCallback,
     applyDoorOpened: applyDoorOpenedCallback,
+    applyEntityMeta: applyEntityMetaCallback,
+    applyEntityAppearedBatch: applyEntityAppearedBatchCallback,
+    applyV2SnapshotTurnState: applyV2SnapshotTurnStateCallback,
     applyEntityDamaged: applyEntityDamagedCallback,
     applyStatusApplied: applyStatusAppliedCallback,
     applyModeChanged: applyModeChangedCallback,

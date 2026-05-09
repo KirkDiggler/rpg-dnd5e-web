@@ -1,8 +1,10 @@
 import { create } from '@bufbuild/protobuf';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { ActionTarget } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
-import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  EncounterMode,
+  EntityType,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useState } from 'react';
 import { v2PositionToV1 } from '../../api/positionConvert';
 import { useDevPlayerIdAuth } from '../../api/useDevPlayerIdAuth';
@@ -86,7 +88,38 @@ export function PlaytestHarness() {
     playerId ? encounterId : null,
     playerId ?? '',
     {
-      onSnapshotDelivered: () => {
+      onSnapshotDelivered: (e) => {
+        // Apply v1alpha2 turn state from the snapshot when present.
+        // encounter.mode and encounter.turnState carry initiative order,
+        // active entity, and round — populate those fields so the harness
+        // header shows the correct state without waiting for delta events.
+        if (e.encounter) {
+          encounterState.applyV2SnapshotTurnState(
+            e.encounter.mode,
+            e.encounter.turnState
+          );
+          // Seed entities from the snapshot's space entities list in a single
+          // batch setState call to avoid N intermediate renders for N entities.
+          const entityEntries = (e.encounter.space?.entities ?? [])
+            .filter((entity) => entity.position !== undefined)
+            .map((entity) => ({
+              entity: create(EntityStateSchema, {
+                entityId: entity.id,
+                position: v2PositionToV1(entity.position!),
+              }),
+              type: entity.type,
+              monsterRefId:
+                entity.data?.case === 'monster'
+                  ? entity.data.value.monsterRef?.id
+                  : undefined,
+              initialHP: entity.hp
+                ? { current: entity.hp.current, max: entity.hp.max }
+                : undefined,
+            }));
+          if (entityEntries.length > 0) {
+            encounterState.applyEntityAppearedBatch(entityEntries);
+          }
+        }
         addLog('SnapshotDelivered (stream up)');
       },
       onEntityMoved: (e) => {
@@ -109,12 +142,28 @@ export function PlaytestHarness() {
       },
       onEntityAppeared: (e) => {
         if (!e.entity || !e.entity.position) return;
+        // Create a v1alpha1 stub for positional tracking in the entities Map.
+        // The v1alpha2 Entity fields (type, hp, MonsterData) flow separately
+        // into entityMeta and entityHP via applyEntityMeta below.
         const stub = create(EntityStateSchema, {
           entityId: e.entity.id,
           position: v2PositionToV1(e.entity.position),
-          entityType: EntityType.UNSPECIFIED,
         });
         encounterState.applyEntityAppeared(stub);
+        // Store v1alpha2 identity metadata and seed initial HP.
+        const monsterRefId =
+          e.entity.data?.case === 'monster'
+            ? e.entity.data.value.monsterRef?.id
+            : undefined;
+        const initialHP = e.entity.hp
+          ? { current: e.entity.hp.current, max: e.entity.hp.max }
+          : undefined;
+        encounterState.applyEntityMeta(
+          e.entity.id,
+          e.entity.type,
+          monsterRefId,
+          initialHP
+        );
         addLog(`EntityAppeared ${e.entity.id}`);
       },
       onEntityDisappeared: (e) => {
@@ -294,6 +343,15 @@ export function PlaytestHarness() {
         <span>
           HP: <strong>{myHP ? `${myHP.current}/${myHP.max}` : '—'}</strong>
         </span>
+        {encounterState.state.mode === EncounterMode.TURN_BASED &&
+          encounterState.state.initiativeOrder.length > 0 && (
+            <span>
+              initiative:{' '}
+              <strong>
+                {encounterState.state.initiativeOrder.join(' → ')}
+              </strong>
+            </span>
+          )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -314,6 +372,8 @@ export function PlaytestHarness() {
             <thead>
               <tr style={{ color: '#888', textAlign: 'left' }}>
                 <th style={{ padding: '4px 8px' }}>id</th>
+                <th style={{ padding: '4px 8px' }}>type</th>
+                <th style={{ padding: '4px 8px' }}>HP</th>
                 <th style={{ padding: '4px 8px' }}>x</th>
                 <th style={{ padding: '4px 8px' }}>y</th>
                 <th style={{ padding: '4px 8px' }}>z</th>
@@ -321,32 +381,69 @@ export function PlaytestHarness() {
               </tr>
             </thead>
             <tbody>
-              {entitiesArray.map(([id, entity]) => (
-                <tr
-                  key={id}
-                  style={{
-                    background: id === entityId ? '#1a2a1a' : 'transparent',
-                    borderTop: '1px solid #333',
-                  }}
-                >
-                  <td style={{ padding: '4px 8px' }}>{id}</td>
-                  <td style={{ padding: '4px 8px' }}>
-                    {entity.position?.x ?? '—'}
-                  </td>
-                  <td style={{ padding: '4px 8px' }}>
-                    {entity.position?.y ?? '—'}
-                  </td>
-                  <td style={{ padding: '4px 8px' }}>
-                    {entity.position?.z ?? '—'}
-                  </td>
-                  <td style={{ padding: '4px 8px' }}>
-                    {entity.ghost ? 'yes' : ''}
-                  </td>
-                </tr>
-              ))}
+              {entitiesArray.map(([id, entity]) => {
+                const isLocalPlayer = id === entityId;
+                // Only show active-actor highlight in TURN_BASED mode to avoid
+                // stale highlighting when activeEntityId persists after mode changes.
+                const isActiveActor =
+                  encounterState.state.mode === EncounterMode.TURN_BASED &&
+                  encounterState.state.activeEntityId !== '' &&
+                  id === encounterState.state.activeEntityId;
+                const meta = encounterState.state.entityMeta.get(id);
+                const hp = encounterState.state.entityHP.get(id);
+                // Row background: active actor (yellow/orange) takes priority over
+                // local player (green) so both states are distinguishable when
+                // it's the local player's turn.
+                const rowBackground = isActiveActor
+                  ? '#2a2200'
+                  : isLocalPlayer
+                    ? '#1a2a1a'
+                    : 'transparent';
+                const typeLabel =
+                  meta?.type === EntityType.MONSTER
+                    ? `MONSTER${meta.monsterRefId ? ` (${meta.monsterRefId})` : ''}`
+                    : meta?.type === EntityType.CHARACTER
+                      ? 'CHARACTER'
+                      : meta
+                        ? (EntityType[meta.type] ?? '?')
+                        : '—';
+                return (
+                  <tr
+                    key={id}
+                    style={{
+                      background: rowBackground,
+                      borderTop: '1px solid #333',
+                      outline: isActiveActor ? '1px solid #aa6600' : undefined,
+                    }}
+                  >
+                    <td style={{ padding: '4px 8px' }}>
+                      {isActiveActor ? '→ ' : ''}
+                      {id}
+                    </td>
+                    <td style={{ padding: '4px 8px', color: '#aaa' }}>
+                      {typeLabel}
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      {hp ? `${hp.current}/${hp.max}` : '—'}
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      {entity.position?.x ?? '—'}
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      {entity.position?.y ?? '—'}
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      {entity.position?.z ?? '—'}
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      {entity.ghost ? 'yes' : ''}
+                    </td>
+                  </tr>
+                );
+              })}
               {entitiesArray.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ padding: '4px 8px', color: '#555' }}>
+                  <td colSpan={7} style={{ padding: '4px 8px', color: '#555' }}>
                     (no entities yet)
                   </td>
                 </tr>
@@ -514,36 +611,7 @@ export function PlaytestHarness() {
               ? '(none)'
               : myStatuses.map((s) => s.source.id).join(', ')}
           </div>
-          {/* Per-entity HP table for visible monsters (Wave 2.8 ships goblin-1 only). */}
-          {encounterState.state.entityHP.size > 0 && (
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                marginBottom: 8,
-                fontSize: 12,
-              }}
-            >
-              <thead>
-                <tr style={{ color: '#888', textAlign: 'left' }}>
-                  <th style={{ padding: '4px 8px' }}>id</th>
-                  <th style={{ padding: '4px 8px' }}>HP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from(encounterState.state.entityHP.entries()).map(
-                  ([id, hp]) => (
-                    <tr key={id} style={{ borderTop: '1px solid #333' }}>
-                      <td style={{ padding: '4px 8px' }}>{id}</td>
-                      <td style={{ padding: '4px 8px' }}>
-                        {hp.current}/{hp.max}
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          )}
+          {/* HP is now shown inline in the entities table above. */}
           {!isMyTurn &&
             encounterState.state.mode === EncounterMode.TURN_BASED && (
               <div style={{ color: '#aa8', fontSize: 12, marginBottom: 8 }}>
