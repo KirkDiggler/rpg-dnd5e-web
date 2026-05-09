@@ -23,7 +23,10 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { DungeonState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type {
+  EncounterEnded,
   EntityDamaged,
+  EntityDied,
+  EntityRemoved,
   ModeChanged,
   StatusApplied,
   TurnStarted,
@@ -141,6 +144,17 @@ export interface LocalEncounterState {
    * after SubmitCheck resolves. Never auto-set inside hooks — keeps hooks pure.
    */
   pendingPrompt: InputRequired | null;
+  /**
+   * v1alpha2 encounter lifecycle status. "active" until EncounterEnded arrives,
+   * then "ended". The UI uses this to render the encounter-ended banner and
+   * disable courtesy-UX buttons (the server rejects requests anyway once ended).
+   */
+  encounterStatus: 'active' | 'ended';
+  /**
+   * Human-readable reason from the EncounterEnded event (e.g. "all hostiles
+   * defeated"). Empty string until EncounterEnded arrives.
+   */
+  encounterEndedReason: string;
 }
 
 /** Create an empty LocalEncounterState. Exported for testing. */
@@ -166,6 +180,8 @@ export function createEmptyEncounterState(): LocalEncounterState {
     dungeonState: DungeonState.UNSPECIFIED,
     roomsCleared: 0,
     pendingPrompt: null,
+    encounterStatus: 'active',
+    encounterEndedReason: '',
   };
 }
 
@@ -233,6 +249,10 @@ export function applySnapshotToState(
     // Preserve it across same-encounter syncs so a mid-session snapshot doesn't
     // silently clear a prompt the player hasn't answered yet.
     pendingPrompt: sameEncounter ? prev.pendingPrompt : null,
+    // EncounterEnded is terminal and not replayed; preserve across same-encounter
+    // v1 snapshots so a mid-session snapshot doesn't reset the ended banner.
+    encounterStatus: sameEncounter ? prev.encounterStatus : 'active',
+    encounterEndedReason: sameEncounter ? prev.encounterEndedReason : '',
   };
 }
 
@@ -609,6 +629,63 @@ export function applyTurnEnded(prev: LocalEncounterState): LocalEncounterState {
 }
 
 /**
+ * Apply an EntityDied event. The entity stays in the entities map (it is
+ * still rendered) until EntityRemoved arrives. This reducer is intentionally
+ * minimal — it returns prev unchanged so any caller that only wants a log
+ * line can skip mutating state. Exported for testing.
+ */
+export function applyEntityDied(
+  prev: LocalEncounterState,
+  event: EntityDied
+): LocalEncounterState {
+  // No state mutation: entity remains rendered until EntityRemoved.
+  // UI log narration ("alice killed goblin-1") is the caller's responsibility.
+  // The event parameter is part of the reducer contract; callers may inspect
+  // event.entityId / event.killerEntityId for log narration without mutating state.
+  void event;
+  return prev;
+}
+
+/**
+ * Remove an entity from the entities map after death or another removal reason.
+ * Idempotent — if the entity is already missing (e.g. late-joining client that
+ * received a snapshot after the removal), returns prev unchanged.
+ * Exported for testing.
+ */
+export function applyEntityRemoved(
+  prev: LocalEncounterState,
+  event: EntityRemoved
+): LocalEncounterState {
+  if (!prev.entities.has(event.entityId)) return prev;
+  const newEntities = new Map(prev.entities);
+  newEntities.delete(event.entityId);
+  return { ...prev, entities: newEntities };
+}
+
+/**
+ * Mark the encounter as ended and record the reason from the EncounterEnded
+ * event. Idempotent — re-applying an already-ended event with the same reason
+ * returns the same reference.
+ * Exported for testing.
+ */
+export function applyEncounterEnded(
+  prev: LocalEncounterState,
+  event: EncounterEnded
+): LocalEncounterState {
+  if (
+    prev.encounterStatus === 'ended' &&
+    prev.encounterEndedReason === event.reason
+  ) {
+    return prev;
+  }
+  return {
+    ...prev,
+    encounterStatus: 'ended',
+    encounterEndedReason: event.reason,
+  };
+}
+
+/**
  * Set or clear the pending prompt. Pass `null` to dismiss after SubmitCheck
  * resolves; pass the InputRequired proto from an Interact/TakeAction response
  * to surface it. Callers drive this explicitly — the hook never auto-sets it.
@@ -711,6 +788,22 @@ export interface UseEncounterStateResult {
   applyTurnStarted: (event: TurnStarted) => void;
   /** Hook for TurnEnded (currently no-op; reserved for future per-turn UI). */
   applyTurnEnded: () => void;
+  // v1alpha2 death + resolution (Wave 2.10)
+  /**
+   * No-op state reducer for EntityDied — entity stays rendered until
+   * EntityRemoved. Log narration is the caller's responsibility.
+   */
+  applyEntityDied: (event: EntityDied) => void;
+  /**
+   * Remove an entity from the entities map. Idempotent — no-op if already
+   * missing (handles snapshot-after-removal for late-joining clients).
+   */
+  applyEntityRemoved: (event: EntityRemoved) => void;
+  /**
+   * Set encounterStatus = "ended" and store the reason for UI display.
+   * Idempotent — no-op if already ended with the same reason.
+   */
+  applyEncounterEnded: (event: EncounterEnded) => void;
 }
 
 /**
@@ -843,6 +936,18 @@ export function useEncounterState(): UseEncounterStateResult {
     setState((prev) => applyTurnEnded(prev));
   }, []);
 
+  const applyEntityDiedCallback = useCallback((event: EntityDied) => {
+    setState((prev) => applyEntityDied(prev, event));
+  }, []);
+
+  const applyEntityRemovedCallback = useCallback((event: EntityRemoved) => {
+    setState((prev) => applyEntityRemoved(prev, event));
+  }, []);
+
+  const applyEncounterEndedCallback = useCallback((event: EncounterEnded) => {
+    setState((prev) => applyEncounterEnded(prev, event));
+  }, []);
+
   return {
     state,
     applySnapshot,
@@ -863,5 +968,8 @@ export function useEncounterState(): UseEncounterStateResult {
     applyModeChanged: applyModeChangedCallback,
     applyTurnStarted: applyTurnStartedCallback,
     applyTurnEnded: applyTurnEndedCallback,
+    applyEntityDied: applyEntityDiedCallback,
+    applyEntityRemoved: applyEntityRemovedCallback,
+    applyEncounterEnded: applyEncounterEndedCallback,
   };
 }

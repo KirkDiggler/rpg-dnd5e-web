@@ -227,6 +227,19 @@ export function PlaytestHarness() {
         encounterState.applyTurnEnded();
         addLog(`TurnEnded ${e.entityId}`);
       },
+      onEntityDied: (e) => {
+        encounterState.applyEntityDied(e);
+        const killerPart = e.killerEntityId ? ` by ${e.killerEntityId}` : '';
+        addLog(`EntityDied ${e.entityId}${killerPart}`);
+      },
+      onEntityRemoved: (e) => {
+        encounterState.applyEntityRemoved(e);
+        addLog(`EntityRemoved ${e.entityId} (${e.reason})`);
+      },
+      onEncounterEnded: (e) => {
+        encounterState.applyEncounterEnded(e);
+        addLog(`EncounterEnded: ${e.reason}`);
+      },
     }
   );
 
@@ -376,11 +389,16 @@ export function PlaytestHarness() {
   const openDoorKeys = Array.from(encounterState.state.openDoors);
   const myHP = encounterState.state.entityHP.get(entityId);
   const myStatuses = encounterState.state.entityStatuses.get(entityId) ?? [];
+  const encounterEnded = encounterState.state.encounterStatus === 'ended';
   const isMyTurn =
     encounterState.state.mode === EncounterMode.TURN_BASED &&
     encounterState.state.activeEntityId === entityId;
+  // combatEnabled: requires TURN_BASED + local player's turn + encounter not ended.
+  // The server rejects requests once ended; disabling is courtesy UX only.
   const combatEnabled =
-    encounterState.state.mode === EncounterMode.TURN_BASED && isMyTurn;
+    !encounterEnded &&
+    encounterState.state.mode === EncounterMode.TURN_BASED &&
+    isMyTurn;
 
   return (
     <div
@@ -435,6 +453,28 @@ export function PlaytestHarness() {
             </span>
           )}
       </div>
+
+      {/* Encounter-ended banner (Wave 2.10) */}
+      {encounterEnded && (
+        <div
+          data-testid="encounter-ended-banner"
+          style={{
+            background: '#2a1a00',
+            border: '1px solid #aa6600',
+            borderRadius: 4,
+            padding: '10px 16px',
+            marginBottom: 16,
+            color: '#ffcc66',
+            fontWeight: 'bold',
+            fontSize: 14,
+          }}
+        >
+          Encounter ended
+          {encounterState.state.encounterEndedReason
+            ? `: ${encounterState.state.encounterEndedReason}`
+            : ''}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         {/* Left column: entities + hexes */}

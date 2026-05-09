@@ -24,7 +24,10 @@ import {
   EntityType,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type {
+  EncounterEnded,
   EntityDamaged,
+  EntityDied,
+  EntityRemoved,
   ModeChanged,
   StatusApplied,
   TurnStarted,
@@ -39,11 +42,14 @@ import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
 import {
   applyDoorOpened,
+  applyEncounterEnded,
   applyEntityAppeared,
   applyEntityAppearedBatch,
   applyEntityDamaged,
+  applyEntityDied,
   applyEntityDisappeared,
   applyEntityMetaFromAppeared,
+  applyEntityRemoved,
   applyHexRevealed,
   applyModeChanged,
   applySnapshotToState,
@@ -1626,5 +1632,152 @@ describe('Wave 2.9 setPendingPromptReducer', () => {
       state
     );
     expect(switched.pendingPrompt).toBeNull();
+  });
+
+  // ---------- Wave 2.10: death + encounter resolution -------------------------
+
+  describe('applyEntityDied', () => {
+    it('returns prev unchanged — entity stays until EntityRemoved', () => {
+      const state = createEmptyEncounterState();
+      const event: EntityDied = {
+        entityId: 'goblin-1',
+        killerEntityId: 'char-alice',
+      } as unknown as EntityDied;
+      const next = applyEntityDied(state, event);
+      expect(next).toBe(state);
+    });
+
+    it('does not remove entity from entities map', () => {
+      let state = createEmptyEncounterState();
+      const entity = create(EntityStateSchema, { entityId: 'goblin-1' });
+      state = applyEntityAppeared(state, entity);
+      const event: EntityDied = {
+        entityId: 'goblin-1',
+      } as unknown as EntityDied;
+      const next = applyEntityDied(state, event);
+      expect(next.entities.has('goblin-1')).toBe(true);
+    });
+  });
+
+  describe('applyEntityRemoved', () => {
+    it('removes an existing entity from the entities map', () => {
+      let state = createEmptyEncounterState();
+      const entity = create(EntityStateSchema, { entityId: 'goblin-1' });
+      state = applyEntityAppeared(state, entity);
+      expect(state.entities.has('goblin-1')).toBe(true);
+
+      const event: EntityRemoved = {
+        entityId: 'goblin-1',
+        reason: 'destroyed',
+      } as unknown as EntityRemoved;
+      const next = applyEntityRemoved(state, event);
+      expect(next.entities.has('goblin-1')).toBe(false);
+    });
+
+    it('is idempotent — no-op if entity is already missing', () => {
+      const state = createEmptyEncounterState();
+      const event: EntityRemoved = {
+        entityId: 'goblin-1',
+        reason: 'destroyed',
+      } as unknown as EntityRemoved;
+      const next = applyEntityRemoved(state, event);
+      // Same reference means no new object allocation — truly a no-op.
+      expect(next).toBe(state);
+    });
+
+    it('does not remove other entities when one is removed', () => {
+      let state = createEmptyEncounterState();
+      state = applyEntityAppeared(
+        state,
+        create(EntityStateSchema, { entityId: 'goblin-1' })
+      );
+      state = applyEntityAppeared(
+        state,
+        create(EntityStateSchema, { entityId: 'goblin-2' })
+      );
+      const event: EntityRemoved = {
+        entityId: 'goblin-1',
+        reason: 'destroyed',
+      } as unknown as EntityRemoved;
+      const next = applyEntityRemoved(state, event);
+      expect(next.entities.has('goblin-1')).toBe(false);
+      expect(next.entities.has('goblin-2')).toBe(true);
+    });
+  });
+
+  describe('applyEncounterEnded', () => {
+    it('sets encounterStatus to "ended" and stores reason', () => {
+      const state = createEmptyEncounterState();
+      const event: EncounterEnded = {
+        reason: 'all hostiles defeated',
+      } as unknown as EncounterEnded;
+      const next = applyEncounterEnded(state, event);
+      expect(next.encounterStatus).toBe('ended');
+      expect(next.encounterEndedReason).toBe('all hostiles defeated');
+    });
+
+    it('is idempotent — returns same ref when already ended with same reason', () => {
+      let state = createEmptyEncounterState();
+      const event: EncounterEnded = {
+        reason: 'all hostiles defeated',
+      } as unknown as EncounterEnded;
+      state = applyEncounterEnded(state, event);
+      const second = applyEncounterEnded(state, event);
+      expect(second).toBe(state);
+    });
+
+    it('updates reason when it changes (re-apply with different reason)', () => {
+      let state = createEmptyEncounterState();
+      state = applyEncounterEnded(state, {
+        reason: 'all hostiles defeated',
+      } as unknown as EncounterEnded);
+      const next = applyEncounterEnded(state, {
+        reason: 'players fled',
+      } as unknown as EncounterEnded);
+      expect(next.encounterStatus).toBe('ended');
+      expect(next.encounterEndedReason).toBe('players fled');
+    });
+
+    it('createEmptyEncounterState defaults encounterStatus to "active"', () => {
+      const state = createEmptyEncounterState();
+      expect(state.encounterStatus).toBe('active');
+      expect(state.encounterEndedReason).toBe('');
+    });
+
+    it('encounterStatus is preserved on same-encounter snapshot resync', () => {
+      let state = createEmptyEncounterState();
+      state = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+      state = applyEncounterEnded(state, {
+        reason: 'all hostiles defeated',
+      } as unknown as EncounterEnded);
+
+      const resynced = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+      expect(resynced.encounterStatus).toBe('ended');
+      expect(resynced.encounterEndedReason).toBe('all hostiles defeated');
+    });
+
+    it('encounterStatus is reset to "active" on encounter switch', () => {
+      let state = createEmptyEncounterState();
+      state = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+      state = applyEncounterEnded(state, {
+        reason: 'all hostiles defeated',
+      } as unknown as EncounterEnded);
+
+      const switched = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-2' }),
+        state
+      );
+      expect(switched.encounterStatus).toBe('active');
+      expect(switched.encounterEndedReason).toBe('');
+    });
   });
 });

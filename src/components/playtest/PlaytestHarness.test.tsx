@@ -1056,6 +1056,188 @@ describe('PlaytestHarness', () => {
     );
   });
 
+  // ---------- Wave 2.10 encounter resolution ----------------------------------
+
+  it('does not render encounter-ended banner before EncounterEnded event', () => {
+    render(<PlaytestHarness />);
+    expect(screen.queryByTestId('encounter-ended-banner')).toBeNull();
+  });
+
+  it('renders encounter-ended banner with reason after EncounterEnded event', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('encounterEnded', { reason: 'all hostiles defeated' })
+      )
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('encounter-ended-banner')).toBeTruthy();
+    });
+    expect(screen.getByTestId('encounter-ended-banner').textContent).toContain(
+      'all hostiles defeated'
+    );
+  });
+
+  it('renders encounter-ended banner with no reason text when reason is empty', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() => fake.push(makeEvent('encounterEnded', { reason: '' })));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('encounter-ended-banner')).toBeTruthy();
+    });
+    // Banner shows without a colon suffix when reason is empty
+    expect(screen.getByTestId('encounter-ended-banner').textContent).toContain(
+      'Encounter ended'
+    );
+  });
+
+  it('logs EncounterEnded event in the event log', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('encounterEnded', { reason: 'all hostiles defeated' })
+      )
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/EncounterEnded: all hostiles defeated/i)
+      ).toBeTruthy();
+    });
+  });
+
+  it('disables Attack and End-turn buttons after EncounterEnded', async () => {
+    render(<PlaytestHarness />);
+
+    // Bring encounter into TURN_BASED with local player's turn active
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: '',
+        })
+      )
+    );
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'char-alice', round: 1 }))
+    );
+
+    // Verify combat buttons enabled first
+    const attackInput = screen.getByLabelText(
+      /attack target id/i
+    ) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(attackInput, { target: { value: 'goblin-1' } });
+    });
+    await waitFor(() => {
+      expect(
+        (
+          screen.getByRole('button', {
+            name: /^end turn$/i,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false);
+    });
+
+    // Fire EncounterEnded — buttons must disable
+    act(() =>
+      fake.push(
+        makeEvent('encounterEnded', { reason: 'all hostiles defeated' })
+      )
+    );
+
+    await waitFor(() => {
+      expect(
+        (screen.getByRole('button', { name: /^attack$/i }) as HTMLButtonElement)
+          .disabled
+      ).toBe(true);
+      expect(
+        (
+          screen.getByRole('button', {
+            name: /^end turn$/i,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+    });
+  });
+
+  it('removes entity from table after EntityRemoved event', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('entityAppeared', {
+          entity: { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
+        })
+      )
+    );
+
+    await waitFor(() => expect(screen.getByText('goblin-1')).toBeTruthy());
+
+    act(() =>
+      fake.push(
+        makeEvent('entityRemoved', {
+          entityId: 'goblin-1',
+          reason: 'destroyed',
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('goblin-1')).toBeNull();
+    });
+  });
+
+  it('logs EntityDied with killer info in the event log', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('entityDied', {
+          entityId: 'goblin-1',
+          killerEntityId: 'char-alice',
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/EntityDied goblin-1 by char-alice/i)
+      ).toBeTruthy();
+    });
+  });
+
+  it('logs EntityRemoved in the event log', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('entityRemoved', {
+          entityId: 'goblin-1',
+          reason: 'destroyed',
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/EntityRemoved goblin-1.*destroyed/i)
+      ).toBeTruthy();
+    });
+  });
+
   it('shows tool name in skill check prompt when tool is set', async () => {
     const promptWithTool = {
       inputRequired: {
