@@ -141,6 +141,39 @@ describe('dispatchEncounterStream2Event', () => {
     expect(onTurnEnded).toHaveBeenCalledTimes(1);
   });
 
+  // Wave 2.10: death + encounter resolution
+  it('routes entityDied to onEntityDied', () => {
+    const onEntityDied = vi.fn();
+    const options: EncounterStream2Options = { onEntityDied };
+    const event = makeEvent('entityDied', {
+      entityId: 'goblin-1',
+      killerEntityId: 'char-alice',
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onEntityDied).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes entityRemoved to onEntityRemoved', () => {
+    const onEntityRemoved = vi.fn();
+    const options: EncounterStream2Options = { onEntityRemoved };
+    const event = makeEvent('entityRemoved', {
+      entityId: 'goblin-1',
+      reason: 'destroyed',
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onEntityRemoved).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes encounterEnded to onEncounterEnded', () => {
+    const onEncounterEnded = vi.fn();
+    const options: EncounterStream2Options = { onEncounterEnded };
+    const event = makeEvent('encounterEnded', {
+      reason: 'all hostiles defeated',
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onEncounterEnded).toHaveBeenCalledTimes(1);
+  });
+
   it('logs a warning for unknown event cases without throwing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const event = makeEvent('someUnknownCase' as 'snapshotDelivered', {});

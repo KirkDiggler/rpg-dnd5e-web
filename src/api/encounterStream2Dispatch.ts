@@ -1,10 +1,13 @@
 import type {
   DoorOpened,
+  EncounterEnded,
   EncounterEvent,
   EntityAppeared,
   EntityDamaged,
+  EntityDied,
   EntityDisappeared,
   EntityMoved,
+  EntityRemoved,
   GeometryRevealed,
   ModeChanged,
   SnapshotDelivered,
@@ -55,6 +58,22 @@ export interface EncounterStream2Options {
   onTurnStarted?: (event: TurnStarted) => void;
   /** Active actor finished; the next TurnStarted is authoritative for who's next. */
   onTurnEnded?: (event: TurnEnded) => void;
+  // Wave 2.10: death + encounter resolution events.
+  /**
+   * Entity HP reached 0. The entity remains in the entities map until
+   * EntityRemoved arrives. Useful for transient death narration in the log.
+   */
+  onEntityDied?: (event: EntityDied) => void;
+  /**
+   * Entity fully removed from the encounter space (after death or other removal
+   * reason). The reducer removes the entity from the entities Map on receipt.
+   */
+  onEntityRemoved?: (event: EntityRemoved) => void;
+  /**
+   * Encounter is over. Carries a human-readable `reason` (e.g. "all hostiles
+   * defeated"). The reducer sets `encounterStatus = "ended"` on receipt.
+   */
+  onEncounterEnded?: (event: EncounterEnded) => void;
 }
 
 /**
@@ -101,10 +120,19 @@ export function dispatchEncounterStream2Event(
     case 'turnEnded':
       options.onTurnEnded?.(payload.value);
       break;
+    case 'entityDied':
+      options.onEntityDied?.(payload.value);
+      break;
+    case 'entityRemoved':
+      options.onEntityRemoved?.(payload.value);
+      break;
+    case 'encounterEnded':
+      options.onEncounterEnded?.(payload.value);
+      break;
     default:
       // Either out-of-current-scope but known to the proto (entityHealed,
-      // encounterEnded, dialogue, etc. — the proto defines 20+ event cases;
-      // we currently handle 11) OR a genuinely unknown case from a proto
+      // dialogue, etc. — the proto defines 20+ event cases;
+      // we currently handle 14) OR a genuinely unknown case from a proto
       // version mismatch. Either way: warn + continue so the stream doesn't
       // tear down. Add a case arm + callback when the feature lands.
       // The cast strips the narrowed-to-undefined `case` so we can log it.
