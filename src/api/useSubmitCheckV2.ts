@@ -4,21 +4,41 @@ import { SubmitCheckRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd
 import { useCallback, useState } from 'react';
 import { encounterClientV2 } from './client';
 
+/**
+ * Input shape for SubmitCheck. The `roll` field carries the d20 result for
+ * skill-check prompts; `takeReaction` is set on reaction-prompt responses
+ * (true=take, false=skip). Pass `roll: 0` (ignored) when responding to a
+ * reaction prompt.
+ */
+export interface UseSubmitCheckV2Input {
+  encounterId: string;
+  entityId: string;
+  /** Skill-check: required. Reaction-check: ignored (pass 0). */
+  roll: number;
+  /** Wave 2.11d: reaction-prompt response. true=take, false=skip. */
+  takeReaction?: boolean;
+}
+
 export interface UseSubmitCheckV2Result {
   /**
-   * Calls the v1alpha2 SubmitCheck unary RPC. Resolves the caller's currently-pending
-   * InputRequired prompt (skill check). The server tracks the pending prompt as
-   * encounter state — no correlation id required. Returns FailedPrecondition if no
-   * prompt is pending.
+   * Calls the v1alpha2 SubmitCheck unary RPC. Resolves the caller's currently-
+   * pending InputRequired prompt. The server tracks the pending prompt as
+   * encounter state — no correlation id required. Returns FailedPrecondition
+   * if no prompt is pending.
    *
-   * `lastResponse` is populated on success so the harness can render
-   * the outcome (rolled, total, success/fail) transiently before clearing the prompt.
+   * Wave 2.9 (skill check): pass `roll` with the d20 result. Server runs the
+   * skill-check resolution and returns success/total.
+   *
+   * Wave 2.11d (reaction prompt): when the caller's pending prompt is a
+   * ReactionPrompt, pass `takeReaction` and the server runs phase 2 of the
+   * paused attack with/without the reaction modifier baked in. The `roll`
+   * field is ignored. Response.Total carries 1 (took) or 0 (skipped) for
+   * client telemetry.
+   *
+   * `lastResponse` is populated on success so the harness can render the
+   * outcome transiently before clearing the prompt.
    */
-  submitCheck: (input: {
-    encounterId: string;
-    entityId: string;
-    roll: number;
-  }) => Promise<SubmitCheckResponse>;
+  submitCheck: (input: UseSubmitCheckV2Input) => Promise<SubmitCheckResponse>;
   loading: boolean;
   error: Error | null;
   lastResponse: SubmitCheckResponse | null;
@@ -42,19 +62,27 @@ export function useSubmitCheckV2(): UseSubmitCheckV2Result {
   );
 
   const submitCheck = useCallback(
-    async (input: {
-      encounterId: string;
-      entityId: string;
-      roll: number;
-    }): Promise<SubmitCheckResponse> => {
+    async (input: UseSubmitCheckV2Input): Promise<SubmitCheckResponse> => {
       setLoading(true);
       setError(null);
 
-      const request = create(SubmitCheckRequestSchema, {
+      // Build the request, conditionally setting takeReaction (proto-optional).
+      // Omitting the field when undefined produces a request without the
+      // field set, which the server interprets as "not a reaction response."
+      const requestFields: {
+        encounterId: string;
+        entityId: string;
+        roll: number;
+        takeReaction?: boolean;
+      } = {
         encounterId: input.encounterId,
         entityId: input.entityId,
         roll: input.roll,
-      });
+      };
+      if (input.takeReaction !== undefined) {
+        requestFields.takeReaction = input.takeReaction;
+      }
+      const request = create(SubmitCheckRequestSchema, requestFields);
 
       try {
         const response = await encounterClientV2.submitCheck(request);

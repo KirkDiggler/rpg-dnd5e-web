@@ -155,6 +155,25 @@ export interface LocalEncounterState {
    * defeated"). Empty string until EncounterEnded arrives.
    */
   encounterEndedReason: string;
+  /**
+   * Wave 2.11d reaction readiness per character.
+   *
+   * Map<entityID, Map<reactionRef, ready>>. Mirrors the server-side
+   * encounter Data.ReactionReadiness shape. Populated by:
+   *
+   *   - applyReactionReadiness called on snapshots that carry the readiness
+   *     map (today: snapshots don't carry it; populated by callers wiring
+   *     SetReactionReady RPC responses).
+   *   - setReactionReadyLocal (UI optimistic update) — caller invokes this
+   *     after a successful SetReactionReady RPC to reflect the new state
+   *     in the panel without waiting for the next stream snapshot.
+   *
+   * The reaction ref key matches the canonical core.Ref string format:
+   * "dnd5e:conditions:opportunity_attack", "dnd5e:spells:shield", etc.
+   *
+   * UI consumes via reactionReadiness.get(entityID)?.get(refStr) ?? false.
+   */
+  reactionReadiness: Map<string, Map<string, boolean>>;
 }
 
 /** Create an empty LocalEncounterState. Exported for testing. */
@@ -182,6 +201,7 @@ export function createEmptyEncounterState(): LocalEncounterState {
     pendingPrompt: null,
     encounterStatus: 'active',
     encounterEndedReason: '',
+    reactionReadiness: new Map(),
   };
 }
 
@@ -253,6 +273,11 @@ export function applySnapshotToState(
     // v1 snapshots so a mid-session snapshot doesn't reset the ended banner.
     encounterStatus: sameEncounter ? prev.encounterStatus : 'active',
     encounterEndedReason: sameEncounter ? prev.encounterEndedReason : '',
+    // Wave 2.11d: reaction readiness is per-character UI state that flows via
+    // SetReactionReady RPC responses (no v1 snapshot carries it today). Preserve
+    // across same-encounter syncs so toggles don't silently revert when an
+    // unrelated v1 snapshot lands.
+    reactionReadiness: sameEncounter ? prev.reactionReadiness : new Map(),
   };
 }
 
@@ -700,6 +725,33 @@ export function setPendingPromptReducer(
 }
 
 /**
+ * Wave 2.11d — set or clear a reaction's readiness for a single character.
+ *
+ * Callers invoke this after a successful SetReactionReady RPC to reflect the
+ * new readiness state in the UI without waiting for the next stream snapshot
+ * (server is source of truth; this is an optimistic mirror). The ready-
+ * reactions panel reads from state.reactionReadiness directly.
+ *
+ * Idempotent: setting a value identical to the current returns prev unchanged.
+ * Exported for testing.
+ */
+export function setReactionReadyLocalReducer(
+  prev: LocalEncounterState,
+  entityID: string,
+  reactionRef: string,
+  ready: boolean
+): LocalEncounterState {
+  const charMap = prev.reactionReadiness.get(entityID);
+  if (charMap?.get(reactionRef) === ready) return prev;
+
+  const next = new Map(prev.reactionReadiness);
+  const nextCharMap = new Map(charMap ?? []);
+  nextCharMap.set(reactionRef, ready);
+  next.set(entityID, nextCharMap);
+  return { ...prev, reactionReadiness: next };
+}
+
+/**
  * Replace combat state without touching entities or other fields.
  * Exported for testing.
  */
@@ -777,6 +829,18 @@ export interface UseEncounterStateResult {
    * after SubmitCheck resolves. Never called automatically inside hooks.
    */
   setPendingPrompt: (prompt: InputRequired | null) => void;
+  // v1alpha2 reactions (Wave 2.11d)
+  /**
+   * Set a reaction's readiness for one character. Called by the harness
+   * after a successful SetReactionReady RPC to reflect the new state in
+   * the ready-reactions panel without waiting for the next stream snapshot.
+   * Server is source of truth — this is an optimistic local mirror.
+   */
+  setReactionReadyLocal: (
+    entityID: string,
+    reactionRef: string,
+    ready: boolean
+  ) => void;
   // v1alpha2 combat (Wave 2.8)
   /** Update an entity's HP from an EntityDamaged event's hp_after field. */
   applyEntityDamaged: (event: EntityDamaged) => void;
@@ -916,6 +980,15 @@ export function useEncounterState(): UseEncounterStateResult {
     []
   );
 
+  const setReactionReadyLocalCallback = useCallback(
+    (entityID: string, reactionRef: string, ready: boolean) => {
+      setState((prev) =>
+        setReactionReadyLocalReducer(prev, entityID, reactionRef, ready)
+      );
+    },
+    []
+  );
+
   const applyEntityDamagedCallback = useCallback((event: EntityDamaged) => {
     setState((prev) => applyEntityDamaged(prev, event));
   }, []);
@@ -963,6 +1036,7 @@ export function useEncounterState(): UseEncounterStateResult {
     applyEntityAppearedBatch: applyEntityAppearedBatchCallback,
     applyV2SnapshotTurnState: applyV2SnapshotTurnStateCallback,
     setPendingPrompt: setPendingPromptCallback,
+    setReactionReadyLocal: setReactionReadyLocalCallback,
     applyEntityDamaged: applyEntityDamagedCallback,
     applyStatusApplied: applyStatusAppliedCallback,
     applyModeChanged: applyModeChangedCallback,

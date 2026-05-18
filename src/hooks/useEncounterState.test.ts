@@ -61,6 +61,7 @@ import {
   mergeEntityPosition,
   mergeEntityUpdates,
   setPendingPromptReducer,
+  setReactionReadyLocalReducer,
   updateCombatState,
 } from './useEncounterState';
 
@@ -1778,6 +1779,145 @@ describe('Wave 2.9 setPendingPromptReducer', () => {
       );
       expect(switched.encounterStatus).toBe('active');
       expect(switched.encounterEndedReason).toBe('');
+    });
+  });
+
+  // Wave 2.11d reaction readiness reducer
+  describe('setReactionReadyLocalReducer', () => {
+    it('sets a reaction to ready for a new character', () => {
+      const prev = createEmptyEncounterState();
+      const next = setReactionReadyLocalReducer(
+        prev,
+        'char-wendy',
+        'dnd5e:spells:shield',
+        true
+      );
+      expect(
+        next.reactionReadiness.get('char-wendy')?.get('dnd5e:spells:shield')
+      ).toBe(true);
+    });
+
+    it('unreadies a previously-readied reaction', () => {
+      let state = createEmptyEncounterState();
+      state = setReactionReadyLocalReducer(
+        state,
+        'char-wendy',
+        'dnd5e:spells:shield',
+        true
+      );
+      state = setReactionReadyLocalReducer(
+        state,
+        'char-wendy',
+        'dnd5e:spells:shield',
+        false
+      );
+      expect(
+        state.reactionReadiness.get('char-wendy')?.get('dnd5e:spells:shield')
+      ).toBe(false);
+    });
+
+    it('preserves other characters readiness when toggling one character', () => {
+      let state = createEmptyEncounterState();
+      state = setReactionReadyLocalReducer(
+        state,
+        'char-fighter',
+        'dnd5e:conditions:opportunity_attack',
+        true
+      );
+      state = setReactionReadyLocalReducer(
+        state,
+        'char-wendy',
+        'dnd5e:spells:shield',
+        true
+      );
+
+      expect(
+        state.reactionReadiness
+          .get('char-fighter')
+          ?.get('dnd5e:conditions:opportunity_attack')
+      ).toBe(true);
+      expect(
+        state.reactionReadiness.get('char-wendy')?.get('dnd5e:spells:shield')
+      ).toBe(true);
+    });
+
+    it('preserves other reactions on the same character', () => {
+      let state = createEmptyEncounterState();
+      state = setReactionReadyLocalReducer(
+        state,
+        'char-wendy',
+        'dnd5e:conditions:opportunity_attack',
+        true
+      );
+      state = setReactionReadyLocalReducer(
+        state,
+        'char-wendy',
+        'dnd5e:spells:shield',
+        true
+      );
+
+      const wendyMap = state.reactionReadiness.get('char-wendy');
+      expect(wendyMap?.get('dnd5e:conditions:opportunity_attack')).toBe(true);
+      expect(wendyMap?.get('dnd5e:spells:shield')).toBe(true);
+    });
+
+    it('returns prev unchanged when value is identical (idempotent)', () => {
+      let state = createEmptyEncounterState();
+      state = setReactionReadyLocalReducer(
+        state,
+        'char-wendy',
+        'dnd5e:spells:shield',
+        true
+      );
+      const same = setReactionReadyLocalReducer(
+        state,
+        'char-wendy',
+        'dnd5e:spells:shield',
+        true
+      );
+      expect(same).toBe(state);
+    });
+
+    it('readiness map is preserved across same-encounter snapshots', () => {
+      let state = createEmptyEncounterState();
+      state = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+      state = setReactionReadyLocalReducer(
+        state,
+        'char-wendy',
+        'dnd5e:spells:shield',
+        true
+      );
+
+      const resynced = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+      expect(
+        resynced.reactionReadiness.get('char-wendy')?.get('dnd5e:spells:shield')
+      ).toBe(true);
+    });
+
+    it('readiness map is reset on encounter switch', () => {
+      let state = createEmptyEncounterState();
+      state = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-1' }),
+        state
+      );
+      state = setReactionReadyLocalReducer(
+        state,
+        'char-wendy',
+        'dnd5e:spells:shield',
+        true
+      );
+
+      const switched = applySnapshotToState(
+        makeSnapshot({ encounterId: 'enc-2' }),
+        state
+      );
+      expect(switched.reactionReadiness.size).toBe(0);
     });
   });
 });
