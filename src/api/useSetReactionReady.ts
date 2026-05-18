@@ -25,8 +25,12 @@ export interface UseSetReactionReadyResult {
   /**
    * Calls the v1alpha2 SetReactionReady unary RPC. Toggles per-character
    * per-reaction readiness on the server. The server is source of truth —
-   * callers should refresh the encounter snapshot to read the post-toggle
-   * readiness state rather than predicting it client-side.
+   * but the response is currently empty, and stream snapshots do not carry
+   * the reaction-readiness map. Callers that need to reflect the new state
+   * in the UI should optimistically mirror the toggle locally on RPC success
+   * (see useEncounterState.setReactionReadyLocal). When server-side seeding
+   * of stream snapshots lands in a future wave, this contract can be tightened
+   * so callers consume readiness from the snapshot instead of mirroring.
    *
    * Returns FailedPrecondition if the character isn't in the encounter or
    * the reaction ref is unknown. Returns Unauthenticated/PermissionDenied

@@ -158,20 +158,22 @@ export interface LocalEncounterState {
   /**
    * Wave 2.11d reaction readiness per character.
    *
-   * Map<entityID, Map<reactionRef, ready>>. Mirrors the server-side
-   * encounter Data.ReactionReadiness shape. Populated by:
+   * Map<entityId, Map<reactionRef, ready>>. Mirrors the server-side
+   * encounter Data.ReactionReadiness shape.
    *
-   *   - applyReactionReadiness called on snapshots that carry the readiness
-   *     map (today: snapshots don't carry it; populated by callers wiring
-   *     SetReactionReady RPC responses).
-   *   - setReactionReadyLocal (UI optimistic update) — caller invokes this
-   *     after a successful SetReactionReady RPC to reflect the new state
-   *     in the panel without waiting for the next stream snapshot.
+   * Populated exclusively by setReactionReadyLocal — the caller invokes it
+   * after a successful SetReactionReady RPC (which returns an empty response)
+   * to reflect the new readiness state in the panel without waiting for the
+   * next stream snapshot. There is no snapshot-merge path today: snapshots
+   * do not carry reaction readiness, so this map starts empty on each
+   * subscribe and only gains entries the user has toggled. See follow-up
+   * issue for snapshot-seeded readiness (so server-default reactions like
+   * Opportunity Attack don't render as unready until the user clicks once).
    *
    * The reaction ref key matches the canonical core.Ref string format:
    * "dnd5e:conditions:opportunity_attack", "dnd5e:spells:shield", etc.
    *
-   * UI consumes via reactionReadiness.get(entityID)?.get(refStr) ?? false.
+   * UI consumes via reactionReadiness.get(entityId)?.get(refStr) ?? false.
    */
   reactionReadiness: Map<string, Map<string, boolean>>;
 }
@@ -737,17 +739,17 @@ export function setPendingPromptReducer(
  */
 export function setReactionReadyLocalReducer(
   prev: LocalEncounterState,
-  entityID: string,
+  entityId: string,
   reactionRef: string,
   ready: boolean
 ): LocalEncounterState {
-  const charMap = prev.reactionReadiness.get(entityID);
+  const charMap = prev.reactionReadiness.get(entityId);
   if (charMap?.get(reactionRef) === ready) return prev;
 
   const next = new Map(prev.reactionReadiness);
   const nextCharMap = new Map(charMap ?? []);
   nextCharMap.set(reactionRef, ready);
-  next.set(entityID, nextCharMap);
+  next.set(entityId, nextCharMap);
   return { ...prev, reactionReadiness: next };
 }
 
@@ -837,7 +839,7 @@ export interface UseEncounterStateResult {
    * Server is source of truth — this is an optimistic local mirror.
    */
   setReactionReadyLocal: (
-    entityID: string,
+    entityId: string,
     reactionRef: string,
     ready: boolean
   ) => void;
@@ -981,9 +983,9 @@ export function useEncounterState(): UseEncounterStateResult {
   );
 
   const setReactionReadyLocalCallback = useCallback(
-    (entityID: string, reactionRef: string, ready: boolean) => {
+    (entityId: string, reactionRef: string, ready: boolean) => {
       setState((prev) =>
-        setReactionReadyLocalReducer(prev, entityID, reactionRef, ready)
+        setReactionReadyLocalReducer(prev, entityId, reactionRef, ready)
       );
     },
     []

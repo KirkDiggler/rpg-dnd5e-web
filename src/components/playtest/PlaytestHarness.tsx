@@ -72,6 +72,11 @@ export function PlaytestHarness() {
     null
   );
   const clearingPromptRef = useRef<object | null>(null);
+  // Always-fresh mirror of the current pending prompt. Used by async
+  // handlers (handleSubmitReaction) that must compare the prompt-at-await-
+  // start to the freshest prompt after the await — the React state captured
+  // via the handler's closure is the render-time snapshot, not the latest.
+  const latestPendingPromptRef = useRef<object | null>(null);
 
   const encounterState = useEncounterState();
   const {
@@ -261,6 +266,13 @@ export function PlaytestHarness() {
     };
   }, []);
 
+  // Keep latestPendingPromptRef in sync with the freshest pendingPrompt so
+  // handleSubmitReaction's post-await check sees the current value, not the
+  // closure-captured render snapshot. See handleSubmitReaction for rationale.
+  useEffect(() => {
+    latestPendingPromptRef.current = encounterState.state.pendingPrompt;
+  }, [encounterState.state.pendingPrompt]);
+
   if (!playerId) {
     return (
       <div style={{ padding: 16, color: 'red', fontFamily: 'monospace' }}>
@@ -397,6 +409,10 @@ export function PlaytestHarness() {
   // prompt is cleared immediately — the resume flow's outcome events arrive
   // separately on the stream and update HP/AC via the reducer.
   const handleSubmitReaction = async (takeReaction: boolean) => {
+    // Capture the in-flight prompt by reference. We compare against the
+    // freshest state value AFTER the await so that a newer prompt arriving
+    // during the RPC isn't accidentally cleared. Use the ref pattern via
+    // the setter's functional form below.
     const promptBeingResolved = encounterState.state.pendingPrompt;
     try {
       await submitCheck({
@@ -408,11 +424,13 @@ export function PlaytestHarness() {
       addLog(
         `SubmitCheck{take_reaction:${takeReaction.toString()}} → reaction ${takeReaction ? 'taken' : 'skipped'}`
       );
-      // Clear the prompt immediately — reaction prompts don't show a
-      // post-submit result panel (unlike skill checks which show
-      // rolled/total/success transiently). Outcome events arrive via the
-      // stream and the reducer updates HP/AC/etc.
-      if (encounterState.state.pendingPrompt === promptBeingResolved) {
+      // Clear the prompt only if it's still the one we resolved. Reaction
+      // prompts don't show a post-submit result panel (unlike skill checks
+      // which show rolled/total/success transiently). Outcome events arrive
+      // via the stream and the reducer updates HP/AC/etc. Reading
+      // encounterState.state here would still be the stale render snapshot,
+      // so we use latestPendingPromptRef to peek the freshest value.
+      if (latestPendingPromptRef.current === promptBeingResolved) {
         encounterState.setPendingPrompt(null);
       }
     } catch {
@@ -1065,16 +1083,18 @@ export function PlaytestHarness() {
                       onClick={() =>
                         void handleToggleReactionReady(row.refTriple, !ready)
                       }
-                      disabled={setReactionReadyLoading}
+                      disabled={setReactionReadyLoading || encounterEnded}
                       aria-pressed={ready}
+                      aria-label={`${row.label}: ${ready ? 'ready' : 'unready'} (click to ${ready ? 'unready' : 'ready'})`}
                       style={{
                         padding: '2px 10px',
                         background: ready ? '#2a3a2a' : '#2a2a2a',
                         color: ready ? '#afa' : '#888',
                         border: `1px solid ${ready ? '#4a6a4a' : '#444'}`,
-                        cursor: setReactionReadyLoading
-                          ? 'not-allowed'
-                          : 'pointer',
+                        cursor:
+                          setReactionReadyLoading || encounterEnded
+                            ? 'not-allowed'
+                            : 'pointer',
                         fontSize: 11,
                       }}
                     >
