@@ -1018,7 +1018,18 @@ export function PlaytestHarness() {
               Server is source of truth (reactionReadiness map flows from
               SetReactionReady responses + optimistic local mirror). Reads from
               state.reactionReadiness. Renders fixed rows for OA + Shield in this
-              wave; future waves add Counterspell + Lucky as additional rows. */}
+              wave; future waves add Counterspell + Lucky as additional rows.
+
+              Tri-state per #410: undefined means UNKNOWN — the snapshot
+              proto does not carry reaction_readiness today (rpg-api-protos#158),
+              so server-seeded defaults (e.g. OA default-on at AddPlayer for
+              melee combatants) are invisible to the client until the player
+              toggles. The panel MUST render "unknown" instead of falsely
+              defaulting to unready, which would lie about server-seeded
+              ready state and cause the first click to send ready=true to a
+              server that already considered it ready. The first toggle
+              attempts ready=true (the natural opt-in action) and resolves
+              the unknown locally. */}
           <h3 style={{ margin: '16px 0 4px', color: '#aaa' }}>
             Ready reactions
           </h3>
@@ -1057,7 +1068,31 @@ export function PlaytestHarness() {
                 },
               ];
               return rows.map((row) => {
-                const ready = myReadiness?.get(row.refStr) ?? false;
+                const ready = myReadiness?.get(row.refStr);
+                // Tri-state label + next-action computation. UNKNOWN clicks
+                // attempt ready=true (the opt-in action); KNOWN clicks flip.
+                const stateLabel =
+                  ready === undefined ? 'unknown' : ready ? 'READY' : 'unready';
+                const nextReady = ready === undefined ? true : !ready;
+                const ariaAction =
+                  ready === undefined ? 'ready' : ready ? 'unready' : 'ready';
+                // Visual treatment: ready=green (READY), false=dim grey
+                // (unready), undefined=dashed-border grey (unknown).
+                const background =
+                  ready === true
+                    ? '#2a3a2a'
+                    : ready === false
+                      ? '#2a2a2a'
+                      : '#1f1f1f';
+                const color =
+                  ready === true ? '#afa' : ready === false ? '#888' : '#aaa';
+                const borderColor =
+                  ready === true
+                    ? '#4a6a4a'
+                    : ready === false
+                      ? '#444'
+                      : '#666';
+                const borderStyle = ready === undefined ? 'dashed' : 'solid';
                 return (
                   <div
                     key={row.refStr}
@@ -1081,16 +1116,16 @@ export function PlaytestHarness() {
                     <button
                       data-testid={`reaction-toggle-${row.refStr}`}
                       onClick={() =>
-                        void handleToggleReactionReady(row.refTriple, !ready)
+                        void handleToggleReactionReady(row.refTriple, nextReady)
                       }
                       disabled={setReactionReadyLoading || encounterEnded}
-                      aria-pressed={ready}
-                      aria-label={`${row.label}: ${ready ? 'ready' : 'unready'} (click to ${ready ? 'unready' : 'ready'})`}
+                      aria-pressed={ready === true}
+                      aria-label={`${row.label}: ${stateLabel} (click to ${ariaAction})`}
                       style={{
                         padding: '2px 10px',
-                        background: ready ? '#2a3a2a' : '#2a2a2a',
-                        color: ready ? '#afa' : '#888',
-                        border: `1px solid ${ready ? '#4a6a4a' : '#444'}`,
+                        background,
+                        color,
+                        border: `1px ${borderStyle} ${borderColor}`,
                         cursor:
                           setReactionReadyLoading || encounterEnded
                             ? 'not-allowed'
@@ -1098,7 +1133,7 @@ export function PlaytestHarness() {
                         fontSize: 11,
                       }}
                     >
-                      {ready ? 'READY' : 'unready'}
+                      {stateLabel}
                     </button>
                   </div>
                 );

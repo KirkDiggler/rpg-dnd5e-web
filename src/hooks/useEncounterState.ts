@@ -161,19 +161,35 @@ export interface LocalEncounterState {
    * Map<entityId, Map<reactionRef, ready>>. Mirrors the server-side
    * encounter Data.ReactionReadiness shape.
    *
+   * Tri-state semantics for the inner value:
+   *   - `true`  → server confirmed (or optimistic client wrote) that the
+   *               reaction is ready
+   *   - `false` → server confirmed (or optimistic client wrote) that the
+   *               reaction is unready
+   *   - missing entry (Map.get returns undefined) → state is UNKNOWN. The
+   *               UI MUST NOT display a unready/ready boolean for these;
+   *               render the "unknown" affordance and let the player's
+   *               first toggle resolve it.
+   *
    * Populated exclusively by setReactionReadyLocal — the caller invokes it
    * after a successful SetReactionReady RPC (which returns an empty response)
    * to reflect the new readiness state in the panel without waiting for the
-   * next stream snapshot. There is no snapshot-merge path today: snapshots
-   * do not carry reaction readiness, so this map starts empty on each
-   * subscribe and only gains entries the user has toggled. See follow-up
-   * issue for snapshot-seeded readiness (so server-default reactions like
-   * Opportunity Attack don't render as unready until the user clicks once).
+   * next stream snapshot.
+   *
+   * Per #410: snapshots do not carry reaction_readiness today (proto gap
+   * filed as rpg-api-protos#158 — the encounter SDK seeds OA default-on at
+   * AddPlayer for melee combatants but that state never crosses the wire).
+   * Until the proto extension lands the panel cannot know server-seeded
+   * defaults and must display "unknown" for any entry the user hasn't
+   * explicitly toggled this session — the previous default-to-false behavior
+   * misrepresented server-seeded OA as unready and made the first click
+   * send `ready=true` to a server that already considered it ready.
    *
    * The reaction ref key matches the canonical core.Ref string format:
    * "dnd5e:conditions:opportunity_attack", "dnd5e:spells:shield", etc.
    *
-   * UI consumes via reactionReadiness.get(entityId)?.get(refStr) ?? false.
+   * UI consumes via reactionReadiness.get(entityId)?.get(refStr) — DO NOT
+   * fall back to `false` for `undefined`; that is the unknown signal.
    */
   reactionReadiness: Map<string, Map<string, boolean>>;
 }
