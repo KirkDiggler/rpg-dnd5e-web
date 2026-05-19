@@ -4,6 +4,7 @@ import type {
   EndTurnResponse,
   InteractResponse,
   MoveEntityResponse,
+  SetReactionReadyResponse,
   SubmitCheckResponse,
   TakeActionResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
@@ -26,6 +27,11 @@ function makeEvent(caseName: string, value: unknown): EncounterEvent {
 }
 
 // vi.hoisted so the mock factory can close over the refs before imports run
+// The concrete signature for setReactionReadyFn is intentionally permissive
+// so the mock.calls tuple types preserve the request object — matches the
+// pattern in useSetReactionReady.test.ts.
+type SetReactionReadyFn = (req: unknown) => Promise<SetReactionReadyResponse>;
+
 const hoisted = vi.hoisted(() => ({
   fakeRef: { current: null as FakeStream | null },
   moveEntityFn: vi.fn<() => Promise<MoveEntityResponse>>(),
@@ -33,6 +39,7 @@ const hoisted = vi.hoisted(() => ({
   takeActionFn: vi.fn<() => Promise<TakeActionResponse>>(),
   endTurnFn: vi.fn<() => Promise<EndTurnResponse>>(),
   submitCheckFn: vi.fn<() => Promise<SubmitCheckResponse>>(),
+  setReactionReadyFn: vi.fn() as ReturnType<typeof vi.fn<SetReactionReadyFn>>,
 }));
 
 vi.mock('../../api/client', () => ({
@@ -48,6 +55,7 @@ vi.mock('../../api/client', () => ({
     takeAction: hoisted.takeActionFn,
     endTurn: hoisted.endTurnFn,
     submitCheck: hoisted.submitCheckFn,
+    setReactionReady: hoisted.setReactionReadyFn,
   },
 }));
 
@@ -72,6 +80,8 @@ beforeEach(() => {
     success: true,
     total: 18,
   } as SubmitCheckResponse);
+  hoisted.setReactionReadyFn.mockReset();
+  hoisted.setReactionReadyFn.mockResolvedValue({} as SetReactionReadyResponse);
 
   // Set up URL with both params
   window.history.pushState({}, '', '?encounterId=enc-1&playerId=alice');
@@ -1369,5 +1379,213 @@ describe('PlaytestHarness', () => {
     });
     // No reaction modal rendered.
     expect(screen.queryByTestId('reaction-prompt')).toBeNull();
+  });
+
+  // Wave 2.11d (#411): PlaytestHarness coverage for the ready-reactions
+  // toggle path. Covers the SetReactionReady dispatch + optimistic local
+  // mirror that's split between useSetReactionReady (hook-level tests) and
+  // useEncounterState (reducer-level tests) but missing harness-integration
+  // coverage. Also encodes the tri-state behavior from #410.
+  describe('ready-reactions panel toggle (#411)', () => {
+    const OA_REF_STR = 'dnd5e:conditions:opportunity_attack';
+
+    it('renders OA and Shield rows with "unknown" state on initial mount (per #410)', () => {
+      render(<PlaytestHarness />);
+      // Both rows present.
+      expect(screen.getByTestId(`reaction-row-${OA_REF_STR}`)).toBeTruthy();
+      expect(
+        screen.getByTestId('reaction-row-dnd5e:spells:shield')
+      ).toBeTruthy();
+
+      // Per #410: snapshot proto doesn't carry readiness, so initial state is
+      // UNKNOWN — labels read "unknown", not "unready".
+      const oaButton = screen.getByTestId(
+        `reaction-toggle-${OA_REF_STR}`
+      ) as HTMLButtonElement;
+      expect(oaButton.textContent).toBe('unknown');
+      const shieldButton = screen.getByTestId(
+        'reaction-toggle-dnd5e:spells:shield'
+      ) as HTMLButtonElement;
+      expect(shieldButton.textContent).toBe('unknown');
+    });
+
+    it('aria-label includes reaction name + state for both UNKNOWN and KNOWN states', async () => {
+      render(<PlaytestHarness />);
+
+      // UNKNOWN: aria-label = "Opportunity Attack: unknown (click to ready)"
+      const oaButton = screen.getByTestId(
+        `reaction-toggle-${OA_REF_STR}`
+      ) as HTMLButtonElement;
+      expect(oaButton.getAttribute('aria-label')).toBe(
+        'Opportunity Attack: unknown (click to ready)'
+      );
+      // aria-pressed=false for unknown (only true when explicitly ready).
+      expect(oaButton.getAttribute('aria-pressed')).toBe('false');
+
+      // Click toggles UNKNOWN → ready=true; aria-label flips to "READY (click to unready)"
+      act(() => fireEvent.click(oaButton));
+      await waitFor(() =>
+        expect(hoisted.setReactionReadyFn).toHaveBeenCalled()
+      );
+      await waitFor(() => {
+        expect(oaButton.getAttribute('aria-label')).toBe(
+          'Opportunity Attack: READY (click to unready)'
+        );
+      });
+      expect(oaButton.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('first click on UNKNOWN toggle sends ready=true (the opt-in default per #410)', async () => {
+      render(<PlaytestHarness />);
+
+      const oaButton = screen.getByTestId(`reaction-toggle-${OA_REF_STR}`);
+      act(() => fireEvent.click(oaButton));
+
+      await waitFor(() =>
+        expect(hoisted.setReactionReadyFn).toHaveBeenCalledOnce()
+      );
+      const call = hoisted.setReactionReadyFn.mock.calls[0]?.[0] as {
+        encounterId: string;
+        characterId: string;
+        reactionRef?: { module: string; type: string; id: string };
+        ready: boolean;
+      };
+      expect(call.encounterId).toBe('enc-1');
+      expect(call.characterId).toBe('char-alice');
+      expect(call.reactionRef?.module).toBe('dnd5e');
+      expect(call.reactionRef?.type).toBe('conditions');
+      expect(call.reactionRef?.id).toBe('opportunity_attack');
+      expect(call.ready).toBe(true);
+    });
+
+    it('after a successful ready=true toggle, subsequent click sends ready=false', async () => {
+      render(<PlaytestHarness />);
+
+      const oaButton = screen.getByTestId(`reaction-toggle-${OA_REF_STR}`);
+
+      // First click: UNKNOWN → ready=true (opt-in).
+      act(() => fireEvent.click(oaButton));
+      await waitFor(() => {
+        expect(oaButton.textContent).toBe('READY');
+      });
+      expect(hoisted.setReactionReadyFn.mock.calls[0]?.[0]).toMatchObject({
+        ready: true,
+      });
+
+      // Second click: READY → ready=false.
+      act(() => fireEvent.click(oaButton));
+      await waitFor(() =>
+        expect(hoisted.setReactionReadyFn).toHaveBeenCalledTimes(2)
+      );
+      expect(hoisted.setReactionReadyFn.mock.calls[1]?.[0]).toMatchObject({
+        ready: false,
+      });
+
+      // Local state flipped optimistically (reducer mirror, no stream snapshot).
+      await waitFor(() => {
+        expect(oaButton.textContent).toBe('unready');
+      });
+    });
+
+    it('local label flips immediately after RPC resolves (optimistic mirror)', async () => {
+      render(<PlaytestHarness />);
+
+      const shieldButton = screen.getByTestId(
+        'reaction-toggle-dnd5e:spells:shield'
+      ) as HTMLButtonElement;
+      expect(shieldButton.textContent).toBe('unknown');
+
+      act(() => fireEvent.click(shieldButton));
+
+      // After the RPC resolves (mocked to succeed), the reducer's optimistic
+      // mirror flips local readiness to true and the label re-renders.
+      await waitFor(() => {
+        expect(shieldButton.textContent).toBe('READY');
+      });
+      expect(shieldButton.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('surfaces error message when SetReactionReady RPC rejects', async () => {
+      hoisted.setReactionReadyFn.mockRejectedValueOnce(
+        new Error('character not in encounter')
+      );
+
+      render(<PlaytestHarness />);
+
+      const oaButton = screen.getByTestId(`reaction-toggle-${OA_REF_STR}`);
+      act(() => fireEvent.click(oaButton));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/SetReactionReady error: character not in encounter/)
+        ).toBeTruthy();
+      });
+      // Local state must NOT flip on RPC error — label stays "unknown" because
+      // the optimistic mirror only updates on success.
+      expect(oaButton.textContent).toBe('unknown');
+    });
+
+    it('disables toggle while a SetReactionReady RPC is in flight (loading=true)', async () => {
+      let resolveRpc!: (v: SetReactionReadyResponse) => void;
+      const pendingRpc = new Promise<SetReactionReadyResponse>(
+        (resolve) => (resolveRpc = resolve)
+      );
+      hoisted.setReactionReadyFn.mockReturnValueOnce(pendingRpc);
+
+      render(<PlaytestHarness />);
+
+      const oaButton = screen.getByTestId(
+        `reaction-toggle-${OA_REF_STR}`
+      ) as HTMLButtonElement;
+      const shieldButton = screen.getByTestId(
+        'reaction-toggle-dnd5e:spells:shield'
+      ) as HTMLButtonElement;
+
+      act(() => fireEvent.click(oaButton));
+
+      // Both toggles disabled while the in-flight RPC blocks the hook.
+      await waitFor(() => {
+        expect(oaButton.disabled).toBe(true);
+      });
+      expect(shieldButton.disabled).toBe(true);
+
+      // Resolve the RPC: both re-enable, and OA flips to READY (optimistic).
+      act(() => resolveRpc({} as SetReactionReadyResponse));
+      await waitFor(() => {
+        expect(oaButton.disabled).toBe(false);
+      });
+      expect(shieldButton.disabled).toBe(false);
+      expect(oaButton.textContent).toBe('READY');
+    });
+
+    it('disables toggle after EncounterEnded (server would reject anyway)', async () => {
+      render(<PlaytestHarness />);
+
+      act(() => fake.push(makeEvent('snapshotDelivered', {})));
+      act(() =>
+        fake.push(
+          makeEvent('encounterEnded', { reason: 'all hostiles defeated' })
+        )
+      );
+
+      // Wait for the encounter-ended banner to render (signal the reducer
+      // applied the event).
+      await waitFor(() => {
+        expect(screen.getByTestId('encounter-ended-banner')).toBeTruthy();
+      });
+
+      const oaButton = screen.getByTestId(
+        `reaction-toggle-${OA_REF_STR}`
+      ) as HTMLButtonElement;
+      const shieldButton = screen.getByTestId(
+        'reaction-toggle-dnd5e:spells:shield'
+      ) as HTMLButtonElement;
+      expect(oaButton.disabled).toBe(true);
+      expect(shieldButton.disabled).toBe(true);
+
+      // Click is a no-op — the RPC is never invoked.
+      act(() => fireEvent.click(oaButton));
+      expect(hoisted.setReactionReadyFn).not.toHaveBeenCalled();
+    });
   });
 });
