@@ -1270,4 +1270,104 @@ describe('PlaytestHarness', () => {
     });
     expect(screen.getByText(/thieves-tools/)).toBeTruthy();
   });
+
+  // Wave 2.11d (#409): stream-delivered InputRequiredDelivered events should
+  // open the reaction-prompt modal. Reactions triggered by NPC actions arrive
+  // via the stream because the attacker's RPC response can't carry a prompt
+  // for a different player.
+  it('opens reaction-prompt modal when InputRequiredDelivered arrives on stream', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+
+    // Wait for initial connection log to confirm stream is wired up.
+    await waitFor(() => {
+      expect(screen.getByText(/SnapshotDelivered/)).toBeTruthy();
+    });
+
+    // Push a stream-delivered reaction prompt (Shield from goblin attack).
+    act(() =>
+      fake.push(
+        makeEvent('inputRequiredDelivered', {
+          inputRequired: {
+            kind: {
+              case: 'reactionPrompt',
+              value: {
+                reactionRef: {
+                  module: 'dnd5e',
+                  type: 'spells',
+                  id: 'shield',
+                },
+                triggerKind: 'incoming_attack',
+                triggerSourceEntityId: 'goblin-1',
+                displayText: 'Goblin attacks alice — react with Shield?',
+              },
+            },
+          },
+        })
+      )
+    );
+
+    // Modal renders the reaction-prompt branch.
+    await waitFor(() => {
+      expect(screen.getByTestId('reaction-prompt')).toBeTruthy();
+    });
+    expect(screen.getByText(/dnd5e:spells:shield/)).toBeTruthy();
+    expect(
+      screen.getByText(/Goblin attacks alice — react with Shield/)
+    ).toBeTruthy();
+    // Take + Skip buttons are present.
+    expect(screen.getByTestId('reaction-take-btn')).toBeTruthy();
+    expect(screen.getByTestId('reaction-skip-btn')).toBeTruthy();
+  });
+
+  it('logs InputRequiredDelivered event in the event log', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('inputRequiredDelivered', {
+          inputRequired: {
+            kind: {
+              case: 'reactionPrompt',
+              value: {
+                reactionRef: {
+                  module: 'dnd5e',
+                  type: 'conditions',
+                  id: 'opportunity_attack',
+                },
+                triggerKind: 'leaving_threatened_hex',
+                triggerSourceEntityId: 'goblin-1',
+                displayText: '',
+              },
+            },
+          },
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/InputRequiredDelivered: reactionPrompt/)
+      ).toBeTruthy();
+    });
+  });
+
+  it('drops InputRequiredDelivered with no payload and does not open modal', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    // Malformed wire frame — inputRequired field missing. Reducer should
+    // log + drop rather than steal an in-flight prompt or crash.
+    act(() => fake.push(makeEvent('inputRequiredDelivered', {})));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/InputRequiredDelivered: \(no payload\)/)
+      ).toBeTruthy();
+    });
+    // No reaction modal rendered.
+    expect(screen.queryByTestId('reaction-prompt')).toBeNull();
+  });
 });

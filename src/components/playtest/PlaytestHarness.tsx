@@ -253,6 +253,34 @@ export function PlaytestHarness() {
         encounterState.applyEncounterEnded(e);
         addLog(`EncounterEnded: ${e.reason}`);
       },
+      // Wave 2.11d (#409): server-pushed InputRequired prompts. Reactions
+      // triggered by NPC actions arrive here because the attacker's RPC
+      // response can't carry a prompt for a different player. Funnels into
+      // the same setPendingPrompt path used by Interact/TakeAction responses
+      // so the existing prompt-switch (skillCheck / reactionPrompt / …) in
+      // the JSX below renders the right modal branch.
+      onInputRequiredDelivered: (e) => {
+        if (!e.inputRequired) {
+          // Defensive: proto field is optional, but a delivered event with
+          // no payload is meaningless. Log + drop so a malformed wire frame
+          // doesn't silently steal an in-flight prompt.
+          addLog('InputRequiredDelivered: (no payload)');
+          return;
+        }
+        // Cancel any in-progress auto-clear timer from a prior skill-check
+        // submit so it doesn't unexpectedly clear the incoming prompt while
+        // the player is mid-reaction. Mirrors handleOpenDoor.
+        if (clearResultTimerRef.current) {
+          clearTimeout(clearResultTimerRef.current);
+          clearResultTimerRef.current = null;
+        }
+        clearingPromptRef.current = null;
+        setPromptResult(null);
+        encounterState.setPendingPrompt(e.inputRequired);
+        addLog(
+          `InputRequiredDelivered: ${e.inputRequired.kind?.case ?? 'unknown'}`
+        );
+      },
     }
   );
 
