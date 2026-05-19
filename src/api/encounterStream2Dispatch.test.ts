@@ -174,6 +174,38 @@ describe('dispatchEncounterStream2Event', () => {
     expect(onEncounterEnded).toHaveBeenCalledTimes(1);
   });
 
+  // Wave 2.11d: stream-delivered InputRequired prompts (e.g. NPC-attacker
+  // reaction prompts whose reactor is not the action's caller).
+  it('routes inputRequiredDelivered to onInputRequiredDelivered', () => {
+    const onInputRequiredDelivered = vi.fn();
+    const options: EncounterStream2Options = { onInputRequiredDelivered };
+    const event = makeEvent('inputRequiredDelivered', {
+      inputRequired: {
+        kind: {
+          case: 'reactionPrompt',
+          value: {
+            reactionRef: {
+              module: 'dnd5e',
+              type: 'spells',
+              id: 'shield',
+            },
+            triggerKind: 'incoming_attack',
+            triggerSourceEntityId: 'goblin-1',
+            displayText: 'Goblin attacks — react with Shield?',
+          },
+        },
+      },
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onInputRequiredDelivered).toHaveBeenCalledTimes(1);
+    // First arg is the InputRequiredDelivered payload itself; callers read
+    // .inputRequired to extract the prompt for setPendingPrompt.
+    const arg = onInputRequiredDelivered.mock.calls[0]?.[0] as {
+      inputRequired?: { kind?: { case?: string } };
+    };
+    expect(arg.inputRequired?.kind?.case).toBe('reactionPrompt');
+  });
+
   it('logs a warning for unknown event cases without throwing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const event = makeEvent('someUnknownCase' as 'snapshotDelivered', {});

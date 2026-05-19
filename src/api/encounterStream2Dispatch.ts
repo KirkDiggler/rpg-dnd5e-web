@@ -9,6 +9,7 @@ import type {
   EntityMoved,
   EntityRemoved,
   GeometryRevealed,
+  InputRequiredDelivered,
   ModeChanged,
   SnapshotDelivered,
   StatusApplied,
@@ -74,6 +75,18 @@ export interface EncounterStream2Options {
    * defeated"). The reducer sets `encounterStatus = "ended"` on receipt.
    */
   onEncounterEnded?: (event: EncounterEnded) => void;
+  // Wave 2.11d: stream-delivered InputRequired prompts.
+  /**
+   * Server-pushed InputRequired payload (Wave 2.11d). Used for reaction
+   * prompts whose reactor is not the caller of the action that triggered
+   * them (e.g. NPC attacks player → player must decide Shield/Skip). The
+   * mover/attacker's RPC response cannot carry a prompt for a different
+   * player, so the server publishes this event onto the reactor's
+   * per-viewer stream. Consumers wire this into the same setPendingPrompt
+   * path used by Interact/TakeAction responses; the InputRequired payload
+   * shape is identical, and the existing prompt modal/dispatch reuses it.
+   */
+  onInputRequiredDelivered?: (event: InputRequiredDelivered) => void;
 }
 
 /**
@@ -128,6 +141,9 @@ export function dispatchEncounterStream2Event(
       break;
     case 'encounterEnded':
       options.onEncounterEnded?.(payload.value);
+      break;
+    case 'inputRequiredDelivered':
+      options.onInputRequiredDelivered?.(payload.value);
       break;
     default:
       // Either out-of-current-scope but known to the proto (entityHealed,

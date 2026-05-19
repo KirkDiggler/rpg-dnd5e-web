@@ -12,6 +12,7 @@ import { useEncounterStream2 } from '../../api/useEncounterStream2';
 import { useEndTurnV2 } from '../../api/useEndTurnV2';
 import { useInteractV2 } from '../../api/useInteractV2';
 import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
+import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useSubmitCheckV2 } from '../../api/useSubmitCheckV2';
 import { useTakeActionV2 } from '../../api/useTakeActionV2';
 import { useEncounterState } from '../../hooks/useEncounterState';
@@ -71,6 +72,11 @@ export function PlaytestHarness() {
     null
   );
   const clearingPromptRef = useRef<object | null>(null);
+  // Always-fresh mirror of the current pending prompt. Used by async
+  // handlers (handleSubmitReaction) that must compare the prompt-at-await-
+  // start to the freshest prompt after the await — the React state captured
+  // via the handler's closure is the render-time snapshot, not the latest.
+  const latestPendingPromptRef = useRef<object | null>(null);
 
   const encounterState = useEncounterState();
   const {
@@ -98,6 +104,13 @@ export function PlaytestHarness() {
     loading: submitCheckLoading,
     error: submitCheckError,
   } = useSubmitCheckV2();
+  // Wave 2.11d: per-character per-reaction readiness toggle. The panel below
+  // the prompt section uses this to arm/unarm reactions like Shield + OA.
+  const {
+    setReactionReady,
+    loading: setReactionReadyLoading,
+    error: setReactionReadyError,
+  } = useSetReactionReady();
 
   const addLog = (msg: string) => {
     const entry = `[${formatTime(new Date())}] ${msg}`;
@@ -240,6 +253,34 @@ export function PlaytestHarness() {
         encounterState.applyEncounterEnded(e);
         addLog(`EncounterEnded: ${e.reason}`);
       },
+      // Wave 2.11d (#409): server-pushed InputRequired prompts. Reactions
+      // triggered by NPC actions arrive here because the attacker's RPC
+      // response can't carry a prompt for a different player. Funnels into
+      // the same setPendingPrompt path used by Interact/TakeAction responses
+      // so the existing prompt-switch (skillCheck / reactionPrompt / …) in
+      // the JSX below renders the right modal branch.
+      onInputRequiredDelivered: (e) => {
+        if (!e.inputRequired) {
+          // Defensive: proto field is optional, but a delivered event with
+          // no payload is meaningless. Log + drop so a malformed wire frame
+          // doesn't silently steal an in-flight prompt.
+          addLog('InputRequiredDelivered: (no payload)');
+          return;
+        }
+        // Cancel any in-progress auto-clear timer from a prior skill-check
+        // submit so it doesn't unexpectedly clear the incoming prompt while
+        // the player is mid-reaction. Mirrors handleOpenDoor.
+        if (clearResultTimerRef.current) {
+          clearTimeout(clearResultTimerRef.current);
+          clearResultTimerRef.current = null;
+        }
+        clearingPromptRef.current = null;
+        setPromptResult(null);
+        encounterState.setPendingPrompt(e.inputRequired);
+        addLog(
+          `InputRequiredDelivered: ${e.inputRequired.kind?.case ?? 'unknown'}`
+        );
+      },
     }
   );
 
@@ -252,6 +293,13 @@ export function PlaytestHarness() {
       }
     };
   }, []);
+
+  // Keep latestPendingPromptRef in sync with the freshest pendingPrompt so
+  // handleSubmitReaction's post-await check sees the current value, not the
+  // closure-captured render snapshot. See handleSubmitReaction for rationale.
+  useEffect(() => {
+    latestPendingPromptRef.current = encounterState.state.pendingPrompt;
+  }, [encounterState.state.pendingPrompt]);
 
   if (!playerId) {
     return (
@@ -381,6 +429,63 @@ export function PlaytestHarness() {
       }, 2000);
     } catch {
       // error is surfaced via submitCheckError state
+    }
+  };
+
+  // Wave 2.11d: dispatch SubmitCheck{take_reaction} for the active reaction
+  // prompt. take=true sends the reaction; take=false skips. On success the
+  // prompt is cleared immediately — the resume flow's outcome events arrive
+  // separately on the stream and update HP/AC via the reducer.
+  const handleSubmitReaction = async (takeReaction: boolean) => {
+    // Capture the in-flight prompt by reference. We compare against the
+    // freshest state value AFTER the await so that a newer prompt arriving
+    // during the RPC isn't accidentally cleared. Use the ref pattern via
+    // the setter's functional form below.
+    const promptBeingResolved = encounterState.state.pendingPrompt;
+    try {
+      await submitCheck({
+        encounterId,
+        entityId,
+        roll: 0, // ignored for reaction prompts
+        takeReaction,
+      });
+      addLog(
+        `SubmitCheck{take_reaction:${takeReaction.toString()}} → reaction ${takeReaction ? 'taken' : 'skipped'}`
+      );
+      // Clear the prompt only if it's still the one we resolved. Reaction
+      // prompts don't show a post-submit result panel (unlike skill checks
+      // which show rolled/total/success transiently). Outcome events arrive
+      // via the stream and the reducer updates HP/AC/etc. Reading
+      // encounterState.state here would still be the stale render snapshot,
+      // so we use latestPendingPromptRef to peek the freshest value.
+      if (latestPendingPromptRef.current === promptBeingResolved) {
+        encounterState.setPendingPrompt(null);
+      }
+    } catch {
+      // error is surfaced via submitCheckError state
+    }
+  };
+
+  // Wave 2.11d: toggle readiness for a single reaction on the active
+  // character. Optimistic local update on success — server is source of truth
+  // but the panel reflects intent immediately so the player isn't waiting on
+  // a stream snapshot to confirm the toggle.
+  const handleToggleReactionReady = async (
+    reactionRef: { module: string; type: string; id: string },
+    ready: boolean
+  ) => {
+    try {
+      await setReactionReady({
+        encounterId,
+        characterId: entityId,
+        reactionRef,
+        ready,
+      });
+      const refStr = `${reactionRef.module}:${reactionRef.type}:${reactionRef.id}`;
+      encounterState.setReactionReadyLocal(entityId, refStr, ready);
+      addLog(`SetReactionReady → ${refStr} = ${ready.toString()}`);
+    } catch {
+      // error surfaced via setReactionReadyError state
     }
   };
 
@@ -844,6 +949,79 @@ export function PlaytestHarness() {
                   </div>
                 );
               }
+              // Wave 2.11d reaction prompt: Take / Skip → SubmitCheck{take_reaction}.
+              if (prompt.kind?.case === 'reactionPrompt') {
+                const rp = prompt.kind.value;
+                const refStr = rp.reactionRef
+                  ? `${rp.reactionRef.module}:${rp.reactionRef.type}:${rp.reactionRef.id}`
+                  : 'unknown reaction';
+                const description =
+                  rp.displayText !== ''
+                    ? rp.displayText
+                    : `${rp.triggerKind} reaction from ${rp.triggerSourceEntityId}`;
+                return (
+                  <div
+                    data-testid="reaction-prompt"
+                    style={{
+                      margin: '16px 0 8px',
+                      padding: '12px',
+                      background: '#2a1a1a',
+                      border: '1px solid #aa4a4a',
+                      borderRadius: 4,
+                    }}
+                  >
+                    <h3 style={{ margin: '0 0 8px', color: '#faa' }}>
+                      Reaction prompt: {refStr}
+                    </h3>
+                    <div style={{ fontSize: 13, marginBottom: 8 }}>
+                      {description}
+                    </div>
+                    <div
+                      style={{ display: 'flex', gap: 8, alignItems: 'center' }}
+                    >
+                      <button
+                        data-testid="reaction-take-btn"
+                        onClick={() => void handleSubmitReaction(true)}
+                        disabled={submitCheckLoading}
+                        style={{
+                          padding: '4px 12px',
+                          background: '#3a2a2a',
+                          color: '#faa',
+                          border: '1px solid #aa4a4a',
+                          cursor: submitCheckLoading
+                            ? 'not-allowed'
+                            : 'pointer',
+                        }}
+                      >
+                        {submitCheckLoading ? 'Submitting…' : 'Take'}
+                      </button>
+                      <button
+                        data-testid="reaction-skip-btn"
+                        onClick={() => void handleSubmitReaction(false)}
+                        disabled={submitCheckLoading}
+                        style={{
+                          padding: '4px 12px',
+                          background: '#2a2a2a',
+                          color: '#bbb',
+                          border: '1px solid #555',
+                          cursor: submitCheckLoading
+                            ? 'not-allowed'
+                            : 'pointer',
+                        }}
+                      >
+                        Skip
+                      </button>
+                    </div>
+                    {submitCheckError && (
+                      <div
+                        style={{ color: '#f88', marginTop: 8, fontSize: 12 }}
+                      >
+                        SubmitCheck error: {submitCheckError.message}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
               // dialogue / targetSelect — Wave 2.10+
               return (
                 <div
@@ -863,6 +1041,138 @@ export function PlaytestHarness() {
                 </div>
               );
             })()}
+
+          {/* Wave 2.11d ready-reactions panel: per-character per-reaction toggles.
+              Server is source of truth (reactionReadiness map flows from
+              SetReactionReady responses + optimistic local mirror). Reads from
+              state.reactionReadiness. Renders fixed rows for OA + Shield in this
+              wave; future waves add Counterspell + Lucky as additional rows.
+
+              Tri-state per #410: undefined means UNKNOWN — the snapshot
+              proto does not carry reaction_readiness today (rpg-api-protos#158),
+              so server-seeded defaults (e.g. OA default-on at AddPlayer for
+              melee combatants) are invisible to the client until the player
+              toggles. The panel MUST render "unknown" instead of falsely
+              defaulting to unready, which would lie about server-seeded
+              ready state and cause the first click to send ready=true to a
+              server that already considered it ready. The first toggle
+              attempts ready=true (the natural opt-in action) and resolves
+              the unknown locally. */}
+          <h3 style={{ margin: '16px 0 4px', color: '#aaa' }}>
+            Ready reactions
+          </h3>
+          <div
+            data-testid="ready-reactions-panel"
+            style={{ fontSize: 12, marginBottom: 12 }}
+          >
+            {(() => {
+              const myReadiness =
+                encounterState.state.reactionReadiness.get(entityId);
+              const rows: Array<{
+                refStr: string;
+                refTriple: { module: string; type: string; id: string };
+                label: string;
+                hint: string;
+              }> = [
+                {
+                  refStr: 'dnd5e:conditions:opportunity_attack',
+                  refTriple: {
+                    module: 'dnd5e',
+                    type: 'conditions',
+                    id: 'opportunity_attack',
+                  },
+                  label: 'Opportunity Attack',
+                  hint: 'Free — react when an enemy leaves your reach',
+                },
+                {
+                  refStr: 'dnd5e:spells:shield',
+                  refTriple: {
+                    module: 'dnd5e',
+                    type: 'spells',
+                    id: 'shield',
+                  },
+                  label: 'Shield',
+                  hint: 'Spell slot — react to add +5 AC when hit',
+                },
+              ];
+              return rows.map((row) => {
+                const ready = myReadiness?.get(row.refStr);
+                // Tri-state label + next-action computation. UNKNOWN clicks
+                // attempt ready=true (the opt-in action); KNOWN clicks flip.
+                const stateLabel =
+                  ready === undefined ? 'unknown' : ready ? 'READY' : 'unready';
+                const nextReady = ready === undefined ? true : !ready;
+                const ariaAction =
+                  ready === undefined ? 'ready' : ready ? 'unready' : 'ready';
+                // Visual treatment: ready=green (READY), false=dim grey
+                // (unready), undefined=dashed-border grey (unknown).
+                const background =
+                  ready === true
+                    ? '#2a3a2a'
+                    : ready === false
+                      ? '#2a2a2a'
+                      : '#1f1f1f';
+                const color =
+                  ready === true ? '#afa' : ready === false ? '#888' : '#aaa';
+                const borderColor =
+                  ready === true
+                    ? '#4a6a4a'
+                    : ready === false
+                      ? '#444'
+                      : '#666';
+                const borderStyle = ready === undefined ? 'dashed' : 'solid';
+                return (
+                  <div
+                    key={row.refStr}
+                    data-testid={`reaction-row-${row.refStr}`}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '4px 0',
+                      borderBottom: '1px solid #2a2a2a',
+                    }}
+                  >
+                    <div>
+                      <div style={{ color: '#ddd', fontWeight: 500 }}>
+                        {row.label}
+                      </div>
+                      <div style={{ color: '#888', fontSize: 11 }}>
+                        {row.hint}
+                      </div>
+                    </div>
+                    <button
+                      data-testid={`reaction-toggle-${row.refStr}`}
+                      onClick={() =>
+                        void handleToggleReactionReady(row.refTriple, nextReady)
+                      }
+                      disabled={setReactionReadyLoading || encounterEnded}
+                      aria-pressed={ready === true}
+                      aria-label={`${row.label}: ${stateLabel} (click to ${ariaAction})`}
+                      style={{
+                        padding: '2px 10px',
+                        background,
+                        color,
+                        border: `1px ${borderStyle} ${borderColor}`,
+                        cursor:
+                          setReactionReadyLoading || encounterEnded
+                            ? 'not-allowed'
+                            : 'pointer',
+                        fontSize: 11,
+                      }}
+                    >
+                      {stateLabel}
+                    </button>
+                  </div>
+                );
+              });
+            })()}
+            {setReactionReadyError && (
+              <div style={{ color: '#f88', marginTop: 4, fontSize: 11 }}>
+                SetReactionReady error: {setReactionReadyError.message}
+              </div>
+            )}
+          </div>
 
           {/* Combat controls (Wave 2.8 verification scaffold; deleted in slice 3) */}
           <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Combat</h3>
