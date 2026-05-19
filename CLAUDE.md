@@ -9,7 +9,7 @@ the API sends; it never calculates game rules.
 - `docs/quality.md` — A-D scorecard with rationale per area
 - `docs/architecture/overview.md` — rendering rules, layer map, stream pattern, named violations
 - `docs/architecture/data-model.md` — proto types consumed, transform layer, proto version pins
-- `docs/architecture/components/` — one doc per major component, hook, or module (battle-map-panel, combat-v2, concepts-route, discord, encounter-state-transforms, grpc-client, hex-grid, lobby-view, use-dungeon-map, use-encounter-state, use-encounter-stream)
+- `docs/architecture/components/` — one doc per major component, hook, or module (battle-map-panel, combat-v2, concepts-route, discord, encounter-state-transforms, grpc-client, hex-grid, lobby-view, playtest-harness, use-dungeon-map, use-encounter-state, use-encounter-stream)
 - `docs/how-to/` — task guides: local-dev, run-vitest, debug-stream, proto-updates, concepts-route
 - `docs/archive/pre-bootstrap/` — pre-2026 design docs, journey narratives, plans; read for history only
 
