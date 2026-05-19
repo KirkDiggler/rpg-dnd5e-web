@@ -17,6 +17,20 @@ import { useSubmitCheckV2 } from '../../api/useSubmitCheckV2';
 import { useTakeActionV2 } from '../../api/useTakeActionV2';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { protoPositionToHex } from '../../utils/hexCoord';
+import { PlaytestMap } from './PlaytestMap';
+
+/**
+ * View mode for the playtest harness.
+ *  - 'both' (default): visual map on top + dev panel below. Use this for
+ *    normal verification — you can drive the game by clicking the map
+ *    while keeping the raw event log + entity table visible for debugging.
+ *  - 'visual': just the visual map. The reaction modal + ready-reactions
+ *    panel still render above the map as floating overlays so the player
+ *    can still arm Shield / Take a reaction without the dev panel.
+ *  - 'dev': just the dev panel. Use when you don't want the WebGL canvas
+ *    (e.g. low-end browser, screen-reader testing).
+ */
+type ViewMode = 'both' | 'visual' | 'dev';
 
 const ATTACK_ACTION_REF = {
   module: 'dnd5e',
@@ -58,6 +72,10 @@ export function PlaytestHarness() {
   const [targetS, setTargetS] = useState(0);
   const [targetDoorId, setTargetDoorId] = useState('');
   const [attackTargetId, setAttackTargetId] = useState('');
+  // Default to stacked layout: visual map on top + dev panel below. Kirk's
+  // stated need: clickable map for intuitive driving without losing the
+  // event log / entity table he uses for backend verification mid-playtest.
+  const [viewMode, setViewMode] = useState<ViewMode>('both');
   // Wave 2.9: prompt roll input and transient result display
   const [rollValue, setRollValue] = useState(10);
   // Structured result avoids string-sniffing for color/outcome logic.
@@ -505,6 +523,71 @@ export function PlaytestHarness() {
     encounterState.state.mode === EncounterMode.TURN_BASED &&
     isMyTurn;
 
+  // Visual map handlers. The map's hex click hands back the full computed
+  // path; we forward to moveEntity as the existing handleMove does. Entity
+  // clicks dispatch attack against monsters when combat-enabled; otherwise
+  // selecting the row for inspection (log + populate the dev-panel target
+  // input). In FREE_ROAM both moves and "attacks" still dispatch — the
+  // server is the gate, per `feedback_no_logic_in_web`.
+  const handleVisualMove = async (
+    path: Array<{ x: number; y: number; z: number }>
+  ) => {
+    if (encounterEnded || path.length === 0) return;
+    try {
+      await moveEntity(encounterId, entityId, path);
+      const last = path[path.length - 1];
+      if (last) {
+        addLog(
+          `VisualMove → (${last.x},${last.y},${last.z}) via ${path.length}-step path`
+        );
+      }
+    } catch {
+      // error surfaced via moveError state
+    }
+  };
+
+  const handleVisualEntityClick = async (targetId: string) => {
+    if (targetId === entityId) {
+      addLog(`Selected self ${targetId}`);
+      return;
+    }
+    const targetMeta = encounterState.state.entityMeta.get(targetId);
+    const isMonster = targetMeta?.type === EntityType.MONSTER;
+    // Always populate the dev-panel attack-target input so the dev panel
+    // reflects the visual selection — helps Kirk cross-check the click
+    // landed on the entity he intended without scrolling to find the row.
+    setAttackTargetId(targetId);
+    if (!isMonster) {
+      addLog(`Selected ${targetId}`);
+      return;
+    }
+    if (encounterEnded) {
+      addLog(`Selected ${targetId} (encounter ended; no attack dispatched)`);
+      return;
+    }
+    // Dispatch attack. Mirrors handleAttack but takes the target inline so
+    // we don't race the setAttackTargetId render. Per the boundary rule,
+    // FREE_ROAM clicks still dispatch — server returns FailedPrecondition
+    // if not in combat, and the existing error surface shows it.
+    const target = {
+      kind: { case: 'entityId', value: targetId },
+    } as unknown as ActionTarget;
+    try {
+      await takeAction({
+        encounterId,
+        actorEntityId: entityId,
+        actionRef: ATTACK_ACTION_REF,
+        target,
+      });
+      addLog(`VisualAttack → ${targetId}`);
+    } catch {
+      // error surfaced via takeActionError state
+    }
+  };
+
+  const showVisual = viewMode === 'both' || viewMode === 'visual';
+  const showDev = viewMode === 'both' || viewMode === 'dev';
+
   return (
     <div
       style={{
@@ -559,6 +642,49 @@ export function PlaytestHarness() {
           )}
       </div>
 
+      {/* View-mode toolbar — pick visual / dev / both. Visible above the
+          map so Kirk can switch presentation without losing focus. Default
+          is 'both' for normal verification — visual UX + dev backend view. */}
+      <div
+        data-testid="view-mode-toolbar"
+        style={{
+          display: 'flex',
+          gap: 6,
+          alignItems: 'center',
+          marginBottom: 16,
+          fontSize: 12,
+          color: '#aaa',
+        }}
+      >
+        <span>View:</span>
+        {(['both', 'visual', 'dev'] as const).map((mode) => {
+          const active = viewMode === mode;
+          return (
+            <button
+              key={mode}
+              data-testid={`view-mode-${mode}`}
+              onClick={() => setViewMode(mode)}
+              aria-pressed={active}
+              style={{
+                padding: '4px 12px',
+                background: active ? '#2a4a4a' : '#222',
+                color: active ? '#8ff' : '#999',
+                border: `1px solid ${active ? '#4a7a7a' : '#444'}`,
+                cursor: 'pointer',
+                borderRadius: 3,
+                fontSize: 11,
+              }}
+            >
+              {mode === 'both'
+                ? 'Map + Dev panel'
+                : mode === 'visual'
+                  ? 'Map only'
+                  : 'Dev panel only'}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Encounter-ended banner (Wave 2.10) */}
       {encounterEnded && (
         <div
@@ -581,719 +707,758 @@ export function PlaytestHarness() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        {/* Left column: entities + hexes */}
-        <div>
-          {/* Entities table */}
-          <h3 style={{ margin: '0 0 8px', color: '#aaa' }}>
-            Entities ({entitiesArray.length})
-          </h3>
-          <table
-            style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              marginBottom: 16,
-              fontSize: 13,
-            }}
-          >
-            <thead>
-              <tr style={{ color: '#888', textAlign: 'left' }}>
-                <th style={{ padding: '4px 8px' }}>id</th>
-                <th style={{ padding: '4px 8px' }}>type</th>
-                <th style={{ padding: '4px 8px' }}>HP</th>
-                <th style={{ padding: '4px 8px' }}>x</th>
-                <th style={{ padding: '4px 8px' }}>y</th>
-                <th style={{ padding: '4px 8px' }}>z</th>
-                <th style={{ padding: '4px 8px' }}>ghost?</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entitiesArray.map(([id, entity]) => {
-                const isLocalPlayer = id === entityId;
-                // Only show active-actor highlight in TURN_BASED mode to avoid
-                // stale highlighting when activeEntityId persists after mode changes.
-                const isActiveActor =
-                  encounterState.state.mode === EncounterMode.TURN_BASED &&
-                  encounterState.state.activeEntityId !== '' &&
-                  id === encounterState.state.activeEntityId;
-                const meta = encounterState.state.entityMeta.get(id);
-                const hp = encounterState.state.entityHP.get(id);
-                // Row background: active actor (yellow/orange) takes priority over
-                // local player (green) so both states are distinguishable when
-                // it's the local player's turn.
-                const rowBackground = isActiveActor
-                  ? '#2a2200'
-                  : isLocalPlayer
-                    ? '#1a2a1a'
-                    : 'transparent';
-                const typeLabel =
-                  meta?.type === EntityType.MONSTER
-                    ? `MONSTER${meta.monsterRefId ? ` (${meta.monsterRefId})` : ''}`
-                    : meta?.type === EntityType.CHARACTER
-                      ? 'CHARACTER'
-                      : meta
-                        ? (EntityType[meta.type] ?? '?')
-                        : '—';
-                return (
-                  <tr
-                    key={id}
-                    style={{
-                      background: rowBackground,
-                      borderTop: '1px solid #333',
-                      outline: isActiveActor ? '1px solid #aa6600' : undefined,
-                    }}
-                  >
-                    <td style={{ padding: '4px 8px' }}>
-                      {isActiveActor ? '→ ' : ''}
-                      {id}
-                    </td>
-                    <td style={{ padding: '4px 8px', color: '#aaa' }}>
-                      {typeLabel}
-                    </td>
-                    <td style={{ padding: '4px 8px' }}>
-                      {hp ? `${hp.current}/${hp.max}` : '—'}
-                    </td>
-                    <td style={{ padding: '4px 8px' }}>
-                      {entity.position?.x ?? '—'}
-                    </td>
-                    <td style={{ padding: '4px 8px' }}>
-                      {entity.position?.y ?? '—'}
-                    </td>
-                    <td style={{ padding: '4px 8px' }}>
-                      {entity.position?.z ?? '—'}
-                    </td>
-                    <td style={{ padding: '4px 8px' }}>
-                      {entity.ghost ? 'yes' : ''}
-                    </td>
-                  </tr>
-                );
-              })}
-              {entitiesArray.length === 0 && (
-                <tr>
-                  <td colSpan={7} style={{ padding: '4px 8px', color: '#555' }}>
-                    (no entities yet)
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          {/* Revealed hexes */}
-          <h3 style={{ margin: '0 0 8px', color: '#aaa' }}>
-            Revealed hexes ({encounterState.state.revealedHexes.size})
-          </h3>
-          <div style={{ fontSize: 12, color: '#777', marginBottom: 16 }}>
-            {revealedKeys.length === 0
-              ? '(none)'
-              : revealedKeys.slice(0, 20).join(', ') +
-                (revealedKeys.length > 20
-                  ? ` … +${revealedKeys.length - 20} more`
-                  : '')}
-          </div>
-
-          {/* Move controls */}
-          <h3 style={{ margin: '0 0 8px', color: '#aaa' }}>Move {entityId}</h3>
-          {!canMove && (
-            <div style={{ color: '#666', fontSize: 12, marginBottom: 8 }}>
-              (waiting for first event — position unknown)
-            </div>
-          )}
-          {usingFallback && (
-            <div style={{ color: '#aa8', fontSize: 12, marginBottom: 8 }}>
-              (using seeded fallback position — no events received yet)
-            </div>
-          )}
-          <div
-            style={{
-              display: 'flex',
-              gap: 8,
-              alignItems: 'center',
-              flexWrap: 'wrap',
-            }}
-          >
-            <label style={{ fontSize: 12 }}>
-              Q{' '}
-              <input
-                type="number"
-                value={targetQ}
-                onChange={(e) => setTargetQ(Number(e.target.value))}
+      {/* Reaction overlay (Wave 2.11d) — pending-prompt modal (skill check
+          / reaction prompt / unsupported placeholder) + ready-reactions
+          panel. Lifted out of the dev grid so it stays reachable in
+          'Map only' mode: reactions are gameplay surfaces, not dev
+          surfaces, and the player must be able to arm Shield / Take a
+          reaction even when the dev panel is hidden. The testids
+          (`skill-check-prompt`, `reaction-prompt`, `unsupported-prompt`,
+          `ready-reactions-panel`) are preserved so existing tests
+          continue to query at top level. */}
+      {/* Skill check prompt (Wave 2.9) */}
+      {encounterState.state.pendingPrompt !== null &&
+        (() => {
+          const prompt = encounterState.state.pendingPrompt;
+          if (prompt.kind?.case === 'skillCheck') {
+            const sc = prompt.kind.value;
+            return (
+              <div
+                data-testid="skill-check-prompt"
                 style={{
-                  width: 60,
-                  background: '#333',
-                  color: '#eee',
-                  border: '1px solid #555',
-                  padding: '2px 4px',
+                  margin: '16px 0 8px',
+                  padding: '12px',
+                  background: '#1a1a2e',
+                  border: '1px solid #4a4aaa',
+                  borderRadius: 4,
                 }}
-              />
-            </label>
-            <label style={{ fontSize: 12 }}>
-              R{' '}
-              <input
-                type="number"
-                value={targetR}
-                onChange={(e) => setTargetR(Number(e.target.value))}
-                style={{
-                  width: 60,
-                  background: '#333',
-                  color: '#eee',
-                  border: '1px solid #555',
-                  padding: '2px 4px',
-                }}
-              />
-            </label>
-            <label style={{ fontSize: 12 }}>
-              S{' '}
-              <input
-                type="number"
-                value={targetS}
-                onChange={(e) => setTargetS(Number(e.target.value))}
-                style={{
-                  width: 60,
-                  background: '#333',
-                  color: '#eee',
-                  border: '1px solid #555',
-                  padding: '2px 4px',
-                }}
-              />
-            </label>
-            <button
-              onClick={() => void handleMove()}
-              disabled={!canMove || moveLoading}
-              style={{
-                padding: '4px 12px',
-                background: canMove ? '#2a4a2a' : '#2a2a2a',
-                color: canMove ? '#8f8' : '#666',
-                border: '1px solid #555',
-                cursor: canMove && !moveLoading ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {moveLoading ? 'Moving…' : 'Move there'}
-            </button>
-          </div>
-          {moveError && (
-            <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
-              Move error: {moveError.message}
-            </div>
-          )}
-
-          {/* Open-door controls (Wave 2.7 verification scaffold; deleted in slice 3) */}
-          <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Open door</h3>
-          <div style={{ fontSize: 12, color: '#777', marginBottom: 8 }}>
-            Open doors ({openDoorKeys.length}):{' '}
-            {openDoorKeys.length === 0 ? '(none)' : openDoorKeys.join(', ')}
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              gap: 8,
-              alignItems: 'center',
-              flexWrap: 'wrap',
-            }}
-          >
-            <label style={{ fontSize: 12 }}>
-              Door id{' '}
-              <input
-                type="text"
-                value={targetDoorId}
-                onChange={(e) => setTargetDoorId(e.target.value)}
-                placeholder="door-east"
-                aria-label="door id"
-                style={{
-                  width: 140,
-                  background: '#333',
-                  color: '#eee',
-                  border: '1px solid #555',
-                  padding: '2px 4px',
-                }}
-              />
-            </label>
-            <button
-              onClick={() => void handleOpenDoor()}
-              disabled={!targetDoorId.trim() || interactLoading}
-              style={{
-                padding: '4px 12px',
-                background: targetDoorId.trim() ? '#2a4a2a' : '#2a2a2a',
-                color: targetDoorId.trim() ? '#8f8' : '#666',
-                border: '1px solid #555',
-                cursor:
-                  targetDoorId.trim() && !interactLoading
-                    ? 'pointer'
-                    : 'not-allowed',
-              }}
-            >
-              {interactLoading ? 'Opening…' : 'Open door'}
-            </button>
-          </div>
-          {interactError && (
-            <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
-              Interact error: {interactError.message}
-            </div>
-          )}
-
-          {/* Skill check prompt (Wave 2.9) */}
-          {encounterState.state.pendingPrompt !== null &&
-            (() => {
-              const prompt = encounterState.state.pendingPrompt;
-              if (prompt.kind?.case === 'skillCheck') {
-                const sc = prompt.kind.value;
-                return (
-                  <div
-                    data-testid="skill-check-prompt"
-                    style={{
-                      margin: '16px 0 8px',
-                      padding: '12px',
-                      background: '#1a1a2e',
-                      border: '1px solid #4a4aaa',
-                      borderRadius: 4,
-                    }}
-                  >
-                    <h3 style={{ margin: '0 0 8px', color: '#aaf' }}>
-                      Skill check prompt
-                    </h3>
-                    <div style={{ fontSize: 13, marginBottom: 8 }}>
-                      <strong>
-                        Skill check: {sc.ability} (DC {sc.dc})
-                      </strong>
-                      {sc.tool && (
-                        <span style={{ color: '#aaa', marginLeft: 8 }}>
-                          — requires: {sc.tool.id}
-                        </span>
-                      )}
-                    </div>
-                    {promptResult !== null ? (
-                      <div
-                        data-testid="prompt-result"
-                        style={{
-                          color: promptResult.success ? '#8f8' : '#f88',
-                          fontWeight: 'bold',
-                          fontSize: 13,
-                        }}
-                      >
-                        rolled {promptResult.roll}, total {promptResult.total},{' '}
-                        {promptResult.success ? 'success!' : 'failed.'}
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: 8,
-                          alignItems: 'center',
-                        }}
-                      >
-                        <label style={{ fontSize: 12 }}>
-                          Roll (1-20){' '}
-                          <input
-                            type="number"
-                            min={1}
-                            max={20}
-                            step={1}
-                            value={rollValue}
-                            aria-label="roll value"
-                            onChange={(e) =>
-                              setRollValue(
-                                Math.min(
-                                  20,
-                                  Math.max(
-                                    1,
-                                    Math.trunc(Number(e.target.value))
-                                  )
-                                )
-                              )
-                            }
-                            style={{
-                              width: 60,
-                              background: '#333',
-                              color: '#eee',
-                              border: '1px solid #555',
-                              padding: '2px 4px',
-                            }}
-                          />
-                        </label>
-                        <button
-                          onClick={() => void handleSubmitCheck()}
-                          disabled={submitCheckLoading}
-                          style={{
-                            padding: '4px 12px',
-                            background: '#2a2a4a',
-                            color: '#aaf',
-                            border: '1px solid #4a4aaa',
-                            cursor: submitCheckLoading
-                              ? 'not-allowed'
-                              : 'pointer',
-                          }}
-                        >
-                          {submitCheckLoading ? 'Submitting…' : 'Submit roll'}
-                        </button>
-                        <button
-                          onClick={() => encounterState.setPendingPrompt(null)}
-                          style={{
-                            padding: '4px 8px',
-                            background: '#2a2a2a',
-                            color: '#888',
-                            border: '1px solid #444',
-                            cursor: 'pointer',
-                            fontSize: 11,
-                          }}
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-                    )}
-                    {submitCheckError && (
-                      <div
-                        style={{ color: '#f88', marginTop: 8, fontSize: 12 }}
-                      >
-                        SubmitCheck error: {submitCheckError.message}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              // Wave 2.11d reaction prompt: Take / Skip → SubmitCheck{take_reaction}.
-              if (prompt.kind?.case === 'reactionPrompt') {
-                const rp = prompt.kind.value;
-                const refStr = rp.reactionRef
-                  ? `${rp.reactionRef.module}:${rp.reactionRef.type}:${rp.reactionRef.id}`
-                  : 'unknown reaction';
-                const description =
-                  rp.displayText !== ''
-                    ? rp.displayText
-                    : `${rp.triggerKind} reaction from ${rp.triggerSourceEntityId}`;
-                return (
-                  <div
-                    data-testid="reaction-prompt"
-                    style={{
-                      margin: '16px 0 8px',
-                      padding: '12px',
-                      background: '#2a1a1a',
-                      border: '1px solid #aa4a4a',
-                      borderRadius: 4,
-                    }}
-                  >
-                    <h3 style={{ margin: '0 0 8px', color: '#faa' }}>
-                      Reaction prompt: {refStr}
-                    </h3>
-                    <div style={{ fontSize: 13, marginBottom: 8 }}>
-                      {description}
-                    </div>
-                    <div
-                      style={{ display: 'flex', gap: 8, alignItems: 'center' }}
-                    >
-                      <button
-                        data-testid="reaction-take-btn"
-                        onClick={() => void handleSubmitReaction(true)}
-                        disabled={submitCheckLoading}
-                        style={{
-                          padding: '4px 12px',
-                          background: '#3a2a2a',
-                          color: '#faa',
-                          border: '1px solid #aa4a4a',
-                          cursor: submitCheckLoading
-                            ? 'not-allowed'
-                            : 'pointer',
-                        }}
-                      >
-                        {submitCheckLoading ? 'Submitting…' : 'Take'}
-                      </button>
-                      <button
-                        data-testid="reaction-skip-btn"
-                        onClick={() => void handleSubmitReaction(false)}
-                        disabled={submitCheckLoading}
-                        style={{
-                          padding: '4px 12px',
-                          background: '#2a2a2a',
-                          color: '#bbb',
-                          border: '1px solid #555',
-                          cursor: submitCheckLoading
-                            ? 'not-allowed'
-                            : 'pointer',
-                        }}
-                      >
-                        Skip
-                      </button>
-                    </div>
-                    {submitCheckError && (
-                      <div
-                        style={{ color: '#f88', marginTop: 8, fontSize: 12 }}
-                      >
-                        SubmitCheck error: {submitCheckError.message}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              // dialogue / targetSelect — Wave 2.10+
-              return (
-                <div
-                  data-testid="unsupported-prompt"
-                  style={{
-                    margin: '16px 0 8px',
-                    padding: '8px 12px',
-                    background: '#1a1a1a',
-                    border: '1px solid #555',
-                    borderRadius: 4,
-                    color: '#888',
-                    fontSize: 12,
-                  }}
-                >
-                  Prompt type {prompt.kind?.case ?? 'unknown'}: not yet
-                  supported (Wave 2.10+)
+              >
+                <h3 style={{ margin: '0 0 8px', color: '#aaf' }}>
+                  Skill check prompt
+                </h3>
+                <div style={{ fontSize: 13, marginBottom: 8 }}>
+                  <strong>
+                    Skill check: {sc.ability} (DC {sc.dc})
+                  </strong>
+                  {sc.tool && (
+                    <span style={{ color: '#aaa', marginLeft: 8 }}>
+                      — requires: {sc.tool.id}
+                    </span>
+                  )}
                 </div>
-              );
-            })()}
-
-          {/* Wave 2.11d ready-reactions panel: per-character per-reaction toggles.
-              Server is source of truth (reactionReadiness map flows from
-              SetReactionReady responses + optimistic local mirror). Reads from
-              state.reactionReadiness. Renders fixed rows for OA + Shield in this
-              wave; future waves add Counterspell + Lucky as additional rows.
-
-              Tri-state per #410: undefined means UNKNOWN — the snapshot
-              proto does not carry reaction_readiness today (rpg-api-protos#158),
-              so server-seeded defaults (e.g. OA default-on at AddPlayer for
-              melee combatants) are invisible to the client until the player
-              toggles. The panel MUST render "unknown" instead of falsely
-              defaulting to unready, which would lie about server-seeded
-              ready state and cause the first click to send ready=true to a
-              server that already considered it ready. The first toggle
-              attempts ready=true (the natural opt-in action) and resolves
-              the unknown locally. */}
-          <h3 style={{ margin: '16px 0 4px', color: '#aaa' }}>
-            Ready reactions
-          </h3>
-          <div
-            data-testid="ready-reactions-panel"
-            style={{ fontSize: 12, marginBottom: 12 }}
-          >
-            {(() => {
-              const myReadiness =
-                encounterState.state.reactionReadiness.get(entityId);
-              const rows: Array<{
-                refStr: string;
-                refTriple: { module: string; type: string; id: string };
-                label: string;
-                hint: string;
-              }> = [
-                {
-                  refStr: 'dnd5e:conditions:opportunity_attack',
-                  refTriple: {
-                    module: 'dnd5e',
-                    type: 'conditions',
-                    id: 'opportunity_attack',
-                  },
-                  label: 'Opportunity Attack',
-                  hint: 'Free — react when an enemy leaves your reach',
-                },
-                {
-                  refStr: 'dnd5e:spells:shield',
-                  refTriple: {
-                    module: 'dnd5e',
-                    type: 'spells',
-                    id: 'shield',
-                  },
-                  label: 'Shield',
-                  hint: 'Spell slot — react to add +5 AC when hit',
-                },
-              ];
-              return rows.map((row) => {
-                const ready = myReadiness?.get(row.refStr);
-                // Tri-state label + next-action computation. UNKNOWN clicks
-                // attempt ready=true (the opt-in action); KNOWN clicks flip.
-                const stateLabel =
-                  ready === undefined ? 'unknown' : ready ? 'READY' : 'unready';
-                const nextReady = ready === undefined ? true : !ready;
-                const ariaAction =
-                  ready === undefined ? 'ready' : ready ? 'unready' : 'ready';
-                // Visual treatment: ready=green (READY), false=dim grey
-                // (unready), undefined=dashed-border grey (unknown).
-                const background =
-                  ready === true
-                    ? '#2a3a2a'
-                    : ready === false
-                      ? '#2a2a2a'
-                      : '#1f1f1f';
-                const color =
-                  ready === true ? '#afa' : ready === false ? '#888' : '#aaa';
-                const borderColor =
-                  ready === true
-                    ? '#4a6a4a'
-                    : ready === false
-                      ? '#444'
-                      : '#666';
-                const borderStyle = ready === undefined ? 'dashed' : 'solid';
-                return (
+                {promptResult !== null ? (
                   <div
-                    key={row.refStr}
-                    data-testid={`reaction-row-${row.refStr}`}
+                    data-testid="prompt-result"
+                    style={{
+                      color: promptResult.success ? '#8f8' : '#f88',
+                      fontWeight: 'bold',
+                      fontSize: 13,
+                    }}
+                  >
+                    rolled {promptResult.roll}, total {promptResult.total},{' '}
+                    {promptResult.success ? 'success!' : 'failed.'}
+                  </div>
+                ) : (
+                  <div
                     style={{
                       display: 'flex',
-                      justifyContent: 'space-between',
+                      gap: 8,
                       alignItems: 'center',
-                      padding: '4px 0',
-                      borderBottom: '1px solid #2a2a2a',
                     }}
                   >
-                    <div>
-                      <div style={{ color: '#ddd', fontWeight: 500 }}>
-                        {row.label}
-                      </div>
-                      <div style={{ color: '#888', fontSize: 11 }}>
-                        {row.hint}
-                      </div>
-                    </div>
+                    <label style={{ fontSize: 12 }}>
+                      Roll (1-20){' '}
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        step={1}
+                        value={rollValue}
+                        aria-label="roll value"
+                        onChange={(e) =>
+                          setRollValue(
+                            Math.min(
+                              20,
+                              Math.max(1, Math.trunc(Number(e.target.value)))
+                            )
+                          )
+                        }
+                        style={{
+                          width: 60,
+                          background: '#333',
+                          color: '#eee',
+                          border: '1px solid #555',
+                          padding: '2px 4px',
+                        }}
+                      />
+                    </label>
                     <button
-                      data-testid={`reaction-toggle-${row.refStr}`}
-                      onClick={() =>
-                        void handleToggleReactionReady(row.refTriple, nextReady)
-                      }
-                      disabled={setReactionReadyLoading || encounterEnded}
-                      aria-pressed={ready === true}
-                      aria-label={`${row.label}: ${stateLabel} (click to ${ariaAction})`}
+                      onClick={() => void handleSubmitCheck()}
+                      disabled={submitCheckLoading}
                       style={{
-                        padding: '2px 10px',
-                        background,
-                        color,
-                        border: `1px ${borderStyle} ${borderColor}`,
-                        cursor:
-                          setReactionReadyLoading || encounterEnded
-                            ? 'not-allowed'
-                            : 'pointer',
+                        padding: '4px 12px',
+                        background: '#2a2a4a',
+                        color: '#aaf',
+                        border: '1px solid #4a4aaa',
+                        cursor: submitCheckLoading ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {submitCheckLoading ? 'Submitting…' : 'Submit roll'}
+                    </button>
+                    <button
+                      onClick={() => encounterState.setPendingPrompt(null)}
+                      style={{
+                        padding: '4px 8px',
+                        background: '#2a2a2a',
+                        color: '#888',
+                        border: '1px solid #444',
+                        cursor: 'pointer',
                         fontSize: 11,
                       }}
                     >
-                      {stateLabel}
+                      Dismiss
                     </button>
                   </div>
-                );
-              });
-            })()}
-            {setReactionReadyError && (
-              <div style={{ color: '#f88', marginTop: 4, fontSize: 11 }}>
-                SetReactionReady error: {setReactionReadyError.message}
+                )}
+                {submitCheckError && (
+                  <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
+                    SubmitCheck error: {submitCheckError.message}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-
-          {/* Combat controls (Wave 2.8 verification scaffold; deleted in slice 3) */}
-          <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Combat</h3>
-          <div style={{ fontSize: 12, color: '#777', marginBottom: 8 }}>
-            Statuses ({myStatuses.length}):{' '}
-            {myStatuses.length === 0
-              ? '(none)'
-              : myStatuses.map((s) => s.source.id).join(', ')}
-          </div>
-          {/* HP is now shown inline in the entities table above. */}
-          {!isMyTurn &&
-            encounterState.state.mode === EncounterMode.TURN_BASED && (
-              <div style={{ color: '#aa8', fontSize: 12, marginBottom: 8 }}>
-                (waiting for your turn — active actor:{' '}
-                {encounterState.state.activeEntityId || 'none'})
-              </div>
-            )}
-          {encounterState.state.mode !== EncounterMode.TURN_BASED && (
-            <div style={{ color: '#666', fontSize: 12, marginBottom: 8 }}>
-              (combat actions enabled only in TURN_BASED mode)
-            </div>
-          )}
-          <div
-            style={{
-              display: 'flex',
-              gap: 8,
-              alignItems: 'center',
-              flexWrap: 'wrap',
-            }}
-          >
-            <label style={{ fontSize: 12 }}>
-              Target id{' '}
-              <input
-                type="text"
-                value={attackTargetId}
-                onChange={(e) => setAttackTargetId(e.target.value)}
-                placeholder="goblin-1"
-                aria-label="attack target id"
+            );
+          }
+          // Wave 2.11d reaction prompt: Take / Skip → SubmitCheck{take_reaction}.
+          if (prompt.kind?.case === 'reactionPrompt') {
+            const rp = prompt.kind.value;
+            const refStr = rp.reactionRef
+              ? `${rp.reactionRef.module}:${rp.reactionRef.type}:${rp.reactionRef.id}`
+              : 'unknown reaction';
+            const description =
+              rp.displayText !== ''
+                ? rp.displayText
+                : `${rp.triggerKind} reaction from ${rp.triggerSourceEntityId}`;
+            return (
+              <div
+                data-testid="reaction-prompt"
                 style={{
-                  width: 140,
-                  background: '#333',
-                  color: '#eee',
-                  border: '1px solid #555',
-                  padding: '2px 4px',
+                  margin: '16px 0 8px',
+                  padding: '12px',
+                  background: '#2a1a1a',
+                  border: '1px solid #aa4a4a',
+                  borderRadius: 4,
                 }}
-              />
-            </label>
-            <button
-              onClick={() => void handleAttack()}
-              disabled={
-                !combatEnabled || !attackTargetId.trim() || takeActionLoading
-              }
-              style={{
-                padding: '4px 12px',
-                background:
-                  combatEnabled && attackTargetId.trim()
-                    ? '#4a2a2a'
-                    : '#2a2a2a',
-                color: combatEnabled && attackTargetId.trim() ? '#f88' : '#666',
-                border: '1px solid #555',
-                cursor:
-                  combatEnabled && attackTargetId.trim() && !takeActionLoading
-                    ? 'pointer'
-                    : 'not-allowed',
-              }}
-            >
-              {takeActionLoading ? 'Attacking…' : 'Attack'}
-            </button>
-            <button
-              onClick={() => void handleEndTurn()}
-              disabled={!combatEnabled || endTurnLoading}
-              style={{
-                padding: '4px 12px',
-                background: combatEnabled ? '#2a4a2a' : '#2a2a2a',
-                color: combatEnabled ? '#8f8' : '#666',
-                border: '1px solid #555',
-                cursor:
-                  combatEnabled && !endTurnLoading ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {endTurnLoading ? 'Ending…' : 'End turn'}
-            </button>
-          </div>
-          {takeActionError && (
-            <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
-              TakeAction error: {takeActionError.message}
-            </div>
-          )}
-          {endTurnError && (
-            <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
-              EndTurn error: {endTurnError.message}
-            </div>
-          )}
-        </div>
-
-        {/* Right column: event log */}
-        <div>
-          <h3 style={{ margin: '0 0 8px', color: '#aaa' }}>
-            Recent events ({log.length})
-          </h3>
-          <div
-            style={{
-              background: '#0a0a0a',
-              border: '1px solid #333',
-              padding: 8,
-              fontSize: 11,
-              height: 400,
-              overflowY: 'auto',
-            }}
-          >
-            {log.length === 0 && (
-              <span style={{ color: '#555' }}>(waiting for events…)</span>
-            )}
-            {log.map((entry, i) => (
-              <div key={i} style={{ color: '#9d9', marginBottom: 2 }}>
-                {entry}
+              >
+                <h3 style={{ margin: '0 0 8px', color: '#faa' }}>
+                  Reaction prompt: {refStr}
+                </h3>
+                <div style={{ fontSize: 13, marginBottom: 8 }}>
+                  {description}
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button
+                    data-testid="reaction-take-btn"
+                    onClick={() => void handleSubmitReaction(true)}
+                    disabled={submitCheckLoading}
+                    style={{
+                      padding: '4px 12px',
+                      background: '#3a2a2a',
+                      color: '#faa',
+                      border: '1px solid #aa4a4a',
+                      cursor: submitCheckLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {submitCheckLoading ? 'Submitting…' : 'Take'}
+                  </button>
+                  <button
+                    data-testid="reaction-skip-btn"
+                    onClick={() => void handleSubmitReaction(false)}
+                    disabled={submitCheckLoading}
+                    style={{
+                      padding: '4px 12px',
+                      background: '#2a2a2a',
+                      color: '#bbb',
+                      border: '1px solid #555',
+                      cursor: submitCheckLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Skip
+                  </button>
+                </div>
+                {submitCheckError && (
+                  <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
+                    SubmitCheck error: {submitCheckError.message}
+                  </div>
+                )}
               </div>
-            ))}
+            );
+          }
+          // dialogue / targetSelect — Wave 2.10+
+          return (
+            <div
+              data-testid="unsupported-prompt"
+              style={{
+                margin: '16px 0 8px',
+                padding: '8px 12px',
+                background: '#1a1a1a',
+                border: '1px solid #555',
+                borderRadius: 4,
+                color: '#888',
+                fontSize: 12,
+              }}
+            >
+              Prompt type {prompt.kind?.case ?? 'unknown'}: not yet supported
+              (Wave 2.10+)
+            </div>
+          );
+        })()}
+
+      {/* Wave 2.11d ready-reactions panel: per-character per-reaction toggles.
+          Server is source of truth (reactionReadiness map flows from
+          SetReactionReady responses + optimistic local mirror). Reads from
+          state.reactionReadiness. Renders fixed rows for OA + Shield in this
+          wave; future waves add Counterspell + Lucky as additional rows.
+
+          Tri-state per #410: undefined means UNKNOWN — the snapshot
+          proto does not carry reaction_readiness today (rpg-api-protos#158),
+          so server-seeded defaults (e.g. OA default-on at AddPlayer for
+          melee combatants) are invisible to the client until the player
+          toggles. The panel MUST render "unknown" instead of falsely
+          defaulting to unready, which would lie about server-seeded
+          ready state and cause the first click to send ready=true to a
+          server that already considered it ready. The first toggle
+          attempts ready=true (the natural opt-in action) and resolves
+          the unknown locally. */}
+      <h3 style={{ margin: '16px 0 4px', color: '#aaa' }}>Ready reactions</h3>
+      <div
+        data-testid="ready-reactions-panel"
+        style={{ fontSize: 12, marginBottom: 12 }}
+      >
+        {(() => {
+          const myReadiness =
+            encounterState.state.reactionReadiness.get(entityId);
+          const rows: Array<{
+            refStr: string;
+            refTriple: { module: string; type: string; id: string };
+            label: string;
+            hint: string;
+          }> = [
+            {
+              refStr: 'dnd5e:conditions:opportunity_attack',
+              refTriple: {
+                module: 'dnd5e',
+                type: 'conditions',
+                id: 'opportunity_attack',
+              },
+              label: 'Opportunity Attack',
+              hint: 'Free — react when an enemy leaves your reach',
+            },
+            {
+              refStr: 'dnd5e:spells:shield',
+              refTriple: {
+                module: 'dnd5e',
+                type: 'spells',
+                id: 'shield',
+              },
+              label: 'Shield',
+              hint: 'Spell slot — react to add +5 AC when hit',
+            },
+          ];
+          return rows.map((row) => {
+            const ready = myReadiness?.get(row.refStr);
+            // Tri-state label + next-action computation. UNKNOWN clicks
+            // attempt ready=true (the opt-in action); KNOWN clicks flip.
+            const stateLabel =
+              ready === undefined ? 'unknown' : ready ? 'READY' : 'unready';
+            const nextReady = ready === undefined ? true : !ready;
+            const ariaAction =
+              ready === undefined ? 'ready' : ready ? 'unready' : 'ready';
+            // Visual treatment: ready=green (READY), false=dim grey
+            // (unready), undefined=dashed-border grey (unknown).
+            const background =
+              ready === true
+                ? '#2a3a2a'
+                : ready === false
+                  ? '#2a2a2a'
+                  : '#1f1f1f';
+            const color =
+              ready === true ? '#afa' : ready === false ? '#888' : '#aaa';
+            const borderColor =
+              ready === true ? '#4a6a4a' : ready === false ? '#444' : '#666';
+            const borderStyle = ready === undefined ? 'dashed' : 'solid';
+            return (
+              <div
+                key={row.refStr}
+                data-testid={`reaction-row-${row.refStr}`}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '4px 0',
+                  borderBottom: '1px solid #2a2a2a',
+                }}
+              >
+                <div>
+                  <div style={{ color: '#ddd', fontWeight: 500 }}>
+                    {row.label}
+                  </div>
+                  <div style={{ color: '#888', fontSize: 11 }}>{row.hint}</div>
+                </div>
+                <button
+                  data-testid={`reaction-toggle-${row.refStr}`}
+                  onClick={() =>
+                    void handleToggleReactionReady(row.refTriple, nextReady)
+                  }
+                  disabled={setReactionReadyLoading || encounterEnded}
+                  aria-pressed={ready === true}
+                  aria-label={`${row.label}: ${stateLabel} (click to ${ariaAction})`}
+                  style={{
+                    padding: '2px 10px',
+                    background,
+                    color,
+                    border: `1px ${borderStyle} ${borderColor}`,
+                    cursor:
+                      setReactionReadyLoading || encounterEnded
+                        ? 'not-allowed'
+                        : 'pointer',
+                    fontSize: 11,
+                  }}
+                >
+                  {stateLabel}
+                </button>
+              </div>
+            );
+          });
+        })()}
+        {setReactionReadyError && (
+          <div style={{ color: '#f88', marginTop: 4, fontSize: 11 }}>
+            SetReactionReady error: {setReactionReadyError.message}
+          </div>
+        )}
+      </div>
+
+      {/* Visual map (Three.js HexGrid). Renders when viewMode is 'visual' or
+          'both'. Click a hex to move there (the existing path-preview from
+          the game routes drives the route); click a monster entity to
+          attack it. Move/attack errors surface via the dev panel's existing
+          error rows below. */}
+      {showVisual && (
+        <div
+          data-testid="visual-map-container"
+          style={{
+            width: '100%',
+            height: showDev ? '420px' : 'calc(100vh - 220px)',
+            marginBottom: 16,
+          }}
+        >
+          <PlaytestMap
+            entities={encounterState.state.entities}
+            entityMeta={encounterState.state.entityMeta}
+            revealedHexes={encounterState.state.revealedHexes}
+            entityHP={encounterState.state.entityHP}
+            myEntityId={entityId}
+            fallbackPosition={fallback}
+            // In TURN_BASED we gate moves on whose turn it is. In FREE_ROAM
+            // (or unspecified mode) we let clicks dispatch — the server is
+            // source of truth and will reject if the request is invalid.
+            isMyTurn={
+              encounterState.state.mode === EncounterMode.TURN_BASED
+                ? isMyTurn
+                : true
+            }
+            onMove={(path) => {
+              void handleVisualMove(path);
+            }}
+            onEntityClick={(targetId) => {
+              void handleVisualEntityClick(targetId);
+            }}
+          />
+        </div>
+      )}
+
+      {showDev && (
+        <div
+          style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}
+        >
+          {/* Left column: entities + hexes */}
+          <div>
+            {/* Entities table */}
+            <h3 style={{ margin: '0 0 8px', color: '#aaa' }}>
+              Entities ({entitiesArray.length})
+            </h3>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                marginBottom: 16,
+                fontSize: 13,
+              }}
+            >
+              <thead>
+                <tr style={{ color: '#888', textAlign: 'left' }}>
+                  <th style={{ padding: '4px 8px' }}>id</th>
+                  <th style={{ padding: '4px 8px' }}>type</th>
+                  <th style={{ padding: '4px 8px' }}>HP</th>
+                  <th style={{ padding: '4px 8px' }}>x</th>
+                  <th style={{ padding: '4px 8px' }}>y</th>
+                  <th style={{ padding: '4px 8px' }}>z</th>
+                  <th style={{ padding: '4px 8px' }}>ghost?</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entitiesArray.map(([id, entity]) => {
+                  const isLocalPlayer = id === entityId;
+                  // Only show active-actor highlight in TURN_BASED mode to avoid
+                  // stale highlighting when activeEntityId persists after mode changes.
+                  const isActiveActor =
+                    encounterState.state.mode === EncounterMode.TURN_BASED &&
+                    encounterState.state.activeEntityId !== '' &&
+                    id === encounterState.state.activeEntityId;
+                  const meta = encounterState.state.entityMeta.get(id);
+                  const hp = encounterState.state.entityHP.get(id);
+                  // Row background: active actor (yellow/orange) takes priority over
+                  // local player (green) so both states are distinguishable when
+                  // it's the local player's turn.
+                  const rowBackground = isActiveActor
+                    ? '#2a2200'
+                    : isLocalPlayer
+                      ? '#1a2a1a'
+                      : 'transparent';
+                  const typeLabel =
+                    meta?.type === EntityType.MONSTER
+                      ? `MONSTER${meta.monsterRefId ? ` (${meta.monsterRefId})` : ''}`
+                      : meta?.type === EntityType.CHARACTER
+                        ? 'CHARACTER'
+                        : meta
+                          ? (EntityType[meta.type] ?? '?')
+                          : '—';
+                  return (
+                    <tr
+                      key={id}
+                      style={{
+                        background: rowBackground,
+                        borderTop: '1px solid #333',
+                        outline: isActiveActor
+                          ? '1px solid #aa6600'
+                          : undefined,
+                      }}
+                    >
+                      <td style={{ padding: '4px 8px' }}>
+                        {isActiveActor ? '→ ' : ''}
+                        {id}
+                      </td>
+                      <td style={{ padding: '4px 8px', color: '#aaa' }}>
+                        {typeLabel}
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        {hp ? `${hp.current}/${hp.max}` : '—'}
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        {entity.position?.x ?? '—'}
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        {entity.position?.y ?? '—'}
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        {entity.position?.z ?? '—'}
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        {entity.ghost ? 'yes' : ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {entitiesArray.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      style={{ padding: '4px 8px', color: '#555' }}
+                    >
+                      (no entities yet)
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            {/* Revealed hexes */}
+            <h3 style={{ margin: '0 0 8px', color: '#aaa' }}>
+              Revealed hexes ({encounterState.state.revealedHexes.size})
+            </h3>
+            <div style={{ fontSize: 12, color: '#777', marginBottom: 16 }}>
+              {revealedKeys.length === 0
+                ? '(none)'
+                : revealedKeys.slice(0, 20).join(', ') +
+                  (revealedKeys.length > 20
+                    ? ` … +${revealedKeys.length - 20} more`
+                    : '')}
+            </div>
+
+            {/* Move controls */}
+            <h3 style={{ margin: '0 0 8px', color: '#aaa' }}>
+              Move {entityId}
+            </h3>
+            {!canMove && (
+              <div style={{ color: '#666', fontSize: 12, marginBottom: 8 }}>
+                (waiting for first event — position unknown)
+              </div>
+            )}
+            {usingFallback && (
+              <div style={{ color: '#aa8', fontSize: 12, marginBottom: 8 }}>
+                (using seeded fallback position — no events received yet)
+              </div>
+            )}
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              <label style={{ fontSize: 12 }}>
+                Q{' '}
+                <input
+                  type="number"
+                  value={targetQ}
+                  onChange={(e) => setTargetQ(Number(e.target.value))}
+                  style={{
+                    width: 60,
+                    background: '#333',
+                    color: '#eee',
+                    border: '1px solid #555',
+                    padding: '2px 4px',
+                  }}
+                />
+              </label>
+              <label style={{ fontSize: 12 }}>
+                R{' '}
+                <input
+                  type="number"
+                  value={targetR}
+                  onChange={(e) => setTargetR(Number(e.target.value))}
+                  style={{
+                    width: 60,
+                    background: '#333',
+                    color: '#eee',
+                    border: '1px solid #555',
+                    padding: '2px 4px',
+                  }}
+                />
+              </label>
+              <label style={{ fontSize: 12 }}>
+                S{' '}
+                <input
+                  type="number"
+                  value={targetS}
+                  onChange={(e) => setTargetS(Number(e.target.value))}
+                  style={{
+                    width: 60,
+                    background: '#333',
+                    color: '#eee',
+                    border: '1px solid #555',
+                    padding: '2px 4px',
+                  }}
+                />
+              </label>
+              <button
+                onClick={() => void handleMove()}
+                disabled={!canMove || moveLoading}
+                style={{
+                  padding: '4px 12px',
+                  background: canMove ? '#2a4a2a' : '#2a2a2a',
+                  color: canMove ? '#8f8' : '#666',
+                  border: '1px solid #555',
+                  cursor: canMove && !moveLoading ? 'pointer' : 'not-allowed',
+                }}
+              >
+                {moveLoading ? 'Moving…' : 'Move there'}
+              </button>
+            </div>
+            {moveError && (
+              <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
+                Move error: {moveError.message}
+              </div>
+            )}
+
+            {/* Open-door controls (Wave 2.7 verification scaffold; deleted in slice 3) */}
+            <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Open door</h3>
+            <div style={{ fontSize: 12, color: '#777', marginBottom: 8 }}>
+              Open doors ({openDoorKeys.length}):{' '}
+              {openDoorKeys.length === 0 ? '(none)' : openDoorKeys.join(', ')}
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              <label style={{ fontSize: 12 }}>
+                Door id{' '}
+                <input
+                  type="text"
+                  value={targetDoorId}
+                  onChange={(e) => setTargetDoorId(e.target.value)}
+                  placeholder="door-east"
+                  aria-label="door id"
+                  style={{
+                    width: 140,
+                    background: '#333',
+                    color: '#eee',
+                    border: '1px solid #555',
+                    padding: '2px 4px',
+                  }}
+                />
+              </label>
+              <button
+                onClick={() => void handleOpenDoor()}
+                disabled={!targetDoorId.trim() || interactLoading}
+                style={{
+                  padding: '4px 12px',
+                  background: targetDoorId.trim() ? '#2a4a2a' : '#2a2a2a',
+                  color: targetDoorId.trim() ? '#8f8' : '#666',
+                  border: '1px solid #555',
+                  cursor:
+                    targetDoorId.trim() && !interactLoading
+                      ? 'pointer'
+                      : 'not-allowed',
+                }}
+              >
+                {interactLoading ? 'Opening…' : 'Open door'}
+              </button>
+            </div>
+            {interactError && (
+              <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
+                Interact error: {interactError.message}
+              </div>
+            )}
+
+            {/* Combat controls (Wave 2.8 verification scaffold; deleted in slice 3) */}
+            <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Combat</h3>
+            <div style={{ fontSize: 12, color: '#777', marginBottom: 8 }}>
+              Statuses ({myStatuses.length}):{' '}
+              {myStatuses.length === 0
+                ? '(none)'
+                : myStatuses.map((s) => s.source.id).join(', ')}
+            </div>
+            {/* HP is now shown inline in the entities table above. */}
+            {!isMyTurn &&
+              encounterState.state.mode === EncounterMode.TURN_BASED && (
+                <div style={{ color: '#aa8', fontSize: 12, marginBottom: 8 }}>
+                  (waiting for your turn — active actor:{' '}
+                  {encounterState.state.activeEntityId || 'none'})
+                </div>
+              )}
+            {encounterState.state.mode !== EncounterMode.TURN_BASED && (
+              <div style={{ color: '#666', fontSize: 12, marginBottom: 8 }}>
+                (combat actions enabled only in TURN_BASED mode)
+              </div>
+            )}
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              <label style={{ fontSize: 12 }}>
+                Target id{' '}
+                <input
+                  type="text"
+                  value={attackTargetId}
+                  onChange={(e) => setAttackTargetId(e.target.value)}
+                  placeholder="goblin-1"
+                  aria-label="attack target id"
+                  style={{
+                    width: 140,
+                    background: '#333',
+                    color: '#eee',
+                    border: '1px solid #555',
+                    padding: '2px 4px',
+                  }}
+                />
+              </label>
+              <button
+                onClick={() => void handleAttack()}
+                disabled={
+                  !combatEnabled || !attackTargetId.trim() || takeActionLoading
+                }
+                style={{
+                  padding: '4px 12px',
+                  background:
+                    combatEnabled && attackTargetId.trim()
+                      ? '#4a2a2a'
+                      : '#2a2a2a',
+                  color:
+                    combatEnabled && attackTargetId.trim() ? '#f88' : '#666',
+                  border: '1px solid #555',
+                  cursor:
+                    combatEnabled && attackTargetId.trim() && !takeActionLoading
+                      ? 'pointer'
+                      : 'not-allowed',
+                }}
+              >
+                {takeActionLoading ? 'Attacking…' : 'Attack'}
+              </button>
+              <button
+                onClick={() => void handleEndTurn()}
+                disabled={!combatEnabled || endTurnLoading}
+                style={{
+                  padding: '4px 12px',
+                  background: combatEnabled ? '#2a4a2a' : '#2a2a2a',
+                  color: combatEnabled ? '#8f8' : '#666',
+                  border: '1px solid #555',
+                  cursor:
+                    combatEnabled && !endTurnLoading
+                      ? 'pointer'
+                      : 'not-allowed',
+                }}
+              >
+                {endTurnLoading ? 'Ending…' : 'End turn'}
+              </button>
+            </div>
+            {takeActionError && (
+              <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
+                TakeAction error: {takeActionError.message}
+              </div>
+            )}
+            {endTurnError && (
+              <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
+                EndTurn error: {endTurnError.message}
+              </div>
+            )}
+          </div>
+
+          {/* Right column: event log */}
+          <div>
+            <h3 style={{ margin: '0 0 8px', color: '#aaa' }}>
+              Recent events ({log.length})
+            </h3>
+            <div
+              style={{
+                background: '#0a0a0a',
+                border: '1px solid #333',
+                padding: 8,
+                fontSize: 11,
+                height: 400,
+                overflowY: 'auto',
+              }}
+            >
+              {log.length === 0 && (
+                <span style={{ color: '#555' }}>(waiting for events…)</span>
+              )}
+              {log.map((entry, i) => (
+                <div key={i} style={{ color: '#9d9', marginBottom: 2 }}>
+                  {entry}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
