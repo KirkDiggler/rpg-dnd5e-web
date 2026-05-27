@@ -237,7 +237,20 @@ export function PlaytestHarness() {
         encounterState.applyEntityDamaged(e);
         const hp = e.hpAfter;
         const hpStr = hp ? ` hp_after=${hp.current}/${hp.max}` : '';
-        addLog(`EntityDamaged ${e.entityId} amount=${e.amount}${hpStr}`);
+        const breakdownStr =
+          e.damageBreakdown && e.damageBreakdown.length > 0
+            ? ' [' +
+              e.damageBreakdown
+                .map(
+                  (c) =>
+                    `${c.source}:${c.amount}${c.isCritical ? '(crit)' : ''}`
+                )
+                .join(', ') +
+              ']'
+            : '';
+        addLog(
+          `EntityDamaged ${e.entityId} amount=${e.amount}${hpStr}${breakdownStr}`
+        );
       },
       onStatusApplied: (e) => {
         encounterState.applyStatusApplied(e);
