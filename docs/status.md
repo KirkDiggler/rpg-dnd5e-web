@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-05-02
+updated: 2026-05-27
 confidence: medium — seeded from full code read-through, git log, and open PRs; needs Kirk's correction pass on stream-bug details
 ---
 
@@ -11,6 +11,11 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+**Chapter 2 Wave 1 (rogue) — no web changes required (2026-05-27)** — `DamageSourceBadge`
+already renders `dnd5e:conditions:sneak_attack` correctly: the `sourceRef.source.case === 'condition'`
+path routes to `ConditionDisplay` → `getConditionDisplay(ConditionId.SNEAK_ATTACK)`, and the legacy
+string fallback title-cases `sneak_attack` → `✨ Sneak Attack`. No web PR needed for Wave 1.
 
 - **PR #377** (`fix/376-room-revealed-all-rooms`, open since 2026-04-06) — Fixes
   the bug where `onRoomRevealed` only added the current room to the dungeon map
