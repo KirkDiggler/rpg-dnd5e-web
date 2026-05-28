@@ -11,11 +11,13 @@
 import { create } from '@bufbuild/protobuf';
 import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import {
+  CharacterDetailsSchema,
   CombatStateSchema,
   DoorInfoSchema,
   EncounterStateDataSchema,
   type EntityState,
   EntityStateSchema,
+  MonsterDetailsSchema,
   RoomLayoutSchema,
   TurnStateSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
@@ -233,6 +235,35 @@ describe('applySnapshotToState', () => {
     expect(state.doors.size).toBe(0);
   });
 
+  it('seeds entityAC from character and monster details in snapshot entities', () => {
+    const snapshot = create(EncounterStateDataSchema, {
+      encounterId: 'enc-1',
+      dungeonId: 'dng-1',
+      dungeonState: DungeonState.ACTIVE,
+      entities: {
+        'char-1': create(EntityStateSchema, {
+          entityId: 'char-1',
+          entityType: EntityType.CHARACTER,
+          details: {
+            case: 'characterDetails',
+            value: create(CharacterDetailsSchema, { armorClass: 15 }),
+          },
+        }),
+        'goblin-1': create(EntityStateSchema, {
+          entityId: 'goblin-1',
+          entityType: EntityType.MONSTER,
+          details: {
+            case: 'monsterDetails',
+            value: create(MonsterDetailsSchema, { armorClass: 13 }),
+          },
+        }),
+      },
+    });
+    const state = applySnapshotToState(snapshot);
+    expect(state.entityAC.get('char-1')).toBe(15);
+    expect(state.entityAC.get('goblin-1')).toBe(13);
+  });
+
   it('produces independent state from previous calls (no shared references)', () => {
     const snapshot1 = makeSnapshot({
       encounterId: 'enc-1',
@@ -380,6 +411,34 @@ describe('mergeEntityUpdates', () => {
     expect(next.currentRoomId).toBe('room-1');
     expect(next.revealedRoomIds).toEqual(['room-1']);
     expect(next.roomsCleared).toBe(2);
+  });
+
+  it('extracts entityAC from character details', () => {
+    const prev = applySnapshotToState(makeSnapshot({}));
+    const charWithAC = create(EntityStateSchema, {
+      entityId: 'char-1',
+      entityType: EntityType.CHARACTER,
+      details: {
+        case: 'characterDetails',
+        value: create(CharacterDetailsSchema, { armorClass: 15 }),
+      },
+    });
+    const next = mergeEntityUpdates(prev, [charWithAC]);
+    expect(next.entityAC.get('char-1')).toBe(15);
+  });
+
+  it('extracts entityAC from monster details', () => {
+    const prev = applySnapshotToState(makeSnapshot({}));
+    const monster = create(EntityStateSchema, {
+      entityId: 'goblin-1',
+      entityType: EntityType.MONSTER,
+      details: {
+        case: 'monsterDetails',
+        value: create(MonsterDetailsSchema, { armorClass: 13 }),
+      },
+    });
+    const next = mergeEntityUpdates(prev, [monster]);
+    expect(next.entityAC.get('goblin-1')).toBe(13);
   });
 });
 
