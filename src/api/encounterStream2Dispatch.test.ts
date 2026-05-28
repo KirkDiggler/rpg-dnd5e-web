@@ -92,6 +92,29 @@ describe('dispatchEncounterStream2Event', () => {
     expect(onEntityDamaged).toHaveBeenCalledTimes(1);
   });
 
+  it('passes damageBreakdown components to onEntityDamaged when present', () => {
+    const onEntityDamaged = vi.fn();
+    const options: EncounterStream2Options = { onEntityDamaged };
+    const event = makeEvent('entityDamaged', {
+      entityId: 'goblin-1',
+      amount: 10,
+      hpAfter: { current: 90, max: 100 },
+      damageBreakdown: [
+        { source: 'dnd5e:weapons:shortsword', amount: 6, isCritical: false },
+        { source: 'dnd5e:abilities:dex', amount: 3, isCritical: false },
+        { source: 'dnd5e:features:sneak_attack', amount: 1, isCritical: false },
+      ],
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onEntityDamaged).toHaveBeenCalledTimes(1);
+    const received = onEntityDamaged.mock.calls[0][0];
+    expect(received.damageBreakdown).toHaveLength(3);
+    expect(received.damageBreakdown[0].source).toBe('dnd5e:weapons:shortsword');
+    expect(received.damageBreakdown[2].source).toBe(
+      'dnd5e:features:sneak_attack'
+    );
+  });
+
   it('routes statusApplied to onStatusApplied', () => {
     const onStatusApplied = vi.fn();
     const options: EncounterStream2Options = { onStatusApplied };

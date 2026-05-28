@@ -25,7 +25,7 @@
     "@connectrpc/connect": "^2.0.2",
     "@connectrpc/connect-web": "^2.0.2",
     "@discord/embedded-app-sdk": "^2.1.0",
-    "@kirkdiggler/rpg-api-protos": "github:KirkDiggler/rpg-api-protos#cdd9e0e3945d60ee1148599bc4663c5dfb083ba7",
+    "@kirkdiggler/rpg-api-protos": "github:KirkDiggler/rpg-api-protos#3a5e2bc47447",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-tabs": "^1.1.12",
