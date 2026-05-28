@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-05-27
+updated: 2026-05-28
 confidence: medium — seeded from full code read-through, git log, and open PRs; needs Kirk's correction pass on stream-bug details
 ---
 
@@ -11,11 +11,6 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
-
-**Chapter 2 Wave 1 (rogue) — no web changes required (2026-05-27)** — `DamageSourceBadge`
-already renders `dnd5e:conditions:sneak_attack` correctly: the `sourceRef.source.case === 'condition'`
-path routes to `ConditionDisplay` → `getConditionDisplay(ConditionId.SNEAK_ATTACK)`, and the legacy
-string fallback title-cases `sneak_attack` → `✨ Sneak Attack`. No web PR needed for Wave 1.
 
 - **PR #377** (`fix/376-room-revealed-all-rooms`, open since 2026-04-06) — Fixes
   the bug where `onRoomRevealed` only added the current room to the dungeon map
@@ -34,6 +29,14 @@ string fallback title-cases `sneak_attack` → `✨ Sneak Attack`. No web PR nee
   Independently useful but unblocked by the stream issue.
 
 ## Recently landed (last 6 weeks, highlights)
+
+- **Chapter 2 Wave 1 (rogue) — Sneak Attack damage breakdown in combat log (PR #415, 2026-05-28)** —
+  `PlaytestHarness` now renders per-source damage components from the v1alpha2
+  `EntityDamaged.damage_breakdown` field (added in rpg-api-protos#161, populated by
+  rpg-api#557). Combat log shows e.g. `[dnd5e:weapons:shortsword:2, dnd5e:abilities:dex:3,
+dnd5e:features:sneak_attack:1]`. Verified end-to-end via MCP playtest. (An earlier read
+  suggested no web work was needed because `DamageSourceBadge` handles the source string —
+  but the v2 stream didn't carry the breakdown until this wave wired it through.)
 
 - **Unified entity state** (PR #371, 2026-04-05) — `useEncounterState` hook
   replaces fragmented `monsters[]`, `fullCharactersMap`, and `dungeonMap.entities`
