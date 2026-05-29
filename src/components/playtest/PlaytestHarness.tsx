@@ -1112,6 +1112,7 @@ export function PlaytestHarness() {
                   <th style={{ padding: '4px 8px' }}>id</th>
                   <th style={{ padding: '4px 8px' }}>type</th>
                   <th style={{ padding: '4px 8px' }}>HP</th>
+                  <th style={{ padding: '4px 8px' }}>AC</th>
                   <th style={{ padding: '4px 8px' }}>x</th>
                   <th style={{ padding: '4px 8px' }}>y</th>
                   <th style={{ padding: '4px 8px' }}>z</th>
@@ -1129,6 +1130,7 @@ export function PlaytestHarness() {
                     id === encounterState.state.activeEntityId;
                   const meta = encounterState.state.entityMeta.get(id);
                   const hp = encounterState.state.entityHP.get(id);
+                  const ac = encounterState.state.entityAC.get(id);
                   // Row background: active actor (yellow/orange) takes priority over
                   // local player (green) so both states are distinguishable when
                   // it's the local player's turn.
@@ -1167,6 +1169,9 @@ export function PlaytestHarness() {
                         {hp ? `${hp.current}/${hp.max}` : '—'}
                       </td>
                       <td style={{ padding: '4px 8px' }}>
+                        {ac !== undefined ? ac : '—'}
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
                         {entity.position?.x ?? '—'}
                       </td>
                       <td style={{ padding: '4px 8px' }}>
@@ -1184,7 +1189,7 @@ export function PlaytestHarness() {
                 {entitiesArray.length === 0 && (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       style={{ padding: '4px 8px', color: '#555' }}
                     >
                       (no entities yet)

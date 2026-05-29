@@ -99,6 +99,14 @@ export interface LocalEncounterState {
    */
   entityHP: Map<string, EntityHP>;
   /**
+   * Per-entity armor class keyed by entity id. Populated by `mergeEntityUpdates`
+   * from EntityState.details (characterDetails.armorClass or
+   * monsterDetails.armorClass). Available when full v1alpha1 entity data flows
+   * through the state (snapshot path). Absent for v1alpha2-stub entities that
+   * have not yet received a full EntityState update.
+   */
+  entityAC: Map<string, number>;
+  /**
    * v1alpha2 active conditions per entity, keyed by entity id. Populated by
    * `applyStatusApplied`. Conditions with the same `source` ref replace each
    * other; multiple distinct conditions stack.
@@ -208,6 +216,7 @@ export function createEmptyEncounterState(): LocalEncounterState {
     doors: new Map(),
     openDoors: new Set(),
     entityHP: new Map(),
+    entityAC: new Map(),
     entityStatuses: new Map(),
     entityMeta: new Map(),
     initiativeOrder: [],
@@ -271,6 +280,25 @@ export function applySnapshotToState(
     // EntityDamaged / StatusApplied / ModeChanged / TurnStarted events;
     // preserve across same-encounter v1 snapshots (deltas aren't replayed).
     entityHP: sameEncounter ? prev.entityHP : new Map(),
+    // Seed entityAC from the v1alpha1 snapshot entities, which carry full details.
+    // Merge with any AC already tracked so that same-encounter delta events aren't lost.
+    entityAC: (() => {
+      const base = sameEncounter
+        ? new Map(prev.entityAC)
+        : new Map<string, number>();
+      for (const entity of Object.values(proto.entities ?? {})) {
+        const ac =
+          entity.details.case === 'characterDetails'
+            ? entity.details.value.armorClass
+            : entity.details.case === 'monsterDetails'
+              ? entity.details.value.armorClass
+              : undefined;
+        if (ac !== undefined && ac !== 0) {
+          base.set(entity.entityId, ac);
+        }
+      }
+      return base;
+    })(),
     entityStatuses: sameEncounter ? prev.entityStatuses : new Map(),
     // v2 entity identity metadata (type, monster ref) flows only via
     // EntityAppeared — not replayed on v1 snapshots. Preserve across same-encounter syncs.
@@ -309,10 +337,26 @@ export function mergeEntityUpdates(
   updates: EntityState[]
 ): LocalEncounterState {
   const newEntities = new Map(prev.entities);
+  const newAC = new Map(prev.entityAC);
+  let acChanged = false;
   for (const entity of updates) {
     newEntities.set(entity.entityId, entity);
+    const ac =
+      entity.details.case === 'characterDetails'
+        ? entity.details.value.armorClass
+        : entity.details.case === 'monsterDetails'
+          ? entity.details.value.armorClass
+          : undefined;
+    if (ac !== undefined && ac !== 0) {
+      newAC.set(entity.entityId, ac);
+      acChanged = true;
+    }
   }
-  return { ...prev, entities: newEntities };
+  return {
+    ...prev,
+    entities: newEntities,
+    entityAC: acChanged ? newAC : prev.entityAC,
+  };
 }
 
 /**
