@@ -1267,6 +1267,7 @@ describe('applyEntityMetaFromAppeared', () => {
       'goblin-1',
       EntityTypeV2.MONSTER,
       'goblin',
+      undefined,
       undefined
     );
     const meta = after.entityMeta.get('goblin-1');
@@ -1280,6 +1281,7 @@ describe('applyEntityMetaFromAppeared', () => {
       prev,
       'char-alice',
       EntityTypeV2.CHARACTER,
+      undefined,
       undefined,
       undefined
     );
@@ -1295,7 +1297,8 @@ describe('applyEntityMetaFromAppeared', () => {
       'goblin-1',
       EntityTypeV2.MONSTER,
       'goblin',
-      { current: 7, max: 7 }
+      { current: 7, max: 7 },
+      undefined
     );
     expect(after.entityHP.get('goblin-1')).toEqual({ current: 7, max: 7 });
   });
@@ -1307,6 +1310,7 @@ describe('applyEntityMetaFromAppeared', () => {
       'goblin-1',
       EntityTypeV2.MONSTER,
       'goblin',
+      undefined,
       undefined
     );
     expect(after.entityHP.size).toBe(0);
@@ -1319,6 +1323,7 @@ describe('applyEntityMetaFromAppeared', () => {
       'goblin-1',
       EntityTypeV2.MONSTER,
       'goblin',
+      undefined,
       undefined
     );
     state = applyEntityMetaFromAppeared(
@@ -1326,7 +1331,8 @@ describe('applyEntityMetaFromAppeared', () => {
       'goblin-1',
       EntityTypeV2.MONSTER,
       'hobgoblin',
-      { current: 11, max: 11 }
+      { current: 11, max: 11 },
+      undefined
     );
     expect(state.entityMeta.get('goblin-1')?.monsterRefId).toBe('hobgoblin');
     expect(state.entityHP.get('goblin-1')).toEqual({ current: 11, max: 11 });
@@ -1339,7 +1345,8 @@ describe('applyEntityMetaFromAppeared', () => {
       'goblin-1',
       EntityTypeV2.MONSTER,
       'goblin',
-      { current: 5, max: 7 }
+      { current: 5, max: 7 },
+      undefined
     );
     expect(prev.entityMeta.size).toBe(0);
     expect(prev.entityHP.size).toBe(0);
@@ -1352,6 +1359,7 @@ describe('applyEntityMetaFromAppeared', () => {
       'char-alice',
       EntityTypeV2.CHARACTER,
       undefined,
+      undefined,
       undefined
     );
     state = applyEntityMetaFromAppeared(
@@ -1359,6 +1367,7 @@ describe('applyEntityMetaFromAppeared', () => {
       'goblin-1',
       EntityTypeV2.MONSTER,
       'goblin',
+      undefined,
       undefined
     );
     expect(state.entityMeta.size).toBe(2);
@@ -1366,6 +1375,32 @@ describe('applyEntityMetaFromAppeared', () => {
       EntityTypeV2.CHARACTER
     );
     expect(state.entityMeta.get('goblin-1')?.type).toBe(EntityTypeV2.MONSTER);
+  });
+
+  it('seeds entityAC from v2 Entity.armor_class', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityMetaFromAppeared(
+      prev,
+      'char-charli',
+      EntityTypeV2.CHARACTER,
+      undefined,
+      { current: 12, max: 12 },
+      15
+    );
+    expect(after.entityAC.get('char-charli')).toBe(15);
+  });
+
+  it('does not touch entityAC when initialAC is undefined', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityMetaFromAppeared(
+      prev,
+      'char-charli',
+      EntityTypeV2.CHARACTER,
+      undefined,
+      undefined,
+      undefined
+    );
+    expect(after.entityAC.has('char-charli')).toBe(false);
   });
 });
 
@@ -1466,12 +1501,14 @@ describe('applyEntityAppearedBatch', () => {
         type: EntityTypeV2.CHARACTER,
         monsterRefId: undefined,
         initialHP: undefined,
+        initialAC: undefined,
       },
       {
         entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
         type: EntityTypeV2.MONSTER,
         monsterRefId: 'goblin',
         initialHP: { current: 7, max: 7 },
+        initialAC: undefined,
       },
     ]);
     expect(after.entities.size).toBe(2);
@@ -1497,6 +1534,7 @@ describe('applyEntityAppearedBatch', () => {
         type: EntityTypeV2.MONSTER,
         monsterRefId: 'goblin',
         initialHP: { current: 7, max: 7 },
+        initialAC: undefined,
       },
     ]);
     expect(prev.entities.size).toBe(0);
@@ -1517,9 +1555,32 @@ describe('applyEntityAppearedBatch', () => {
         type: EntityTypeV2.CHARACTER,
         monsterRefId: undefined,
         initialHP: undefined,
+        initialAC: undefined,
       },
     ]);
     expect(state.entities.get('mover')?.ghost).toBeFalsy();
+  });
+
+  it('seeds entityAC from initialAC in batch entries', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityAppearedBatch(prev, [
+      {
+        entity: makeTestEntity('char-charli', { x: 0, y: 0, z: 0 }),
+        type: EntityTypeV2.CHARACTER,
+        monsterRefId: undefined,
+        initialHP: { current: 12, max: 12 },
+        initialAC: 15,
+      },
+      {
+        entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
+        type: EntityTypeV2.MONSTER,
+        monsterRefId: 'goblin',
+        initialHP: { current: 7, max: 7 },
+        initialAC: 13,
+      },
+    ]);
+    expect(after.entityAC.get('char-charli')).toBe(15);
+    expect(after.entityAC.get('goblin-1')).toBe(13);
   });
 });
 
@@ -1544,7 +1605,8 @@ describe('applySnapshotToState — entityMeta + initiativeOrder delta preservati
       'goblin-1',
       EntityTypeV2.MONSTER,
       'goblin',
-      { current: 7, max: 7 }
+      { current: 7, max: 7 },
+      undefined
     );
 
     const refreshed = applySnapshotToState(
@@ -1578,6 +1640,7 @@ describe('applySnapshotToState — entityMeta + initiativeOrder delta preservati
       'goblin-1',
       EntityTypeV2.MONSTER,
       'goblin',
+      undefined,
       undefined
     );
     state = applyV2SnapshotTurnState(state, EncounterMode.TURN_BASED, {

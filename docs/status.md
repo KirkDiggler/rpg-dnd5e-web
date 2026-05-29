@@ -30,14 +30,12 @@ let it rot.
 
 ## Recently landed (last 6 weeks, highlights)
 
-- **Chapter 2 Wave 2 — AC column in harness entity panel (PR #416, 2026-05-28)** —
-  `PlaytestHarness` entity table now shows an AC column alongside HP. AC is
-  stored in `entityAC: Map<string, number>` on `LocalEncounterState`, seeded
-  from v1alpha1 `EntityState.details` (character and monster) via
-  `applySnapshotToState` and `mergeEntityUpdates`. Note: the current v1alpha2
-  stream proto does not carry AC on `CharacterData`/`MonsterData` (filed as a
-  proto gap); the column reads '—' for entities that have not gone through the
-  v1alpha1 snapshot path.
+- **Chapter 2 Wave 2 — AC column in harness entity panel (PR #418, 2026-05-29)** —
+  `PlaytestHarness` entity table shows an AC column alongside HP. AC is sourced
+  from the v2 `Entity.armor_class` field (rpg-api-protos#163, field 7 on Entity,
+  populated by rpg-api#562) via `applyEntityAppearedBatch` (snapshot seed) and
+  `applyEntityMetaFromAppeared` (EntityAppeared delta). Proto bumped from
+  `3a5e2bc47447` to `8974685`. Tested: charli=15, goblin=15 from wave-2-monk fixture.
 
 - **Chapter 2 Wave 1 (rogue) — Sneak Attack damage breakdown in combat log (PR #415, 2026-05-28)** —
   `PlaytestHarness` now renders per-source damage components from the v1alpha2
