@@ -420,7 +420,7 @@ export function applyEntityAppeared(
 
 /**
  * Apply a batch of entity appearances — each carrying both the v1alpha1
- * positional stub AND v1alpha2 meta (type, monsterRefId, initialHP) — in a
+ * positional stub AND v1alpha2 meta (type, monsterRefId, initialHP, initialAC) — in a
  * single state update. Use this instead of calling applyEntityAppeared +
  * applyEntityMeta per entity in a loop (which triggers N intermediate renders
  * and N Map clone operations for N entities).
@@ -434,14 +434,17 @@ export function applyEntityAppearedBatch(
     type: EntityType;
     monsterRefId: string | undefined;
     initialHP: { current: number; max: number } | undefined;
+    initialAC: number | undefined;
   }>
 ): LocalEncounterState {
   if (entries.length === 0) return prev;
   const newEntities = new Map(prev.entities);
   const newMeta = new Map(prev.entityMeta);
   const newHP = new Map(prev.entityHP);
+  const newAC = new Map(prev.entityAC);
   let hpChanged = false;
-  for (const { entity, type, monsterRefId, initialHP } of entries) {
+  let acChanged = false;
+  for (const { entity, type, monsterRefId, initialHP, initialAC } of entries) {
     newEntities.set(entity.entityId, { ...entity, ghost: false });
     newMeta.set(entity.entityId, { type, monsterRefId });
     if (initialHP !== undefined) {
@@ -451,12 +454,17 @@ export function applyEntityAppearedBatch(
       });
       hpChanged = true;
     }
+    if (initialAC !== undefined && initialAC !== 0) {
+      newAC.set(entity.entityId, initialAC);
+      acChanged = true;
+    }
   }
   return {
     ...prev,
     entities: newEntities,
     entityMeta: newMeta,
     entityHP: hpChanged ? newHP : prev.entityHP,
+    entityAC: acChanged ? newAC : prev.entityAC,
   };
 }
 
@@ -465,9 +473,9 @@ export function applyEntityAppearedBatch(
  *
  * Stores type and (for monsters) monsterRef.id in `entityMeta` so the harness
  * can render a type column and monster identifier without storing the full
- * v1alpha2 Entity proto. Also seeds `entityHP` if the entity carries initial
- * HP — this populates HP in the entities table before any damage events land,
- * fixing the issue where snapshot-seeded monsters showed no HP until first hit.
+ * v1alpha2 Entity proto. Also seeds `entityHP` and `entityAC` when the entity
+ * carries those values — this populates HP/AC in the entities table before any
+ * damage events land.
  *
  * Idempotent on a same-entity / same-meta re-appear: the meta entry is always
  * overwritten (the server's word is authoritative). Exported for testing.
@@ -477,20 +485,25 @@ export function applyEntityMetaFromAppeared(
   entityId: string,
   type: EntityType,
   monsterRefId: string | undefined,
-  initialHP: { current: number; max: number } | undefined
+  initialHP: { current: number; max: number } | undefined,
+  initialAC: number | undefined
 ): LocalEncounterState {
   const newMeta = new Map(prev.entityMeta);
   newMeta.set(entityId, { type, monsterRefId });
 
-  // Always overwrite HP when the entity carries initial HP — EntityAppeared is
-  // the entity's birth event and the server is authoritative. If a damage event
-  // has already set HP before EntityAppeared fires (unusual but possible in
-  // reconnect scenarios), the damage event's value will be overwritten. In
-  // practice EntityAppeared always precedes damage events for a given entity.
-  if (initialHP !== undefined) {
-    const newHP = new Map(prev.entityHP);
-    newHP.set(entityId, { current: initialHP.current, max: initialHP.max });
-    return { ...prev, entityMeta: newMeta, entityHP: newHP };
+  const hasHP = initialHP !== undefined;
+  const hasAC = initialAC !== undefined && initialAC !== 0;
+
+  if (hasHP || hasAC) {
+    const newHP = hasHP ? new Map(prev.entityHP) : prev.entityHP;
+    if (hasHP) {
+      newHP.set(entityId, { current: initialHP!.current, max: initialHP!.max });
+    }
+    const newAC = hasAC ? new Map(prev.entityAC) : prev.entityAC;
+    if (hasAC) {
+      newAC.set(entityId, initialAC!);
+    }
+    return { ...prev, entityMeta: newMeta, entityHP: newHP, entityAC: newAC };
   }
 
   return { ...prev, entityMeta: newMeta };
@@ -851,19 +864,20 @@ export interface UseEncounterStateResult {
   applyDoorOpened: (doorEntityId: string) => void;
   /**
    * Store v1alpha2 entity identity metadata from EntityAppeared.entity.
-   * Also seeds entityHP from entity.hp when the entity carries initial HP.
+   * Also seeds entityHP from entity.hp and entityAC from entity.armor_class.
    * Call after applyEntityAppeared so the v1alpha1 stub and v2 meta are both stored.
    */
   applyEntityMeta: (
     entityId: string,
     type: EntityType,
     monsterRefId: string | undefined,
-    initialHP: { current: number; max: number } | undefined
+    initialHP: { current: number; max: number } | undefined,
+    initialAC: number | undefined
   ) => void;
   /**
    * Apply a batch of entity appearances in a single state update to avoid N
    * intermediate renders when seeding multiple entities from a snapshot.
-   * Each entry carries the v1alpha1 positional stub plus v1alpha2 type/HP/meta.
+   * Each entry carries the v1alpha1 positional stub plus v1alpha2 type/HP/AC/meta.
    */
   applyEntityAppearedBatch: (
     entries: Array<{
@@ -871,6 +885,7 @@ export interface UseEncounterStateResult {
       type: EntityType;
       monsterRefId: string | undefined;
       initialHP: { current: number; max: number } | undefined;
+      initialAC: number | undefined;
     }>
   ) => void;
   /**
@@ -992,7 +1007,8 @@ export function useEncounterState(): UseEncounterStateResult {
       entityId: string,
       type: EntityType,
       monsterRefId: string | undefined,
-      initialHP: { current: number; max: number } | undefined
+      initialHP: { current: number; max: number } | undefined,
+      initialAC: number | undefined
     ) => {
       setState((prev) =>
         applyEntityMetaFromAppeared(
@@ -1000,7 +1016,8 @@ export function useEncounterState(): UseEncounterStateResult {
           entityId,
           type,
           monsterRefId,
-          initialHP
+          initialHP,
+          initialAC
         )
       );
     },
@@ -1014,6 +1031,7 @@ export function useEncounterState(): UseEncounterStateResult {
         type: EntityType;
         monsterRefId: string | undefined;
         initialHP: { current: number; max: number } | undefined;
+        initialAC: number | undefined;
       }>
     ) => {
       setState((prev) => applyEntityAppearedBatch(prev, entries));

@@ -166,6 +166,7 @@ export function PlaytestHarness() {
               initialHP: entity.hp
                 ? { current: entity.hp.current, max: entity.hp.max }
                 : undefined,
+              initialAC: entity.armorClass,
             }));
           if (entityEntries.length > 0) {
             encounterState.applyEntityAppearedBatch(entityEntries);
@@ -201,7 +202,7 @@ export function PlaytestHarness() {
           position: v2PositionToV1(e.entity.position),
         });
         encounterState.applyEntityAppeared(stub);
-        // Store v1alpha2 identity metadata and seed initial HP.
+        // Store v1alpha2 identity metadata and seed initial HP + AC.
         const monsterRefId =
           e.entity.data?.case === 'monster'
             ? e.entity.data.value.monsterRef?.id
@@ -213,7 +214,8 @@ export function PlaytestHarness() {
           e.entity.id,
           e.entity.type,
           monsterRefId,
-          initialHP
+          initialHP,
+          e.entity.armorClass
         );
         addLog(`EntityAppeared ${e.entity.id}`);
       },
