@@ -28,8 +28,6 @@ let it rot.
   Resolves weapons/shields from itemId fallback when equipment data is missing.
   Independently useful but unblocked by the stream issue.
 
-## Active work
-
 - **Chapter 2 Wave 3 — Rage button + ActivateFeature RPC (PR #420, open)** —
   `useActivateFeatureV2` hook wraps the v1alpha2 `ActivateFeature` unary RPC.
   `PlaytestHarness` has a Rage button (calls `ActivateFeature` with

@@ -1500,22 +1500,22 @@ export function PlaytestHarness() {
               <button
                 data-testid="rage-button"
                 onClick={() => void handleActivateRage()}
-                disabled={encounterEnded || activateFeatureLoading}
+                disabled={!combatEnabled || activateFeatureLoading}
                 style={{
                   padding: '4px 14px',
                   background: isRaging
                     ? '#4a1a00'
-                    : encounterEnded
-                      ? '#2a2a2a'
-                      : '#4a2200',
+                    : combatEnabled
+                      ? '#4a2200'
+                      : '#2a2a2a',
                   color: isRaging
                     ? '#ff8855'
-                    : encounterEnded
-                      ? '#666'
-                      : '#ffaa55',
-                  border: `1px solid ${isRaging ? '#aa4400' : encounterEnded ? '#444' : '#884400'}`,
+                    : combatEnabled
+                      ? '#ffaa55'
+                      : '#666',
+                  border: `1px solid ${isRaging ? '#aa4400' : combatEnabled ? '#884400' : '#444'}`,
                   cursor:
-                    encounterEnded || activateFeatureLoading
+                    !combatEnabled || activateFeatureLoading
                       ? 'not-allowed'
                       : 'pointer',
                   fontWeight: isRaging ? 'bold' : 'normal',
