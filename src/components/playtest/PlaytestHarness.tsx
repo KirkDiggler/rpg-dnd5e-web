@@ -7,6 +7,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useEffect, useRef, useState } from 'react';
 import { v2PositionToV1 } from '../../api/positionConvert';
+import { useActivateFeatureV2 } from '../../api/useActivateFeatureV2';
 import { useDevPlayerIdAuth } from '../../api/useDevPlayerIdAuth';
 import { useEncounterStream2 } from '../../api/useEncounterStream2';
 import { useEndTurnV2 } from '../../api/useEndTurnV2';
@@ -36,6 +37,12 @@ const ATTACK_ACTION_REF = {
   module: 'dnd5e',
   type: 'action',
   id: 'attack',
+} as const;
+
+const RAGE_FEATURE_REF = {
+  module: 'dnd5e',
+  type: 'features',
+  id: 'rage',
 } as const;
 
 const MODE_LABEL: Record<EncounterMode, string> = {
@@ -129,6 +136,12 @@ export function PlaytestHarness() {
     loading: setReactionReadyLoading,
     error: setReactionReadyError,
   } = useSetReactionReady();
+  // Wave 3: v1alpha2 ActivateFeature RPC — Rage button for barbarian.
+  const {
+    activateFeature,
+    loading: activateFeatureLoading,
+    error: activateFeatureError,
+  } = useActivateFeatureV2();
 
   const addLog = (msg: string) => {
     const entry = `[${formatTime(new Date())}] ${msg}`;
@@ -522,11 +535,33 @@ export function PlaytestHarness() {
     }
   };
 
+  // Wave 3: call ActivateFeature with the rage feature ref. State changes
+  // (raging condition applied, charges decremented, action consumed) flow back
+  // as StatusApplied on the encounter stream — we do not compute them locally.
+  const handleActivateRage = async () => {
+    try {
+      await activateFeature({
+        encounterId,
+        characterId: entityId,
+        featureRef: RAGE_FEATURE_REF,
+      });
+      addLog(`ActivateFeature(rage) → ${entityId}`);
+    } catch {
+      // error is surfaced via activateFeatureError state
+    }
+  };
+
   const entitiesArray = Array.from(encounterState.state.entities.entries());
   const revealedKeys = Array.from(encounterState.state.revealedHexes);
   const openDoorKeys = Array.from(encounterState.state.openDoors);
   const myHP = encounterState.state.entityHP.get(entityId);
   const myStatuses = encounterState.state.entityStatuses.get(entityId) ?? [];
+  // Wave 3: raging is active when the "raging" condition is in the local
+  // status list (populated by StatusApplied stream events). The v1alpha2
+  // Entity/CharacterData proto does not carry feature charge counts — RageCharges
+  // remaining is not available from the stream/snapshot in the current proto
+  // version. The raging indicator shows whether the condition is active.
+  const isRaging = myStatuses.some((s) => s.source.id === 'raging');
   const encounterEnded = encounterState.state.encounterStatus === 'ended';
   const isMyTurn =
     encounterState.state.mode === EncounterMode.TURN_BASED &&
@@ -645,6 +680,14 @@ export function PlaytestHarness() {
         </span>
         <span>
           HP: <strong>{myHP ? `${myHP.current}/${myHP.max}` : '—'}</strong>
+        </span>
+        {/* Wave 3: raging status indicator — lit when StatusApplied "raging"
+            condition is active on the local player's character. */}
+        <span
+          data-testid="rage-status-indicator"
+          style={{ color: isRaging ? '#ff6633' : '#555' }}
+        >
+          rage: <strong>{isRaging ? 'RAGING' : 'off'}</strong>
         </span>
         {encounterState.state.mode === EncounterMode.TURN_BASED &&
           encounterState.state.initiativeOrder.length > 0 && (
@@ -1440,6 +1483,61 @@ export function PlaytestHarness() {
                 {endTurnLoading ? 'Ending…' : 'End turn'}
               </button>
             </div>
+            {/* Wave 3: Rage button — calls v1alpha2 ActivateFeature with the
+                rage feature ref. State changes (raging condition, charges
+                decremented, action consumed) flow back via StatusApplied on
+                the stream. Enabled whenever combat is active; server gates on
+                charges/action availability per the boundary rule. */}
+            <h3 style={{ margin: '16px 0 4px', color: '#aaa' }}>Features</h3>
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              <button
+                data-testid="rage-button"
+                onClick={() => void handleActivateRage()}
+                disabled={!combatEnabled || activateFeatureLoading}
+                style={{
+                  padding: '4px 14px',
+                  background: isRaging
+                    ? '#4a1a00'
+                    : combatEnabled
+                      ? '#4a2200'
+                      : '#2a2a2a',
+                  color: isRaging
+                    ? '#ff8855'
+                    : combatEnabled
+                      ? '#ffaa55'
+                      : '#666',
+                  border: `1px solid ${isRaging ? '#aa4400' : combatEnabled ? '#884400' : '#444'}`,
+                  cursor:
+                    !combatEnabled || activateFeatureLoading
+                      ? 'not-allowed'
+                      : 'pointer',
+                  fontWeight: isRaging ? 'bold' : 'normal',
+                }}
+              >
+                {activateFeatureLoading
+                  ? 'Raging…'
+                  : isRaging
+                    ? 'RAGING (activate again?)'
+                    : 'Rage'}
+              </button>
+              <span
+                style={{ fontSize: 11, color: isRaging ? '#ff8855' : '#777' }}
+              >
+                {isRaging ? 'Condition active' : 'Bonus action'}
+              </span>
+            </div>
+            {activateFeatureError && (
+              <div style={{ color: '#f88', marginTop: 4, fontSize: 12 }}>
+                ActivateFeature error: {activateFeatureError.message}
+              </div>
+            )}
             {takeActionError && (
               <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
                 TakeAction error: {takeActionError.message}

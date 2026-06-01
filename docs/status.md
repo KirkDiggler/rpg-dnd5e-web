@@ -28,6 +28,20 @@ let it rot.
   Resolves weapons/shields from itemId fallback when equipment data is missing.
   Independently useful but unblocked by the stream issue.
 
+- **Chapter 2 Wave 3 — Rage button + ActivateFeature RPC (PR #420, open)** —
+  `useActivateFeatureV2` hook wraps the v1alpha2 `ActivateFeature` unary RPC.
+  `PlaytestHarness` has a Rage button (calls `ActivateFeature` with
+  `{module:"dnd5e", type:"features", id:"rage"}`), a "RAGING" status indicator
+  in the header (lit when the `raging` condition appears in `entityStatuses` via
+  `StatusApplied`), and a Features panel in the dev grid. Proto pin bumped from
+  `8974685` to `92a9d062` (the `generated` branch commit that includes the v1alpha2
+  `ActivateFeature` gen files from rpg-api-protos#165/#166).
+  **Known proto gap**: v1alpha2 `Entity`/`CharacterData` carries no `feature_charges`
+  field — RageCharges remaining (`2/2 → 1/2`) cannot be read from the stream
+  in the current proto version. Pending director decision on proto extension
+  (separate issue) or deferred to v1alpha3. The button + condition indicator covers
+  the observable goal: Rage activates and the harness shows the raging condition.
+
 ## Recently landed (last 6 weeks, highlights)
 
 - **Chapter 2 Wave 2 — AC column in harness entity panel (PR #418, 2026-05-29)** —
