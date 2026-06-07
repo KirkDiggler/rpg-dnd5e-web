@@ -229,6 +229,51 @@ describe('dispatchEncounterStream2Event', () => {
     expect(arg.inputRequired?.kind?.case).toBe('reactionPrompt');
   });
 
+  // TakeAction wave (#426): the verb-resolution + live-menu spine.
+  it('routes actionResolved to onActionResolved', () => {
+    const onActionResolved = vi.fn();
+    const options: EncounterStream2Options = { onActionResolved };
+    const event = makeEvent('actionResolved', {
+      actorEntityId: 'char-alice',
+      actionRef: { module: 'dnd5e', type: 'combat_abilities', id: 'attack' },
+      targetEntityId: 'goblin-1',
+      economyConsumed: { actions: 1 },
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onActionResolved).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes attackResolved to onAttackResolved (including a miss)', () => {
+    const onAttackResolved = vi.fn();
+    const options: EncounterStream2Options = { onAttackResolved };
+    const event = makeEvent('attackResolved', {
+      attackerEntityId: 'char-alice',
+      targetEntityId: 'goblin-1',
+      hit: false, // #594: a miss must still dispatch
+      critical: false,
+      attackRoll: 4,
+      attackBonus: 5,
+      targetAc: 13,
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onAttackResolved).toHaveBeenCalledTimes(1);
+    const arg = onAttackResolved.mock.calls[0]?.[0] as { hit?: boolean };
+    expect(arg.hit).toBe(false);
+  });
+
+  it('routes turnStateChanged to onTurnStateChanged', () => {
+    const onTurnStateChanged = vi.fn();
+    const options: EncounterStream2Options = { onTurnStateChanged };
+    const event = makeEvent('turnStateChanged', {
+      turnState: {
+        economy: { actionsRemaining: 1, bonusActionsRemaining: 1 },
+        availableActions: [],
+      },
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onTurnStateChanged).toHaveBeenCalledTimes(1);
+  });
+
   it('logs a warning for unknown event cases without throwing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const event = makeEvent('someUnknownCase' as 'snapshotDelivered', {});

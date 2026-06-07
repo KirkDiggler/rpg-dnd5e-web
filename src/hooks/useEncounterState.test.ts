@@ -35,10 +35,14 @@ import type {
   TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import {
+  AvailableActionSchema,
+  EconomySlot,
   EncounterMode,
   EntityType as EntityTypeV2,
   InputRequiredSchema,
   SkillCheckPromptSchema,
+  TargetKind,
+  TurnStateSchema as TurnStateSchemaV2,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
@@ -58,6 +62,7 @@ import {
   applyStatusApplied,
   applyTurnEnded,
   applyTurnStarted,
+  applyTurnStateChanged,
   applyV2SnapshotTurnState,
   createEmptyEncounterState,
   mergeEntityPosition,
@@ -1407,11 +1412,15 @@ describe('applyEntityMetaFromAppeared', () => {
 describe('applyV2SnapshotTurnState', () => {
   it('sets initiativeOrder, activeEntityId, round, and mode from snapshot turn state', () => {
     const prev = createEmptyEncounterState();
-    const after = applyV2SnapshotTurnState(prev, EncounterMode.TURN_BASED, {
-      initiativeOrder: ['char-alice', 'goblin-1'],
-      activeEntityId: 'char-alice',
-      round: 1,
-    });
+    const after = applyV2SnapshotTurnState(
+      prev,
+      EncounterMode.TURN_BASED,
+      create(TurnStateSchemaV2, {
+        initiativeOrder: ['char-alice', 'goblin-1'],
+        activeEntityId: 'char-alice',
+        round: 1,
+      })
+    );
     expect(after.initiativeOrder).toEqual(['char-alice', 'goblin-1']);
     expect(after.activeEntityId).toBe('char-alice');
     expect(after.round).toBe(1);
@@ -1437,11 +1446,15 @@ describe('applyV2SnapshotTurnState', () => {
     // Regression guard: a prior combat session sets initiative/active/round;
     // a FREE_ROAM snapshot must clear those so the UI does not show old data.
     let state = createEmptyEncounterState();
-    state = applyV2SnapshotTurnState(state, EncounterMode.TURN_BASED, {
-      initiativeOrder: ['char-alice', 'goblin-1'],
-      activeEntityId: 'char-alice',
-      round: 2,
-    });
+    state = applyV2SnapshotTurnState(
+      state,
+      EncounterMode.TURN_BASED,
+      create(TurnStateSchemaV2, {
+        initiativeOrder: ['char-alice', 'goblin-1'],
+        activeEntityId: 'char-alice',
+        round: 2,
+      })
+    );
     const after = applyV2SnapshotTurnState(
       state,
       EncounterMode.FREE_ROAM,
@@ -1471,24 +1484,119 @@ describe('applyV2SnapshotTurnState', () => {
       prev,
       makeStatusApplied('char-alice', 'dnd5e', 'condition', 'poisoned')
     );
-    const after = applyV2SnapshotTurnState(prev, EncounterMode.TURN_BASED, {
-      initiativeOrder: ['char-alice', 'goblin-1'],
-      activeEntityId: 'char-alice',
-      round: 1,
-    });
+    const after = applyV2SnapshotTurnState(
+      prev,
+      EncounterMode.TURN_BASED,
+      create(TurnStateSchemaV2, {
+        initiativeOrder: ['char-alice', 'goblin-1'],
+        activeEntityId: 'char-alice',
+        round: 1,
+      })
+    );
     expect(after.entityHP.get('goblin-1')).toEqual({ current: 5, max: 7 });
     expect(after.entityStatuses.get('char-alice')).toHaveLength(1);
   });
 
   it('does not mutate the previous state', () => {
     const prev = createEmptyEncounterState();
-    applyV2SnapshotTurnState(prev, EncounterMode.TURN_BASED, {
-      initiativeOrder: ['goblin-1'],
-      activeEntityId: 'goblin-1',
-      round: 1,
-    });
+    applyV2SnapshotTurnState(
+      prev,
+      EncounterMode.TURN_BASED,
+      create(TurnStateSchemaV2, {
+        initiativeOrder: ['goblin-1'],
+        activeEntityId: 'goblin-1',
+        round: 1,
+      })
+    );
     expect(prev.initiativeOrder).toEqual([]);
     expect(prev.mode).toBe(EncounterMode.UNSPECIFIED);
+  });
+
+  // TakeAction wave (#426): the snapshot seeds the server-authored menu/economy
+  // so it renders at turn start, before the first TurnStateChanged push.
+  it('seeds turnState (menu + economy) from the snapshot turn state', () => {
+    const prev = createEmptyEncounterState();
+    const turnState = create(TurnStateSchemaV2, {
+      initiativeOrder: ['char-alice'],
+      activeEntityId: 'char-alice',
+      round: 1,
+      economy: { actionsRemaining: 1, bonusActionsRemaining: 1 },
+      availableActions: [
+        create(AvailableActionSchema, {
+          ref: { module: 'dnd5e', type: 'combat_abilities', id: 'attack' },
+          displayName: 'Attack',
+          available: true,
+          economySlot: EconomySlot.ACTION,
+          targetKind: TargetKind.SINGLE_ENTITY,
+        }),
+      ],
+    });
+    const after = applyV2SnapshotTurnState(
+      prev,
+      EncounterMode.TURN_BASED,
+      turnState
+    );
+    expect(after.turnState?.availableActions).toHaveLength(1);
+    expect(after.turnState?.economy?.actionsRemaining).toBe(1);
+  });
+
+  it('clears turnState when leaving TURN_BASED', () => {
+    const seeded = applyV2SnapshotTurnState(
+      createEmptyEncounterState(),
+      EncounterMode.TURN_BASED,
+      create(TurnStateSchemaV2, {
+        activeEntityId: 'char-alice',
+        round: 1,
+        availableActions: [],
+      })
+    );
+    const after = applyV2SnapshotTurnState(
+      seeded,
+      EncounterMode.FREE_ROAM,
+      undefined
+    );
+    expect(after.turnState).toBeNull();
+  });
+});
+
+describe('applyTurnStateChanged', () => {
+  it('swaps in the server-authored TurnState wholesale', () => {
+    const prev = createEmptyEncounterState();
+    const turnState = create(TurnStateSchemaV2, {
+      activeEntityId: 'char-alice',
+      round: 2,
+      economy: { actionsRemaining: 0, bonusActionsRemaining: 1 },
+      availableActions: [
+        create(AvailableActionSchema, {
+          ref: { module: 'dnd5e', type: 'combat_abilities', id: 'attack' },
+          displayName: 'Attack',
+          available: false,
+          unavailableReason: 'no action remaining',
+          economySlot: EconomySlot.ACTION,
+          targetKind: TargetKind.SINGLE_ENTITY,
+        }),
+      ],
+    });
+    const after = applyTurnStateChanged(prev, turnState);
+    expect(after.turnState?.economy?.actionsRemaining).toBe(0);
+    expect(after.turnState?.availableActions[0]?.available).toBe(false);
+    expect(after.turnState?.availableActions[0]?.unavailableReason).toBe(
+      'no action remaining'
+    );
+  });
+
+  it('is a no-op (returns prev) when turnState is undefined', () => {
+    const prev = createEmptyEncounterState();
+    expect(applyTurnStateChanged(prev, undefined)).toBe(prev);
+  });
+
+  it('does not mutate the previous state', () => {
+    const prev = createEmptyEncounterState();
+    applyTurnStateChanged(
+      prev,
+      create(TurnStateSchemaV2, { availableActions: [] })
+    );
+    expect(prev.turnState).toBeNull();
   });
 });
 
@@ -1619,11 +1727,15 @@ describe('applySnapshotToState — entityMeta + initiativeOrder delta preservati
 
   it('preserves initiativeOrder across same-encounter v1 snapshot', () => {
     let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
-    state = applyV2SnapshotTurnState(state, EncounterMode.TURN_BASED, {
-      initiativeOrder: ['char-alice', 'goblin-1'],
-      activeEntityId: 'char-alice',
-      round: 1,
-    });
+    state = applyV2SnapshotTurnState(
+      state,
+      EncounterMode.TURN_BASED,
+      create(TurnStateSchemaV2, {
+        initiativeOrder: ['char-alice', 'goblin-1'],
+        activeEntityId: 'char-alice',
+        round: 1,
+      })
+    );
 
     const refreshed = applySnapshotToState(
       makeSnapshot({ encounterId: 'enc-1' }),
@@ -1643,11 +1755,15 @@ describe('applySnapshotToState — entityMeta + initiativeOrder delta preservati
       undefined,
       undefined
     );
-    state = applyV2SnapshotTurnState(state, EncounterMode.TURN_BASED, {
-      initiativeOrder: ['char-alice', 'goblin-1'],
-      activeEntityId: 'char-alice',
-      round: 1,
-    });
+    state = applyV2SnapshotTurnState(
+      state,
+      EncounterMode.TURN_BASED,
+      create(TurnStateSchemaV2, {
+        initiativeOrder: ['char-alice', 'goblin-1'],
+        activeEntityId: 'char-alice',
+        round: 1,
+      })
+    );
 
     const switched = applySnapshotToState(
       makeSnapshot({ encounterId: 'enc-2' }),

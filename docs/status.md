@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-05-28
+updated: 2026-06-07
 confidence: medium — seeded from full code read-through, git log, and open PRs; needs Kirk's correction pass on stream-bug details
 ---
 
@@ -11,6 +11,26 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+- **Chapter 2 TakeAction wave — server-driven action menu + live economy (#426)** —
+  The web now consumes the server-authored action menu instead of computing
+  attack legality. `useEncounterState` holds a `turnState` (economy +
+  `available_actions`), swapped in wholesale by the new `TurnStateChanged` stream
+  event (Invariant 12, no polling) and seeded from the v2 snapshot's `turnState`.
+  `PlaytestHarness` renders `<EconomyBar>` (live action/bonus/reaction/movement +
+  granted capacities) and `<ActionMenu>` (entries grouped by `economy_slot`,
+  disabled with the server's `unavailable_reason` when `available=false`, click
+  dispatches per `target_kind`: SINGLE_ENTITY prompts, SELF self-targets, NONE
+  fires untargeted). The stream dispatcher routes `ActionResolved` /
+  `AttackResolved` (the latter **fires on a MISS too** — #594; misses now show in
+  the combat log) / `TurnStateChanged`. **D7:** the hardcoded "Attack" button and
+  the client-side `isTargetAdjacent`/`canAttack` adjacency gating were DELETED
+  from `combat-v2/panels/ActionPanel.tsx` (the one real web-side legality
+  violation). Proto bumped to `@kirkdiggler/rpg-api-protos v0.1.100`.
+  **Server gap flagged (not web's lane):** the snapshot menu is unpopulated
+  server-side (rpg-api #601 — `ProjectFor` loads read-only, no held chars), so
+  whether the initial menu renders at turn start depends on the server emitting a
+  turn-start `TurnStateChanged` push. The web is ready for both paths.
 
 - **PR #377** (`fix/376-room-revealed-all-rooms`, open since 2026-04-06) — Fixes
   the bug where `onRoomRevealed` only added the current room to the dungeon map
