@@ -31,7 +31,10 @@ import type {
   StatusApplied,
   TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
-import type { InputRequired } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import type {
+  InputRequired,
+  TurnState,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
   EntityType,
@@ -143,6 +146,19 @@ export interface LocalEncounterState {
    * turns of the same round.
    */
   round: number;
+  /**
+   * TakeAction wave (#426): the server-authored live turn state — economy
+   * (actions / bonus / reaction / movement remaining) + the available_actions
+   * menu. Pushed wholesale on the stream via TurnStateChanged (Invariant 12, no
+   * polling); the active actor's snapshot also seeds it. NULL until the first
+   * TurnStateChanged / snapshot carrying it arrives.
+   *
+   * The web renders this verbatim — it groups available_actions by economy_slot,
+   * disables entries where available=false (showing unavailable_reason), and
+   * raises the targeting prompt per target_kind. NO availability / legality /
+   * cost is computed client-side; the server's verdict is the only source.
+   */
+  turnState: TurnState | null;
   dungeonState: DungeonState;
   roomsCleared: number;
   /**
@@ -223,6 +239,7 @@ export function createEmptyEncounterState(): LocalEncounterState {
     mode: EncounterMode.UNSPECIFIED,
     activeEntityId: '',
     round: 0,
+    turnState: null,
     dungeonState: DungeonState.UNSPECIFIED,
     roomsCleared: 0,
     pendingPrompt: null,
@@ -309,6 +326,11 @@ export function applySnapshotToState(
     mode: sameEncounter ? prev.mode : EncounterMode.UNSPECIFIED,
     activeEntityId: sameEncounter ? prev.activeEntityId : '',
     round: sameEncounter ? prev.round : 0,
+    // TakeAction wave (#426): the server-authored menu/economy flows only via
+    // the v2 stream's TurnStateChanged (or the v2 SnapshotDelivered turnState),
+    // never the v1 snapshot path. Preserve across same-encounter v1 syncs so a
+    // v1 state-sync doesn't wipe the live menu the player is acting from.
+    turnState: sameEncounter ? prev.turnState : null,
     dungeonState: proto.dungeonState,
     roomsCleared: proto.roomsCleared,
     // pendingPrompt is caller-private; it doesn't flow through v1 snapshots.
@@ -522,9 +544,7 @@ export function applyEntityMetaFromAppeared(
 export function applyV2SnapshotTurnState(
   prev: LocalEncounterState,
   encounterMode: EncounterMode,
-  turnState:
-    | { initiativeOrder: string[]; activeEntityId: string; round: number }
-    | undefined
+  turnState: TurnState | undefined
 ): LocalEncounterState {
   const modeChanged = prev.mode !== encounterMode;
   const inTurnBased = encounterMode === EncounterMode.TURN_BASED;
@@ -537,7 +557,8 @@ export function applyV2SnapshotTurnState(
       !modeChanged &&
       prev.initiativeOrder.length === 0 &&
       prev.activeEntityId === '' &&
-      prev.round === 0;
+      prev.round === 0 &&
+      prev.turnState === null;
     if (nothingChanged) return prev;
     return {
       ...prev,
@@ -545,6 +566,9 @@ export function applyV2SnapshotTurnState(
       initiativeOrder: [],
       activeEntityId: '',
       round: 0,
+      // Clear the menu/economy too when leaving TURN_BASED — a stale menu from a
+      // prior combat must not linger.
+      turnState: null,
     };
   }
   return {
@@ -553,6 +577,10 @@ export function applyV2SnapshotTurnState(
     initiativeOrder: turnState.initiativeOrder,
     activeEntityId: turnState.activeEntityId,
     round: turnState.round,
+    // TakeAction wave (#426): seed the server-authored menu/economy from the
+    // snapshot so the menu renders at turn start, before the first
+    // TurnStateChanged push. Stored verbatim; web computes nothing.
+    turnState,
   };
 }
 
@@ -711,6 +739,24 @@ export function applyTurnStarted(
     activeEntityId: event.entityId,
     round: event.round,
   };
+}
+
+/**
+ * Apply a TurnStateChanged event (TakeAction wave #426): swaps in the
+ * server-authored TurnState (economy + available_actions menu) wholesale.
+ *
+ * The toolkit computes it, rpg-api projects it field-for-field, the web renders
+ * it. No availability is recomputed client-side. If `turnState` is missing
+ * (defensive — proto field is optional) the call is a no-op so a malformed wire
+ * frame doesn't blank out the menu the player is acting from.
+ * Exported for testing.
+ */
+export function applyTurnStateChanged(
+  prev: LocalEncounterState,
+  turnState: TurnState | undefined
+): LocalEncounterState {
+  if (!turnState) return prev;
+  return { ...prev, turnState };
 }
 
 /**
@@ -891,13 +937,13 @@ export interface UseEncounterStateResult {
   /**
    * Apply v1alpha2 turn state from a SnapshotDelivered event.
    * Updates initiativeOrder, activeEntityId, round, and mode without touching
-   * HP / statuses / doors (those flow only via delta events).
+   * HP / statuses / doors (those flow only via delta events). Also seeds the
+   * server-authored menu/economy (turnState) so the menu renders at turn start
+   * before the first TurnStateChanged push (TakeAction wave #426).
    */
   applyV2SnapshotTurnState: (
     encounterMode: EncounterMode,
-    turnState:
-      | { initiativeOrder: string[]; activeEntityId: string; round: number }
-      | undefined
+    turnState: TurnState | undefined
   ) => void;
   // v1alpha2 prompts (Wave 2.9)
   /**
@@ -929,6 +975,11 @@ export interface UseEncounterStateResult {
   applyTurnStarted: (event: TurnStarted) => void;
   /** Hook for TurnEnded (currently no-op; reserved for future per-turn UI). */
   applyTurnEnded: () => void;
+  /**
+   * TakeAction wave (#426): swap in the server-authored TurnState (economy +
+   * available_actions menu) from a TurnStateChanged event. No-op if undefined.
+   */
+  applyTurnStateChanged: (turnState: TurnState | undefined) => void;
   // v1alpha2 death + resolution (Wave 2.10)
   /**
    * No-op state reducer for EntityDied — entity stays rendered until
@@ -1040,15 +1091,17 @@ export function useEncounterState(): UseEncounterStateResult {
   );
 
   const applyV2SnapshotTurnStateCallback = useCallback(
-    (
-      encounterMode: EncounterMode,
-      turnState:
-        | { initiativeOrder: string[]; activeEntityId: string; round: number }
-        | undefined
-    ) => {
+    (encounterMode: EncounterMode, turnState: TurnState | undefined) => {
       setState((prev) =>
         applyV2SnapshotTurnState(prev, encounterMode, turnState)
       );
+    },
+    []
+  );
+
+  const applyTurnStateChangedCallback = useCallback(
+    (turnState: TurnState | undefined) => {
+      setState((prev) => applyTurnStateChanged(prev, turnState));
     },
     []
   );
@@ -1122,6 +1175,7 @@ export function useEncounterState(): UseEncounterStateResult {
     applyModeChanged: applyModeChangedCallback,
     applyTurnStarted: applyTurnStartedCallback,
     applyTurnEnded: applyTurnEndedCallback,
+    applyTurnStateChanged: applyTurnStateChangedCallback,
     applyEntityDied: applyEntityDiedCallback,
     applyEntityRemoved: applyEntityRemovedCallback,
     applyEncounterEnded: applyEncounterEndedCallback,

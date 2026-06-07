@@ -1,4 +1,6 @@
 import type {
+  ActionResolved,
+  AttackResolved,
   DoorOpened,
   EncounterEnded,
   EncounterEvent,
@@ -15,6 +17,7 @@ import type {
   StatusApplied,
   TurnEnded,
   TurnStarted,
+  TurnStateChanged,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 
 /**
@@ -30,10 +33,12 @@ import type {
  * GeometryRevealed (effect) event from the toolkit's deliberate two-phase
  * emission. Consumers should subscribe to BOTH; do not try to combine them.
  *
- * The same cause/effect split applies in Wave 2.8 for combat: the toolkit
- * emits its `AttackResolvedEvent` (cause/narration) but the rpg-api translator
- * drops it on the wire (no proto event for cause-only attacks); HP changes
- * arrive as `EntityDamaged` (effect) and conditions as `StatusApplied` (effect).
+ * The same cause/effect split applies for combat: an action emits an umbrella
+ * `ActionResolved` (what + economy cost) correlated via the envelope
+ * `correlation_id` to its `AttackResolved` (roll, hit/miss/crit — fires on a
+ * MISS too, the #594 fix), and any `EntityDamaged` (HP, hit only) /
+ * `StatusApplied` (conditions). The live action menu + economy ride
+ * `TurnStateChanged` (TakeAction wave #426).
  */
 export interface EncounterStream2Options {
   /** slice-1: encounter field is empty; treat as connect-confirm only. */
@@ -59,6 +64,28 @@ export interface EncounterStream2Options {
   onTurnStarted?: (event: TurnStarted) => void;
   /** Active actor finished; the next TurnStarted is authoritative for who's next. */
   onTurnEnded?: (event: TurnEnded) => void;
+  // TakeAction wave (#426): the verb-resolution + live-menu spine.
+  /**
+   * Umbrella beat for any action a character takes (attack, dodge, dash, …).
+   * Carries the action ref + the economy it consumed. The roll/hit/miss detail
+   * of an attack rides the correlated AttackResolved; damage rides the
+   * correlated EntityDamaged. Web renders this as a combat-log line — server is
+   * authoritative, web computes nothing.
+   */
+  onActionResolved?: (event: ActionResolved) => void;
+  /**
+   * Per-attack roll detail. CRUCIAL: fires on a MISS too (`hit=false`) — the
+   * #594 fix. Web renders the hit OR miss in the combat log so a whiff is no
+   * longer silent.
+   */
+  onAttackResolved?: (event: AttackResolved) => void;
+  /**
+   * The live menu/economy push (Invariant 12, no polling). Carries the
+   * recomputed TurnState (economy + available_actions). The web swaps it in
+   * wholesale and re-renders the action menu — it never recomputes availability
+   * client-side. This is the event that drives the server-authored action menu.
+   */
+  onTurnStateChanged?: (event: TurnStateChanged) => void;
   // Wave 2.10: death + encounter resolution events.
   /**
    * Entity HP reached 0. The entity remains in the entities map until
@@ -133,6 +160,15 @@ export function dispatchEncounterStream2Event(
     case 'turnEnded':
       options.onTurnEnded?.(payload.value);
       break;
+    case 'actionResolved':
+      options.onActionResolved?.(payload.value);
+      break;
+    case 'attackResolved':
+      options.onAttackResolved?.(payload.value);
+      break;
+    case 'turnStateChanged':
+      options.onTurnStateChanged?.(payload.value);
+      break;
     case 'entityDied':
       options.onEntityDied?.(payload.value);
       break;
@@ -148,7 +184,7 @@ export function dispatchEncounterStream2Event(
     default:
       // Either out-of-current-scope but known to the proto (entityHealed,
       // dialogue, etc. — the proto defines 20+ event cases;
-      // we currently handle 14) OR a genuinely unknown case from a proto
+      // we currently handle 17) OR a genuinely unknown case from a proto
       // version mismatch. Either way: warn + continue so the stream doesn't
       // tear down. Add a case arm + callback when the feature lands.
       // The cast strips the narrowed-to-undefined `case` so we can log it.

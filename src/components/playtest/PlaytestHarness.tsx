@@ -1,9 +1,11 @@
 import { create } from '@bufbuild/protobuf';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { ActionTarget } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
+import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
   EntityType,
+  TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useEffect, useRef, useState } from 'react';
 import { v2PositionToV1 } from '../../api/positionConvert';
@@ -18,6 +20,9 @@ import { useSubmitCheckV2 } from '../../api/useSubmitCheckV2';
 import { useTakeActionV2 } from '../../api/useTakeActionV2';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { protoPositionToHex } from '../../utils/hexCoord';
+import { ActionMenu } from './ActionMenu';
+import { actionKey, targetKindNeedsPrompt } from './actionMenuHelpers';
+import { EconomyBar } from './EconomyBar';
 import { PlaytestMap } from './PlaytestMap';
 
 /**
@@ -286,6 +291,34 @@ export function PlaytestHarness() {
         encounterState.applyTurnEnded();
         addLog(`TurnEnded ${e.entityId}`);
       },
+      // TakeAction wave (#426): the live menu/economy push. Swap in the
+      // server-authored TurnState wholesale (Invariant 12, no polling). The
+      // action menu + economy bar re-render off this — web computes nothing.
+      onTurnStateChanged: (e) => {
+        encounterState.applyTurnStateChanged(e.turnState);
+        const n = e.turnState?.availableActions.length ?? 0;
+        addLog(`TurnStateChanged (${n} action(s) in menu)`);
+      },
+      // TakeAction wave (#426): umbrella resolution beat for any action. Render
+      // it as a combat-log line. The roll/hit/miss detail rides AttackResolved;
+      // damage rides EntityDamaged.
+      onActionResolved: (e) => {
+        const refStr = e.actionRef
+          ? `${e.actionRef.module}:${e.actionRef.type}:${e.actionRef.id}`
+          : '(no ref)';
+        const targetPart = e.targetEntityId ? ` → ${e.targetEntityId}` : '';
+        addLog(`ActionResolved ${e.actorEntityId} ${refStr}${targetPart}`);
+      },
+      // TakeAction wave (#426 / #594): per-attack roll detail. CRUCIAL — this
+      // fires on a MISS too (hit=false). Render the miss in the combat log so a
+      // whiff is no longer silent.
+      onAttackResolved: (e) => {
+        const outcome = e.critical ? 'CRIT' : e.hit ? 'HIT' : 'MISS';
+        addLog(
+          `AttackResolved ${e.attackerEntityId} → ${e.targetEntityId}: ${outcome} ` +
+            `(roll ${e.attackRoll}+${e.attackBonus} vs AC ${e.targetAc})`
+        );
+      },
       onEntityDied: (e) => {
         encounterState.applyEntityDied(e);
         const killerPart = e.killerEntityId ? ` by ${e.killerEntityId}` : '';
@@ -440,6 +473,73 @@ export function PlaytestHarness() {
     }
   };
 
+  // TakeAction wave (#426): dispatch a server-menu action. The web does NOT
+  // decide what's legal — it reads target_kind off the menu entry (the server's
+  // verdict) to raise the right targeting prompt, then sends the action ref +
+  // ActionTarget. The server gates availability/legality and pushes the
+  // refreshed menu/economy back via TurnStateChanged.
+  const handleSelectAction = async (action: AvailableAction) => {
+    if (!action.ref) {
+      addLog('SelectAction: menu entry missing ref (server defect)');
+      return;
+    }
+    const refStr = actionKey(action);
+
+    // Targeted kinds need a target chosen first. The dev panel's "Target id"
+    // input drives SINGLE_ENTITY for verification; POSITION/AREA prompting is a
+    // later wave (no L1 action this beat uses them). If a target is required but
+    // none is selected, tell the player rather than guessing one.
+    if (targetKindNeedsPrompt(action.targetKind)) {
+      if (action.targetKind === TargetKind.SINGLE_ENTITY) {
+        const id = attackTargetId.trim();
+        if (!id) {
+          addLog(`${refStr}: select a target id first (single-entity action)`);
+          return;
+        }
+        await dispatchAction(action.ref, {
+          kind: { case: 'entityId', value: id },
+        } as unknown as ActionTarget);
+        return;
+      }
+      // POSITION / AREA — no L1 action this beat reaches here; surface clearly.
+      addLog(
+        `${refStr}: ${action.targetKind === TargetKind.POSITION ? 'position' : 'area'}-targeted actions not yet wired in the harness`
+      );
+      return;
+    }
+
+    // SELF → target the actor; NONE → untargeted (no prompt). Both fire with no
+    // user prompt; the difference is whether an ActionTarget is attached.
+    if (action.targetKind === TargetKind.SELF) {
+      await dispatchAction(action.ref, {
+        kind: { case: 'self', value: {} },
+      } as unknown as ActionTarget);
+      return;
+    }
+    // NONE (e.g. Dash) or UNSPECIFIED defect: fire with no target; the server
+    // accepts NONE untargeted and rejects a true defect.
+    await dispatchAction(action.ref, undefined);
+  };
+
+  const dispatchAction = async (
+    actionRef: { module: string; type: string; id: string },
+    target: ActionTarget | undefined
+  ) => {
+    try {
+      await takeAction({
+        encounterId,
+        actorEntityId: entityId,
+        actionRef,
+        // The proto target field is required by the request schema; an
+        // untargeted (NONE) action sends an empty ActionTarget oneof.
+        target: target ?? ({ kind: { case: undefined } } as ActionTarget),
+      });
+      addLog(`TakeAction(${actionRef.id})`);
+    } catch {
+      // error is surfaced via takeActionError state
+    }
+  };
+
   const handleSubmitCheck = async () => {
     // Capture the prompt being resolved. We pass this identity token to the
     // auto-clear timer so a stale timer from a prior submit doesn't clear a
@@ -572,6 +672,13 @@ export function PlaytestHarness() {
     !encounterEnded &&
     encounterState.state.mode === EncounterMode.TURN_BASED &&
     isMyTurn;
+
+  // TakeAction wave (#426): the server-authored menu + economy. Rendered
+  // verbatim — the web never recomputes availability or cost. NULL until the
+  // first TurnStateChanged / snapshot turnState arrives.
+  const turnState = encounterState.state.turnState;
+  const availableActions = turnState?.availableActions ?? [];
+  const economy = turnState?.economy ?? null;
 
   // Visual map handlers. The map's hex click hands back the full computed
   // path; we forward to moveEntity as the existing handleMove does. Entity
@@ -1406,6 +1513,26 @@ export function PlaytestHarness() {
                 ? '(none)'
                 : myStatuses.map((s) => s.source.id).join(', ')}
             </div>
+
+            {/* TakeAction wave (#426): server-authored economy + action menu.
+                The menu drives the UI (Invariant 11/12) — entries are grouped by
+                economy_slot, disabled with the server's unavailable_reason when
+                available=false, and clicking dispatches per target_kind. The web
+                computes NO availability/legality/cost (no-logic-in-web, D7). */}
+            <h4 style={{ margin: '8px 0 4px', color: '#888' }}>
+              Action economy (live)
+            </h4>
+            <EconomyBar economy={economy} />
+            <h4 style={{ margin: '8px 0 4px', color: '#888' }}>
+              Action menu (server-driven)
+            </h4>
+            <ActionMenu
+              actions={availableActions}
+              enabled={combatEnabled}
+              loading={takeActionLoading}
+              onSelectAction={(a) => void handleSelectAction(a)}
+            />
+
             {/* HP is now shown inline in the entities table above. */}
             {!isMyTurn &&
               encounterState.state.mode === EncounterMode.TURN_BASED && (
@@ -1419,6 +1546,10 @@ export function PlaytestHarness() {
                 (combat actions enabled only in TURN_BASED mode)
               </div>
             )}
+            {/* Manual target picker + raw Attack — a dev verification scaffold.
+                The server-driven Action menu above is the real UI; this stays so
+                a tester can pick a single-entity target id and drive a raw
+                attack while debugging. */}
             <div
               style={{
                 display: 'flex',

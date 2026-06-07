@@ -4,12 +4,9 @@ import {
   EquipmentSlots,
   FeatureActions,
 } from '@/components/features';
-import { hexDistance, type CubeCoord } from '@/utils/hexUtils';
+import { type CubeCoord } from '@/utils/hexUtils';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type {
-  CombatState,
-  Room,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { CombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { FeatureId } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -20,10 +17,7 @@ export interface ActionPanelProps {
   combatState: CombatState | null;
   encounterId: string | null;
   selectedCharacters: Character[];
-  room: Room | null;
-  attackTarget?: string | null;
   onMoveAction?: () => void;
-  onAttackAction?: () => void;
   onActivateFeature?: (featureId: FeatureId) => void;
   onCombatStateUpdate?: (combatState: CombatState) => void;
   movementMode?: boolean;
@@ -51,10 +45,7 @@ export function ActionPanel({
   combatState,
   encounterId,
   selectedCharacters,
-  room,
-  attackTarget,
   onMoveAction,
-  onAttackAction,
   onActivateFeature,
   onCombatStateUpdate,
   movementMode = false,
@@ -115,33 +106,12 @@ export function ActionPanel({
     }
   };
 
-  // Check if attack target is adjacent (for melee attacks)
-  // Server provides cube coordinates in position.x, position.y, position.z
-  const isTargetAdjacent = (() => {
-    if (!attackTarget || !room || !currentTurn.entityId) return false;
-
-    const currentEntity = room.entities[currentTurn.entityId];
-    const targetEntity = room.entities[attackTarget];
-
-    if (!currentEntity?.position || !targetEntity?.position) return false;
-
-    const distance = hexDistance(
-      currentEntity.position.x,
-      currentEntity.position.y,
-      currentEntity.position.z,
-      targetEntity.position.x,
-      targetEntity.position.y,
-      targetEntity.position.z
-    );
-
-    return distance === 1;
-  })();
-
-  // Attack button should be enabled if:
-  // 1. Has action available
-  // 2. Has a target selected
-  // 3. Target is adjacent (for now, only melee)
-  const canAttack = resources.hasAction && attackTarget && isTargetAdjacent;
+  // TakeAction wave (#426, D7): the client-side adjacency/range gating that used
+  // to live here (isTargetAdjacent + canAttack) was REMOVED. Web must not compute
+  // attack legality — that was the one real boundary violation in this panel.
+  // The server now authors the action menu (AvailableAction.available +
+  // unavailable_reason); the menu is rendered by the v2 path (PlaytestHarness's
+  // ActionMenu). This panel keeps movement + class features + end turn only.
 
   const panelContent = (
     <div
@@ -241,30 +211,10 @@ export function ActionPanel({
 
         {/* Actions Section */}
         <div className={styles.actionsSection}>
-          {/* Attack Button */}
-          <button
-            onClick={onAttackAction}
-            disabled={!canAttack}
-            className={`${styles.actionButton} ${styles.attack} ${
-              !canAttack ? styles.disabled : ''
-            }`}
-            title={
-              !resources.hasAction
-                ? 'No action available'
-                : !attackTarget
-                  ? 'Select a target'
-                  : !isTargetAdjacent
-                    ? 'Target not adjacent'
-                    : 'Attack target'
-            }
-          >
-            ⚔️ Attack
-            {attackTarget && !isTargetAdjacent && (
-              <span style={{ fontSize: '10px', marginLeft: '4px' }}>
-                (too far)
-              </span>
-            )}
-          </button>
+          {/* TakeAction wave (#426, D7): the hardcoded Attack button was REMOVED.
+              Attack is now an entry in the server-authored action menu
+              (AvailableAction) rendered by the v2 path, with availability +
+              unavailable_reason decided server-side. */}
 
           {/* Move Button */}
           <button

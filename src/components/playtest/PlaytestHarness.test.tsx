@@ -8,7 +8,11 @@ import type {
   SubmitCheckResponse,
   TakeActionResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
-import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  EconomySlot,
+  EncounterMode,
+  TargetKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   act,
   fireEvent,
@@ -1928,6 +1932,161 @@ describe('PlaytestHarness', () => {
         expect(
           screen.getByText(/Selected goblin-1 \(encounter ended/)
         ).toBeTruthy();
+      });
+    });
+  });
+
+  // TakeAction wave (#426): the server-authored action menu + live economy +
+  // attack-miss visibility, driven off the stream's TurnStateChanged /
+  // AttackResolved events.
+  describe('server-driven action menu (#426)', () => {
+    function enterTurn() {
+      act(() => fake.push(makeEvent('snapshotDelivered', {})));
+      act(() =>
+        fake.push(
+          makeEvent('modeChanged', {
+            from: EncounterMode.FREE_ROAM,
+            to: EncounterMode.TURN_BASED,
+            reason: '',
+          })
+        )
+      );
+      act(() =>
+        fake.push(
+          makeEvent('turnStarted', { entityId: 'char-alice', round: 1 })
+        )
+      );
+    }
+
+    it('renders the pushed menu grouped by slot and the live economy', async () => {
+      render(<PlaytestHarness />);
+      enterTurn();
+
+      act(() =>
+        fake.push(
+          makeEvent('turnStateChanged', {
+            turnState: {
+              economy: {
+                actionsRemaining: 1,
+                bonusActionsRemaining: 1,
+                reactionsRemaining: 1,
+                movementRemaining: 30,
+              },
+              availableActions: [
+                {
+                  ref: {
+                    module: 'dnd5e',
+                    type: 'combat_abilities',
+                    id: 'attack',
+                  },
+                  displayName: 'Attack',
+                  available: true,
+                  unavailableReason: '',
+                  economySlot: EconomySlot.ACTION,
+                  targetKind: TargetKind.SINGLE_ENTITY,
+                },
+                {
+                  ref: {
+                    module: 'dnd5e',
+                    type: 'combat_abilities',
+                    id: 'move',
+                  },
+                  displayName: 'Move',
+                  available: false,
+                  unavailableReason: 'movement lands in Beat-2',
+                  economySlot: EconomySlot.MOVEMENT,
+                  targetKind: TargetKind.POSITION,
+                },
+              ],
+            },
+          })
+        )
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('action-menu')).toBeTruthy();
+      });
+      // Attack entry available; Move entry disabled with the server reason.
+      const attackBtn = screen.getByTestId(
+        'action-dnd5e:combat_abilities:attack'
+      ) as HTMLButtonElement;
+      const moveBtn = screen.getByTestId(
+        'action-dnd5e:combat_abilities:move'
+      ) as HTMLButtonElement;
+      expect(attackBtn.disabled).toBe(false);
+      expect(moveBtn.disabled).toBe(true);
+      expect(
+        screen.getByTestId('action-reason-dnd5e:combat_abilities:move')
+          .textContent
+      ).toContain('movement lands in Beat-2');
+      expect(screen.getByTestId('economy-bar').textContent).toContain('30');
+    });
+
+    it('dispatches a SELF action with no prompt (Dodge)', async () => {
+      render(<PlaytestHarness />);
+      enterTurn();
+      act(() =>
+        fake.push(
+          makeEvent('turnStateChanged', {
+            turnState: {
+              economy: { actionsRemaining: 1 },
+              availableActions: [
+                {
+                  ref: {
+                    module: 'dnd5e',
+                    type: 'combat_abilities',
+                    id: 'dodge',
+                  },
+                  displayName: 'Dodge',
+                  available: true,
+                  unavailableReason: '',
+                  economySlot: EconomySlot.ACTION,
+                  targetKind: TargetKind.SELF,
+                },
+              ],
+            },
+          })
+        )
+      );
+
+      const dodgeBtn = await screen.findByTestId(
+        'action-dnd5e:combat_abilities:dodge'
+      );
+      await waitFor(() =>
+        expect((dodgeBtn as HTMLButtonElement).disabled).toBe(false)
+      );
+      act(() => fireEvent.click(dodgeBtn));
+
+      await waitFor(() => expect(hoisted.takeActionFn).toHaveBeenCalledOnce());
+      expect(hoisted.takeActionFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorEntityId: 'char-alice',
+          actionRef: expect.objectContaining({ id: 'dodge' }),
+          target: expect.objectContaining({
+            kind: expect.objectContaining({ case: 'self' }),
+          }),
+        })
+      );
+    });
+
+    it('shows an attack MISS in the combat log (#594)', async () => {
+      render(<PlaytestHarness />);
+      enterTurn();
+      act(() =>
+        fake.push(
+          makeEvent('attackResolved', {
+            attackerEntityId: 'char-alice',
+            targetEntityId: 'goblin-1',
+            hit: false,
+            critical: false,
+            attackRoll: 4,
+            attackBonus: 5,
+            targetAc: 13,
+          })
+        )
+      );
+      await waitFor(() => {
+        expect(screen.getByText(/AttackResolved.*MISS/)).toBeTruthy();
       });
     });
   });
