@@ -60,6 +60,14 @@ function formatTime(d: Date): string {
   return d.toTimeString().slice(0, 8);
 }
 
+/** Extract a readable message from a caught RPC rejection. ConnectError's
+ * `.message` is already prefixed with the status code (e.g.
+ * `[invalid_argument] target.entity_id is required`), so this doubles as
+ * "code + message" without the harness needing to know about ConnectError. */
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * Dev-only playtest verification harness for wave-2.5 slice 2.
  * Renders at ?encounterId=<id>&playerId=<id> in development mode.
@@ -78,7 +86,7 @@ export function PlaytestHarness() {
 
   const entityId = playerId ? `char-${playerId}` : '';
 
-  const [log, setLog] = useState<string[]>([]);
+  const [log, setLog] = useState<Array<{ text: string; isError: boolean }>>([]);
   const [targetQ, setTargetQ] = useState(0);
   const [targetR, setTargetR] = useState(0);
   const [targetS, setTargetS] = useState(0);
@@ -148,8 +156,11 @@ export function PlaytestHarness() {
     error: activateFeatureError,
   } = useActivateFeatureV2();
 
-  const addLog = (msg: string) => {
-    const entry = `[${formatTime(new Date())}] ${msg}`;
+  // isError styles the entry red in the Recent-events log — used for rejected
+  // RPCs (currently TakeAction, #428) so a server rejection is visible in the
+  // harness's primary verification surface, not just the console.
+  const addLog = (msg: string, isError = false) => {
+    const entry = { text: `[${formatTime(new Date())}] ${msg}`, isError };
     setLog((prev) => [entry, ...prev].slice(0, 30));
   };
 
@@ -459,8 +470,11 @@ export function PlaytestHarness() {
         target,
       });
       addLog(`TakeAction(attack) → ${id}`);
-    } catch {
-      // error is surfaced via takeActionError state
+    } catch (err) {
+      // #428: a rejected TakeAction was previously console-only. Log it here
+      // (in addition to the takeActionError panel below) so it's visible in
+      // the harness's Recent-events log — the verification surface.
+      addLog(`TakeAction(attack) → ${id} REJECTED: ${errorMessage(err)}`, true);
     }
   };
 
@@ -535,8 +549,12 @@ export function PlaytestHarness() {
         target: target ?? ({ kind: { case: undefined } } as ActionTarget),
       });
       addLog(`TakeAction(${actionRef.id})`);
-    } catch {
-      // error is surfaced via takeActionError state
+    } catch (err) {
+      // #428: surface the rejection in the Recent-events log, not just console.
+      addLog(
+        `TakeAction(${actionRef.id}) REJECTED: ${errorMessage(err)}`,
+        true
+      );
     }
   };
 
@@ -737,8 +755,9 @@ export function PlaytestHarness() {
         target,
       });
       addLog(`VisualAttack → ${targetId}`);
-    } catch {
-      // error surfaced via takeActionError state
+    } catch (err) {
+      // #428: surface the rejection in the Recent-events log, not just console.
+      addLog(`VisualAttack → ${targetId} REJECTED: ${errorMessage(err)}`, true);
     }
   };
 
@@ -1687,6 +1706,7 @@ export function PlaytestHarness() {
               Recent events ({log.length})
             </h3>
             <div
+              data-testid="event-log"
               style={{
                 background: '#0a0a0a',
                 border: '1px solid #333',
@@ -1700,8 +1720,17 @@ export function PlaytestHarness() {
                 <span style={{ color: '#555' }}>(waiting for events…)</span>
               )}
               {log.map((entry, i) => (
-                <div key={i} style={{ color: '#9d9', marginBottom: 2 }}>
-                  {entry}
+                <div
+                  key={i}
+                  data-testid={
+                    entry.isError ? 'event-log-entry-error' : 'event-log-entry'
+                  }
+                  style={{
+                    color: entry.isError ? '#f88' : '#9d9',
+                    marginBottom: 2,
+                  }}
+                >
+                  {entry.text}
                 </div>
               ))}
             </div>
