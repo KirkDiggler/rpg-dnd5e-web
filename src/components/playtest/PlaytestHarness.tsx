@@ -68,6 +68,23 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Short, log-friendly descriptor of an ActionTarget for the Recent-events
+ * log (e.g. ` → goblin-1`, ` → self`, or `` for an untargeted NONE action).
+ * Read-only formatting of the oneof the harness already constructed — no
+ * targeting logic. */
+function describeActionTarget(target: ActionTarget | undefined): string {
+  const kind = target?.kind;
+  if (!kind || kind.case === undefined) return '';
+  switch (kind.case) {
+    case 'entityId':
+      return ` → ${String(kind.value)}`;
+    case 'self':
+      return ' → self';
+    default:
+      return ` → ${kind.case}`;
+  }
+}
+
 /**
  * Dev-only playtest verification harness for wave-2.5 slice 2.
  * Renders at ?encounterId=<id>&playerId=<id> in development mode.
@@ -86,7 +103,13 @@ export function PlaytestHarness() {
 
   const entityId = playerId ? `char-${playerId}` : '';
 
-  const [log, setLog] = useState<Array<{ text: string; isError: boolean }>>([]);
+  const [log, setLog] = useState<
+    Array<{ id: number; text: string; isError: boolean }>
+  >([]);
+  // Monotonic id for log entries. Entries are prepended, so the array index is
+  // an unstable React key (it re-associates DOM nodes as the log shifts); a
+  // per-entry id keyed off this counter stays stable across prepends.
+  const logIdRef = useRef(0);
   const [targetQ, setTargetQ] = useState(0);
   const [targetR, setTargetR] = useState(0);
   const [targetS, setTargetS] = useState(0);
@@ -160,7 +183,11 @@ export function PlaytestHarness() {
   // RPCs (currently TakeAction, #428) so a server rejection is visible in the
   // harness's primary verification surface, not just the console.
   const addLog = (msg: string, isError = false) => {
-    const entry = { text: `[${formatTime(new Date())}] ${msg}`, isError };
+    const entry = {
+      id: logIdRef.current++,
+      text: `[${formatTime(new Date())}] ${msg}`,
+      isError,
+    };
     setLog((prev) => [entry, ...prev].slice(0, 30));
   };
 
@@ -548,11 +575,11 @@ export function PlaytestHarness() {
         // untargeted (NONE) action sends an empty ActionTarget oneof.
         target: target ?? ({ kind: { case: undefined } } as ActionTarget),
       });
-      addLog(`TakeAction(${actionRef.id})`);
+      addLog(`TakeAction(${actionRef.id})${describeActionTarget(target)}`);
     } catch (err) {
       // #428: surface the rejection in the Recent-events log, not just console.
       addLog(
-        `TakeAction(${actionRef.id}) REJECTED: ${errorMessage(err)}`,
+        `TakeAction(${actionRef.id})${describeActionTarget(target)} REJECTED: ${errorMessage(err)}`,
         true
       );
     }
@@ -1719,9 +1746,9 @@ export function PlaytestHarness() {
               {log.length === 0 && (
                 <span style={{ color: '#555' }}>(waiting for events…)</span>
               )}
-              {log.map((entry, i) => (
+              {log.map((entry) => (
                 <div
-                  key={i}
+                  key={entry.id}
                   data-testid={
                     entry.isError ? 'event-log-entry-error' : 'event-log-entry'
                   }
