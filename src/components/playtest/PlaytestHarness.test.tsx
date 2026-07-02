@@ -19,6 +19,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -736,9 +737,67 @@ describe('PlaytestHarness', () => {
 
     act(() => fireEvent.click(attackBtn));
 
+    // The message now appears twice: the standing takeActionError panel
+    // (below the combat controls) and the new Recent-events log entry
+    // (#428, asserted separately below) — both are "visible", so allow
+    // either/both matches rather than asserting a single element.
     await waitFor(() => {
-      expect(screen.getByText(/not your turn/i)).toBeTruthy();
+      expect(screen.getAllByText(/not your turn/i).length).toBeGreaterThan(0);
     });
+  });
+
+  // #428: a rejected TakeAction previously produced NO entry in the
+  // Recent-events log — the harness's primary verification surface — and was
+  // only visible in the browser console via the standing error panel. This
+  // proves the rejection now shows up as a visible, error-styled log line
+  // carrying the action ref + the server's message.
+  it('logs a rejected TakeAction as a visible error entry in the event log (#428)', async () => {
+    hoisted.takeActionFn.mockRejectedValue(
+      new Error('[invalid_argument] target.entity_id is required')
+    );
+
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(makeEvent('snapshotDelivered', {})));
+    act(() =>
+      fake.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: '',
+        })
+      )
+    );
+    act(() =>
+      fake.push(makeEvent('turnStarted', { entityId: 'char-alice', round: 1 }))
+    );
+
+    const input = screen.getByLabelText(
+      /attack target id/i
+    ) as HTMLInputElement;
+    act(() => {
+      fireEvent.change(input, { target: { value: 'goblin-1' } });
+    });
+
+    const attackBtn = screen.getByRole('button', {
+      name: /^attack$/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(attackBtn.disabled).toBe(false));
+
+    act(() => fireEvent.click(attackBtn));
+
+    const eventLog = screen.getByTestId('event-log');
+    await waitFor(() => {
+      expect(
+        within(eventLog).getByTestId('event-log-entry-error')
+      ).toBeTruthy();
+    });
+    const errorEntry = within(eventLog).getByTestId('event-log-entry-error');
+    expect(errorEntry.textContent).toContain('TakeAction(attack)');
+    expect(errorEntry.textContent).toContain('REJECTED');
+    expect(errorEntry.textContent).toContain(
+      '[invalid_argument] target.entity_id is required'
+    );
   });
 
   it('shows endTurn error when RPC fails', async () => {

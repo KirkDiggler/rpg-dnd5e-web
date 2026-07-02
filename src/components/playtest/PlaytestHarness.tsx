@@ -60,6 +60,31 @@ function formatTime(d: Date): string {
   return d.toTimeString().slice(0, 8);
 }
 
+/** Extract a readable message from a caught RPC rejection. ConnectError's
+ * `.message` is already prefixed with the status code (e.g.
+ * `[invalid_argument] target.entity_id is required`), so this doubles as
+ * "code + message" without the harness needing to know about ConnectError. */
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Short, log-friendly descriptor of an ActionTarget for the Recent-events
+ * log (e.g. ` → goblin-1`, ` → self`, or `` for an untargeted NONE action).
+ * Read-only formatting of the oneof the harness already constructed — no
+ * targeting logic. */
+function describeActionTarget(target: ActionTarget | undefined): string {
+  const kind = target?.kind;
+  if (!kind || kind.case === undefined) return '';
+  switch (kind.case) {
+    case 'entityId':
+      return ` → ${String(kind.value)}`;
+    case 'self':
+      return ' → self';
+    default:
+      return ` → ${kind.case}`;
+  }
+}
+
 /**
  * Dev-only playtest verification harness for wave-2.5 slice 2.
  * Renders at ?encounterId=<id>&playerId=<id> in development mode.
@@ -78,7 +103,13 @@ export function PlaytestHarness() {
 
   const entityId = playerId ? `char-${playerId}` : '';
 
-  const [log, setLog] = useState<string[]>([]);
+  const [log, setLog] = useState<
+    Array<{ id: number; text: string; isError: boolean }>
+  >([]);
+  // Monotonic id for log entries. Entries are prepended, so the array index is
+  // an unstable React key (it re-associates DOM nodes as the log shifts); a
+  // per-entry id keyed off this counter stays stable across prepends.
+  const logIdRef = useRef(0);
   const [targetQ, setTargetQ] = useState(0);
   const [targetR, setTargetR] = useState(0);
   const [targetS, setTargetS] = useState(0);
@@ -148,8 +179,15 @@ export function PlaytestHarness() {
     error: activateFeatureError,
   } = useActivateFeatureV2();
 
-  const addLog = (msg: string) => {
-    const entry = `[${formatTime(new Date())}] ${msg}`;
+  // isError styles the entry red in the Recent-events log — used for rejected
+  // RPCs (currently TakeAction, #428) so a server rejection is visible in the
+  // harness's primary verification surface, not just the console.
+  const addLog = (msg: string, isError = false) => {
+    const entry = {
+      id: logIdRef.current++,
+      text: `[${formatTime(new Date())}] ${msg}`,
+      isError,
+    };
     setLog((prev) => [entry, ...prev].slice(0, 30));
   };
 
@@ -459,8 +497,11 @@ export function PlaytestHarness() {
         target,
       });
       addLog(`TakeAction(attack) → ${id}`);
-    } catch {
-      // error is surfaced via takeActionError state
+    } catch (err) {
+      // #428: a rejected TakeAction was previously console-only. Log it here
+      // (in addition to the takeActionError panel below) so it's visible in
+      // the harness's Recent-events log — the verification surface.
+      addLog(`TakeAction(attack) → ${id} REJECTED: ${errorMessage(err)}`, true);
     }
   };
 
@@ -534,9 +575,13 @@ export function PlaytestHarness() {
         // untargeted (NONE) action sends an empty ActionTarget oneof.
         target: target ?? ({ kind: { case: undefined } } as ActionTarget),
       });
-      addLog(`TakeAction(${actionRef.id})`);
-    } catch {
-      // error is surfaced via takeActionError state
+      addLog(`TakeAction(${actionRef.id})${describeActionTarget(target)}`);
+    } catch (err) {
+      // #428: surface the rejection in the Recent-events log, not just console.
+      addLog(
+        `TakeAction(${actionRef.id})${describeActionTarget(target)} REJECTED: ${errorMessage(err)}`,
+        true
+      );
     }
   };
 
@@ -737,8 +782,9 @@ export function PlaytestHarness() {
         target,
       });
       addLog(`VisualAttack → ${targetId}`);
-    } catch {
-      // error surfaced via takeActionError state
+    } catch (err) {
+      // #428: surface the rejection in the Recent-events log, not just console.
+      addLog(`VisualAttack → ${targetId} REJECTED: ${errorMessage(err)}`, true);
     }
   };
 
@@ -1687,6 +1733,7 @@ export function PlaytestHarness() {
               Recent events ({log.length})
             </h3>
             <div
+              data-testid="event-log"
               style={{
                 background: '#0a0a0a',
                 border: '1px solid #333',
@@ -1699,9 +1746,18 @@ export function PlaytestHarness() {
               {log.length === 0 && (
                 <span style={{ color: '#555' }}>(waiting for events…)</span>
               )}
-              {log.map((entry, i) => (
-                <div key={i} style={{ color: '#9d9', marginBottom: 2 }}>
-                  {entry}
+              {log.map((entry) => (
+                <div
+                  key={entry.id}
+                  data-testid={
+                    entry.isError ? 'event-log-entry-error' : 'event-log-entry'
+                  }
+                  style={{
+                    color: entry.isError ? '#f88' : '#9d9',
+                    marginBottom: 2,
+                  }}
+                >
+                  {entry.text}
                 </div>
               ))}
             </div>
