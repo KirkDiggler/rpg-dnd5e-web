@@ -19,6 +19,7 @@ import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useSubmitCheckV2 } from '../../api/useSubmitCheckV2';
 import { useTakeActionV2 } from '../../api/useTakeActionV2';
 import { useEncounterState } from '../../hooks/useEncounterState';
+import { getConditionDisplay } from '../../utils/conditionIcons';
 import { protoPositionToHex } from '../../utils/hexCoord';
 import { ActionMenu } from './ActionMenu';
 import { actionKey, targetKindNeedsPrompt } from './actionMenuHelpers';
@@ -58,6 +59,30 @@ const MODE_LABEL: Record<EncounterMode, string> = {
 
 function formatTime(d: Date): string {
   return d.toTimeString().slice(0, 8);
+}
+
+/** Comma-joined display labels for a list of condition source refs (e.g.
+ * `AttackResolved`'s `advantage_sources`), resolved via the web's existing
+ * ref-keyed lookup (`conditionIcons.ts`) — never the server's
+ * `display_name`, which "may be empty" per `StatusEffect`'s doc comment
+ * (R5: display resolution stays web-side). */
+function formatSourceRefs(refs: Array<{ id: string }>): string {
+  return refs.map((r) => getConditionDisplay(r.id).label).join(', ');
+}
+
+/** Icon + label badge text for one entity's status list, e.g. "🏃 Dodging,
+ * 🫥 Hidden". Resolved the same way as `formatSourceRefs` — by `source.id`
+ * through the web's lookup table, never the (possibly empty) wire
+ * `display_name`. */
+function formatStatusBadges(
+  statuses: Array<{ source: { id: string } }>
+): string {
+  return statuses
+    .map((s) => {
+      const d = getConditionDisplay(s.source.id);
+      return `${d.icon} ${d.label}`;
+    })
+    .join(', ');
 }
 
 /** Extract a readable message from a caught RPC rejection. ConnectError's
@@ -313,7 +338,10 @@ export function PlaytestHarness() {
       onStatusApplied: (e) => {
         encounterState.applyStatusApplied(e);
         const id = e.status?.source?.id ?? '?';
-        addLog(`StatusApplied ${e.entityId} <- ${id}`);
+        const display = getConditionDisplay(id);
+        addLog(
+          `StatusApplied ${e.entityId} <- ${id} (${display.icon} ${display.label})`
+        );
       },
       onModeChanged: (e) => {
         encounterState.applyModeChanged(e);
@@ -350,11 +378,20 @@ export function PlaytestHarness() {
       // TakeAction wave (#426 / #594): per-attack roll detail. CRUCIAL — this
       // fires on a MISS too (hit=false). Render the miss in the combat log so a
       // whiff is no longer silent.
+      // Beat 2 (#430): has_advantage/has_disadvantage + *_sources are copied
+      // verbatim from the toolkit's AttackResult — rendered as-is, never
+      // recomputed from other fields (Invariant 1: web computes nothing).
       onAttackResolved: (e) => {
         const outcome = e.critical ? 'CRIT' : e.hit ? 'HIT' : 'MISS';
+        const advPart = e.hasAdvantage
+          ? ` [advantage: ${formatSourceRefs(e.advantageSources) || '?'}]`
+          : '';
+        const disadvPart = e.hasDisadvantage
+          ? ` [disadvantage: ${formatSourceRefs(e.disadvantageSources) || '?'}]`
+          : '';
         addLog(
           `AttackResolved ${e.attackerEntityId} → ${e.targetEntityId}: ${outcome} ` +
-            `(roll ${e.attackRoll}+${e.attackBonus} vs AC ${e.targetAc})`
+            `(roll ${e.attackRoll}+${e.attackBonus} vs AC ${e.targetAc})${advPart}${disadvPart}`
         );
       },
       onEntityDied: (e) => {
@@ -1315,6 +1352,7 @@ export function PlaytestHarness() {
                   <th style={{ padding: '4px 8px' }}>y</th>
                   <th style={{ padding: '4px 8px' }}>z</th>
                   <th style={{ padding: '4px 8px' }}>ghost?</th>
+                  <th style={{ padding: '4px 8px' }}>status</th>
                 </tr>
               </thead>
               <tbody>
@@ -1329,6 +1367,14 @@ export function PlaytestHarness() {
                   const meta = encounterState.state.entityMeta.get(id);
                   const hp = encounterState.state.entityHP.get(id);
                   const ac = encounterState.state.entityAC.get(id);
+                  // Beat 2 (#430): status icons on ANY entity, not just the
+                  // local player — the Help/Hide playtest beats specifically
+                  // need a third party to observe a condition on someone
+                  // else (e.g. the Fighter's Helped condition, or the
+                  // goblin's Dodging). Driven entirely by server-sent
+                  // StatusApplied events (Invariant 1: web computes nothing).
+                  const statuses =
+                    encounterState.state.entityStatuses.get(id) ?? [];
                   // Row background: active actor (yellow/orange) takes priority over
                   // local player (green) so both states are distinguishable when
                   // it's the local player's turn.
@@ -1381,13 +1427,21 @@ export function PlaytestHarness() {
                       <td style={{ padding: '4px 8px' }}>
                         {entity.ghost ? 'yes' : ''}
                       </td>
+                      <td
+                        data-testid={`entity-status-${id}`}
+                        style={{ padding: '4px 8px', color: '#ccc' }}
+                      >
+                        {statuses.length === 0
+                          ? '—'
+                          : formatStatusBadges(statuses)}
+                      </td>
                     </tr>
                   );
                 })}
                 {entitiesArray.length === 0 && (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={9}
                       style={{ padding: '4px 8px', color: '#555' }}
                     >
                       (no entities yet)
@@ -1553,11 +1607,14 @@ export function PlaytestHarness() {
 
             {/* Combat controls (Wave 2.8 verification scaffold; deleted in slice 3) */}
             <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Combat</h3>
-            <div style={{ fontSize: 12, color: '#777', marginBottom: 8 }}>
+            <div
+              data-testid="my-statuses"
+              style={{ fontSize: 12, color: '#777', marginBottom: 8 }}
+            >
               Statuses ({myStatuses.length}):{' '}
               {myStatuses.length === 0
                 ? '(none)'
-                : myStatuses.map((s) => s.source.id).join(', ')}
+                : formatStatusBadges(myStatuses)}
             </div>
 
             {/* TakeAction wave (#426): server-authored economy + action menu.

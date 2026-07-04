@@ -1,8 +1,8 @@
 ---
 name: PlaytestHarness
 description: Dev-only verification harness for the v1alpha2 encounter stream — now with a clickable hex grid alongside the raw dev panel
-updated: 2026-05-18
-confidence: high — verified by reading PlaytestHarness.tsx + PlaytestMap.tsx and the 55-test vitest suite
+updated: 2026-07-04
+confidence: high — verified by reading PlaytestHarness.tsx + PlaytestMap.tsx and the vitest suite
 ---
 
 # PlaytestHarness
@@ -65,15 +65,33 @@ The `attackTargetId` state is shared with the dev panel's existing "Target id" i
 
 When `showDev` is true, the harness renders the pre-visual layout below the map:
 
-- Entities table (id, type, HP, x/y/z, ghost flag) — populated from `useEncounterState`
+- Entities table (id, type, HP, AC, x/y/z, ghost flag, **status**) — populated from `useEncounterState`
 - Revealed hexes summary
 - Move controls (Q/R/S spinbuttons + Move button) — still functional, useful for exact-coordinate verification
 - Open door input + button
 - Skill check prompt modal (Wave 2.9)
-- Combat controls (Attack target id + Attack/End turn buttons)
+- Combat controls (Attack target id + Attack/End turn buttons; "Statuses (N)" summary for the local player)
 - Recent events log (right column)
 
 Both layers consume the same hooks; switching mode is a render-only toggle.
+
+### Status effects + attack advantage/disadvantage (Beat 2, #430)
+
+The entities table's **status** column renders every entity's active conditions (from
+`useEncounterState`'s `entityStatuses`, populated by `StatusApplied` events) as icon+label badges,
+e.g. `🏃 Dodging`, `🫥 Hidden`, `🙌 Helped`. Display metadata is resolved entirely web-side via
+`src/utils/conditionIcons.ts`'s `getConditionDisplay(refId)` — keyed by the condition ref's `id`
+string (e.g. `"dodging"`), never the wire's `StatusEffect.display_name`/`icon_hint`, which may be
+empty (rpg-api does not author display strings — Invariant 2). This is the same lookup table
+`onStatusApplied`'s log line and the `AttackResolved` combat-log line below both use — a single
+ref-keyed source of truth, not three parallel ones.
+
+The combat log's `AttackResolved` line appends `[advantage: <names>]` / `[disadvantage: <names>]`
+when `has_advantage`/`has_disadvantage` are true, naming the granting/imposing condition(s) from
+`advantage_sources`/`disadvantage_sources` (both `repeated Ref`, resolved through the same
+`getConditionDisplay` lookup). These booleans and refs are copied verbatim from the toolkit's
+resolved `AttackResult` at every hop (toolkit → rpg-api → wire) — the web never recomputes or infers
+advantage/disadvantage from other fields (Invariant 1: web computes nothing).
 
 ## Test coverage
 

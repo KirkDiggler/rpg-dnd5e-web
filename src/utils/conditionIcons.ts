@@ -173,6 +173,36 @@ const BUFF_CONDITIONS: Record<string, ConditionDisplay> = {
 };
 
 /**
+ * Combat-ability action states.
+ * Temporary conditions granted by taking a combat action (Dodge/Hide/Help),
+ * as opposed to a class feature or spell. Beat 2 (#430) is the first wave
+ * to populate real StatusApplied data for these three refs on the v1alpha2
+ * encounter stream.
+ */
+const ACTION_STATE_CONDITIONS: Record<string, ConditionDisplay> = {
+  dodging: {
+    icon: '🏃',
+    label: 'Dodging',
+    color: '#3b82f6', // blue - positive (for the holder)
+    description:
+      'Attacks against you have disadvantage; advantage on DEX saves',
+  },
+  hidden: {
+    icon: '🫥',
+    label: 'Hidden',
+    color: '#3b82f6', // blue - positive (for the holder)
+    description:
+      'Your attacks have advantage; attacks against you have disadvantage',
+  },
+  helped: {
+    icon: '🙌',
+    label: 'Helped',
+    color: '#3b82f6', // blue - positive (for the holder)
+    description: 'Advantage on your next attack roll',
+  },
+};
+
+/**
  * Combat state conditions.
  * These represent special combat states like dying or dead.
  */
@@ -242,6 +272,11 @@ export function getConditionDisplay(conditionName: string): ConditionDisplay {
     return COMBAT_STATE_CONDITIONS[normalized];
   }
 
+  // Check combat-ability action states (Dodge/Hide/Help)
+  if (ACTION_STATE_CONDITIONS[normalized]) {
+    return ACTION_STATE_CONDITIONS[normalized];
+  }
+
   // Return default for unknown conditions
   // Use the original (non-normalized) name for the label, but capitalize it
   return {
@@ -261,6 +296,7 @@ export function getAllConditions(): ConditionDisplay[] {
     ...Object.values(STANDARD_CONDITIONS),
     ...Object.values(BUFF_CONDITIONS),
     ...Object.values(COMBAT_STATE_CONDITIONS),
+    ...Object.values(ACTION_STATE_CONDITIONS),
   ];
 }
 

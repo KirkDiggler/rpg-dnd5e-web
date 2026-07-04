@@ -2148,5 +2148,133 @@ describe('PlaytestHarness', () => {
         expect(screen.getByText(/AttackResolved.*MISS/)).toBeTruthy();
       });
     });
+
+    // Beat 2 (#430): has_disadvantage/has_advantage + *_sources ride the
+    // same AttackResolved event, copied verbatim from the toolkit — the
+    // combat log must surface the source condition's display name, not just
+    // the raw boolean.
+    it('shows disadvantage with the source condition name in the combat log (#430)', async () => {
+      render(<PlaytestHarness />);
+      enterTurn();
+      act(() =>
+        fake.push(
+          makeEvent('attackResolved', {
+            attackerEntityId: 'goblin-1',
+            targetEntityId: 'char-alice',
+            hit: false,
+            critical: false,
+            attackRoll: 8,
+            attackBonus: 4,
+            targetAc: 16,
+            hasDisadvantage: true,
+            disadvantageSources: [
+              { module: 'dnd5e', type: 'conditions', id: 'dodging' },
+            ],
+          })
+        )
+      );
+      await waitFor(() => {
+        expect(
+          screen.getByText(/AttackResolved.*disadvantage: Dodging/)
+        ).toBeTruthy();
+      });
+    });
+
+    it('shows advantage with the source condition name in the combat log (#430)', async () => {
+      render(<PlaytestHarness />);
+      enterTurn();
+      act(() =>
+        fake.push(
+          makeEvent('attackResolved', {
+            attackerEntityId: 'char-alice',
+            targetEntityId: 'goblin-1',
+            hit: true,
+            critical: false,
+            attackRoll: 17,
+            attackBonus: 5,
+            targetAc: 13,
+            hasAdvantage: true,
+            advantageSources: [
+              { module: 'dnd5e', type: 'conditions', id: 'hidden' },
+            ],
+          })
+        )
+      );
+      await waitFor(() => {
+        expect(
+          screen.getByText(/AttackResolved.*advantage: Hidden/)
+        ).toBeTruthy();
+      });
+    });
+  });
+
+  // Beat 2 (#430): Hidden/Helped status icons on entities, driven entirely by
+  // server-sent StatusApplied events (Invariant 1: web computes nothing).
+  describe('status effect rendering (#430)', () => {
+    it('renders a Hidden status badge on the entity table row after StatusApplied', async () => {
+      render(<PlaytestHarness />);
+      act(() => fake.push(makeEvent('snapshotDelivered', {})));
+      act(() =>
+        fake.push(
+          makeEvent('entityAppeared', {
+            entity: { id: 'char-alice', position: { x: 0, y: 0, z: 0 } },
+          })
+        )
+      );
+      act(() =>
+        fake.push(
+          makeEvent('statusApplied', {
+            entityId: 'char-alice',
+            status: {
+              source: { module: 'dnd5e', type: 'conditions', id: 'hidden' },
+              displayName: '',
+            },
+          })
+        )
+      );
+
+      await waitFor(() => {
+        const cell = screen.getByTestId('entity-status-char-alice');
+        expect(cell.textContent).toContain('Hidden');
+      });
+    });
+
+    // Regression coverage for the Help condition's target-label fix
+    // (design.md R1): the condition must render on the TARGET entity, not
+    // whoever applied it — a third-party viewer (a different entity than
+    // either the helper or the helped ally) must see it too.
+    it('renders a Helped status badge on a non-local-player entity (third-party visibility)', async () => {
+      render(<PlaytestHarness />);
+      act(() => fake.push(makeEvent('snapshotDelivered', {})));
+      act(() =>
+        fake.push(
+          makeEvent('entityAppeared', {
+            entity: { id: 'char-fighter', position: { x: 1, y: 0, z: -1 } },
+          })
+        )
+      );
+      act(() =>
+        fake.push(
+          makeEvent('statusApplied', {
+            entityId: 'char-fighter',
+            sourceEntityId: 'char-monk',
+            status: {
+              source: { module: 'dnd5e', type: 'conditions', id: 'helped' },
+              displayName: '',
+            },
+          })
+        )
+      );
+
+      await waitFor(() => {
+        const cell = screen.getByTestId('entity-status-char-fighter');
+        expect(cell.textContent).toContain('Helped');
+      });
+    });
+
+    it('shows "(none)" in the my-statuses summary when no conditions are active', () => {
+      render(<PlaytestHarness />);
+      expect(screen.getByTestId('my-statuses').textContent).toContain('(none)');
+    });
   });
 });
