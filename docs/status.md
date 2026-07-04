@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-06-07
+updated: 2026-07-04
 confidence: medium — seeded from full code read-through, git log, and open PRs; needs Kirk's correction pass on stream-bug details
 ---
 
@@ -11,6 +11,27 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+- **Chapter 2 Beat 2 — status effects + attack advantage/disadvantage (#430, wave rpg-project#75)** —
+  `PlaytestHarness`'s entities table gains a **status** column rendering every
+  entity's active conditions (Dodging/Hidden/Helped, plus whatever else the
+  stream applies) as icon+label badges, and the `AttackResolved` combat-log
+  line now appends `[advantage: <names>]` / `[disadvantage: <names>]` sourced
+  from the new `has_advantage`/`has_disadvantage`/`advantage_sources`/
+  `disadvantage_sources` fields (rpg-api-protos#173, fields 8-11 on
+  `AttackResolved`). Display resolution for all condition refs (both the
+  status column and the advantage/disadvantage source names) is unified
+  through `src/utils/conditionIcons.ts`'s `getConditionDisplay(refId)` —
+  a pre-existing string-keyed lookup table that was written but never wired
+  into any component until this wave; extended with `dodging`/`hidden`/`helped`
+  entries rather than adding a second lookup table (R5: display metadata
+  stays web-side, keyed by the `Ref.id` string, never the wire's
+  `StatusEffect.display_name`/`icon_hint`, which may be empty). Proto bumped
+  to `@kirkdiggler/rpg-api-protos v0.1.102`.
+  **Note:** `enumDisplays.ts`'s `CONDITION_DISPLAY` (keyed by the v1alpha1
+  `ConditionId` enum, used by `ConditionsDisplay`/`activeConditions` on the
+  static character sheet) is a _different, unrelated_ lookup — don't confuse
+  the two; the v2 stream's `StatusEffect.source` is a bare `Ref`, not that enum.
 
 - **Chapter 2 TakeAction wave — server-driven action menu + live economy (#426)** —
   The web now consumes the server-authored action menu instead of computing
