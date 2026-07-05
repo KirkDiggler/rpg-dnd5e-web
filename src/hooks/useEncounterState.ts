@@ -29,6 +29,7 @@ import type {
   EntityRemoved,
   ModeChanged,
   StatusApplied,
+  StatusRemoved,
   TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import type {
@@ -708,6 +709,46 @@ export function applyStatusApplied(
 }
 
 /**
+ * Apply a StatusRemoved event: removes the condition matching `statusSource`
+ * (module/type/id) from the target's status list. Rendering reads directly
+ * from `entityStatuses`, so removing the entry here clears the badge
+ * automatically — no separate UI-side bookkeeping needed.
+ *
+ * No-op (returns prev unchanged) when `statusSource` is missing (defensive —
+ * proto field is optional), when the entity has no tracked statuses, or when
+ * no entry matches the source ref (idempotent: a re-delivered or
+ * out-of-order StatusRemoved is harmless). Exported for testing.
+ */
+export function applyStatusRemoved(
+  prev: LocalEncounterState,
+  event: StatusRemoved
+): LocalEncounterState {
+  const source = event.statusSource;
+  if (!source) return prev;
+
+  const existingList = prev.entityStatuses.get(event.entityId);
+  if (!existingList) return prev;
+
+  const filtered = existingList.filter(
+    (s) =>
+      !(
+        s.source.module === source.module &&
+        s.source.type === source.type &&
+        s.source.id === source.id
+      )
+  );
+  if (filtered.length === existingList.length) return prev;
+
+  const newStatuses = new Map(prev.entityStatuses);
+  if (filtered.length === 0) {
+    newStatuses.delete(event.entityId);
+  } else {
+    newStatuses.set(event.entityId, filtered);
+  }
+  return { ...prev, entityStatuses: newStatuses };
+}
+
+/**
  * Apply a ModeChanged event: updates the encounter's mode field.
  *
  * Idempotent if the mode is unchanged (returns the same reference).
@@ -969,6 +1010,8 @@ export interface UseEncounterStateResult {
   applyEntityDamaged: (event: EntityDamaged) => void;
   /** Append (or replace by source ref) a status effect on an entity. */
   applyStatusApplied: (event: StatusApplied) => void;
+  /** Remove a status effect matching the event's source ref from an entity. */
+  applyStatusRemoved: (event: StatusRemoved) => void;
   /** Update encounter mode from a ModeChanged event. */
   applyModeChanged: (event: ModeChanged) => void;
   /** Set active actor + round from a TurnStarted event. */
@@ -1130,6 +1173,10 @@ export function useEncounterState(): UseEncounterStateResult {
     setState((prev) => applyStatusApplied(prev, event));
   }, []);
 
+  const applyStatusRemovedCallback = useCallback((event: StatusRemoved) => {
+    setState((prev) => applyStatusRemoved(prev, event));
+  }, []);
+
   const applyModeChangedCallback = useCallback((event: ModeChanged) => {
     setState((prev) => applyModeChanged(prev, event));
   }, []);
@@ -1172,6 +1219,7 @@ export function useEncounterState(): UseEncounterStateResult {
     setReactionReadyLocal: setReactionReadyLocalCallback,
     applyEntityDamaged: applyEntityDamagedCallback,
     applyStatusApplied: applyStatusAppliedCallback,
+    applyStatusRemoved: applyStatusRemovedCallback,
     applyModeChanged: applyModeChangedCallback,
     applyTurnStarted: applyTurnStartedCallback,
     applyTurnEnded: applyTurnEndedCallback,

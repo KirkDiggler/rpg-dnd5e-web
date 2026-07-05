@@ -2277,4 +2277,124 @@ describe('PlaytestHarness', () => {
       expect(screen.getByTestId('my-statuses').textContent).toContain('(none)');
     });
   });
+
+  // #433: badge-clear is the wave assertion (rpg-project#75) — the badge
+  // must clear live off StatusRemoved, without a page reload/re-snapshot.
+  describe('status removal + death-save arc (#433)', () => {
+    it('clears the status badge after StatusRemoved for the matching source', async () => {
+      render(<PlaytestHarness />);
+      act(() => fake.push(makeEvent('snapshotDelivered', {})));
+      act(() =>
+        fake.push(
+          makeEvent('entityAppeared', {
+            entity: { id: 'char-alice', position: { x: 0, y: 0, z: 0 } },
+          })
+        )
+      );
+      act(() =>
+        fake.push(
+          makeEvent('statusApplied', {
+            entityId: 'char-alice',
+            status: {
+              source: { module: 'dnd5e', type: 'conditions', id: 'hidden' },
+              displayName: '',
+            },
+          })
+        )
+      );
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('entity-status-char-alice').textContent
+        ).toContain('Hidden');
+      });
+
+      act(() =>
+        fake.push(
+          makeEvent('statusRemoved', {
+            entityId: 'char-alice',
+            statusSource: {
+              module: 'dnd5e',
+              type: 'conditions',
+              id: 'hidden',
+            },
+          })
+        )
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('entity-status-char-alice').textContent).toBe(
+          '—'
+        );
+      });
+      expect(screen.getByText(/StatusRemoved char-alice/i)).toBeTruthy();
+    });
+
+    it('logs a DeathSaveRolled roll with successes/failures', async () => {
+      render(<PlaytestHarness />);
+      act(() => fake.push(makeEvent('snapshotDelivered', {})));
+      act(() =>
+        fake.push(
+          makeEvent('deathSaveRolled', {
+            entityId: 'char-alice',
+            roll: 14,
+            successes: 2,
+            failures: 1,
+            isCriticalFail: false,
+            isCriticalSuccess: false,
+            stabilized: false,
+            dead: false,
+            regainedConsciousness: false,
+            hpRestored: 0,
+          })
+        )
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/DeathSave char-alice: roll 14 \(2S\/1F\)/)
+        ).toBeTruthy();
+      });
+    });
+
+    it('appends nat-20/regained-consciousness/hp-restored flags when set', async () => {
+      render(<PlaytestHarness />);
+      act(() => fake.push(makeEvent('snapshotDelivered', {})));
+      act(() =>
+        fake.push(
+          makeEvent('deathSaveRolled', {
+            entityId: 'char-alice',
+            roll: 20,
+            successes: 2,
+            failures: 1,
+            isCriticalFail: false,
+            isCriticalSuccess: true,
+            stabilized: false,
+            dead: false,
+            regainedConsciousness: true,
+            hpRestored: 1,
+          })
+        )
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            /DeathSave char-alice: roll 20 \(2S\/1F\) \[nat-20, regained consciousness, \+1hp\]/
+          )
+        ).toBeTruthy();
+      });
+    });
+
+    it('logs a Stabilized line after EntityStabilized', async () => {
+      render(<PlaytestHarness />);
+      act(() => fake.push(makeEvent('snapshotDelivered', {})));
+      act(() =>
+        fake.push(makeEvent('entityStabilized', { entityId: 'char-alice' }))
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Stabilized char-alice/i)).toBeTruthy();
+      });
+    });
+  });
 });

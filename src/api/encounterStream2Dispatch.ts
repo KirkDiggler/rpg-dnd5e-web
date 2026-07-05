@@ -1,6 +1,7 @@
 import type {
   ActionResolved,
   AttackResolved,
+  DeathSaveRolled,
   DoorOpened,
   EncounterEnded,
   EncounterEvent,
@@ -10,11 +11,13 @@ import type {
   EntityDisappeared,
   EntityMoved,
   EntityRemoved,
+  EntityStabilized,
   GeometryRevealed,
   InputRequiredDelivered,
   ModeChanged,
   SnapshotDelivered,
   StatusApplied,
+  StatusRemoved,
   TurnEnded,
   TurnStarted,
   TurnStateChanged,
@@ -58,6 +61,12 @@ export interface EncounterStream2Options {
   onEntityDamaged?: (event: EntityDamaged) => void;
   /** Condition applied to a target; carries the StatusEffect ref + display. */
   onStatusApplied?: (event: StatusApplied) => void;
+  /**
+   * Condition cleared from a target; carries the source Ref that matches
+   * an earlier StatusApplied.status.source. Consumers remove the matching
+   * entry from their status list — the badge then clears automatically.
+   */
+  onStatusRemoved?: (event: StatusRemoved) => void;
   /** Encounter-mode transition (e.g. FREE_ROAM → TURN_BASED). */
   onModeChanged?: (event: ModeChanged) => void;
   /** Active actor + round update; signals "X's turn now". */
@@ -102,6 +111,19 @@ export interface EncounterStream2Options {
    * defeated"). The reducer sets `encounterStatus = "ended"` on receipt.
    */
   onEncounterEnded?: (event: EncounterEnded) => void;
+  // Death-save arc (rpg-toolkit#742, wave KirkDiggler/rpg-project#75).
+  /**
+   * Fires on EVERY death save roll for an unconscious entity, including
+   * damage-while-unconscious auto-fails (roll=0). All derived fields
+   * (is_critical_fail/success, stabilized, dead, regained_consciousness,
+   * hp_restored) are copied verbatim from the toolkit — never re-derived.
+   */
+  onDeathSaveRolled?: (event: DeathSaveRolled) => void;
+  /**
+   * Fires once when an unconscious entity accumulates 3 successful death
+   * saves. Death itself still rides the existing EntityDied.
+   */
+  onEntityStabilized?: (event: EntityStabilized) => void;
   // Wave 2.11d: stream-delivered InputRequired prompts.
   /**
    * Server-pushed InputRequired payload (Wave 2.11d). Used for reaction
@@ -151,6 +173,9 @@ export function dispatchEncounterStream2Event(
     case 'statusApplied':
       options.onStatusApplied?.(payload.value);
       break;
+    case 'statusRemoved':
+      options.onStatusRemoved?.(payload.value);
+      break;
     case 'modeChanged':
       options.onModeChanged?.(payload.value);
       break;
@@ -178,13 +203,19 @@ export function dispatchEncounterStream2Event(
     case 'encounterEnded':
       options.onEncounterEnded?.(payload.value);
       break;
+    case 'deathSaveRolled':
+      options.onDeathSaveRolled?.(payload.value);
+      break;
+    case 'entityStabilized':
+      options.onEntityStabilized?.(payload.value);
+      break;
     case 'inputRequiredDelivered':
       options.onInputRequiredDelivered?.(payload.value);
       break;
     default:
       // Either out-of-current-scope but known to the proto (entityHealed,
-      // dialogue, etc. — the proto defines 20+ event cases;
-      // we currently handle 17) OR a genuinely unknown case from a proto
+      // dialogue, etc. — the proto defines 30 event cases;
+      // we currently handle 21) OR a genuinely unknown case from a proto
       // version mismatch. Either way: warn + continue so the stream doesn't
       // tear down. Add a case arm + callback when the feature lands.
       // The cast strips the narrowed-to-undefined `case` so we can log it.

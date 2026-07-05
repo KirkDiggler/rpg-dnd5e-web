@@ -32,6 +32,7 @@ import type {
   EntityRemoved,
   ModeChanged,
   StatusApplied,
+  StatusRemoved,
   TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import {
@@ -60,6 +61,7 @@ import {
   applyModeChanged,
   applySnapshotToState,
   applyStatusApplied,
+  applyStatusRemoved,
   applyTurnEnded,
   applyTurnStarted,
   applyTurnStateChanged,
@@ -679,6 +681,18 @@ function makeStatusApplied(
   } as unknown as StatusApplied;
 }
 
+function makeStatusRemoved(
+  entityId: string,
+  module: string,
+  type: string,
+  id: string
+): StatusRemoved {
+  return {
+    entityId,
+    statusSource: { module, type, id },
+  } as unknown as StatusRemoved;
+}
+
 function makeModeChanged(
   from: EncounterMode,
   to: EncounterMode,
@@ -1133,6 +1147,99 @@ describe('Wave 2.8 combat reducers', () => {
       expect(after.entityStatuses.get('alice')?.[0].sourceEntityId).toBe(
         'goblin-1'
       );
+    });
+
+    it('collapses a duplicate re-delivered event to a single entry (toolkit#743 hardening)', () => {
+      // Guards against the re-Dodge anomaly under investigation in
+      // toolkit#743: if the same StatusApplied fires twice in a row, the
+      // entity must end up with exactly one badge, not two.
+      const event = makeStatusApplied(
+        'alice',
+        'dnd5e',
+        'condition',
+        'dodging',
+        'Dodging'
+      );
+      let state = applyStatusApplied(createEmptyEncounterState(), event);
+      state = applyStatusApplied(state, event);
+      const list = state.entityStatuses.get('alice');
+      expect(list).toHaveLength(1);
+      expect(list?.[0].displayName).toBe('Dodging');
+    });
+  });
+
+  describe('applyStatusRemoved', () => {
+    it('removes the condition matching the source ref', () => {
+      let state = applyStatusApplied(
+        createEmptyEncounterState(),
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      state = applyStatusRemoved(
+        state,
+        makeStatusRemoved('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      expect(state.entityStatuses.get('alice')).toBeUndefined();
+    });
+
+    it('leaves other conditions on the same entity untouched', () => {
+      let state = applyStatusApplied(
+        createEmptyEncounterState(),
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      state = applyStatusApplied(
+        state,
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'frightened')
+      );
+      state = applyStatusRemoved(
+        state,
+        makeStatusRemoved('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      const list = state.entityStatuses.get('alice');
+      expect(list).toHaveLength(1);
+      expect(list?.[0].source.id).toBe('frightened');
+    });
+
+    it('is a no-op (idempotent) when no matching entry exists', () => {
+      let state = applyStatusApplied(
+        createEmptyEncounterState(),
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      const before = state;
+      state = applyStatusRemoved(
+        state,
+        makeStatusRemoved('alice', 'dnd5e', 'condition', 'frightened')
+      );
+      expect(state).toBe(before);
+    });
+
+    it('is a no-op when the entity has no tracked statuses', () => {
+      const prev = createEmptyEncounterState();
+      const next = applyStatusRemoved(
+        prev,
+        makeStatusRemoved('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      expect(next).toBe(prev);
+    });
+
+    it('is a no-op when statusSource is missing (defensive)', () => {
+      const prev = createEmptyEncounterState();
+      const event = { entityId: 'alice' } as unknown as StatusRemoved;
+      const next = applyStatusRemoved(prev, event);
+      expect(next).toBe(prev);
+    });
+
+    it('does not mutate the previous state', () => {
+      const prev = applyStatusApplied(
+        createEmptyEncounterState(),
+        makeStatusApplied('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      const beforeList = prev.entityStatuses.get('alice');
+      applyStatusRemoved(
+        prev,
+        makeStatusRemoved('alice', 'dnd5e', 'condition', 'poisoned')
+      );
+      expect(prev.entityStatuses.get('alice')).toBe(beforeList);
+      expect(prev.entityStatuses.get('alice')).toHaveLength(1);
     });
   });
 
