@@ -59,8 +59,10 @@ export function DnDFeatures({ character, onShowModal }: DnDFeaturesProps) {
         </div>
       </div>
 
-      {/* Preview */}
-      <div className="mt-3">{renderFeatures()}</div>
+      {/* Preview - hidden once expanded inline (no modal) so the panel isn't rendered twice */}
+      {(onShowModal || !expanded) && (
+        <div className="mt-3">{renderFeatures()}</div>
+      )}
 
       {/* Click indicator */}
       <div
