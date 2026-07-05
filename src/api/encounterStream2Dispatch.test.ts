@@ -130,6 +130,17 @@ describe('dispatchEncounterStream2Event', () => {
     expect(onStatusApplied).toHaveBeenCalledTimes(1);
   });
 
+  it('routes statusRemoved to onStatusRemoved', () => {
+    const onStatusRemoved = vi.fn();
+    const options: EncounterStream2Options = { onStatusRemoved };
+    const event = makeEvent('statusRemoved', {
+      entityId: 'char-alice',
+      statusSource: { module: 'dnd5e', type: 'condition', id: 'poisoned' },
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onStatusRemoved).toHaveBeenCalledTimes(1);
+  });
+
   it('routes modeChanged to onModeChanged', () => {
     const onModeChanged = vi.fn();
     const options: EncounterStream2Options = { onModeChanged };
@@ -195,6 +206,36 @@ describe('dispatchEncounterStream2Event', () => {
     });
     dispatchEncounterStream2Event(event, options);
     expect(onEncounterEnded).toHaveBeenCalledTimes(1);
+  });
+
+  // Death-save arc (rpg-toolkit#742, wave KirkDiggler/rpg-project#75)
+  it('routes deathSaveRolled to onDeathSaveRolled', () => {
+    const onDeathSaveRolled = vi.fn();
+    const options: EncounterStream2Options = { onDeathSaveRolled };
+    const event = makeEvent('deathSaveRolled', {
+      entityId: 'char-alice',
+      roll: 14,
+      successes: 2,
+      failures: 1,
+      isCriticalFail: false,
+      isCriticalSuccess: false,
+      stabilized: false,
+      dead: false,
+      regainedConsciousness: false,
+      hpRestored: 0,
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onDeathSaveRolled).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes entityStabilized to onEntityStabilized', () => {
+    const onEntityStabilized = vi.fn();
+    const options: EncounterStream2Options = { onEntityStabilized };
+    const event = makeEvent('entityStabilized', {
+      entityId: 'char-alice',
+    });
+    dispatchEncounterStream2Event(event, options);
+    expect(onEntityStabilized).toHaveBeenCalledTimes(1);
   });
 
   // Wave 2.11d: stream-delivered InputRequired prompts (e.g. NPC-attacker

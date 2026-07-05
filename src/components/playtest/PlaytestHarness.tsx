@@ -343,6 +343,14 @@ export function PlaytestHarness() {
           `StatusApplied ${e.entityId} <- ${id} (${display.icon} ${display.label})`
         );
       },
+      onStatusRemoved: (e) => {
+        encounterState.applyStatusRemoved(e);
+        const id = e.statusSource?.id ?? '?';
+        const display = getConditionDisplay(id);
+        addLog(
+          `StatusRemoved ${e.entityId} -> ${id} (${display.icon} ${display.label})`
+        );
+      },
       onModeChanged: (e) => {
         encounterState.applyModeChanged(e);
         addLog(
@@ -406,6 +414,25 @@ export function PlaytestHarness() {
       onEncounterEnded: (e) => {
         encounterState.applyEncounterEnded(e);
         addLog(`EncounterEnded: ${e.reason}`);
+      },
+      // Death-save arc (rpg-toolkit#742, wave KirkDiggler/rpg-project#75):
+      // log-only — the derived flags are copied verbatim from the toolkit,
+      // never recomputed, and appended to the base roll line when set.
+      onDeathSaveRolled: (e) => {
+        const parts: string[] = [];
+        if (e.isCriticalFail) parts.push('nat-1');
+        if (e.isCriticalSuccess) parts.push('nat-20');
+        if (e.dead) parts.push('DEAD');
+        if (e.stabilized) parts.push('STABILIZED');
+        if (e.regainedConsciousness) parts.push('regained consciousness');
+        if (e.hpRestored > 0) parts.push(`+${e.hpRestored}hp`);
+        const flags = parts.length > 0 ? ` [${parts.join(', ')}]` : '';
+        addLog(
+          `DeathSave ${e.entityId}: roll ${e.roll} (${e.successes}S/${e.failures}F)${flags}`
+        );
+      },
+      onEntityStabilized: (e) => {
+        addLog(`Stabilized ${e.entityId}`);
       },
       // Wave 2.11d (#409): server-pushed InputRequired prompts. Reactions
       // triggered by NPC actions arrive here because the attacker's RPC
