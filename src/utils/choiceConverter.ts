@@ -136,22 +136,9 @@ export function convertFeatureChoiceToProto(
 
 export function convertExpertiseChoiceToProto(
   choiceId: string,
-  selectedSkills: string[],
+  selectedSkills: Skill[],
   source: ChoiceSource
 ): ChoiceData {
-  // Convert string skill names to Skill enum values
-  const skillEnums = selectedSkills
-    .map((skillStr) => {
-      // Try to find the enum value for this skill string
-      const enumValue = Object.entries(Skill).find(
-        ([key, val]) =>
-          typeof val === 'number' &&
-          key.toLowerCase() === skillStr.toLowerCase().replace(/[^a-z]/g, '')
-      )?.[1] as Skill | undefined;
-      return enumValue || Skill.UNSPECIFIED;
-    })
-    .filter((s) => s !== Skill.UNSPECIFIED);
-
   return create(ChoiceDataSchema, {
     choiceId,
     category: ChoiceCategory.EXPERTISE,
@@ -159,7 +146,7 @@ export function convertExpertiseChoiceToProto(
     selection: {
       case: 'expertise',
       value: create(ExpertiseSelectionSchema, {
-        skills: skillEnums,
+        skills: selectedSkills.filter((s) => s !== Skill.UNSPECIFIED),
       }),
     },
   });
