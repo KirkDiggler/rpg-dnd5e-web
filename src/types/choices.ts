@@ -42,7 +42,7 @@ export interface FeatureChoice {
 
 export interface ExpertiseChoice {
   choiceId: string;
-  skills: string[];
+  skills: Skill[];
 }
 
 export interface TraitChoice {

@@ -128,6 +128,32 @@ export function ChoiceRenderer({
     );
   }
 
+  // Expertise - use EnumChoice, grouped like Skills
+  // (only skill-based expertise is advertised today; see ExpertiseOptions)
+  if (
+    choice.choiceType === ChoiceCategory.EXPERTISE &&
+    choice.options?.case === 'expertiseOptions'
+  ) {
+    return (
+      <EnumChoice
+        choice={choice}
+        available={choice.options.value.availableSkills}
+        currentSelections={currentSelections}
+        getDisplayInfo={getSkillInfo}
+        getGroup={getSkillAbility}
+        groupOrder={[
+          'Strength',
+          'Dexterity',
+          'Constitution',
+          'Intelligence',
+          'Wisdom',
+          'Charisma',
+        ]}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+  }
+
   // Fighting Styles - use EnumChoice
   if (
     choice.choiceType === ChoiceCategory.FIGHTING_STYLE &&

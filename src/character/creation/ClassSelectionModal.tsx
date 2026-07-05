@@ -403,6 +403,25 @@ export function ClassSelectionModal({
       }
     }
 
+    // Validate expertise choices
+    const expertiseChoices =
+      choicesSource?.filter(
+        (choice) => choice.choiceType === ChoiceCategory.EXPERTISE
+      ) || [];
+
+    for (const choice of expertiseChoices) {
+      const expertiseChoice = currentClassChoices.expertise?.find(
+        (ec) => ec.choiceId === choice.id
+      );
+      const selected = expertiseChoice?.skills || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} skill${choice.chooseCount > 1 ? 's' : ''} for expertise: ${choice.description}`
+        );
+        return;
+      }
+    }
+
     // For now, we'll skip validation of other choice types that don't use enums yet
     // TODO: Add validation for weapon proficiencies, armor proficiencies, feats, features
     // when they are updated to use structured types
@@ -1380,6 +1399,85 @@ export function ClassSelectionModal({
                       );
                     })()}
 
+                    {/* Expertise Choices */}
+                    {(() => {
+                      const expertiseChoices =
+                        choicesSource?.filter(
+                          (choice) =>
+                            choice.choiceType === ChoiceCategory.EXPERTISE
+                        ) || [];
+
+                      if (expertiseChoices.length === 0) return null;
+
+                      return (
+                        <div>
+                          <h4
+                            style={{
+                              color: textPrimary,
+                              fontSize: '18px',
+                              fontWeight: 'bold',
+                              marginBottom: '12px',
+                              fontFamily: 'Cinzel, serif',
+                            }}
+                          >
+                            Choose Your Expertise{' '}
+                            <span
+                              style={{ color: '#ef4444', fontSize: '16px' }}
+                            >
+                              *
+                            </span>
+                          </h4>
+                          {expertiseChoices.map((choice) => (
+                            <div
+                              key={choice.id}
+                              style={{ marginBottom: '16px' }}
+                            >
+                              <ChoiceRenderer
+                                choice={choice}
+                                currentSelections={
+                                  currentClassChoices.expertise?.find(
+                                    (ec) => ec.choiceId === choice.id
+                                  )?.skills || []
+                                }
+                                onSelectionChange={(_choiceId, selections) => {
+                                  // selections are Skill enums directly
+                                  const skillEnums = selections as Skill[];
+
+                                  setClassChoicesMap((prev) => {
+                                    const currentChoices = prev[choiceKey] || {
+                                      skills: [],
+                                      equipment: [],
+                                      features: [],
+                                      expertise: [],
+                                    };
+                                    const updatedExpertise =
+                                      currentChoices.expertise?.filter(
+                                        (ec) => ec.choiceId !== choice.id
+                                      ) || [];
+
+                                    if (skillEnums.length > 0) {
+                                      updatedExpertise.push({
+                                        choiceId: choice.id,
+                                        skills: skillEnums,
+                                      });
+                                    }
+
+                                    return {
+                                      ...prev,
+                                      [choiceKey]: {
+                                        ...currentChoices,
+                                        expertise: updatedExpertise,
+                                      },
+                                    };
+                                  });
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     {/* Class Features */}
                     {(() => {
                       const featureChoices =
@@ -1697,7 +1795,9 @@ export function ClassSelectionModal({
                             choice.choiceType !== ChoiceCategory.LANGUAGES &&
                             choice.choiceType !== ChoiceCategory.TOOLS &&
                             choice.choiceType !== ChoiceCategory.EQUIPMENT &&
-                            choice.choiceType !== ChoiceCategory.FIGHTING_STYLE
+                            choice.choiceType !==
+                              ChoiceCategory.FIGHTING_STYLE &&
+                            choice.choiceType !== ChoiceCategory.EXPERTISE
                         ) || [];
 
                       if (otherChoices.length === 0) return null;
