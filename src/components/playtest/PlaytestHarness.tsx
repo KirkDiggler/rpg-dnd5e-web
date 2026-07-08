@@ -7,7 +7,7 @@ import {
   EntityType,
   TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { v2PositionToV1 } from '../../api/positionConvert';
 import { useActivateFeatureV2 } from '../../api/useActivateFeatureV2';
 import { useDevPlayerIdAuth } from '../../api/useDevPlayerIdAuth';
@@ -16,11 +16,16 @@ import { useEndTurnV2 } from '../../api/useEndTurnV2';
 import { useInteractV2 } from '../../api/useInteractV2';
 import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
 import { useSetReactionReady } from '../../api/useSetReactionReady';
-import { useSubmitCheckV2 } from '../../api/useSubmitCheckV2';
 import { useTakeActionV2 } from '../../api/useTakeActionV2';
 import { useEncounterState } from '../../hooks/useEncounterState';
+import {
+  errorMessage,
+  formatSourceRefs,
+  formatStatusBadges,
+} from '../../utils/combatFormat';
 import { getConditionDisplay } from '../../utils/conditionIcons';
 import { protoPositionToHex } from '../../utils/hexCoord';
+import { PromptModal } from '../game/PromptModal';
 import { ActionMenu } from './ActionMenu';
 import { actionKey, targetKindNeedsPrompt } from './actionMenuHelpers';
 import { EconomyBar } from './EconomyBar';
@@ -59,38 +64,6 @@ const MODE_LABEL: Record<EncounterMode, string> = {
 
 function formatTime(d: Date): string {
   return d.toTimeString().slice(0, 8);
-}
-
-/** Comma-joined display labels for a list of condition source refs (e.g.
- * `AttackResolved`'s `advantage_sources`), resolved via the web's existing
- * ref-keyed lookup (`conditionIcons.ts`) — never the server's
- * `display_name`, which "may be empty" per `StatusEffect`'s doc comment
- * (R5: display resolution stays web-side). */
-function formatSourceRefs(refs: Array<{ id: string }>): string {
-  return refs.map((r) => getConditionDisplay(r.id).label).join(', ');
-}
-
-/** Icon + label badge text for one entity's status list, e.g. "🏃 Dodging,
- * 🫥 Hidden". Resolved the same way as `formatSourceRefs` — by `source.id`
- * through the web's lookup table, never the (possibly empty) wire
- * `display_name`. */
-function formatStatusBadges(
-  statuses: Array<{ source: { id: string } }>
-): string {
-  return statuses
-    .map((s) => {
-      const d = getConditionDisplay(s.source.id);
-      return `${d.icon} ${d.label}`;
-    })
-    .join(', ');
-}
-
-/** Extract a readable message from a caught RPC rejection. ConnectError's
- * `.message` is already prefixed with the status code (e.g.
- * `[invalid_argument] target.entity_id is required`), so this doubles as
- * "code + message" without the harness needing to know about ConnectError. */
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /** Short, log-friendly descriptor of an ActionTarget for the Recent-events
@@ -144,25 +117,6 @@ export function PlaytestHarness() {
   // stated need: clickable map for intuitive driving without losing the
   // event log / entity table he uses for backend verification mid-playtest.
   const [viewMode, setViewMode] = useState<ViewMode>('both');
-  // Wave 2.9: prompt roll input and transient result display
-  const [rollValue, setRollValue] = useState(10);
-  // Structured result avoids string-sniffing for color/outcome logic.
-  const [promptResult, setPromptResult] = useState<{
-    success: boolean;
-    total: number;
-    roll: number;
-  } | null>(null);
-  // Ref to the prompt that is currently being auto-cleared; guards against
-  // clearing a newer prompt when the timer from a prior submit fires late.
-  const clearResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
-  const clearingPromptRef = useRef<object | null>(null);
-  // Always-fresh mirror of the current pending prompt. Used by async
-  // handlers (handleSubmitReaction) that must compare the prompt-at-await-
-  // start to the freshest prompt after the await — the React state captured
-  // via the handler's closure is the render-time snapshot, not the latest.
-  const latestPendingPromptRef = useRef<object | null>(null);
 
   const encounterState = useEncounterState();
   const {
@@ -185,11 +139,6 @@ export function PlaytestHarness() {
     loading: endTurnLoading,
     error: endTurnError,
   } = useEndTurnV2();
-  const {
-    submitCheck,
-    loading: submitCheckLoading,
-    error: submitCheckError,
-  } = useSubmitCheckV2();
   // Wave 2.11d: per-character per-reaction readiness toggle. The panel below
   // the prompt section uses this to arm/unarm reactions like Shield + OA.
   const {
@@ -448,15 +397,8 @@ export function PlaytestHarness() {
           addLog('InputRequiredDelivered: (no payload)');
           return;
         }
-        // Cancel any in-progress auto-clear timer from a prior skill-check
-        // submit so it doesn't unexpectedly clear the incoming prompt while
-        // the player is mid-reaction. Mirrors handleOpenDoor.
-        if (clearResultTimerRef.current) {
-          clearTimeout(clearResultTimerRef.current);
-          clearResultTimerRef.current = null;
-        }
-        clearingPromptRef.current = null;
-        setPromptResult(null);
+        // PromptModal resets its own transient result/timer state whenever
+        // the prompt object identity changes — no reset needed here.
         encounterState.setPendingPrompt(e.inputRequired);
         addLog(
           `InputRequiredDelivered: ${e.inputRequired.kind?.case ?? 'unknown'}`
@@ -464,23 +406,6 @@ export function PlaytestHarness() {
       },
     }
   );
-
-  // Clean up the auto-clear timer on unmount. Placed before the !playerId
-  // early return so this hook is always called unconditionally (Rules of Hooks).
-  useEffect(() => {
-    return () => {
-      if (clearResultTimerRef.current) {
-        clearTimeout(clearResultTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Keep latestPendingPromptRef in sync with the freshest pendingPrompt so
-  // handleSubmitReaction's post-await check sees the current value, not the
-  // closure-captured render snapshot. See handleSubmitReaction for rationale.
-  useEffect(() => {
-    latestPendingPromptRef.current = encounterState.state.pendingPrompt;
-  }, [encounterState.state.pendingPrompt]);
 
   if (!playerId) {
     return (
@@ -526,14 +451,8 @@ export function PlaytestHarness() {
       const response = await interact(encounterId, id, 'open');
       addLog(`Interact(open) → ${id}`);
       if (response.inputRequired) {
-        // Cancel any in-progress auto-clear timer from a prior submit so it
-        // doesn't unexpectedly clear the new incoming prompt.
-        if (clearResultTimerRef.current) {
-          clearTimeout(clearResultTimerRef.current);
-          clearResultTimerRef.current = null;
-        }
-        clearingPromptRef.current = null;
-        setPromptResult(null);
+        // PromptModal resets its own transient result/timer state whenever
+        // the prompt object identity changes — no reset needed here.
         encounterState.setPendingPrompt(response.inputRequired);
         addLog(
           `InputRequired: ${response.inputRequired.kind?.case ?? 'unknown'}`
@@ -646,78 +565,6 @@ export function PlaytestHarness() {
         `TakeAction(${actionRef.id})${describeActionTarget(target)} REJECTED: ${errorMessage(err)}`,
         true
       );
-    }
-  };
-
-  const handleSubmitCheck = async () => {
-    // Capture the prompt being resolved. We pass this identity token to the
-    // auto-clear timer so a stale timer from a prior submit doesn't clear a
-    // newer prompt if the prompt changes before the 2s window expires.
-    const promptBeingResolved = encounterState.state.pendingPrompt;
-    try {
-      const response = await submitCheck({
-        encounterId,
-        entityId,
-        roll: rollValue,
-      });
-      addLog(
-        `SubmitCheck → rolled ${rollValue.toString()}, total ${response.total.toString()}, ${response.success ? 'success!' : 'failed.'}`
-      );
-      setPromptResult({
-        success: response.success,
-        total: response.total,
-        roll: rollValue,
-      });
-      // Clear any prior timer then start a new 2s window.
-      if (clearResultTimerRef.current) {
-        clearTimeout(clearResultTimerRef.current);
-      }
-      clearingPromptRef.current = promptBeingResolved;
-      clearResultTimerRef.current = setTimeout(() => {
-        // Only clear the prompt if it hasn't changed since we started this timer.
-        if (clearingPromptRef.current === promptBeingResolved) {
-          setPromptResult(null);
-          encounterState.setPendingPrompt(null);
-        }
-        clearResultTimerRef.current = null;
-        clearingPromptRef.current = null;
-      }, 2000);
-    } catch {
-      // error is surfaced via submitCheckError state
-    }
-  };
-
-  // Wave 2.11d: dispatch SubmitCheck{take_reaction} for the active reaction
-  // prompt. take=true sends the reaction; take=false skips. On success the
-  // prompt is cleared immediately — the resume flow's outcome events arrive
-  // separately on the stream and update HP/AC via the reducer.
-  const handleSubmitReaction = async (takeReaction: boolean) => {
-    // Capture the in-flight prompt by reference. We compare against the
-    // freshest state value AFTER the await so that a newer prompt arriving
-    // during the RPC isn't accidentally cleared. Use the ref pattern via
-    // the setter's functional form below.
-    const promptBeingResolved = encounterState.state.pendingPrompt;
-    try {
-      await submitCheck({
-        encounterId,
-        entityId,
-        roll: 0, // ignored for reaction prompts
-        takeReaction,
-      });
-      addLog(
-        `SubmitCheck{take_reaction:${takeReaction.toString()}} → reaction ${takeReaction ? 'taken' : 'skipped'}`
-      );
-      // Clear the prompt only if it's still the one we resolved. Reaction
-      // prompts don't show a post-submit result panel (unlike skill checks
-      // which show rolled/total/success transiently). Outcome events arrive
-      // via the stream and the reducer updates HP/AC/etc. Reading
-      // encounterState.state here would still be the stale render snapshot,
-      // so we use latestPendingPromptRef to peek the freshest value.
-      if (latestPendingPromptRef.current === promptBeingResolved) {
-        encounterState.setPendingPrompt(null);
-      }
-    } catch {
-      // error is surfaced via submitCheckError state
     }
   };
 
@@ -991,202 +838,15 @@ export function PlaytestHarness() {
           (`skill-check-prompt`, `reaction-prompt`, `unsupported-prompt`,
           `ready-reactions-panel`) are preserved so existing tests
           continue to query at top level. */}
-      {/* Skill check prompt (Wave 2.9) */}
-      {encounterState.state.pendingPrompt !== null &&
-        (() => {
-          const prompt = encounterState.state.pendingPrompt;
-          if (prompt.kind?.case === 'skillCheck') {
-            const sc = prompt.kind.value;
-            return (
-              <div
-                data-testid="skill-check-prompt"
-                style={{
-                  margin: '16px 0 8px',
-                  padding: '12px',
-                  background: '#1a1a2e',
-                  border: '1px solid #4a4aaa',
-                  borderRadius: 4,
-                }}
-              >
-                <h3 style={{ margin: '0 0 8px', color: '#aaf' }}>
-                  Skill check prompt
-                </h3>
-                <div style={{ fontSize: 13, marginBottom: 8 }}>
-                  <strong>
-                    Skill check: {sc.ability} (DC {sc.dc})
-                  </strong>
-                  {sc.tool && (
-                    <span style={{ color: '#aaa', marginLeft: 8 }}>
-                      — requires: {sc.tool.id}
-                    </span>
-                  )}
-                </div>
-                {promptResult !== null ? (
-                  <div
-                    data-testid="prompt-result"
-                    style={{
-                      color: promptResult.success ? '#8f8' : '#f88',
-                      fontWeight: 'bold',
-                      fontSize: 13,
-                    }}
-                  >
-                    rolled {promptResult.roll}, total {promptResult.total},{' '}
-                    {promptResult.success ? 'success!' : 'failed.'}
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: 8,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <label style={{ fontSize: 12 }}>
-                      Roll (1-20){' '}
-                      <input
-                        type="number"
-                        min={1}
-                        max={20}
-                        step={1}
-                        value={rollValue}
-                        aria-label="roll value"
-                        onChange={(e) =>
-                          setRollValue(
-                            Math.min(
-                              20,
-                              Math.max(1, Math.trunc(Number(e.target.value)))
-                            )
-                          )
-                        }
-                        style={{
-                          width: 60,
-                          background: '#333',
-                          color: '#eee',
-                          border: '1px solid #555',
-                          padding: '2px 4px',
-                        }}
-                      />
-                    </label>
-                    <button
-                      onClick={() => void handleSubmitCheck()}
-                      disabled={submitCheckLoading}
-                      style={{
-                        padding: '4px 12px',
-                        background: '#2a2a4a',
-                        color: '#aaf',
-                        border: '1px solid #4a4aaa',
-                        cursor: submitCheckLoading ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {submitCheckLoading ? 'Submitting…' : 'Submit roll'}
-                    </button>
-                    <button
-                      onClick={() => encounterState.setPendingPrompt(null)}
-                      style={{
-                        padding: '4px 8px',
-                        background: '#2a2a2a',
-                        color: '#888',
-                        border: '1px solid #444',
-                        cursor: 'pointer',
-                        fontSize: 11,
-                      }}
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                )}
-                {submitCheckError && (
-                  <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
-                    SubmitCheck error: {submitCheckError.message}
-                  </div>
-                )}
-              </div>
-            );
-          }
-          // Wave 2.11d reaction prompt: Take / Skip → SubmitCheck{take_reaction}.
-          if (prompt.kind?.case === 'reactionPrompt') {
-            const rp = prompt.kind.value;
-            const refStr = rp.reactionRef
-              ? `${rp.reactionRef.module}:${rp.reactionRef.type}:${rp.reactionRef.id}`
-              : 'unknown reaction';
-            const description =
-              rp.displayText !== ''
-                ? rp.displayText
-                : `${rp.triggerKind} reaction from ${rp.triggerSourceEntityId}`;
-            return (
-              <div
-                data-testid="reaction-prompt"
-                style={{
-                  margin: '16px 0 8px',
-                  padding: '12px',
-                  background: '#2a1a1a',
-                  border: '1px solid #aa4a4a',
-                  borderRadius: 4,
-                }}
-              >
-                <h3 style={{ margin: '0 0 8px', color: '#faa' }}>
-                  Reaction prompt: {refStr}
-                </h3>
-                <div style={{ fontSize: 13, marginBottom: 8 }}>
-                  {description}
-                </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button
-                    data-testid="reaction-take-btn"
-                    onClick={() => void handleSubmitReaction(true)}
-                    disabled={submitCheckLoading}
-                    style={{
-                      padding: '4px 12px',
-                      background: '#3a2a2a',
-                      color: '#faa',
-                      border: '1px solid #aa4a4a',
-                      cursor: submitCheckLoading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {submitCheckLoading ? 'Submitting…' : 'Take'}
-                  </button>
-                  <button
-                    data-testid="reaction-skip-btn"
-                    onClick={() => void handleSubmitReaction(false)}
-                    disabled={submitCheckLoading}
-                    style={{
-                      padding: '4px 12px',
-                      background: '#2a2a2a',
-                      color: '#bbb',
-                      border: '1px solid #555',
-                      cursor: submitCheckLoading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    Skip
-                  </button>
-                </div>
-                {submitCheckError && (
-                  <div style={{ color: '#f88', marginTop: 8, fontSize: 12 }}>
-                    SubmitCheck error: {submitCheckError.message}
-                  </div>
-                )}
-              </div>
-            );
-          }
-          // dialogue / targetSelect — Wave 2.10+
-          return (
-            <div
-              data-testid="unsupported-prompt"
-              style={{
-                margin: '16px 0 8px',
-                padding: '8px 12px',
-                background: '#1a1a1a',
-                border: '1px solid #555',
-                borderRadius: 4,
-                color: '#888',
-                fontSize: 12,
-              }}
-            >
-              Prompt type {prompt.kind?.case ?? 'unknown'}: not yet supported
-              (Wave 2.10+)
-            </div>
-          );
-        })()}
+      {/* Skill check / reaction prompt (Wave 2.9 / 2.11d) — shared with
+          GameView's EncounterView via PromptModal (#440). */}
+      <PromptModal
+        encounterId={encounterId}
+        entityId={entityId}
+        prompt={encounterState.state.pendingPrompt}
+        onDismiss={() => encounterState.setPendingPrompt(null)}
+        onLog={addLog}
+      />
 
       {/* Wave 2.11d ready-reactions panel: per-character per-reaction toggles.
           Server is source of truth (reactionReadiness map flows from
