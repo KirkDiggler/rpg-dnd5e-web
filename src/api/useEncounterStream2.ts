@@ -36,6 +36,24 @@ interface UseEncounterStream2Result {
  * Treat as a stream-up sync barrier.
  *
  * Reconnect: shared RECONNECT_CONFIG with v1 hook (1s → 30s, 10 attempts).
+ *
+ * Mount-churn resilience (#442): a mount can tear its effect down and set it
+ * back up again in quick succession (React StrictMode's dev double-invoke is
+ * the common trigger, but any deps-driven re-run shapes the same race) —
+ * the first connect() attempt's underlying transport can notice the
+ * teardown's abort() and reject *after* the second attempt has already
+ * replaced `abortControllerRef.current`. A catch handler that reads that
+ * shared ref to decide "was I the one who got aborted" is reading a value
+ * that may belong to a newer, unrelated attempt by then. Each connect()
+ * attempt is tagged with a `generationRef` value at the moment it starts;
+ * every side effect it performs (state updates, scheduling a reconnect,
+ * touching the shared refs) is gated on still being the current generation,
+ * and "was this abort mine" is decided from the attempt's own locally
+ * captured AbortController, never the shared ref. That keeps a stale
+ * attempt's belated rejection from silently no-op'ing (false intentional
+ * read) *and* from re-arming its own zombie reconnect that clobbers the
+ * live connection (false error read) — both were on the table with the old
+ * shared-ref check depending on timing, which is why the bug was flaky.
  */
 export function useEncounterStream2(
   encounterId: string | null,
@@ -54,6 +72,11 @@ export function useEncounterStream2(
     undefined
   );
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
+  // Bumped at the start of every connect() attempt (initial, StrictMode-churn
+  // replay, and scheduled retries alike) so a superseded attempt's async
+  // continuations can recognize they're stale and no-op instead of touching
+  // shared state on a newer attempt's behalf.
+  const generationRef = useRef(0);
 
   useEffect(() => {
     if (!encounterId) {
@@ -61,26 +84,32 @@ export function useEncounterStream2(
       return;
     }
 
-    const scheduleReconnect = () => {
-      if (retryCountRef.current >= RECONNECT_CONFIG.maxAttempts) {
-        setConnectionState('error');
-        setError(new Error('Max reconnection attempts reached'));
-        return;
-      }
-      setConnectionState('disconnected');
-      const delay = Math.min(
-        RECONNECT_CONFIG.initialDelayMs *
-          Math.pow(RECONNECT_CONFIG.backoffMultiplier, retryCountRef.current),
-        RECONNECT_CONFIG.maxDelayMs
-      );
-      retryCountRef.current++;
-      retryTimeoutRef.current = setTimeout(connect, delay);
-    };
-
     const connect = async () => {
+      const myGeneration = ++generationRef.current;
+      const isCurrent = () => generationRef.current === myGeneration;
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
       setConnectionState('connecting');
       setError(null);
-      abortControllerRef.current = new AbortController();
+
+      const scheduleReconnect = () => {
+        if (!isCurrent()) return; // a newer attempt already owns the hook
+
+        if (retryCountRef.current >= RECONNECT_CONFIG.maxAttempts) {
+          setConnectionState('error');
+          setError(new Error('Max reconnection attempts reached'));
+          return;
+        }
+        setConnectionState('disconnected');
+        const delay = Math.min(
+          RECONNECT_CONFIG.initialDelayMs *
+            Math.pow(RECONNECT_CONFIG.backoffMultiplier, retryCountRef.current),
+          RECONNECT_CONFIG.maxDelayMs
+        );
+        retryCountRef.current++;
+        retryTimeoutRef.current = setTimeout(connect, delay);
+      };
 
       try {
         const request = create(StreamEncounterRequestSchema, {
@@ -88,11 +117,13 @@ export function useEncounterStream2(
           playerId,
         });
         const stream = encounterClientV2.streamEncounter(request, {
-          signal: abortControllerRef.current.signal,
+          signal: controller.signal,
         });
 
         let sawFirstSnapshot = false;
         for await (const event of stream as AsyncIterable<EncounterEvent>) {
+          if (!isCurrent()) return; // superseded mid-stream; a newer attempt owns state now
+
           if (!sawFirstSnapshot) {
             // Broker contract: first message is always SnapshotDelivered. We
             // don't validate the case here — a violation is a server-side bug
@@ -110,8 +141,9 @@ export function useEncounterStream2(
         // Stream closed by server — schedule reconnect
         scheduleReconnect();
       } catch (err) {
-        if (abortControllerRef.current?.signal.aborted) {
-          return; // intentional abort, not an error
+        if (!isCurrent()) return; // superseded — a newer attempt is already running
+        if (controller.signal.aborted) {
+          return; // our own cleanup tore this attempt down; nothing wants it anymore
         }
         console.error('[useEncounterStream2] stream error:', err);
         scheduleReconnect();
