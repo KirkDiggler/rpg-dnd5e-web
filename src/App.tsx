@@ -7,8 +7,8 @@ import { CharacterDraftProvider } from './character/creation/CharacterDraftConte
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
+import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
-import { LobbyView } from './components/LobbyView';
 import { PlaytestHarness } from './components/playtest/PlaytestHarness';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
@@ -214,8 +214,12 @@ function AppContent() {
               <p className="mt-4 text-red-500">{discord.error}</p>
             )}
           </motion.div>
-        ) : currentView === 'lobby' ? (
-          <LobbyView characterId={lobbyCharacterId} onBack={handleBackToHome} />
+        ) : currentView === 'lobby' && lobbyCharacterId ? (
+          <GameView
+            characterId={lobbyCharacterId}
+            playerId={playerId || 'test-player'}
+            onBack={handleBackToHome}
+          />
         ) : currentView === 'concepts' ? (
           <ConceptsView onBack={handleBackToHome} />
         ) : currentView === 'home' ? (

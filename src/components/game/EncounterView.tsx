@@ -1,0 +1,411 @@
+/**
+ * EncounterView — GameView slice 2's live-combat surface (#440). Mounts when
+ * LobbyFlow's StreamLobby delivers encounter_started. Built entirely on the
+ * shared harness stack (design.md: "Already shared or generic"):
+ * useEncounterStream2 + useEncounterState for the SnapshotDelivered-first
+ * flow, ActionMenu/EconomyBar rendered verbatim off the server-pushed
+ * TurnState, EncounterMap (HexGrid) for movement/targeting, and PromptModal
+ * for skill-check/reaction prompts — the same component PlaytestHarness
+ * renders, not a copy.
+ *
+ * The local player's entityId is the bound `characterId` (what
+ * StartEncounter used as the toolkit AddPlayer EntityID — see
+ * rpg-api's lobby orchestrator start_encounter.go), NOT `char-<playerId>`.
+ * That shortcut only works in the harness because devseed happens to name
+ * characters that way; GameView threads the real characterId through
+ * instead (see GameView/LobbyFlow props).
+ *
+ * Single room this slice — multi-room accumulation is slice 4. Door
+ * interaction is out of scope here too: HexGrid's door-click surface needs a
+ * DoorInfo[] the v2 stream doesn't accumulate yet (the same documented gap
+ * PlaytestMap has — see docs/architecture/components/playtest-harness.md
+ * "Known limitations"), and devseed's single-room fixture has no door to
+ * exercise it against.
+ */
+
+import { create } from '@bufbuild/protobuf';
+import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { ActionTarget } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
+import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  EncounterMode,
+  EntityType,
+  TargetKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import { useState } from 'react';
+import { v2PositionToV1 } from '../../api/positionConvert';
+import { useEncounterStream2 } from '../../api/useEncounterStream2';
+import { useEndTurnV2 } from '../../api/useEndTurnV2';
+import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
+import { useTakeActionV2 } from '../../api/useTakeActionV2';
+import { useEncounterState } from '../../hooks/useEncounterState';
+import { errorMessage, formatStatusBadges } from '../../utils/combatFormat';
+import { protoPositionToHex } from '../../utils/hexCoord';
+import { ActionMenu } from '../playtest/ActionMenu';
+import { targetKindNeedsPrompt } from '../playtest/actionMenuHelpers';
+import { EconomyBar } from '../playtest/EconomyBar';
+import { EncounterMap } from './EncounterMap';
+import { PromptModal } from './PromptModal';
+
+const ATTACK_ACTION_REF = {
+  module: 'dnd5e',
+  type: 'action',
+  id: 'attack',
+} as const;
+
+const MODE_LABEL: Record<EncounterMode, string> = {
+  [EncounterMode.UNSPECIFIED]: 'UNSPECIFIED',
+  [EncounterMode.FREE_ROAM]: 'FREE_ROAM',
+  [EncounterMode.TURN_BASED]: 'TURN_BASED',
+};
+
+export interface EncounterViewProps {
+  encounterId: string;
+  /** The character bound at lobby create/join — the entity id in this encounter. */
+  characterId: string;
+  /** The authenticated player id — carried on the stream request for viewer identity. */
+  playerId: string;
+  onBack: () => void;
+}
+
+export function EncounterView({
+  encounterId,
+  characterId,
+  playerId,
+  onBack,
+}: EncounterViewProps) {
+  const entityId = characterId;
+  const encounterState = useEncounterState();
+  // Set by clicking any entity on the map — feeds SINGLE_ENTITY-targeted
+  // menu actions (e.g. a spell chosen after the player clicks its target).
+  // Clicking a monster additionally fires an immediate basic attack, the
+  // same primary-loop shortcut PlaytestMap's VisualAttack click gives the
+  // harness.
+  const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  const { moveEntity, error: moveError } = useMoveEntityV2();
+  const {
+    takeAction,
+    loading: takeActionLoading,
+    error: takeActionError,
+  } = useTakeActionV2();
+  const {
+    endTurn,
+    loading: endTurnLoading,
+    error: endTurnError,
+  } = useEndTurnV2();
+
+  const stream = useEncounterStream2(encounterId, playerId, {
+    onSnapshotDelivered: (e) => {
+      if (e.encounter) {
+        encounterState.applyV2SnapshotTurnState(
+          e.encounter.mode,
+          e.encounter.turnState
+        );
+        const entityEntries = (e.encounter.space?.entities ?? [])
+          .filter((entity) => entity.position !== undefined)
+          .map((entity) => ({
+            entity: create(EntityStateSchema, {
+              entityId: entity.id,
+              position: v2PositionToV1(entity.position!),
+            }),
+            type: entity.type,
+            monsterRefId:
+              entity.data?.case === 'monster'
+                ? entity.data.value.monsterRef?.id
+                : undefined,
+            initialHP: entity.hp
+              ? { current: entity.hp.current, max: entity.hp.max }
+              : undefined,
+            initialAC: entity.armorClass,
+          }));
+        if (entityEntries.length > 0) {
+          encounterState.applyEntityAppearedBatch(entityEntries);
+        }
+      }
+    },
+    onEntityMoved: (e) => {
+      const last = e.actualPath[e.actualPath.length - 1];
+      if (last) {
+        encounterState.applyEntityPositionUpdate(
+          e.entityId,
+          v2PositionToV1(last)
+        );
+      }
+    },
+    onGeometryRevealed: (e) => {
+      const positions = e.hexes
+        .map((h) => h.position)
+        .filter((p): p is NonNullable<typeof p> => p !== undefined);
+      encounterState.applyHexRevealed(positions.map(protoPositionToHex));
+    },
+    onEntityAppeared: (e) => {
+      if (!e.entity || !e.entity.position) return;
+      const stub = create(EntityStateSchema, {
+        entityId: e.entity.id,
+        position: v2PositionToV1(e.entity.position),
+      });
+      encounterState.applyEntityAppeared(stub);
+      const monsterRefId =
+        e.entity.data?.case === 'monster'
+          ? e.entity.data.value.monsterRef?.id
+          : undefined;
+      const initialHP = e.entity.hp
+        ? { current: e.entity.hp.current, max: e.entity.hp.max }
+        : undefined;
+      encounterState.applyEntityMeta(
+        e.entity.id,
+        e.entity.type,
+        monsterRefId,
+        initialHP,
+        e.entity.armorClass
+      );
+    },
+    onEntityDisappeared: (e) => {
+      if (e.lastKnownPosition) {
+        encounterState.applyEntityDisappeared(
+          e.entityId,
+          protoPositionToHex(e.lastKnownPosition)
+        );
+      }
+    },
+    onEntityDamaged: (e) => {
+      encounterState.applyEntityDamaged(e);
+    },
+    onStatusApplied: (e) => {
+      encounterState.applyStatusApplied(e);
+    },
+    onStatusRemoved: (e) => {
+      encounterState.applyStatusRemoved(e);
+    },
+    onModeChanged: (e) => {
+      encounterState.applyModeChanged(e);
+    },
+    onTurnStarted: (e) => {
+      encounterState.applyTurnStarted(e);
+    },
+    onTurnEnded: () => {
+      encounterState.applyTurnEnded();
+    },
+    onTurnStateChanged: (e) => {
+      encounterState.applyTurnStateChanged(e.turnState);
+    },
+    onEntityDied: (e) => {
+      encounterState.applyEntityDied(e);
+    },
+    onEntityRemoved: (e) => {
+      encounterState.applyEntityRemoved(e);
+    },
+    onEncounterEnded: (e) => {
+      encounterState.applyEncounterEnded(e);
+    },
+    onInputRequiredDelivered: (e) => {
+      if (!e.inputRequired) return;
+      encounterState.setPendingPrompt(e.inputRequired);
+    },
+  });
+
+  const myPosition = encounterState.state.entities.get(entityId)?.position;
+  const myHP = encounterState.state.entityHP.get(entityId);
+  const myStatuses = encounterState.state.entityStatuses.get(entityId) ?? [];
+  const encounterEnded = encounterState.state.encounterStatus === 'ended';
+  const isMyTurn =
+    encounterState.state.mode === EncounterMode.TURN_BASED &&
+    encounterState.state.activeEntityId === entityId;
+  const combatEnabled =
+    !encounterEnded &&
+    encounterState.state.mode === EncounterMode.TURN_BASED &&
+    isMyTurn;
+
+  const turnState = encounterState.state.turnState;
+  const availableActions = turnState?.availableActions ?? [];
+  const economy = turnState?.economy ?? null;
+
+  const dispatchAction = async (
+    actionRef: { module: string; type: string; id: string },
+    target: ActionTarget | undefined
+  ) => {
+    try {
+      await takeAction({
+        encounterId,
+        actorEntityId: entityId,
+        actionRef,
+        target: target ?? ({ kind: { case: undefined } } as ActionTarget),
+      });
+    } catch {
+      // error surfaced via takeActionError below
+    }
+  };
+
+  // TakeAction wave (#426): the server-menu drives what's dispatchable — the
+  // web reads target_kind off the menu entry (the server's verdict) and
+  // raises a target prompt only when required. Mirrors
+  // PlaytestHarness.handleSelectAction (design.md: "Already shared or
+  // generic" pattern), adapted for this view's targeting source: the
+  // harness reads a dev-panel target-id input, this view reads the map's
+  // click-to-select state (selectedTargetId) instead.
+  const handleSelectAction = async (action: AvailableAction) => {
+    if (!action.ref) return;
+    if (targetKindNeedsPrompt(action.targetKind)) {
+      if (action.targetKind === TargetKind.SINGLE_ENTITY && selectedTargetId) {
+        await dispatchAction(action.ref, {
+          kind: { case: 'entityId', value: selectedTargetId },
+        } as unknown as ActionTarget);
+      }
+      // POSITION / AREA, and SINGLE_ENTITY with nothing selected yet: no-op.
+      // No L1 action needs POSITION/AREA (matches the harness's current
+      // scope); SINGLE_ENTITY needs the player to click a target first.
+      return;
+    }
+    if (action.targetKind === TargetKind.SELF) {
+      await dispatchAction(action.ref, {
+        kind: { case: 'self', value: {} },
+      } as unknown as ActionTarget);
+      return;
+    }
+    await dispatchAction(action.ref, undefined);
+  };
+
+  const handleVisualMove = async (
+    path: Array<{ x: number; y: number; z: number }>
+  ) => {
+    if (encounterEnded || path.length === 0) return;
+    try {
+      await moveEntity(encounterId, entityId, path);
+    } catch {
+      // error surfaced via moveError below
+    }
+  };
+
+  const handleVisualEntityClick = (targetId: string) => {
+    if (targetId === entityId) return;
+    setSelectedTargetId(targetId);
+    if (encounterEnded) return;
+    const targetMeta = encounterState.state.entityMeta.get(targetId);
+    const isMonster = targetMeta?.type === EntityType.MONSTER;
+    if (!isMonster) return;
+    void dispatchAction(ATTACK_ACTION_REF, {
+      kind: { case: 'entityId', value: targetId },
+    } as unknown as ActionTarget);
+  };
+
+  const handleEndTurn = async () => {
+    try {
+      await endTurn(encounterId, entityId);
+    } catch {
+      // error surfaced via endTurnError below
+    }
+  };
+
+  return (
+    <div
+      data-testid="encounter-view"
+      style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+    >
+      <div
+        data-testid="encounter-header"
+        className="flex flex-wrap items-center gap-4 rounded-lg px-4 py-2"
+        style={{ background: 'var(--bg-secondary, #1a1a1a)' }}
+      >
+        <span>
+          mode: <strong>{MODE_LABEL[encounterState.state.mode]}</strong>
+        </span>
+        <span>
+          round: <strong>{encounterState.state.round}</strong>
+        </span>
+        <span>
+          active:{' '}
+          <strong>{encounterState.state.activeEntityId || '(none)'}</strong>
+        </span>
+        <span>
+          HP: <strong>{myHP ? `${myHP.current}/${myHP.max}` : '—'}</strong>
+        </span>
+        {myStatuses.length > 0 && (
+          <span data-testid="my-status-badges">
+            {formatStatusBadges(myStatuses)}
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: 12 }}>
+          {stream.connectionState}
+        </span>
+        <button onClick={onBack} style={{ fontSize: 12 }}>
+          Leave
+        </button>
+      </div>
+
+      {encounterEnded && (
+        <div
+          data-testid="encounter-ended-banner"
+          className="rounded-lg px-4 py-3 font-bold"
+          style={{ background: '#2a1a00', color: '#ffcc66' }}
+        >
+          Encounter ended
+          {encounterState.state.encounterEndedReason
+            ? `: ${encounterState.state.encounterEndedReason}`
+            : ''}
+        </div>
+      )}
+
+      <PromptModal
+        encounterId={encounterId}
+        entityId={entityId}
+        prompt={encounterState.state.pendingPrompt}
+        onDismiss={() => encounterState.setPendingPrompt(null)}
+      />
+
+      <div style={{ height: 480 }}>
+        <EncounterMap
+          entities={encounterState.state.entities}
+          entityMeta={encounterState.state.entityMeta}
+          revealedHexes={encounterState.state.revealedHexes}
+          entityHP={encounterState.state.entityHP}
+          myEntityId={entityId}
+          isMyTurn={
+            encounterState.state.mode === EncounterMode.TURN_BASED
+              ? isMyTurn
+              : true
+          }
+          onMove={(path) => void handleVisualMove(path)}
+          onEntityClick={handleVisualEntityClick}
+        />
+      </div>
+
+      {!myPosition && (
+        <div style={{ fontSize: 12, opacity: 0.6 }}>
+          Waiting for your position…
+        </div>
+      )}
+
+      <EconomyBar economy={economy} />
+      <ActionMenu
+        actions={availableActions}
+        enabled={combatEnabled}
+        loading={takeActionLoading}
+        onSelectAction={(a) => void handleSelectAction(a)}
+      />
+      <div>
+        <button
+          onClick={() => void handleEndTurn()}
+          disabled={!combatEnabled || endTurnLoading}
+        >
+          {endTurnLoading ? 'Ending…' : 'End turn'}
+        </button>
+      </div>
+
+      {moveError && (
+        <div style={{ color: '#f88', fontSize: 12 }}>
+          Move error: {errorMessage(moveError)}
+        </div>
+      )}
+      {takeActionError && (
+        <div style={{ color: '#f88', fontSize: 12 }}>
+          Action error: {errorMessage(takeActionError)}
+        </div>
+      )}
+      {endTurnError && (
+        <div style={{ color: '#f88', fontSize: 12 }}>
+          End turn error: {errorMessage(endTurnError)}
+        </div>
+      )}
+    </div>
+  );
+}
