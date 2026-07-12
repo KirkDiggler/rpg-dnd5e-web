@@ -16,7 +16,7 @@ import {
   openDoorWalkableKeys,
   wallKey,
   type AbsoluteFloorTile,
-} from '@/hooks/useDungeonMap';
+} from '@/hooks/dungeonMapGeometry';
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
@@ -363,7 +363,7 @@ function Scene({
         wallPositions={wallPositions}
       />
 
-      {/* Render walls (after tiles, before doors) — already deduplicated in useDungeonMap */}
+      {/* Render walls (after tiles, before doors) — already deduplicated by wallKey */}
       {walls.map((wall) => {
         return (
           <ShadedHexWall key={wallKey(wall)} wall={wall} hexSize={HEX_SIZE} />

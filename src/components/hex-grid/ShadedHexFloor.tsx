@@ -12,7 +12,7 @@ import { useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
-import type { AbsoluteFloorTile } from '@/hooks/useDungeonMap';
+import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import { FloorBuilder, FloorColors } from '@/rendering/FloorBuilder';
 
 import { cubeToWorld, type CubeCoord } from './hexMath';

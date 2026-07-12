@@ -1,10 +1,14 @@
 /**
  * useEncounterState - Manages unified entity state for an encounter
  *
- * Replaces fragmented state across LobbyView (monsters[], fullCharactersMap,
- * dungeonMap.entities) with a single authoritative store keyed by entity ID.
- *
- * Snapshot events replace the entire store; delta events merge by entity ID.
+ * Single authoritative store for entity/turn/prompt state, keyed by entity
+ * ID and populated exclusively from the v1alpha2 StreamEncounter's delta
+ * events. Trimmed in slice 3 (rpg-dnd5e-web #447) to drop the v1alpha1
+ * snapshot-replace path (`applySnapshot`/`applyEntityUpdates`/
+ * `applyCombatState`, plus the `rooms`/`currentRoomId`/`revealedRoomIds`/
+ * `combat`/`doors`/`dungeonState`/`roomsCleared` fields they populated) that
+ * only LobbyView drove; every field/reducer left here is exercised by
+ * EncounterView and/or the playtest harness.
  *
  * Part of the unified entity state refactor (rpg-dnd5e-web feat-unified-entity-state).
  */
@@ -14,14 +18,7 @@ import {
   PositionSchema,
   type Position,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
-import type {
-  CombatState,
-  DoorInfo,
-  EncounterStateData,
-  EntityState,
-  RoomLayout,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { DungeonState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type {
   EncounterEnded,
   EntityDamaged,
@@ -80,20 +77,12 @@ export interface LocalEncounterState {
   dungeonId: string;
   /** All entities, keyed by entity ID. v2 may set entity.ghost on LoS loss. */
   entities: Map<string, EntityState & { ghost?: boolean }>;
-  /** All rooms in the dungeon, keyed by room ID */
-  rooms: Map<string, RoomLayout>;
-  currentRoomId: string;
-  revealedRoomIds: string[];
-  /** v1alpha2-revealed hexes (per-hex granularity). UI renders revealed if either revealedHexes covers it OR the room is in revealedRoomIds. */
+  /** v1alpha2-revealed hexes (per-hex granularity). */
   revealedHexes: Set<string>;
-  combat: CombatState | null;
-  /** All doors in the dungeon, keyed by connection ID (v1alpha1 snapshot data). */
-  doors: Map<string, DoorInfo>;
   /**
    * v1alpha2 open-door entity IDs. Populated by `applyDoorOpened` from the
-   * DoorOpened event. Keyed by the proto's `door_entity_id` (distinct from
-   * the v1alpha1 connectionId in `doors`). Renderers consult this set to
-   * decide whether to draw a door's wall as a passage.
+   * DoorOpened event, keyed by the proto's `door_entity_id`. Renderers
+   * consult this set to decide whether to draw a door's wall as a passage.
    */
   openDoors: Set<string>;
   /**
@@ -103,11 +92,9 @@ export interface LocalEncounterState {
    */
   entityHP: Map<string, EntityHP>;
   /**
-   * Per-entity armor class keyed by entity id. Populated by `mergeEntityUpdates`
-   * from EntityState.details (characterDetails.armorClass or
-   * monsterDetails.armorClass). Available when full v1alpha1 entity data flows
-   * through the state (snapshot path). Absent for v1alpha2-stub entities that
-   * have not yet received a full EntityState update.
+   * Per-entity armor class keyed by entity id. Populated by
+   * `applyEntityAppearedBatch`/`applyEntityMetaFromAppeared` from the
+   * entity's initial AC. Absent for entities that have not yet appeared.
    */
   entityAC: Map<string, number>;
   /**
@@ -160,8 +147,6 @@ export interface LocalEncounterState {
    * cost is computed client-side; the server's verdict is the only source.
    */
   turnState: TurnState | null;
-  dungeonState: DungeonState;
-  roomsCleared: number;
   /**
    * v1alpha2 pending prompt from Interact or TakeAction response. Callers set
    * this explicitly via `setPendingPrompt(response.inputRequired)` after an RPC
@@ -225,12 +210,7 @@ export function createEmptyEncounterState(): LocalEncounterState {
     encounterId: '',
     dungeonId: '',
     entities: new Map(),
-    rooms: new Map(),
-    currentRoomId: '',
-    revealedRoomIds: [],
     revealedHexes: new Set(),
-    combat: null,
-    doors: new Map(),
     openDoors: new Set(),
     entityHP: new Map(),
     entityAC: new Map(),
@@ -241,144 +221,10 @@ export function createEmptyEncounterState(): LocalEncounterState {
     activeEntityId: '',
     round: 0,
     turnState: null,
-    dungeonState: DungeonState.UNSPECIFIED,
-    roomsCleared: 0,
     pendingPrompt: null,
     encounterStatus: 'active',
     encounterEndedReason: '',
     reactionReadiness: new Map(),
-  };
-}
-
-/**
- * Convert an EncounterStateData proto into a LocalEncounterState.
- * Proto Record<string, T> maps are converted to Map<string, T>.
- *
- * v2-only delta state preservation: `applySnapshot` is called on v1alpha1
- * sync events (LobbyView wires it onto multiple v1 paths). v1 snapshots do
- * NOT carry v2 deltas like `openDoors`, `revealedHexes`, `entityHP`,
- * `entityStatuses`, `mode`, `activeEntityId`, or `round` — those flow only
- * via the v2 StreamEncounter (DoorOpened, GeometryRevealed, EntityDamaged,
- * StatusApplied, ModeChanged, TurnStarted, TurnEnded) and are not replayed
- * on reconnect or v1 state-sync events. If we rebuilt the whole state on
- * every snapshot we'd silently wipe every v2 delta we'd accumulated in the
- * session.
- *
- * Mitigation: when `prev` is provided AND the snapshot is for the SAME
- * encounter (same encounterId), carry forward all v2-only fields. On
- * encounter switch (different encounterId) we reset.
- *
- * Exported for testing.
- */
-export function applySnapshotToState(
-  proto: EncounterStateData,
-  prev?: LocalEncounterState
-): LocalEncounterState {
-  // Same-encounter snapshot: preserve v2-only delta state. Different
-  // encounter (or no prev): start fresh — v2 deltas don't apply.
-  const sameEncounter =
-    prev !== undefined && prev.encounterId === proto.encounterId;
-
-  return {
-    encounterId: proto.encounterId,
-    dungeonId: proto.dungeonId,
-    entities: new Map(Object.entries(proto.entities ?? {})),
-    rooms: new Map(Object.entries(proto.rooms ?? {})),
-    currentRoomId: proto.currentRoomId,
-    revealedRoomIds: proto.revealedRoomIds,
-    // v2 reveals come back via the stream's GeometryRevealed deltas; preserve
-    // across same-encounter v1 snapshots (deltas aren't replayed on sync).
-    revealedHexes: sameEncounter ? prev.revealedHexes : new Set(),
-    combat: proto.combat ?? null,
-    doors: new Map(Object.entries(proto.doors ?? {})),
-    // v2 door state comes back via the stream's DoorOpened deltas; preserve
-    // across same-encounter v1 snapshots (deltas aren't replayed on sync).
-    openDoors: sameEncounter ? prev.openDoors : new Set(),
-    // v2 combat state (HP, statuses, mode, active actor, round) flow only via
-    // EntityDamaged / StatusApplied / ModeChanged / TurnStarted events;
-    // preserve across same-encounter v1 snapshots (deltas aren't replayed).
-    entityHP: sameEncounter ? prev.entityHP : new Map(),
-    // Seed entityAC from the v1alpha1 snapshot entities, which carry full details.
-    // Merge with any AC already tracked so that same-encounter delta events aren't lost.
-    entityAC: (() => {
-      const base = sameEncounter
-        ? new Map(prev.entityAC)
-        : new Map<string, number>();
-      for (const entity of Object.values(proto.entities ?? {})) {
-        const ac =
-          entity.details.case === 'characterDetails'
-            ? entity.details.value.armorClass
-            : entity.details.case === 'monsterDetails'
-              ? entity.details.value.armorClass
-              : undefined;
-        if (ac !== undefined && ac !== 0) {
-          base.set(entity.entityId, ac);
-        }
-      }
-      return base;
-    })(),
-    entityStatuses: sameEncounter ? prev.entityStatuses : new Map(),
-    // v2 entity identity metadata (type, monster ref) flows only via
-    // EntityAppeared — not replayed on v1 snapshots. Preserve across same-encounter syncs.
-    entityMeta: sameEncounter ? prev.entityMeta : new Map(),
-    // Initiative order comes from SnapshotDelivered.encounter.turnState; the
-    // v1 snapshot path doesn't carry it. Preserve on same-encounter syncs.
-    initiativeOrder: sameEncounter ? prev.initiativeOrder : [],
-    mode: sameEncounter ? prev.mode : EncounterMode.UNSPECIFIED,
-    activeEntityId: sameEncounter ? prev.activeEntityId : '',
-    round: sameEncounter ? prev.round : 0,
-    // TakeAction wave (#426): the server-authored menu/economy flows only via
-    // the v2 stream's TurnStateChanged (or the v2 SnapshotDelivered turnState),
-    // never the v1 snapshot path. Preserve across same-encounter v1 syncs so a
-    // v1 state-sync doesn't wipe the live menu the player is acting from.
-    turnState: sameEncounter ? prev.turnState : null,
-    dungeonState: proto.dungeonState,
-    roomsCleared: proto.roomsCleared,
-    // pendingPrompt is caller-private; it doesn't flow through v1 snapshots.
-    // Preserve it across same-encounter syncs so a mid-session snapshot doesn't
-    // silently clear a prompt the player hasn't answered yet.
-    pendingPrompt: sameEncounter ? prev.pendingPrompt : null,
-    // EncounterEnded is terminal and not replayed; preserve across same-encounter
-    // v1 snapshots so a mid-session snapshot doesn't reset the ended banner.
-    encounterStatus: sameEncounter ? prev.encounterStatus : 'active',
-    encounterEndedReason: sameEncounter ? prev.encounterEndedReason : '',
-    // Wave 2.11d: reaction readiness is per-character UI state that flows via
-    // SetReactionReady RPC responses (no v1 snapshot carries it today). Preserve
-    // across same-encounter syncs so toggles don't silently revert when an
-    // unrelated v1 snapshot lands.
-    reactionReadiness: sameEncounter ? prev.reactionReadiness : new Map(),
-  };
-}
-
-/**
- * Merge entity delta updates into existing state without losing other entities.
- * Updates are applied by entity ID; existing entities not in the update list remain.
- * Exported for testing.
- */
-export function mergeEntityUpdates(
-  prev: LocalEncounterState,
-  updates: EntityState[]
-): LocalEncounterState {
-  const newEntities = new Map(prev.entities);
-  const newAC = new Map(prev.entityAC);
-  let acChanged = false;
-  for (const entity of updates) {
-    newEntities.set(entity.entityId, entity);
-    const ac =
-      entity.details.case === 'characterDetails'
-        ? entity.details.value.armorClass
-        : entity.details.case === 'monsterDetails'
-          ? entity.details.value.armorClass
-          : undefined;
-    if (ac !== undefined && ac !== 0) {
-      newAC.set(entity.entityId, ac);
-      acChanged = true;
-    }
-  }
-  return {
-    ...prev,
-    entities: newEntities,
-    entityAC: acChanged ? newAC : prev.entityAC,
   };
 }
 
@@ -542,7 +388,7 @@ export function applyEntityMetaFromAppeared(
  * initiative-order fields are cleared to prevent stale combat data from
  * showing in the UI after an encounter exits TURN_BASED mode. Exported for testing.
  */
-export function applyV2SnapshotTurnState(
+export function applySnapshotTurnState(
   prev: LocalEncounterState,
   encounterMode: EncounterMode,
   turnState: TurnState | undefined
@@ -913,31 +759,14 @@ export function setReactionReadyLocalReducer(
   return { ...prev, reactionReadiness: next };
 }
 
-/**
- * Replace combat state without touching entities or other fields.
- * Exported for testing.
- */
-export function updateCombatState(
-  prev: LocalEncounterState,
-  combat: CombatState
-): LocalEncounterState {
-  return { ...prev, combat };
-}
-
 export interface UseEncounterStateResult {
   state: LocalEncounterState;
-  /** Replace entire state from an EncounterStateData proto (snapshot event) */
-  applySnapshot: (proto: EncounterStateData) => void;
-  /** Merge entity deltas by ID without losing unaffected entities (delta event) */
-  applyEntityUpdates: (updates: EntityState[]) => void;
   /**
    * Update only the position of an existing entity. Used as a fallback for
    * MovementCompletedEvent when the API omits updatedEntity but sends path[].
    * No-op if the entity is not already in state.
    */
   applyEntityPositionUpdate: (entityId: string, position: Position) => void;
-  /** Update combat state only (turn progression events) */
-  applyCombatState: (combat: CombatState) => void;
   /** Reset to empty state (new encounter or disconnect) */
   reset: () => void;
   // v1alpha2 additions
@@ -982,7 +811,7 @@ export interface UseEncounterStateResult {
    * server-authored menu/economy (turnState) so the menu renders at turn start
    * before the first TurnStateChanged push (TakeAction wave #426).
    */
-  applyV2SnapshotTurnState: (
+  applySnapshotTurnState: (
     encounterMode: EncounterMode,
     turnState: TurnState | undefined
   ) => void;
@@ -1050,28 +879,12 @@ export function useEncounterState(): UseEncounterStateResult {
     createEmptyEncounterState
   );
 
-  const applySnapshot = useCallback((proto: EncounterStateData) => {
-    // Pass `prev` so v2-only delta state (openDoors, revealedHexes) survives
-    // a v1alpha1 snapshot for the same encounter. v1 snapshots don't carry
-    // these fields and v2 deltas aren't replayed on sync, so without this
-    // any v1 state-sync mid-session would silently wipe opened doors.
-    setState((prev) => applySnapshotToState(proto, prev));
-  }, []);
-
-  const applyEntityUpdates = useCallback((updates: EntityState[]) => {
-    setState((prev) => mergeEntityUpdates(prev, updates));
-  }, []);
-
   const applyEntityPositionUpdate = useCallback(
     (entityId: string, position: Position) => {
       setState((prev) => mergeEntityPosition(prev, entityId, position));
     },
     []
   );
-
-  const applyCombatState = useCallback((combat: CombatState) => {
-    setState((prev) => updateCombatState(prev, combat));
-  }, []);
 
   const reset = useCallback(() => {
     setState(createEmptyEncounterState());
@@ -1133,10 +946,10 @@ export function useEncounterState(): UseEncounterStateResult {
     []
   );
 
-  const applyV2SnapshotTurnStateCallback = useCallback(
+  const applySnapshotTurnStateCallback = useCallback(
     (encounterMode: EncounterMode, turnState: TurnState | undefined) => {
       setState((prev) =>
-        applyV2SnapshotTurnState(prev, encounterMode, turnState)
+        applySnapshotTurnState(prev, encounterMode, turnState)
       );
     },
     []
@@ -1203,10 +1016,7 @@ export function useEncounterState(): UseEncounterStateResult {
 
   return {
     state,
-    applySnapshot,
-    applyEntityUpdates,
     applyEntityPositionUpdate,
-    applyCombatState,
     reset,
     applyHexRevealed: applyHexRevealedCallback,
     applyEntityAppeared: applyEntityAppearedCallback,
@@ -1214,7 +1024,7 @@ export function useEncounterState(): UseEncounterStateResult {
     applyDoorOpened: applyDoorOpenedCallback,
     applyEntityMeta: applyEntityMetaCallback,
     applyEntityAppearedBatch: applyEntityAppearedBatchCallback,
-    applyV2SnapshotTurnState: applyV2SnapshotTurnStateCallback,
+    applySnapshotTurnState: applySnapshotTurnStateCallback,
     setPendingPrompt: setPendingPromptCallback,
     setReactionReadyLocal: setReactionReadyLocalCallback,
     applyEntityDamaged: applyEntityDamagedCallback,

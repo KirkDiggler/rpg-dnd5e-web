@@ -4,7 +4,7 @@
  * render the exact same modal off the exact same dispatch logic rather than
  * two copies drifting apart. GameView slice 2 (#440).
  *
- * Owns its own RPC dispatch (useSubmitCheckV2), roll input, transient
+ * Owns its own RPC dispatch (useSubmitCheck), roll input, transient
  * post-submit result display, and auto-clear timer — callers only pass the
  * current prompt (from useEncounterState) and a dismiss callback. This is a
  * behavior-preserving extraction: testids (skill-check-prompt, prompt-result,
@@ -15,7 +15,7 @@
 
 import type { InputRequired } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useEffect, useRef, useState } from 'react';
-import { useSubmitCheckV2 } from '../../api/useSubmitCheckV2';
+import { useSubmitCheck } from '../../api/useSubmitCheck';
 
 export interface PromptModalProps {
   encounterId: string;
@@ -40,7 +40,7 @@ export function PromptModal({
     submitCheck,
     loading: submitCheckLoading,
     error: submitCheckError,
-  } = useSubmitCheckV2();
+  } = useSubmitCheck();
   const [rollValue, setRollValue] = useState(10);
   const [promptResult, setPromptResult] = useState<{
     success: boolean;

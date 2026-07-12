@@ -12,7 +12,7 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('./client', () => ({
-  encounterClientV2: {
+  encounterClient: {
     setReactionReady: hoisted.setReactionReadyFn,
   },
 }));

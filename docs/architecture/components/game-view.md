@@ -7,7 +7,7 @@ confidence: high — verified by reading every new file in full, running the ful
 
 # GameView
 
-`src/components/game/GameView.tsx` — mounted by `App.tsx` on the route `LobbyView` used to occupy. Slice 2 of the [game screen rebuild](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/game-screen-rebuild/design.md) (rpg-dnd5e-web#440). `LobbyView.tsx` itself is untouched and now unreferenced — its deletion is slice 3, not this one.
+`src/components/game/GameView.tsx` — mounted by `App.tsx` on the route `LobbyView` used to occupy. Slice 2 of the [game screen rebuild](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/game-screen-rebuild/design.md) (rpg-dnd5e-web#440). `LobbyView.tsx` and everything only it referenced (the v1alpha1 lobby UI, `combat-v2/`, `BattleMapPanel`) were deleted in slice 3 (#447) — see [lobby-view.md](lobby-view.md).
 
 GameView is a two-state switch, nothing more:
 
@@ -19,15 +19,15 @@ GameView
 
 ## LobbyFlow — party assembly
 
-`src/components/game/LobbyFlow.tsx`, backed by the new `dnd5e.api.lobby.v1alpha1` `LobbyService` (rpg-api-protos#177, rpg-api#630 — [lobby-surface.md](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/game-screen-rebuild/lobby-surface.md)). This is a distinct proto package and client (`lobbyClient` in `src/api/client.ts`) from the v1alpha1 `EncounterService`'s legacy `CreateEncounter`/`JoinEncounter`/`SetReady` RPCs, which `LobbyView` still uses until slice 3.
+`src/components/game/LobbyFlow.tsx`, backed by the new `dnd5e.api.lobby.v1alpha1` `LobbyService` (rpg-api-protos#177, rpg-api#630 — [lobby-surface.md](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/game-screen-rebuild/lobby-surface.md)). This is a distinct proto package and client (`lobbyClient` in `src/api/client.ts`) from the v1alpha1 `EncounterService`'s legacy `CreateEncounter`/`JoinEncounter`/`SetReady` RPCs, deleted in slice 3 along with `LobbyView`, their only caller.
 
 - **Create**: `useCreateLobby` — caller becomes host, binds `characterId`.
 - **Join**: `useJoinLobby` — takes the opaque `join_ref` minted at create. Idempotent and rebinding (a second call re-binds `characterId` rather than erroring).
 - **Dev join-ref carrier**: `LobbyFlow` reads a `?joinRef=` URL param once on mount and auto-joins — the dev/playtest equivalent of the Discord Activity's automatic instance carrier (lobby-surface.md Decision 2). This is what keeps multi-browser MCP playtest joins trivial without Discord.
 - **Ready / start**: `useSetLobbyReady` toggles the caller's flag; `useStartLobbyEncounter` is host-only and gated all-ready server-side. On success `LobbyFlow` drives off both the RPC response _and_ the stream's `encounter_started` (belt-and-suspenders — see `useLobbyStream`'s docstring).
-- **Roster**: `useLobbyStream` (`StreamLobby`, snapshot-then-deltas — the same pattern as `useEncounterStream2`) feeds `PartyRoster`, which renders `is_host`/`is_ready`/`is_connected` verbatim, never inferred.
+- **Roster**: `useLobbyStream` (`StreamLobby`, snapshot-then-deltas — the same pattern as `useEncounterStream`) feeds `PartyRoster`, which renders `is_host`/`is_ready`/`is_connected` verbatim, never inferred.
 
-`useLobbyStream` and its event dispatcher (`src/api/lobbyStreamDispatch.ts`) are a deliberate sibling of `useEncounterStream2`/`encounterStream2Dispatch.ts` — same reconnect config (`streamReconnect.ts`), same snapshot-first contract, but no envelope (the lobby has no causation chain to reassemble) and a short-lived stream that ends the moment `encounter_started` fires.
+`useLobbyStream` and its event dispatcher (`src/api/lobbyStreamDispatch.ts`) are a deliberate sibling of `useEncounterStream`/`encounterStreamDispatch.ts` — same reconnect config (`streamReconnect.ts`), same snapshot-first contract, but no envelope (the lobby has no causation chain to reassemble) and a short-lived stream that ends the moment `encounter_started` fires.
 
 ## EncounterView — the shared harness stack
 
@@ -35,7 +35,7 @@ GameView
 
 | Piece          | Source                                                                                 | Notes                                                                                                                                                                                                                                                                                                |
 | -------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stream + state | `useEncounterStream2` + `useEncounterState`                                            | Same hooks, same dispatch. Zero harness assumptions in either.                                                                                                                                                                                                                                       |
+| Stream + state | `useEncounterStream` + `useEncounterState`                                             | Same hooks, same dispatch. Zero harness assumptions in either.                                                                                                                                                                                                                                       |
 | Action menu    | `ActionMenu` / `EconomyBar` (`components/playtest/`)                                   | Rendered verbatim off server-pushed `TurnState` — no client legality logic. Slice 2 renders these directly; a game-grade `ActionPanel` wrapper is a later slice, per #440's scope.                                                                                                                   |
 | Map            | `EncounterMap` (new, `components/game/`)                                               | Thin HexGrid adapter, generalized from `PlaytestMap` — both now import `synthesizeFloorTiles`/`buildRenderableEntities` from the pre-existing shared `components/playtest/playtestMapHelpers.ts`. Single room only; multi-room accumulation is slice 4.                                              |
 | Prompts        | `PromptModal` (new, `components/game/`)                                                | Extracted from `PlaytestHarness` (Wave 2.9/2.11d inline JSX) so both surfaces dispatch `SubmitCheck` through one component instead of two copies drifting apart. `PlaytestHarness` now renders this component too — same testids, same behavior, verified by its existing (unmodified) vitest suite. |

@@ -1,25 +1,28 @@
 ---
 name: gRPC client layer
-description: Connect RPC transport, interceptors, and encounter hook wrappers
-updated: 2026-05-02
-confidence: high — verified by reading client.ts (86 lines) and encounterHooks.ts (437 lines)
+description: Connect RPC transport, interceptors, and the encounter/lobby action-hook wrappers
+updated: 2026-07-12
+confidence: high — verified by reading client.ts and the current src/api/*.ts hook files in full
 ---
 
 # gRPC client layer
 
 ## client.ts
 
-`src/api/client.ts` — **86 lines.**
+`src/api/client.ts` creates four Connect RPC clients backed by a shared gRPC-Web transport:
 
-Creates three Connect RPC clients backed by a shared gRPC-Web transport:
-
-- `encounterClient` — `EncounterService`
+- `encounterClient` — v1alpha2 `EncounterService` (the live game loop)
+- `lobbyClient` — v1alpha1 `LobbyService` (party assembly)
 - `characterClient` — `CharacterService`
 - `diceClient` — `DiceService`
 
-### Transport / Discord proxy
+The old v1alpha1 `EncounterService`'s request/response lobby/combat RPC
+client (also named `encounterClient` before slice 3, rpg-dnd5e-web#447)
+and its wrapper hooks (`encounterHooks.ts`, `lobbyHooks.ts`) were deleted
+along with `LobbyView.tsx`, their only real caller — see
+[lobby-view.md](lobby-view.md).
 
-`client.ts:11-14`:
+### Transport / Discord proxy
 
 ```typescript
 const isDiscordActivity = window.location.hostname.includes('discordsays.com');
@@ -32,32 +35,29 @@ All requests go through `/.proxy` when running in the Discord Activity iframe. V
 
 ### Auth interceptor
 
-`client.ts:24-38`. Adds `Authorization: Discord <token>` for production Discord sessions, or `Authorization: Dev <playerId>` for local development (recognized by the server). If neither condition applies, no auth header is added — the request will fail authorization on the server.
+Adds `Authorization: Discord <token>` for production Discord sessions, or `Authorization: Dev <playerId>` for local development (recognized by the server). If neither condition applies, no auth header is added — the request will fail authorization on the server.
 
 ### Logging interceptor
 
-`client.ts:41-70`. Emits emoji-prefixed `console.log` calls in development mode for every request/response and every error. Useful during local development but needs to be stripped or leveled before a polished demo.
+Emits emoji-prefixed `console.log` calls in development mode for every request/response and every error. Useful during local development but needs to be stripped or leveled before a polished demo.
 
-## encounterHooks.ts
+## Encounter action hooks (v1alpha2)
 
-`src/api/encounterHooks.ts` — **437 lines.**
+One file per RPC, each a thin wrapper returning `{ data/action-fn, loading, error }` and calling `encounterClient` directly. Renamed off their `V2` suffix in slice 3 (the v1alpha1 hooks of the same base name they used to coexist with are deleted):
 
-Wrapper hooks for every `EncounterService` RPC. Each hook follows a consistent pattern:
+- `useMoveEntity`, `useEndTurn`, `useInteract`, `useTakeAction`, `useSubmitCheck`, `useActivateFeature`
+- `useSetReactionReady` (Wave 2.11d)
 
-- Returns `{ data, loading, error }`
-- Uses `useState` for state, `useCallback` for the action function
-- Calls the `encounterClient` directly
+Each has direct vitest coverage (`*.test.ts` alongside the hook).
 
-Hooks:
+## Lobby hooks (v1alpha1 lobby package)
 
-- `useCreateEncounter`, `useJoinEncounter`, `useSetReady`, `useStartCombat`, `useLeaveEncounter`
-- `useMoveCharacter`, `useResolveAttack`, `useEndTurn`
-- `useActivateFeature`, `useActivateCombatAbility`, `useExecuteAction`
-- `useOpenDoor`
-- `useGetEncounterState`
+`useCreateLobby`, `useJoinLobby`, `useSetLobbyReady`, `useStartLobbyEncounter` wrap the `LobbyService` unary RPCs; `useLobbyStream` + `lobbyStreamDispatch.ts` mirror `useEncounterStream`'s pattern for `StreamLobby` (snapshot-then-deltas, shared reconnect config, no envelope — the lobby has no causation chain to reassemble). See [game-view.md](game-view.md#lobbyflow--party-assembly).
 
-The `loading` boolean returned from action hooks threads through `LobbyView` as props to prevent double-submission. With `LobbyView` at 2,345 lines, tracking which loading state belongs to which button is error-prone.
+## Other hook files (untouched by the game-screen rebuild)
 
-## No tests
+`characterHooks.ts`, `diceHooks.ts`, `equipmentHooks.ts`, `hooks.ts` — character CRUD, dice rolling, equipment, and draft hooks for the character creation/sheet subsystem. Not in scope for the encounter/lobby rebuild.
 
-Zero tests for the hook wrappers. Error paths (network failure, auth rejection, invalid state) are tested manually only.
+## No tests on client.ts itself
+
+The transport/interceptor setup in `client.ts` has no direct test coverage. Error paths (network failure, auth rejection, invalid state) are exercised manually and via the action hooks' own tests, not `client.ts` in isolation.

@@ -35,9 +35,16 @@ The choice is local component state; no URL persistence. Switching modes does no
 2. **RenderableEntity[] from v2 state.** v2 `EntityState` stubs carry only `entityId` + `position`; identity (CHARACTER/MONSTER + monsterRefId) and HP live in separate stores (`entityMeta`, `entityHP`). `buildRenderableEntities` joins all three.
 3. **Click routing.** HexGrid's `onMoveComplete` / `onEntityClick` callbacks are forwarded to the harness, which translates to `moveEntity` / `takeAction` RPCs.
 
-### Why not BattleMapPanel?
+### PlaytestMap uses HexGrid directly
 
-`BattleMapPanel` (the production wrapper) consumes `useDungeonMap`'s `DungeonMapState` and `mapEntitiesForRender` (which reads `entity.details` for name/type — fields the playtest's stubs do not populate). Synthesizing a fake `DungeonMapState` and decorating EntityState stubs with synthetic `details` would add more surface than the small adapter above. `PlaytestMap` uses `HexGrid` directly.
+There is no production wrapper to route through — `BattleMapPanel` (the
+old v1alpha1-shaped wrapper `LobbyView` used) was deleted in slice 3
+(rpg-dnd5e-web#447); its live successor, `EncounterMap`
+(`src/components/game/`), is itself a thin `HexGrid` adapter built on the
+v2 stream, generalized from this file's own adapter. `PlaytestMap` and
+`EncounterMap` both compose `HexGrid` directly and share
+`playtestMapHelpers.ts`'s pure translation functions rather than one
+wrapping the other.
 
 ### Movement budget
 

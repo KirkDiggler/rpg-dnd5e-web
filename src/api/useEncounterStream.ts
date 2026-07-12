@@ -1,80 +1,20 @@
 import { create } from '@bufbuild/protobuf';
-import type {
-  ActionExecutedEvent,
-  AttackResolvedEvent,
-  CombatEndedEvent,
-  CombatPausedEvent,
-  CombatResumedEvent,
-  CombatStartedEvent,
-  DungeonFailureEvent,
-  DungeonVictoryEvent,
-  EncounterEvent,
-  FeatureActivatedEvent,
-  GetEncounterStateResponse,
-  MonsterTurnCompletedEvent,
-  MovementCompletedEvent,
-  PlayerDisconnectedEvent,
-  PlayerJoinedEvent,
-  PlayerLeftEvent,
-  PlayerReadyEvent,
-  PlayerReconnectedEvent,
-  RoomRevealedEvent,
-  TurnEndedEvent,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import {
-  GetEncounterHistoryRequestSchema,
-  GetEncounterStateRequestSchema,
-  StreamEncounterEventsRequestSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
+import { StreamEncounterRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { useEffect, useRef, useState } from 'react';
 import { encounterClient } from './client';
+import {
+  dispatchEncounterStreamEvent,
+  type EncounterStreamOptions,
+} from './encounterStreamDispatch';
 import { RECONNECT_CONFIG } from './streamReconnect';
 
 type ConnectionState =
   | 'idle'
   | 'connecting'
-  | 'syncing' // Buffering events while loading snapshot
   | 'connected'
   | 'disconnected'
   | 'error';
-
-interface UseEncounterStreamOptions {
-  // State sync callback - called with snapshot before processing buffered events
-  onStateSync?: (snapshot: GetEncounterStateResponse) => void;
-
-  // Historical events callback - called with events that happened before we connected
-  // These are fetched via GetEncounterHistory and represent past events (monster turns, etc.)
-  // Events are in chronological order and should be replayed for event log/animations
-  onHistoricalEvents?: (events: EncounterEvent[]) => void;
-
-  // Lobby events
-  onPlayerJoined?: (event: PlayerJoinedEvent) => void;
-  onPlayerLeft?: (event: PlayerLeftEvent) => void;
-  onPlayerReady?: (event: PlayerReadyEvent) => void;
-
-  // Connection events
-  onPlayerDisconnected?: (event: PlayerDisconnectedEvent) => void;
-  onPlayerReconnected?: (event: PlayerReconnectedEvent) => void;
-
-  // Combat lifecycle
-  onCombatStarted?: (event: CombatStartedEvent) => void;
-  onCombatPaused?: (event: CombatPausedEvent) => void;
-  onCombatResumed?: (event: CombatResumedEvent) => void;
-  onCombatEnded?: (event: CombatEndedEvent) => void;
-
-  // Combat action events (for BattleMap)
-  onMovementCompleted?: (event: MovementCompletedEvent) => void;
-  onAttackResolved?: (event: AttackResolvedEvent) => void;
-  onActionExecuted?: (event: ActionExecutedEvent) => void;
-  onFeatureActivated?: (event: FeatureActivatedEvent) => void;
-  onTurnEnded?: (event: TurnEndedEvent) => void;
-  onMonsterTurnCompleted?: (event: MonsterTurnCompletedEvent) => void;
-
-  // Dungeon events
-  onRoomRevealed?: (event: RoomRevealedEvent) => void;
-  onDungeonVictory?: (event: DungeonVictoryEvent) => void;
-  onDungeonFailure?: (event: DungeonFailureEvent) => void;
-}
 
 interface UseEncounterStreamResult {
   connectionState: ConnectionState;
@@ -82,154 +22,61 @@ interface UseEncounterStreamResult {
 }
 
 /**
- * Dispatches an encounter event to the appropriate callback handler
- */
-function dispatchEvent(
-  event: EncounterEvent,
-  options: UseEncounterStreamOptions
-) {
-  const eventPayload = event.event;
-
-  switch (eventPayload.case) {
-    case 'playerJoined':
-      options.onPlayerJoined?.(eventPayload.value);
-      break;
-    case 'playerLeft':
-      options.onPlayerLeft?.(eventPayload.value);
-      break;
-    case 'playerReady':
-      options.onPlayerReady?.(eventPayload.value);
-      break;
-    case 'playerDisconnected':
-      options.onPlayerDisconnected?.(eventPayload.value);
-      break;
-    case 'playerReconnected':
-      options.onPlayerReconnected?.(eventPayload.value);
-      break;
-    case 'combatStarted':
-      options.onCombatStarted?.(eventPayload.value);
-      break;
-    case 'combatPaused':
-      options.onCombatPaused?.(eventPayload.value);
-      break;
-    case 'combatResumed':
-      options.onCombatResumed?.(eventPayload.value);
-      break;
-    case 'combatEnded':
-      options.onCombatEnded?.(eventPayload.value);
-      break;
-    case 'movementCompleted':
-      options.onMovementCompleted?.(eventPayload.value);
-      break;
-    case 'attackResolved':
-      options.onAttackResolved?.(eventPayload.value);
-      break;
-    case 'actionExecuted':
-      options.onActionExecuted?.(eventPayload.value);
-      break;
-    case 'featureActivated':
-      options.onFeatureActivated?.(eventPayload.value);
-      break;
-    case 'turnEnded':
-      options.onTurnEnded?.(eventPayload.value);
-      break;
-    case 'monsterTurnCompleted':
-      options.onMonsterTurnCompleted?.(eventPayload.value);
-      break;
-    case 'roomRevealed':
-      options.onRoomRevealed?.(eventPayload.value);
-      break;
-    case 'dungeonVictory':
-      options.onDungeonVictory?.(eventPayload.value);
-      break;
-    case 'dungeonFailure':
-      options.onDungeonFailure?.(eventPayload.value);
-      break;
-    default:
-      console.warn('Unknown event type:', eventPayload.case);
-  }
-}
-
-/**
- * Fetches the current encounter state snapshot for load-then-stream pattern
- */
-async function fetchSnapshot(
-  encounterId: string,
-  playerId: string
-): Promise<GetEncounterStateResponse> {
-  const request = create(GetEncounterStateRequestSchema, {
-    encounterId,
-    playerId,
-  });
-  return encounterClient.getEncounterState(request);
-}
-
-/**
- * Fetches historical events up to the given event ID
- * Used to populate event log with events that happened before we connected
- */
-async function fetchHistory(
-  encounterId: string,
-  upToEventId: string
-): Promise<EncounterEvent[]> {
-  const request = create(GetEncounterHistoryRequestSchema, {
-    encounterId,
-    upToEventId,
-    limit: 0, // No limit - get all events
-  });
-  const response = await encounterClient.getEncounterHistory(request);
-  return response.events;
-}
-
-/**
- * useEncounterStream subscribes to real-time encounter events via gRPC server streaming.
+ * Subscribes to the v1alpha2 StreamEncounter RPC. Sibling of useEncounterStream
+ * (v1alpha1) — runs in parallel for slice 2; v1 still owns lobby/combat events.
  *
- * This hook enables multiplayer synchronization by connecting to the encounter event stream
- * and dispatching events to the provided callback handlers. It handles automatic reconnection
- * with exponential backoff if the connection is lost.
+ * Lifecycle:
+ *   1. encounterId set → open stream, state='connecting'
+ *   2. First message MUST be SnapshotDelivered → state='connected', fire callback
+ *   3. Subsequent events dispatched via encounterStreamDispatch
+ *   4. Stream end / error → state='disconnected' → exponential backoff reconnect
  *
- * @param encounterId - The encounter to subscribe to (null to not connect)
- * @param playerId - The player subscribing to events
- * @param options - Callback handlers for different event types
- * @returns Connection state and any error
+ * Slice 1 contract: SnapshotDelivered.encounter is empty. The hook acknowledges
+ * the message (transitions to 'connected') but does NOT apply payload as state.
+ * Treat as a stream-up sync barrier.
  *
- * @example
- * ```tsx
- * const { connectionState, error } = useEncounterStream(
- *   encounterId,
- *   playerId,
- *   {
- *     onPlayerJoined: (event) => {
- *       console.log('Player joined:', event.playerName);
- *     },
- *     onCombatStarted: (event) => {
- *       navigate('/combat');
- *     },
- *   }
- * );
- * ```
+ * Reconnect: shared RECONNECT_CONFIG with v1 hook (1s → 30s, 10 attempts).
+ *
+ * Mount-churn resilience (#442): a mount can tear its effect down and set it
+ * back up again in quick succession (React StrictMode's dev double-invoke is
+ * the common trigger, but any deps-driven re-run shapes the same race) —
+ * the first connect() attempt's underlying transport can notice the
+ * teardown's abort() and reject *after* the second attempt has already
+ * replaced `abortControllerRef.current`. A catch handler that reads that
+ * shared ref to decide "was I the one who got aborted" is reading a value
+ * that may belong to a newer, unrelated attempt by then. Each connect()
+ * attempt is tagged with a `generationRef` value at the moment it starts;
+ * every side effect it performs (state updates, scheduling a reconnect,
+ * touching the shared refs) is gated on still being the current generation,
+ * and "was this abort mine" is decided from the attempt's own locally
+ * captured AbortController, never the shared ref. That keeps a stale
+ * attempt's belated rejection from silently no-op'ing (false intentional
+ * read) *and* from re-arming its own zombie reconnect that clobbers the
+ * live connection (false error read) — both were on the table with the old
+ * shared-ref check depending on timing, which is why the bug was flaky.
  */
 export function useEncounterStream(
   encounterId: string | null,
   playerId: string,
-  options: UseEncounterStreamOptions
+  options: EncounterStreamOptions
 ): UseEncounterStreamResult {
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('idle');
   const [error, setError] = useState<Error | null>(null);
 
-  // Refs to avoid stale closures in callbacks
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
   const retryCountRef = useRef(0);
-  const retryTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  );
   const abortControllerRef = useRef<AbortController | undefined>(undefined);
-
-  // Buffer refs for load-then-stream pattern
-  const eventBufferRef = useRef<EncounterEvent[]>([]);
-  const lastEventIdRef = useRef<string | null>(null);
-  const isSyncingRef = useRef(false);
+  // Bumped at the start of every connect() attempt (initial, StrictMode-churn
+  // replay, and scheduled retries alike) so a superseded attempt's async
+  // continuations can recognize they're stale and no-op instead of touching
+  // shared state on a newer attempt's behalf.
+  const generationRef = useRef(0);
 
   useEffect(() => {
     if (!encounterId) {
@@ -237,181 +84,70 @@ export function useEncounterStream(
       return;
     }
 
-    console.log(
-      '🔄 useEncounterStream effect triggered, encounterId:',
-      encounterId
-    );
-
     const connect = async () => {
-      console.log('🔄 connect() called, starting stream connection...');
+      const myGeneration = ++generationRef.current;
+      const isCurrent = () => generationRef.current === myGeneration;
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
       setConnectionState('connecting');
       setError(null);
 
-      // Reset sync state for new connection
-      eventBufferRef.current = [];
-      lastEventIdRef.current = null;
-      isSyncingRef.current = true;
+      const scheduleReconnect = () => {
+        if (!isCurrent()) return; // a newer attempt already owns the hook
 
-      abortControllerRef.current = new AbortController();
+        if (retryCountRef.current >= RECONNECT_CONFIG.maxAttempts) {
+          setConnectionState('error');
+          setError(new Error('Max reconnection attempts reached'));
+          return;
+        }
+        setConnectionState('disconnected');
+        const delay = Math.min(
+          RECONNECT_CONFIG.initialDelayMs *
+            Math.pow(RECONNECT_CONFIG.backoffMultiplier, retryCountRef.current),
+          RECONNECT_CONFIG.maxDelayMs
+        );
+        retryCountRef.current++;
+        retryTimeoutRef.current = setTimeout(connect, delay);
+      };
 
       try {
-        const request = create(StreamEncounterEventsRequestSchema, {
+        const request = create(StreamEncounterRequestSchema, {
           encounterId,
           playerId,
         });
-
-        console.log('🔄 Creating stream iterator...');
-        // Start stream - events will be buffered during sync
-        const streamIterator = encounterClient.streamEncounterEvents(request, {
-          signal: abortControllerRef.current.signal,
+        const stream = encounterClient.streamEncounter(request, {
+          signal: controller.signal,
         });
 
-        // Fetch snapshot while stream connects
-        setConnectionState('syncing');
-        console.log('🔄 Fetching encounter state snapshot...');
+        let sawFirstSnapshot = false;
+        for await (const event of stream as AsyncIterable<EncounterEvent>) {
+          if (!isCurrent()) return; // superseded mid-stream; a newer attempt owns state now
 
-        try {
-          const snapshot = await fetchSnapshot(encounterId, playerId);
-
-          // Debug: Log full snapshot to see what we received
-          console.log('🔄 Snapshot received:', {
-            encounterId: snapshot.encounterId,
-            state: snapshot.state,
-            lastEventId: snapshot.lastEventId,
-            hasRoom: !!snapshot.room,
-            hasCombatState: !!snapshot.combatState,
-            partySize: snapshot.party?.length || 0,
-            monstersCount: snapshot.monsters?.length || 0,
-          });
-
-          // Apply snapshot via callback
-          optionsRef.current.onStateSync?.(snapshot);
-
-          // Process buffered events depending on presence of lastEventId
-          const bufferedCount = eventBufferRef.current.length;
-
-          if (!snapshot.lastEventId) {
-            // No lastEventId - process all buffered events
-            console.log(
-              `⚠️ Snapshot has NO lastEventId - historical events cannot be fetched. Processing all ${bufferedCount} buffered events`
-            );
-
-            for (const event of eventBufferRef.current) {
-              dispatchEvent(event, optionsRef.current);
-            }
-          } else {
-            // Filter by lastEventId (ULID comparison)
-            lastEventIdRef.current = snapshot.lastEventId;
-            console.log(
-              '🔄 Snapshot received, lastEventId:',
-              snapshot.lastEventId
-            );
-
-            // Fetch historical events (monster turns, etc.) that happened before we connected
-            try {
-              console.log(
-                '🔄 Fetching historical events up to:',
-                snapshot.lastEventId
-              );
-              const historicalEvents = await fetchHistory(
-                encounterId,
-                snapshot.lastEventId
-              );
-              console.log(
-                `🔄 Retrieved ${historicalEvents.length} historical events`
-              );
-
-              // Notify consumer of historical events for event log/replay
-              if (historicalEvents.length > 0) {
-                optionsRef.current.onHistoricalEvents?.(historicalEvents);
-              }
-            } catch (historyErr) {
-              // History fetch failed - continue without it (non-critical)
-              console.warn(
-                'Failed to fetch historical events, continuing:',
-                historyErr
-              );
-            }
-
-            // Process buffered events that are newer than the snapshot
-            const newEvents = eventBufferRef.current.filter(
-              (e) => e.eventId > snapshot.lastEventId!
-            );
-            console.log(
-              `🔄 Processing ${newEvents.length} new events from ${bufferedCount} buffered`
-            );
-
-            for (const event of newEvents) {
-              dispatchEvent(event, optionsRef.current);
-            }
+          if (!sawFirstSnapshot) {
+            // Broker contract: first message is always SnapshotDelivered. We
+            // don't validate the case here — a violation is a server-side bug
+            // that the playtest will surface via missing snapshot effects.
+            // Loose handling matches v1's tolerance.
+            dispatchEncounterStreamEvent(event, optionsRef.current);
+            sawFirstSnapshot = true;
+            setConnectionState('connected');
+            retryCountRef.current = 0;
+            continue;
           }
-
-          // Exit sync mode BEFORE clearing buffer to prevent race condition
-          // Any new events arriving now will be dispatched directly
-          isSyncingRef.current = false;
-          eventBufferRef.current = [];
-
-          setConnectionState('connected');
-          retryCountRef.current = 0;
-        } catch (snapshotErr) {
-          // Snapshot fetch failed - continue without sync (graceful degradation)
-          console.warn(
-            'Failed to fetch snapshot, continuing without sync:',
-            snapshotErr
-          );
-          isSyncingRef.current = false;
-
-          // Process all buffered events since we don't have a lastEventId
-          for (const event of eventBufferRef.current) {
-            dispatchEvent(event, optionsRef.current);
-          }
-          eventBufferRef.current = [];
-
-          setConnectionState('connected');
-          retryCountRef.current = 0;
+          dispatchEncounterStreamEvent(event, optionsRef.current);
         }
 
-        // Continue processing live events
-        for await (const event of streamIterator) {
-          if (isSyncingRef.current) {
-            // Still syncing - buffer the event
-            eventBufferRef.current.push(event);
-            console.log('🔵 Buffering event during sync:', event.eventId);
-          } else {
-            // Normal operation - dispatch immediately
-            dispatchEvent(event, optionsRef.current);
-          }
-        }
-
-        // Stream ended normally (server closed)
+        // Stream closed by server — schedule reconnect
         scheduleReconnect();
       } catch (err) {
-        if (abortControllerRef.current?.signal.aborted) {
-          return; // Intentional abort, don't reconnect
+        if (!isCurrent()) return; // superseded — a newer attempt is already running
+        if (controller.signal.aborted) {
+          return; // our own cleanup tore this attempt down; nothing wants it anymore
         }
-
-        console.error('Stream error:', err);
+        console.error('[useEncounterStream] stream error:', err);
         scheduleReconnect();
       }
-    };
-
-    const scheduleReconnect = () => {
-      if (retryCountRef.current >= RECONNECT_CONFIG.maxAttempts) {
-        setConnectionState('error');
-        setError(new Error('Max reconnection attempts reached'));
-        return;
-      }
-
-      setConnectionState('disconnected');
-
-      const delay = Math.min(
-        RECONNECT_CONFIG.initialDelayMs *
-          Math.pow(RECONNECT_CONFIG.backoffMultiplier, retryCountRef.current),
-        RECONNECT_CONFIG.maxDelayMs
-      );
-
-      retryCountRef.current++;
-      retryTimeoutRef.current = setTimeout(connect, delay);
     };
 
     connect();

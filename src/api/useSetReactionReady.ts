@@ -3,7 +3,7 @@ import type { SetReactionReadyResponse } from '@kirkdiggler/rpg-api-protos/gen/t
 import { SetReactionReadyRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { RefSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useState } from 'react';
-import { encounterClientV2 } from './client';
+import { encounterClient } from './client';
 
 /**
  * Input shape for the SetReactionReady RPC. Mirrors the proto request fields
@@ -56,7 +56,7 @@ export interface UseSetReactionReadyResult {
  * - lastResponse holds the most recent successful response for transient display
  * - The returned promise rejects on RPC error so callers can surface it
  *
- * Mirrors useSubmitCheckV2 — one file per v1alpha2 verb under src/api/.
+ * Mirrors useSubmitCheck — one file per v1alpha2 verb under src/api/.
  *
  * Wave 2.11d: opt-in player reaction readiness. Each character has zero or
  * more reactions Apply()'d to the encounter bus (OA default-on for melee
@@ -90,7 +90,7 @@ export function useSetReactionReady(): UseSetReactionReadyResult {
       });
 
       try {
-        const response = await encounterClientV2.setReactionReady(request);
+        const response = await encounterClient.setReactionReady(request);
         setLastResponse(response);
         return response;
       } catch (err) {

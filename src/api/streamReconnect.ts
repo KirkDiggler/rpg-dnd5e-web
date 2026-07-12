@@ -1,7 +1,6 @@
 /**
- * Reconnect schedule shared by useEncounterStream (v1alpha1) and
- * useEncounterStream2 (v1alpha2). Single source of truth — preventing
- * drift between the two hooks.
+ * Reconnect schedule shared by useEncounterStream and useLobbyStream.
+ * Single source of truth — preventing drift between the two hooks.
  *
  * Schedule: 1s initial, 2x backoff multiplier, 30s cap, 10 max attempts.
  * Total backoff window if all attempts fail: ~5 minutes.

@@ -7,10 +7,11 @@
  * GameView and unmounts — no lobby state survives the handoff
  * (lobby-surface.md).
  *
- * This is a NEW component on a NEW proto package — distinct from the
- * v1alpha1 LobbyScreen/WaitingRoom in src/components/lobby/, which
- * LobbyView still uses and which this slice does not touch or reuse
- * (design.md: clean-slate rebuild, no shim).
+ * This started as a NEW component on a NEW proto package, distinct from
+ * the v1alpha1 LobbyScreen/WaitingRoom that LobbyView used
+ * (design.md: clean-slate rebuild, no shim). Slice 3 (#447) deleted
+ * LobbyView and that v1alpha1 lobby UI entirely — this is now the only
+ * lobby surface.
  */
 
 import type { LobbyMember } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/types_pb';

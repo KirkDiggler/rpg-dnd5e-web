@@ -1,8 +1,8 @@
 ---
 name: rpg-dnd5e-web quality scorecard
 description: Per-component grade with rationale — a graded scorecard to be updated over time
-updated: 2026-05-02
-confidence: low-medium — first draft from full code read-through; grades reflect structural reality but stream-bug scope is uncertain until investigated
+updated: 2026-07-12
+confidence: low-medium — sections below are dated 2026-05-02 and predate slices 1-2 of the game-screen rebuild; slice 3 (rpg-dnd5e-web#447) removed entries for deleted components and refreshed the stream/state grades, but grades for character creation/sheet, hex-grid, Discord wiring, and other untouched areas are not independently re-verified this pass. This doc needs a dedicated refresh pass.
 ---
 
 # Quality scorecard
@@ -10,240 +10,166 @@ confidence: low-medium — first draft from full code read-through; grades refle
 Every area graded A–D. Grades reflect a holistic read of: design clarity,
 test coverage, known gaps, and operational risk.
 
-This is a first draft. Expect grades to move as the stream bug is confirmed
-or cleared and as component tests are added.
-
 ---
 
 ## Stream / real-time layer
 
-### useEncounterStream — C+
+### useEncounterStream — B
 
-The load-then-stream buffer pattern is the right design: start the stream,
-fetch snapshot, replay buffered events newer than `lastEventId`. The
-reconnect logic with exponential backoff is also correct. However:
+Renamed from `useEncounterStream2` in slice 3 (rpg-dnd5e-web#447) — the
+v1alpha1 hook it used to coexist with, along with its `LobbyView`
+consumer, is deleted. The lifecycle is simple: the stream's own first
+message (`SnapshotDelivered`) is the sync barrier, no separate
+snapshot-RPC-then-buffer step. Reconnect uses exponential backoff, config
+shared with `useLobbyStream`. Mount-churn resilience (#442) is
+generation-tagged to survive React StrictMode's dev double-invoke without
+a stale attempt's belated rejection clobbering a newer one.
 
-- The `RoomRevealed` event is suspected of not reaching the browser despite
-  correct code in the dispatch switch. The failure point has not been isolated.
-  Until that investigation closes, this is a live unknown that blocks the
-  milestone.
-- The entire hook is exercised only by manual playtesting. No vitest coverage.
-  The buffer-during-sync path, history fetch, and reconnect path are all
-  untested.
-- React StrictMode double-mount causes double stream connections in development.
-  The CLAUDE.md documents this as "normal and expected," but it means the dev
-  experience masks potential connection-state bugs.
+Gaps:
 
-Grade would be B- if the stream bug is cleared; C+ reflects the current
-unknown.
+- No direct vitest coverage of the live gRPC `for await` loop (mocking an
+  `AsyncIterable` stream end-to-end is high-effort for marginal value
+  over MCP playtest verification, which exercises the real path).
+  `encounterStreamDispatch.ts`'s pure dispatch switch and
+  `streamReconnect.ts`'s config ARE tested independently.
+- React StrictMode double-mount causes double stream connections in
+  development. Documented as "normal and expected" in CLAUDE.md.
 
-### gRPC client / encounterHooks — B-
+### gRPC client — B-
 
-Clean hook wrappers (`useOpenDoor`, `useMoveCharacter`, etc.) with consistent
-`{ data, loading, error }` shape. Auth interceptor and logging interceptor in
-`client.ts` are well-factored. Gaps:
+Clean Connect RPC client setup (`characterClient`, `encounterClient`,
+`lobbyClient`, `diceClient`) with auth + logging interceptors well
+factored in `client.ts`. The old v1alpha1 `encounterHooks.ts`/
+`lobbyHooks.ts` wrapper hooks this section used to grade are deleted
+(rpg-dnd5e-web#447) — their only real consumers (`LobbyView` and a
+pre-existing orphaned tree with zero live consumers even before this
+change) are gone. The live action-dispatch hooks
+(`useMoveEntity`/`useEndTurn`/`useInteract`/`useTakeAction`/
+`useSubmitCheck`/`useActivateFeature`, all renamed off their `V2` suffix
+in slice 3) are per-RPC thin wrappers with a consistent shape and direct
+vitest coverage each.
 
-- No tests. Error paths for every RPC hook are manually tested only.
-- `useLeaveEncounter` and `useOpenDoor` return `loading` state that LobbyView
-  threads through 2,000+ lines of props — not ideal for scale.
-- Logging interceptor emits emoji-prefixed `console.log` in dev. Useful, but
-  will need disabling or leveling before a polished demo.
+Gap: logging interceptor emits emoji-prefixed `console.log` in dev.
+Useful, but will need disabling or leveling before a polished demo.
 
 ---
 
 ## State management
 
-### useDungeonMap — B+
+### dungeonMapGeometry — A-
 
-Clean accumulation-over-replacement design. `mergeRoom` is immutable and
-handles the duplicate-room (update) case correctly. `wallKey` normalization
-prevents shared boundary walls from doubling (the wall-shift bug, PR #368).
-`updateEntitiesFromRoom` correctly removes dead entities. Exported pure
-functions (`mergeRoom`, `generateFloorTiles`, `createEmptyState`) make unit
-testing straightforward — and tests exist (part of `useDungeonMap.test.ts`).
+Renamed from `useDungeonMap.ts` in slice 3. The stateful hook and its
+`Room`-accumulation logic (`mergeRoom`, `updateEntitiesFromRoom`,
+`generateFloorTiles`, `createEmptyState`) were `LobbyView`-only and
+deleted with it. What's left — `AbsoluteFloorTile`, `wallKey`,
+`openDoorWalkableKeys` — are three small pure functions with full test
+coverage and no known gaps. Multi-room accumulation on the v1alpha2
+stream doesn't exist yet (design.md's slice 4); this file is geometry
+math with nothing to accumulate into yet.
 
-Gap: `currentRoomId` is always overwritten to the last `mergeRoom` call.
-Multi-room scenarios where the player is in room A but a second room is
-merged for preview would update `currentRoom` incorrectly. Not a bug today
-because rooms only merge on `RoomRevealed` when the player enters them.
+### useEncounterState — B+
 
-### useEncounterState — B-
+Delta-only design: every reducer merges one event's data into existing
+state, no full-replace-from-snapshot path. The v1alpha1 snapshot-replace
+functions (`applySnapshotToState`, `mergeEntityUpdates`,
+`applyCombatState`) that only `LobbyView` drove — along with the
+`rooms`/`currentRoomId`/`revealedRoomIds`/`combat`/`doors`/
+`dungeonState`/`roomsCleared` fields they alone populated — were deleted
+in slice 3. Every remaining field/reducer is exercised by `EncounterView`
+and/or `PlaytestHarness`. Reducers are pure, well-tested, and idempotent
+where cheap (return the same reference when nothing changed, avoiding
+spurious re-renders).
 
-Correct snapshot/delta design: `applySnapshotToState` does a full replace;
-`mergeEntityUpdates` does a keyed merge. Pure functions are tested. Gaps:
-
-- Still runs alongside the "legacy" entity state in `LobbyView` (separate
-  `monsters[]`, `combatState`, `fullCharactersMap` state). The dual path
-  means entity data is updated in two places and can diverge.
-- No door or room updates — the hook tracks combat/entities but `doors` and
-  `rooms` only update on full snapshot. A `RoomRevealed` event that carries
-  an `encounterStateData` does call `applySnapshot`, so doors are eventually
-  consistent, but intermediate door state (open/closed between snapshots) is
-  not tracked.
-- `applyCombatState` replaces the full `CombatState` — correct but means the
-  caller must pass the full object even when only one field changes.
-
----
-
-## Transform / util layer
-
-### LobbyView transform functions (pending extraction) — B
-
-**Note:** `utils/encounterStateTransforms.ts` does not exist on main. The five
-transform functions (`entityStateToPlacement`, `roomFromEncounterState`,
-`allRoomsFromEncounterState`, `doorsFromEncounterState`,
-`monstersFromEncounterState`) currently live as module-level functions inside
-`LobbyView.tsx`. PR #378 (`test/room-reveal-transforms`, paused) extracts them
-and adds 25 tests. The grade reflects the functions as they exist on main today.
-
-The functions themselves are pure with no side effects. `monstersFromEncounterState`
-is correctly typed as `MonsterCombatState[]`. Gaps:
-
-- `entityStateToPlacement` manually reconstructs an `EntityPlacement` by
-  copying fields from `EntityState`. Any new proto field on `EntityPlacement`
-  that is also on `EntityState` must be manually added here; no compile-time
-  reminder.
-- `allRoomsFromEncounterState` does not exist on main — it is being added by
-  PR #377 alongside the extraction. On main, `handleRoomRevealed` still calls
-  `roomFromEncounterState` (single-room, incorrect for multi-room dungeons).
-- Zero tests on main. The 25 tests live on branch `test/room-reveal-transforms`
-  only and will land when PR #378 merges.
-
-### hexUtils / hexMath — B
-
-BFS reachability, A\* pathfinding, cube-coordinate math. Well-tested
-(`hexUtils.test.ts`, `useMovementRange.test.ts` — 40+ tests between them).
-The `wallKey` canonicalization that fixed the wall-shift bug lives here.
-No known gaps; movement and boundary edge logic are solid.
-
-### Other utils (characterMerge, monsterTurnUtils, entityHelpers, enumDisplays) — B-
-
-Each has at least one test file. `characterMerge.test.ts`,
-`monsterTurnUtils.test.ts`, `entityHelpers.test.ts` cover the happy paths.
-Gaps:
-
-- `enumDisplays.ts` / `enumRegistry.ts` are entirely untested; display
-  string mapping is the kind of thing that silently regresses.
-- `featureConditionMapping.ts` has tests but they cover a small subset of
-  the feature→condition map.
+Gap: `entities: Map<string, EntityState>` uses the v1alpha1 `EntityState`
+proto as its value shape — an intentional upstream wire-reuse decision
+(the v1alpha2 stream's entity payloads carry v1alpha1-shaped data), worth
+knowing if this file resurfaces in a future `v1alpha1` grep gate.
 
 ---
 
 ## Components
 
-### LobbyView — C
+### GameView / EncounterView / LobbyFlow — B+
 
-Correct behavior across the scenarios tested (Round 1 scenario works).
-But structurally it is the riskiest file in the codebase:
+Live successor to `LobbyView` (deleted, rpg-dnd5e-web#447). `GameView` is
+a two-state switch (lobby vs encounter); `LobbyFlow` and `EncounterView`
+compose already-proven pieces (`useEncounterStream`, `useEncounterState`,
+`ActionMenu`/`EconomyBar`, `HexGrid` via `EncounterMap`) rather than
+reimplementing a combat UI from scratch. Sharing hooks with
+`PlaytestHarness` is what makes MCP playtest verification a proof of the
+live game path. See [game-view.md](architecture/components/game-view.md).
 
-- 2,345 lines, 45 hook calls.
-- Runs two parallel state paths ("legacy" and "new") with 41 inline comments
-  marking the seam. Any event handler that diverges between the two paths
-  silently produces inconsistent UI.
-- Business logic that belongs elsewhere: `applyMonsterMovement` (a Room
-  mutation function) lives as a module-level function inside `LobbyView.tsx`;
-  `processMonsterTurns` is a `useCallback` inside the component that does
-  entity movement math.
-- `handleRoomRevealed` wraps state updates in a 300ms `setTimeout` for the
-  fade transition. Any state update inside that timeout uses a stale-closure
-  risk (partially mitigated by `optionsRef` pattern in the stream, but not
-  inside the callback itself).
-- No tests. A bug in any handler requires a full manual playtest cycle to
-  catch.
-
-### combat-v2 / CombatPanel, CombatHistorySidebar — B-
-
-Organized into panels with clear responsibilities. `CombatHistorySidebar`
-(484 lines) and `ActionPanel`/`ActionPanelV2` (335/356 lines) are getting
-large. The ActionPanel vs ActionPanelV2 split is unclear — README is present
-but doesn't explain the distinction or which to use.
-
-No component tests. Combat action dispatch (strike, ability, feature
-activate) is wired through callbacks drilled from `LobbyView` all the way
-down, making the component difficult to test in isolation.
-
-### encounter/BattleMapPanel — B-
-
-Clean props interface. Reads from unified `useEncounterState` entities for
-HP/condition display (PR #371). Renders React Three Fiber hex grid.
-
-Gaps:
-
-- No tests.
-- Cross-room pathing (moving entities across revealed rooms) is noted as
-  still needed in project memory; the `walkableTileKeys` set passed from
-  `LobbyView` should enable it but it's not exercised.
+Gaps: equipment modal, dungeon result overlay, and multi-room
+accumulation are not built yet (explicitly out of scope through slice 3,
+scheduled later per design.md).
 
 ### hex-grid components (HexGrid, HexTile, HexEntity, MediumHumanoid) — B-
 
 Voxel aesthetic with shader-based texture color replacement works.
 `MediumHumanoid` assembles 12 OBJ parts with class-specific textures and
-fallback chains. `useHexInteraction` and `useMovementRange` are tested.
+fallback chains. `useHexInteraction` is tested; its `AbsoluteFloorTile`
+import moved to `dungeonMapGeometry.ts` in slice 3 with no behavior
+change.
 
 Gaps:
 
 - No rendering tests (React Three Fiber components are hard to test, but
   there is no snapshot or interaction test coverage at all).
-- `MediumHumanoid` imports 12 OBJ parts via `useLoader` — no error boundary
-  if a model file is missing; Three.js will throw and bubble up.
-
-### lobby components (LobbyScreen, PartyMemberCard, DungeonConfigSelector) — B
-
-Reasonable size and single-purpose. `LobbyScreen` is the clean entry into
-the pre-combat flow. No tests, but these are simpler components with less
-critical logic.
+- `MediumHumanoid` imports 12 OBJ parts via `useLoader` — no error
+  boundary if a model file is missing; Three.js will throw and bubble up.
 
 ### /concepts route — B
 
 Good sandbox pattern. `ConceptsView.tsx` routes to isolated prototypes
-without affecting production. The class-selection spike is a real UI
-improvement idea. Gaps: no documented process for promoting a concept to
-production; the route exists in the app router but is undocumented in the
-main README.
+without affecting production. Gaps: no documented process for promoting a
+concept to production; the route exists in the app router but is
+undocumented in the main README.
 
 ---
 
 ## Infrastructure
 
-### Proto integration (rpg-api-protos v0.1.86) — B+
+### Proto integration (@kirkdiggler/rpg-api-protos) — B+
 
-Types are used directly from generated protos — no hand-rolled TypeScript
-interfaces duplicating proto shapes. `@bufbuild/protobuf` `create()` pattern
-is used correctly. The CLAUDE.md lock-file discipline (delete
-`node_modules + package-lock.json` on version bumps) is documented.
+Types are used directly from generated protos — no hand-rolled
+TypeScript interfaces duplicating proto shapes. `@bufbuild/protobuf`
+`create()` pattern is used correctly. The CLAUDE.md lock-file discipline
+(delete `node_modules` + `package-lock.json` on version bumps) is
+documented.
 
-Gap: `$typeName` and `$unknown` fields must be manually set when constructing
-proto-compatible objects (e.g., in the transform functions inside `LobbyView.tsx`,
-or `utils/encounterStateTransforms.ts` once PR #378 merges). This is a
-protobuf-es v2 constraint, not a design flaw, but it is a foot-gun for new
-contributors.
+Gap: `$typeName` and `$unknown` fields must be manually set when
+constructing proto-compatible objects by hand. This is a protobuf-es v2
+constraint, not a design flaw, but it is a foot-gun for new contributors.
 
 ### Discord Activity wiring — B-
 
-`DiscordProvider` + `useDiscord` hook is a clean abstraction. The `/.proxy`
-URL detection for Discord Activity is correct. Auth interceptor handles both
-real Discord tokens and dev fallback.
+`DiscordProvider` + `useDiscord` hook is a clean abstraction. The
+`/.proxy` URL detection for Discord Activity is correct. Auth interceptor
+handles both real Discord tokens and dev fallback.
 
 Gaps:
 
-- `isDevelopment ? 'test-player' : ''` fallback in `LobbyView` means a
-  production Discord auth failure silently uses empty playerId.
+- `isDevelopment ? 'test-player' : null` fallback (now in `App.tsx`, was
+  in `LobbyView` before its deletion) means a production Discord auth
+  failure silently falls through to `null` rather than surfacing an
+  error.
 - No test of the Discord SDK initialization path.
 
-### vitest / test infrastructure — C+
+### vitest / test infrastructure — B-
 
-14 test files, 298 tests, all passing (verified 2026-05-02 by running
-`npm test`). The test infrastructure itself is clean: vitest 4.x, no flaky
-tests observed, tests run in ~1.5s. `useDungeonMap.test.ts` and
-`hexUtils.test.ts` are the most complete suites and serve as templates for
-new tests. (The 25-test `encounterStateTransforms.test.ts` is on branch
-`test/room-reveal-transforms` only — not on main.)
+37 test files, 569 tests, all passing (verified 2026-07-12 by running
+`npx vitest run`, post-slice-3). Vitest 4.x, no flaky tests observed.
+`dungeonMapGeometry.test.ts` and `useEncounterState.test.ts` are among
+the most complete suites and serve as templates for new tests.
+`PlaytestHarness.test.tsx` and `EncounterView.test.tsx` are the rare
+component-level suites; nearly everything else is utility/hook-layer.
 
-The fundamental gap: test coverage is entirely at the utility-function layer.
-Zero component tests. Zero stream/hook integration tests. The most complex
-and most bug-prone code paths (`useEncounterStream`, `LobbyView` event
-handlers, `BattleMapPanel` rendering) are untested. 298 tests is a
-beachhead, not a safety net.
+The fundamental gap: near-zero coverage of anything that renders a
+Three.js canvas (`HexGrid` and everything under it). This grade moved
+from the pre-slice-3 C+ mostly because a large share of the previously
+untested surface (`LobbyView`, `BattleMapPanel`, `combat-v2` panels) is
+now deleted rather than covered — the remaining untested surface is
+smaller, not better-tested.
 
 ---
 
@@ -256,10 +182,10 @@ beachhead, not a safety net.
 
 ## How this doc is meant to work
 
-Grades are a first draft from 2026-05-02. When you update a grade, leave a
-reason. Don't just move a letter. The intended evolution:
-
-1. Today: human-curated grades from code read-through
-2. Next: as component tests are added, grades for those components move
-3. Later: stream delivery confirmation either promotes `useEncounterStream`
-   from C+ to B- or reveals a deeper bug worth its own ADR
+Grades were a first draft from 2026-05-02, refreshed for slice 3
+(rpg-dnd5e-web#447, LobbyView deletion) on 2026-07-12 — entries for
+deleted components are removed rather than graded, and the stream/state
+grades reflect the current trimmed design. Sections not touched by slice
+3 (character creation/sheet, Discord wiring beyond the fallback note,
+`/concepts`) are carried forward unverified and still need their own
+read-through pass.

@@ -4,8 +4,7 @@ import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { DiceService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
 import { LobbyService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { EncounterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { EncounterService as EncounterServiceV2 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
+import { EncounterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 
 import { getDiscordToken, getPlayerId } from './auth';
 
@@ -87,11 +86,8 @@ export const diceClient = createClient(DiceService, transport);
 // Create the encounter service client
 export const encounterClient = createClient(EncounterService, transport);
 
-// Create the v1alpha2 encounter service client
-export const encounterClientV2 = createClient(EncounterServiceV2, transport);
-
-// Create the lobby service client (dnd5e.api.lobby.v1alpha1 — party assembly,
-// GameView slice 2). Separate service from v1alpha1 EncounterService's old
-// CreateEncounter/JoinEncounter/SetReady lobby RPCs, which LobbyView still
-// uses until slice 3's deletion.
+// Create the lobby service client (dnd5e.api.lobby.v1alpha1 — party
+// assembly, GameView slice 2). Distinct service from the old v1alpha1
+// EncounterService's CreateEncounter/JoinEncounter/SetReady lobby RPCs,
+// deleted in slice 3 along with LobbyView, their only caller.
 export const lobbyClient = createClient(LobbyService, transport);

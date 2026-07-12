@@ -24,7 +24,8 @@ type AppView =
 function AppContent() {
   // Stable gate: dev mode + encounterId URL param → render PlaytestHarness.
   // Computed once on mount via useState initializer so route doesn't flicker.
-  // DELETE in slice 3 cleanup.
+  // /playtest is a permanent verification surface (design.md), not slated
+  // for removal — this gate stays.
   const [showPlaytestHarness] = useState(
     () =>
       import.meta.env.MODE === 'development' &&

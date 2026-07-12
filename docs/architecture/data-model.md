@@ -1,81 +1,80 @@
 ---
 name: rpg-dnd5e-web data model
 description: Proto types consumed, transform layer, derived UI state
-updated: 2026-05-02
-confidence: high — verified by reading encounterHooks.ts, useEncounterState.ts, useDungeonMap.ts, and LobbyView.tsx import graph
+updated: 2026-07-12
+confidence: medium — proto packages table, snapshot, and transform sections refreshed for slice 3 (rpg-dnd5e-web#447, LobbyView deletion); hand-rolled-interfaces and proto-version-discipline sections not independently re-verified this pass
 ---
 
 # Data model
 
 ## Proto packages consumed
 
-All types flow in from `@kirkdiggler/rpg-api-protos` (currently v0.1.102). The web layer consumes two proto namespaces:
+All types flow in from `@kirkdiggler/rpg-api-protos`. The web layer consumes several proto namespaces:
 
-| Proto package        | Generated path                           | What we use                                                                                                      |
-| -------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `dnd5e.api.v1alpha1` | `gen/ts/dnd5e/api/v1alpha1/encounter_pb` | `EncounterStateData`, `EntityState`, `RoomLayout`, `DoorInfo`, `EntityPlacement`, `CombatState`, all event types |
-| `dnd5e.api.v1alpha1` | `gen/ts/dnd5e/api/v1alpha1/character_pb` | `Character`, `CharacterService`                                                                                  |
-| `dnd5e.api.v1alpha1` | `gen/ts/dnd5e/api/v1alpha1/enums_pb`     | `Ability`, `EntityType`, `MonsterType`, `ConditionType`, `FeatureType`                                           |
-| `api.v1alpha1`       | `gen/ts/api/v1alpha1/room_common_pb`     | `Wall`, `GridType`                                                                                               |
-| `api.v1alpha1`       | `gen/ts/api/v1alpha1/dice_pb`            | `DiceService`                                                                                                    |
+| Proto package                    | Generated path                             | What we use                                                                                                                                                                                                                                     |
+| -------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dnd5e.api.v1alpha2` (encounter) | `gen/ts/dnd5e/api/v1alpha2/encounter/*_pb` | `StreamEncounter`, all v2 event types, `TurnState`, `AvailableAction`, `InputRequired` — the live game/harness stream                                                                                                                           |
+| `dnd5e.api.v1alpha1` (encounter) | `gen/ts/dnd5e/api/v1alpha1/encounter_pb`   | `EntityState`, `RoomLayout`, `DoorInfo`, `EntityPlacement`, `Room` — entity/geometry **shapes**, deliberately reused by the v2 stream's event payloads (not a legacy holdover; see [use-encounter-state.md](components/use-encounter-state.md)) |
+| `dnd5e.api.lobby.v1alpha1`       | `gen/ts/dnd5e/api/lobby/v1alpha1/*_pb`     | `LobbyService`, `LobbyEvent`/`StreamLobby` — party assembly (slice 1, rpg-api#630)                                                                                                                                                              |
+| `dnd5e.api.v1alpha1` (character) | `gen/ts/dnd5e/api/v1alpha1/character_pb`   | `Character`, `CharacterService` — the character creation/sheet subsystem, unaffected by and never in scope for the game-screen rebuild                                                                                                          |
+| `dnd5e.api.v1alpha1` (enums)     | `gen/ts/dnd5e/api/v1alpha1/enums_pb`       | `Ability`, `EntityType`, `MonsterType`, `ConditionType`, `FeatureType`                                                                                                                                                                          |
+| `api.v1alpha1`                   | `gen/ts/api/v1alpha1/room_common_pb`       | `Wall`, `Position`, `GridType`                                                                                                                                                                                                                  |
+| `api.v1alpha1`                   | `gen/ts/api/v1alpha1/dice_pb`              | `DiceService`                                                                                                                                                                                                                                   |
 
-The `create()` function from `@bufbuild/protobuf` is used when constructing proto messages for RPC requests. Proto message construction in transform code (e.g., assembling `EntityPlacement` from `EntityState` in `LobbyView.tsx:120-140`) requires manually setting `$typeName` and `$unknown` fields — a protobuf-es v2 constraint, not a design choice.
+The old v1alpha1 `EncounterService`'s request/response lobby/combat RPCs
+(`CreateEncounter`/`JoinEncounter`/`SetReady`/`GetEncounterState`/etc.) and
+their sole consumer, `LobbyView.tsx`, were deleted in slice 3
+(rpg-dnd5e-web#447) — see [lobby-view.md](components/lobby-view.md).
 
-## The EncounterStateData snapshot
+The `create()` function from `@bufbuild/protobuf` is used when constructing proto messages for RPC requests. Constructing proto-shaped objects by hand requires manually setting `$typeName` and `$unknown` fields — a protobuf-es v2 constraint, not a design choice.
 
-`EncounterStateData` is the central data structure. It is returned by `GetEncounterState` (snapshot) and embedded in several event payloads (`CombatStartedEvent`, `RoomRevealedEvent`, `PlayerReconnectedEvent`).
+## The v1alpha2 stream: delta events, not a snapshot-replace
 
-```
-EncounterStateData
-  ├── currentRoomId: string
-  ├── rooms: map<string, RoomLayout>     # all revealed room layouts
-  ├── entities: map<string, EntityState> # all entities (players + monsters)
-  ├── doors: map<string, DoorInfo>       # all doors
-  ├── combatState: CombatState           # initiative, current turn, action economy
-  └── lastEventId: string                # for load-then-stream synchronization
-```
+There is no `EncounterStateData`-shaped full-snapshot RPC on the live
+path anymore. `useEncounterStream` subscribes to `StreamEncounter`; its
+first message is always `SnapshotDelivered`, which seeds
+`useEncounterState` through the same targeted, additive reducers every
+other event uses (`applyEntityAppearedBatch` for entities,
+`applySnapshotTurnState` for mode/turn state) — never a wholesale field
+replace. See [use-encounter-state.md](components/use-encounter-state.md)
+for the full reducer/field table.
 
-`EntityState` is the richest entity type. It includes position, HP, conditions, features, and a `details` oneof that distinguishes `characterDetails` from `monsterDetails`.
+`EntityState` (from the v1alpha1 encounter package) is still the richest
+entity shape — position, HP, conditions, features, and a `details` oneof
+distinguishing `characterDetails`/`monsterDetails`. The v2 stream's
+`EntityAppeared` event carries one; `useEncounterState.entities` is a
+`Map<entityId, EntityState>` built up one appearance at a time.
 
-## useEncounterState: derived entity map
+## useEncounterState: unified entity/turn/prompt store
 
-`hooks/useEncounterState.ts` (148 lines) maintains a `Map<entityId, EntityState>` derived from the snapshot. Pure functions:
+`hooks/useEncounterState.ts` maintains entity, turn, and prompt state
+keyed by entity ID, populated exclusively from v1alpha2 stream deltas —
+no snapshot-replace path, no parallel "legacy" state. This is the single
+state store `GameView`'s `EncounterView` and `PlaytestHarness` both
+consume. Full detail: [use-encounter-state.md](components/use-encounter-state.md).
 
-- `applySnapshotToState(state, snapshot)` — full replace from `EncounterStateData.entities`
-- `mergeEntityUpdates(state, updates)` — keyed merge for delta events (movement, HP changes)
-- `applyCombatState(state, combatState)` — replaces `CombatState` wholesale
+## dungeonMapGeometry: derived tile/wall geometry
 
-This hook is the "new path." It runs in parallel with the legacy `monsters[]` / `combatState` / `fullCharactersMap` state variables in `LobbyView.tsx` until Task 7 cleanup.
+`hooks/dungeonMapGeometry.ts` (renamed from `useDungeonMap.ts` in slice
+3, which also dropped the stateful hook and its `Room`-accumulation
+logic — `LobbyView`-only, no other consumer) holds three pure,
+state-free helpers `hex-grid/*` and the playtest map still depend on:
+`AbsoluteFloorTile` (tile shape), `wallKey` (canonical wall-dedup key),
+`openDoorWalkableKeys` (open-door cube keys for pathfinding). No proto
+mutation, no accumulated multi-room state — that's future work (slice 4).
+Full detail: [use-dungeon-map.md](components/use-dungeon-map.md).
 
-## useDungeonMap: derived room geometry
+## Transform functions: deleted with LobbyView
 
-`hooks/useDungeonMap.ts` (302 lines) accumulates revealed rooms into a single coordinate space. It is purely derived state — no proto mutation, only reads.
-
-`DungeonMapState` fields:
-
-- `floorTiles: Map<string, AbsoluteFloorTile>` — keyed by `"x,y,z"`, deduped
-- `walls: Map<string, Wall>` — keyed by canonical wall key (prevents boundary wall doubling)
-- `entities: Map<string, EntityPlacement>` — all entities across all rooms
-- `doors: Map<string, DoorInfo>` — all doors
-- `revealedRoomIds: Set<string>` — tracking
-- `rooms: Map<string, Room>` — raw room data for local coordinate lookups
-- `currentRoomId: string | null` — set to the last `mergeRoom` call's room ID
-
-`mergeRoom(state, room, doors)` is the critical function. It is immutable (does not mutate input), handles duplicate rooms as updates, and has a 20-test suite in `useDungeonMap.test.ts`.
-
-## Transform functions (warning: split location)
-
-Three transform functions that convert `EncounterStateData` into `Room[]` for `useDungeonMap` exist in two places depending on branch:
-
-| Function                     | On main                | On PR #378 branch                   |
-| ---------------------------- | ---------------------- | ----------------------------------- |
-| `roomFromEncounterState`     | `LobbyView.tsx:146`    | `utils/encounterStateTransforms.ts` |
-| `allRoomsFromEncounterState` | Does not exist on main | `utils/encounterStateTransforms.ts` |
-| `doorsFromEncounterState`    | `LobbyView.tsx:175`    | `utils/encounterStateTransforms.ts` |
-| `entityStateToPlacement`     | `LobbyView.tsx:120`    | `utils/encounterStateTransforms.ts` |
-| `monstersFromEncounterState` | `LobbyView.tsx:183`    | `utils/encounterStateTransforms.ts` |
-
-On main today, all five functions are module-level functions inside `LobbyView.tsx`. The 25-test `encounterStateTransforms.test.ts` suite lives exclusively on the `test/room-reveal-transforms` branch (PR #378) and has not merged to main. The `status.md` claim that "25 tests merged to main via commit `15f232e`" is incorrect — `15f232e` is only on the PR branch.
+The five `EncounterStateData`→`Room`/`EntityPlacement`/`DoorInfo`
+transform functions (`entityStateToPlacement`, `roomFromEncounterState`,
+`doorsFromEncounterState`, `monstersFromEncounterState`,
+`applyMonsterMovement`) lived as module-level functions inside
+`LobbyView.tsx` and were deleted with it in slice 3. The proposed
+extraction to `utils/encounterStateTransforms.ts` (PR #378) never merged
+and is now moot. The live path has no equivalent transform layer:
+`EncounterMap`/`useEncounterState` consume stream events directly. See
+[encounter-state-transforms.md](components/encounter-state-transforms.md).
 
 ## Hand-rolled interfaces (non-proto)
 
@@ -93,4 +92,4 @@ These are justified. They are UI concerns not representable in proto. They shoul
 
 ## Proto version discipline
 
-`@kirkdiggler/rpg-api-protos` is installed from GitHub (`github:KirkDiggler/rpg-api-protos#v0.1.102`). Version bumps require regenerating the lock file: `rm -rf node_modules package-lock.json && npm install`. The `CLAUDE.md` documents this. Failure to regenerate can cause CI to use stale proto code despite `package.json` being updated.
+`@kirkdiggler/rpg-api-protos` is installed from GitHub. Version bumps require regenerating the lock file: `rm -rf node_modules package-lock.json && npm install`. The `CLAUDE.md` documents this. Failure to regenerate can cause CI to use stale proto code despite `package.json` being updated.

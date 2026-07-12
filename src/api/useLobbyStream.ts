@@ -23,7 +23,7 @@ interface UseLobbyStreamResult {
 
 /**
  * Subscribes to the LobbyService StreamLobby RPC. Sibling of
- * useEncounterStream2 — same snapshot-then-deltas contract, same reconnect
+ * useEncounterStream — same snapshot-then-deltas contract, same reconnect
  * config, but no envelope and no playerId request field (StreamLobbyRequest
  * takes only lobby_id; the subscriber's identity for presence tracking
  * comes from the authenticated context — see StreamLobbyRequest's doc

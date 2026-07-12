@@ -6,7 +6,7 @@
  * requires a browser environment.
  */
 
-import type { AbsoluteFloorTile } from '@/hooks/useDungeonMap';
+import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { CubeCoord } from './hexMath';

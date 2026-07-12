@@ -1,14 +1,13 @@
 /**
  * GameView — the live game path's successor to LobbyView (design.md's
- * Target Shape). Slice 2 (#440) builds the two pieces that exist today:
+ * Target Shape). Slice 2 (#440) built the two pieces that exist today:
  * LobbyFlow (party assembly on the new LobbyService) and EncounterView (the
  * shared harness stack). Equipment, the result overlay, and multi-room are
  * later slices; this component's job is just the state machine between the
  * two: lobby until `encounter_started`, then the encounter.
  *
- * LobbyView.tsx stays untouched and unreferenced — App.tsx now mounts
- * GameView on the same route LobbyView used to occupy. Deleting LobbyView
- * itself is slice 3, not this one.
+ * Slice 3 (#447) deleted LobbyView.tsx, which App.tsx no longer referenced
+ * once it was mounting GameView on the same route.
  */
 
 import { useState } from 'react';
