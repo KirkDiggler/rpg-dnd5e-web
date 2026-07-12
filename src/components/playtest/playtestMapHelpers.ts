@@ -12,7 +12,7 @@ import {
   type EntityState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import type { AbsoluteFloorTile } from '../../hooks/useDungeonMap';
+import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import type { EntityMeta } from '../../hooks/useEncounterState';
 
 /**

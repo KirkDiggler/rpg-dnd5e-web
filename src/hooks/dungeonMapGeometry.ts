@@ -1,0 +1,66 @@
+/**
+ * dungeonMapGeometry - Pure floor/wall/door geometry helpers shared by the
+ * hex-grid renderer (HexGrid, InstancedHexTiles, ShadedHexFloor,
+ * useHexInteraction) and the playtest map.
+ *
+ * Formerly part of useDungeonMap, which also accumulated multi-room state
+ * from v1alpha1 Room/DoorInfo events via a stateful hook. That hook (and its
+ * mergeRoom/updateEntitiesFromRoom/generateFloorTiles/createEmptyState
+ * internals) was LobbyView-only and was deleted in slice 3 (rpg-dnd5e-web
+ * #447) along with LobbyView. Multi-room accumulation on the v1alpha2 stream
+ * is future work (design.md's slice 4). What's left here is geometry math
+ * with no state and no v1/v2 lean.
+ */
+
+import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
+import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+
+/** A floor tile in dungeon-absolute coordinates */
+export interface AbsoluteFloorTile {
+  x: number;
+  y: number;
+  z: number;
+  roomId: string;
+}
+
+/** Create coordinate key for map lookups */
+function coordKey(x: number, y: number, z: number): string {
+  return `${x},${y},${z}`;
+}
+
+/**
+ * Build a Set of cube-coord keys for every OPEN door.
+ * Used by HexGrid's `isBlocked` to treat open doors as walkable, since the
+ * door's hex sits on the boundary between two rooms and is not part of either
+ * room's floor-tile bbox. Closed doors are excluded — they remain "walls" to
+ * pathfinding until the player opens them via the door click flow.
+ *
+ * Exported for unit testing without rendering HexGrid.
+ */
+export function openDoorWalkableKeys(doors: Iterable<DoorInfo>): Set<string> {
+  const set = new Set<string>();
+  for (const door of doors) {
+    if (!door.position || !door.isOpen) continue;
+    set.add(coordKey(door.position.x, door.position.y, door.position.z));
+  }
+  return set;
+}
+
+/**
+ * Create a canonical key for a wall segment.
+ * Normalizes direction so that (A->B) and (B->A) produce the same key,
+ * preventing duplicate walls when adjacent rooms both report a shared boundary.
+ */
+export function wallKey(wall: Wall): string {
+  const sx = wall.start?.x ?? 0;
+  const sy = wall.start?.y ?? 0;
+  const sz = wall.start?.z ?? 0;
+  const ex = wall.end?.x ?? 0;
+  const ey = wall.end?.y ?? 0;
+  const ez = wall.end?.z ?? 0;
+
+  // Sort lexicographically so direction doesn't matter
+  const startStr = `${sx},${sy},${sz}`;
+  const endStr = `${ex},${ey},${ez}`;
+  return startStr < endStr ? `${startStr}-${endStr}` : `${endStr}-${startStr}`;
+}

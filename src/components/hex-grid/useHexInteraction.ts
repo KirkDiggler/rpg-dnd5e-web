@@ -4,7 +4,7 @@
  * Provides path preview functionality for movement and combat
  */
 
-import type { AbsoluteFloorTile } from '@/hooks/useDungeonMap';
+import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { CubeCoord } from './hexMath';

@@ -84,10 +84,10 @@ function describeActionTarget(target: ActionTarget | undefined): string {
 }
 
 /**
- * Dev-only playtest verification harness for wave-2.5 slice 2.
- * Renders at ?encounterId=<id>&playerId=<id> in development mode.
- * Uses ONLY the v2 path (useEncounterStream2 + useMoveEntityV2).
- * DELETE in slice 3 cleanup.
+ * Dev-only playtest verification harness. Renders at
+ * ?encounterId=<id>&playerId=<id> in development mode. Uses ONLY the
+ * v1alpha2 stream/action-hook path. Permanent verification surface
+ * (design.md) sharing the game's hooks/components — not a deletion target.
  */
 export function PlaytestHarness() {
   const params = new URLSearchParams(window.location.search);
@@ -1238,7 +1238,7 @@ export function PlaytestHarness() {
               </div>
             )}
 
-            {/* Open-door controls (Wave 2.7 verification scaffold; deleted in slice 3) */}
+            {/* Open-door controls (Wave 2.7 verification scaffold; permanent — see design.md) */}
             <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Open door</h3>
             <div style={{ fontSize: 12, color: '#777', marginBottom: 8 }}>
               Open doors ({openDoorKeys.length}):{' '}
@@ -1292,7 +1292,7 @@ export function PlaytestHarness() {
               </div>
             )}
 
-            {/* Combat controls (Wave 2.8 verification scaffold; deleted in slice 3) */}
+            {/* Combat controls (Wave 2.8 verification scaffold; permanent — see design.md) */}
             <h3 style={{ margin: '16px 0 8px', color: '#aaa' }}>Combat</h3>
             <div
               data-testid="my-statuses"

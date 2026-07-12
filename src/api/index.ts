@@ -1,5 +1,5 @@
 // Re-export the client
-export { characterClient, encounterClient } from './client';
+export { characterClient } from './client';
 
 // Re-export all hooks
 export {
@@ -19,36 +19,6 @@ export {
   useUpdateDraftSkills,
   useValidateDraft,
 } from './hooks';
-
-// Re-export encounter hooks
-export {
-  useActivateCombatAbility,
-  useActivateFeature,
-  useAttack,
-  useDungeonStart,
-  useEndTurn,
-  useExecuteAction,
-  useMoveCharacter,
-  useOpenDoor,
-} from './encounterHooks';
-
-// Re-export lobby hooks
-export {
-  useCreateEncounter,
-  useJoinEncounter,
-  useLeaveEncounter,
-  useSetReady,
-  useStartCombat,
-} from './lobbyHooks';
-
-// Re-export encounter hook input types
-export type { MoveActionInput, StrikeActionInput } from './encounterHooks';
-
-// Re-export encounter stream hook
-export { useEncounterStream } from './useEncounterStream';
-
-// Re-export encounter input types
-export type { DungeonStartInput } from './encounterHooks';
 
 // Re-export equipment hooks
 export {

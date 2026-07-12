@@ -10,12 +10,11 @@
  *
  * Architectural notes
  * -------------------
- * - Reuses `HexGrid` directly rather than the `BattleMapPanel` wrapper.
- *   `BattleMapPanel` consumes `useDungeonMap`'s `DungeonMapState` (built
- *   from v1alpha1 `Room` protos) which the playtest never accumulates —
+ * - Reuses `HexGrid` directly rather than a room-accumulating wrapper.
  *   v2 stream events flow per-hex via `revealedHexes` and per-entity via
- *   `entityMeta`. Synthesizing a fake `DungeonMapState` would be more
- *   surface than the adapter below.
+ *   `entityMeta` — there is no multi-room accumulation to consume yet
+ *   (design.md's slice 4, later). This adapter synthesizes floor tiles
+ *   directly from those v2-shaped fields instead.
  *
  * - `floorTiles` is synthesized from `revealedHexes` plus every entity's
  *   current cell. Without an entity-cell fallback the local player can't

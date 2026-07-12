@@ -1,9 +1,12 @@
 /**
  * Tests for useEncounterState pure state logic
  *
- * Tests the pure functions that power encounter state management:
- * createEmptyEncounterState, applySnapshotToState, mergeEntityUpdates,
- * and updateCombatState.
+ * Tests the pure functions that power encounter state management. Trimmed
+ * in slice 3 (rpg-dnd5e-web #447) alongside the source file: the deleted
+ * v1alpha1 snapshot-replace functions (applySnapshotToState,
+ * mergeEntityUpdates, updateCombatState) and the "v2 delta survives a v1
+ * snapshot" regression coverage they existed for are gone along with
+ * LobbyView, their only caller.
  *
  * Part of the unified entity state refactor (rpg-dnd5e-web feat-unified-entity-state).
  */
@@ -11,20 +14,9 @@
 import { create } from '@bufbuild/protobuf';
 import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import {
-  CharacterDetailsSchema,
-  CombatStateSchema,
-  DoorInfoSchema,
-  EncounterStateDataSchema,
   type EntityState,
   EntityStateSchema,
-  MonsterDetailsSchema,
-  RoomLayoutSchema,
-  TurnStateSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import {
-  DungeonState,
-  EntityType,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type {
   EncounterEnded,
   EntityDamaged,
@@ -59,7 +51,6 @@ import {
   applyEntityRemoved,
   applyHexRevealed,
   applyModeChanged,
-  applySnapshotToState,
   applyStatusApplied,
   applyStatusRemoved,
   applyTurnEnded,
@@ -68,63 +59,9 @@ import {
   applyV2SnapshotTurnState,
   createEmptyEncounterState,
   mergeEntityPosition,
-  mergeEntityUpdates,
   setPendingPromptReducer,
   setReactionReadyLocalReducer,
-  updateCombatState,
 } from './useEncounterState';
-
-/** Helper to build a minimal EncounterStateData proto */
-function makeSnapshot(opts: {
-  encounterId?: string;
-  dungeonId?: string;
-  entities?: Record<string, { entityId: string; entityType: EntityType }>;
-  rooms?: string[];
-  currentRoomId?: string;
-  revealedRoomIds?: string[];
-  dungeonState?: DungeonState;
-  roomsCleared?: number;
-  doors?: string[];
-}) {
-  const entities: Record<
-    string,
-    ReturnType<typeof create<typeof EntityStateSchema>>
-  > = {};
-  for (const [key, e] of Object.entries(opts.entities ?? {})) {
-    entities[key] = create(EntityStateSchema, {
-      entityId: e.entityId,
-      entityType: e.entityType,
-    });
-  }
-
-  const rooms: Record<
-    string,
-    ReturnType<typeof create<typeof RoomLayoutSchema>>
-  > = {};
-  for (const roomId of opts.rooms ?? []) {
-    rooms[roomId] = create(RoomLayoutSchema, { id: roomId });
-  }
-
-  const doors: Record<
-    string,
-    ReturnType<typeof create<typeof DoorInfoSchema>>
-  > = {};
-  for (const connectionId of opts.doors ?? []) {
-    doors[connectionId] = create(DoorInfoSchema, { connectionId });
-  }
-
-  return create(EncounterStateDataSchema, {
-    encounterId: opts.encounterId ?? 'enc-1',
-    dungeonId: opts.dungeonId ?? 'dng-1',
-    entities,
-    rooms,
-    currentRoomId: opts.currentRoomId ?? '',
-    revealedRoomIds: opts.revealedRoomIds ?? [],
-    dungeonState: opts.dungeonState ?? DungeonState.UNSPECIFIED,
-    roomsCleared: opts.roomsCleared ?? 0,
-    doors,
-  });
-}
 
 describe('createEmptyEncounterState', () => {
   it('returns empty state with Maps and default values', () => {
@@ -134,11 +71,6 @@ describe('createEmptyEncounterState', () => {
     expect(state.dungeonId).toBe('');
     expect(state.entities).toBeInstanceOf(Map);
     expect(state.entities.size).toBe(0);
-    expect(state.rooms).toBeInstanceOf(Map);
-    expect(state.rooms.size).toBe(0);
-    expect(state.doors).toBeInstanceOf(Map);
-    expect(state.doors.size).toBe(0);
-    expect(state.revealedRoomIds).toEqual([]);
     expect(state.revealedHexes).toBeInstanceOf(Set);
     expect(state.revealedHexes.size).toBe(0);
     expect(state.openDoors).toBeInstanceOf(Set);
@@ -150,313 +82,15 @@ describe('createEmptyEncounterState', () => {
     expect(state.mode).toBe(EncounterMode.UNSPECIFIED);
     expect(state.activeEntityId).toBe('');
     expect(state.round).toBe(0);
-    expect(state.combat).toBeNull();
-    expect(state.currentRoomId).toBe('');
-    expect(state.roomsCleared).toBe(0);
-    expect(state.dungeonState).toBe(DungeonState.UNSPECIFIED);
-  });
-});
-
-describe('applySnapshotToState', () => {
-  it('converts all proto fields into LocalEncounterState', () => {
-    const snapshot = makeSnapshot({
-      encounterId: 'enc-42',
-      dungeonId: 'dng-99',
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-        'mob-1': { entityId: 'mob-1', entityType: EntityType.MONSTER },
-      },
-      rooms: ['room-1', 'room-2'],
-      currentRoomId: 'room-2',
-      revealedRoomIds: ['room-1', 'room-2'],
-      dungeonState: DungeonState.ACTIVE,
-      roomsCleared: 3,
-      doors: ['conn-a', 'conn-b'],
-    });
-
-    const state = applySnapshotToState(snapshot);
-
-    expect(state.encounterId).toBe('enc-42');
-    expect(state.dungeonId).toBe('dng-99');
-    expect(state.entities.size).toBe(2);
-    expect(state.entities.has('char-1')).toBe(true);
-    expect(state.entities.has('mob-1')).toBe(true);
-    expect(state.rooms.size).toBe(2);
-    expect(state.rooms.has('room-1')).toBe(true);
-    expect(state.rooms.has('room-2')).toBe(true);
-    expect(state.currentRoomId).toBe('room-2');
-    expect(state.revealedRoomIds).toEqual(['room-1', 'room-2']);
-    expect(state.dungeonState).toBe(DungeonState.ACTIVE);
-    expect(state.roomsCleared).toBe(3);
-    expect(state.doors.size).toBe(2);
-    expect(state.doors.has('conn-a')).toBe(true);
-    expect(state.doors.has('conn-b')).toBe(true);
-  });
-
-  it('converts proto record maps to JS Maps', () => {
-    const snapshot = makeSnapshot({
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-      },
-    });
-
-    const state = applySnapshotToState(snapshot);
-
-    expect(state.entities).toBeInstanceOf(Map);
-    expect(state.rooms).toBeInstanceOf(Map);
-    expect(state.doors).toBeInstanceOf(Map);
-  });
-
-  it('sets combat to null when snapshot has no combat', () => {
-    const snapshot = makeSnapshot({});
-    const state = applySnapshotToState(snapshot);
-    expect(state.combat).toBeNull();
-  });
-
-  it('sets combat from snapshot when present', () => {
-    const combatState = create(CombatStateSchema, {
-      currentTurn: create(TurnStateSchema, { entityId: 'char-1' }),
-      round: 2,
-    });
-
-    const snapshot = create(EncounterStateDataSchema, {
-      encounterId: 'enc-1',
-      dungeonId: 'dng-1',
-      combat: combatState,
-      dungeonState: DungeonState.ACTIVE,
-    });
-
-    const state = applySnapshotToState(snapshot);
-
-    expect(state.combat).not.toBeNull();
-    expect(state.combat?.currentTurn?.entityId).toBe('char-1');
-    expect(state.combat?.round).toBe(2);
-  });
-
-  it('handles empty entities/rooms/doors records gracefully', () => {
-    const snapshot = makeSnapshot({});
-    const state = applySnapshotToState(snapshot);
-
-    expect(state.entities.size).toBe(0);
-    expect(state.rooms.size).toBe(0);
-    expect(state.doors.size).toBe(0);
-  });
-
-  it('seeds entityAC from character and monster details in snapshot entities', () => {
-    const snapshot = create(EncounterStateDataSchema, {
-      encounterId: 'enc-1',
-      dungeonId: 'dng-1',
-      dungeonState: DungeonState.ACTIVE,
-      entities: {
-        'char-1': create(EntityStateSchema, {
-          entityId: 'char-1',
-          entityType: EntityType.CHARACTER,
-          details: {
-            case: 'characterDetails',
-            value: create(CharacterDetailsSchema, { armorClass: 15 }),
-          },
-        }),
-        'goblin-1': create(EntityStateSchema, {
-          entityId: 'goblin-1',
-          entityType: EntityType.MONSTER,
-          details: {
-            case: 'monsterDetails',
-            value: create(MonsterDetailsSchema, { armorClass: 13 }),
-          },
-        }),
-      },
-    });
-    const state = applySnapshotToState(snapshot);
-    expect(state.entityAC.get('char-1')).toBe(15);
-    expect(state.entityAC.get('goblin-1')).toBe(13);
-  });
-
-  it('produces independent state from previous calls (no shared references)', () => {
-    const snapshot1 = makeSnapshot({
-      encounterId: 'enc-1',
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-      },
-    });
-
-    const snapshot2 = makeSnapshot({
-      encounterId: 'enc-2',
-      entities: {
-        'char-2': { entityId: 'char-2', entityType: EntityType.CHARACTER },
-      },
-    });
-
-    const state1 = applySnapshotToState(snapshot1);
-    const state2 = applySnapshotToState(snapshot2);
-
-    expect(state1.encounterId).toBe('enc-1');
-    expect(state2.encounterId).toBe('enc-2');
-    expect(state1.entities.has('char-1')).toBe(true);
-    expect(state2.entities.has('char-2')).toBe(true);
-    expect(state1.entities.has('char-2')).toBe(false);
-  });
-});
-
-describe('mergeEntityUpdates', () => {
-  it('merges updates into existing entities without losing others', () => {
-    const snapshot = makeSnapshot({
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-        'mob-1': { entityId: 'mob-1', entityType: EntityType.MONSTER },
-      },
-    });
-    const prev = applySnapshotToState(snapshot);
-
-    const updatedChar = create(EntityStateSchema, {
-      entityId: 'char-1',
-      entityType: EntityType.CHARACTER,
-      currentHitPoints: 15,
-      maxHitPoints: 20,
-    });
-
-    const next = mergeEntityUpdates(prev, [updatedChar]);
-
-    expect(next.entities.size).toBe(2);
-    expect(next.entities.get('char-1')?.currentHitPoints).toBe(15);
-    expect(next.entities.has('mob-1')).toBe(true);
-  });
-
-  it('adds new entity not in previous state', () => {
-    const snapshot = makeSnapshot({
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-      },
-    });
-    const prev = applySnapshotToState(snapshot);
-
-    const newMob = create(EntityStateSchema, {
-      entityId: 'mob-new',
-      entityType: EntityType.MONSTER,
-    });
-
-    const next = mergeEntityUpdates(prev, [newMob]);
-
-    expect(next.entities.size).toBe(2);
-    expect(next.entities.has('mob-new')).toBe(true);
-  });
-
-  it('handles multiple updates in one call', () => {
-    const snapshot = makeSnapshot({
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-        'char-2': { entityId: 'char-2', entityType: EntityType.CHARACTER },
-      },
-    });
-    const prev = applySnapshotToState(snapshot);
-
-    const updates = [
-      create(EntityStateSchema, {
-        entityId: 'char-1',
-        entityType: EntityType.CHARACTER,
-        currentHitPoints: 10,
-      }),
-      create(EntityStateSchema, {
-        entityId: 'char-2',
-        entityType: EntityType.CHARACTER,
-        currentHitPoints: 5,
-      }),
-    ];
-
-    const next = mergeEntityUpdates(prev, updates);
-
-    expect(next.entities.get('char-1')?.currentHitPoints).toBe(10);
-    expect(next.entities.get('char-2')?.currentHitPoints).toBe(5);
-  });
-
-  it('does not mutate the previous state', () => {
-    const snapshot = makeSnapshot({
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-      },
-    });
-    const prev = applySnapshotToState(snapshot);
-
-    const updated = create(EntityStateSchema, {
-      entityId: 'char-1',
-      entityType: EntityType.CHARACTER,
-      currentHitPoints: 8,
-    });
-
-    mergeEntityUpdates(prev, [updated]);
-
-    // Original state unchanged
-    expect(prev.entities.get('char-1')?.currentHitPoints).toBe(0);
-  });
-
-  it('does not affect rooms, doors, or scalar fields', () => {
-    const snapshot = makeSnapshot({
-      encounterId: 'enc-stable',
-      dungeonId: 'dng-stable',
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-      },
-      rooms: ['room-1'],
-      doors: ['conn-1'],
-      currentRoomId: 'room-1',
-      revealedRoomIds: ['room-1'],
-      roomsCleared: 2,
-    });
-    const prev = applySnapshotToState(snapshot);
-
-    const next = mergeEntityUpdates(prev, [
-      create(EntityStateSchema, {
-        entityId: 'char-1',
-        entityType: EntityType.CHARACTER,
-        currentHitPoints: 8,
-      }),
-    ]);
-
-    expect(next.encounterId).toBe('enc-stable');
-    expect(next.dungeonId).toBe('dng-stable');
-    expect(next.rooms.size).toBe(1);
-    expect(next.doors.size).toBe(1);
-    expect(next.currentRoomId).toBe('room-1');
-    expect(next.revealedRoomIds).toEqual(['room-1']);
-    expect(next.roomsCleared).toBe(2);
-  });
-
-  it('extracts entityAC from character details', () => {
-    const prev = applySnapshotToState(makeSnapshot({}));
-    const charWithAC = create(EntityStateSchema, {
-      entityId: 'char-1',
-      entityType: EntityType.CHARACTER,
-      details: {
-        case: 'characterDetails',
-        value: create(CharacterDetailsSchema, { armorClass: 15 }),
-      },
-    });
-    const next = mergeEntityUpdates(prev, [charWithAC]);
-    expect(next.entityAC.get('char-1')).toBe(15);
-  });
-
-  it('extracts entityAC from monster details', () => {
-    const prev = applySnapshotToState(makeSnapshot({}));
-    const monster = create(EntityStateSchema, {
-      entityId: 'goblin-1',
-      entityType: EntityType.MONSTER,
-      details: {
-        case: 'monsterDetails',
-        value: create(MonsterDetailsSchema, { armorClass: 13 }),
-      },
-    });
-    const next = mergeEntityUpdates(prev, [monster]);
-    expect(next.entityAC.get('goblin-1')).toBe(13);
   });
 });
 
 describe('mergeEntityPosition', () => {
   it('updates position of an existing entity', () => {
-    const snapshot = makeSnapshot({
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-      },
-    });
-    const prev = applySnapshotToState(snapshot);
+    const prev = applyEntityAppeared(
+      createEmptyEncounterState(),
+      create(EntityStateSchema, { entityId: 'char-1' })
+    );
     const newPos = create(PositionSchema, { x: 3, y: -1, z: -2 });
 
     const next = mergeEntityPosition(prev, 'char-1', newPos);
@@ -465,16 +99,13 @@ describe('mergeEntityPosition', () => {
   });
 
   it('preserves other fields on the updated entity', () => {
-    const snapshot = makeSnapshot({});
-    let prev = applySnapshotToState(snapshot);
     // Seed an entity with non-position fields populated
     const seeded = create(EntityStateSchema, {
       entityId: 'char-1',
-      entityType: EntityType.CHARACTER,
       currentHitPoints: 12,
       maxHitPoints: 20,
     });
-    prev = mergeEntityUpdates(prev, [seeded]);
+    const prev = applyEntityAppeared(createEmptyEncounterState(), seeded);
 
     const newPos = create(PositionSchema, { x: 5, y: -3, z: -2 });
     const next = mergeEntityPosition(prev, 'char-1', newPos);
@@ -483,16 +114,13 @@ describe('mergeEntityPosition', () => {
     expect(updated?.position).toEqual(newPos);
     expect(updated?.currentHitPoints).toBe(12);
     expect(updated?.maxHitPoints).toBe(20);
-    expect(updated?.entityType).toBe(EntityType.CHARACTER);
   });
 
   it('returns prev unchanged when entity is not present', () => {
-    const snapshot = makeSnapshot({
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-      },
-    });
-    const prev = applySnapshotToState(snapshot);
+    const prev = applyEntityAppeared(
+      createEmptyEncounterState(),
+      create(EntityStateSchema, { entityId: 'char-1' })
+    );
     const newPos = create(PositionSchema, { x: 1, y: 0, z: -1 });
 
     const next = mergeEntityPosition(prev, 'char-missing', newPos);
@@ -502,12 +130,10 @@ describe('mergeEntityPosition', () => {
   });
 
   it('does not mutate the previous state', () => {
-    const snapshot = makeSnapshot({
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-      },
-    });
-    const prev = applySnapshotToState(snapshot);
+    const prev = applyEntityAppeared(
+      createEmptyEncounterState(),
+      create(EntityStateSchema, { entityId: 'char-1' })
+    );
     const originalEntity = prev.entities.get('char-1');
     const newPos = create(PositionSchema, { x: 7, y: -3, z: -4 });
 
@@ -515,120 +141,6 @@ describe('mergeEntityPosition', () => {
 
     // Original state's entity reference unchanged
     expect(prev.entities.get('char-1')).toBe(originalEntity);
-  });
-
-  it('does not affect rooms, doors, or combat fields', () => {
-    const snapshot = makeSnapshot({
-      encounterId: 'enc-stable',
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-      },
-      rooms: ['room-1'],
-      doors: ['conn-1'],
-      currentRoomId: 'room-1',
-      revealedRoomIds: ['room-1'],
-      roomsCleared: 2,
-    });
-    const prev = applySnapshotToState(snapshot);
-    const newPos = create(PositionSchema, { x: 2, y: 1, z: -3 });
-
-    const next = mergeEntityPosition(prev, 'char-1', newPos);
-
-    expect(next.encounterId).toBe('enc-stable');
-    expect(next.rooms.size).toBe(1);
-    expect(next.doors.size).toBe(1);
-    expect(next.currentRoomId).toBe('room-1');
-    expect(next.revealedRoomIds).toEqual(['room-1']);
-    expect(next.roomsCleared).toBe(2);
-  });
-});
-
-describe('updateCombatState', () => {
-  it('updates combat field without touching entities', () => {
-    const snapshot = makeSnapshot({
-      entities: {
-        'char-1': { entityId: 'char-1', entityType: EntityType.CHARACTER },
-      },
-    });
-    const prev = applySnapshotToState(snapshot);
-
-    const combat = create(CombatStateSchema, {
-      currentTurn: create(TurnStateSchema, { entityId: 'char-1' }),
-      round: 1,
-    });
-
-    const next = updateCombatState(prev, combat);
-
-    expect(next.combat?.currentTurn?.entityId).toBe('char-1');
-    expect(next.combat?.round).toBe(1);
-    expect(next.entities.size).toBe(1);
-  });
-
-  it('replaces previous combat state', () => {
-    const prev = applySnapshotToState(makeSnapshot({}));
-
-    const withCombat1 = updateCombatState(
-      prev,
-      create(CombatStateSchema, {
-        currentTurn: create(TurnStateSchema, { entityId: 'char-1' }),
-        round: 1,
-      })
-    );
-
-    const withCombat2 = updateCombatState(
-      withCombat1,
-      create(CombatStateSchema, {
-        currentTurn: create(TurnStateSchema, { entityId: 'mob-1' }),
-        round: 2,
-      })
-    );
-
-    expect(withCombat2.combat?.currentTurn?.entityId).toBe('mob-1');
-    expect(withCombat2.combat?.round).toBe(2);
-  });
-
-  it('does not mutate previous state', () => {
-    const prev = applySnapshotToState(makeSnapshot({}));
-    expect(prev.combat).toBeNull();
-
-    updateCombatState(
-      prev,
-      create(CombatStateSchema, {
-        currentTurn: create(TurnStateSchema, { entityId: 'char-1' }),
-        round: 1,
-      })
-    );
-
-    // Original still null
-    expect(prev.combat).toBeNull();
-  });
-
-  it('preserves all other fields', () => {
-    const snapshot = makeSnapshot({
-      encounterId: 'enc-99',
-      dungeonId: 'dng-88',
-      rooms: ['room-1'],
-      doors: ['conn-1'],
-      currentRoomId: 'room-1',
-      revealedRoomIds: ['room-1'],
-      roomsCleared: 5,
-      dungeonState: DungeonState.ACTIVE,
-    });
-    const prev = applySnapshotToState(snapshot);
-
-    const next = updateCombatState(
-      prev,
-      create(CombatStateSchema, { round: 3 })
-    );
-
-    expect(next.encounterId).toBe('enc-99');
-    expect(next.dungeonId).toBe('dng-88');
-    expect(next.rooms.size).toBe(1);
-    expect(next.doors.size).toBe(1);
-    expect(next.currentRoomId).toBe('room-1');
-    expect(next.revealedRoomIds).toEqual(['room-1']);
-    expect(next.roomsCleared).toBe(5);
-    expect(next.dungeonState).toBe(DungeonState.ACTIVE);
   });
 });
 
@@ -747,9 +259,10 @@ describe('v1alpha2 reducer additions', () => {
 
     it('clears the ghost flag on a previously-disappeared entity', () => {
       const entity = makeTestEntity('alice', { x: 0, y: 0, z: 0 });
-      const withEntity = mergeEntityUpdates(createEmptyEncounterState(), [
-        entity,
-      ]);
+      const withEntity = applyEntityAppeared(
+        createEmptyEncounterState(),
+        entity
+      );
       const ghosted = applyEntityDisappeared(withEntity, 'alice', {
         q: 1,
         r: -1,
@@ -768,7 +281,7 @@ describe('v1alpha2 reducer additions', () => {
   describe('applyEntityDisappeared', () => {
     it('keeps entity in store, sets ghost=true, updates position to last_known', () => {
       const entity = makeTestEntity('bob', { x: 0, y: 0, z: 0 });
-      const prev = mergeEntityUpdates(createEmptyEncounterState(), [entity]);
+      const prev = applyEntityAppeared(createEmptyEncounterState(), entity);
       const after = applyEntityDisappeared(prev, 'bob', {
         q: 4,
         r: -2,
@@ -836,130 +349,6 @@ describe('v1alpha2 reducer additions', () => {
       state = applyDoorOpened(state, 'door-east');
       expect(state.revealedHexes).toBe(beforeOpen);
       expect(state.revealedHexes.size).toBe(1);
-    });
-  });
-
-  describe('applySnapshotToState — v2 delta preservation across v1 snapshots', () => {
-    // Regression: v1alpha1 snapshots don't carry v2-only delta fields like
-    // openDoors / revealedHexes, and v2 deltas aren't replayed on sync. The
-    // main app calls applySnapshot on multiple v1 paths (LobbyView's
-    // state-sync handlers), so a naive rebuild would silently wipe every
-    // door we'd opened mid-session. applySnapshotToState carries these
-    // fields forward when prev is for the same encounter.
-    it('preserves openDoors when applying a same-encounter v1 snapshot', () => {
-      // Seed: open a door via the v2 reducer
-      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
-      state = applyDoorOpened(state, 'door-1');
-      state = applyDoorOpened(state, 'door-east');
-      expect(state.openDoors.size).toBe(2);
-
-      // Simulate a v1 snapshot sync for the same encounter
-      const refreshed = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-1' }),
-        state
-      );
-
-      expect(refreshed.openDoors.has('door-1')).toBe(true);
-      expect(refreshed.openDoors.has('door-east')).toBe(true);
-      expect(refreshed.openDoors.size).toBe(2);
-    });
-
-    it('preserves revealedHexes when applying a same-encounter v1 snapshot', () => {
-      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
-      state = applyHexRevealed(state, [
-        { q: 1, r: -1, s: 0 },
-        { q: 2, r: -2, s: 0 },
-      ]);
-      expect(state.revealedHexes.size).toBe(2);
-
-      const refreshed = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-1' }),
-        state
-      );
-
-      expect(refreshed.revealedHexes.size).toBe(2);
-      expect(refreshed.revealedHexes.has(hexKey({ q: 1, r: -1, s: 0 }))).toBe(
-        true
-      );
-      expect(refreshed.revealedHexes.has(hexKey({ q: 2, r: -2, s: 0 }))).toBe(
-        true
-      );
-    });
-
-    it('resets v2 delta state on encounter switch (different encounterId)', () => {
-      // Crossing into a new encounter is a clean break — v2 deltas from the
-      // prior encounter must not leak into the new one.
-      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
-      state = applyDoorOpened(state, 'door-1');
-      state = applyHexRevealed(state, [{ q: 1, r: -1, s: 0 }]);
-      state = applyEntityDamaged(state, makeDamaged('goblin-1', 5, 5));
-      state = applyTurnStarted(state, makeTurnStarted('char-alice', 1));
-      state = applyModeChanged(
-        state,
-        makeModeChanged(EncounterMode.FREE_ROAM, EncounterMode.TURN_BASED)
-      );
-
-      const switched = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-2' }),
-        state
-      );
-
-      expect(switched.openDoors.size).toBe(0);
-      expect(switched.revealedHexes.size).toBe(0);
-      expect(switched.entityHP.size).toBe(0);
-      expect(switched.entityStatuses.size).toBe(0);
-      expect(switched.mode).toBe(EncounterMode.UNSPECIFIED);
-      expect(switched.activeEntityId).toBe('');
-      expect(switched.round).toBe(0);
-    });
-
-    it('starts with empty v2 delta state when prev is omitted (first snapshot)', () => {
-      const state = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-1' })
-      );
-      expect(state.openDoors.size).toBe(0);
-      expect(state.revealedHexes.size).toBe(0);
-      expect(state.entityHP.size).toBe(0);
-      expect(state.entityStatuses.size).toBe(0);
-      expect(state.mode).toBe(EncounterMode.UNSPECIFIED);
-      expect(state.activeEntityId).toBe('');
-      expect(state.round).toBe(0);
-    });
-
-    it('preserves v2 combat delta state across same-encounter v1 snapshot', () => {
-      // Wave 2.8: combat events (HP, status, mode, active actor, round) flow
-      // only on the v2 stream; v1 snapshots don't carry them and don't
-      // replay deltas. Same survival rule as openDoors / revealedHexes.
-      let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
-      state = applyEntityDamaged(state, makeDamaged('goblin-1', 5, 7));
-      state = applyEntityDamaged(state, makeDamaged('char-alice', 3, 14));
-      state = applyStatusApplied(
-        state,
-        makeStatusApplied('char-alice', 'dnd5e', 'condition', 'poisoned')
-      );
-      state = applyModeChanged(
-        state,
-        makeModeChanged(EncounterMode.FREE_ROAM, EncounterMode.TURN_BASED)
-      );
-      state = applyTurnStarted(state, makeTurnStarted('char-alice', 2));
-
-      const refreshed = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-1' }),
-        state
-      );
-
-      expect(refreshed.entityHP.get('goblin-1')).toEqual({
-        current: 5,
-        max: 7,
-      });
-      expect(refreshed.entityHP.get('char-alice')).toEqual({
-        current: 3,
-        max: 14,
-      });
-      expect(refreshed.entityStatuses.get('char-alice')).toHaveLength(1);
-      expect(refreshed.mode).toBe(EncounterMode.TURN_BASED);
-      expect(refreshed.activeEntityId).toBe('char-alice');
-      expect(refreshed.round).toBe(2);
     });
   });
 
@@ -1760,7 +1149,7 @@ describe('applyEntityAppearedBatch', () => {
   it('sets ghost=false on all batch entities', () => {
     // applyEntityAppearedBatch should clear ghost just like applyEntityAppeared
     const entity = makeTestEntity('mover', { x: 0, y: 0, z: 0 });
-    let state = mergeEntityUpdates(createEmptyEncounterState(), [entity]);
+    let state = applyEntityAppeared(createEmptyEncounterState(), entity);
     state = applyEntityDisappeared(state, 'mover', { q: 1, r: -1, s: 0 });
     expect(state.entities.get('mover')?.ghost).toBe(true);
 
@@ -1809,76 +1198,6 @@ describe('createEmptyEncounterState — new Wave 2.8 display fields', () => {
   it('initializes initiativeOrder as empty array', () => {
     const state = createEmptyEncounterState();
     expect(state.initiativeOrder).toEqual([]);
-  });
-});
-
-describe('applySnapshotToState — entityMeta + initiativeOrder delta preservation', () => {
-  it('preserves entityMeta across same-encounter v1 snapshot', () => {
-    let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
-    state = applyEntityMetaFromAppeared(
-      state,
-      'goblin-1',
-      EntityTypeV2.MONSTER,
-      'goblin',
-      { current: 7, max: 7 },
-      undefined
-    );
-
-    const refreshed = applySnapshotToState(
-      makeSnapshot({ encounterId: 'enc-1' }),
-      state
-    );
-
-    expect(refreshed.entityMeta.get('goblin-1')?.monsterRefId).toBe('goblin');
-  });
-
-  it('preserves initiativeOrder across same-encounter v1 snapshot', () => {
-    let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
-    state = applyV2SnapshotTurnState(
-      state,
-      EncounterMode.TURN_BASED,
-      create(TurnStateSchemaV2, {
-        initiativeOrder: ['char-alice', 'goblin-1'],
-        activeEntityId: 'char-alice',
-        round: 1,
-      })
-    );
-
-    const refreshed = applySnapshotToState(
-      makeSnapshot({ encounterId: 'enc-1' }),
-      state
-    );
-
-    expect(refreshed.initiativeOrder).toEqual(['char-alice', 'goblin-1']);
-  });
-
-  it('resets entityMeta and initiativeOrder on encounter switch', () => {
-    let state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }));
-    state = applyEntityMetaFromAppeared(
-      state,
-      'goblin-1',
-      EntityTypeV2.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    state = applyV2SnapshotTurnState(
-      state,
-      EncounterMode.TURN_BASED,
-      create(TurnStateSchemaV2, {
-        initiativeOrder: ['char-alice', 'goblin-1'],
-        activeEntityId: 'char-alice',
-        round: 1,
-      })
-    );
-
-    const switched = applySnapshotToState(
-      makeSnapshot({ encounterId: 'enc-2' }),
-      state
-    );
-
-    expect(switched.entityMeta.size).toBe(0);
-    expect(switched.initiativeOrder).toEqual([]);
   });
 });
 
@@ -1951,33 +1270,6 @@ describe('Wave 2.9 setPendingPromptReducer', () => {
     expect(next.activeEntityId).toBe('char-alice');
     expect(next.round).toBe(2);
     expect(next.pendingPrompt).toBe(prompt);
-  });
-
-  it('pendingPrompt is preserved across same-encounter snapshot', () => {
-    const prompt = makeSkillCheckPrompt();
-    let state = createEmptyEncounterState();
-    state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }), state);
-    state = setPendingPromptReducer(state, prompt);
-    expect(state.pendingPrompt).toBe(prompt);
-
-    const refreshed = applySnapshotToState(
-      makeSnapshot({ encounterId: 'enc-1' }),
-      state
-    );
-    expect(refreshed.pendingPrompt).toBe(prompt);
-  });
-
-  it('pendingPrompt is cleared on encounter switch', () => {
-    const prompt = makeSkillCheckPrompt();
-    let state = createEmptyEncounterState();
-    state = applySnapshotToState(makeSnapshot({ encounterId: 'enc-1' }), state);
-    state = setPendingPromptReducer(state, prompt);
-
-    const switched = applySnapshotToState(
-      makeSnapshot({ encounterId: 'enc-2' }),
-      state
-    );
-    expect(switched.pendingPrompt).toBeNull();
   });
 
   // ---------- Wave 2.10: death + encounter resolution -------------------------
@@ -2089,42 +1381,6 @@ describe('Wave 2.9 setPendingPromptReducer', () => {
       expect(state.encounterStatus).toBe('active');
       expect(state.encounterEndedReason).toBe('');
     });
-
-    it('encounterStatus is preserved on same-encounter snapshot resync', () => {
-      let state = createEmptyEncounterState();
-      state = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-1' }),
-        state
-      );
-      state = applyEncounterEnded(state, {
-        reason: 'all hostiles defeated',
-      } as unknown as EncounterEnded);
-
-      const resynced = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-1' }),
-        state
-      );
-      expect(resynced.encounterStatus).toBe('ended');
-      expect(resynced.encounterEndedReason).toBe('all hostiles defeated');
-    });
-
-    it('encounterStatus is reset to "active" on encounter switch', () => {
-      let state = createEmptyEncounterState();
-      state = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-1' }),
-        state
-      );
-      state = applyEncounterEnded(state, {
-        reason: 'all hostiles defeated',
-      } as unknown as EncounterEnded);
-
-      const switched = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-2' }),
-        state
-      );
-      expect(switched.encounterStatus).toBe('active');
-      expect(switched.encounterEndedReason).toBe('');
-    });
   });
 
   // Wave 2.11d reaction readiness reducer
@@ -2221,48 +1477,6 @@ describe('Wave 2.9 setPendingPromptReducer', () => {
         true
       );
       expect(same).toBe(state);
-    });
-
-    it('readiness map is preserved across same-encounter snapshots', () => {
-      let state = createEmptyEncounterState();
-      state = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-1' }),
-        state
-      );
-      state = setReactionReadyLocalReducer(
-        state,
-        'char-wendy',
-        'dnd5e:spells:shield',
-        true
-      );
-
-      const resynced = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-1' }),
-        state
-      );
-      expect(
-        resynced.reactionReadiness.get('char-wendy')?.get('dnd5e:spells:shield')
-      ).toBe(true);
-    });
-
-    it('readiness map is reset on encounter switch', () => {
-      let state = createEmptyEncounterState();
-      state = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-1' }),
-        state
-      );
-      state = setReactionReadyLocalReducer(
-        state,
-        'char-wendy',
-        'dnd5e:spells:shield',
-        true
-      );
-
-      const switched = applySnapshotToState(
-        makeSnapshot({ encounterId: 'enc-2' }),
-        state
-      );
-      expect(switched.reactionReadiness.size).toBe(0);
     });
   });
 });

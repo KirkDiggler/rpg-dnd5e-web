@@ -22,8 +22,8 @@ export interface UseSetLobbyReadyResult {
 
 /**
  * Thin wrapper around the LobbyService SetReady unary RPC. Named
- * useSetLobbyReady (not useSetReady) to stay distinguishable from the
- * v1alpha1 useSetReady in lobbyHooks.ts, which LobbyView still uses.
+ * useSetLobbyReady (not useSetReady) to name the LobbyService's version
+ * distinctly from the game's encounter-action hooks.
  */
 export function useSetLobbyReady(): UseSetLobbyReadyResult {
   const [loading, setLoading] = useState(false);

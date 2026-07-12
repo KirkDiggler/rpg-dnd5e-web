@@ -7,7 +7,7 @@
  * Performance improvement: O(n) draw calls -> O(1) draw call
  */
 
-import type { AbsoluteFloorTile } from '@/hooks/useDungeonMap';
+import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import { useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
