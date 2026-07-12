@@ -2,7 +2,7 @@
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
 updated: 2026-07-12
-confidence: medium — seeded from full code read-through, git log, and open PRs; needs Kirk's correction pass on stream-bug details
+confidence: low-medium — entries below "Slice 3" are dated 2026-05-02 and predate slices 1-2 of the game-screen rebuild; several (Task 7, PR #377/#378, LobbyView complexity) are now stale/moot and are flagged inline rather than fully rewritten. This doc needs a dedicated refresh pass covering the intervening waves (#415/#418/#420/#426/#430/#445/#446), not just slice 3's deletions.
 ---
 
 # rpg-dnd5e-web: Where We Are
@@ -11,6 +11,21 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+- **Slice 3: clean slate — legacy v1 path deleted, version suffixes dropped
+  (#447)** — Closes out the game-screen rebuild's old-vs-new debt.
+  `LobbyView.tsx` (and everything only it referenced: the v1alpha1 lobby
+  UI, the entire `combat-v2/` panel tree, `BattleMapPanel`,
+  `useDungeonMap`'s stateful hook) is deleted; `GameView` is now the only
+  game route. Every `*2`/`*V2` identifier (`useEncounterStream2`,
+  `useMoveEntityV2`, `applyV2SnapshotTurnState`, etc.) lost its suffix —
+  the rebuilt names are the real names now. `useEncounterState` dropped
+  the v1alpha1 snapshot-replace path (`applySnapshot`/`applyEntityUpdates`/
+  `applyCombatState`) that only `LobbyView` drove. This also closes PR
+  #377/#378 below as moot (see "Paused / on hold") and retires the
+  "LobbyView complexity" rough edge. See
+  [game-view.md](architecture/components/game-view.md) and
+  [lobby-view.md](architecture/components/lobby-view.md).
 
 - **GameView fight-feel — combat log panel + initiative tracker (#445)** —
   `EncounterView` gains a `CombatLog` panel (new `useCombatLog` hook) rendering
@@ -86,7 +101,8 @@ let it rot.
   Independently useful but unblocked by the stream issue.
 
 - **Chapter 2 Wave 3 — Rage button + ActivateFeature RPC (PR #420, open)** —
-  `useActivateFeatureV2` hook wraps the v1alpha2 `ActivateFeature` unary RPC.
+  `useActivateFeature` hook (named `useActivateFeatureV2` before slice 3's
+  rename, #447) wraps the v1alpha2 `ActivateFeature` unary RPC.
   `PlaytestHarness` has a Rage button (calls `ActivateFeature` with
   `{module:"dnd5e", type:"features", id:"rage"}`), a "RAGING" status indicator
   in the header (lit when the `raging` condition appears in `entityStatuses` via
@@ -147,17 +163,18 @@ dnd5e:features:sneak_attack:1]`. Verified end-to-end via MCP playtest. (An earli
 
 ## Paused / on hold
 
-- **Stream-delivery investigation** — `RoomRevealed` events are proven to fire
-  on the API side (rpg-api integration test `open_door_test.go`), but there is
-  no confirmed browser receipt. PR #377 is blocked here because even with the
-  correct transform code, we need to verify the event arrives. Investigation is
-  the next milestone target before any additional multi-room work.
+- **Stream-delivery investigation (moot — v1 path deleted)** — This tracked
+  whether `RoomRevealed` events reached the browser via the old v1alpha1
+  `useEncounterStream`/`LobbyView`. That whole path was deleted in slice 3
+  (#447); the question no longer applies to a stream that doesn't exist.
+  Multi-room dungeon rendering on the live v1alpha2 stack is still a real
+  future need — design.md schedules it as slice 4, not yet started.
 
-- **Task 7 / unified state migration** — `LobbyView` currently runs a
-  "legacy path" (`roomFromEncounterState`, `combatState`, `monsters[]`) in
-  parallel with the new `useEncounterState` path. 41 references to "legacy" or
-  "new path" remain in `LobbyView.tsx`. Cleanup deferred until the stream
-  bug is resolved to avoid destabilizing already-fragile state wiring.
+- **PR #377 / PR #378 (closed out by slice 3, not merged)** — Both targeted
+  `LobbyView.tsx`'s single-room transform bug and its proposed extraction
+  to `utils/encounterStateTransforms.ts`. Both branches are moot now that
+  `LobbyView.tsx` and its transform functions are deleted (#447) — see
+  [encounter-state-transforms.md](architecture/components/encounter-state-transforms.md).
 
 - **`/concepts` class-selection spike** — Proof-of-concept enriched UI
   exists but not connected to production flow. Needs design decision before
@@ -165,57 +182,32 @@ dnd5e:features:sneak_attack:1]`. Verified end-to-end via MCP playtest. (An earli
 
 ## Known rough edges
 
-### Stream delivery (highest priority for next milestone)
+### LobbyView complexity (resolved — deleted in slice 3)
 
-- **Suspected `RoomRevealed` event drop** — The API-side integration test
-  (`rpg-api/internal/integration/encounter/open_door_test.go`) proves that
-  `RoomRevealed` events are emitted when a door is opened. However, there is
-  no confirmed evidence that these events reach the browser via
-  `useEncounterStream`. The `dispatchEvent` switch in `useEncounterStream.ts`
-  does have a `roomRevealed` case and calls `onRoomRevealed`, and `LobbyView`
-  does register `handleRoomRevealed`. The failure point has not yet been
-  isolated — candidates include: the gRPC-Web transport dropping the event,
-  a race in the load-then-stream buffer logic, or a missing `onRoomRevealed`
-  prop at some call site. This is the next investigation target. Do not
-  speculate fixes until the event is confirmed dropped (or not) via browser
-  devtools.
-
-### LobbyView complexity
-
-- **2,345 lines, 45 hook calls** — `LobbyView.tsx` is the single largest file
-  in the codebase and does too much: stream wiring, all event handlers,
-  combat action dispatch, movement pathfinding, turn logic, and rendering
-  routing. The dual legacy/new-path code makes this worse. Legacy comment
-  occurrences: 26 (grep-verified 2026-05-02; an earlier pass counted 41 —
-  some were removed during the new-path landing in PR #371). This is a refactor
-  target but should not be touched until the stream bug is confirmed resolved.
-
-- **`roomFromEncounterState` still called in `handleRoomRevealed`** — On main,
-  `handleRoomRevealed` uses the single-room transform. `allRoomsFromEncounterState`
-  does not exist on main — it is being added by PR #377 (paused) alongside
-  PR #378's extraction. Until those branches merge, the multi-room reveal path
-  is incomplete.
+`LobbyView.tsx`, its dual legacy/new-path state, and the single-room
+`roomFromEncounterState` transform bug this section used to track are all
+gone (rpg-dnd5e-web#447). See [lobby-view.md](architecture/components/lobby-view.md).
 
 ### Proto integration
 
-- **`entityStateToPlacement` manual mapping** — `entityStateToPlacement` in
-  `LobbyView.tsx` hand-maps `EntityState` fields to `EntityPlacement`. This is
-  unavoidable (they are different proto messages) but any proto field additions
-  require updating this function or rendering silently breaks. There is no
-  compile-time guard. (When PR #378 merges, this function moves to
-  `utils/encounterStateTransforms.ts`.)
+- **`entityStateToPlacement` manual mapping (resolved — deleted in slice 3)**
+  — This function lived in `LobbyView.tsx` and was deleted with it. The
+  live path has no equivalent hand-mapping step; `EncounterMap` consumes
+  stream events directly.
 
 ### Testing
 
-- **No component-level tests** — 14 test files, 298 tests (verified 2026-05-02
-  by running npm test; prior count of 323 was incorrect), but all target
-  pure utility functions and hooks. Zero coverage of `LobbyView`, `BattleMapPanel`,
-  `CombatPanel`, `HexGrid`, or any component that renders JSX.
+- **No component-level tests** — 37 test files, 569 tests (verified
+  2026-07-12 running `npx vitest run`, post-slice-3), but almost all
+  target pure utility functions and hooks; `PlaytestHarness.test.tsx` and
+  `EncounterView.test.tsx` are the exceptions. Zero coverage of `HexGrid`
+  or other components that render a Three.js canvas.
 
-- **No stream integration test in the browser** — `useEncounterStream` is
-  untested. The load-then-stream buffer logic (syncing state, replay,
-  reconnect with exponential backoff) is entirely exercised by manual
-  playtesting.
+- **No stream integration test in the browser** — `useEncounterStream`
+  (renamed from `useEncounterStream2` in slice 3) has no direct vitest
+  coverage of the live gRPC loop; its event-dispatch switch
+  (`encounterStreamDispatch.ts`) and reconnect config are covered, but the
+  `for await` stream loop itself is exercised only by manual/MCP playtesting.
 
 ### Discord Activity wiring
 
@@ -229,42 +221,37 @@ dnd5e:features:sneak_attack:1]`. Verified end-to-end via MCP playtest. (An earli
 
 ## Per-subsystem confidence
 
-| Subsystem                                                                                                    | Confidence                                                                                     |
-| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| [useEncounterStream](#stream-delivery-highest-priority-for-next-milestone)                                   | Low — stream delivery of `RoomRevealed` unconfirmed; buffer/reconnect logic untested           |
-| [useDungeonMap](#use-dungeon-map)                                                                            | Medium-high — clean accumulation logic, good tests, wall dedup works                           |
-| [useEncounterState](#use-encounter-state)                                                                    | Medium — recently landed, snapshot/delta logic is clean, still dual-pathed with legacy         |
-| [LobbyView transform functions](#lobbyview-complexity)                                                       | Medium — pure functions in `LobbyView.tsx`; 25 tests pending merge (PR #378 only, not on main) |
-| [LobbyView](#lobbyview-complexity)                                                                           | Low-medium — correct behavior but structurally brittle; 2 k+ lines, dual paths                 |
-| [combat-v2 panels (CombatPanel, CombatHistorySidebar)](#combat-v2--combatpanel-combathistorysidebar)         | Medium — feature complete for Round 1 scenario; no component tests                             |
-| [encounter/BattleMapPanel](#encounterb-attlemappanel)                                                        | Medium — functional; entity state wired, no tests                                              |
-| [hex-grid (HexGrid, HexTile, MediumHumanoid)](#hex-grid-components-hexgrid-hextile-hexentity-mediumhumanoid) | Medium — movement range and interaction tested; rendering untested                             |
-| [gRPC client / encounterHooks](#grpc-client--encounterhooks)                                                 | Medium — clean hook wrappers; no tests                                                         |
-| [proto integration (@kirkdiggler/rpg-api-protos v0.1.86)](#proto-integration-rpg-api-protos-v0186)           | Medium-high — types used directly, no duplication; lock-file discipline needed                 |
-| [Discord Activity wiring](#discord-activity-wiring)                                                          | Medium — works in prod path, dev fallback is fragile                                           |
-| [/concepts route](#concepts-route)                                                                           | Medium — useful sandbox; decoupled from production                                             |
-| [vitest coverage](#testing)                                                                                  | Low — 298 tests but all utility-layer; zero component coverage                                 |
+`LobbyView`, its transform functions, `combat-v2` panels, and
+`encounter/BattleMapPanel` are deleted (rpg-dnd5e-web#447) — removed from
+this table. See [game-view.md](architecture/components/game-view.md) for
+their live successor.
+
+| Subsystem                                                                                                    | Confidence                                                                                        |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| [useEncounterStream](architecture/components/use-encounter-stream.md)                                        | Medium — clean lifecycle/reconnect design, mount-churn hardened (#442); no direct hook-level test |
+| [dungeonMapGeometry](architecture/components/use-dungeon-map.md)                                             | High — three small pure functions, fully tested                                                   |
+| [useEncounterState](architecture/components/use-encounter-state.md)                                          | Medium-high — delta-only design, no dual-path, thoroughly tested pure reducers                    |
+| [hex-grid (HexGrid, HexTile, MediumHumanoid)](#hex-grid-components-hexgrid-hextile-hexentity-mediumhumanoid) | Medium — movement range and interaction tested; rendering untested                                |
+| [gRPC client](#grpc-client--encounterhooks)                                                                  | Medium — clean hook wrappers; no tests                                                            |
+| [proto integration (@kirkdiggler/rpg-api-protos)](#proto-integration-rpg-api-protos-v0186)                   | Medium-high — types used directly, no duplication; lock-file discipline needed                    |
+| [Discord Activity wiring](#discord-activity-wiring)                                                          | Medium — works in prod path, dev fallback is fragile                                              |
+| [/concepts route](#concepts-route)                                                                           | Medium — useful sandbox; decoupled from production                                                |
+| [vitest coverage](#testing)                                                                                  | Medium — 569 tests, mostly utility/hook-layer; near-zero rendered-component coverage              |
 
 ## Upcoming work
 
-Milestone goal: multi-room dungeon scenario working end-to-end in browser.
-
-1. **Confirm stream delivery** — Use browser devtools and the existing
-   `console.log` calls in `useEncounterStream` to determine whether
-   `RoomRevealed` events reach the browser at all.
-2. **Merge PR #377** — Wire `allRoomsFromEncounterState` into
-   `handleRoomRevealed` once stream delivery is confirmed.
-3. **Merge PR #378** — Finalize the test infrastructure alongside #377.
-4. **Add `useEncounterStream` test** — At minimum, test the buffer flush
-   logic and `onRoomRevealed` dispatch path.
-5. **LobbyView legacy cleanup (Task 7)** — Remove the parallel legacy path
-   once `useEncounterState` covers all event types.
-6. **Weapon/equipment fallback** — Merge PR #370 once stream work stabilizes.
+1. **Multi-room dungeon accumulation on the v2 stack** — design.md's
+   slice 4, not yet scheduled. The old stream-delivery investigation this
+   list used to lead with was about the now-deleted v1 path and no longer
+   applies.
+2. **Refresh this doc and quality.md for the intervening waves** —
+   Both docs are dated 2026-05-02 and predate slices 1-2 of the
+   game-screen rebuild; slice 3 (this entry) removed what it deleted but
+   did not backfill the history of #415/#418/#420/#426/#430/#445/#446.
+3. **Weapon/equipment fallback** — Merge PR #370 (status unverified this pass).
 
 ## Related references
 
 - [Project board #10](https://github.com/users/KirkDiggler/projects/10)
-- [rpg-api integration test: open_door_test.go](https://github.com/KirkDiggler/rpg-api/blob/main/internal/integration/encounter/open_door_test.go)
-- [PR #377 — add all rooms on RoomRevealed](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/377)
-- [PR #378 — extract transforms + 25 vitest tests](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/378)
+- [design.md — game-screen rebuild](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/game-screen-rebuild/design.md)
 - [rpg-project/CLAUDE.md](https://github.com/KirkDiggler/rpg-project/blob/main/CLAUDE.md)

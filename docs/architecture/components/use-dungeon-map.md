@@ -1,45 +1,34 @@
 ---
-name: useDungeonMap
-description: Accumulated multi-room dungeon geometry — clean design, well tested
-updated: 2026-05-02
-confidence: high — verified by reading useDungeonMap.ts (302 lines) and useDungeonMap.test.ts
+name: useDungeonMap (deleted — replaced by dungeonMapGeometry)
+description: The v1alpha1 room-accumulation hook was deleted in slice 3; its still-live pure geometry helpers moved to dungeonMapGeometry.ts
+updated: 2026-07-12
+confidence: high — verified by reading dungeonMapGeometry.ts + its test and a clean grep for useDungeonMap across src/
 ---
 
-# useDungeonMap
+# useDungeonMap — deleted
 
-`src/hooks/useDungeonMap.ts` — **302 lines.**
+`src/hooks/useDungeonMap.ts` was deleted in slice 3 of the
+[game-screen rebuild](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/game-screen-rebuild/design.md)
+(rpg-dnd5e-web#447). The `useDungeonMap()` hook itself — its
+`mergeRoom`/`updateEntitiesFromRoom`/`generateFloorTiles`/
+`createEmptyState` internals and the `DungeonMapState`/`currentRoomId`
+accumulation it built from v1alpha1 `Room`/`DoorInfo` events — was
+`LobbyView`-only (via `BattleMapPanel`) and had no other consumer.
 
-Maintains the accumulated geometry of all revealed dungeon rooms in a single coordinate space. Instead of replacing room state on each reveal, it merges new rooms into a persistent map. This is the rendering foundation for multi-room dungeon play.
+Multi-room accumulation on the v1alpha2 stream is future work
+(design.md's slice 4), not yet rebuilt.
 
-## Design
+## What survived: `src/hooks/dungeonMapGeometry.ts`
 
-- **Accumulation over replacement.** `mergeRoom` adds a room's tiles, walls, entities, and doors to existing state. Re-adding the same room (e.g., on state sync) updates it in place without duplication.
-- **Dungeon-absolute coordinates.** Each room's `origin` field (sent by the API) is used to offset room-local tile positions into a shared coordinate space. No coordinate calculation happens here — the origin comes from the API.
-- **Wall deduplication.** `wallKey(wall)` produces a canonical string from the two endpoint cube coordinates, sorting them lexicographically so that `(A,B)` and `(B,A)` produce the same key. This fixed the wall-shift bug (PR #368) where adjacent rooms sharing a boundary wall generated duplicate geometry.
-- **Immutable state.** `mergeRoom` does not mutate input state. Returns a new `DungeonMapState` object.
+Three pure, state-free helpers that `hex-grid/*` and the playtest map
+depend on had nothing to do with the v1 accumulation hook — they're
+coordinate-key math with no proto-version lean:
 
-## Exported functions (testable)
+| Export                        | Purpose                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------- |
+| `AbsoluteFloorTile`           | Floor tile shape in dungeon-absolute coordinates                                |
+| `wallKey(wall)`               | Canonical wall-segment key (direction-independent, dedup)                       |
+| `openDoorWalkableKeys(doors)` | Cube-coord keys for open doors, so HexGrid's pathfinder treats them as walkable |
 
-| Function                              | Purpose                                                                 |
-| ------------------------------------- | ----------------------------------------------------------------------- |
-| `mergeRoom(state, room, doors)`       | Add or update a room in the accumulated map                             |
-| `updateEntitiesFromRoom(state, room)` | Update entity positions for a specific room (called on movement events) |
-| `generateFloorTiles(room)`            | Convert a `RoomLayout` into `AbsoluteFloorTile[]`                       |
-| `createEmptyState()`                  | Factory for a fresh `DungeonMapState`                                   |
-| `wallKey(wall)`                       | Canonical string for wall deduplication                                 |
-
-## Tests
-
-`src/hooks/useDungeonMap.test.ts` — 20 tests. Covers:
-
-- First room creation (tiles, doors, entities, walls)
-- Second room accumulation (tiles from both rooms, walls from both, entity merging across rooms)
-- Same room re-merge (no tile duplication, entity position update)
-- Immutability
-- `updateEntitiesFromRoom` (position update, dead entity removal, cross-room isolation)
-- Wall deduplication (identical walls, reversed-direction walls)
-- `wallKey` canonical form
-
-## Known gap
-
-`currentRoomId` is overwritten to the room passed to the most recent `mergeRoom` call. In current use, rooms only merge when a `RoomRevealed` event fires (the player enters a new room), so `currentRoomId` correctly tracks the player's location. If rooms were merged for preview purposes before the player entered, `currentRoomId` would be incorrect. Not a bug today.
+These moved into the new file verbatim and kept their tests
+(`dungeonMapGeometry.test.ts`, trimmed to just these three).

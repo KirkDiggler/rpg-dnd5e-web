@@ -1,8 +1,8 @@
 ---
 name: Discord Activity wiring
 description: DiscordProvider, useDiscord hook, auth, sandbox constraints
-updated: 2026-05-02
-confidence: high — verified by reading DiscordProvider.tsx, discord/hooks.ts, discord/sdk.ts, client.ts
+updated: 2026-07-12
+confidence: high — verified by reading DiscordProvider.tsx, discord/hooks.ts, discord/sdk.ts, client.ts; the playerId fallback's location was updated for slice 3 (rpg-dnd5e-web#447), other sections unchanged since 2026-05-02
 ---
 
 # Discord Activity wiring
@@ -40,13 +40,16 @@ The app runs in a sandboxed Discord iframe at `discordsays.com`:
 
 ## Known gap: silent production failure
 
-`LobbyView.tsx:223-224`:
+`App.tsx` (this fallback lived in `LobbyView.tsx` before its deletion in slice 3, rpg-dnd5e-web#447 — same behavior, new home):
 
 ```typescript
-const playerId = discord.user?.id || (isDevelopment ? 'test-player' : '');
+const playerId =
+  discord.user?.id ||
+  devPlayerIdOverride ||
+  (isDevelopment ? 'test-player' : null);
 ```
 
-If Discord auth fails in production (`discord.user` is undefined), `playerId` becomes `''`. The stream subscription and all event guards checking `event.member?.playerId === playerId` will silently produce wrong results. No error is surfaced to the player. The correct behavior would be to render an auth error state and not proceed to the encounter.
+If Discord auth fails in production (`discord.user` is undefined), `playerId` becomes `null`. Event guards checking `event.member?.playerId === playerId` will silently produce wrong results. No error is surfaced to the player. The correct behavior would be to render an auth error state and not proceed to the encounter.
 
 ## DiscordDebugPanel
 

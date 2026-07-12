@@ -1,50 +1,22 @@
 ---
-name: BattleMapPanel
-description: React Three Fiber hex grid rendering — clean props interface, no tests
-updated: 2026-05-02
-confidence: high — verified by reading BattleMapPanel.tsx (194 lines)
+name: BattleMapPanel (deleted)
+description: Deleted in slice 3 of the game-screen rebuild — see game-view.md
+updated: 2026-07-12
+confidence: high — verified by git rm and a clean grep for BattleMapPanel across src/
 ---
 
-# BattleMapPanel
+# BattleMapPanel — deleted
 
-`src/components/encounter/BattleMapPanel.tsx` — **194 lines.**
+`src/components/encounter/BattleMapPanel.tsx` was deleted in slice 3 of
+the [game-screen rebuild](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/game-screen-rebuild/design.md)
+(rpg-dnd5e-web#447). `LobbyView.tsx` was its only consumer.
 
-Renders the 3D hex grid for combat. Uses React Three Fiber (R3F) to compose a Three.js scene from hex components.
-
-## Props
-
-Props are proto-shaped and come directly from LobbyView state:
-
-- `dungeonMap: DungeonMapState` — accumulated room geometry from `useDungeonMap`
-- `entities: Map<entityId, EntityState>` — from `useEncounterState` (new path)
-- `combatState: CombatState | undefined` — initiative, current turn
-- `currentPlayerId: string` — for highlighting the active player's entity
-- `onHexClick`, `onEntityClick` — interaction callbacks
-
-The props boundary between `LobbyView` and `BattleMapPanel` is clean. `BattleMapPanel` does not import from the API layer or call hooks that touch the stream.
-
-## Rendering
-
-`BattleMapPanel` composes:
-
-- `ShadedHexFloor` / `InstancedHexTiles` — floor geometry from `dungeonMap.floorTiles`
-- `HexWall` / `ShadedHexWall` — wall geometry from `dungeonMap.walls`
-- `HexDoor` — door rendering from `dungeonMap.doors`
-- `HexEntity` — per-entity rendering (position, model, selection state)
-- `MovementRangeBorder` — BFS movement range visualization
-- `PathPreview` — A\* pathfinding preview
-- `TurnOrderOverlay` — initiative order overlay
-
-Camera is managed by `useCameraControls`.
-
-## No error boundary
-
-`MediumHumanoid.tsx` loads 12 OBJ files via `useLoader(OBJLoader, path)`. If any model file is missing from `public/models/characters/`, Three.js throws. There is no error boundary around the 3D canvas. A missing OBJ file will crash the entire BattleMapPanel with an unhandled error.
-
-## No tests
-
-Zero vitest tests. React Three Fiber components are notoriously difficult to test (requires WebGL context), but there is no snapshot or interaction test at any level. The movement range visualization and path preview are tested indirectly through `useMovementRange.test.ts` and `hexUtils.test.ts`.
-
-## Cross-room pathing
-
-`walkableTileKeys: Set<string>` is passed from LobbyView. The A\* pathfinder uses this set. Cross-room pathing (moving between revealed rooms) should work in principle since `dungeonMap.floorTiles` spans all revealed rooms. In practice this path is not exercised by existing integration tests.
+`BattleMapPanel` consumed `useDungeonMap`'s `DungeonMapState` — the
+v1alpha1 `Room`-accumulation state — to compose `HexGrid`. That hook is
+also gone (see [use-dungeon-map.md](use-dungeon-map.md)). Its live
+successor is `EncounterMap` (`src/components/game/EncounterMap.tsx`), a
+thin `HexGrid` adapter built directly on v1alpha2 stream state
+(`revealedHexes`, `entityMeta`), generalized from the pre-existing
+`PlaytestMap` adapter — see
+[game-view.md](game-view.md#encounterview--the-shared-harness-stack) and
+[playtest-harness.md](playtest-harness.md).

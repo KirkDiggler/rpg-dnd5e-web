@@ -1,8 +1,8 @@
 ---
 name: rpg-dnd5e-web architecture overview
 description: Rendering rules, layer boundaries, and the stream layer
-updated: 2026-05-02
-confidence: high — verified by reading LobbyView.tsx, useEncounterStream.ts, useDungeonMap.ts, useEncounterState.ts, BattleMapPanel.tsx, client.ts, and the proto import graph
+updated: 2026-07-12
+confidence: medium — layer map, transport, and stream/state sections refreshed for slice 3 (rpg-dnd5e-web#447, LobbyView deletion); rendering-rule violation list and other sections not independently re-verified this pass
 ---
 
 # rpg-dnd5e-web architecture overview
@@ -25,14 +25,17 @@ The API and toolkit compute all game-mechanical results. The web layer receives 
 
 **Violations — verify and file issues:**
 
-- `CharacterInfoSection.tsx:33` — `Math.floor((score - 10) / 2)` implements the D&D ability modifier formula directly. The API should provide computed modifier values.
-- `DnDSkills.tsx:11,99-101` — Same formula, plus adds proficiency bonus to compute total skill modifier. These calculations belong in rpg-toolkit, exposed via the API.
-- `SavingThrowsDisplay.tsx:17` — Same formula, third independent copy.
-- `DnDSavingThrows.tsx:11` — Fourth copy.
-- `diceCalculations.ts:27` — Fifth copy. (At minimum this one is tested.)
-- `Phase1Demo.tsx:172` — Sixth copy (demo code, lower priority).
+- `DnDSkills.tsx:11,99-101` — `Math.floor((score - 10) / 2)` implements the D&D ability modifier formula directly, plus adds proficiency bonus to compute total skill modifier. These calculations belong in rpg-toolkit, exposed via the API.
+- `SavingThrowsDisplay.tsx:17` — Same formula, second independent copy.
+- `DnDSavingThrows.tsx:11` — Third copy.
+- `diceCalculations.ts:27` — Fourth copy. (At minimum this one is tested.)
+- `Phase1Demo.tsx:172` — Fifth copy (demo code, lower priority).
 
-Six independent implementations of `floor((score - 10) / 2)` means six places to diverge from the rulebook. The correct fix is for the API to include computed modifier and skill values in the character proto response, not for the web to re-implement D&D math.
+(A sixth copy in `combat-v2/panels/CharacterInfoSection.tsx` was deleted
+along with the rest of `combat-v2/` in slice 3 of the game-screen rebuild
+— rpg-dnd5e-web#447 — not fixed, just gone with its file.)
+
+Five remaining independent implementations of `floor((score - 10) / 2)` means five places to diverge from the rulebook. The correct fix is for the API to include computed modifier and skill values in the character proto response, not for the web to re-implement D&D math.
 
 ### Rule 2: Proto types are the contract.
 
@@ -42,7 +45,7 @@ Consume `@kirkdiggler/rpg-api-protos` generated types directly. Do not re-shape 
 
 - `featureData.ts` — TypeScript interfaces for JSON-encoded toolkit data embedded in proto `bytes` fields. These are not proto messages; they decode opaque bytes, so a local type is necessary.
 - `conditionData.ts` — Same pattern.
-- `DungeonMapState` in `useDungeonMap.ts` — Derived accumulation state (floor tiles, wall dedup) that has no proto equivalent.
+- `AbsoluteFloorTile` in `hooks/dungeonMapGeometry.ts` — Derived tile-key shape (dungeon-absolute coordinates) that has no proto equivalent.
 
 **Violations:**
 
@@ -54,62 +57,65 @@ Consume `@kirkdiggler/rpg-api-protos` generated types directly. Do not re-shape 
 
 ## Layer map
 
+Slice 3 of the [game-screen rebuild](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/game-screen-rebuild/design.md)
+(rpg-dnd5e-web#447) deleted `LobbyView.tsx` and the v1alpha1 path it ran.
+`GameView` is the live game route; it shares its stream/state hooks with
+the permanent `/playtest` verification harness — see
+[game-view.md](components/game-view.md) and
+[playtest-harness.md](components/playtest-harness.md).
+
 ```
 Browser / Discord iframe
        |
-  App.tsx (router)
+  App.tsx (router: GameView route, or /playtest's PlaytestHarness in dev)
        |
-  LobbyView.tsx (2,345 lines — the hub, too large)
+  +----+----------------------+
+  |                           |
+GameView                PlaytestHarness
+├── LobbyFlow            (dev verification UI)
+└── EncounterView             |
+  |                           |
+  +----+----------------------+
        |
-  +----+----------------------------+
-  |                                 |
-useEncounterStream            BattleMapPanel.tsx
-(stream layer — load-bearing) (React Three Fiber hex grid)
-  |                                 |
-useEncounterState             useDungeonMap.ts
-(unified entity state)        (accumulated room geometry)
-  |
+useEncounterStream  (stream layer — load-bearing, shared)
+       |
+useEncounterState   (unified entity/turn/prompt state, shared)
+       |
 api/client.ts (Connect RPC transport + interceptors)
-  |
+       |
 rpg-api gRPC server
 ```
 
+`EncounterMap` (game) and `PlaytestMap` (harness) both render through the
+same `HexGrid`, adapting v2 stream state via shared pure helpers in
+`components/playtest/playtestMapHelpers.ts` — "generalize, don't lift."
+
 ## gRPC / transport layer
 
-`src/api/client.ts` (86 lines) creates three Connect RPC clients:
+`src/api/client.ts` creates four Connect RPC clients:
 
-- `encounterClient` — main game loop
+- `encounterClient` — v1alpha2 `EncounterService`, the live game loop
+- `lobbyClient` — v1alpha1 `LobbyService` (party assembly, distinct from the deleted v1alpha1 `EncounterService` lobby RPCs)
 - `characterClient` — character CRUD
 - `diceClient` — dice rolling
 
-Auth and logging interceptors are applied at the transport level. The `/.proxy` URL detection for Discord Activity sandbox is in `client.ts:12-14`.
+Auth and logging interceptors are applied at the transport level. The `/.proxy` URL detection for Discord Activity sandbox is in `client.ts`.
 
-## Stream layer: load-then-stream pattern
+## Stream layer
 
-`useEncounterStream` implements the load-then-stream pattern:
+`useEncounterStream` subscribes to the v1alpha2 `StreamEncounter` RPC. Its
+first message is always `SnapshotDelivered`, which is the sync barrier —
+there is no separate load-then-stream buffering step (that was the
+deleted v1alpha1 hook's design). Reconnect uses exponential backoff (1s →
+30s cap, 10 attempts), config shared with `useLobbyStream`. Full detail:
+[use-encounter-stream.md](components/use-encounter-stream.md).
 
-1. Start stream subscription (gRPC server streaming via Connect RPC)
-2. Set `isSyncingRef = true`, buffer all arriving events
-3. Fetch snapshot via `GetEncounterState` RPC
-4. Call `onStateSync` with the snapshot
-5. Flush buffered events via `dispatchEvent`, set `isSyncingRef = false`
-6. Subsequent events dispatch immediately
+## State management
 
-Reconnect uses exponential backoff (1s → 30s cap, 10 attempts).
-
-**Current status:** The stream dispatch switch (`useEncounterStream.ts:99-156`) handles all event types including `roomRevealed`. Whether `RoomRevealed` events actually reach the browser has not been confirmed by devtools. This is the blocking investigation for multi-room dungeon work.
-
-## State management: dual-path problem
-
-Two state representations run in parallel in `LobbyView.tsx`:
-
-| State                                            | Where                        | Description                   |
-| ------------------------------------------------ | ---------------------------- | ----------------------------- |
-| `useEncounterState`                              | `hooks/useEncounterState.ts` | Unified entity map (new path) |
-| `monsters[]`, `combatState`, `fullCharactersMap` | LobbyView `useState`         | Legacy flat state             |
-| `useDungeonMap`                                  | `hooks/useDungeonMap.ts`     | Accumulated room geometry     |
-
-The legacy state runs alongside the new path. 26 occurrences of "legacy" in `LobbyView.tsx` mark the dual-path seam. Until Task 7 cleanup, entity data can diverge between the two representations.
+`useEncounterState` is the single entity/turn/prompt store, populated
+exclusively from v1alpha2 delta events — no snapshot-replace path, no
+parallel "legacy" state. Full detail:
+[use-encounter-state.md](components/use-encounter-state.md).
 
 ## Discord Activity constraints
 
