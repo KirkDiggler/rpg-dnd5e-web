@@ -55,8 +55,13 @@ function getEntityEmoji(entry: TurnOrderEntry, character?: Character): string {
     entry.entityType.toLowerCase() === 'character' ||
     entry.entityType.toLowerCase() === 'player';
 
-  if (isPlayer && character) {
-    return getClassEmoji(character.class);
+  if (isPlayer) {
+    // Class emoji when the full Character is known (playtest harness path);
+    // otherwise a generic player icon — still distinct from the monster
+    // emoji below. GameView's EncounterMap doesn't have a Character[] to
+    // pass yet (#445), so entry.entityType (server-derived, from entityMeta)
+    // is what distinguishes character from monster there today.
+    return character ? getClassEmoji(character.class) : '🧍';
   }
 
   // Monster emoji - could be enhanced with specific monster types later
