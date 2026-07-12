@@ -33,7 +33,7 @@ describe('CombatLog', () => {
       },
     ];
     render(<CombatLog entries={entries} />);
-    const line = screen.getByTestId('combat-log-entry-attack');
+    const line = screen.getByTestId('combat-log-entry-attack-0');
     expect(line.textContent).toContain('char-alice');
     expect(line.textContent).toContain('goblin-1');
     expect(line.textContent).toContain('HIT');
@@ -64,9 +64,9 @@ describe('CombatLog', () => {
       },
     ];
     render(<CombatLog entries={entries} />);
-    expect(screen.getByTestId('combat-log-entry-attack').textContent).toContain(
-      'MISS'
-    );
+    expect(
+      screen.getByTestId('combat-log-entry-attack-0').textContent
+    ).toContain('MISS');
   });
 
   it('renders EntityDamaged with the damage breakdown refs and hp_after verbatim', () => {
@@ -92,7 +92,7 @@ describe('CombatLog', () => {
       },
     ];
     render(<CombatLog entries={entries} />);
-    const line = screen.getByTestId('combat-log-entry-damage');
+    const line = screen.getByTestId('combat-log-entry-damage-0');
     expect(line.textContent).toContain('goblin-1');
     expect(line.textContent).toContain('8');
     expect(line.textContent).toContain('slashing');
@@ -128,11 +128,29 @@ describe('CombatLog', () => {
     ];
     render(<CombatLog entries={entries} />);
     expect(
-      screen.getByTestId('combat-log-entry-statusApplied').textContent
+      screen.getByTestId('combat-log-entry-statusApplied-0').textContent
     ).toContain('goblin-1');
     expect(
-      screen.getByTestId('combat-log-entry-statusRemoved').textContent
+      screen.getByTestId('combat-log-entry-statusRemoved-1').textContent
     ).toContain('goblin-1');
+  });
+
+  it('gives each entry a unique testid even when multiple share a kind (regression: getByTestId must not throw on repeat damage lines)', () => {
+    const damaged = (id: number): CombatLogEntry => ({
+      id,
+      round: 1,
+      kind: 'damage',
+      event: {
+        entityId: 'goblin-1',
+        amount: 3,
+        hpAfter: { current: 4, max: 7 },
+        damageBreakdown: [],
+      } as never,
+    });
+    const entries: CombatLogEntry[] = [damaged(0), damaged(1)];
+    render(<CombatLog entries={entries} />);
+    expect(screen.getByTestId('combat-log-entry-damage-0')).toBeTruthy();
+    expect(screen.getByTestId('combat-log-entry-damage-1')).toBeTruthy();
   });
 
   it('renders TurnStarted, EntityDied/EntityRemoved, and EncounterEnded verbatim', () => {
@@ -164,16 +182,16 @@ describe('CombatLog', () => {
     ];
     render(<CombatLog entries={entries} />);
     expect(
-      screen.getByTestId('combat-log-entry-turnStarted').textContent
+      screen.getByTestId('combat-log-entry-turnStarted-0').textContent
     ).toContain("char-alice's turn");
-    expect(screen.getByTestId('combat-log-entry-died').textContent).toContain(
+    expect(screen.getByTestId('combat-log-entry-died-1').textContent).toContain(
       'goblin-1 dies by char-alice'
     );
     expect(
-      screen.getByTestId('combat-log-entry-removed').textContent
+      screen.getByTestId('combat-log-entry-removed-2').textContent
     ).toContain('destroyed');
     expect(
-      screen.getByTestId('combat-log-entry-encounterEnded').textContent
+      screen.getByTestId('combat-log-entry-encounterEnded-3').textContent
     ).toContain('all hostiles defeated');
   });
 });

@@ -83,7 +83,7 @@ export function CombatLog({ entries }: CombatLogProps) {
 function CombatLogLine({ entry }: { entry: CombatLogEntry }) {
   return (
     <div
-      data-testid={`combat-log-entry-${entry.kind}`}
+      data-testid={`combat-log-entry-${entry.kind}-${entry.id}`}
       style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}
     >
       <span style={{ opacity: 0.4, fontSize: 10, flexShrink: 0 }}>

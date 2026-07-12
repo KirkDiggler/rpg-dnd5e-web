@@ -377,8 +377,21 @@ export function EncounterView({
           entityMeta={encounterState.state.entityMeta}
           revealedHexes={encounterState.state.revealedHexes}
           entityHP={encounterState.state.entityHP}
-          initiativeOrder={encounterState.state.initiativeOrder}
-          activeEntityId={encounterState.state.activeEntityId}
+          // Gate by mode: applyModeChanged only flips `mode`, it doesn't
+          // clear initiativeOrder/activeEntityId (only the next snapshot's
+          // applyV2SnapshotTurnState does that) — without this gate a
+          // ModeChanged away from TURN_BASED could leave the turn-order
+          // overlay showing stale initiative data until the next snapshot.
+          initiativeOrder={
+            encounterState.state.mode === EncounterMode.TURN_BASED
+              ? encounterState.state.initiativeOrder
+              : []
+          }
+          activeEntityId={
+            encounterState.state.mode === EncounterMode.TURN_BASED
+              ? encounterState.state.activeEntityId
+              : ''
+          }
           round={encounterState.state.round}
           myEntityId={entityId}
           isMyTurn={
