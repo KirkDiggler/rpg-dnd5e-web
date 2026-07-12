@@ -38,12 +38,14 @@ import { useEncounterStream2 } from '../../api/useEncounterStream2';
 import { useEndTurnV2 } from '../../api/useEndTurnV2';
 import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
 import { useTakeActionV2 } from '../../api/useTakeActionV2';
+import { useCombatLog } from '../../hooks/useCombatLog';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { errorMessage, formatStatusBadges } from '../../utils/combatFormat';
 import { protoPositionToHex } from '../../utils/hexCoord';
 import { ActionMenu } from '../playtest/ActionMenu';
 import { targetKindNeedsPrompt } from '../playtest/actionMenuHelpers';
 import { EconomyBar } from '../playtest/EconomyBar';
+import { CombatLog } from './CombatLog';
 import { EncounterMap } from './EncounterMap';
 import { PromptModal } from './PromptModal';
 
@@ -76,6 +78,9 @@ export function EncounterView({
 }: EncounterViewProps) {
   const entityId = characterId;
   const encounterState = useEncounterState();
+  // #445: game-grade combat narrative — the same dispatched events, rendered
+  // as a scrolling log instead of PlaytestHarness's raw dev-log text.
+  const combatLog = useCombatLog();
   // Set by clicking any entity on the map — feeds SINGLE_ENTITY-targeted
   // menu actions (e.g. a spell chosen after the player clicks its target).
   // Clicking a monster additionally fires an immediate basic attack, the
@@ -170,33 +175,47 @@ export function EncounterView({
     },
     onEntityDamaged: (e) => {
       encounterState.applyEntityDamaged(e);
+      combatLog.recordEntityDamaged(e);
     },
     onStatusApplied: (e) => {
       encounterState.applyStatusApplied(e);
+      combatLog.recordStatusApplied(e);
     },
     onStatusRemoved: (e) => {
       encounterState.applyStatusRemoved(e);
+      combatLog.recordStatusRemoved(e);
     },
     onModeChanged: (e) => {
       encounterState.applyModeChanged(e);
     },
     onTurnStarted: (e) => {
       encounterState.applyTurnStarted(e);
+      combatLog.recordTurnStarted(e);
     },
-    onTurnEnded: () => {
+    onTurnEnded: (e) => {
       encounterState.applyTurnEnded();
+      combatLog.recordTurnEnded(e);
     },
     onTurnStateChanged: (e) => {
       encounterState.applyTurnStateChanged(e.turnState);
     },
+    // TakeAction wave (#426 / #594): per-attack roll detail. Fires on a MISS
+    // too (hit=false) — rendered as-is in the combat log so a whiff isn't
+    // silent. Damage rides the correlated EntityDamaged above.
+    onAttackResolved: (e) => {
+      combatLog.recordAttackResolved(e);
+    },
     onEntityDied: (e) => {
       encounterState.applyEntityDied(e);
+      combatLog.recordEntityDied(e);
     },
     onEntityRemoved: (e) => {
       encounterState.applyEntityRemoved(e);
+      combatLog.recordEntityRemoved(e);
     },
     onEncounterEnded: (e) => {
       encounterState.applyEncounterEnded(e);
+      combatLog.recordEncounterEnded(e);
     },
     onInputRequiredDelivered: (e) => {
       if (!e.inputRequired) return;
@@ -358,6 +377,22 @@ export function EncounterView({
           entityMeta={encounterState.state.entityMeta}
           revealedHexes={encounterState.state.revealedHexes}
           entityHP={encounterState.state.entityHP}
+          // Gate by mode: applyModeChanged only flips `mode`, it doesn't
+          // clear initiativeOrder/activeEntityId (only the next snapshot's
+          // applyV2SnapshotTurnState does that) — without this gate a
+          // ModeChanged away from TURN_BASED could leave the turn-order
+          // overlay showing stale initiative data until the next snapshot.
+          initiativeOrder={
+            encounterState.state.mode === EncounterMode.TURN_BASED
+              ? encounterState.state.initiativeOrder
+              : []
+          }
+          activeEntityId={
+            encounterState.state.mode === EncounterMode.TURN_BASED
+              ? encounterState.state.activeEntityId
+              : ''
+          }
+          round={encounterState.state.round}
           myEntityId={entityId}
           isMyTurn={
             encounterState.state.mode === EncounterMode.TURN_BASED
@@ -374,6 +409,8 @@ export function EncounterView({
           Waiting for your position…
         </div>
       )}
+
+      <CombatLog entries={combatLog.entries} />
 
       <EconomyBar economy={economy} />
       <ActionMenu

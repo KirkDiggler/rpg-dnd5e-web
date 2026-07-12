@@ -18,6 +18,7 @@ import { HexGrid } from '../hex-grid';
 import type { CubeCoord } from '../hex-grid/hexMath';
 import {
   buildRenderableEntities,
+  buildTurnOrderCombatState,
   synthesizeFloorTiles,
 } from '../playtest/playtestMapHelpers';
 
@@ -30,6 +31,12 @@ export interface EncounterMapProps {
   revealedHexes: Set<string>;
   /** Per-entity HP — marks monsters dead (HP <= 0) so HexGrid renders their corpse. */
   entityHP: Map<string, { current: number; max: number }>;
+  /** v1alpha2 initiative order (entity ids) — drives the TurnOrderOverlay. Empty outside TURN_BASED. */
+  initiativeOrder: string[];
+  /** v1alpha2 active actor's entity id — highlighted in the TurnOrderOverlay. */
+  activeEntityId: string;
+  /** v1alpha2 turn-based round number, shown on the TurnOrderOverlay's round badge. */
+  round: number;
   /** Local player's entity id — the character bound at lobby create/join, not derived from playerId. */
   myEntityId: string;
   /** True when the local player can act this turn; forced true outside TURN_BASED so clicks still dispatch. */
@@ -49,6 +56,9 @@ export function EncounterMap({
   entityMeta,
   revealedHexes,
   entityHP,
+  initiativeOrder,
+  activeEntityId,
+  round,
   myEntityId,
   isMyTurn,
   movementRemaining = DEFAULT_MOVEMENT_FEET,
@@ -63,6 +73,17 @@ export function EncounterMap({
   const renderableEntities = useMemo(
     () => buildRenderableEntities(entities, entityMeta, entityHP),
     [entities, entityMeta, entityHP]
+  );
+
+  const combatState = useMemo(
+    () =>
+      buildTurnOrderCombatState(
+        initiativeOrder,
+        activeEntityId,
+        round,
+        entityMeta
+      ),
+    [initiativeOrder, activeEntityId, round, entityMeta]
   );
 
   return (
@@ -85,7 +106,7 @@ export function EncounterMap({
         currentEntityId={myEntityId}
         movementRemaining={movementRemaining}
         isPlayerTurn={isMyTurn}
-        combatState={null}
+        combatState={combatState}
         onMoveComplete={(path: CubeCoord[]) => {
           onMove(path.map((c) => ({ x: c.x, y: c.y, z: c.z })));
         }}

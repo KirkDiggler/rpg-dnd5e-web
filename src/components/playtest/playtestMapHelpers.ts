@@ -4,7 +4,13 @@
  * react-refresh/only-export-components ESLint rule).
  */
 
-import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import { create } from '@bufbuild/protobuf';
+import {
+  CombatStateSchema,
+  InitiativeEntrySchema,
+  type CombatState,
+  type EntityState,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { AbsoluteFloorTile } from '../../hooks/useDungeonMap';
 import type { EntityMeta } from '../../hooks/useEncounterState';
@@ -113,4 +119,54 @@ export function buildRenderableEntities(
     });
   }
   return result;
+}
+
+/**
+ * Shim v2's initiativeOrder/activeEntityId/round into the v1alpha1
+ * `CombatState` shape HexGrid's turn-order wiring expects — HexGrid derives
+ * its `turnOrder`/`activeIndex`/`round` (and the TurnOrderOverlay it renders)
+ * from a `combatState` prop, not from raw v2 primitives (see HexGrid.tsx's
+ * `turnOrder` useMemo). This is pure data reshaping for that one consumer;
+ * it does not introduce a second combat-state source of truth — every field
+ * still traces back to useEncounterState's v2 store.
+ *
+ * Returns null when there's no active initiative order (FREE_ROAM, or no
+ * snapshot yet) so callers can pass it straight through as `combatState` and
+ * let HexGrid's existing `turnOrder.length > 0` check hide the overlay.
+ */
+export function buildTurnOrderCombatState(
+  initiativeOrder: string[],
+  activeEntityId: string,
+  round: number,
+  entityMeta: Map<string, EntityMeta>
+): CombatState | null {
+  if (initiativeOrder.length === 0) return null;
+  return create(CombatStateSchema, {
+    round,
+    turnOrder: initiativeOrder.map((entityId) =>
+      create(InitiativeEntrySchema, {
+        entityId,
+        entityType: entityTypeToInitiativeString(
+          entityMeta.get(entityId)?.type
+        ),
+      })
+    ),
+    // -1 when activeEntityId isn't in the order (e.g. it died and was
+    // removed) — TurnOrderOverlay already treats an out-of-range index as
+    // "nobody highlighted" rather than defaulting to entry 0.
+    activeIndex: initiativeOrder.indexOf(activeEntityId),
+  });
+}
+
+/**
+ * v1alpha1 InitiativeEntry.entity_type is documented as "character" |
+ * "monster" | "npc" (a different vocabulary than entityTypeToDisplay's
+ * HexGrid render discriminator above) — TurnOrderOverlay's own check
+ * accepts "character" (and "player") case-insensitively for its class-emoji
+ * branch.
+ */
+function entityTypeToInitiativeString(type: EntityType | undefined): string {
+  if (type === EntityType.CHARACTER) return 'character';
+  if (type === EntityType.MONSTER) return 'monster';
+  return 'npc';
 }

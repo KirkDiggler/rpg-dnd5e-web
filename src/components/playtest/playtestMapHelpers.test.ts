@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import type { EntityMeta } from '../../hooks/useEncounterState';
 import {
   buildRenderableEntities,
+  buildTurnOrderCombatState,
   entityTypeToDisplay,
   synthesizeFloorTiles,
 } from './playtestMapHelpers';
@@ -203,5 +204,58 @@ describe('buildRenderableEntities', () => {
     ]);
     const list = buildRenderableEntities(entities, new Map(), new Map());
     expect(list).toHaveLength(0);
+  });
+});
+
+describe('buildTurnOrderCombatState', () => {
+  it('returns null when initiativeOrder is empty (FREE_ROAM or no snapshot yet)', () => {
+    expect(buildTurnOrderCombatState([], '', 0, new Map())).toBeNull();
+  });
+
+  it('shims v2 initiative state into the v1alpha1 CombatState shape HexGrid expects', () => {
+    const meta = new Map<string, EntityMeta>([
+      ['char-alice', { type: EntityType.CHARACTER, monsterRefId: undefined }],
+      ['goblin-1', { type: EntityType.MONSTER, monsterRefId: 'goblin' }],
+    ]);
+    const combatState = buildTurnOrderCombatState(
+      ['char-alice', 'goblin-1'],
+      'goblin-1',
+      3,
+      meta
+    );
+    expect(combatState?.round).toBe(3);
+    expect(combatState?.activeIndex).toBe(1);
+    expect(combatState?.turnOrder).toHaveLength(2);
+    expect(combatState?.turnOrder[0]).toMatchObject({
+      entityId: 'char-alice',
+      entityType: 'character',
+    });
+    expect(combatState?.turnOrder[1]).toMatchObject({
+      entityId: 'goblin-1',
+      entityType: 'monster',
+    });
+  });
+
+  it('falls back entityType to "npc" when entityMeta has no entry (transient gap)', () => {
+    const combatState = buildTurnOrderCombatState(
+      ['unknown-1'],
+      'unknown-1',
+      1,
+      new Map()
+    );
+    expect(combatState?.turnOrder[0]).toMatchObject({
+      entityId: 'unknown-1',
+      entityType: 'npc',
+    });
+  });
+
+  it('activeIndex is -1 when activeEntityId is not in the order (e.g. it died and was removed)', () => {
+    const combatState = buildTurnOrderCombatState(
+      ['char-alice'],
+      'goblin-1',
+      1,
+      new Map()
+    );
+    expect(combatState?.activeIndex).toBe(-1);
   });
 });

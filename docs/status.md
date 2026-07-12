@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-04
+updated: 2026-07-12
 confidence: medium — seeded from full code read-through, git log, and open PRs; needs Kirk's correction pass on stream-bug details
 ---
 
@@ -11,6 +11,22 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+- **GameView fight-feel — combat log panel + initiative tracker (#445)** —
+  `EncounterView` gains a `CombatLog` panel (new `useCombatLog` hook) rendering
+  `AttackResolved`/`EntityDamaged`/`StatusApplied`/`StatusRemoved`/`TurnStarted`/
+  `TurnEnded`/`EntityDied`/`EntityRemoved`/`EncounterEnded` verbatim as a
+  scrolling, round-tagged log — the game-grade version of `PlaytestHarness`'s
+  raw dev-log text for the same events. The `TurnOrderOverlay` HexGrid already
+  had (but neither `EncounterMap` nor `PlaytestMap` wired — both passed
+  `combatState={null}`) is now wired in `EncounterMap` via a new
+  `buildTurnOrderCombatState` shim in `playtestMapHelpers.ts` that reshapes
+  v2's `initiativeOrder`/`activeEntityId`/`round` into the v1alpha1
+  `CombatState` prop `HexGrid` expects — `HexGrid`/`TurnOrderOverlay`
+  themselves are unmodified. `PlaytestMap`/`PlaytestHarness` untouched; the
+  656-test suite it had before this wave stays green (675 total after adding
+  17 new tests for the hook/component/shim). See
+  [game-view.md](architecture/components/game-view.md#combat-log--initiative-tracker-445).
 
 - **Chapter 2 Beat 2 — status effects + attack advantage/disadvantage (#430, wave rpg-project#75)** —
   `PlaytestHarness`'s entities table gains a **status** column rendering every
