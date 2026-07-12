@@ -5,9 +5,9 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { TakeActionRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { useCallback, useState } from 'react';
-import { encounterClientV2 } from './client';
+import { encounterClient } from './client';
 
-/** Plain {module,type,id} accepted by useTakeActionV2 — hook constructs the proto Ref via the schema internally. */
+/** Plain {module,type,id} accepted by useTakeAction — hook constructs the proto Ref via the schema internally. */
 export interface PlainRef {
   module: string;
   type: string;
@@ -28,7 +28,7 @@ export interface TakeActionParams {
   target: ActionTarget;
 }
 
-export interface UseTakeActionV2Result {
+export interface UseTakeActionResult {
   /**
    * Calls the v1alpha2 TakeAction unary RPC. The world-changing effects
    * (damage, conditions, mode/turn transitions) flow back as separate events
@@ -47,10 +47,10 @@ export interface UseTakeActionV2Result {
  * - error is set on failure, cleared on the next successful call
  * - The returned promise rejects on RPC error so callers can surface it
  *
- * Mirrors useMoveEntityV2 / useInteractV2 — one file per v1alpha2 verb under
+ * Mirrors useMoveEntity / useInteract — one file per v1alpha2 verb under
  * src/api/.
  */
-export function useTakeActionV2(): UseTakeActionV2Result {
+export function useTakeAction(): UseTakeActionResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -67,7 +67,7 @@ export function useTakeActionV2(): UseTakeActionV2Result {
       });
 
       try {
-        const response = await encounterClientV2.takeAction(request);
+        const response = await encounterClient.takeAction(request);
         return response;
       } catch (err) {
         const wrapped =

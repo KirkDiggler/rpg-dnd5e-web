@@ -1,9 +1,9 @@
 import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  dispatchEncounterStream2Event,
-  type EncounterStream2Options,
-} from './encounterStream2Dispatch';
+  dispatchEncounterStreamEvent,
+  type EncounterStreamOptions,
+} from './encounterStreamDispatch';
 
 function makeEvent<K extends string, V>(caseName: K, value: V): EncounterEvent {
   return {
@@ -13,60 +13,60 @@ function makeEvent<K extends string, V>(caseName: K, value: V): EncounterEvent {
   } as unknown as EncounterEvent;
 }
 
-describe('dispatchEncounterStream2Event', () => {
+describe('dispatchEncounterStreamEvent', () => {
   it('routes snapshotDelivered to onSnapshotDelivered', () => {
     const onSnapshotDelivered = vi.fn();
-    const options: EncounterStream2Options = { onSnapshotDelivered };
+    const options: EncounterStreamOptions = { onSnapshotDelivered };
     const event = makeEvent('snapshotDelivered', { encounter: undefined });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onSnapshotDelivered).toHaveBeenCalledTimes(1);
   });
 
   it('routes entityMoved to onEntityMoved', () => {
     const onEntityMoved = vi.fn();
-    const options: EncounterStream2Options = { onEntityMoved };
+    const options: EncounterStreamOptions = { onEntityMoved };
     const event = makeEvent('entityMoved', {
       entityId: 'a',
       actualPath: [{ x: 0, y: 0, z: 0 }],
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onEntityMoved).toHaveBeenCalledTimes(1);
   });
 
   it('routes geometryRevealed to onGeometryRevealed', () => {
     const onGeometryRevealed = vi.fn();
-    const options: EncounterStream2Options = { onGeometryRevealed };
+    const options: EncounterStreamOptions = { onGeometryRevealed };
     const event = makeEvent('geometryRevealed', { hexes: [] });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onGeometryRevealed).toHaveBeenCalledTimes(1);
   });
 
   it('routes entityAppeared to onEntityAppeared', () => {
     const onEntityAppeared = vi.fn();
-    const options: EncounterStream2Options = { onEntityAppeared };
+    const options: EncounterStreamOptions = { onEntityAppeared };
     // NOTE: v1alpha2 Entity uses `id` (not `entityId`); see types_pb.ts.
     const event = makeEvent('entityAppeared', {
       entity: { id: 'g', position: { x: 1, y: -1, z: 0 } },
       reason: '',
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onEntityAppeared).toHaveBeenCalledTimes(1);
   });
 
   it('routes entityDisappeared to onEntityDisappeared', () => {
     const onEntityDisappeared = vi.fn();
-    const options: EncounterStream2Options = { onEntityDisappeared };
+    const options: EncounterStreamOptions = { onEntityDisappeared };
     const event = makeEvent('entityDisappeared', {
       entityId: 'g',
       lastKnownPosition: { x: 2, y: -2, z: 0 },
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onEntityDisappeared).toHaveBeenCalledTimes(1);
   });
 
   it('routes doorOpened to onDoorOpened', () => {
     const onDoorOpened = vi.fn();
-    const options: EncounterStream2Options = { onDoorOpened };
+    const options: EncounterStreamOptions = { onDoorOpened };
     // Wave 2.7: revealedHexes/walls/removedWalls intentionally empty here;
     // the geometry side flows on a separate GeometryRevealed event.
     const event = makeEvent('doorOpened', {
@@ -75,26 +75,26 @@ describe('dispatchEncounterStream2Event', () => {
       revealedWalls: [],
       removedWalls: [],
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onDoorOpened).toHaveBeenCalledTimes(1);
   });
 
   it('routes entityDamaged to onEntityDamaged', () => {
     const onEntityDamaged = vi.fn();
-    const options: EncounterStream2Options = { onEntityDamaged };
+    const options: EncounterStreamOptions = { onEntityDamaged };
     const event = makeEvent('entityDamaged', {
       entityId: 'goblin-1',
       amount: 5,
       hpAfter: { current: 2, max: 7 },
       sourceEntityId: 'char-alice',
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onEntityDamaged).toHaveBeenCalledTimes(1);
   });
 
   it('passes damageBreakdown components to onEntityDamaged when present', () => {
     const onEntityDamaged = vi.fn();
-    const options: EncounterStream2Options = { onEntityDamaged };
+    const options: EncounterStreamOptions = { onEntityDamaged };
     const event = makeEvent('entityDamaged', {
       entityId: 'goblin-1',
       amount: 10,
@@ -105,7 +105,7 @@ describe('dispatchEncounterStream2Event', () => {
         { source: 'dnd5e:features:sneak_attack', amount: 1, isCritical: false },
       ],
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onEntityDamaged).toHaveBeenCalledTimes(1);
     const received = onEntityDamaged.mock.calls[0][0];
     expect(received.damageBreakdown).toHaveLength(3);
@@ -117,7 +117,7 @@ describe('dispatchEncounterStream2Event', () => {
 
   it('routes statusApplied to onStatusApplied', () => {
     const onStatusApplied = vi.fn();
-    const options: EncounterStream2Options = { onStatusApplied };
+    const options: EncounterStreamOptions = { onStatusApplied };
     const event = makeEvent('statusApplied', {
       entityId: 'char-alice',
       status: {
@@ -126,92 +126,92 @@ describe('dispatchEncounterStream2Event', () => {
       },
       sourceEntityId: 'goblin-1',
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onStatusApplied).toHaveBeenCalledTimes(1);
   });
 
   it('routes statusRemoved to onStatusRemoved', () => {
     const onStatusRemoved = vi.fn();
-    const options: EncounterStream2Options = { onStatusRemoved };
+    const options: EncounterStreamOptions = { onStatusRemoved };
     const event = makeEvent('statusRemoved', {
       entityId: 'char-alice',
       statusSource: { module: 'dnd5e', type: 'condition', id: 'poisoned' },
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onStatusRemoved).toHaveBeenCalledTimes(1);
   });
 
   it('routes modeChanged to onModeChanged', () => {
     const onModeChanged = vi.fn();
-    const options: EncounterStream2Options = { onModeChanged };
+    const options: EncounterStreamOptions = { onModeChanged };
     // EncounterMode enum values: UNSPECIFIED=0, FREE_ROAM=1, TURN_BASED=2.
     const event = makeEvent('modeChanged', {
       from: 1,
       to: 2,
       reason: 'ambush',
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onModeChanged).toHaveBeenCalledTimes(1);
   });
 
   it('routes turnStarted to onTurnStarted', () => {
     const onTurnStarted = vi.fn();
-    const options: EncounterStream2Options = { onTurnStarted };
+    const options: EncounterStreamOptions = { onTurnStarted };
     const event = makeEvent('turnStarted', {
       entityId: 'char-alice',
       round: 1,
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onTurnStarted).toHaveBeenCalledTimes(1);
   });
 
   it('routes turnEnded to onTurnEnded', () => {
     const onTurnEnded = vi.fn();
-    const options: EncounterStream2Options = { onTurnEnded };
+    const options: EncounterStreamOptions = { onTurnEnded };
     const event = makeEvent('turnEnded', {
       entityId: 'char-alice',
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onTurnEnded).toHaveBeenCalledTimes(1);
   });
 
   // Wave 2.10: death + encounter resolution
   it('routes entityDied to onEntityDied', () => {
     const onEntityDied = vi.fn();
-    const options: EncounterStream2Options = { onEntityDied };
+    const options: EncounterStreamOptions = { onEntityDied };
     const event = makeEvent('entityDied', {
       entityId: 'goblin-1',
       killerEntityId: 'char-alice',
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onEntityDied).toHaveBeenCalledTimes(1);
   });
 
   it('routes entityRemoved to onEntityRemoved', () => {
     const onEntityRemoved = vi.fn();
-    const options: EncounterStream2Options = { onEntityRemoved };
+    const options: EncounterStreamOptions = { onEntityRemoved };
     const event = makeEvent('entityRemoved', {
       entityId: 'goblin-1',
       reason: 'destroyed',
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onEntityRemoved).toHaveBeenCalledTimes(1);
   });
 
   it('routes encounterEnded to onEncounterEnded', () => {
     const onEncounterEnded = vi.fn();
-    const options: EncounterStream2Options = { onEncounterEnded };
+    const options: EncounterStreamOptions = { onEncounterEnded };
     const event = makeEvent('encounterEnded', {
       reason: 'all hostiles defeated',
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onEncounterEnded).toHaveBeenCalledTimes(1);
   });
 
   // Death-save arc (rpg-toolkit#742, wave KirkDiggler/rpg-project#75)
   it('routes deathSaveRolled to onDeathSaveRolled', () => {
     const onDeathSaveRolled = vi.fn();
-    const options: EncounterStream2Options = { onDeathSaveRolled };
+    const options: EncounterStreamOptions = { onDeathSaveRolled };
     const event = makeEvent('deathSaveRolled', {
       entityId: 'char-alice',
       roll: 14,
@@ -224,17 +224,17 @@ describe('dispatchEncounterStream2Event', () => {
       regainedConsciousness: false,
       hpRestored: 0,
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onDeathSaveRolled).toHaveBeenCalledTimes(1);
   });
 
   it('routes entityStabilized to onEntityStabilized', () => {
     const onEntityStabilized = vi.fn();
-    const options: EncounterStream2Options = { onEntityStabilized };
+    const options: EncounterStreamOptions = { onEntityStabilized };
     const event = makeEvent('entityStabilized', {
       entityId: 'char-alice',
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onEntityStabilized).toHaveBeenCalledTimes(1);
   });
 
@@ -242,7 +242,7 @@ describe('dispatchEncounterStream2Event', () => {
   // reaction prompts whose reactor is not the action's caller).
   it('routes inputRequiredDelivered to onInputRequiredDelivered', () => {
     const onInputRequiredDelivered = vi.fn();
-    const options: EncounterStream2Options = { onInputRequiredDelivered };
+    const options: EncounterStreamOptions = { onInputRequiredDelivered };
     const event = makeEvent('inputRequiredDelivered', {
       inputRequired: {
         kind: {
@@ -260,7 +260,7 @@ describe('dispatchEncounterStream2Event', () => {
         },
       },
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onInputRequiredDelivered).toHaveBeenCalledTimes(1);
     // First arg is the InputRequiredDelivered payload itself; callers read
     // .inputRequired to extract the prompt for setPendingPrompt.
@@ -273,20 +273,20 @@ describe('dispatchEncounterStream2Event', () => {
   // TakeAction wave (#426): the verb-resolution + live-menu spine.
   it('routes actionResolved to onActionResolved', () => {
     const onActionResolved = vi.fn();
-    const options: EncounterStream2Options = { onActionResolved };
+    const options: EncounterStreamOptions = { onActionResolved };
     const event = makeEvent('actionResolved', {
       actorEntityId: 'char-alice',
       actionRef: { module: 'dnd5e', type: 'combat_abilities', id: 'attack' },
       targetEntityId: 'goblin-1',
       economyConsumed: { actions: 1 },
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onActionResolved).toHaveBeenCalledTimes(1);
   });
 
   it('routes attackResolved to onAttackResolved (including a miss)', () => {
     const onAttackResolved = vi.fn();
-    const options: EncounterStream2Options = { onAttackResolved };
+    const options: EncounterStreamOptions = { onAttackResolved };
     const event = makeEvent('attackResolved', {
       attackerEntityId: 'char-alice',
       targetEntityId: 'goblin-1',
@@ -296,7 +296,7 @@ describe('dispatchEncounterStream2Event', () => {
       attackBonus: 5,
       targetAc: 13,
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onAttackResolved).toHaveBeenCalledTimes(1);
     const arg = onAttackResolved.mock.calls[0]?.[0] as { hit?: boolean };
     expect(arg.hit).toBe(false);
@@ -304,21 +304,21 @@ describe('dispatchEncounterStream2Event', () => {
 
   it('routes turnStateChanged to onTurnStateChanged', () => {
     const onTurnStateChanged = vi.fn();
-    const options: EncounterStream2Options = { onTurnStateChanged };
+    const options: EncounterStreamOptions = { onTurnStateChanged };
     const event = makeEvent('turnStateChanged', {
       turnState: {
         economy: { actionsRemaining: 1, bonusActionsRemaining: 1 },
         availableActions: [],
       },
     });
-    dispatchEncounterStream2Event(event, options);
+    dispatchEncounterStreamEvent(event, options);
     expect(onTurnStateChanged).toHaveBeenCalledTimes(1);
   });
 
   it('logs a warning for unknown event cases without throwing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const event = makeEvent('someUnknownCase' as 'snapshotDelivered', {});
-    expect(() => dispatchEncounterStream2Event(event, {})).not.toThrow();
+    expect(() => dispatchEncounterStreamEvent(event, {})).not.toThrow();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
@@ -328,6 +328,6 @@ describe('dispatchEncounterStream2Event', () => {
       entityId: 'x',
       actualPath: [],
     });
-    expect(() => dispatchEncounterStream2Event(event, {})).not.toThrow();
+    expect(() => dispatchEncounterStreamEvent(event, {})).not.toThrow();
   });
 });

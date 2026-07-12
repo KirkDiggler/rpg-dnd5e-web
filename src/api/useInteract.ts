@@ -2,9 +2,9 @@ import { create } from '@bufbuild/protobuf';
 import type { InteractResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { InteractRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { useCallback, useState } from 'react';
-import { encounterClientV2 } from './client';
+import { encounterClient } from './client';
 
-export interface UseInteractV2Result {
+export interface UseInteractResult {
   /**
    * Calls the v1alpha2 Interact unary RPC. The world-changing effects of the
    * interaction (door opens, hexes revealed, etc.) flow back as separate
@@ -27,9 +27,9 @@ export interface UseInteractV2Result {
  * - error is set on failure, cleared on the next successful call
  * - The returned promise rejects on RPC error so callers can surface it
  *
- * Mirrors useMoveEntityV2 — one file per v1alpha2 verb under src/api/.
+ * Mirrors useMoveEntity — one file per v1alpha2 verb under src/api/.
  */
-export function useInteractV2(): UseInteractV2Result {
+export function useInteract(): UseInteractResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -49,7 +49,7 @@ export function useInteractV2(): UseInteractV2Result {
       });
 
       try {
-        const response = await encounterClientV2.interact(request);
+        const response = await encounterClient.interact(request);
         return response;
       } catch (err) {
         const wrapped =

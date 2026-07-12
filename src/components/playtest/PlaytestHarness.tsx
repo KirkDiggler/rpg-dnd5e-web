@@ -9,14 +9,14 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useRef, useState } from 'react';
 import { v2PositionToV1 } from '../../api/positionConvert';
-import { useActivateFeatureV2 } from '../../api/useActivateFeatureV2';
+import { useActivateFeature } from '../../api/useActivateFeature';
 import { useDevPlayerIdAuth } from '../../api/useDevPlayerIdAuth';
-import { useEncounterStream2 } from '../../api/useEncounterStream2';
-import { useEndTurnV2 } from '../../api/useEndTurnV2';
-import { useInteractV2 } from '../../api/useInteractV2';
-import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
+import { useEncounterStream } from '../../api/useEncounterStream';
+import { useEndTurn } from '../../api/useEndTurn';
+import { useInteract } from '../../api/useInteract';
+import { useMoveEntity } from '../../api/useMoveEntity';
 import { useSetReactionReady } from '../../api/useSetReactionReady';
-import { useTakeActionV2 } from '../../api/useTakeActionV2';
+import { useTakeAction } from '../../api/useTakeAction';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import {
   errorMessage,
@@ -123,22 +123,22 @@ export function PlaytestHarness() {
     moveEntity,
     loading: moveLoading,
     error: moveError,
-  } = useMoveEntityV2();
+  } = useMoveEntity();
   const {
     interact,
     loading: interactLoading,
     error: interactError,
-  } = useInteractV2();
+  } = useInteract();
   const {
     takeAction,
     loading: takeActionLoading,
     error: takeActionError,
-  } = useTakeActionV2();
+  } = useTakeAction();
   const {
     endTurn,
     loading: endTurnLoading,
     error: endTurnError,
-  } = useEndTurnV2();
+  } = useEndTurn();
   // Wave 2.11d: per-character per-reaction readiness toggle. The panel below
   // the prompt section uses this to arm/unarm reactions like Shield + OA.
   const {
@@ -151,7 +151,7 @@ export function PlaytestHarness() {
     activateFeature,
     loading: activateFeatureLoading,
     error: activateFeatureError,
-  } = useActivateFeatureV2();
+  } = useActivateFeature();
 
   // isError styles the entry red in the Recent-events log — used for rejected
   // RPCs (currently TakeAction, #428) so a server rejection is visible in the
@@ -165,7 +165,7 @@ export function PlaytestHarness() {
     setLog((prev) => [entry, ...prev].slice(0, 30));
   };
 
-  const stream = useEncounterStream2(
+  const stream = useEncounterStream(
     playerId ? encounterId : null,
     playerId ?? '',
     {
@@ -175,7 +175,7 @@ export function PlaytestHarness() {
         // active entity, and round — populate those fields so the harness
         // header shows the correct state without waiting for delta events.
         if (e.encounter) {
-          encounterState.applyV2SnapshotTurnState(
+          encounterState.applySnapshotTurnState(
             e.encounter.mode,
             e.encounter.turnState
           );

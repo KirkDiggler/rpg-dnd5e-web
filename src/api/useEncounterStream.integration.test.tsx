@@ -7,7 +7,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEncounterState } from '../hooks/useEncounterState';
 import { hexKey, protoPositionToHex } from '../utils/hexCoord';
-import { createFakeStream, type FakeStream } from './fakeEncounterStream2';
+import { createFakeStream, type FakeStream } from './fakeEncounterStream';
 import { v2PositionToV1 } from './positionConvert';
 
 function makeEvent(caseName: string, value: unknown): EncounterEvent {
@@ -19,12 +19,12 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('./client', () => ({
-  encounterClientV2: {
+  encounterClient: {
     streamEncounter: vi.fn(() => hoisted.fakeRef.current!.iterator),
   },
 }));
 
-import { useEncounterStream2 } from './useEncounterStream2';
+import { useEncounterStream } from './useEncounterStream';
 
 let fake: FakeStream;
 beforeEach(() => {
@@ -42,7 +42,7 @@ afterEach(() => {
  */
 function useTestHarness(encounterId: string) {
   const state = useEncounterState();
-  useEncounterStream2(encounterId, 'alice', {
+  useEncounterStream(encounterId, 'alice', {
     onSnapshotDelivered: () => {
       /* noop — payload empty in slice 1, just a sync barrier */
     },
@@ -96,7 +96,7 @@ function useTestHarness(encounterId: string) {
   return state.state;
 }
 
-describe('useEncounterStream2 + useEncounterState — integration', () => {
+describe('useEncounterStream + useEncounterState — integration', () => {
   it('EntityMoved teleports the entity to last hex of actual_path', async () => {
     const { result } = renderHook(() => useTestHarness('enc-1'));
 

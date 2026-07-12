@@ -11,13 +11,13 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('./client', () => ({
-  encounterClientV2: {
+  encounterClient: {
     takeAction: hoisted.takeActionFn,
   },
 }));
 
 // Import AFTER vi.mock so the mock is applied
-import { useTakeActionV2 } from './useTakeActionV2';
+import { useTakeAction } from './useTakeAction';
 
 beforeEach(() => {
   hoisted.takeActionFn.mockReset();
@@ -29,18 +29,18 @@ const ENTITY_TARGET: ActionTarget = {
   kind: { case: 'entityId', value: 'goblin-1' },
 } as unknown as ActionTarget;
 
-describe('useTakeActionV2', () => {
+describe('useTakeAction', () => {
   it('starts with loading=false and no error', () => {
-    const { result } = renderHook(() => useTakeActionV2());
+    const { result } = renderHook(() => useTakeAction());
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
   });
 
-  it('calls encounterClientV2.takeAction with correct request shape', async () => {
+  it('calls encounterClient.takeAction with correct request shape', async () => {
     const fakeResponse = {} as TakeActionResponse;
     hoisted.takeActionFn.mockResolvedValue(fakeResponse);
 
-    const { result } = renderHook(() => useTakeActionV2());
+    const { result } = renderHook(() => useTakeAction());
 
     let response: TakeActionResponse | undefined;
     await act(async () => {
@@ -81,7 +81,7 @@ describe('useTakeActionV2', () => {
     );
     hoisted.takeActionFn.mockReturnValue(pendingRpc);
 
-    const { result } = renderHook(() => useTakeActionV2());
+    const { result } = renderHook(() => useTakeAction());
 
     // Kick off the takeAction without awaiting
     act(() => {
@@ -105,7 +105,7 @@ describe('useTakeActionV2', () => {
     const rpcError = new Error('not your turn');
     hoisted.takeActionFn.mockRejectedValue(rpcError);
 
-    const { result } = renderHook(() => useTakeActionV2());
+    const { result } = renderHook(() => useTakeAction());
 
     await act(async () => {
       await expect(
@@ -127,7 +127,7 @@ describe('useTakeActionV2', () => {
       .mockRejectedValueOnce(new Error('first fail'))
       .mockResolvedValue({} as TakeActionResponse);
 
-    const { result } = renderHook(() => useTakeActionV2());
+    const { result } = renderHook(() => useTakeAction());
 
     // First call fails
     await act(async () => {

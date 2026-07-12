@@ -2,7 +2,7 @@ import { create } from '@bufbuild/protobuf';
 import type { SubmitCheckResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { SubmitCheckRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { useCallback, useState } from 'react';
-import { encounterClientV2 } from './client';
+import { encounterClient } from './client';
 
 /**
  * Input shape for SubmitCheck. The `roll` field carries the d20 result for
@@ -10,7 +10,7 @@ import { encounterClientV2 } from './client';
  * (true=take, false=skip). Pass `roll: 0` (ignored) when responding to a
  * reaction prompt.
  */
-export interface UseSubmitCheckV2Input {
+export interface UseSubmitCheckInput {
   encounterId: string;
   entityId: string;
   /** Skill-check: required. Reaction-check: ignored (pass 0). */
@@ -19,7 +19,7 @@ export interface UseSubmitCheckV2Input {
   takeReaction?: boolean;
 }
 
-export interface UseSubmitCheckV2Result {
+export interface UseSubmitCheckResult {
   /**
    * Calls the v1alpha2 SubmitCheck unary RPC. Resolves the caller's currently-
    * pending InputRequired prompt. The server tracks the pending prompt as
@@ -38,7 +38,7 @@ export interface UseSubmitCheckV2Result {
    * `lastResponse` is populated on success so the harness can render the
    * outcome transiently before clearing the prompt.
    */
-  submitCheck: (input: UseSubmitCheckV2Input) => Promise<SubmitCheckResponse>;
+  submitCheck: (input: UseSubmitCheckInput) => Promise<SubmitCheckResponse>;
   loading: boolean;
   error: Error | null;
   lastResponse: SubmitCheckResponse | null;
@@ -52,9 +52,9 @@ export interface UseSubmitCheckV2Result {
  * - lastResponse holds the most recent successful response for transient display
  * - The returned promise rejects on RPC error so callers can surface it
  *
- * Mirrors useInteractV2 — one file per v1alpha2 verb under src/api/.
+ * Mirrors useInteract — one file per v1alpha2 verb under src/api/.
  */
-export function useSubmitCheckV2(): UseSubmitCheckV2Result {
+export function useSubmitCheck(): UseSubmitCheckResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [lastResponse, setLastResponse] = useState<SubmitCheckResponse | null>(
@@ -62,7 +62,7 @@ export function useSubmitCheckV2(): UseSubmitCheckV2Result {
   );
 
   const submitCheck = useCallback(
-    async (input: UseSubmitCheckV2Input): Promise<SubmitCheckResponse> => {
+    async (input: UseSubmitCheckInput): Promise<SubmitCheckResponse> => {
       setLoading(true);
       setError(null);
 
@@ -85,7 +85,7 @@ export function useSubmitCheckV2(): UseSubmitCheckV2Result {
       const request = create(SubmitCheckRequestSchema, requestFields);
 
       try {
-        const response = await encounterClientV2.submitCheck(request);
+        const response = await encounterClient.submitCheck(request);
         setLastResponse(response);
         return response;
       } catch (err) {

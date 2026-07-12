@@ -2,9 +2,9 @@ import { create } from '@bufbuild/protobuf';
 import type { EndTurnResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { EndTurnRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { useCallback, useState } from 'react';
-import { encounterClientV2 } from './client';
+import { encounterClient } from './client';
 
-export interface UseEndTurnV2Result {
+export interface UseEndTurnResult {
   /**
    * Calls the v1alpha2 EndTurn unary RPC. The next actor's turn (and any NPC
    * turns the orchestrator dispatches before returning to a player) flow back
@@ -22,10 +22,10 @@ export interface UseEndTurnV2Result {
  * - error is set on failure, cleared on the next successful call
  * - The returned promise rejects on RPC error so callers can surface it
  *
- * Mirrors useMoveEntityV2 / useInteractV2 — one file per v1alpha2 verb under
+ * Mirrors useMoveEntity / useInteract — one file per v1alpha2 verb under
  * src/api/.
  */
-export function useEndTurnV2(): UseEndTurnV2Result {
+export function useEndTurn(): UseEndTurnResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -40,7 +40,7 @@ export function useEndTurnV2(): UseEndTurnV2Result {
       });
 
       try {
-        const response = await encounterClientV2.endTurn(request);
+        const response = await encounterClient.endTurn(request);
         return response;
       } catch (err) {
         const wrapped =

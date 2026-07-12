@@ -8,13 +8,13 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('./client', () => ({
-  encounterClientV2: {
+  encounterClient: {
     activateFeature: hoisted.activateFeatureFn,
   },
 }));
 
 // Import AFTER vi.mock so the mock is applied
-import { useActivateFeatureV2 } from './useActivateFeatureV2';
+import { useActivateFeature } from './useActivateFeature';
 
 beforeEach(() => {
   hoisted.activateFeatureFn.mockReset();
@@ -26,18 +26,18 @@ const RAGE_REF = {
   id: 'rage',
 } as const;
 
-describe('useActivateFeatureV2', () => {
+describe('useActivateFeature', () => {
   it('starts with loading=false and no error', () => {
-    const { result } = renderHook(() => useActivateFeatureV2());
+    const { result } = renderHook(() => useActivateFeature());
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
   });
 
-  it('calls encounterClientV2.activateFeature with correct request shape', async () => {
+  it('calls encounterClient.activateFeature with correct request shape', async () => {
     const fakeResponse = {} as ActivateFeatureResponse;
     hoisted.activateFeatureFn.mockResolvedValue(fakeResponse);
 
-    const { result } = renderHook(() => useActivateFeatureV2());
+    const { result } = renderHook(() => useActivateFeature());
 
     let response: ActivateFeatureResponse | undefined;
     await act(async () => {
@@ -71,7 +71,7 @@ describe('useActivateFeatureV2', () => {
     );
     hoisted.activateFeatureFn.mockReturnValue(pendingRpc);
 
-    const { result } = renderHook(() => useActivateFeatureV2());
+    const { result } = renderHook(() => useActivateFeature());
 
     act(() => {
       void result.current.activateFeature({
@@ -92,7 +92,7 @@ describe('useActivateFeatureV2', () => {
     const rpcError = new Error('not enough rage charges');
     hoisted.activateFeatureFn.mockRejectedValue(rpcError);
 
-    const { result } = renderHook(() => useActivateFeatureV2());
+    const { result } = renderHook(() => useActivateFeature());
 
     await act(async () => {
       await expect(
@@ -113,7 +113,7 @@ describe('useActivateFeatureV2', () => {
       .mockRejectedValueOnce(new Error('first fail'))
       .mockResolvedValue({} as ActivateFeatureResponse);
 
-    const { result } = renderHook(() => useActivateFeatureV2());
+    const { result } = renderHook(() => useActivateFeature());
 
     // First call fails
     await act(async () => {

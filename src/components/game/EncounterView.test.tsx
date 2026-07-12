@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createFakeStream,
   type FakeStream,
-} from '../../api/fakeEncounterStream2';
+} from '../../api/fakeEncounterStream';
 
 function makeEvent(caseName: string, value: unknown): EncounterEvent {
   return { event: { case: caseName, value } } as unknown as EncounterEvent;
@@ -24,7 +24,7 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/client', () => ({
-  encounterClientV2: {
+  encounterClient: {
     streamEncounter: vi.fn(() => {
       if (!hoisted.fakeRef.current) {
         throw new Error('fakeRef.current is null — set it in beforeEach');

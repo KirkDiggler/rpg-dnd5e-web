@@ -11,7 +11,7 @@ import type {
 
 /**
  * Per-event-type callbacks for the lobby stream. Mirrors
- * encounterStream2Dispatch's shape — one optional callback per oneof case.
+ * encounterStreamDispatch's shape — one optional callback per oneof case.
  *
  * Unlike EncounterEvent, LobbyEvent carries no envelope (sequence,
  * timestamp, correlation_id) — the lobby has no causation chains to

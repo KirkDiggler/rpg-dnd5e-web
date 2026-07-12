@@ -2,9 +2,9 @@ import { create } from '@bufbuild/protobuf';
 import type { ActivateFeatureResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { ActivateFeatureRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { useCallback, useState } from 'react';
-import { encounterClientV2 } from './client';
+import { encounterClient } from './client';
 
-/** Plain {module,type,id} for a feature Ref — mirrors PlainRef in useTakeActionV2. */
+/** Plain {module,type,id} for a feature Ref — mirrors PlainRef in useTakeAction. */
 export interface PlainRef {
   module: string;
   type: string;
@@ -18,7 +18,7 @@ export interface ActivateFeatureParams {
   featureRef: PlainRef;
 }
 
-export interface UseActivateFeatureV2Result {
+export interface UseActivateFeatureResult {
   /**
    * Calls the v1alpha2 ActivateFeature unary RPC. The world-changing effects
    * (condition applied, charges decremented, action consumed) flow back as
@@ -38,10 +38,10 @@ export interface UseActivateFeatureV2Result {
  * - error is set on failure, cleared on the next successful call
  * - The returned promise rejects on RPC error so callers can surface it
  *
- * Mirrors useTakeActionV2 / useEndTurnV2 — one file per v1alpha2 verb under
+ * Mirrors useTakeAction / useEndTurn — one file per v1alpha2 verb under
  * src/api/.
  */
-export function useActivateFeatureV2(): UseActivateFeatureV2Result {
+export function useActivateFeature(): UseActivateFeatureResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -57,7 +57,7 @@ export function useActivateFeatureV2(): UseActivateFeatureV2Result {
       });
 
       try {
-        const response = await encounterClientV2.activateFeature(request);
+        const response = await encounterClient.activateFeature(request);
         return response;
       } catch (err) {
         const wrapped =

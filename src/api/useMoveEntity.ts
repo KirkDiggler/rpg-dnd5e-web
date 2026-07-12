@@ -6,16 +6,16 @@ import {
   type Position,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useState } from 'react';
-import { encounterClientV2 } from './client';
+import { encounterClient } from './client';
 
-/** Plain {x,y,z} accepted by useMoveEntityV2 — hook constructs the proto Position internally. */
+/** Plain {x,y,z} accepted by useMoveEntity — hook constructs the proto Position internally. */
 export interface PlainPosition {
   x: number;
   y: number;
   z: number;
 }
 
-export interface UseMoveEntityV2Result {
+export interface UseMoveEntityResult {
   moveEntity: (
     encounterId: string,
     entityId: string,
@@ -33,7 +33,7 @@ export interface UseMoveEntityV2Result {
  * - error is set on failure, cleared on the next successful call
  * - The returned promise rejects on RPC error so callers can surface it
  */
-export function useMoveEntityV2(): UseMoveEntityV2Result {
+export function useMoveEntity(): UseMoveEntityResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -57,7 +57,7 @@ export function useMoveEntityV2(): UseMoveEntityV2Result {
       });
 
       try {
-        const response = await encounterClientV2.moveEntity(request);
+        const response = await encounterClient.moveEntity(request);
         return response;
       } catch (err) {
         const wrapped =

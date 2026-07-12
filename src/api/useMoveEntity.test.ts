@@ -8,30 +8,30 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('./client', () => ({
-  encounterClientV2: {
+  encounterClient: {
     moveEntity: hoisted.moveEntityFn,
   },
 }));
 
 // Import AFTER vi.mock so the mock is applied
-import { useMoveEntityV2 } from './useMoveEntityV2';
+import { useMoveEntity } from './useMoveEntity';
 
 beforeEach(() => {
   hoisted.moveEntityFn.mockReset();
 });
 
-describe('useMoveEntityV2', () => {
+describe('useMoveEntity', () => {
   it('starts with loading=false and no error', () => {
-    const { result } = renderHook(() => useMoveEntityV2());
+    const { result } = renderHook(() => useMoveEntity());
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
   });
 
-  it('calls encounterClientV2.moveEntity with correct request shape', async () => {
+  it('calls encounterClient.moveEntity with correct request shape', async () => {
     const fakeResponse = {} as MoveEntityResponse;
     hoisted.moveEntityFn.mockResolvedValue(fakeResponse);
 
-    const { result } = renderHook(() => useMoveEntityV2());
+    const { result } = renderHook(() => useMoveEntity());
 
     let response: MoveEntityResponse | undefined;
     await act(async () => {
@@ -65,7 +65,7 @@ describe('useMoveEntityV2', () => {
     );
     hoisted.moveEntityFn.mockReturnValue(pendingRpc);
 
-    const { result } = renderHook(() => useMoveEntityV2());
+    const { result } = renderHook(() => useMoveEntity());
 
     // Kick off the move without awaiting
     act(() => {
@@ -84,7 +84,7 @@ describe('useMoveEntityV2', () => {
     const rpcError = new Error('transport error');
     hoisted.moveEntityFn.mockRejectedValue(rpcError);
 
-    const { result } = renderHook(() => useMoveEntityV2());
+    const { result } = renderHook(() => useMoveEntity());
 
     await act(async () => {
       await expect(
@@ -101,7 +101,7 @@ describe('useMoveEntityV2', () => {
       .mockRejectedValueOnce(new Error('first fail'))
       .mockResolvedValue({} as MoveEntityResponse);
 
-    const { result } = renderHook(() => useMoveEntityV2());
+    const { result } = renderHook(() => useMoveEntity());
 
     // First call fails
     await act(async () => {

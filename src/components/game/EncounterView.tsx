@@ -2,7 +2,7 @@
  * EncounterView — GameView slice 2's live-combat surface (#440). Mounts when
  * LobbyFlow's StreamLobby delivers encounter_started. Built entirely on the
  * shared harness stack (design.md: "Already shared or generic"):
- * useEncounterStream2 + useEncounterState for the SnapshotDelivered-first
+ * useEncounterStream + useEncounterState for the SnapshotDelivered-first
  * flow, ActionMenu/EconomyBar rendered verbatim off the server-pushed
  * TurnState, EncounterMap (HexGrid) for movement/targeting, and PromptModal
  * for skill-check/reaction prompts — the same component PlaytestHarness
@@ -34,10 +34,10 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useState } from 'react';
 import { v2PositionToV1 } from '../../api/positionConvert';
-import { useEncounterStream2 } from '../../api/useEncounterStream2';
-import { useEndTurnV2 } from '../../api/useEndTurnV2';
-import { useMoveEntityV2 } from '../../api/useMoveEntityV2';
-import { useTakeActionV2 } from '../../api/useTakeActionV2';
+import { useEncounterStream } from '../../api/useEncounterStream';
+import { useEndTurn } from '../../api/useEndTurn';
+import { useMoveEntity } from '../../api/useMoveEntity';
+import { useTakeAction } from '../../api/useTakeAction';
 import { useCombatLog } from '../../hooks/useCombatLog';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { errorMessage, formatStatusBadges } from '../../utils/combatFormat';
@@ -87,22 +87,22 @@ export function EncounterView({
   // same primary-loop shortcut PlaytestMap's VisualAttack click gives the
   // harness.
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
-  const { moveEntity, error: moveError } = useMoveEntityV2();
+  const { moveEntity, error: moveError } = useMoveEntity();
   const {
     takeAction,
     loading: takeActionLoading,
     error: takeActionError,
-  } = useTakeActionV2();
+  } = useTakeAction();
   const {
     endTurn,
     loading: endTurnLoading,
     error: endTurnError,
-  } = useEndTurnV2();
+  } = useEndTurn();
 
-  const stream = useEncounterStream2(encounterId, playerId, {
+  const stream = useEncounterStream(encounterId, playerId, {
     onSnapshotDelivered: (e) => {
       if (e.encounter) {
-        encounterState.applyV2SnapshotTurnState(
+        encounterState.applySnapshotTurnState(
           e.encounter.mode,
           e.encounter.turnState
         );
@@ -379,7 +379,7 @@ export function EncounterView({
           entityHP={encounterState.state.entityHP}
           // Gate by mode: applyModeChanged only flips `mode`, it doesn't
           // clear initiativeOrder/activeEntityId (only the next snapshot's
-          // applyV2SnapshotTurnState does that) — without this gate a
+          // applySnapshotTurnState does that) — without this gate a
           // ModeChanged away from TURN_BASED could leave the turn-order
           // overlay showing stale initiative data until the next snapshot.
           initiativeOrder={

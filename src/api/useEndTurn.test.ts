@@ -8,30 +8,30 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('./client', () => ({
-  encounterClientV2: {
+  encounterClient: {
     endTurn: hoisted.endTurnFn,
   },
 }));
 
 // Import AFTER vi.mock so the mock is applied
-import { useEndTurnV2 } from './useEndTurnV2';
+import { useEndTurn } from './useEndTurn';
 
 beforeEach(() => {
   hoisted.endTurnFn.mockReset();
 });
 
-describe('useEndTurnV2', () => {
+describe('useEndTurn', () => {
   it('starts with loading=false and no error', () => {
-    const { result } = renderHook(() => useEndTurnV2());
+    const { result } = renderHook(() => useEndTurn());
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
   });
 
-  it('calls encounterClientV2.endTurn with correct request shape', async () => {
+  it('calls encounterClient.endTurn with correct request shape', async () => {
     const fakeResponse = {} as EndTurnResponse;
     hoisted.endTurnFn.mockResolvedValue(fakeResponse);
 
-    const { result } = renderHook(() => useEndTurnV2());
+    const { result } = renderHook(() => useEndTurn());
 
     let response: EndTurnResponse | undefined;
     await act(async () => {
@@ -56,7 +56,7 @@ describe('useEndTurnV2', () => {
     );
     hoisted.endTurnFn.mockReturnValue(pendingRpc);
 
-    const { result } = renderHook(() => useEndTurnV2());
+    const { result } = renderHook(() => useEndTurn());
 
     // Kick off the endTurn without awaiting
     act(() => {
@@ -75,7 +75,7 @@ describe('useEndTurnV2', () => {
     const rpcError = new Error('not your turn');
     hoisted.endTurnFn.mockRejectedValue(rpcError);
 
-    const { result } = renderHook(() => useEndTurnV2());
+    const { result } = renderHook(() => useEndTurn());
 
     await act(async () => {
       await expect(
@@ -92,7 +92,7 @@ describe('useEndTurnV2', () => {
       .mockRejectedValueOnce(new Error('first fail'))
       .mockResolvedValue({} as EndTurnResponse);
 
-    const { result } = renderHook(() => useEndTurnV2());
+    const { result } = renderHook(() => useEndTurn());
 
     // First call fails
     await act(async () => {

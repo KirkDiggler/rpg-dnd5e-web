@@ -388,7 +388,7 @@ export function applyEntityMetaFromAppeared(
  * initiative-order fields are cleared to prevent stale combat data from
  * showing in the UI after an encounter exits TURN_BASED mode. Exported for testing.
  */
-export function applyV2SnapshotTurnState(
+export function applySnapshotTurnState(
   prev: LocalEncounterState,
   encounterMode: EncounterMode,
   turnState: TurnState | undefined
@@ -811,7 +811,7 @@ export interface UseEncounterStateResult {
    * server-authored menu/economy (turnState) so the menu renders at turn start
    * before the first TurnStateChanged push (TakeAction wave #426).
    */
-  applyV2SnapshotTurnState: (
+  applySnapshotTurnState: (
     encounterMode: EncounterMode,
     turnState: TurnState | undefined
   ) => void;
@@ -946,10 +946,10 @@ export function useEncounterState(): UseEncounterStateResult {
     []
   );
 
-  const applyV2SnapshotTurnStateCallback = useCallback(
+  const applySnapshotTurnStateCallback = useCallback(
     (encounterMode: EncounterMode, turnState: TurnState | undefined) => {
       setState((prev) =>
-        applyV2SnapshotTurnState(prev, encounterMode, turnState)
+        applySnapshotTurnState(prev, encounterMode, turnState)
       );
     },
     []
@@ -1024,7 +1024,7 @@ export function useEncounterState(): UseEncounterStateResult {
     applyDoorOpened: applyDoorOpenedCallback,
     applyEntityMeta: applyEntityMetaCallback,
     applyEntityAppearedBatch: applyEntityAppearedBatchCallback,
-    applyV2SnapshotTurnState: applyV2SnapshotTurnStateCallback,
+    applySnapshotTurnState: applySnapshotTurnStateCallback,
     setPendingPrompt: setPendingPromptCallback,
     setReactionReadyLocal: setReactionReadyLocalCallback,
     applyEntityDamaged: applyEntityDamagedCallback,

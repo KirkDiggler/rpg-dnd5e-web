@@ -1,7 +1,7 @@
 import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createFakeStream, type FakeStream } from './fakeEncounterStream2';
+import { createFakeStream, type FakeStream } from './fakeEncounterStream';
 import { RECONNECT_CONFIG } from './streamReconnect';
 
 function makeEvent(caseName: string, value: unknown): EncounterEvent {
@@ -28,7 +28,7 @@ const hoisted = vi.hoisted(() => {
 
 vi.mock('./client', () => {
   return {
-    encounterClientV2: {
+    encounterClient: {
       streamEncounter: vi.fn(() => {
         if (hoisted.streamQueue.length > 0) {
           return hoisted.streamQueue.shift()!.iterator;
@@ -45,8 +45,8 @@ vi.mock('./client', () => {
 });
 
 // Import the hook AFTER vi.mock so the mock is applied
-import { encounterClientV2 } from './client';
-import { useEncounterStream2 } from './useEncounterStream2';
+import { encounterClient } from './client';
+import { useEncounterStream } from './useEncounterStream';
 
 let fake: FakeStream;
 
@@ -54,7 +54,7 @@ beforeEach(() => {
   fake = createFakeStream();
   hoisted.fakeRef.current = fake;
   hoisted.streamQueue = [];
-  vi.mocked(encounterClientV2.streamEncounter).mockClear();
+  vi.mocked(encounterClient.streamEncounter).mockClear();
 });
 
 afterEach(() => {
@@ -65,11 +65,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('useEncounterStream2', () => {
+describe('useEncounterStream', () => {
   it('transitions to connected after the first SnapshotDelivered', async () => {
     const onSnapshotDelivered = vi.fn();
     const { result } = renderHook(() =>
-      useEncounterStream2('enc-1', 'alice', { onSnapshotDelivered })
+      useEncounterStream('enc-1', 'alice', { onSnapshotDelivered })
     );
 
     expect(result.current.connectionState).toBe('connecting');
@@ -87,7 +87,7 @@ describe('useEncounterStream2', () => {
   it('dispatches subsequent events through their typed callbacks', async () => {
     const onEntityMoved = vi.fn();
     const { result } = renderHook(() =>
-      useEncounterStream2('enc-1', 'alice', { onEntityMoved })
+      useEncounterStream('enc-1', 'alice', { onEntityMoved })
     );
 
     act(() => {
@@ -112,7 +112,7 @@ describe('useEncounterStream2', () => {
 
   it('does not transition to connected before SnapshotDelivered arrives', async () => {
     const { result } = renderHook(() =>
-      useEncounterStream2('enc-1', 'alice', {})
+      useEncounterStream('enc-1', 'alice', {})
     );
     await new Promise((r) => setTimeout(r, 10));
     expect(result.current.connectionState).toBe('connecting');
@@ -122,7 +122,7 @@ describe('useEncounterStream2', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const onEntityMoved = vi.fn();
     const { result } = renderHook(() =>
-      useEncounterStream2('enc-1', 'alice', { onEntityMoved })
+      useEncounterStream('enc-1', 'alice', { onEntityMoved })
     );
 
     act(() => {
@@ -141,14 +141,14 @@ describe('useEncounterStream2', () => {
 
   it('aborts cleanly on unmount', () => {
     const { unmount, result } = renderHook(() =>
-      useEncounterStream2('enc-1', 'alice', {})
+      useEncounterStream('enc-1', 'alice', {})
     );
     expect(result.current.connectionState).toBe('connecting');
     unmount();
   });
 
   it('handles encounterId === null by staying idle', () => {
-    const { result } = renderHook(() => useEncounterStream2(null, 'alice', {}));
+    const { result } = renderHook(() => useEncounterStream(null, 'alice', {}));
     expect(result.current.connectionState).toBe('idle');
   });
 
@@ -160,7 +160,7 @@ describe('useEncounterStream2', () => {
     // React Testing Library + Vitest fake-timers combination, not a test bug.
     vi.useFakeTimers();
     const { result } = renderHook(() =>
-      useEncounterStream2('enc-1', 'alice', {})
+      useEncounterStream('enc-1', 'alice', {})
     );
 
     act(() => {
@@ -194,7 +194,7 @@ describe('useEncounterStream2', () => {
   it('schedules a reconnect when the stream aborts before the first snapshot arrives', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() =>
-      useEncounterStream2('enc-1', 'alice', {})
+      useEncounterStream('enc-1', 'alice', {})
     );
     expect(result.current.connectionState).toBe('connecting');
 
@@ -215,9 +215,9 @@ describe('useEncounterStream2', () => {
     await vi.waitFor(() => {
       expect(result.current.connectionState).toBe('connecting');
     });
-    expect(
-      vi.mocked(encounterClientV2.streamEncounter).mock.calls
-    ).toHaveLength(2);
+    expect(vi.mocked(encounterClient.streamEncounter).mock.calls).toHaveLength(
+      2
+    );
 
     vi.useRealTimers();
   });
@@ -225,7 +225,7 @@ describe('useEncounterStream2', () => {
   it('does not schedule a reconnect when unmounted before the first snapshot arrives', async () => {
     vi.useFakeTimers();
     const { unmount, result } = renderHook(() =>
-      useEncounterStream2('enc-1', 'alice', {})
+      useEncounterStream('enc-1', 'alice', {})
     );
     expect(result.current.connectionState).toBe('connecting');
 
@@ -238,9 +238,9 @@ describe('useEncounterStream2', () => {
       await vi.advanceTimersByTimeAsync(RECONNECT_CONFIG.maxDelayMs + 1000);
     });
 
-    expect(
-      vi.mocked(encounterClientV2.streamEncounter).mock.calls
-    ).toHaveLength(1);
+    expect(vi.mocked(encounterClient.streamEncounter).mock.calls).toHaveLength(
+      1
+    );
 
     vi.useRealTimers();
   });
@@ -260,7 +260,7 @@ describe('useEncounterStream2', () => {
 
     const { result, rerender } = renderHook(
       ({ playerId }: { playerId: string }) =>
-        useEncounterStream2('enc-1', playerId, {}),
+        useEncounterStream('enc-1', playerId, {}),
       { initialProps: { playerId: 'alice' } }
     );
     rerender({ playerId: 'bob' });
@@ -268,9 +268,9 @@ describe('useEncounterStream2', () => {
     // Both connect() attempts fired synchronously (churn), and only the
     // second is still live.
     expect(hoisted.streamQueue).toHaveLength(0);
-    expect(
-      vi.mocked(encounterClientV2.streamEncounter).mock.calls
-    ).toHaveLength(2);
+    expect(vi.mocked(encounterClient.streamEncounter).mock.calls).toHaveLength(
+      2
+    );
 
     // The stale first attempt's belated rejection must not touch state or
     // arm a zombie reconnect that would clobber the live (second) stream.
@@ -278,9 +278,9 @@ describe('useEncounterStream2', () => {
       first.error(abortError());
       await vi.advanceTimersByTimeAsync(RECONNECT_CONFIG.maxDelayMs + 1000);
     });
-    expect(
-      vi.mocked(encounterClientV2.streamEncounter).mock.calls
-    ).toHaveLength(2); // no 3rd, zombie call from the stale attempt
+    expect(vi.mocked(encounterClient.streamEncounter).mock.calls).toHaveLength(
+      2
+    ); // no 3rd, zombie call from the stale attempt
 
     // The live (second) attempt is unaffected and still reaches 'connected'.
     act(() => {

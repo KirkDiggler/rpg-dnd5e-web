@@ -43,7 +43,7 @@ import type {
  * `StatusApplied` (conditions). The live action menu + economy ride
  * `TurnStateChanged` (TakeAction wave #426).
  */
-export interface EncounterStream2Options {
+export interface EncounterStreamOptions {
   /** slice-1: encounter field is empty; treat as connect-confirm only. */
   onSnapshotDelivered?: (event: SnapshotDelivered) => void;
   onEntityMoved?: (event: EntityMoved) => void;
@@ -143,9 +143,9 @@ export interface EncounterStream2Options {
  * Pure function; no side effects beyond callback invocation + a console.warn
  * on unknown event cases (gap to file as a toolkit/proto issue).
  */
-export function dispatchEncounterStream2Event(
+export function dispatchEncounterStreamEvent(
   event: EncounterEvent,
-  options: EncounterStream2Options
+  options: EncounterStreamOptions
 ): void {
   const payload = event.event;
   switch (payload.case) {
@@ -220,7 +220,7 @@ export function dispatchEncounterStream2Event(
       // tear down. Add a case arm + callback when the feature lands.
       // The cast strips the narrowed-to-undefined `case` so we can log it.
       console.warn(
-        '[useEncounterStream2] unhandled event case:',
+        '[useEncounterStream] unhandled event case:',
         (payload as { case?: string }).case
       );
   }

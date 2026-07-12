@@ -31,11 +31,11 @@ import {
   AvailableActionSchema,
   EconomySlot,
   EncounterMode,
-  EntityType as EntityTypeV2,
+  EntityType,
   InputRequiredSchema,
   SkillCheckPromptSchema,
   TargetKind,
-  TurnStateSchema as TurnStateSchemaV2,
+  TurnStateSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
@@ -51,12 +51,12 @@ import {
   applyEntityRemoved,
   applyHexRevealed,
   applyModeChanged,
+  applySnapshotTurnState,
   applyStatusApplied,
   applyStatusRemoved,
   applyTurnEnded,
   applyTurnStarted,
   applyTurnStateChanged,
-  applyV2SnapshotTurnState,
   createEmptyEncounterState,
   mergeEntityPosition,
   setPendingPromptReducer,
@@ -766,13 +766,13 @@ describe('applyEntityMetaFromAppeared', () => {
     const after = applyEntityMetaFromAppeared(
       prev,
       'goblin-1',
-      EntityTypeV2.MONSTER,
+      EntityType.MONSTER,
       'goblin',
       undefined,
       undefined
     );
     const meta = after.entityMeta.get('goblin-1');
-    expect(meta?.type).toBe(EntityTypeV2.MONSTER);
+    expect(meta?.type).toBe(EntityType.MONSTER);
     expect(meta?.monsterRefId).toBe('goblin');
   });
 
@@ -781,13 +781,13 @@ describe('applyEntityMetaFromAppeared', () => {
     const after = applyEntityMetaFromAppeared(
       prev,
       'char-alice',
-      EntityTypeV2.CHARACTER,
+      EntityType.CHARACTER,
       undefined,
       undefined,
       undefined
     );
     const meta = after.entityMeta.get('char-alice');
-    expect(meta?.type).toBe(EntityTypeV2.CHARACTER);
+    expect(meta?.type).toBe(EntityType.CHARACTER);
     expect(meta?.monsterRefId).toBeUndefined();
   });
 
@@ -796,7 +796,7 @@ describe('applyEntityMetaFromAppeared', () => {
     const after = applyEntityMetaFromAppeared(
       prev,
       'goblin-1',
-      EntityTypeV2.MONSTER,
+      EntityType.MONSTER,
       'goblin',
       { current: 7, max: 7 },
       undefined
@@ -809,7 +809,7 @@ describe('applyEntityMetaFromAppeared', () => {
     const after = applyEntityMetaFromAppeared(
       prev,
       'goblin-1',
-      EntityTypeV2.MONSTER,
+      EntityType.MONSTER,
       'goblin',
       undefined,
       undefined
@@ -822,7 +822,7 @@ describe('applyEntityMetaFromAppeared', () => {
     state = applyEntityMetaFromAppeared(
       state,
       'goblin-1',
-      EntityTypeV2.MONSTER,
+      EntityType.MONSTER,
       'goblin',
       undefined,
       undefined
@@ -830,7 +830,7 @@ describe('applyEntityMetaFromAppeared', () => {
     state = applyEntityMetaFromAppeared(
       state,
       'goblin-1',
-      EntityTypeV2.MONSTER,
+      EntityType.MONSTER,
       'hobgoblin',
       { current: 11, max: 11 },
       undefined
@@ -844,7 +844,7 @@ describe('applyEntityMetaFromAppeared', () => {
     applyEntityMetaFromAppeared(
       prev,
       'goblin-1',
-      EntityTypeV2.MONSTER,
+      EntityType.MONSTER,
       'goblin',
       { current: 5, max: 7 },
       undefined
@@ -858,7 +858,7 @@ describe('applyEntityMetaFromAppeared', () => {
     state = applyEntityMetaFromAppeared(
       state,
       'char-alice',
-      EntityTypeV2.CHARACTER,
+      EntityType.CHARACTER,
       undefined,
       undefined,
       undefined
@@ -866,16 +866,14 @@ describe('applyEntityMetaFromAppeared', () => {
     state = applyEntityMetaFromAppeared(
       state,
       'goblin-1',
-      EntityTypeV2.MONSTER,
+      EntityType.MONSTER,
       'goblin',
       undefined,
       undefined
     );
     expect(state.entityMeta.size).toBe(2);
-    expect(state.entityMeta.get('char-alice')?.type).toBe(
-      EntityTypeV2.CHARACTER
-    );
-    expect(state.entityMeta.get('goblin-1')?.type).toBe(EntityTypeV2.MONSTER);
+    expect(state.entityMeta.get('char-alice')?.type).toBe(EntityType.CHARACTER);
+    expect(state.entityMeta.get('goblin-1')?.type).toBe(EntityType.MONSTER);
   });
 
   it('seeds entityAC from v2 Entity.armor_class', () => {
@@ -883,7 +881,7 @@ describe('applyEntityMetaFromAppeared', () => {
     const after = applyEntityMetaFromAppeared(
       prev,
       'char-charli',
-      EntityTypeV2.CHARACTER,
+      EntityType.CHARACTER,
       undefined,
       { current: 12, max: 12 },
       15
@@ -896,7 +894,7 @@ describe('applyEntityMetaFromAppeared', () => {
     const after = applyEntityMetaFromAppeared(
       prev,
       'char-charli',
-      EntityTypeV2.CHARACTER,
+      EntityType.CHARACTER,
       undefined,
       undefined,
       undefined
@@ -905,13 +903,13 @@ describe('applyEntityMetaFromAppeared', () => {
   });
 });
 
-describe('applyV2SnapshotTurnState', () => {
+describe('applySnapshotTurnState', () => {
   it('sets initiativeOrder, activeEntityId, round, and mode from snapshot turn state', () => {
     const prev = createEmptyEncounterState();
-    const after = applyV2SnapshotTurnState(
+    const after = applySnapshotTurnState(
       prev,
       EncounterMode.TURN_BASED,
-      create(TurnStateSchemaV2, {
+      create(TurnStateSchema, {
         initiativeOrder: ['char-alice', 'goblin-1'],
         activeEntityId: 'char-alice',
         round: 1,
@@ -927,7 +925,7 @@ describe('applyV2SnapshotTurnState', () => {
     // When the snapshot indicates a non-TURN_BASED mode (or TURN_BASED without
     // a turnState), combat fields are cleared to prevent stale initiative data.
     const prev = createEmptyEncounterState();
-    const after = applyV2SnapshotTurnState(
+    const after = applySnapshotTurnState(
       prev,
       EncounterMode.FREE_ROAM,
       undefined
@@ -942,16 +940,16 @@ describe('applyV2SnapshotTurnState', () => {
     // Regression guard: a prior combat session sets initiative/active/round;
     // a FREE_ROAM snapshot must clear those so the UI does not show old data.
     let state = createEmptyEncounterState();
-    state = applyV2SnapshotTurnState(
+    state = applySnapshotTurnState(
       state,
       EncounterMode.TURN_BASED,
-      create(TurnStateSchemaV2, {
+      create(TurnStateSchema, {
         initiativeOrder: ['char-alice', 'goblin-1'],
         activeEntityId: 'char-alice',
         round: 2,
       })
     );
-    const after = applyV2SnapshotTurnState(
+    const after = applySnapshotTurnState(
       state,
       EncounterMode.FREE_ROAM,
       undefined
@@ -965,7 +963,7 @@ describe('applyV2SnapshotTurnState', () => {
   it('returns same reference when mode and turnState are both unchanged (no-op)', () => {
     const prev = createEmptyEncounterState();
     // prev.mode is UNSPECIFIED and turnState is undefined — no change
-    const after = applyV2SnapshotTurnState(
+    const after = applySnapshotTurnState(
       prev,
       EncounterMode.UNSPECIFIED,
       undefined
@@ -980,10 +978,10 @@ describe('applyV2SnapshotTurnState', () => {
       prev,
       makeStatusApplied('char-alice', 'dnd5e', 'condition', 'poisoned')
     );
-    const after = applyV2SnapshotTurnState(
+    const after = applySnapshotTurnState(
       prev,
       EncounterMode.TURN_BASED,
-      create(TurnStateSchemaV2, {
+      create(TurnStateSchema, {
         initiativeOrder: ['char-alice', 'goblin-1'],
         activeEntityId: 'char-alice',
         round: 1,
@@ -995,10 +993,10 @@ describe('applyV2SnapshotTurnState', () => {
 
   it('does not mutate the previous state', () => {
     const prev = createEmptyEncounterState();
-    applyV2SnapshotTurnState(
+    applySnapshotTurnState(
       prev,
       EncounterMode.TURN_BASED,
-      create(TurnStateSchemaV2, {
+      create(TurnStateSchema, {
         initiativeOrder: ['goblin-1'],
         activeEntityId: 'goblin-1',
         round: 1,
@@ -1012,7 +1010,7 @@ describe('applyV2SnapshotTurnState', () => {
   // so it renders at turn start, before the first TurnStateChanged push.
   it('seeds turnState (menu + economy) from the snapshot turn state', () => {
     const prev = createEmptyEncounterState();
-    const turnState = create(TurnStateSchemaV2, {
+    const turnState = create(TurnStateSchema, {
       initiativeOrder: ['char-alice'],
       activeEntityId: 'char-alice',
       round: 1,
@@ -1027,7 +1025,7 @@ describe('applyV2SnapshotTurnState', () => {
         }),
       ],
     });
-    const after = applyV2SnapshotTurnState(
+    const after = applySnapshotTurnState(
       prev,
       EncounterMode.TURN_BASED,
       turnState
@@ -1037,16 +1035,16 @@ describe('applyV2SnapshotTurnState', () => {
   });
 
   it('clears turnState when leaving TURN_BASED', () => {
-    const seeded = applyV2SnapshotTurnState(
+    const seeded = applySnapshotTurnState(
       createEmptyEncounterState(),
       EncounterMode.TURN_BASED,
-      create(TurnStateSchemaV2, {
+      create(TurnStateSchema, {
         activeEntityId: 'char-alice',
         round: 1,
         availableActions: [],
       })
     );
-    const after = applyV2SnapshotTurnState(
+    const after = applySnapshotTurnState(
       seeded,
       EncounterMode.FREE_ROAM,
       undefined
@@ -1058,7 +1056,7 @@ describe('applyV2SnapshotTurnState', () => {
 describe('applyTurnStateChanged', () => {
   it('swaps in the server-authored TurnState wholesale', () => {
     const prev = createEmptyEncounterState();
-    const turnState = create(TurnStateSchemaV2, {
+    const turnState = create(TurnStateSchema, {
       activeEntityId: 'char-alice',
       round: 2,
       economy: { actionsRemaining: 0, bonusActionsRemaining: 1 },
@@ -1090,7 +1088,7 @@ describe('applyTurnStateChanged', () => {
     const prev = createEmptyEncounterState();
     applyTurnStateChanged(
       prev,
-      create(TurnStateSchemaV2, { availableActions: [] })
+      create(TurnStateSchema, { availableActions: [] })
     );
     expect(prev.turnState).toBeNull();
   });
@@ -1102,23 +1100,21 @@ describe('applyEntityAppearedBatch', () => {
     const after = applyEntityAppearedBatch(prev, [
       {
         entity: makeTestEntity('char-alice', { x: 0, y: 0, z: 0 }),
-        type: EntityTypeV2.CHARACTER,
+        type: EntityType.CHARACTER,
         monsterRefId: undefined,
         initialHP: undefined,
         initialAC: undefined,
       },
       {
         entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
-        type: EntityTypeV2.MONSTER,
+        type: EntityType.MONSTER,
         monsterRefId: 'goblin',
         initialHP: { current: 7, max: 7 },
         initialAC: undefined,
       },
     ]);
     expect(after.entities.size).toBe(2);
-    expect(after.entityMeta.get('char-alice')?.type).toBe(
-      EntityTypeV2.CHARACTER
-    );
+    expect(after.entityMeta.get('char-alice')?.type).toBe(EntityType.CHARACTER);
     expect(after.entityMeta.get('goblin-1')?.monsterRefId).toBe('goblin');
     expect(after.entityHP.get('goblin-1')).toEqual({ current: 7, max: 7 });
     expect(after.entityHP.has('char-alice')).toBe(false);
@@ -1135,7 +1131,7 @@ describe('applyEntityAppearedBatch', () => {
     applyEntityAppearedBatch(prev, [
       {
         entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
-        type: EntityTypeV2.MONSTER,
+        type: EntityType.MONSTER,
         monsterRefId: 'goblin',
         initialHP: { current: 7, max: 7 },
         initialAC: undefined,
@@ -1156,7 +1152,7 @@ describe('applyEntityAppearedBatch', () => {
     state = applyEntityAppearedBatch(state, [
       {
         entity: makeTestEntity('mover', { x: 5, y: 0, z: -5 }),
-        type: EntityTypeV2.CHARACTER,
+        type: EntityType.CHARACTER,
         monsterRefId: undefined,
         initialHP: undefined,
         initialAC: undefined,
@@ -1170,14 +1166,14 @@ describe('applyEntityAppearedBatch', () => {
     const after = applyEntityAppearedBatch(prev, [
       {
         entity: makeTestEntity('char-charli', { x: 0, y: 0, z: 0 }),
-        type: EntityTypeV2.CHARACTER,
+        type: EntityType.CHARACTER,
         monsterRefId: undefined,
         initialHP: { current: 12, max: 12 },
         initialAC: 15,
       },
       {
         entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
-        type: EntityTypeV2.MONSTER,
+        type: EntityType.MONSTER,
         monsterRefId: 'goblin',
         initialHP: { current: 7, max: 7 },
         initialAC: 13,

@@ -8,30 +8,30 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('./client', () => ({
-  encounterClientV2: {
+  encounterClient: {
     interact: hoisted.interactFn,
   },
 }));
 
 // Import AFTER vi.mock so the mock is applied
-import { useInteractV2 } from './useInteractV2';
+import { useInteract } from './useInteract';
 
 beforeEach(() => {
   hoisted.interactFn.mockReset();
 });
 
-describe('useInteractV2', () => {
+describe('useInteract', () => {
   it('starts with loading=false and no error', () => {
-    const { result } = renderHook(() => useInteractV2());
+    const { result } = renderHook(() => useInteract());
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
   });
 
-  it('calls encounterClientV2.interact with correct request shape', async () => {
+  it('calls encounterClient.interact with correct request shape', async () => {
     const fakeResponse = {} as InteractResponse;
     hoisted.interactFn.mockResolvedValue(fakeResponse);
 
-    const { result } = renderHook(() => useInteractV2());
+    const { result } = renderHook(() => useInteract());
 
     let response: InteractResponse | undefined;
     await act(async () => {
@@ -53,7 +53,7 @@ describe('useInteractV2', () => {
   it('omits interactionKind when not provided', async () => {
     hoisted.interactFn.mockResolvedValue({} as InteractResponse);
 
-    const { result } = renderHook(() => useInteractV2());
+    const { result } = renderHook(() => useInteract());
 
     await act(async () => {
       await result.current.interact('enc-1', 'door-east');
@@ -67,7 +67,7 @@ describe('useInteractV2', () => {
     );
     // The proto Schema leaves optional fields undefined when not passed.
     // Pull the recorded request out via an unknown[] cast to dodge the
-    // zero-arg vi.fn signature (kept in lockstep with useMoveEntityV2.test).
+    // zero-arg vi.fn signature (kept in lockstep with useMoveEntity.test).
     const calls = hoisted.interactFn.mock.calls as unknown as Array<
       Array<{ interactionKind?: string }>
     >;
@@ -81,7 +81,7 @@ describe('useInteractV2', () => {
     );
     hoisted.interactFn.mockReturnValue(pendingRpc);
 
-    const { result } = renderHook(() => useInteractV2());
+    const { result } = renderHook(() => useInteract());
 
     // Kick off the interact without awaiting
     act(() => {
@@ -100,7 +100,7 @@ describe('useInteractV2', () => {
     const rpcError = new Error('door is locked');
     hoisted.interactFn.mockRejectedValue(rpcError);
 
-    const { result } = renderHook(() => useInteractV2());
+    const { result } = renderHook(() => useInteract());
 
     await act(async () => {
       await expect(
@@ -117,7 +117,7 @@ describe('useInteractV2', () => {
       .mockRejectedValueOnce(new Error('first fail'))
       .mockResolvedValue({} as InteractResponse);
 
-    const { result } = renderHook(() => useInteractV2());
+    const { result } = renderHook(() => useInteract());
 
     // First call fails
     await act(async () => {

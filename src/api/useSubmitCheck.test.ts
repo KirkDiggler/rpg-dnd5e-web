@@ -12,34 +12,34 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock('./client', () => ({
-  encounterClientV2: {
+  encounterClient: {
     submitCheck: hoisted.submitCheckFn,
   },
 }));
 
 // Import AFTER vi.mock so the mock is applied
-import { useSubmitCheckV2 } from './useSubmitCheckV2';
+import { useSubmitCheck } from './useSubmitCheck';
 
 beforeEach(() => {
   hoisted.submitCheckFn.mockReset();
 });
 
-describe('useSubmitCheckV2', () => {
+describe('useSubmitCheck', () => {
   it('starts with loading=false, no error, and null lastResponse', () => {
-    const { result } = renderHook(() => useSubmitCheckV2());
+    const { result } = renderHook(() => useSubmitCheck());
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(result.current.lastResponse).toBeNull();
   });
 
-  it('calls encounterClientV2.submitCheck with correct request shape', async () => {
+  it('calls encounterClient.submitCheck with correct request shape', async () => {
     const fakeResponse: SubmitCheckResponse = {
       success: true,
       total: 18,
     } as SubmitCheckResponse;
     hoisted.submitCheckFn.mockResolvedValue(fakeResponse);
 
-    const { result } = renderHook(() => useSubmitCheckV2());
+    const { result } = renderHook(() => useSubmitCheck());
 
     let response: SubmitCheckResponse | undefined;
     await act(async () => {
@@ -69,7 +69,7 @@ describe('useSubmitCheckV2', () => {
     } as SubmitCheckResponse;
     hoisted.submitCheckFn.mockResolvedValue(fakeResponse);
 
-    const { result } = renderHook(() => useSubmitCheckV2());
+    const { result } = renderHook(() => useSubmitCheck());
 
     await act(async () => {
       await result.current.submitCheck({
@@ -91,7 +91,7 @@ describe('useSubmitCheckV2', () => {
     );
     hoisted.submitCheckFn.mockReturnValue(pendingRpc);
 
-    const { result } = renderHook(() => useSubmitCheckV2());
+    const { result } = renderHook(() => useSubmitCheck());
 
     // Kick off submitCheck without awaiting
     act(() => {
@@ -114,7 +114,7 @@ describe('useSubmitCheckV2', () => {
     const rpcError = new Error('no pending prompt');
     hoisted.submitCheckFn.mockRejectedValue(rpcError);
 
-    const { result } = renderHook(() => useSubmitCheckV2());
+    const { result } = renderHook(() => useSubmitCheck());
 
     await act(async () => {
       await expect(
@@ -140,7 +140,7 @@ describe('useSubmitCheckV2', () => {
     } as SubmitCheckResponse;
     hoisted.submitCheckFn.mockResolvedValue(fakeResponse);
 
-    const { result } = renderHook(() => useSubmitCheckV2());
+    const { result } = renderHook(() => useSubmitCheck());
 
     await act(async () => {
       await result.current.submitCheck({
@@ -168,7 +168,7 @@ describe('useSubmitCheckV2', () => {
     } as SubmitCheckResponse;
     hoisted.submitCheckFn.mockResolvedValue(fakeResponse);
 
-    const { result } = renderHook(() => useSubmitCheckV2());
+    const { result } = renderHook(() => useSubmitCheck());
 
     await act(async () => {
       await result.current.submitCheck({
@@ -193,7 +193,7 @@ describe('useSubmitCheckV2', () => {
     } as SubmitCheckResponse;
     hoisted.submitCheckFn.mockResolvedValue(fakeResponse);
 
-    const { result } = renderHook(() => useSubmitCheckV2());
+    const { result } = renderHook(() => useSubmitCheck());
 
     await act(async () => {
       await result.current.submitCheck({
@@ -216,7 +216,7 @@ describe('useSubmitCheckV2', () => {
       .mockRejectedValueOnce(new Error('first fail'))
       .mockResolvedValue({ success: true, total: 18 } as SubmitCheckResponse);
 
-    const { result } = renderHook(() => useSubmitCheckV2());
+    const { result } = renderHook(() => useSubmitCheck());
 
     // First call fails
     await act(async () => {

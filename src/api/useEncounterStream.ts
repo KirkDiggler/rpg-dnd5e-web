@@ -2,11 +2,11 @@ import { create } from '@bufbuild/protobuf';
 import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { StreamEncounterRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import { useEffect, useRef, useState } from 'react';
-import { encounterClientV2 } from './client';
+import { encounterClient } from './client';
 import {
-  dispatchEncounterStream2Event,
-  type EncounterStream2Options,
-} from './encounterStream2Dispatch';
+  dispatchEncounterStreamEvent,
+  type EncounterStreamOptions,
+} from './encounterStreamDispatch';
 import { RECONNECT_CONFIG } from './streamReconnect';
 
 type ConnectionState =
@@ -16,7 +16,7 @@ type ConnectionState =
   | 'disconnected'
   | 'error';
 
-interface UseEncounterStream2Result {
+interface UseEncounterStreamResult {
   connectionState: ConnectionState;
   error: Error | null;
 }
@@ -28,7 +28,7 @@ interface UseEncounterStream2Result {
  * Lifecycle:
  *   1. encounterId set → open stream, state='connecting'
  *   2. First message MUST be SnapshotDelivered → state='connected', fire callback
- *   3. Subsequent events dispatched via encounterStream2Dispatch
+ *   3. Subsequent events dispatched via encounterStreamDispatch
  *   4. Stream end / error → state='disconnected' → exponential backoff reconnect
  *
  * Slice 1 contract: SnapshotDelivered.encounter is empty. The hook acknowledges
@@ -55,11 +55,11 @@ interface UseEncounterStream2Result {
  * live connection (false error read) — both were on the table with the old
  * shared-ref check depending on timing, which is why the bug was flaky.
  */
-export function useEncounterStream2(
+export function useEncounterStream(
   encounterId: string | null,
   playerId: string,
-  options: EncounterStream2Options
-): UseEncounterStream2Result {
+  options: EncounterStreamOptions
+): UseEncounterStreamResult {
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('idle');
   const [error, setError] = useState<Error | null>(null);
@@ -116,7 +116,7 @@ export function useEncounterStream2(
           encounterId,
           playerId,
         });
-        const stream = encounterClientV2.streamEncounter(request, {
+        const stream = encounterClient.streamEncounter(request, {
           signal: controller.signal,
         });
 
@@ -129,13 +129,13 @@ export function useEncounterStream2(
             // don't validate the case here — a violation is a server-side bug
             // that the playtest will surface via missing snapshot effects.
             // Loose handling matches v1's tolerance.
-            dispatchEncounterStream2Event(event, optionsRef.current);
+            dispatchEncounterStreamEvent(event, optionsRef.current);
             sawFirstSnapshot = true;
             setConnectionState('connected');
             retryCountRef.current = 0;
             continue;
           }
-          dispatchEncounterStream2Event(event, optionsRef.current);
+          dispatchEncounterStreamEvent(event, optionsRef.current);
         }
 
         // Stream closed by server — schedule reconnect
@@ -145,7 +145,7 @@ export function useEncounterStream2(
         if (controller.signal.aborted) {
           return; // our own cleanup tore this attempt down; nothing wants it anymore
         }
-        console.error('[useEncounterStream2] stream error:', err);
+        console.error('[useEncounterStream] stream error:', err);
         scheduleReconnect();
       }
     };
