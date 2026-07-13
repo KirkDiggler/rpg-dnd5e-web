@@ -72,10 +72,13 @@ state-free helpers `hex-grid/*` and the playtest map still depend on:
 `AbsoluteFloorTile` (tile shape), `wallKey` (canonical wall-dedup key),
 `openDoorWalkableKeys` (open-door cube keys for pathfinding). No proto
 mutation, no accumulated multi-room state — that's future work (slice 4).
-`wallKey` has two call sites: `HexGrid`'s render loop (deduplicating a
-wall reported by both adjacent hexes into one `ShadedHexWall`) and
-`useEncounterState.applyWallsRevealed` (the same direction-normalized key,
-now also the sticky store's `Map` key).
+`wallKey` has two call sites: `useEncounterState.applyWallsRevealed`, where
+it's the sticky store's `Map` key and does the actual dedup (a wall
+reported from either adjacent hex collapses to one entry before
+`Array.from(walls.values())` ever reaches `HexGrid`), and `HexGrid`'s
+render loop, which reuses the same direction-normalized string only as the
+React `key` for each `ShadedHexWall` — it does not itself dedupe the
+`walls` array it's given.
 Full detail: [use-dungeon-map.md](components/use-dungeon-map.md).
 
 ## Transform functions: deleted with LobbyView
