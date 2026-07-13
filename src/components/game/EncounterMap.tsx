@@ -12,6 +12,7 @@
  */
 
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
 import type { EntityMeta } from '../../hooks/useEncounterState';
 import { HexGrid } from '../hex-grid';
@@ -29,6 +30,8 @@ export interface EncounterMapProps {
   entityMeta: Map<string, EntityMeta>;
   /** Per-hex reveal set ("x,y,z" cube-coord keys) from GeometryRevealed events. */
   revealedHexes: Set<string>;
+  /** Sticky revealed walls, keyed by wallKey, from Space.walls/GeometryRevealed.walls. Renders as [] when the server sends none. */
+  walls: Map<string, Wall>;
   /** Per-entity HP — marks monsters dead (HP <= 0) so HexGrid renders their corpse. */
   entityHP: Map<string, { current: number; max: number }>;
   /** v1alpha2 initiative order (entity ids) — drives the TurnOrderOverlay. Empty outside TURN_BASED. */
@@ -55,6 +58,7 @@ export function EncounterMap({
   entities,
   entityMeta,
   revealedHexes,
+  walls,
   entityHP,
   initiativeOrder,
   activeEntityId,
@@ -69,6 +73,8 @@ export function EncounterMap({
     () => synthesizeFloorTiles(revealedHexes, entities.values()),
     [revealedHexes, entities]
   );
+
+  const wallList = useMemo(() => Array.from(walls.values()), [walls]);
 
   const renderableEntities = useMemo(
     () => buildRenderableEntities(entities, entityMeta, entityHP),
@@ -102,6 +108,7 @@ export function EncounterMap({
       <HexGrid
         floorTiles={floorTiles}
         entities={renderableEntities}
+        walls={wallList}
         selectedEntityId={myEntityId}
         currentEntityId={myEntityId}
         movementRemaining={movementRemaining}

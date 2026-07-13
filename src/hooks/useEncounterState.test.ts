@@ -36,9 +36,14 @@ import {
   SkillCheckPromptSchema,
   TargetKind,
   TurnStateSchema,
+  PositionSchema as V2PositionSchema,
+  type Wall,
+  WallKind,
+  WallSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
+import { wallKey } from './dungeonMapGeometry';
 import {
   applyDoorOpened,
   applyEncounterEnded,
@@ -57,11 +62,24 @@ import {
   applyTurnEnded,
   applyTurnStarted,
   applyTurnStateChanged,
+  applyWallsRevealed,
   createEmptyEncounterState,
   mergeEntityPosition,
   setPendingPromptReducer,
   setReactionReadyLocalReducer,
 } from './useEncounterState';
+
+function makeTestWall(
+  from: { x: number; y: number; z: number },
+  to: { x: number; y: number; z: number },
+  kind: WallKind = WallKind.SOLID
+): Wall {
+  return create(WallSchema, {
+    from: create(V2PositionSchema, from),
+    to: create(V2PositionSchema, to),
+    kind,
+  });
+}
 
 describe('createEmptyEncounterState', () => {
   it('returns empty state with Maps and default values', () => {
@@ -73,6 +91,8 @@ describe('createEmptyEncounterState', () => {
     expect(state.entities.size).toBe(0);
     expect(state.revealedHexes).toBeInstanceOf(Set);
     expect(state.revealedHexes.size).toBe(0);
+    expect(state.walls).toBeInstanceOf(Map);
+    expect(state.walls.size).toBe(0);
     expect(state.openDoors).toBeInstanceOf(Set);
     expect(state.openDoors.size).toBe(0);
     expect(state.entityHP).toBeInstanceOf(Map);
@@ -241,6 +261,75 @@ describe('v1alpha2 reducer additions', () => {
       ]);
       const after = applyHexRevealed(prev, [{ q: 2, r: -1, s: -1 }]);
       expect(after.revealedHexes.size).toBe(1);
+    });
+  });
+
+  describe('applyWallsRevealed', () => {
+    it('adds walls to the sticky map without dropping existing ones', () => {
+      const wallA = makeTestWall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 });
+      const wallB = makeTestWall(
+        { x: 2, y: -1, z: -1 },
+        { x: 3, y: -2, z: -1 }
+      );
+
+      const after1 = applyWallsRevealed(createEmptyEncounterState(), [wallA]);
+      expect(after1.walls.get(wallKey(wallA))).toEqual(wallA);
+
+      const after2 = applyWallsRevealed(after1, [wallB]);
+      expect(after2.walls.get(wallKey(wallA))).toEqual(wallA);
+      expect(after2.walls.get(wallKey(wallB))).toEqual(wallB);
+      expect(after2.walls.size).toBe(2);
+    });
+
+    it('is idempotent (same reference) on a re-delivered wall with unchanged kind', () => {
+      const wall = makeTestWall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 });
+      const prev = applyWallsRevealed(createEmptyEncounterState(), [wall]);
+      const after = applyWallsRevealed(prev, [wall]);
+      expect(after).toBe(prev);
+    });
+
+    it('overwrites an entry whose kind changed (door open/close transitions)', () => {
+      const closed = makeTestWall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_CLOSED
+      );
+      const opened = makeTestWall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_OPEN
+      );
+
+      const prev = applyWallsRevealed(createEmptyEncounterState(), [closed]);
+      const after = applyWallsRevealed(prev, [opened]);
+      expect(after).not.toBe(prev);
+      expect(after.walls.get(wallKey(closed))?.kind).toBe(WallKind.DOOR_OPEN);
+      expect(after.walls.size).toBe(1);
+    });
+
+    it('collapses a wall reported in either direction to the same key', () => {
+      const forward = makeTestWall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 });
+      const reverse = makeTestWall({ x: 1, y: -1, z: 0 }, { x: 0, y: 0, z: 0 });
+
+      const after = applyWallsRevealed(createEmptyEncounterState(), [
+        forward,
+        reverse,
+      ]);
+      expect(after.walls.size).toBe(1);
+    });
+
+    it('skips walls missing from/to (defensive)', () => {
+      const malformed = create(WallSchema, { kind: WallKind.SOLID });
+      const after = applyWallsRevealed(createEmptyEncounterState(), [
+        malformed,
+      ]);
+      expect(after.walls.size).toBe(0);
+    });
+
+    it('is a no-op on an empty walls array', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyWallsRevealed(prev, []);
+      expect(after).toBe(prev);
     });
   });
 

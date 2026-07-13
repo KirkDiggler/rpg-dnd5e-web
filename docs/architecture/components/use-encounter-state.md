@@ -1,7 +1,7 @@
 ---
 name: useEncounterState
 description: Single authoritative entity/turn/prompt store, populated exclusively from the v1alpha2 stream — trimmed of its v1alpha1 snapshot-replace path in slice 3
-updated: 2026-07-12
+updated: 2026-07-13
 confidence: high — verified by reading useEncounterState.ts and useEncounterState.test.ts in full
 ---
 
@@ -50,19 +50,20 @@ Map<string, EntityState>` uses the v1alpha1 `EntityState` proto as its
 
 ## State shape
 
-| Field                                                             | Populated by                                                                              |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `entities`                                                        | `applyEntityAppeared(Batch)`, delta reducers                                              |
-| `revealedHexes`                                                   | `applyHexRevealed` (`GeometryRevealed`)                                                   |
-| `openDoors`                                                       | `applyDoorOpened` (`DoorOpened`)                                                          |
-| `entityHP`                                                        | `applyEntityDamaged`, entity-appear seeding                                               |
-| `entityAC`                                                        | Entity-appear seeding (initial AC)                                                        |
-| `entityStatuses`                                                  | `applyStatusApplied`/`applyStatusRemoved`                                                 |
-| `entityMeta`                                                      | `applyEntityMetaFromAppeared`/batch                                                       |
-| `initiativeOrder`, `activeEntityId`, `round`, `mode`, `turnState` | `applySnapshotTurnState`, `applyTurnStarted`, `applyTurnStateChanged`, `applyModeChanged` |
-| `pendingPrompt`                                                   | `setPendingPromptReducer` (caller-driven, never auto-set)                                 |
-| `encounterStatus`, `encounterEndedReason`                         | `applyEncounterEnded`                                                                     |
-| `reactionReadiness`                                               | `setReactionReadyLocalReducer` (optimistic mirror after `SetReactionReady` RPC)           |
+| Field                                                             | Populated by                                                                                                                                                                          |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entities`                                                        | `applyEntityAppeared(Batch)`, delta reducers                                                                                                                                          |
+| `revealedHexes`                                                   | `applyHexRevealed` (`GeometryRevealed`)                                                                                                                                               |
+| `walls`                                                           | `applyWallsRevealed` (snapshot's `Space.walls`, `GeometryRevealed.walls`) — sticky `Map<wallKey, Wall>`; overwrites an entry when `kind` changes (e.g. a door opening), never removes |
+| `openDoors`                                                       | `applyDoorOpened` (`DoorOpened`)                                                                                                                                                      |
+| `entityHP`                                                        | `applyEntityDamaged`, entity-appear seeding                                                                                                                                           |
+| `entityAC`                                                        | Entity-appear seeding (initial AC)                                                                                                                                                    |
+| `entityStatuses`                                                  | `applyStatusApplied`/`applyStatusRemoved`                                                                                                                                             |
+| `entityMeta`                                                      | `applyEntityMetaFromAppeared`/batch                                                                                                                                                   |
+| `initiativeOrder`, `activeEntityId`, `round`, `mode`, `turnState` | `applySnapshotTurnState`, `applyTurnStarted`, `applyTurnStateChanged`, `applyModeChanged`                                                                                             |
+| `pendingPrompt`                                                   | `setPendingPromptReducer` (caller-driven, never auto-set)                                                                                                                             |
+| `encounterStatus`, `encounterEndedReason`                         | `applyEncounterEnded`                                                                                                                                                                 |
+| `reactionReadiness`                                               | `setReactionReadyLocalReducer` (optimistic mirror after `SetReactionReady` RPC)                                                                                                       |
 
 `applyEntityPositionUpdate`/`mergeEntityPosition` and `reset` round out
 the public API — the former is the `MovementCompletedEvent` fallback when

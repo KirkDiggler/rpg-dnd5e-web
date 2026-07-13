@@ -32,6 +32,7 @@ import type {
 import type {
   InputRequired,
   TurnState,
+  Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
@@ -39,6 +40,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useState } from 'react';
 import { hexKey, type CubeHexCoord } from '../utils/hexCoord';
+import { wallKey } from './dungeonMapGeometry';
 
 /** v1alpha2 per-entity HP, populated from EntityDamaged.hp_after. */
 export interface EntityHP {
@@ -79,6 +81,15 @@ export interface LocalEncounterState {
   entities: Map<string, EntityState & { ghost?: boolean }>;
   /** v1alpha2-revealed hexes (per-hex granularity). */
   revealedHexes: Set<string>;
+  /**
+   * v1alpha2 revealed walls, keyed by `wallKey` (canonical, direction-
+   * normalized). Sticky like `revealedHexes` — populated from the
+   * snapshot's `Space.walls` and merged from `GeometryRevealed.walls`,
+   * never removed. Unlike `revealedHexes` (a bare position `Set`), this
+   * keeps the full `Wall` (including `kind`) since renderers need it to
+   * distinguish solid/door/window segments.
+   */
+  walls: Map<string, Wall>;
   /**
    * v1alpha2 open-door entity IDs. Populated by `applyDoorOpened` from the
    * DoorOpened event, keyed by the proto's `door_entity_id`. Renderers
@@ -211,6 +222,7 @@ export function createEmptyEncounterState(): LocalEncounterState {
     dungeonId: '',
     entities: new Map(),
     revealedHexes: new Set(),
+    walls: new Map(),
     openDoors: new Set(),
     entityHP: new Map(),
     entityAC: new Map(),
@@ -269,6 +281,33 @@ export function applyHexRevealed(
     next.add(hexKey(h));
   }
   return { ...prev, revealedHexes: next };
+}
+
+/**
+ * Add walls to the sticky wall map without dropping previously revealed
+ * walls. Keyed by `wallKey` (direction-normalized), so a wall reported from
+ * either adjacent hex collapses to one entry. A re-delivered wall with an
+ * unchanged `kind` is a no-op; a changed `kind` (e.g. a door segment
+ * transitioning `DOOR_CLOSED` -> `DOOR_OPEN`) overwrites the entry — the
+ * wall list carries state transitions, not just first-reveal. Walls missing
+ * `from`/`to` (defensive — proto fields are optional) are skipped, same
+ * guard HexGrid/ShadedHexWall apply before rendering.
+ * Exported for testing.
+ */
+export function applyWallsRevealed(
+  prev: LocalEncounterState,
+  walls: Wall[]
+): LocalEncounterState {
+  let next: Map<string, Wall> | undefined;
+  for (const wall of walls) {
+    if (!wall.from || !wall.to) continue;
+    const key = wallKey(wall);
+    const existing = (next ?? prev.walls).get(key);
+    if (existing && existing.kind === wall.kind) continue;
+    if (!next) next = new Map(prev.walls);
+    next.set(key, wall);
+  }
+  return next ? { ...prev, walls: next } : prev;
 }
 
 /**
@@ -772,6 +811,8 @@ export interface UseEncounterStateResult {
   // v1alpha2 additions
   /** Add hexes to the per-hex reveal set (additive, idempotent) */
   applyHexRevealed: (hexes: CubeHexCoord[]) => void;
+  /** Add walls to the sticky wall map, keyed by `wallKey` (additive, idempotent) */
+  applyWallsRevealed: (walls: Wall[]) => void;
   /** Add or revive an entity at its first-visible position, clearing ghost */
   applyEntityAppeared: (entity: EntityState) => void;
   /** Mark entity as ghosted at last known position; no-op if not tracked */
@@ -892,6 +933,10 @@ export function useEncounterState(): UseEncounterStateResult {
 
   const applyHexRevealedCallback = useCallback((hexes: CubeHexCoord[]) => {
     setState((prev) => applyHexRevealed(prev, hexes));
+  }, []);
+
+  const applyWallsRevealedCallback = useCallback((walls: Wall[]) => {
+    setState((prev) => applyWallsRevealed(prev, walls));
   }, []);
 
   const applyEntityAppearedCallback = useCallback((entity: EntityState) => {
@@ -1019,6 +1064,7 @@ export function useEncounterState(): UseEncounterStateResult {
     applyEntityPositionUpdate,
     reset,
     applyHexRevealed: applyHexRevealedCallback,
+    applyWallsRevealed: applyWallsRevealedCallback,
     applyEntityAppeared: applyEntityAppearedCallback,
     applyEntityDisappeared: applyEntityDisappearedCallback,
     applyDoorOpened: applyDoorOpenedCallback,
