@@ -8,7 +8,10 @@
  * converting cube coordinates to world coordinates via hexMath.cubeToWorld.
  */
 
-import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
+import {
+  WallKind,
+  type Wall,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
@@ -25,17 +28,20 @@ export interface ShadedHexWallProps {
 // Wall height in world space units (matches HexWall's WALL_HEIGHT)
 const WALL_HEIGHT = 0.8;
 
-// Color lookup by material type
-function getMaterialColor(material: string): number {
-  switch (material) {
-    case 'stone':
-      return WallColors.stoneMedium;
-    case 'wood':
+// Color lookup by wall kind. v1alpha2 Wall carries no material field (the
+// v1alpha1 room_common Wall this replaced did) — kind is the only semantic
+// hook available today. DOOR_* segments here are a fallback only: doors are
+// currently rendered through the separate `doors: DoorInfo[]` prop/HexDoor
+// pipeline, not through this one.
+function getKindColor(kind: WallKind): number {
+  switch (kind) {
+    case WallKind.DOOR_CLOSED:
+    case WallKind.DOOR_OPEN:
       return WallColors.woodMedium;
-    case 'metal':
-      return WallColors.stoneDark;
-    case 'dungeon':
+    case WallKind.WINDOW:
       return WallColors.dungeonGray;
+    case WallKind.SOLID:
+    case WallKind.UNSPECIFIED:
     default:
       return WallColors.stoneMedium;
   }
@@ -47,20 +53,20 @@ export function ShadedHexWall({ wall, hexSize }: ShadedHexWallProps) {
   const builderRef = useRef<WallBuilder | null>(null);
 
   useEffect(() => {
-    if (!groupRef.current || !wall.start || !wall.end) return;
+    if (!groupRef.current || !wall.from || !wall.to) return;
 
     const start: CubeCoord = {
-      x: wall.start.x,
-      y: wall.start.y,
-      z: wall.start.z,
+      x: wall.from.x,
+      y: wall.from.y,
+      z: wall.from.z,
     };
     const end: CubeCoord = {
-      x: wall.end.x,
-      y: wall.end.y,
-      z: wall.end.z,
+      x: wall.to.x,
+      y: wall.to.y,
+      z: wall.to.z,
     };
 
-    const color = getMaterialColor(wall.material || 'stone');
+    const color = getKindColor(wall.kind);
 
     // WallBuilder thickness is relative to hexWidth, so set hexWidth = hexSize * 2
     // (hexWidth in WallBuilder means the full width, hexSize is the radius)

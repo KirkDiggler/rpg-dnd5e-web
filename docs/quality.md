@@ -1,8 +1,8 @@
 ---
 name: rpg-dnd5e-web quality scorecard
 description: Per-component grade with rationale — a graded scorecard to be updated over time
-updated: 2026-07-12
-confidence: low-medium — sections below are dated 2026-05-02 and predate slices 1-2 of the game-screen rebuild; slice 3 (rpg-dnd5e-web#447) removed entries for deleted components and refreshed the stream/state grades, but grades for character creation/sheet, hex-grid, Discord wiring, and other untouched areas are not independently re-verified this pass. This doc needs a dedicated refresh pass.
+updated: 2026-07-13
+confidence: low-medium — sections below are dated 2026-05-02 and predate slices 1-2 of the game-screen rebuild; slice 3 (rpg-dnd5e-web#447) removed entries for deleted components and refreshed the stream/state grades, and rpg-dnd5e-web#449 added a first-pass grade for character creation/sheet (previously the audit's blind spot). hex-grid, Discord wiring, and other untouched areas are still not independently re-verified this pass. This doc needs a dedicated refresh pass.
 ---
 
 # Quality scorecard
@@ -118,6 +118,57 @@ Gaps:
 - `MediumHumanoid` imports 12 OBJ parts via `useLoader` — no error
   boundary if a model file is missing; Three.js will throw and bubble up.
 
+### character-sheet / character-creation — C
+
+The audit blind spot flagged when this doc was refreshed for slice 3: not
+independently re-verified since 2026-05-02, and not touched by that slice.
+Reviewed for rpg-dnd5e-web#449 (2026-07-13), which fixed the one live
+boundary-rule violation found: `CharacterSheet.tsx`'s routed sheet
+(`DnDCombatStats`, `DnDSkills`, `DnDSavingThrows`, plus the
+`ProficiencyBonusBox` in `CharacterSheet.tsx` itself) silently computed AC,
+initiative, and proficiency bonus client-side whenever the corresponding
+`CombatStats` field was unset — the server's gap read as a plausible-looking
+number instead of a gap. All four now render the server value or an
+explicit "—", never a computed fallback. Four dead components duplicating
+the same math with zero live importers (`SavingThrowsDisplay`,
+`SkillsDisplay`, `CombatStatsDisplay`, `AbilityScoresDisplay`) plus three
+more orphans from the same 2025 "overhaul the ui" era found during this
+pass (`ProficienciesDisplay`, and creation's `CharacterSheetHeader`/
+`CharacterSheetFooter`) were deleted.
+
+One irreducible gap surfaced by the fix, not solved by it: `CombatStats`
+fields (`armor_class`, `initiative`, `proficiency_bonus`) are plain
+`int32`, not `optional int32`, so proto3 collapses "never computed" and
+"legitimately zero" to the same wire value. `armorClass`/`proficiencyBonus`
+are never validly zero in D&D 5e, so treating `<= 0` as "unset" is safe.
+`initiative` has no such safety net — a DEX 10/11 character's real
+initiative modifier is +0, indistinguishable on the wire from "not yet
+computed." The sheet gates initiative display only on `combatStats` itself
+being present, which is the most honest read the current wire format
+allows; closing this fully needs an `optional` field (or wrapper) upstream
+in rpg-api-protos.
+
+DnDCombatStats.tsx's ability-modifier math (`floor((score-10)/2)` for
+STR/DEX/etc., derived from server-sent raw ability scores) was left as-is
+— out of #449's scope, and a materially different case from the AC/
+proficiency-bonus fallback: it doesn't paper over a missing server field,
+it derives a display value from one the server does send. Worth its own
+audit pass if the boundary rule is read to forbid all client arithmetic,
+not just fallback-for-missing-data arithmetic.
+
+Gaps:
+
+- Effectively zero test coverage: one test file
+  (`DnDFeatures.test.tsx`) across ~25 components in `src/character/`,
+  including the two largest surfaces — `InteractiveCharacterSheet.tsx`
+  (1877 lines, the entire multi-step creation flow) and `CharacterSheet.tsx`
+  (318 lines, the routed sheet) — neither has a single test.
+- No coverage proving the new gap-indicator behavior renders correctly
+  when `combatStats` fields are unset vs. populated.
+- `AbilityScoresSectionV2` renamed to `AbilityScoresSection` in #449 (no
+  collision, trivial rename) but its siblings in `sections/` were not
+  audited for the same drift; not revisited this pass.
+
 ### /concepts route — B
 
 Good sandbox pattern. `ConceptsView.tsx` routes to isolated prototypes
@@ -185,7 +236,8 @@ smaller, not better-tested.
 Grades were a first draft from 2026-05-02, refreshed for slice 3
 (rpg-dnd5e-web#447, LobbyView deletion) on 2026-07-12 — entries for
 deleted components are removed rather than graded, and the stream/state
-grades reflect the current trimmed design. Sections not touched by slice
-3 (character creation/sheet, Discord wiring beyond the fallback note,
-`/concepts`) are carried forward unverified and still need their own
-read-through pass.
+grades reflect the current trimmed design. rpg-dnd5e-web#449 (2026-07-13)
+added the first independently-verified grade for character creation/sheet,
+closing that blind spot. Sections still not independently re-verified
+(Discord wiring beyond the fallback note, `/concepts`, hex-grid) are
+carried forward and still need their own read-through pass.

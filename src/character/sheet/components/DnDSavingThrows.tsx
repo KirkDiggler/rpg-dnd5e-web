@@ -16,18 +16,15 @@ function formatModifier(modifier: number): string {
   return modifier >= 0 ? `+${modifier}` : `${modifier}`;
 }
 
-// Helper function to calculate proficiency bonus
-function calculateProficiencyBonus(level: number): number {
-  return Math.ceil(level / 4) + 1;
-}
-
 export function DnDSavingThrows({ character }: DnDSavingThrowsProps) {
   const abilityScores = character.abilityScores;
+  // Server truth only — an unset proficiency bonus renders as a gap
+  // indicator on every save it feeds, never a client-computed guess.
   const proficiencyBonus =
     character.combatStats?.proficiencyBonus !== undefined &&
     character.combatStats.proficiencyBonus > 0
       ? character.combatStats.proficiencyBonus
-      : calculateProficiencyBonus(character.level);
+      : undefined;
 
   // Get saving throw proficiencies from API
   const savingThrowProficiencies = character.proficiencies?.savingThrows || [];
@@ -85,7 +82,9 @@ export function DnDSavingThrows({ character }: DnDSavingThrowsProps) {
       <div className="space-y-1">
         {savingThrows.map((save) => {
           const totalModifier =
-            save.modifier + (save.proficient ? proficiencyBonus : 0);
+            save.proficient && proficiencyBonus === undefined
+              ? undefined
+              : save.modifier + (save.proficient ? (proficiencyBonus ?? 0) : 0);
 
           return (
             <div
@@ -101,7 +100,9 @@ export function DnDSavingThrows({ character }: DnDSavingThrowsProps) {
                   className="font-bold text-xs w-6 text-right"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  {formatModifier(totalModifier)}
+                  {totalModifier !== undefined
+                    ? formatModifier(totalModifier)
+                    : '—'}
                 </div>
               </div>
 

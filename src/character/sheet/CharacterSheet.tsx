@@ -46,12 +46,13 @@ function InspirationBox() {
 }
 
 function ProficiencyBonusBox({ character }: { character: Character }) {
-  // Use API proficiencyBonus when available, fallback to calculation
+  // Server truth only — an unset proficiency bonus renders as a gap
+  // indicator, never a client-computed guess.
   const proficiencyBonus =
     character.combatStats?.proficiencyBonus !== undefined &&
     character.combatStats.proficiencyBonus > 0
       ? character.combatStats.proficiencyBonus
-      : Math.ceil(character.level / 4) + 1;
+      : undefined;
 
   return (
     <Card className="p-4 text-center">
@@ -65,7 +66,7 @@ function ProficiencyBonusBox({ character }: { character: Character }) {
         className="text-2xl font-bold"
         style={{ color: 'var(--text-primary)' }}
       >
-        +{proficiencyBonus}
+        {proficiencyBonus !== undefined ? `+${proficiencyBonus}` : '—'}
       </div>
     </Card>
   );

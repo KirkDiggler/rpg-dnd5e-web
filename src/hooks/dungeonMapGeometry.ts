@@ -12,8 +12,8 @@
  * with no state and no v1/v2 lean.
  */
 
-import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 
 /** A floor tile in dungeon-absolute coordinates */
 export interface AbsoluteFloorTile {
@@ -52,12 +52,12 @@ export function openDoorWalkableKeys(doors: Iterable<DoorInfo>): Set<string> {
  * preventing duplicate walls when adjacent rooms both report a shared boundary.
  */
 export function wallKey(wall: Wall): string {
-  const sx = wall.start?.x ?? 0;
-  const sy = wall.start?.y ?? 0;
-  const sz = wall.start?.z ?? 0;
-  const ex = wall.end?.x ?? 0;
-  const ey = wall.end?.y ?? 0;
-  const ez = wall.end?.z ?? 0;
+  const sx = wall.from?.x ?? 0;
+  const sy = wall.from?.y ?? 0;
+  const sz = wall.from?.z ?? 0;
+  const ex = wall.to?.x ?? 0;
+  const ey = wall.to?.y ?? 0;
+  const ez = wall.to?.z ?? 0;
 
   // Sort lexicographically so direction doesn't matter
   const startStr = `${sx},${sy},${sz}`;
