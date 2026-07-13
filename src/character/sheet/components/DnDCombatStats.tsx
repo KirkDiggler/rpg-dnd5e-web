@@ -17,9 +17,17 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
   // a client-computed guess.
   const initiativeModifier =
     combatStats?.initiative !== undefined ? combatStats.initiative : undefined;
-  const maxHP = combatStats?.hitPointMaximum || 10; // Use API hitPointMaximum
-  const currentHP = character.currentHitPoints || maxHP;
-  const tempHP = character.temporaryHitPoints || 0;
+  const maxHP =
+    combatStats?.hitPointMaximum !== undefined &&
+    combatStats.hitPointMaximum > 0
+      ? combatStats.hitPointMaximum
+      : undefined;
+  // currentHitPoints/temporaryHitPoints are always-present fields on
+  // Character (not optional in the proto), and 0 is a real value — a
+  // character at 0 HP is down, not "missing data". Read them directly
+  // rather than treating a falsy 0 as absent.
+  const currentHP = character.currentHitPoints;
+  const tempHP = character.temporaryHitPoints;
 
   const armorClass =
     combatStats?.armorClass !== undefined && combatStats.armorClass > 0
@@ -95,7 +103,7 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
             HIT POINTS
           </h4>
           <div className="text-xl font-bold" style={{ color: 'var(--health)' }}>
-            {currentHP}/{maxHP}
+            {currentHP}/{maxHP !== undefined ? maxHP : '—'}
           </div>
           {tempHP > 0 && (
             <div className="text-sm" style={{ color: 'var(--accent-primary)' }}>
@@ -118,7 +126,7 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
             HIT DICE
           </h4>
           <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
-            {combatStats?.hitDice || `${character.level}d8`}
+            {combatStats?.hitDice || '—'}
           </div>
         </div>
 

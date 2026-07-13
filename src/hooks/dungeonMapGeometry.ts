@@ -8,8 +8,12 @@
  * mergeRoom/updateEntitiesFromRoom/generateFloorTiles/createEmptyState
  * internals) was LobbyView-only and was deleted in slice 3 (rpg-dnd5e-web
  * #447) along with LobbyView. Multi-room accumulation on the v1alpha2 stream
- * is future work (design.md's slice 4). What's left here is geometry math
- * with no state and no v1/v2 lean.
+ * is future work (design.md's slice 4). What's left here is stateless
+ * geometry math. It does span versions by necessity, not preference:
+ * `wallKey` takes the v1alpha2 encounter `Wall` (rpg-dnd5e-web#449 migrated
+ * HexGrid off the legacy v1alpha1 room_common Wall), while
+ * `openDoorWalkableKeys` still takes the v1alpha1 `DoorInfo` — the dnd5e
+ * encounter domain hasn't migrated doors to v1alpha2 yet.
  */
 
 import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
