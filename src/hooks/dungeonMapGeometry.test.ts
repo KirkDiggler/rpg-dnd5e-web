@@ -3,11 +3,12 @@
  */
 
 import { create } from '@bufbuild/protobuf';
-import {
-  PositionSchema,
-  WallSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
+import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import { DoorInfoSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import {
+  PositionSchema as EncounterPositionSchema,
+  WallSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import { openDoorWalkableKeys, wallKey } from './dungeonMapGeometry';
 
@@ -29,12 +30,12 @@ function createDoor(
 describe('wallKey', () => {
   it('produces same key regardless of direction', () => {
     const wallAB = create(WallSchema, {
-      start: create(PositionSchema, { x: 0, y: 0, z: 0 }),
-      end: create(PositionSchema, { x: 3, y: -3, z: 0 }),
+      from: create(EncounterPositionSchema, { x: 0, y: 0, z: 0 }),
+      to: create(EncounterPositionSchema, { x: 3, y: -3, z: 0 }),
     });
     const wallBA = create(WallSchema, {
-      start: create(PositionSchema, { x: 3, y: -3, z: 0 }),
-      end: create(PositionSchema, { x: 0, y: 0, z: 0 }),
+      from: create(EncounterPositionSchema, { x: 3, y: -3, z: 0 }),
+      to: create(EncounterPositionSchema, { x: 0, y: 0, z: 0 }),
     });
 
     expect(wallKey(wallAB)).toBe(wallKey(wallBA));
@@ -42,12 +43,12 @@ describe('wallKey', () => {
 
   it('produces different keys for different walls', () => {
     const wall1 = create(WallSchema, {
-      start: create(PositionSchema, { x: 0, y: 0, z: 0 }),
-      end: create(PositionSchema, { x: 3, y: -3, z: 0 }),
+      from: create(EncounterPositionSchema, { x: 0, y: 0, z: 0 }),
+      to: create(EncounterPositionSchema, { x: 3, y: -3, z: 0 }),
     });
     const wall2 = create(WallSchema, {
-      start: create(PositionSchema, { x: 1, y: -1, z: 0 }),
-      end: create(PositionSchema, { x: 4, y: -4, z: 0 }),
+      from: create(EncounterPositionSchema, { x: 1, y: -1, z: 0 }),
+      to: create(EncounterPositionSchema, { x: 4, y: -4, z: 0 }),
     });
 
     expect(wallKey(wall1)).not.toBe(wallKey(wall2));

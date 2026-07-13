@@ -157,15 +157,15 @@ function AbilitySlot({
   );
 }
 
-interface AbilityScoresSectionV2Props {
+interface AbilityScoresSectionProps {
   draftId?: string;
   playerId?: string;
 }
 
-export function AbilityScoresSectionV2({
+export function AbilityScoresSection({
   draftId: propDraftId,
   playerId: propPlayerId,
-}: AbilityScoresSectionV2Props = {}) {
+}: AbilityScoresSectionProps = {}) {
   const context = useContext(CharacterDraftContext);
   const discord = useDiscord();
   const isDevelopment = import.meta.env.MODE === 'development';

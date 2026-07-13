@@ -16,11 +16,6 @@ function formatModifier(modifier: number): string {
   return modifier >= 0 ? `+${modifier}` : `${modifier}`;
 }
 
-// Helper function to calculate proficiency bonus
-function calculateProficiencyBonus(level: number): number {
-  return Math.ceil(level / 4) + 1;
-}
-
 // Standard D&D 5e skills with their enum mappings
 const SKILLS = [
   { name: 'Acrobatics', ability: 'dex', enumValue: Skill.ACROBATICS },
@@ -45,11 +40,13 @@ const SKILLS = [
 
 export function DnDSkills({ character }: DnDSkillsProps) {
   const abilityScores = character.abilityScores;
+  // Server truth only — an unset proficiency bonus renders as a gap
+  // indicator on every skill it feeds, never a client-computed guess.
   const proficiencyBonus =
     character.combatStats?.proficiencyBonus !== undefined &&
     character.combatStats.proficiencyBonus > 0
       ? character.combatStats.proficiencyBonus
-      : calculateProficiencyBonus(character.level);
+      : undefined;
 
   // Get skill proficiencies from API
   const skillProficiencies = character.proficiencies?.skills || [];
@@ -98,7 +95,10 @@ export function DnDSkills({ character }: DnDSkillsProps) {
           ).map((skill) => {
             const abilityModifier = getAbilityModifier(skill.ability);
             const isProficient = true; // Always true since we're filtering
-            const totalModifier = abilityModifier + proficiencyBonus;
+            const totalModifier =
+              proficiencyBonus !== undefined
+                ? abilityModifier + proficiencyBonus
+                : undefined;
 
             return (
               <div
@@ -114,7 +114,9 @@ export function DnDSkills({ character }: DnDSkillsProps) {
                     className="font-bold w-5 text-right"
                     style={{ color: 'var(--text-primary)' }}
                   >
-                    {formatModifier(totalModifier)}
+                    {totalModifier !== undefined
+                      ? formatModifier(totalModifier)
+                      : '—'}
                   </div>
                 </div>
 
@@ -144,11 +146,19 @@ export function DnDSkills({ character }: DnDSkillsProps) {
             className="text-sm font-bold"
             style={{ color: 'var(--text-primary)' }}
           >
-            {10 +
-              getAbilityModifier('wis') +
-              (skillProficiencies.includes(Skill.PERCEPTION)
-                ? proficiencyBonus
-                : 0)}
+            {(() => {
+              const isProficient = skillProficiencies.includes(
+                Skill.PERCEPTION
+              );
+              if (isProficient && proficiencyBonus === undefined) {
+                return '—';
+              }
+              return (
+                10 +
+                getAbilityModifier('wis') +
+                (isProficient ? (proficiencyBonus as number) : 0)
+              );
+            })()}
           </span>
         </div>
       </div>

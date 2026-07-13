@@ -17,13 +17,13 @@ import {
   wallKey,
   type AbsoluteFloorTile,
 } from '@/hooks/dungeonMapGeometry';
-import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
   DoorInfo,
   MonsterCombatState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -300,13 +300,13 @@ function Scene({
   const wallPositions = useMemo((): CubeCoord[] => {
     const positions: CubeCoord[] = [];
     for (const wall of walls) {
-      if (!wall.start || !wall.end) continue;
+      if (!wall.from || !wall.to) continue;
       const start: CubeCoord = {
-        x: wall.start.x,
-        y: wall.start.y,
-        z: wall.start.z,
+        x: wall.from.x,
+        y: wall.from.y,
+        z: wall.from.z,
       };
-      const end: CubeCoord = { x: wall.end.x, y: wall.end.y, z: wall.end.z };
+      const end: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
       positions.push(...getHexLine(start, end));
     }
     return positions;

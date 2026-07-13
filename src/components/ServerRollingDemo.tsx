@@ -1,4 +1,4 @@
-import { AbilityScoresSectionV2 } from '@/character/creation/sections/AbilityScoresSectionV2';
+import { AbilityScoresSection } from '@/character/creation/sections/AbilityScoresSection';
 
 import { useDevPlayerIdAuth } from '@/api/useDevPlayerIdAuth';
 import { useDiscord } from '@/discord';
@@ -81,7 +81,7 @@ export function ServerRollingDemo() {
             </ol>
           </div>
 
-          <AbilityScoresSectionV2 draftId={testDraftId} playerId={playerId} />
+          <AbilityScoresSection draftId={testDraftId} playerId={playerId} />
         </div>
 
         <div className="mt-8 text-center">

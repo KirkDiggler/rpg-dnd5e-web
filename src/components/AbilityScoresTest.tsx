@@ -1,5 +1,5 @@
 import { CharacterDraftProvider } from '@/character/creation/CharacterDraftContext';
-import { AbilityScoresSectionV2 } from '@/character/creation/sections/AbilityScoresSectionV2';
+import { AbilityScoresSection } from '@/character/creation/sections/AbilityScoresSection';
 import { useState } from 'react';
 import { Button } from './ui/Button';
 
@@ -33,7 +33,7 @@ export function AbilityScoresTest() {
         ) : (
           <div className="bg-white rounded-lg shadow p-6">
             <CharacterDraftProvider>
-              <AbilityScoresSectionV2 />
+              <AbilityScoresSection />
             </CharacterDraftProvider>
           </div>
         )}

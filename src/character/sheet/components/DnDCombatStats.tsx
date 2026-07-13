@@ -5,11 +5,6 @@ interface DnDCombatStatsProps {
   character: Character;
 }
 
-// Helper function to calculate ability modifier
-function calculateModifier(score: number): number {
-  return Math.floor((score - 10) / 2);
-}
-
 // Helper function to format modifier with sign
 function formatModifier(modifier: number): string {
   return modifier >= 0 ? `+${modifier}` : `${modifier}`;
@@ -17,22 +12,27 @@ function formatModifier(modifier: number): string {
 
 export function DnDCombatStats({ character }: DnDCombatStatsProps) {
   const combatStats = character.combatStats;
-  const abilityScores = character.abilityScores;
 
-  // Use API data when available, fallback to calculations
+  // Server truth only — an unset field renders as a gap indicator, never
+  // a client-computed guess.
   const initiativeModifier =
-    combatStats?.initiative !== undefined
-      ? combatStats.initiative
-      : calculateModifier(abilityScores?.dexterity || 10);
-  const maxHP = combatStats?.hitPointMaximum || 10; // Use API hitPointMaximum
-  const currentHP = character.currentHitPoints || maxHP;
-  const tempHP = character.temporaryHitPoints || 0;
+    combatStats?.initiative !== undefined ? combatStats.initiative : undefined;
+  const maxHP =
+    combatStats?.hitPointMaximum !== undefined &&
+    combatStats.hitPointMaximum > 0
+      ? combatStats.hitPointMaximum
+      : undefined;
+  // currentHitPoints/temporaryHitPoints are always-present fields on
+  // Character (not optional in the proto), and 0 is a real value — a
+  // character at 0 HP is down, not "missing data". Read them directly
+  // rather than treating a falsy 0 as absent.
+  const currentHP = character.currentHitPoints;
+  const tempHP = character.temporaryHitPoints;
 
-  // Calculate AC if not provided in API (base 10 + DEX modifier for no armor)
   const armorClass =
     combatStats?.armorClass !== undefined && combatStats.armorClass > 0
       ? combatStats.armorClass
-      : 10 + calculateModifier(abilityScores?.dexterity || 10);
+      : undefined;
 
   return (
     <Card className="p-4">
@@ -53,7 +53,7 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
               color: 'var(--text-button)',
             }}
           >
-            {armorClass}
+            {armorClass !== undefined ? armorClass : '—'}
           </div>
         </div>
 
@@ -69,7 +69,9 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
             className="text-2xl font-bold"
             style={{ color: 'var(--text-primary)' }}
           >
-            {formatModifier(initiativeModifier)}
+            {initiativeModifier !== undefined
+              ? formatModifier(initiativeModifier)
+              : '—'}
           </div>
         </div>
 
@@ -101,7 +103,7 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
             HIT POINTS
           </h4>
           <div className="text-xl font-bold" style={{ color: 'var(--health)' }}>
-            {currentHP}/{maxHP}
+            {currentHP}/{maxHP !== undefined ? maxHP : '—'}
           </div>
           {tempHP > 0 && (
             <div className="text-sm" style={{ color: 'var(--accent-primary)' }}>
@@ -124,7 +126,7 @@ export function DnDCombatStats({ character }: DnDCombatStatsProps) {
             HIT DICE
           </h4>
           <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
-            {combatStats?.hitDice || `${character.level}d8`}
+            {combatStats?.hitDice || '—'}
           </div>
         </div>
 
