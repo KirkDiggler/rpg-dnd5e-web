@@ -1,8 +1,8 @@
 ---
 name: rpg-dnd5e-web data model
 description: Proto types consumed, transform layer, derived UI state
-updated: 2026-07-12
-confidence: medium — proto packages table, snapshot, and transform sections refreshed for slice 3 (rpg-dnd5e-web#447, LobbyView deletion); hand-rolled-interfaces and proto-version-discipline sections not independently re-verified this pass
+updated: 2026-07-13
+confidence: medium — proto packages table, snapshot, walls, and transform sections refreshed for The Dungeon wave 1 (rpg-dnd5e-web#451) and slice 3 (rpg-dnd5e-web#447, LobbyView deletion); hand-rolled-interfaces and proto-version-discipline sections not independently re-verified this pass
 ---
 
 # Data model
@@ -13,12 +13,12 @@ All types flow in from `@kirkdiggler/rpg-api-protos`. The web layer consumes sev
 
 | Proto package                    | Generated path                             | What we use                                                                                                                                                                                                                                     |
 | -------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dnd5e.api.v1alpha2` (encounter) | `gen/ts/dnd5e/api/v1alpha2/encounter/*_pb` | `StreamEncounter`, all v2 event types, `TurnState`, `AvailableAction`, `InputRequired` — the live game/harness stream                                                                                                                           |
+| `dnd5e.api.v1alpha2` (encounter) | `gen/ts/dnd5e/api/v1alpha2/encounter/*_pb` | `StreamEncounter`, all v2 event types, `TurnState`, `AvailableAction`, `InputRequired`, `Space` (`hexes`/`walls`/`entities`/`zones`), `Wall`/`WallKind` — the live game/harness stream                                                          |
 | `dnd5e.api.v1alpha1` (encounter) | `gen/ts/dnd5e/api/v1alpha1/encounter_pb`   | `EntityState`, `RoomLayout`, `DoorInfo`, `EntityPlacement`, `Room` — entity/geometry **shapes**, deliberately reused by the v2 stream's event payloads (not a legacy holdover; see [use-encounter-state.md](components/use-encounter-state.md)) |
 | `dnd5e.api.lobby.v1alpha1`       | `gen/ts/dnd5e/api/lobby/v1alpha1/*_pb`     | `LobbyService`, `LobbyEvent`/`StreamLobby` — party assembly (slice 1, rpg-api#630)                                                                                                                                                              |
 | `dnd5e.api.v1alpha1` (character) | `gen/ts/dnd5e/api/v1alpha1/character_pb`   | `Character`, `CharacterService` — the character creation/sheet subsystem, unaffected by and never in scope for the game-screen rebuild                                                                                                          |
 | `dnd5e.api.v1alpha1` (enums)     | `gen/ts/dnd5e/api/v1alpha1/enums_pb`       | `Ability`, `EntityType`, `MonsterType`, `ConditionType`, `FeatureType`                                                                                                                                                                          |
-| `api.v1alpha1`                   | `gen/ts/api/v1alpha1/room_common_pb`       | `Wall`, `Position`, `GridType`                                                                                                                                                                                                                  |
+| `api.v1alpha1`                   | `gen/ts/api/v1alpha1/room_common_pb`       | `Position`, `GridType` — `Wall` moved off this package to the v1alpha2 encounter type in rpg-dnd5e-web#450; only the dead, unexported-from-anywhere-live `HexWall.tsx` (superseded by `ShadedHexWall`) still imports the old one                |
 | `api.v1alpha1`                   | `gen/ts/api/v1alpha1/dice_pb`              | `DiceService`                                                                                                                                                                                                                                   |
 
 The old v1alpha1 `EncounterService`'s request/response lobby/combat RPCs
@@ -45,6 +45,16 @@ distinguishing `characterDetails`/`monsterDetails`. The v2 stream's
 `EntityAppeared` event carries one; `useEncounterState.entities` is a
 `Map<entityId, EntityState>` built up one appearance at a time.
 
+Walls follow the same seed-then-delta shape as entities, mirroring
+`revealedHexes`: `SnapshotDelivered.encounter.space?.walls` seeds the sticky
+`walls` store via `applyWallsRevealed`, and each `GeometryRevealed.walls`
+merges in newly-explored segments (or an updated `kind`, e.g. a door
+transitioning `DOOR_CLOSED` -> `DOOR_OPEN`) the same way. `EncounterMap` and
+`PlaytestMap` both thread the store's `walls: Map<string, Wall>` through to
+`HexGrid`'s `walls?: Wall[]` prop (`Array.from(walls.values())`); an empty
+map — today's api, until rpg-api#644 lands `Space.Walls` population — is
+just an empty `walls` prop, not an error path.
+
 ## useEncounterState: unified entity/turn/prompt store
 
 `hooks/useEncounterState.ts` maintains entity, turn, and prompt state
@@ -62,6 +72,13 @@ state-free helpers `hex-grid/*` and the playtest map still depend on:
 `AbsoluteFloorTile` (tile shape), `wallKey` (canonical wall-dedup key),
 `openDoorWalkableKeys` (open-door cube keys for pathfinding). No proto
 mutation, no accumulated multi-room state — that's future work (slice 4).
+`wallKey` has two call sites: `useEncounterState.applyWallsRevealed`, where
+it's the sticky store's `Map` key and does the actual dedup (a wall
+reported from either adjacent hex collapses to one entry before
+`Array.from(walls.values())` ever reaches `HexGrid`), and `HexGrid`'s
+render loop, which reuses the same direction-normalized string only as the
+React `key` for each `ShadedHexWall` — it does not itself dedupe the
+`walls` array it's given.
 Full detail: [use-dungeon-map.md](components/use-dungeon-map.md).
 
 ## Transform functions: deleted with LobbyView

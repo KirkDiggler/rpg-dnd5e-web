@@ -1,7 +1,7 @@
 ---
 name: PlaytestHarness
 description: Dev-only verification harness for the v1alpha2 encounter stream — now with a clickable hex grid alongside the raw dev panel
-updated: 2026-07-04
+updated: 2026-07-13
 confidence: high — verified by reading PlaytestHarness.tsx + PlaytestMap.tsx and the vitest suite
 ---
 
@@ -33,7 +33,8 @@ The choice is local component state; no URL persistence. Switching modes does no
 
 1. **Floor tiles from per-hex reveals.** The playtest accumulates v1alpha2 `revealedHexes: Set<string>` via the `GeometryRevealed` event; production game routes accumulate v1alpha1 `Room`-shaped `floorTiles` via `useDungeonMap`. `synthesizeFloorTiles` joins reveals + every entity's cell into the `Map<string, AbsoluteFloorTile>` HexGrid expects, with `roomId: ''` (the playtest does not track room-level reveal aggregation).
 2. **RenderableEntity[] from v2 state.** v2 `EntityState` stubs carry only `entityId` + `position`; identity (CHARACTER/MONSTER + monsterRefId) and HP live in separate stores (`entityMeta`, `entityHP`). `buildRenderableEntities` joins all three.
-3. **Click routing.** HexGrid's `onMoveComplete` / `onEntityClick` callbacks are forwarded to the harness, which translates to `moveEntity` / `takeAction` RPCs.
+3. **Walls straight from the store.** `useEncounterState.walls: Map<string, Wall>` (The Dungeon wave 1, rpg-dnd5e-web#451) is handed to `HexGrid` as `Array.from(walls.values())` — no adapter-level transform needed since the store already keys by `wallKey`. Degrades to `[]` (no walls render) until rpg-api#644 populates `Space.Walls`/`GeometryRevealed.walls` on the wire.
+4. **Click routing.** HexGrid's `onMoveComplete` / `onEntityClick` callbacks are forwarded to the harness, which translates to `moveEntity` / `takeAction` RPCs.
 
 ### PlaytestMap uses HexGrid directly
 

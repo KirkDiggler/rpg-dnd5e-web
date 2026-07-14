@@ -201,6 +201,10 @@ export function PlaytestHarness() {
           if (entityEntries.length > 0) {
             encounterState.applyEntityAppearedBatch(entityEntries);
           }
+          const walls = e.encounter.space?.walls ?? [];
+          if (walls.length > 0) {
+            encounterState.applyWallsRevealed(walls);
+          }
         }
         addLog('SnapshotDelivered (stream up)');
       },
@@ -220,6 +224,10 @@ export function PlaytestHarness() {
           .map((h) => h.position)
           .filter((p): p is NonNullable<typeof p> => p !== undefined);
         encounterState.applyHexRevealed(positions.map(protoPositionToHex));
+        const walls = e.walls ?? [];
+        if (walls.length > 0) {
+          encounterState.applyWallsRevealed(walls);
+        }
         addLog(`GeometryRevealed ${positions.length} hex(es)`);
       },
       onEntityAppeared: (e) => {
@@ -990,6 +998,7 @@ export function PlaytestHarness() {
             entities={encounterState.state.entities}
             entityMeta={encounterState.state.entityMeta}
             revealedHexes={encounterState.state.revealedHexes}
+            walls={encounterState.state.walls}
             entityHP={encounterState.state.entityHP}
             myEntityId={entityId}
             fallbackPosition={fallback}

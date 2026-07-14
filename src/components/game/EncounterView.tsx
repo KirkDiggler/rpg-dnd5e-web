@@ -126,6 +126,10 @@ export function EncounterView({
         if (entityEntries.length > 0) {
           encounterState.applyEntityAppearedBatch(entityEntries);
         }
+        const walls = e.encounter.space?.walls ?? [];
+        if (walls.length > 0) {
+          encounterState.applyWallsRevealed(walls);
+        }
       }
     },
     onEntityMoved: (e) => {
@@ -142,6 +146,10 @@ export function EncounterView({
         .map((h) => h.position)
         .filter((p): p is NonNullable<typeof p> => p !== undefined);
       encounterState.applyHexRevealed(positions.map(protoPositionToHex));
+      const walls = e.walls ?? [];
+      if (walls.length > 0) {
+        encounterState.applyWallsRevealed(walls);
+      }
     },
     onEntityAppeared: (e) => {
       if (!e.entity || !e.entity.position) return;
@@ -376,6 +384,7 @@ export function EncounterView({
           entities={encounterState.state.entities}
           entityMeta={encounterState.state.entityMeta}
           revealedHexes={encounterState.state.revealedHexes}
+          walls={encounterState.state.walls}
           entityHP={encounterState.state.entityHP}
           // Gate by mode: applyModeChanged only flips `mode`, it doesn't
           // clear initiativeOrder/activeEntityId (only the next snapshot's

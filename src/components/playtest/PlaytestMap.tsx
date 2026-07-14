@@ -37,6 +37,7 @@
  */
 
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
 import type { EntityMeta } from '../../hooks/useEncounterState';
 import { HexGrid } from '../hex-grid';
@@ -63,6 +64,12 @@ export interface PlaytestMapProps {
    * becomes a synthesized floor tile so HexGrid can render and pathfind.
    */
   revealedHexes: Set<string>;
+  /**
+   * Sticky revealed walls, keyed by `wallKey`, from `Space.walls` (snapshot)
+   * merged with `GeometryRevealed.walls` (delta). Degrades to an empty map
+   * — and no walls render — when the server sends none.
+   */
+  walls: Map<string, Wall>;
   /**
    * v1alpha2 per-entity HP. Used to mark monsters as dead (HP <= 0) so
    * HexGrid renders their corpse and excludes them from blocking checks.
@@ -115,6 +122,7 @@ export function PlaytestMap({
   entities,
   entityMeta,
   revealedHexes,
+  walls,
   entityHP,
   myEntityId,
   fallbackPosition,
@@ -128,6 +136,8 @@ export function PlaytestMap({
       synthesizeFloorTiles(revealedHexes, entities.values(), fallbackPosition),
     [revealedHexes, entities, fallbackPosition]
   );
+
+  const wallList = useMemo(() => Array.from(walls.values()), [walls]);
 
   const renderableEntities = useMemo(
     () => buildRenderableEntities(entities, entityMeta, entityHP),
@@ -153,6 +163,7 @@ export function PlaytestMap({
       <HexGrid
         floorTiles={floorTiles}
         entities={renderableEntities}
+        walls={wallList}
         selectedEntityId={myEntityId}
         currentEntityId={myEntityId}
         movementRemaining={movementRemaining}
