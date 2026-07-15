@@ -22,6 +22,7 @@ import type {
   EntityDamaged,
   EntityDied,
   EntityRemoved,
+  InitiativeRolled,
   ModeChanged,
   StatusApplied,
   StatusRemoved,
@@ -55,6 +56,7 @@ import {
   applyEntityMetaFromAppeared,
   applyEntityRemoved,
   applyHexRevealed,
+  applyInitiativeRolled,
   applyModeChanged,
   applySnapshotTurnState,
   applyStatusApplied,
@@ -235,6 +237,10 @@ function makeModeChanged(
 
 function makeTurnStarted(entityId: string, round: number): TurnStarted {
   return { entityId, round } as unknown as TurnStarted;
+}
+
+function makeInitiativeRolled(order: string[]): InitiativeRolled {
+  return { order } as unknown as InitiativeRolled;
 }
 
 // ---------------------------------------------------------------------------
@@ -771,6 +777,88 @@ describe('Wave 2.8 combat reducers', () => {
         makeModeChanged(EncounterMode.UNSPECIFIED, EncounterMode.TURN_BASED)
       );
       expect(prev.mode).toBe(EncounterMode.UNSPECIFIED);
+    });
+  });
+
+  describe('applyInitiativeRolled', () => {
+    it('sets initiativeOrder from the event order list', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyInitiativeRolled(
+        prev,
+        makeInitiativeRolled(['char-alice', 'goblin-1', 'char-bob'])
+      );
+      expect(after.initiativeOrder).toEqual([
+        'char-alice',
+        'goblin-1',
+        'char-bob',
+      ]);
+    });
+
+    it('populates the turn-order overlay when combat starts mid-stream (no prior snapshot)', () => {
+      // Regression for #454: a FREE_ROAM -> TURN_BASED transition mid-stream
+      // must populate initiativeOrder without waiting for the next
+      // SnapshotDelivered.
+      const prev = createEmptyEncounterState();
+      expect(prev.initiativeOrder).toEqual([]);
+      const after = applyInitiativeRolled(
+        prev,
+        makeInitiativeRolled(['char-alice', 'goblin-1'])
+      );
+      expect(after.initiativeOrder).toEqual(['char-alice', 'goblin-1']);
+    });
+
+    it('is idempotent when the order is unchanged (returns same reference)', () => {
+      const prev = applyInitiativeRolled(
+        createEmptyEncounterState(),
+        makeInitiativeRolled(['char-alice', 'goblin-1'])
+      );
+      const next = applyInitiativeRolled(
+        prev,
+        makeInitiativeRolled(['char-alice', 'goblin-1'])
+      );
+      expect(next).toBe(prev);
+    });
+
+    it('updates when the order changes (re-roll includes a new entity)', () => {
+      const prev = applyInitiativeRolled(
+        createEmptyEncounterState(),
+        makeInitiativeRolled(['char-alice', 'goblin-1'])
+      );
+      const next = applyInitiativeRolled(
+        prev,
+        makeInitiativeRolled(['char-alice', 'goblin-1', 'goblin-2'])
+      );
+      expect(next.initiativeOrder).toEqual([
+        'char-alice',
+        'goblin-1',
+        'goblin-2',
+      ]);
+    });
+
+    it('does not touch mode, activeEntityId, round', () => {
+      let prev = createEmptyEncounterState();
+      prev = applyModeChanged(
+        prev,
+        makeModeChanged(EncounterMode.FREE_ROAM, EncounterMode.TURN_BASED)
+      );
+      prev = applyTurnStarted(prev, makeTurnStarted('char-alice', 1));
+
+      const next = applyInitiativeRolled(
+        prev,
+        makeInitiativeRolled(['char-alice', 'goblin-1'])
+      );
+      expect(next.mode).toBe(EncounterMode.TURN_BASED);
+      expect(next.activeEntityId).toBe('char-alice');
+      expect(next.round).toBe(1);
+    });
+
+    it('does not mutate the previous state', () => {
+      const prev = createEmptyEncounterState();
+      applyInitiativeRolled(
+        prev,
+        makeInitiativeRolled(['char-alice', 'goblin-1'])
+      );
+      expect(prev.initiativeOrder).toEqual([]);
     });
   });
 

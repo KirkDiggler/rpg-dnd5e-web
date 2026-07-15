@@ -154,6 +154,18 @@ describe('dispatchEncounterStreamEvent', () => {
     expect(onModeChanged).toHaveBeenCalledTimes(1);
   });
 
+  it('routes initiativeRolled to onInitiativeRolled', () => {
+    const onInitiativeRolled = vi.fn();
+    const options: EncounterStreamOptions = { onInitiativeRolled };
+    const event = makeEvent('initiativeRolled', {
+      order: ['char-alice', 'goblin-1', 'char-bob'],
+    });
+    dispatchEncounterStreamEvent(event, options);
+    expect(onInitiativeRolled).toHaveBeenCalledTimes(1);
+    const arg = onInitiativeRolled.mock.calls[0]?.[0] as { order?: string[] };
+    expect(arg.order).toEqual(['char-alice', 'goblin-1', 'char-bob']);
+  });
+
   it('routes turnStarted to onTurnStarted', () => {
     const onTurnStarted = vi.fn();
     const options: EncounterStreamOptions = { onTurnStarted };

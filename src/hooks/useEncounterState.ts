@@ -24,6 +24,7 @@ import type {
   EntityDamaged,
   EntityDied,
   EntityRemoved,
+  InitiativeRolled,
   ModeChanged,
   StatusApplied,
   StatusRemoved,
@@ -648,6 +649,34 @@ export function applyModeChanged(
 }
 
 /**
+ * Apply an InitiativeRolled event: sets `initiativeOrder` from the event's
+ * order list.
+ *
+ * The toolkit's rollInitiative (inside SetMode) rolls the order but
+ * publishes no dedicated roster event on the wire by default — rpg-api#644's
+ * playtest follow-up synthesizes this InitiativeRolled envelope alongside
+ * the normal ModeChanged translation so a mid-stream FREE_ROAM -> TURN_BASED
+ * transition populates the turn-order overlay immediately, without waiting
+ * for the next SnapshotDelivered (applySnapshotTurnState is otherwise the
+ * only initiativeOrder source, and snapshots arrive once at connect time).
+ *
+ * Idempotent if the order is unchanged (returns the same reference).
+ * Exported for testing.
+ */
+export function applyInitiativeRolled(
+  prev: LocalEncounterState,
+  event: InitiativeRolled
+): LocalEncounterState {
+  if (
+    prev.initiativeOrder.length === event.order.length &&
+    prev.initiativeOrder.every((id, i) => id === event.order[i])
+  ) {
+    return prev;
+  }
+  return { ...prev, initiativeOrder: event.order };
+}
+
+/**
  * Apply a TurnStarted event: updates `activeEntityId` and `round`.
  *
  * Idempotent on a same-actor / same-round event (returns the same reference).
@@ -884,6 +913,11 @@ export interface UseEncounterStateResult {
   applyStatusRemoved: (event: StatusRemoved) => void;
   /** Update encounter mode from a ModeChanged event. */
   applyModeChanged: (event: ModeChanged) => void;
+  /**
+   * Set `initiativeOrder` from an InitiativeRolled event, populating the
+   * turn-order overlay when combat starts mid-stream.
+   */
+  applyInitiativeRolled: (event: InitiativeRolled) => void;
   /** Set active actor + round from a TurnStarted event. */
   applyTurnStarted: (event: TurnStarted) => void;
   /** Hook for TurnEnded (currently no-op; reserved for future per-turn UI). */
@@ -1039,6 +1073,13 @@ export function useEncounterState(): UseEncounterStateResult {
     setState((prev) => applyModeChanged(prev, event));
   }, []);
 
+  const applyInitiativeRolledCallback = useCallback(
+    (event: InitiativeRolled) => {
+      setState((prev) => applyInitiativeRolled(prev, event));
+    },
+    []
+  );
+
   const applyTurnStartedCallback = useCallback((event: TurnStarted) => {
     setState((prev) => applyTurnStarted(prev, event));
   }, []);
@@ -1077,6 +1118,7 @@ export function useEncounterState(): UseEncounterStateResult {
     applyStatusApplied: applyStatusAppliedCallback,
     applyStatusRemoved: applyStatusRemovedCallback,
     applyModeChanged: applyModeChangedCallback,
+    applyInitiativeRolled: applyInitiativeRolledCallback,
     applyTurnStarted: applyTurnStartedCallback,
     applyTurnEnded: applyTurnEndedCallback,
     applyTurnStateChanged: applyTurnStateChangedCallback,

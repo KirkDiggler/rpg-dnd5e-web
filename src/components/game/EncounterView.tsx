@@ -196,6 +196,9 @@ export function EncounterView({
     onModeChanged: (e) => {
       encounterState.applyModeChanged(e);
     },
+    onInitiativeRolled: (e) => {
+      encounterState.applyInitiativeRolled(e);
+    },
     onTurnStarted: (e) => {
       encounterState.applyTurnStarted(e);
       combatLog.recordTurnStarted(e);
