@@ -5,10 +5,15 @@ import {
   type EncounterStreamOptions,
 } from './encounterStreamDispatch';
 
-function makeEvent<K extends string, V>(caseName: K, value: V): EncounterEvent {
+function makeEvent<K extends string, V>(
+  caseName: K,
+  value: V,
+  sequence: bigint = 1n
+): EncounterEvent {
   return {
+    sequence,
     event: { case: caseName, value },
-    // Other EncounterEvent fields (eventId, deliveredAt) — minimal shape;
+    // Other EncounterEvent fields (timestamp, correlationId) — minimal shape;
     // tests are checking dispatch only, not full proto validity
   } as unknown as EncounterEvent;
 }
@@ -164,6 +169,40 @@ describe('dispatchEncounterStreamEvent', () => {
     expect(onInitiativeRolled).toHaveBeenCalledTimes(1);
     const arg = onInitiativeRolled.mock.calls[0]?.[0] as { order?: string[] };
     expect(arg.order).toEqual(['char-alice', 'goblin-1', 'char-bob']);
+  });
+
+  it('dispatches modeChanged and initiativeRolled independently even when they share the same wire sequence', () => {
+    // Pins the real wire shape: the api can't mint a fresh broker sequence
+    // for the synthesized InitiativeRolled envelope, so it reuses the
+    // preceding ModeChanged event's sequence number (two envelopes, one
+    // sequence — a toolkit fix for a real per-envelope sequence is filed
+    // separately). dispatchEncounterStreamEvent has no sequence-based
+    // dedup/ordering anywhere (confirmed: no consumer in this repo reads
+    // EncounterEvent.sequence at all) — both envelopes must still be
+    // dispatched and applied in full.
+    const onModeChanged = vi.fn();
+    const onInitiativeRolled = vi.fn();
+    const options: EncounterStreamOptions = {
+      onModeChanged,
+      onInitiativeRolled,
+    };
+    const sharedSequence = 42n;
+    const modeChangedEvent = makeEvent(
+      'modeChanged',
+      { from: 1, to: 2, reason: 'sighted' },
+      sharedSequence
+    );
+    const initiativeRolledEvent = makeEvent(
+      'initiativeRolled',
+      { order: ['char-alice', 'goblin-1'] },
+      sharedSequence
+    );
+
+    dispatchEncounterStreamEvent(modeChangedEvent, options);
+    dispatchEncounterStreamEvent(initiativeRolledEvent, options);
+
+    expect(onModeChanged).toHaveBeenCalledTimes(1);
+    expect(onInitiativeRolled).toHaveBeenCalledTimes(1);
   });
 
   it('routes turnStarted to onTurnStarted', () => {
