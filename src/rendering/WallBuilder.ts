@@ -35,6 +35,7 @@
 
 import * as THREE from 'three';
 
+import { createHexPillarGeometry } from '@/components/hex-grid/hexGeometry';
 import {
   createAdvancedCharacterShader,
   startShaderAnimation,
@@ -268,6 +269,46 @@ export class WallBuilder {
     mesh.position.set(position.x, position.y + height / 2, position.z);
 
     mesh.userData.type = 'pillar';
+    mesh.userData.basePosition = position.clone();
+    mesh.userData.height = height;
+
+    return mesh;
+  }
+
+  /**
+   * Create a solid hex-footprint mesh at the given position.
+   *
+   * For single-cell wall segments (start === end), a thin `createPillar`
+   * (sized off `defaultThickness`, ~10% of hex width) reads as a
+   * near-invisible sliver rather than a wall. This instead extrudes the
+   * same hex silhouette the floor tiles use (`createHexPillarGeometry`,
+   * radius = half of `hexWidth`) so a single walled cell fills its whole
+   * hex and is unmistakably blocked terrain.
+   *
+   * `options.thickness` is ignored here — the footprint is the hex itself,
+   * not a thickness-derived box.
+   */
+  createSolidHex(
+    position: THREE.Vector3,
+    height: number,
+    options: WallOptions = {}
+  ): THREE.Mesh {
+    const color = options.color ?? this.defaultColor;
+    const hexRadius = this.hexWidth / 2;
+
+    const geometry = createHexPillarGeometry(hexRadius, height);
+    const material = this.getMaterial(color);
+    const mesh = new THREE.Mesh(geometry, material);
+
+    // createHexPillarGeometry extrudes along its local Z from 0 to height;
+    // rotating -90deg about X lays it flat with the extrusion growing
+    // straight up from y=0 (same convention HexWall.tsx uses), so no
+    // vertical offset is needed here (unlike createPillar's BoxGeometry,
+    // which is centered on its position and needs + height/2).
+    mesh.position.set(position.x, position.y, position.z);
+    mesh.rotation.x = -Math.PI / 2;
+
+    mesh.userData.type = 'solidHex';
     mesh.userData.basePosition = position.clone();
     mesh.userData.height = height;
 

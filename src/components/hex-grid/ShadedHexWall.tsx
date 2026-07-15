@@ -100,26 +100,30 @@ export function ShadedHexWall({ wall, hexSize }: ShadedHexWallProps) {
       group.add(wallMesh);
     }
 
-    // If the wall is a single hex, create a pillar instead
     if (hexPositions.length === 1) {
+      // Single-cell wall (from === to): a thin createPillar reads as a
+      // near-invisible sliver against the floor. Render a solid
+      // hex-footprint mesh instead so the whole cell is unmistakably
+      // blocked terrain.
       const pos = cubeToWorld(hexPositions[0], hexSize);
-      const pillar = builder.createPillar(
+      const solidHex = builder.createSolidHex(
         new THREE.Vector3(pos.x, 0, pos.z),
         WALL_HEIGHT,
         { color }
       );
-      group.add(pillar);
-    }
-
-    // Also add pillars at each hex position for visual consistency
-    for (const hexPos of hexPositions) {
-      const pos = cubeToWorld(hexPos, hexSize);
-      const pillar = builder.createPillar(
-        new THREE.Vector3(pos.x, 0, pos.z),
-        WALL_HEIGHT,
-        { color }
-      );
-      group.add(pillar);
+      group.add(solidHex);
+    } else {
+      // Multi-cell wall: add corner pillars at each hex position along the
+      // line, for visual consistency between adjacent wall segments.
+      for (const hexPos of hexPositions) {
+        const pos = cubeToWorld(hexPos, hexSize);
+        const pillar = builder.createPillar(
+          new THREE.Vector3(pos.x, 0, pos.z),
+          WALL_HEIGHT,
+          { color }
+        );
+        group.add(pillar);
+      }
     }
 
     invalidate();
