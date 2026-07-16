@@ -5,8 +5,16 @@
 
 import { describe, expect, it } from 'vitest';
 import type { CubeCoord } from './hexMath';
-import { cubeToWorld, findPath, getReachableHexes } from './hexMath';
-import { shouldShowMovementBorder } from './useMovementRange';
+import {
+  cubeToWorld,
+  findPath,
+  getReachableHexes,
+  hexDistance,
+} from './hexMath';
+import {
+  calculateBoundaryEdges,
+  shouldShowMovementBorder,
+} from './useMovementRange';
 
 describe('useMovementRange calculations', () => {
   const hexSize = 1;
@@ -347,6 +355,92 @@ describe('useMovementRange calculations', () => {
       // signal that should drive border visibility on its own.
       expect(shouldShowMovementBorder(false, false, true)).toBe(true);
       expect(shouldShowMovementBorder(false, true, false)).toBe(false);
+    });
+  });
+
+  describe('reachability matches real pathing (rpg-dnd5e-web#459 Copilot review)', () => {
+    // Regression for the #456 fix's semantics bug: the border's reachable
+    // set must be computed with the SAME entity-aware isBlocked real
+    // pathfinding uses, or it can promise hexes movement actually refuses.
+    // Corridor along z=0 (straight 'E' direction from origin), bounded to
+    // a small region so findPath's unbounded A* search (no maxSteps, unlike
+    // getReachableHexes) terminates quickly when the target is genuinely
+    // unreachable, rather than exploring an effectively infinite corridor.
+    // A single gate hex is occupied by another entity, blocking everything
+    // beyond it — for BOTH the reachable-set calc and real pathfinding,
+    // since they share the identical predicate.
+    const start: CubeCoord = { x: 0, y: 0, z: 0 };
+    const beyondGate: CubeCoord = { x: 4, y: -4, z: 0 };
+    const isBlockedWithOccupiedGate = (coord: CubeCoord) =>
+      hexDistance(start, coord) > 6 ||
+      coord.z !== 0 ||
+      (coord.x === 2 && coord.y === -2 && coord.z === 0);
+
+    it('excludes a hex only reachable by passing through an occupied gate', () => {
+      const reachable = getReachableHexes(start, 4, isBlockedWithOccupiedGate);
+      expect(reachable.has('4,-4,0')).toBe(false);
+      // The gate itself is excluded too — you can't stand where the ally is.
+      expect(reachable.has('2,-2,0')).toBe(false);
+    });
+
+    it('agrees with real pathfinding: findPath also refuses the same hex', () => {
+      const path = findPath(start, beyondGate, isBlockedWithOccupiedGate);
+      expect(path).toEqual([]);
+    });
+
+    it('without the occupied gate, both the reachable set and real pathing agree the hex IS reachable', () => {
+      const isBlockedClearCorridor = (coord: CubeCoord) => coord.z !== 0;
+      const reachable = getReachableHexes(start, 4, isBlockedClearCorridor);
+      expect(reachable.has('4,-4,0')).toBe(true);
+
+      const path = findPath(start, beyondGate, isBlockedClearCorridor);
+      expect(path.length).toBeGreaterThan(0);
+      expect(path[path.length - 1]).toEqual(beyondGate);
+    });
+  });
+
+  describe('calculateBoundaryEdges ally-hole suppression (rpg-dnd5e-web#456/#459)', () => {
+    it('draws all 6 edges around an isolated reachable hex when no entities are occupying neighbors', () => {
+      const reachableHexes = new Set(['0,0,0']);
+      const edges = calculateBoundaryEdges(reachableHexes, 1);
+      expect(edges).toHaveLength(6);
+    });
+
+    it('suppresses exactly the edge toward a neighbor occupied by another entity', () => {
+      const reachableHexes = new Set(['0,0,0']);
+      // East neighbor (1,-1,0) is an ally — no edge should be drawn there,
+      // but the other 5 (genuine unrevealed/blocked terrain) still get one.
+      const isOccupiedByOtherEntity = (coord: CubeCoord) =>
+        coord.x === 1 && coord.y === -1 && coord.z === 0;
+
+      const edges = calculateBoundaryEdges(
+        reachableHexes,
+        1,
+        isOccupiedByOtherEntity
+      );
+      expect(edges).toHaveLength(5);
+    });
+
+    it('draws all 6 edges when isOccupiedByOtherEntity never matches (equivalent to omitting it)', () => {
+      const reachableHexes = new Set(['0,0,0']);
+      const edges = calculateBoundaryEdges(reachableHexes, 1, () => false);
+      expect(edges).toHaveLength(6);
+    });
+
+    it('does not suppress edges toward genuinely unreachable (non-entity) terrain even when the predicate is provided', () => {
+      // Two reachable hexes, no entities anywhere — every boundary edge
+      // between the reachable set and the outside world must still draw.
+      const reachableHexes = new Set(['0,0,0', '1,-1,0']);
+      const isOccupiedByOtherEntity = () => false; // nobody standing anywhere
+      const edges = calculateBoundaryEdges(
+        reachableHexes,
+        1,
+        isOccupiedByOtherEntity
+      );
+      // Two adjacent hexes share one internal edge (not a boundary), so
+      // 6 + 6 - 2 (the shared edge counted from both sides) = 10 boundary
+      // edges remain.
+      expect(edges).toHaveLength(10);
     });
   });
 });

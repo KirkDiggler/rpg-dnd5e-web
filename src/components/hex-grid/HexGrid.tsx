@@ -278,21 +278,24 @@ function Scene({
     [entities, currentEntityId, floorTiles, doorOpenKeys]
   );
 
-  // Terrain-only reachability check (walls/floor, no entity occupancy) —
-  // used for the movement-range BOUNDARY visualization only, not real
-  // pathfinding (isBlocked above, still used by useHexInteraction, is the
-  // real "can I click here" check). These are different questions: "how
-  // far could I move if nobody were standing here" vs "can I click through
-  // or onto this entity's hex". Using isBlocked (entity-aware) for the
-  // boundary too meant an adjacent ally created a hex-shaped cyan "hole" in
-  // the range indicator — reading as broken geometry rather than "you
-  // can't stop on your friend" (rpg-dnd5e-web#456).
-  const isTerrainBlocked = useCallback(
-    (coord: CubeCoord) => {
-      const key = `${coord.x},${coord.y},${coord.z}`;
-      return !floorTiles.has(key) && !doorOpenKeys.has(key);
-    },
-    [floorTiles, doorOpenKeys]
+  // Identifies a hex as occupied by another (non-current, non-dead) entity.
+  // Rendering-only: used to suppress the movement-range border's "hole"
+  // edge around an ally without changing what's actually reachable —
+  // useMovementRange's reachability calc uses the full entity-aware
+  // isBlocked below, same as real pathfinding, so the border never
+  // promises a hex real movement would refuse (rpg-dnd5e-web#459 Copilot
+  // review). See useMovementRange.ts's calculateBoundaryEdges doc comment.
+  const isOccupiedByOtherEntity = useCallback(
+    (coord: CubeCoord) =>
+      entities.some(
+        (entity) =>
+          !entity.isDead &&
+          entity.position.x === coord.x &&
+          entity.position.y === coord.y &&
+          entity.position.z === coord.z &&
+          entity.entityId !== currentEntityId
+      ),
+    [entities, currentEntityId]
   );
 
   // Use the interaction hook for hover/click detection with path preview
@@ -333,14 +336,17 @@ function Scene({
     onHoverChange?.(hoveredEntity);
   }, [hoveredEntity, onHoverChange]);
 
-  // Use movement range hook for boundary visualization. Terrain-only
-  // blocking (see isTerrainBlocked above) — allies don't punch holes in
-  // the reachable set.
+  // Use movement range hook for boundary visualization. isBlocked is the
+  // same entity-aware predicate real pathfinding uses (reachability must
+  // never lie relative to actual pathing); isOccupiedByOtherEntity only
+  // suppresses the ally "hole" edge at render time — see
+  // useMovementRange.ts's doc comments.
   const { boundaryEdges } = useMovementRange({
     entityPosition: currentEntityPosition,
     movementRemaining,
     hexSize: HEX_SIZE,
-    isBlocked: isTerrainBlocked,
+    isBlocked,
+    isOccupiedByOtherEntity,
   });
 
   // v1alpha2 TURN_BASED signal: buildTurnOrderCombatState (in
