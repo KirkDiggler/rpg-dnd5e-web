@@ -15,6 +15,9 @@ export { ShadedHexFloor } from './ShadedHexFloor';
 export { ShadedHexWall } from './ShadedHexWall';
 export type { ShadedHexWallProps } from './ShadedHexWall';
 
+export { FrontierGroundHint } from './FrontierGroundHint';
+export type { FrontierGroundHintProps } from './FrontierGroundHint';
+
 export { useHexInteraction } from './useHexInteraction';
 export type {
   UseHexInteractionProps,

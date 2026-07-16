@@ -121,6 +121,33 @@ function calculateBoundaryEdges(
 }
 
 /**
+ * Whether MovementRangeBorder should render at all.
+ *
+ * rpg-dnd5e-web#456: the border used to render always-on outside combat
+ * (isPlayerTurn is forced true during FREE_ROAM so clicks still dispatch —
+ * see EncounterView.tsx's isMyTurn ternary), reading as permanent map
+ * geometry rather than an actionable "here's what you can do right now"
+ * indicator. It fooled a careful playtest verifier into reporting broken
+ * wall rendering.
+ *
+ * Show it only when it's actionable:
+ * - In TURN_BASED combat, only on the local player's own turn.
+ * - In FREE_ROAM (no active combat), only while a move is actually being
+ *   planned — the player is hovering a hex or already has a path preview.
+ *   Idle exploration with no pointer activity shows nothing.
+ *
+ * Exported for unit testing without rendering HexGrid.
+ */
+export function shouldShowMovementBorder(
+  inTurnBasedCombat: boolean,
+  isPlayerTurn: boolean,
+  isPlanningMove: boolean
+): boolean {
+  if (inTurnBasedCombat) return isPlayerTurn;
+  return isPlanningMove;
+}
+
+/**
  * Hook for calculating movement range and boundary visualization
  *
  * Given an entity's position and remaining movement, this hook:

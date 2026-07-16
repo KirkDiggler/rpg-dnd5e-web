@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CubeCoord } from './hexMath';
 import { cubeToWorld, findPath, getReachableHexes } from './hexMath';
+import { shouldShowMovementBorder } from './useMovementRange';
 
 describe('useMovementRange calculations', () => {
   const hexSize = 1;
@@ -319,6 +320,33 @@ describe('useMovementRange calculations', () => {
 
       expect(world2.x).toBeCloseTo(world1.x * 2);
       expect(world2.z).toBeCloseTo(world1.z * 2);
+    });
+  });
+
+  describe('shouldShowMovementBorder (rpg-dnd5e-web#456)', () => {
+    it("shows during TURN_BASED combat on the local player's own turn", () => {
+      expect(shouldShowMovementBorder(true, true, false)).toBe(true);
+    });
+
+    it("hides during TURN_BASED combat when it is not the local player's turn", () => {
+      expect(shouldShowMovementBorder(true, false, false)).toBe(false);
+      // Even if somehow "planning a move" were true, combat-turn gating wins.
+      expect(shouldShowMovementBorder(true, false, true)).toBe(false);
+    });
+
+    it('hides in FREE_ROAM when idle (no hover, no path preview)', () => {
+      expect(shouldShowMovementBorder(false, true, false)).toBe(false);
+    });
+
+    it('shows in FREE_ROAM while a move is being planned (hover or path preview)', () => {
+      expect(shouldShowMovementBorder(false, true, true)).toBe(true);
+    });
+
+    it('ignores isPlayerTurn in FREE_ROAM (it is always forced true by the caller)', () => {
+      // FREE_ROAM's isPlayerTurn=true is a click-dispatch flag, not a
+      // signal that should drive border visibility on its own.
+      expect(shouldShowMovementBorder(false, false, true)).toBe(true);
+      expect(shouldShowMovementBorder(false, true, false)).toBe(false);
     });
   });
 });

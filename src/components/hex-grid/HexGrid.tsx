@@ -13,6 +13,7 @@
  */
 
 import {
+  frontierGroundHintHexes,
   openDoorWalkableKeys,
   wallKey,
   type AbsoluteFloorTile,
@@ -27,6 +28,7 @@ import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2
 import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { FrontierGroundHint } from './FrontierGroundHint';
 import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
 import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
@@ -38,7 +40,7 @@ import type { TurnOrderEntry } from './TurnOrderOverlay';
 import { TurnOrderOverlay } from './TurnOrderOverlay';
 import { useCameraControls } from './useCameraControls';
 import { useHexInteraction } from './useHexInteraction';
-import { useMovementRange } from './useMovementRange';
+import { shouldShowMovementBorder, useMovementRange } from './useMovementRange';
 
 export interface HexGridProps {
   floorTiles: Map<string, AbsoluteFloorTile>;
@@ -100,6 +102,7 @@ function Scene({
   currentEntityId,
   movementRemaining = 0,
   isPlayerTurn = false,
+  combatState = null,
   onMoveComplete,
   onAttackComplete,
   onHoverChange,
@@ -131,7 +134,8 @@ function Scene({
     return map;
   }, [monsters]);
 
-  // Calculate grid center for camera target
+  // Grid center: bbox center of all revealed floor tiles. Used only as the
+  // camera's one-time starting position below — see stableTarget.
   const gridCenter = useMemo(() => {
     if (floorTiles.size === 0) {
       return new THREE.Vector3(0, 0, 0);
@@ -153,19 +157,54 @@ function Scene({
     return new THREE.Vector3((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
   }, [floorTiles]);
 
-  // Compute camera focus target on turn change only (not on movement during turn)
+  // Stable base target for useCameraControls' panning, seeded once from
+  // the first non-empty gridCenter and frozen after that.
+  //
+  // Previously `target: gridCenter` was fed to useCameraControls directly:
+  // gridCenter is a NEW Vector3 every time floorTiles grows (every
+  // GeometryRevealed event), and useCameraControls snaps the camera
+  // straight to a changed target reference. Net effect: every reveal
+  // recentered the camera on the ever-growing revealed-area bbox, so the
+  // player (and any nearby walls) could jump toward the frame's edge
+  // mid-exploration — the "camera auto-zoom frames the action out of
+  // shot" half of rpg-dnd5e-web#457. The camera's real, continuous framing
+  // is now driven by focusTarget below (follows the local player), so this
+  // only needs to seed a sane starting point.
+  const initialTargetRef = useRef<THREE.Vector3 | null>(null);
+  if (initialTargetRef.current === null && floorTiles.size > 0) {
+    initialTargetRef.current = gridCenter.clone();
+  }
+  const stableTarget = initialTargetRef.current ?? gridCenter;
+
+  // Camera focus target: continuously follows the LOCAL PLAYER's own
+  // position. currentEntityId is always the local player here — both
+  // EncounterMap.tsx and PlaytestMap.tsx pass `currentEntityId={myEntityId}`,
+  // never the combat-active-turn entity, despite the name. Depending on the
+  // player's live x/y/z (not just currentEntityId's stable identity) is
+  // what makes this memo — and the smooth lerp it drives in
+  // useCameraControls — re-trigger on every move, biasing framing toward
+  // the player instead of the revealed-area bbox (rpg-dnd5e-web#457).
+  const myEntity = useMemo(
+    () =>
+      currentEntityId
+        ? entities.find((e) => e.entityId === currentEntityId)
+        : undefined,
+    [currentEntityId, entities]
+  );
+  const myPosX = myEntity?.position.x;
+  const myPosY = myEntity?.position.y;
+  const myPosZ = myEntity?.position.z;
   const focusTarget = useMemo(() => {
-    if (!currentEntityId) return null;
-    const entity = entities.find((e) => e.entityId === currentEntityId);
-    if (!entity) return null;
-    const worldPos = cubeToWorld(entity.position, HEX_SIZE);
+    if (myPosX === undefined || myPosY === undefined || myPosZ === undefined) {
+      return null;
+    }
+    const worldPos = cubeToWorld({ x: myPosX, y: myPosY, z: myPosZ }, HEX_SIZE);
     return new THREE.Vector3(worldPos.x, 0, worldPos.z);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only trigger on turn change
-  }, [currentEntityId]);
+  }, [myPosX, myPosY, myPosZ]);
 
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
-    target: gridCenter,
+    target: stableTarget,
     polarAngle: Math.PI / 3.5, // ~51 degrees from vertical - slightly lower tactical angle
     panSpeed: 0.3,
     rotateSpeed: 0.02,
@@ -239,6 +278,23 @@ function Scene({
     [entities, currentEntityId, floorTiles, doorOpenKeys]
   );
 
+  // Terrain-only reachability check (walls/floor, no entity occupancy) —
+  // used for the movement-range BOUNDARY visualization only, not real
+  // pathfinding (isBlocked above, still used by useHexInteraction, is the
+  // real "can I click here" check). These are different questions: "how
+  // far could I move if nobody were standing here" vs "can I click through
+  // or onto this entity's hex". Using isBlocked (entity-aware) for the
+  // boundary too meant an adjacent ally created a hex-shaped cyan "hole" in
+  // the range indicator — reading as broken geometry rather than "you
+  // can't stop on your friend" (rpg-dnd5e-web#456).
+  const isTerrainBlocked = useCallback(
+    (coord: CubeCoord) => {
+      const key = `${coord.x},${coord.y},${coord.z}`;
+      return !floorTiles.has(key) && !doorOpenKeys.has(key);
+    },
+    [floorTiles, doorOpenKeys]
+  );
+
   // Use the interaction hook for hover/click detection with path preview
   const {
     hoveredHex,
@@ -277,13 +333,37 @@ function Scene({
     onHoverChange?.(hoveredEntity);
   }, [hoveredEntity, onHoverChange]);
 
-  // Use movement range hook for boundary visualization
+  // Use movement range hook for boundary visualization. Terrain-only
+  // blocking (see isTerrainBlocked above) — allies don't punch holes in
+  // the reachable set.
   const { boundaryEdges } = useMovementRange({
     entityPosition: currentEntityPosition,
     movementRemaining,
     hexSize: HEX_SIZE,
-    isBlocked,
+    isBlocked: isTerrainBlocked,
   });
+
+  // v1alpha2 TURN_BASED signal: buildTurnOrderCombatState (in
+  // playtestMapHelpers.ts) returns null when initiativeOrder is empty,
+  // i.e. FREE_ROAM. Used to decide when the movement border is actionable
+  // rather than idle-always-on (rpg-dnd5e-web#456).
+  const inTurnBasedCombat = combatState != null;
+  const isPlanningMove = hoveredHex !== null || pathPreview.length > 0;
+  const showMovementBorder = shouldShowMovementBorder(
+    inTurnBasedCombat,
+    isPlayerTurn,
+    isPlanningMove
+  );
+
+  // Frontier ground hints: dim hex just beyond revealed walls so they read
+  // as walls bounding a room rather than blocks floating in the void
+  // (rpg-dnd5e-web#457). Kind-agnostic — works off wall geometry, not
+  // WallKind, so it extends to DOOR_CLOSED/DOOR_OPEN/WINDOW once wave 2
+  // folds doors into this walls array.
+  const frontierHints = useMemo(
+    () => frontierGroundHintHexes(walls, new Set(floorTiles.keys())),
+    [walls, floorTiles]
+  );
 
   // Extract door positions for tile coloring
   const doorPositions = useMemo((): CubeCoord[] => {
@@ -363,6 +443,11 @@ function Scene({
         wallPositions={wallPositions}
       />
 
+      {/* Ground the frontier: dim hint hexes just beyond revealed walls,
+          so walls read as bounding a room rather than floating in the
+          void (rpg-dnd5e-web#457) */}
+      <FrontierGroundHint hints={frontierHints} hexSize={HEX_SIZE} />
+
       {/* Render walls (after tiles, before doors) — already deduplicated by wallKey */}
       {walls.map((wall) => {
         return (
@@ -398,8 +483,10 @@ function Scene({
         );
       })}
 
-      {/* Movement range border (only on player turn) */}
-      {isPlayerTurn && boundaryEdges.length > 0 && (
+      {/* Movement range border: only when actionable (own TURN_BASED turn,
+          or actively planning a move in FREE_ROAM) — not idle-always-on
+          (rpg-dnd5e-web#456) */}
+      {showMovementBorder && boundaryEdges.length > 0 && (
         <MovementRangeBorder boundaryEdges={boundaryEdges} />
       )}
 
