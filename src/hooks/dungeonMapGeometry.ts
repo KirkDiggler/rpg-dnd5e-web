@@ -16,6 +16,12 @@
  * encounter domain hasn't migrated doors to v1alpha2 yet.
  */
 
+import {
+  coordToKey,
+  getHexLine,
+  getHexNeighbors,
+  type CubeCoord,
+} from '@/components/hex-grid/hexMath';
 import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 
@@ -67,4 +73,59 @@ export function wallKey(wall: Wall): string {
   const startStr = `${sx},${sy},${sz}`;
   const endStr = `${ex},${ey},${ez}`;
   return startStr < endStr ? `${startStr}-${endStr}` : `${endStr}-${startStr}`;
+}
+
+/**
+ * Compute "frontier ground hint" hexes: every hex immediately adjacent to a
+ * wall segment that is NOT itself a revealed floor tile or another wall
+ * position. Grounds solid wall blocks against the unrevealed darkness
+ * beyond them (rpg-dnd5e-web#457) — without this, a wall sitting at the
+ * reveal frontier reads as a block floating in the void rather than a wall
+ * bounding a room that continues beyond it.
+ *
+ * Kind-agnostic by design: works off wall geometry (from/to line), not
+ * WallKind, so it extends automatically to DOOR_CLOSED/DOOR_OPEN/WINDOW
+ * walls once wave 2 folds doors into the walls array — a solid-only
+ * grounding rule would break the moment a door stopped being a hard block.
+ *
+ * Exported for unit testing without rendering HexGrid.
+ */
+export function frontierGroundHintHexes(
+  walls: Iterable<Wall>,
+  floorTileKeys: ReadonlySet<string>
+): CubeCoord[] {
+  const wallKeys = new Set<string>();
+  const wallLineHexes: CubeCoord[] = [];
+
+  for (const wall of walls) {
+    if (!wall.from || !wall.to) continue;
+    const start: CubeCoord = {
+      x: wall.from.x,
+      y: wall.from.y,
+      z: wall.from.z,
+    };
+    const end: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
+    for (const hex of getHexLine(start, end)) {
+      const key = coordToKey(hex);
+      if (!wallKeys.has(key)) {
+        wallKeys.add(key);
+        wallLineHexes.push(hex);
+      }
+    }
+  }
+
+  const hints: CubeCoord[] = [];
+  const seen = new Set<string>();
+  for (const wallHex of wallLineHexes) {
+    for (const neighbor of getHexNeighbors(wallHex)) {
+      const key = coordToKey(neighbor);
+      if (seen.has(key) || wallKeys.has(key) || floorTileKeys.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      hints.push(neighbor);
+    }
+  }
+
+  return hints;
 }

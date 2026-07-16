@@ -17,7 +17,17 @@ export interface UseMovementRangeProps {
   entityPosition: CubeCoord | null; // Current entity position
   movementRemaining: number; // Feet remaining (divide by 5 for hex steps)
   hexSize: number; // Hex radius for world coord conversion
-  isBlocked?: (coord: CubeCoord) => boolean; // Obstacles check
+  // Entity-aware (walls AND other entities) — MUST match the predicate real
+  // pathfinding uses (useHexInteraction), or the reachable set can promise
+  // hexes real movement refuses (rpg-dnd5e-web#459 Copilot review: a hex
+  // only reachable by passing through an occupied hex would be marked
+  // reachable here but rejected by actual pathing).
+  isBlocked?: (coord: CubeCoord) => boolean;
+  // Rendering-only: identifies a hex as occupied by another entity (not
+  // terrain), used solely to suppress the "hole" boundary edge drawn
+  // around an ally — it does NOT affect what's reachable or where paths
+  // can go. Omit to draw every boundary edge, including ally holes.
+  isOccupiedByOtherEntity?: (coord: CubeCoord) => boolean;
 }
 
 export interface BoundaryEdge {
@@ -63,10 +73,22 @@ function getHexVertices(center: WorldPos, hexSize: number): WorldPos[] {
  *
  * For each boundary edge, we calculate the two vertices that form the edge
  * in world coordinates.
+ *
+ * Exception (rpg-dnd5e-web#456/#459): if the unreachable neighbor is
+ * occupied by another entity rather than blocked terrain, no edge is drawn
+ * for it. The hex is still correctly excluded from `reachableHexes` (an
+ * ally blocks stopping there, same as real pathing) — this only
+ * suppresses the hex-shaped "hole" that reads as broken geometry rather
+ * than "you can't stop on your friend". `isOccupiedByOtherEntity` is
+ * checked per-neighbor, not per-hex, since it's the boundary edge (not the
+ * reachable hex itself) that would otherwise ring the ally.
+ *
+ * Exported for unit testing without rendering HexGrid.
  */
-function calculateBoundaryEdges(
+export function calculateBoundaryEdges(
   reachableHexes: Set<string>,
-  hexSize: number
+  hexSize: number,
+  isOccupiedByOtherEntity?: (coord: CubeCoord) => boolean
 ): BoundaryEdge[] {
   const edges: BoundaryEdge[] = [];
 
@@ -106,8 +128,11 @@ function calculateBoundaryEdges(
         z: coord.z + dir.z,
       };
 
-      // If neighbor is NOT reachable, this edge is a boundary
+      // If neighbor is NOT reachable, this edge is a boundary — unless
+      // the neighbor is only unreachable because an ally is standing on
+      // it (rendering-only suppression; see doc comment above).
       if (!reachableHexes.has(coordToKey(neighbor))) {
+        if (isOccupiedByOtherEntity?.(neighbor)) continue;
         const [v1Idx, v2Idx] = edgeVertexPairs[i];
         edges.push({
           from: vertices[v1Idx],
@@ -118,6 +143,33 @@ function calculateBoundaryEdges(
   }
 
   return edges;
+}
+
+/**
+ * Whether MovementRangeBorder should render at all.
+ *
+ * rpg-dnd5e-web#456: the border used to render always-on outside combat
+ * (isPlayerTurn is forced true during FREE_ROAM so clicks still dispatch —
+ * see EncounterView.tsx's isMyTurn ternary), reading as permanent map
+ * geometry rather than an actionable "here's what you can do right now"
+ * indicator. It fooled a careful playtest verifier into reporting broken
+ * wall rendering.
+ *
+ * Show it only when it's actionable:
+ * - In TURN_BASED combat, only on the local player's own turn.
+ * - In FREE_ROAM (no active combat), only while a move is actually being
+ *   planned — the player is hovering a hex or already has a path preview.
+ *   Idle exploration with no pointer activity shows nothing.
+ *
+ * Exported for unit testing without rendering HexGrid.
+ */
+export function shouldShowMovementBorder(
+  inTurnBasedCombat: boolean,
+  isPlayerTurn: boolean,
+  isPlanningMove: boolean
+): boolean {
+  if (inTurnBasedCombat) return isPlayerTurn;
+  return isPlanningMove;
 }
 
 /**
@@ -135,8 +187,11 @@ export function useMovementRange({
   movementRemaining,
   hexSize,
   isBlocked,
+  isOccupiedByOtherEntity,
 }: UseMovementRangeProps): UseMovementRangeReturn {
-  // Calculate reachable hexes (memoized)
+  // Calculate reachable hexes (memoized). isBlocked here must be the same
+  // entity-aware predicate real pathfinding uses — see the interface doc
+  // comment for why.
   const reachableHexes = useMemo(() => {
     if (!entityPosition) return new Set<string>();
 
@@ -150,8 +205,12 @@ export function useMovementRange({
   const boundaryEdges = useMemo(() => {
     if (!entityPosition || reachableHexes.size === 0) return [];
 
-    return calculateBoundaryEdges(reachableHexes, hexSize);
-  }, [reachableHexes, hexSize, entityPosition]);
+    return calculateBoundaryEdges(
+      reachableHexes,
+      hexSize,
+      isOccupiedByOtherEntity
+    );
+  }, [reachableHexes, hexSize, entityPosition, isOccupiedByOtherEntity]);
 
   // Memoize utility functions
   const getPathTo = useMemo(() => {
