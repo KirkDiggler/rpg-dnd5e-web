@@ -13,6 +13,7 @@ import type {
   EntityRemoved,
   EntityStabilized,
   GeometryRevealed,
+  InitiativeRolled,
   InputRequiredDelivered,
   ModeChanged,
   SnapshotDelivered,
@@ -69,6 +70,13 @@ export interface EncounterStreamOptions {
   onStatusRemoved?: (event: StatusRemoved) => void;
   /** Encounter-mode transition (e.g. FREE_ROAM → TURN_BASED). */
   onModeChanged?: (event: ModeChanged) => void;
+  /**
+   * Full initiative roster, synthesized by the server alongside the
+   * FREE_ROAM -> TURN_BASED ModeChanged translation (rpg-api#644 playtest
+   * follow-up) so a mid-stream combat start populates the turn-order
+   * overlay immediately, without waiting for the next SnapshotDelivered.
+   */
+  onInitiativeRolled?: (event: InitiativeRolled) => void;
   /** Active actor + round update; signals "X's turn now". */
   onTurnStarted?: (event: TurnStarted) => void;
   /** Active actor finished; the next TurnStarted is authoritative for who's next. */
@@ -178,6 +186,9 @@ export function dispatchEncounterStreamEvent(
       break;
     case 'modeChanged':
       options.onModeChanged?.(payload.value);
+      break;
+    case 'initiativeRolled':
+      options.onInitiativeRolled?.(payload.value);
       break;
     case 'turnStarted':
       options.onTurnStarted?.(payload.value);
