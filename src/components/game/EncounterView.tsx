@@ -168,6 +168,11 @@ export function EncounterView({
               ? { current: entity.hp.current, max: entity.hp.max }
               : undefined,
             initialAC: entity.armorClass,
+            // #462: hydrate condition badges from the snapshot — without
+            // this, entityStatuses is only ever populated by the live
+            // onStatusApplied handler below, so a condition already active
+            // before this connect never shows on reconnect.
+            statusEffects: entity.statusEffects,
           }));
         if (entityEntries.length > 0) {
           encounterState.applyEntityAppearedBatch(entityEntries);

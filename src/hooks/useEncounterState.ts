@@ -32,6 +32,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import type {
   InputRequired,
+  StatusEffect,
   TurnState,
   Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
@@ -328,11 +329,43 @@ export function applyEntityAppeared(
 }
 
 /**
+ * Converts one wire-shape StatusEffect into the local EntityStatus shape —
+ * shared by both the live StatusApplied path (applyStatusApplied) and the
+ * snapshot-hydration path below, since Entity.status_effects and
+ * StatusApplied.status are both the same StatusEffect message
+ * (rpg-dnd5e-web#462). sourceEntityId has no equivalent on StatusEffect (the
+ * causal "who applied this" chain only exists on the live event), so
+ * snapshot-hydrated entries always carry it undefined.
+ */
+function toEntityStatus(effect: StatusEffect): EntityStatus | undefined {
+  if (!effect.source) return undefined;
+  return {
+    source: {
+      module: effect.source.module,
+      type: effect.source.type,
+      id: effect.source.id,
+    },
+    displayName: effect.displayName,
+    sourceEntityId: undefined,
+  };
+}
+
+/**
  * Apply a batch of entity appearances — each carrying both the v1alpha1
  * positional stub AND v1alpha2 meta (type, monsterRefId, initialHP, initialAC) — in a
  * single state update. Use this instead of calling applyEntityAppeared +
  * applyEntityMeta per entity in a loop (which triggers N intermediate renders
  * and N Map clone operations for N entities).
+ *
+ * statusEffects (rpg-dnd5e-web#462) seeds entityStatuses per entity when
+ * present: SnapshotDelivered is a full resync, so each entity's status list
+ * is REPLACED wholesale by its fresh statusEffects (an empty list clears any
+ * stale pre-refresh entry), never merged/appended onto what was there
+ * before — the same "server's word is authoritative" rule entityMeta
+ * already follows. Live StatusApplied/StatusRemoved events keep mutating
+ * entityStatuses incrementally afterward: snapshot seeds, stream updates,
+ * one map. Omitting statusEffects entirely (existing callers) leaves
+ * entityStatuses untouched, matching the pre-#462 behavior exactly.
  *
  * Exported for testing.
  */
@@ -344,6 +377,7 @@ export function applyEntityAppearedBatch(
     monsterRefId: string | undefined;
     initialHP: { current: number; max: number } | undefined;
     initialAC: number | undefined;
+    statusEffects?: StatusEffect[];
   }>
 ): LocalEncounterState {
   if (entries.length === 0) return prev;
@@ -351,9 +385,18 @@ export function applyEntityAppearedBatch(
   const newMeta = new Map(prev.entityMeta);
   const newHP = new Map(prev.entityHP);
   const newAC = new Map(prev.entityAC);
+  const newStatuses = new Map(prev.entityStatuses);
   let hpChanged = false;
   let acChanged = false;
-  for (const { entity, type, monsterRefId, initialHP, initialAC } of entries) {
+  let statusesChanged = false;
+  for (const {
+    entity,
+    type,
+    monsterRefId,
+    initialHP,
+    initialAC,
+    statusEffects,
+  } of entries) {
     newEntities.set(entity.entityId, { ...entity, ghost: false });
     newMeta.set(entity.entityId, { type, monsterRefId });
     if (initialHP !== undefined) {
@@ -367,6 +410,17 @@ export function applyEntityAppearedBatch(
       newAC.set(entity.entityId, initialAC);
       acChanged = true;
     }
+    if (statusEffects !== undefined) {
+      const converted = statusEffects
+        .map(toEntityStatus)
+        .filter((s): s is EntityStatus => s !== undefined);
+      if (converted.length > 0) {
+        newStatuses.set(entity.entityId, converted);
+      } else {
+        newStatuses.delete(entity.entityId);
+      }
+      statusesChanged = true;
+    }
   }
   return {
     ...prev,
@@ -374,6 +428,7 @@ export function applyEntityAppearedBatch(
     entityMeta: newMeta,
     entityHP: hpChanged ? newHP : prev.entityHP,
     entityAC: acChanged ? newAC : prev.entityAC,
+    entityStatuses: statusesChanged ? newStatuses : prev.entityStatuses,
   };
 }
 
@@ -421,8 +476,11 @@ export function applyEntityMetaFromAppeared(
 /**
  * Apply v1alpha2 encounter mode + turn state from a SnapshotDelivered event.
  * Updates `mode`, `initiativeOrder`, `activeEntityId`, and `round` from the
- * snapshot without touching HP / statuses / doors / hexes (those flow only
- * via delta events).
+ * snapshot without touching HP / doors / hexes (those flow only via delta
+ * events) — per-entity statusEffects from the SAME snapshot are hydrated
+ * separately, via applyEntityAppearedBatch (rpg-dnd5e-web#462), since they
+ * arrive per-entity on `encounter.space.entities`, not on this event's own
+ * top-level fields.
  *
  * When `turnState` is undefined OR `encounterMode` is not TURN_BASED,
  * initiative-order fields are cleared to prevent stale combat data from
