@@ -1,22 +1,13 @@
-import { useAbilityScoreRolls } from '@/api/diceHooks';
 import { useUpdateDraftAbilityScores } from '@/api/hooks';
 import { AnimatedStat } from '@/components/AnimatedStat';
 import { Button } from '@/components/ui/Button';
-import { useDiscord } from '@/discord';
-import {
-  calculateAbilityScoreValue,
-  formatModifier,
-  getAbilityModifier,
-} from '@/utils/diceCalculations';
+import { formatModifier, getAbilityModifier } from '@/utils/diceCalculations';
 import { create } from '@bufbuild/protobuf';
-import type { DiceRoll } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
-import {
-  RollAssignmentsSchema,
-  UpdateAbilityScoresRequestSchema,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { UpdateAbilityScoresRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { AbilityScoresSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { motion } from 'framer-motion';
 import { CheckCircle } from 'lucide-react';
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useState } from 'react';
 import { CharacterDraftContext } from '../CharacterDraftContextDef';
 
 type AbilityKey =
@@ -36,25 +27,42 @@ const ABILITY_NAMES: Array<{ key: AbilityKey; label: string; abbr: string }> = [
   { key: 'charisma', label: 'Charisma', abbr: 'CHA' },
 ];
 
+// D&D 5e standard array. Fixed values, not dice rolls — assigning one to an
+// ability never needs a server-issued roll ID, so scores are submitted to
+// UpdateAbilityScores via the direct `ability_scores` field, not
+// `roll_assignments` (that oneof branch is for an actual rolled-dice flow;
+// see #460).
+const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8] as const;
+
+interface ScoreSlot {
+  id: string;
+  value: number;
+}
+
+const SCORE_SLOTS: ScoreSlot[] = STANDARD_ARRAY.map((value, index) => ({
+  id: `standard-${index}`,
+  value,
+}));
+
 interface ScoreDisplayProps {
-  roll: DiceRoll;
+  value: number;
   isAssigned: boolean;
   isSelected: boolean;
   onClick: () => void;
 }
 
 function ScoreDisplay({
-  roll,
+  value,
   isAssigned,
   isSelected,
   onClick,
 }: ScoreDisplayProps) {
-  const score = calculateAbilityScoreValue(roll);
-  const modifier = getAbilityModifier(score);
+  const modifier = getAbilityModifier(value);
   const modifierStr = formatModifier(modifier);
 
   return (
     <motion.div
+      data-testid={`score-slot-${value}`}
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
@@ -77,7 +85,7 @@ function ScoreDisplay({
       }}
     >
       <div className="text-center">
-        <div className="text-2xl font-bold">{score}</div>
+        <div className="text-2xl font-bold">{value}</div>
         <div className="text-sm text-muted">{modifierStr}</div>
       </div>
       {isAssigned && (
@@ -89,25 +97,26 @@ function ScoreDisplay({
 
 interface AbilitySlotProps {
   ability: (typeof ABILITY_NAMES)[0];
-  assignedRoll?: DiceRoll;
+  assignedValue?: number;
   onSelect: () => void;
   isSelected: boolean;
 }
 
 function AbilitySlot({
   ability,
-  assignedRoll,
+  assignedValue,
   onSelect,
   isSelected,
 }: AbilitySlotProps) {
   return (
     <motion.div
+      data-testid={`ability-slot-${ability.key}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
         isSelected
           ? 'border-blue-500 bg-blue-500/10'
-          : assignedRoll
+          : assignedValue
             ? 'border-green-500'
             : 'border-gray-300 hover:border-gray-400'
       }`}
@@ -116,7 +125,7 @@ function AbilitySlot({
         backgroundColor: isSelected ? 'var(--accent-bg)' : 'var(--card-bg)',
         borderColor: isSelected
           ? 'var(--accent-primary)'
-          : assignedRoll
+          : assignedValue
             ? 'var(--success)'
             : 'var(--border-primary)',
       }}
@@ -128,7 +137,7 @@ function AbilitySlot({
         >
           {ability.abbr}
         </h3>
-        {assignedRoll && (
+        {assignedValue && (
           <CheckCircle
             className="w-4 h-4"
             style={{ color: 'var(--success)' }}
@@ -136,14 +145,12 @@ function AbilitySlot({
         )}
       </div>
 
-      {assignedRoll ? (
+      {assignedValue ? (
         <AnimatedStat
           label={ability.label}
-          value={calculateAbilityScoreValue(assignedRoll)}
+          value={assignedValue}
           previousValue={10}
-          modifier={getAbilityModifier(
-            calculateAbilityScoreValue(assignedRoll)
-          )}
+          modifier={getAbilityModifier(assignedValue)}
           animate={true}
           variant="compact"
           size="small"
@@ -159,75 +166,91 @@ function AbilitySlot({
 
 interface AbilityScoresSectionProps {
   draftId?: string;
+  // No longer used internally (see #460) — kept so existing callers
+  // (ServerRollingDemo, AbilityScoresTest) keep compiling unchanged.
   playerId?: string;
 }
 
 export function AbilityScoresSection({
   draftId: propDraftId,
-  playerId: propPlayerId,
 }: AbilityScoresSectionProps = {}) {
   const context = useContext(CharacterDraftContext);
-  const discord = useDiscord();
-  const isDevelopment = import.meta.env.MODE === 'development';
-
-  // Simplified player ID resolution: props > discord > development fallback
   const draftId = propDraftId || context?.draftId;
-  const playerId =
-    propPlayerId || discord.user?.id || (isDevelopment ? 'test-player' : '');
-  const [selectedRoll, setSelectedRoll] = useState<string | null>(null);
+
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [selectedAbility, setSelectedAbility] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const {
-    rolls,
-    assignments,
-    error,
-    loadExistingRolls,
-    assignRoll,
-    unassignRoll,
-    isRollAssigned,
-    getAssignedRoll,
-    isComplete,
-    getRollAssignments,
-  } = useAbilityScoreRolls(playerId);
+  const [assignments, setAssignments] = useState<
+    Partial<Record<AbilityKey, string>>
+  >({});
 
   const { updateAbilityScores } = useUpdateDraftAbilityScores();
 
-  // Load existing rolls on mount
-  useEffect(() => {
-    if (playerId) {
-      loadExistingRolls();
-    }
-    // Only run on mount and when playerId changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playerId]);
+  const assignSlot = (ability: string, slotId: string) => {
+    setAssignments((prev) => ({ ...prev, [ability]: slotId }));
+  };
 
-  // Handle roll selection
-  const handleRollClick = (rollId: string) => {
-    if (isRollAssigned(rollId)) return;
+  const unassignSlot = (ability: string) => {
+    setAssignments((prev) => {
+      const next = { ...prev };
+      delete next[ability as AbilityKey];
+      return next;
+    });
+  };
+
+  const isSlotAssigned = (slotId: string) =>
+    Object.values(assignments).includes(slotId);
+
+  const getAssignedSlotId = (ability: string) =>
+    assignments[ability as AbilityKey];
+
+  // All six abilities filled, and — since assignment always checks
+  // isSlotAssigned before allowing a pick — each of the six slots used
+  // exactly once. Re-verified explicitly here as the submit gate.
+  const isComplete = () => {
+    const requiredAbilities: AbilityKey[] = [
+      'strength',
+      'dexterity',
+      'constitution',
+      'intelligence',
+      'wisdom',
+      'charisma',
+    ];
+    const assignedSlotIds = requiredAbilities
+      .map((ability) => assignments[ability])
+      .filter((slotId): slotId is string => Boolean(slotId));
+    return (
+      assignedSlotIds.length === requiredAbilities.length &&
+      new Set(assignedSlotIds).size === requiredAbilities.length
+    );
+  };
+
+  // Handle score slot selection
+  const handleSlotClick = (slotId: string) => {
+    if (isSlotAssigned(slotId)) return;
 
     if (selectedAbility) {
-      // Assign roll to selected ability
-      assignRoll(selectedAbility, rollId);
+      // Assign slot to selected ability
+      assignSlot(selectedAbility, slotId);
       setSelectedAbility(null);
-      setSelectedRoll(null);
+      setSelectedSlotId(null);
     } else {
-      // Select roll
-      setSelectedRoll(rollId === selectedRoll ? null : rollId);
+      // Select slot
+      setSelectedSlotId(slotId === selectedSlotId ? null : slotId);
     }
   };
 
   // Handle ability selection
   const handleAbilityClick = (abilityKey: string) => {
-    if (selectedRoll) {
-      // Assign selected roll to ability
-      assignRoll(abilityKey, selectedRoll);
-      setSelectedRoll(null);
+    if (selectedSlotId) {
+      // Assign selected slot to ability
+      assignSlot(abilityKey, selectedSlotId);
+      setSelectedSlotId(null);
       setSelectedAbility(null);
     } else {
       // Select ability or unassign if already assigned
-      if (getAssignedRoll(abilityKey)) {
-        unassignRoll(abilityKey);
+      if (getAssignedSlotId(abilityKey)) {
+        unassignSlot(abilityKey);
       } else {
         setSelectedAbility(abilityKey === selectedAbility ? null : abilityKey);
       }
@@ -240,31 +263,32 @@ export function AbilityScoresSection({
 
     setIsSubmitting(true);
     try {
-      const rollAssignments = create(
-        RollAssignmentsSchema,
-        getRollAssignments()
-      );
+      const scoreFor = (ability: AbilityKey) => {
+        const slotId = assignments[ability];
+        return SCORE_SLOTS.find((slot) => slot.id === slotId)?.value ?? 0;
+      };
 
-      console.log('Submitting ability scores with roll assignments:', {
-        draftId,
-        rollAssignments,
+      const abilityScores = create(AbilityScoresSchema, {
+        strength: scoreFor('strength'),
+        dexterity: scoreFor('dexterity'),
+        constitution: scoreFor('constitution'),
+        intelligence: scoreFor('intelligence'),
+        wisdom: scoreFor('wisdom'),
+        charisma: scoreFor('charisma'),
       });
 
       const response = await updateAbilityScores(
         create(UpdateAbilityScoresRequestSchema, {
           draftId,
           scoresInput: {
-            value: rollAssignments,
-            case: 'rollAssignments',
+            value: abilityScores,
+            case: 'abilityScores',
           },
         })
       );
 
-      console.log('Ability scores submitted successfully:', response);
-
       // Update the context with the new draft that includes ability scores
       if (response.draft && context) {
-        // The server has calculated the ability scores from our roll assignments
         // Update the context so the UI knows they're saved
         if (response.draft.baseAbilityScores) {
           context.setAbilityScores({
@@ -362,18 +386,6 @@ export function AbilityScoresSection({
         Ability Scores
       </h2>
 
-      {error && (
-        <div
-          className="p-4 rounded-lg border"
-          style={{
-            backgroundColor: 'var(--danger-bg)',
-            borderColor: 'var(--danger)',
-          }}
-        >
-          <p className="text-sm">{error.message}</p>
-        </div>
-      )}
-
       <div
         className="p-4 rounded-lg"
         style={{ backgroundColor: 'var(--bg-secondary)' }}
@@ -387,28 +399,26 @@ export function AbilityScoresSection({
         </p>
       </div>
 
-      {/* Available Scores - Standard array has exactly 6 values */}
-      {rolls.length > 0 && (
-        <div>
-          <h3
-            className="text-lg font-semibold mb-3"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            Available Scores
-          </h3>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-            {rolls.slice(0, 6).map((roll) => (
-              <ScoreDisplay
-                key={roll.rollId}
-                roll={roll}
-                isAssigned={isRollAssigned(roll.rollId)}
-                isSelected={selectedRoll === roll.rollId}
-                onClick={() => handleRollClick(roll.rollId)}
-              />
-            ))}
-          </div>
+      {/* Available Scores - standard array has exactly 6 fixed values */}
+      <div>
+        <h3
+          className="text-lg font-semibold mb-3"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          Available Scores
+        </h3>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+          {SCORE_SLOTS.map((slot) => (
+            <ScoreDisplay
+              key={slot.id}
+              value={slot.value}
+              isAssigned={isSlotAssigned(slot.id)}
+              isSelected={selectedSlotId === slot.id}
+              onClick={() => handleSlotClick(slot.id)}
+            />
+          ))}
         </div>
-      )}
+      </div>
 
       {/* Ability Slots */}
       <div>
@@ -420,13 +430,15 @@ export function AbilityScoresSection({
         </h3>
         <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
           {ABILITY_NAMES.map((ability) => {
-            const assignedRollId = getAssignedRoll(ability.key);
-            const assignedRoll = rolls.find((r) => r.rollId === assignedRollId);
+            const assignedSlotId = getAssignedSlotId(ability.key);
+            const assignedSlot = SCORE_SLOTS.find(
+              (slot) => slot.id === assignedSlotId
+            );
             return (
               <AbilitySlot
                 key={ability.key}
                 ability={ability}
-                assignedRoll={assignedRoll}
+                assignedValue={assignedSlot?.value}
                 onSelect={() => handleAbilityClick(ability.key)}
                 isSelected={selectedAbility === ability.key}
               />
@@ -458,12 +470,11 @@ export function AbilityScoresSection({
           <p className="text-sm text-muted mt-1">
             Total modifier:{' '}
             {ABILITY_NAMES.reduce((sum, ability) => {
-              const rollId = getAssignedRoll(ability.key);
-              const roll = rolls.find((r) => r.rollId === rollId);
-              if (!roll) return sum;
+              const slotId = getAssignedSlotId(ability.key);
+              const slot = SCORE_SLOTS.find((s) => s.id === slotId);
+              if (!slot) return sum;
 
-              const total = calculateAbilityScoreValue(roll);
-              return sum + getAbilityModifier(total);
+              return sum + getAbilityModifier(slot.value);
             }, 0)}
           </p>
         )}
