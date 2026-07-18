@@ -5,5 +5,12 @@
     "lesson": "Vite dev server running inside WSL does not see file changes when the repo lives on /mnt/c (DrvFs has no inotify). Edits typecheck fine but the browser keeps getting the stale transform-cache module - it looks exactly like your change 'didn't work'.",
     "fix": "Restart the dev server after edits when running from WSL, or export CHOKIDAR_USEPOLLING=1 before `npm run dev` to make the watcher poll.",
     "context": "Hit during Synty asset showcase work (#469): SyntyShowcase.tsx edits didn't appear until the dev server was restarted."
+  },
+  {
+    "id": "ssh-push-timeout-during-prepush-hook",
+    "date": "2026-07-18",
+    "lesson": "git push over SSH fails with 'Connection to github.com closed by remote host' (exit 141/SIGPIPE) when the pre-push hook runs the full ci-check (~2-3 min) \u2014 the SSH connection idles out during the hook and GitHub drops it. Looks like a random/silent push failure, especially in background shells.",
+    "fix": "Push with keepalives: GIT_SSH_COMMAND=\"ssh -o ServerAliveInterval=10 -o ServerAliveCountMax=12\" git push ... \u2014 or set those options for github.com in ~/.ssh/config. Also: run final pushes in the foreground so failures are visible.",
+    "context": "Hit during #467 status-icons work; the agent's background push 'hung' for ~20 min before diagnosis."
   }
 ]
