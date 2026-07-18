@@ -1,9 +1,12 @@
 import type {
+  ActionResolved,
   AttackResolved,
+  DeathSaveRolled,
   EncounterEnded,
   EntityDamaged,
   EntityDied,
   EntityRemoved,
+  EntityStabilized,
   StatusApplied,
   StatusRemoved,
   TurnEnded,
@@ -116,6 +119,60 @@ describe('useCombatLog', () => {
       'removed',
       'encounterEnded',
     ]);
+  });
+
+  it('records ActionResolved, DeathSaveRolled, and EntityStabilized verbatim (rpg-dnd5e-web#432 harness-parity)', () => {
+    const { result } = renderHook(() => useCombatLog());
+    const actionResolved = {
+      actorEntityId: 'char-alice',
+      actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+      targetEntityId: 'goblin-1',
+      economyConsumed: {
+        actions: 1,
+        bonusActions: 0,
+        reactions: 0,
+        movement: 0,
+        grantedConsumed: {},
+      },
+    } as unknown as ActionResolved;
+    const deathSaveRolled = {
+      entityId: 'char-bob',
+      roll: 15,
+      successes: 2,
+      failures: 0,
+      isCriticalFail: false,
+      isCriticalSuccess: false,
+      stabilized: false,
+      dead: false,
+      regainedConsciousness: false,
+      hpRestored: 0,
+    } as unknown as DeathSaveRolled;
+    const entityStabilized = {
+      entityId: 'char-bob',
+    } as unknown as EntityStabilized;
+
+    act(() => {
+      result.current.recordActionResolved(actionResolved);
+      result.current.recordDeathSaveRolled(deathSaveRolled);
+      result.current.recordEntityStabilized(entityStabilized);
+    });
+
+    expect(result.current.entries).toHaveLength(3);
+    expect(result.current.entries[0]).toMatchObject({
+      round: 0,
+      kind: 'actionResolved',
+      event: actionResolved,
+    });
+    expect(result.current.entries[1]).toMatchObject({
+      round: 0,
+      kind: 'deathSaveRolled',
+      event: deathSaveRolled,
+    });
+    expect(result.current.entries[2]).toMatchObject({
+      round: 0,
+      kind: 'entityStabilized',
+      event: entityStabilized,
+    });
   });
 
   it('assigns stable, monotonically increasing ids independent of array position', () => {

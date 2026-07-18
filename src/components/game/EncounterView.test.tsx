@@ -394,3 +394,79 @@ describe('EncounterView renders condition badges hydrated from the snapshot (#46
     expect(screen.queryByTestId('my-status-badges')).toBeNull();
   });
 });
+
+describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#432 harness-parity, wave web#471)', () => {
+  it('renders ActionResolved, DeathSaveRolled, and EntityStabilized in the Combat Log panel', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('actionResolved', {
+          actorEntityId: 'char-alice',
+          actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+          targetEntityId: 'goblin-1',
+        })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('deathSaveRolled', {
+          entityId: 'char-bob',
+          roll: 20,
+          successes: 2,
+          failures: 0,
+          isCriticalSuccess: true,
+          regainedConsciousness: true,
+          hpRestored: 1,
+        })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('entityStabilized', { entityId: 'char-carol' })
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getByTestId('combat-log-entry-actionResolved-0').textContent
+    ).toContain('char-alice');
+    expect(
+      screen.getByTestId('combat-log-entry-deathSaveRolled-1').textContent
+    ).toContain('nat-20');
+    expect(
+      screen.getByTestId('combat-log-entry-entityStabilized-2').textContent
+    ).toContain('char-carol');
+  });
+
+  it('tracks a DoorOpened door id in state without throwing (state-only — no rendering surface yet)', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('doorOpened', {
+          doorEntityId: 'door-1',
+          revealedHexes: [],
+          revealedWalls: [],
+          removedWalls: [],
+        })
+      );
+      await Promise.resolve();
+    });
+
+    // No dedicated door-open UI exists yet (see this file's top comment) —
+    // this test only guards that the callback is wired and doesn't crash
+    // the view, matching the state-only scope of this slice.
+    expect(screen.getByTestId('encounter-view')).toBeTruthy();
+  });
+});

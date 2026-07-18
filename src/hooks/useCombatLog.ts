@@ -4,8 +4,8 @@
  * game-grade rendering of the same events PlaytestHarness's dev-log already
  * prints as raw text — reshaped here into typed entries so the CombatLog
  * component can style each event kind (hit/miss/crit, damage, status,
- * turn cycle, death, encounter end) instead of dumping one undifferentiated
- * line of text.
+ * turn cycle, action resolution, death, death-save arc, encounter end)
+ * instead of dumping one undifferentiated line of text.
  *
  * No derived math: every entry stores the raw proto event verbatim.
  * CombatLog reads fields straight off `entry.event` at render time — nothing
@@ -19,11 +19,14 @@
  */
 
 import type {
+  ActionResolved,
   AttackResolved,
+  DeathSaveRolled,
   EncounterEnded,
   EntityDamaged,
   EntityDied,
   EntityRemoved,
+  EntityStabilized,
   StatusApplied,
   StatusRemoved,
   TurnEnded,
@@ -41,6 +44,7 @@ export type CombatLogEntry =
   | { id: number; round: number; kind: 'statusRemoved'; event: StatusRemoved }
   | { id: number; round: number; kind: 'turnStarted'; event: TurnStarted }
   | { id: number; round: number; kind: 'turnEnded'; event: TurnEnded }
+  | { id: number; round: number; kind: 'actionResolved'; event: ActionResolved }
   | { id: number; round: number; kind: 'died'; event: EntityDied }
   | { id: number; round: number; kind: 'removed'; event: EntityRemoved }
   | {
@@ -48,6 +52,18 @@ export type CombatLogEntry =
       round: number;
       kind: 'encounterEnded';
       event: EncounterEnded;
+    }
+  | {
+      id: number;
+      round: number;
+      kind: 'deathSaveRolled';
+      event: DeathSaveRolled;
+    }
+  | {
+      id: number;
+      round: number;
+      kind: 'entityStabilized';
+      event: EntityStabilized;
     };
 
 export interface UseCombatLogResult {
@@ -58,9 +74,12 @@ export interface UseCombatLogResult {
   recordStatusRemoved: (event: StatusRemoved) => void;
   recordTurnStarted: (event: TurnStarted) => void;
   recordTurnEnded: (event: TurnEnded) => void;
+  recordActionResolved: (event: ActionResolved) => void;
   recordEntityDied: (event: EntityDied) => void;
   recordEntityRemoved: (event: EntityRemoved) => void;
   recordEncounterEnded: (event: EncounterEnded) => void;
+  recordDeathSaveRolled: (event: DeathSaveRolled) => void;
+  recordEntityStabilized: (event: EntityStabilized) => void;
 }
 
 export function useCombatLog(): UseCombatLogResult {
@@ -152,6 +171,18 @@ export function useCombatLog(): UseCombatLogResult {
     [pushEntry]
   );
 
+  const recordActionResolved = useCallback(
+    (event: ActionResolved) => {
+      pushEntry({
+        id: idRef.current++,
+        round: roundRef.current,
+        kind: 'actionResolved',
+        event,
+      });
+    },
+    [pushEntry]
+  );
+
   const recordEntityDied = useCallback(
     (event: EntityDied) => {
       pushEntry({
@@ -188,6 +219,35 @@ export function useCombatLog(): UseCombatLogResult {
     [pushEntry]
   );
 
+  // Death-save arc (rpg-toolkit#742, wave KirkDiggler/rpg-project#75): mirrors
+  // PlaytestHarness's log-only onDeathSaveRolled/onEntityStabilized handling,
+  // reshaped into typed entries like every other event here. Derived fields
+  // (is_critical_fail/success, stabilized, dead, ...) are copied verbatim by
+  // CombatLog's render — never recomputed.
+  const recordDeathSaveRolled = useCallback(
+    (event: DeathSaveRolled) => {
+      pushEntry({
+        id: idRef.current++,
+        round: roundRef.current,
+        kind: 'deathSaveRolled',
+        event,
+      });
+    },
+    [pushEntry]
+  );
+
+  const recordEntityStabilized = useCallback(
+    (event: EntityStabilized) => {
+      pushEntry({
+        id: idRef.current++,
+        round: roundRef.current,
+        kind: 'entityStabilized',
+        event,
+      });
+    },
+    [pushEntry]
+  );
+
   return {
     entries,
     recordAttackResolved,
@@ -196,8 +256,11 @@ export function useCombatLog(): UseCombatLogResult {
     recordStatusRemoved,
     recordTurnStarted,
     recordTurnEnded,
+    recordActionResolved,
     recordEntityDied,
     recordEntityRemoved,
     recordEncounterEnded,
+    recordDeathSaveRolled,
+    recordEntityStabilized,
   };
 }
