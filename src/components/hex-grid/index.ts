@@ -8,8 +8,6 @@ export type { HexGridProps } from './HexGrid';
 export { HexEntity } from './HexEntity';
 export type { HexEntityProps } from './HexEntity';
 export { HexTile } from './HexTile';
-export { HexWall } from './HexWall';
-export type { HexWallProps } from './HexWall';
 
 export { ShadedHexFloor } from './ShadedHexFloor';
 export { ShadedHexWall } from './ShadedHexWall';

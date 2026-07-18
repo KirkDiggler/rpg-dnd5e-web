@@ -286,11 +286,13 @@ export class WallBuilder {
    * hex and is unmistakably blocked terrain.
    *
    * Passes scale=1.0 explicitly: `createHexPillarGeometry`'s own default
-   * (0.95, for `HexWall.tsx`'s intentional "slight gaps between hexes")
-   * would leave a visible floor rim around the wall's base — the actual
-   * floor geometry (`ShadedHexFloor.tsx` / `InstancedHexTiles.tsx`, both
+   * (0.95, for the pre-shader HexWall component's intentional "slight gaps
+   * between hexes" — that component is deleted, rpg-dnd5e-web#432, but the
+   * geometry function's default scale wasn't) would leave a visible floor
+   * rim around the wall's base — the actual floor geometry
+   * (`ShadedHexFloor.tsx` / `InstancedHexTiles.tsx`, both
    * `hexSize * cos/sin(angle)` with no reduction) fills the hex completely,
-   * so the wall footprint has to match that exactly, not HexWall's gap.
+   * so the wall footprint has to match that exactly, not the 0.95 gap.
    *
    * `options.thickness` is ignored here — the footprint is the hex itself,
    * not a thickness-derived box.

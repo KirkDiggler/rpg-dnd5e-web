@@ -2,7 +2,8 @@
  * HexDoor - Visual component for door connections between dungeon rooms
  *
  * Renders a hex-shaped pillar representing a door/connection.
- * Uses the same geometry as HexWall for visual consistency.
+ * Uses `createHexPillarGeometry` (hexGeometry.ts) for visual consistency
+ * with the game's other hex-pillar shapes.
  * Supports visual states: closed (solid brown), open (green), loading (pulsing).
  * Clickable to navigate to adjacent rooms during player's turn.
  */
