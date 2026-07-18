@@ -46,6 +46,7 @@ import {
   buildRenderableEntities,
   synthesizeFloorTiles,
 } from './playtestMapHelpers';
+import { SyntyRoomDemo } from './SyntyRoomDemo';
 import { SyntyShowcase } from './SyntyShowcase';
 
 export interface PlaytestMapProps {
@@ -152,6 +153,14 @@ export function PlaytestMap({
     []
   );
 
+  // Dev-only Synty room-building demo, opted in via `&syntyroom=1` on the
+  // harness URL — independent of `&synty=1` above. Read once, same as
+  // showSynty.
+  const showSyntyRoom = useMemo(
+    () => new URLSearchParams(window.location.search).get('syntyroom') === '1',
+    []
+  );
+
   // HexGrid expects an optional `combatState` to derive the active actor;
   // we don't have a v1alpha1 CombatState in the playtest, so pass null and
   // let `currentEntityId` drive path-preview origin instead.
@@ -196,6 +205,7 @@ export function PlaytestMap({
         // `onEntityClick` branch, which always fires.
       >
         {showSynty && <SyntyShowcase />}
+        {showSyntyRoom && <SyntyRoomDemo />}
       </HexGrid>
     </div>
   );
