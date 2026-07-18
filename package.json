@@ -19,7 +19,8 @@
     "ci-checks": "npm run format:check && npm run lint && npm run typecheck && npm run build",
     "pre-commit": "npm run format && npm run lint && npm run typecheck",
     "ci-check": "./scripts/ci-check.sh",
-    "ci-fix": "npm run format && npm run lint --fix && npm run typecheck && npm run build"
+    "ci-fix": "npm run format && npm run lint --fix && npm run typecheck && npm run build",
+    "assets:sync": "sh scripts/sync-synty-assets.sh"
   },
   "dependencies": {
     "@connectrpc/connect": "^2.0.2",
