@@ -36,6 +36,8 @@ import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
 import { ShadedHexFloor } from './ShadedHexFloor';
 import { ShadedHexWall } from './ShadedHexWall';
+import { SyntyHexFloor } from './SyntyHexFloor';
+import { SyntyHexWall } from './SyntyHexWall';
 import type { TurnOrderEntry } from './TurnOrderOverlay';
 import { TurnOrderOverlay } from './TurnOrderOverlay';
 import { useCameraControls } from './useCameraControls';
@@ -80,6 +82,13 @@ export interface HexGridProps {
   ) => void;
   // Wall props
   walls?: Wall[];
+  /**
+   * Dev flag (rpg-dnd5e-web#432 harness-parity): render walls/doors/floor
+   * with edge-aligned Synty pieces (SyntyHexWall/SyntyHexFloor) instead of
+   * the procedural ShadedHexWall/ShadedHexFloor. Default false — behavior
+   * is unchanged for every existing caller until they opt in.
+   */
+  syntyDungeon?: boolean;
   /** Extra scene content rendered inside the Canvas after the built-in
    * layers (e.g. the playtest harness's Synty model showcase). */
   children?: React.ReactNode;
@@ -116,6 +125,7 @@ function Scene({
   characters = [],
   monsters = [],
   walls = [],
+  syntyDungeon = false,
   children,
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -443,27 +453,40 @@ function Scene({
         <meshBasicMaterial visible={false} />
       </mesh>
 
-      {/* Render all hex tiles using auto-shaded instanced mesh */}
-      <ShadedHexFloor
-        floorTiles={floorTiles}
-        hexSize={HEX_SIZE}
-        hoveredHex={hoveredHex}
-        selectedHex={selectedHex}
-        doorPositions={doorPositions}
-        wallPositions={wallPositions}
-      />
+      {/* Render all hex tiles — Synty-textured (dev flag) or the default
+          auto-shaded instanced mesh. Frontier dimming below is identical
+          either way — it's not part of this swap (rpg-dnd5e-web#432). */}
+      {syntyDungeon ? (
+        <SyntyHexFloor floorTiles={floorTiles} hexSize={HEX_SIZE} />
+      ) : (
+        <ShadedHexFloor
+          floorTiles={floorTiles}
+          hexSize={HEX_SIZE}
+          hoveredHex={hoveredHex}
+          selectedHex={selectedHex}
+          doorPositions={doorPositions}
+          wallPositions={wallPositions}
+        />
+      )}
 
       {/* Ground the frontier: dim hint hexes just beyond revealed walls,
           so walls read as bounding a room rather than floating in the
           void (rpg-dnd5e-web#457) */}
       <FrontierGroundHint hints={frontierHints} hexSize={HEX_SIZE} />
 
-      {/* Render walls (after tiles, before doors) — already deduplicated by wallKey */}
-      {walls.map((wall) => {
-        return (
+      {/* Render walls (after tiles, before doors) — already deduplicated by
+          wallKey. Edge-aligned Synty pieces (dev flag) render once for the
+          WHOLE wall list — a wall hex's open-facing edges often border a
+          *different* Wall object's hex, so segment-building needs every
+          wall at once (see SyntyHexWall's doc comment). The default
+          procedural voxel wall stays per-wall, unchanged. */}
+      {syntyDungeon ? (
+        <SyntyHexWall walls={walls} hexSize={HEX_SIZE} />
+      ) : (
+        walls.map((wall) => (
           <ShadedHexWall key={wallKey(wall)} wall={wall} hexSize={HEX_SIZE} />
-        );
-      })}
+        ))
+      )}
 
       {/* Render doors (after tiles, before movement range) */}
       {doors.map((door) => {
