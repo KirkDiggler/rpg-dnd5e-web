@@ -75,6 +75,63 @@ describe('conditionIcons', () => {
       });
     });
 
+    describe('Synty HUD icon mapping (#467)', () => {
+      const SYNTY_BASE = '/models/synty/ui/status';
+
+      it.each([
+        ['raging', 'AttackUp01'],
+        ['rage', 'AttackUp01'],
+        ['dodging', 'Defense01'],
+        ['unconscious', 'Down01'],
+        ['dying', 'Down01'],
+        ['dead', 'Dead01'],
+        ['helped', 'Up01'],
+        ['cursed', 'Cursed01'],
+        ['bleeding', 'Bleeding01'],
+        ['poisoned', 'Poisoned01'],
+        ['entangled', 'Entangled01'],
+        ['restrained', 'Entangled01'],
+        ['charmed', 'Charmed01'],
+      ])('maps %s to the %s PNG', (condition, iconName) => {
+        const display = getConditionDisplay(condition);
+        expect(display.iconUrl).toBe(
+          `${SYNTY_BASE}/ICON_FantasyWarrior_Status_${iconName}_Clean.png`
+        );
+        // emoji fallback stays populated even when a PNG is mapped
+        expect(display.icon).toBeTruthy();
+      });
+
+      it('falls back to the generic buff icon (Up01) for other positive conditions', () => {
+        expect(getConditionDisplay('hasted').iconUrl).toBe(
+          `${SYNTY_BASE}/ICON_FantasyWarrior_Status_Up01_Clean.png`
+        );
+        expect(getConditionDisplay('blessed').iconUrl).toBe(
+          `${SYNTY_BASE}/ICON_FantasyWarrior_Status_Up01_Clean.png`
+        );
+      });
+
+      it('falls back to the generic debuff icon (Cursed01) for other negative conditions', () => {
+        expect(getConditionDisplay('blinded').iconUrl).toBe(
+          `${SYNTY_BASE}/ICON_FantasyWarrior_Status_Cursed01_Clean.png`
+        );
+        expect(getConditionDisplay('stunned').iconUrl).toBe(
+          `${SYNTY_BASE}/ICON_FantasyWarrior_Status_Cursed01_Clean.png`
+        );
+      });
+
+      it('leaves iconUrl undefined for conditions that are neither buff nor debuff', () => {
+        // 'hidden' and 'concentrating' are action-state/neutral, not mapped
+        // directly and not classified positive/negative — emoji-only.
+        expect(getConditionDisplay('hidden').iconUrl).toBeUndefined();
+        expect(getConditionDisplay('concentrating').iconUrl).toBeUndefined();
+      });
+
+      it('leaves iconUrl undefined for completely unknown conditions', () => {
+        expect(getConditionDisplay('something_weird').iconUrl).toBeUndefined();
+        expect(getConditionDisplay('').iconUrl).toBeUndefined();
+      });
+    });
+
     describe('case insensitivity', () => {
       it('handles uppercase', () => {
         const display = getConditionDisplay('POISONED');

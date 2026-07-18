@@ -18,14 +18,11 @@ import { useMoveEntity } from '../../api/useMoveEntity';
 import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useTakeAction } from '../../api/useTakeAction';
 import { useEncounterState } from '../../hooks/useEncounterState';
-import {
-  errorMessage,
-  formatSourceRefs,
-  formatStatusBadges,
-} from '../../utils/combatFormat';
+import { errorMessage, formatSourceRefs } from '../../utils/combatFormat';
 import { getConditionDisplay } from '../../utils/conditionIcons';
 import { protoPositionToHex } from '../../utils/hexCoord';
 import { PromptModal } from '../game/PromptModal';
+import { StatusBadgeList } from '../ui/StatusBadgeList';
 import { ActionMenu } from './ActionMenu';
 import { actionKey, targetKindNeedsPrompt } from './actionMenuHelpers';
 import { EconomyBar } from './EconomyBar';
@@ -62,6 +59,27 @@ const MODE_LABEL: Record<EncounterMode, string> = {
   [EncounterMode.TURN_BASED]: 'TURN_BASED',
 };
 
+/**
+ * Condition ids with a direct Synty HUD icon mapping (#467, see
+ * `src/utils/conditionIcons.ts`), listed here for the `?syntyicons=1` dev
+ * demo strip so every mapped PNG can be eyeballed without needing a live
+ * StatusApplied event from a backend.
+ */
+const SYNTY_ICON_DEMO_CONDITIONS = [
+  'raging',
+  'dodging',
+  'unconscious',
+  'dying',
+  'dead',
+  'helped',
+  'cursed',
+  'bleeding',
+  'poisoned',
+  'entangled',
+  'restrained',
+  'charmed',
+];
+
 function formatTime(d: Date): string {
   return d.toTimeString().slice(0, 8);
 }
@@ -93,6 +111,11 @@ export function PlaytestHarness() {
   const params = new URLSearchParams(window.location.search);
   const encounterId = params.get('encounterId') || 'dev-encounter';
   const playerId = params.get('playerId');
+  // Dev-only demo strip for visually verifying the Synty HUD status icon
+  // mapping (#467) without needing a live StatusApplied event from a
+  // backend. Gated behind ?syntyicons=1 so it never shows in normal
+  // playtest sessions.
+  const showSyntyIconDemo = params.get('syntyicons') === '1';
 
   // Sync dev playerId override into the gRPC auth store before stream mounts.
   // useLayoutEffect fires before any child useEffect, preventing a race where
@@ -777,6 +800,57 @@ export function PlaytestHarness() {
           )}
       </div>
 
+      {/* Dev-only demo strip for the Synty HUD status icon mapping (#467).
+          Renders every directly-mapped condition icon so it can be visually
+          verified without a live StatusApplied event from a backend.
+          Behind ?syntyicons=1 — never shown in a normal playtest session. */}
+      {showSyntyIconDemo && (
+        <div
+          data-testid="synty-icon-demo"
+          style={{
+            background: '#1a1a2a',
+            padding: '8px 12px',
+            marginBottom: 16,
+            borderRadius: 4,
+            display: 'flex',
+            gap: 14,
+            flexWrap: 'wrap',
+            fontSize: 12,
+            alignItems: 'center',
+          }}
+        >
+          <span style={{ color: '#888' }}>
+            Synty status icons (dev demo, #467):
+          </span>
+          {SYNTY_ICON_DEMO_CONDITIONS.map((id) => {
+            const display = getConditionDisplay(id);
+            return (
+              <span
+                key={id}
+                data-testid={`synty-icon-demo-${id}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                {display.iconUrl ? (
+                  // Decorative: the label right after it carries the
+                  // semantics (Copilot review, #467 PR #473).
+                  <img
+                    src={display.iconUrl}
+                    alt=""
+                    aria-hidden="true"
+                    title={display.description || display.label}
+                    width={20}
+                    height={20}
+                  />
+                ) : (
+                  <span aria-hidden="true">{display.icon}</span>
+                )}
+                {display.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {/* View-mode toolbar — pick visual / dev / both. Visible above the
           map so Kirk can switch presentation without losing focus. Default
           is 'both' for normal verification — visual UX + dev backend view. */}
@@ -1132,9 +1206,11 @@ export function PlaytestHarness() {
                         data-testid={`entity-status-${id}`}
                         style={{ padding: '4px 8px', color: '#ccc' }}
                       >
-                        {statuses.length === 0
-                          ? '—'
-                          : formatStatusBadges(statuses)}
+                        {statuses.length === 0 ? (
+                          '—'
+                        ) : (
+                          <StatusBadgeList statuses={statuses} />
+                        )}
                       </td>
                     </tr>
                   );
@@ -1313,9 +1389,11 @@ export function PlaytestHarness() {
               style={{ fontSize: 12, color: '#777', marginBottom: 8 }}
             >
               Statuses ({myStatuses.length}):{' '}
-              {myStatuses.length === 0
-                ? '(none)'
-                : formatStatusBadges(myStatuses)}
+              {myStatuses.length === 0 ? (
+                '(none)'
+              ) : (
+                <StatusBadgeList statuses={myStatuses} />
+              )}
             </div>
 
             {/* TakeAction wave (#426): server-authored economy + action menu.
