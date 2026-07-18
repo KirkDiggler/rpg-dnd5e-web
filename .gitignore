@@ -36,3 +36,6 @@ dist-ssr
 # Useful for offline development but can become outdated
 # See api-data/README.md for update instructions
 # api-data/
+
+# Synty-derived assets — licensed, do not redistribute via the repo
+public/models/synty/

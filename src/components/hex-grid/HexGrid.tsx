@@ -80,6 +80,9 @@ export interface HexGridProps {
   ) => void;
   // Wall props
   walls?: Wall[];
+  /** Extra scene content rendered inside the Canvas after the built-in
+   * layers (e.g. the playtest harness's Synty model showcase). */
+  children?: React.ReactNode;
 }
 
 // Hex size constant - radius from center to vertex
@@ -113,6 +116,7 @@ function Scene({
   characters = [],
   monsters = [],
   walls = [],
+  children,
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -528,6 +532,9 @@ function Scene({
           isGhost={entity.isGhost}
         />
       ))}
+
+      {/* Caller-supplied extra scene content (see HexGridProps.children) */}
+      {children}
     </>
   );
 }
