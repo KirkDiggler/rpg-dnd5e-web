@@ -9,6 +9,7 @@
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import { WALL_HEIGHT } from '../../rendering/calibrationConstants';
 import { createHexPillarGeometry } from './hexGeometry';
 import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
 
@@ -16,9 +17,6 @@ export interface HexWallProps {
   wall: Wall;
   hexSize: number;
 }
-
-// Wall height in world space units (matches hex size scale)
-const WALL_HEIGHT = 0.8;
 
 // Color lookup by material type
 function getMaterialColor(material: string): string {

@@ -16,6 +16,7 @@ import { useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
+import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { WallBuilder, WallColors } from '@/rendering/WallBuilder';
 
 import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
@@ -24,9 +25,6 @@ export interface ShadedHexWallProps {
   wall: Wall;
   hexSize: number;
 }
-
-// Wall height in world space units (matches HexWall's WALL_HEIGHT)
-const WALL_HEIGHT = 0.8;
 
 // Color lookup by wall kind. v1alpha2 Wall carries no material field (the
 // v1alpha1 room_common Wall this replaced did) — kind is the only semantic

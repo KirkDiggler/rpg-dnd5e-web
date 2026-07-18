@@ -31,7 +31,7 @@ import * as THREE from 'three';
 import { FrontierGroundHint } from './FrontierGroundHint';
 import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
-import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
+import { cubeToWorld, getHexLine, HEX_SIZE, type CubeCoord } from './hexMath';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
 import { ShadedHexFloor } from './ShadedHexFloor';
@@ -84,9 +84,6 @@ export interface HexGridProps {
    * layers (e.g. the playtest harness's Synty model showcase). */
   children?: React.ReactNode;
 }
-
-// Hex size constant - radius from center to vertex
-const HEX_SIZE = 1.0;
 
 // Ground plane size - large enough to cover the entire grid with plenty of margin
 const GROUND_PLANE_SIZE = 200;

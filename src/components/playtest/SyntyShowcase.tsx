@@ -13,17 +13,10 @@
 
 import { useGLTF } from '@react-three/drei';
 import { Suspense } from 'react';
-import { cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
+import { SYNTY_SCALE } from '../../rendering/calibrationConstants';
+import { cubeToWorld, HEX_SIZE, type CubeCoord } from '../hex-grid/hexMath';
 
 const SYNTY_BASE = '/models/synty/';
-
-// Synty assets are authored in meters (goblin ≈ 1.84 m tall). The game's
-// characters stand ~1.5 world units on HEX_SIZE=1 hexes, so ×0.75 lands a
-// goblin at ~1.4 units — believable next to the existing OBJ characters.
-const SYNTY_SCALE = 0.75;
-
-// Matches HEX_SIZE in HexGrid.tsx (not exported there).
-const HEX_SIZE = 1.0;
 
 interface PlacedModelProps {
   file: string;

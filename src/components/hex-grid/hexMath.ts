@@ -23,6 +23,17 @@ export interface WorldPos {
 const SQRT_3 = Math.sqrt(3);
 
 /**
+ * The game's standard hex radius (center to vertex), in world units. Every
+ * caller of cubeToWorld/worldToCube in the live game routes uses this value
+ * — until rpg-dnd5e-web#432's harness-parity gate, it was a private
+ * `const HEX_SIZE = 1.0` re-declared independently in HexGrid.tsx,
+ * SyntyShowcase.tsx, and SyntyRoomDemo.tsx (each with a "matches HEX_SIZE in
+ * HexGrid.tsx, not exported there" comment). Exported here so every
+ * consumer imports the same value instead of re-declaring it.
+ */
+export const HEX_SIZE = 1.0;
+
+/**
  * Direction vectors for the 6 hex neighbors
  * Order: E, NE, NW, W, SW, SE (clockwise from east)
  */
