@@ -121,4 +121,49 @@ describe('useMyActiveLobby', () => {
     expect(result.current.error).toBe(rpcError);
     expect(result.current.data).toBeNull();
   });
+
+  it('refetches and clears stale data when playerId changes to a different identity', async () => {
+    hoisted.getMyActiveLobbyFn
+      .mockResolvedValueOnce({
+        lobbyId: 'lobby-alice',
+        encounterId: '',
+        lobbyStatus: LobbyStatus.WAITING,
+      } as GetMyActiveLobbyResponse)
+      .mockResolvedValueOnce({
+        lobbyId: 'lobby-bob',
+        encounterId: '',
+        lobbyStatus: LobbyStatus.WAITING,
+      } as GetMyActiveLobbyResponse);
+
+    const { result, rerender } = renderHook(
+      ({ playerId }: { playerId: string | null }) => useMyActiveLobby(playerId),
+      { initialProps: { playerId: 'alice' as string | null } }
+    );
+
+    await waitFor(() =>
+      expect(result.current.data?.lobbyId).toBe('lobby-alice')
+    );
+
+    rerender({ playerId: 'bob' });
+
+    // A playerId change (dev override switch, or Discord auth arriving over
+    // an initial fallback id) must not keep resolving/showing the PREVIOUS
+    // identity's session while the new lookup is in flight.
+    expect(result.current.data).toBeNull();
+    expect(result.current.loading).toBe(true);
+
+    await waitFor(() => expect(result.current.data?.lobbyId).toBe('lobby-bob'));
+    expect(hoisted.getMyActiveLobbyFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('loading is true synchronously on the render where a known playerId first triggers the lookup, not just after an effect', () => {
+    hoisted.getMyActiveLobbyFn.mockReturnValue(new Promise(() => {})); // never resolves
+    const { result } = renderHook(() => useMyActiveLobby('alice'));
+
+    // No waitFor: this must already be true on the very first render, so a
+    // caller gating "hold render until this resolves" never sees a false
+    // negative before the fetch effect even runs (App.tsx's Home hold-gate,
+    // Copilot review on #461).
+    expect(result.current.loading).toBe(true);
+  });
 });

@@ -8,7 +8,7 @@ import {
   EncounterMode,
   EntityType,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createFakeStream,
@@ -49,13 +49,28 @@ vi.mock('./EncounterMap', () => ({
     initiativeOrder: string[];
     activeEntityId: string;
     myEntityId: string;
+    onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
+    onEntityClick: (entityId: string) => void;
   }) => (
     <div
       data-testid="encounter-map-stub"
       data-initiative-order={props.initiativeOrder.join(',')}
       data-active-entity-id={props.activeEntityId}
       data-my-entity-id={props.myEntityId}
-    />
+    >
+      <button
+        data-testid="stub-move"
+        onClick={() => props.onMove([{ x: 1, y: 0, z: -1 }])}
+      >
+        move
+      </button>
+      <button
+        data-testid="stub-click-goblin"
+        onClick={() => props.onEntityClick('goblin-1')}
+      >
+        click goblin
+      </button>
+    </div>
   ),
 }));
 
@@ -237,5 +252,61 @@ describe('EncounterView resume-after-refresh entity resolution (#444)', () => {
 
     const stub = screen.getByTestId('encounter-map-stub');
     expect(stub.getAttribute('data-my-entity-id')).toBe('char-explicit');
+  });
+});
+
+describe('EncounterView ignores interaction before entityId resolves (#461 Copilot review)', () => {
+  it('does not call moveEntity when a move is triggered before entityId is resolved', async () => {
+    render(
+      <EncounterView encounterId="enc-1" playerId="alice" onBack={() => {}} />
+    );
+
+    // No snapshot pushed yet — entityId is still unresolved ('').
+    fireEvent.click(screen.getByTestId('stub-move'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.moveEntityFn).not.toHaveBeenCalled();
+  });
+
+  it('does not call takeAction when a monster is clicked before entityId is resolved', async () => {
+    render(
+      <EncounterView encounterId="enc-1" playerId="alice" onBack={() => {}} />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'goblin-1',
+                  position: { x: 2, y: 0, z: -2 },
+                  type: EntityType.MONSTER,
+                  data: {
+                    case: 'monster',
+                    value: { monsterRef: { id: 'goblin' } },
+                  },
+                },
+              ],
+            },
+          },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    // The snapshot above has no CHARACTER entity for playerId "alice", so
+    // entityId is still unresolved ('') even after this snapshot — the
+    // realistic shape of the actual race window (goblins can appear on the
+    // stream before the player's own character entry is processed).
+    fireEvent.click(screen.getByTestId('stub-click-goblin'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.takeActionFn).not.toHaveBeenCalled();
   });
 });

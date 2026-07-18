@@ -300,6 +300,11 @@ export function EncounterView({
     actionRef: { module: string; type: string; id: string },
     target: ActionTarget | undefined
   ) => {
+    // Resume-after-refresh (#444): entityId is '' until self-resolution
+    // completes (see resolveMyEntityId above). Never send an RPC with an
+    // empty actor id — a fast click in that window would otherwise reach
+    // the server as a real, malformed request (Copilot review on #461).
+    if (!entityId) return;
     try {
       await takeAction({
         encounterId,
@@ -344,7 +349,7 @@ export function EncounterView({
   const handleVisualMove = async (
     path: Array<{ x: number; y: number; z: number }>
   ) => {
-    if (encounterEnded || path.length === 0) return;
+    if (!entityId || encounterEnded || path.length === 0) return;
     try {
       await moveEntity(encounterId, entityId, path);
     } catch {
@@ -355,7 +360,7 @@ export function EncounterView({
   const handleVisualEntityClick = (targetId: string) => {
     if (targetId === entityId) return;
     setSelectedTargetId(targetId);
-    if (encounterEnded) return;
+    if (!entityId || encounterEnded) return;
     const targetMeta = encounterState.state.entityMeta.get(targetId);
     const isMonster = targetMeta?.type === EntityType.MONSTER;
     if (!isMonster) return;
@@ -365,6 +370,12 @@ export function EncounterView({
   };
 
   const handleEndTurn = async () => {
+    // combatEnabled already can't be true while entityId is unresolved
+    // (isMyTurn compares activeEntityId against entityId, and a real
+    // activeEntityId never equals ''), but guard explicitly rather than
+    // relying on that indirection — every RPC dispatch path checks
+    // entityId directly (Copilot review on #461).
+    if (!entityId) return;
     try {
       await endTurn(encounterId, entityId);
     } catch {
