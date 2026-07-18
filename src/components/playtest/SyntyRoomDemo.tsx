@@ -20,7 +20,7 @@
  */
 
 import { useGLTF, useTexture } from '@react-three/drei';
-import { Suspense, useMemo } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 
 import {
@@ -304,14 +304,29 @@ function HexFloorTile({ hex, texture, darken }: HexFloorTileProps) {
 }
 
 function RoomFloors() {
-  const floorMap = useTexture(TEX_BASE + 'Dungeons_Texture_FloorTiles_01.png');
-  // Dungeons_Texture_FloorTiles_01.png is a multi-pattern trim sheet, not a
-  // single repeatable tile — stretching the whole 2048px sheet across one
-  // hex (repeat 1x1) reads as a busy, un-floor-like collage. Repeating it
-  // breaks that up into a denser, more even stone-tile texture per hex.
-  floorMap.wrapS = THREE.RepeatWrapping;
-  floorMap.wrapT = THREE.RepeatWrapping;
-  floorMap.repeat.set(2, 2);
+  // useTexture returns drei's shared, URL-keyed texture cache — mutating it
+  // directly (wrapS/wrapT/repeat) during render is a render-phase side
+  // effect that leaks into every other consumer of the same URL. Clone it
+  // per-use and configure the clone instead.
+  const baseMap = useTexture(TEX_BASE + 'Dungeons_Texture_FloorTiles_01.png');
+  const floorMap = useMemo(() => {
+    // Dungeons_Texture_FloorTiles_01.png is a multi-pattern trim sheet, not
+    // a single repeatable tile — stretching the whole 2048px sheet across
+    // one hex (repeat 1x1) reads as a busy, un-floor-like collage. Repeating
+    // it breaks that up into a denser, more even stone-tile texture per hex.
+    const t = baseMap.clone();
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(2, 2);
+    t.needsUpdate = true;
+    return t;
+  }, [baseMap]);
+
+  // Clone is owned by this component instance — dispose it on unmount so we
+  // don't leak a GPU texture per mount (the shared base from useTexture's
+  // cache is left untouched and disposed by drei itself).
+  useEffect(() => {
+    return () => floorMap.dispose();
+  }, [floorMap]);
 
   return (
     <>
