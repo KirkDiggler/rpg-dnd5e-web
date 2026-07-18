@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "id": "wsl-vite-stale-watcher",
+    "date": "2026-07-18",
+    "lesson": "Vite dev server running inside WSL does not see file changes when the repo lives on /mnt/c (DrvFs has no inotify). Edits typecheck fine but the browser keeps getting the stale transform-cache module - it looks exactly like your change 'didn't work'.",
+    "fix": "Restart the dev server after edits when running from WSL, or export CHOKIDAR_USEPOLLING=1 before `npm run dev` to make the watcher poll.",
+    "context": "Hit during Synty asset showcase work (#469): SyntyShowcase.tsx edits didn't appear until the dev server was restarted."
+  }
+]

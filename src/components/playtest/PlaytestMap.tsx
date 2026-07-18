@@ -46,6 +46,7 @@ import {
   buildRenderableEntities,
   synthesizeFloorTiles,
 } from './playtestMapHelpers';
+import { SyntyShowcase } from './SyntyShowcase';
 
 export interface PlaytestMapProps {
   /**
@@ -144,6 +145,13 @@ export function PlaytestMap({
     [entities, entityMeta, entityHP]
   );
 
+  // Dev-only Synty asset showcase, opted in via `&synty=1` on the harness
+  // URL. Read once — the harness never mutates the query string mid-session.
+  const showSynty = useMemo(
+    () => new URLSearchParams(window.location.search).get('synty') === '1',
+    []
+  );
+
   // HexGrid expects an optional `combatState` to derive the active actor;
   // we don't have a v1alpha1 CombatState in the playtest, so pass null and
   // let `currentEntityId` drive path-preview origin instead.
@@ -186,7 +194,9 @@ export function PlaytestMap({
         // `onEntityClick` here would double-dispatch the harness's takeAction
         // RPC for every monster click. The harness routes attacks via the
         // `onEntityClick` branch, which always fires.
-      />
+      >
+        {showSynty && <SyntyShowcase />}
+      </HexGrid>
     </div>
   );
 }
