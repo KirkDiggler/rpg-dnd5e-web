@@ -43,11 +43,12 @@ import { useMoveEntity } from '../../api/useMoveEntity';
 import { useTakeAction } from '../../api/useTakeAction';
 import { useCombatLog } from '../../hooks/useCombatLog';
 import { useEncounterState } from '../../hooks/useEncounterState';
-import { errorMessage, formatStatusBadges } from '../../utils/combatFormat';
+import { errorMessage } from '../../utils/combatFormat';
 import { protoPositionToHex } from '../../utils/hexCoord';
 import { ActionMenu } from '../playtest/ActionMenu';
 import { targetKindNeedsPrompt } from '../playtest/actionMenuHelpers';
 import { EconomyBar } from '../playtest/EconomyBar';
+import { StatusBadgeList } from '../ui/StatusBadgeList';
 import { CombatLog } from './CombatLog';
 import { EncounterMap } from './EncounterMap';
 import { PromptModal } from './PromptModal';
@@ -413,7 +414,7 @@ export function EncounterView({
         </span>
         {myStatuses.length > 0 && (
           <span data-testid="my-status-badges">
-            {formatStatusBadges(myStatuses)}
+            <StatusBadgeList statuses={myStatuses} />
           </span>
         )}
         <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: 12 }}>

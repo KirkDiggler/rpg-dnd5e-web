@@ -355,8 +355,16 @@ describe('EncounterView renders condition badges hydrated from the snapshot (#46
       await Promise.resolve();
     });
 
-    expect(screen.getByTestId('my-status-badges').textContent).toBe(
-      '🔥 Raging'
+    // 'raging' has a Synty HUD icon mapped (#467) — the badge renders that
+    // PNG (alt text = label) instead of the emoji, so assert on the image
+    // rather than matching the old emoji-only text content.
+    const badges = screen.getByTestId('my-status-badges');
+    expect(badges.textContent).toContain('Raging');
+    const icon = badges.querySelector('img');
+    expect(icon).not.toBeNull();
+    expect(icon?.getAttribute('alt')).toBe('Raging');
+    expect(icon?.getAttribute('src')).toBe(
+      '/models/synty/ui/status/ICON_FantasyWarrior_Status_AttackUp01_Clean.png'
     );
   });
 
