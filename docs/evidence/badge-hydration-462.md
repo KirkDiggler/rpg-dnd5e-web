@@ -55,7 +55,26 @@ feature).
 
 `badge-hydration-survives-refresh-462.png` — both condition badges visible
 immediately after a second full page reload, sourced entirely from the
-snapshot. I viewed this frame directly.
+snapshot.
+
+**Correction (gate finding):** the screenshot originally committed here was
+mis-framed — the page's scroll position had drifted below the header row
+(likely from the earlier `Dodge` button click stealing focus/scroll), so
+the saved PNG showed only the hex map and combat log, not the badge text,
+even though the header was genuinely present in the live DOM at capture
+time (confirmed separately via the accessibility-tree snapshot in the same
+step, which did list `🔥 Raging, 🏃 Dodging`). The gate viewed the actual
+file and correctly caught that the image itself didn't show the claimed
+thing. Re-shot: reloaded the tab again, explicitly reset scroll to the top
+(`window.scrollTo(0, 0)`) before capturing, and this time read the saved
+PNG back with the Read tool myself before using it — not just trusting the
+tool's inline preview — to confirm the header row with both badges is
+actually in frame. It is: **I viewed this frame directly** (via Read on the
+saved file, not the live page) — the current
+`badge-hydration-survives-refresh-462.png` shows
+`mode: TURN_BASED round: 1 active: char-bob HP: 8/14 🔥 Raging, 🏃 Dodging`
+across the top, with the initiative order overlay (goblin-1, goblin-2,
+char-bob highlighted as active, goblin-3) below it.
 
 ## Secondary edge from the issue: DurationRounds display difference
 

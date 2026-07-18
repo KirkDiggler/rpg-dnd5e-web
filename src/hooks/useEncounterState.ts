@@ -921,7 +921,10 @@ export interface UseEncounterStateResult {
   /**
    * Apply a batch of entity appearances in a single state update to avoid N
    * intermediate renders when seeding multiple entities from a snapshot.
-   * Each entry carries the v1alpha1 positional stub plus v1alpha2 type/HP/AC/meta.
+   * Each entry carries the v1alpha1 positional stub plus v1alpha2 type/HP/AC/meta,
+   * and optionally statusEffects (#462) — when present, REPLACES (not merges
+   * into) that entity's entityStatuses entry from the snapshot's authoritative
+   * per-entity condition list.
    */
   applyEntityAppearedBatch: (
     entries: Array<{
@@ -930,14 +933,17 @@ export interface UseEncounterStateResult {
       monsterRefId: string | undefined;
       initialHP: { current: number; max: number } | undefined;
       initialAC: number | undefined;
+      statusEffects?: StatusEffect[];
     }>
   ) => void;
   /**
    * Apply v1alpha2 turn state from a SnapshotDelivered event.
    * Updates initiativeOrder, activeEntityId, round, and mode without touching
-   * HP / statuses / doors (those flow only via delta events). Also seeds the
-   * server-authored menu/economy (turnState) so the menu renders at turn start
-   * before the first TurnStateChanged push (TakeAction wave #426).
+   * HP / doors (those flow only via delta events) — per-entity statusEffects
+   * from the SAME snapshot are hydrated separately via
+   * applyEntityAppearedBatch (#462). Also seeds the server-authored
+   * menu/economy (turnState) so the menu renders at turn start before the
+   * first TurnStateChanged push (TakeAction wave #426).
    */
   applySnapshotTurnState: (
     encounterMode: EncounterMode,
