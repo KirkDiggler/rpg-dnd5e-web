@@ -31,18 +31,20 @@ export function ConditionBadge({ status, className }: ConditionBadgeProps) {
       }}
     >
       {display.iconUrl ? (
+        // Decorative: the label right after it carries the semantics, so
+        // screen readers shouldn't announce the icon too (Copilot review,
+        // #467 PR #473).
         <img
           src={display.iconUrl}
-          alt={display.label}
+          alt=""
+          aria-hidden="true"
           title={display.description || display.label}
           width={18}
           height={18}
           style={{ display: 'inline-block', verticalAlign: 'middle' }}
         />
       ) : (
-        <span role="img" aria-label={display.label}>
-          {display.icon}
-        </span>
+        <span aria-hidden="true">{display.icon}</span>
       )}
       <span>{display.label}</span>
     </span>
@@ -74,8 +76,8 @@ export function StatusBadgeList({
       className={className}
       style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 8 }}
     >
-      {statuses.map((s, i) => (
-        <ConditionBadge key={`${s.source.id}-${i}`} status={s} />
+      {statuses.map((s) => (
+        <ConditionBadge key={s.source.id} status={s} />
       ))}
     </span>
   );

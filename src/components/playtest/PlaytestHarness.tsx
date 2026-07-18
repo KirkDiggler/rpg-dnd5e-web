@@ -831,17 +831,18 @@ export function PlaytestHarness() {
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
               >
                 {display.iconUrl ? (
+                  // Decorative: the label right after it carries the
+                  // semantics (Copilot review, #467 PR #473).
                   <img
                     src={display.iconUrl}
-                    alt={display.label}
+                    alt=""
+                    aria-hidden="true"
                     title={display.description || display.label}
                     width={20}
                     height={20}
                   />
                 ) : (
-                  <span role="img" aria-label={display.label}>
-                    {display.icon}
-                  </span>
+                  <span aria-hidden="true">{display.icon}</span>
                 )}
                 {display.label}
               </span>
