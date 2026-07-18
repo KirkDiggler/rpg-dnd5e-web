@@ -197,6 +197,11 @@ export function PlaytestHarness() {
                 ? { current: entity.hp.current, max: entity.hp.max }
                 : undefined,
               initialAC: entity.armorClass,
+              // #462: same snapshot-status-hydration fix as EncounterView —
+              // the harness shares the same reducer and had the identical
+              // gap (condition badges couldn't survive a reconnect here
+              // either).
+              statusEffects: entity.statusEffects,
             }));
           if (entityEntries.length > 0) {
             encounterState.applyEntityAppearedBatch(entityEntries);

@@ -310,3 +310,87 @@ describe('EncounterView ignores interaction before entityId resolves (#461 Copil
     expect(hoisted.takeActionFn).not.toHaveBeenCalled();
   });
 });
+
+describe('EncounterView renders condition badges hydrated from the snapshot (#462)', () => {
+  it('shows the badge for a condition active before this connect (reconnect scenario)', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-bob"
+        playerId="bob"
+        onBack={() => {}}
+      />
+    );
+
+    // No live StatusApplied ever fires here — this is the reconnect case:
+    // the condition was already active before this stream connection, so
+    // the ONLY way the badge can appear is via the snapshot itself.
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'char-bob',
+                  position: { x: 0, y: 0, z: 0 },
+                  type: EntityType.CHARACTER,
+                  data: { case: 'character', value: { playerId: 'bob' } },
+                  statusEffects: [
+                    {
+                      source: {
+                        module: 'dnd5e',
+                        type: 'conditions',
+                        id: 'raging',
+                      },
+                      displayName: 'Raging',
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('my-status-badges').textContent).toBe(
+      '🔥 Raging'
+    );
+  });
+
+  it('shows no badge when the snapshot carries no statusEffects', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-bob"
+        playerId="bob"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'char-bob',
+                  position: { x: 0, y: 0, z: 0 },
+                  type: EntityType.CHARACTER,
+                  data: { case: 'character', value: { playerId: 'bob' } },
+                  statusEffects: [],
+                },
+              ],
+            },
+          },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('my-status-badges')).toBeNull();
+  });
+});

@@ -35,6 +35,7 @@ import {
   EntityType,
   InputRequiredSchema,
   SkillCheckPromptSchema,
+  type StatusEffect,
   TargetKind,
   TurnStateSchema,
   PositionSchema as V2PositionSchema,
@@ -213,6 +214,21 @@ function makeStatusApplied(
       displayName,
     },
   } as unknown as StatusApplied;
+}
+
+// Snapshot-side StatusEffect stub — same {source, displayName} shape
+// StatusApplied.status carries, since Entity.status_effects and
+// StatusApplied.status are both the StatusEffect message (rpg-dnd5e-web#462).
+function makeStatusEffect(
+  module: string,
+  type: string,
+  id: string,
+  displayName = id
+): StatusEffect {
+  return {
+    source: { module, type, id },
+    displayName,
+  } as unknown as StatusEffect;
 }
 
 function makeStatusRemoved(
@@ -1358,6 +1374,120 @@ describe('applyEntityAppearedBatch', () => {
     ]);
     expect(after.entityAC.get('char-charli')).toBe(15);
     expect(after.entityAC.get('goblin-1')).toBe(13);
+  });
+
+  // rpg-dnd5e-web#462: condition badges never survived a reconnect because
+  // the snapshot handler never read entity.status_effects — entityStatuses
+  // was only ever populated by the live onStatusApplied handler, which
+  // doesn't replay for conditions that were already active before connect.
+  describe('snapshot status hydration (#462)', () => {
+    it('seeds entityStatuses from statusEffects carried on a batch entry', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyEntityAppearedBatch(prev, [
+        {
+          entity: makeTestEntity('char-bob', { x: 0, y: 0, z: 0 }),
+          type: EntityType.CHARACTER,
+          monsterRefId: undefined,
+          initialHP: undefined,
+          initialAC: undefined,
+          statusEffects: [
+            makeStatusEffect('dnd5e', 'conditions', 'raging', 'Raging'),
+          ],
+        },
+      ]);
+      const list = after.entityStatuses.get('char-bob');
+      expect(list).toHaveLength(1);
+      expect(list?.[0].source.id).toBe('raging');
+      expect(list?.[0].displayName).toBe('Raging');
+    });
+
+    it('replaces (not merges into) a stale pre-refresh status list for the same entity', () => {
+      let state = applyStatusApplied(
+        createEmptyEncounterState(),
+        makeStatusApplied(
+          'char-bob',
+          'dnd5e',
+          'conditions',
+          'poisoned',
+          'Poisoned'
+        )
+      );
+      expect(state.entityStatuses.get('char-bob')).toHaveLength(1);
+
+      // A fresh snapshot after reconnect says char-bob is now only raging —
+      // poisoned must not survive alongside it.
+      state = applyEntityAppearedBatch(state, [
+        {
+          entity: makeTestEntity('char-bob', { x: 0, y: 0, z: 0 }),
+          type: EntityType.CHARACTER,
+          monsterRefId: undefined,
+          initialHP: undefined,
+          initialAC: undefined,
+          statusEffects: [
+            makeStatusEffect('dnd5e', 'conditions', 'raging', 'Raging'),
+          ],
+        },
+      ]);
+      const list = state.entityStatuses.get('char-bob');
+      expect(list).toHaveLength(1);
+      expect(list?.[0].source.id).toBe('raging');
+    });
+
+    it('clears a stale status entry when the fresh snapshot carries no statusEffects for that entity', () => {
+      let state = applyStatusApplied(
+        createEmptyEncounterState(),
+        makeStatusApplied('char-bob', 'dnd5e', 'conditions', 'raging', 'Raging')
+      );
+      expect(state.entityStatuses.get('char-bob')).toHaveLength(1);
+
+      state = applyEntityAppearedBatch(state, [
+        {
+          entity: makeTestEntity('char-bob', { x: 0, y: 0, z: 0 }),
+          type: EntityType.CHARACTER,
+          monsterRefId: undefined,
+          initialHP: undefined,
+          initialAC: undefined,
+          statusEffects: [],
+        },
+      ]);
+      expect(state.entityStatuses.has('char-bob')).toBe(false);
+    });
+
+    it('supports multiple stacked statusEffects on one entity', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyEntityAppearedBatch(prev, [
+        {
+          entity: makeTestEntity('char-bob', { x: 0, y: 0, z: 0 }),
+          type: EntityType.CHARACTER,
+          monsterRefId: undefined,
+          initialHP: undefined,
+          initialAC: undefined,
+          statusEffects: [
+            makeStatusEffect('dnd5e', 'conditions', 'raging', 'Raging'),
+            makeStatusEffect('dnd5e', 'conditions', 'poisoned', 'Poisoned'),
+          ],
+        },
+      ]);
+      const list = after.entityStatuses.get('char-bob');
+      expect(list?.map((s) => s.source.id).sort()).toEqual([
+        'poisoned',
+        'raging',
+      ]);
+    });
+
+    it('is a no-op for entityStatuses when the entry omits statusEffects entirely (existing callers unaffected)', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyEntityAppearedBatch(prev, [
+        {
+          entity: makeTestEntity('char-bob', { x: 0, y: 0, z: 0 }),
+          type: EntityType.CHARACTER,
+          monsterRefId: undefined,
+          initialHP: undefined,
+          initialAC: undefined,
+        },
+      ]);
+      expect(after.entityStatuses.size).toBe(0);
+    });
   });
 });
 
