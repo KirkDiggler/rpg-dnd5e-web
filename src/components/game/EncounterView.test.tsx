@@ -2,6 +2,7 @@ import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/ap
 import type {
   EndTurnResponse,
   MoveEntityResponse,
+  SetReactionReadyResponse,
   TakeActionResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import {
@@ -24,6 +25,8 @@ const hoisted = vi.hoisted(() => ({
   moveEntityFn: vi.fn<() => Promise<MoveEntityResponse>>(),
   takeActionFn: vi.fn<() => Promise<TakeActionResponse>>(),
   endTurnFn: vi.fn<() => Promise<EndTurnResponse>>(),
+  setReactionReadyFn:
+    vi.fn<(req: unknown) => Promise<SetReactionReadyResponse>>(),
 }));
 
 vi.mock('../../api/client', () => ({
@@ -37,6 +40,7 @@ vi.mock('../../api/client', () => ({
     moveEntity: hoisted.moveEntityFn,
     takeAction: hoisted.takeActionFn,
     endTurn: hoisted.endTurnFn,
+    setReactionReady: hoisted.setReactionReadyFn,
   },
 }));
 
@@ -81,6 +85,7 @@ beforeEach(() => {
   hoisted.moveEntityFn.mockReset();
   hoisted.takeActionFn.mockReset();
   hoisted.endTurnFn.mockReset();
+  hoisted.setReactionReadyFn.mockReset();
 });
 
 afterEach(() => {
@@ -392,5 +397,78 @@ describe('EncounterView renders condition badges hydrated from the snapshot (#46
     });
 
     expect(screen.queryByTestId('my-status-badges')).toBeNull();
+  });
+});
+
+describe('EncounterView reaction-readiness HUD (rpg-dnd5e-web#432 harness-parity)', () => {
+  it('arms a reaction via SetReactionReady and optimistically mirrors it as READY (no snapshot round-trip needed)', async () => {
+    hoisted.setReactionReadyFn.mockResolvedValue(
+      {} as SetReactionReadyResponse
+    );
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    const oaToggle = screen.getByTestId(
+      'reaction-toggle-dnd5e:conditions:opportunity_attack'
+    );
+    expect(oaToggle.textContent).toContain('unknown');
+
+    await act(async () => {
+      fireEvent.click(oaToggle);
+      await Promise.resolve();
+    });
+
+    expect(hoisted.setReactionReadyFn).toHaveBeenCalledOnce();
+    const request = hoisted.setReactionReadyFn.mock.calls[0]![0] as unknown as {
+      encounterId: string;
+      characterId: string;
+      reactionRef: { module: string; type: string; id: string };
+      ready: boolean;
+    };
+    expect(request.encounterId).toBe('enc-1');
+    expect(request.characterId).toBe('char-alice');
+    expect(request.reactionRef).toMatchObject({
+      module: 'dnd5e',
+      type: 'conditions',
+      id: 'opportunity_attack',
+    });
+    expect(request.ready).toBe(true);
+
+    expect(
+      screen.getByTestId('reaction-toggle-dnd5e:conditions:opportunity_attack')
+        .textContent
+    ).toContain('READY');
+  });
+
+  it('surfaces a SetReactionReady RPC error without mirroring the toggle locally', async () => {
+    hoisted.setReactionReadyFn.mockRejectedValue(new Error('boom'));
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByTestId('reaction-toggle-dnd5e:spells:shield')
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/Reaction ready error: boom/)).toBeTruthy();
+    expect(
+      screen.getByTestId('reaction-toggle-dnd5e:spells:shield').textContent
+    ).toContain('unknown');
   });
 });

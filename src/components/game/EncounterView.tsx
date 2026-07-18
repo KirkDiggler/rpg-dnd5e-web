@@ -40,6 +40,7 @@ import { v2PositionToV1 } from '../../api/positionConvert';
 import { useEncounterStream } from '../../api/useEncounterStream';
 import { useEndTurn } from '../../api/useEndTurn';
 import { useMoveEntity } from '../../api/useMoveEntity';
+import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useTakeAction } from '../../api/useTakeAction';
 import { useCombatLog } from '../../hooks/useCombatLog';
 import { useEncounterState } from '../../hooks/useEncounterState';
@@ -51,6 +52,7 @@ import { EconomyBar } from '../playtest/EconomyBar';
 import { CombatLog } from './CombatLog';
 import { EncounterMap } from './EncounterMap';
 import { PromptModal } from './PromptModal';
+import { ReactionReadyPanel } from './ReactionReadyPanel';
 
 const ATTACK_ACTION_REF = {
   module: 'dnd5e',
@@ -132,6 +134,16 @@ export function EncounterView({
     loading: endTurnLoading,
     error: endTurnError,
   } = useEndTurn();
+  // rpg-dnd5e-web#432 harness-parity: PlaytestHarness has had a
+  // reaction-readiness panel (OA + Shield toggles) since Wave 2.11d;
+  // EncounterView never wired one, so a real player could never arm a
+  // reaction outside the harness. Same optimistic-mirror wiring as
+  // PlaytestHarness.handleToggleReactionReady below.
+  const {
+    setReactionReady,
+    loading: setReactionReadyLoading,
+    error: setReactionReadyError,
+  } = useSetReactionReady();
 
   const stream = useEncounterStream(encounterId, playerId, {
     onSnapshotDelivered: (e) => {
@@ -388,6 +400,30 @@ export function EncounterView({
     }
   };
 
+  // Mirrors PlaytestHarness.handleToggleReactionReady: server is source of
+  // truth, but the RPC response carries no state to read back, so a
+  // successful call optimistically mirrors the toggle into
+  // state.reactionReadiness (setReactionReadyLocal) rather than waiting on
+  // a stream snapshot that doesn't carry this map today (rpg-api-protos#158).
+  const handleToggleReactionReady = async (
+    reactionRef: { module: string; type: string; id: string },
+    ready: boolean
+  ) => {
+    if (!entityId) return;
+    try {
+      await setReactionReady({
+        encounterId,
+        characterId: entityId,
+        reactionRef,
+        ready,
+      });
+      const refStr = `${reactionRef.module}:${reactionRef.type}:${reactionRef.id}`;
+      encounterState.setReactionReadyLocal(entityId, refStr, ready);
+    } catch {
+      // error surfaced via setReactionReadyError below
+    }
+  };
+
   return (
     <div
       data-testid="encounter-view"
@@ -493,6 +529,12 @@ export function EncounterView({
         loading={takeActionLoading}
         onSelectAction={(a) => void handleSelectAction(a)}
       />
+      <ReactionReadyPanel
+        readiness={encounterState.state.reactionReadiness.get(entityId)}
+        loading={setReactionReadyLoading}
+        disabled={encounterEnded}
+        onToggle={(ref, ready) => void handleToggleReactionReady(ref, ready)}
+      />
       <div>
         <button
           onClick={() => void handleEndTurn()}
@@ -515,6 +557,11 @@ export function EncounterView({
       {endTurnError && (
         <div style={{ color: '#f88', fontSize: 12 }}>
           End turn error: {errorMessage(endTurnError)}
+        </div>
+      )}
+      {setReactionReadyError && (
+        <div style={{ color: '#f88', fontSize: 12 }}>
+          Reaction ready error: {errorMessage(setReactionReadyError)}
         </div>
       )}
     </div>
