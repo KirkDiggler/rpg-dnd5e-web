@@ -26,7 +26,10 @@
 import { create } from '@bufbuild/protobuf';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { ActionTarget } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
-import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import type {
+  AvailableAction,
+  Entity,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
   EntityType,
@@ -63,11 +66,41 @@ const MODE_LABEL: Record<EncounterMode, string> = {
 
 export interface EncounterViewProps {
   encounterId: string;
-  /** The character bound at lobby create/join — the entity id in this encounter. */
-  characterId: string;
+  /**
+   * The character bound at lobby create/join — the entity id in this
+   * encounter. Optional: resume-after-refresh (#444) reaches this component
+   * with only encounterId + playerId (GetMyActiveLobby's response carries
+   * neither the resuming player's characterId nor a lobby roster to look
+   * one up from — the lobby record itself is a dead husk once STARTED, see
+   * rpg-api's lobbyrepo.Status). When omitted, entityId is resolved from
+   * the stream's own first snapshot instead — see resolveMyEntityId below.
+   */
+  characterId?: string;
   /** The authenticated player id — carried on the stream request for viewer identity. */
   playerId: string;
   onBack: () => void;
+}
+
+/**
+ * resolveMyEntityId scans a SnapshotDelivered event's entities for the one
+ * CharacterData entity whose player_id matches playerId — the same
+ * ownership binding StartEncounter's AddPlayer set up server-side
+ * (rpg-api's lobby orchestrator), just read back from the wire instead of
+ * threaded down as a prop. Returns undefined if no match is found (e.g. the
+ * snapshot hasn't arrived yet, or this player has no character in this
+ * encounter).
+ */
+function resolveMyEntityId(
+  entities: Entity[],
+  playerId: string
+): string | undefined {
+  const match = entities.find(
+    (entity) =>
+      entity.type === EntityType.CHARACTER &&
+      entity.data?.case === 'character' &&
+      entity.data.value.playerId === playerId
+  );
+  return match?.id;
 }
 
 export function EncounterView({
@@ -76,7 +109,8 @@ export function EncounterView({
   playerId,
   onBack,
 }: EncounterViewProps) {
-  const entityId = characterId;
+  const [resolvedEntityId, setResolvedEntityId] = useState<string | null>(null);
+  const entityId = characterId ?? resolvedEntityId ?? '';
   const encounterState = useEncounterState();
   // #445: game-grade combat narrative — the same dispatched events, rendered
   // as a scrolling log instead of PlaytestHarness's raw dev-log text.
@@ -102,6 +136,18 @@ export function EncounterView({
   const stream = useEncounterStream(encounterId, playerId, {
     onSnapshotDelivered: (e) => {
       if (e.encounter) {
+        // Resume-after-refresh (#444): when no characterId prop was
+        // supplied, this is the only place entityId can be learned — see
+        // resolveMyEntityId's doc comment.
+        if (!characterId) {
+          const resolved = resolveMyEntityId(
+            e.encounter.space?.entities ?? [],
+            playerId
+          );
+          if (resolved) {
+            setResolvedEntityId(resolved);
+          }
+        }
         encounterState.applySnapshotTurnState(
           e.encounter.mode,
           e.encounter.turnState
@@ -254,6 +300,11 @@ export function EncounterView({
     actionRef: { module: string; type: string; id: string },
     target: ActionTarget | undefined
   ) => {
+    // Resume-after-refresh (#444): entityId is '' until self-resolution
+    // completes (see resolveMyEntityId above). Never send an RPC with an
+    // empty actor id — a fast click in that window would otherwise reach
+    // the server as a real, malformed request (Copilot review on #461).
+    if (!entityId) return;
     try {
       await takeAction({
         encounterId,
@@ -298,7 +349,7 @@ export function EncounterView({
   const handleVisualMove = async (
     path: Array<{ x: number; y: number; z: number }>
   ) => {
-    if (encounterEnded || path.length === 0) return;
+    if (!entityId || encounterEnded || path.length === 0) return;
     try {
       await moveEntity(encounterId, entityId, path);
     } catch {
@@ -309,7 +360,7 @@ export function EncounterView({
   const handleVisualEntityClick = (targetId: string) => {
     if (targetId === entityId) return;
     setSelectedTargetId(targetId);
-    if (encounterEnded) return;
+    if (!entityId || encounterEnded) return;
     const targetMeta = encounterState.state.entityMeta.get(targetId);
     const isMonster = targetMeta?.type === EntityType.MONSTER;
     if (!isMonster) return;
@@ -319,6 +370,12 @@ export function EncounterView({
   };
 
   const handleEndTurn = async () => {
+    // combatEnabled already can't be true while entityId is unresolved
+    // (isMyTurn compares activeEntityId against entityId, and a real
+    // activeEntityId never equals ''), but guard explicitly rather than
+    // relying on that indirection — every RPC dispatch path checks
+    // entityId directly (Copilot review on #461).
+    if (!entityId) return;
     try {
       await endTurn(encounterId, entityId);
     } catch {

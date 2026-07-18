@@ -34,11 +34,26 @@ import { PartyRoster } from './PartyRoster';
 const DEV_CAMPAIGN_ID = 'default-campaign';
 
 export interface LobbyFlowProps {
-  /** The character selected on the home screen — bound to this player's lobby seat. */
-  characterId: string;
+  /**
+   * The character selected on the home screen — bound to this player's
+   * lobby seat. Optional: resume-after-refresh (#444) reaches this
+   * component via initialLobbyId, an already-existing WAITING lobby the
+   * caller is already a member of — the create/join RPCs that need this
+   * field never fire on that path (handleCreate guards against it).
+   */
+  characterId?: string;
   playerId: string;
   onEncounterStarted: (encounterId: string) => void;
   onBack: () => void;
+  /**
+   * Resume-after-refresh (#444): an already-existing WAITING lobby the
+   * caller is already a member of (from GetMyActiveLobby). Seeds lobbyId
+   * directly, skipping the create/join screen — useLobbyStream's
+   * snapshot-then-deltas subscription works identically regardless of how
+   * lobbyId was learned, so the roster (and, if the lobby was mid-transition,
+   * encounter_started) arrives the same way it would after a real JoinLobby.
+   */
+  initialLobbyId?: string;
 }
 
 export function LobbyFlow({
@@ -46,8 +61,9 @@ export function LobbyFlow({
   playerId,
   onEncounterStarted,
   onBack,
+  initialLobbyId,
 }: LobbyFlowProps) {
-  const [lobbyId, setLobbyId] = useState<string | null>(null);
+  const [lobbyId, setLobbyId] = useState<string | null>(initialLobbyId ?? null);
   const [joinRef, setJoinRef] = useState<string | null>(null);
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null);
   const [members, setMembers] = useState<LobbyMember[]>([]);
@@ -72,6 +88,10 @@ export function LobbyFlow({
   const handleJoin = async (ref: string) => {
     const trimmed = ref.trim();
     if (!trimmed) return;
+    if (!characterId) {
+      setError('No character selected');
+      return;
+    }
     setError(null);
     try {
       const resp = await joinLobby({ joinRef: trimmed, characterId });
@@ -130,6 +150,10 @@ export function LobbyFlow({
   });
 
   const handleCreate = async () => {
+    if (!characterId) {
+      setError('No character selected');
+      return;
+    }
     setError(null);
     try {
       const resp = await createLobby({
