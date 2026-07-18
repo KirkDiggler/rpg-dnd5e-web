@@ -138,6 +138,39 @@ describe('AbilityScoresSection', () => {
     );
   });
 
+  it('unassigning an ability frees its score slot for reassignment', () => {
+    renderSection();
+
+    fireEvent.click(screen.getByTestId('score-slot-15'));
+    fireEvent.click(screen.getByTestId('ability-slot-strength'));
+    expect(
+      screen.getByTestId('ability-slot-strength').textContent
+    ).not.toContain('Click to assign');
+    expect(screen.getByTestId('score-slot-15').textContent).toContain(
+      'Assigned'
+    );
+
+    // Clicking an already-assigned ability slot unassigns it, freeing the
+    // score slot it held.
+    fireEvent.click(screen.getByTestId('ability-slot-strength'));
+    expect(screen.getByTestId('ability-slot-strength').textContent).toContain(
+      'Click to assign'
+    );
+    expect(screen.getByTestId('score-slot-15').textContent).not.toContain(
+      'Assigned'
+    );
+
+    // The freed slot can now be assigned to a different ability.
+    fireEvent.click(screen.getByTestId('score-slot-15'));
+    fireEvent.click(screen.getByTestId('ability-slot-dexterity'));
+    expect(
+      screen.getByTestId('ability-slot-dexterity').textContent
+    ).not.toContain('Click to assign');
+    expect(screen.getByTestId('score-slot-15').textContent).toContain(
+      'Assigned'
+    );
+  });
+
   it('submits ability_scores with the assigned values, not roll_assignments, once complete (#460)', async () => {
     renderSection();
 

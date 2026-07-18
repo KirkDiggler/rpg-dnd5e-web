@@ -277,8 +277,6 @@ export function AbilityScoresSection({
         charisma: scoreFor('charisma'),
       });
 
-      console.log('Submitting ability scores:', { draftId, abilityScores });
-
       const response = await updateAbilityScores(
         create(UpdateAbilityScoresRequestSchema, {
           draftId,
@@ -288,8 +286,6 @@ export function AbilityScoresSection({
           },
         })
       );
-
-      console.log('Ability scores submitted successfully:', response);
 
       // Update the context with the new draft that includes ability scores
       if (response.draft && context) {
