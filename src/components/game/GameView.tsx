@@ -15,14 +15,42 @@ import { EncounterView } from './EncounterView';
 import { LobbyFlow } from './LobbyFlow';
 
 export interface GameViewProps {
-  /** The character selected on the home screen. */
-  characterId: string;
+  /**
+   * The character selected on the home screen. Optional: resume-after-
+   * refresh (#444) mounts this component with only playerId — GetMyActiveLobby
+   * carries no characterId, so this is undefined on that path and each child
+   * resolves what it needs from server state instead (EncounterView from the
+   * encounter's own roster; LobbyFlow doesn't need it at all once
+   * initialLobbyId is set, since it skips the create/join RPCs that are the
+   * only place characterId is used).
+   */
+  characterId?: string;
   playerId: string;
   onBack: () => void;
+  /**
+   * Resume-after-refresh (#444): an already-running encounter to drop
+   * straight into, skipping LobbyFlow entirely — the server-driven version
+   * of the dev-only /playtest ?encounterId= gate.
+   */
+  initialEncounterId?: string;
+  /**
+   * Resume-after-refresh (#444): an already-existing WAITING lobby to land
+   * back in — passed through to LobbyFlow, which seeds its lobbyId state
+   * from it directly.
+   */
+  initialLobbyId?: string;
 }
 
-export function GameView({ characterId, playerId, onBack }: GameViewProps) {
-  const [encounterId, setEncounterId] = useState<string | null>(null);
+export function GameView({
+  characterId,
+  playerId,
+  onBack,
+  initialEncounterId,
+  initialLobbyId,
+}: GameViewProps) {
+  const [encounterId, setEncounterId] = useState<string | null>(
+    initialEncounterId ?? null
+  );
 
   if (encounterId) {
     return (
@@ -41,6 +69,7 @@ export function GameView({ characterId, playerId, onBack }: GameViewProps) {
       playerId={playerId}
       onEncounterStarted={setEncounterId}
       onBack={onBack}
+      initialLobbyId={initialLobbyId}
     />
   );
 }

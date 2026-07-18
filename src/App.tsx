@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
+import { useMyActiveLobby } from './api/useMyActiveLobby';
 import './App.css';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
@@ -44,6 +45,12 @@ function AppContent() {
   >(null);
   // Character to play with in lobby
   const [lobbyCharacterId, setLobbyCharacterId] = useState<string | null>(null);
+  // Resume-after-refresh (#444): set from GetMyActiveLobby, not from Home
+  // character selection — see the routing effect below.
+  const [resumeEncounterId, setResumeEncounterId] = useState<string | null>(
+    null
+  );
+  const [resumeLobbyId, setResumeLobbyId] = useState<string | null>(null);
 
   const discord = useDiscord();
   const draft = useCharacterDraft();
@@ -62,6 +69,25 @@ function AppContent() {
     discord.user?.id ||
     devPlayerIdOverride ||
     (isDevelopment ? 'test-player' : null);
+
+  // Resume-after-refresh (#444): ask the server, once, whether this player
+  // has an active lobby or running encounter to resume into instead of
+  // landing on Home. An active encounter takes priority over a WAITING
+  // lobby (GetMyActiveLobbyResponse never reports both as independently
+  // actionable — see its doc comment) and routes straight into GameView,
+  // mirroring /playtest's dev-only ?encounterId= gate but server-driven and
+  // available for real players.
+  const myActiveLobby = useMyActiveLobby(playerId);
+  useEffect(() => {
+    if (!myActiveLobby.data) return;
+    if (myActiveLobby.data.encounterId) {
+      setResumeEncounterId(myActiveLobby.data.encounterId);
+      setCurrentView('lobby');
+    } else if (myActiveLobby.data.lobbyId) {
+      setResumeLobbyId(myActiveLobby.data.lobbyId);
+      setCurrentView('lobby');
+    }
+  }, [myActiveLobby.data]);
 
   const handleCreateCharacter = async () => {
     try {
@@ -108,6 +134,8 @@ function AppContent() {
   const handleBackToHome = () => {
     setCurrentCharacterId(null);
     setLobbyCharacterId(null);
+    setResumeEncounterId(null);
+    setResumeLobbyId(null);
     setCurrentView('home');
   };
 
@@ -123,6 +151,11 @@ function AppContent() {
 
   // Play button handler - go to lobby with selected character
   const handlePlay = (characterId: string) => {
+    // A fresh Play from Home should never carry a stale resume target
+    // forward (e.g. a leftover resumeLobbyId from an earlier check this
+    // session that the player has since left).
+    setResumeEncounterId(null);
+    setResumeLobbyId(null);
     setLobbyCharacterId(characterId);
     setCurrentView('lobby');
   };
@@ -215,14 +248,30 @@ function AppContent() {
               <p className="mt-4 text-red-500">{discord.error}</p>
             )}
           </motion.div>
-        ) : currentView === 'lobby' && lobbyCharacterId ? (
+        ) : currentView === 'lobby' &&
+          (lobbyCharacterId || resumeEncounterId || resumeLobbyId) ? (
           <GameView
-            characterId={lobbyCharacterId}
+            characterId={lobbyCharacterId ?? undefined}
             playerId={playerId || 'test-player'}
             onBack={handleBackToHome}
+            initialEncounterId={resumeEncounterId ?? undefined}
+            initialLobbyId={resumeLobbyId ?? undefined}
           />
         ) : currentView === 'concepts' ? (
           <ConceptsView onBack={handleBackToHome} />
+        ) : currentView === 'home' && myActiveLobby.loading ? (
+          // Resume-after-refresh (#444): hold Home's content one beat while
+          // GetMyActiveLobby resolves, so a resumable session (routed via
+          // the effect above, which flips currentView to 'lobby') never
+          // flashes Home first. The common case — no active lobby — clears
+          // this on the same tick loading flips false and currentView is
+          // still 'home', so this fires on essentially every cold load, not
+          // just resumes; kept intentionally minimal (see #444 PR body).
+          <div className="flex items-center justify-center h-screen">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-primary mx-auto mb-4"></div>
+            </div>
+          </div>
         ) : currentView === 'home' ? (
           <HomeView
             playerId={playerId || 'test-player'}

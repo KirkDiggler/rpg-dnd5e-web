@@ -4,7 +4,10 @@ import type {
   MoveEntityResponse,
   TakeActionResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
-import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  EncounterMode,
+  EntityType,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -45,11 +48,13 @@ vi.mock('./EncounterMap', () => ({
   EncounterMap: (props: {
     initiativeOrder: string[];
     activeEntityId: string;
+    myEntityId: string;
   }) => (
     <div
       data-testid="encounter-map-stub"
       data-initiative-order={props.initiativeOrder.join(',')}
       data-active-entity-id={props.activeEntityId}
+      data-my-entity-id={props.myEntityId}
     />
   ),
 }));
@@ -152,5 +157,85 @@ describe('EncounterView turn-order props (mode gating)', () => {
     stub = screen.getByTestId('encounter-map-stub');
     expect(stub.getAttribute('data-active-entity-id')).toBe('');
     expect(stub.getAttribute('data-initiative-order')).toBe('');
+  });
+});
+
+describe('EncounterView resume-after-refresh entity resolution (#444)', () => {
+  it('resolves entityId from the snapshot roster when characterId is not supplied', async () => {
+    render(
+      <EncounterView encounterId="enc-1" playerId="alice" onBack={() => {}} />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'char-alice-resolved',
+                  position: { x: 0, y: 0, z: 0 },
+                  type: EntityType.CHARACTER,
+                  data: { case: 'character', value: { playerId: 'alice' } },
+                },
+                {
+                  id: 'char-bob',
+                  position: { x: 1, y: 0, z: -1 },
+                  type: EntityType.CHARACTER,
+                  data: { case: 'character', value: { playerId: 'bob' } },
+                },
+                {
+                  id: 'goblin-1',
+                  position: { x: 2, y: 0, z: -2 },
+                  type: EntityType.MONSTER,
+                  data: {
+                    case: 'monster',
+                    value: { monsterRef: { id: 'goblin' } },
+                  },
+                },
+              ],
+            },
+          },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const stub = screen.getByTestId('encounter-map-stub');
+    expect(stub.getAttribute('data-my-entity-id')).toBe('char-alice-resolved');
+  });
+
+  it('prefers the supplied characterId over roster resolution when both are available', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-explicit"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'char-alice-resolved',
+                  position: { x: 0, y: 0, z: 0 },
+                  type: EntityType.CHARACTER,
+                  data: { case: 'character', value: { playerId: 'alice' } },
+                },
+              ],
+            },
+          },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const stub = screen.getByTestId('encounter-map-stub');
+    expect(stub.getAttribute('data-my-entity-id')).toBe('char-explicit');
   });
 });
