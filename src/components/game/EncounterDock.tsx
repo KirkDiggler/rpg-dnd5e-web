@@ -21,6 +21,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import type { EntityStatus } from '../../hooks/useEncounterState';
+import { getActionIconUrl } from '../../utils/actionIcons';
 import { ActionMenu } from '../playtest/ActionMenu';
 import { EconomyBar } from '../playtest/EconomyBar';
 import { StatusBadgeList } from '../ui/StatusBadgeList';
@@ -112,6 +113,7 @@ export function EncounterDock({
       : 0;
   const label = classLabel(classRefId);
   const name = resolveName(displayName, entityId);
+  const endTurnIconUrl = getActionIconUrl('end-turn');
 
   return (
     <div
@@ -243,7 +245,24 @@ export function EncounterDock({
           onToggle={onToggleReaction}
         />
         <div>
-          <button onClick={onEndTurn} disabled={endTurnDisabled}>
+          <button
+            onClick={onEndTurn}
+            disabled={endTurnDisabled}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            {/* #497: static icon (this button isn't server-driven like
+                ActionMenu's entries) — same getActionIconUrl lookup, so a
+                missing/renamed asset falls back to text-only here too. */}
+            {endTurnIconUrl && (
+              <img
+                src={endTurnIconUrl}
+                alt=""
+                aria-hidden="true"
+                width={16}
+                height={16}
+                style={{ display: 'inline-block', flexShrink: 0 }}
+              />
+            )}
             {endTurnLoading ? 'Ending…' : 'End turn'}
           </button>
         </div>
