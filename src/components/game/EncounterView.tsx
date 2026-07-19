@@ -40,6 +40,7 @@ import {
   TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { v2PositionToV1 } from '../../api/positionConvert';
 import { useEncounterStream } from '../../api/useEncounterStream';
 import { useEndTurn } from '../../api/useEndTurn';
@@ -50,14 +51,11 @@ import { useCombatLog } from '../../hooks/useCombatLog';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { errorMessage } from '../../utils/combatFormat';
 import { protoPositionToHex } from '../../utils/hexCoord';
-import { ActionMenu } from '../playtest/ActionMenu';
 import { targetKindNeedsPrompt } from '../playtest/actionMenuHelpers';
-import { EconomyBar } from '../playtest/EconomyBar';
 import { StatusBadgeList } from '../ui/StatusBadgeList';
-import { CombatLog } from './CombatLog';
+import { EncounterDock } from './EncounterDock';
 import { EncounterMap } from './EncounterMap';
 import { PromptModal } from './PromptModal';
-import { ReactionReadyPanel } from './ReactionReadyPanel';
 
 const ATTACK_ACTION_REF = {
   module: 'dnd5e',
@@ -190,6 +188,14 @@ export function EncounterView({
             // onStatusApplied handler below, so a condition already active
             // before this connect never shows on reconnect.
             statusEffects: entity.statusEffects,
+            // Encounter dock identity block (rpg-dnd5e-web#491): every
+            // Entity carries display_name; only CHARACTER entities carry a
+            // class_ref.
+            displayName: entity.displayName,
+            classRefId:
+              entity.data?.case === 'character'
+                ? entity.data.value.classRef?.id
+                : undefined,
           }));
         if (entityEntries.length > 0) {
           encounterState.applyEntityAppearedBatch(entityEntries);
@@ -241,12 +247,18 @@ export function EncounterView({
       const initialHP = e.entity.hp
         ? { current: e.entity.hp.current, max: e.entity.hp.max }
         : undefined;
+      const classRefId =
+        e.entity.data?.case === 'character'
+          ? e.entity.data.value.classRef?.id
+          : undefined;
       encounterState.applyEntityMeta(
         e.entity.id,
         e.entity.type,
         monsterRefId,
         initialHP,
-        e.entity.armorClass
+        e.entity.armorClass,
+        e.entity.displayName,
+        classRefId
       );
     },
     onEntityDisappeared: (e) => {
@@ -329,6 +341,8 @@ export function EncounterView({
 
   const myPosition = encounterState.state.entities.get(entityId)?.position;
   const myHP = encounterState.state.entityHP.get(entityId);
+  const myAC = encounterState.state.entityAC.get(entityId);
+  const myMeta = encounterState.state.entityMeta.get(entityId);
   const myStatuses = encounterState.state.entityStatuses.get(entityId) ?? [];
   const encounterEnded = encounterState.state.encounterStatus === 'ended';
   const isMyTurn =
@@ -454,15 +468,34 @@ export function EncounterView({
     }
   };
 
-  return (
+  // Portaled straight to document.body, position:fixed inset:0 (rpg-dnd5e-web
+  // #491): App.tsx's shared shell wraps every non-character-sheet view in
+  // `max-w-7xl mx-auto p-8`, which the lobby's centered-card layout wants but
+  // a live encounter doesn't — that padding/width-cap was fighting "map fills
+  // the viewport" as much as the old `height: 480` div was. Escaping via
+  // portal (rather than threading a per-view padding exception up through
+  // App.tsx's shared className logic) mirrors the pre-clean-slate
+  // ActionPanelV2's proven fix for the exact same class of problem, and
+  // keeps this self-contained to the one view that needs it.
+  const anyError =
+    moveError || takeActionError || endTurnError || setReactionReadyError;
+
+  return createPortal(
     <div
       data-testid="encounter-view"
-      style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 100,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--bg-primary, #0a0a0a)',
+      }}
     >
       <div
         data-testid="encounter-header"
         className="flex flex-wrap items-center gap-4 rounded-lg px-4 py-2"
-        style={{ background: 'var(--bg-secondary, #1a1a1a)' }}
+        style={{ background: 'var(--bg-secondary, #1a1a1a)', flexShrink: 0 }}
       >
         <span>
           mode: <strong>{MODE_LABEL[encounterState.state.mode]}</strong>
@@ -494,7 +527,7 @@ export function EncounterView({
         <div
           data-testid="encounter-ended-banner"
           className="rounded-lg px-4 py-3 font-bold"
-          style={{ background: '#2a1a00', color: '#ffcc66' }}
+          style={{ background: '#2a1a00', color: '#ffcc66', flexShrink: 0 }}
         >
           Encounter ended
           {encounterState.state.encounterEndedReason
@@ -510,7 +543,11 @@ export function EncounterView({
         onDismiss={() => encounterState.setPendingPrompt(null)}
       />
 
-      <div style={{ height: 480 }}>
+      {/* Map fills whatever the header/banner/dock don't take — this
+          `flex: 1, minHeight: 0` (not a fixed pixel height) is the actual
+          "maximize to fill the viewport" fix; EncounterMap itself already
+          renders at width/height 100% of its container. */}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <EncounterMap
           entities={encounterState.state.entities}
           entityMeta={encounterState.state.entityMeta}
@@ -539,68 +576,141 @@ export function EncounterView({
               ? isMyTurn
               : true
           }
+          // rpg-dnd5e-web#486: EncounterMap's movementRemaining fell back to
+          // its own DEFAULT_MOVEMENT_FEET=30 in TURN_BASED — a fabricated
+          // client-side budget, the combat sibling of the free-roam one
+          // #485 killed. EconomyBar already reads economy.movementRemaining
+          // verbatim (in the dock below); thread the same server value into
+          // the map's path-preview range instead of a made-up constant.
+          // `?? 0` while turnState hasn't arrived yet is more honest than
+          // falling back to a fake 30ft that doesn't exist server-side.
+          // FREE_ROAM stays unbounded regardless — HexGrid's own
+          // effectiveMovementRemaining override (#485) ignores this prop
+          // entirely outside TURN_BASED.
+          movementRemaining={
+            encounterState.state.mode === EncounterMode.TURN_BASED
+              ? (economy?.movementRemaining ?? 0)
+              : undefined
+          }
           openDoorIds={Array.from(encounterState.state.openDoors)}
           onMove={(path) => void handleVisualMove(path)}
           onEntityClick={handleVisualEntityClick}
         />
+
+        {!myPosition && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 8,
+              left: 8,
+              fontSize: 12,
+              opacity: 0.6,
+              background: 'rgba(0,0,0,0.5)',
+              padding: '2px 8px',
+              borderRadius: 4,
+            }}
+          >
+            Waiting for your position…
+          </div>
+        )}
+
+        {anyError && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 8,
+              left: 8,
+              right: 8,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            {moveError && (
+              <div
+                style={{
+                  color: '#f88',
+                  fontSize: 12,
+                  background: 'rgba(0,0,0,0.6)',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                }}
+              >
+                Move error: {errorMessage(moveError)}
+              </div>
+            )}
+            {takeActionError && (
+              <div
+                style={{
+                  color: '#f88',
+                  fontSize: 12,
+                  background: 'rgba(0,0,0,0.6)',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                }}
+              >
+                Action error: {errorMessage(takeActionError)}
+              </div>
+            )}
+            {endTurnError && (
+              <div
+                style={{
+                  color: '#f88',
+                  fontSize: 12,
+                  background: 'rgba(0,0,0,0.6)',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                }}
+              >
+                End turn error: {errorMessage(endTurnError)}
+              </div>
+            )}
+            {setReactionReadyError && (
+              <div
+                style={{
+                  color: '#f88',
+                  fontSize: 12,
+                  background: 'rgba(0,0,0,0.6)',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                }}
+              >
+                Reaction ready error: {errorMessage(setReactionReadyError)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {!myPosition && (
-        <div style={{ fontSize: 12, opacity: 0.6 }}>
-          Waiting for your position…
-        </div>
-      )}
-
-      <CombatLog entries={combatLog.entries} />
-
-      <EconomyBar economy={economy} />
-      <ActionMenu
+      <EncounterDock
+        name={myMeta?.displayName || entityId || '—'}
+        classRefId={myMeta?.classRefId}
+        hp={myHP}
+        ac={myAC}
+        statuses={myStatuses}
+        economy={economy}
         actions={availableActions}
-        enabled={combatEnabled}
-        loading={takeActionLoading}
+        actionsEnabled={combatEnabled}
+        actionsLoading={takeActionLoading}
         onSelectAction={(a) => void handleSelectAction(a)}
-      />
-      <ReactionReadyPanel
-        readiness={encounterState.state.reactionReadiness.get(entityId)}
-        loading={setReactionReadyLoading}
+        reactionReadiness={encounterState.state.reactionReadiness.get(entityId)}
+        reactionLoading={setReactionReadyLoading}
         // Copilot review #475: disable during the resume-after-refresh
         // window too (entityId still ''), not just after the encounter
         // ends — matches ActionMenu's gating. Without this, a click in
         // that window was a silent no-op (handleToggleReactionReady's own
         // `if (!entityId) return` guard fires, but nothing tells the
         // player why nothing happened).
-        disabled={encounterEnded || !entityId}
-        onToggle={(ref, ready) => void handleToggleReactionReady(ref, ready)}
+        reactionDisabled={encounterEnded || !entityId}
+        onToggleReaction={(ref, ready) =>
+          void handleToggleReactionReady(ref, ready)
+        }
+        onEndTurn={() => void handleEndTurn()}
+        endTurnDisabled={!combatEnabled || endTurnLoading}
+        endTurnLoading={endTurnLoading}
+        combatLogEntries={combatLog.entries}
       />
-      <div>
-        <button
-          onClick={() => void handleEndTurn()}
-          disabled={!combatEnabled || endTurnLoading}
-        >
-          {endTurnLoading ? 'Ending…' : 'End turn'}
-        </button>
-      </div>
-
-      {moveError && (
-        <div style={{ color: '#f88', fontSize: 12 }}>
-          Move error: {errorMessage(moveError)}
-        </div>
-      )}
-      {takeActionError && (
-        <div style={{ color: '#f88', fontSize: 12 }}>
-          Action error: {errorMessage(takeActionError)}
-        </div>
-      )}
-      {endTurnError && (
-        <div style={{ color: '#f88', fontSize: 12 }}>
-          End turn error: {errorMessage(endTurnError)}
-        </div>
-      )}
-      {setReactionReadyError && (
-        <div style={{ color: '#f88', fontSize: 12 }}>
-          Reaction ready error: {errorMessage(setReactionReadyError)}
-        </div>
-      )}
-    </div>
+    </div>,
+    document.body
   );
 }

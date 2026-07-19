@@ -225,6 +225,13 @@ export function PlaytestHarness() {
               // gap (condition badges couldn't survive a reconnect here
               // either).
               statusEffects: entity.statusEffects,
+              // #491: same identity-block data gap as EncounterView — the
+              // harness shares the same reducer.
+              displayName: entity.displayName,
+              classRefId:
+                entity.data?.case === 'character'
+                  ? entity.data.value.classRef?.id
+                  : undefined,
             }));
           if (entityEntries.length > 0) {
             encounterState.applyEntityAppearedBatch(entityEntries);
@@ -276,12 +283,18 @@ export function PlaytestHarness() {
         const initialHP = e.entity.hp
           ? { current: e.entity.hp.current, max: e.entity.hp.max }
           : undefined;
+        const classRefId =
+          e.entity.data?.case === 'character'
+            ? e.entity.data.value.classRef?.id
+            : undefined;
         encounterState.applyEntityMeta(
           e.entity.id,
           e.entity.type,
           monsterRefId,
           initialHP,
-          e.entity.armorClass
+          e.entity.armorClass,
+          e.entity.displayName,
+          classRefId
         );
         addLog(`EntityAppeared ${e.entity.id}`);
       },
