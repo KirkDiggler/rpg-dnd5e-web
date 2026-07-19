@@ -5,7 +5,12 @@
  * (a populated combat log, several actions across economy slots, status
  * badges) so the wrap/shrink behavior can be checked against realistic
  * content, not just an empty dock. Resize the browser (or Chrome DevTools
- * device toolbar) to see identity/actions/log wrap below ~604px.
+ * device toolbar) narrower to see identity/actions/log wrap, then stack.
+ * Deliberately no hardcoded breakpoint here (Copilot review #496 caught a
+ * stale ~604px figure that measured wrong against real content) — the
+ * actual wrap width is a function of this fixture's specific text
+ * (name/class/action-label lengths), not a fixed constant; it'll measure
+ * differently against other mock data or the real encounter's data.
  *
  * Not wired to any real state — mirrors the same fixture-building pattern
  * CombatLog.test.tsx and actionMenuHelpers.test.ts already use for proto
@@ -101,11 +106,15 @@ export function EncounterDockConcept() {
   return (
     <div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>
-        Resize the browser to check EncounterDock's wrap behavior below ~604px
-        (rpg-dnd5e-web#494). EncounterDock itself doesn't set position:fixed —
-        that's EncounterView's wrapper — so it renders inline in this page's
-        normal flow, which is enough to observe its own internal column
-        wrap/shrink behavior.
+        Resize the browser narrower to check EncounterDock's wrap behavior
+        (rpg-dnd5e-web#494) — the exact width it wraps at depends on this
+        fixture's content, not a fixed breakpoint. EncounterDock itself doesn't
+        set position:fixed — that's EncounterView's wrapper — so it renders
+        inline in this page's normal flow, which is enough to observe its own
+        internal column wrap/shrink behavior. It does NOT reproduce
+        EncounterView's map-starvation risk on short viewports (see
+        EncounterDock.tsx's DOCK_MAX_HEIGHT_VH comment) — that needs a live
+        encounter with the real portaled layout.
       </p>
       <EncounterDock
         entityId="char-alice"

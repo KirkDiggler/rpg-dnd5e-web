@@ -9,6 +9,17 @@
  *
  * Single room this slice (GameView slice 2, #440) — multi-room accumulation
  * is slice 4, scheduled with The Dungeon leg's multi-room trailblazer.
+ *
+ * No minHeight on this component's own wrapper (rpg-dnd5e-web#494 gate,
+ * "map starvation" finding): a hardcoded 360px floor here used to fight
+ * EncounterView's flex:1/minHeight:0 map container on short viewports —
+ * this element's own height:100% would compute to less than 360 there
+ * (dock stacked + short window), the 360 floor won, and the map overflowed
+ * its actual allocated space, pushing EncounterDock off-screen below the
+ * fold instead of the intended "map keeps a usable floor" outcome. The
+ * real floor now lives one level up: EncounterDock's DOCK_MAX_HEIGHT_VH
+ * caps the dock so the map's flex:1 parent always keeps >=58% of the
+ * viewport, without a second, conflicting fixed-pixel constraint here.
  */
 
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
@@ -125,7 +136,6 @@ export function EncounterMap({
         position: 'relative',
         width: '100%',
         height: '100%',
-        minHeight: 360,
         background: '#0a0a0a',
         border: '1px solid #333',
         borderRadius: 4,

@@ -66,12 +66,23 @@ export interface EncounterDockProps {
 //
 // rpg-dnd5e-web#494: at desktop width this is a per-column height cap
 // (each column scrolls internally past this, never spills past its own
-// box). Below ~604px (identity 220 + log 320 + 2×16 gaps + 32 padding),
-// the columns wrap via flexWrap below instead of overflowing horizontally
-// — COLUMN_MAX_HEIGHT then caps each wrapped row too, so a fully-stacked
-// narrow layout is still bounded (3 rows × ~230px, scrollable per column)
-// rather than growing unbounded and pushing the map off-screen.
+// box). Below the measured wrap thresholds (see EncounterDockConcept.tsx),
+// columns wrap via flexWrap below instead of overflowing horizontally.
 const COLUMN_MAX_HEIGHT = 230;
+
+// #494 gate (medium finding): a fully-stacked layout is 3 rows of up to
+// COLUMN_MAX_HEIGHT each (~690px + gaps/padding) — on a SHORT viewport
+// (not just narrow-width — e.g. a landscape phone or a small emulated
+// Discord panel), that can starve EncounterView's map (flex:1, minHeight:0
+// in EncounterView.tsx) down toward 0, since the dock and map compete for
+// the same fixed-height parent. Capping the WHOLE dock's height as a
+// viewport fraction (not a per-column cap, which doesn't bound the SUM of
+// stacked rows) guarantees the map keeps a usable floor — 42vh leaves the
+// map >=58% of viewport height in the worst case (fully stacked, dock at
+// its cap) regardless of how many rows the columns wrap into. The dock
+// itself scrolls as one unit past this cap (overflowY below) rather than
+// clipping content outright.
+const DOCK_MAX_HEIGHT_VH = '42vh';
 
 export function EncounterDock({
   entityId,
@@ -109,10 +120,15 @@ export function EncounterDock({
         display: 'flex',
         flexWrap: 'wrap',
         gap: 16,
-        // Desktop-width floor (matches the old fixed height exactly when
-        // all 3 columns fit on one row); grows via flexWrap below when
-        // columns stack on narrow viewports instead of clipping them.
-        minHeight: COLUMN_MAX_HEIGHT + 30,
+        // Natural content height up to DOCK_MAX_HEIGHT_VH — no explicit
+        // minHeight (the old fixed value left ~10px of unaccounted dead
+        // space below the desktop columns; content-driven height means
+        // the dock is exactly as tall as its content, on desktop and
+        // stacked alike). Past the cap, the whole dock scrolls as one
+        // unit so the map (EncounterView's sibling flex:1 element) always
+        // keeps a usable floor instead of starving.
+        maxHeight: DOCK_MAX_HEIGHT_VH,
+        overflowY: 'auto',
         flexShrink: 0,
         padding: '10px 16px',
         background: 'var(--bg-secondary, #1a1a1a)',
@@ -134,6 +150,7 @@ export function EncounterDock({
           flexDirection: 'column',
           gap: 6,
           overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -195,9 +212,10 @@ export function EncounterDock({
 
       {/* Center: economy + actions + reactions + end turn. #494: minWidth
           was 0 — the literal cause of this column collapsing to nothing
-          below ~604px while identity/log (flexShrink:0) held their full
-          width and overflowed. A real floor (220) means IT wraps to its
-          own row instead of vanishing once the row can't fit everyone. */}
+          once the row couldn't fit all three (identity/log's old
+          flexShrink:0 held their full width and overflowed instead of
+          giving this column room). A real floor (220) means IT wraps to
+          its own row instead of vanishing. */}
       <div
         data-testid="encounter-dock-actions"
         style={{
@@ -208,6 +226,7 @@ export function EncounterDock({
           flexDirection: 'column',
           gap: 6,
           overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       >
         <EconomyBar economy={economy} />
