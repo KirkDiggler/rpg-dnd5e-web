@@ -324,6 +324,27 @@ function Scene({
     [entities, currentEntityId]
   );
 
+  // v1alpha2 TURN_BASED signal: buildTurnOrderCombatState (in
+  // playtestMapHelpers.ts) returns null when initiativeOrder is empty, i.e.
+  // FREE_ROAM. Computed here (not just below, where a second identical
+  // reference used to live) because it also drives effectiveMovementRemaining.
+  const inTurnBasedCombat = combatState != null;
+
+  // rpg-dnd5e-web#483: `movementRemaining` (EncounterMap's DEFAULT_MOVEMENT_FEET
+  // fallback when the caller doesn't wire real turn economy) is a real per-turn
+  // budget in TURN_BASED, but outside combat there IS no client-visible economy
+  // to measure against — TurnState.economy only exists mid-turn. Gating
+  // free-roam movement on that same number was an invented client-side budget
+  // the server doesn't share (Boundary Rule: client references, never
+  // calculates/enforces rules). Free-roam gets its own path: any click on a
+  // revealed, unblocked hex dispatches — reachability is bounded by
+  // `isBlocked` (unrevealed/wall/occupied hexes are excluded regardless of
+  // this number), not by a fabricated feet-remaining ceiling. The server is
+  // the one that will actually reject an illegal move.
+  const effectiveMovementRemaining = inTurnBasedCombat
+    ? movementRemaining
+    : Number.MAX_SAFE_INTEGER;
+
   // Use the interaction hook for hover/click detection with path preview
   const {
     hoveredHex,
@@ -352,7 +373,7 @@ function Scene({
     },
     onHexHover,
     entityPosition: currentEntityPosition,
-    movementRemaining,
+    movementRemaining: effectiveMovementRemaining,
     isBlocked,
     entities: entitiesMap,
   });
@@ -369,17 +390,15 @@ function Scene({
   // useMovementRange.ts's doc comments.
   const { boundaryEdges } = useMovementRange({
     entityPosition: currentEntityPosition,
-    movementRemaining,
+    movementRemaining: effectiveMovementRemaining,
     hexSize: HEX_SIZE,
     isBlocked,
     isOccupiedByOtherEntity,
   });
 
-  // v1alpha2 TURN_BASED signal: buildTurnOrderCombatState (in
-  // playtestMapHelpers.ts) returns null when initiativeOrder is empty,
-  // i.e. FREE_ROAM. Used to decide when the movement border is actionable
-  // rather than idle-always-on (rpg-dnd5e-web#456).
-  const inTurnBasedCombat = combatState != null;
+  // inTurnBasedCombat is computed above (drives effectiveMovementRemaining
+  // too). Used here to decide when the movement border is actionable rather
+  // than idle-always-on (rpg-dnd5e-web#456).
   const isPlanningMove = hoveredHex !== null || pathPreview.length > 0;
   const showMovementBorder = shouldShowMovementBorder(
     inTurnBasedCombat,

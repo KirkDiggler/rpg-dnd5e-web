@@ -78,7 +78,24 @@ function SyntyHexFloorTile({ tile, hexSize, texture }: SyntyHexFloorTileProps) {
 
   return (
     <mesh geometry={geometry} position={[world.x, FLOOR_Y, world.z]}>
-      <meshStandardMaterial map={texture} />
+      {/* rpg-dnd5e-web#481: MeshStandardMaterial (PBR, lit) rendered this
+          floor nearly invisible in the deployed environment — under the
+          scene's ambientLight(0.6)/directionalLight(0.8) rig plus r3f's
+          default ACES tone-mapping, a fully-rough unlit-by-comparison
+          texture compresses down close to black, and Kirk's Discord webview
+          frame was measurably darker than local dev frames of the same
+          build (GPU/tone-mapping path difference, unconfirmed but real).
+          ShadedHexFloor's cel-shader (FloorBuilder.getMaterial →
+          AdvancedCharacterShader) reads fine in the same rig because it's
+          a hand-tuned custom shader with its own guaranteed-bright output,
+          not dependent on scene lights at all. MeshBasicMaterial matches
+          that: fully unlit, renders the texture at a light-rig-independent
+          brightness — the floor no longer needs the ambient/directional
+          setup (or any given deployment's tone-mapping/GPU quirks) to be
+          visibly correct. This is a code-side fix; if it still reads too
+          flat once seen against real deployed lighting, a lighter floor
+          texture variant is the asset-request fallback (#481). */}
+      <meshBasicMaterial map={texture} />
     </mesh>
   );
 }
