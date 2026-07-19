@@ -61,13 +61,17 @@ export interface EncounterDockProps {
 }
 
 // Copilot review #493: CombatLog's own header (~25px) plus its internal
-// scroll region's maxHeight:200 (CombatLog.tsx) sum to ~237px, more than
-// the ~204px of content height the original DOCK_HEIGHT(224) - padding
-// left for it — long logs could spill past the dock into the map. Sized
-// up so CombatLog's natural height fits without needing to clip it, plus
-// `overflow: hidden` below as a hard guarantee against any future column
-// growing taller than its row (e.g. a very long class-name wrap).
-const DOCK_HEIGHT = 260;
+// scroll region's maxHeight:200 (CombatLog.tsx) sum to ~237px — sized so
+// CombatLog's natural height fits without needing to clip it.
+//
+// rpg-dnd5e-web#494: at desktop width this is a per-column height cap
+// (each column scrolls internally past this, never spills past its own
+// box). Below ~604px (identity 220 + log 320 + 2×16 gaps + 32 padding),
+// the columns wrap via flexWrap below instead of overflowing horizontally
+// — COLUMN_MAX_HEIGHT then caps each wrapped row too, so a fully-stacked
+// narrow layout is still bounded (3 rows × ~230px, scrollable per column)
+// rather than growing unbounded and pushing the map off-screen.
+const COLUMN_MAX_HEIGHT = 230;
 
 export function EncounterDock({
   entityId,
@@ -103,22 +107,29 @@ export function EncounterDock({
       data-testid="encounter-dock"
       style={{
         display: 'flex',
+        flexWrap: 'wrap',
         gap: 16,
-        height: DOCK_HEIGHT,
+        // Desktop-width floor (matches the old fixed height exactly when
+        // all 3 columns fit on one row); grows via flexWrap below when
+        // columns stack on narrow viewports instead of clipping them.
+        minHeight: COLUMN_MAX_HEIGHT + 30,
         flexShrink: 0,
         padding: '10px 16px',
         background: 'var(--bg-secondary, #1a1a1a)',
         borderTop: '2px solid var(--border-primary, #333)',
         boxShadow: '0 -8px 25px -5px rgba(0, 0, 0, 0.3)',
-        overflow: 'hidden',
       }}
     >
-      {/* Left: identity / status block */}
+      {/* Left: identity / status block. flex:'0 1 220px' keeps the exact
+          220px desktop width (grow:0 — never wider than that even with
+          spare row space) while allowing it to shrink down to minWidth
+          before wrapping to its own row on narrow viewports (#494). */}
       <div
         data-testid="encounter-dock-identity"
         style={{
-          width: 220,
-          flexShrink: 0,
+          flex: '0 1 220px',
+          minWidth: 160,
+          maxHeight: COLUMN_MAX_HEIGHT,
           display: 'flex',
           flexDirection: 'column',
           gap: 6,
@@ -182,12 +193,17 @@ export function EncounterDock({
         {statuses.length > 0 && <StatusBadgeList statuses={statuses} />}
       </div>
 
-      {/* Center: economy + actions + reactions + end turn */}
+      {/* Center: economy + actions + reactions + end turn. #494: minWidth
+          was 0 — the literal cause of this column collapsing to nothing
+          below ~604px while identity/log (flexShrink:0) held their full
+          width and overflowed. A real floor (220) means IT wraps to its
+          own row instead of vanishing once the row can't fit everyone. */}
       <div
         data-testid="encounter-dock-actions"
         style={{
-          flex: 1,
-          minWidth: 0,
+          flex: '1 1 300px',
+          minWidth: 220,
+          maxHeight: COLUMN_MAX_HEIGHT,
           display: 'flex',
           flexDirection: 'column',
           gap: 6,
@@ -214,17 +230,20 @@ export function EncounterDock({
         </div>
       </div>
 
-      {/* Right: combat log. height:'100%' + overflow:'hidden' clips
-          CombatLog to the row's actual height regardless of its own
-          content — it already scrolls internally (CombatLog.tsx's
+      {/* Right: combat log. maxHeight + overflow:'hidden' clips CombatLog
+          to this column's own budget regardless of its natural content
+          height — it already scrolls internally (CombatLog.tsx's
           overflowY:'auto' region), so this only affects how many lines
-          are visible before scrolling, never spill past the dock. */}
+          are visible before scrolling, never spill past the dock.
+          flex:'0 1 320px' matches identity's shrink-then-wrap behavior
+          (#494) instead of the old flexShrink:0 that held its full width
+          and pushed the row past the viewport on narrow screens. */}
       <div
         data-testid="encounter-dock-log"
         style={{
-          width: 320,
-          flexShrink: 0,
-          height: '100%',
+          flex: '0 1 320px',
+          minWidth: 220,
+          maxHeight: COLUMN_MAX_HEIGHT,
           overflow: 'hidden',
         }}
       >
