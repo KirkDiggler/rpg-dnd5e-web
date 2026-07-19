@@ -78,7 +78,31 @@ function SyntyHexFloorTile({ tile, hexSize, texture }: SyntyHexFloorTileProps) {
 
   return (
     <mesh geometry={geometry} position={[world.x, FLOOR_Y, world.z]}>
-      <meshStandardMaterial map={texture} />
+      {/* rpg-dnd5e-web#481: MeshStandardMaterial (PBR, lit) rendered this
+          floor nearly invisible in the deployed environment — under the
+          scene's ambientLight(0.6)/directionalLight(0.8) rig plus r3f's
+          default ACES tone-mapping, a fully-rough unlit-by-comparison
+          texture compresses down close to black, and Kirk's Discord webview
+          frame was measurably darker than local dev frames of the same
+          build (GPU/tone-mapping path difference, unconfirmed but real).
+          ShadedHexFloor's cel-shader (FloorBuilder.getMaterial →
+          AdvancedCharacterShader) reads fine in the same rig because it's
+          a hand-tuned custom shader with its own guaranteed-bright output,
+          not dependent on scene lights at all. MeshBasicMaterial matches
+          that: fully unlit, renders the texture at a light-rig-independent
+          brightness — the floor no longer needs the ambient/directional
+          setup (or any given deployment's tone-mapping/GPU quirks) to be
+          visibly correct. This is a code-side fix; if it still reads too
+          flat once seen against real deployed lighting, a lighter floor
+          texture variant is the asset-request fallback (#481).
+
+          MeshBasicMaterial is still tone-mapped by default (Copilot review
+          #485) — r3f's renderer applies ACES/exposure to every material
+          unless it opts out, so without toneMapped={false} this floor was
+          still at the mercy of each environment's tone-mapping/exposure,
+          the exact cross-environment variance #481 exists to kill. Opting
+          out makes the texture's own pixel values the final word. */}
+      <meshBasicMaterial map={texture} toneMapped={false} />
     </mesh>
   );
 }
