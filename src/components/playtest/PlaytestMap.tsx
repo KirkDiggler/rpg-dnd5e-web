@@ -39,7 +39,7 @@
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
-import type { EntityMeta } from '../../hooks/useEncounterState';
+import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import { HexGrid } from '../hex-grid';
 import type { CubeCoord } from '../hex-grid/hexMath';
 import {
@@ -77,6 +77,11 @@ export interface PlaytestMapProps {
    * HexGrid renders their corpse and excludes them from blocking checks.
    */
   entityHP: Map<string, { current: number; max: number }>;
+  /**
+   * v1alpha2 active conditions per entity — the "unconscious" ref drives
+   * the downed class-model swap for CHARACTER entities (rpg-dnd5e-web#501).
+   */
+  entityStatuses?: Map<string, EntityStatus[]>;
   /**
    * Local player's entity id (e.g. `char-alice`). The hovered/selected
    * entity defaults to this so the path preview originates from the
@@ -126,6 +131,7 @@ export function PlaytestMap({
   revealedHexes,
   walls,
   entityHP,
+  entityStatuses,
   myEntityId,
   fallbackPosition,
   isMyTurn,
@@ -142,8 +148,9 @@ export function PlaytestMap({
   const wallList = useMemo(() => Array.from(walls.values()), [walls]);
 
   const renderableEntities = useMemo(
-    () => buildRenderableEntities(entities, entityMeta, entityHP),
-    [entities, entityMeta, entityHP]
+    () =>
+      buildRenderableEntities(entities, entityMeta, entityHP, entityStatuses),
+    [entities, entityMeta, entityHP, entityStatuses]
   );
 
   // Dev-only Synty asset showcase, opted in via `&synty=1` on the harness

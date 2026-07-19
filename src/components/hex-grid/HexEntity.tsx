@@ -19,6 +19,8 @@ import { Race } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enum
 import { useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { ClassCharacterModel } from './ClassCharacterModel';
+import { resolveClassCharacterModelUrl } from './classCharacterModels';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 
@@ -44,6 +46,13 @@ export interface HexEntityProps {
   isDead?: boolean;
   /** Whether the entity is outside LoS (v1alpha2). Render at last-known position with ghost shader (semi-transparent, desaturated). */
   isGhost?: boolean;
+  /** v1alpha2 CharacterData.class_ref.id — resolves a class GLB for player
+   * entities (rpg-dnd5e-web#501). Unmapped/undefined falls back to
+   * MediumHumanoid, unchanged (the #479 boundary lineage). */
+  classRefId?: string;
+  /** True for a CHARACTER entity carrying the "unconscious" condition —
+   * swaps to the class's downed GLB variant (rpg-dnd5e-web#501). */
+  isDowned?: boolean;
 }
 
 // Visual state colors
@@ -187,6 +196,8 @@ export function HexEntity({
   facialHairStyle,
   isDead = false,
   isGhost = false,
+  classRefId,
+  isDowned = false,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const { invalidate } = useThree();
@@ -270,37 +281,67 @@ export function HexEntity({
       : resolveWeaponType(character, 'offHand');
     const shield = isTwoHanded ? undefined : resolveShield(character);
 
+    // rpg-dnd5e-web#501: monsters stay on MediumHumanoid this slice (scope
+    // decision — goblin/WarChief GLBs exist but monster classRef mapping is
+    // a different shape). Unmapped class / missing classRefId also falls
+    // through to undefined here, which is exactly the MediumHumanoid
+    // fallback signal below (the #479 boundary lineage: a data gap
+    // degrades to the known-working placeholder, never a broken model ref).
+    const classModelUrl =
+      type === 'player'
+        ? resolveClassCharacterModelUrl(classRefId, isDowned)
+        : undefined;
+
     return (
       <group
         position={[worldPos.x, CHARACTER_Y_OFFSET, worldPos.z]}
         {...interactionProps}
       >
-        {/* Dead entities rendered with tilt; ghost entities rendered with ghost shader */}
-        <group rotation={isDead ? [0, 0, Math.PI / 3] : [0, 0, 0]}>
+        {/* Dead/downed entities rendered with tilt when using the
+            MediumHumanoid fallback (no separate collapsed pose asset);
+            the class model's own downed GLB variant is already posed for
+            it, so no extra tilt there. Ghost entities rendered with ghost
+            shader/opacity either way. */}
+        <group
+          rotation={
+            isDead || (isDowned && !classModelUrl)
+              ? [0, 0, Math.PI / 3]
+              : [0, 0, 0]
+          }
+        >
           <Suspense
             fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
           >
-            <MediumHumanoid
-              color={color}
-              isSelected={!isDead && isSelected}
-              variant={type === 'monster' ? 'goblin' : 'human'}
-              headVariant={headVariant}
-              facingRotation={type === 'player' ? Math.PI : 0}
-              race={characterRace}
-              characterClass={characterClass}
-              monsterType={monsterType}
-              skinTone={isDead ? '#555' : skinTone}
-              primaryColor={isDead ? '#444' : primaryColor}
-              secondaryColor={isDead ? '#333' : secondaryColor}
-              hairStyle={hairStyle}
-              hairColor={isDead ? '#333' : hairColor}
-              facialHairStyle={facialHairStyle}
-              mainHandWeapon={mainHandWeapon}
-              offHandWeapon={offHandWeapon}
-              shield={shield}
-              showOutline={!isDead}
-              ghostAmount={isGhost ? 1.0 : 0.0}
-            />
+            {classModelUrl ? (
+              <ClassCharacterModel
+                url={classModelUrl}
+                isSelected={!isDead && isSelected}
+                isGhost={isGhost}
+                facingRotation={Math.PI}
+              />
+            ) : (
+              <MediumHumanoid
+                color={color}
+                isSelected={!isDead && isSelected}
+                variant={type === 'monster' ? 'goblin' : 'human'}
+                headVariant={headVariant}
+                facingRotation={type === 'player' ? Math.PI : 0}
+                race={characterRace}
+                characterClass={characterClass}
+                monsterType={monsterType}
+                skinTone={isDead ? '#555' : skinTone}
+                primaryColor={isDead ? '#444' : primaryColor}
+                secondaryColor={isDead ? '#333' : secondaryColor}
+                hairStyle={hairStyle}
+                hairColor={isDead ? '#333' : hairColor}
+                facialHairStyle={facialHairStyle}
+                mainHandWeapon={mainHandWeapon}
+                offHandWeapon={offHandWeapon}
+                shield={shield}
+                showOutline={!isDead}
+                ghostAmount={isGhost ? 1.0 : 0.0}
+              />
+            )}
           </Suspense>
         </group>
       </group>

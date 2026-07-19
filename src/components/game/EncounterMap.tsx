@@ -25,7 +25,7 @@
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
-import type { EntityMeta } from '../../hooks/useEncounterState';
+import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import { HexGrid } from '../hex-grid';
 import type { CubeCoord } from '../hex-grid/hexMath';
 import {
@@ -45,6 +45,9 @@ export interface EncounterMapProps {
   walls: Map<string, Wall>;
   /** Per-entity HP — marks monsters dead (HP <= 0) so HexGrid renders their corpse. */
   entityHP: Map<string, { current: number; max: number }>;
+  /** v1alpha2 active conditions per entity — the "unconscious" ref drives
+   * the downed class-model swap for CHARACTER entities (rpg-dnd5e-web#501). */
+  entityStatuses?: Map<string, EntityStatus[]>;
   /** v1alpha2 initiative order (entity ids) — drives the TurnOrderOverlay. Empty outside TURN_BASED. */
   initiativeOrder: string[];
   /** v1alpha2 active actor's entity id — highlighted in the TurnOrderOverlay. */
@@ -80,6 +83,7 @@ export function EncounterMap({
   revealedHexes,
   walls,
   entityHP,
+  entityStatuses,
   initiativeOrder,
   activeEntityId,
   round,
@@ -98,8 +102,9 @@ export function EncounterMap({
   const wallList = useMemo(() => Array.from(walls.values()), [walls]);
 
   const renderableEntities = useMemo(
-    () => buildRenderableEntities(entities, entityMeta, entityHP),
-    [entities, entityMeta, entityHP]
+    () =>
+      buildRenderableEntities(entities, entityMeta, entityHP, entityStatuses),
+    [entities, entityMeta, entityHP, entityStatuses]
   );
 
   const combatState = useMemo(
