@@ -49,8 +49,11 @@ export function ClassCharacterModel({
           ? (child.material as THREE.Material[])
           : [child.material as THREE.Material];
         const tinted = materials.map((mat) => {
-          const cloned = mat.clone() as THREE.MeshStandardMaterial;
-          if (isSelected) {
+          const cloned = mat.clone();
+          // emissive/emissiveIntensity are Standard/Physical-material-only;
+          // transparent/opacity are on the THREE.Material base and safe for
+          // any material type a GLB might legally use.
+          if (isSelected && cloned instanceof THREE.MeshStandardMaterial) {
             cloned.emissive = new THREE.Color('#ffffff');
             cloned.emissiveIntensity = 0.25;
           }

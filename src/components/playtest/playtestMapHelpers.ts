@@ -38,8 +38,9 @@ export interface RenderableEntity {
   isDowned?: boolean;
 }
 
-/** {module:'dnd5e', type:'conditions', id:'unconscious'} — matches
- * conditionIcons.ts's normalized condition key convention. */
+/** Checks for a status whose source ref id is "unconscious" — the only
+ * field this needs is `source.id` (see EntityStatus's own doc comment for
+ * the full `{module, type: "condition", id}` ref shape). */
 function hasUnconsciousStatus(statuses: EntityStatus[] | undefined): boolean {
   return statuses?.some((s) => s.source.id === 'unconscious') ?? false;
 }
@@ -113,7 +114,7 @@ export function buildRenderableEntities(
   entities: Map<string, EntityState & { ghost?: boolean }>,
   entityMeta: Map<string, EntityMeta>,
   entityHP: Map<string, { current: number; max: number }>,
-  entityStatuses: Map<string, EntityStatus[]> = new Map()
+  entityStatuses: Map<string, EntityStatus[]> | undefined = new Map()
 ): RenderableEntity[] {
   const result: RenderableEntity[] = [];
   for (const [id, entity] of entities.entries()) {

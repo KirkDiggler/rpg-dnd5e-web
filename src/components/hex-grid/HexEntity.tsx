@@ -19,6 +19,7 @@ import { Race } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enum
 import { useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { ClassCharacterModel } from './ClassCharacterModel';
 import { resolveClassCharacterModelUrl } from './classCharacterModels';
 import { cubeToWorld, type CubeCoord } from './hexMath';
@@ -292,6 +293,38 @@ export function HexEntity({
         ? resolveClassCharacterModelUrl(classRefId, isDowned)
         : undefined;
 
+    // Shared fallback element — used both as the "no class model" branch
+    // and as the ErrorBoundary fallback when a mapped class model exists
+    // but its GLB fails to load (missing/unsynced asset, bad file, etc.).
+    // Suspense only covers the pending-load state; a terminal load failure
+    // throws past it (same reasoning as HexGrid's Synty floor/wall
+    // ErrorBoundary wrapping) and would otherwise unmount this entity's
+    // whole Canvas tree instead of degrading to the known-working
+    // placeholder (the #479 boundary lineage).
+    const mediumHumanoidElement = (
+      <MediumHumanoid
+        color={color}
+        isSelected={!isDead && isSelected}
+        variant={type === 'monster' ? 'goblin' : 'human'}
+        headVariant={headVariant}
+        facingRotation={type === 'player' ? Math.PI : 0}
+        race={characterRace}
+        characterClass={characterClass}
+        monsterType={monsterType}
+        skinTone={isDead ? '#555' : skinTone}
+        primaryColor={isDead ? '#444' : primaryColor}
+        secondaryColor={isDead ? '#333' : secondaryColor}
+        hairStyle={hairStyle}
+        hairColor={isDead ? '#333' : hairColor}
+        facialHairStyle={facialHairStyle}
+        mainHandWeapon={mainHandWeapon}
+        offHandWeapon={offHandWeapon}
+        shield={shield}
+        showOutline={!isDead}
+        ghostAmount={isGhost ? 1.0 : 0.0}
+      />
+    );
+
     return (
       <group
         position={[worldPos.x, CHARACTER_Y_OFFSET, worldPos.z]}
@@ -313,34 +346,16 @@ export function HexEntity({
             fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
           >
             {classModelUrl ? (
-              <ClassCharacterModel
-                url={classModelUrl}
-                isSelected={!isDead && isSelected}
-                isGhost={isGhost}
-                facingRotation={Math.PI}
-              />
+              <ErrorBoundary fallback={mediumHumanoidElement}>
+                <ClassCharacterModel
+                  url={classModelUrl}
+                  isSelected={!isDead && isSelected}
+                  isGhost={isGhost}
+                  facingRotation={Math.PI}
+                />
+              </ErrorBoundary>
             ) : (
-              <MediumHumanoid
-                color={color}
-                isSelected={!isDead && isSelected}
-                variant={type === 'monster' ? 'goblin' : 'human'}
-                headVariant={headVariant}
-                facingRotation={type === 'player' ? Math.PI : 0}
-                race={characterRace}
-                characterClass={characterClass}
-                monsterType={monsterType}
-                skinTone={isDead ? '#555' : skinTone}
-                primaryColor={isDead ? '#444' : primaryColor}
-                secondaryColor={isDead ? '#333' : secondaryColor}
-                hairStyle={hairStyle}
-                hairColor={isDead ? '#333' : hairColor}
-                facialHairStyle={facialHairStyle}
-                mainHandWeapon={mainHandWeapon}
-                offHandWeapon={offHandWeapon}
-                shield={shield}
-                showOutline={!isDead}
-                ghostAmount={isGhost ? 1.0 : 0.0}
-              />
+              mediumHumanoidElement
             )}
           </Suspense>
         </group>
