@@ -27,6 +27,8 @@ import {
   coordToKey,
   cubeToWorld,
   HEX_DIRECTIONS,
+  hexCorners,
+  hexEdgeBetween,
   type CubeCoord,
   type WorldPos,
 } from '../hex-grid/hexMath';
@@ -98,19 +100,6 @@ const FRONTIER_HEXES: CubeCoord[] = [
 // above that so our textured tile doesn't lose the depth test to it there.
 const FLOOR_Y = 0.2;
 
-/** The 6 corners of a pointy-top hex, matching ShadedHexFloor's shape
- * construction (angle = 30 + 60*i degrees, then rotateX(-90deg) maps the
- * shape's local y to world -z). */
-function hexCorners(center: WorldPos, size: number): WorldPos[] {
-  return Array.from({ length: 6 }, (_, i) => {
-    const angle = ((30 + 60 * i) * Math.PI) / 180;
-    return {
-      x: center.x + size * Math.cos(angle),
-      z: center.z - size * Math.sin(angle),
-    };
-  });
-}
-
 interface BorderEdge {
   hex: CubeCoord;
   neighbor: CubeCoord;
@@ -120,15 +109,15 @@ interface BorderEdge {
   rotationY: number;
 }
 
-/** Every edge of every room hex that faces a hex outside the room. Found
- * geometrically (nearest corner-pair to the hex/neighbor edge midpoint)
- * rather than a hand-derived direction→corner-index table, so it stays
- * correct regardless of hex orientation conventions. */
+/** Every edge of every room hex that faces a hex outside the room, using
+ * the shared `hexEdgeBetween` (hexMath.ts) — extracted from this file's
+ * original hand-rolled corner-finding loop and generalized for
+ * rpg-dnd5e-web#432's harness-parity gate (deduped back onto the shared
+ * primitive here, so this demo and the real dungeon-rendering path
+ * (SyntyHexWall.tsx) share one implementation instead of two copies). */
 function computeBorderEdges(): BorderEdge[] {
   const edges: BorderEdge[] = [];
   for (const hex of ROOM_HEXES) {
-    const hexWorld = cubeToWorld(hex, HEX_SIZE);
-    const corners = hexCorners(hexWorld, HEX_SIZE);
     for (const dir of HEX_DIRECTIONS) {
       const neighbor: CubeCoord = {
         x: hex.x + dir.x,
@@ -136,36 +125,8 @@ function computeBorderEdges(): BorderEdge[] {
         z: hex.z + dir.z,
       };
       if (ROOM_SET.has(coordToKey(neighbor))) continue; // interior edge
-
-      const neighborWorld = cubeToWorld(neighbor, HEX_SIZE);
-      const edgeMid: WorldPos = {
-        x: (hexWorld.x + neighborWorld.x) / 2,
-        z: (hexWorld.z + neighborWorld.z) / 2,
-      };
-
-      let bestIndex = 0;
-      let bestDist = Infinity;
-      for (let i = 0; i < 6; i++) {
-        const c1 = corners[i];
-        const c2 = corners[(i + 1) % 6];
-        const mid = { x: (c1.x + c2.x) / 2, z: (c1.z + c2.z) / 2 };
-        const dist = (mid.x - edgeMid.x) ** 2 + (mid.z - edgeMid.z) ** 2;
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestIndex = i;
-        }
-      }
-
-      const a = corners[bestIndex];
-      const b = corners[(bestIndex + 1) % 6];
-      // Local +X of the env pieces is their width axis. A Y rotation by θ
-      // sends local X (1,0,0) to world (cosθ, 0, -sinθ), so solving
-      // cosθ = ux, -sinθ = uz gives the θ that lines +X up with edge a→b.
-      const dx = b.x - a.x;
-      const dz = b.z - a.z;
-      const rotationY = Math.atan2(-dz, dx);
-
-      edges.push({ hex, neighbor, a, b, mid: edgeMid, rotationY });
+      const { a, b, mid, rotationY } = hexEdgeBetween(hex, neighbor, HEX_SIZE);
+      edges.push({ hex, neighbor, a, b, mid, rotationY });
     }
   }
   return edges;
@@ -257,13 +218,17 @@ function HexFloorTile({ hex, texture, darken }: HexFloorTileProps) {
   const world = cubeToWorld(hex, HEX_SIZE);
   const geometry = useMemo(() => {
     const shape = new THREE.Shape();
-    for (let i = 0; i < 6; i++) {
-      const angle = ((30 + 60 * i) * Math.PI) / 180;
-      const x = HEX_SIZE * Math.cos(angle);
-      const y = HEX_SIZE * Math.sin(angle);
-      if (i === 0) shape.moveTo(x, y);
-      else shape.lineTo(x, y);
-    }
+    // hexCorners' z applies the world-space z = -sin(angle) convention (for
+    // alignment with cubeToWorld) — negate it here to land back on this
+    // shape's local y = +size*sin(angle), the CCW winding that keeps the
+    // face normal pointing toward the overhead camera post-rotateX
+    // (rpg-dnd5e-web#432's harness-parity gate — SyntyHexFloor.tsx hit this
+    // exact sign trap when it started consuming hexCorners directly).
+    const corners = hexCorners({ x: 0, z: 0 }, HEX_SIZE);
+    corners.forEach((c, i) => {
+      if (i === 0) shape.moveTo(c.x, -c.z);
+      else shape.lineTo(c.x, -c.z);
+    });
     shape.closePath();
     const geo = new THREE.ShapeGeometry(shape);
 
