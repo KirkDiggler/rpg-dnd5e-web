@@ -25,24 +25,8 @@ import { ActionMenu } from '../playtest/ActionMenu';
 import { EconomyBar } from '../playtest/EconomyBar';
 import { StatusBadgeList } from '../ui/StatusBadgeList';
 import { CombatLog } from './CombatLog';
+import { classLabel, hpTier, resolveName } from './encounterDockHelpers';
 import { ReactionReadyPanel } from './ReactionReadyPanel';
-
-/** Capitalizes a class_ref id ("fighter" -> "Fighter") — display formatting
- * only, not a class->label lookup table the toolkit doesn't give us. */
-function classLabel(classRefId: string | undefined): string | null {
-  if (!classRefId) return null;
-  return classRefId.charAt(0).toUpperCase() + classRefId.slice(1);
-}
-
-/** HP tier for the bar's color — pure display bucketing off server-given
- * current/max, same category as EconomyBar's spent/unspent tint. */
-function hpTier(current: number, max: number): 'high' | 'mid' | 'low' {
-  if (max <= 0) return 'low';
-  const pct = current / max;
-  if (pct > 0.5) return 'high';
-  if (pct > 0.25) return 'mid';
-  return 'low';
-}
 
 const HP_TIER_COLOR: Record<'high' | 'mid' | 'low', string> = {
   high: '#22c55e',
@@ -51,7 +35,9 @@ const HP_TIER_COLOR: Record<'high' | 'mid' | 'low', string> = {
 };
 
 export interface EncounterDockProps {
-  name: string;
+  /** The local player's entity id — the resolveName fallback when displayName is absent. */
+  entityId: string;
+  displayName: string | undefined;
   classRefId: string | undefined;
   hp: { current: number; max: number } | undefined;
   ac: number | undefined;
@@ -84,7 +70,8 @@ export interface EncounterDockProps {
 const DOCK_HEIGHT = 260;
 
 export function EncounterDock({
-  name,
+  entityId,
+  displayName,
   classRefId,
   hp,
   ac,
@@ -109,6 +96,7 @@ export function EncounterDock({
       ? Math.max(0, Math.min(100, (hp.current / hp.max) * 100))
       : 0;
   const label = classLabel(classRefId);
+  const name = resolveName(displayName, entityId);
 
   return (
     <div

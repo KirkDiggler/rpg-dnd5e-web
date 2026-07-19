@@ -984,6 +984,23 @@ describe('applyEntityMetaFromAppeared', () => {
     expect(meta?.monsterRefId).toBeUndefined();
   });
 
+  it('stores displayName and classRefId when provided (rpg-dnd5e-web#491)', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityMetaFromAppeared(
+      prev,
+      'char-alice',
+      EntityType.CHARACTER,
+      undefined,
+      undefined,
+      undefined,
+      'Alice',
+      'rogue'
+    );
+    const meta = after.entityMeta.get('char-alice');
+    expect(meta?.displayName).toBe('Alice');
+    expect(meta?.classRefId).toBe('rogue');
+  });
+
   it('seeds entityHP when initialHP is provided', () => {
     const prev = createEmptyEncounterState();
     const after = applyEntityMetaFromAppeared(
@@ -1311,6 +1328,37 @@ describe('applyEntityAppearedBatch', () => {
     expect(after.entityMeta.get('goblin-1')?.monsterRefId).toBe('goblin');
     expect(after.entityHP.get('goblin-1')).toEqual({ current: 7, max: 7 });
     expect(after.entityHP.has('char-alice')).toBe(false);
+  });
+
+  it('stores displayName and classRefId per entity (rpg-dnd5e-web#491)', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityAppearedBatch(prev, [
+      {
+        entity: makeTestEntity('char-alice', { x: 0, y: 0, z: 0 }),
+        type: EntityType.CHARACTER,
+        monsterRefId: undefined,
+        initialHP: undefined,
+        initialAC: undefined,
+        displayName: 'Alice',
+        classRefId: 'rogue',
+      },
+      {
+        entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
+        type: EntityType.MONSTER,
+        monsterRefId: 'goblin',
+        initialHP: undefined,
+        initialAC: undefined,
+        displayName: 'Goblin',
+      },
+    ]);
+    expect(after.entityMeta.get('char-alice')).toMatchObject({
+      displayName: 'Alice',
+      classRefId: 'rogue',
+    });
+    expect(after.entityMeta.get('goblin-1')).toMatchObject({
+      displayName: 'Goblin',
+      classRefId: undefined,
+    });
   });
 
   it('is a no-op on empty array (returns same reference)', () => {
