@@ -28,6 +28,7 @@ import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2
 import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { FrontierGroundHint } from './FrontierGroundHint';
 import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
@@ -452,9 +453,29 @@ function Scene({
 
       {/* Render all hex tiles — Synty-textured (dev flag) or the default
           auto-shaded instanced mesh. Frontier dimming below is identical
-          either way — it's not part of this swap (rpg-dnd5e-web#432). */}
+          either way — it's not part of this swap (rpg-dnd5e-web#432).
+          ErrorBoundary wraps the Synty path only: a missing/failed GLB or
+          texture (e.g. an unsynced clone — public/models/synty/ is
+          gitignored, see assets:sync) throws past SyntyHexFloor's own
+          Suspense (Suspense only covers the pending-load state, not a
+          terminal load failure) and would otherwise unmount this whole
+          Canvas tree. Falls back to the always-available shaded renderer
+          instead of a blank floor or a crashed scene. */}
       {syntyDungeon ? (
-        <SyntyHexFloor floorTiles={floorTiles} hexSize={HEX_SIZE} />
+        <ErrorBoundary
+          fallback={
+            <ShadedHexFloor
+              floorTiles={floorTiles}
+              hexSize={HEX_SIZE}
+              hoveredHex={hoveredHex}
+              selectedHex={selectedHex}
+              doorPositions={doorPositions}
+              wallPositions={wallPositions}
+            />
+          }
+        >
+          <SyntyHexFloor floorTiles={floorTiles} hexSize={HEX_SIZE} />
+        </ErrorBoundary>
       ) : (
         <ShadedHexFloor
           floorTiles={floorTiles}
@@ -476,9 +497,16 @@ function Scene({
           WHOLE wall list — a wall hex's open-facing edges often border a
           *different* Wall object's hex, so segment-building needs every
           wall at once (see SyntyHexWall's doc comment). The default
-          procedural voxel wall stays per-wall, unchanged. */}
+          procedural voxel wall stays per-wall, unchanged. Same
+          ErrorBoundary-falls-back-to-shaded reasoning as the floor above. */}
       {syntyDungeon ? (
-        <SyntyHexWall walls={walls} hexSize={HEX_SIZE} />
+        <ErrorBoundary
+          fallback={walls.map((wall) => (
+            <ShadedHexWall key={wallKey(wall)} wall={wall} hexSize={HEX_SIZE} />
+          ))}
+        >
+          <SyntyHexWall walls={walls} hexSize={HEX_SIZE} />
+        </ErrorBoundary>
       ) : (
         walls.map((wall) => (
           <ShadedHexWall key={wallKey(wall)} wall={wall} hexSize={HEX_SIZE} />

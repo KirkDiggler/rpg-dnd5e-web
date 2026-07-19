@@ -102,15 +102,18 @@ export function EncounterMap({
     [initiativeOrder, activeEntityId, round, entityMeta]
   );
 
-  // Dev-only real-dungeon-rendering flag (rpg-dnd5e-web#432 harness-parity),
-  // opted in via `?syntyDungeon=1` on the game route — same pattern as
-  // PlaytestMap's `&synty=1`/`&syntyroom=1`. Read once; the game route
-  // never mutates the query string mid-session. Not a production default
-  // yet: piece variety is blocked on the #469 semantic-role manifest, so
-  // this stays a manual opt-in until that lands.
+  // Real-dungeon-rendering flag (rpg-dnd5e-web#432 harness-parity). Read
+  // once; the game route never mutates the query string mid-session.
+  // Default-on: deployed builds bake Synty assets into the image (docker
+  // workflow's assets:sync step, ASSETS_READ_TOKEN), and HexGrid wraps the
+  // Synty path in an ErrorBoundary that falls back to the shaded renderer
+  // on a missing or failed asset (an unsynced local clone, or a Vercel
+  // preview build — no read token wired there yet) — so this is safe to
+  // default on rather than gate behind a manual opt-in. Escape hatch:
+  // `?syntyDungeon=0` forces the classic shaded renderer for a session.
   const syntyDungeon = useMemo(
     () =>
-      new URLSearchParams(window.location.search).get('syntyDungeon') === '1',
+      new URLSearchParams(window.location.search).get('syntyDungeon') !== '0',
     []
   );
 
