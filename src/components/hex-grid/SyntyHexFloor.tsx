@@ -45,9 +45,17 @@ function SyntyHexFloorTile({ tile, hexSize, texture }: SyntyHexFloorTileProps) {
   const geometry = useMemo(() => {
     const shape = new THREE.Shape();
     const corners = hexCorners({ x: 0, z: 0 }, hexSize);
+    // hexCorners' z already applies the world-space z = -sin(angle)
+    // convention (for alignment with cubeToWorld) — feeding it straight
+    // into the shape's local Y would wind the 2D shape clockwise (Copilot
+    // review #477), flipping the face normal away from the overhead
+    // camera post-rotateX. Negate it to restore the CCW winding
+    // SyntyRoomDemo's original HexFloorTile (and ShadedHexFloor) use:
+    // local y = +size*sin(angle), which rotateX(-90deg) then maps to
+    // world -z, matching cubeToWorld's convention on the OTHER axis.
     corners.forEach((c, i) => {
-      if (i === 0) shape.moveTo(c.x, c.z);
-      else shape.lineTo(c.x, c.z);
+      if (i === 0) shape.moveTo(c.x, -c.z);
+      else shape.lineTo(c.x, -c.z);
     });
     shape.closePath();
     const geo = new THREE.ShapeGeometry(shape);
