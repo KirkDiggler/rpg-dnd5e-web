@@ -52,3 +52,28 @@ export function resolveClassCharacterModelUrl(
   if (!entry) return undefined;
   return CLASS_CHARACTER_MODEL_BASE + (isDowned ? entry.downed : entry.model);
 }
+
+/**
+ * Pick which baked clip to play on loop as the idle animation
+ * (rpg-dnd5e-web#506). Every standing class GLB shipped so far carries
+ * exactly one clip, named "Take 001" (a generic DCC-tool default, not
+ * semantically "idle") — so today this always falls through to the
+ * first-available-clip case. Prefers a clip whose name actually contains
+ * "idle" (case-insensitive) so a future asset drop with multiple clips
+ * (e.g. idle + walk) picks the right one automatically instead of
+ * whichever happens to be first in the array. Returns undefined for a
+ * downed variant or any model with no baked animation — callers treat
+ * that as "leave the static pose alone", never a crash.
+ *
+ * @example
+ * ```typescript
+ * resolveIdleClipName(['Take 001']); // 'Take 001' — today's real case
+ * resolveIdleClipName(['Walk', 'Idle_Loop']); // 'Idle_Loop'
+ * resolveIdleClipName([]); // undefined — downed variants, or a model
+ *                          // shipped with no animation at all
+ * ```
+ */
+export function resolveIdleClipName(names: string[]): string | undefined {
+  const idleMatch = names.find((name) => /idle/i.test(name));
+  return idleMatch ?? names[0];
+}

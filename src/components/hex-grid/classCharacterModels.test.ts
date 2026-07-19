@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { resolveClassCharacterModelUrl } from './classCharacterModels';
+import {
+  resolveClassCharacterModelUrl,
+  resolveIdleClipName,
+} from './classCharacterModels';
 
 describe('resolveClassCharacterModelUrl', () => {
   const shippedClasses = ['fighter', 'barbarian', 'monk', 'rogue'];
@@ -35,5 +38,29 @@ describe('resolveClassCharacterModelUrl', () => {
 
   it('returns undefined for an empty string', () => {
     expect(resolveClassCharacterModelUrl('', false)).toBeUndefined();
+  });
+});
+
+describe('resolveIdleClipName', () => {
+  it("falls back to the first clip when none is named 'idle' (today's real shipped case — every class GLB has one clip named 'Take 001')", () => {
+    expect(resolveIdleClipName(['Take 001'])).toBe('Take 001');
+  });
+
+  it('prefers a clip whose name contains "idle" over an earlier non-idle clip', () => {
+    expect(resolveIdleClipName(['Walk', 'Idle_Loop', 'Attack'])).toBe(
+      'Idle_Loop'
+    );
+  });
+
+  it('matches "idle" case-insensitively', () => {
+    expect(resolveIdleClipName(['IDLE'])).toBe('IDLE');
+  });
+
+  it('falls back to the first clip when multiple exist and none is idle-named', () => {
+    expect(resolveIdleClipName(['Walk', 'Run', 'Attack'])).toBe('Walk');
+  });
+
+  it('returns undefined for an empty clip list (downed variants, or a model shipped with no animation)', () => {
+    expect(resolveIdleClipName([])).toBeUndefined();
   });
 });
