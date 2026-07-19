@@ -146,6 +146,20 @@ function Scene({
     return map;
   }, [monsters]);
 
+  // Shaded-wall elements, shared by the non-Synty render path and the Synty
+  // path's ErrorBoundary fallback below. Memoized on `walls` alone — Copilot
+  // review on #479: without this, the fallback prop rebuilt walls.map(...)
+  // on every Scene render (hover/path-preview churn), even though it's only
+  // ever displayed while the boundary is in its (rare, sticky-until-remount)
+  // error state.
+  const shadedWalls = useMemo(
+    () =>
+      walls.map((wall) => (
+        <ShadedHexWall key={wallKey(wall)} wall={wall} hexSize={HEX_SIZE} />
+      )),
+    [walls]
+  );
+
   // Grid center: bbox center of all revealed floor tiles. Used only as the
   // camera's one-time starting position below — see stableTarget.
   const gridCenter = useMemo(() => {
@@ -500,17 +514,11 @@ function Scene({
           procedural voxel wall stays per-wall, unchanged. Same
           ErrorBoundary-falls-back-to-shaded reasoning as the floor above. */}
       {syntyDungeon ? (
-        <ErrorBoundary
-          fallback={walls.map((wall) => (
-            <ShadedHexWall key={wallKey(wall)} wall={wall} hexSize={HEX_SIZE} />
-          ))}
-        >
+        <ErrorBoundary fallback={shadedWalls}>
           <SyntyHexWall walls={walls} hexSize={HEX_SIZE} />
         </ErrorBoundary>
       ) : (
-        walls.map((wall) => (
-          <ShadedHexWall key={wallKey(wall)} wall={wall} hexSize={HEX_SIZE} />
-        ))
+        shadedWalls
       )}
 
       {/* Render doors (after tiles, before movement range) */}
