@@ -15,6 +15,7 @@
  */
 
 import type { LobbyMember } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/types_pb';
+import { DoorOpen, Swords, UserPlus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCreateLobby } from '../../api/useCreateLobby';
 import { useJoinLobby } from '../../api/useJoinLobby';
@@ -22,6 +23,9 @@ import { useLobbyStream } from '../../api/useLobbyStream';
 import { useSetLobbyReady } from '../../api/useSetLobbyReady';
 import { useStartLobbyEncounter } from '../../api/useStartLobbyEncounter';
 import { errorMessage } from '../../utils/combatFormat';
+import { Button } from '../ui/Button';
+import { ErrorDisplay } from '../ui/Feedback';
+import { JoinCodeChip } from './JoinCodeChip';
 import { PartyRoster } from './PartyRoster';
 
 /**
@@ -207,63 +211,161 @@ export function LobbyFlow({
     return (
       <div
         data-testid="lobby-flow-entry"
-        style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 20,
+          maxWidth: 420,
+          margin: '0 auto',
+        }}
       >
-        <h2>Party up</h2>
-        <button onClick={() => void handleCreate()} disabled={createLoading}>
+        <h2
+          style={{
+            fontSize: 24,
+            fontWeight: 700,
+            fontFamily: 'Cinzel, serif',
+            color: 'var(--text-primary)',
+          }}
+        >
+          Party up
+        </h2>
+
+        <Button
+          variant="primary"
+          size="lg"
+          fullWidth
+          icon={<UserPlus size={18} />}
+          loading={createLoading}
+          onClick={() => void handleCreate()}
+        >
           {createLoading ? 'Creating…' : 'Create lobby'}
-        </button>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <label>
-            Join code{' '}
-            <input
-              type="text"
-              value={joinCodeInput}
-              onChange={(e) => setJoinCodeInput(e.target.value)}
-              placeholder="paste a join code"
-              aria-label="join code"
-            />
-          </label>
-          <button
+        </Button>
+
+        <div
+          className="flex"
+          style={{
+            alignItems: 'center',
+            gap: 12,
+            color: 'var(--text-muted)',
+            fontSize: 12,
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              height: 1,
+              background: 'var(--border-primary)',
+            }}
+          />
+          or join a friend&apos;s
+          <div
+            style={{
+              flex: 1,
+              height: 1,
+              background: 'var(--border-primary)',
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            value={joinCodeInput}
+            onChange={(e) => setJoinCodeInput(e.target.value)}
+            placeholder="paste a join code"
+            aria-label="join code"
+            className="flex-1"
+            style={{
+              padding: '8px 12px',
+              borderRadius: 8,
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border-primary)',
+              color: 'var(--text-primary)',
+            }}
+          />
+          <Button
+            variant="secondary"
+            loading={joinLoading}
+            disabled={!joinCodeInput.trim()}
             onClick={() => void handleJoin(joinCodeInput)}
-            disabled={joinLoading || !joinCodeInput.trim()}
           >
             {joinLoading ? 'Joining…' : 'Join'}
-          </button>
+          </Button>
         </div>
-        {error && <div style={{ color: '#f88' }}>{error}</div>}
-        <button onClick={onBack}>Back</button>
+
+        {error && <ErrorDisplay message={error} />}
+
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          Back
+        </Button>
       </div>
     );
   }
 
+  const readyCount = members.filter((m) => m.isReady).length;
+
   return (
     <div
       data-testid="lobby-flow-roster"
-      style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        maxWidth: 480,
+        margin: '0 auto',
+      }}
     >
-      <h2>Lobby</h2>
-      <div style={{ fontSize: 12, opacity: 0.6 }}>
-        connection: {stream.connectionState}
-      </div>
-      {joinRef && (
-        <div data-testid="join-code-display" style={{ fontSize: 13 }}>
-          Join code: <code>{joinRef}</code>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              fontFamily: 'Cinzel, serif',
+              color: 'var(--text-primary)',
+            }}
+          >
+            Party
+          </h2>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            {readyCount}/{members.length} ready
+          </div>
         </div>
-      )}
-      <PartyRoster members={members} />
+        <span style={{ fontSize: 12, opacity: 0.6 }}>
+          {stream.connectionState}
+        </span>
+      </div>
+
+      {joinRef && <JoinCodeChip code={joinRef} />}
+
+      <PartyRoster members={members} currentPlayerId={playerId} />
+
       <div style={{ display: 'flex', gap: 8 }}>
-        <button
+        <Button
+          variant="secondary"
+          fullWidth
+          loading={readyLoading}
           onClick={() => void handleToggleReady()}
-          disabled={readyLoading}
+          style={
+            me?.isReady
+              ? {
+                  backgroundColor: 'var(--accent-success, #22c55e)',
+                  color: 'white',
+                }
+              : undefined
+          }
         >
-          {me?.isReady ? 'Unready' : 'Ready up'}
-        </button>
+          {me?.isReady ? '✓ Ready!' : 'Ready up'}
+        </Button>
         {isHost && (
-          <button
+          <Button
             data-testid="start-encounter-button"
-            onClick={() => void handleStart()}
+            variant="primary"
+            fullWidth
+            icon={<Swords size={18} />}
+            loading={startLoading}
             disabled={!allReady || startLoading}
+            onClick={() => void handleStart()}
             title={
               allReady
                 ? 'Start the encounter'
@@ -271,11 +373,20 @@ export function LobbyFlow({
             }
           >
             {startLoading ? 'Starting…' : 'Start'}
-          </button>
+          </Button>
         )}
       </div>
-      {error && <div style={{ color: '#f88' }}>{error}</div>}
-      <button onClick={onBack}>Back</button>
+
+      {error && <ErrorDisplay message={error} />}
+
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={<DoorOpen size={14} />}
+        onClick={onBack}
+      >
+        Back
+      </Button>
     </div>
   );
 }
