@@ -15,6 +15,7 @@
  */
 
 import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import { getActionIconUrl } from '../../utils/actionIcons';
 import {
   actionKey,
   economySlotLabel,
@@ -115,6 +116,11 @@ function ActionMenuButton({
   const title = serverUnavailable
     ? action.unavailableReason || 'unavailable'
     : `Take action (${targetKindLabel(action.targetKind)})`;
+  // #497: icon-by-ref-id, following #473's status-icon precedent
+  // (conditionIcons.ts) — undefined for any ref id outside the 9 shipped
+  // action-bar icons (e.g. class features like Second Wind), which falls
+  // back to text-only below, never a broken image.
+  const iconUrl = getActionIconUrl(action.ref?.id ?? '');
 
   return (
     <button
@@ -143,7 +149,22 @@ function ActionMenuButton({
         opacity: serverUnavailable ? 0.7 : 1,
       }}
     >
-      <span>{action.displayName || actionKey(action)}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {iconUrl && (
+          // Decorative: the label right after it already carries the
+          // semantics, same pattern as StatusBadgeList's ConditionBadge
+          // (#467/#473 Copilot review).
+          <img
+            src={iconUrl}
+            alt=""
+            aria-hidden="true"
+            width={16}
+            height={16}
+            style={{ display: 'inline-block', flexShrink: 0 }}
+          />
+        )}
+        <span>{action.displayName || actionKey(action)}</span>
+      </span>
       {serverUnavailable && action.unavailableReason && (
         <span
           data-testid={`action-reason-${actionKey(action)}`}

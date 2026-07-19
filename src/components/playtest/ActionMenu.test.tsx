@@ -118,4 +118,43 @@ describe('ActionMenu', () => {
     ) as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
   });
+
+  describe('action icons (rpg-dnd5e-web#497, Copilot review)', () => {
+    it('renders a decorative icon for a mapped action ref id', () => {
+      render(
+        <ActionMenu
+          actions={[action({ id: 'attack', displayName: 'Attack' })]}
+          enabled
+          loading={false}
+          onSelectAction={vi.fn()}
+        />
+      );
+      const btn = screen.getByTestId('action-dnd5e:combat_abilities:attack');
+      const icon = btn.querySelector('img');
+      expect(icon).not.toBeNull();
+      expect(icon?.getAttribute('src')).toBe(
+        '/models/synty/ui/actions/attack.png'
+      );
+      expect(icon?.getAttribute('alt')).toBe('');
+      expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    it('renders no icon for an unmapped action ref id — text-only fallback', () => {
+      render(
+        <ActionMenu
+          actions={[
+            action({ id: 'martial-arts', displayName: 'Martial Arts' }),
+          ]}
+          enabled
+          loading={false}
+          onSelectAction={vi.fn()}
+        />
+      );
+      const btn = screen.getByTestId(
+        'action-dnd5e:combat_abilities:martial-arts'
+      );
+      expect(btn.querySelector('img')).toBeNull();
+      expect(btn.textContent).toContain('Martial Arts');
+    });
+  });
 });
