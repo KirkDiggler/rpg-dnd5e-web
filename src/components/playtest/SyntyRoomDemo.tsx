@@ -10,9 +10,12 @@
  * hexes beyond the door — a fog-of-war edge prototype).
  *
  * This is the calibration surface the game dev lifts for real dungeon
- * rendering — see rpg-dnd5e-web#466. Game components (ShadedHexWall,
- * HexDoor, ShadedHexFloor, WallBuilder) are read here for constants only
- * and are never imported/modified.
+ * rendering — see rpg-dnd5e-web#466. WALL_HEIGHT/SYNTY_SCALE/HEX_SIZE come
+ * from the shared `rendering/calibrationConstants` + `hex-grid/hexMath`
+ * homes (rpg-dnd5e-web#432 harness-parity — previously three independent
+ * re-declarations); the game's wall/floor/door RENDERING components
+ * (ShadedHexWall, HexDoor, ShadedHexFloor, WallBuilder) are still never
+ * imported/modified here.
  *
  * The GLBs/textures live in public/models/synty/ which is gitignored —
  * Synty's license allows shipping them in the built game but not
@@ -23,10 +26,12 @@ import { useGLTF, useTexture } from '@react-three/drei';
 import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 
+import { SYNTY_SCALE, WALL_HEIGHT } from '../../rendering/calibrationConstants';
 import {
   coordToKey,
   cubeToWorld,
   HEX_DIRECTIONS,
+  HEX_SIZE,
   hexCorners,
   hexEdgeBetween,
   type CubeCoord,
@@ -36,17 +41,6 @@ import {
 const SYNTY_BASE = '/models/synty/';
 const ENV_BASE = SYNTY_BASE + 'env/';
 const TEX_BASE = SYNTY_BASE + 'textures/';
-
-// Matches HEX_SIZE in HexGrid.tsx / hexMath usage elsewhere (not exported).
-const HEX_SIZE = 1.0;
-
-// Matches WALL_HEIGHT in ShadedHexWall.tsx (world-space wall height used
-// by the existing game wall rendering / WallBuilder).
-const WALL_HEIGHT = 0.8;
-
-// Same uniform scale SyntyShowcase uses to land Synty's meter-scale assets
-// next to the game's ~1.5-unit-tall characters on HEX_SIZE=1 hexes.
-const SYNTY_SCALE = 0.75;
 
 // Raw (scale=1) local-space bounding sizes measured directly off the GLBs
 // with @gltf-transform/core (see PR description for the inspection

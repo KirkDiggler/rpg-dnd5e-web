@@ -2,6 +2,7 @@ import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/ap
 import type {
   EndTurnResponse,
   MoveEntityResponse,
+  SetReactionReadyResponse,
   TakeActionResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import {
@@ -24,6 +25,8 @@ const hoisted = vi.hoisted(() => ({
   moveEntityFn: vi.fn<() => Promise<MoveEntityResponse>>(),
   takeActionFn: vi.fn<() => Promise<TakeActionResponse>>(),
   endTurnFn: vi.fn<() => Promise<EndTurnResponse>>(),
+  setReactionReadyFn:
+    vi.fn<(req: unknown) => Promise<SetReactionReadyResponse>>(),
 }));
 
 vi.mock('../../api/client', () => ({
@@ -37,6 +40,7 @@ vi.mock('../../api/client', () => ({
     moveEntity: hoisted.moveEntityFn,
     takeAction: hoisted.takeActionFn,
     endTurn: hoisted.endTurnFn,
+    setReactionReady: hoisted.setReactionReadyFn,
   },
 }));
 
@@ -49,6 +53,7 @@ vi.mock('./EncounterMap', () => ({
     initiativeOrder: string[];
     activeEntityId: string;
     myEntityId: string;
+    openDoorIds?: string[];
     onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
     onEntityClick: (entityId: string) => void;
   }) => (
@@ -57,6 +62,7 @@ vi.mock('./EncounterMap', () => ({
       data-initiative-order={props.initiativeOrder.join(',')}
       data-active-entity-id={props.activeEntityId}
       data-my-entity-id={props.myEntityId}
+      data-open-door-ids={(props.openDoorIds ?? []).join(',')}
     >
       <button
         data-testid="stub-move"
@@ -81,6 +87,7 @@ beforeEach(() => {
   hoisted.moveEntityFn.mockReset();
   hoisted.takeActionFn.mockReset();
   hoisted.endTurnFn.mockReset();
+  hoisted.setReactionReadyFn.mockReset();
 });
 
 afterEach(() => {
@@ -355,8 +362,19 @@ describe('EncounterView renders condition badges hydrated from the snapshot (#46
       await Promise.resolve();
     });
 
-    expect(screen.getByTestId('my-status-badges').textContent).toBe(
-      '🔥 Raging'
+    // 'raging' has a Synty HUD icon mapped (#467) — the badge renders that
+    // PNG instead of the emoji, so assert on the image rather than matching
+    // the old emoji-only text content. The icon is decorative (empty alt +
+    // aria-hidden) since the visible label right after it already carries
+    // the semantics for assistive tech (Copilot review, PR #473).
+    const badges = screen.getByTestId('my-status-badges');
+    expect(badges.textContent).toContain('Raging');
+    const icon = badges.querySelector('img');
+    expect(icon).not.toBeNull();
+    expect(icon?.getAttribute('alt')).toBe('');
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    expect(icon?.getAttribute('src')).toBe(
+      '/models/synty/ui/status/ICON_FantasyWarrior_Status_AttackUp01_Clean.png'
     );
   });
 
@@ -392,5 +410,192 @@ describe('EncounterView renders condition badges hydrated from the snapshot (#46
     });
 
     expect(screen.queryByTestId('my-status-badges')).toBeNull();
+  });
+});
+
+describe('EncounterView reaction-readiness HUD (rpg-dnd5e-web#432 harness-parity)', () => {
+  it('arms a reaction via SetReactionReady and optimistically mirrors it as READY (no snapshot round-trip needed)', async () => {
+    hoisted.setReactionReadyFn.mockResolvedValue(
+      {} as SetReactionReadyResponse
+    );
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    const oaToggle = screen.getByTestId(
+      'reaction-toggle-dnd5e:conditions:opportunity_attack'
+    );
+    expect(oaToggle.textContent).toContain('unknown');
+
+    await act(async () => {
+      fireEvent.click(oaToggle);
+      await Promise.resolve();
+    });
+
+    expect(hoisted.setReactionReadyFn).toHaveBeenCalledOnce();
+    const request = hoisted.setReactionReadyFn.mock.calls[0]![0] as unknown as {
+      encounterId: string;
+      characterId: string;
+      reactionRef: { module: string; type: string; id: string };
+      ready: boolean;
+    };
+    expect(request.encounterId).toBe('enc-1');
+    expect(request.characterId).toBe('char-alice');
+    expect(request.reactionRef).toMatchObject({
+      module: 'dnd5e',
+      type: 'conditions',
+      id: 'opportunity_attack',
+    });
+    expect(request.ready).toBe(true);
+
+    expect(
+      screen.getByTestId('reaction-toggle-dnd5e:conditions:opportunity_attack')
+        .textContent
+    ).toContain('READY');
+  });
+
+  it('surfaces a SetReactionReady RPC error without mirroring the toggle locally', async () => {
+    hoisted.setReactionReadyFn.mockRejectedValue(new Error('boom'));
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByTestId('reaction-toggle-dnd5e:spells:shield')
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/Reaction ready error: boom/)).toBeTruthy();
+    expect(
+      screen.getByTestId('reaction-toggle-dnd5e:spells:shield').textContent
+    ).toContain('unknown');
+  });
+
+  it('disables the reaction toggles while entityId is unresolved (Copilot review #475)', async () => {
+    // No characterId prop and no snapshot pushed yet — entityId stays ''
+    // for the resume-after-refresh window (matches the #461 pattern this
+    // file already tests for ActionMenu/move/attack).
+    render(
+      <EncounterView encounterId="enc-1" playerId="alice" onBack={() => {}} />
+    );
+
+    const oa = screen.getByTestId(
+      'reaction-toggle-dnd5e:conditions:opportunity_attack'
+    ) as HTMLButtonElement;
+    const shield = screen.getByTestId(
+      'reaction-toggle-dnd5e:spells:shield'
+    ) as HTMLButtonElement;
+    expect(oa.disabled).toBe(true);
+    expect(shield.disabled).toBe(true);
+
+    fireEvent.click(oa);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(hoisted.setReactionReadyFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#432 harness-parity, wave web#471)', () => {
+  it('renders ActionResolved, DeathSaveRolled, and EntityStabilized in the Combat Log panel', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('actionResolved', {
+          actorEntityId: 'char-alice',
+          actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+          targetEntityId: 'goblin-1',
+        })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('deathSaveRolled', {
+          entityId: 'char-bob',
+          roll: 20,
+          successes: 2,
+          failures: 0,
+          isCriticalSuccess: true,
+          regainedConsciousness: true,
+          hpRestored: 1,
+        })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('entityStabilized', { entityId: 'char-carol' })
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getByTestId('combat-log-entry-actionResolved-0').textContent
+    ).toContain('char-alice');
+    expect(
+      screen.getByTestId('combat-log-entry-deathSaveRolled-1').textContent
+    ).toContain('nat-20');
+    expect(
+      screen.getByTestId('combat-log-entry-entityStabilized-2').textContent
+    ).toContain('char-carol');
+  });
+
+  it('tracks a DoorOpened door id in state.openDoors, verified via EncounterMap.openDoorIds (Copilot review #474)', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    // Before the event: openDoorIds is empty, same testid/attribute other
+    // wiring tests in this file already use to observe state passed
+    // through to EncounterMap (data-active-entity-id, data-my-entity-id).
+    expect(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-open-door-ids')
+    ).toBe('');
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('doorOpened', {
+          doorEntityId: 'door-1',
+          revealedHexes: [],
+          revealedWalls: [],
+          removedWalls: [],
+        })
+      );
+      await Promise.resolve();
+    });
+
+    // The door id is actually present in state.openDoors (via
+    // applyDoorOpened), not just "the view didn't crash" — EncounterMap
+    // receives it as a real prop and exposes it on its own DOM, the same
+    // way EncounterMap surfaces every other piece of wired-through state.
+    expect(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-open-door-ids')
+    ).toBe('door-1');
   });
 });

@@ -153,6 +153,91 @@ describe('CombatLog', () => {
     expect(screen.getByTestId('combat-log-entry-damage-1')).toBeTruthy();
   });
 
+  it('renders ActionResolved verbatim (actor, ref, target)', () => {
+    const entries: CombatLogEntry[] = [
+      {
+        id: 0,
+        round: 1,
+        kind: 'actionResolved',
+        event: {
+          actorEntityId: 'char-alice',
+          actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+          targetEntityId: 'goblin-1',
+        } as never,
+      },
+    ];
+    render(<CombatLog entries={entries} />);
+    const line = screen.getByTestId('combat-log-entry-actionResolved-0');
+    expect(line.textContent).toContain('char-alice');
+    expect(line.textContent).toContain('dnd5e:action:attack');
+    expect(line.textContent).toContain('goblin-1');
+  });
+
+  it('renders a DeathSaveRolled roll with its derived flags verbatim (rpg-dnd5e-web#432 harness-parity)', () => {
+    const entries: CombatLogEntry[] = [
+      {
+        id: 0,
+        round: 3,
+        kind: 'deathSaveRolled',
+        event: {
+          entityId: 'char-bob',
+          roll: 20,
+          successes: 2,
+          failures: 0,
+          isCriticalFail: false,
+          isCriticalSuccess: true,
+          stabilized: false,
+          dead: false,
+          regainedConsciousness: true,
+          hpRestored: 1,
+        } as never,
+      },
+    ];
+    render(<CombatLog entries={entries} />);
+    const line = screen.getByTestId('combat-log-entry-deathSaveRolled-0');
+    expect(line.textContent).toContain('char-bob');
+    expect(line.textContent).toContain('roll 20');
+    expect(line.textContent).toContain('2S/0F');
+    expect(line.textContent).toContain('nat-20');
+    expect(line.textContent).toContain('regained consciousness');
+    expect(line.textContent).toContain('+1hp');
+  });
+
+  it('renders a DEAD DeathSaveRolled roll and an EntityStabilized line', () => {
+    const entries: CombatLogEntry[] = [
+      {
+        id: 0,
+        round: 4,
+        kind: 'deathSaveRolled',
+        event: {
+          entityId: 'char-bob',
+          roll: 1,
+          successes: 1,
+          failures: 3,
+          isCriticalFail: true,
+          isCriticalSuccess: false,
+          stabilized: false,
+          dead: true,
+          regainedConsciousness: false,
+          hpRestored: 0,
+        } as never,
+      },
+      {
+        id: 1,
+        round: 4,
+        kind: 'entityStabilized',
+        event: { entityId: 'char-carol' } as never,
+      },
+    ];
+    render(<CombatLog entries={entries} />);
+    expect(
+      screen.getByTestId('combat-log-entry-deathSaveRolled-0').textContent
+    ).toContain('DEAD');
+    expect(
+      screen.getByTestId('combat-log-entry-entityStabilized-1').textContent
+    ).toContain('char-carol');
+  });
+
   it('renders TurnStarted, EntityDied/EntityRemoved, and EncounterEnded verbatim', () => {
     const entries: CombatLogEntry[] = [
       {
