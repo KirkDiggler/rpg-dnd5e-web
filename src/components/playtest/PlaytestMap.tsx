@@ -161,14 +161,16 @@ export function PlaytestMap({
     []
   );
 
-  // Real-dungeon-rendering dev flag (rpg-dnd5e-web#432 harness-parity),
-  // opted in via `&syntyDungeon=1` — same flag EncounterMap reads on the
-  // game route. Independent of showSynty/showSyntyRoom above: this renders
-  // Synty pieces from the REAL wall data flowing through HexGrid's own
-  // `walls` prop, not the demo's fixed synthetic room.
+  // Real-dungeon-rendering flag (rpg-dnd5e-web#432 harness-parity), same
+  // flag EncounterMap reads on the game route. Independent of
+  // showSynty/showSyntyRoom above: this renders Synty pieces from the REAL
+  // wall data flowing through HexGrid's own `walls` prop, not the demo's
+  // fixed synthetic room. Default-on now that HexGrid wraps the Synty path
+  // in an ErrorBoundary (falls back to the shaded renderer on a missing or
+  // failed asset) — opt out per-session with `&syntyDungeon=0`.
   const syntyDungeon = useMemo(
     () =>
-      new URLSearchParams(window.location.search).get('syntyDungeon') === '1',
+      new URLSearchParams(window.location.search).get('syntyDungeon') !== '0',
     []
   );
 
