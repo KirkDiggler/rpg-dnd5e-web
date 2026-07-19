@@ -6,10 +6,10 @@
  * Uses shared hex geometry for visual consistency with tiles and doors.
  */
 
+import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
-import { WALL_HEIGHT } from '../../rendering/calibrationConstants';
 import { createHexPillarGeometry } from './hexGeometry';
 import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
 
