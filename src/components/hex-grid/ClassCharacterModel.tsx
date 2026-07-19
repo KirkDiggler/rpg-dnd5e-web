@@ -12,12 +12,27 @@
  * marker-color pipeline these Synty GLBs don't use. Matching that shader
  * exactly is future visual-polish scope, not this slice's ask (render the
  * class model, honestly, with the same interaction affordances).
+ *
+ * Cloning: every class GLB is a skinned/rigged mesh (a THREE.SkinnedMesh
+ * driven by a THREE.Skeleton of bones). Plain `Object3D.clone()` does NOT
+ * correctly re-parent a SkinnedMesh's skeleton onto the cloned bone
+ * hierarchy — it's a well-known Three.js gotcha, and it is NOT limited to
+ * animated rendering: a SkinnedMesh's vertex positions are always computed
+ * via GPU skinning against its skeleton, even for an unanimated bind pose,
+ * so a broken clone can fail to render at all rather than just glitching
+ * once something moves the bones (rpg-dnd5e-web#510 — confirmed live on
+ * the real game screen: correct classRefId/position/isGhost, the GLB
+ * fetched 200 OK, nothing rendered; swapping to `SkeletonUtils.clone()`
+ * below fixed it immediately). `SkeletonUtils.clone()` clones bones and
+ * skeletons correctly and is the standard fix — use it here instead of a
+ * plain `.clone()`, even before any animation exists (#509) or plays.
  */
 
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { useGLTF } from '@react-three/drei';
 import { useMemo } from 'react';
 import * as THREE from 'three';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 
 export interface ClassCharacterModelProps {
   url: string;
@@ -40,7 +55,7 @@ export function ClassCharacterModel({
   // reason). Clone per-instance and tint the clone's materials instead.
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => {
-    const clone = scene.clone(true);
+    const clone = cloneSkeleton(scene);
     if (isSelected || isGhost) {
       clone.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
