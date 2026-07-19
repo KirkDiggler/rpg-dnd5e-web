@@ -28,6 +28,7 @@ export function PartyRoster({ members, currentPlayerId }: PartyRosterProps) {
   return (
     <div
       data-testid="party-roster"
+      role="list"
       style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
     >
       {members.map((member) => (

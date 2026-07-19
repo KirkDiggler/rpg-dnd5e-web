@@ -38,6 +38,7 @@ export function PartyMemberCard({
   return (
     <div
       data-testid={`party-member-${member.playerId}`}
+      role="listitem"
       className="flex"
       style={{
         alignItems: 'center',
@@ -75,6 +76,8 @@ export function PartyMemberCard({
         <div className="flex" style={{ alignItems: 'center', gap: 8 }}>
           <span
             data-testid={`party-member-connected-${member.playerId}`}
+            role="img"
+            aria-label={member.isConnected ? 'connected' : 'disconnected'}
             title={member.isConnected ? 'connected' : 'disconnected'}
             style={{
               color: member.isConnected
@@ -83,7 +86,7 @@ export function PartyMemberCard({
               fontSize: 10,
             }}
           >
-            ●
+            {member.isConnected ? '●' : '○'}
           </span>
           <span
             style={{

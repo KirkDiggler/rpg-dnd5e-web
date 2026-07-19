@@ -12,7 +12,7 @@
  */
 
 import { Check, Copy } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export interface JoinCodeChipProps {
   code: string;
@@ -20,12 +20,24 @@ export interface JoinCodeChipProps {
 
 export function JoinCodeChip({ code }: JoinCodeChipProps) {
   const [copied, setCopied] = useState(false);
+  // Copilot review #482: a bare setTimeout can fire after unmount (state
+  // update on an unmounted component) or stack up across repeated clicks.
+  // Tracking the id lets us clear a pending one before scheduling the next,
+  // and on unmount.
+  const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+    };
+  }, []);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+      resetTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy join code:', err);
     }
@@ -74,6 +86,7 @@ export function JoinCodeChip({ code }: JoinCodeChipProps) {
         </code>
       </div>
       <button
+        type="button"
         onClick={() => void handleCopy()}
         aria-label={copied ? 'Copied join code' : 'Copy join code'}
         className="flex flex-shrink-0"

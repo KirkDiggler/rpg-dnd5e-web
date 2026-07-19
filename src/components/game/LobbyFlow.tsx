@@ -348,7 +348,10 @@ export function LobbyFlow({
           onClick={() => void handleToggleReady()}
           style={
             me?.isReady
-              ? { backgroundColor: '#22c55e', color: 'white' }
+              ? {
+                  backgroundColor: 'var(--accent-success, #22c55e)',
+                  color: 'white',
+                }
               : undefined
           }
         >
