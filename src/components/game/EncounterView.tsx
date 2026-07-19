@@ -16,11 +16,15 @@
  * instead (see GameView/LobbyFlow props).
  *
  * Single room this slice — multi-room accumulation is slice 4. Door
- * interaction is out of scope here too: HexGrid's door-click surface needs a
- * DoorInfo[] the v2 stream doesn't accumulate yet (the same documented gap
- * PlaytestMap has — see docs/architecture/components/playtest-harness.md
+ * interaction is still out of scope: HexGrid's door-click surface needs a
+ * v2-shaped DoorInfo[] the v2 stream doesn't accumulate (the same documented
+ * gap PlaytestMap has — see docs/architecture/components/playtest-harness.md
  * "Known limitations"), and devseed's single-room fixture has no door to
- * exercise it against.
+ * exercise it against. onDoorOpened IS wired below (rpg-dnd5e-web#432
+ * harness-parity) — tracking `state.openDoors`, threaded through to
+ * EncounterMap's `openDoorIds` prop (exposed on its DOM, not yet consumed
+ * by rendering) for whenever the rendering side catches up; it doesn't
+ * unblock click-to-open on its own.
  */
 
 import { create } from '@bufbuild/protobuf';
@@ -203,6 +207,14 @@ export function EncounterView({
         encounterState.applyWallsRevealed(walls);
       }
     },
+    // Cause/effect split (mirrors PlaytestHarness): DoorOpened only carries
+    // the door identity — the newly-visible geometry rides the parallel
+    // GeometryRevealed above. State-only for now: HexGrid's door-click
+    // surface still needs a v2-shaped DoorInfo[] (see this file's top
+    // comment) — tracked separately, not this slice.
+    onDoorOpened: (e) => {
+      encounterState.applyDoorOpened(e.doorEntityId);
+    },
     onEntityAppeared: (e) => {
       if (!e.entity || !e.entity.position) return;
       const stub = create(EntityStateSchema, {
@@ -262,6 +274,12 @@ export function EncounterView({
     onTurnStateChanged: (e) => {
       encounterState.applyTurnStateChanged(e.turnState);
     },
+    // TakeAction wave (#426): umbrella resolution beat for any action. The
+    // roll/hit/miss detail rides the correlated AttackResolved below;
+    // damage rides EntityDamaged above.
+    onActionResolved: (e) => {
+      combatLog.recordActionResolved(e);
+    },
     // TakeAction wave (#426 / #594): per-attack roll detail. Fires on a MISS
     // too (hit=false) — rendered as-is in the combat log so a whiff isn't
     // silent. Damage rides the correlated EntityDamaged above.
@@ -279,6 +297,17 @@ export function EncounterView({
     onEncounterEnded: (e) => {
       encounterState.applyEncounterEnded(e);
       combatLog.recordEncounterEnded(e);
+    },
+    // Death-save arc (rpg-toolkit#742, wave KirkDiggler/rpg-project#75):
+    // PlaytestHarness has logged these since that wave landed; EncounterView
+    // never wired them (rpg-dnd5e-web#432 harness-parity, wave web#471).
+    // No new state layer needed — like every other combat-log entry, this
+    // renders the raw proto event verbatim, nothing recomputed.
+    onDeathSaveRolled: (e) => {
+      combatLog.recordDeathSaveRolled(e);
+    },
+    onEntityStabilized: (e) => {
+      combatLog.recordEntityStabilized(e);
     },
     onInputRequiredDelivered: (e) => {
       if (!e.inputRequired) return;
@@ -474,6 +503,7 @@ export function EncounterView({
               ? isMyTurn
               : true
           }
+          openDoorIds={Array.from(encounterState.state.openDoors)}
           onMove={(path) => void handleVisualMove(path)}
           onEntityClick={handleVisualEntityClick}
         />

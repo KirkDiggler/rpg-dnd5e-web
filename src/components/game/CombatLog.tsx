@@ -1,10 +1,10 @@
 /**
  * CombatLog — GameView's game-grade combat narrative panel (#445). Renders
  * the v1alpha2 stream events `useCombatLog` collects (attack rolls, damage,
- * status changes, turn cycle, death, encounter end) as a scrolling log — the
- * old combat-v2 CombatHistorySidebar's "📜 Combat Log" rebuilt on the push
- * model, matching its spirit (scrolling, newest visible, round-tagged), not
- * its code.
+ * status changes, turn cycle, action resolution, death, the death-save arc,
+ * encounter end) as a scrolling log — the old combat-v2 CombatHistorySidebar's
+ * "📜 Combat Log" rebuilt on the push model, matching its spirit (scrolling,
+ * newest visible, round-tagged), not its code.
  *
  * Server text verbatim: every line reads straight off the proto event fields
  * `useCombatLog` already stored (entity ids, rolls, refs) — nothing here
@@ -114,12 +114,25 @@ function lineStyle(entry: CombatLogEntry): React.CSSProperties {
       return { color: '#60a5fa' };
     case 'turnEnded':
       return { opacity: 0.6 };
+    case 'actionResolved':
+      return { opacity: 0.7 };
     case 'died':
       return { color: '#ef4444', fontWeight: 700 };
     case 'removed':
       return { opacity: 0.6 };
     case 'encounterEnded':
       return { color: '#facc15', fontWeight: 700 };
+    case 'deathSaveRolled':
+      return {
+        color: entry.event.dead
+          ? '#ef4444'
+          : entry.event.stabilized || entry.event.regainedConsciousness
+            ? '#4ade80'
+            : '#c084fc',
+        fontWeight: entry.event.dead || entry.event.stabilized ? 700 : 400,
+      };
+    case 'entityStabilized':
+      return { color: '#4ade80', fontWeight: 700 };
   }
 }
 
@@ -170,6 +183,14 @@ function lineText(entry: CombatLogEntry): string {
       return `⏳ Round ${entry.event.round} — ${entry.event.entityId}'s turn`;
     case 'turnEnded':
       return `↩️ ${entry.event.entityId} ends turn`;
+    case 'actionResolved': {
+      const e = entry.event;
+      const refStr = e.actionRef
+        ? `${e.actionRef.module}:${e.actionRef.type}:${e.actionRef.id}`
+        : '(no ref)';
+      const targetPart = e.targetEntityId ? ` → ${e.targetEntityId}` : '';
+      return `▶️ ${e.actorEntityId} ${refStr}${targetPart}`;
+    }
     case 'died': {
       const e = entry.event;
       const killer = e.killerEntityId ? ` by ${e.killerEntityId}` : '';
@@ -179,5 +200,19 @@ function lineText(entry: CombatLogEntry): string {
       return `🗑️ ${entry.event.entityId} removed (${entry.event.reason})`;
     case 'encounterEnded':
       return `🏆 Encounter ended: ${entry.event.reason}`;
+    case 'deathSaveRolled': {
+      const e = entry.event;
+      const parts: string[] = [];
+      if (e.isCriticalFail) parts.push('nat-1');
+      if (e.isCriticalSuccess) parts.push('nat-20');
+      if (e.dead) parts.push('DEAD');
+      if (e.stabilized) parts.push('STABILIZED');
+      if (e.regainedConsciousness) parts.push('regained consciousness');
+      if (e.hpRestored > 0) parts.push(`+${e.hpRestored}hp`);
+      const flags = parts.length > 0 ? ` [${parts.join(', ')}]` : '';
+      return `🎲 ${e.entityId} death save: roll ${e.roll} (${e.successes}S/${e.failures}F)${flags}`;
+    }
+    case 'entityStabilized':
+      return `🩹 ${entry.event.entityId} is stabilized`;
   }
 }

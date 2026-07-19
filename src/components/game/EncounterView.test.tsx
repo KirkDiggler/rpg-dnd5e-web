@@ -49,6 +49,7 @@ vi.mock('./EncounterMap', () => ({
     initiativeOrder: string[];
     activeEntityId: string;
     myEntityId: string;
+    openDoorIds?: string[];
     onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
     onEntityClick: (entityId: string) => void;
   }) => (
@@ -57,6 +58,7 @@ vi.mock('./EncounterMap', () => ({
       data-initiative-order={props.initiativeOrder.join(',')}
       data-active-entity-id={props.activeEntityId}
       data-my-entity-id={props.myEntityId}
+      data-open-door-ids={(props.openDoorIds ?? []).join(',')}
     >
       <button
         data-testid="stub-move"
@@ -403,5 +405,95 @@ describe('EncounterView renders condition badges hydrated from the snapshot (#46
     });
 
     expect(screen.queryByTestId('my-status-badges')).toBeNull();
+  });
+});
+
+describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#432 harness-parity, wave web#471)', () => {
+  it('renders ActionResolved, DeathSaveRolled, and EntityStabilized in the Combat Log panel', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('actionResolved', {
+          actorEntityId: 'char-alice',
+          actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+          targetEntityId: 'goblin-1',
+        })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('deathSaveRolled', {
+          entityId: 'char-bob',
+          roll: 20,
+          successes: 2,
+          failures: 0,
+          isCriticalSuccess: true,
+          regainedConsciousness: true,
+          hpRestored: 1,
+        })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('entityStabilized', { entityId: 'char-carol' })
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getByTestId('combat-log-entry-actionResolved-0').textContent
+    ).toContain('char-alice');
+    expect(
+      screen.getByTestId('combat-log-entry-deathSaveRolled-1').textContent
+    ).toContain('nat-20');
+    expect(
+      screen.getByTestId('combat-log-entry-entityStabilized-2').textContent
+    ).toContain('char-carol');
+  });
+
+  it('tracks a DoorOpened door id in state.openDoors, verified via EncounterMap.openDoorIds (Copilot review #474)', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    // Before the event: openDoorIds is empty, same testid/attribute other
+    // wiring tests in this file already use to observe state passed
+    // through to EncounterMap (data-active-entity-id, data-my-entity-id).
+    expect(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-open-door-ids')
+    ).toBe('');
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('doorOpened', {
+          doorEntityId: 'door-1',
+          revealedHexes: [],
+          revealedWalls: [],
+          removedWalls: [],
+        })
+      );
+      await Promise.resolve();
+    });
+
+    // The door id is actually present in state.openDoors (via
+    // applyDoorOpened), not just "the view didn't crash" — EncounterMap
+    // receives it as a real prop and exposes it on its own DOM, the same
+    // way EncounterMap surfaces every other piece of wired-through state.
+    expect(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-open-door-ids')
+    ).toBe('door-1');
   });
 });
