@@ -148,7 +148,7 @@ describe('wallVariantScale', () => {
     expect(sz).toBe(0.75);
   });
 
-  it('uses each variant own raw dimensions, not a shared constant', () => {
+  it("uses each variant's own raw dimensions, not a shared constant", () => {
     const plain = WALL_VARIANTS.find((v) => v.name === 'plain')!;
     const broken = WALL_VARIANTS.find((v) => v.name === 'broken')!;
     const [plainSx] = wallVariantScale(plain, 0.8, 0.75);

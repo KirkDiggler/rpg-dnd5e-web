@@ -141,14 +141,27 @@ function hashEdgeKey(key: string): number {
  */
 export function selectWallVariant(edgeKey: string): WallVariant {
   const totalWeight = WALL_VARIANTS.reduce((sum, v) => sum + v.weight, 0);
+  // Copilot review #500: makes the "unreachable" comment below actually
+  // true. Without this, a future manifest re-sync that zeroed every
+  // weight would compute hash % 0 (NaN), and `target < variant.weight`
+  // would be false for every variant — silently falling through to the
+  // WALL_VARIANTS[0] fallback instead of the deterministic pick the rest
+  // of this function promises. Fail loud instead: a manifest that can't
+  // select anything is a data bug to fix, not something to paper over.
+  if (WALL_VARIANTS.length === 0 || totalWeight <= 0) {
+    throw new Error(
+      'selectWallVariant: WALL_VARIANTS must be non-empty with a positive total weight'
+    );
+  }
   const hash = hashEdgeKey(edgeKey);
   let target = hash % totalWeight;
   for (const variant of WALL_VARIANTS) {
     if (target < variant.weight) return variant;
     target -= variant.weight;
   }
-  // Unreachable given totalWeight > 0 and target < totalWeight by
-  // construction (hash % totalWeight), but keeps the return type total.
+  // Unreachable given totalWeight > 0 (guarded above) and target <
+  // totalWeight by construction (hash % totalWeight), but keeps the
+  // return type total.
   return WALL_VARIANTS[0]!;
 }
 
