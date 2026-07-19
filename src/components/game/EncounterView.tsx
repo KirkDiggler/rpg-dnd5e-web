@@ -375,6 +375,18 @@ export function EncounterView({
     encounterState.state.mode === EncounterMode.TURN_BASED &&
     isMyTurn;
 
+  // Copilot review on #511/#514: armedAction only cleared on a successful
+  // dispatch or explicit cancel — nothing stopped it surviving past the
+  // player's own turn (End Turn succeeding, the server ending it some other
+  // way, or a mode change out of TURN_BASED). A stale armed action would
+  // both show as visually "active" (ActionMenuButton's armed-green check
+  // runs before its enabled/disabled styling) and let a later entity click
+  // attempt to resolve/dispatch it out of turn. Clear it the moment
+  // combatEnabled goes false — a no-op whenever it's already unarmed.
+  useEffect(() => {
+    if (!combatEnabled) setArmedAction(null);
+  }, [combatEnabled]);
+
   const turnState = encounterState.state.turnState;
   const availableActions = turnState?.availableActions ?? [];
   const economy = turnState?.economy ?? null;
@@ -458,23 +470,30 @@ export function EncounterView({
   };
 
   // rpg-dnd5e-web#511: an entity click's meaning depends on whether an
-  // action is armed. Armed → this click is the resolving click for THAT
-  // action, against whatever entity (or self) was clicked; the server is
-  // the only legality judge (ally vs. enemy, range, etc. — none of that is
-  // decided here). Nothing armed → preserve the pre-existing "click a
-  // monster = immediate basic attack" shortcut; any other click is a no-op
-  // (matches the harness's identical primary-loop convenience).
+  // action is armed. Armed + SINGLE_ENTITY → this click is the resolving
+  // click for THAT action, against whatever entity (or self) was clicked;
+  // the server is the only legality judge (ally vs. enemy, range, etc. —
+  // none of that is decided here). Armed + POSITION/AREA (Copilot review on
+  // #514: no L1 action uses these yet, but the code shouldn't silently
+  // mis-dispatch if one ever does) → an entityId target is the wrong shape
+  // for those kinds, so this click is a no-op and the action stays armed —
+  // real POSITION/AREA resolution needs its own targeting UI, not built
+  // here. Nothing armed → preserve the pre-existing "click a monster =
+  // immediate basic attack" shortcut; any other click is a no-op (matches
+  // the harness's identical primary-loop convenience).
   const handleVisualEntityClick = (targetId: string) => {
     if (!entityId || encounterEnded) return;
-    const armedRef = armedAction?.ref;
-    if (armedRef) {
-      void dispatchAction(armedRef, {
-        kind: { case: 'entityId', value: targetId },
-      } as unknown as ActionTarget).then((succeeded) => {
-        if (succeeded) setArmedAction(null);
-        // Rejected (e.g. illegal target): stay armed, takeActionError below
-        // is the feedback — never a silent disarm.
-      });
+    if (armedAction?.ref) {
+      if (armedAction.targetKind === TargetKind.SINGLE_ENTITY) {
+        const armedRef = armedAction.ref;
+        void dispatchAction(armedRef, {
+          kind: { case: 'entityId', value: targetId },
+        } as unknown as ActionTarget).then((succeeded) => {
+          if (succeeded) setArmedAction(null);
+          // Rejected (e.g. illegal target): stay armed, takeActionError
+          // below is the feedback — never a silent disarm.
+        });
+      }
       return;
     }
     if (targetId === entityId) return;

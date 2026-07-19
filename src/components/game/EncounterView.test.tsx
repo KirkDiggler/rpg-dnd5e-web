@@ -787,4 +787,92 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
     expect(helpBtn.getAttribute('data-armed')).toBe('true');
     expect(screen.getByText(/Action error: illegal target/)).toBeTruthy();
   });
+
+  it('clears the armed action when the turn ends (Copilot review #514: a stale armed action must not survive past its own turn)', async () => {
+    renderAtCharAlice();
+    enterTurnWithHelpArmable();
+
+    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    fireEvent.click(helpBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(helpBtn.getAttribute('data-armed')).toBe('true');
+
+    // Someone else's turn starts — combatEnabled (isMyTurn) goes false.
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStarted', { entityId: 'char-wendy', round: 1 })
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getByTestId('action-dnd5e:action:help').getAttribute('data-armed')
+    ).toBe('false');
+  });
+
+  it('an armed POSITION-kind action does not resolve on an entity click (Copilot review #514: entityId is the wrong target shape for POSITION/AREA)', async () => {
+    renderAtCharAlice();
+    act(() =>
+      hoisted.fakeRef.current?.push(makeEvent('snapshotDelivered', {}))
+    );
+    act(() =>
+      hoisted.fakeRef.current?.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: '',
+        })
+      )
+    );
+    act(() =>
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStarted', { entityId: 'char-alice', round: 1 })
+      )
+    );
+    act(() =>
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStateChanged', {
+          turnState: {
+            economy: {
+              actionsRemaining: 1,
+              bonusActionsRemaining: 1,
+              reactionsRemaining: 1,
+              movementRemaining: 30,
+            },
+            availableActions: [
+              {
+                ref: { module: 'dnd5e', type: 'action', id: 'move-to' },
+                displayName: 'Move To',
+                available: true,
+                unavailableReason: '',
+                economySlot: EconomySlot.MOVEMENT,
+                targetKind: TargetKind.POSITION,
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    const moveBtn = await screen.findByTestId('action-dnd5e:action:move-to');
+    fireEvent.click(moveBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(moveBtn.getAttribute('data-armed')).toBe('true');
+
+    fireEvent.click(screen.getByTestId('stub-click-goblin'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.takeActionFn).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getByTestId('action-dnd5e:action:move-to')
+        .getAttribute('data-armed')
+    ).toBe('true');
+  });
 });
