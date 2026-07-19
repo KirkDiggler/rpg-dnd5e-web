@@ -471,4 +471,28 @@ describe('EncounterView reaction-readiness HUD (rpg-dnd5e-web#432 harness-parity
       screen.getByTestId('reaction-toggle-dnd5e:spells:shield').textContent
     ).toContain('unknown');
   });
+
+  it('disables the reaction toggles while entityId is unresolved (Copilot review #475)', async () => {
+    // No characterId prop and no snapshot pushed yet — entityId stays ''
+    // for the resume-after-refresh window (matches the #461 pattern this
+    // file already tests for ActionMenu/move/attack).
+    render(
+      <EncounterView encounterId="enc-1" playerId="alice" onBack={() => {}} />
+    );
+
+    const oa = screen.getByTestId(
+      'reaction-toggle-dnd5e:conditions:opportunity_attack'
+    ) as HTMLButtonElement;
+    const shield = screen.getByTestId(
+      'reaction-toggle-dnd5e:spells:shield'
+    ) as HTMLButtonElement;
+    expect(oa.disabled).toBe(true);
+    expect(shield.disabled).toBe(true);
+
+    fireEvent.click(oa);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(hoisted.setReactionReadyFn).not.toHaveBeenCalled();
+  });
 });

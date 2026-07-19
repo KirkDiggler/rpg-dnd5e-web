@@ -532,7 +532,13 @@ export function EncounterView({
       <ReactionReadyPanel
         readiness={encounterState.state.reactionReadiness.get(entityId)}
         loading={setReactionReadyLoading}
-        disabled={encounterEnded}
+        // Copilot review #475: disable during the resume-after-refresh
+        // window too (entityId still ''), not just after the encounter
+        // ends — matches ActionMenu's gating. Without this, a click in
+        // that window was a silent no-op (handleToggleReactionReady's own
+        // `if (!entityId) return` guard fires, but nothing tells the
+        // player why nothing happened).
+        disabled={encounterEnded || !entityId}
         onToggle={(ref, ready) => void handleToggleReactionReady(ref, ready)}
       />
       <div>
