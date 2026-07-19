@@ -94,8 +94,15 @@ function SyntyHexFloorTile({ tile, hexSize, texture }: SyntyHexFloorTileProps) {
           setup (or any given deployment's tone-mapping/GPU quirks) to be
           visibly correct. This is a code-side fix; if it still reads too
           flat once seen against real deployed lighting, a lighter floor
-          texture variant is the asset-request fallback (#481). */}
-      <meshBasicMaterial map={texture} />
+          texture variant is the asset-request fallback (#481).
+
+          MeshBasicMaterial is still tone-mapped by default (Copilot review
+          #485) — r3f's renderer applies ACES/exposure to every material
+          unless it opts out, so without toneMapped={false} this floor was
+          still at the mercy of each environment's tone-mapping/exposure,
+          the exact cross-environment variance #481 exists to kill. Opting
+          out makes the texture's own pixel values the final word. */}
+      <meshBasicMaterial map={texture} toneMapped={false} />
     </mesh>
   );
 }

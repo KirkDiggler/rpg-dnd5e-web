@@ -383,28 +383,39 @@ function Scene({
     onHoverChange?.(hoveredEntity);
   }, [hoveredEntity, onHoverChange]);
 
-  // Use movement range hook for boundary visualization. isBlocked is the
-  // same entity-aware predicate real pathfinding uses (reachability must
-  // never lie relative to actual pathing); isOccupiedByOtherEntity only
-  // suppresses the ally "hole" edge at render time — see
-  // useMovementRange.ts's doc comments.
-  const { boundaryEdges } = useMovementRange({
-    entityPosition: currentEntityPosition,
-    movementRemaining: effectiveMovementRemaining,
-    hexSize: HEX_SIZE,
-    isBlocked,
-    isOccupiedByOtherEntity,
-  });
-
   // inTurnBasedCombat is computed above (drives effectiveMovementRemaining
   // too). Used here to decide when the movement border is actionable rather
-  // than idle-always-on (rpg-dnd5e-web#456).
+  // than idle-always-on (rpg-dnd5e-web#456). Computed BEFORE useMovementRange
+  // below so it can gate the hook's own work, not just its render output.
   const isPlanningMove = hoveredHex !== null || pathPreview.length > 0;
   const showMovementBorder = shouldShowMovementBorder(
     inTurnBasedCombat,
     isPlayerTurn,
     isPlanningMove
   );
+
+  // Use movement range hook for boundary visualization. isBlocked is the
+  // same entity-aware predicate real pathfinding uses (reachability must
+  // never lie relative to actual pathing); isOccupiedByOtherEntity only
+  // suppresses the ally "hole" edge at render time — see
+  // useMovementRange.ts's doc comments.
+  //
+  // entityPosition is gated on showMovementBorder (Copilot review #485):
+  // with FREE_ROAM's effectiveMovementRemaining now unbounded, an ungated
+  // call ran a full BFS over every revealed tile on every render, including
+  // idle exploration where boundaryEdges is never rendered (see the
+  // showMovementBorder check below). useMovementRange's reachableHexes/
+  // boundaryEdges memos already early-return on a null entityPosition, so
+  // withholding it here is a pure no-op when the border wouldn't show —
+  // TURN_BASED's showMovementBorder is still exactly `isPlayerTurn`, so
+  // combat-mode rendering is unchanged.
+  const { boundaryEdges } = useMovementRange({
+    entityPosition: showMovementBorder ? currentEntityPosition : null,
+    movementRemaining: effectiveMovementRemaining,
+    hexSize: HEX_SIZE,
+    isBlocked,
+    isOccupiedByOtherEntity,
+  });
 
   // Frontier ground hints: dim hex just beyond revealed walls so they read
   // as walls bounding a room rather than blocks floating in the void
