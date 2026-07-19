@@ -6,8 +6,10 @@ import type {
   TakeActionResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import {
+  EconomySlot,
   EncounterMode,
   EntityType,
+  TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,7 +25,7 @@ function makeEvent(caseName: string, value: unknown): EncounterEvent {
 const hoisted = vi.hoisted(() => ({
   fakeRef: { current: null as FakeStream | null },
   moveEntityFn: vi.fn<() => Promise<MoveEntityResponse>>(),
-  takeActionFn: vi.fn<() => Promise<TakeActionResponse>>(),
+  takeActionFn: vi.fn<(req: unknown) => Promise<TakeActionResponse>>(),
   endTurnFn: vi.fn<() => Promise<EndTurnResponse>>(),
   setReactionReadyFn:
     vi.fn<(req: unknown) => Promise<SetReactionReadyResponse>>(),
@@ -597,5 +599,280 @@ describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#43
         .getByTestId('encounter-map-stub')
         .getAttribute('data-open-door-ids')
     ).toBe('door-1');
+  });
+});
+
+describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#511)', () => {
+  const HELP_REF = { module: 'dnd5e', type: 'action', id: 'help' };
+
+  function enterTurnWithHelpArmable() {
+    act(() =>
+      hoisted.fakeRef.current?.push(makeEvent('snapshotDelivered', {}))
+    );
+    act(() =>
+      hoisted.fakeRef.current?.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: '',
+        })
+      )
+    );
+    act(() =>
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStarted', { entityId: 'char-alice', round: 1 })
+      )
+    );
+    act(() =>
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStateChanged', {
+          turnState: {
+            economy: {
+              actionsRemaining: 1,
+              bonusActionsRemaining: 1,
+              reactionsRemaining: 1,
+              movementRemaining: 30,
+            },
+            availableActions: [
+              {
+                ref: HELP_REF,
+                displayName: 'Help',
+                available: true,
+                unavailableReason: '',
+                economySlot: EconomySlot.ACTION,
+                targetKind: TargetKind.SINGLE_ENTITY,
+              },
+            ],
+          },
+        })
+      )
+    );
+  }
+
+  function renderAtCharAlice() {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+  }
+
+  it('arms on click without dispatching (no target chosen yet)', async () => {
+    renderAtCharAlice();
+    enterTurnWithHelpArmable();
+
+    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    fireEvent.click(helpBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.takeActionFn).not.toHaveBeenCalled();
+    expect(helpBtn.getAttribute('data-armed')).toBe('true');
+  });
+
+  it('survives an exploratory move click (armed action is not cleared)', async () => {
+    renderAtCharAlice();
+    enterTurnWithHelpArmable();
+
+    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    fireEvent.click(helpBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // A move click is exploratory relative to the armed action — it can't
+    // resolve it (no entity target), so per #511 it must not disarm.
+    fireEvent.click(screen.getByTestId('stub-move'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.takeActionFn).not.toHaveBeenCalled();
+    expect(helpBtn.getAttribute('data-armed')).toBe('true');
+  });
+
+  it('resolves the armed action (not the hardcoded attack shortcut) on the next entity click', async () => {
+    hoisted.takeActionFn.mockResolvedValue({} as TakeActionResponse);
+    renderAtCharAlice();
+    enterTurnWithHelpArmable();
+
+    fireEvent.click(await screen.findByTestId('action-dnd5e:action:help'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByTestId('stub-click-goblin'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.takeActionFn).toHaveBeenCalledOnce();
+    const request = hoisted.takeActionFn.mock.calls[0]![0] as unknown as {
+      actionRef: { module: string; type: string; id: string };
+      target: { kind: { case: string; value: string } };
+    };
+    // The ARMED "help" ref resolved — not ATTACK_ACTION_REF, confirming an
+    // explicitly armed action takes priority over the click-a-monster
+    // shortcut once one exists.
+    expect(request.actionRef).toMatchObject(HELP_REF);
+    expect(request.target.kind).toMatchObject({
+      case: 'entityId',
+      value: 'goblin-1',
+    });
+
+    const helpBtn = screen.getByTestId('action-dnd5e:action:help');
+    expect(helpBtn.getAttribute('data-armed')).toBe('false');
+  });
+
+  it('re-clicking the armed action cancels it (no dispatch)', async () => {
+    renderAtCharAlice();
+    enterTurnWithHelpArmable();
+
+    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    fireEvent.click(helpBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(helpBtn.getAttribute('data-armed')).toBe('true');
+
+    fireEvent.click(helpBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(helpBtn.getAttribute('data-armed')).toBe('false');
+    expect(hoisted.takeActionFn).not.toHaveBeenCalled();
+  });
+
+  it('Escape cancels the armed action', async () => {
+    renderAtCharAlice();
+    enterTurnWithHelpArmable();
+
+    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    fireEvent.click(helpBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(helpBtn.getAttribute('data-armed')).toBe('true');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(helpBtn.getAttribute('data-armed')).toBe('false');
+  });
+
+  it('a rejected dispatch leaves the action armed (retry, not silent disarm)', async () => {
+    hoisted.takeActionFn.mockRejectedValue(new Error('illegal target'));
+    renderAtCharAlice();
+    enterTurnWithHelpArmable();
+
+    fireEvent.click(await screen.findByTestId('action-dnd5e:action:help'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByTestId('stub-click-goblin'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.takeActionFn).toHaveBeenCalledOnce();
+    const helpBtn = screen.getByTestId('action-dnd5e:action:help');
+    expect(helpBtn.getAttribute('data-armed')).toBe('true');
+    expect(screen.getByText(/Action error: illegal target/)).toBeTruthy();
+  });
+
+  it('clears the armed action when the turn ends (Copilot review #514: a stale armed action must not survive past its own turn)', async () => {
+    renderAtCharAlice();
+    enterTurnWithHelpArmable();
+
+    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    fireEvent.click(helpBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(helpBtn.getAttribute('data-armed')).toBe('true');
+
+    // Someone else's turn starts — combatEnabled (isMyTurn) goes false.
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStarted', { entityId: 'char-wendy', round: 1 })
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getByTestId('action-dnd5e:action:help').getAttribute('data-armed')
+    ).toBe('false');
+  });
+
+  it('an armed POSITION-kind action does not resolve on an entity click (Copilot review #514: entityId is the wrong target shape for POSITION/AREA)', async () => {
+    renderAtCharAlice();
+    act(() =>
+      hoisted.fakeRef.current?.push(makeEvent('snapshotDelivered', {}))
+    );
+    act(() =>
+      hoisted.fakeRef.current?.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: '',
+        })
+      )
+    );
+    act(() =>
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStarted', { entityId: 'char-alice', round: 1 })
+      )
+    );
+    act(() =>
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStateChanged', {
+          turnState: {
+            economy: {
+              actionsRemaining: 1,
+              bonusActionsRemaining: 1,
+              reactionsRemaining: 1,
+              movementRemaining: 30,
+            },
+            availableActions: [
+              {
+                ref: { module: 'dnd5e', type: 'action', id: 'move-to' },
+                displayName: 'Move To',
+                available: true,
+                unavailableReason: '',
+                economySlot: EconomySlot.MOVEMENT,
+                targetKind: TargetKind.POSITION,
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    const moveBtn = await screen.findByTestId('action-dnd5e:action:move-to');
+    fireEvent.click(moveBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(moveBtn.getAttribute('data-armed')).toBe('true');
+
+    fireEvent.click(screen.getByTestId('stub-click-goblin'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.takeActionFn).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getByTestId('action-dnd5e:action:move-to')
+        .getAttribute('data-armed')
+    ).toBe('true');
   });
 });

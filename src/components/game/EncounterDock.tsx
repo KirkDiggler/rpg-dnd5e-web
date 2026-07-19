@@ -48,6 +48,9 @@ export interface EncounterDockProps {
   actionsEnabled: boolean;
   actionsLoading: boolean;
   onSelectAction: (action: AvailableAction) => void;
+  /** rpg-dnd5e-web#511 — actionKey of the currently-armed action, or
+   * undefined when nothing is armed. Passed straight through to ActionMenu. */
+  armedActionKey?: string;
   reactionReadiness: Map<string, boolean> | undefined;
   reactionLoading: boolean;
   reactionDisabled: boolean;
@@ -97,6 +100,7 @@ export function EncounterDock({
   actionsEnabled,
   actionsLoading,
   onSelectAction,
+  armedActionKey,
   reactionReadiness,
   reactionLoading,
   reactionDisabled,
@@ -237,6 +241,7 @@ export function EncounterDock({
           enabled={actionsEnabled}
           loading={actionsLoading}
           onSelectAction={onSelectAction}
+          armedActionKey={armedActionKey}
         />
         <ReactionReadyPanel
           readiness={reactionReadiness}

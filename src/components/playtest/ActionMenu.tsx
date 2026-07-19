@@ -36,6 +36,14 @@ export interface ActionMenuProps {
    * menu never inspects targeting rules itself.
    */
   onSelectAction: (action: AvailableAction) => void;
+  /**
+   * `actionKey` of the currently-armed action (rpg-dnd5e-web#511's
+   * interaction-state — the caller owns arming/resolving/cancelling, this
+   * only highlights whichever entry matches). Undefined when nothing is
+   * armed, or for callers (PlaytestHarness) that don't use this state
+   * shape — the button renders exactly as before in that case.
+   */
+  armedActionKey?: string;
 }
 
 export function ActionMenu({
@@ -43,6 +51,7 @@ export function ActionMenu({
   enabled,
   loading,
   onSelectAction,
+  armedActionKey,
 }: ActionMenuProps) {
   const groups = groupActionsBySlot(actions);
 
@@ -86,6 +95,7 @@ export function ActionMenu({
                 enabled={enabled}
                 loading={loading}
                 onSelectAction={onSelectAction}
+                armed={armedActionKey === actionKey(action)}
               />
             ))}
           </div>
@@ -100,6 +110,9 @@ interface ActionMenuButtonProps {
   enabled: boolean;
   loading: boolean;
   onSelectAction: (action: AvailableAction) => void;
+  /** rpg-dnd5e-web#511: true while this specific action is armed and
+   * waiting for a resolving click — see ActionMenuProps.armedActionKey. */
+  armed: boolean;
 }
 
 function ActionMenuButton({
@@ -107,6 +120,7 @@ function ActionMenuButton({
   enabled,
   loading,
   onSelectAction,
+  armed,
 }: ActionMenuButtonProps) {
   // Disabled when the server says unavailable OR the turn/loading gate is off.
   // The unavailable_reason is the SERVER's string — rendered verbatim, never
@@ -115,7 +129,9 @@ function ActionMenuButton({
   const disabled = !enabled || loading || serverUnavailable;
   const title = serverUnavailable
     ? action.unavailableReason || 'unavailable'
-    : `Take action (${targetKindLabel(action.targetKind)})`;
+    : armed
+      ? 'Armed — click a target, or click again / Esc to cancel'
+      : `Take action (${targetKindLabel(action.targetKind)})`;
   // #497: icon-by-ref-id, following #473's status-icon precedent
   // (conditionIcons.ts) — undefined for any ref id outside the 9 shipped
   // action-bar icons (e.g. class features like Second Wind), which falls
@@ -127,6 +143,7 @@ function ActionMenuButton({
       type="button"
       data-testid={`action-${actionKey(action)}`}
       data-available={String(action.available)}
+      data-armed={armed}
       onClick={() => onSelectAction(action)}
       disabled={disabled}
       title={title}
@@ -137,11 +154,19 @@ function ActionMenuButton({
         padding: '4px 10px',
         background: serverUnavailable
           ? '#2a2a2a'
-          : enabled
-            ? '#2a3a4a'
-            : '#262626',
-        color: serverUnavailable ? '#777' : enabled ? '#9cf' : '#666',
-        border: `1px solid ${serverUnavailable ? '#444' : '#3a5a7a'}`,
+          : armed
+            ? '#3a5a2a'
+            : enabled
+              ? '#2a3a4a'
+              : '#262626',
+        color: serverUnavailable
+          ? '#777'
+          : armed
+            ? '#bfb'
+            : enabled
+              ? '#9cf'
+              : '#666',
+        border: `1px solid ${serverUnavailable ? '#444' : armed ? '#7c7' : '#3a5a7a'}`,
         borderRadius: 4,
         cursor: disabled ? 'not-allowed' : 'pointer',
         fontFamily: 'monospace',

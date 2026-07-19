@@ -39,7 +39,7 @@ import {
   EntityType,
   TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { v2PositionToV1 } from '../../api/positionConvert';
 import { useEncounterStream } from '../../api/useEncounterStream';
@@ -51,7 +51,10 @@ import { useCombatLog } from '../../hooks/useCombatLog';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { errorMessage } from '../../utils/combatFormat';
 import { protoPositionToHex } from '../../utils/hexCoord';
-import { targetKindNeedsPrompt } from '../playtest/actionMenuHelpers';
+import {
+  actionKey,
+  targetKindNeedsPrompt,
+} from '../playtest/actionMenuHelpers';
 import { StatusBadgeList } from '../ui/StatusBadgeList';
 import { EncounterDock } from './EncounterDock';
 import { resolveMovementRemaining } from './encounterDockHelpers';
@@ -121,12 +124,30 @@ export function EncounterView({
   // #445: game-grade combat narrative — the same dispatched events, rendered
   // as a scrolling log instead of PlaytestHarness's raw dev-log text.
   const combatLog = useCombatLog();
-  // Set by clicking any entity on the map — feeds SINGLE_ENTITY-targeted
-  // menu actions (e.g. a spell chosen after the player clicks its target).
-  // Clicking a monster additionally fires an immediate basic attack, the
-  // same primary-loop shortcut PlaytestMap's VisualAttack click gives the
-  // harness.
-  const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  // rpg-dnd5e-web#511: the action-selection interaction state. Set by
+  // clicking a SINGLE_ENTITY/POSITION/AREA-targeted menu action ("arming"
+  // it) — survives exploratory clicks (hover/inspect/camera, an empty-hex
+  // move click) and is only cleared by a SUCCESSFUL resolving dispatch or
+  // an explicit cancel (Escape, or re-clicking the same armed action). A
+  // failed dispatch (server rejects the target) leaves it armed so the
+  // player can retry against a different target without re-opening the
+  // menu — the existing takeActionError banner below is the "invalid
+  // target" feedback, not a silent disarm. Clicking a monster while
+  // NOTHING is armed keeps the pre-existing immediate-basic-attack
+  // shortcut (the same primary-loop convenience PlaytestMap's VisualAttack
+  // click gives the harness) — an explicitly armed action always takes
+  // priority over that shortcut once one exists.
+  const [armedAction, setArmedAction] = useState<AvailableAction | null>(null);
+  // rpg-dnd5e-web#511's other explicit-cancel affordance (alongside
+  // re-clicking the armed button in handleSelectAction). Scoped to this
+  // view's lifetime; a no-op when nothing is armed.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setArmedAction(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
   const { moveEntity, error: moveError } = useMoveEntity();
   const {
     takeAction,
@@ -354,19 +375,37 @@ export function EncounterView({
     encounterState.state.mode === EncounterMode.TURN_BASED &&
     isMyTurn;
 
+  // Copilot review on #511/#514: armedAction only cleared on a successful
+  // dispatch or explicit cancel — nothing stopped it surviving past the
+  // player's own turn (End Turn succeeding, the server ending it some other
+  // way, or a mode change out of TURN_BASED). A stale armed action would
+  // both show as visually "active" (ActionMenuButton's armed-green check
+  // runs before its enabled/disabled styling) and let a later entity click
+  // attempt to resolve/dispatch it out of turn. Clear it the moment
+  // combatEnabled goes false — a no-op whenever it's already unarmed.
+  useEffect(() => {
+    if (!combatEnabled) setArmedAction(null);
+  }, [combatEnabled]);
+
   const turnState = encounterState.state.turnState;
   const availableActions = turnState?.availableActions ?? [];
   const economy = turnState?.economy ?? null;
 
+  // Returns whether the dispatch succeeded — rpg-dnd5e-web#511's armed-
+  // action state clears only on a successful dispatch (a rejected target
+  // leaves the action armed so the player can retry against a different
+  // target instead of losing their selection to a server-side rejection;
+  // the existing takeActionError banner below is the "invalid target"
+  // feedback for that case).
   const dispatchAction = async (
     actionRef: { module: string; type: string; id: string },
     target: ActionTarget | undefined
-  ) => {
+  ): Promise<boolean> => {
     // Resume-after-refresh (#444): entityId is '' until self-resolution
     // completes (see resolveMyEntityId above). Never send an RPC with an
     // empty actor id — a fast click in that window would otherwise reach
     // the server as a real, malformed request (Copilot review on #461).
-    if (!entityId) return;
+    if (!entityId) return false;
     try {
       await takeAction({
         encounterId,
@@ -374,37 +413,48 @@ export function EncounterView({
         actionRef,
         target: target ?? ({ kind: { case: undefined } } as ActionTarget),
       });
+      return true;
     } catch {
       // error surfaced via takeActionError below
+      return false;
     }
   };
 
   // TakeAction wave (#426): the server-menu drives what's dispatchable — the
   // web reads target_kind off the menu entry (the server's verdict) and
-  // raises a target prompt only when required. Mirrors
-  // PlaytestHarness.handleSelectAction (design.md: "Already shared or
-  // generic" pattern), adapted for this view's targeting source: the
-  // harness reads a dev-panel target-id input, this view reads the map's
-  // click-to-select state (selectedTargetId) instead.
+  // raises a target prompt only when required. rpg-dnd5e-web#511: a
+  // SINGLE_ENTITY/POSITION/AREA action ARMS instead of requiring a
+  // pre-existing click-to-select target — the next qualifying map click
+  // resolves it (handleVisualEntityClick below), and it survives clicks
+  // that don't resolve it. Re-clicking the already-armed action cancels it
+  // (an explicit toggle-off, one of #511's two cancel affordances — Escape
+  // is the other, wired via the keydown effect below).
   const handleSelectAction = async (action: AvailableAction) => {
     if (!action.ref) return;
+    if (
+      armedAction &&
+      action.ref &&
+      actionKey(action) === actionKey(armedAction)
+    ) {
+      setArmedAction(null);
+      return;
+    }
     if (targetKindNeedsPrompt(action.targetKind)) {
-      if (action.targetKind === TargetKind.SINGLE_ENTITY && selectedTargetId) {
-        await dispatchAction(action.ref, {
-          kind: { case: 'entityId', value: selectedTargetId },
-        } as unknown as ActionTarget);
-      }
-      // POSITION / AREA, and SINGLE_ENTITY with nothing selected yet: no-op.
-      // No L1 action needs POSITION/AREA (matches the harness's current
-      // scope); SINGLE_ENTITY needs the player to click a target first.
+      // POSITION / AREA: no L1 action needs them yet (matches the harness's
+      // current scope) — arming them is forward-compatible with whatever a
+      // future targeting UI does with `armedAction.targetKind`, not
+      // exercised by real data today.
+      setArmedAction(action);
       return;
     }
     if (action.targetKind === TargetKind.SELF) {
+      setArmedAction(null);
       await dispatchAction(action.ref, {
         kind: { case: 'self', value: {} },
       } as unknown as ActionTarget);
       return;
     }
+    setArmedAction(null);
     await dispatchAction(action.ref, undefined);
   };
 
@@ -419,10 +469,34 @@ export function EncounterView({
     }
   };
 
+  // rpg-dnd5e-web#511: an entity click's meaning depends on whether an
+  // action is armed. Armed + SINGLE_ENTITY → this click is the resolving
+  // click for THAT action, against whatever entity (or self) was clicked;
+  // the server is the only legality judge (ally vs. enemy, range, etc. —
+  // none of that is decided here). Armed + POSITION/AREA (Copilot review on
+  // #514: no L1 action uses these yet, but the code shouldn't silently
+  // mis-dispatch if one ever does) → an entityId target is the wrong shape
+  // for those kinds, so this click is a no-op and the action stays armed —
+  // real POSITION/AREA resolution needs its own targeting UI, not built
+  // here. Nothing armed → preserve the pre-existing "click a monster =
+  // immediate basic attack" shortcut; any other click is a no-op (matches
+  // the harness's identical primary-loop convenience).
   const handleVisualEntityClick = (targetId: string) => {
-    if (targetId === entityId) return;
-    setSelectedTargetId(targetId);
     if (!entityId || encounterEnded) return;
+    if (armedAction?.ref) {
+      if (armedAction.targetKind === TargetKind.SINGLE_ENTITY) {
+        const armedRef = armedAction.ref;
+        void dispatchAction(armedRef, {
+          kind: { case: 'entityId', value: targetId },
+        } as unknown as ActionTarget).then((succeeded) => {
+          if (succeeded) setArmedAction(null);
+          // Rejected (e.g. illegal target): stay armed, takeActionError
+          // below is the feedback — never a silent disarm.
+        });
+      }
+      return;
+    }
+    if (targetId === entityId) return;
     const targetMeta = encounterState.state.entityMeta.get(targetId);
     const isMonster = targetMeta?.type === EntityType.MONSTER;
     if (!isMonster) return;
@@ -684,6 +758,7 @@ export function EncounterView({
         actionsEnabled={combatEnabled}
         actionsLoading={takeActionLoading}
         onSelectAction={(a) => void handleSelectAction(a)}
+        armedActionKey={armedAction ? actionKey(armedAction) : undefined}
         reactionReadiness={encounterState.state.reactionReadiness.get(entityId)}
         reactionLoading={setReactionReadyLoading}
         // Copilot review #475: disable during the resume-after-refresh
