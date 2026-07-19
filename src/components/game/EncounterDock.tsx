@@ -25,24 +25,8 @@ import { ActionMenu } from '../playtest/ActionMenu';
 import { EconomyBar } from '../playtest/EconomyBar';
 import { StatusBadgeList } from '../ui/StatusBadgeList';
 import { CombatLog } from './CombatLog';
+import { classLabel, hpTier, resolveName } from './encounterDockHelpers';
 import { ReactionReadyPanel } from './ReactionReadyPanel';
-
-/** Capitalizes a class_ref id ("fighter" -> "Fighter") — display formatting
- * only, not a class->label lookup table the toolkit doesn't give us. */
-function classLabel(classRefId: string | undefined): string | null {
-  if (!classRefId) return null;
-  return classRefId.charAt(0).toUpperCase() + classRefId.slice(1);
-}
-
-/** HP tier for the bar's color — pure display bucketing off server-given
- * current/max, same category as EconomyBar's spent/unspent tint. */
-function hpTier(current: number, max: number): 'high' | 'mid' | 'low' {
-  if (max <= 0) return 'low';
-  const pct = current / max;
-  if (pct > 0.5) return 'high';
-  if (pct > 0.25) return 'mid';
-  return 'low';
-}
 
 const HP_TIER_COLOR: Record<'high' | 'mid' | 'low', string> = {
   high: '#22c55e',
@@ -51,7 +35,9 @@ const HP_TIER_COLOR: Record<'high' | 'mid' | 'low', string> = {
 };
 
 export interface EncounterDockProps {
-  name: string;
+  /** The local player's entity id — the resolveName fallback when displayName is absent. */
+  entityId: string;
+  displayName: string | undefined;
   classRefId: string | undefined;
   hp: { current: number; max: number } | undefined;
   ac: number | undefined;
@@ -75,16 +61,32 @@ export interface EncounterDockProps {
 }
 
 // Copilot review #493: CombatLog's own header (~25px) plus its internal
-// scroll region's maxHeight:200 (CombatLog.tsx) sum to ~237px, more than
-// the ~204px of content height the original DOCK_HEIGHT(224) - padding
-// left for it — long logs could spill past the dock into the map. Sized
-// up so CombatLog's natural height fits without needing to clip it, plus
-// `overflow: hidden` below as a hard guarantee against any future column
-// growing taller than its row (e.g. a very long class-name wrap).
-const DOCK_HEIGHT = 260;
+// scroll region's maxHeight:200 (CombatLog.tsx) sum to ~237px — sized so
+// CombatLog's natural height fits without needing to clip it.
+//
+// rpg-dnd5e-web#494: at desktop width this is a per-column height cap
+// (each column scrolls internally past this, never spills past its own
+// box). Below the measured wrap thresholds (see EncounterDockConcept.tsx),
+// columns wrap via flexWrap below instead of overflowing horizontally.
+const COLUMN_MAX_HEIGHT = 230;
+
+// #494 gate (medium finding): a fully-stacked layout is 3 rows of up to
+// COLUMN_MAX_HEIGHT each (~690px + gaps/padding) — on a SHORT viewport
+// (not just narrow-width — e.g. a landscape phone or a small emulated
+// Discord panel), that can starve EncounterView's map (flex:1, minHeight:0
+// in EncounterView.tsx) down toward 0, since the dock and map compete for
+// the same fixed-height parent. Capping the WHOLE dock's height as a
+// viewport fraction (not a per-column cap, which doesn't bound the SUM of
+// stacked rows) guarantees the map keeps a usable floor — 42vh leaves the
+// map >=58% of viewport height in the worst case (fully stacked, dock at
+// its cap) regardless of how many rows the columns wrap into. The dock
+// itself scrolls as one unit past this cap (overflowY below) rather than
+// clipping content outright.
+const DOCK_MAX_HEIGHT_VH = '42vh';
 
 export function EncounterDock({
-  name,
+  entityId,
+  displayName,
   classRefId,
   hp,
   ac,
@@ -109,32 +111,46 @@ export function EncounterDock({
       ? Math.max(0, Math.min(100, (hp.current / hp.max) * 100))
       : 0;
   const label = classLabel(classRefId);
+  const name = resolveName(displayName, entityId);
 
   return (
     <div
       data-testid="encounter-dock"
       style={{
         display: 'flex',
+        flexWrap: 'wrap',
         gap: 16,
-        height: DOCK_HEIGHT,
+        // Natural content height up to DOCK_MAX_HEIGHT_VH — no explicit
+        // minHeight (the old fixed value left ~10px of unaccounted dead
+        // space below the desktop columns; content-driven height means
+        // the dock is exactly as tall as its content, on desktop and
+        // stacked alike). Past the cap, the whole dock scrolls as one
+        // unit so the map (EncounterView's sibling flex:1 element) always
+        // keeps a usable floor instead of starving.
+        maxHeight: DOCK_MAX_HEIGHT_VH,
+        overflowY: 'auto',
         flexShrink: 0,
         padding: '10px 16px',
         background: 'var(--bg-secondary, #1a1a1a)',
         borderTop: '2px solid var(--border-primary, #333)',
         boxShadow: '0 -8px 25px -5px rgba(0, 0, 0, 0.3)',
-        overflow: 'hidden',
       }}
     >
-      {/* Left: identity / status block */}
+      {/* Left: identity / status block. flex:'0 1 220px' keeps the exact
+          220px desktop width (grow:0 — never wider than that even with
+          spare row space) while allowing it to shrink down to minWidth
+          before wrapping to its own row on narrow viewports (#494). */}
       <div
         data-testid="encounter-dock-identity"
         style={{
-          width: 220,
-          flexShrink: 0,
+          flex: '0 1 220px',
+          minWidth: 160,
+          maxHeight: COLUMN_MAX_HEIGHT,
           display: 'flex',
           flexDirection: 'column',
           gap: 6,
           overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -194,16 +210,23 @@ export function EncounterDock({
         {statuses.length > 0 && <StatusBadgeList statuses={statuses} />}
       </div>
 
-      {/* Center: economy + actions + reactions + end turn */}
+      {/* Center: economy + actions + reactions + end turn. #494: minWidth
+          was 0 — the literal cause of this column collapsing to nothing
+          once the row couldn't fit all three (identity/log's old
+          flexShrink:0 held their full width and overflowed instead of
+          giving this column room). A real floor (220) means IT wraps to
+          its own row instead of vanishing. */}
       <div
         data-testid="encounter-dock-actions"
         style={{
-          flex: 1,
-          minWidth: 0,
+          flex: '1 1 300px',
+          minWidth: 220,
+          maxHeight: COLUMN_MAX_HEIGHT,
           display: 'flex',
           flexDirection: 'column',
           gap: 6,
           overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       >
         <EconomyBar economy={economy} />
@@ -226,17 +249,20 @@ export function EncounterDock({
         </div>
       </div>
 
-      {/* Right: combat log. height:'100%' + overflow:'hidden' clips
-          CombatLog to the row's actual height regardless of its own
-          content — it already scrolls internally (CombatLog.tsx's
+      {/* Right: combat log. maxHeight + overflow:'hidden' clips CombatLog
+          to this column's own budget regardless of its natural content
+          height — it already scrolls internally (CombatLog.tsx's
           overflowY:'auto' region), so this only affects how many lines
-          are visible before scrolling, never spill past the dock. */}
+          are visible before scrolling, never spill past the dock.
+          flex:'0 1 320px' matches identity's shrink-then-wrap behavior
+          (#494) instead of the old flexShrink:0 that held its full width
+          and pushed the row past the viewport on narrow screens. */}
       <div
         data-testid="encounter-dock-log"
         style={{
-          width: 320,
-          flexShrink: 0,
-          height: '100%',
+          flex: '0 1 320px',
+          minWidth: 220,
+          maxHeight: COLUMN_MAX_HEIGHT,
           overflow: 'hidden',
         }}
       >

@@ -1,11 +1,13 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
+import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 
-type ConceptPage = 'class-selection';
+type ConceptPage = 'class-selection' | 'encounter-dock';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'class-selection', label: 'Class Selection' },
+  { id: 'encounter-dock', label: 'Encounter Dock' },
 ];
 
 interface ConceptsViewProps {
@@ -75,6 +77,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         transition={{ duration: 0.2 }}
       >
         {activePage === 'class-selection' && <ClassSelectionConcept />}
+        {activePage === 'encounter-dock' && <EncounterDockConcept />}
       </motion.div>
     </div>
   );
