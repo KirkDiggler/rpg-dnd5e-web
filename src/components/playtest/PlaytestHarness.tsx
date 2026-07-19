@@ -1092,6 +1092,7 @@ export function PlaytestHarness() {
             revealedHexes={encounterState.state.revealedHexes}
             walls={encounterState.state.walls}
             entityHP={encounterState.state.entityHP}
+            entityStatuses={encounterState.state.entityStatuses}
             myEntityId={entityId}
             fallbackPosition={fallback}
             // In TURN_BASED we gate moves on whose turn it is. In FREE_ROAM

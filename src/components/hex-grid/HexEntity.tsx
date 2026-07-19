@@ -17,8 +17,11 @@ import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Race } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useThree } from '@react-three/fiber';
-import { Suspense, useEffect, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
+import { ClassCharacterModel } from './ClassCharacterModel';
+import { resolveClassCharacterModelUrl } from './classCharacterModels';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 
@@ -44,6 +47,13 @@ export interface HexEntityProps {
   isDead?: boolean;
   /** Whether the entity is outside LoS (v1alpha2). Render at last-known position with ghost shader (semi-transparent, desaturated). */
   isGhost?: boolean;
+  /** v1alpha2 CharacterData.class_ref.id — resolves a class GLB for player
+   * entities (rpg-dnd5e-web#501). Unmapped/undefined falls back to
+   * MediumHumanoid, unchanged (the #479 boundary lineage). */
+  classRefId?: string;
+  /** True for a CHARACTER entity carrying the "unconscious" condition —
+   * swaps to the class's downed GLB variant (rpg-dnd5e-web#501). */
+  isDowned?: boolean;
 }
 
 // Visual state colors
@@ -187,9 +197,23 @@ export function HexEntity({
   facialHairStyle,
   isDead = false,
   isGhost = false,
+  classRefId,
+  isDowned = false,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const { invalidate } = useThree();
+
+  // Tracks a class-model GLB url that failed to load (ErrorBoundary caught
+  // a terminal load error), so the downed-tilt check below can still fire
+  // once we've fallen back to MediumHumanoid — otherwise a downed player
+  // whose class GLB happens to be missing/broken would render upright
+  // (rpg-dnd5e-web#502 gate note). Compared against the *current*
+  // classModelUrl each render rather than a bare boolean so a later class/
+  // asset change (new classRefId, or the file becoming available again)
+  // isn't permanently masked by a stale failure from a different url.
+  const [failedClassModelUrl, setFailedClassModelUrl] = useState<
+    string | undefined
+  >(undefined);
 
   // R3F runs the canvas in frameloop="demand" mode (HexGrid.tsx). When only
   // the ghost flag changes (entity stays at last_known position), no other
@@ -270,37 +294,90 @@ export function HexEntity({
       : resolveWeaponType(character, 'offHand');
     const shield = isTwoHanded ? undefined : resolveShield(character);
 
+    // rpg-dnd5e-web#501: monsters stay on MediumHumanoid this slice (scope
+    // decision — goblin/WarChief GLBs exist but monster classRef mapping is
+    // a different shape). Unmapped class / missing classRefId also falls
+    // through to undefined here, which is exactly the MediumHumanoid
+    // fallback signal below (the #479 boundary lineage: a data gap
+    // degrades to the known-working placeholder, never a broken model ref).
+    const classModelUrl =
+      type === 'player'
+        ? resolveClassCharacterModelUrl(classRefId, isDowned)
+        : undefined;
+    // undefined once classModelUrl itself is undefined, or once THIS url
+    // has failed to load — never stuck failed against a different url.
+    const effectiveClassModelUrl =
+      classModelUrl && classModelUrl !== failedClassModelUrl
+        ? classModelUrl
+        : undefined;
+
+    // Shared fallback element — used both as the "no class model" branch
+    // and as the ErrorBoundary fallback when a mapped class model exists
+    // but its GLB fails to load (missing/unsynced asset, bad file, etc.).
+    // Suspense only covers the pending-load state; a terminal load failure
+    // throws past it (same reasoning as HexGrid's Synty floor/wall
+    // ErrorBoundary wrapping) and would otherwise unmount this entity's
+    // whole Canvas tree instead of degrading to the known-working
+    // placeholder (the #479 boundary lineage).
+    const mediumHumanoidElement = (
+      <MediumHumanoid
+        color={color}
+        isSelected={!isDead && isSelected}
+        variant={type === 'monster' ? 'goblin' : 'human'}
+        headVariant={headVariant}
+        facingRotation={type === 'player' ? Math.PI : 0}
+        race={characterRace}
+        characterClass={characterClass}
+        monsterType={monsterType}
+        skinTone={isDead ? '#555' : skinTone}
+        primaryColor={isDead ? '#444' : primaryColor}
+        secondaryColor={isDead ? '#333' : secondaryColor}
+        hairStyle={hairStyle}
+        hairColor={isDead ? '#333' : hairColor}
+        facialHairStyle={facialHairStyle}
+        mainHandWeapon={mainHandWeapon}
+        offHandWeapon={offHandWeapon}
+        shield={shield}
+        showOutline={!isDead}
+        ghostAmount={isGhost ? 1.0 : 0.0}
+      />
+    );
+
     return (
       <group
         position={[worldPos.x, CHARACTER_Y_OFFSET, worldPos.z]}
         {...interactionProps}
       >
-        {/* Dead entities rendered with tilt; ghost entities rendered with ghost shader */}
-        <group rotation={isDead ? [0, 0, Math.PI / 3] : [0, 0, 0]}>
+        {/* Dead/downed entities rendered with tilt when using the
+            MediumHumanoid fallback (no separate collapsed pose asset);
+            the class model's own downed GLB variant is already posed for
+            it, so no extra tilt there. Ghost entities rendered with ghost
+            shader/opacity either way. */}
+        <group
+          rotation={
+            isDead || (isDowned && !effectiveClassModelUrl)
+              ? [0, 0, Math.PI / 3]
+              : [0, 0, 0]
+          }
+        >
           <Suspense
             fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
           >
-            <MediumHumanoid
-              color={color}
-              isSelected={!isDead && isSelected}
-              variant={type === 'monster' ? 'goblin' : 'human'}
-              headVariant={headVariant}
-              facingRotation={type === 'player' ? Math.PI : 0}
-              race={characterRace}
-              characterClass={characterClass}
-              monsterType={monsterType}
-              skinTone={isDead ? '#555' : skinTone}
-              primaryColor={isDead ? '#444' : primaryColor}
-              secondaryColor={isDead ? '#333' : secondaryColor}
-              hairStyle={hairStyle}
-              hairColor={isDead ? '#333' : hairColor}
-              facialHairStyle={facialHairStyle}
-              mainHandWeapon={mainHandWeapon}
-              offHandWeapon={offHandWeapon}
-              shield={shield}
-              showOutline={!isDead}
-              ghostAmount={isGhost ? 1.0 : 0.0}
-            />
+            {effectiveClassModelUrl ? (
+              <ErrorBoundary
+                fallback={mediumHumanoidElement}
+                onError={() => setFailedClassModelUrl(effectiveClassModelUrl)}
+              >
+                <ClassCharacterModel
+                  url={effectiveClassModelUrl}
+                  isSelected={!isDead && isSelected}
+                  isGhost={isGhost}
+                  facingRotation={Math.PI}
+                />
+              </ErrorBoundary>
+            ) : (
+              mediumHumanoidElement
+            )}
           </Suspense>
         </group>
       </group>

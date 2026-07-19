@@ -55,6 +55,12 @@ export interface HexGridProps {
     isDead?: boolean;
     /** True when entity is outside LoS (v1alpha2 ghost). Render at last-known position with ghost visuals. */
     isGhost?: boolean;
+    /** v1alpha2 CharacterData.class_ref.id — drives class-model selection
+     * for player entities (rpg-dnd5e-web#501). */
+    classRefId?: string;
+    /** True for a CHARACTER entity carrying the "unconscious" condition —
+     * the downed class-model swap (rpg-dnd5e-web#501). */
+    isDowned?: boolean;
   }>;
   selectedEntityId?: string;
   onHexClick?: (coord: { x: number; y: number; z: number }) => void;
@@ -616,6 +622,8 @@ function Scene({
           monster={monsterMap.get(entity.entityId)}
           isDead={entity.isDead}
           isGhost={entity.isGhost}
+          classRefId={entity.classRefId}
+          isDowned={entity.isDowned}
         />
       ))}
 

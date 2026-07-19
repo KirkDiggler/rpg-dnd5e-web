@@ -555,6 +555,7 @@ export function EncounterView({
           revealedHexes={encounterState.state.revealedHexes}
           walls={encounterState.state.walls}
           entityHP={encounterState.state.entityHP}
+          entityStatuses={encounterState.state.entityStatuses}
           // Gate by mode: applyModeChanged only flips `mode`, it doesn't
           // clear initiativeOrder/activeEntityId (only the next snapshot's
           // applySnapshotTurnState does that) — without this gate a

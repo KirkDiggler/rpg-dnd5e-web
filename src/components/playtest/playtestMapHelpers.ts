@@ -13,7 +13,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
-import type { EntityMeta } from '../../hooks/useEncounterState';
+import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 
 /**
  * Render shape consumed by HexGrid for each entity on the map.
@@ -26,6 +26,23 @@ export interface RenderableEntity {
   type: 'player' | 'monster' | 'obstacle';
   isDead?: boolean;
   isGhost?: boolean;
+  /** v1alpha2 CharacterData.class_ref.id (e.g. "rogue"), from entityMeta —
+   * rpg-dnd5e-web#501 class-model hookup. Undefined for monsters/obstacles
+   * or when the server hasn't set a class ref. */
+  classRefId?: string;
+  /** True for CHARACTER entities carrying the "unconscious" condition
+   * (rpg-dnd5e-web#501) — the honest downed signal for players, matching
+   * entityHelpers.ts's established "only monsters die at 0 HP, characters
+   * go unconscious instead" split. Distinct from `isDead` (monster-only,
+   * computed from HP<=0 below) — a downed player isn't dead. */
+  isDowned?: boolean;
+}
+
+/** Checks for a status whose source ref id is "unconscious" — the only
+ * field this needs is `source.id` (see EntityStatus's own doc comment for
+ * the full `{module, type: "condition", id}` ref shape). */
+function hasUnconsciousStatus(statuses: EntityStatus[] | undefined): boolean {
+  return statuses?.some((s) => s.source.id === 'unconscious') ?? false;
 }
 
 /**
@@ -86,12 +103,18 @@ export function entityTypeToDisplay(
 /**
  * Build the RenderableEntity[] HexGrid consumes from the playtest's
  * v2-shaped state. Joins entities (position + ghost flag) with entityMeta
- * (type + monsterRefId) and entityHP (death state).
+ * (type + monsterRefId + classRefId) and entityHP (death state).
+ *
+ * `entityStatuses` defaults to empty (optional, not required) so existing
+ * callers/tests that don't track conditions keep compiling — an empty
+ * statuses map is a legitimate real state (isDowned simply stays false),
+ * not a stand-in for a required argument callers must now all supply.
  */
 export function buildRenderableEntities(
   entities: Map<string, EntityState & { ghost?: boolean }>,
   entityMeta: Map<string, EntityMeta>,
-  entityHP: Map<string, { current: number; max: number }>
+  entityHP: Map<string, { current: number; max: number }>,
+  entityStatuses: Map<string, EntityStatus[]> | undefined = new Map()
 ): RenderableEntity[] {
   const result: RenderableEntity[] = [];
   for (const [id, entity] of entities.entries()) {
@@ -102,6 +125,9 @@ export function buildRenderableEntities(
     // Matches isDead semantics from utils/entityHelpers.ts.
     const isDead =
       meta?.type === EntityType.MONSTER && hp ? hp.current <= 0 : false;
+    const isDowned =
+      meta?.type === EntityType.CHARACTER &&
+      hasUnconsciousStatus(entityStatuses.get(id));
     const displayName = meta?.monsterRefId
       ? `${id} (${meta.monsterRefId})`
       : id;
@@ -116,6 +142,8 @@ export function buildRenderableEntities(
       type: entityTypeToDisplay(meta?.type),
       isDead,
       isGhost: entity.ghost === true,
+      classRefId: meta?.classRefId,
+      isDowned,
     });
   }
   return result;

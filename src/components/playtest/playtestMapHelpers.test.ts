@@ -11,7 +11,7 @@
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
-import type { EntityMeta } from '../../hooks/useEncounterState';
+import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import {
   buildRenderableEntities,
   buildTurnOrderCombatState,
@@ -166,6 +166,62 @@ describe('buildRenderableEntities', () => {
     const list = buildRenderableEntities(entities, meta, hp);
     expect(list.find((e) => e.entityId === 'char-alice')?.isDead).toBe(false);
     expect(list.find((e) => e.entityId === 'goblin-1')?.isDead).toBe(true);
+  });
+
+  function makeUnconsciousStatus(): EntityStatus {
+    return {
+      source: { module: 'dnd5e', type: 'condition', id: 'unconscious' },
+      displayName: 'Unconscious',
+    };
+  }
+
+  it('marks a CHARACTER entity downed when it carries the unconscious status (rpg-dnd5e-web#501)', () => {
+    const entities = new Map([
+      ['char-alice', makeEntityState('char-alice', { x: 0, y: 0, z: 0 })],
+    ]);
+    const meta = new Map<string, EntityMeta>([
+      ['char-alice', { type: EntityType.CHARACTER, monsterRefId: undefined }],
+    ]);
+    const statuses = new Map<string, EntityStatus[]>([
+      ['char-alice', [makeUnconsciousStatus()]],
+    ]);
+
+    const list = buildRenderableEntities(entities, meta, new Map(), statuses);
+    expect(list[0]?.isDowned).toBe(true);
+  });
+
+  it('never marks a MONSTER entity downed, even with the unconscious status (CHARACTER-only guard)', () => {
+    const entities = new Map([
+      ['goblin-1', makeEntityState('goblin-1', { x: 1, y: -1, z: 0 })],
+    ]);
+    const meta = new Map<string, EntityMeta>([
+      ['goblin-1', { type: EntityType.MONSTER, monsterRefId: 'goblin' }],
+    ]);
+    const statuses = new Map<string, EntityStatus[]>([
+      ['goblin-1', [makeUnconsciousStatus()]],
+    ]);
+
+    const list = buildRenderableEntities(entities, meta, new Map(), statuses);
+    expect(list[0]?.isDowned).toBe(false);
+  });
+
+  it('passes classRefId through from entityMeta to the renderable entity', () => {
+    const entities = new Map([
+      ['char-bob', makeEntityState('char-bob', { x: 1, y: -1, z: 0 })],
+    ]);
+    const meta = new Map<string, EntityMeta>([
+      [
+        'char-bob',
+        {
+          type: EntityType.CHARACTER,
+          monsterRefId: undefined,
+          classRefId: 'barbarian',
+        },
+      ],
+    ]);
+
+    const list = buildRenderableEntities(entities, meta, new Map());
+    expect(list[0]?.classRefId).toBe('barbarian');
   });
 
   it('propagates ghost flag from EntityDisappeared (entity outside LoS)', () => {
