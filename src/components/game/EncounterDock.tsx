@@ -246,6 +246,7 @@ export function EncounterDock({
         />
         <div>
           <button
+            type="button"
             onClick={onEndTurn}
             disabled={endTurnDisabled}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
