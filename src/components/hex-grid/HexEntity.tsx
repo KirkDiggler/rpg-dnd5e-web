@@ -17,7 +17,7 @@ import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1a
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import { Race } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useThree } from '@react-three/fiber';
-import { Suspense, useEffect, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { ClassCharacterModel } from './ClassCharacterModel';
@@ -203,6 +203,18 @@ export function HexEntity({
   const meshRef = useRef<THREE.Mesh>(null);
   const { invalidate } = useThree();
 
+  // Tracks a class-model GLB url that failed to load (ErrorBoundary caught
+  // a terminal load error), so the downed-tilt check below can still fire
+  // once we've fallen back to MediumHumanoid — otherwise a downed player
+  // whose class GLB happens to be missing/broken would render upright
+  // (rpg-dnd5e-web#502 gate note). Compared against the *current*
+  // classModelUrl each render rather than a bare boolean so a later class/
+  // asset change (new classRefId, or the file becoming available again)
+  // isn't permanently masked by a stale failure from a different url.
+  const [failedClassModelUrl, setFailedClassModelUrl] = useState<
+    string | undefined
+  >(undefined);
+
   // R3F runs the canvas in frameloop="demand" mode (HexGrid.tsx). When only
   // the ghost flag changes (entity stays at last_known position), no other
   // prop change triggers a re-render request — the new shader material won't
@@ -292,6 +304,12 @@ export function HexEntity({
       type === 'player'
         ? resolveClassCharacterModelUrl(classRefId, isDowned)
         : undefined;
+    // undefined once classModelUrl itself is undefined, or once THIS url
+    // has failed to load — never stuck failed against a different url.
+    const effectiveClassModelUrl =
+      classModelUrl && classModelUrl !== failedClassModelUrl
+        ? classModelUrl
+        : undefined;
 
     // Shared fallback element — used both as the "no class model" branch
     // and as the ErrorBoundary fallback when a mapped class model exists
@@ -337,7 +355,7 @@ export function HexEntity({
             shader/opacity either way. */}
         <group
           rotation={
-            isDead || (isDowned && !classModelUrl)
+            isDead || (isDowned && !effectiveClassModelUrl)
               ? [0, 0, Math.PI / 3]
               : [0, 0, 0]
           }
@@ -345,10 +363,13 @@ export function HexEntity({
           <Suspense
             fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
           >
-            {classModelUrl ? (
-              <ErrorBoundary fallback={mediumHumanoidElement}>
+            {effectiveClassModelUrl ? (
+              <ErrorBoundary
+                fallback={mediumHumanoidElement}
+                onError={() => setFailedClassModelUrl(effectiveClassModelUrl)}
+              >
                 <ClassCharacterModel
-                  url={classModelUrl}
+                  url={effectiveClassModelUrl}
                   isSelected={!isDead && isSelected}
                   isGhost={isGhost}
                   facingRotation={Math.PI}
