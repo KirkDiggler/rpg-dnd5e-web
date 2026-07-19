@@ -74,7 +74,14 @@ export interface EncounterDockProps {
   combatLogEntries: CombatLogEntry[];
 }
 
-const DOCK_HEIGHT = 224;
+// Copilot review #493: CombatLog's own header (~25px) plus its internal
+// scroll region's maxHeight:200 (CombatLog.tsx) sum to ~237px, more than
+// the ~204px of content height the original DOCK_HEIGHT(224) - padding
+// left for it — long logs could spill past the dock into the map. Sized
+// up so CombatLog's natural height fits without needing to clip it, plus
+// `overflow: hidden` below as a hard guarantee against any future column
+// growing taller than its row (e.g. a very long class-name wrap).
+const DOCK_HEIGHT = 260;
 
 export function EncounterDock({
   name,
@@ -115,6 +122,7 @@ export function EncounterDock({
         background: 'var(--bg-secondary, #1a1a1a)',
         borderTop: '2px solid var(--border-primary, #333)',
         boxShadow: '0 -8px 25px -5px rgba(0, 0, 0, 0.3)',
+        overflow: 'hidden',
       }}
     >
       {/* Left: identity / status block */}
@@ -218,10 +226,19 @@ export function EncounterDock({
         </div>
       </div>
 
-      {/* Right: combat log */}
+      {/* Right: combat log. height:'100%' + overflow:'hidden' clips
+          CombatLog to the row's actual height regardless of its own
+          content — it already scrolls internally (CombatLog.tsx's
+          overflowY:'auto' region), so this only affects how many lines
+          are visible before scrolling, never spill past the dock. */}
       <div
         data-testid="encounter-dock-log"
-        style={{ width: 320, flexShrink: 0, minHeight: 0 }}
+        style={{
+          width: 320,
+          flexShrink: 0,
+          height: '100%',
+          overflow: 'hidden',
+        }}
       >
         <CombatLog entries={combatLogEntries} />
       </div>

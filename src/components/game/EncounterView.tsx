@@ -576,6 +576,22 @@ export function EncounterView({
               ? isMyTurn
               : true
           }
+          // rpg-dnd5e-web#486: EncounterMap's movementRemaining fell back to
+          // its own DEFAULT_MOVEMENT_FEET=30 in TURN_BASED — a fabricated
+          // client-side budget, the combat sibling of the free-roam one
+          // #485 killed. EconomyBar already reads economy.movementRemaining
+          // verbatim (in the dock below); thread the same server value into
+          // the map's path-preview range instead of a made-up constant.
+          // `?? 0` while turnState hasn't arrived yet is more honest than
+          // falling back to a fake 30ft that doesn't exist server-side.
+          // FREE_ROAM stays unbounded regardless — HexGrid's own
+          // effectiveMovementRemaining override (#485) ignores this prop
+          // entirely outside TURN_BASED.
+          movementRemaining={
+            encounterState.state.mode === EncounterMode.TURN_BASED
+              ? (economy?.movementRemaining ?? 0)
+              : undefined
+          }
           openDoorIds={Array.from(encounterState.state.openDoors)}
           onMove={(path) => void handleVisualMove(path)}
           onEntityClick={handleVisualEntityClick}
