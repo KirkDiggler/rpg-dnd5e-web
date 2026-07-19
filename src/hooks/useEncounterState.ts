@@ -63,6 +63,18 @@ export interface EntityMeta {
    * Undefined for non-monster entities.
    */
   monsterRefId?: string;
+  /**
+   * Entity.display_name, verbatim off the wire — every entity carries one,
+   * not just characters. Optional only because callers that predate this
+   * field (tests) may omit it; production call sites always pass it.
+   */
+  displayName?: string;
+  /**
+   * For CHARACTER entities: CharacterData.class_ref.id (e.g. "fighter").
+   * Undefined for non-character entities or when the server hasn't set a
+   * class ref.
+   */
+  classRefId?: string;
 }
 
 /** v1alpha2 condition tag, populated from StatusApplied.status. */
@@ -378,6 +390,8 @@ export function applyEntityAppearedBatch(
     initialHP: { current: number; max: number } | undefined;
     initialAC: number | undefined;
     statusEffects?: StatusEffect[];
+    displayName?: string;
+    classRefId?: string;
   }>
 ): LocalEncounterState {
   if (entries.length === 0) return prev;
@@ -396,9 +410,16 @@ export function applyEntityAppearedBatch(
     initialHP,
     initialAC,
     statusEffects,
+    displayName,
+    classRefId,
   } of entries) {
     newEntities.set(entity.entityId, { ...entity, ghost: false });
-    newMeta.set(entity.entityId, { type, monsterRefId });
+    newMeta.set(entity.entityId, {
+      type,
+      monsterRefId,
+      displayName,
+      classRefId,
+    });
     if (initialHP !== undefined) {
       newHP.set(entity.entityId, {
         current: initialHP.current,
@@ -450,10 +471,12 @@ export function applyEntityMetaFromAppeared(
   type: EntityType,
   monsterRefId: string | undefined,
   initialHP: { current: number; max: number } | undefined,
-  initialAC: number | undefined
+  initialAC: number | undefined,
+  displayName?: string,
+  classRefId?: string
 ): LocalEncounterState {
   const newMeta = new Map(prev.entityMeta);
-  newMeta.set(entityId, { type, monsterRefId });
+  newMeta.set(entityId, { type, monsterRefId, displayName, classRefId });
 
   const hasHP = initialHP !== undefined;
   const hasAC = initialAC !== undefined && initialAC !== 0;
@@ -916,7 +939,9 @@ export interface UseEncounterStateResult {
     type: EntityType,
     monsterRefId: string | undefined,
     initialHP: { current: number; max: number } | undefined,
-    initialAC: number | undefined
+    initialAC: number | undefined,
+    displayName?: string,
+    classRefId?: string
   ) => void;
   /**
    * Apply a batch of entity appearances in a single state update to avoid N
@@ -934,6 +959,8 @@ export interface UseEncounterStateResult {
       initialHP: { current: number; max: number } | undefined;
       initialAC: number | undefined;
       statusEffects?: StatusEffect[];
+      displayName?: string;
+      classRefId?: string;
     }>
   ) => void;
   /**
@@ -1058,7 +1085,9 @@ export function useEncounterState(): UseEncounterStateResult {
       type: EntityType,
       monsterRefId: string | undefined,
       initialHP: { current: number; max: number } | undefined,
-      initialAC: number | undefined
+      initialAC: number | undefined,
+      displayName?: string,
+      classRefId?: string
     ) => {
       setState((prev) =>
         applyEntityMetaFromAppeared(
@@ -1067,7 +1096,9 @@ export function useEncounterState(): UseEncounterStateResult {
           type,
           monsterRefId,
           initialHP,
-          initialAC
+          initialAC,
+          displayName,
+          classRefId
         )
       );
     },
