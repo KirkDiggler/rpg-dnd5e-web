@@ -49,6 +49,7 @@ vi.mock('./EncounterMap', () => ({
     initiativeOrder: string[];
     activeEntityId: string;
     myEntityId: string;
+    openDoorIds?: string[];
     onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
     onEntityClick: (entityId: string) => void;
   }) => (
@@ -57,6 +58,7 @@ vi.mock('./EncounterMap', () => ({
       data-initiative-order={props.initiativeOrder.join(',')}
       data-active-entity-id={props.activeEntityId}
       data-my-entity-id={props.myEntityId}
+      data-open-door-ids={(props.openDoorIds ?? []).join(',')}
     >
       <button
         data-testid="stub-move"
@@ -442,7 +444,7 @@ describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#43
     ).toContain('char-carol');
   });
 
-  it('tracks a DoorOpened door id in state without throwing (state-only — no rendering surface yet)', async () => {
+  it('tracks a DoorOpened door id in state.openDoors, verified via EncounterMap.openDoorIds (Copilot review #474)', async () => {
     render(
       <EncounterView
         encounterId="enc-1"
@@ -451,6 +453,15 @@ describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#43
         onBack={() => {}}
       />
     );
+
+    // Before the event: openDoorIds is empty, same testid/attribute other
+    // wiring tests in this file already use to observe state passed
+    // through to EncounterMap (data-active-entity-id, data-my-entity-id).
+    expect(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-open-door-ids')
+    ).toBe('');
 
     await act(async () => {
       hoisted.fakeRef.current?.push(
@@ -464,9 +475,14 @@ describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#43
       await Promise.resolve();
     });
 
-    // No dedicated door-open UI exists yet (see this file's top comment) —
-    // this test only guards that the callback is wired and doesn't crash
-    // the view, matching the state-only scope of this slice.
-    expect(screen.getByTestId('encounter-view')).toBeTruthy();
+    // The door id is actually present in state.openDoors (via
+    // applyDoorOpened), not just "the view didn't crash" — EncounterMap
+    // receives it as a real prop and exposes it on its own DOM, the same
+    // way EncounterMap surfaces every other piece of wired-through state.
+    expect(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-open-door-ids')
+    ).toBe('door-1');
   });
 });

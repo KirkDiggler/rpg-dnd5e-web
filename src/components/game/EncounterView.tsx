@@ -21,8 +21,10 @@
  * gap PlaytestMap has — see docs/architecture/components/playtest-harness.md
  * "Known limitations"), and devseed's single-room fixture has no door to
  * exercise it against. onDoorOpened IS wired below (rpg-dnd5e-web#432
- * harness-parity) — state-only, tracking `doorsOpen` for whenever the
- * rendering side catches up; it doesn't unblock click-to-open on its own.
+ * harness-parity) — tracking `state.openDoors`, threaded through to
+ * EncounterMap's `openDoorIds` prop (exposed on its DOM, not yet consumed
+ * by rendering) for whenever the rendering side catches up; it doesn't
+ * unblock click-to-open on its own.
  */
 
 import { create } from '@bufbuild/protobuf';
@@ -500,6 +502,7 @@ export function EncounterView({
               ? isMyTurn
               : true
           }
+          openDoorIds={Array.from(encounterState.state.openDoors)}
           onMove={(path) => void handleVisualMove(path)}
           onEntityClick={handleVisualEntityClick}
         />

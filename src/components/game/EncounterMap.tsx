@@ -46,6 +46,15 @@ export interface EncounterMapProps {
   isMyTurn: boolean;
   /** Movement budget for the path-preview overlay only — the server enforces the real budget. */
   movementRemaining?: number;
+  /**
+   * Open door entity ids (state.openDoors from useEncounterState, via
+   * applyDoorOpened — rpg-dnd5e-web#432 harness-parity). Accepted and
+   * exposed on this component's DOM (`data-open-door-ids`) so the real
+   * data flow is observable end-to-end; not yet consumed by HexGrid's
+   * rendering — that needs a v2-shaped DoorInfo[] the stream doesn't
+   * accumulate today (see EncounterView.tsx's doc comment).
+   */
+  openDoorIds?: string[];
   /** Full computed path (start + intermediates + end) when a hex click lands a move. */
   onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
   /** Clicked entity id — caller dispatches attack for monsters or selects for characters. */
@@ -66,6 +75,7 @@ export function EncounterMap({
   myEntityId,
   isMyTurn,
   movementRemaining = DEFAULT_MOVEMENT_FEET,
+  openDoorIds = [],
   onMove,
   onEntityClick,
 }: EncounterMapProps) {
@@ -95,6 +105,7 @@ export function EncounterMap({
   return (
     <div
       data-testid="encounter-map"
+      data-open-door-ids={openDoorIds.join(',')}
       style={{
         position: 'relative',
         width: '100%',
