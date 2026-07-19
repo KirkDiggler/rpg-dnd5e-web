@@ -94,13 +94,27 @@ export function ClassCharacterModel({
       originalMaterials.forEach((mat, mesh) => {
         mesh.material = mat;
       });
-      return;
+      // Nothing tinted this run — no-op cleanup, matching the branch below.
+      return () => {};
     }
+    // Track every clone THIS run creates so the cleanup below can dispose
+    // exactly those (never the shared `originalMaterials`, which are the
+    // same instances the cached GLTF scene's other live instances use —
+    // disposing those would break every other on-screen copy of this
+    // class model). React runs this cleanup both before the next run of
+    // this effect (toggle-to-toggle, or toggle-to-restore above) and on
+    // unmount, so one cleanup covers "stop being tinted", "re-tint with a
+    // different flag", and "entity disappears while highlighted" without
+    // three separate disposal call sites (Copilot review on #509 flagged
+    // all three as GPU-resource leaks — cloned materials were never
+    // disposed in any of them).
+    const created: THREE.Material[] = [];
     originalMaterials.forEach((mat, mesh) => {
       const wasArray = Array.isArray(mat);
       const materials = wasArray ? mat : [mat];
       const tinted = materials.map((m) => {
         const tintedMat = m.clone();
+        created.push(tintedMat);
         // emissive/emissiveIntensity are Standard/Physical-material-only;
         // transparent/opacity are on the THREE.Material base and safe for
         // any material type a GLB might legally use.
@@ -116,6 +130,9 @@ export function ClassCharacterModel({
       });
       mesh.material = wasArray ? tinted : tinted[0]!;
     });
+    return () => {
+      created.forEach((mat) => mat.dispose());
+    };
   }, [originalMaterials, isSelected, isGhost]);
 
   // Play the resolved idle clip on loop (resolveIdleClipName — prefers an
