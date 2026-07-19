@@ -22,12 +22,15 @@
  * *different* Wall entry) does — a piece renders on every edge of every
  * wall hex that faces a NON-wall neighbor.
  *
- * Piece selection is intentionally minimal for this slice: ONE default
- * piece per WallKind (SOLID/UNSPECIFIED/WINDOW → wall segment,
- * DOOR_CLOSED/DOOR_OPEN → door + frame), matching ShadedHexWall's
- * `getKindColor` switch. Piece VARIETY (broken/alcove/archway walls,
- * multiple door styles) needs the piece→semantic-role manifest proposed on
- * rpg-dnd5e-web#469, which doesn't exist yet — out of scope here.
+ * Piece selection: doors stay minimal for this slice — ONE default piece
+ * per door WallKind (DOOR_CLOSED/DOOR_OPEN → door + frame), matching
+ * ShadedHexWall's `getKindColor` switch; door variety is wave 2 (per
+ * rpg-game-assets#2's manifest, door-open reuses the door-closed GLBs via
+ * a render-time rotation, not a second model, so "wave 2" is genuinely
+ * about wiring door STATE to this role, not sourcing new assets). Wall
+ * segments (SOLID/UNSPECIFIED/WINDOW) get deterministic-per-edge variety
+ * (plain/broken/alcove) from rpg-game-assets#2's piece→semantic-role
+ * manifest — see syntyHexWallHelpers.ts's WALL_VARIANTS/selectWallVariant.
  */
 
 import { SYNTY_SCALE, WALL_HEIGHT } from '@/rendering/calibrationConstants';
@@ -35,24 +38,21 @@ import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2
 import { useGLTF } from '@react-three/drei';
 import { Suspense, useMemo } from 'react';
 import type { WorldPos } from './hexMath';
-import { buildDungeonWallSegments, edgePieceKind } from './syntyHexWallHelpers';
+import {
+  buildDungeonWallSegments,
+  edgePieceKind,
+  selectWallVariant,
+  wallVariantScale,
+} from './syntyHexWallHelpers';
 
 const ENV_BASE = '/models/synty/env/';
 
-// Raw (scale=1) local-space bounding sizes measured directly off the GLBs
+// Raw (scale=1) local-space bounding size measured directly off the GLB
 // (see rpg-dnd5e-web#472's PR description for the inspection script/output).
-// Local X = width, Y = height, Z = thickness/depth.
-const WALL_HALF_RAW_WIDTH = 2.672; // SM_Env_Wall_Half_01
-const WALL_HALF_RAW_HEIGHT = 5.102;
+// Local X = width, Y = height, Z = thickness/depth. Wall pieces now source
+// their own per-variant raw dimensions from WALL_VARIANTS instead of a
+// single hardcoded pair (rpg-game-assets#2 wall-variety slice).
 const DOOR_FRAME_RAW_WIDTH = 1.999; // SM_Env_Door_Frame_01 (pivot centered)
-
-// Non-uniform wall calibration: squeeze width to exactly one hex edge,
-// scale height to match the game's wall height, thickness at SYNTY_SCALE.
-const WALL_SCALE: [number, number, number] = [
-  1.0 / WALL_HALF_RAW_WIDTH,
-  WALL_HEIGHT / WALL_HALF_RAW_HEIGHT,
-  SYNTY_SCALE,
-];
 
 // Door frame: squeeze width to the edge like the wall, but keep
 // height/depth at SYNTY_SCALE — a human-scale feature, not clamped to the
@@ -106,32 +106,41 @@ export function SyntyHexWall({ walls, hexSize }: SyntyHexWallProps) {
 
   return (
     <Suspense fallback={null}>
-      {segments.map(({ key, edge, kind }) =>
-        edgePieceKind(kind) === 'door' ? (
-          <group key={key}>
-            <GlbInstance
-              file="SM_Env_Door_Frame_01.glb"
-              position={edge.mid}
-              rotationY={edge.rotationY}
-              scale={DOOR_FRAME_SCALE}
-            />
-            <GlbInstance
-              file="SM_Env_Door_01.glb"
-              position={edge.a}
-              rotationY={edge.rotationY}
-              scale={DOOR_SCALE}
-            />
-          </group>
-        ) : (
+      {segments.map(({ key, edge, kind }) => {
+        if (edgePieceKind(kind) === 'door') {
+          return (
+            <group key={key}>
+              <GlbInstance
+                file="SM_Env_Door_Frame_01.glb"
+                position={edge.mid}
+                rotationY={edge.rotationY}
+                scale={DOOR_FRAME_SCALE}
+              />
+              <GlbInstance
+                file="SM_Env_Door_01.glb"
+                position={edge.a}
+                rotationY={edge.rotationY}
+                scale={DOOR_SCALE}
+              />
+            </group>
+          );
+        }
+        // Deterministic per-edge variant (rpg-game-assets#2): `key` is a
+        // stable function of the two hex coordinates this edge sits
+        // between (buildDungeonWallSegments), so the same wall always
+        // picks the same plain/broken/alcove piece across renders,
+        // reconnects, and remounts — never a per-render reshuffle.
+        const variant = selectWallVariant(key);
+        return (
           <GlbInstance
             key={key}
-            file="SM_Env_Wall_Half_01.glb"
+            file={variant.file}
             position={edge.a}
             rotationY={edge.rotationY}
-            scale={WALL_SCALE}
+            scale={wallVariantScale(variant, WALL_HEIGHT, SYNTY_SCALE)}
           />
-        )
-      )}
+        );
+      })}
     </Suspense>
   );
 }
