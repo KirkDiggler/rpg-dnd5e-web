@@ -1,6 +1,4 @@
 /* Main CSS file - imports Tailwind and theme system will handle the rest */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
 /* Themes are loaded dynamically by the theme system */
