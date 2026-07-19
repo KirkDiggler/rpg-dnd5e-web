@@ -161,6 +161,17 @@ export function PlaytestMap({
     []
   );
 
+  // Real-dungeon-rendering dev flag (rpg-dnd5e-web#432 harness-parity),
+  // opted in via `&syntyDungeon=1` — same flag EncounterMap reads on the
+  // game route. Independent of showSynty/showSyntyRoom above: this renders
+  // Synty pieces from the REAL wall data flowing through HexGrid's own
+  // `walls` prop, not the demo's fixed synthetic room.
+  const syntyDungeon = useMemo(
+    () =>
+      new URLSearchParams(window.location.search).get('syntyDungeon') === '1',
+    []
+  );
+
   // HexGrid expects an optional `combatState` to derive the active actor;
   // we don't have a v1alpha1 CombatState in the playtest, so pass null and
   // let `currentEntityId` drive path-preview origin instead.
@@ -186,6 +197,7 @@ export function PlaytestMap({
         movementRemaining={movementRemaining}
         isPlayerTurn={isMyTurn}
         combatState={null}
+        syntyDungeon={syntyDungeon}
         onMoveComplete={(path: CubeCoord[]) => {
           // HexGrid hands back the full cube-coord path it computed via
           // useHexInteraction's findPath. Forward as plain {x,y,z}; the

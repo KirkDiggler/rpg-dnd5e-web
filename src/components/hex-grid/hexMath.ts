@@ -340,3 +340,82 @@ export function getHexLine(start: CubeCoord, end: CubeCoord): CubeCoord[] {
 
   return hexes;
 }
+
+/**
+ * The 6 corners of a pointy-top hex centered at `center`, matching
+ * ShadedHexFloor's shape construction (angle = 30 + 60*i degrees). Order
+ * matches hexEdgeBetween's corner-pair search below.
+ */
+export function hexCorners(center: WorldPos, size: number): WorldPos[] {
+  return Array.from({ length: 6 }, (_, i) => {
+    const angle = ((30 + 60 * i) * Math.PI) / 180;
+    return {
+      x: center.x + size * Math.cos(angle),
+      z: center.z - size * Math.sin(angle),
+    };
+  });
+}
+
+/** The geometry of the shared edge between two adjacent hexes: the two
+ * corner endpoints, their midpoint, and the Y rotation that lines a piece's
+ * local +X (its width axis) up with the edge direction a→b. */
+export interface HexEdge {
+  a: WorldPos;
+  b: WorldPos;
+  mid: WorldPos;
+  rotationY: number;
+}
+
+/**
+ * Find the geometry of the edge shared by two ADJACENT hexes (hexDistance
+ * must be 1 — callers get this for free from getHexLine's consecutive
+ * pairs, which are always adjacent by construction).
+ *
+ * Extracted from SyntyRoomDemo.tsx's `computeBorderEdges` (rpg-dnd5e-web#472),
+ * generalized from "iterate a fixed room's border hexes" to "take an
+ * arbitrary adjacent pair" per rpg-dnd5e-web#432's harness-parity gate —
+ * the same generalization that lets EncounterMap/HexGrid place edge-aligned
+ * Synty pieces along a real server `Wall`'s getHexLine-decomposed segments,
+ * not just the demo's hardcoded room.
+ *
+ * The edge is found geometrically (nearest corner-pair to the two hexes'
+ * shared-edge midpoint) rather than a hand-derived direction→corner-index
+ * table, so it stays correct regardless of hex orientation conventions.
+ */
+export function hexEdgeBetween(
+  hexA: CubeCoord,
+  hexB: CubeCoord,
+  hexSize: number
+): HexEdge {
+  const worldA = cubeToWorld(hexA, hexSize);
+  const worldB = cubeToWorld(hexB, hexSize);
+  const corners = hexCorners(worldA, hexSize);
+  const mid: WorldPos = {
+    x: (worldA.x + worldB.x) / 2,
+    z: (worldA.z + worldB.z) / 2,
+  };
+
+  let bestIndex = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < 6; i++) {
+    const c1 = corners[i];
+    const c2 = corners[(i + 1) % 6];
+    const cornerMid = { x: (c1.x + c2.x) / 2, z: (c1.z + c2.z) / 2 };
+    const dist = (cornerMid.x - mid.x) ** 2 + (cornerMid.z - mid.z) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIndex = i;
+    }
+  }
+
+  const a = corners[bestIndex];
+  const b = corners[(bestIndex + 1) % 6];
+  // Local +X of the env pieces is their width axis. A Y rotation by θ sends
+  // local X (1,0,0) to world (cosθ, 0, -sinθ), so solving cosθ = ux,
+  // -sinθ = uz gives the θ that lines +X up with edge a→b.
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const rotationY = Math.atan2(-dz, dx);
+
+  return { a, b, mid, rotationY };
+}
