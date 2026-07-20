@@ -25,6 +25,7 @@
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
+import { DevPerfProbe } from '../../dev/DevPerfProbe';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import { HexGrid } from '../hex-grid';
 import type { CubeCoord } from '../hex-grid/hexMath';
@@ -33,6 +34,7 @@ import {
   buildRenderableEntities,
   buildTurnOrderCombatState,
   parseDevPropDemoKeys,
+  parsePerfProbeWindowMs,
   synthesizeFloorTiles,
 } from '../playtest/playtestMapHelpers';
 
@@ -169,6 +171,27 @@ export function EncounterMap({
     []
   );
 
+  // Dev-only runtime perf probe (rpg-dnd5e-web#537). Same read-once-via-
+  // useMemo / raw-URLSearchParams convention as syntyDungeon above, plus
+  // the dev-mode gate App.tsx's showPlaytestHarness/isDevelopment flags
+  // already use -- never active in a production build regardless of query
+  // string. `?perfProbe` (presence, any value) turns it on; optional
+  // `?perfProbeMs=<n>` overrides the sampling window (parsePerfProbeWindowMs
+  // validates it -- NaN/non-positive falls back to DevPerfProbe's own
+  // default instead of wedging the probe into never completing, Copilot
+  // review rpg-dnd5e-web#546); optional `?perfProbeLabel=<slug>` stamps a
+  // label onto the emitted result (the sweep driver script uses this to tag
+  // which stage a result belongs to).
+  const perfProbe = useMemo(() => {
+    if (import.meta.env.MODE !== 'development') return null;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('perfProbe')) return null;
+    return {
+      windowMs: parsePerfProbeWindowMs(params.get('perfProbeMs')),
+      label: params.get('perfProbeLabel') ?? undefined,
+    };
+  }, []);
+
   return (
     <div
       data-testid="encounter-map"
@@ -201,7 +224,11 @@ export function EncounterMap({
         // Deliberately not wired — see PlaytestMap's identical note: HexGrid
         // fires both onAttackComplete AND onEntityClick for an attackable
         // monster click, so wiring both here would double-dispatch.
-      />
+      >
+        {perfProbe && (
+          <DevPerfProbe windowMs={perfProbe.windowMs} label={perfProbe.label} />
+        )}
+      </HexGrid>
     </div>
   );
 }
