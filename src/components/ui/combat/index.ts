@@ -6,8 +6,21 @@
  * look without touching component APIs.
  */
 
+export {
+  contextMessage,
+  pillMessage,
+  type ContextInput,
+  type MessageTone,
+} from './contextMessage';
+export { ContextPill, type ContextPillProps } from './ContextPill';
 export { DockShell, type DockShellProps } from './DockShell';
 export { EconomyPips, type EconomyPipsProps } from './EconomyPips';
+export {
+  estimateVerbRowWidth,
+  shouldCollapse,
+  splitInlineVerbs,
+  type InlineVerbLayout,
+} from './inlineVerbs';
 export {
   CORE_TYPES,
   INLINE_CORE_LIMIT,

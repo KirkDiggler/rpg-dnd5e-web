@@ -6,8 +6,8 @@ import {
   EconomySlot,
   EncounterMode,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EncounterDockProps } from './EncounterDock';
 import { EncounterDock } from './EncounterDock';
 
@@ -68,26 +68,38 @@ function baseProps(): EncounterDockProps {
   };
 }
 
-const logToggle = () => screen.getByLabelText(/Combat log/);
+const logToggle = () => screen.getByLabelText(/combat log/i);
 
-describe('EncounterDock teaching strip (#525 slice 1, #533 direction)', () => {
-  it('says "your turn" with the action surface visible on your turn', () => {
+/** The hidden aria-live region carries the FULL announcement stream. */
+const announced = () => screen.getByRole('status').textContent;
+/** The visual pill — null when the state is plain your-turn (round 6). */
+const pillText = () =>
+  screen.queryByTestId('context-pill')?.textContent ?? null;
+
+beforeEach(() => {
+  localStorage.clear();
+});
+
+describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () => {
+  it('announces "your turn" but shows NO pill — the verbs already say it (round 6)', () => {
     render(<EncounterDock {...baseProps()} />);
-    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
-      'Your turn — pick an action.'
-    );
+    expect(announced()).toBe('Your turn — pick an action.');
+    expect(pillText()).toBeNull();
     expect(screen.getByTestId('encounter-dock-verbs')).toBeTruthy();
     expect(screen.getByText('End Turn')).toBeTruthy();
   });
 
-  it('carries the armed guidance when an action is armed', () => {
+  it('floats the armed guidance as a pill when an action is armed', () => {
     render(
       <EncounterDock
         {...baseProps()}
         armedActionKey="dnd5e:combat_abilities:attack"
       />
     );
-    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+    expect(pillText()).toBe(
+      'Attack armed — click a target on the map. Esc or click again to cancel.'
+    );
+    expect(announced()).toBe(
       'Attack armed — click a target on the map. Esc or click again to cancel.'
     );
   });
@@ -180,8 +192,8 @@ describe('EncounterDock teaching strip (#525 slice 1, #533 direction)', () => {
   });
 });
 
-describe('EncounterDock verbs and grouped overflow', () => {
-  it('renders core verbs flat and groups features behind the trigger', () => {
+describe('EncounterDock inline verbs (round 5: inline by default)', () => {
+  it('renders features as a labeled INLINE group — no drop-down (round 5)', () => {
     render(
       <EncounterDock
         {...baseProps()}
@@ -195,14 +207,13 @@ describe('EncounterDock verbs and grouped overflow', () => {
       />
     );
     expect(screen.getByText('Attack')).toBeTruthy();
-    expect(screen.queryByText('Flurry of Blows')).toBeNull();
-    const trigger = screen.getByText('Features ▾ 1');
-    fireEvent.click(trigger);
-    expect(screen.getByTestId('encounter-dock-menu')).toBeTruthy();
+    // The feature sits INLINE in its labeled group, visible immediately.
+    expect(screen.getByTestId('inline-group-feature')).toBeTruthy();
     expect(screen.getByText('Flurry of Blows')).toBeTruthy();
+    expect(screen.queryByTestId('encounter-dock-menu')).toBeNull();
   });
 
-  it('dispatches onSelectAction and closes the menu on a menu verb click', () => {
+  it('dispatches onSelectAction from an inline feature verb', () => {
     const props = baseProps();
     const flurry = action('flurry', 'Flurry of Blows', {
       refType: 'feature',
@@ -214,30 +225,60 @@ describe('EncounterDock verbs and grouped overflow', () => {
         actions={[action('attack', 'Attack'), flurry]}
       />
     );
-    fireEvent.click(screen.getByText('Features ▾ 1'));
     fireEvent.click(screen.getByText('Flurry of Blows'));
     expect(props.onSelectAction).toHaveBeenCalledWith(flurry);
-    expect(screen.queryByTestId('encounter-dock-menu')).toBeNull();
   });
 
-  it('folds core verbs past the inline cap into an "Actions" menu section (INLINE_CORE_LIMIT)', () => {
-    // Seven core verbs: five stay flat, the tail folds into the menu.
+  it('reunites the core overflow inline when the row is unmeasured or wide', () => {
+    // Seven core verbs: with inline-by-default and no width pressure
+    // (jsdom has no ResizeObserver, so the row stays unmeasured -> never
+    // collapsed), ALL seven render inline and no trigger appears.
     const many = Array.from({ length: 7 }, (_, i) =>
       action(`core-${i}`, `Core ${i}`)
     );
     render(<EncounterDock {...baseProps()} actions={many} />);
-    // The first five render flat in the bar.
     expect(screen.getByText('Core 0')).toBeTruthy();
-    expect(screen.getByText('Core 4')).toBeTruthy();
-    // The overflow tail is hidden until the menu opens. With only the
-    // core-overflow group present, the trigger reads by that group's name.
-    expect(screen.queryByText('Core 5')).toBeNull();
-    fireEvent.click(screen.getByText('Actions ▾ 2'));
-    const menu = screen.getByTestId('encounter-dock-menu');
-    // Section header (CSS-uppercased; textContent keeps the source casing).
-    expect(menu.textContent).toContain('Actions');
     expect(screen.getByText('Core 5')).toBeTruthy();
     expect(screen.getByText('Core 6')).toBeTruthy();
+    expect(screen.queryByText(/▾/)).toBeNull();
+  });
+
+  it('folds to the grouped drop-down only under genuine width pressure (measured)', () => {
+    // Simulate a narrow measured row via a stubbed ResizeObserver that
+    // reports 200px — the estimate for a busy kit far exceeds 2 lines.
+    type ROCallback = (entries: { contentRect: { width: number } }[]) => void;
+    const callbacks: ROCallback[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        cb: ROCallback;
+        constructor(cb: ROCallback) {
+          this.cb = cb;
+          callbacks.push(cb);
+        }
+        observe() {}
+        disconnect() {}
+      }
+    );
+    try {
+      const many = Array.from({ length: 7 }, (_, i) =>
+        action(`core-${i}`, `Core ${i}`)
+      );
+      render(<EncounterDock {...baseProps()} actions={many} />);
+      act(() => {
+        callbacks.forEach((cb) => cb([{ contentRect: { width: 200 } }]));
+      });
+      // Collapsed: five flat cores + the "Actions" trigger for the tail.
+      expect(screen.getByText('Core 4')).toBeTruthy();
+      expect(screen.queryByText('Core 5')).toBeNull();
+      fireEvent.click(screen.getByText('Actions ▾ 2'));
+      const menu = screen.getByTestId('encounter-dock-menu');
+      expect(menu.textContent).toContain('Actions');
+      expect(screen.getByText('Core 5')).toBeTruthy();
+      expect(screen.getByText('Core 6')).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -263,8 +304,7 @@ describe('EncounterDock cost badges', () => {
       .querySelector('.economy-pip');
     expect(attackBadge?.className).toContain('shape-action');
     expect(attackBadge?.className).not.toContain('filled');
-    // Flurry (bonus pool, available) → filled badge.
-    fireEvent.click(screen.getByText('Features ▾ 1'));
+    // Flurry (bonus pool, available, INLINE) → filled badge.
     const flurryBadge = screen
       .getByTestId('action-dnd5e:feature:flurry')
       .querySelector('.economy-pip');
@@ -295,46 +335,54 @@ describe('EncounterDock settings popover (reaction relocation)', () => {
   });
 });
 
-describe('EncounterDock overlays (log pattern from #519/#520)', () => {
-  it('does not render the log overlay by default and toggles it open/closed', () => {
+describe('EncounterDock combat log (round 7: always on by default)', () => {
+  it('renders the floating log OPEN by default and toggles it hidden', () => {
     render(<EncounterDock {...baseProps()} />);
-    expect(screen.queryByTestId('encounter-dock-log-overlay')).toBeNull();
+    expect(screen.getByTestId('floating-log')).toBeTruthy();
+    expect(screen.getByTestId('combat-log')).toBeTruthy();
     fireEvent.click(logToggle());
-    expect(screen.getByTestId('encounter-dock-log-overlay')).toBeTruthy();
+    expect(screen.queryByTestId('floating-log')).toBeNull();
     fireEvent.click(logToggle());
-    expect(screen.queryByTestId('encounter-dock-log-overlay')).toBeNull();
+    expect(screen.getByTestId('floating-log')).toBeTruthy();
   });
 
-  it('opens at most one floating panel at a time', () => {
+  it('persists the hide choice and honors it on the next mount', () => {
+    const first = render(<EncounterDock {...baseProps()} />);
+    fireEvent.click(logToggle());
+    expect(localStorage.getItem('ui.combatLog.hidden')).toBe('true');
+    first.unmount();
+    render(<EncounterDock {...baseProps()} />);
+    expect(screen.queryByTestId('floating-log')).toBeNull();
+    // Showing it again clears the preference (open is the default).
+    fireEvent.click(logToggle());
+    expect(localStorage.getItem('ui.combatLog.hidden')).toBeNull();
+    expect(screen.getByTestId('floating-log')).toBeTruthy();
+  });
+
+  it('stays visible for spectators and in FREE_ROAM (round 7 decision)', () => {
     render(
       <EncounterDock
         {...baseProps()}
-        actions={[
-          action('attack', 'Attack'),
-          action('flurry', 'Flurry of Blows', { refType: 'feature' }),
-        ]}
+        mode={EncounterMode.FREE_ROAM}
+        isMyTurn={false}
       />
     );
-    fireEvent.click(logToggle());
-    expect(screen.getByTestId('encounter-dock-log-overlay')).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('Combat settings'));
-    expect(screen.queryByTestId('encounter-dock-log-overlay')).toBeNull();
-    expect(screen.getByTestId('encounter-dock-settings')).toBeTruthy();
-    fireEvent.click(screen.getByText('Features ▾ 1'));
-    expect(screen.queryByTestId('encounter-dock-settings')).toBeNull();
-    expect(screen.getByTestId('encounter-dock-menu')).toBeTruthy();
+    expect(screen.getByTestId('floating-log')).toBeTruthy();
   });
 
-  it('places overlays as siblings of the scrolling row, not inside it', () => {
-    // Regression guard for the overflow-clipping bug caught live during
-    // #519 verification: an overlay inside the overflowY:auto row clips
-    // to 0 visible pixels. DockShell owns this rule; assert it holds for
-    // the dock's usage.
+  it('coexists with the settings popover — the log is not a popover', () => {
     render(<EncounterDock {...baseProps()} />);
-    fireEvent.click(logToggle());
-    const row = screen.getByTestId('encounter-dock-shell-row');
-    const overlay = screen.getByTestId('encounter-dock-log-overlay');
-    expect(row.contains(overlay)).toBe(false);
-    expect(overlay.parentElement).toBe(row.parentElement);
+    expect(screen.getByTestId('floating-log')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Combat settings'));
+    expect(screen.getByTestId('encounter-dock-settings')).toBeTruthy();
+    expect(screen.getByTestId('floating-log')).toBeTruthy();
+  });
+
+  it('floats as a sibling of the dock rows, never inside them (#519 clipping guard)', () => {
+    render(<EncounterDock {...baseProps()} />);
+    const shell = screen.getByTestId('encounter-dock-shell');
+    const log = screen.getByTestId('floating-log');
+    expect(shell.contains(log)).toBe(false);
+    expect(log.parentElement).toBe(shell.parentElement);
   });
 });

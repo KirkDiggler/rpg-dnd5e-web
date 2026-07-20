@@ -18,9 +18,13 @@ import { getConditionDisplay } from '../../utils/conditionIcons';
 
 export interface CombatLogProps {
   entries: CombatLogEntry[];
+  /** Round-7 floating-over-the-map variant (#525): translucent background
+   * + blur so the map reads through. Replaces the concept-era scoped
+   * `!important` CSS override with an honest component variant. */
+  translucent?: boolean;
 }
 
-export function CombatLog({ entries }: CombatLogProps) {
+export function CombatLog({ entries, translucent = false }: CombatLogProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to the newest entry, mirroring the old sidebar's behavior.
@@ -36,7 +40,16 @@ export function CombatLog({ entries }: CombatLogProps) {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        background: 'var(--bg-secondary, #1a1a1a)',
+        background: translucent
+          ? 'color-mix(in srgb, var(--bg-secondary, #1a1a1a) 72%, transparent)'
+          : 'var(--bg-secondary, #1a1a1a)',
+        ...(translucent
+          ? {
+              backdropFilter: 'blur(2px)',
+              boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
+              border: '1px solid var(--border-primary)',
+            }
+          : {}),
         borderRadius: 8,
         overflow: 'hidden',
       }}
