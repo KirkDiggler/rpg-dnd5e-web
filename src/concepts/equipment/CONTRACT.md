@@ -70,3 +70,23 @@ snapshot.
 
 Turn-start speed (for the movement depletion gauge) — recorded during the
 combat-panel rounds (PR web#538 discussion); batch it with this request.
+
+## 8. Delivery: equipment rides the encounter hydration, not a fetch
+
+Round 2 added the in-combat popover (equipment chip on the dock), which
+forces the delivery question. Position: **equipment/inventory must be on
+the character data the encounter already hydrates** (the same
+CharacterData the snapshot carries), with equip-change events pushed on
+the encounter stream like any other state change.
+
+Why not a CharacterService fetch on popover open:
+
+- The popover must open instantly mid-combat — a fetch adds a spinner to
+  a 200 ms interaction.
+- A separate fetch is a second source of truth that can disagree with
+  the encounter's view of the character (the #516/#544 class of bug).
+- Spectators benefit too: allies' equipment can render from the same
+  snapshot data with zero extra calls.
+
+A standalone CharacterService surface can exist for out-of-encounter
+sheet editing, but the in-encounter surface reads only hydrated state.

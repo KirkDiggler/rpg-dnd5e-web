@@ -758,6 +758,66 @@
     word-break: break-all;
   }
 
+  /* Equipment popover (round 2): the in-game surface — anchored above
+     the dock, right-of-center near its chip. Translucent like the
+     floating log (the map reads through); Frame_Box04 edge matches the
+     sockets inside. The pill anchors center and the settings popover
+     left, so no corner is ever contested. */
+  .equip-popover {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    right: 8px;
+    width: min(560px, 60%);
+    max-height: 62vh;
+    overflow-y: auto;
+    z-index: 30;
+    padding: 0.875rem;
+    border-radius: 0.5rem;
+    background-color: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+    backdrop-filter: blur(3px);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+    border: 2px solid var(--border-primary);
+  }
+
+  .hud-skin .equip-popover,
+  .hud-skin.equip-popover {
+    border-image-source: url('/models/synty/ui/library/frames/SPR_FantasyWarrior_Frame_Box04.png');
+    border-image-slice: 104;
+    border-image-width: 8px;
+    border-image-repeat: round;
+    border-style: solid;
+    border-width: 8px;
+    border-color: var(--border-primary);
+    border-radius: 0;
+  }
+
+  .equip-popover-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    font-size: 1.0625rem;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+  }
+
+  .equip-popover-stats {
+    font-family: inherit;
+    font-weight: 400;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+  }
+
+  .equip-popover-body {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 0.875rem;
+    align-items: start;
+  }
+
   /* Modal overlay */
   .modal-overlay {
     position: fixed;

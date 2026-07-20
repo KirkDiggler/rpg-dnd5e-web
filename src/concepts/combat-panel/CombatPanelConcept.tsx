@@ -129,6 +129,7 @@ export function CombatPanelConcept() {
         skin="hud"
         strip="pill"
         logEntries={CONCEPT_LOG_ENTRIES}
+        equipmentChip
       />
     ) : composition === 'cluster' ? (
       <CommandCluster {...panelProps} />
