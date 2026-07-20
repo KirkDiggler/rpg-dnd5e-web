@@ -83,11 +83,17 @@ await pages[0]
   .getByRole('button', { name: /Create lobby/i })
   .click({ timeout: 15000 });
 await pages[0].waitForTimeout(1500);
-const joinChipText = (
-  await pages[0]
-    .locator('[data-testid="join-code-display"]')
-    .textContent({ timeout: 15000 })
-).trim();
+const rawJoinChipText = await pages[0]
+  .locator('[data-testid="join-code-display"]')
+  .textContent({ timeout: 15000 });
+if (!rawJoinChipText || !rawJoinChipText.trim()) {
+  throw new Error(
+    'join code chip missing or empty -- [data-testid="join-code-display"] ' +
+      'returned no text content after Create lobby; the chip may not have ' +
+      'rendered yet or the lobby-create step failed silently'
+  );
+}
+const joinChipText = rawJoinChipText.trim();
 // The chip's full text is "Join code<code>Copy" -- pull out just the
 // join_<uuid> token.
 const joinCodeMatch = joinChipText.match(

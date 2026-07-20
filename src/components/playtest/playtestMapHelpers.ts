@@ -280,3 +280,25 @@ export function parseDevPropDemoKeys(raw: string | null): string[] {
     .filter(Boolean);
   return Array.from(new Set(parsed));
 }
+
+/**
+ * Parse EncounterMap's `?perfProbeMs=` query param value into a validated
+ * DevPerfProbe `windowMs` override, or `undefined` to let DevPerfProbe fall
+ * back to its own default (Copilot review, rpg-dnd5e-web#546: an
+ * unvalidated `Number(msParam)` turns a malformed value like
+ * `?perfProbeMs=abc` into `NaN`; DevPerfProbe's completion check is
+ * `elapsed >= windowMs`, and every comparison against `NaN` is `false`, so
+ * the probe would never finish — it keeps forcing `invalidate()` every
+ * frame forever instead of completing after one sampling window). A
+ * non-positive value (`0` or negative) is equally nonsensical as a
+ * sampling window, so it's rejected the same way. Returns `undefined`
+ * (not a hardcoded fallback number) for null/NaN/non-positive input so
+ * DevPerfProbe's own `windowMs = 8000` default prop stays the single
+ * source of truth for the default window length.
+ */
+export function parsePerfProbeWindowMs(raw: string | null): number | undefined {
+  if (raw === null) return undefined;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}

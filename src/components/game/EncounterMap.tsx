@@ -34,6 +34,7 @@ import {
   buildRenderableEntities,
   buildTurnOrderCombatState,
   parseDevPropDemoKeys,
+  parsePerfProbeWindowMs,
   synthesizeFloorTiles,
 } from '../playtest/playtestMapHelpers';
 
@@ -175,16 +176,18 @@ export function EncounterMap({
   // the dev-mode gate App.tsx's showPlaytestHarness/isDevelopment flags
   // already use -- never active in a production build regardless of query
   // string. `?perfProbe` (presence, any value) turns it on; optional
-  // `?perfProbeMs=<n>` overrides the sampling window; optional
-  // `?perfProbeLabel=<slug>` stamps a label onto the emitted result (the
-  // sweep driver script uses this to tag which stage a result belongs to).
+  // `?perfProbeMs=<n>` overrides the sampling window (parsePerfProbeWindowMs
+  // validates it -- NaN/non-positive falls back to DevPerfProbe's own
+  // default instead of wedging the probe into never completing, Copilot
+  // review rpg-dnd5e-web#546); optional `?perfProbeLabel=<slug>` stamps a
+  // label onto the emitted result (the sweep driver script uses this to tag
+  // which stage a result belongs to).
   const perfProbe = useMemo(() => {
     if (import.meta.env.MODE !== 'development') return null;
     const params = new URLSearchParams(window.location.search);
     if (!params.has('perfProbe')) return null;
-    const msParam = params.get('perfProbeMs');
     return {
-      windowMs: msParam ? Number(msParam) : undefined,
+      windowMs: parsePerfProbeWindowMs(params.get('perfProbeMs')),
       label: params.get('perfProbeLabel') ?? undefined,
     };
   }, []);

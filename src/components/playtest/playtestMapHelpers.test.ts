@@ -18,6 +18,7 @@ import {
   buildTurnOrderCombatState,
   entityTypeToDisplay,
   parseDevPropDemoKeys,
+  parsePerfProbeWindowMs,
   synthesizeFloorTiles,
 } from './playtestMapHelpers';
 
@@ -416,5 +417,39 @@ describe('parseDevPropDemoKeys (Copilot review, rpg-dnd5e-web#530)', () => {
     expect(entities).toHaveLength(1);
     const ids = new Set(entities.map((e) => e.entityId));
     expect(ids.size).toBe(entities.length);
+  });
+});
+
+describe('parsePerfProbeWindowMs (Copilot review, rpg-dnd5e-web#546)', () => {
+  it('returns undefined for null input (param absent)', () => {
+    expect(parsePerfProbeWindowMs(null)).toBeUndefined();
+  });
+
+  it("returns undefined for a non-numeric value instead of NaN — the exact bug Copilot flagged: an unvalidated NaN windowMs makes DevPerfProbe's `elapsed >= windowMs` check never true, so the probe never completes", () => {
+    expect(parsePerfProbeWindowMs('abc')).toBeUndefined();
+  });
+
+  it('returns undefined for an empty string', () => {
+    expect(parsePerfProbeWindowMs('')).toBeUndefined();
+  });
+
+  it('returns undefined for zero', () => {
+    expect(parsePerfProbeWindowMs('0')).toBeUndefined();
+  });
+
+  it('returns undefined for a negative value', () => {
+    expect(parsePerfProbeWindowMs('-500')).toBeUndefined();
+  });
+
+  it('returns undefined for Infinity', () => {
+    expect(parsePerfProbeWindowMs('Infinity')).toBeUndefined();
+  });
+
+  it('parses a valid positive integer string', () => {
+    expect(parsePerfProbeWindowMs('5000')).toBe(5000);
+  });
+
+  it('parses a valid positive decimal string', () => {
+    expect(parsePerfProbeWindowMs('1500.5')).toBe(1500.5);
   });
 });
