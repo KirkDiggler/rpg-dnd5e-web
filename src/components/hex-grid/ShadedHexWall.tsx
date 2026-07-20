@@ -24,18 +24,24 @@ import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
 export interface ShadedHexWallProps {
   wall: Wall;
   hexSize: number;
+  /** Fired with the door's Wall.id (rpg-api-protos#186) when a DOOR_* wall
+   * is clicked — fallback-renderer parity with SyntyHexWall's click surface
+   * (rpg-dnd5e-web#526, wave rpg-project#96 Slice 2). No-op when the wall
+   * carries no id. */
+  onDoorClick?: (doorId: string) => void;
 }
 
 // Color lookup by wall kind. v1alpha2 Wall carries no material field (the
 // v1alpha1 room_common Wall this replaced did) — kind is the only semantic
-// hook available today. DOOR_* segments here are a fallback only: doors are
-// currently rendered through the separate `doors: DoorInfo[]` prop/HexDoor
-// pipeline, not through this one.
+// hook available today. DOOR_OPEN gets a lighter shade than DOOR_CLOSED so
+// the two poses are visually distinguishable (rpg-dnd5e-web#526) even in
+// this ErrorBoundary/`?syntyDungeon=0` fallback path.
 function getKindColor(kind: WallKind): number {
   switch (kind) {
     case WallKind.DOOR_CLOSED:
-    case WallKind.DOOR_OPEN:
       return WallColors.woodMedium;
+    case WallKind.DOOR_OPEN:
+      return WallColors.woodLight;
     case WallKind.WINDOW:
       return WallColors.dungeonGray;
     case WallKind.SOLID:
@@ -45,7 +51,11 @@ function getKindColor(kind: WallKind): number {
   }
 }
 
-export function ShadedHexWall({ wall, hexSize }: ShadedHexWallProps) {
+export function ShadedHexWall({
+  wall,
+  hexSize,
+  onDoorClick,
+}: ShadedHexWallProps) {
   const { invalidate } = useThree();
   const groupRef = useRef<THREE.Group>(null);
   const builderRef = useRef<WallBuilder | null>(null);
@@ -65,6 +75,10 @@ export function ShadedHexWall({ wall, hexSize }: ShadedHexWallProps) {
     };
 
     const color = getKindColor(wall.kind);
+    const isDoor =
+      wall.kind === WallKind.DOOR_CLOSED || wall.kind === WallKind.DOOR_OPEN;
+    const isRealPassageEdge =
+      isDoor && !(start.x === end.x && start.y === end.y && start.z === end.z);
 
     // WallBuilder thickness is relative to hexWidth, so set hexWidth = hexSize * 2
     // (hexWidth in WallBuilder means the full width, hexSize is the radius)
@@ -77,6 +91,36 @@ export function ShadedHexWall({ wall, hexSize }: ShadedHexWallProps) {
     builderRef.current = builder;
 
     const group = groupRef.current;
+
+    // Doors with a real (from!==to) passage edge (design doc §Q2, mirrors
+    // syntyHexWallHelpers.ts's identical fix): render ONLY at `from` (the
+    // door's own cell) — `to` names the passage neighbor, real floor in the
+    // next chamber, not a second wall cell. The generic "pillar at every
+    // hex along the line" path below would otherwise stack a phantom
+    // pillar onto that floor cell. DOOR_OPEN gets a low, thin marker
+    // instead of the full barrier — a placeholder-acceptable state flip
+    // (asset lane, web#523, owns final open-pose art).
+    if (isRealPassageEdge) {
+      const pos = cubeToWorld(start, hexSize);
+      const anchor = new THREE.Vector3(pos.x, 0, pos.z);
+      const piece =
+        wall.kind === WallKind.DOOR_OPEN
+          ? builder.createPillar(anchor, WALL_HEIGHT * 0.15, { color })
+          : builder.createSolidHex(anchor, WALL_HEIGHT, { color });
+      group.add(piece);
+      invalidate();
+      return () => {
+        while (group.children.length > 0) {
+          const child = group.children[0];
+          group.remove(child);
+          if (child instanceof THREE.Mesh) {
+            child.geometry.dispose();
+          }
+        }
+        builder.dispose();
+        builderRef.current = null;
+      };
+    }
 
     // Get all hex positions along the wall line
     const hexPositions = getHexLine(start, end);
@@ -140,5 +184,23 @@ export function ShadedHexWall({ wall, hexSize }: ShadedHexWallProps) {
     };
   }, [wall, hexSize, invalidate]);
 
-  return <group ref={groupRef} />;
+  const isDoor =
+    wall.kind === WallKind.DOOR_CLOSED || wall.kind === WallKind.DOOR_OPEN;
+
+  return (
+    <group
+      ref={groupRef}
+      onClick={(e: { stopPropagation: () => void }) => {
+        e.stopPropagation();
+        if (isDoor && wall.id) onDoorClick?.(wall.id);
+      }}
+      onPointerOver={(e: { stopPropagation: () => void }) => {
+        e.stopPropagation();
+        if (isDoor && wall.id) document.body.style.cursor = 'pointer';
+      }}
+      onPointerOut={() => {
+        document.body.style.cursor = 'auto';
+      }}
+    />
+  );
 }

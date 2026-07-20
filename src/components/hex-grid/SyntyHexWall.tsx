@@ -34,7 +34,10 @@
  */
 
 import { SYNTY_SCALE, WALL_HEIGHT } from '@/rendering/calibrationConstants';
-import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  WallKind,
+  type Wall,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useGLTF } from '@react-three/drei';
 import { Suspense, useMemo } from 'react';
 import type { WorldPos } from './hexMath';
@@ -71,6 +74,14 @@ const DOOR_FRAME_SCALE: [number, number, number] = [
 // piece) — 1.3236 * 0.75 = 0.9927, a near-perfect fit against a 1.0 edge.
 const DOOR_SCALE = SYNTY_SCALE;
 
+// Placeholder-acceptable open pose (rpg-dnd5e-web#526, wave rpg-project#96
+// Slice 2): the door leaf GLB's pivot is at one end (edge.a, like the wall
+// piece), so swinging it open is a render-time Y-rotation about that same
+// pivot — no second model needed (matches this file's original doc comment
+// anticipating exactly this). The asset lane (web#523) owns the final open
+// pose/art; this is only a clearly-observable open-vs-closed state flip.
+const DOOR_OPEN_ROTATION_OFFSET = (80 * Math.PI) / 180;
+
 interface GlbInstanceProps {
   file: string;
   position: WorldPos;
@@ -98,9 +109,18 @@ function GlbInstance({ file, position, rotationY, scale }: GlbInstanceProps) {
 export interface SyntyHexWallProps {
   walls: Wall[];
   hexSize: number;
+  /** Fired with the door's Wall.id (rpg-api-protos#186) when a DOOR_* piece
+   * is clicked. The web only sends intent — Interact(id) — the server
+   * decides what happens (rpg-dnd5e-web#526). No-op for a door segment
+   * whose id is absent. */
+  onDoorClick?: (doorId: string) => void;
 }
 
-export function SyntyHexWall({ walls, hexSize }: SyntyHexWallProps) {
+export function SyntyHexWall({
+  walls,
+  hexSize,
+  onDoorClick,
+}: SyntyHexWallProps) {
   const segments = useMemo(
     () => buildDungeonWallSegments(walls, hexSize),
     [walls, hexSize]
@@ -118,10 +138,24 @@ export function SyntyHexWall({ walls, hexSize }: SyntyHexWallProps) {
 
   return (
     <Suspense fallback={null}>
-      {segments.map(({ key, edge, kind }) => {
+      {segments.map(({ key, edge, kind, id }) => {
         if (edgePieceKind(kind) === 'door') {
+          const isOpen = kind === WallKind.DOOR_OPEN;
           return (
-            <group key={key}>
+            <group
+              key={key}
+              onClick={(e: { stopPropagation: () => void }) => {
+                e.stopPropagation();
+                if (id) onDoorClick?.(id);
+              }}
+              onPointerOver={(e: { stopPropagation: () => void }) => {
+                e.stopPropagation();
+                if (id) document.body.style.cursor = 'pointer';
+              }}
+              onPointerOut={() => {
+                document.body.style.cursor = 'auto';
+              }}
+            >
               <GlbInstance
                 file="SM_Env_Door_Frame_01.glb"
                 position={edge.mid}
@@ -131,7 +165,9 @@ export function SyntyHexWall({ walls, hexSize }: SyntyHexWallProps) {
               <GlbInstance
                 file="SM_Env_Door_01.glb"
                 position={edge.a}
-                rotationY={edge.rotationY}
+                rotationY={
+                  edge.rotationY + (isOpen ? DOOR_OPEN_ROTATION_OFFSET : 0)
+                }
                 scale={DOOR_SCALE}
               />
             </group>

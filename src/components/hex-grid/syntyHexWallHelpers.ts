@@ -19,6 +19,15 @@
  * hypothetical future multi-hex wall still decomposes correctly) and emit
  * a piece on every edge facing a neighbor that is NOT itself a wall hex —
  * the wall-hex set plays exactly the role ROOM_SET played in the demo.
+ *
+ * DOOR_CLOSED/DOOR_OPEN walls are the one exception to "single-cell,
+ * from === to" (The Dungeon wave 2 Slice 2, rpg-project#96): a door's
+ * `from`/`to` is a DESIGNATED PASSAGE EDGE — `from` is the door's own cell,
+ * `to` names which single edge to draw the frame on (design doc §Q2). This
+ * also carries the door's `Wall.id` (rpg-api-protos#186) for the click
+ * surface. See collectWallHexes and buildDungeonWallSegments's own doc
+ * comments for how this is kept from colliding with the generic
+ * neighbor-membership algorithm above.
  */
 
 import {
@@ -59,6 +68,9 @@ export interface WallEdgeSegment {
   key: string;
   edge: HexEdge;
   kind: WallKind;
+  /** Wall.id (rpg-api-protos#186) — present on door segments, the
+   * click->Interact bridge. Absent on plain solid/window segments. */
+  id?: string;
 }
 
 /**
@@ -198,6 +210,23 @@ function collectWallHexes(walls: Wall[]): Map<string, WallKind> {
     if (!wall.from || !wall.to) continue;
     const start: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
     const end: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
+    const isDoor =
+      wall.kind === WallKind.DOOR_CLOSED || wall.kind === WallKind.DOOR_OPEN;
+    // Door walls (design doc §Q2): from/to is a DESIGNATED PASSAGE EDGE —
+    // `to` names which single edge of the door cell to draw the frame on,
+    // not a second blocked cell. Decomposing via getHexLine (like solid
+    // walls below) would wrongly mark the passage neighbor — real floor in
+    // the chamber on the other side of the door — as a wall hex too. Only
+    // `from` (the door's own cell) blocks/renders. Degenerate from===to
+    // door data (not real server shape, but tolerated) falls through to
+    // the line-decompose path below unchanged.
+    if (
+      isDoor &&
+      !(start.x === end.x && start.y === end.y && start.z === end.z)
+    ) {
+      wallKindByHex.set(coordToKey(start), wall.kind);
+      continue;
+    }
     for (const hex of getHexLine(start, end)) {
       wallKindByHex.set(coordToKey(hex), wall.kind);
     }
@@ -270,6 +299,16 @@ function isStraightThroughHex(
  * perimeter, in the real data this was verified against). Each wall hex
  * keeps the WallKind of whichever Wall object it came from.
  *
+ * DOOR_CLOSED/DOOR_OPEN walls with a real (from!==to) passage edge are
+ * handled FIRST and separately, one segment per door on its wire-designated
+ * edge (carrying Wall.id) — not derived from neighbor-set membership, so a
+ * door hex's own designated edge is used exactly as the wire says, and the
+ * door hex is excluded from the generic loop below (its other edges are
+ * legitimately open floor boundaries — home-chamber side and, once open,
+ * the passage side — neither needs a wall piece). Degenerate from===to
+ * door data isn't pre-claimed here, so it falls through to the generic loop
+ * unchanged (matches this function's pre-Slice-2 behavior).
+ *
  * Pure and independent of GLB loading so it's unit-testable directly.
  */
 export function buildDungeonWallSegments(
@@ -280,7 +319,45 @@ export function buildDungeonWallSegments(
 
   const segments: WallEdgeSegment[] = [];
   const seenEdgeKeys = new Set<string>();
+
+  // Door walls with a real (from!==to) passage edge: render EXACTLY that
+  // designated edge, carrying the door's id (Wall.id, rpg-api-protos#186)
+  // for the click surface — not derived from neighbor-set membership like
+  // solid walls below. This is also what fixes the web-confirmed "isolated
+  // DOOR cell renders 6 door pairs" multiplicity bug (design doc §Q2):
+  // exactly one segment per real door, on the wire-designated edge.
+  // Degenerate from===to door data falls through untouched to the generic
+  // per-neighbor-edge loop below (collectWallHexes already folded it into
+  // wallKindByHex as a single-cell wall hex in that case).
+  const directlyHandledHexKeys = new Set<string>();
+  for (const wall of walls) {
+    if (!wall.from || !wall.to) continue;
+    if (
+      wall.kind !== WallKind.DOOR_CLOSED &&
+      wall.kind !== WallKind.DOOR_OPEN
+    ) {
+      continue;
+    }
+    const hex: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
+    const neighbor: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
+    const hexKey = coordToKey(hex);
+    const neighborKey = coordToKey(neighbor);
+    if (hexKey === neighborKey) continue; // degenerate: no designated edge
+
+    directlyHandledHexKeys.add(hexKey);
+    const edgeKey = `${hexKey}->${neighborKey}`;
+    if (seenEdgeKeys.has(edgeKey)) continue;
+    seenEdgeKeys.add(edgeKey);
+    segments.push({
+      key: edgeKey,
+      edge: hexEdgeBetween(hex, neighbor, hexSize),
+      kind: wall.kind,
+      id: wall.id,
+    });
+  }
+
   for (const [hexKey, kind] of wallKindByHex) {
+    if (directlyHandledHexKeys.has(hexKey)) continue;
     const hex = parseHexKey(hexKey);
     for (const dir of HEX_DIRECTIONS) {
       const neighbor: CubeCoord = {

@@ -1,6 +1,7 @@
 import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import type {
   EndTurnResponse,
+  InteractResponse,
   MoveEntityResponse,
   SetReactionReadyResponse,
   TakeActionResponse,
@@ -29,6 +30,7 @@ const hoisted = vi.hoisted(() => ({
   endTurnFn: vi.fn<() => Promise<EndTurnResponse>>(),
   setReactionReadyFn:
     vi.fn<(req: unknown) => Promise<SetReactionReadyResponse>>(),
+  interactFn: vi.fn<(req: unknown) => Promise<InteractResponse>>(),
 }));
 
 vi.mock('../../api/client', () => ({
@@ -43,6 +45,7 @@ vi.mock('../../api/client', () => ({
     takeAction: hoisted.takeActionFn,
     endTurn: hoisted.endTurnFn,
     setReactionReady: hoisted.setReactionReadyFn,
+    interact: hoisted.interactFn,
   },
 }));
 
@@ -58,6 +61,7 @@ vi.mock('./EncounterMap', () => ({
     openDoorIds?: string[];
     onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
     onEntityClick: (entityId: string) => void;
+    onDoorClick?: (doorId: string) => void;
   }) => (
     <div
       data-testid="encounter-map-stub"
@@ -78,6 +82,12 @@ vi.mock('./EncounterMap', () => ({
       >
         click goblin
       </button>
+      <button
+        data-testid="stub-click-door"
+        onClick={() => props.onDoorClick?.('door-1')}
+      >
+        click door
+      </button>
     </div>
   ),
 }));
@@ -90,6 +100,7 @@ beforeEach(() => {
   hoisted.takeActionFn.mockReset();
   hoisted.endTurnFn.mockReset();
   hoisted.setReactionReadyFn.mockReset();
+  hoisted.interactFn.mockReset();
 });
 
 afterEach(() => {
@@ -317,6 +328,51 @@ describe('EncounterView ignores interaction before entityId resolves (#461 Copil
     });
 
     expect(hoisted.takeActionFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('EncounterView door click -> Interact bridge (rpg-dnd5e-web#526)', () => {
+  it('calls interact(encounterId, doorId, "open") when a door is clicked', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.interactFn).toHaveBeenCalledOnce();
+    expect(hoisted.interactFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encounterId: 'enc-1',
+        targetEntityId: 'door-1',
+        interactionKind: 'open',
+      })
+    );
+  });
+
+  it('is NOT gated on entityId resolution — the door click carries no actor id (unlike move/attack)', async () => {
+    // No characterId prop and no snapshot pushed — entityId stays
+    // unresolved (''), the realistic race window #461 covers for
+    // move/attack. A door interaction has no actor field on the wire
+    // (InteractRequest{encounter_id, target_entity_id, interaction_kind}),
+    // so it must NOT be blocked by that same guard.
+    render(
+      <EncounterView encounterId="enc-1" playerId="alice" onBack={() => {}} />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.interactFn).toHaveBeenCalledOnce();
   });
 });
 

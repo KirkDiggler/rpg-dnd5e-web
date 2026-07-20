@@ -9,11 +9,12 @@
  * internals) was LobbyView-only and was deleted in slice 3 (rpg-dnd5e-web
  * #447) along with LobbyView. Multi-room accumulation on the v1alpha2 stream
  * is future work (design.md's slice 4). What's left here is stateless
- * geometry math. It does span versions by necessity, not preference:
- * `wallKey` takes the v1alpha2 encounter `Wall` (rpg-dnd5e-web#449 migrated
- * HexGrid off the legacy v1alpha1 room_common Wall), while
- * `openDoorWalkableKeys` still takes the v1alpha1 `DoorInfo` — the dnd5e
- * encounter domain hasn't migrated doors to v1alpha2 yet.
+ * geometry math, now entirely v1alpha2 `Wall`-shaped: the dnd5e encounter
+ * domain's doors migrated to v1alpha2 in rpg-dnd5e-web#526 (The Dungeon wave
+ * 2 Slice 2) — `doorHexKinds`/`doorHexPositions` replace the old v1alpha1
+ * `DoorInfo`-based `openDoorWalkableKeys` (HexGrid's legacy `doors` prop was
+ * dead code: no real caller ever populated it for the v2 stream — see
+ * rpg-dnd5e-web#526's PR description).
  */
 
 import {
@@ -22,8 +23,10 @@ import {
   getHexNeighbors,
   type CubeCoord,
 } from '@/components/hex-grid/hexMath';
-import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  WallKind,
+  type Wall,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 
 /** A floor tile in dungeon-absolute coordinates */
 export interface AbsoluteFloorTile {
@@ -39,21 +42,55 @@ function coordKey(x: number, y: number, z: number): string {
 }
 
 /**
- * Build a Set of cube-coord keys for every OPEN door.
- * Used by HexGrid's `isBlocked` to treat open doors as walkable, since the
- * door's hex sits on the boundary between two rooms and is not part of either
- * room's floor-tile bbox. Closed doors are excluded — they remain "walls" to
- * pathfinding until the player opens them via the door click flow.
+ * Build a Map of cube-coord key -> WallKind for every DOOR_CLOSED/DOOR_OPEN
+ * wall's own cell (`Wall.from` — the designated door cell itself, design
+ * doc §Q2; never `Wall.to`, the passage neighbor, which is real floor in
+ * the next chamber).
+ *
+ * Used by HexGrid's `isBlocked` for v2 door-aware walkability: a CLOSED
+ * door blocks movement even when its hex is nominally a revealed floor
+ * tile, and an OPEN door is walkable even when it's not one — the door hex
+ * sits on the boundary between chambers, outside either room's floor-tile
+ * bbox (the same "bridge two floor-tile sets" need the old v1
+ * `openDoorWalkableKeys` solved, now sourced from the real wall list
+ * instead of a prop nothing ever populated).
  *
  * Exported for unit testing without rendering HexGrid.
  */
-export function openDoorWalkableKeys(doors: Iterable<DoorInfo>): Set<string> {
-  const set = new Set<string>();
-  for (const door of doors) {
-    if (!door.position || !door.isOpen) continue;
-    set.add(coordKey(door.position.x, door.position.y, door.position.z));
+export function doorHexKinds(walls: Iterable<Wall>): Map<string, WallKind> {
+  const map = new Map<string, WallKind>();
+  for (const wall of walls) {
+    if (
+      wall.kind !== WallKind.DOOR_CLOSED &&
+      wall.kind !== WallKind.DOOR_OPEN
+    ) {
+      continue;
+    }
+    if (!wall.from) continue;
+    map.set(coordKey(wall.from.x, wall.from.y, wall.from.z), wall.kind);
   }
-  return set;
+  return map;
+}
+
+/**
+ * Door hex positions (DOOR_CLOSED/DOOR_OPEN walls' `from` cell) for the
+ * fallback ShadedHexFloor renderer's `doorPositions` tile-coloring prop.
+ *
+ * Exported for unit testing without rendering HexGrid.
+ */
+export function doorHexPositions(walls: Iterable<Wall>): CubeCoord[] {
+  const positions: CubeCoord[] = [];
+  for (const wall of walls) {
+    if (
+      wall.kind !== WallKind.DOOR_CLOSED &&
+      wall.kind !== WallKind.DOOR_OPEN
+    ) {
+      continue;
+    }
+    if (!wall.from) continue;
+    positions.push({ x: wall.from.x, y: wall.from.y, z: wall.from.z });
+  }
+  return positions;
 }
 
 /**
