@@ -433,7 +433,10 @@ describe('EncounterView reaction-readiness HUD (rpg-dnd5e-web#432 harness-parity
     const oaToggle = screen.getByTestId(
       'reaction-toggle-dnd5e:conditions:opportunity_attack'
     );
-    expect(oaToggle.textContent).toContain('unknown');
+    // rpg-dnd5e-web#519: compact mode abbreviates the visible label ("OA"/
+    // "?") — aria-label still carries the full state for assistive tech and
+    // is what this test asserts on now.
+    expect(oaToggle.getAttribute('aria-label')).toContain('unknown');
 
     await act(async () => {
       fireEvent.click(oaToggle);
@@ -457,8 +460,9 @@ describe('EncounterView reaction-readiness HUD (rpg-dnd5e-web#432 harness-parity
     expect(request.ready).toBe(true);
 
     expect(
-      screen.getByTestId('reaction-toggle-dnd5e:conditions:opportunity_attack')
-        .textContent
+      screen
+        .getByTestId('reaction-toggle-dnd5e:conditions:opportunity_attack')
+        .getAttribute('aria-label')
     ).toContain('READY');
   });
 
@@ -483,7 +487,9 @@ describe('EncounterView reaction-readiness HUD (rpg-dnd5e-web#432 harness-parity
 
     expect(screen.getByText(/Reaction ready error: boom/)).toBeTruthy();
     expect(
-      screen.getByTestId('reaction-toggle-dnd5e:spells:shield').textContent
+      screen
+        .getByTestId('reaction-toggle-dnd5e:spells:shield')
+        .getAttribute('aria-label')
     ).toContain('unknown');
   });
 
@@ -547,6 +553,10 @@ describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#43
       );
       await Promise.resolve();
     });
+
+    // rpg-dnd5e-web#519: the log is a closed-by-default overlay now, not an
+    // always-reserved column — open it before asserting on its entries.
+    fireEvent.click(screen.getByTestId('encounter-dock-log-toggle'));
 
     expect(
       screen.getByTestId('combat-log-entry-actionResolved-0').textContent

@@ -1,24 +1,43 @@
 /**
- * EncounterDock — the thin bottom action bar that replaces the vertical
- * CombatLog/EconomyBar/ActionMenu/ReactionReadyPanel/EndTurn stack that used
- * to compete with EncounterMap for vertical space (rpg-dnd5e-web#491: "map
- * is fixed-size, panels eat the room").
+ * EncounterDock — the thin bottom action bar (rpg-dnd5e-web#491: "map is
+ * fixed-size, panels eat the room").
  *
- * 3-column shape adapted from the pre-clean-slate ActionPanelV2 (deleted at
- * 466d831/#448) — identity/status (left) | actions (center) | combat log
- * (right) — rebuilt on today's v1alpha2 stream data and existing components
- * (StatusBadgeList, EconomyBar, ActionMenu, ReactionReadyPanel, CombatLog),
- * not resurrecting the old component's code.
+ * rpg-dnd5e-web#519: Discord's activity viewport is short — much shorter
+ * than the desktop-sized windows this dock was originally measured against
+ * (#493/#496). Kirk's direction: MAX map, THIN action line. This redesigns
+ * the dock from 3 columns that each reserved up to COLUMN_MAX_HEIGHT of
+ * stacked content (EconomyBar row + ActionMenu's per-slot grouped rows +
+ * ReactionReadyPanel's two-line buttons + an End Turn row, all stacked
+ * vertically inside the "actions" column alone) down to ONE flex row:
+ * a slim identity strip, a compact single-row action strip (ActionMenu/
+ * EconomyBar/ReactionReadyPanel all switched into their new `compact` mode
+ * — see those components), and a combat-log TOGGLE instead of an
+ * always-reserved third column. The log itself renders as a floating
+ * overlay (position:absolute, anchored above the dock) only while open, so
+ * a closed log costs zero layout height — matching "anything tall becomes
+ * collapsible/overlaid instead of reserving layout height."
  *
- * All data is server-given and rendered verbatim: HP/AC/economy/actions all
- * flow from useEncounterState exactly as EncounterView already read them for
- * the old stacked layout — this only changes WHERE they render, not what.
+ * Two nested containers, not one: the OUTER div is the `position: relative`
+ * anchor for the overlay and has no overflow rule of its own. The INNER
+ * `-row` div carries `maxHeight` + `overflowY: auto` (the wrapping-content
+ * safety net). Setting overflow-y non-`visible` on an element forces both
+ * axes to clip per the CSS spec — so if the overlay were a child of the
+ * SAME element that scrolls, it would clip itself into invisibility (caught
+ * live during #519 verification: the overlay rendered in the DOM with
+ * correct content but 0 visible pixels, because it lived inside the
+ * scrolling row and `bottom: 100%` placed it entirely outside that row's
+ * own clipped box). Keeping the overlay as a sibling of the scrolling row,
+ * both inside the non-clipping outer anchor, avoids that trap.
+ *
+ * All data is still server-given and rendered verbatim — this only changes
+ * the layout, never what's shown or computed.
  */
 
 import type {
   ActionEconomy,
   AvailableAction,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import { useState } from 'react';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import type { EntityStatus } from '../../hooks/useEncounterState';
 import { getActionIconUrl } from '../../utils/actionIcons';
@@ -64,29 +83,14 @@ export interface EncounterDockProps {
   combatLogEntries: CombatLogEntry[];
 }
 
-// Copilot review #493: CombatLog's own header (~25px) plus its internal
-// scroll region's maxHeight:200 (CombatLog.tsx) sum to ~237px — sized so
-// CombatLog's natural height fits without needing to clip it.
-//
-// rpg-dnd5e-web#494: at desktop width this is a per-column height cap
-// (each column scrolls internally past this, never spills past its own
-// box). Below the measured wrap thresholds (see EncounterDockConcept.tsx),
-// columns wrap via flexWrap below instead of overflowing horizontally.
-const COLUMN_MAX_HEIGHT = 230;
-
-// #494 gate (medium finding): a fully-stacked layout is 3 rows of up to
-// COLUMN_MAX_HEIGHT each (~690px + gaps/padding) — on a SHORT viewport
-// (not just narrow-width — e.g. a landscape phone or a small emulated
-// Discord panel), that can starve EncounterView's map (flex:1, minHeight:0
-// in EncounterView.tsx) down toward 0, since the dock and map compete for
-// the same fixed-height parent. Capping the WHOLE dock's height as a
-// viewport fraction (not a per-column cap, which doesn't bound the SUM of
-// stacked rows) guarantees the map keeps a usable floor — 42vh leaves the
-// map >=58% of viewport height in the worst case (fully stacked, dock at
-// its cap) regardless of how many rows the columns wrap into. The dock
-// itself scrolls as one unit past this cap (overflowY below) rather than
-// clipping content outright.
-const DOCK_MAX_HEIGHT_VH = '42vh';
+// rpg-dnd5e-web#519: safety-net cap, not the primary height control anymore
+// — the single-row compact layout below is sized by its content (typically
+// one ~32-40px row), this just bounds the worst case (many wrapped rows on
+// an extremely narrow AND short viewport) so the dock can never eat more
+// than a small slice of a short Discord activity viewport. Down from #496's
+// 42vh (measured against a tall desktop window, not Discord's actual
+// embedded height) now that the combat log no longer reserves a column.
+const DOCK_MAX_HEIGHT_VH = '16vh';
 
 export function EncounterDock({
   entityId,
@@ -110,6 +114,7 @@ export function EncounterDock({
   endTurnLoading,
   combatLogEntries,
 }: EncounterDockProps) {
+  const [logOpen, setLogOpen] = useState(false);
   const tier = hp ? hpTier(hp.current, hp.max) : 'low';
   const hpPct =
     hp && hp.max > 0
@@ -122,177 +127,214 @@ export function EncounterDock({
   return (
     <div
       data-testid="encounter-dock"
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 16,
-        // Natural content height up to DOCK_MAX_HEIGHT_VH — no explicit
-        // minHeight (the old fixed value left ~10px of unaccounted dead
-        // space below the desktop columns; content-driven height means
-        // the dock is exactly as tall as its content, on desktop and
-        // stacked alike). Past the cap, the whole dock scrolls as one
-        // unit so the map (EncounterView's sibling flex:1 element) always
-        // keeps a usable floor instead of starving.
-        maxHeight: DOCK_MAX_HEIGHT_VH,
-        overflowY: 'auto',
-        flexShrink: 0,
-        padding: '10px 16px',
-        background: 'var(--bg-secondary, #1a1a1a)',
-        borderTop: '2px solid var(--border-primary, #333)',
-        boxShadow: '0 -8px 25px -5px rgba(0, 0, 0, 0.3)',
-      }}
+      style={{ position: 'relative', flexShrink: 0 }}
     >
-      {/* Left: identity / status block. flex:'0 1 220px' keeps the exact
-          220px desktop width (grow:0 — never wider than that even with
-          spare row space) while allowing it to shrink down to minWidth
-          before wrapping to its own row on narrow viewports (#494). */}
       <div
-        data-testid="encounter-dock-identity"
+        data-testid="encounter-dock-row"
         style={{
-          flex: '0 1 220px',
-          minWidth: 160,
-          maxHeight: COLUMN_MAX_HEIGHT,
           display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          maxHeight: DOCK_MAX_HEIGHT_VH,
           overflowY: 'auto',
-          overflowX: 'hidden',
+          padding: '6px 12px',
+          background: 'var(--bg-secondary, #1a1a1a)',
+          borderTop: '2px solid var(--border-primary, #333)',
+          boxShadow: '0 -8px 25px -5px rgba(0, 0, 0, 0.3)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        {/* Identity strip — name, class, inline HP bar + text, AC, status
+          badges, all on one line. No separate progress-bar row. */}
+        <div
+          data-testid="encounter-dock-identity"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexShrink: 0,
+            minWidth: 0,
+          }}
+        >
           <span
             style={{
               fontWeight: 700,
-              fontSize: 15,
+              fontSize: 13,
               color: 'var(--text-primary, #fff)',
+              whiteSpace: 'nowrap',
             }}
           >
             {name}
           </span>
           {label && (
-            <span style={{ fontSize: 12, color: 'var(--text-muted, #888)' }}>
-              {label}
-            </span>
-          )}
-        </div>
-
-        {hp && (
-          <div>
-            <div
-              style={{
-                height: 8,
-                borderRadius: 4,
-                background: 'rgba(255,255,255,0.1)',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${hpPct}%`,
-                  background: HP_TIER_COLOR[tier],
-                  transition: 'width 0.2s ease',
-                }}
-              />
-            </div>
-            <div
+            <span
               style={{
                 fontSize: 11,
                 color: 'var(--text-muted, #888)',
-                marginTop: 2,
+                whiteSpace: 'nowrap',
               }}
             >
-              HP {hp.current}/{hp.max}
-              {ac !== undefined ? ` · AC ${ac}` : ''}
-            </div>
-          </div>
-        )}
-        {!hp && ac !== undefined && (
-          <div style={{ fontSize: 11, color: 'var(--text-muted, #888)' }}>
-            AC {ac}
-          </div>
-        )}
+              {label}
+            </span>
+          )}
 
-        {statuses.length > 0 && <StatusBadgeList statuses={statuses} />}
-      </div>
+          {hp && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: 40,
+                  height: 6,
+                  borderRadius: 3,
+                  background: 'rgba(255,255,255,0.1)',
+                  overflow: 'hidden',
+                }}
+              >
+                <span
+                  style={{
+                    display: 'block',
+                    height: '100%',
+                    width: `${hpPct}%`,
+                    background: HP_TIER_COLOR[tier],
+                    transition: 'width 0.2s ease',
+                  }}
+                />
+              </span>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-muted, #888)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {hp.current}/{hp.max}
+                {ac !== undefined ? ` · AC ${ac}` : ''}
+              </span>
+            </span>
+          )}
+          {!hp && ac !== undefined && (
+            <span
+              style={{
+                fontSize: 11,
+                color: 'var(--text-muted, #888)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              AC {ac}
+            </span>
+          )}
 
-      {/* Center: economy + actions + reactions + end turn. #494: minWidth
-          was 0 — the literal cause of this column collapsing to nothing
-          once the row couldn't fit all three (identity/log's old
-          flexShrink:0 held their full width and overflowed instead of
-          giving this column room). A real floor (220) means IT wraps to
-          its own row instead of vanishing. */}
-      <div
-        data-testid="encounter-dock-actions"
-        style={{
-          flex: '1 1 300px',
-          minWidth: 220,
-          maxHeight: COLUMN_MAX_HEIGHT,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-          overflowY: 'auto',
-          overflowX: 'hidden',
-        }}
-      >
-        <EconomyBar economy={economy} />
-        <ActionMenu
-          actions={actions}
-          enabled={actionsEnabled}
-          loading={actionsLoading}
-          onSelectAction={onSelectAction}
-          armedActionKey={armedActionKey}
-        />
-        <ReactionReadyPanel
-          readiness={reactionReadiness}
-          loading={reactionLoading}
-          disabled={reactionDisabled}
-          onToggle={onToggleReaction}
-        />
-        <div>
+          {statuses.length > 0 && <StatusBadgeList statuses={statuses} />}
+        </div>
+
+        {/* Actions strip — economy numbers, action buttons, reaction toggles,
+          and End Turn all in ONE wrapping row via their new compact modes
+          (falls back to wrapping only under real width pressure, never
+          stacks vertically by design the way the old 3-column layout did). */}
+        <div
+          data-testid="encounter-dock-actions"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+            flex: '1 1 240px',
+            minWidth: 0,
+          }}
+        >
+          <EconomyBar economy={economy} compact />
+          <ActionMenu
+            actions={actions}
+            enabled={actionsEnabled}
+            loading={actionsLoading}
+            onSelectAction={onSelectAction}
+            armedActionKey={armedActionKey}
+            compact
+          />
+          <ReactionReadyPanel
+            readiness={reactionReadiness}
+            loading={reactionLoading}
+            disabled={reactionDisabled}
+            onToggle={onToggleReaction}
+            compact
+          />
           <button
             type="button"
             onClick={onEndTurn}
             disabled={endTurnDisabled}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 10px',
+              fontSize: 12,
+            }}
           >
             {/* #497: static icon (this button isn't server-driven like
-                ActionMenu's entries) — same getActionIconUrl lookup, so a
-                missing/renamed asset falls back to text-only here too. */}
+              ActionMenu's entries) — same getActionIconUrl lookup, so a
+              missing/renamed asset falls back to text-only here too. */}
             {endTurnIconUrl && (
               <img
                 src={endTurnIconUrl}
                 alt=""
                 aria-hidden="true"
-                width={16}
-                height={16}
+                width={14}
+                height={14}
                 style={{ display: 'inline-block', flexShrink: 0 }}
               />
             )}
             {endTurnLoading ? 'Ending…' : 'End turn'}
           </button>
         </div>
+
+        {/* Combat log toggle — replaces the always-reserved third column.
+            Closed by default; costs zero layout height until opened, then
+            floats above the dock instead of pushing the map up. */}
+        <button
+          type="button"
+          data-testid="encounter-dock-log-toggle"
+          onClick={() => setLogOpen((open) => !open)}
+          aria-expanded={logOpen}
+          aria-label={`Combat log, ${combatLogEntries.length} entries — ${logOpen ? 'hide' : 'show'}`}
+          style={{
+            flexShrink: 0,
+            padding: '3px 10px',
+            fontSize: 12,
+            fontFamily: 'monospace',
+            background: logOpen ? '#2a3a4a' : 'transparent',
+            color: logOpen ? '#9cf' : 'var(--text-muted, #888)',
+            border: '1px solid var(--border-primary, #333)',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          📜 {combatLogEntries.length}
+        </button>
       </div>
 
-      {/* Right: combat log. maxHeight + overflow:'hidden' clips CombatLog
-          to this column's own budget regardless of its natural content
-          height — it already scrolls internally (CombatLog.tsx's
-          overflowY:'auto' region), so this only affects how many lines
-          are visible before scrolling, never spill past the dock.
-          flex:'0 1 320px' matches identity's shrink-then-wrap behavior
-          (#494) instead of the old flexShrink:0 that held its full width
-          and pushed the row past the viewport on narrow screens. */}
-      <div
-        data-testid="encounter-dock-log"
-        style={{
-          flex: '0 1 320px',
-          minWidth: 220,
-          maxHeight: COLUMN_MAX_HEIGHT,
-          overflow: 'hidden',
-        }}
-      >
-        <CombatLog entries={combatLogEntries} />
-      </div>
+      {/* Sibling of the scrolling row above, not a child of it — see the
+          file-header comment on why the overlay can't live inside the
+          overflow-clipped row. */}
+      {logOpen && (
+        <div
+          data-testid="encounter-dock-log-overlay"
+          style={{
+            position: 'absolute',
+            bottom: '100%',
+            right: 12,
+            marginBottom: 8,
+            width: 320,
+            maxWidth: 'calc(100vw - 24px)',
+            maxHeight: 280,
+            zIndex: 50,
+            borderRadius: 8,
+            overflow: 'hidden',
+            boxShadow: '0 -4px 20px -2px rgba(0, 0, 0, 0.5)',
+          }}
+        >
+          <CombatLog entries={combatLogEntries} />
+        </div>
+      )}
     </div>
   );
 }

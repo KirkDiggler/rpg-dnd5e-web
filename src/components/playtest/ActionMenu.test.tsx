@@ -157,4 +157,63 @@ describe('ActionMenu', () => {
       expect(btn.textContent).toContain('Martial Arts');
     });
   });
+
+  describe('compact mode (rpg-dnd5e-web#519)', () => {
+    it('renders one flat row with no per-slot grouping headers', () => {
+      render(
+        <ActionMenu
+          actions={[
+            action({
+              id: 'attack',
+              displayName: 'Attack',
+              economySlot: EconomySlot.ACTION,
+            }),
+            action({
+              id: 'martial-arts',
+              displayName: 'Martial Arts',
+              economySlot: EconomySlot.BONUS_ACTION,
+            }),
+          ]}
+          enabled
+          loading={false}
+          onSelectAction={vi.fn()}
+          compact
+        />
+      );
+      expect(
+        screen.getByTestId('action-menu').getAttribute('data-compact')
+      ).toBe('true');
+      // No slot-grouping headers in compact mode — both buttons still render.
+      expect(screen.queryByText('Action')).toBeNull();
+      expect(screen.queryByText('Bonus Action')).toBeNull();
+      expect(screen.getByText('Attack')).toBeTruthy();
+      expect(screen.getByText('Martial Arts')).toBeTruthy();
+    });
+
+    it('keeps the unavailable_reason in the title tooltip but not as visible text', () => {
+      render(
+        <ActionMenu
+          actions={[
+            action({
+              id: 'move',
+              displayName: 'Move',
+              available: false,
+              unavailableReason: 'movement lands in Beat-2',
+              economySlot: EconomySlot.MOVEMENT,
+              targetKind: TargetKind.POSITION,
+            }),
+          ]}
+          enabled
+          loading={false}
+          onSelectAction={vi.fn()}
+          compact
+        />
+      );
+      const btn = screen.getByTestId('action-dnd5e:combat_abilities:move');
+      expect(btn.getAttribute('title')).toBe('movement lands in Beat-2');
+      expect(
+        screen.queryByTestId('action-reason-dnd5e:combat_abilities:move')
+      ).toBeNull();
+    });
+  });
 });

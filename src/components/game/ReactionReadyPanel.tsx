@@ -51,6 +51,11 @@ export interface ReactionReadyPanelProps {
     reactionRef: { module: string; type: string; id: string },
     ready: boolean
   ) => void;
+  /** rpg-dnd5e-web#519 — EncounterDock's "thin action line" mode: drops the
+   * "Ready reactions" header and renders each toggle as a single-line
+   * label+state pill instead of a two-line stacked button. Default false so
+   * PlaytestHarness's existing dev-panel view is unchanged. */
+  compact?: boolean;
 }
 
 export function ReactionReadyPanel({
@@ -58,21 +63,27 @@ export function ReactionReadyPanel({
   loading,
   disabled,
   onToggle,
+  compact = false,
 }: ReactionReadyPanelProps) {
   return (
-    <div data-testid="reaction-ready-panel" style={{ marginBottom: 8 }}>
-      <div
-        style={{
-          fontSize: 11,
-          color: '#888',
-          textTransform: 'uppercase',
-          letterSpacing: 0.5,
-          marginBottom: 4,
-        }}
-      >
-        Ready reactions
-      </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+    <div
+      data-testid="reaction-ready-panel"
+      style={{ marginBottom: compact ? 0 : 8 }}
+    >
+      {!compact && (
+        <div
+          style={{
+            fontSize: 11,
+            color: '#888',
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+            marginBottom: 4,
+          }}
+        >
+          Ready reactions
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: compact ? 4 : 6, flexWrap: 'wrap' }}>
         {REACTION_ROWS.map((row) => {
           const ready = readiness?.get(row.refStr);
           // Tri-state label + next-action, same computation as the harness:
@@ -104,24 +115,33 @@ export function ReactionReadyPanel({
               disabled={disabled || loading}
               aria-pressed={ready === true}
               aria-label={`${row.label}: ${stateLabel} (click to ${ariaAction})`}
-              title={row.hint}
+              title={
+                compact ? `${row.label}: ${stateLabel} — ${row.hint}` : row.hint
+              }
               style={{
                 display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                padding: '4px 10px',
+                flexDirection: compact ? 'row' : 'column',
+                alignItems: compact ? 'center' : 'flex-start',
+                gap: compact ? 4 : 0,
+                padding: compact ? '3px 8px' : '4px 10px',
                 background,
                 color,
                 border: `1px ${borderStyle} ${borderColor}`,
                 borderRadius: 4,
                 cursor: disabled || loading ? 'not-allowed' : 'pointer',
                 fontFamily: 'monospace',
-                fontSize: 12,
+                fontSize: compact ? 11 : 12,
               }}
             >
-              <span>{row.label}</span>
-              <span style={{ fontSize: 10, marginTop: 2, opacity: 0.8 }}>
-                {stateLabel}
+              <span>{compact ? shortLabel(row.label) : row.label}</span>
+              <span
+                style={
+                  compact
+                    ? { fontSize: 11, opacity: 0.8 }
+                    : { fontSize: 10, marginTop: 2, opacity: 0.8 }
+                }
+              >
+                {compact ? shortState(stateLabel) : stateLabel}
               </span>
             </button>
           );
@@ -129,4 +149,25 @@ export function ReactionReadyPanel({
       </div>
     </div>
   );
+}
+
+// Compact mode trims both label and state to fit a single-row pill —
+// aria-label above still carries the full text for assistive tech, and the
+// title tooltip carries the full hint, so nothing is lost, just not shown.
+function shortLabel(label: string): string {
+  return label
+    .split(' ')
+    .map((word) => word[0])
+    .join('');
+}
+
+function shortState(stateLabel: string): string {
+  switch (stateLabel) {
+    case 'READY':
+      return '✓';
+    case 'unready':
+      return '–';
+    default:
+      return '?';
+  }
 }
