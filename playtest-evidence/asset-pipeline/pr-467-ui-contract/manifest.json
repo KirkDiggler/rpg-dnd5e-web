@@ -1,0 +1,432 @@
+{
+  "$schemaVersion": 1,
+  "generatedBy": "scripts/build_ui_contract_manifest.py -- DO NOT HAND-EDIT, re-run the script instead",
+  "generatedFrom": [
+    "library/ui-contract-key-map.json (hand-maintained key -> sprite/portrait assignments)",
+    "harness/models/synty/ (dimensions measured directly from the promoted PNG files)"
+  ],
+  "keyPrefix": "dnd5e:ui:",
+  "surfaces": {
+    "chrome": {
+      "entries": [
+        {
+          "key": "dnd5e:ui:frame-panel",
+          "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box21_Variant01.png",
+          "width": 512,
+          "height": 512,
+          "sizeKB": 67.9,
+          "sliceInsets": {
+            "top": 50,
+            "right": 43,
+            "bottom": 56,
+            "left": 43
+          },
+          "notes": "Clean square beveled gold frame, straight edges. General dialog/panel chrome -- default pick for the #525 dock/panel shell primitive."
+        },
+        {
+          "key": "dnd5e:ui:frame-ornate",
+          "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box18_Variant01.png",
+          "width": 512,
+          "height": 512,
+          "sizeKB": 99.2,
+          "sliceInsets": {
+            "top": 59,
+            "right": 84,
+            "bottom": 53,
+            "left": 83
+          },
+          "notes": "Ornate bracket frame with diamond side-spikes, larger insets. For emphasis surfaces (e.g. victory/defeat modal border, hero ability card) rather than everyday chrome."
+        },
+        {
+          "key": "dnd5e:ui:frame-button",
+          "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box_Small01.png",
+          "width": 256,
+          "height": 256,
+          "sizeKB": 29.4,
+          "sliceInsets": {
+            "top": 30,
+            "right": 27,
+            "bottom": 27,
+            "left": 25
+          },
+          "notes": "Compact frame (256x256 source, smaller absolute insets than frame-panel but same proportional bevel weight) sized for action-bar-button-scale chrome."
+        }
+      ]
+    },
+    "bars": {
+      "entries": [
+        {
+          "key": "dnd5e:ui:bar-track-hp",
+          "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal01.png",
+          "width": 512,
+          "height": 128,
+          "sizeKB": 22.6,
+          "trackInteriorInset": {
+            "top": 30,
+            "right": 23,
+            "bottom": 23,
+            "left": 22
+          },
+          "notes": "Dark steel bezel/trough, transparent interior. Generic HP-style bar track -- pairs with bar-fill-hp or bar-fill-resource composited into the interior inset region."
+        },
+        {
+          "key": "dnd5e:ui:bar-fill-hp",
+          "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal04.png",
+          "width": 256,
+          "height": 64,
+          "sizeKB": 11.9,
+          "fillDirection": "left-to-right",
+          "capMargin": {
+            "top": 30,
+            "right": 23,
+            "bottom": 23,
+            "left": 22
+          },
+          "notes": "Solid gold gradient fill, tapered diamond end-caps. Clip (do not stretch) to represent percentage; cap margin matches bar-track-hp's interior inset so the fill sits flush inside the bezel."
+        },
+        {
+          "key": "dnd5e:ui:bar-fill-resource",
+          "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal05.png",
+          "width": 256,
+          "height": 64,
+          "sizeKB": 6.7,
+          "fillDirection": "left-to-right",
+          "capMargin": {
+            "top": 30,
+            "right": 23,
+            "bottom": 23,
+            "left": 22
+          },
+          "notes": "Solid silver/gray gradient fill, same shape as bar-fill-hp. For a secondary resource (stamina/spell-slots/etc.) sharing bar-track-hp so HP and the secondary resource read as the same gauge family in different colors."
+        }
+      ]
+    },
+    "badges": {
+      "entries": [
+        {
+          "key": "dnd5e:ui:badge-raging",
+          "file": "ui/actions/rage.png",
+          "width": 512,
+          "height": 512,
+          "sizeKB": 21.1,
+          "notes": "Reuses the #490 action-bar rage icon path (dumbbell glyph) -- no copy. Judgment call: matches the action button rather than pulling a separate status-icon-set glyph (icons/status Status_AttackUp01 crossed-swords was the alternative); flagged for veto."
+        },
+        {
+          "key": "dnd5e:ui:badge-dodging",
+          "file": "ui/actions/dodge.png",
+          "width": 512,
+          "height": 512,
+          "sizeKB": 4.8,
+          "notes": "Reuses the #490 action-bar dodge icon path (shield glyph) -- no copy. Same judgment call as badge-raging: button/badge visual consistency over a distinct glyph."
+        },
+        {
+          "key": "dnd5e:ui:badge-unconscious-dying",
+          "file": "ui/status/ICON_FantasyWarrior_Status_Dead01_Clean.png",
+          "width": 256,
+          "height": 256,
+          "sizeKB": 5.7,
+          "notes": "Skull glyph from the #473 status-icon set. Covers both 'unconscious' and 'dying' (0 HP / death-save territory) as a single badge per the #467 checklist -- there is no separate sleep/Zzz unconscious-only glyph in the promoted set."
+        },
+        {
+          "key": "dnd5e:ui:badge-buff",
+          "file": "ui/status/ICON_FantasyWarrior_Status_Up01_Clean.png",
+          "width": 256,
+          "height": 256,
+          "sizeKB": 3.4,
+          "notes": "Generic upward-arrow glyph from the #473 status-icon set. Generic positive-effect badge, not tied to a specific buff."
+        },
+        {
+          "key": "dnd5e:ui:badge-debuff",
+          "file": "ui/status/ICON_FantasyWarrior_Status_Down01_Clean.png",
+          "width": 256,
+          "height": 256,
+          "sizeKB": 3.5,
+          "notes": "Generic downward-arrow glyph from the #473 status-icon set. Generic negative-effect badge, not tied to a specific debuff."
+        }
+      ]
+    },
+    "portraits": {
+      "entries": [
+        {
+          "key": "dnd5e:ui:portrait-fighter",
+          "file": "characters/portraits/fighter.png",
+          "width": 512,
+          "height": 512,
+          "sizeKB": 240.9,
+          "notes": "Base fighter class portrait."
+        },
+        {
+          "key": "dnd5e:ui:portrait-barbarian",
+          "file": "characters/portraits/barbarian.png",
+          "width": 512,
+          "height": 512,
+          "sizeKB": 235.1,
+          "notes": "Base barbarian class portrait."
+        },
+        {
+          "key": "dnd5e:ui:portrait-monk",
+          "file": "characters/portraits/monk.png",
+          "width": 512,
+          "height": 512,
+          "sizeKB": 211.0,
+          "notes": "Base monk class portrait."
+        },
+        {
+          "key": "dnd5e:ui:portrait-rogue",
+          "file": "characters/portraits/rogue.png",
+          "width": 512,
+          "height": 512,
+          "sizeKB": 196.9,
+          "notes": "Base rogue class portrait."
+        },
+        {
+          "key": "dnd5e:ui:portrait-goblin",
+          "file": "portraits/Character_Goblin_Warrior_Male.png",
+          "width": 512,
+          "height": 512,
+          "sizeKB": 214.5,
+          "notes": "Rank-and-file goblin portrait for enemy initiative slots."
+        },
+        {
+          "key": "dnd5e:ui:portrait-boss",
+          "file": "portraits/Character_Goblin_WarChief.png",
+          "width": 512,
+          "height": 512,
+          "sizeKB": 260.2,
+          "notes": "PLACEHOLDER -- Goblin WarChief standing in for a generic 'boss' tier portrait until a dedicated boss portrait set exists. See $placeholderNote."
+        }
+      ]
+    },
+    "banners": {
+      "entries": [
+        {
+          "key": "dnd5e:ui:banner-victory",
+          "file": "ui/library/banners/SPR_FantasyWarrior_Banner07.png",
+          "width": 1024,
+          "height": 512,
+          "sizeKB": 403.1,
+          "notes": "Warm gold ornate scrollwork title-plate frame, text-free (empty interior for app-rendered text). Judgment call -- see $judgmentCallNote."
+        },
+        {
+          "key": "dnd5e:ui:banner-defeat",
+          "file": "ui/library/banners/SPR_FantasyWarrior_Banner08.png",
+          "width": 1024,
+          "height": 512,
+          "sizeKB": 289.8,
+          "notes": "Cold steel title-plate frame with hook/claw corner ornaments, text-free. Judgment call -- see $judgmentCallNote."
+        }
+      ]
+    }
+  },
+  "keys": {
+    "dnd5e:ui:frame-panel": {
+      "surface": "chrome",
+      "key": "dnd5e:ui:frame-panel",
+      "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box21_Variant01.png",
+      "width": 512,
+      "height": 512,
+      "sizeKB": 67.9,
+      "sliceInsets": {
+        "top": 50,
+        "right": 43,
+        "bottom": 56,
+        "left": 43
+      },
+      "notes": "Clean square beveled gold frame, straight edges. General dialog/panel chrome -- default pick for the #525 dock/panel shell primitive."
+    },
+    "dnd5e:ui:frame-ornate": {
+      "surface": "chrome",
+      "key": "dnd5e:ui:frame-ornate",
+      "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box18_Variant01.png",
+      "width": 512,
+      "height": 512,
+      "sizeKB": 99.2,
+      "sliceInsets": {
+        "top": 59,
+        "right": 84,
+        "bottom": 53,
+        "left": 83
+      },
+      "notes": "Ornate bracket frame with diamond side-spikes, larger insets. For emphasis surfaces (e.g. victory/defeat modal border, hero ability card) rather than everyday chrome."
+    },
+    "dnd5e:ui:frame-button": {
+      "surface": "chrome",
+      "key": "dnd5e:ui:frame-button",
+      "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box_Small01.png",
+      "width": 256,
+      "height": 256,
+      "sizeKB": 29.4,
+      "sliceInsets": {
+        "top": 30,
+        "right": 27,
+        "bottom": 27,
+        "left": 25
+      },
+      "notes": "Compact frame (256x256 source, smaller absolute insets than frame-panel but same proportional bevel weight) sized for action-bar-button-scale chrome."
+    },
+    "dnd5e:ui:bar-track-hp": {
+      "surface": "bars",
+      "key": "dnd5e:ui:bar-track-hp",
+      "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal01.png",
+      "width": 512,
+      "height": 128,
+      "sizeKB": 22.6,
+      "trackInteriorInset": {
+        "top": 30,
+        "right": 23,
+        "bottom": 23,
+        "left": 22
+      },
+      "notes": "Dark steel bezel/trough, transparent interior. Generic HP-style bar track -- pairs with bar-fill-hp or bar-fill-resource composited into the interior inset region."
+    },
+    "dnd5e:ui:bar-fill-hp": {
+      "surface": "bars",
+      "key": "dnd5e:ui:bar-fill-hp",
+      "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal04.png",
+      "width": 256,
+      "height": 64,
+      "sizeKB": 11.9,
+      "fillDirection": "left-to-right",
+      "capMargin": {
+        "top": 30,
+        "right": 23,
+        "bottom": 23,
+        "left": 22
+      },
+      "notes": "Solid gold gradient fill, tapered diamond end-caps. Clip (do not stretch) to represent percentage; cap margin matches bar-track-hp's interior inset so the fill sits flush inside the bezel."
+    },
+    "dnd5e:ui:bar-fill-resource": {
+      "surface": "bars",
+      "key": "dnd5e:ui:bar-fill-resource",
+      "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal05.png",
+      "width": 256,
+      "height": 64,
+      "sizeKB": 6.7,
+      "fillDirection": "left-to-right",
+      "capMargin": {
+        "top": 30,
+        "right": 23,
+        "bottom": 23,
+        "left": 22
+      },
+      "notes": "Solid silver/gray gradient fill, same shape as bar-fill-hp. For a secondary resource (stamina/spell-slots/etc.) sharing bar-track-hp so HP and the secondary resource read as the same gauge family in different colors."
+    },
+    "dnd5e:ui:badge-raging": {
+      "surface": "badges",
+      "key": "dnd5e:ui:badge-raging",
+      "file": "ui/actions/rage.png",
+      "width": 512,
+      "height": 512,
+      "sizeKB": 21.1,
+      "notes": "Reuses the #490 action-bar rage icon path (dumbbell glyph) -- no copy. Judgment call: matches the action button rather than pulling a separate status-icon-set glyph (icons/status Status_AttackUp01 crossed-swords was the alternative); flagged for veto."
+    },
+    "dnd5e:ui:badge-dodging": {
+      "surface": "badges",
+      "key": "dnd5e:ui:badge-dodging",
+      "file": "ui/actions/dodge.png",
+      "width": 512,
+      "height": 512,
+      "sizeKB": 4.8,
+      "notes": "Reuses the #490 action-bar dodge icon path (shield glyph) -- no copy. Same judgment call as badge-raging: button/badge visual consistency over a distinct glyph."
+    },
+    "dnd5e:ui:badge-unconscious-dying": {
+      "surface": "badges",
+      "key": "dnd5e:ui:badge-unconscious-dying",
+      "file": "ui/status/ICON_FantasyWarrior_Status_Dead01_Clean.png",
+      "width": 256,
+      "height": 256,
+      "sizeKB": 5.7,
+      "notes": "Skull glyph from the #473 status-icon set. Covers both 'unconscious' and 'dying' (0 HP / death-save territory) as a single badge per the #467 checklist -- there is no separate sleep/Zzz unconscious-only glyph in the promoted set."
+    },
+    "dnd5e:ui:badge-buff": {
+      "surface": "badges",
+      "key": "dnd5e:ui:badge-buff",
+      "file": "ui/status/ICON_FantasyWarrior_Status_Up01_Clean.png",
+      "width": 256,
+      "height": 256,
+      "sizeKB": 3.4,
+      "notes": "Generic upward-arrow glyph from the #473 status-icon set. Generic positive-effect badge, not tied to a specific buff."
+    },
+    "dnd5e:ui:badge-debuff": {
+      "surface": "badges",
+      "key": "dnd5e:ui:badge-debuff",
+      "file": "ui/status/ICON_FantasyWarrior_Status_Down01_Clean.png",
+      "width": 256,
+      "height": 256,
+      "sizeKB": 3.5,
+      "notes": "Generic downward-arrow glyph from the #473 status-icon set. Generic negative-effect badge, not tied to a specific debuff."
+    },
+    "dnd5e:ui:portrait-fighter": {
+      "surface": "portraits",
+      "key": "dnd5e:ui:portrait-fighter",
+      "file": "characters/portraits/fighter.png",
+      "width": 512,
+      "height": 512,
+      "sizeKB": 240.9,
+      "notes": "Base fighter class portrait."
+    },
+    "dnd5e:ui:portrait-barbarian": {
+      "surface": "portraits",
+      "key": "dnd5e:ui:portrait-barbarian",
+      "file": "characters/portraits/barbarian.png",
+      "width": 512,
+      "height": 512,
+      "sizeKB": 235.1,
+      "notes": "Base barbarian class portrait."
+    },
+    "dnd5e:ui:portrait-monk": {
+      "surface": "portraits",
+      "key": "dnd5e:ui:portrait-monk",
+      "file": "characters/portraits/monk.png",
+      "width": 512,
+      "height": 512,
+      "sizeKB": 211.0,
+      "notes": "Base monk class portrait."
+    },
+    "dnd5e:ui:portrait-rogue": {
+      "surface": "portraits",
+      "key": "dnd5e:ui:portrait-rogue",
+      "file": "characters/portraits/rogue.png",
+      "width": 512,
+      "height": 512,
+      "sizeKB": 196.9,
+      "notes": "Base rogue class portrait."
+    },
+    "dnd5e:ui:portrait-goblin": {
+      "surface": "portraits",
+      "key": "dnd5e:ui:portrait-goblin",
+      "file": "portraits/Character_Goblin_Warrior_Male.png",
+      "width": 512,
+      "height": 512,
+      "sizeKB": 214.5,
+      "notes": "Rank-and-file goblin portrait for enemy initiative slots."
+    },
+    "dnd5e:ui:portrait-boss": {
+      "surface": "portraits",
+      "key": "dnd5e:ui:portrait-boss",
+      "file": "portraits/Character_Goblin_WarChief.png",
+      "width": 512,
+      "height": 512,
+      "sizeKB": 260.2,
+      "notes": "PLACEHOLDER -- Goblin WarChief standing in for a generic 'boss' tier portrait until a dedicated boss portrait set exists. See $placeholderNote."
+    },
+    "dnd5e:ui:banner-victory": {
+      "surface": "banners",
+      "key": "dnd5e:ui:banner-victory",
+      "file": "ui/library/banners/SPR_FantasyWarrior_Banner07.png",
+      "width": 1024,
+      "height": 512,
+      "sizeKB": 403.1,
+      "notes": "Warm gold ornate scrollwork title-plate frame, text-free (empty interior for app-rendered text). Judgment call -- see $judgmentCallNote."
+    },
+    "dnd5e:ui:banner-defeat": {
+      "surface": "banners",
+      "key": "dnd5e:ui:banner-defeat",
+      "file": "ui/library/banners/SPR_FantasyWarrior_Banner08.png",
+      "width": 1024,
+      "height": 512,
+      "sizeKB": 289.8,
+      "notes": "Cold steel title-plate frame with hook/claw corner ornaments, text-free. Judgment call -- see $judgmentCallNote."
+    }
+  }
+}
