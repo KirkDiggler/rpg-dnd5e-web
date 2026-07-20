@@ -1,59 +1,62 @@
 /**
- * contextMessage — the teaching-strip message source shared by every
- * combat-panel composition (#533 direction): "what is the game waiting
- * for?", in words, driven purely by the same server-given state the bar
- * renders. Extracted in round 4 so compositions B/C/D/E share one source.
+ * Concept adapter over the SHARED message source (#525 slice 2): the real
+ * logic lives in src/components/ui/combat/contextMessage.ts — the live
+ * dock and every concept composition read the same functions, so the
+ * message logic cannot drift. This file only maps the concept fixture
+ * shape into the shared ContextInput.
  */
 
+import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  contextMessage as sharedContextMessage,
+  pillMessage as sharedPillMessage,
+  type ContextInput,
+  type MessageTone,
+} from '../../components/ui/combat';
 import type { CombatPanelFixture } from './fixtures';
 
-export type StripTone = 'action' | 'info' | 'quiet';
+export type StripTone = MessageTone;
+
+function toContextInput(
+  fixture: CombatPanelFixture,
+  armedLabel: string | undefined
+): ContextInput {
+  return {
+    mode:
+      fixture.mode === 'TURN_BASED'
+        ? EncounterMode.TURN_BASED
+        : EncounterMode.FREE_ROAM,
+    // Concept fixtures have no ended state — the live dock exercises it.
+    encounterEnded: false,
+    isMyTurn: fixture.isMyTurn,
+    activeEntityName: fixture.activeName,
+    armedLabel,
+    // The same wire-only rule the live dock uses (#545 / the #552 gate):
+    // usable = server `available` alone, empty menu = loading, never
+    // "nothing left".
+    noneUsable:
+      fixture.actions.length > 0 && !fixture.actions.some((a) => a.available),
+    canStillMove: (fixture.economy?.movementRemaining ?? 0) > 0,
+  };
+}
 
 export function contextMessage(
   fixture: CombatPanelFixture,
   armedKey: string | undefined,
   armedLabel: string | undefined
 ): { text: string; tone: StripTone } {
-  if (armedKey) {
-    return {
-      text: `${armedLabel ?? 'Action'} armed — click a target on the map. Esc or click again to cancel.`,
-      tone: 'action',
-    };
-  }
-  if (fixture.mode === 'FREE_ROAM') {
-    return {
-      text: 'Exploring — click the map to move. Combat will start when enemies appear.',
-      tone: 'quiet',
-    };
-  }
-  if (!fixture.isMyTurn) {
-    return {
-      text: `${fixture.activeName}'s turn — watch the map.`,
-      tone: 'info',
-    };
-  }
-  return { text: 'Your turn — pick an action.', tone: 'action' };
+  // armedKey gates identically to the live dock: no label without a key.
+  return sharedContextMessage(
+    toContextInput(fixture, armedKey ? armedLabel : undefined)
+  );
 }
 
-/**
- * Round 6 (Kirk: "'your turn — pick an action' is vertical space we do not
- * need to take up"): the pill variant returns NULL for the plain your-turn
- * state — enabled verbs + the green initiative highlight already say it.
- * Teaching appears when needed (armed / spectator / free-roam / ended /
- * nothing-left / connecting), never as standing furniture (#533).
- */
 export function pillMessage(
   fixture: CombatPanelFixture,
   armedKey: string | undefined,
   armedLabel: string | undefined
 ): { text: string; tone: StripTone } | null {
-  const msg = contextMessage(fixture, armedKey, armedLabel);
-  if (
-    fixture.isMyTurn &&
-    fixture.mode === 'TURN_BASED' &&
-    armedKey === undefined
-  ) {
-    return null;
-  }
-  return msg;
+  return sharedPillMessage(
+    toContextInput(fixture, armedKey ? armedLabel : undefined)
+  );
 }

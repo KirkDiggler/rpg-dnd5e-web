@@ -31,12 +31,14 @@ import { CombatLog } from '../../components/game/CombatLog';
 import { Button } from '../../components/ui/Button';
 import {
   EconomyPips,
+  estimateVerbRowWidth,
   organizeVerbs,
   OverlayPanel,
   OverlayToggle,
+  shouldCollapse,
+  splitInlineVerbs,
   VerbButton,
   verbCost,
-  type VerbGroup,
 } from '../../components/ui/combat';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import { getActionIconUrl } from '../../utils/actionIcons';
@@ -69,31 +71,6 @@ export interface ComfortBarProps {
    * log).
    */
   logEntries?: CombatLogEntry[];
-}
-
-/**
- * Honest-enough width estimate for the verb row: per-button chrome plus
- * per-character label width at the active scale. Used ONLY to decide when
- * the inline layout would wrap beyond two lines — the actual layout is
- * plain flex-wrap, so a few px of estimation error just moves the wrap
- * point, never clips content.
- */
-function estimateVerbRowWidth(
-  inline: AvailableAction[],
-  featureGroups: VerbGroup[],
-  big: boolean
-): number {
-  const chrome = big ? 92 : 82; // padding + icon + badge + border + gap
-  const perChar = big ? 8.6 : 7.8;
-  const verb = (a: AvailableAction) => chrome + a.displayName.length * perChar;
-  const inlineW = inline.reduce((w, a) => w + verb(a), 0);
-  const groupsW = featureGroups.reduce(
-    (w, g) =>
-      w + 28 + g.label.length * 7 + g.actions.reduce((x, a) => x + verb(a), 0),
-    0
-  );
-  const endTurnW = 150;
-  return inlineW + groupsW + endTurnW;
 }
 
 export function ComfortBar({
@@ -130,18 +107,19 @@ export function ComfortBar({
   );
   const big = skin === 'hud';
 
-  // Round 5: inline-by-default. Reunite organizeVerbs' core overflow
-  // ("__core") with the flat core, and treat feature/spell/item groups as
-  // inline segments. The drop-down only returns when the estimated inline
-  // width would wrap beyond two lines at the measured row width.
-  const coreOverflow = groups.find((g) => g.id === '__core');
-  const inlineCore = coreOverflow
-    ? [...core, ...coreOverflow.actions]
-    : [...core];
-  const featureGroups = groups.filter((g) => g.id !== '__core');
-  const estimated = estimateVerbRowWidth(inlineCore, featureGroups, big);
-  const collapsed =
-    rowWidth !== null && rowWidth > 0 && estimated / rowWidth > 2;
+  // Round 5: inline-by-default — the shared ui/combat helpers (promoted in
+  // slice 2) reunite the core overflow, expose feature groups as inline
+  // segments, and decide collapse from the measured row width.
+  const { inlineCore, featureGroups } = splitInlineVerbs({
+    core,
+    groups,
+    menuCount,
+    triggerLabel,
+  });
+  const collapsed = shouldCollapse(
+    estimateVerbRowWidth(inlineCore, featureGroups, big),
+    rowWidth
+  );
 
   const { viewer } = fixture;
   const hpPct =
@@ -209,7 +187,7 @@ export function ComfortBar({
               zIndex: 4,
             }}
           >
-            <CombatLog entries={logEntries} />
+            <CombatLog entries={logEntries} translucent />
           </div>
         )}
         <div
