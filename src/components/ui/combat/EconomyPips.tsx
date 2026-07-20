@@ -1,9 +1,14 @@
 /**
- * EconomyPips — the turn economy as at-a-glance STATE, not a row of labeled
- * numbers (rpg-dnd5e-web#525: "Action:1 Bonus:1 Reaction" as a header row
- * made the economy read like navigation). One pip per remaining use, hollow
- * once spent, plus movement in feet. Slots differ by SHAPE (action=circle,
- * bonus=diamond, reaction=triangle) so the glance works without color.
+ * EconomyPips — the turn economy pools as at-a-glance STATE, not a row of
+ * labeled numbers (rpg-dnd5e-web#525: "Action:1 Bonus:1 Reaction" as a
+ * header row made the economy read like navigation). One pip per remaining
+ * use, hollow once spent. Slots differ by SHAPE (action=circle,
+ * bonus=diamond, reaction=triangle); VerbButton's cost badges reuse the
+ * exact same shapes, which is what makes "this verb costs that point"
+ * readable. Movement is NOT here — it's the #1 user question, promoted to
+ * its own readout in the composition. The reaction pip's tooltip explains
+ * that reactions fire automatically (opportunity attacks are a setting,
+ * not a bar control — Kirk's round-2 direction).
  *
  * Renders the server's ActionEconomy verbatim — no client-side rule math.
  */
@@ -68,28 +73,22 @@ export function EconomyPips({ economy, className }: EconomyPipsProps) {
     >
       <PipGroup
         shape="action"
-        label="Actions"
+        label="Action"
         remaining={economy.actionsRemaining}
         capacity={1}
       />
       <PipGroup
         shape="bonus"
-        label="Bonus actions"
+        label="Bonus action"
         remaining={economy.bonusActionsRemaining}
         capacity={1}
       />
       <PipGroup
         shape="reaction"
-        label="Reactions"
+        label="Reaction — used automatically, e.g. opportunity attacks"
         remaining={economy.reactionsRemaining}
         capacity={1}
       />
-      <span
-        style={{ whiteSpace: 'nowrap' }}
-        title={`Movement: ${economy.movementRemaining} ft remaining`}
-      >
-        {economy.movementRemaining} ft
-      </span>
     </span>
   );
 }

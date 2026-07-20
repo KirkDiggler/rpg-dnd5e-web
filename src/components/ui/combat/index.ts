@@ -19,4 +19,4 @@ export {
   type ReadinessChipProps,
   type ReadinessState,
 } from './ReadinessChip';
-export { VerbButton, type VerbButtonProps } from './VerbButton';
+export { VerbButton, type CostShape, type VerbButtonProps } from './VerbButton';

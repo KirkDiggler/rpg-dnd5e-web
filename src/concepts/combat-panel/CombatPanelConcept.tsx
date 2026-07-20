@@ -52,23 +52,14 @@ export function CombatPanelConcept() {
   const [composition, setComposition] = useState<CompositionId>('with-context');
   const [framed, setFramed] = useState(true);
   const [armedKey, setArmedKey] = useState<string | undefined>();
-  const [reactionOverride, setReactionOverride] = useState<
-    'ready' | 'armed' | undefined
-  >();
-
-  const baseFixture =
+  const fixture: CombatPanelFixture =
     COMBAT_PANEL_FIXTURES.find((f) => f.id === fixtureId) ??
     COMBAT_PANEL_FIXTURES[0];
-  const fixture: CombatPanelFixture =
-    reactionOverride && baseFixture.reaction !== 'spent'
-      ? { ...baseFixture, reaction: reactionOverride }
-      : baseFixture;
 
   // Selecting a fixture resets interaction state to the fixture's own.
   const selectFixture = (id: string) => {
     setFixtureId(id);
     setArmedKey(COMBAT_PANEL_FIXTURES.find((f) => f.id === id)?.armedActionKey);
-    setReactionOverride(undefined);
   };
 
   // Esc cancels an armed action — the #514 keyboard path, live in the bench.
@@ -83,8 +74,6 @@ export function CombatPanelConcept() {
   const handleVerb = (refId: string) =>
     setArmedKey((k) => (k === refId ? undefined : refId));
   const handleEndTurn = () => selectFixture('spectator');
-  const handleToggleReaction = () =>
-    setReactionOverride((r) => (r === 'armed' ? 'ready' : 'armed'));
 
   const panel =
     composition === 'command-bar' ? (
@@ -93,7 +82,6 @@ export function CombatPanelConcept() {
         armedKey={armedKey}
         onVerb={handleVerb}
         onEndTurn={handleEndTurn}
-        onToggleReaction={handleToggleReaction}
       />
     ) : (
       <CommandBarWithContext
@@ -101,7 +89,6 @@ export function CombatPanelConcept() {
         armedKey={armedKey}
         onVerb={handleVerb}
         onEndTurn={handleEndTurn}
-        onToggleReaction={handleToggleReaction}
       />
     );
 
@@ -110,11 +97,14 @@ export function CombatPanelConcept() {
   return (
     <div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 12, fontSize: 14 }}>
-        Round-1 IA concepts for the combat panel (web#525), composed from the
-        ui/combat primitives on real proto types. Interactions are live: click a
-        verb to arm it (Esc cancels), toggle the reaction chip, End Turn hands
-        the turn over. The frame below is Discord-activity-sized — review at
-        true size.
+        Round-2 IA concepts for the combat panel (web#525), shaped by Kirk's
+        action-point-pool model: every verb carries a cost badge (circle=action,
+        diamond=bonus, triangle=reaction) matching the pips, straight from the
+        server's economy_slot. Interactions are live: click a verb to arm it
+        (Esc cancels), End Turn hands the turn over, the gear shows where
+        reaction policies live. Hover anything for the words — tooltips carry
+        the detail. The frame below is Discord-activity-sized — review at true
+        size.
       </p>
 
       <div

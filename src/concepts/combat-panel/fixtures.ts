@@ -21,7 +21,6 @@ import {
   EconomySlot,
   TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import type { ReadinessState } from '../../components/ui/combat';
 
 function economy(
   actions: number,
@@ -54,13 +53,19 @@ function action(
   } as unknown as AvailableAction;
 }
 
-/** Data the panel needs that the wire already carries per-entity today. */
+/** Data the panel needs that the wire already carries per-entity today —
+ * EXCEPT `speed`: the movement readout needs "how much of my movement is
+ * left" as a fraction, and the wire only carries movementRemaining, not
+ * the turn's starting speed. That's a fixture-contract gap for the
+ * platform team (the rpg-api-protos#183 class of request). */
 export interface ViewerFixture {
   entityId: string;
   displayName: string;
   classRefId: string;
   hp: { current: number; max: number };
   ac: number;
+  /** Walking speed in feet — NOT on the wire today (contract gap). */
+  speed: number;
 }
 
 export interface CombatPanelFixture {
@@ -77,7 +82,6 @@ export interface CombatPanelFixture {
   actions: AvailableAction[];
   /** Initially-armed action ref id (the #514 arming flow). */
   armedActionKey?: string;
-  reaction: ReadinessState;
 }
 
 const alice: ViewerFixture = {
@@ -86,6 +90,16 @@ const alice: ViewerFixture = {
   classRefId: 'barbarian',
   hp: { current: 17, max: 24 },
   ac: 14,
+  speed: 30,
+};
+
+const remy: ViewerFixture = {
+  entityId: 'char-remy',
+  displayName: 'Remy',
+  classRefId: 'rogue',
+  hp: { current: 9, max: 10 },
+  ac: 15,
+  speed: 30,
 };
 
 const FULL_ACTIONS: AvailableAction[] = [
@@ -111,7 +125,6 @@ export const COMBAT_PANEL_FIXTURES: CombatPanelFixture[] = [
     viewer: alice,
     economy: economy(1, 1, 1, 30),
     actions: FULL_ACTIONS,
-    reaction: 'ready',
   },
   {
     id: 'armed-attack',
@@ -125,7 +138,32 @@ export const COMBAT_PANEL_FIXTURES: CombatPanelFixture[] = [
     economy: economy(1, 1, 1, 30),
     actions: FULL_ACTIONS,
     armedActionKey: 'attack',
-    reaction: 'ready',
+  },
+  {
+    id: 'rogue-turn',
+    label: 'Rogue turn (Cunning Action)',
+    description:
+      "Remy's Disengage and Hide come back as BONUS actions (Cunning Action) — the diamond cost badges render purely from the server's economy_slot; the web never knows why.",
+    mode: 'TURN_BASED',
+    isMyTurn: true,
+    activeName: 'Remy',
+    viewer: remy,
+    economy: economy(1, 1, 1, 30),
+    actions: [
+      action('attack', 'Attack', EconomySlot.ACTION),
+      action('dash', 'Dash', EconomySlot.ACTION, {
+        targetKind: TargetKind.NONE,
+      }),
+      action('disengage', 'Disengage', EconomySlot.BONUS_ACTION, {
+        targetKind: TargetKind.NONE,
+      }),
+      action('hide', 'Hide', EconomySlot.BONUS_ACTION, {
+        targetKind: TargetKind.NONE,
+      }),
+      action('dodge', 'Dodge', EconomySlot.ACTION, {
+        targetKind: TargetKind.NONE,
+      }),
+    ],
   },
   {
     id: 'half-spent',
@@ -165,20 +203,18 @@ export const COMBAT_PANEL_FIXTURES: CombatPanelFixture[] = [
         reason: 'no actions remaining',
       }),
     ],
-    reaction: 'ready',
   },
   {
     id: 'reaction-spent',
     label: 'Reaction spent',
     description:
-      'Opportunity attack already triggered this round: the chip reads as USED (struck through), not as an off toggle.',
+      'Reaction already triggered this round: the triangle pip hollows out; its tooltip says reactions fire automatically.',
     mode: 'TURN_BASED',
     isMyTurn: true,
     activeName: 'Alice',
     viewer: alice,
     economy: economy(1, 1, 0, 30),
     actions: FULL_ACTIONS,
-    reaction: 'spent',
   },
   {
     id: 'spectator',
@@ -191,7 +227,6 @@ export const COMBAT_PANEL_FIXTURES: CombatPanelFixture[] = [
     viewer: alice,
     economy: null,
     actions: [],
-    reaction: 'ready',
   },
   {
     id: 'free-roam',
@@ -208,6 +243,5 @@ export const COMBAT_PANEL_FIXTURES: CombatPanelFixture[] = [
         targetKind: TargetKind.POSITION,
       }),
     ],
-    reaction: 'unavailable',
   },
 ];
