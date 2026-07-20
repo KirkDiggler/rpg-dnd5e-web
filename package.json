@@ -20,7 +20,9 @@
     "pre-commit": "npm run format && npm run lint && npm run typecheck",
     "ci-check": "./scripts/ci-check.sh",
     "ci-fix": "npm run format && npm run lint --fix && npm run typecheck && npm run build",
-    "assets:sync": "sh scripts/sync-synty-assets.sh"
+    "assets:sync": "sh scripts/sync-synty-assets.sh",
+    "perf:sweep-solo": "node scripts/perf/sweep_solo.mjs",
+    "perf:sweep-party": "node scripts/perf/sweep_party.mjs"
   },
   "dependencies": {
     "@connectrpc/connect": "^2.0.2",
@@ -64,6 +66,7 @@
     "husky": "^9.1.7",
     "jsdom": "^27.3.0",
     "lint-staged": "^16.2.6",
+    "playwright": "^1.61.1",
     "prettier": "^3.6.2",
     "prettier-plugin-organize-imports": "^4.1.0",
     "typescript": "~5.8.3",
