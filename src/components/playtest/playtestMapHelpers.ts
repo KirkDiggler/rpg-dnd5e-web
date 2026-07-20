@@ -42,6 +42,13 @@ export interface RenderableEntity {
    * (obstaclePropKeys.ts's resolvePropKeyForEntity). Undefined until
    * platform starts sending a ref (no server code path sets one yet). */
   propRefId?: string;
+  /** The most recent genuine move's real hex-by-hex route
+   * (rpg-dnd5e-web#542), passed straight through to HexEntity's movement
+   * interpolation. Undefined for an entity that has never moved. */
+  movePath?: { x: number; y: number; z: number }[];
+  /** Monotonic counter bumped only by a genuine move — see
+   * `useEncounterState.ts`'s `mergeEntityPosition` doc comment. */
+  moveSeq?: number;
 }
 
 /** Checks for a status whose source ref id is "unconscious" — the only
@@ -117,7 +124,14 @@ export function entityTypeToDisplay(
  * not a stand-in for a required argument callers must now all supply.
  */
 export function buildRenderableEntities(
-  entities: Map<string, EntityState & { ghost?: boolean }>,
+  entities: Map<
+    string,
+    EntityState & {
+      ghost?: boolean;
+      movePath?: { x: number; y: number; z: number }[];
+      moveSeq?: number;
+    }
+  >,
   entityMeta: Map<string, EntityMeta>,
   entityHP: Map<string, { current: number; max: number }>,
   entityStatuses: Map<string, EntityStatus[]> | undefined = new Map()
@@ -151,6 +165,8 @@ export function buildRenderableEntities(
       classRefId: meta?.classRefId,
       isDowned,
       propRefId: meta?.propRefId,
+      movePath: entity.movePath,
+      moveSeq: entity.moveSeq,
     });
   }
   return result;

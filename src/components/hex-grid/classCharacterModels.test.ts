@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   resolveClassCharacterModelUrl,
   resolveIdleClipName,
+  resolveWalkClipName,
 } from './classCharacterModels';
 
 describe('resolveClassCharacterModelUrl', () => {
@@ -71,5 +72,41 @@ describe('resolveIdleClipName', () => {
     expect(
       resolveIdleClipName(['Idle_CheckWatch', 'Idle_Drinking', 'Idle_Relaxed'])
     ).toBe('Idle_CheckWatch');
+  });
+});
+
+describe('resolveWalkClipName', () => {
+  it('picks the clip whose name contains "walk" — today\'s real 4-class shape on main since rpg-game-assets#20', () => {
+    expect(
+      resolveWalkClipName([
+        'Idle_Drinking',
+        'Idle_Meditative',
+        'Idle_Relaxed',
+        'Walk_Forward',
+      ])
+    ).toBe('Walk_Forward');
+  });
+
+  it('matches "walk" case-insensitively', () => {
+    expect(resolveWalkClipName(['WALK_FORWARD'])).toBe('WALK_FORWARD');
+  });
+
+  it('returns undefined when no clip is walk-named — unlike resolveIdleClipName, does NOT fall back to the first available clip', () => {
+    expect(
+      resolveWalkClipName(['Idle_Relaxed', 'Idle_Drinking'])
+    ).toBeUndefined();
+  });
+
+  it('returns undefined for an empty clip list (downed variants, or any clip-less model)', () => {
+    expect(resolveWalkClipName([])).toBeUndefined();
+  });
+
+  it('does not match a clip that merely contains "walk" as a substring of an unrelated word', () => {
+    // Guards against an over-eager regex; "Boardwalk" isn't a real clip name
+    // this pipeline would ever produce, but the point is /walk/i really is
+    // a substring test, not a word-boundary one — documented, not "fixed".
+    expect(resolveWalkClipName(['Idle_Relaxed', 'Boardwalk_Loop'])).toBe(
+      'Boardwalk_Loop'
+    );
   });
 });

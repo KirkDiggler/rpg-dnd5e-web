@@ -39,8 +39,15 @@ import {
 } from '../playtest/playtestMapHelpers';
 
 export interface EncounterMapProps {
-  /** Unified entity store from useEncounterState (v1alpha1 EntityState stubs, entityId + position). */
-  entities: Map<string, EntityState & { ghost?: boolean }>;
+  /** Unified entity store from useEncounterState (v1alpha1 EntityState stubs, entityId + position). `movePath`/`moveSeq` (rpg-dnd5e-web#542) drive HexEntity's walk-clip interpolation. */
+  entities: Map<
+    string,
+    EntityState & {
+      ghost?: boolean;
+      movePath?: { x: number; y: number; z: number }[];
+      moveSeq?: number;
+    }
+  >;
   /** v1alpha2 identity metadata (type, monsterRefId) keyed by entityId. */
   entityMeta: Map<string, EntityMeta>;
   /** Per-hex reveal set ("x,y,z" cube-coord keys) from GeometryRevealed events. */

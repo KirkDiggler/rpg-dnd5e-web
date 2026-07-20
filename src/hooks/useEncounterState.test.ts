@@ -165,6 +165,88 @@ describe('mergeEntityPosition', () => {
     // Original state's entity reference unchanged
     expect(prev.entities.get('char-1')).toBe(originalEntity);
   });
+
+  // rpg-dnd5e-web#542: movePath/moveSeq drive HexEntity's walk-clip
+  // interpolation — mergeEntityPosition is the ONLY reducer that sets them
+  // (see the field's doc comment on LocalEncounterState.entities).
+  describe('path (rpg-dnd5e-web#542)', () => {
+    it('stashes the path as movePath and bumps moveSeq from undefined to 1', () => {
+      const prev = applyEntityAppeared(
+        createEmptyEncounterState(),
+        create(EntityStateSchema, { entityId: 'char-1' })
+      );
+      const path = [
+        create(PositionSchema, { x: 0, y: 0, z: 0 }),
+        create(PositionSchema, { x: 1, y: -1, z: 0 }),
+      ];
+
+      const next = mergeEntityPosition(prev, 'char-1', path[1], path);
+
+      const updated = next.entities.get('char-1');
+      expect(updated?.movePath).toEqual(path);
+      expect(updated?.moveSeq).toBe(1);
+    });
+
+    it('increments moveSeq on each subsequent genuine move', () => {
+      const prev = applyEntityAppeared(
+        createEmptyEncounterState(),
+        create(EntityStateSchema, { entityId: 'char-1' })
+      );
+      const posA = create(PositionSchema, { x: 1, y: -1, z: 0 });
+      const posB = create(PositionSchema, { x: 2, y: -2, z: 0 });
+
+      const afterFirst = mergeEntityPosition(prev, 'char-1', posA, [posA]);
+      const afterSecond = mergeEntityPosition(afterFirst, 'char-1', posB, [
+        posA,
+        posB,
+      ]);
+
+      expect(afterFirst.entities.get('char-1')?.moveSeq).toBe(1);
+      expect(afterSecond.entities.get('char-1')?.moveSeq).toBe(2);
+    });
+
+    it('bumps moveSeq again for a same-destination move (e.g. bounced off a wall)', () => {
+      const prev = applyEntityAppeared(
+        createEmptyEncounterState(),
+        create(EntityStateSchema, { entityId: 'char-1' })
+      );
+      const pos = create(PositionSchema, { x: 1, y: -1, z: 0 });
+
+      const afterFirst = mergeEntityPosition(prev, 'char-1', pos, [pos]);
+      const afterSecond = mergeEntityPosition(afterFirst, 'char-1', pos, [pos]);
+
+      expect(afterSecond.entities.get('char-1')?.moveSeq).toBe(2);
+    });
+
+    it('leaves movePath/moveSeq untouched when path is omitted (pre-#542 call sites)', () => {
+      const prev = applyEntityAppeared(
+        createEmptyEncounterState(),
+        create(EntityStateSchema, { entityId: 'char-1' })
+      );
+      const newPos = create(PositionSchema, { x: 3, y: -1, z: -2 });
+
+      const next = mergeEntityPosition(prev, 'char-1', newPos);
+
+      const updated = next.entities.get('char-1');
+      expect(updated?.position).toEqual(newPos);
+      expect(updated?.movePath).toBeUndefined();
+      expect(updated?.moveSeq).toBeUndefined();
+    });
+
+    it('leaves movePath/moveSeq untouched when path is an empty array', () => {
+      const prev = applyEntityAppeared(
+        createEmptyEncounterState(),
+        create(EntityStateSchema, { entityId: 'char-1' })
+      );
+      const newPos = create(PositionSchema, { x: 3, y: -1, z: -2 });
+
+      const next = mergeEntityPosition(prev, 'char-1', newPos, []);
+
+      const updated = next.entities.get('char-1');
+      expect(updated?.movePath).toBeUndefined();
+      expect(updated?.moveSeq).toBeUndefined();
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1345,6 +1427,43 @@ describe('applyEntityAppearedBatch', () => {
     expect(after.entityMeta.get('goblin-1')?.monsterRefId).toBe('goblin');
     expect(after.entityHP.get('goblin-1')).toEqual({ current: 7, max: 7 });
     expect(after.entityHP.has('char-alice')).toBe(false);
+  });
+
+  it('clears movePath/moveSeq on re-appear (rpg-dnd5e-web#542) — mount/revive must not replay the walk clip', () => {
+    // Entity had a real move (movePath/moveSeq set) before going ghost/
+    // reappearing — applyEntityAppearedBatch replaces the whole record with
+    // a fresh wire EntityState, so a revive must NOT carry the stale move
+    // forward (that would make HexEntity's useHexMovePath think a brand
+    // new move just started on every reconnect/LoS-reappear).
+    const withMove = mergeEntityPosition(
+      applyEntityAppearedBatch(createEmptyEncounterState(), [
+        {
+          entity: makeTestEntity('char-alice', { x: 0, y: 0, z: 0 }),
+          type: EntityType.CHARACTER,
+          monsterRefId: undefined,
+          initialHP: undefined,
+          initialAC: undefined,
+        },
+      ]),
+      'char-alice',
+      create(PositionSchema, { x: 1, y: -1, z: 0 }),
+      [create(PositionSchema, { x: 1, y: -1, z: 0 })]
+    );
+    expect(withMove.entities.get('char-alice')?.moveSeq).toBe(1);
+
+    const revived = applyEntityAppearedBatch(withMove, [
+      {
+        entity: makeTestEntity('char-alice', { x: 1, y: -1, z: 0 }),
+        type: EntityType.CHARACTER,
+        monsterRefId: undefined,
+        initialHP: undefined,
+        initialAC: undefined,
+      },
+    ]);
+
+    const revivedEntity = revived.entities.get('char-alice');
+    expect(revivedEntity?.movePath).toBeUndefined();
+    expect(revivedEntity?.moveSeq).toBeUndefined();
   });
 
   it('stores displayName and classRefId per entity (rpg-dnd5e-web#491)', () => {

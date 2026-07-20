@@ -72,6 +72,11 @@ export interface HexGridProps {
      * signal (rpg-dnd5e-web#528, charter #523). Preferred over
      * obstacleType when present. */
     propRefId?: string;
+    /** The most recent genuine move's real hex-by-hex route
+     * (rpg-dnd5e-web#542) — drives HexEntity's walk-clip interpolation. */
+    movePath?: { x: number; y: number; z: number }[];
+    /** Monotonic counter bumped only by a genuine move. */
+    moveSeq?: number;
   }>;
   selectedEntityId?: string;
   onHexClick?: (coord: { x: number; y: number; z: number }) => void;
@@ -656,6 +661,8 @@ function Scene({
           isDowned={entity.isDowned}
           obstacleType={entity.obstacleType}
           propRefId={entity.propRefId}
+          movePath={entity.movePath}
+          moveSeq={entity.moveSeq}
         />
       ))}
 

@@ -245,9 +245,15 @@ export function EncounterView({
     onEntityMoved: (e) => {
       const last = e.actualPath[e.actualPath.length - 1];
       if (last) {
+        // rpg-dnd5e-web#542: pass the WHOLE actualPath (not just its last
+        // element) so HexEntity can step through the real hex-by-hex route
+        // instead of teleporting straight to the destination. actualPath is
+        // real, backend-populated per-viewer-visible route data (confirmed
+        // directly against rpg-api's translateMoveEvent), not a stub.
         encounterState.applyEntityPositionUpdate(
           e.entityId,
-          v2PositionToV1(last)
+          v2PositionToV1(last),
+          e.actualPath.map(v2PositionToV1)
         );
       }
     },

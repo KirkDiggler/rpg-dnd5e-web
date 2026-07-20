@@ -246,9 +246,14 @@ export function PlaytestHarness() {
       onEntityMoved: (e) => {
         const last = e.actualPath[e.actualPath.length - 1];
         if (last) {
+          // rpg-dnd5e-web#542: mirrors EncounterView.tsx's production
+          // wiring — pass the whole actualPath so PlaytestMap's HexEntity
+          // instances animate the walk too (this is also the harness used
+          // for in-app verification of the walk clip itself).
           encounterState.applyEntityPositionUpdate(
             e.entityId,
-            v2PositionToV1(last)
+            v2PositionToV1(last),
+            e.actualPath.map(v2PositionToV1)
           );
         }
         const pos = last ? `(${last.x},${last.y},${last.z})` : '(no path)';

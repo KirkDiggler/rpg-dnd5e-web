@@ -89,3 +89,31 @@ export function resolveIdleClipName(names: string[]): string | undefined {
   const idleMatch = names.find((name) => /idle/i.test(name));
   return idleMatch ?? names[0];
 }
+
+/**
+ * Pick which baked clip to play on loop while an entity's board position is
+ * interpolating between hexes (rpg-dnd5e-web#542 — the "characters glide in
+ * their idle pose" fix). Prefers a clip whose name contains "walk"
+ * (case-insensitive), matching the `Walk_*` naming contract
+ * `retarget_walk_multi.py` enforces on the asset side. Unlike
+ * `resolveIdleClipName`, this does NOT fall back to the first available
+ * clip when no walk-named clip exists — an arbitrary idle/other clip playing
+ * fast-forward while the character visibly slides across the board is worse
+ * than just staying on the resolved idle clip, which is what callers should
+ * fall back to instead (see `ClassCharacterModel.tsx`'s usage: `isMoving`
+ * prefers `resolveWalkClipName`, falling back to `resolveIdleClipName` only
+ * if that's undefined — e.g. fighter/barbarian before a Walk_* clip ships
+ * for them, or any future clip-less model).
+ *
+ * @example
+ * ```typescript
+ * resolveWalkClipName(['Idle_Relaxed', 'Idle_Drinking', 'Walk_Forward']);
+ * // 'Walk_Forward'
+ * resolveWalkClipName(['Idle_Relaxed', 'Idle_Drinking']);
+ * // undefined — no Walk_* clip shipped for this model yet; caller falls
+ * //             back to resolveIdleClipName instead of guessing
+ * ```
+ */
+export function resolveWalkClipName(names: string[]): string | undefined {
+  return names.find((name) => /walk/i.test(name));
+}

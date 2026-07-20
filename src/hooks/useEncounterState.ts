@@ -103,8 +103,28 @@ export interface EntityStatus {
 export interface LocalEncounterState {
   encounterId: string;
   dungeonId: string;
-  /** All entities, keyed by entity ID. v2 may set entity.ghost on LoS loss. */
-  entities: Map<string, EntityState & { ghost?: boolean }>;
+  /**
+   * All entities, keyed by entity ID. v2 may set entity.ghost on LoS loss.
+   *
+   * `movePath`/`moveSeq` (rpg-dnd5e-web#542): the real hex-by-hex route from
+   * the most recent genuine `EntityMoved`/`MovementCompletedEvent`, set ONLY
+   * by `mergeEntityPosition` (the sole reducer `onEntityMoved` feeds) — never
+   * by `applyEntityAppeared`/`applyEntityAppearedBatch` (initial placement,
+   * revive-from-ghost), which replace the whole entity record with a fresh
+   * `{...entity, ghost: false}` off the wire and so naturally clear both
+   * fields back to undefined. This is what lets HexEntity's movement
+   * interpolation key off "a real move just happened" without a separate
+   * boolean: `moveSeq` only ever advances on a genuine move, so watching it
+   * change is watching for exactly that, not mount/reconciliation/ghost
+   * transitions. `moveSeq` is a monotonic counter (not just "movePath
+   * present") specifically so two moves to the SAME destination in a row
+   * (e.g. bounced off a wall and sent back) still each count as a fresh
+   * move worth animating, not a no-op React dependency.
+   */
+  entities: Map<
+    string,
+    EntityState & { ghost?: boolean; movePath?: Position[]; moveSeq?: number }
+  >;
   /** v1alpha2-revealed hexes (per-hex granularity). */
   revealedHexes: Set<string>;
   /**
@@ -278,17 +298,37 @@ export function createEmptyEncounterState(): LocalEncounterState {
  * If the entity is not present, returns prev unchanged — we don't fabricate
  * entities from a position alone.
  *
+ * `path` (rpg-dnd5e-web#542, optional): the move's full real hex-by-hex
+ * route (`EntityMoved.actualPath`/`MovementCompletedEvent.path`, converted
+ * to v1 `Position`), stashed as `movePath` alongside a bumped `moveSeq` so
+ * HexEntity's movement interpolation can step through it instead of
+ * snapping straight to the destination. Omitted (or empty) leaves both
+ * fields untouched — every pre-#542 call site keeps working unchanged, and
+ * a caller that genuinely has no path (shouldn't happen for a real
+ * `EntityMoved`, but defensive) degrades to the old teleport behavior
+ * rather than throwing. `moveSeq` increments rather than just tracking
+ * "movePath present" so two consecutive moves to the same destination
+ * (e.g. bounced back by a wall) each still register as a fresh move worth
+ * animating.
+ *
  * Exported for testing.
  */
 export function mergeEntityPosition(
   prev: LocalEncounterState,
   entityId: string,
-  position: Position
+  position: Position,
+  path?: Position[]
 ): LocalEncounterState {
   const existing = prev.entities.get(entityId);
   if (!existing) return prev;
   const newEntities = new Map(prev.entities);
-  newEntities.set(entityId, { ...existing, position });
+  newEntities.set(entityId, {
+    ...existing,
+    position,
+    ...(path && path.length > 0
+      ? { movePath: path, moveSeq: (existing.moveSeq ?? 0) + 1 }
+      : {}),
+  });
   return { ...prev, entities: newEntities };
 }
 
@@ -936,8 +976,17 @@ export interface UseEncounterStateResult {
    * Update only the position of an existing entity. Used as a fallback for
    * MovementCompletedEvent when the API omits updatedEntity but sends path[].
    * No-op if the entity is not already in state.
+   *
+   * `path` (rpg-dnd5e-web#542, optional): the move's full real hex-by-hex
+   * route — pass the whole `actualPath`/`path` array (not just its last
+   * element) so HexEntity can step through it instead of teleporting. See
+   * `mergeEntityPosition`'s doc comment for the full contract.
    */
-  applyEntityPositionUpdate: (entityId: string, position: Position) => void;
+  applyEntityPositionUpdate: (
+    entityId: string,
+    position: Position,
+    path?: Position[]
+  ) => void;
   /** Reset to empty state (new encounter or disconnect) */
   reset: () => void;
   // v1alpha2 additions
@@ -1070,8 +1119,8 @@ export function useEncounterState(): UseEncounterStateResult {
   );
 
   const applyEntityPositionUpdate = useCallback(
-    (entityId: string, position: Position) => {
-      setState((prev) => mergeEntityPosition(prev, entityId, position));
+    (entityId: string, position: Position, path?: Position[]) => {
+      setState((prev) => mergeEntityPosition(prev, entityId, position, path));
     },
     []
   );
