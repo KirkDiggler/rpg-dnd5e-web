@@ -21,14 +21,18 @@ interface MovementRangeBorderProps {
 const DEFAULT_COLOR = '#00bcd4'; // Cyan
 const DEFAULT_OPACITY = 0.8;
 const DEFAULT_GLOW_INTENSITY = 2.0;
-// Y offset must clear the floor extrusion top to be visible. ShadedHexFloor
-// extrudes hex tiles from y=0.05 to y=0.15 (depth 0.1, then translated by
-// 0.05). The previous 0.05 placed the border at the floor's BOTTOM face —
-// invisible from above and only peeking through z-fighting from below,
-// matching Kirk's "renders below the floor" Wave 2 playtest report.
-// Raise to 0.17 so it sits above the floor's top face with a small margin
-// that prevents z-fighting against PathPreview at 0.16.
-const BORDER_Y_OFFSET = 0.17;
+// Y offset must clear the topmost floor renderer's top face to be visible.
+// ShadedHexFloor extrudes hex tiles from y=0.05 to y=0.15 (depth 0.1, then
+// translated by 0.05) — the previous 0.05 placed the border at the floor's
+// BOTTOM face, invisible from above, matching Kirk's "renders below the
+// floor" Wave 2 playtest report. A 0.17 fix cleared Shaded but not
+// SyntyHexFloor (the DEFAULT floor — PR #477, shipped after this fix), a
+// flat unextruded plane whose top IS its position, FLOOR_Y=0.2 — taller
+// than 0.17, silently reintroducing the same symptom (rpg-dnd5e-web#535).
+// Raise to 0.22: above Synty's 0.2 top with the same ~0.01 margin the
+// original fix used against Shaded's 0.15, and above PathPreview's 0.21 so
+// the two keep their relative z-order.
+const BORDER_Y_OFFSET = 0.22;
 const LINE_WIDTH = 0.08; // Width of the border line
 
 /**

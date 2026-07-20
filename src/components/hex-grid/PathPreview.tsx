@@ -18,12 +18,18 @@ interface PathPreviewProps {
 
 const DEFAULT_COLOR = '#3b82f6'; // blue
 const DEFAULT_OPACITY = 0.4;
-// Y offset must clear the floor extrusion top to be visible. ShadedHexFloor
-// extrudes from y=0.05 to y=0.15. The previous 0.03 sat under the floor
-// entirely — same Wave 2 "below the floor" symptom as MovementRangeBorder.
-// Sits just above the floor top, slightly below MovementRangeBorder (0.17)
-// so the cyan range outline reads on top when both render the same edge.
-const PATH_Y_OFFSET = 0.16;
+// Y offset must clear the topmost floor renderer's top face to be visible.
+// ShadedHexFloor extrudes from y=0.05 to y=0.15. The previous 0.03 sat
+// under the floor entirely — same Wave 2 "below the floor" symptom as
+// MovementRangeBorder. A 0.16 fix cleared Shaded but not SyntyHexFloor
+// (the DEFAULT floor — PR #477, shipped after this fix), a flat unextruded
+// plane whose top IS its position, FLOOR_Y=0.2 — taller than 0.16,
+// silently reintroducing the same symptom (rpg-dnd5e-web#535). Raise to
+// 0.21: above Synty's 0.2 top with the same ~0.01 margin the original fix
+// used against Shaded's 0.15, and slightly below MovementRangeBorder
+// (0.22) so the cyan range outline still reads on top when both render the
+// same edge.
+const PATH_Y_OFFSET = 0.21;
 
 /**
  * Creates a flat hexagon shape for pointy-top orientation
