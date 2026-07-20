@@ -28,10 +28,10 @@ ENV VITE_DISCORD_CLIENT_ID=$VITE_DISCORD_CLIENT_ID
 ENV VITE_API_HOST=$VITE_API_HOST
 ENV BUILD_ID=$BUILD_ID
 
-# Copy theme files to public directory before build
-RUN mkdir -p public/themes && cp -r src/themes/*.css public/themes/
-
-# Build the application
+# Build the application. public/themes/ is the single git-tracked home of the
+# runtime theme CSS (loaded by useTheme at /themes/*.css) — never copy over it
+# from anywhere at build time (web#563: a stale src/themes copy step here
+# shipped an unstyled combat HUD on every deploy).
 RUN npm run build
 
 # Production stage
