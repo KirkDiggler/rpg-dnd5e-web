@@ -26,14 +26,16 @@
  * fetched 200 OK, nothing rendered). `SkeletonUtils.clone()` fixed this
  * and shipped separately via #517; this file wires up the animation
  * playback on top of that already-landed fix, not the clone itself.
- * Current asset reality (re-verified against assets#4-#10): standing
- * class GLBs currently ship 0 baked clips (junk stripped) except
- * monk/rogue, which have idle clips landing via asset issue #522 —
- * `resolveIdleClipName` returning undefined for a clip-less model is a
- * normal, expected case, not an error; the animation effects below and
- * the frameloop-invalidate heartbeat all no-op cleanly for it. Downed
- * variants ship with no animation data at all — `SkeletonUtils.clone()`
- * still works for a static mesh, so one clone path covers both cases.
+ * Current asset reality (re-verified against assets#4-#10, then again
+ * post rpg-game-assets#11): fighter/barbarian.glb ship 0 baked clips
+ * (junk stripped; Big-Rig retarget pending) — `resolveIdleClipName`
+ * returning undefined for a clip-less model is a normal, expected case,
+ * not an error; the animation effects below and the frameloop-invalidate
+ * heartbeat all no-op cleanly for it. monk/rogue.glb now ship 3 idle
+ * clips each (rpg-game-assets#11, closing rpg-dnd5e-web#522) and play
+ * one on loop. Downed variants ship with no animation data at all —
+ * `SkeletonUtils.clone()` still works for a static mesh, so one clone
+ * path covers both cases.
  */
 
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
@@ -136,11 +138,12 @@ export function ClassCharacterModel({
   }, [originalMaterials, isSelected, isGhost]);
 
   // Play the resolved idle clip on loop (resolveIdleClipName — prefers an
-  // "idle"-named clip, falls back to the first available; every shipped
-  // standing model has exactly one clip today, so this always resolves to
-  // that one). Downed variants carry no animation data — `names` is empty
-  // and this is a no-op, leaving the static collapsed pose exactly as
-  // authored.
+  // "idle"-named clip, falls back to the first available). Today's `main`
+  // fighter/barbarian/monk/rogue.glb all ship 0 clips (`names` is empty),
+  // so `clipName` is undefined and this effect no-ops cleanly — same as
+  // downed variants, which never carry animation data. Once
+  // rpg-game-assets#522 lands, monk/rogue will carry 3 idle-variant clips
+  // each and this resolves to whichever comes first.
   const { actions, names } = useAnimations(animations, cloned);
   const hasIdleClip = resolveIdleClipName(names) !== undefined;
   useEffect(() => {

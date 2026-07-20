@@ -55,22 +55,34 @@ export function resolveClassCharacterModelUrl(
 
 /**
  * Pick which baked clip to play on loop as the idle animation
- * (rpg-dnd5e-web#506). Every standing class GLB shipped so far carries
- * exactly one clip, named "Take 001" (a generic DCC-tool default, not
- * semantically "idle") — so today this always falls through to the
- * first-available-clip case. Prefers a clip whose name actually contains
- * "idle" (case-insensitive) so a future asset drop with multiple clips
- * (e.g. idle + walk) picks the right one automatically instead of
- * whichever happens to be first in the array. Returns undefined for a
- * downed variant or any model with no baked animation — callers treat
- * that as "leave the static pose alone", never a crash.
+ * (rpg-dnd5e-web#506). Prefers a clip whose name actually contains "idle"
+ * (case-insensitive), falling back to the first available clip; undefined
+ * for a downed variant or any model with no baked animation at all —
+ * callers treat that as "leave the static pose alone", never a crash.
+ *
+ * Re-verified against current asset reality (rebased post assets#4-#10,
+ * then re-checked again post rpg-game-assets#11): on `main` today,
+ * fighter/barbarian.glb ship 0 animation clips (junk stripped during the
+ * asset cleanup; a Big-Rig retarget is pending) — `resolveIdleClipName`
+ * returns undefined for both, which is the correct, expected,
+ * no-op-the-animation behavior for clip-less models, not a gap.
+ * monk.glb/rogue.glb, following the merge of rpg-game-assets#11 (idle
+ * retarget for rpg-dnd5e-web#522), now ship 3 clips each — monk:
+ * `Idle_Drinking`/`Idle_Meditative`/`Idle_Relaxed`; rogue:
+ * `Idle_CheckWatch`/`Idle_Drinking`/`Idle_Relaxed`. Every clip in that set
+ * matches the `/idle/i` filter, so this function picks whichever comes
+ * first in the GLB's animation array — an arbitrary but always-correct
+ * choice among interchangeable idle variants. Naming a *specific*
+ * preferred variant (e.g. always "Relaxed") is out of scope for this PR;
+ * that's the char-creation animation-picker slice's job.
  *
  * @example
  * ```typescript
- * resolveIdleClipName(['Take 001']); // 'Take 001' — today's real case
+ * resolveIdleClipName(['Idle_Drinking', 'Idle_Meditative', 'Idle_Relaxed']);
+ * // 'Idle_Drinking' — first idle-matching clip, current monk/rogue reality
  * resolveIdleClipName(['Walk', 'Idle_Loop']); // 'Idle_Loop'
- * resolveIdleClipName([]); // undefined — downed variants, or a model
- *                          // shipped with no animation at all
+ * resolveIdleClipName([]); // undefined — today's fighter/barbarian on
+ *                          // `main` (0 clips), and every downed variant
  * ```
  */
 export function resolveIdleClipName(names: string[]): string | undefined {
