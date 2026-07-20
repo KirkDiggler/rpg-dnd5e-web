@@ -24,6 +24,7 @@ import type {
   DoorInfo,
   MonsterCombatState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { ObstacleType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -63,6 +64,14 @@ export interface HexGridProps {
     /** True for a CHARACTER entity carrying the "unconscious" condition —
      * the downed class-model swap (rpg-dnd5e-web#501). */
     isDowned?: boolean;
+    /** For an OBSTACLE entity, the server's ObstacleType — drives the
+     * prop-model resolver (rpg-dnd5e-web#528, charter #523). v1alpha1
+     * signal; propRefId below wins when both are present. */
+    obstacleType?: ObstacleType;
+    /** v1alpha2 obstacle_ref/prop_ref id — the live-route prop-resolver
+     * signal (rpg-dnd5e-web#528, charter #523). Preferred over
+     * obstacleType when present. */
+    propRefId?: string;
   }>;
   selectedEntityId?: string;
   onHexClick?: (coord: { x: number; y: number; z: number }) => void;
@@ -645,6 +654,8 @@ function Scene({
           isGhost={entity.isGhost}
           classRefId={entity.classRefId}
           isDowned={entity.isDowned}
+          obstacleType={entity.obstacleType}
+          propRefId={entity.propRefId}
         />
       ))}
 

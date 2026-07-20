@@ -984,6 +984,23 @@ describe('applyEntityMetaFromAppeared', () => {
     expect(meta?.monsterRefId).toBeUndefined();
   });
 
+  it('stores propRefId for an obstacle/prop entity (rpg-dnd5e-web#528)', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityMetaFromAppeared(
+      prev,
+      'obstacle-1',
+      EntityType.OBSTACLE,
+      undefined,
+      undefined,
+      undefined,
+      'Barrel',
+      undefined,
+      'barrel'
+    );
+    const meta = after.entityMeta.get('obstacle-1');
+    expect(meta?.propRefId).toBe('barrel');
+  });
+
   it('stores displayName and classRefId when provided (rpg-dnd5e-web#491)', () => {
     const prev = createEmptyEncounterState();
     const after = applyEntityMetaFromAppeared(
@@ -1359,6 +1376,22 @@ describe('applyEntityAppearedBatch', () => {
       displayName: 'Goblin',
       classRefId: undefined,
     });
+  });
+
+  it('stores propRefId per entity (rpg-dnd5e-web#528)', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityAppearedBatch(prev, [
+      {
+        entity: makeTestEntity('obstacle-1', { x: 2, y: 0, z: -2 }),
+        type: EntityType.OBSTACLE,
+        monsterRefId: undefined,
+        initialHP: undefined,
+        initialAC: undefined,
+        displayName: 'Barrel',
+        propRefId: 'barrel',
+      },
+    ]);
+    expect(after.entityMeta.get('obstacle-1')?.propRefId).toBe('barrel');
   });
 
   it('is a no-op on empty array (returns same reference)', () => {

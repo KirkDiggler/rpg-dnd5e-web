@@ -13,9 +13,11 @@ import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha
 import { describe, expect, it } from 'vitest';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import {
+  buildDevPropDemoEntities,
   buildRenderableEntities,
   buildTurnOrderCombatState,
   entityTypeToDisplay,
+  parseDevPropDemoKeys,
   synthesizeFloorTiles,
 } from './playtestMapHelpers';
 
@@ -313,5 +315,106 @@ describe('buildTurnOrderCombatState', () => {
       new Map()
     );
     expect(combatState?.activeIndex).toBe(-1);
+  });
+});
+
+describe('buildDevPropDemoEntities (rpg-dnd5e-web#528 devPropDemoKeys)', () => {
+  it('returns [] for an empty key list', () => {
+    expect(buildDevPropDemoEntities([], { x: 0, y: 0, z: 0 })).toEqual([]);
+  });
+
+  it('returns [] for an undefined anchor (no-op when nothing to anchor to)', () => {
+    expect(buildDevPropDemoEntities(['barrel'], undefined)).toEqual([]);
+  });
+
+  it('places one obstacle entity per key, each a valid hex neighbor of the anchor', () => {
+    const anchor = { x: 2, y: -1, z: -1 };
+    const entities = buildDevPropDemoEntities(['barrel', 'pillar'], anchor);
+    expect(entities).toHaveLength(2);
+    for (const e of entities) {
+      expect(e.type).toBe('obstacle');
+      // Cube coordinate invariant: x + y + z === 0 for every valid hex.
+      expect(e.position.x + e.position.y + e.position.z).toBe(0);
+      // Genuinely adjacent to the anchor, not stacked on it.
+      const dist =
+        Math.abs(e.position.x - anchor.x) +
+        Math.abs(e.position.y - anchor.y) +
+        Math.abs(e.position.z - anchor.z);
+      expect(dist).toBe(2); // hex distance 1 == cube L1 distance 2
+    }
+  });
+
+  it('carries the key as propRefId, and distinct entities don’t collide', () => {
+    const entities = buildDevPropDemoEntities(['barrel', 'pillar', 'crate'], {
+      x: 0,
+      y: 0,
+      z: 0,
+    });
+    expect(entities.map((e) => e.propRefId)).toEqual([
+      'barrel',
+      'pillar',
+      'crate',
+    ]);
+    const ids = new Set(entities.map((e) => e.entityId));
+    expect(ids.size).toBe(3);
+    const positions = new Set(
+      entities.map((e) => `${e.position.x},${e.position.y},${e.position.z}`)
+    );
+    expect(positions.size).toBe(3);
+  });
+
+  it('caps at the 6 available hex neighbors, silently dropping extras', () => {
+    const keys = [
+      'barrel',
+      'crate',
+      'pillar',
+      'rock-pile',
+      'stalagmite',
+      'rune-stone',
+      'barricade',
+    ];
+    const entities = buildDevPropDemoEntities(keys, { x: 0, y: 0, z: 0 });
+    expect(entities).toHaveLength(6);
+  });
+});
+
+describe('parseDevPropDemoKeys (Copilot review, rpg-dnd5e-web#530)', () => {
+  it('returns [] for null input', () => {
+    expect(parseDevPropDemoKeys(null)).toEqual([]);
+  });
+
+  it('returns [] for an empty string', () => {
+    expect(parseDevPropDemoKeys('')).toEqual([]);
+  });
+
+  it('splits and trims a comma-separated list', () => {
+    expect(parseDevPropDemoKeys('barrel, pillar ,crate')).toEqual([
+      'barrel',
+      'pillar',
+      'crate',
+    ]);
+  });
+
+  it('drops empty segments (trailing/double commas)', () => {
+    expect(parseDevPropDemoKeys('barrel,,pillar,')).toEqual([
+      'barrel',
+      'pillar',
+    ]);
+  });
+
+  it('deduplicates repeated keys, keeping first-occurrence order — the exact bug Copilot flagged: a repeated key would otherwise collide as a duplicate entityId in buildDevPropDemoEntities', () => {
+    expect(parseDevPropDemoKeys('barrel,pillar,barrel,crate,pillar')).toEqual([
+      'barrel',
+      'pillar',
+      'crate',
+    ]);
+  });
+
+  it('composes with buildDevPropDemoEntities to guarantee unique entityIds even with duplicate query-param keys', () => {
+    const keys = parseDevPropDemoKeys('barrel,barrel,barrel');
+    const entities = buildDevPropDemoEntities(keys, { x: 0, y: 0, z: 0 });
+    expect(entities).toHaveLength(1);
+    const ids = new Set(entities.map((e) => e.entityId));
+    expect(ids.size).toBe(entities.length);
   });
 });

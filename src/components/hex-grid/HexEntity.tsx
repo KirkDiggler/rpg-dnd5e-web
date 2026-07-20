@@ -15,7 +15,10 @@ import { isTwoHandedWeapon, WEAPON_CONFIGS } from '@/config/attachmentModels';
 import type { HeadVariant } from '@/config/characterModels';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { Race } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import {
+  ObstacleType,
+  Race,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -24,6 +27,9 @@ import { ClassCharacterModel } from './ClassCharacterModel';
 import { resolveClassCharacterModelUrl } from './classCharacterModels';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
+import { resolvePropVariantForEntity } from './obstaclePropKeys';
+import { PROPS_MODEL_BASE } from './propManifest';
+import { PropModel } from './PropModel';
 
 export interface HexEntityProps {
   entityId: string;
@@ -54,6 +60,17 @@ export interface HexEntityProps {
   /** True for a CHARACTER entity carrying the "unconscious" condition —
    * swaps to the class's downed GLB variant (rpg-dnd5e-web#501). */
   isDowned?: boolean;
+  /** For an OBSTACLE entity, the server's ObstacleType — resolved to a
+   * prop reference key (obstaclePropKeys.ts) and rendered as the matching
+   * GLB when known; falls back to the primitive capsule for an
+   * unspecified/unmapped type (rpg-dnd5e-web#528, charter #523). v1alpha1
+   * signal; propRefId below wins when both are present. */
+  obstacleType?: ObstacleType;
+  /** v1alpha2 obstacle_ref/prop_ref id — the live-route prop-resolver
+   * signal (rpg-dnd5e-web#528, charter #523). Preferred over
+   * obstacleType when present (obstaclePropKeys.ts's
+   * resolvePropKeyForEntity). */
+  propRefId?: string;
 }
 
 // Visual state colors
@@ -199,9 +216,19 @@ export function HexEntity({
   isGhost = false,
   classRefId,
   isDowned = false,
+  obstacleType,
+  propRefId,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const { invalidate } = useThree();
+
+  // Same "sticky failure keyed by url, not a bare boolean" shape as
+  // failedClassModelUrl below — a prop GLB that fails to load falls back
+  // to the primitive capsule, but a later obstacleType change (a
+  // different resolved url) isn't permanently masked by a stale failure.
+  const [failedPropModelUrl, setFailedPropModelUrl] = useState<
+    string | undefined
+  >(undefined);
 
   // Tracks a class-model GLB url that failed to load (ErrorBoundary caught
   // a terminal load error), so the downed-tilt check below can still fire
@@ -384,15 +411,38 @@ export function HexEntity({
     );
   }
 
-  // Use capsule geometry for obstacles
-  const yPosition = Y_OFFSET + ENTITY_HEIGHT / 2;
+  // Obstacles: resolve the server's ObstacleType to a shipped prop GLB
+  // (rpg-dnd5e-web#528, charter #523) and render it in place of the
+  // primitive capsule below. Undefined/unmapped obstacleType, or a GLB
+  // that fails to load, falls straight through to the existing capsule —
+  // the #479 boundary lineage this codebase already applies to class
+  // models (never a broken/missing model reference on screen).
+  const propVariant = resolvePropVariantForEntity({ obstacleType, propRefId });
+  const propModelUrl = propVariant
+    ? PROPS_MODEL_BASE + propVariant.file
+    : undefined;
+  const effectivePropModelUrl =
+    propModelUrl && propModelUrl !== failedPropModelUrl
+      ? propModelUrl
+      : undefined;
 
-  return (
+  // Use capsule geometry for obstacles (fallback, and today's default —
+  // see propVariant resolution above for the known-key path). Takes an
+  // explicit position + whether to attach interaction handlers itself,
+  // since it's used two ways below: standalone at the entity's absolute
+  // world position (no resolved prop — identical to pre-#528 behavior),
+  // or as a Suspense/ErrorBoundary fallback nested in a positioned group
+  // (interaction handlers live on the group in that case, not here too).
+  const yPosition = Y_OFFSET + ENTITY_HEIGHT / 2;
+  const renderCapsule = (
+    position: [number, number, number],
+    withInteraction: boolean
+  ) => (
     <mesh
       ref={meshRef}
-      position={[worldPos.x, yPosition, worldPos.z]}
+      position={position}
       geometry={geometry}
-      {...interactionProps}
+      {...(withInteraction ? interactionProps : {})}
     >
       <meshStandardMaterial
         color={color}
@@ -400,5 +450,22 @@ export function HexEntity({
         emissiveIntensity={isSelected ? 0.2 : 0}
       />
     </mesh>
+  );
+
+  if (!propVariant || !effectivePropModelUrl) {
+    return renderCapsule([worldPos.x, yPosition, worldPos.z], true);
+  }
+
+  return (
+    <group position={[worldPos.x, 0, worldPos.z]} {...interactionProps}>
+      <Suspense fallback={renderCapsule([0, yPosition, 0], false)}>
+        <ErrorBoundary
+          fallback={renderCapsule([0, yPosition, 0], false)}
+          onError={() => setFailedPropModelUrl(effectivePropModelUrl)}
+        >
+          <PropModel variant={propVariant} position={[0, 0, 0]} />
+        </ErrorBoundary>
+      </Suspense>
+    </group>
   );
 }

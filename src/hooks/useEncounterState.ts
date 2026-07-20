@@ -75,6 +75,18 @@ export interface EntityMeta {
    * class ref.
    */
   classRefId?: string;
+  /**
+   * For OBSTACLE entities: ObstacleData.obstacle_ref.id. For PROP entities:
+   * PropData.prop_ref.id (e.g. "barrel", "pillar") — both cases feed the
+   * same reference-key namespace (rpg-dnd5e-web#528, charter #523):
+   * `dnd5e:props:<propRefId>` is looked up against the prop manifest
+   * (propManifest.ts) to resolve a GLB. Undefined for every other entity
+   * type, or when the server hasn't set a ref yet (today's real reality —
+   * no server code path populates obstacle_ref/prop_ref yet; see
+   * obstaclePropKeys.ts for the fallback v1alpha1 ObstacleType signal and
+   * rpg-dnd5e-web#523 for the platform hand-off this field is waiting on).
+   */
+  propRefId?: string;
 }
 
 /** v1alpha2 condition tag, populated from StatusApplied.status. */
@@ -392,6 +404,7 @@ export function applyEntityAppearedBatch(
     statusEffects?: StatusEffect[];
     displayName?: string;
     classRefId?: string;
+    propRefId?: string;
   }>
 ): LocalEncounterState {
   if (entries.length === 0) return prev;
@@ -412,6 +425,7 @@ export function applyEntityAppearedBatch(
     statusEffects,
     displayName,
     classRefId,
+    propRefId,
   } of entries) {
     newEntities.set(entity.entityId, { ...entity, ghost: false });
     newMeta.set(entity.entityId, {
@@ -419,6 +433,7 @@ export function applyEntityAppearedBatch(
       monsterRefId,
       displayName,
       classRefId,
+      propRefId,
     });
     if (initialHP !== undefined) {
       newHP.set(entity.entityId, {
@@ -473,10 +488,17 @@ export function applyEntityMetaFromAppeared(
   initialHP: { current: number; max: number } | undefined,
   initialAC: number | undefined,
   displayName?: string,
-  classRefId?: string
+  classRefId?: string,
+  propRefId?: string
 ): LocalEncounterState {
   const newMeta = new Map(prev.entityMeta);
-  newMeta.set(entityId, { type, monsterRefId, displayName, classRefId });
+  newMeta.set(entityId, {
+    type,
+    monsterRefId,
+    displayName,
+    classRefId,
+    propRefId,
+  });
 
   const hasHP = initialHP !== undefined;
   const hasAC = initialAC !== undefined && initialAC !== 0;
@@ -941,7 +963,8 @@ export interface UseEncounterStateResult {
     initialHP: { current: number; max: number } | undefined,
     initialAC: number | undefined,
     displayName?: string,
-    classRefId?: string
+    classRefId?: string,
+    propRefId?: string
   ) => void;
   /**
    * Apply a batch of entity appearances in a single state update to avoid N
@@ -961,6 +984,7 @@ export interface UseEncounterStateResult {
       statusEffects?: StatusEffect[];
       displayName?: string;
       classRefId?: string;
+      propRefId?: string;
     }>
   ) => void;
   /**
@@ -1087,7 +1111,8 @@ export function useEncounterState(): UseEncounterStateResult {
       initialHP: { current: number; max: number } | undefined,
       initialAC: number | undefined,
       displayName?: string,
-      classRefId?: string
+      classRefId?: string,
+      propRefId?: string
     ) => {
       setState((prev) =>
         applyEntityMetaFromAppeared(
@@ -1098,7 +1123,8 @@ export function useEncounterState(): UseEncounterStateResult {
           initialHP,
           initialAC,
           displayName,
-          classRefId
+          classRefId,
+          propRefId
         )
       );
     },

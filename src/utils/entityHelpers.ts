@@ -2,6 +2,7 @@ import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v
 import {
   ConditionId,
   EntityType,
+  type ObstacleType,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 
 /**
@@ -85,6 +86,21 @@ export interface RenderableEntity {
   isDead: boolean;
   /** True when the entity has left the player's LoS (v1alpha2). Render at last-known position with ghost visuals. */
   isGhost?: boolean;
+  /** For an OBSTACLE entity, the server's ObstacleType (identifies the
+   * visual asset per the proto's own doc comment) — undefined for
+   * non-obstacle entities or an obstacle with no obstacleDetails set.
+   * Consumed by HexEntity's prop resolver (rpg-dnd5e-web#528, charter
+   * #523) via obstaclePropKeys.ts to pick a rendered GLB, falling back to
+   * the primitive shape when unmapped. This is the v1alpha1 EntityState
+   * signal — see `propRefId` below for the v1alpha2 signal that actually
+   * backs today's live EncounterView route. */
+  obstacleType?: ObstacleType;
+  /** v1alpha2 ObstacleData.obstacle_ref.id / PropData.prop_ref.id —
+   * composed into a dnd5e:props:<id> reference key (rpg-dnd5e-web#528,
+   * charter #523). This is the richer, live-route signal (see
+   * useEncounterState.ts's EntityMeta.propRefId); undefined today because
+   * no real server code path sets either ref yet. */
+  propRefId?: string;
 }
 
 function entityDisplayType(
@@ -121,6 +137,10 @@ export function mapEntitiesForRender(
       type: entityDisplayType(entity),
       isDead: isDead(entity),
       isGhost: entity.ghost === true,
+      obstacleType:
+        entity.details.case === 'obstacleDetails'
+          ? entity.details.value.obstacleType
+          : undefined,
     });
   }
   return result;

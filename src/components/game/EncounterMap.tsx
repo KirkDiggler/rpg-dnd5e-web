@@ -29,8 +29,10 @@ import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import { HexGrid } from '../hex-grid';
 import type { CubeCoord } from '../hex-grid/hexMath';
 import {
+  buildDevPropDemoEntities,
   buildRenderableEntities,
   buildTurnOrderCombatState,
+  parseDevPropDemoKeys,
   synthesizeFloorTiles,
 } from '../playtest/playtestMapHelpers';
 
@@ -101,11 +103,45 @@ export function EncounterMap({
 
   const wallList = useMemo(() => Array.from(walls.values()), [walls]);
 
-  const renderableEntities = useMemo(
+  // Prop-model resolver demo (rpg-dnd5e-web#528, charter #523):
+  // `?devPropDemoKeys=barrel,pillar,rock-pile` injects synthetic OBSTACLE
+  // entities carrying those prop reference keys next to the local player,
+  // proving PropModel/obstaclePropKeys resolve and render on the REAL
+  // EncounterView route ahead of platform sending real obstacle_ref/
+  // prop_ref data (see buildDevPropDemoEntities' doc comment). Read once,
+  // same convention as `syntyDungeon` below; empty/absent by default, so
+  // this is a no-op for every real player and every existing e2e/manual
+  // flow. Parsing (including deduplication) lives in
+  // parseDevPropDemoKeys/playtestMapHelpers.ts, unit-tested, per this
+  // file's own "thin translation, real logic in the shared helpers"
+  // convention.
+  const devPropDemoKeys = useMemo(
     () =>
-      buildRenderableEntities(entities, entityMeta, entityHP, entityStatuses),
-    [entities, entityMeta, entityHP, entityStatuses]
+      parseDevPropDemoKeys(
+        new URLSearchParams(window.location.search).get('devPropDemoKeys')
+      ),
+    []
   );
+
+  const renderableEntities = useMemo(() => {
+    const base = buildRenderableEntities(
+      entities,
+      entityMeta,
+      entityHP,
+      entityStatuses
+    );
+    if (devPropDemoKeys.length === 0) return base;
+    const anchor = (base.find((e) => e.entityId === myEntityId) ?? base[0])
+      ?.position;
+    return [...base, ...buildDevPropDemoEntities(devPropDemoKeys, anchor)];
+  }, [
+    entities,
+    entityMeta,
+    entityHP,
+    entityStatuses,
+    devPropDemoKeys,
+    myEntityId,
+  ]);
 
   const combatState = useMemo(
     () =>
