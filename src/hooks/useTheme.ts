@@ -34,8 +34,9 @@ const DEFAULT_THEME = 'dark-fantasy';
 // /themes/*.css live in public/ and are NOT fingerprinted by Vite, so without
 // a version query Cloudflare/browser caches keep serving the pre-deploy file
 // forever (web#553: prod rendered the combat-HUD primitives unstyled). The
-// build id is a Vite define (short commit SHA); the typeof guard covers any
-// runtime where the define was not applied.
+// build id is a Vite define — BUILD_ID env (Docker: github.sha build-arg),
+// else git SHA, else per-build timestamp; see vite.config.ts buildId(). The
+// typeof guard covers any runtime where the define was not applied.
 const THEME_CSS_VERSION =
   typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : 'dev';
 
