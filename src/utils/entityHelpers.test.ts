@@ -5,6 +5,7 @@ import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/
 import {
   ConditionId,
   EntityType,
+  ObstacleType,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { describe, expect, it } from 'vitest';
 import {
@@ -309,6 +310,26 @@ describe('entityHelpers', () => {
       expect(byId.get('p1')!.type).toBe('player');
       expect(byId.get('m1')!.type).toBe('monster');
       expect(byId.get('o1')!.type).toBe('obstacle');
+    });
+
+    it('surfaces obstacleDetails.obstacleType for OBSTACLE entities (rpg-dnd5e-web#528 — the prop-resolver input)', () => {
+      const obstacle = create(EntityStateSchema, {
+        entityId: 'o1',
+        entityType: EntityType.OBSTACLE,
+        details: {
+          case: 'obstacleDetails',
+          value: { obstacleType: ObstacleType.BARREL },
+        },
+        activeConditions: [],
+      });
+      const result = mapEntitiesForRender([obstacle]);
+      expect(result[0].obstacleType).toBe(ObstacleType.BARREL);
+    });
+
+    it('leaves obstacleType undefined for non-obstacle entities', () => {
+      const player = makeCharacter({ entityId: 'p1' });
+      const result = mapEntitiesForRender([player]);
+      expect(result[0].obstacleType).toBeUndefined();
     });
 
     it('marks dead monsters but keeps them in the result', () => {

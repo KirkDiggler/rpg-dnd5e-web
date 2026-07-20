@@ -218,6 +218,20 @@ export function EncounterView({
               entity.data?.case === 'character'
                 ? entity.data.value.classRef?.id
                 : undefined,
+            // rpg-dnd5e-web#528 (charter #523): OBSTACLE/PROP entities
+            // carry a Ref (obstacle_ref / prop_ref) whose `id` is the
+            // semantic prop name (e.g. "barrel") — composed into a
+            // dnd5e:props:<id> reference key by obstaclePropKeys.ts. No
+            // real server code path sets either ref yet (verified against
+            // rpg-api main), so this is always undefined today; wired now
+            // so the resolver activates the moment platform starts
+            // sending one, per #523.
+            propRefId:
+              entity.data?.case === 'obstacle'
+                ? entity.data.value.obstacleRef?.id
+                : entity.data?.case === 'prop'
+                  ? entity.data.value.propRef?.id
+                  : undefined,
           }));
         if (entityEntries.length > 0) {
           encounterState.applyEntityAppearedBatch(entityEntries);
@@ -273,6 +287,15 @@ export function EncounterView({
         e.entity.data?.case === 'character'
           ? e.entity.data.value.classRef?.id
           : undefined;
+      // See the matching onSnapshotDelivered comment above — same
+      // obstacle_ref/prop_ref -> propRefId derivation for the live
+      // (non-snapshot) appearance path.
+      const propRefId =
+        e.entity.data?.case === 'obstacle'
+          ? e.entity.data.value.obstacleRef?.id
+          : e.entity.data?.case === 'prop'
+            ? e.entity.data.value.propRef?.id
+            : undefined;
       encounterState.applyEntityMeta(
         e.entity.id,
         e.entity.type,
@@ -280,7 +303,8 @@ export function EncounterView({
         initialHP,
         e.entity.armorClass,
         e.entity.displayName,
-        classRefId
+        classRefId,
+        propRefId
       );
     },
     onEntityDisappeared: (e) => {

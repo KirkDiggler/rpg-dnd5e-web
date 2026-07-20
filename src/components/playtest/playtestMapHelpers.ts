@@ -36,6 +36,12 @@ export interface RenderableEntity {
    * go unconscious instead" split. Distinct from `isDead` (monster-only,
    * computed from HP<=0 below) — a downed player isn't dead. */
   isDowned?: boolean;
+  /** v1alpha2 ObstacleData.obstacle_ref.id / PropData.prop_ref.id, from
+   * entityMeta (rpg-dnd5e-web#528, charter #523) — the live-route prop
+   * reference-key signal HexEntity's resolver consumes
+   * (obstaclePropKeys.ts's resolvePropKeyForEntity). Undefined until
+   * platform starts sending a ref (no server code path sets one yet). */
+  propRefId?: string;
 }
 
 /** Checks for a status whose source ref id is "unconscious" — the only
@@ -144,6 +150,7 @@ export function buildRenderableEntities(
       isGhost: entity.ghost === true,
       classRefId: meta?.classRefId,
       isDowned,
+      propRefId: meta?.propRefId,
     });
   }
   return result;
@@ -197,4 +204,59 @@ function entityTypeToInitiativeString(type: EntityType | undefined): string {
   if (type === EntityType.CHARACTER) return 'character';
   if (type === EntityType.MONSTER) return 'monster';
   return 'npc';
+}
+
+/** Cube-coord deltas (each summing to 0, so every result is a valid hex)
+ * for the six neighbors of a hex, used to spread devPropDemo entities out
+ * instead of stacking them on one tile. */
+const HEX_NEIGHBOR_DELTAS: ReadonlyArray<{ x: number; y: number; z: number }> =
+  [
+    { x: 1, y: -1, z: 0 },
+    { x: 1, y: 0, z: -1 },
+    { x: 0, y: 1, z: -1 },
+    { x: -1, y: 1, z: 0 },
+    { x: -1, y: 0, z: 1 },
+    { x: 0, y: -1, z: 1 },
+  ];
+
+/**
+ * Dev/demo-only synthetic OBSTACLE entities proving the prop-model
+ * resolver (rpg-dnd5e-web#528, charter #523) renders end-to-end on the
+ * REAL EncounterView route, ahead of platform sending real
+ * obstacle_ref/prop_ref data — verified against rpg-api `main` that no
+ * server code path sets either ref yet, so this is the only way to
+ * exercise the render path against a live encounter today.
+ *
+ * Opt-in via EncounterMap's `?devPropDemoKeys=barrel,pillar,rock-pile`
+ * query param (comma-separated prop reference-key suffixes) — same
+ * "read the query string once, default off" convention as EncounterMap's
+ * existing `syntyDungeon` flag. Returns `[]` (a no-op) for an empty key
+ * list or an undefined anchor position, so this is inert by default and
+ * safe to leave wired in production: it can only ever ADD entities, never
+ * read or mutate real encounter state.
+ *
+ * Placed at successive hex neighbors of `anchor` (EncounterMap passes the
+ * local player's position) rather than a fixed absolute coordinate, so
+ * the demo pieces always land next to a real, currently-visible entity
+ * regardless of which dungeon/room happens to be loaded.
+ */
+export function buildDevPropDemoEntities(
+  keys: string[],
+  anchor: { x: number; y: number; z: number } | undefined
+): RenderableEntity[] {
+  if (keys.length === 0 || !anchor) return [];
+  return keys.slice(0, HEX_NEIGHBOR_DELTAS.length).map((key, i) => {
+    const delta = HEX_NEIGHBOR_DELTAS[i];
+    return {
+      entityId: `__dev-prop-demo-${key}__`,
+      name: `Dev prop demo: ${key}`,
+      position: {
+        x: anchor.x + delta.x,
+        y: anchor.y + delta.y,
+        z: anchor.z + delta.z,
+      },
+      type: 'obstacle',
+      propRefId: key,
+    };
+  });
 }
