@@ -1,9 +1,33 @@
-import { describe, expect, it } from 'vitest';
-import { cubeToWorld } from './hexMath';
+import { act, renderHook } from '@testing-library/react';
+import * as THREE from 'three';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cubeToWorld, type CubeCoord } from './hexMath';
+
+// Mock @react-three/fiber so useHexMovePath's useFrame/useThree calls work
+// under plain renderHook (no real WebGL canvas). `useFrame` just captures
+// the latest callback the hook registers each render, so tests can drive
+// frames manually via `tick()` below; `useThree` returns a stub
+// `invalidate`.
+const hoisted = vi.hoisted(() => ({
+  frameCallback: undefined as
+    | ((state: unknown, delta: number) => void)
+    | undefined,
+  invalidate: vi.fn(),
+}));
+
+vi.mock('@react-three/fiber', () => ({
+  useFrame: (cb: (state: unknown, delta: number) => void) => {
+    hoisted.frameCallback = cb;
+  },
+  useThree: () => ({ invalidate: hoisted.invalidate }),
+}));
+
+// Import AFTER vi.mock so useHexMovePath picks up the mocked module.
 import {
   advanceFrame,
   computeMoveStart,
   SECONDS_PER_HEX_STEP,
+  useHexMovePath,
   type StepState,
 } from './useHexMovePath';
 
@@ -161,7 +185,17 @@ describe('computeMoveStart', () => {
     });
   });
 
-  describe('revive then first move (rpg-dnd5e-web#551 gate-review regression)', () => {
+  describe('revive then first move (rpg-dnd5e-web#551 gate-review regression -- pure-function contract)', () => {
+    // NOTE: these `computeMoveStart` calls hand-thread `nextSeenSeq` through
+    // by hand, exactly mirroring what `useHexMovePath`'s `useLayoutEffect`
+    // does with `seenSeqRef`. That makes this a test of `computeMoveStart`'s
+    // CONTRACT ("callers must persist `nextSeenSeq` unconditionally"), not
+    // proof that the hook itself honors it -- reverting the hook's one-line
+    // fix does NOT make these fail, since they never call the real hook.
+    // The actual hook-level regression coverage (the one that fails when
+    // the real fix is reverted) is the "hook-level regression test" describe
+    // block below, which renders the real `useHexMovePath` via
+    // `renderHook`.
     it('seenSeq must be written unconditionally so a revive (moveSeq -> undefined) actually clears it', () => {
       // This is the exact sequence the gate review traced by hand:
       //   1. First real move: moveSeq 1, seenSeq (was undefined) -> 1.
@@ -228,49 +262,6 @@ describe('computeMoveStart', () => {
       );
       expect(firstMoveAfterRevive.isGenuineMove).toBe(true);
       expect(firstMoveAfterRevive.points.length).toBeGreaterThan(1);
-    });
-
-    it('regression guard: reproduces the bug when seenSeq is (incorrectly) written conditionally, proving the test would have caught it', () => {
-      // Mirrors the OLD, buggy caller contract: only persist seenSeq when
-      // moveSeq !== undefined (i.e. skip the write on revive). Confirms
-      // this test suite actually distinguishes the fixed contract from
-      // the broken one, rather than passing either way.
-      let seenSeqBuggy: number | undefined = undefined;
-
-      const firstMove = computeMoveStart(
-        1,
-        seenSeqBuggy,
-        [{ x: 1, y: -1, z: 0 }],
-        { x: 1, y: -1, z: 0 },
-        HEX_SIZE,
-        { x: 0, z: 0 }
-      );
-      if (firstMove.nextSeenSeq !== undefined)
-        seenSeqBuggy = firstMove.nextSeenSeq;
-
-      const revived = computeMoveStart(
-        undefined,
-        seenSeqBuggy,
-        undefined,
-        { x: 1, y: -1, z: 0 },
-        HEX_SIZE,
-        { x: 1, z: -1 }
-      );
-      // BUGGY caller skips this write because moveSeq is undefined:
-      if (revived.nextSeenSeq !== undefined) seenSeqBuggy = revived.nextSeenSeq;
-      expect(seenSeqBuggy).toBe(1); // stale -- the bug
-
-      const firstMoveAfterRevive = computeMoveStart(
-        1,
-        seenSeqBuggy,
-        [{ x: 2, y: -2, z: 0 }],
-        { x: 2, y: -2, z: 0 },
-        HEX_SIZE,
-        { x: 1, z: -1 }
-      );
-      // With the buggy conditional-write contract, this incorrectly reads
-      // as NOT genuine -- exactly the reported "silently snaps" defect.
-      expect(firstMoveAfterRevive.isGenuineMove).toBe(false);
     });
 
     it('a second move after revive always self-heals regardless of the bug (documents why it was easy to miss)', () => {
@@ -372,6 +363,121 @@ describe('advanceFrame', () => {
     expect(result!.position.x).toBeCloseTo(10);
     expect(result!.position.z).toBeGreaterThan(0);
     expect(result!.position.z).toBeLessThan(10);
+  });
+});
+
+describe('useHexMovePath (hook-level regression test)', () => {
+  const Y_OFFSET = 0.5;
+  const posA: CubeCoord = { x: 0, y: 0, z: 0 };
+  const posB: CubeCoord = { x: 1, y: -1, z: 0 };
+  const posC: CubeCoord = { x: 2, y: -2, z: 0 };
+
+  type Props = {
+    entityPosition: CubeCoord;
+    movePath: CubeCoord[] | undefined;
+    moveSeq: number | undefined;
+  };
+
+  function renderMovePath() {
+    return renderHook(
+      ({ entityPosition, movePath, moveSeq }: Props) =>
+        useHexMovePath(entityPosition, movePath, moveSeq, HEX_SIZE, Y_OFFSET),
+      {
+        initialProps: {
+          entityPosition: posA,
+          movePath: undefined,
+          moveSeq: undefined,
+        } as Props,
+      }
+    );
+  }
+
+  function tick(delta: number) {
+    act(() => {
+      hoisted.frameCallback?.({}, delta);
+    });
+  }
+
+  beforeEach(() => {
+    hoisted.frameCallback = undefined;
+    hoisted.invalidate.mockReset();
+  });
+
+  it('treats the first move after a revive as a genuine move (animates), not a snap', () => {
+    const { result, rerender } = renderMovePath();
+
+    // renderHook has no real R3F canvas to attach `groupRef` for us, so
+    // seed it directly at the already-settled initial-mount position --
+    // the same state a real `<group ref={groupRef}>` would be in right
+    // after mount.
+    act(() => {
+      result.current.groupRef.current = new THREE.Group();
+      const start = cubeToWorld(posA, HEX_SIZE);
+      result.current.groupRef.current.position.set(start.x, Y_OFFSET, start.z);
+    });
+
+    // 1. First real move: moveSeq 1, path posA -> posB. Must animate.
+    rerender({
+      entityPosition: { ...posB },
+      movePath: [posA, posB],
+      moveSeq: 1,
+    });
+    expect(result.current.isMoving).toBe(true);
+
+    // Drive it to completion so the group is actually sitting at posB
+    // before the revive, matching the real lifecycle.
+    tick(SECONDS_PER_HEX_STEP);
+    expect(result.current.isMoving).toBe(false);
+    const posBWorld = cubeToWorld(posB, HEX_SIZE);
+    expect(result.current.groupRef.current!.position.x).toBeCloseTo(
+      posBWorld.x
+    );
+    expect(result.current.groupRef.current!.position.z).toBeCloseTo(
+      posBWorld.z
+    );
+
+    // 2. Revive: applyEntityAppearedBatch replaces the entity record
+    // wholesale -- moveSeq goes back to undefined.
+    rerender({
+      entityPosition: { ...posB },
+      movePath: undefined,
+      moveSeq: undefined,
+    });
+    expect(result.current.isMoving).toBe(false);
+
+    // 3. First move after revive: mergeEntityPosition restarts moveSeq at
+    // 1 (`(existing.moveSeq ?? 0) + 1`) on the fresh, moveSeq-less revived
+    // record. This MUST be treated as genuine -- exactly the case
+    // rpg-dnd5e-web#551's gate review caught snapping instead of
+    // animating (an earlier version only wrote `seenSeqRef.current` when
+    // `moveSeq !== undefined`, leaving it stale at 1 from step 1 so this
+    // `1 !== 1` compare silently read as "not genuine").
+    rerender({
+      entityPosition: { ...posC },
+      movePath: [posB, posC],
+      moveSeq: 1,
+    });
+
+    // The crux assertion: a genuine move must be mid-flight (isMoving
+    // true) and must NOT have already snapped straight to the
+    // destination -- the genuine-move branch only arms `stepRef` and lets
+    // `useFrame` interpolate; it never writes `groupRef.current.position`
+    // directly (only the non-genuine/snap branch does that).
+    expect(result.current.isMoving).toBe(true);
+    expect(result.current.groupRef.current!.position.x).toBeCloseTo(
+      posBWorld.x
+    );
+    expect(result.current.groupRef.current!.position.z).toBeCloseTo(
+      posBWorld.z
+    );
+
+    // And it actually interpolates once a frame ticks, landing strictly
+    // between posB and posC -- not jumping straight to either endpoint.
+    tick(SECONDS_PER_HEX_STEP / 2);
+    const posCWorld = cubeToWorld(posC, HEX_SIZE);
+    const midX = result.current.groupRef.current!.position.x;
+    expect(midX).not.toBeCloseTo(posBWorld.x);
+    expect(midX).not.toBeCloseTo(posCWorld.x);
   });
 });
 
