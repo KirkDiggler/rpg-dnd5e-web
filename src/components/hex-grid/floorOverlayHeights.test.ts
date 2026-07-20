@@ -139,6 +139,10 @@ describe('floor overlay Y offsets clear the floor extrusion top', () => {
     // would need updating alongside.
     const src = readSource('./SyntyHexFloor.tsx');
     expect(src).toContain('new THREE.ShapeGeometry(shape)');
-    expect(src).not.toMatch(/ExtrudeGeometry/);
+    // Match actual constructor usage, not a bare word — a prose comment
+    // mentioning "ExtrudeGeometry" (e.g. contrasting with ShadedHexFloor)
+    // must not trip this guard; only a real `new ExtrudeGeometry(...)` call
+    // should.
+    expect(src).not.toMatch(/new\s+(THREE\.)?ExtrudeGeometry\(/);
   });
 });
