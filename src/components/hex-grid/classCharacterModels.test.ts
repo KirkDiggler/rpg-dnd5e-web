@@ -101,10 +101,11 @@ describe('resolveWalkClipName', () => {
     expect(resolveWalkClipName([])).toBeUndefined();
   });
 
-  it('does not match a clip that merely contains "walk" as a substring of an unrelated word', () => {
-    // Guards against an over-eager regex; "Boardwalk" isn't a real clip name
-    // this pipeline would ever produce, but the point is /walk/i really is
-    // a substring test, not a word-boundary one — documented, not "fixed".
+  it('DOES match a clip whose name merely contains "walk" as a substring of an unrelated word — documents /walk/i is a substring test, not word-boundary-aware', () => {
+    // "Boardwalk" isn't a real clip name this pipeline would ever produce,
+    // but the point is /walk/i really is a plain substring test, not a
+    // word-boundary one — this is documenting the actual (intentional)
+    // behavior, not a bug to fix.
     expect(resolveWalkClipName(['Idle_Relaxed', 'Boardwalk_Loop'])).toBe(
       'Boardwalk_Loop'
     );
