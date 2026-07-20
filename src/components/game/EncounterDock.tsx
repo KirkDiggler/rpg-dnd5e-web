@@ -50,7 +50,7 @@ import type {
   AvailableAction,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import type { EntityStatus } from '../../hooks/useEncounterState';
 import { getActionIconUrl } from '../../utils/actionIcons';
@@ -186,26 +186,40 @@ export function EncounterDock({
 
   // Round 7: OPEN is the default; hiding is a persisted user preference.
   const [logOpen, setLogOpen] = useState(() => !readLogHidden());
-  const toggleLog = () =>
-    setLogOpen((open) => {
-      writeLogHidden(open);
-      return !open;
-    });
+  const toggleLog = () => {
+    // The localStorage write lives in the event handler, NOT the state
+    // updater — updaters must stay pure (StrictMode double-invokes them).
+    // Currently open → this toggle hides → persist hidden=true.
+    writeLogHidden(logOpen);
+    setLogOpen((open) => !open);
+  };
 
   // Width-measured overflow (round 5): the verb row's real width decides
   // when inline would wrap beyond two lines. Guarded for environments
   // without ResizeObserver (jsdom) — unmeasured stays inline, so content
   // is never hidden by a missing measurement.
-  const rowRef = useRef<HTMLDivElement>(null);
+  //
+  // CALLBACK ref, not a ref+effect (#556 gate): Row 2 mounts and unmounts
+  // with showActionSurface (spectate-first entry, every turn handover), so
+  // an empty-deps effect either never attaches (ref null on mount) or
+  // keeps observing a detached node. The callback attaches/detaches the
+  // observer exactly when the row node appears/disappears.
+  const rowObserver = useRef<ResizeObserver | null>(null);
   const [rowWidth, setRowWidth] = useState<number | null>(null);
-  useEffect(() => {
-    const el = rowRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver((entries) => {
-      setRowWidth(entries[0]?.contentRect.width ?? null);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
+  const rowRef = useCallback((el: HTMLDivElement | null) => {
+    rowObserver.current?.disconnect();
+    rowObserver.current = null;
+    if (el && typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver((entries) => {
+        setRowWidth(entries[0]?.contentRect.width ?? null);
+      });
+      ro.observe(el);
+      rowObserver.current = ro;
+    } else {
+      // Row gone (spectating / turn handed over): drop the stale width so
+      // the next mount starts unmeasured (inline) until the RO reports.
+      setRowWidth(null);
+    }
   }, []);
 
   const tier = hp ? hpTier(hp.current, hp.max) : 'low';
@@ -254,6 +268,13 @@ export function EncounterDock({
     rowWidth
   );
 
+  // Copilot on #556: when the layout transitions collapsed→inline the
+  // menu's trigger vanishes but openPanel==='menu' would survive in state
+  // and surprise-reopen the panel on the next collapse. Clear it.
+  useEffect(() => {
+    if (!collapsed) setOpenPanel((p) => (p === 'menu' ? null : p));
+  }, [collapsed]);
+
   const renderVerb = (a: AvailableAction, inMenu = false) => (
     <VerbButton
       key={actionKey(a)}
@@ -299,6 +320,15 @@ export function EncounterDock({
               width: 360,
               maxWidth: '45%',
               zIndex: 4,
+              // #556 gate: the log floats OVER the map — without this, its
+              // ~360px footprint pointer-captures the bottom-right map
+              // region (move tiles / armed targets unclickable) in every
+              // state. Click-through by design: targeting and movement
+              // beat scroll-back; the log is informational. Deliberate
+              // trade-off: no scroll-back while floating (the 📜 toggle
+              // still hides/shows; a hover-reveal scroll affordance is a
+              // possible future refinement).
+              pointerEvents: 'none',
             }}
           >
             <CombatLog entries={combatLogEntries} translucent />

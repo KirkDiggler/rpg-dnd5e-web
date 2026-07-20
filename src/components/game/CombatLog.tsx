@@ -40,6 +40,11 @@ export function CombatLog({ entries, translucent = false }: CombatLogProps) {
       style={{
         display: 'flex',
         flexDirection: 'column',
+        // backgroundColor first: a plain fallback that survives runtimes
+        // without color-mix() support (the background shorthand below is
+        // dropped whole by the CSS parser there, leaving this readable
+        // opaque base — Copilot on #556).
+        backgroundColor: 'var(--bg-secondary, #1a1a1a)',
         background: translucent
           ? 'color-mix(in srgb, var(--bg-secondary, #1a1a1a) 72%, transparent)'
           : 'var(--bg-secondary, #1a1a1a)',

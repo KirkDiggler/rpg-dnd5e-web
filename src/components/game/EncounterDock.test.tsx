@@ -356,6 +356,98 @@ describe('EncounterDock inline verbs (round 5: inline by default)', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('re-observes the row on spectate-first entry — the callback ref attaches when Row 2 appears (#556 gate)', () => {
+    // Mount while SPECTATING (no verb row), then the turn arrives: the
+    // observer must attach to the NEW node and collapse must engage. A
+    // ref+effect version never re-attached — the gate's blocker A.
+    type ROCallback = (entries: { contentRect: { width: number } }[]) => void;
+    const observed: unknown[] = [];
+    const callbacks: ROCallback[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        cb: ROCallback;
+        constructor(cb: ROCallback) {
+          this.cb = cb;
+          callbacks.push(cb);
+        }
+        observe(el: unknown) {
+          observed.push(el);
+        }
+        disconnect() {}
+      }
+    );
+    try {
+      const many = Array.from({ length: 7 }, (_, i) =>
+        action(`core-${i}`, `Core ${i}`)
+      );
+      const view = render(
+        <EncounterDock
+          {...baseProps()}
+          actions={many}
+          isMyTurn={false}
+          activeEntityName="Goblin"
+        />
+      );
+      // Spectating: no row, nothing observed yet.
+      expect(screen.queryByTestId('encounter-dock-verbs')).toBeNull();
+      expect(observed.length).toBe(0);
+      // The turn arrives — Row 2 mounts and the callback ref attaches.
+      view.rerender(<EncounterDock {...baseProps()} actions={many} />);
+      expect(screen.getByTestId('encounter-dock-verbs')).toBeTruthy();
+      expect(observed.length).toBe(1);
+      // The measurement drives the collapse on the freshly-observed node.
+      act(() => {
+        callbacks.forEach((cb) => cb([{ contentRect: { width: 200 } }]));
+      });
+      expect(screen.queryByText('Core 5')).toBeNull();
+      expect(screen.getByText('Actions ▾ 2')).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('clears a stale open menu when the layout returns to inline (Copilot on #556)', () => {
+    type ROCallback = (entries: { contentRect: { width: number } }[]) => void;
+    const callbacks: ROCallback[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        cb: ROCallback;
+        constructor(cb: ROCallback) {
+          this.cb = cb;
+          callbacks.push(cb);
+        }
+        observe() {}
+        disconnect() {}
+      }
+    );
+    try {
+      const many = Array.from({ length: 7 }, (_, i) =>
+        action(`core-${i}`, `Core ${i}`)
+      );
+      render(<EncounterDock {...baseProps()} actions={many} />);
+      // Collapse, open the menu.
+      act(() => {
+        callbacks.forEach((cb) => cb([{ contentRect: { width: 200 } }]));
+      });
+      fireEvent.click(screen.getByText('Actions ▾ 2'));
+      expect(screen.getByTestId('encounter-dock-menu')).toBeTruthy();
+      // Widen back to inline: the trigger vanishes AND the state clears —
+      // a later re-collapse must not surprise-reopen the panel.
+      act(() => {
+        callbacks.forEach((cb) => cb([{ contentRect: { width: 4000 } }]));
+      });
+      expect(screen.queryByTestId('encounter-dock-menu')).toBeNull();
+      act(() => {
+        callbacks.forEach((cb) => cb([{ contentRect: { width: 200 } }]));
+      });
+      expect(screen.queryByTestId('encounter-dock-menu')).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('EncounterDock cost badges', () => {
