@@ -1,0 +1,119 @@
+[
+  {
+    "probeVersion": 1,
+    "label": "empty",
+    "startedAt": "2026-07-20T06:25:27.196Z",
+    "url": "http://localhost:5196/?playerId=sweepP1&perfProbe=1&perfProbeLabel=empty&perfProbeMs=8000",
+    "requestedWindowMs": 8000,
+    "actualDurationMs": 8024.0999999940395,
+    "frameCount": 99,
+    "frameTimeMs": {
+      "mean": 81.87857142851061,
+      "p50": 72.29999999701977,
+      "p95": 95.73999998718489,
+      "p99": 383.42799998790065,
+      "min": 26.30000001192093,
+      "max": 730.2999999821186
+    },
+    "fpsMean": 12.21320771177737,
+    "rendererInfo": {
+      "calls": {
+        "mean": 229.83838383838383,
+        "max": 250
+      },
+      "triangles": {
+        "mean": 57806.606060606064,
+        "max": 67918
+      },
+      "lines": {
+        "mean": 0,
+        "max": 0
+      },
+      "points": {
+        "mean": 0,
+        "max": 0
+      },
+      "geometries": 150,
+      "textures": 12,
+      "programs": 7
+    }
+  },
+  {
+    "probeVersion": 1,
+    "label": "walls",
+    "startedAt": "2026-07-20T06:25:48.456Z",
+    "url": "http://localhost:5196/?playerId=sweepP1&perfProbe=1&perfProbeLabel=walls&perfProbeMs=8000",
+    "requestedWindowMs": 8000,
+    "actualDurationMs": 8046.799999982119,
+    "frameCount": 119,
+    "frameTimeMs": {
+      "mean": 68.19322033883151,
+      "p50": 61.900000005960464,
+      "p95": 66.21499999165535,
+      "p99": 430.0149999812244,
+      "min": 26.099999994039536,
+      "max": 698.4000000059605
+    },
+    "fpsMean": 14.664214346108047,
+    "rendererInfo": {
+      "calls": {
+        "mean": 217.84873949579833,
+        "max": 237
+      },
+      "triangles": {
+        "mean": 45463.361344537814,
+        "max": 55432
+      },
+      "lines": {
+        "mean": 0,
+        "max": 0
+      },
+      "points": {
+        "mean": 0,
+        "max": 0
+      },
+      "geometries": 189,
+      "textures": 12,
+      "programs": 7
+    }
+  },
+  {
+    "probeVersion": 1,
+    "label": "props",
+    "startedAt": "2026-07-20T06:25:59.222Z",
+    "url": "http://localhost:5196/?playerId=sweepP1&perfProbe=1&perfProbeLabel=props&perfProbeMs=8000&devPropDemoKeys=barrel%2Cpillar%2Crock-pile%2Ccrate%2Ctomb%2Cbarricade",
+    "requestedWindowMs": 8000,
+    "actualDurationMs": 8044,
+    "frameCount": 110,
+    "frameTimeMs": {
+      "mean": 73.79816513761467,
+      "p50": 65.90000000596046,
+      "p95": 73.10000001192093,
+      "p99": 382.59599998354923,
+      "min": 31.400000005960464,
+      "max": 984.9000000059605
+    },
+    "fpsMean": 13.550472401790154,
+    "rendererInfo": {
+      "calls": {
+        "mean": 217.13636363636363,
+        "max": 241
+      },
+      "triangles": {
+        "mean": 47597.63636363636,
+        "max": 60252
+      },
+      "lines": {
+        "mean": 0,
+        "max": 0
+      },
+      "points": {
+        "mean": 0,
+        "max": 0
+      },
+      "geometries": 194,
+      "textures": 18,
+      "programs": 7
+    }
+  }
+]

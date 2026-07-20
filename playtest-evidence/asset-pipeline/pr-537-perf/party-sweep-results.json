@@ -1,0 +1,80 @@
+[
+  {
+    "probeVersion": 1,
+    "label": "four-characters-cold",
+    "startedAt": "2026-07-20T06:51:13.583Z",
+    "url": "http://localhost:5196/?playerId=partyU1&perfProbe=1&perfProbeLabel=four-characters-cold&perfProbeMs=15000",
+    "requestedWindowMs": 15000,
+    "actualDurationMs": 15179.200000017881,
+    "frameCount": 83,
+    "frameTimeMs": {
+      "mean": 185.11219512216928,
+      "p50": 187.75,
+      "p95": 247.02000002264978,
+      "p99": 695.8599999940385,
+      "min": 42.5,
+      "max": 1063.5999999940395
+    },
+    "fpsMean": 5.402129229465546,
+    "rendererInfo": {
+      "calls": {
+        "mean": 289.0722891566265,
+        "max": 345
+      },
+      "triangles": {
+        "mean": 103161.2530120482,
+        "max": 133376
+      },
+      "lines": {
+        "mean": 0,
+        "max": 0
+      },
+      "points": {
+        "mean": 0,
+        "max": 0
+      },
+      "geometries": 141,
+      "textures": 18,
+      "programs": 7
+    }
+  },
+  {
+    "probeVersion": 1,
+    "label": "four-characters-warm",
+    "startedAt": "2026-07-20T06:51:32.194Z",
+    "url": "http://localhost:5196/?playerId=partyU1&perfProbe=1&perfProbeLabel=four-characters-warm&perfProbeMs=8000",
+    "requestedWindowMs": 8000,
+    "actualDurationMs": 8094.600000023842,
+    "frameCount": 46,
+    "frameTimeMs": {
+      "mean": 179.88000000052983,
+      "p50": 180.40000000596046,
+      "p95": 247.24000000953674,
+      "p99": 734.3600000000007,
+      "min": 43.39999997615814,
+      "max": 869
+    },
+    "fpsMean": 5.5592617300258755,
+    "rendererInfo": {
+      "calls": {
+        "mean": 271.04347826086956,
+        "max": 345
+      },
+      "triangles": {
+        "mean": 91890,
+        "max": 133376
+      },
+      "lines": {
+        "mean": 0,
+        "max": 0
+      },
+      "points": {
+        "mean": 0,
+        "max": 0
+      },
+      "geometries": 126,
+      "textures": 18,
+      "programs": 7
+    }
+  }
+]
