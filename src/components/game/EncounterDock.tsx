@@ -116,7 +116,9 @@ function contextMessage(
   encounterEnded: boolean,
   isMyTurn: boolean,
   activeEntityName: string | undefined,
-  armedLabel: string | undefined
+  armedLabel: string | undefined,
+  noneUsable: boolean,
+  canStillMove: boolean
 ): { text: string; tone: 'action' | 'info' | 'quiet' } {
   // Ended wins over everything: the encounter can end ON your turn (mode
   // stays TURN_BASED, activeEntityId stays you), and the strip must stop
@@ -154,6 +156,16 @@ function contextMessage(
         : 'Waiting for the next turn…',
       tone: 'info',
     };
+  }
+  // rpg-dnd5e-web#545: when the server's menu offers nothing currently
+  // usable (live repro: api#637's all-zero economy disabled every verb
+  // while the strip still said "pick an action"), guide the only real
+  // moves instead of lying. Affordability is read purely off the wire —
+  // never inferred (see noneUsable at the call site).
+  if (noneUsable) {
+    return canStillMove
+      ? { text: 'You can still move — or End Turn.', tone: 'action' }
+      : { text: 'Nothing left to do — End Turn.', tone: 'action' };
   }
   return { text: 'Your turn — pick an action.', tone: 'action' };
 }
@@ -218,12 +230,27 @@ export function EncounterDock({
   const armedLabel = armedActionKey
     ? actions.find((a) => actionKey(a) === armedActionKey)?.displayName
     : undefined;
+  // rpg-dnd5e-web#545: "usable" comes only from server data — the action's
+  // own `available` flag AND its mapped pool not being exhausted (verbCost;
+  // unmapped slots like movement/free count as usable when available). An
+  // EMPTY menu is the pre-turnState loading window, not "nothing left" —
+  // hence the length guard.
+  const noneUsable =
+    actions.length > 0 &&
+    !actions.some((a) => {
+      if (!a.available) return false;
+      const cost = verbCost(a, economy);
+      return !cost || !cost.spent;
+    });
+  const canStillMove = (movementRemaining ?? 0) > 0;
   const ctx = contextMessage(
     mode,
     encounterEnded,
     isMyTurn,
     activeEntityName,
-    armedLabel
+    armedLabel,
+    noneUsable,
+    canStillMove
   );
 
   const { core, groups, menuCount, triggerLabel } = organizeVerbs(actions);

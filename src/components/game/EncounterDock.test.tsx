@@ -178,6 +178,79 @@ describe('EncounterDock teaching strip (#525 slice 1, #533 direction)', () => {
       "Goblin's turn — watch the map."
     );
   });
+
+  it('guides End Turn when nothing is affordable and no movement remains (#545)', () => {
+    // api#637's live shape: verbs offered, but every mapped pool is zero
+    // and there is no movement left. The strip must stop saying "pick an
+    // action" — nothing is pickable.
+    render(
+      <EncounterDock
+        {...baseProps()}
+        economy={economy(0, 0, 0, 0)}
+        actions={[
+          action('attack', 'Attack'),
+          action('rage', 'Rage', { slot: EconomySlot.BONUS_ACTION }),
+        ]}
+      />
+    );
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'Nothing left to do — End Turn.'
+    );
+  });
+
+  it('prefers the still-can-move variant when movement remains (#545)', () => {
+    render(
+      <EncounterDock
+        {...baseProps()}
+        economy={economy(0, 0, 0, 15)}
+        actions={[action('attack', 'Attack')]}
+      />
+    );
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'You can still move — or End Turn.'
+    );
+  });
+
+  it('counts server-side unavailability too: all available=false verbs with full pools still guide End Turn (#545)', () => {
+    const blocked = {
+      ...action('attack', 'Attack'),
+      available: false,
+      unavailableReason: 'stunned',
+    } as AvailableAction;
+    render(
+      <EncounterDock
+        {...baseProps()}
+        economy={economy(1, 1, 1, 0)}
+        actions={[blocked]}
+      />
+    );
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'Nothing left to do — End Turn.'
+    );
+  });
+
+  it('keeps "pick an action" while anything is affordable — a spent action pool with a live bonus verb is not "nothing left" (#545)', () => {
+    render(
+      <EncounterDock
+        {...baseProps()}
+        economy={economy(0, 1, 1, 0)}
+        actions={[
+          action('attack', 'Attack'),
+          action('rage', 'Rage', { slot: EconomySlot.BONUS_ACTION }),
+        ]}
+      />
+    );
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'Your turn — pick an action.'
+    );
+  });
+
+  it('treats an empty menu as the loading window, never "nothing left" (#545)', () => {
+    render(<EncounterDock {...baseProps()} actions={[]} economy={null} />);
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'Your turn — pick an action.'
+    );
+  });
 });
 
 describe('EncounterDock verbs and grouped overflow', () => {
