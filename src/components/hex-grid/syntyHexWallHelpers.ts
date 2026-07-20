@@ -211,6 +211,57 @@ function parseHexKey(key: string): CubeCoord {
   return { x, y, z };
 }
 
+/** HEX_DIRECTIONS indices (0-5) of `hex`'s neighbors that are themselves
+ * wall hexes -- shared by isStraightThroughHex and wallEndEdgeKeys, which
+ * both need a wall hex's own wall-neighbor "degree" and directions. */
+function wallNeighborDirIndices(
+  hex: CubeCoord,
+  wallKindByHex: Map<string, WallKind>
+): number[] {
+  const indices: number[] = [];
+  for (let i = 0; i < HEX_DIRECTIONS.length; i++) {
+    const dir = HEX_DIRECTIONS[i]!;
+    const neighborKey = coordToKey({
+      x: hex.x + dir.x,
+      y: hex.y + dir.y,
+      z: hex.z + dir.z,
+    });
+    if (wallKindByHex.has(neighborKey)) indices.push(i);
+  }
+  return indices;
+}
+
+/**
+ * True when `hex` is a "straight-through" wall hex: exactly 2 wall
+ * neighbors, in OPPOSITE directions (index difference of 3, i.e. the wall
+ * run passes straight through with no direction change at this hex).
+ *
+ * QA finding (rpg-dnd5e-web#536 phase-2 review): the naive per-VERTEX 1-of-3/
+ * 2-of-3 rule technically fires at every vertex along even a dead-straight
+ * run, because hex-grid geometry means consecutive rendered edges are never
+ * literally collinear at hex-edge granularity (see classifyWallVertices's
+ * doc comment) -- every hex is its own small hexagonal drum, so a "straight"
+ * corridor is a zigzag at the single-hex scale regardless. That's
+ * geometrically true but reads as visual clutter to a human glancing at it
+ * (corner fittings stacking up along entire straight boundaries, not just
+ * at actual direction changes) -- the acceptance bar is aesthetic, not
+ * hex-math purity. This hex-level (not vertex-level) gate distinguishes a
+ * hex where the wall run genuinely changes direction (isolated, a true end,
+ * a non-opposite-neighbor bend, or a 3+-way junction -- all still get
+ * fittings) from one where it doesn't (opposite neighbors -- gets none).
+ */
+function isStraightThroughHex(
+  hex: CubeCoord,
+  wallKindByHex: Map<string, WallKind>
+): boolean {
+  const dirs = wallNeighborDirIndices(hex, wallKindByHex);
+  // dirs is built by ascending index (0..5), so for exactly 2 entries
+  // dirs[0] < dirs[1] always -- an opposite pair (index difference of 3,
+  // the only possible offset since 0 <= dirs[0] <= 2 whenever a +3 partner
+  // exists in range) is always exactly dirs[1] === dirs[0] + 3.
+  return dirs.length === 2 && dirs[1] === dirs[0]! + 3;
+}
+
 /**
  * Build one edge-aligned segment per (wall hex, non-wall neighbor) pair
  * across the ENTIRE wall list — not per-Wall-object, since a hex's
@@ -260,10 +311,12 @@ export function buildDungeonWallSegments(
  * WALL_VARIANTS (`fit: "edge"`, long-and-thin, squeezed to span exactly one
  * hex edge), these are tagged `fit: "context"` -- chunky, roughly-cubic
  * pieces meant to sit at a single POINT (a shared hex vertex, or an edge
- * midpoint for `wall-end`) rather than stretch across a span. Only
- * `rawHeight` is needed here (see fittingScale) since width/depth use a
- * uniform SYNTY_SCALE rather than being squeezed to a raw width like
- * WALL_VARIANTS.
+ * midpoint for `wall-end`) rather than stretch across a span.
+ *
+ * `rawWidth`/`rawDepth` (measured directly off each GLB's own bounding box,
+ * matching WALL_VARIANTS' convention) are needed IN ADDITION to `rawHeight`
+ * -- see fittingScale's QA-correction comment for why a flat SYNTY_SCALE on
+ * X/Z (this phase's original approach) was wrong.
  */
 export type FittingKind =
   | 'wall-corner-outer'
@@ -273,6 +326,8 @@ export type FittingKind =
 export interface FittingVariant {
   kind: FittingKind;
   file: string;
+  rawWidth: number;
+  rawDepth: number;
   rawHeight: number;
 }
 
@@ -280,33 +335,65 @@ export const FITTINGS: Record<FittingKind, FittingVariant> = {
   'wall-corner-outer': {
     kind: 'wall-corner-outer',
     file: 'SM_Env_Wall_End_Coner_Outer_01.glb',
+    rawWidth: 0.8299,
+    rawDepth: 0.833,
     rawHeight: 5.026,
   },
   'wall-corner-inner': {
     kind: 'wall-corner-inner',
     file: 'SM_Env_Wall_End_Coner_Inner_01.glb',
+    rawWidth: 1.06,
+    rawDepth: 1.1119,
     rawHeight: 5.0263,
   },
   'wall-end': {
     kind: 'wall-end',
     file: 'SM_Env_Wall_End_01.glb',
+    rawWidth: 0.9043,
+    rawDepth: 0.8106,
     rawHeight: 5.0472,
   },
 };
 
 /**
- * Uniform-ish "context" fit scale for a fitting: unlike wallVariantScale's
- * edge-squeeze (1/rawWidth), a fitting's footprint is left at the standard
- * Synty scale on X/Z (it's meant to sit at its own natural footprint,
- * centered on a vertex or edge midpoint) -- only height is clamped to the
- * game's wall height, same as every other wall piece.
+ * QA correction (rpg-dnd5e-web#536 phase-2 review): the original
+ * `fittingScale` used a flat `SYNTY_SCALE` (0.75) on X/Z, reasoning that
+ * "context fit" just meant "don't edge-squeeze like WALL_VARIANTS." That
+ * left the footprint far too big relative to the actual wall thickness it
+ * sits against -- measured directly off the GLBs (`bbox_glb.py` against
+ * `rpg-game-assets/harness/models/synty/env/`): `SM_Env_Wall_Half_01`'s raw
+ * depth is 0.4357, which at the wall's own SYNTY_SCALE renders to ~0.327
+ * world units of actual wall thickness. `wall-corner-outer`'s raw
+ * width/depth (~0.83) at the old flat 0.75 rendered to ~0.62 -- nearly
+ * DOUBLE the wall's own thickness, which is exactly why the fittings read
+ * as "stacked slabs" dominating the tan wall segments instead of slim caps.
+ *
+ * `FITTING_FOOTPRINT_SCALE` is chosen so `wall-corner-outer` (the most
+ * common fitting) renders at ~0.33 -- matching the wall's own rendered
+ * thickness almost exactly -- with `wall-corner-inner` (a genuinely
+ * chunkier concave-notch piece bridging 2 edges) and `wall-end` landing
+ * close behind (~0.32-0.45 range across all 3), all in the same "slim
+ * post/cap" order of magnitude as the wall itself rather than dwarfing it.
+ */
+const FITTING_FOOTPRINT_SCALE = 0.4;
+
+/**
+ * "Context" fit scale for a fitting: X/Z use each variant's own raw
+ * width/depth at `FITTING_FOOTPRINT_SCALE` (see above -- NOT the shared
+ * `SYNTY_SCALE` used for characters/doors/wall-variant thickness, which
+ * rendered these fittings far too chunky), footprint centered on the
+ * vertex/edge-midpoint it's placed at; height is clamped to the game's
+ * wall height, same as every other wall piece.
  */
 export function fittingScale(
-  rawHeight: number,
-  wallHeight: number,
-  syntyScale: number
+  variant: FittingVariant,
+  wallHeight: number
 ): [number, number, number] {
-  return [syntyScale, wallHeight / rawHeight, syntyScale];
+  return [
+    variant.rawWidth * FITTING_FOOTPRINT_SCALE,
+    wallHeight / variant.rawHeight,
+    variant.rawDepth * FITTING_FOOTPRINT_SCALE,
+  ];
 }
 
 export interface VertexFitting {
@@ -348,12 +435,34 @@ export interface VertexFitting {
  *   explicit disjunction with 3 below for clarity against the diagnosis's
  *   "0 or 3, skip" wording, not because 0 can actually occur.)
  *
+ * A vertex only gets a fitting if at least one of its 1-2 wall hexes is
+ * NOT a "straight-through" hex (`isStraightThroughHex`) -- i.e. is
+ * isolated, a true end, a genuine (non-opposite-neighbor) bend, or a 3+-way
+ * junction. This is a QA correction (rpg-dnd5e-web#536 phase-2 review) to
+ * the diagnosis's original per-vertex-only rule: literally every vertex
+ * along even a dead-straight run technically has a "1 of 3" or "2 of 3"
+ * touching-hex count (hex-grid corners are never collinear at single-hex
+ * granularity -- see below), so the unqualified rule placed a fitting at
+ * EVERY vertex of EVERY wall hex, including hexes with no direction change
+ * at all. That's geometrically defensible but reads as cluttered
+ * "stacked slabs" along entire straight boundaries to a human glancing at
+ * it, not just at actual turns -- this gate is what makes "only at
+ * direction changes" true at the scale a player actually perceives, not
+ * just at hex-edge granularity. A run's straight interior hexes (both
+ * their own tip vertices AND the vertices they share with another
+ * straight-through neighbor) now contribute nothing; only the transition
+ * into/out of a genuine end/bend/junction still does, via that qualifying
+ * hex.
+ *
  * A "straight continuation" (two collinear wall edges meeting at ~180
- * degrees) needs no special exemption, per the diagnosis -- and indeed
- * this never arises structurally: the two directions meeting at any given
- * corner (i and i+1) are always exactly 60 degrees apart by construction
- * of the hex-corner geometry, never 180. Every vertex a wall boundary
- * passes through is a genuine turn.
+ * degrees) needs no special exemption at the PER-EDGE-ANGLE level, per the
+ * diagnosis -- and indeed this never arises structurally: the two
+ * directions meeting at any given corner (i and i+1) are always exactly 60
+ * degrees apart by construction of the hex-corner geometry, never 180.
+ * Every vertex a wall boundary passes through is technically a genuine
+ * small turn at that granularity -- which is exactly why the hex-level
+ * straight-through gate above (a different, coarser notion of "collinear")
+ * is needed to match human-perceived straightness.
  *
  * Pure and independent of GLB loading so it's unit-testable directly.
  */
@@ -362,6 +471,11 @@ export function classifyWallVertices(
   hexSize: number
 ): VertexFitting[] {
   const wallKindByHex = collectWallHexes(walls);
+  const straightThroughHexes = new Set(
+    Array.from(wallKindByHex.keys()).filter((key) =>
+      isStraightThroughHex(parseHexKey(key), wallKindByHex)
+    )
+  );
   const fittings: VertexFitting[] = [];
   const seenVertexKeys = new Set<string>();
 
@@ -391,6 +505,12 @@ export function classifyWallVertices(
 
       const wallTouchingKeys = touchingKeys.filter((k) => wallKindByHex.has(k));
       if (wallTouchingKeys.length >= 3) continue; // fully enclosed, no boundary here
+
+      // Skip if EVERY wall hex touching this vertex is straight-through --
+      // no genuine direction change passes through this vertex.
+      if (wallTouchingKeys.every((k) => straightThroughHexes.has(k))) {
+        continue;
+      }
 
       const position = corners[i]!;
 
@@ -457,20 +577,10 @@ export function wallEndEdgeKeys(walls: Wall[]): Set<string> {
 
   for (const hexKey of wallKindByHex.keys()) {
     const hex = parseHexKey(hexKey);
-    const wallNeighborDirIndices: number[] = [];
-    for (let i = 0; i < HEX_DIRECTIONS.length; i++) {
-      const dir = HEX_DIRECTIONS[i]!;
-      const neighborKey = coordToKey({
-        x: hex.x + dir.x,
-        y: hex.y + dir.y,
-        z: hex.z + dir.z,
-      });
-      if (wallKindByHex.has(neighborKey)) wallNeighborDirIndices.push(i);
-    }
-    if (wallNeighborDirIndices.length !== 1) continue; // not a true terminus
+    const dirs = wallNeighborDirIndices(hex, wallKindByHex);
+    if (dirs.length !== 1) continue; // not a true terminus
 
-    const farDir =
-      HEX_DIRECTIONS[(wallNeighborDirIndices[0]! + 3) % HEX_DIRECTIONS.length]!;
+    const farDir = HEX_DIRECTIONS[(dirs[0]! + 3) % HEX_DIRECTIONS.length]!;
     const farNeighborKey = coordToKey({
       x: hex.x + farDir.x,
       y: hex.y + farDir.y,

@@ -6,6 +6,71 @@ free-standing "rubble" rings, and unterminated wall-run ends) by classifying
 every hex-grid vertex a wall boundary passes through and placing the
 manifest's `wall-corner-outer`/`wall-corner-inner`/`wall-end` fittings there.
 
+**This doc has been updated after a QA round found the first version of this
+fix was NOT ready to ship** — see "QA correction round" below before the
+original before/after writeup. The before/after PNGs in this directory are
+the corrected (post-QA) renders.
+
+## QA correction round (required before merge)
+
+A reviewer viewed the first version's `wall-fittings-536-wide-before/after.png`
+directly and rejected it: the "after" read as cluttered slab-stacks, with
+grey corner fittings appearing along entire wall boundaries rather than only
+at direction changes. Two root causes, both fixed:
+
+1. **Placement was correct per the diagnosis's literal per-VERTEX rule, but
+   that rule doesn't match human-perceived "straightness."** Every hex-grid
+   vertex along even a dead-straight run technically has a 1-of-3 or 2-of-3
+   touching-hex count, because consecutive rendered edges in a hex-tiled wall
+   are never literally collinear at single-hex granularity (hex corners are
+   always ~60 degrees apart by construction — verified analytically and
+   still true, see the unit tests). The original implementation followed
+   that literal rule and put a fitting at every one of those technically-
+   correct micro-turns, which is geometrically defensible but reads as
+   clutter once a run is more than 2-3 hexes long. **Fix**: added
+   `isStraightThroughHex` — a hex-level (not vertex-level) gate. A wall hex
+   with exactly 2 wall neighbors in OPPOSITE directions (the run passes
+   straight through it) now contributes NO fittings at any of its own
+   vertices; only hexes that are isolated, true ends, genuine
+   (non-opposite-neighbor) bends, or 3+-way junctions still do. A vertex only
+   gets a fitting if at least one of its 1-2 touching wall hexes still
+   qualifies. Verified: a straight run's total fitting count is now constant
+   regardless of how many extra straight hexes are added to its middle (12
+   for both a 3-hex and a 6-hex straight run in the unit tests), instead of
+   scaling linearly with run length as it did before.
+
+   **Important honest caveat**: in the SPECIFIC real dungeon layout used for
+   this evidence, this fix alone did not visibly change the wide-shot
+   screenshot — re-rendered and compared pixel-for-pixel identical crops
+   before concluding this. This real layout's corridors are a winding maze
+   with essentially no long straight stretches, so nearly every wall hex in
+   it genuinely IS a bend and correctly still gets treated. The
+   straight-through gate is still correct and load-bearing (proven by the
+   unit tests, and it will matter for straighter layouts/rooms), but it was
+   NOT the fix that made this specific evidence set look better — fix #2
+   below was.
+
+2. **Fitting scale was the actual dominant problem in this layout.** Measured
+   raw GLB bounding boxes directly with Blender (`bbox_glb.py` against
+   `rpg-game-assets/harness/models/synty/env/*.glb`) rather than trusting the
+   original "uniform SYNTY_SCALE (0.75) on X/Z" assumption. Found: the
+   `plain` wall variant's actual rendered thickness is ~0.327 world units
+   (raw depth 0.4357 × its own SYNTY_SCALE), but `wall-corner-outer` at the
+   old flat 0.75 scale rendered to ~0.622 — nearly DOUBLE the wall's own
+   thickness. That's exactly why fittings looked like dominant slabs instead
+   of slim caps. **Fix**: `fittingScale` now scales each fitting's own raw
+   width/depth (measured per-variant, matching `WALL_VARIANTS`' existing
+   convention) by a dedicated `FITTING_FOOTPRINT_SCALE = 0.4`, chosen so
+   `wall-corner-outer` renders at ~0.33 — matching the wall's own thickness
+   almost exactly — with `wall-corner-inner`/`wall-end` landing close behind
+   in the same order of magnitude, not SYNTY_SCALE's flat 0.75.
+
+Both fixes are covered by updated/new unit tests in
+`syntyHexWallHelpers.test.ts` (24 tests total, up from 14 pre-fix / 22 in the
+first version of this PR). The before/after PNGs in this repo were
+**re-rendered after both fixes** — the ones referenced below are the
+corrected set, not the originally-submitted (rejected) ones.
+
 ## Environment (real route, per house rule)
 
 Reused the already-running local stack from this job's environment rather
@@ -35,13 +100,12 @@ but literally the same one, for a true apples-to-apples comparison:
 
 - **`wall-fittings-536-wide-before.png`** / **`wall-fittings-536-wide-after.png`**
 
-I viewed both. Before: the familiar diagnosis look — thin independently-
-rotated wall boxes, visible dark-floor notches at every direction change, and
-two small closed loops (upper-left) reading as debris rings. After: the same
-camera position, same dungeon, but every direction change and every isolated
-loop's vertex now has a fitting piece closing the joint — no floor visible
-through any seam in this view, and the two upper-left rings now read as small
-deliberate hex structures rather than open rubble.
+I viewed both. At this zoom level the two now read as comparably clean — the
+after does NOT look more cluttered than the before at a glance, which is the
+actual acceptance bar. The difference shows up on closer inspection (crops
+below): every direction change/isolated loop now has its gap closed by a
+slim cap, without dominating the tan wall segments the way the pre-QA-fix
+version did.
 
 ## Isolated wall hex (defect #2)
 
@@ -53,9 +117,10 @@ through gaps between the independently-placed edge boxes into the black
 void behind, and the top-left segment doesn't meet its neighbor at all
 (explains the diagnosis's "reads as debris" call). After: every one of the
 hex's 6 vertices now has a `wall-corner-outer` piece (per
-`classifyWallVertices`'s 1-of-3 rule) — the ring is now visually sealed, no
-gaps, reading as a small fortified structure. This is defect #1's general
-corner rule fixing defect #2 "for free," exactly as the diagnosis predicted.
+`classifyWallVertices`'s 1-of-3 rule), sized to roughly match the wall's own
+thickness rather than dwarf it — the ring is now visually sealed, no gaps,
+reading as a small fortified structure rather than a stack of oversized
+grey slabs.
 
 ## Corner/direction-change corridor (defect #1)
 
@@ -65,8 +130,9 @@ corner rule fixing defect #2 "for free," exactly as the diagnosis predicted.
 I viewed both. Before: multiple visible gap/overshoot notches where the
 corridor changes direction — black floor showing through triangular gaps
 between consecutive independently-rotated wall boxes. After: every direction
-change in this corridor is now capped by a corner fitting; no gap or
-overshoot is visible along the entire run in this crop.
+change in this corridor is now capped by a slim corner fitting; no gap or
+overshoot is visible along the entire run in this crop, and the caps read as
+part of the wall rather than separate oversized blocks.
 
 ## Wall-run ends (defect #3)
 
@@ -85,26 +151,30 @@ rests on:
   the `Suspense` boundary, not silently no-op).
 - The general "no floor visible through a wall seam" improvement visible in
   every crop above applies equally to run-end seams, which use the same
-  `hexEdgeBetween`-derived edge position/rotation as every other segment.
+  `hexEdgeBetween`-derived edge position/rotation as every other segment,
+  now at the corrected (matching-wall-thickness) scale too.
 
 ## Honest note: defect #4 (top faces) — not made worse, but not fixed either
 
 Defect #4 (bare/flat top faces from squeezing full-height Synty meshes to
 `WALL_HEIGHT`) is explicitly out of scope for this phase. Looking at the
 after-screenshots: the new corner/end fittings have the SAME kind of bare
-cut-cross-section top-face issue as the existing wall variants (visible as
-flat gray pyramid-ish caps in `wall-fittings-536-isolated-hex-after.png`) —
-consistent with the rest of the wall, not visibly worse, but also not an
-improvement. Flagging honestly per the acceptance bar rather than staying
-silent about it.
+cut-cross-section top-face issue as the existing wall variants — consistent
+with the rest of the wall, not visibly worse, but also not an improvement.
+Flagging honestly per the acceptance bar rather than staying silent about it.
 
 ## Judgment calls
 
-- **Fitting placement/scale**: the diagnosis's design doc says fittings
-  should use `[SYNTY_SCALE, WALL_HEIGHT/rawHeight, SYNTY_SCALE]`-style
-  uniform scaling "centered on the vertex" — implemented as-is
-  (`fittingScale`). Visually confirmed reasonable footprint (neither
-  swallowing the adjacent wall pieces nor invisible slivers).
+- **Fitting scale**: superseded the original "uniform SYNTY_SCALE on X/Z"
+  assumption after QA correctly flagged it as visually dominant. Now derived
+  from each variant's own measured raw width/depth (via Blender bbox
+  extraction) at a dedicated `FITTING_FOOTPRINT_SCALE = 0.4`, chosen to match
+  the wall's own rendered thickness. See "QA correction round" above.
+- **Straight-through gate**: a hex-level (not vertex-level) concept of
+  "collinear" — see "QA correction round" above for why the diagnosis's
+  literal per-vertex rule needed this correction to match human-perceived
+  straightness, and the honest caveat that this specific real layout didn't
+  visually exercise it much (verified via unit tests instead).
 - **`wall-end` placement point**: the diagnosis's wording ("at that vertex")
   is ambiguous between an edge's two endpoints. Given the manifest dims are
   small/roughly-cubic (same family as the corner fittings, NOT edge-length
@@ -120,11 +190,16 @@ silent about it.
   (visible in the pre-existing diagnosis screenshots too), so this reads as
   an existing style-consistency question adjacent to defect #5, not a
   regression introduced here.
-- **"180 degree straight continuation" exemption** (diagnosis's own caveat):
-  verified analytically and via the unit tests that this case is structurally
-  unreachable for this vertex-traversal algorithm (the two directions
-  meeting at any hex corner are always exactly 60 degrees apart) — no
-  special-case code was needed, and none was added.
+- **"180 degree straight continuation" exemption** (diagnosis's own
+  per-edge-angle caveat): verified analytically and via the unit tests that
+  this is structurally unreachable at the per-vertex/per-edge level (the two
+  directions meeting at any hex corner are always exactly 60 degrees apart)
+  — no special-case code was needed there. This is a DIFFERENT, finer-grained
+  notion of "collinear" than the hex-level straight-through gate added in the
+  QA correction round above; both are true simultaneously (every vertex is a
+  micro-turn at edge-angle granularity, but a straight-through hex still
+  contributes none of its own fittings at the macro/gameplay-perceived
+  level).
 
 ## Deferred (out of scope for this phase, per the diagnosis)
 

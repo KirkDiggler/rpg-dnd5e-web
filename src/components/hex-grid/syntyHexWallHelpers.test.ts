@@ -163,13 +163,17 @@ describe('classifyWallVertices', () => {
     }
   });
 
-  it('classifies a straight 3-hex run: 10 outer corners + 4 shared inner corners', () => {
-    // H0 -(E)- H1 -(E)- H2, all collinear/all walls. Hand-verified: each
-    // end hex (degree 1) contributes 4 of its own outer corners + shares 2
-    // inner corners with its one wall neighbor; the middle hex (degree 2)
-    // contributes 2 of its own outer corners (its "tips" perpendicular to
-    // the run) and its other 4 corners are the (deduped) shared inner
-    // corners with H0/H2. Unique total: 4+2+4 = 10 outer, 2+2 = 4 inner.
+  it('classifies a straight 3-hex run: middle (straight-through) hex contributes nothing of its own', () => {
+    // H0 -(E)- H1 -(E)- H2, all collinear/all walls. H1 has exactly 2 wall
+    // neighbors in OPPOSITE directions (E and W) -- a "straight-through"
+    // hex per the #536 phase-2 QA fix -- so its own 2 tip vertices
+    // (touching only H1) are skipped entirely. H0/H2 (degree 1, true ends)
+    // are unaffected: each still contributes its own 4 outer corners, and
+    // the vertices they SHARE with H1 still get an inner corner (H1 being
+    // disqualified doesn't disqualify a vertex where the OTHER touching
+    // hex, H0 or H2, still qualifies). Hand-verified: 4+4 = 8 outer
+    // (H1's 2 own tips removed from the pre-fix 10), 2+2 = 4 inner
+    // (unchanged) = 12 total (down from the unqualified rule's 14).
     const walls = [
       wall({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }),
       wall({ x: 1, y: -1, z: 0 }, { x: 1, y: -1, z: 0 }),
@@ -178,11 +182,39 @@ describe('classifyWallVertices', () => {
     const fittings = classifyWallVertices(walls, 1);
     const outer = fittings.filter((f) => f.kind === 'wall-corner-outer');
     const inner = fittings.filter((f) => f.kind === 'wall-corner-inner');
-    expect(outer).toHaveLength(10);
+    expect(outer).toHaveLength(8);
     expect(inner).toHaveLength(4);
-    expect(fittings).toHaveLength(14);
+    expect(fittings).toHaveLength(12);
+    // None of the fittings touch ONLY the middle hex (H1's own tip
+    // vertices must be the ones removed, not e.g. the shared ones).
+    const h1OnlyKey = '1,-1,0';
+    expect(
+      fittings.filter(
+        (f) =>
+          f.key.split('|').includes(h1OnlyKey) &&
+          !f.key.includes('0,0,0') &&
+          !f.key.includes('2,-2,0')
+      )
+    ).toHaveLength(0);
     // Vertex keys are unique (no double-placement of the same fitting).
     expect(new Set(fittings.map((f) => f.key)).size).toBe(fittings.length);
+  });
+
+  it('a longer straight run adds NO additional fittings in its interior (density stays flat, not linear)', () => {
+    // 6-hex straight run: only the 2 ends (degree 1) and the 2 vertices
+    // each shares with its immediate straight-through neighbor contribute
+    // anything; every interior straight-through hex (degree 2, opposite
+    // neighbors) -- including boundaries BETWEEN two straight-through
+    // hexes -- contributes nothing. Total should match the 3-hex run's 12
+    // exactly, regardless of how many extra straight hexes sit in the
+    // middle -- this is the core of the #536 phase-2 QA fix (corner
+    // fittings were "cluttering entire wall boundaries" because the old
+    // per-vertex-only rule scaled linearly with run length).
+    const walls = Array.from({ length: 6 }, (_, i) =>
+      wall({ x: i, y: -i, z: 0 }, { x: i, y: -i, z: 0 })
+    );
+    const fittings = classifyWallVertices(walls, 1);
+    expect(fittings).toHaveLength(12);
   });
 
   it('classifies a 60-degree turn: the bend hex has no skipped corners, mixing outer and inner', () => {
@@ -276,15 +308,27 @@ describe('wallEndEdgeKeys', () => {
 });
 
 describe('fittingScale', () => {
-  it('uses uniform SYNTY_SCALE on X/Z (context fit, not edge-squeezed)', () => {
-    const [sx, sy, sz] = fittingScale(
-      FITTINGS['wall-corner-outer'].rawHeight,
-      0.8,
-      0.75
-    );
-    expect(sx).toBe(0.75);
-    expect(sz).toBe(0.75);
-    expect(sy).toBeCloseTo(0.8 / FITTINGS['wall-corner-outer'].rawHeight, 5);
+  it("scales X/Z by each variant's own raw width/depth (not a flat SYNTY_SCALE) so the footprint reads as slim, not a dominant slab", () => {
+    // QA correction (#536 phase-2 review): the old flat SYNTY_SCALE (0.75)
+    // rendered wall-corner-outer's ~0.83 raw footprint to ~0.62 -- nearly
+    // double the wall segments' own ~0.327 rendered thickness. The fix
+    // should land close to that thickness instead.
+    const outer = FITTINGS['wall-corner-outer'];
+    const [sx, sy, sz] = fittingScale(outer, 0.8);
+    expect(sx).toBeCloseTo(outer.rawWidth * 0.4, 5);
+    expect(sz).toBeCloseTo(outer.rawDepth * 0.4, 5);
+    expect(sy).toBeCloseTo(0.8 / outer.rawHeight, 5);
+    // The rendered footprint (~0.33) should be in the same order of
+    // magnitude as the wall's own rendered thickness (~0.327 = 0.4357 raw *
+    // 0.75 SYNTY_SCALE), not nearly double it like the old flat scale was.
+    const wallRenderedThickness = 0.4357 * 0.75;
+    expect(Math.abs(sx - wallRenderedThickness)).toBeLessThan(0.15);
+  });
+
+  it("uses each variant's own dims, not a shared constant (inner is chunkier than outer/end)", () => {
+    const [outerSx] = fittingScale(FITTINGS['wall-corner-outer'], 0.8);
+    const [innerSx] = fittingScale(FITTINGS['wall-corner-inner'], 0.8);
+    expect(innerSx).toBeGreaterThan(outerSx);
   });
 });
 

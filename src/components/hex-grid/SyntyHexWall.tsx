@@ -148,7 +148,7 @@ export function SyntyHexWall({ walls, hexSize }: SyntyHexWallProps) {
               file={fitting.file}
               position={edge.mid}
               rotationY={edge.rotationY}
-              scale={fittingScale(fitting.rawHeight, WALL_HEIGHT, SYNTY_SCALE)}
+              scale={fittingScale(fitting, WALL_HEIGHT)}
             />
           );
         }
@@ -176,7 +176,7 @@ export function SyntyHexWall({ walls, hexSize }: SyntyHexWallProps) {
             file={fitting.file}
             position={position}
             rotationY={rotationY}
-            scale={fittingScale(fitting.rawHeight, WALL_HEIGHT, SYNTY_SCALE)}
+            scale={fittingScale(fitting, WALL_HEIGHT)}
           />
         );
       })}
