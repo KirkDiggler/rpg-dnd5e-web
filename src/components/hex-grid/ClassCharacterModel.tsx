@@ -1,10 +1,11 @@
 /**
  * ClassCharacterModel — renders a class-named Synty GLB for a player entity
- * (rpg-dnd5e-web#501). Sibling alternative to MediumHumanoid inside
+ * (rpg-dnd5e-web#501), animated on loop with its baked idle clip
+ * (rpg-dnd5e-web#506). Sibling alternative to MediumHumanoid inside
  * HexEntity's existing position/rotation wrapper — HexEntity decides which
  * of the two to mount per entity (resolveClassCharacterModelUrl's
  * undefined-for-unmapped return is the fallback signal), not this
- * component; this one only knows how to render a GIVEN GLB url.
+ * component; this one only knows how to render+animate a GIVEN GLB url.
  *
  * Selection/ghost treatment is a simple material tint (emissive glow /
  * opacity), not MediumHumanoid's cel-shaded outline shader
@@ -22,17 +23,28 @@
  * so a broken clone can fail to render at all rather than just glitching
  * once something moves the bones (rpg-dnd5e-web#510 — confirmed live on
  * the real game screen: correct classRefId/position/isGhost, the GLB
- * fetched 200 OK, nothing rendered; swapping to `SkeletonUtils.clone()`
- * below fixed it immediately). `SkeletonUtils.clone()` clones bones and
- * skeletons correctly and is the standard fix — use it here instead of a
- * plain `.clone()`, even before any animation exists (#509) or plays.
+ * fetched 200 OK, nothing rendered). `SkeletonUtils.clone()` fixed this
+ * and shipped separately via #517; this file wires up the animation
+ * playback on top of that already-landed fix, not the clone itself.
+ * Current asset reality (re-verified against assets#4-#10, then again
+ * post rpg-game-assets#11): fighter/barbarian.glb ship 0 baked clips
+ * (junk stripped; Big-Rig retarget pending) — `resolveIdleClipName`
+ * returning undefined for a clip-less model is a normal, expected case,
+ * not an error; the animation effects below and the frameloop-invalidate
+ * heartbeat all no-op cleanly for it. monk/rogue.glb now ship 3 idle
+ * clips each (rpg-game-assets#11, closing rpg-dnd5e-web#522) and play
+ * one on loop. Downed variants ship with no animation data at all —
+ * `SkeletonUtils.clone()` still works for a static mesh, so one clone
+ * path covers both cases.
  */
 
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
-import { useGLTF } from '@react-three/drei';
-import { useMemo } from 'react';
+import { useAnimations, useGLTF } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
+import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
+import { resolveIdleClipName } from './classCharacterModels';
 
 export interface ClassCharacterModelProps {
   url: string;
@@ -52,37 +64,112 @@ export function ClassCharacterModel({
   // useGLTF returns drei's shared, URL-keyed cache — mutating it directly
   // during render is a render-phase side effect on shared state (same
   // rule SyntyHexFloor.tsx/SyntyHexWall.tsx already follow for this exact
-  // reason). Clone per-instance and tint the clone's materials instead.
-  const { scene } = useGLTF(url);
-  const cloned = useMemo(() => {
-    const clone = cloneSkeleton(scene);
-    if (isSelected || isGhost) {
-      clone.traverse((child) => {
-        if (!(child instanceof THREE.Mesh)) return;
-        const wasArray = Array.isArray(child.material);
-        const materials = wasArray
-          ? (child.material as THREE.Material[])
-          : [child.material as THREE.Material];
-        const tinted = materials.map((mat) => {
-          const cloned = mat.clone();
-          // emissive/emissiveIntensity are Standard/Physical-material-only;
-          // transparent/opacity are on the THREE.Material base and safe for
-          // any material type a GLB might legally use.
-          if (isSelected && cloned instanceof THREE.MeshStandardMaterial) {
-            cloned.emissive = new THREE.Color('#ffffff');
-            cloned.emissiveIntensity = 0.25;
-          }
-          if (isGhost) {
-            cloned.transparent = true;
-            cloned.opacity = 0.35;
-          }
-          return cloned;
-        });
-        child.material = wasArray ? tinted : tinted[0]!;
+  // reason). Clone per-instance and tint/animate the clone instead.
+  const { scene, animations } = useGLTF(url);
+
+  // Cloned ONCE per scene load (keyed only on `scene`, not on
+  // isSelected/isGhost) — this object's identity must stay stable across
+  // selection/ghost toggles. drei's useAnimations lazily caches each clip
+  // Action bound to whatever root object was current the first time it's
+  // read; if this clone were recreated on every tint change (as #502's
+  // single combined useMemo did), the mixer would keep animating a stale,
+  // now-invisible clone while the rendered <primitive> pointed at a new
+  // one — the model would silently stop animating the moment a player was
+  // first selected. Tinting is applied as a separate effect below instead
+  // of folding into this clone step.
+  const cloned = useMemo(() => cloneSkeleton(scene), [scene]);
+
+  // Snapshot each mesh's original (untinted) material once per `cloned`
+  // identity, so the tint effect below always starts from a clean base —
+  // never compounds a tint onto a previously-tinted clone (which would
+  // happen if we cloned-and-tinted the current material on every toggle).
+  const originalMaterials = useMemo(() => {
+    const map = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    cloned.traverse((child) => {
+      if (child instanceof THREE.Mesh) map.set(child, child.material);
+    });
+    return map;
+  }, [cloned]);
+
+  useEffect(() => {
+    if (!isSelected && !isGhost) {
+      originalMaterials.forEach((mat, mesh) => {
+        mesh.material = mat;
       });
+      // Nothing tinted this run — no-op cleanup, matching the branch below.
+      return () => {};
     }
-    return clone;
-  }, [scene, isSelected, isGhost]);
+    // Track every clone THIS run creates so the cleanup below can dispose
+    // exactly those (never the shared `originalMaterials`, which are the
+    // same instances the cached GLTF scene's other live instances use —
+    // disposing those would break every other on-screen copy of this
+    // class model). React runs this cleanup both before the next run of
+    // this effect (toggle-to-toggle, or toggle-to-restore above) and on
+    // unmount, so one cleanup covers "stop being tinted", "re-tint with a
+    // different flag", and "entity disappears while highlighted" without
+    // three separate disposal call sites (Copilot review on #509 flagged
+    // all three as GPU-resource leaks — cloned materials were never
+    // disposed in any of them).
+    const created: THREE.Material[] = [];
+    originalMaterials.forEach((mat, mesh) => {
+      const wasArray = Array.isArray(mat);
+      const materials = wasArray ? mat : [mat];
+      const tinted = materials.map((m) => {
+        const tintedMat = m.clone();
+        created.push(tintedMat);
+        // emissive/emissiveIntensity are Standard/Physical-material-only;
+        // transparent/opacity are on the THREE.Material base and safe for
+        // any material type a GLB might legally use.
+        if (isSelected && tintedMat instanceof THREE.MeshStandardMaterial) {
+          tintedMat.emissive = new THREE.Color('#ffffff');
+          tintedMat.emissiveIntensity = 0.25;
+        }
+        if (isGhost) {
+          tintedMat.transparent = true;
+          tintedMat.opacity = 0.35;
+        }
+        return tintedMat;
+      });
+      mesh.material = wasArray ? tinted : tinted[0]!;
+    });
+    return () => {
+      created.forEach((mat) => mat.dispose());
+    };
+  }, [originalMaterials, isSelected, isGhost]);
+
+  // Play the resolved idle clip on loop (resolveIdleClipName — prefers an
+  // "idle"-named clip, falls back to the first available). Today's `main`
+  // fighter/barbarian/monk/rogue.glb all ship 0 clips (`names` is empty),
+  // so `clipName` is undefined and this effect no-ops cleanly — same as
+  // downed variants, which never carry animation data. Once
+  // rpg-game-assets#522 lands, monk/rogue will carry 3 idle-variant clips
+  // each and this resolves to whichever comes first.
+  const { actions, names } = useAnimations(animations, cloned);
+  const hasIdleClip = resolveIdleClipName(names) !== undefined;
+  useEffect(() => {
+    const clipName = resolveIdleClipName(names);
+    if (!clipName) return;
+    const action = actions[clipName];
+    action?.reset().fadeIn(0.2).play();
+    return () => {
+      action?.fadeOut(0.2);
+    };
+  }, [actions, names]);
+
+  // HexGrid's Canvas runs frameloop="demand" (only re-renders on explicit
+  // invalidate() calls, not every rAF tick — see HexEntity.tsx's identical
+  // note on its isGhost transition). useAnimations' internal mixer.update()
+  // only advances on frames that actually get rendered; without forcing a
+  // steady stream of them here, a playing clip would stutter/freeze rather
+  // than loop smoothly, only nudging forward whenever some unrelated prop
+  // change or user interaction happened to trigger a frame. Each rendered
+  // frame requests the next one, self-sustaining for as long as this
+  // component has a clip playing; a no-op (no re-invalidation loop) once
+  // hasIdleClip is false (downed variants, or any future model shipped
+  // with no animation).
+  useFrame((state) => {
+    if (hasIdleClip) state.invalidate();
+  });
 
   return (
     <primitive

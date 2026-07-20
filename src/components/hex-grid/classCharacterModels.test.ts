@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { resolveClassCharacterModelUrl } from './classCharacterModels';
+import {
+  resolveClassCharacterModelUrl,
+  resolveIdleClipName,
+} from './classCharacterModels';
 
 describe('resolveClassCharacterModelUrl', () => {
   const shippedClasses = ['fighter', 'barbarian', 'monk', 'rogue'];
@@ -35,5 +38,38 @@ describe('resolveClassCharacterModelUrl', () => {
 
   it('returns undefined for an empty string', () => {
     expect(resolveClassCharacterModelUrl('', false)).toBeUndefined();
+  });
+});
+
+describe('resolveIdleClipName', () => {
+  it("falls back to the first clip when none is named 'idle'", () => {
+    expect(resolveIdleClipName(['Take 001'])).toBe('Take 001');
+  });
+
+  it('prefers a clip whose name contains "idle" over an earlier non-idle clip', () => {
+    expect(resolveIdleClipName(['Walk', 'Idle_Loop', 'Attack'])).toBe(
+      'Idle_Loop'
+    );
+  });
+
+  it('matches "idle" case-insensitively', () => {
+    expect(resolveIdleClipName(['IDLE'])).toBe('IDLE');
+  });
+
+  it('falls back to the first clip when multiple exist and none is idle-named', () => {
+    expect(resolveIdleClipName(['Walk', 'Run', 'Attack'])).toBe('Walk');
+  });
+
+  it("returns undefined for an empty clip list — today's real case for main's fighter/barbarian.glb (0 clips shipped) and every downed variant", () => {
+    expect(resolveIdleClipName([])).toBeUndefined();
+  });
+
+  it('picks the first idle-named clip when every clip is idle-named (monk/rogue\'s real multi-clip shape on main since rpg-game-assets#11 — all variants match "idle", so the "first available" fallback effectively decides)', () => {
+    expect(
+      resolveIdleClipName(['Idle_Drinking', 'Idle_Meditative', 'Idle_Relaxed'])
+    ).toBe('Idle_Drinking');
+    expect(
+      resolveIdleClipName(['Idle_CheckWatch', 'Idle_Drinking', 'Idle_Relaxed'])
+    ).toBe('Idle_CheckWatch');
   });
 });
