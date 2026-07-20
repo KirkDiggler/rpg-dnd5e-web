@@ -97,14 +97,15 @@ export function CombatPanelConcept() {
   return (
     <div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 12, fontSize: 14 }}>
-        Round-2 IA concepts for the combat panel (web#525), shaped by Kirk's
+        Round-3 IA concepts for the combat panel (web#525), shaped by Kirk's
         action-point-pool model: every verb carries a cost badge (circle=action,
         diamond=bonus, triangle=reaction) matching the pips, straight from the
-        server's economy_slot. Interactions are live: click a verb to arm it
-        (Esc cancels), End Turn hands the turn over, the gear shows where
-        reaction policies live. Hover anything for the words — tooltips carry
-        the detail. The frame below is Discord-activity-sized — review at true
-        size.
+        server's economy_slot. Core verbs stay flat in the bar; class options
+        group by where they come from (ref.type — Features, Spells, ...) in the
+        drop-up. Interactions are live: click a verb to arm it (Esc cancels),
+        End Turn hands the turn over, the gear shows where reaction policies
+        live. Hover anything for the words — tooltips carry the detail. The
+        frame below is Discord-activity-sized — review at true size.
       </p>
 
       <div

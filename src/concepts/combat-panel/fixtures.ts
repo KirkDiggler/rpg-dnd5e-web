@@ -41,10 +41,18 @@ function action(
   id: string,
   displayName: string,
   slot: EconomySlot,
-  opts?: { available?: boolean; reason?: string; targetKind?: TargetKind }
+  opts?: {
+    available?: boolean;
+    reason?: string;
+    targetKind?: TargetKind;
+    /** Ref.type provenance — "combat_abilities" (core), "feature",
+     * "spell", "item", ... The wire carries these verbatim; the bar
+     * groups non-core options by this value. */
+    refType?: string;
+  }
 ): AvailableAction {
   return {
-    ref: { module: 'dnd5e', type: 'combat_abilities', id },
+    ref: { module: 'dnd5e', type: opts?.refType ?? 'combat_abilities', id },
     displayName,
     available: opts?.available ?? true,
     unavailableReason: opts?.reason ?? '',
@@ -100,6 +108,15 @@ const remy: ViewerFixture = {
   hp: { current: 9, max: 10 },
   ac: 15,
   speed: 30,
+};
+
+const mira: ViewerFixture = {
+  entityId: 'char-mira',
+  displayName: 'Mira',
+  classRefId: 'monk',
+  hp: { current: 13, max: 16 },
+  ac: 16,
+  speed: 40,
 };
 
 const FULL_ACTIONS: AvailableAction[] = [
@@ -162,6 +179,45 @@ export const COMBAT_PANEL_FIXTURES: CombatPanelFixture[] = [
       }),
       action('dodge', 'Dodge', EconomySlot.ACTION, {
         targetKind: TargetKind.NONE,
+      }),
+    ],
+  },
+  {
+    id: 'monk-busy-kit',
+    label: 'Monk turn (busy kit)',
+    description:
+      "Kirk's scaling concern: Mira's L2 kit adds Flurry of Blows / Patient Defense / Step of the Wind (ref.type=\"feature\") on top of core verbs — they group under a Features section in the drop-up, with Stunning Strike disabled in-group ('No ki remaining').",
+    mode: 'TURN_BASED',
+    isMyTurn: true,
+    activeName: 'Mira',
+    viewer: mira,
+    economy: economy(1, 1, 1, 40),
+    actions: [
+      action('attack', 'Attack', EconomySlot.ACTION),
+      action('dash', 'Dash', EconomySlot.ACTION, {
+        targetKind: TargetKind.NONE,
+      }),
+      action('dodge', 'Dodge', EconomySlot.ACTION, {
+        targetKind: TargetKind.NONE,
+      }),
+      action('hide', 'Hide', EconomySlot.ACTION, {
+        targetKind: TargetKind.NONE,
+      }),
+      action('flurry-of-blows', 'Flurry of Blows', EconomySlot.BONUS_ACTION, {
+        refType: 'feature',
+      }),
+      action('patient-defense', 'Patient Defense', EconomySlot.BONUS_ACTION, {
+        refType: 'feature',
+        targetKind: TargetKind.SELF,
+      }),
+      action('step-of-the-wind', 'Step of the Wind', EconomySlot.BONUS_ACTION, {
+        refType: 'feature',
+        targetKind: TargetKind.NONE,
+      }),
+      action('stunning-strike', 'Stunning Strike', EconomySlot.ACTION, {
+        refType: 'feature',
+        available: false,
+        reason: 'No ki remaining',
       }),
     ],
   },

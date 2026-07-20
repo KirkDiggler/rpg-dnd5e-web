@@ -213,6 +213,15 @@
     animation: armed-pulse 1.2s ease-in-out infinite;
   }
 
+  /* Inside the grouped drop-up, verbs render as full-width rows under
+     their provenance header (Features / Spells / ...) so a busy kit
+     scans as a list, not a second bar. */
+  .verb-btn.menu-row {
+    width: 100%;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
   .readiness-chip {
     display: inline-flex;
     align-items: center;

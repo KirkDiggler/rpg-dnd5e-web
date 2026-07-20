@@ -28,8 +28,43 @@ import {
 import { getActionIconUrl } from '../../utils/actionIcons';
 import type { CombatPanelFixture } from './fixtures';
 
-/** How many verbs stay inline before the rest fold into the overflow. */
-const INLINE_VERB_LIMIT = 5;
+/** Core verbs stay flat in the bar; everything else groups by where it
+ * comes from. The wire already carries provenance — AvailableAction.ref.type
+ * ("combat_abilities"/"actions" = core; "feature", "spell", "item", ... are
+ * the toolkit's open-ended vocabulary) — so grouping is pure presentation
+ * of server data (Kirk's round-3 direction for busy kits like monk L2). */
+const CORE_TYPES = new Set(['actions', 'combat_abilities']);
+
+/** Core verbs shown flat before the tail folds into the drop-up's
+ * "Actions" section — keeps the bar one row at Discord width. */
+const INLINE_CORE_LIMIT = 5;
+
+/** Known provenance labels; anything unknown gets sentence-cased so future
+ * ref.types render reasonably instead of breaking the menu. */
+const GROUP_LABELS: Record<string, string> = {
+  feature: 'Features',
+  spell: 'Spells',
+  item: 'Items',
+};
+
+function groupLabel(refType: string): string {
+  if (GROUP_LABELS[refType]) return GROUP_LABELS[refType];
+  const words = refType.replace(/[_-]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function groupByProvenance(
+  extras: AvailableAction[]
+): { label: string; actions: AvailableAction[] }[] {
+  const groups: { label: string; actions: AvailableAction[] }[] = [];
+  for (const a of extras) {
+    const label = groupLabel(a.ref?.type ?? 'other');
+    const existing = groups.find((g) => g.label === label);
+    if (existing) existing.actions.push(a);
+    else groups.push({ label, actions: [a] });
+  }
+  return groups;
+}
 
 /** economy_slot → pool shape, 1:1 — presentation mapping only; the server
  * decides what each action costs. Slots without a pool (movement, free)
@@ -71,8 +106,29 @@ export function CommandBar({
 }: CommandBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const inline = fixture.actions.slice(0, INLINE_VERB_LIMIT);
-  const overflow = fixture.actions.slice(INLINE_VERB_LIMIT);
+  const allCore = fixture.actions.filter((a) =>
+    CORE_TYPES.has(a.ref?.type ?? '')
+  );
+  // The bar stays ONE row at Discord width: core verbs past the cap fold
+  // into the drop-up as an "Actions" section above the provenance groups.
+  const core = allCore.slice(0, INLINE_CORE_LIMIT);
+  const coreOverflow = allCore.slice(INLINE_CORE_LIMIT);
+  const extras = fixture.actions.filter(
+    (a) => !CORE_TYPES.has(a.ref?.type ?? '')
+  );
+  const groups = [
+    ...(coreOverflow.length > 0
+      ? [{ label: 'Actions', actions: coreOverflow }]
+      : []),
+    ...groupByProvenance(extras),
+  ];
+  const menuCount = coreOverflow.length + extras.length;
+  // Trigger says what it holds: one group reads by name ("Features ▾ 4" —
+  // the common case, fits Discord width); several fall back to a total.
+  const triggerLabel =
+    groups.length === 1
+      ? `${groups[0].label} ▾ ${groups[0].actions.length}`
+      : `More ▾ ${menuCount}`;
   const { viewer } = fixture;
   const hpPct =
     viewer.hp.max > 0
@@ -84,19 +140,20 @@ export function CommandBar({
       ? Math.max(0, Math.min(100, (movement / viewer.speed) * 100))
       : undefined;
 
-  const renderVerb = (a: AvailableAction, closeOverflow = false) => (
+  const renderVerb = (a: AvailableAction, inMenu = false) => (
     <VerbButton
       key={a.ref?.id ?? a.displayName}
       label={a.displayName}
       iconUrl={a.ref ? getActionIconUrl(a.ref.id) : undefined}
       onClick={() => {
-        if (closeOverflow) setMoreOpen(false);
+        if (inMenu) setMoreOpen(false);
         if (a.ref) onVerb(a.ref.id);
       }}
       cost={verbCost(a, fixture.economy)}
       available={a.available}
       reason={a.unavailableReason}
       armed={armedKey !== undefined && a.ref?.id === armedKey}
+      className={inMenu ? 'menu-row' : undefined}
     />
   );
 
@@ -106,6 +163,10 @@ export function CommandBar({
       overlay={
         <>
           <OverlayPanel open={moreOpen} data-testid="command-bar-more">
+            {/* Grouped by provenance: section per ref.type — "where does
+                this option come from" answered by structure. Cost badges
+                ride along; the pool language follows the actions wherever
+                they render. */}
             <div
               style={{
                 display: 'flex',
@@ -114,8 +175,31 @@ export function CommandBar({
                 padding: 10,
               }}
             >
-              {overflow.map((a) => renderVerb(a, true))}
-              {overflow.length === 0 && (
+              {groups.map((g) => (
+                <div
+                  key={g.label}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      color: 'var(--text-muted)',
+                      padding: '2px 2px 0',
+                    }}
+                  >
+                    {g.label}
+                  </div>
+                  {g.actions.map((a) => renderVerb(a, true))}
+                </div>
+              ))}
+              {groups.length === 0 && (
                 <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
                   No more actions
                 </span>
@@ -269,16 +353,18 @@ export function CommandBar({
           minWidth: 0,
         }}
       >
-        {inline.map((a) => renderVerb(a))}
-        {overflow.length > 0 && (
+        {core.map((a) => renderVerb(a))}
+        {menuCount > 0 && (
           <OverlayToggle
-            label={`+${overflow.length}`}
+            label={triggerLabel}
             open={moreOpen}
             onToggle={() => {
               setSettingsOpen(false);
               setMoreOpen((o) => !o);
             }}
-            aria-label={`${overflow.length} more actions`}
+            aria-label={`${menuCount} more options: ${groups
+              .map((g) => `${g.label} (${g.actions.length})`)
+              .join(', ')}`}
           />
         )}
       </span>
