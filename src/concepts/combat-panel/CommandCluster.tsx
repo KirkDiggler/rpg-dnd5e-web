@@ -28,7 +28,7 @@ import {
   verbCost,
 } from '../../components/ui/combat';
 import { getActionIconUrl } from '../../utils/actionIcons';
-import { contextMessage } from './contextMessage';
+import { pillMessage } from './contextMessage';
 import type { CombatPanelFixture } from './fixtures';
 
 export interface CommandClusterProps {
@@ -65,7 +65,9 @@ export function CommandCluster({
   const armedLabel = armedKey
     ? fixture.actions.find((a) => a.ref?.id === armedKey)?.displayName
     : undefined;
-  const ctx = contextMessage(fixture, armedKey, armedLabel);
+  // Round-6 pill contract (Copilot catch): plain your-turn shows NOTHING —
+  // route through pillMessage so this reference matches the chosen behavior.
+  const ctx = pillMessage(fixture, armedKey, armedLabel);
   const classLabel =
     viewer.classRefId.charAt(0).toUpperCase() + viewer.classRefId.slice(1);
 
@@ -200,29 +202,31 @@ export function CommandCluster({
           pointerEvents: 'auto',
         }}
       >
-        <span
-          data-testid="cluster-strip"
-          role="status"
-          style={{
-            fontSize: 12.5,
-            padding: '3px 14px',
-            borderRadius: 9999,
-            background: 'var(--bg-secondary)',
-            border: `1px solid ${
-              ctx.tone === 'action'
-                ? 'var(--accent-primary)'
-                : 'var(--border-primary)'
-            }`,
-            color:
-              ctx.tone === 'quiet'
-                ? 'var(--text-muted)'
-                : 'var(--text-primary)',
-            whiteSpace: 'nowrap',
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
-          }}
-        >
-          {ctx.text}
-        </span>
+        {ctx && (
+          <span
+            data-testid="cluster-strip"
+            role="status"
+            style={{
+              fontSize: 12.5,
+              padding: '3px 14px',
+              borderRadius: 9999,
+              background: 'var(--bg-secondary)',
+              border: `1px solid ${
+                ctx.tone === 'action'
+                  ? 'var(--accent-primary)'
+                  : 'var(--border-primary)'
+              }`,
+              color:
+                ctx.tone === 'quiet'
+                  ? 'var(--text-muted)'
+                  : 'var(--text-primary)',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            {ctx.text}
+          </span>
+        )}
         {(core.length > 0 || menuCount > 0) && (
           <div style={{ position: 'relative' }}>
             <div

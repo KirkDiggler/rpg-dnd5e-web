@@ -91,7 +91,10 @@ export function ComfortBar({
 
   useEffect(() => {
     const el = rowRef.current;
-    if (!el) return;
+    // Non-browser runtimes (SSR, minimal test envs) may lack
+    // ResizeObserver — rowWidth stays null there, which resolves to the
+    // always-inline layout (never a throw, never hidden content).
+    if (!el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver((entries) => {
       setRowWidth(entries[0]?.contentRect.width ?? null);
     });

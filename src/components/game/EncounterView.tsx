@@ -140,13 +140,20 @@ export function EncounterView({
   // shortcut (the same primary-loop convenience PlaytestMap's VisualAttack
   // click gives the harness) — an explicitly armed action always takes
   // priority over that shortcut once one exists.
-  const [armedAction, setArmedAction] = useState<AvailableAction | null>(null);
+  // rpg-dnd5e-web#544: the armed action is pinned to the turn it was armed
+  // under (turnKey = round + active entity, captured at arm time). The
+  // usable `armedAction` is DERIVED below and goes null the moment the turn
+  // key changes, so it can't leak across a turn handover.
+  const [armedState, setArmedState] = useState<{
+    action: AvailableAction;
+    turnKey: string;
+  } | null>(null);
   // rpg-dnd5e-web#511's other explicit-cancel affordance (alongside
   // re-clicking the armed button in handleSelectAction). Scoped to this
   // view's lifetime; a no-op when nothing is armed.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setArmedAction(null);
+      if (e.key === 'Escape') setArmedState(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -337,6 +344,11 @@ export function EncounterView({
     },
     onModeChanged: (e) => {
       encounterState.applyModeChanged(e);
+      // rpg-dnd5e-web#544: event-level disarm. Derived/effect-based guards
+      // can be defeated by a batched round-trip (mode or turn leaves and
+      // returns within one commit, so no intermediate state ever renders);
+      // the stream handler sees EVERY event, batched or not.
+      if (e.to !== EncounterMode.TURN_BASED) setArmedState(null);
     },
     onInitiativeRolled: (e) => {
       encounterState.applyInitiativeRolled(e);
@@ -344,6 +356,10 @@ export function EncounterView({
     onTurnStarted: (e) => {
       encounterState.applyTurnStarted(e);
       combatLog.recordTurnStarted(e);
+      // rpg-dnd5e-web#544: any turn start that isn't the armed action's own
+      // turn disarms — including your NEXT turn (new round = new turn; the
+      // turnKey derivation below catches that case synchronously too).
+      if (e.entityId !== entityId) setArmedState(null);
     },
     onTurnEnded: (e) => {
       encounterState.applyTurnEnded();
@@ -375,6 +391,8 @@ export function EncounterView({
     onEncounterEnded: (e) => {
       encounterState.applyEncounterEnded(e);
       combatLog.recordEncounterEnded(e);
+      // rpg-dnd5e-web#544: an ended encounter has no turns to be armed in.
+      setArmedState(null);
     },
     // Death-save arc (rpg-toolkit#742, wave KirkDiggler/rpg-project#75):
     // PlaytestHarness has logged these since that wave landed; EncounterView
@@ -407,17 +425,28 @@ export function EncounterView({
     encounterState.state.mode === EncounterMode.TURN_BASED &&
     isMyTurn;
 
-  // Copilot review on #511/#514: armedAction only cleared on a successful
-  // dispatch or explicit cancel — nothing stopped it surviving past the
-  // player's own turn (End Turn succeeding, the server ending it some other
-  // way, or a mode change out of TURN_BASED). A stale armed action would
-  // both show as visually "active" (ActionMenuButton's armed-green check
-  // runs before its enabled/disabled styling) and let a later entity click
-  // attempt to resolve/dispatch it out of turn. Clear it the moment
-  // combatEnabled goes false — a no-op whenever it's already unarmed.
+  // rpg-dnd5e-web#544: an armed action belongs to ONE turn. The live repro
+  // showed why an effect on `combatEnabled` alone (the #511/#514-era guard)
+  // is not enough: END TURN → instant NPC turns → your next turn can all
+  // land in one batched commit, so the boolean round-trips true→true and
+  // the effect never fires. turnKey (round + active entity) can't round-
+  // trip — a new turn is a new key even when it's yours again. The derived
+  // value goes null SYNCHRONOUSLY on any handover/mode-exit/end (no stale
+  // paint, and click handlers can never dispatch a stale armed action);
+  // the effect then garbage-collects the state. Stray clicks never change
+  // turnKey, preserving #511's armed-survives-exploration guarantee, and a
+  // rejected dispatch leaves the state untouched.
+  const currentTurnKey = `${encounterState.state.round}:${
+    encounterState.state.activeEntityId ?? ''
+  }`;
+  const armedAction =
+    armedState && armedState.turnKey === currentTurnKey && combatEnabled
+      ? armedState.action
+      : null;
   useEffect(() => {
-    if (!combatEnabled) setArmedAction(null);
-  }, [combatEnabled]);
+    if (armedState && (armedState.turnKey !== currentTurnKey || !combatEnabled))
+      setArmedState(null);
+  }, [armedState, currentTurnKey, combatEnabled]);
 
   const turnState = encounterState.state.turnState;
   const availableActions = turnState?.availableActions ?? [];
@@ -468,7 +497,7 @@ export function EncounterView({
       action.ref &&
       actionKey(action) === actionKey(armedAction)
     ) {
-      setArmedAction(null);
+      setArmedState(null);
       return;
     }
     if (targetKindNeedsPrompt(action.targetKind)) {
@@ -476,17 +505,17 @@ export function EncounterView({
       // current scope) — arming them is forward-compatible with whatever a
       // future targeting UI does with `armedAction.targetKind`, not
       // exercised by real data today.
-      setArmedAction(action);
+      setArmedState({ action, turnKey: currentTurnKey });
       return;
     }
     if (action.targetKind === TargetKind.SELF) {
-      setArmedAction(null);
+      setArmedState(null);
       await dispatchAction(action.ref, {
         kind: { case: 'self', value: {} },
       } as unknown as ActionTarget);
       return;
     }
-    setArmedAction(null);
+    setArmedState(null);
     await dispatchAction(action.ref, undefined);
   };
 
@@ -521,7 +550,7 @@ export function EncounterView({
         void dispatchAction(armedRef, {
           kind: { case: 'entityId', value: targetId },
         } as unknown as ActionTarget).then((succeeded) => {
-          if (succeeded) setArmedAction(null);
+          if (succeeded) setArmedState(null);
           // Rejected (e.g. illegal target): stay armed, takeActionError
           // below is the feedback — never a silent disarm.
         });

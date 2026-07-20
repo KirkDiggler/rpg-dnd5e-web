@@ -39,6 +39,14 @@ function action(
   } as unknown as AvailableAction;
 }
 
+function unavailable(a: AvailableAction, reason: string): AvailableAction {
+  return {
+    ...a,
+    available: false,
+    unavailableReason: reason,
+  } as AvailableAction;
+}
+
 function baseProps(): EncounterDockProps {
   return {
     entityId: 'char-dockaudit',
@@ -188,6 +196,83 @@ describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () =
     );
     expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
       "Goblin's turn — watch the map."
+    );
+  });
+
+  it('guides End Turn when the server disables every verb and no movement remains (#545)', () => {
+    // api#637's real live shape: the server sends available=false on every
+    // verb (the SAME signal that disables the buttons). The strip must stop
+    // saying "pick an action" — nothing is clickable.
+    render(
+      <EncounterDock
+        {...baseProps()}
+        economy={economy(0, 0, 0, 0)}
+        actions={[
+          unavailable(action('attack', 'Attack'), 'no action remaining'),
+          unavailable(
+            action('rage', 'Rage', { slot: EconomySlot.BONUS_ACTION }),
+            'no bonus action remaining'
+          ),
+        ]}
+      />
+    );
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'Nothing left to do — End Turn.'
+    );
+  });
+
+  it('prefers the still-can-move variant when movement remains (#545)', () => {
+    render(
+      <EncounterDock
+        {...baseProps()}
+        economy={economy(0, 0, 0, 15)}
+        actions={[
+          unavailable(action('attack', 'Attack'), 'no action remaining'),
+        ]}
+      />
+    );
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'You can still move — or End Turn.'
+    );
+  });
+
+  it('never contradicts an enabled button: an available verb with a zero pool keeps "pick an action" (#552 gate)', () => {
+    // verbCost's pool state is badge language, not usability — a server-
+    // available verb renders ENABLED even when its mapped pool reads 0, so
+    // the strip must not claim "Nothing left" over a clickable button. The
+    // strip and VerbButton share one signal: server `available`.
+    render(
+      <EncounterDock
+        {...baseProps()}
+        economy={economy(0, 0, 0, 0)}
+        actions={[action('attack', 'Attack')]}
+      />
+    );
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'Your turn — pick an action.'
+    );
+  });
+
+  it('keeps "pick an action" while anything is affordable — a spent action pool with a live bonus verb is not "nothing left" (#545)', () => {
+    render(
+      <EncounterDock
+        {...baseProps()}
+        economy={economy(0, 1, 1, 0)}
+        actions={[
+          action('attack', 'Attack'),
+          action('rage', 'Rage', { slot: EconomySlot.BONUS_ACTION }),
+        ]}
+      />
+    );
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'Your turn — pick an action.'
+    );
+  });
+
+  it('treats an empty menu as the loading window, never "nothing left" (#545)', () => {
+    render(<EncounterDock {...baseProps()} actions={[]} economy={null} />);
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'Your turn — pick an action.'
     );
   });
 });

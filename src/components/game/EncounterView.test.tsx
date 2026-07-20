@@ -915,6 +915,120 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
     expect(calls.every(([req]) => req.actionRef.id !== 'help')).toBe(true);
   });
 
+  it('does not stay armed across a full turn handover that round-trips back in ONE batch (rpg-dnd5e-web#544)', async () => {
+    // The live repro: END TURN → instant NPC turns → your round-2 turn, all
+    // committed at once. A guard on a derived boolean (combatEnabled) never
+    // sees the intermediate state. Both new mechanisms catch this shape
+    // (the round changed, so the turnKey derivation alone would too); the
+    // pocket-reentry test below is the one that ISOLATES the event-level
+    // disarm, via a round-trip that lands back on the SAME turnKey.
+    renderAtCharAlice();
+    enterTurnWithHelpArmable();
+
+    const helpBtn = await screen.findByTestId(
+      'action-dnd5e:combat_abilities:help'
+    );
+    fireEvent.click(helpBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(helpBtn.getAttribute('data-armed')).toBe('true');
+
+    // One batch: goblin's turn AND alice's next turn AND the fresh menu.
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStarted', { entityId: 'char-goblin', round: 1 })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStarted', { entityId: 'char-alice', round: 2 })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStateChanged', {
+          turnState: {
+            economy: {
+              actionsRemaining: 1,
+              bonusActionsRemaining: 1,
+              reactionsRemaining: 1,
+              movementRemaining: 30,
+            },
+            availableActions: [
+              {
+                ref: HELP_REF,
+                displayName: 'Help',
+                available: true,
+                unavailableReason: '',
+                economySlot: EconomySlot.ACTION,
+                targetKind: TargetKind.SINGLE_ENTITY,
+              },
+            ],
+          },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    // It's alice's turn again, the verb is back — but NOT armed.
+    const helpBtnRound2 = await screen.findByTestId(
+      'action-dnd5e:combat_abilities:help'
+    );
+    expect(helpBtnRound2.getAttribute('data-armed')).not.toBe('true');
+    // And a goblin click takes the basic-attack shortcut, not stale HELP.
+    hoisted.takeActionFn.mockClear();
+    fireEvent.click(screen.getByTestId('stub-click-goblin'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const round2Calls = hoisted.takeActionFn.mock.calls as unknown as Array<
+      [{ actionRef: { id: string } }]
+    >;
+    expect(round2Calls.every(([req]) => req.actionRef.id !== 'help')).toBe(
+      true
+    );
+  });
+
+  it('does not stay armed across a batched mode exit-and-return with the SAME turn key (rpg-dnd5e-web#544 pocket re-entry)', async () => {
+    // Combat pocket clears and a new pocket re-enters with round 1 + alice
+    // active again — identical turnKey, so only the event-level disarm on
+    // modeChanged can catch this shape.
+    renderAtCharAlice();
+    enterTurnWithHelpArmable();
+
+    const helpBtn = await screen.findByTestId(
+      'action-dnd5e:combat_abilities:help'
+    );
+    fireEvent.click(helpBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(helpBtn.getAttribute('data-armed')).toBe('true');
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.TURN_BASED,
+          to: EncounterMode.FREE_ROAM,
+          reason: 'pocket cleared',
+        })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: 'new pocket',
+        })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStarted', { entityId: 'char-alice', round: 1 })
+      );
+      await Promise.resolve();
+    });
+
+    const helpBtnAfter = await screen.findByTestId(
+      'action-dnd5e:combat_abilities:help'
+    );
+    expect(helpBtnAfter.getAttribute('data-armed')).not.toBe('true');
+  });
+
   it('an armed POSITION-kind action does not resolve on an entity click (Copilot review #514: entityId is the wrong target shape for POSITION/AREA)', async () => {
     renderAtCharAlice();
     act(() =>
