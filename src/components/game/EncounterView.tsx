@@ -57,7 +57,7 @@ import {
 } from '../playtest/actionMenuHelpers';
 import { StatusBadgeList } from '../ui/StatusBadgeList';
 import { EncounterDock } from './EncounterDock';
-import { resolveMovementRemaining } from './encounterDockHelpers';
+import { resolveMovementRemaining, resolveName } from './encounterDockHelpers';
 import { EncounterMap } from './EncounterMap';
 import { PromptModal } from './PromptModal';
 
@@ -779,6 +779,22 @@ export function EncounterView({
         statuses={myStatuses}
         economy={economy}
         actions={availableActions}
+        mode={encounterState.state.mode}
+        isMyTurn={isMyTurn}
+        // Spectator strip (#458): whose turn it is, resolved the same way
+        // the dock resolves the local player's own name.
+        activeEntityName={
+          encounterState.state.mode === EncounterMode.TURN_BASED &&
+          !isMyTurn &&
+          encounterState.state.activeEntityId
+            ? resolveName(
+                encounterState.state.entityMeta.get(
+                  encounterState.state.activeEntityId
+                )?.displayName,
+                encounterState.state.activeEntityId
+              )
+            : undefined
+        }
         actionsEnabled={combatEnabled}
         actionsLoading={takeActionLoading}
         onSelectAction={(a) => void handleSelectAction(a)}

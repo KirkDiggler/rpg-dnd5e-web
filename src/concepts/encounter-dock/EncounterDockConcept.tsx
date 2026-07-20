@@ -23,6 +23,7 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EconomySlot,
+  EncounterMode,
   TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { EncounterDock } from '../../components/game/EncounterDock';
@@ -125,6 +126,9 @@ export function EncounterDockConcept() {
         statuses={mockStatuses}
         economy={mockEconomy}
         actions={mockActions}
+        mode={EncounterMode.TURN_BASED}
+        isMyTurn={true}
+        activeEntityName={undefined}
         actionsEnabled={true}
         actionsLoading={false}
         onSelectAction={() => {}}

@@ -1,58 +1,69 @@
 /**
- * EncounterDock — the thin bottom action bar (rpg-dnd5e-web#491: "map is
- * fixed-size, panels eat the room").
+ * EncounterDock — the live combat command bar, composed from the ui/combat
+ * primitives (rpg-dnd5e-web#525 slice 1: the concept design from /concepts
+ * "Combat Panel", composition B, on real stream data).
  *
- * rpg-dnd5e-web#519: Discord's activity viewport is short — much shorter
- * than the desktop-sized windows this dock was originally measured against
- * (#493/#496). Kirk's direction: MAX map, THIN action line. This redesigns
- * the dock from 3 columns that each reserved up to COLUMN_MAX_HEIGHT of
- * stacked content (EconomyBar row + ActionMenu's per-slot grouped rows +
- * ReactionReadyPanel's two-line buttons + an End Turn row, all stacked
- * vertically inside the "actions" column alone) down to ONE flex row:
- * a slim identity strip, a compact single-row action strip (ActionMenu/
- * EconomyBar/ReactionReadyPanel all switched into their new `compact` mode
- * — see those components), and a combat-log TOGGLE instead of an
- * always-reserved third column. The log itself renders as a floating
- * overlay (position:absolute, anchored above the dock) only while open, so
- * a closed log costs zero layout height — matching "anything tall becomes
- * collapsible/overlaid instead of reserving layout height."
+ * Structure, left to right, per Kirk's action-point-pool model ("I have an
+ * action point pool — what uses what point?"): a teaching strip that says
+ * what the game is waiting for, then WHO (identity + promoted movement
+ * readout), WHAT'S LEFT (economy pips), WHAT CAN I DO AND WHAT DOES EACH
+ * COST (verbs with pool-shape cost badges from the server's economy_slot,
+ * busy kits grouped by ref.type in the drop-up), End Turn as a calm commit
+ * button, then the combat log and settings as summonable overlays.
  *
- * Two nested containers, not one: the OUTER div is the `position: relative`
- * anchor for the overlay and has no overflow rule of its own. The INNER
- * `-row` div carries `maxHeight` + `overflowY: auto` (the wrapping-content
- * safety net). Setting overflow-y non-`visible` on an element forces both
- * axes to clip per the CSS spec — so if the overlay were a child of the
- * SAME element that scrolls, it would clip itself into invisibility (caught
- * live during #519 verification: the overlay rendered in the DOM with
- * correct content but 0 visible pixels, because it lived inside the
- * scrolling row and `bottom: 100%` placed it entirely outside that row's
- * own clipped box). Keeping the overlay as a sibling of the scrolling row,
- * both inside the non-clipping outer anchor, avoids that trap.
- *
- * All data is still server-given and rendered verbatim — this only changes
- * the layout, never what's shown or computed.
+ * State rules encoded here (all server-given, never computed):
+ * - Verbs, pips, and movement render only on YOUR turn in TURN_BASED.
+ *   Spectators get the strip's "{name}'s turn — watch the map" instead of
+ *   the old "(economy: waiting for the server)" placeholder (#458).
+ * - Outside TURN_BASED nothing economy-shaped renders at all, so the
+ *   FREE_ROAM interval between combat pockets can't show stale turn
+ *   economy (#516).
+ * - Reaction readiness is a SETTING, not a bar control (Kirk: "opportunity
+ *   attack is just a setting, default always on") — but the SetReactionReady
+ *   wire mechanism is real (the server holds per-reaction readiness;
+ *   OA defaults on server-side for melee, Shield must be armed), so the
+ *   ReactionReadyPanel moved into the settings gear popover rather than
+ *   being deleted.
  */
 
 import type {
   ActionEconomy,
   AvailableAction,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useState } from 'react';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import type { EntityStatus } from '../../hooks/useEncounterState';
 import { getActionIconUrl } from '../../utils/actionIcons';
-import { ActionMenu } from '../playtest/ActionMenu';
-import { EconomyBar } from '../playtest/EconomyBar';
+import { actionKey } from '../playtest/actionMenuHelpers';
+import { Button } from '../ui/Button';
+import {
+  DockShell,
+  EconomyPips,
+  organizeVerbs,
+  OverlayPanel,
+  OverlayToggle,
+  VerbButton,
+  verbCost,
+} from '../ui/combat';
 import { StatusBadgeList } from '../ui/StatusBadgeList';
 import { CombatLog } from './CombatLog';
-import { classLabel, hpTier, resolveName } from './encounterDockHelpers';
+import {
+  classLabel,
+  hpTier,
+  resolveMovementRemaining,
+  resolveName,
+} from './encounterDockHelpers';
 import { ReactionReadyPanel } from './ReactionReadyPanel';
 
 const HP_TIER_COLOR: Record<'high' | 'mid' | 'low', string> = {
-  high: '#22c55e',
-  mid: '#eab308',
-  low: '#ef4444',
+  high: 'var(--health, #22c55e)',
+  mid: 'var(--mana, #eab308)',
+  low: 'var(--danger, #ef4444)',
 };
+
+/** Which floating panel is open — at most one, so overlays never stack. */
+type OpenPanel = 'menu' | 'settings' | 'log' | null;
 
 export interface EncounterDockProps {
   /** The local player's entity id — the resolveName fallback when displayName is absent. */
@@ -64,11 +75,17 @@ export interface EncounterDockProps {
   statuses: EntityStatus[];
   economy: ActionEconomy | null | undefined;
   actions: AvailableAction[];
+  /** Server mode verbatim — gates every economy-shaped render (#516). */
+  mode: EncounterMode;
+  /** TURN_BASED && activeEntityId === entityId, computed by EncounterView. */
+  isMyTurn: boolean;
+  /** Display name of the active entity when it isn't you — the spectator
+   * strip's "{name}'s turn" (#458). Undefined outside TURN_BASED. */
+  activeEntityName: string | undefined;
   actionsEnabled: boolean;
   actionsLoading: boolean;
   onSelectAction: (action: AvailableAction) => void;
-  /** rpg-dnd5e-web#511 — actionKey of the currently-armed action, or
-   * undefined when nothing is armed. Passed straight through to ActionMenu. */
+  /** rpg-dnd5e-web#511/#514 — actionKey of the currently-armed action. */
   armedActionKey?: string;
   reactionReadiness: Map<string, boolean> | undefined;
   reactionLoading: boolean;
@@ -83,14 +100,42 @@ export interface EncounterDockProps {
   combatLogEntries: CombatLogEntry[];
 }
 
-// rpg-dnd5e-web#519: safety-net cap, not the primary height control anymore
-// — the single-row compact layout below is sized by its content (typically
-// one ~32-40px row), this just bounds the worst case (many wrapped rows on
-// an extremely narrow AND short viewport) so the dock can never eat more
-// than a small slice of a short Discord activity viewport. Down from #496's
-// 42vh (measured against a tall desktop window, not Discord's actual
-// embedded height) now that the combat log no longer reserves a column.
-const DOCK_MAX_HEIGHT_VH = '16vh';
+/** The teaching strip's one job: answer "what is the game waiting for?"
+ * in words, from the same server state the bar renders (#533 direction). */
+function contextMessage(
+  mode: EncounterMode,
+  isMyTurn: boolean,
+  activeEntityName: string | undefined,
+  armedLabel: string | undefined
+): { text: string; tone: 'action' | 'info' | 'quiet' } {
+  if (armedLabel) {
+    return {
+      text: `${armedLabel} armed — click a target on the map. Esc or click again to cancel.`,
+      tone: 'action',
+    };
+  }
+  if (mode !== EncounterMode.TURN_BASED) {
+    return {
+      text: 'Exploring — click the map to move. Combat will start when enemies appear.',
+      tone: 'quiet',
+    };
+  }
+  if (!isMyTurn) {
+    return {
+      text: activeEntityName
+        ? `${activeEntityName}'s turn — watch the map.`
+        : 'Waiting for the next turn…',
+      tone: 'info',
+    };
+  }
+  return { text: 'Your turn — pick an action.', tone: 'action' };
+}
+
+const TONE_COLOR: Record<'action' | 'info' | 'quiet', string> = {
+  action: 'var(--text-primary)',
+  info: 'var(--text-secondary)',
+  quiet: 'var(--text-muted)',
+};
 
 export function EncounterDock({
   entityId,
@@ -101,6 +146,9 @@ export function EncounterDock({
   statuses,
   economy,
   actions,
+  mode,
+  isMyTurn,
+  activeEntityName,
   actionsEnabled,
   actionsLoading,
   onSelectAction,
@@ -114,7 +162,10 @@ export function EncounterDock({
   endTurnLoading,
   combatLogEntries,
 }: EncounterDockProps) {
-  const [logOpen, setLogOpen] = useState(false);
+  const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
+  const toggle = (panel: Exclude<OpenPanel, null>) =>
+    setOpenPanel((open) => (open === panel ? null : panel));
+
   const tier = hp ? hpTier(hp.current, hp.max) : 'low';
   const hpPct =
     hp && hp.max > 0
@@ -122,73 +173,213 @@ export function EncounterDock({
       : 0;
   const label = classLabel(classRefId);
   const name = resolveName(displayName, entityId);
-  const endTurnIconUrl = getActionIconUrl('end-turn');
+
+  // Everything economy-shaped is gated on YOUR turn in TURN_BASED: outside
+  // TURN_BASED turnState may be stale (#516), and during someone else's
+  // turn the menu/economy aren't yours to act on (#458 — the strip carries
+  // whose turn it is instead).
+  const showActionSurface = mode === EncounterMode.TURN_BASED && isMyTurn;
+  const movementRemaining = isMyTurn
+    ? resolveMovementRemaining(mode, economy)
+    : undefined;
+
+  const armedLabel = armedActionKey
+    ? actions.find((a) => actionKey(a) === armedActionKey)?.displayName
+    : undefined;
+  const ctx = contextMessage(mode, isMyTurn, activeEntityName, armedLabel);
+
+  const { core, groups, menuCount, triggerLabel } = organizeVerbs(actions);
+
+  const renderVerb = (a: AvailableAction, inMenu = false) => (
+    <VerbButton
+      key={actionKey(a)}
+      label={a.displayName}
+      iconUrl={a.ref ? getActionIconUrl(a.ref.id) : undefined}
+      onClick={() => {
+        if (inMenu) setOpenPanel(null);
+        onSelectAction(a);
+      }}
+      cost={verbCost(a, economy)}
+      available={a.available && actionsEnabled}
+      reason={a.unavailableReason}
+      armed={armedActionKey !== undefined && actionKey(a) === armedActionKey}
+      loading={actionsLoading}
+      className={inMenu ? 'menu-row' : undefined}
+      // Same testid convention ActionMenu used (`action-<module:type:id>`)
+      // so interaction tests address verbs stably across the primitive swap.
+      data-testid={`action-${actionKey(a)}`}
+    />
+  );
 
   return (
-    <div
-      data-testid="encounter-dock"
-      style={{ position: 'relative', flexShrink: 0 }}
-    >
+    <div data-testid="encounter-dock" style={{ flexShrink: 0 }}>
+      {/* Teaching strip — one line, ~22px, never grows. role=status so
+          turn changes and armed guidance are announced to assistive tech. */}
       <div
-        data-testid="encounter-dock-row"
+        data-testid="encounter-dock-context"
+        role="status"
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 12,
-          maxHeight: DOCK_MAX_HEIGHT_VH,
-          overflowY: 'auto',
-          padding: '6px 12px',
-          background: 'var(--bg-secondary, #1a1a1a)',
-          borderTop: '2px solid var(--border-primary, #333)',
-          boxShadow: '0 -8px 25px -5px rgba(0, 0, 0, 0.3)',
+          fontSize: 12,
+          lineHeight: '22px',
+          height: 22,
+          padding: '0 12px',
+          background: 'var(--bg-secondary)',
+          borderTop: '1px solid',
+          borderColor:
+            ctx.tone === 'action'
+              ? 'var(--accent-primary)'
+              : 'var(--border-primary)',
+          color: TONE_COLOR[ctx.tone],
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
         }}
       >
-        {/* Identity strip — name, class, inline HP bar + text, AC, status
-          badges, all on one line. No separate progress-bar row. */}
-        <div
+        {ctx.text}
+      </div>
+
+      <DockShell
+        data-testid="encounter-dock-shell"
+        overlay={
+          <>
+            <OverlayPanel
+              open={openPanel === 'menu'}
+              data-testid="encounter-dock-menu"
+            >
+              {/* Grouped by provenance (ref.type): "where does this option
+                  come from" answered by structure; cost badges ride along. */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                  padding: 10,
+                }}
+              >
+                {groups.map((g) => (
+                  <div
+                    key={g.label}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        color: 'var(--text-muted)',
+                        padding: '2px 2px 0',
+                      }}
+                    >
+                      {g.label}
+                    </div>
+                    {g.actions.map((a) => renderVerb(a, true))}
+                  </div>
+                ))}
+              </div>
+            </OverlayPanel>
+
+            <OverlayPanel
+              open={openPanel === 'settings'}
+              width={280}
+              data-testid="encounter-dock-settings"
+            >
+              {/* Reaction policies live here, not in the bar. The panel's
+                  SetReactionReady mechanism is real wire state (OA defaults
+                  ready server-side for melee; Shield must be armed), so it
+                  relocated instead of being deleted. */}
+              <div style={{ padding: 12 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    color: 'var(--text-muted)',
+                    marginBottom: 8,
+                  }}
+                >
+                  Combat settings
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--text-secondary)',
+                    marginBottom: 8,
+                  }}
+                >
+                  Reactions fire automatically while readied:
+                </div>
+                <ReactionReadyPanel
+                  readiness={reactionReadiness}
+                  loading={reactionLoading}
+                  disabled={reactionDisabled}
+                  onToggle={onToggleReaction}
+                  compact
+                />
+              </div>
+            </OverlayPanel>
+
+            <OverlayPanel
+              open={openPanel === 'log'}
+              data-testid="encounter-dock-log-overlay"
+            >
+              <CombatLog entries={combatLogEntries} />
+            </OverlayPanel>
+          </>
+        }
+      >
+        {/* Identity + promoted movement: name, HP sliver, then movement —
+            "how much movement do I have left" is the #1 user question. */}
+        <span
           data-testid="encounter-dock-identity"
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
+            display: 'inline-flex',
+            flexDirection: 'column',
+            gap: 2,
             flexShrink: 0,
             minWidth: 0,
           }}
         >
           <span
-            style={{
-              fontWeight: 700,
-              fontSize: 13,
-              color: 'var(--text-primary, #fff)',
-              whiteSpace: 'nowrap',
-            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            {name}
-          </span>
-          {label && (
             <span
               style={{
-                fontSize: 11,
-                color: 'var(--text-muted, #888)',
+                fontWeight: 700,
+                fontSize: 13,
+                color: 'var(--text-primary)',
                 whiteSpace: 'nowrap',
               }}
             >
-              {label}
+              {name}
             </span>
-          )}
-
-          {hp && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {label && (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {label}
+              </span>
+            )}
+            {hp && (
               <span
                 style={{
                   display: 'inline-block',
                   width: 40,
-                  height: 6,
+                  height: 5,
                   borderRadius: 3,
-                  background: 'rgba(255,255,255,0.1)',
+                  background: 'var(--resource-bg, rgba(255,255,255,0.1))',
                   overflow: 'hidden',
                 }}
+                title={`HP ${hp.current}/${hp.max}${ac !== undefined ? ` · AC ${ac}` : ''}`}
               >
                 <span
                   style={{
@@ -200,141 +391,92 @@ export function EncounterDock({
                   }}
                 />
               </span>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: 'var(--text-muted, #888)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {hp.current}/{hp.max}
-                {ac !== undefined ? ` · AC ${ac}` : ''}
-              </span>
-            </span>
-          )}
-          {!hp && ac !== undefined && (
+            )}
             <span
               style={{
                 fontSize: 11,
-                color: 'var(--text-muted, #888)',
+                color: 'var(--text-muted)',
                 whiteSpace: 'nowrap',
               }}
             >
-              AC {ac}
+              {hp ? `${hp.current}/${hp.max}` : ''}
+              {ac !== undefined ? `${hp ? ' · ' : ''}AC ${ac}` : ''}
+            </span>
+            {statuses.length > 0 && <StatusBadgeList statuses={statuses} />}
+          </span>
+          {movementRemaining !== undefined && (
+            /* Number only — a depleting bar needs turn-start speed, which
+               isn't on the wire yet (contract gap recorded during the
+               /concepts rounds; part of the protos#183-class request). */
+            <span
+              data-testid="encounter-dock-movement"
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                whiteSpace: 'nowrap',
+              }}
+              title={`Movement left this turn: ${movementRemaining} ft`}
+            >
+              {movementRemaining} ft
             </span>
           )}
+        </span>
 
-          {statuses.length > 0 && <StatusBadgeList statuses={statuses} />}
-        </div>
+        {showActionSurface && economy && <EconomyPips economy={economy} />}
 
-        {/* Actions strip — economy numbers, action buttons, reaction toggles,
-          and End Turn all in ONE wrapping row via their new compact modes
-          (falls back to wrapping only under real width pressure, never
-          stacks vertically by design the way the old 3-column layout did). */}
-        <div
-          data-testid="encounter-dock-actions"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            flexWrap: 'wrap',
-            flex: '1 1 240px',
-            minWidth: 0,
-          }}
-        >
-          <EconomyBar economy={economy} compact />
-          <ActionMenu
-            actions={actions}
-            enabled={actionsEnabled}
-            loading={actionsLoading}
-            onSelectAction={onSelectAction}
-            armedActionKey={armedActionKey}
-            compact
-          />
-          <ReactionReadyPanel
-            readiness={reactionReadiness}
-            loading={reactionLoading}
-            disabled={reactionDisabled}
-            onToggle={onToggleReaction}
-            compact
-          />
-          <button
-            type="button"
-            onClick={onEndTurn}
-            disabled={endTurnDisabled}
+        {showActionSurface && (
+          <span
+            data-testid="encounter-dock-verbs"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
-              padding: '3px 10px',
-              fontSize: 12,
+              flexWrap: 'wrap',
+              flex: '1 1 auto',
+              minWidth: 0,
             }}
           >
-            {/* #497: static icon (this button isn't server-driven like
-              ActionMenu's entries) — same getActionIconUrl lookup, so a
-              missing/renamed asset falls back to text-only here too. */}
-            {endTurnIconUrl && (
-              <img
-                src={endTurnIconUrl}
-                alt=""
-                aria-hidden="true"
-                width={14}
-                height={14}
-                style={{ display: 'inline-block', flexShrink: 0 }}
+            {core.map((a) => renderVerb(a))}
+            {menuCount > 0 && (
+              <OverlayToggle
+                label={triggerLabel}
+                open={openPanel === 'menu'}
+                onToggle={() => toggle('menu')}
+                aria-label={`${menuCount} more options: ${groups
+                  .map((g) => `${g.label} (${g.actions.length})`)
+                  .join(', ')}`}
               />
             )}
-            {endTurnLoading ? 'Ending…' : 'End turn'}
-          </button>
-        </div>
+          </span>
+        )}
 
-        {/* Combat log toggle — replaces the always-reserved third column.
-            Closed by default; costs zero layout height until opened, then
-            floats above the dock instead of pushing the map up. */}
-        <button
-          type="button"
-          data-testid="encounter-dock-log-toggle"
-          onClick={() => setLogOpen((open) => !open)}
-          aria-expanded={logOpen}
-          aria-label={`Combat log, ${combatLogEntries.length} entries — ${logOpen ? 'hide' : 'show'}`}
-          style={{
-            flexShrink: 0,
-            padding: '3px 10px',
-            fontSize: 12,
-            fontFamily: 'monospace',
-            background: logOpen ? '#2a3a4a' : 'transparent',
-            color: logOpen ? '#9cf' : 'var(--text-muted, #888)',
-            border: '1px solid var(--border-primary, #333)',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
-        >
-          📜 {combatLogEntries.length}
-        </button>
-      </div>
+        {showActionSurface && (
+          <Button
+            variant="commit"
+            size="xs"
+            onClick={onEndTurn}
+            disabled={endTurnDisabled}
+            style={{ marginLeft: 'auto', flexShrink: 0 }}
+          >
+            {endTurnLoading ? 'Ending…' : 'End Turn'}
+          </Button>
+        )}
 
-      {/* Sibling of the scrolling row above, not a child of it — see the
-          file-header comment on why the overlay can't live inside the
-          overflow-clipped row. */}
-      {logOpen && (
-        <div
-          data-testid="encounter-dock-log-overlay"
-          style={{
-            position: 'absolute',
-            bottom: '100%',
-            right: 12,
-            marginBottom: 8,
-            width: 320,
-            maxWidth: 'calc(100vw - 24px)',
-            maxHeight: 280,
-            zIndex: 50,
-            borderRadius: 8,
-            overflow: 'hidden',
-            boxShadow: '0 -4px 20px -2px rgba(0, 0, 0, 0.5)',
-          }}
-        >
-          <CombatLog entries={combatLogEntries} />
-        </div>
-      )}
+        <OverlayToggle
+          label={`📜 ${combatLogEntries.length}`}
+          open={openPanel === 'log'}
+          onToggle={() => toggle('log')}
+          aria-label={`Combat log, ${combatLogEntries.length} entries — ${openPanel === 'log' ? 'hide' : 'show'}`}
+          className="encounter-dock-log-toggle"
+        />
+        <OverlayToggle
+          label="⚙"
+          open={openPanel === 'settings'}
+          onToggle={() => toggle('settings')}
+          aria-label="Combat settings"
+        />
+      </DockShell>
     </div>
   );
 }
