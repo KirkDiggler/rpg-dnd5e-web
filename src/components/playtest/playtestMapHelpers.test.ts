@@ -151,6 +151,42 @@ describe('buildRenderableEntities', () => {
     expect(goblin?.name).toBe('goblin-1 (goblin)');
   });
 
+  it('passes movePath/moveSeq through untouched (rpg-dnd5e-web#542)', () => {
+    const withMove = {
+      ...makeEntityState('char-alice', { x: 1, y: -1, z: 0 }),
+      movePath: [
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+      ],
+      moveSeq: 3,
+    };
+    const entities = new Map([['char-alice', withMove]]);
+    const meta = new Map<string, EntityMeta>([
+      ['char-alice', { type: EntityType.CHARACTER, monsterRefId: undefined }],
+    ]);
+
+    const list = buildRenderableEntities(entities, meta, new Map());
+
+    expect(list[0]).toMatchObject({
+      movePath: withMove.movePath,
+      moveSeq: 3,
+    });
+  });
+
+  it('leaves movePath/moveSeq undefined for an entity that has never moved', () => {
+    const entities = new Map([
+      ['char-alice', makeEntityState('char-alice', { x: 0, y: 0, z: 0 })],
+    ]);
+    const meta = new Map<string, EntityMeta>([
+      ['char-alice', { type: EntityType.CHARACTER, monsterRefId: undefined }],
+    ]);
+
+    const list = buildRenderableEntities(entities, meta, new Map());
+
+    expect(list[0].movePath).toBeUndefined();
+    expect(list[0].moveSeq).toBeUndefined();
+  });
+
   it('marks monsters dead at HP=0; characters never marked dead (unconscious only)', () => {
     const entities = new Map([
       ['char-alice', makeEntityState('char-alice', { x: 0, y: 0, z: 0 })],

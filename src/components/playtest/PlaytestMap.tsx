@@ -53,9 +53,17 @@ export interface PlaytestMapProps {
   /**
    * Unified entity store from useEncounterState. Each entry is a v1alpha1
    * `EntityState` stub (entityId + position); v2 metadata lives separately
-   * in `entityMeta`.
+   * in `entityMeta`. `movePath`/`moveSeq` (rpg-dnd5e-web#542) drive
+   * HexEntity's walk-clip interpolation.
    */
-  entities: Map<string, EntityState & { ghost?: boolean }>;
+  entities: Map<
+    string,
+    EntityState & {
+      ghost?: boolean;
+      movePath?: { x: number; y: number; z: number }[];
+      moveSeq?: number;
+    }
+  >;
   /**
    * v1alpha2 identity metadata (type, monsterRefId) keyed by entityId.
    * Populated by `applyEntityMeta` from EntityAppeared events.

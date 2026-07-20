@@ -47,9 +47,16 @@ function useTestHarness(encounterId: string) {
       /* noop — payload empty in slice 1, just a sync barrier */
     },
     onEntityMoved: (e) => {
+      // rpg-dnd5e-web#542: mirrors EncounterView.tsx's real wiring — pass
+      // the whole actualPath, not just its last element, so state.entities
+      // carries movePath/moveSeq for HexEntity's walk-clip interpolation.
       const last = e.actualPath[e.actualPath.length - 1];
       if (last)
-        state.applyEntityPositionUpdate(e.entityId, v2PositionToV1(last));
+        state.applyEntityPositionUpdate(
+          e.entityId,
+          v2PositionToV1(last),
+          e.actualPath.map(v2PositionToV1)
+        );
     },
     onGeometryRevealed: (e) => {
       const positions = e.hexes
@@ -134,6 +141,14 @@ describe('useEncounterStream + useEncounterState — integration', () => {
       expect(pos?.x).toBe(2);
       expect(pos?.y).toBe(-2);
       expect(pos?.z).toBe(0);
+      // rpg-dnd5e-web#542: the full 3-hex actualPath also lands in
+      // movePath/moveSeq for HexEntity's walk-clip interpolation to
+      // consume — this is the real end-to-end path from wire event to
+      // state, not just the unit-level mergeEntityPosition contract.
+      const entity = result.current.entities.get('alice');
+      expect(entity?.movePath).toHaveLength(3);
+      expect(entity?.movePath?.[2]).toMatchObject({ x: 2, y: -2, z: 0 });
+      expect(entity?.moveSeq).toBe(1);
     });
   });
 
@@ -297,6 +312,12 @@ describe('useEncounterStream + useEncounterState — integration', () => {
       expect(m?.position?.x).toBe(5);
       expect(m?.position?.y).toBe(-3);
       expect(m?.position?.z).toBe(-2);
+      // rpg-dnd5e-web#542: the earlier move's movePath/moveSeq must NOT
+      // survive the disappear→reappear round-trip — a revive that kept
+      // them would make HexEntity's useHexMovePath think a fresh move
+      // just started on reconnect, animating a walk from nowhere.
+      expect(m?.movePath).toBeUndefined();
+      expect(m?.moveSeq).toBeUndefined();
     });
   });
 

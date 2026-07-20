@@ -36,6 +36,15 @@
  * one on loop. Downed variants ship with no animation data at all —
  * `SkeletonUtils.clone()` still works for a static mesh, so one clone
  * path covers both cases.
+ *
+ * `isMoving` (rpg-dnd5e-web#542): HexEntity computes this from whether it's
+ * currently stepping the entity's rendered position through a real
+ * `EntityMoved.actualPath` (see `useHexMovePath.ts`) and passes it straight
+ * through. When true, `resolveWalkClipName` is preferred over
+ * `resolveIdleClipName` (falling back to idle if this model has no
+ * `Walk_*` clip yet — the same clip-less-model degrade-gracefully rule as
+ * everything else in this file). All 4 class GLBs ship a `Walk_Forward`
+ * clip as of rpg-game-assets#20.
  */
 
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
@@ -44,7 +53,10 @@ import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import { resolveIdleClipName } from './classCharacterModels';
+import {
+  resolveIdleClipName,
+  resolveWalkClipName,
+} from './classCharacterModels';
 
 export interface ClassCharacterModelProps {
   url: string;
@@ -53,6 +65,11 @@ export interface ClassCharacterModelProps {
   /** Matches MediumHumanoid's facingRotation convention — players face the
    * camera (PI), monsters/other uses face forward (0). */
   facingRotation?: number;
+  /** True while HexEntity is stepping this entity's rendered position
+   * through a real move (rpg-dnd5e-web#542) — plays the resolved walk clip
+   * instead of idle. Defaults false (idle), matching every pre-#542 caller
+   * unchanged. */
+  isMoving?: boolean;
 }
 
 export function ClassCharacterModel({
@@ -60,6 +77,7 @@ export function ClassCharacterModel({
   isSelected = false,
   isGhost = false,
   facingRotation = 0,
+  isMoving = false,
 }: ClassCharacterModelProps) {
   // useGLTF returns drei's shared, URL-keyed cache — mutating it directly
   // during render is a render-phase side effect on shared state (same
@@ -137,24 +155,26 @@ export function ClassCharacterModel({
     };
   }, [originalMaterials, isSelected, isGhost]);
 
-  // Play the resolved idle clip on loop (resolveIdleClipName — prefers an
-  // "idle"-named clip, falls back to the first available). Today's `main`
-  // fighter/barbarian/monk/rogue.glb all ship 0 clips (`names` is empty),
-  // so `clipName` is undefined and this effect no-ops cleanly — same as
-  // downed variants, which never carry animation data. Once
-  // rpg-game-assets#522 lands, monk/rogue will carry 3 idle-variant clips
-  // each and this resolves to whichever comes first.
+  // Play the resolved clip on loop. While `isMoving` (rpg-dnd5e-web#542),
+  // prefer a `Walk_*` clip (resolveWalkClipName), falling back to idle if
+  // this model has no walk clip yet; stationary always plays idle
+  // (resolveIdleClipName — prefers an "idle"-named clip, falls back to the
+  // first available). Today's `main` fighter/barbarian/monk/rogue.glb all
+  // ship 4 clips (3 idle variants + Walk_Forward, rpg-game-assets#20);
+  // downed variants ship 0, so `names` is empty and `resolvedClipName` is
+  // undefined — this effect no-ops cleanly for those, same as before #542.
   const { actions, names } = useAnimations(animations, cloned);
-  const hasIdleClip = resolveIdleClipName(names) !== undefined;
+  const resolvedClipName = isMoving
+    ? (resolveWalkClipName(names) ?? resolveIdleClipName(names))
+    : resolveIdleClipName(names);
   useEffect(() => {
-    const clipName = resolveIdleClipName(names);
-    if (!clipName) return;
-    const action = actions[clipName];
+    if (!resolvedClipName) return;
+    const action = actions[resolvedClipName];
     action?.reset().fadeIn(0.2).play();
     return () => {
       action?.fadeOut(0.2);
     };
-  }, [actions, names]);
+  }, [actions, resolvedClipName]);
 
   // HexGrid's Canvas runs frameloop="demand" (only re-renders on explicit
   // invalidate() calls, not every rAF tick — see HexEntity.tsx's identical
@@ -165,10 +185,10 @@ export function ClassCharacterModel({
   // change or user interaction happened to trigger a frame. Each rendered
   // frame requests the next one, self-sustaining for as long as this
   // component has a clip playing; a no-op (no re-invalidation loop) once
-  // hasIdleClip is false (downed variants, or any future model shipped
-  // with no animation).
+  // resolvedClipName is undefined (downed variants, or any future model
+  // shipped with no animation).
   useFrame((state) => {
-    if (hasIdleClip) state.invalidate();
+    if (resolvedClipName) state.invalidate();
   });
 
   return (

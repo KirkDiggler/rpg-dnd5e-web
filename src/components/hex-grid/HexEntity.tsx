@@ -30,6 +30,7 @@ import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
 import { PROPS_MODEL_BASE } from './propManifest';
 import { PropModel } from './PropModel';
+import { useHexMovePath } from './useHexMovePath';
 
 export interface HexEntityProps {
   entityId: string;
@@ -71,6 +72,15 @@ export interface HexEntityProps {
    * obstacleType when present (obstaclePropKeys.ts's
    * resolvePropKeyForEntity). */
   propRefId?: string;
+  /** The most recent genuine move's real hex-by-hex route
+   * (`EntityMoved.actualPath`), set only alongside `moveSeq` — see
+   * `useEncounterState.ts`'s `mergeEntityPosition` doc comment. Undefined
+   * for an entity that has never moved this session. */
+  movePath?: CubeCoord[];
+  /** Monotonic counter bumped only by a genuine move (rpg-dnd5e-web#542) —
+   * `useHexMovePath` watches this, not `position` itself, to distinguish a
+   * real move from initial placement or a ghost/revive reconciliation. */
+  moveSeq?: number;
 }
 
 // Visual state colors
@@ -218,9 +228,26 @@ export function HexEntity({
   isDowned = false,
   obstacleType,
   propRefId,
+  movePath,
+  moveSeq,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const { invalidate } = useThree();
+
+  // rpg-dnd5e-web#542: steps the player/monster group's rendered position
+  // through a genuine move's real hex-by-hex path instead of snapping —
+  // see useHexMovePath.ts's module doc comment for the full contract.
+  // Cheap to compute unconditionally even for obstacles/downed/dead
+  // entities (a no-op hook call, same shape as every other hook here) —
+  // only actually wired into the render tree below for the player/monster
+  // branch, which is the only one that currently animates position.
+  const { groupRef: movingGroupRef, isMoving } = useHexMovePath(
+    position,
+    movePath,
+    moveSeq,
+    hexSize,
+    CHARACTER_Y_OFFSET
+  );
 
   // Same "sticky failure keyed by url, not a bare boolean" shape as
   // failedClassModelUrl below — a prop GLB that fails to load falls back
@@ -370,11 +397,15 @@ export function HexEntity({
       />
     );
 
+    // rpg-dnd5e-web#542: this group's position is owned entirely by
+    // useHexMovePath (via movingGroupRef) — no declarative `position` prop
+    // here, see that hook's doc comment for why mixing the two would fight
+    // mid-step. Dead/ghost/downed entities still pass through it (moveSeq
+    // simply never advances for them beyond whatever their last real move
+    // was, so it settles at their current position exactly like the old
+    // static prop did).
     return (
-      <group
-        position={[worldPos.x, CHARACTER_Y_OFFSET, worldPos.z]}
-        {...interactionProps}
-      >
+      <group ref={movingGroupRef} {...interactionProps}>
         {/* Dead/downed entities rendered with tilt when using the
             MediumHumanoid fallback (no separate collapsed pose asset);
             the class model's own downed GLB variant is already posed for
@@ -400,6 +431,7 @@ export function HexEntity({
                   isSelected={!isDead && isSelected}
                   isGhost={isGhost}
                   facingRotation={Math.PI}
+                  isMoving={!isDead && !isGhost && isMoving}
                 />
               </ErrorBoundary>
             ) : (
