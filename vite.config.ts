@@ -1,10 +1,26 @@
 import react from '@vitejs/plugin-react';
+import { execSync } from 'child_process';
 import { resolve } from 'path';
 import { defineConfig } from 'vitest/config';
+
+// Computed once per build. public/ assets (the /themes/*.css files) are not
+// fingerprinted by Vite, so runtime-injected stylesheet links append this as a
+// ?v= query — otherwise Cloudflare/browser caches serve stale theme CSS after
+// deploys (web#553: combat HUD rendered unstyled in prod).
+function buildId(): string {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return Date.now().toString(36);
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __BUILD_ID__: JSON.stringify(buildId()),
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

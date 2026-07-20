@@ -31,6 +31,18 @@ export const themes: Theme[] = [
 const THEME_STORAGE_KEY = 'rpg-dnd5e-theme';
 const DEFAULT_THEME = 'dark-fantasy';
 
+// /themes/*.css live in public/ and are NOT fingerprinted by Vite, so without
+// a version query Cloudflare/browser caches keep serving the pre-deploy file
+// forever (web#553: prod rendered the combat-HUD primitives unstyled). The
+// build id is a Vite define (short commit SHA); the typeof guard covers any
+// runtime where the define was not applied.
+const THEME_CSS_VERSION =
+  typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : 'dev';
+
+function themeHref(file: string): string {
+  return `/themes/${file}.css?v=${THEME_CSS_VERSION}`;
+}
+
 export function useTheme() {
   const [currentTheme, setCurrentTheme] = useState<string>(DEFAULT_THEME);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,7 +67,7 @@ export function useTheme() {
       if (!document.querySelector('link[data-theme="base"]')) {
         const baseLink = document.createElement('link');
         baseLink.rel = 'stylesheet';
-        baseLink.href = `/themes/base.css`;
+        baseLink.href = themeHref('base');
         baseLink.setAttribute('data-theme', 'base');
         document.head.appendChild(baseLink);
       }
@@ -63,7 +75,7 @@ export function useTheme() {
       // Load theme-specific styles
       const themeLink = document.createElement('link');
       themeLink.rel = 'stylesheet';
-      themeLink.href = `/themes/${themeId}.css`;
+      themeLink.href = themeHref(themeId);
       themeLink.setAttribute('data-theme', themeId);
       document.head.appendChild(themeLink);
 
