@@ -21,11 +21,17 @@ type E<K extends CombatLogEntry['kind']> = Extract<
   { kind: K }
 >['event'];
 
+/**
+ * Field names are compile-checked against the real event type (a typo'd
+ * key is an error); values stay loose because proto-ES event types are
+ * nominal `Message` intersections a plain literal can't satisfy — the
+ * fixture idiom casts at the boundary, same as fixtures.ts.
+ */
 function entry<K extends CombatLogEntry['kind']>(
   id: number,
   round: number,
   kind: K,
-  event: Partial<Record<string, unknown>>
+  event: Partial<Record<keyof E<K>, unknown>>
 ): CombatLogEntry {
   return { id, round, kind, event: event as unknown as E<K> } as CombatLogEntry;
 }

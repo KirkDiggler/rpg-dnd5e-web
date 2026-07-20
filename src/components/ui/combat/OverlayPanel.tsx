@@ -37,12 +37,16 @@ export function OverlayToggle({
       aria-expanded={open}
       aria-label={ariaLabel}
       style={
+        // backgroundColor, NOT the `background` shorthand — the shorthand
+        // resets background-image and silently strips any sprite skin
+        // (.hud-skin) applied to these chips via CSS (Copilot catch on
+        // #555).
         open
           ? {
               borderColor: 'var(--accent-primary)',
-              background: 'var(--bg-secondary)',
+              backgroundColor: 'var(--bg-secondary)',
             }
-          : { background: 'transparent', color: 'var(--text-muted)' }
+          : { backgroundColor: 'transparent', color: 'var(--text-muted)' }
       }
     >
       {label}
