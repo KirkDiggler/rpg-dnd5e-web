@@ -2,7 +2,7 @@
  * Combat HUD primitives (rpg-dnd5e-web#525) — the composable foundation the
  * combat surface is assembled from. Each primitive renders server-given
  * state and reports intent; none of them know game rules. Visual identity
- * flows from theme tokens (src/themes/) so a sprite skin can replace the
+ * flows from theme tokens (public/themes/, the runtime-loaded CSS) so a sprite skin can replace the
  * look without touching component APIs.
  */
 

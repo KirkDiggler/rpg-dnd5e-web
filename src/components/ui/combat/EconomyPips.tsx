@@ -29,7 +29,7 @@ function PipGroup({
   const total = Math.max(capacity, remaining, 1);
   return (
     <span
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
       title={`${label}: ${remaining} remaining`}
       aria-label={`${label}: ${remaining} remaining`}
     >
@@ -61,8 +61,9 @@ export function EconomyPips({ economy, className }: EconomyPipsProps) {
         display: 'inline-flex',
         alignItems: 'center',
         gap: 10,
-        fontSize: '0.75rem',
-        color: 'var(--text-muted)',
+        fontSize: '0.8125rem',
+        fontWeight: 600,
+        color: 'var(--text-secondary)',
       }}
     >
       <PipGroup

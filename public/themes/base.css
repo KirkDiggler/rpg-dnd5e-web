@@ -126,6 +126,197 @@
     border-color: var(--border-primary);
   }
 
+  /* Combat HUD primitives (rpg-dnd5e-web#525) — every visual decision here
+     flows from theme tokens so a sprite skin (Synty Fantasy Warrior HUD,
+     web#467) can restyle these classes without touching component code.
+     NOTE: this file (public/themes/) is what useTheme actually loads at
+     runtime; src/themes/ is not in the load path. */
+
+  .btn-commit {
+    background: linear-gradient(
+      180deg,
+      var(--accent-primary),
+      var(--accent-primary-hover)
+    );
+    color: var(--text-button);
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 2px solid var(--border-primary);
+    border-radius: 0.375rem;
+    box-shadow:
+      var(--shadow-button),
+      inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    transition: all 0.15s ease;
+  }
+
+  .btn-commit:hover:not(:disabled) {
+    filter: brightness(1.1);
+    box-shadow: var(--shadow-button), var(--glow-rare);
+  }
+
+  .btn-commit:active:not(:disabled) {
+    transform: translateY(1px) scale(0.98);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .btn-commit:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: grayscale(0.6);
+  }
+
+  .verb-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .verb-btn:hover:not(:disabled) {
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-button);
+    transform: translateY(-1px);
+  }
+
+  .verb-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+  }
+
+  .verb-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* Armed = the STATIC signal: solid success fill + light inner border +
+     permanent halo. A paused frame must scream "this verb is armed" at
+     Discord scale — the pulse animation below is garnish, never the
+     carrier (review finding on the round-1 evidence pass). */
+  .verb-btn.armed {
+    background-color: var(--uncommon);
+    color: var(--text-button);
+    border: 2px solid var(--text-button);
+    font-weight: 700;
+    box-shadow:
+      0 0 0 2px var(--uncommon),
+      var(--glow-uncommon);
+    animation: armed-pulse 1.2s ease-in-out infinite;
+  }
+
+  .readiness-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.1875rem 0.625rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid var(--border-primary);
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .readiness-chip.interactive {
+    cursor: pointer;
+  }
+
+  .readiness-chip.interactive:hover {
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-button);
+  }
+
+  .readiness-chip.state-ready {
+    border-color: var(--uncommon);
+  }
+
+  .readiness-chip.state-armed {
+    background-color: var(--uncommon);
+    color: var(--text-button);
+    border: 2px solid var(--text-button);
+    box-shadow:
+      0 0 0 2px var(--uncommon),
+      var(--glow-uncommon);
+    animation: armed-pulse 1.2s ease-in-out infinite;
+  }
+
+  .readiness-chip.state-spent {
+    color: var(--text-muted);
+    border-style: solid;
+    opacity: 0.7;
+  }
+
+  .readiness-chip.state-spent .readiness-chip-label {
+    text-decoration: line-through;
+  }
+
+  .readiness-chip.state-unavailable {
+    color: var(--text-muted);
+    border-style: dashed;
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Pips sized to read at arm's length in a Discord-scale frame: 14px,
+     2px borders, filled-vs-hollow contrast that survives a static
+     screenshot (review finding on the round-1 evidence pass). */
+  .economy-pip {
+    display: inline-block;
+    width: 0.875rem;
+    height: 0.875rem;
+    border: 2px solid var(--text-secondary);
+    background-color: transparent;
+    transition: all 0.2s ease;
+  }
+
+  .economy-pip.filled {
+    background-color: var(--accent-primary);
+    border-color: var(--text-button);
+    box-shadow: 0 0 4px var(--accent-primary);
+  }
+
+  .economy-pip.shape-action {
+    border-radius: 9999px;
+  }
+
+  .economy-pip.shape-bonus {
+    transform: rotate(45deg);
+    border-radius: 0.125rem;
+  }
+
+  /* clip-path can't render a border, so the hollow (spent) triangle is a
+     solid triangle with a background-colored inner triangle punched in. */
+  .economy-pip.shape-reaction {
+    position: relative;
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+    border: none;
+    background-color: var(--text-secondary);
+  }
+
+  .economy-pip.shape-reaction:not(.filled)::after {
+    content: '';
+    position: absolute;
+    inset: 4px 4px 2px 4px;
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+    background-color: var(--bg-secondary);
+  }
+
+  .economy-pip.shape-reaction.filled {
+    background-color: var(--accent-primary);
+    box-shadow: none;
+  }
+
   /* Modal overlay */
   .modal-overlay {
     position: fixed;
@@ -204,6 +395,19 @@
   }
   50% {
     opacity: 0.6;
+  }
+}
+
+/* Armed-state pulse (rpg-dnd5e-web#525) — garnish only: it modulates
+   brightness on top of the solid armed fill/halo, so a paused frame
+   always carries the full armed treatment. */
+@keyframes armed-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.3);
   }
 }
 
