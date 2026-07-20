@@ -75,12 +75,14 @@ import {
 function makeTestWall(
   from: { x: number; y: number; z: number },
   to: { x: number; y: number; z: number },
-  kind: WallKind = WallKind.SOLID
+  kind: WallKind = WallKind.SOLID,
+  id?: string
 ): Wall {
   return create(WallSchema, {
     from: create(V2PositionSchema, from),
     to: create(V2PositionSchema, to),
     kind,
+    id,
   });
 }
 
@@ -460,6 +462,73 @@ describe('v1alpha2 reducer additions', () => {
       state = applyDoorOpened(state, 'door-east');
       expect(state.revealedHexes).toBe(beforeOpen);
       expect(state.revealedHexes.size).toBe(1);
+    });
+
+    it('flips the matching wall (Wall.id === doorEntityId) from DOOR_CLOSED to DOOR_OPEN', () => {
+      // rpg-dnd5e-web#526: this is what makes the door's rendered pose
+      // update live — verified against rpg-api's translate.go that the
+      // live GeometryRevealed a door-open triggers carries no Walls today
+      // (wallsToProto is snapshot-only), so this reducer is the only live
+      // path to the pose flip until the next reconnect/snapshot.
+      const closed = makeTestWall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_CLOSED,
+        'door-east'
+      );
+      const prev = applyWallsRevealed(createEmptyEncounterState(), [closed]);
+
+      const after = applyDoorOpened(prev, 'door-east');
+
+      expect(after.walls.get(wallKey(closed))?.kind).toBe(WallKind.DOOR_OPEN);
+      expect(after.walls.get(wallKey(closed))?.id).toBe('door-east');
+      expect(after.openDoors.has('door-east')).toBe(true);
+    });
+
+    it('leaves unrelated walls untouched when flipping the matching door', () => {
+      const door = makeTestWall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_CLOSED,
+        'door-east'
+      );
+      const solid = makeTestWall({ x: 5, y: -5, z: 0 }, { x: 5, y: -5, z: 0 });
+      const prev = applyWallsRevealed(createEmptyEncounterState(), [
+        door,
+        solid,
+      ]);
+
+      const after = applyDoorOpened(prev, 'door-east');
+
+      expect(after.walls.get(wallKey(solid))).toBe(solid);
+      expect(after.walls.size).toBe(2);
+    });
+
+    it('is a no-op wall-wise when no wall carries a matching id (unknown/not-yet-revealed door)', () => {
+      const solid = makeTestWall({ x: 5, y: -5, z: 0 }, { x: 5, y: -5, z: 0 });
+      const prev = applyWallsRevealed(createEmptyEncounterState(), [solid]);
+
+      const after = applyDoorOpened(prev, 'door-not-in-walls-yet');
+
+      expect(after.walls).toBe(prev.walls);
+      expect(after.openDoors.has('door-not-in-walls-yet')).toBe(true);
+    });
+
+    it('is idempotent wall-wise: re-opening an already-DOOR_OPEN wall does not create a new walls Map', () => {
+      const open = makeTestWall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_OPEN,
+        'door-east'
+      );
+      let state = applyWallsRevealed(createEmptyEncounterState(), [open]);
+      state = applyDoorOpened(state, 'door-east'); // marks openDoors
+
+      const beforeWalls = state.walls;
+      const after = applyDoorOpened(state, 'door-east');
+
+      expect(after.walls).toBe(beforeWalls);
+      expect(after).toBe(state); // fully idempotent — same top-level reference
     });
   });
 

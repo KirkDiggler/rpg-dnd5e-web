@@ -3,33 +3,18 @@
  */
 
 import { create } from '@bufbuild/protobuf';
-import { PositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
-import { DoorInfoSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
   PositionSchema as EncounterPositionSchema,
+  WallKind,
   WallSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import {
+  doorHexKinds,
+  doorHexPositions,
   frontierGroundHintHexes,
-  openDoorWalkableKeys,
   wallKey,
 } from './dungeonMapGeometry';
-
-/** Helper to create a DoorInfo proto */
-function createDoor(
-  connectionId: string,
-  x: number,
-  y: number,
-  z: number,
-  isOpen = false
-) {
-  return create(DoorInfoSchema, {
-    connectionId,
-    position: create(PositionSchema, { x, y, z }),
-    isOpen,
-  });
-}
 
 /** Helper to create a Wall proto (from===to for a single-cell wall) */
 function createWall(
@@ -38,11 +23,15 @@ function createWall(
   fromZ: number,
   toX = fromX,
   toY = fromY,
-  toZ = fromZ
+  toZ = fromZ,
+  kind: WallKind = WallKind.SOLID,
+  id?: string
 ) {
   return create(WallSchema, {
     from: create(EncounterPositionSchema, { x: fromX, y: fromY, z: fromZ }),
     to: create(EncounterPositionSchema, { x: toX, y: toY, z: toZ }),
+    kind,
+    id,
   });
 }
 
@@ -74,55 +63,111 @@ describe('wallKey', () => {
   });
 });
 
-describe('openDoorWalkableKeys', () => {
-  it('returns only OPEN doors as walkable cube keys', () => {
-    const closed = createDoor('conn-closed', 5, -5, 0, false);
-    const open = createDoor('conn-open', 0, -17, 17, true);
+describe('doorHexKinds', () => {
+  it("maps each door wall's `from` cell to its WallKind", () => {
+    const closed = createWall(
+      0,
+      0,
+      0,
+      1,
+      -1,
+      0,
+      WallKind.DOOR_CLOSED,
+      'door-closed'
+    );
+    const open = createWall(
+      5,
+      -5,
+      0,
+      6,
+      -6,
+      0,
+      WallKind.DOOR_OPEN,
+      'door-open'
+    );
 
-    const keys = openDoorWalkableKeys([closed, open]);
+    const kinds = doorHexKinds([closed, open]);
 
-    expect(keys.size).toBe(1);
-    expect(keys.has('0,-17,17')).toBe(true);
-    expect(keys.has('5,-5,0')).toBe(false);
+    expect(kinds.size).toBe(2);
+    expect(kinds.get('0,0,0')).toBe(WallKind.DOOR_CLOSED);
+    expect(kinds.get('5,-5,0')).toBe(WallKind.DOOR_OPEN);
+    // Never the passage neighbor (`to`) — that's real floor in the next
+    // chamber, not the door's own cell.
+    expect(kinds.has('1,-1,0')).toBe(false);
+    expect(kinds.has('6,-6,0')).toBe(false);
   });
 
-  it('returns empty set when no doors', () => {
-    expect(openDoorWalkableKeys([]).size).toBe(0);
+  it('ignores SOLID/WINDOW/UNSPECIFIED walls', () => {
+    const solid = createWall(0, 0, 0, 0, 0, 0, WallKind.SOLID);
+    const window = createWall(1, -1, 0, 1, -1, 0, WallKind.WINDOW);
+
+    expect(doorHexKinds([solid, window]).size).toBe(0);
   });
 
-  it('skips doors with no position', () => {
-    const noPos = create(DoorInfoSchema, {
-      connectionId: 'no-pos',
-      isOpen: true,
+  it('returns an empty map for no walls', () => {
+    expect(doorHexKinds([]).size).toBe(0);
+  });
+
+  it('skips a door wall with no `from`', () => {
+    const malformed = create(WallSchema, {
+      to: create(EncounterPositionSchema, { x: 1, y: -1, z: 0 }),
+      kind: WallKind.DOOR_CLOSED,
     });
-    const keys = openDoorWalkableKeys([noPos]);
-    expect(keys.size).toBe(0);
+    expect(doorHexKinds([malformed]).size).toBe(0);
   });
 
-  it('bridges two separate floor-tile sets when a connecting door is open', () => {
-    // Two rooms separated by a door tile that is in NEITHER room's floor
-    // set. Room A tiles: {(0,0,0), (1,-1,0)}. Room B tiles: {(3,-3,0),
-    // (4,-4,0)}. Door at (2,-2,0) bridges them. Without
-    // openDoorWalkableKeys, the door tile is a "wall" to A* and pathing
-    // fails.
-    const roomAFloor = new Set(['0,0,0', '1,-1,0']);
-    const roomBFloor = new Set(['3,-3,0', '4,-4,0']);
-    const door = createDoor('conn-AB', 2, -2, 0, true);
+  it('bridges two separate floor-tile sets when a connecting door is open — v2 walkability', () => {
+    // Two chambers separated by a door hex that is in NEITHER chamber's
+    // floor set. Chamber A tiles: {(0,0,0), (1,-1,0)}. Chamber B tiles:
+    // {(3,-3,0), (4,-4,0)}. Door at (2,-2,0) bridges them, from!==to per
+    // the wire contract (design doc §Q2).
+    const chamberAFloor = new Set(['0,0,0', '1,-1,0']);
+    const chamberBFloor = new Set(['3,-3,0', '4,-4,0']);
+    const door = createWall(2, -2, 0, 3, -3, 0, WallKind.DOOR_OPEN, 'door-AB');
 
-    const walkable = openDoorWalkableKeys([door]);
-    expect(walkable.has('2,-2,0')).toBe(true);
+    const kinds = doorHexKinds([door]);
+    expect(kinds.get('2,-2,0')).toBe(WallKind.DOOR_OPEN);
 
-    // Combined walkable set is what HexGrid's isBlocked treats as passable.
-    const combined = new Set<string>([
-      ...roomAFloor,
-      ...roomBFloor,
-      ...walkable,
+    // What HexGrid's isBlocked treats as passable: floor tiles plus any
+    // hex whose door kind is OPEN.
+    const walkable = new Set<string>([...chamberAFloor, ...chamberBFloor]);
+    for (const [hexKey, kind] of kinds) {
+      if (kind === WallKind.DOOR_OPEN) walkable.add(hexKey);
+    }
+    expect(walkable.has('0,0,0')).toBe(true); // chamber A start
+    expect(walkable.has('1,-1,0')).toBe(true); // chamber A
+    expect(walkable.has('2,-2,0')).toBe(true); // open door
+    expect(walkable.has('3,-3,0')).toBe(true); // chamber B
+    expect(walkable.has('4,-4,0')).toBe(true); // chamber B end
+  });
+});
+
+describe('doorHexPositions', () => {
+  it('returns the `from` cube coord of every door wall', () => {
+    const closed = createWall(
+      0,
+      0,
+      0,
+      1,
+      -1,
+      0,
+      WallKind.DOOR_CLOSED,
+      'door-1'
+    );
+    const open = createWall(5, -5, 0, 6, -6, 0, WallKind.DOOR_OPEN, 'door-2');
+
+    const positions = doorHexPositions([closed, open]);
+
+    expect(positions).toEqual([
+      { x: 0, y: 0, z: 0 },
+      { x: 5, y: -5, z: 0 },
     ]);
-    expect(combined.has('0,0,0')).toBe(true); // room A start
-    expect(combined.has('1,-1,0')).toBe(true); // room A
-    expect(combined.has('2,-2,0')).toBe(true); // open door
-    expect(combined.has('3,-3,0')).toBe(true); // room B
-    expect(combined.has('4,-4,0')).toBe(true); // room B end
+  });
+
+  it('ignores non-door walls and returns [] for none', () => {
+    const solid = createWall(0, 0, 0);
+    expect(doorHexPositions([solid])).toEqual([]);
+    expect(doorHexPositions([])).toEqual([]);
   });
 });
 

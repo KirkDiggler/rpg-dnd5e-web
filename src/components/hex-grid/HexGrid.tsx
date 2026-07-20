@@ -13,25 +13,27 @@
  */
 
 import {
+  doorHexKinds,
+  doorHexPositions,
   frontierGroundHintHexes,
-  openDoorWalkableKeys,
   wallKey,
   type AbsoluteFloorTile,
 } from '@/hooks/dungeonMapGeometry';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
-  DoorInfo,
   MonsterCombatState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { ObstacleType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  WallKind,
+  type Wall,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { FrontierGroundHint } from './FrontierGroundHint';
-import { HexDoor } from './HexDoor';
 import { HexEntity } from './HexEntity';
 import { cubeToWorld, getHexLine, HEX_SIZE, type CubeCoord } from './hexMath';
 import { MovementRangeBorder } from './MovementRangeBorder';
@@ -91,15 +93,18 @@ export interface HexGridProps {
   onHoverChange?: (
     entity: { id: string; type: string; name: string } | null
   ) => void;
-  // Door props
-  doors?: DoorInfo[];
-  onDoorClick?: (connectionId: string) => void;
-  isDoorLoading?: boolean;
-  onDoorHoverChange?: (
-    door: { connectionId: string; physicalHint: string } | null
-  ) => void;
-  // Wall props
+  // Wall + door props (v1alpha2, rpg-dnd5e-web#526). Doors are DOOR_*-kind
+  // walls (design doc §Q2, "DoorData entity is truth, the wall kind is its
+  // projected geometry") — there is no separate door list on the wire. The
+  // old v1alpha1 `doors: DoorInfo[]`/`onDoorClick(connectionId)`/
+  // `isDoorLoading`/`onDoorHoverChange`/HexDoor path was 100% dead code (no
+  // real caller ever populated `doors`) and was removed in this wave rather
+  // than kept alongside the real mechanism (feedback_prefer_breaking_changes).
   walls?: Wall[];
+  /** Fired with the door's Wall.id (rpg-api-protos#186) when a DOOR_* wall
+   * is clicked. The web only sends intent — Interact(id) — the server
+   * decides what happens; this component computes nothing. */
+  onDoorClick?: (doorId: string) => void;
   /**
    * Dev flag (rpg-dnd5e-web#432 harness-parity): render walls/doors/floor
    * with edge-aligned Synty pieces (SyntyHexWall/SyntyHexFloor) instead of
@@ -133,10 +138,7 @@ function Scene({
   onMoveComplete,
   onAttackComplete,
   onHoverChange,
-  doors = [],
   onDoorClick,
-  isDoorLoading = false,
-  onDoorHoverChange,
   characters = [],
   monsters = [],
   walls = [],
@@ -164,17 +166,22 @@ function Scene({
   }, [monsters]);
 
   // Shaded-wall elements, shared by the non-Synty render path and the Synty
-  // path's ErrorBoundary fallback below. Memoized on `walls` alone — Copilot
-  // review on #479: without this, the fallback prop rebuilt walls.map(...)
-  // on every Scene render (hover/path-preview churn), even though it's only
-  // ever displayed while the boundary is in its (rare, sticky-until-remount)
-  // error state.
+  // path's ErrorBoundary fallback below. Memoized on `walls`/`onDoorClick` —
+  // Copilot review on #479: without this, the fallback prop rebuilt
+  // walls.map(...) on every Scene render (hover/path-preview churn), even
+  // though it's only ever displayed while the boundary is in its (rare,
+  // sticky-until-remount) error state.
   const shadedWalls = useMemo(
     () =>
       walls.map((wall) => (
-        <ShadedHexWall key={wallKey(wall)} wall={wall} hexSize={HEX_SIZE} />
+        <ShadedHexWall
+          key={wallKey(wall)}
+          wall={wall}
+          hexSize={HEX_SIZE}
+          onDoorClick={onDoorClick}
+        />
       )),
-    [walls]
+    [walls, onDoorClick]
   );
 
   // Grid center: bbox center of all revealed floor tiles. Used only as the
@@ -291,22 +298,27 @@ function Scene({
     };
   }, [currentEntityId, entities]);
 
-  // Build a Set of door-position keys so OPEN doors are walkable even when
-  // their hex is not a floor tile (the door sits on the boundary between
-  // rooms and is omitted from both rooms' floor-tile bboxes). Without this,
-  // A* sees the door as an impassable wall and refuses to path between
-  // revealed rooms — the "my pathing on the client never lets me cross" bug.
-  // Closed doors stay impassable to pathfinding; the door-click flow is what
-  // opens them.
-  const doorOpenKeys = useMemo(() => openDoorWalkableKeys(doors), [doors]);
+  // Map of door-hex key -> WallKind (DOOR_CLOSED/DOOR_OPEN), from the v2
+  // `walls` list (rpg-dnd5e-web#526). A door's hex sits on the boundary
+  // between chambers and is omitted from either chamber's floor-tile bbox,
+  // so it needs its own walkability rule, not just floor-tile membership:
+  // a CLOSED door blocks movement even if somehow flagged as floor, and an
+  // OPEN door is walkable even though it's not a floor tile. Without the
+  // OPEN half, A* would see the door as an impassable wall and refuse to
+  // path between revealed chambers — the "my pathing on the client never
+  // lets me cross" bug. The door-click flow is what flips CLOSED -> OPEN.
+  const doorKinds = useMemo(() => doorHexKinds(walls), [walls]);
 
-  // Check if a hex is blocked (not a floor tile or has an entity).
-  // Open doors are treated as walkable even when not a floor tile.
+  // Check if a hex is blocked (not a floor tile, or has an entity, or is a
+  // closed door). An open door is treated as walkable even when it's not a
+  // floor tile.
   // Uses useCallback to ensure stable function reference for downstream memoization
   const isBlocked = useCallback(
     (coord: CubeCoord) => {
       const key = `${coord.x},${coord.y},${coord.z}`;
-      if (!floorTiles.has(key) && !doorOpenKeys.has(key)) {
+      const doorKind = doorKinds.get(key);
+      if (doorKind === WallKind.DOOR_CLOSED) return true;
+      if (doorKind !== WallKind.DOOR_OPEN && !floorTiles.has(key)) {
         return true;
       }
       return entities.some(
@@ -318,7 +330,7 @@ function Scene({
           entity.entityId !== currentEntityId
       );
     },
-    [entities, currentEntityId, floorTiles, doorOpenKeys]
+    [entities, currentEntityId, floorTiles, doorKinds]
   );
 
   // Identifies a hex as occupied by another (non-current, non-dead) entity.
@@ -444,16 +456,11 @@ function Scene({
     [walls, floorTiles]
   );
 
-  // Extract door positions for tile coloring
-  const doorPositions = useMemo((): CubeCoord[] => {
-    return doors
-      .filter((door) => door.position)
-      .map((door) => ({
-        x: door.position!.x,
-        y: door.position!.y,
-        z: door.position!.z,
-      }));
-  }, [doors]);
+  // Extract door positions for tile coloring (v2 walls, rpg-dnd5e-web#526).
+  const doorPositions = useMemo(
+    (): CubeCoord[] => doorHexPositions(walls),
+    [walls]
+  );
 
   // Extract wall positions for tile coloring (all hexes along each wall)
   const wallPositions = useMemo((): CubeCoord[] => {
@@ -553,48 +560,30 @@ function Scene({
           void (rpg-dnd5e-web#457) */}
       <FrontierGroundHint hints={frontierHints} hexSize={HEX_SIZE} />
 
-      {/* Render walls (after tiles, before doors) — already deduplicated by
-          wallKey. Edge-aligned Synty pieces (dev flag) render once for the
-          WHOLE wall list — a wall hex's open-facing edges often border a
-          *different* Wall object's hex, so segment-building needs every
-          wall at once (see SyntyHexWall's doc comment). The default
+      {/* Render walls AND doors (after tiles) — already deduplicated by
+          wallKey. Doors are DOOR_*-kind walls (design doc §Q2) rendered
+          through this same pipeline, not a separate list — see
+          SyntyHexWall's/ShadedHexWall's own doc comments for the door
+          click surface + open/closed pose. Edge-aligned Synty pieces (dev
+          flag) render once for the WHOLE wall list — a wall hex's
+          open-facing edges often border a *different* Wall object's hex,
+          so segment-building needs every wall at once. The default
           procedural voxel wall stays per-wall, unchanged. Same
-          ErrorBoundary-falls-back-to-shaded reasoning as the floor above. */}
+          ErrorBoundary-falls-back-to-shaded reasoning as the floor above.
+          onDoorClick fires with the door's Wall.id — no client-side
+          gating (isPlayerTurn/isProcessing/etc.) on whether the click is
+          "allowed": the web sends intent, the server decides. */}
       {syntyDungeon ? (
         <ErrorBoundary fallback={shadedWalls}>
-          <SyntyHexWall walls={walls} hexSize={HEX_SIZE} />
+          <SyntyHexWall
+            walls={walls}
+            hexSize={HEX_SIZE}
+            onDoorClick={onDoorClick}
+          />
         </ErrorBoundary>
       ) : (
         shadedWalls
       )}
-
-      {/* Render doors (after tiles, before movement range) */}
-      {doors.map((door) => {
-        if (!door.position) return null;
-        const doorPosition: CubeCoord = {
-          x: door.position.x,
-          y: door.position.y,
-          z: door.position.z,
-        };
-        return (
-          <HexDoor
-            key={door.connectionId}
-            connectionId={door.connectionId}
-            position={doorPosition}
-            physicalHint={door.physicalHint}
-            isOpen={door.isOpen}
-            isLoading={isDoorLoading}
-            hexSize={HEX_SIZE}
-            onClick={(connectionId) => {
-              if (!isPlayerTurn || isProcessing || isDoorLoading || door.isOpen)
-                return;
-              onDoorClick?.(connectionId);
-            }}
-            onHoverChange={onDoorHoverChange}
-            disabled={!isPlayerTurn || isProcessing}
-          />
-        );
-      })}
 
       {/* Movement range border: only when actionable (own TURN_BASED turn,
           or actively planning a move in FREE_ROAM) — not idle-always-on

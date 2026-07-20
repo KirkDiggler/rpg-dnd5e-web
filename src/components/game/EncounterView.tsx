@@ -15,16 +15,18 @@
  * characters that way; GameView threads the real characterId through
  * instead (see GameView/LobbyFlow props).
  *
- * Single room this slice — multi-room accumulation is slice 4. Door
- * interaction is still out of scope: HexGrid's door-click surface needs a
- * v2-shaped DoorInfo[] the v2 stream doesn't accumulate (the same documented
- * gap PlaytestMap has — see docs/architecture/components/playtest-harness.md
- * "Known limitations"), and devseed's single-room fixture has no door to
- * exercise it against. onDoorOpened IS wired below (rpg-dnd5e-web#432
- * harness-parity) — tracking `state.openDoors`, threaded through to
- * EncounterMap's `openDoorIds` prop (exposed on its DOM, not yet consumed
- * by rendering) for whenever the rendering side catches up; it doesn't
- * unblock click-to-open on its own.
+ * Multi-chamber dungeons + door interaction landed in rpg-dnd5e-web#526
+ * (The Dungeon wave 2 Slice 2, rpg-project#96): DOOR_*-kind `Wall`s now
+ * carry `Wall.id` (rpg-api-protos#186), so a door click resolves directly
+ * off `walls` — no separate DoorInfo[] list needed (design doc §Q2, "the
+ * DOOR-kind walls already ARE the door list once they carry ids").
+ * handleDoorClick below fires `useInteract`'s `Interact(encounterId,
+ * doorId, 'open')`; the world-changing effects (open/reveal, or a
+ * skill-check prompt for a locked door) flow back as DoorOpened/
+ * GeometryRevealed/InputRequiredDelivered events, same as every other verb
+ * on this stream. onDoorOpened also flips the matching wall's own kind to
+ * DOOR_OPEN in useEncounterState (see applyDoorOpened) so the pose updates
+ * immediately, without waiting on a walls-bearing GeometryRevealed.
  */
 
 import { create } from '@bufbuild/protobuf';
@@ -44,6 +46,7 @@ import { createPortal } from 'react-dom';
 import { v2PositionToV1 } from '../../api/positionConvert';
 import { useEncounterStream } from '../../api/useEncounterStream';
 import { useEndTurn } from '../../api/useEndTurn';
+import { useInteract } from '../../api/useInteract';
 import { useMoveEntity } from '../../api/useMoveEntity';
 import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useTakeAction } from '../../api/useTakeAction';
@@ -169,6 +172,11 @@ export function EncounterView({
     loading: setReactionReadyLoading,
     error: setReactionReadyError,
   } = useSetReactionReady();
+  // rpg-dnd5e-web#526 (wave rpg-project#96 Slice 2): the door click ->
+  // Interact bridge. World-changing effects (open/reveal, or a skill-check
+  // prompt for a locked door) flow back as events on the stream below, not
+  // in this RPC's response.
+  const { interact, error: interactError } = useInteract();
 
   const stream = useEncounterStream(encounterId, playerId, {
     onSnapshotDelivered: (e) => {
@@ -567,6 +575,20 @@ export function EncounterView({
     }
   };
 
+  // rpg-dnd5e-web#526 (wave rpg-project#96 Slice 2): door click -> Interact
+  // bridge. The server decides what happens — open, or (a locked door,
+  // Slice 3) a skill-check prompt via InputRequiredDelivered — so this
+  // handler computes nothing and gates on nothing; it only forwards the
+  // click intent (matches PlaytestHarness's identical
+  // `interact(encounterId, id, 'open')` call).
+  const handleDoorClick = async (doorId: string) => {
+    try {
+      await interact(encounterId, doorId, 'open');
+    } catch {
+      // error surfaced via interactError below
+    }
+  };
+
   // Portaled straight to document.body, position:fixed inset:0 (rpg-dnd5e-web
   // #491): App.tsx's shared shell wraps every non-character-sheet view in
   // `max-w-7xl mx-auto p-8`, which the lobby's centered-card layout wants but
@@ -577,7 +599,11 @@ export function EncounterView({
   // ActionPanelV2's proven fix for the exact same class of problem, and
   // keeps this self-contained to the one view that needs it.
   const anyError =
-    moveError || takeActionError || endTurnError || setReactionReadyError;
+    moveError ||
+    takeActionError ||
+    endTurnError ||
+    setReactionReadyError ||
+    interactError;
 
   return createPortal(
     <div
@@ -683,6 +709,7 @@ export function EncounterView({
           openDoorIds={Array.from(encounterState.state.openDoors)}
           onMove={(path) => void handleVisualMove(path)}
           onEntityClick={handleVisualEntityClick}
+          onDoorClick={(doorId) => void handleDoorClick(doorId)}
         />
 
         {!myPosition && (
@@ -764,6 +791,19 @@ export function EncounterView({
                 }}
               >
                 Reaction ready error: {errorMessage(setReactionReadyError)}
+              </div>
+            )}
+            {interactError && (
+              <div
+                style={{
+                  color: '#f88',
+                  fontSize: 12,
+                  background: 'rgba(0,0,0,0.6)',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                }}
+              >
+                Door interaction error: {errorMessage(interactError)}
               </div>
             )}
           </div>

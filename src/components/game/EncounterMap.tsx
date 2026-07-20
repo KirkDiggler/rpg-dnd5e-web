@@ -66,17 +66,21 @@ export interface EncounterMapProps {
   movementRemaining?: number;
   /**
    * Open door entity ids (state.openDoors from useEncounterState, via
-   * applyDoorOpened — rpg-dnd5e-web#432 harness-parity). Accepted and
-   * exposed on this component's DOM (`data-open-door-ids`) so the real
-   * data flow is observable end-to-end; not yet consumed by HexGrid's
-   * rendering — that needs a v2-shaped DoorInfo[] the stream doesn't
-   * accumulate today (see EncounterView.tsx's doc comment).
+   * applyDoorOpened — rpg-dnd5e-web#432 harness-parity). Exposed on this
+   * component's DOM (`data-open-door-ids`) for observability. HexGrid's own
+   * door rendering (pose, walkability) is driven directly off `walls`'
+   * DOOR_CLOSED/DOOR_OPEN kind (rpg-dnd5e-web#526) — applyDoorOpened flips
+   * the matching wall's kind in place, so this prop and `walls` never
+   * disagree; this stays a secondary read for debugging/tests.
    */
   openDoorIds?: string[];
   /** Full computed path (start + intermediates + end) when a hex click lands a move. */
   onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
   /** Clicked entity id — caller dispatches attack for monsters or selects for characters. */
   onEntityClick: (entityId: string) => void;
+  /** Fired with the door's Wall.id (rpg-api-protos#186) when a DOOR_* wall
+   * is clicked — the click->Interact bridge (rpg-dnd5e-web#526). */
+  onDoorClick?: (doorId: string) => void;
 }
 
 const DEFAULT_MOVEMENT_FEET = 30;
@@ -97,6 +101,7 @@ export function EncounterMap({
   openDoorIds = [],
   onMove,
   onEntityClick,
+  onDoorClick,
 }: EncounterMapProps) {
   const floorTiles = useMemo(
     () => synthesizeFloorTiles(revealedHexes, entities.values()),
@@ -221,6 +226,7 @@ export function EncounterMap({
         onEntityClick={(targetId: string) => {
           onEntityClick(targetId);
         }}
+        onDoorClick={onDoorClick}
         // Deliberately not wired — see PlaytestMap's identical note: HexGrid
         // fires both onAttackComplete AND onEntityClick for an attackable
         // monster click, so wiring both here would double-dispatch.

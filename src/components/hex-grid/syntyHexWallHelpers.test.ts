@@ -32,9 +32,10 @@ describe('edgePieceKind', () => {
 function wall(
   from: { x: number; y: number; z: number },
   to: { x: number; y: number; z: number },
-  kind: WallKind = WallKind.SOLID
+  kind: WallKind = WallKind.SOLID,
+  id?: string
 ): Wall {
-  return { from, to, kind } as unknown as Wall;
+  return { from, to, kind, id } as unknown as Wall;
 }
 
 describe('buildDungeonWallSegments', () => {
@@ -95,6 +96,108 @@ describe('buildDungeonWallSegments', () => {
       (s) => s.key === unit.key
     )!;
     expect(doubled.edge.a.x).toBeCloseTo(unit.edge.a.x * 2, 3);
+  });
+});
+
+describe('buildDungeonWallSegments — door walls with a real passage edge (from !== to)', () => {
+  it('renders exactly ONE segment for a door, on the wire-designated from->to edge, carrying its Wall.id', () => {
+    // The Dungeon wave 2 Slice 2 (rpg-project#96): a door's from/to names
+    // the ONE edge to draw the frame on (design doc §Q2) — this is also
+    // the multiplicity-bug fix (an isolated from===to door used to render
+    // 6 pairs; a real from!==to door must render exactly 1).
+    const walls = [
+      wall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_CLOSED,
+        'door-1'
+      ),
+    ];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments).toHaveLength(1);
+    expect(segments[0]!.key).toBe('0,0,0->1,-1,0');
+    expect(segments[0]!.kind).toBe(WallKind.DOOR_CLOSED);
+    expect(segments[0]!.id).toBe('door-1');
+  });
+
+  it('does NOT mark the passage neighbor as a wall hex — no phantom segments sourced from it', () => {
+    // Regression guard: before this fix, a real door's `to` was decomposed
+    // via getHexLine alongside `from`, so the passage neighbor (real floor
+    // in the NEXT chamber) was wrongly treated as its own wall hex and
+    // sprouted up to 5 more phantom wall/door pieces of its own.
+    const walls = [
+      wall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_CLOSED,
+        'door-1'
+      ),
+    ];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments.some((s) => s.key.startsWith('1,-1,0->'))).toBe(false);
+  });
+
+  it('renders one door segment on its designated edge alongside flanking solid walls, without leaking a wall segment onto the passage neighbor', () => {
+    // A door embedded in a perimeter run: solid wall hexes on two other
+    // sides of the door cell, door frame on the E edge toward the next
+    // chamber's floor.
+    const walls = [
+      wall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_CLOSED,
+        'door-1'
+      ), // door, E-facing
+      wall({ x: 1, y: 0, z: -1 }, { x: 1, y: 0, z: -1 }), // NE solid, flanks the door
+      wall({ x: -1, y: 0, z: 1 }, { x: -1, y: 0, z: 1 }), // SW solid, flanks the door
+    ];
+    const segments = buildDungeonWallSegments(walls, 1);
+    const doorSegments = segments.filter(
+      (s) => s.kind === WallKind.DOOR_CLOSED
+    );
+    expect(doorSegments).toHaveLength(1);
+    expect(doorSegments[0]!.key).toBe('0,0,0->1,-1,0');
+    expect(doorSegments[0]!.id).toBe('door-1');
+    // The passage neighbor (1,-1,0) never sources its own segments.
+    expect(segments.some((s) => s.key.startsWith('1,-1,0->'))).toBe(false);
+  });
+
+  it('falls through to the generic per-neighbor-edge loop for degenerate from===to door data (no id carried)', () => {
+    // Not real server shape (doors always have from!==to per the wire
+    // contract), but tolerated: matches this function's pre-Slice-2
+    // behavior exactly, so existing callers/tests aren't disturbed.
+    const walls = [
+      wall(
+        { x: 0, y: 0, z: 0 },
+        { x: 0, y: 0, z: 0 },
+        WallKind.DOOR_CLOSED,
+        'door-1'
+      ),
+    ];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments).toHaveLength(6);
+    expect(segments.every((s) => s.kind === WallKind.DOOR_CLOSED)).toBe(true);
+    expect(segments.every((s) => s.id === undefined)).toBe(true);
+  });
+
+  it('a door does not mark its passage neighbor as a wall hex even when the neighbor is also independently walled elsewhere', () => {
+    // Sanity check that the door-handling branch only ever registers
+    // `from`, never `to`, regardless of how many other walls are present.
+    const walls = [
+      wall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_CLOSED,
+        'door-1'
+      ),
+      wall({ x: 3, y: -3, z: 0 }, { x: 3, y: -3, z: 0 }), // unrelated solid wall elsewhere
+    ];
+    const segments = buildDungeonWallSegments(walls, 1);
+    const doorSegments = segments.filter(
+      (s) => s.kind === WallKind.DOOR_CLOSED
+    );
+    expect(doorSegments).toHaveLength(1);
+    expect(segments.some((s) => s.key.startsWith('1,-1,0->'))).toBe(false);
   });
 });
 

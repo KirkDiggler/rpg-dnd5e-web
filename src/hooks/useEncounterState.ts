@@ -39,6 +39,8 @@ import type {
 import {
   EncounterMode,
   EntityType,
+  WallKind,
+  WallSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useState } from 'react';
 import { hexKey, type CubeHexCoord } from '../utils/hexCoord';
@@ -602,7 +604,25 @@ export function applyEntityDisappeared(
 
 /**
  * Mark a door as open by entity id (v1alpha2 DoorOpened.doorEntityId).
- * Idempotent — re-opening an already-open door is a no-op (Set semantics).
+ * Idempotent — re-opening an already-open door is a no-op.
+ *
+ * Also flips the matching wall's own kind to DOOR_OPEN in place (matched by
+ * `Wall.id === doorEntityId`, rpg-api-protos#186), so the door's rendered
+ * pose (SyntyHexWall/ShadedHexWall) updates the instant DoorOpened arrives.
+ * This isn't computed game logic: DoorOpened's own payload IS "this door is
+ * now open" — projecting that onto the one wall segment carrying the same
+ * id is the same boundary-honest event->state mapping every other reducer
+ * here does. It's also load-bearing today, not just belt-and-suspenders:
+ * verified against rpg-api's translate.go (translateHexRevealedEvent), the
+ * live GeometryRevealed a door-open triggers only carries Hexes today —
+ * `wallsToProto` runs on the full-snapshot path only, never the live-event
+ * path — so without this, the door's pose would not update live at all,
+ * only on the next reconnect/snapshot. If the server starts including the
+ * updated wall in GeometryRevealed too, applyWallsRevealed's
+ * overwrite-on-kind-change composes safely with this (both converge on the
+ * same DOOR_OPEN entry; whichever arrives first wins, the second is a
+ * same-kind no-op).
+ *
  * Does not touch the per-hex revealedHexes set; the toolkit emits a parallel
  * GeometryRevealed event for the newly-visible cells (cause/effect split),
  * which the existing applyHexRevealed reducer handles.
@@ -612,10 +632,31 @@ export function applyDoorOpened(
   prev: LocalEncounterState,
   doorEntityId: string
 ): LocalEncounterState {
-  if (prev.openDoors.has(doorEntityId)) return prev;
-  const next = new Set(prev.openDoors);
-  next.add(doorEntityId);
-  return { ...prev, openDoors: next };
+  const alreadyOpen = prev.openDoors.has(doorEntityId);
+
+  let nextWalls = prev.walls;
+  for (const [key, wall] of prev.walls) {
+    if (wall.id !== doorEntityId || wall.kind === WallKind.DOOR_OPEN) continue;
+    nextWalls = new Map(prev.walls);
+    nextWalls.set(
+      key,
+      create(WallSchema, {
+        from: wall.from,
+        to: wall.to,
+        kind: WallKind.DOOR_OPEN,
+        id: wall.id,
+      })
+    );
+    break; // Wall.id is unique per door
+  }
+
+  if (alreadyOpen && nextWalls === prev.walls) return prev;
+
+  const nextOpenDoors = alreadyOpen
+    ? prev.openDoors
+    : new Set(prev.openDoors).add(doorEntityId);
+
+  return { ...prev, openDoors: nextOpenDoors, walls: nextWalls };
 }
 
 /**
