@@ -1,0 +1,250 @@
+[
+  {
+    "file": "banners.png",
+    "category": "banners",
+    "label": "Banners",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 19
+  },
+  {
+    "file": "bars.png",
+    "category": "bars",
+    "label": "Bars",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 17
+  },
+  {
+    "file": "cursors.png",
+    "category": "cursors",
+    "label": "Cursors",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 10
+  },
+  {
+    "file": "frames.png",
+    "category": "frames",
+    "label": "Frames",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 78
+  },
+  {
+    "file": "fx.png",
+    "category": "fx",
+    "label": "Fx",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 22
+  },
+  {
+    "file": "hud-map.png",
+    "category": "hud-map",
+    "label": "Hud-map",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 27
+  },
+  {
+    "file": "icons-elements.png",
+    "category": "icons/elements",
+    "label": "Icons — Elements",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 18
+  },
+  {
+    "file": "icons-inventory.png",
+    "category": "icons/inventory",
+    "label": "Icons — Inventory",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 62
+  },
+  {
+    "file": "icons-map.png",
+    "category": "icons/map",
+    "label": "Icons — Map",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 63
+  },
+  {
+    "file": "icons-resources-part1.png",
+    "category": "icons/resources",
+    "label": "Icons — Resources",
+    "part": 1,
+    "partsTotal": 2,
+    "spriteCount": 120
+  },
+  {
+    "file": "icons-resources-part2.png",
+    "category": "icons/resources",
+    "label": "Icons — Resources",
+    "part": 2,
+    "partsTotal": 2,
+    "spriteCount": 45
+  },
+  {
+    "file": "icons-social.png",
+    "category": "icons/social",
+    "label": "Icons — Social",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 7
+  },
+  {
+    "file": "icons-stats.png",
+    "category": "icons/stats",
+    "label": "Icons — Stats",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 48
+  },
+  {
+    "file": "icons-status.png",
+    "category": "icons/status",
+    "label": "Icons — Status",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 111
+  },
+  {
+    "file": "icons-weapons-part1.png",
+    "category": "icons/weapons",
+    "label": "Icons — Weapons",
+    "part": 1,
+    "partsTotal": 4,
+    "spriteCount": 120
+  },
+  {
+    "file": "icons-weapons-part2.png",
+    "category": "icons/weapons",
+    "label": "Icons — Weapons",
+    "part": 2,
+    "partsTotal": 4,
+    "spriteCount": 120
+  },
+  {
+    "file": "icons-weapons-part3.png",
+    "category": "icons/weapons",
+    "label": "Icons — Weapons",
+    "part": 3,
+    "partsTotal": 4,
+    "spriteCount": 120
+  },
+  {
+    "file": "icons-weapons-part4.png",
+    "category": "icons/weapons",
+    "label": "Icons — Weapons",
+    "part": 4,
+    "partsTotal": 4,
+    "spriteCount": 40
+  },
+  {
+    "file": "input-prompts-gamepadgeneric.png",
+    "category": "input-prompts/GamepadGeneric",
+    "label": "Input Prompts — GamepadGeneric",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 50
+  },
+  {
+    "file": "input-prompts-mousekeyboard.png",
+    "category": "input-prompts/MouseKeyboard",
+    "label": "Input Prompts — MouseKeyboard",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 38
+  },
+  {
+    "file": "input-prompts-playstation.png",
+    "category": "input-prompts/PlayStation",
+    "label": "Input Prompts — PlayStation",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 83
+  },
+  {
+    "file": "input-prompts-steamdeck-part1.png",
+    "category": "input-prompts/SteamDeck",
+    "label": "Input Prompts — SteamDeck",
+    "part": 1,
+    "partsTotal": 2,
+    "spriteCount": 120
+  },
+  {
+    "file": "input-prompts-steamdeck-part2.png",
+    "category": "input-prompts/SteamDeck",
+    "label": "Input Prompts — SteamDeck",
+    "part": 2,
+    "partsTotal": 2,
+    "spriteCount": 10
+  },
+  {
+    "file": "input-prompts-switch.png",
+    "category": "input-prompts/Switch",
+    "label": "Input Prompts — Switch",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 114
+  },
+  {
+    "file": "input-prompts-xbox.png",
+    "category": "input-prompts/Xbox",
+    "label": "Input Prompts — Xbox",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 90
+  },
+  {
+    "file": "loading.png",
+    "category": "loading",
+    "label": "Loading",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 6
+  },
+  {
+    "file": "ornaments-part1.png",
+    "category": "ornaments",
+    "label": "Ornaments",
+    "part": 1,
+    "partsTotal": 2,
+    "spriteCount": 120
+  },
+  {
+    "file": "ornaments-part2.png",
+    "category": "ornaments",
+    "label": "Ornaments",
+    "part": 2,
+    "partsTotal": 2,
+    "spriteCount": 46
+  },
+  {
+    "file": "panels.png",
+    "category": "panels",
+    "label": "Panels",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 70
+  },
+  {
+    "file": "reticles.png",
+    "category": "reticles",
+    "label": "Reticles",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 24
+  },
+  {
+    "file": "rings.png",
+    "category": "rings",
+    "label": "Rings",
+    "part": 1,
+    "partsTotal": 1,
+    "spriteCount": 28
+  }
+]
