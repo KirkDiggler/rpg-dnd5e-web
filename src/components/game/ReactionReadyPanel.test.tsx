@@ -112,4 +112,44 @@ describe('ReactionReadyPanel', () => {
     ) as HTMLButtonElement;
     expect(oa.disabled).toBe(true);
   });
+
+  describe('compact mode (rpg-dnd5e-web#519)', () => {
+    it('drops the "Ready reactions" header', () => {
+      render(
+        <ReactionReadyPanel
+          readiness={undefined}
+          loading={false}
+          disabled={false}
+          onToggle={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.queryByText('Ready reactions')).toBeNull();
+    });
+
+    it('abbreviates visible text but keeps the full state in aria-label', () => {
+      const readiness = new Map<string, boolean>([
+        ['dnd5e:conditions:opportunity_attack', true],
+      ]);
+      render(
+        <ReactionReadyPanel
+          readiness={readiness}
+          loading={false}
+          disabled={false}
+          onToggle={vi.fn()}
+          compact
+        />
+      );
+      const oa = screen.getByTestId(
+        'reaction-toggle-dnd5e:conditions:opportunity_attack'
+      );
+      // Visible text is abbreviated ("OA" / "✓"), not the full words.
+      expect(oa.textContent).not.toContain('READY');
+      expect(oa.textContent).toContain('OA');
+      // aria-label still carries the full, unabbreviated state.
+      expect(oa.getAttribute('aria-label')).toContain(
+        'Opportunity Attack: READY'
+      );
+    });
+  });
 });

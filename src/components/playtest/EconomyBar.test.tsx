@@ -36,4 +36,30 @@ describe('EconomyBar', () => {
     expect(bar.textContent).toContain('attacks');
     expect(bar.textContent).toContain('martial_arts_bonus');
   });
+
+  describe('compact mode (rpg-dnd5e-web#519)', () => {
+    it('abbreviates slot labels', () => {
+      const economy = create(ActionEconomySchema, {
+        actionsRemaining: 1,
+        bonusActionsRemaining: 0,
+        reactionsRemaining: 1,
+        movementRemaining: 30,
+      });
+      render(<EconomyBar economy={economy} compact />);
+      const bar = screen.getByTestId('economy-bar');
+      expect(bar.textContent).toContain('A:');
+      expect(bar.textContent).toContain('B:');
+      expect(bar.textContent).toContain('R:');
+      expect(bar.textContent).toContain('Mv:');
+      expect(bar.textContent).not.toContain('Action:');
+      expect(bar.textContent).not.toContain('Movement:');
+    });
+
+    it('shortens the empty-state text', () => {
+      render(<EconomyBar economy={null} compact />);
+      expect(screen.getByTestId('economy-bar-empty').textContent).toBe(
+        '(economy…)'
+      );
+    });
+  });
 });

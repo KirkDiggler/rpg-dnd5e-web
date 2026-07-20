@@ -44,6 +44,15 @@ export interface ActionMenuProps {
    * shape — the button renders exactly as before in that case.
    */
   armedActionKey?: string;
+  /**
+   * rpg-dnd5e-web#519 — EncounterDock's "thin action line" mode: one flat
+   * row of small buttons (no per-economy-slot header/grouping, no visible
+   * unavailable-reason text — still in the button's title tooltip). Default
+   * false so PlaytestHarness's existing verbose, grouped dev-panel view is
+   * unchanged — that surface wants the extra vertical detail for debugging,
+   * this prop exists so the real game route doesn't have to inherit it.
+   */
+  compact?: boolean;
 }
 
 export function ActionMenu({
@@ -52,6 +61,7 @@ export function ActionMenu({
   loading,
   onSelectAction,
   armedActionKey,
+  compact = false,
 }: ActionMenuProps) {
   const groups = groupActionsBySlot(actions);
 
@@ -59,9 +69,35 @@ export function ActionMenu({
     return (
       <div
         data-testid="action-menu-empty"
-        style={{ color: '#666', fontSize: 12, marginBottom: 8 }}
+        style={{ color: '#666', fontSize: 12, marginBottom: compact ? 0 : 8 }}
       >
-        (no actions available — waiting for the server menu)
+        {compact
+          ? '(no actions)'
+          : '(no actions available — waiting for the server menu)'}
+      </div>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div
+        data-testid="action-menu"
+        data-compact="true"
+        style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}
+      >
+        {groups.flatMap(({ actions: slotActions }) =>
+          slotActions.map((action) => (
+            <ActionMenuButton
+              key={actionKey(action)}
+              action={action}
+              enabled={enabled}
+              loading={loading}
+              onSelectAction={onSelectAction}
+              armed={armedActionKey === actionKey(action)}
+              compact
+            />
+          ))
+        )}
       </div>
     );
   }
@@ -113,6 +149,9 @@ interface ActionMenuButtonProps {
   /** rpg-dnd5e-web#511: true while this specific action is armed and
    * waiting for a resolving click — see ActionMenuProps.armedActionKey. */
   armed: boolean;
+  /** rpg-dnd5e-web#519: smaller single-row button, unavailable_reason moves
+   * into the title tooltip instead of a visible second line. */
+  compact?: boolean;
 }
 
 function ActionMenuButton({
@@ -121,12 +160,16 @@ function ActionMenuButton({
   loading,
   onSelectAction,
   armed,
+  compact = false,
 }: ActionMenuButtonProps) {
   // Disabled when the server says unavailable OR the turn/loading gate is off.
   // The unavailable_reason is the SERVER's string — rendered verbatim, never
   // composed client-side.
   const serverUnavailable = !action.available;
   const disabled = !enabled || loading || serverUnavailable;
+  // Compact mode still surfaces unavailable_reason verbatim — just via the
+  // tooltip instead of a reserved second line, since D7/no-client-legality
+  // means we never invent or drop the server's reason, only where it renders.
   const title = serverUnavailable
     ? action.unavailableReason || 'unavailable'
     : armed
@@ -149,9 +192,9 @@ function ActionMenuButton({
       title={title}
       style={{
         display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-start',
-        padding: '4px 10px',
+        flexDirection: compact ? 'row' : 'column',
+        alignItems: compact ? 'center' : 'flex-start',
+        padding: compact ? '3px 8px' : '4px 10px',
         background: serverUnavailable
           ? '#2a2a2a'
           : armed
@@ -170,7 +213,7 @@ function ActionMenuButton({
         borderRadius: 4,
         cursor: disabled ? 'not-allowed' : 'pointer',
         fontFamily: 'monospace',
-        fontSize: 12,
+        fontSize: compact ? 11 : 12,
         opacity: serverUnavailable ? 0.7 : 1,
       }}
     >
@@ -183,14 +226,14 @@ function ActionMenuButton({
             src={iconUrl}
             alt=""
             aria-hidden="true"
-            width={16}
-            height={16}
+            width={compact ? 14 : 16}
+            height={compact ? 14 : 16}
             style={{ display: 'inline-block', flexShrink: 0 }}
           />
         )}
         <span>{action.displayName || actionKey(action)}</span>
       </span>
-      {serverUnavailable && action.unavailableReason && (
+      {!compact && serverUnavailable && action.unavailableReason && (
         <span
           data-testid={`action-reason-${actionKey(action)}`}
           style={{ fontSize: 10, color: '#a66', marginTop: 2 }}
