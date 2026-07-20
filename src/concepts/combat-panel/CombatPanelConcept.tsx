@@ -1,39 +1,75 @@
 /**
- * CombatPanelConcept (rpg-dnd5e-web#525 round 1) — the design-review bench
- * for the combat panel's information architecture.
+ * CombatPanelConcept (rpg-dnd5e-web#525) — the design-review bench for the
+ * combat panel's information architecture.
  *
- * Two compositions built from the ui/combat primitives, a fixture-state
- * switcher covering the states that are hard to reach live, and a
- * Discord-viewport frame so review happens at true activity size. The
- * interactions are real: clicking a verb arms it (Esc cancels — the #514
- * flow), the reaction chip toggles, End Turn hands the turn to the goblin
- * (switches to the spectator fixture).
+ * Round 4: Kirk's direction — "the panel should be clear and large enough
+ * to read; we can have as much room as feels comfortable; we swung in an
+ * extreme direction to compensate for the wasted space from before."
+ * Three new approaches join A/B (kept for reference):
+ *   C — Comfortable bar: same verb-first IA at a humane scale, two rows.
+ *   D — HUD-skinned bar: C's layout skinned with the Synty Fantasy Warrior
+ *       sprites (form from sprites, color from theme tokens; token
+ *       fallback when sprites are absent — they're gitignored).
+ *   E — Command cluster: identity card + centered verb grid + anchored
+ *       End Turn, floating over the map instead of a full-width dock.
+ * Review at Discord activity size AND a comfortable desktop size — the
+ * frame toggle switches between them.
  */
 
 import { useEffect, useState } from 'react';
+import { ComfortBar } from './ComfortBar';
 import { CommandBar } from './CommandBar';
 import { CommandBarWithContext } from './CommandBarWithContext';
+import { CommandCluster } from './CommandCluster';
 import { COMBAT_PANEL_FIXTURES, type CombatPanelFixture } from './fixtures';
 
-type CompositionId = 'command-bar' | 'with-context';
+type CompositionId =
+  | 'comfort'
+  | 'hud-skinned'
+  | 'cluster'
+  | 'with-context'
+  | 'command-bar';
 
 const COMPOSITIONS: { id: CompositionId; label: string; blurb: string }[] = [
   {
-    id: 'with-context',
-    label: 'B — Verbs + context strip',
+    id: 'comfort',
+    label: 'C — Comfortable bar',
     blurb:
-      'Command bar plus a one-line teaching strip: what is the game waiting for, in words (#533 direction).',
+      'Round 4: the same verb-first IA at a humane scale — two deliberate rows, readable HP/AC numbers, full-size pips, large verbs. Height spent on clarity.',
+  },
+  {
+    id: 'hud-skinned',
+    label: 'D — HUD-skinned bar',
+    blurb:
+      "C's layout wearing the Synty Fantasy Warrior HUD sprites: stone-slab verbs, framed dock, sprite-tinted through theme tokens. Same components, different skin.",
+  },
+  {
+    id: 'cluster',
+    label: 'E — Command cluster',
+    blurb:
+      'A different shape entirely: identity card bottom-left, a GRID of large verbs bottom-center under a floating teaching pill, End Turn anchored bottom-right — all floating over the map.',
+  },
+  {
+    id: 'with-context',
+    label: 'B — Verbs + context strip (ref)',
+    blurb:
+      'Round-3 reference: the compact single-row bar plus the one-line teaching strip. What shipped as slice 1 — and what Kirk called "too far the other direction."',
   },
   {
     id: 'command-bar',
-    label: 'A — Command bar only',
+    label: 'A — Command bar only (ref)',
     blurb:
-      'Verb-first single row: verbs loudest, economy as pips, End Turn as a real commit button, overflow summonable.',
+      'Round-2 reference: verb-first single row, no strip. Kept for comparison.',
   },
 ];
 
-/** Discord activity viewport approximation for at-size review (#519). */
-const DISCORD_FRAME = { width: 840, height: 472 };
+/** Review frames: Discord activity approximation (#519) and a comfortable
+ * desktop window — round 4 judges compositions at BOTH. */
+const FRAMES = {
+  discord: { label: 'Discord (840×472)', width: 840, height: 472 },
+  desktop: { label: 'Desktop (1200×675)', width: 1200, height: 675 },
+} as const;
+type FrameId = keyof typeof FRAMES | 'off';
 
 function chipStyle(active: boolean): React.CSSProperties {
   return {
@@ -49,8 +85,8 @@ function chipStyle(active: boolean): React.CSSProperties {
 
 export function CombatPanelConcept() {
   const [fixtureId, setFixtureId] = useState(COMBAT_PANEL_FIXTURES[0].id);
-  const [composition, setComposition] = useState<CompositionId>('with-context');
-  const [framed, setFramed] = useState(true);
+  const [composition, setComposition] = useState<CompositionId>('comfort');
+  const [frame, setFrame] = useState<FrameId>('discord');
   const [armedKey, setArmedKey] = useState<string | undefined>();
   const fixture: CombatPanelFixture =
     COMBAT_PANEL_FIXTURES.find((f) => f.id === fixtureId) ??
@@ -75,37 +111,62 @@ export function CombatPanelConcept() {
     setArmedKey((k) => (k === refId ? undefined : refId));
   const handleEndTurn = () => selectFixture('spectator');
 
+  const panelProps = {
+    fixture,
+    armedKey,
+    onVerb: handleVerb,
+    onEndTurn: handleEndTurn,
+  };
+
+  // E floats over the map; the bar family docks below it.
+  const isOverlayComposition = composition === 'cluster';
+
   const panel =
-    composition === 'command-bar' ? (
-      <CommandBar
-        fixture={fixture}
-        armedKey={armedKey}
-        onVerb={handleVerb}
-        onEndTurn={handleEndTurn}
-      />
+    composition === 'comfort' ? (
+      <ComfortBar {...panelProps} skin="tokens" />
+    ) : composition === 'hud-skinned' ? (
+      <ComfortBar {...panelProps} skin="hud" />
+    ) : composition === 'cluster' ? (
+      <CommandCluster {...panelProps} />
+    ) : composition === 'command-bar' ? (
+      <CommandBar {...panelProps} />
     ) : (
-      <CommandBarWithContext
-        fixture={fixture}
-        armedKey={armedKey}
-        onVerb={handleVerb}
-        onEndTurn={handleEndTurn}
-      />
+      <CommandBarWithContext {...panelProps} />
     );
 
   const activeComposition = COMPOSITIONS.find((c) => c.id === composition);
 
+  const mapStandIn = (
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background:
+          'radial-gradient(ellipse at center, var(--bg-secondary), var(--bg-primary))',
+        color: 'var(--text-subtle)',
+        fontFamily: 'Cinzel, serif',
+        fontSize: 18,
+      }}
+    >
+      — the map —{isOverlayComposition && panel}
+    </div>
+  );
+
   return (
     <div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 12, fontSize: 14 }}>
-        Round-3 IA concepts for the combat panel (web#525), shaped by Kirk's
-        action-point-pool model: every verb carries a cost badge (circle=action,
-        diamond=bonus, triangle=reaction) matching the pips, straight from the
-        server's economy_slot. Core verbs stay flat in the bar; class options
-        group by where they come from (ref.type — Features, Spells, ...) in the
-        drop-up. Interactions are live: click a verb to arm it (Esc cancels),
-        End Turn hands the turn over, the gear shows where reaction policies
-        live. Hover anything for the words — tooltips carry the detail. The
-        frame below is Discord-activity-sized — review at true size.
+        Round-4 concepts for the combat panel (web#525), on Kirk's direction:
+        "the panel should be clear and large enough to read — we can have as
+        much room as feels comfortable." Three approaches (C comfortable / D
+        HUD-skinned / E cluster) join the A/B references. The pool + cost-badge
+        model is unchanged throughout: every verb carries its pool-shape cost
+        badge straight from the server's economy_slot. Interactions are live:
+        click a verb to arm it (Esc cancels), End Turn hands the turn over.
+        Review at Discord size AND desktop size — the frame toggle switches.
       </p>
 
       <div
@@ -126,8 +187,31 @@ export function CombatPanelConcept() {
             {c.label}
           </button>
         ))}
-        <button style={chipStyle(framed)} onClick={() => setFramed((f) => !f)}>
-          Discord frame {framed ? 'on' : 'off'}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          flexWrap: 'wrap',
+          marginBottom: 10,
+          alignItems: 'center',
+        }}
+      >
+        {(Object.keys(FRAMES) as (keyof typeof FRAMES)[]).map((id) => (
+          <button
+            key={id}
+            style={chipStyle(frame === id)}
+            onClick={() => setFrame(id)}
+          >
+            {FRAMES[id].label}
+          </button>
+        ))}
+        <button
+          style={chipStyle(frame === 'off')}
+          onClick={() => setFrame('off')}
+        >
+          Frame off
         </button>
       </div>
 
@@ -157,11 +241,11 @@ export function CombatPanelConcept() {
         {activeComposition?.blurb} · <em>{fixture.description}</em>
       </p>
 
-      {framed ? (
+      {frame !== 'off' ? (
         <div
           style={{
-            width: DISCORD_FRAME.width,
-            height: DISCORD_FRAME.height,
+            width: FRAMES[frame].width,
+            height: FRAMES[frame].height,
             maxWidth: '100%',
             border: '2px solid var(--border-primary)',
             borderRadius: 8,
@@ -171,28 +255,19 @@ export function CombatPanelConcept() {
             background: 'var(--bg-primary)',
           }}
         >
-          {/* Stand-in for the maximized map — the panel is judged against
-              how little room it takes from this. */}
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background:
-                'radial-gradient(ellipse at center, var(--bg-secondary), var(--bg-primary))',
-              color: 'var(--text-subtle)',
-              fontFamily: 'Cinzel, serif',
-              fontSize: 18,
-            }}
-          >
-            — the map —
-          </div>
-          {panel}
+          {mapStandIn}
+          {!isOverlayComposition && panel}
         </div>
       ) : (
-        panel
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: isOverlayComposition ? 360 : 0,
+          }}
+        >
+          {isOverlayComposition ? mapStandIn : panel}
+        </div>
       )}
     </div>
   );
