@@ -18,10 +18,15 @@ COPY . .
 # Accept build arguments for environment variables
 ARG VITE_DISCORD_CLIENT_ID
 ARG VITE_API_HOST
+# Cache-bust id for /themes/*.css links (web#553). .dockerignore excludes
+# .git, so vite.config.ts can't derive a SHA in-image — the workflow passes
+# github.sha through this arg instead.
+ARG BUILD_ID
 
 # Set environment variables for the build
 ENV VITE_DISCORD_CLIENT_ID=$VITE_DISCORD_CLIENT_ID
 ENV VITE_API_HOST=$VITE_API_HOST
+ENV BUILD_ID=$BUILD_ID
 
 # Copy theme files to public directory before build
 RUN mkdir -p public/themes && cp -r src/themes/*.css public/themes/
