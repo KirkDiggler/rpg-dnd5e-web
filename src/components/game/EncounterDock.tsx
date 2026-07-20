@@ -230,18 +230,14 @@ export function EncounterDock({
   const armedLabel = armedActionKey
     ? actions.find((a) => actionKey(a) === armedActionKey)?.displayName
     : undefined;
-  // rpg-dnd5e-web#545: "usable" comes only from server data — the action's
-  // own `available` flag AND its mapped pool not being exhausted (verbCost;
-  // unmapped slots like movement/free count as usable when available). An
-  // EMPTY menu is the pre-turnState loading window, not "nothing left" —
-  // hence the length guard.
-  const noneUsable =
-    actions.length > 0 &&
-    !actions.some((a) => {
-      if (!a.available) return false;
-      const cost = verbCost(a, economy);
-      return !cost || !cost.spent;
-    });
+  // rpg-dnd5e-web#545: "usable" is the server's `available` flag ALONE —
+  // the SAME signal that enables/disables VerbButton, so the strip and the
+  // buttons cannot disagree (Opus gate on #552: folding verbCost's pool
+  // state in here made the strip say "Nothing left" while an available
+  // verb sat enabled and clickable; pool exhaustion is badge language, not
+  // usability — see verbCost's doc). An EMPTY menu is the pre-turnState
+  // loading window, not "nothing left" — hence the length guard.
+  const noneUsable = actions.length > 0 && !actions.some((a) => a.available);
   const canStillMove = (movementRemaining ?? 0) > 0;
   const ctx = contextMessage(
     mode,

@@ -918,7 +918,10 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
   it('does not stay armed across a full turn handover that round-trips back in ONE batch (rpg-dnd5e-web#544)', async () => {
     // The live repro: END TURN → instant NPC turns → your round-2 turn, all
     // committed at once. A guard on a derived boolean (combatEnabled) never
-    // sees the intermediate state; the event-level disarm + turnKey must.
+    // sees the intermediate state. Both new mechanisms catch this shape
+    // (the round changed, so the turnKey derivation alone would too); the
+    // pocket-reentry test below is the one that ISOLATES the event-level
+    // disarm, via a round-trip that lands back on the SAME turnKey.
     renderAtCharAlice();
     enterTurnWithHelpArmable();
 
