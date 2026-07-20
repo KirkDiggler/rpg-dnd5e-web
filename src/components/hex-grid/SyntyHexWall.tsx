@@ -40,8 +40,12 @@ import { Suspense, useMemo } from 'react';
 import type { WorldPos } from './hexMath';
 import {
   buildDungeonWallSegments,
+  classifyWallVertices,
   edgePieceKind,
+  FITTINGS,
+  fittingScale,
   selectWallVariant,
+  wallEndEdgeKeys,
   wallVariantScale,
 } from './syntyHexWallHelpers';
 
@@ -101,6 +105,14 @@ export function SyntyHexWall({ walls, hexSize }: SyntyHexWallProps) {
     () => buildDungeonWallSegments(walls, hexSize),
     [walls, hexSize]
   );
+  // rpg-dnd5e-web#536 phase 2: corner/end fittings, computed from the same
+  // wall list — see syntyHexWallHelpers.ts's classifyWallVertices/
+  // wallEndEdgeKeys for the vertex-classification and run-terminus design.
+  const vertexFittings = useMemo(
+    () => classifyWallVertices(walls, hexSize),
+    [walls, hexSize]
+  );
+  const endEdgeKeys = useMemo(() => wallEndEdgeKeys(walls), [walls]);
 
   if (segments.length === 0) return null;
 
@@ -125,6 +137,21 @@ export function SyntyHexWall({ walls, hexSize }: SyntyHexWallProps) {
             </group>
           );
         }
+        // A degree-1 wall hex's far-facing edge caps a run terminus —
+        // render wall-end there instead of a plain/broken/alcove variant
+        // (rpg-dnd5e-web#536 phase 2, defect #3).
+        if (endEdgeKeys.has(key)) {
+          const fitting = FITTINGS['wall-end'];
+          return (
+            <GlbInstance
+              key={key}
+              file={fitting.file}
+              position={edge.mid}
+              rotationY={edge.rotationY}
+              scale={fittingScale(fitting.rawHeight, WALL_HEIGHT, SYNTY_SCALE)}
+            />
+          );
+        }
         // Deterministic per-edge variant (rpg-game-assets#2): `key` is a
         // stable function of the two hex coordinates this edge sits
         // between (buildDungeonWallSegments), so the same wall always
@@ -138,6 +165,18 @@ export function SyntyHexWall({ walls, hexSize }: SyntyHexWallProps) {
             position={edge.a}
             rotationY={edge.rotationY}
             scale={wallVariantScale(variant, WALL_HEIGHT, SYNTY_SCALE)}
+          />
+        );
+      })}
+      {vertexFittings.map(({ key, kind, position, rotationY }) => {
+        const fitting = FITTINGS[kind];
+        return (
+          <GlbInstance
+            key={key}
+            file={fitting.file}
+            position={position}
+            rotationY={rotationY}
+            scale={fittingScale(fitting.rawHeight, WALL_HEIGHT, SYNTY_SCALE)}
           />
         );
       })}

@@ -27,11 +27,14 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   coordToKey,
+  cubeToWorld,
   getHexLine,
   HEX_DIRECTIONS,
+  hexCorners,
   hexEdgeBetween,
   type CubeCoord,
   type HexEdge,
+  type WorldPos,
 } from './hexMath';
 
 export type EdgePieceKind = 'wall' | 'door';
@@ -180,6 +183,35 @@ export function wallVariantScale(
 }
 
 /**
+ * Build the map of hex-coordinate-key -> WallKind for every hex belonging to
+ * ANY wall, decomposing multi-hex `Wall.from`/`Wall.to` spans via
+ * getHexLine first. Shared by buildDungeonWallSegments (which needs each
+ * hex's WallKind to tag its segments) and classifyWallVertices/
+ * wallEndEdgeKeys (which only need wall-hex MEMBERSHIP, via `.has()`, to
+ * classify the vertices/edges where a wall boundary meets open space) --
+ * one source of truth for "what counts as a wall hex" so the segment
+ * builder and the new corner/end classifiers can never disagree about it.
+ */
+function collectWallHexes(walls: Wall[]): Map<string, WallKind> {
+  const wallKindByHex = new Map<string, WallKind>();
+  for (const wall of walls) {
+    if (!wall.from || !wall.to) continue;
+    const start: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
+    const end: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
+    for (const hex of getHexLine(start, end)) {
+      wallKindByHex.set(coordToKey(hex), wall.kind);
+    }
+  }
+  return wallKindByHex;
+}
+
+/** Parse a "x,y,z" hex key (coordToKey's format) back into a CubeCoord. */
+function parseHexKey(key: string): CubeCoord {
+  const [x, y, z] = key.split(',').map(Number) as [number, number, number];
+  return { x, y, z };
+}
+
+/**
  * Build one edge-aligned segment per (wall hex, non-wall neighbor) pair
  * across the ENTIRE wall list — not per-Wall-object, since a hex's
  * neighbor might belong to a *different* Wall entry than the hex itself
@@ -193,25 +225,12 @@ export function buildDungeonWallSegments(
   walls: Wall[],
   hexSize: number
 ): WallEdgeSegment[] {
-  const wallKindByHex = new Map<string, WallKind>();
-  for (const wall of walls) {
-    if (!wall.from || !wall.to) continue;
-    const start: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
-    const end: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
-    for (const hex of getHexLine(start, end)) {
-      wallKindByHex.set(coordToKey(hex), wall.kind);
-    }
-  }
+  const wallKindByHex = collectWallHexes(walls);
 
   const segments: WallEdgeSegment[] = [];
   const seenEdgeKeys = new Set<string>();
   for (const [hexKey, kind] of wallKindByHex) {
-    const [hx, hy, hz] = hexKey.split(',').map(Number) as [
-      number,
-      number,
-      number,
-    ];
-    const hex: CubeCoord = { x: hx, y: hy, z: hz };
+    const hex = parseHexKey(hexKey);
     for (const dir of HEX_DIRECTIONS) {
       const neighbor: CubeCoord = {
         x: hex.x + dir.x,
@@ -233,4 +252,232 @@ export function buildDungeonWallSegments(
     }
   }
   return segments;
+}
+
+/**
+ * Corner/vertex fittings (rpg-dnd5e-web#536 phase 2), sourced from
+ * rpg-game-assets#2's `roles.fittings.variants` (manifest.json). Unlike
+ * WALL_VARIANTS (`fit: "edge"`, long-and-thin, squeezed to span exactly one
+ * hex edge), these are tagged `fit: "context"` -- chunky, roughly-cubic
+ * pieces meant to sit at a single POINT (a shared hex vertex, or an edge
+ * midpoint for `wall-end`) rather than stretch across a span. Only
+ * `rawHeight` is needed here (see fittingScale) since width/depth use a
+ * uniform SYNTY_SCALE rather than being squeezed to a raw width like
+ * WALL_VARIANTS.
+ */
+export type FittingKind =
+  | 'wall-corner-outer'
+  | 'wall-corner-inner'
+  | 'wall-end';
+
+export interface FittingVariant {
+  kind: FittingKind;
+  file: string;
+  rawHeight: number;
+}
+
+export const FITTINGS: Record<FittingKind, FittingVariant> = {
+  'wall-corner-outer': {
+    kind: 'wall-corner-outer',
+    file: 'SM_Env_Wall_End_Coner_Outer_01.glb',
+    rawHeight: 5.026,
+  },
+  'wall-corner-inner': {
+    kind: 'wall-corner-inner',
+    file: 'SM_Env_Wall_End_Coner_Inner_01.glb',
+    rawHeight: 5.0263,
+  },
+  'wall-end': {
+    kind: 'wall-end',
+    file: 'SM_Env_Wall_End_01.glb',
+    rawHeight: 5.0472,
+  },
+};
+
+/**
+ * Uniform-ish "context" fit scale for a fitting: unlike wallVariantScale's
+ * edge-squeeze (1/rawWidth), a fitting's footprint is left at the standard
+ * Synty scale on X/Z (it's meant to sit at its own natural footprint,
+ * centered on a vertex or edge midpoint) -- only height is clamped to the
+ * game's wall height, same as every other wall piece.
+ */
+export function fittingScale(
+  rawHeight: number,
+  wallHeight: number,
+  syntyScale: number
+): [number, number, number] {
+  return [syntyScale, wallHeight / rawHeight, syntyScale];
+}
+
+export interface VertexFitting {
+  /** Order-independent identity for the vertex (the 3 touching hex keys,
+   * sorted and joined) -- stable across which of the (up to 3) wall hexes
+   * touching it the classifier happened to visit first, and stable across
+   * renders/reconnects like WallEdgeSegment.key. */
+  key: string;
+  kind: Extract<FittingKind, 'wall-corner-outer' | 'wall-corner-inner'>;
+  position: WorldPos;
+  rotationY: number;
+}
+
+/**
+ * Classify every hex-grid vertex touched by at least one wall hex (rpg-
+ * dnd5e-web#536 phase 2 -- diagnosis's "RECOMMENDED FIX DESIGN").
+ *
+ * Every interior hex-grid vertex is shared by exactly 3 hexes. For a given
+ * wall hex H and corner index i (hexCorners' angle = 30+60*i), the corner-
+ * angle-bisects-between-neighbor-directions geometry means corner i is the
+ * vertex shared by exactly {H, H+HEX_DIRECTIONS[i], H+HEX_DIRECTIONS[i+1]}
+ * -- so iterating every wall hex's 6 corners visits every vertex that
+ * touches at least one wall hex (a vertex touching ZERO wall hexes is by
+ * definition not on any wall boundary and never needs classifying, so it's
+ * fine that this traversal can't reach it).
+ *
+ * Classification counts how many of those 3 hexes are wall hexes:
+ * - 1 of 3 -> convex/"outer" corner: the wall hex's own two edges meeting
+ *   here both face open space and turn by the hex's 120-degree interior
+ *   angle. `wall-corner-outer`, rotated away from the wall hex's own
+ *   center through the vertex (reusing hexEdgeBetween's atan2(-dz, dx)
+ *   convention).
+ * - 2 of 3 -> concave/"inner" corner (open floor notching between two wall
+ *   hexes). `wall-corner-inner`, rotated toward the single open hex.
+ * - 3 of 3 -> fully buried inside a solid mass; no boundary passes through
+ *   this vertex, skip. (0 of 3 is structurally unreachable here: this
+ *   traversal only ever visits a corner of a hex already known to be a
+ *   wall hex, so that hex itself always counts toward the 3 -- kept as an
+ *   explicit disjunction with 3 below for clarity against the diagnosis's
+ *   "0 or 3, skip" wording, not because 0 can actually occur.)
+ *
+ * A "straight continuation" (two collinear wall edges meeting at ~180
+ * degrees) needs no special exemption, per the diagnosis -- and indeed
+ * this never arises structurally: the two directions meeting at any given
+ * corner (i and i+1) are always exactly 60 degrees apart by construction
+ * of the hex-corner geometry, never 180. Every vertex a wall boundary
+ * passes through is a genuine turn.
+ *
+ * Pure and independent of GLB loading so it's unit-testable directly.
+ */
+export function classifyWallVertices(
+  walls: Wall[],
+  hexSize: number
+): VertexFitting[] {
+  const wallKindByHex = collectWallHexes(walls);
+  const fittings: VertexFitting[] = [];
+  const seenVertexKeys = new Set<string>();
+
+  for (const hexKey of wallKindByHex.keys()) {
+    const hex = parseHexKey(hexKey);
+    const hexCenter = cubeToWorld(hex, hexSize);
+    const corners = hexCorners(hexCenter, hexSize);
+
+    for (let i = 0; i < HEX_DIRECTIONS.length; i++) {
+      const dirA = HEX_DIRECTIONS[i]!;
+      const dirB = HEX_DIRECTIONS[(i + 1) % HEX_DIRECTIONS.length]!;
+      const neighborAKey = coordToKey({
+        x: hex.x + dirA.x,
+        y: hex.y + dirA.y,
+        z: hex.z + dirA.z,
+      });
+      const neighborBKey = coordToKey({
+        x: hex.x + dirB.x,
+        y: hex.y + dirB.y,
+        z: hex.z + dirB.z,
+      });
+
+      const touchingKeys = [hexKey, neighborAKey, neighborBKey];
+      const vertexKey = [...touchingKeys].sort().join('|');
+      if (seenVertexKeys.has(vertexKey)) continue;
+      seenVertexKeys.add(vertexKey);
+
+      const wallTouchingKeys = touchingKeys.filter((k) => wallKindByHex.has(k));
+      if (wallTouchingKeys.length >= 3) continue; // fully enclosed, no boundary here
+
+      const position = corners[i]!;
+
+      if (wallTouchingKeys.length === 1) {
+        const rotationY = Math.atan2(
+          -(position.z - hexCenter.z),
+          position.x - hexCenter.x
+        );
+        fittings.push({
+          key: vertexKey,
+          kind: 'wall-corner-outer',
+          position,
+          rotationY,
+        });
+      } else {
+        // Exactly 2 of 3 -- find the single OPEN hex among the three to
+        // rotate toward.
+        const openKey = touchingKeys.find((k) => !wallKindByHex.has(k));
+        if (!openKey) continue; // unreachable (length === 2 guarantees one open key)
+        const openCenter = cubeToWorld(parseHexKey(openKey), hexSize);
+        const rotationY = Math.atan2(
+          -(position.z - openCenter.z),
+          position.x - openCenter.x
+        );
+        fittings.push({
+          key: vertexKey,
+          kind: 'wall-corner-inner',
+          position,
+          rotationY,
+        });
+      }
+    }
+  }
+
+  return fittings;
+}
+
+/**
+ * Identify which wall edge segments (WallEdgeSegment.key, same format
+ * produced by buildDungeonWallSegments) terminate a wall run and should
+ * render `wall-end` instead of a normal plain/broken/alcove variant.
+ *
+ * A wall hex is a true run terminus only when it has EXACTLY ONE wall
+ * neighbor -- a degree-0 (isolated) hex is fully handled by
+ * classifyWallVertices alone (all 6 of its corners are "1 of 3" outer
+ * corners, per the diagnosis: "capping every vertex of an isolated hex...
+ * turns a lone wall hex into a small hex kiosk with 6 mitered corners",
+ * which is defect #2's fix); a degree-2+ hex is a through-hex or junction,
+ * already handled by corner classification at its vertices. Only degree-1
+ * has a genuine open "far side" that needs an explicit end cap: the edge
+ * facing directly away from its one wall neighbor (opposite direction,
+ * `(dir + 3) % 6`) -- e.g. a 2-hex stub gets a wall-end on each hex's own
+ * far side, capping both open ends.
+ *
+ * Returns edge keys (not positions) so SyntyHexWall can swap the piece for
+ * an already-built WallEdgeSegment (same hex/neighbor pair, same
+ * hexEdgeBetween result) rather than recomputing geometry.
+ *
+ * Pure and independent of GLB loading so it's unit-testable directly.
+ */
+export function wallEndEdgeKeys(walls: Wall[]): Set<string> {
+  const wallKindByHex = collectWallHexes(walls);
+  const endKeys = new Set<string>();
+
+  for (const hexKey of wallKindByHex.keys()) {
+    const hex = parseHexKey(hexKey);
+    const wallNeighborDirIndices: number[] = [];
+    for (let i = 0; i < HEX_DIRECTIONS.length; i++) {
+      const dir = HEX_DIRECTIONS[i]!;
+      const neighborKey = coordToKey({
+        x: hex.x + dir.x,
+        y: hex.y + dir.y,
+        z: hex.z + dir.z,
+      });
+      if (wallKindByHex.has(neighborKey)) wallNeighborDirIndices.push(i);
+    }
+    if (wallNeighborDirIndices.length !== 1) continue; // not a true terminus
+
+    const farDir =
+      HEX_DIRECTIONS[(wallNeighborDirIndices[0]! + 3) % HEX_DIRECTIONS.length]!;
+    const farNeighborKey = coordToKey({
+      x: hex.x + farDir.x,
+      y: hex.y + farDir.y,
+      z: hex.z + farDir.z,
+    });
+    endKeys.add(`${hexKey}->${farNeighborKey}`);
+  }
+
+  return endKeys;
 }

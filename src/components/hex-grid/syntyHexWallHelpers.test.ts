@@ -3,11 +3,16 @@ import {
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
+import { coordToKey, HEX_DIRECTIONS } from './hexMath';
 import {
   buildDungeonWallSegments,
+  classifyWallVertices,
   edgePieceKind,
+  FITTINGS,
+  fittingScale,
   selectWallVariant,
   WALL_VARIANTS,
+  wallEndEdgeKeys,
   wallVariantScale,
 } from './syntyHexWallHelpers';
 
@@ -136,6 +141,150 @@ describe('selectWallVariant', () => {
       expect(counts[variant.name] ?? 0).toBeGreaterThan(expected * 0.5);
       expect(counts[variant.name] ?? 0).toBeLessThan(expected * 1.5);
     }
+  });
+});
+
+describe('classifyWallVertices', () => {
+  it('caps an isolated single wall hex with 6 outer corners (defect #2)', () => {
+    // No wall neighbors at all -> every one of its 6 corners has exactly
+    // 1-of-3 touching hexes as a wall (itself) -> all 6 are
+    // wall-corner-outer, turning the "rubble ring" hex into a mitered
+    // hex kiosk.
+    const walls = [wall({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 })];
+    const fittings = classifyWallVertices(walls, 1);
+    expect(fittings).toHaveLength(6);
+    expect(fittings.every((f) => f.kind === 'wall-corner-outer')).toBe(true);
+    // Every fitting's position should be exactly 1 hex-radius from origin
+    // (a hex corner at hexSize 1) and every rotation a finite number.
+    for (const f of fittings) {
+      const dist = Math.hypot(f.position.x, f.position.z);
+      expect(dist).toBeCloseTo(1, 5);
+      expect(Number.isFinite(f.rotationY)).toBe(true);
+    }
+  });
+
+  it('classifies a straight 3-hex run: 10 outer corners + 4 shared inner corners', () => {
+    // H0 -(E)- H1 -(E)- H2, all collinear/all walls. Hand-verified: each
+    // end hex (degree 1) contributes 4 of its own outer corners + shares 2
+    // inner corners with its one wall neighbor; the middle hex (degree 2)
+    // contributes 2 of its own outer corners (its "tips" perpendicular to
+    // the run) and its other 4 corners are the (deduped) shared inner
+    // corners with H0/H2. Unique total: 4+2+4 = 10 outer, 2+2 = 4 inner.
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }),
+      wall({ x: 1, y: -1, z: 0 }, { x: 1, y: -1, z: 0 }),
+      wall({ x: 2, y: -2, z: 0 }, { x: 2, y: -2, z: 0 }),
+    ];
+    const fittings = classifyWallVertices(walls, 1);
+    const outer = fittings.filter((f) => f.kind === 'wall-corner-outer');
+    const inner = fittings.filter((f) => f.kind === 'wall-corner-inner');
+    expect(outer).toHaveLength(10);
+    expect(inner).toHaveLength(4);
+    expect(fittings).toHaveLength(14);
+    // Vertex keys are unique (no double-placement of the same fitting).
+    expect(new Set(fittings.map((f) => f.key)).size).toBe(fittings.length);
+  });
+
+  it('classifies a 60-degree turn: the bend hex has no skipped corners, mixing outer and inner', () => {
+    // H0 -(E)- H1 -(NE)- H2: direction changes by 60 degrees at H1. H1's
+    // two wall-neighbor directions (W and NE) are never the SAME
+    // consecutive corner-pair, so every one of H1's 6 corners gets
+    // classified (none skipped) -- hand-verified as 2 outer (H1's own
+    // "short way" tips) + 4 inner (2 shared with H0, 2 shared with H2).
+    const h1Key = '1,-1,0';
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }),
+      wall({ x: 1, y: -1, z: 0 }, { x: 1, y: -1, z: 0 }),
+      wall({ x: 2, y: -1, z: -1 }, { x: 2, y: -1, z: -1 }),
+    ];
+    const fittings = classifyWallVertices(walls, 1);
+    const touchingH1 = fittings.filter((f) => f.key.split('|').includes(h1Key));
+    // H1 is wall for every one of its own 6 corners (0 skipped), so all 6
+    // corners are classified as touching H1 in some fitting.
+    expect(touchingH1).toHaveLength(6);
+    expect(
+      touchingH1.filter((f) => f.kind === 'wall-corner-outer')
+    ).toHaveLength(2);
+    expect(
+      touchingH1.filter((f) => f.kind === 'wall-corner-inner')
+    ).toHaveLength(4);
+  });
+
+  it('skips a fully-enclosed vertex (3 of 3 touching hexes are walls)', () => {
+    // A "flower": a center hex plus its full ring of 6, all marked wall.
+    // Every corner of the CENTER hex touches {center, ring[i], ring[i+1]}
+    // -- all 3 are walls, so none of the center's 6 corners should ever
+    // appear as a classified fitting (fully buried inside the mass).
+    const center = { x: 0, y: 0, z: 0 };
+    const ring = HEX_DIRECTIONS.map((d) => ({
+      x: center.x + d.x,
+      y: center.y + d.y,
+      z: center.z + d.z,
+    }));
+    const walls = [center, ...ring].map((c) => wall(c, c));
+    const fittings = classifyWallVertices(walls, 1);
+
+    const centerKey = coordToKey(center);
+    for (let i = 0; i < HEX_DIRECTIONS.length; i++) {
+      const a = ring[i]!;
+      const b = ring[(i + 1) % HEX_DIRECTIONS.length]!;
+      const enclosedVertexKey = [centerKey, coordToKey(a), coordToKey(b)]
+        .sort()
+        .join('|');
+      expect(fittings.some((f) => f.key === enclosedVertexKey)).toBe(false);
+    }
+    // Sanity: the flower still has plenty of boundary fittings around its
+    // outer edge (not an empty result).
+    expect(fittings.length).toBeGreaterThan(0);
+  });
+});
+
+describe('wallEndEdgeKeys', () => {
+  it('returns no end keys for an isolated wall hex (defect #2 handles it via corners alone)', () => {
+    const walls = [wall({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 })];
+    expect(wallEndEdgeKeys(walls).size).toBe(0);
+  });
+
+  it("caps both ends of a 2-hex stub, one on each hex's far side", () => {
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }),
+      wall({ x: 1, y: -1, z: 0 }, { x: 1, y: -1, z: 0 }),
+    ];
+    const endKeys = wallEndEdgeKeys(walls);
+    expect(endKeys.size).toBe(2);
+    // H0's only wall neighbor is E (H1); its far side is W.
+    expect(endKeys.has('0,0,0->-1,1,0')).toBe(true);
+    // H1's only wall neighbor is W (H0); its far side is E.
+    expect(endKeys.has('1,-1,0->2,-2,0')).toBe(true);
+  });
+
+  it('does not mark the middle hex of a straight 3-hex run as an end (degree 2)', () => {
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }),
+      wall({ x: 1, y: -1, z: 0 }, { x: 1, y: -1, z: 0 }),
+      wall({ x: 2, y: -2, z: 0 }, { x: 2, y: -2, z: 0 }),
+    ];
+    const endKeys = wallEndEdgeKeys(walls);
+    // Only the two true termini (H0, H2) get an end cap.
+    expect(endKeys.size).toBe(2);
+    expect(endKeys.has('0,0,0->-1,1,0')).toBe(true);
+    expect(endKeys.has('2,-2,0->3,-3,0')).toBe(true);
+    for (const key of endKeys) {
+      expect(key.startsWith('1,-1,0->')).toBe(false);
+    }
+  });
+});
+
+describe('fittingScale', () => {
+  it('uses uniform SYNTY_SCALE on X/Z (context fit, not edge-squeezed)', () => {
+    const [sx, sy, sz] = fittingScale(
+      FITTINGS['wall-corner-outer'].rawHeight,
+      0.8,
+      0.75
+    );
+    expect(sx).toBe(0.75);
+    expect(sz).toBe(0.75);
+    expect(sy).toBeCloseTo(0.8 / FITTINGS['wall-corner-outer'].rawHeight, 5);
   });
 });
 
