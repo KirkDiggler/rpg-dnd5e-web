@@ -35,6 +35,8 @@ import { HexEntity } from './HexEntity';
 import { cubeToWorld, getHexLine, HEX_SIZE, type CubeCoord } from './hexMath';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
+import { resolveEntityTint } from './selectionVisuals';
+import { SelfIndicatorRing } from './SelfIndicatorRing';
 import { ShadedHexFloor } from './ShadedHexFloor';
 import { ShadedHexWall } from './ShadedHexWall';
 import { SyntyHexFloor } from './SyntyHexFloor';
@@ -607,6 +609,21 @@ function Scene({
         />
       )}
 
+      {/* "This is me" self-indicator (rpg-dnd5e-web#515): a ring under the
+          local player's own model, reusing PathPreview/MovementRangeBorder's
+          ground-overlay visual language instead of the selection emissive
+          tint (which used to double as this signal — see
+          selectionVisuals.ts's doc comment). Always on (not gated on turn
+          state, unlike the movement border) and suppressed for dead/ghost
+          entities, same as the selection tint's own isDead gate. */}
+      {focusTarget && !myEntity?.isDead && !myEntity?.isGhost && (
+        <SelfIndicatorRing
+          x={focusTarget.x}
+          z={focusTarget.z}
+          hexSize={HEX_SIZE}
+        />
+      )}
+
       {/* Render all entities */}
       {entities.map((entity) => (
         <HexEntity
@@ -616,7 +633,11 @@ function Scene({
           position={entity.position}
           type={entity.type}
           hexSize={HEX_SIZE}
-          isSelected={entity.entityId === selectedEntityId}
+          isSelected={resolveEntityTint(
+            entity.entityId,
+            selectedEntityId,
+            currentEntityId
+          )}
           onClick={handleEntityClick}
           character={characterMap.get(entity.entityId)}
           monster={monsterMap.get(entity.entityId)}
