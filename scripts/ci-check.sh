@@ -54,6 +54,14 @@ echo ""
 echo "🏗️  Running build..."
 if npm run build > /dev/null 2>&1; then
   echo -e "${GREEN}✓ Build passed${NC}"
+  # Guard (web#563): the built theme CSS must carry the combat-HUD block —
+  # a stale copy shipping in its place is exactly how prod went unstyled twice.
+  if grep -q '\.hud-skin' dist/themes/base.css 2>/dev/null; then
+    echo -e "${GREEN}✓ Built theme CSS carries the combat-HUD block${NC}"
+  else
+    echo -e "${RED}✗ dist/themes/base.css is missing the combat-HUD styles (web#563 regression)${NC}"
+    FAILED=1
+  fi
 else
   echo -e "${RED}✗ Build failed${NC}"
   echo -e "${YELLOW}  Run 'npm run build' to see errors${NC}"
