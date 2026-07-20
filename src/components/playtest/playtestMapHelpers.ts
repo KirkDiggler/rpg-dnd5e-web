@@ -260,3 +260,23 @@ export function buildDevPropDemoEntities(
     };
   });
 }
+
+/**
+ * Parse EncounterMap's `?devPropDemoKeys=` query param value into a
+ * deduplicated key list. Deduplication matters because
+ * buildDevPropDemoEntities derives each synthetic entity's id from its
+ * key (`__dev-prop-demo-${key}__`) — a repeated key (e.g.
+ * `?devPropDemoKeys=barrel,barrel`) would otherwise produce two entities
+ * sharing one entityId, colliding as HexGrid's render loop keys on
+ * entityId (React key warning, unstable rendering). Order-preserving
+ * (first occurrence wins), matching the intuitive left-to-right reading
+ * of the query param. Returns `[]` for null/empty input.
+ */
+export function parseDevPropDemoKeys(raw: string | null): string[] {
+  if (!raw) return [];
+  const parsed = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return Array.from(new Set(parsed));
+}

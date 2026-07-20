@@ -17,6 +17,7 @@ import {
   buildRenderableEntities,
   buildTurnOrderCombatState,
   entityTypeToDisplay,
+  parseDevPropDemoKeys,
   synthesizeFloorTiles,
 } from './playtestMapHelpers';
 
@@ -374,5 +375,46 @@ describe('buildDevPropDemoEntities (rpg-dnd5e-web#528 devPropDemoKeys)', () => {
     ];
     const entities = buildDevPropDemoEntities(keys, { x: 0, y: 0, z: 0 });
     expect(entities).toHaveLength(6);
+  });
+});
+
+describe('parseDevPropDemoKeys (Copilot review, rpg-dnd5e-web#530)', () => {
+  it('returns [] for null input', () => {
+    expect(parseDevPropDemoKeys(null)).toEqual([]);
+  });
+
+  it('returns [] for an empty string', () => {
+    expect(parseDevPropDemoKeys('')).toEqual([]);
+  });
+
+  it('splits and trims a comma-separated list', () => {
+    expect(parseDevPropDemoKeys('barrel, pillar ,crate')).toEqual([
+      'barrel',
+      'pillar',
+      'crate',
+    ]);
+  });
+
+  it('drops empty segments (trailing/double commas)', () => {
+    expect(parseDevPropDemoKeys('barrel,,pillar,')).toEqual([
+      'barrel',
+      'pillar',
+    ]);
+  });
+
+  it('deduplicates repeated keys, keeping first-occurrence order — the exact bug Copilot flagged: a repeated key would otherwise collide as a duplicate entityId in buildDevPropDemoEntities', () => {
+    expect(parseDevPropDemoKeys('barrel,pillar,barrel,crate,pillar')).toEqual([
+      'barrel',
+      'pillar',
+      'crate',
+    ]);
+  });
+
+  it('composes with buildDevPropDemoEntities to guarantee unique entityIds even with duplicate query-param keys', () => {
+    const keys = parseDevPropDemoKeys('barrel,barrel,barrel');
+    const entities = buildDevPropDemoEntities(keys, { x: 0, y: 0, z: 0 });
+    expect(entities).toHaveLength(1);
+    const ids = new Set(entities.map((e) => e.entityId));
+    expect(ids.size).toBe(entities.length);
   });
 });

@@ -28,8 +28,12 @@ describe('EXPECTED_PROP_KEYS guard (rpg-dnd5e-web#528, charter #523)', () => {
     });
   }
 
-  it('has exactly 17 keys today, matching the #523 comment-thread count', () => {
-    expect(EXPECTED_PROP_KEYS.length).toBe(17);
+  it('has at least the 17 keys agreed on the #523 comment thread (platform may append more)', () => {
+    expect(EXPECTED_PROP_KEYS.length).toBeGreaterThanOrEqual(17);
+  });
+
+  it('has no duplicate entries (a repeated key would silently no-op an append)', () => {
+    expect(new Set(EXPECTED_PROP_KEYS).size).toBe(EXPECTED_PROP_KEYS.length);
   });
 
   it('every EXPECTED_PROP_KEYS entry follows the dnd5e:props:<name> convention', () => {

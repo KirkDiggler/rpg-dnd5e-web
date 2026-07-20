@@ -32,6 +32,7 @@ import {
   buildDevPropDemoEntities,
   buildRenderableEntities,
   buildTurnOrderCombatState,
+  parseDevPropDemoKeys,
   synthesizeFloorTiles,
 } from '../playtest/playtestMapHelpers';
 
@@ -110,18 +111,17 @@ export function EncounterMap({
   // prop_ref data (see buildDevPropDemoEntities' doc comment). Read once,
   // same convention as `syntyDungeon` below; empty/absent by default, so
   // this is a no-op for every real player and every existing e2e/manual
-  // flow.
-  const devPropDemoKeys = useMemo(() => {
-    const raw = new URLSearchParams(window.location.search).get(
-      'devPropDemoKeys'
-    );
-    return raw
-      ? raw
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-  }, []);
+  // flow. Parsing (including deduplication) lives in
+  // parseDevPropDemoKeys/playtestMapHelpers.ts, unit-tested, per this
+  // file's own "thin translation, real logic in the shared helpers"
+  // convention.
+  const devPropDemoKeys = useMemo(
+    () =>
+      parseDevPropDemoKeys(
+        new URLSearchParams(window.location.search).get('devPropDemoKeys')
+      ),
+    []
+  );
 
   const renderableEntities = useMemo(() => {
     const base = buildRenderableEntities(
