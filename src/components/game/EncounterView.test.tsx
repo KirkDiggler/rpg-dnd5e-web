@@ -616,9 +616,9 @@ describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#43
       await Promise.resolve();
     });
 
-    // rpg-dnd5e-web#519: the log is a closed-by-default overlay now, not an
-    // always-reserved column — open it before asserting on its entries.
-    fireEvent.click(screen.getByLabelText(/Combat log/));
+    // Round 7 (#525 slice 2): the log is OPEN by default — the floating
+    // panel is already rendering; assert entries directly.
+    expect(screen.getByTestId('floating-log')).toBeTruthy();
 
     expect(
       screen.getByTestId('combat-log-entry-actionResolved-0').textContent

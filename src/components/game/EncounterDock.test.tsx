@@ -120,9 +120,8 @@ describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () =
         activeEntityName="Goblin"
       />
     );
-    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
-      "Goblin's turn — watch the map."
-    );
+    expect(announced()).toBe("Goblin's turn — watch the map.");
+    expect(pillText()).toBe("Goblin's turn — watch the map.");
     // Spectators get no verbs, pips, or End Turn — the strip carries it.
     expect(screen.queryByTestId('encounter-dock-verbs')).toBeNull();
     expect(screen.queryByText('End Turn')).toBeNull();
@@ -139,9 +138,8 @@ describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () =
         economy={economy(0, 0, 0, 5)}
       />
     );
-    expect(screen.getByTestId('encounter-dock-context').textContent).toMatch(
-      /^Exploring/
-    );
+    expect(announced()).toMatch(/^Exploring/);
+    expect(pillText()).toMatch(/^Exploring/);
     expect(screen.queryByTestId('encounter-dock-verbs')).toBeNull();
     expect(screen.queryByLabelText(/^Action: /)).toBeNull();
     expect(screen.queryByTestId('encounter-dock-movement')).toBeNull();
@@ -161,9 +159,8 @@ describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () =
         actions={[action('attack', 'Attack')]}
       />
     );
-    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
-      'The encounter has ended.'
-    );
+    expect(announced()).toBe('The encounter has ended.');
+    expect(pillText()).toBe('The encounter has ended.');
     expect(screen.queryByTestId('encounter-dock-verbs')).toBeNull();
     expect(screen.queryByLabelText(/^Action: /)).toBeNull();
     expect(screen.queryByTestId('encounter-dock-movement')).toBeNull();
@@ -178,9 +175,10 @@ describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () =
         isMyTurn={false}
       />
     );
-    const text = screen.getByTestId('encounter-dock-context').textContent;
+    const text = announced();
     expect(text).not.toMatch(/Exploring/);
     expect(text).toBe('Connecting…');
+    expect(pillText()).toBe('Connecting…');
   });
 
   it('does not flash armed guidance when it is no longer your turn (gate #4)', () => {
@@ -194,9 +192,7 @@ describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () =
         armedActionKey="dnd5e:combat_abilities:attack"
       />
     );
-    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
-      "Goblin's turn — watch the map."
-    );
+    expect(announced()).toBe("Goblin's turn — watch the map.");
   });
 
   it('guides End Turn when the server disables every verb and no movement remains (#545)', () => {
@@ -216,9 +212,8 @@ describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () =
         ]}
       />
     );
-    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
-      'Nothing left to do — End Turn.'
-    );
+    expect(announced()).toBe('Nothing left to do — End Turn.');
+    expect(pillText()).toBe('Nothing left to do — End Turn.');
   });
 
   it('prefers the still-can-move variant when movement remains (#545)', () => {
@@ -231,9 +226,8 @@ describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () =
         ]}
       />
     );
-    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
-      'You can still move — or End Turn.'
-    );
+    expect(announced()).toBe('You can still move — or End Turn.');
+    expect(pillText()).toBe('You can still move — or End Turn.');
   });
 
   it('never contradicts an enabled button: an available verb with a zero pool keeps "pick an action" (#552 gate)', () => {
@@ -248,9 +242,8 @@ describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () =
         actions={[action('attack', 'Attack')]}
       />
     );
-    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
-      'Your turn — pick an action.'
-    );
+    expect(announced()).toBe('Your turn — pick an action.');
+    expect(pillText()).toBeNull();
   });
 
   it('keeps "pick an action" while anything is affordable — a spent action pool with a live bonus verb is not "nothing left" (#545)', () => {
@@ -264,16 +257,14 @@ describe('EncounterDock teaching surface (#525 slice 2: pill + aria-live)', () =
         ]}
       />
     );
-    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
-      'Your turn — pick an action.'
-    );
+    expect(announced()).toBe('Your turn — pick an action.');
+    expect(pillText()).toBeNull();
   });
 
   it('treats an empty menu as the loading window, never "nothing left" (#545)', () => {
     render(<EncounterDock {...baseProps()} actions={[]} economy={null} />);
-    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
-      'Your turn — pick an action.'
-    );
+    expect(announced()).toBe('Your turn — pick an action.');
+    expect(pillText()).toBeNull();
   });
 });
 
@@ -293,7 +284,7 @@ describe('EncounterDock inline verbs (round 5: inline by default)', () => {
     );
     expect(screen.getByText('Attack')).toBeTruthy();
     // The feature sits INLINE in its labeled group, visible immediately.
-    expect(screen.getByTestId('inline-group-feature')).toBeTruthy();
+    expect(screen.getByTestId('inline-group-Features')).toBeTruthy();
     expect(screen.getByText('Flurry of Blows')).toBeTruthy();
     expect(screen.queryByTestId('encounter-dock-menu')).toBeNull();
   });
