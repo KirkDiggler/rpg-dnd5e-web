@@ -27,6 +27,7 @@
 
 import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useEffect, useRef, useState } from 'react';
+import { CombatLog } from '../../components/game/CombatLog';
 import { Button } from '../../components/ui/Button';
 import {
   EconomyPips,
@@ -37,6 +38,7 @@ import {
   verbCost,
   type VerbGroup,
 } from '../../components/ui/combat';
+import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import { getActionIconUrl } from '../../utils/actionIcons';
 import { ContextPill } from './ContextPill';
 import { ContextStrip } from './ContextStrip';
@@ -55,6 +57,18 @@ export interface ComfortBarProps {
    * the map gets the freed row. 'row' keeps the round-4 strip (C ref).
    */
   strip?: 'row' | 'pill';
+  /**
+   * Round 7 (Kirk: "we always want to see the info there"): when provided,
+   * the combat log renders DEFAULT-OPEN as a translucent panel floating
+   * over the map, anchored bottom-right above the dock (opposite corner
+   * from the centered pill — they can't collide). The 📜 toggle hides it;
+   * open is the default. Renders through the REAL CombatLog component, so
+   * the live slice is a data-source swap (useCombatLog instead of
+   * fixtures). Shown in every state incl. FREE_ROAM (exploration events
+   * land there too) and spectator (spectators especially live off the
+   * log).
+   */
+  logEntries?: CombatLogEntry[];
 }
 
 /**
@@ -89,9 +103,12 @@ export function ComfortBar({
   onEndTurn,
   skin = 'tokens',
   strip = 'row',
+  logEntries,
 }: ComfortBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Round 7: OPEN is the default — the toggle exists to hide it.
+  const [logOpen, setLogOpen] = useState(true);
   const rowRef = useRef<HTMLDivElement>(null);
   const [rowWidth, setRowWidth] = useState<number | null>(null);
 
@@ -168,6 +185,29 @@ export function ComfortBar({
       <div style={{ position: 'relative', flexShrink: 0 }}>
         {strip === 'pill' && (
           <ContextPill fixture={fixture} armedKey={armedKey} large={big} />
+        )}
+        {/* Round 7: default-open floating combat log, bottom-RIGHT above
+            the dock (the pill centers — no collision by construction; the
+            settings popover anchors LEFT, so it can't contest this corner
+            either — noted as the chosen overlap strategy). Translucent so
+            the map reads through; internal scroll, newest at bottom (the
+            real CombatLog handles both). */}
+        {logEntries && logOpen && (
+          <div
+            className="floating-log"
+            data-testid="floating-log"
+            style={{
+              position: 'absolute',
+              right: 12,
+              bottom: '100%',
+              marginBottom: 10,
+              width: big ? 360 : 330,
+              maxWidth: '45%',
+              zIndex: 4,
+            }}
+          >
+            <CombatLog entries={logEntries} />
+          </div>
         )}
         <div
           className="hud-dock"
@@ -293,7 +333,26 @@ export function ComfortBar({
               </span>
             )}
 
-            <span style={{ marginLeft: 'auto' }}>
+            <span
+              style={{
+                marginLeft: 'auto',
+                display: 'inline-flex',
+                gap: 6,
+                alignItems: 'center',
+              }}
+            >
+              {logEntries && (
+                <OverlayToggle
+                  label={`📜 ${logEntries.length}`}
+                  open={logOpen}
+                  onToggle={() => setLogOpen((o) => !o)}
+                  aria-label={
+                    logOpen
+                      ? `Hide combat log (${logEntries.length} entries)`
+                      : `Show combat log (${logEntries.length} entries)`
+                  }
+                />
+              )}
               <OverlayToggle
                 label="⚙"
                 open={settingsOpen}

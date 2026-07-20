@@ -17,6 +17,7 @@ import { CommandBar } from './CommandBar';
 import { CommandBarWithContext } from './CommandBarWithContext';
 import { CommandCluster } from './CommandCluster';
 import { COMBAT_PANEL_FIXTURES, type CombatPanelFixture } from './fixtures';
+import { CONCEPT_LOG_ENTRIES } from './logFixtures';
 
 type CompositionId =
   | 'comfort'
@@ -123,7 +124,12 @@ export function CombatPanelConcept() {
     composition === 'comfort' ? (
       <ComfortBar {...panelProps} skin="tokens" />
     ) : composition === 'hud-skinned' ? (
-      <ComfortBar {...panelProps} skin="hud" strip="pill" />
+      <ComfortBar
+        {...panelProps}
+        skin="hud"
+        strip="pill"
+        logEntries={CONCEPT_LOG_ENTRIES}
+      />
     ) : composition === 'cluster' ? (
       <CommandCluster {...panelProps} />
     ) : composition === 'command-bar' ? (
@@ -157,19 +163,20 @@ export function CombatPanelConcept() {
   return (
     <div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 12, fontSize: 14 }}>
-        Round-6 concepts for the combat panel (web#525). D (HUD-skinned) is
-        Kirk's pick, tuned for the corrected viewport reality (floor 1024×768,
-        typical larger) with verbs inline by default — features as a labeled
-        inline group, drop-down only under genuine width pressure. Round 6
-        removes the standing teaching strip from D: the plain your-turn state
-        shows NO message (enabled verbs + the green initiative highlight already
-        say it); contextual guidance appears as a floating pill above the dock
-        only for the non-obvious states — armed, spectator, free-roam, ended,
-        nothing-left, connecting — and vanishes when the state returns to plain
-        your-turn. The freed row goes to the map. A hidden aria-live region
-        keeps announcing every state for screen readers. Acceptance: fresh
-        fixture = no pill; armed / spectator / free-roam = pill. Pool + cost
-        badges unchanged (server economy_slot).
+        Round-7 concepts for the combat panel (web#525). D (HUD-skinned,
+        primary) at the 1024×768 floor: verbs inline (features as labeled inline
+        groups, drop-down only under genuine width pressure), no standing
+        teaching strip — guidance floats as a pill only for non-obvious states —
+        and now the COMBAT LOG defaults to OPEN (Kirk: "we always want to see
+        the info there"): a translucent panel bottom-right above the dock,
+        rendered through the real CombatLog component with realistic fixture
+        entries (attack hit / miss / crit, damage breakdowns, a condition, turn
+        boundaries), newest at bottom with internal scroll. The 📜 toggle hides
+        it; open is the default, in every state including free-roam and
+        spectator. A hidden aria-live region keeps announcing state for screen
+        readers. Acceptance: fresh = log open + NO pill; armed / spectator /
+        free-roam = pill + log. Pool + cost badges unchanged (server
+        economy_slot).
       </p>
 
       <div

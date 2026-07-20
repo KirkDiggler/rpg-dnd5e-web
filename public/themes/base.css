@@ -487,6 +487,32 @@
     min-height: 2.25rem;
   }
 
+  /* Round 7: the default-open floating combat log. Translucent so the map
+     reads through (the !important overrides the live CombatLog component's
+     inline opaque background — concept-only; the live slice should give
+     CombatLog a `translucent` variant prop instead), thin HUD frame edge
+     in D — a frame EDGE, deliberately not the full stone box. */
+  .floating-log > [data-testid='combat-log'] {
+    background: color-mix(
+      in srgb,
+      var(--bg-secondary) 72%,
+      transparent
+    ) !important;
+    backdrop-filter: blur(2px);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border-primary);
+  }
+
+  .hud-skin .floating-log > [data-testid='combat-log'] {
+    border-image-source: url('/models/synty/ui/library/frames/SPR_FantasyWarrior_Frame_Box03.png');
+    border-image-slice: 116;
+    border-image-width: 6px;
+    border-image-repeat: round;
+    border-width: 6px;
+    border-style: solid;
+    border-color: var(--border-primary);
+  }
+
   .hud-skin .verb-btn:not(.armed):not(.menu-row) {
     background-image: url('/models/synty/ui/library/panels/SPR_FantasyWarrior_Box_Segment01_Variant01.png');
     background-size: 100% 100%;
