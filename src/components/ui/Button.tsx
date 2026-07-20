@@ -8,8 +8,10 @@ import { cn } from '../../utils/cn';
  */
 
 export interface ButtonProps extends Omit<HTMLMotionProps<'button'>, 'size'> {
-  /** Button style variant */
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'dice';
+  /** Button style variant. `commit` is for consequential, turn-ending
+   * confirmations (End Turn, Confirm) — visually heavier than `primary`
+   * so it always reads as a button, never as a label (rpg-dnd5e-web#525). */
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'dice' | 'commit';
   /** Button size */
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   /** Loading state */
@@ -31,6 +33,7 @@ const variantClasses = {
   ghost:
     'bg-transparent hover:bg-black hover:bg-opacity-10 text-current border border-current border-opacity-20',
   dice: 'btn-dice',
+  commit: 'btn-commit',
 };
 
 const sizeClasses = {

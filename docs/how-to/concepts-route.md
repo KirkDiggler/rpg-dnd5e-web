@@ -19,8 +19,29 @@ The route is defined in `App.tsx` and is available in both dev and production bu
 ## Adding a new concept
 
 1. Create a directory under `src/concepts/your-concept-name/`
-2. Build a self-contained prototype. Hard-coded data is fine for a concept. Do not import from the production encounter flow.
-3. Register a route in `ConceptsView.tsx`
+2. Build a self-contained prototype and register a route in `ConceptsView.tsx`
+3. Prefer the **fixture-first** convention (below) over ad-hoc hard-coded data
+
+## The fixture-first convention (outside-in)
+
+Since the Game-UX charter (web#525), concepts are how we develop the REAL
+components against fixture data — not throwaway mockups:
+
+- **Real components, fixture data.** The concept renders the actual shared
+  components (e.g. `src/components/ui/combat/`), fed by typed fixtures kept
+  next to the concept (`fixtures.ts`). Type fixtures against the real
+  generated proto types wherever the wire already carries the data — a
+  component must not be able to tell fixture from stream.
+- **Fixtures cover the states that are hard to reach live**: armed actions,
+  spent reactions, spectator turns, FREE_ROAM intervals.
+- **The fixture contract is the draft proto contract.** Where the panel
+  needs data the wire does NOT carry, keep that data in a clearly separated
+  fixture type. That delta, once the concept proves it, becomes a concrete
+  feature request to the platform team on board #19 (example:
+  rpg-api-protos#183, the combat-HUD data gap).
+- **Promotion = a data-source swap.** If the fixtures were faithful, wiring
+  the composition into the game screen changes the data source, not the
+  components.
 
 ## Promoting a concept to production
 
@@ -37,3 +58,5 @@ There is no formal process yet. When a concept is ready:
 | Concept            | Status                   | Notes                                                                                                        |
 | ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------ |
 | `class-selection/` | Prototype — not promoted | Enriched class selection UI with guidance panels. Hard-coded data in `data.ts`. Needs API wiring to promote. |
+| `encounter-dock/`  | Verification harness     | Renders the live `EncounterDock` with mock data to check responsive wrap behavior (#494/#519).               |
+| `combat-panel/`    | Design review (web#525)  | Round-1 IA compositions built from `ui/combat` primitives on proto-typed fixtures; fixture-first exemplar.   |

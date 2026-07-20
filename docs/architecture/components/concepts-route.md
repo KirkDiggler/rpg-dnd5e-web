@@ -13,6 +13,8 @@ confidence: high — verified by reading ConceptsView.tsx and the concepts/ dire
 
 `/concepts` is a development-only route where new UI ideas can be built and explored without risk to the production encounter flow. `ConceptsView.tsx` routes to isolated prototype components.
 
+Since the Game-UX charter (web#525) it is also the **outside-in contract bench**: concepts render the real shared components against typed fixtures (see `docs/how-to/concepts-route.md`, "The fixture-first convention"). Fixture shapes that the wire doesn't carry yet are the draft of the next proto feature request — the concept proves the need before the contract is asked for.
+
 ## Current contents
 
 `src/concepts/class-selection/` — enriched class selection UI prototype. Landed in PR #344 (2026-03-22). Includes:
@@ -20,6 +22,10 @@ confidence: high — verified by reading ConceptsView.tsx and the concepts/ dire
 - `ClassSelectionConcept.tsx` — top-level concept
 - `ClassOverview.tsx`, `AbilityScoreGuidance.tsx`, `EquipmentGuidance.tsx`, `LevelProgression.tsx`, `ProficiencyDetails.tsx`, `SavingThrowContext.tsx`
 - `data.ts` — hardcoded class data for the prototype
+
+`src/concepts/encounter-dock/` — verification harness for the live `EncounterDock`'s responsive behavior (#494/#519); renders the real component with mock proto data.
+
+`src/concepts/combat-panel/` — round-1 IA design bench for web#525. `fixtures.ts` (proto-typed fixture states incl. armed/spent/spectator/free-roam), `CommandBar.tsx` + `CommandBarWithContext.tsx` (compositions of `src/components/ui/combat/` primitives), `CombatPanelConcept.tsx` (fixture switcher + Discord-viewport frame).
 
 ## Gap: no promotion process
 
