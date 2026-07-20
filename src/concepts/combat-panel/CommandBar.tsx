@@ -14,88 +14,28 @@
  */
 
 import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { EconomySlot } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import {
-  type CostShape,
   DockShell,
   EconomyPips,
+  organizeVerbs,
   OverlayPanel,
   OverlayToggle,
   VerbButton,
+  verbCost,
 } from '../../components/ui/combat';
 import { getActionIconUrl } from '../../utils/actionIcons';
 import type { CombatPanelFixture } from './fixtures';
 
-/** Core verbs stay flat in the bar; everything else groups by where it
- * comes from. The wire already carries provenance — AvailableAction.ref.type
- * ("combat_abilities"/"actions" = core; "feature", "spell", "item", ... are
- * the toolkit's open-ended vocabulary) — so grouping is pure presentation
- * of server data (Kirk's round-3 direction for busy kits like monk L2). */
-const CORE_TYPES = new Set(['actions', 'combat_abilities']);
-
-/** Core verbs shown flat before the tail folds into the drop-up's
- * "Actions" section — keeps the bar one row at Discord width. */
-const INLINE_CORE_LIMIT = 5;
-
-/** Known provenance labels; anything unknown gets sentence-cased so future
- * ref.types render reasonably instead of breaking the menu. */
-const GROUP_LABELS: Record<string, string> = {
-  feature: 'Features',
-  spell: 'Spells',
-  item: 'Items',
-};
-
-function groupLabel(refType: string): string {
-  if (GROUP_LABELS[refType]) return GROUP_LABELS[refType];
-  const words = refType.replace(/[_-]+/g, ' ').trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-function groupByProvenance(
-  extras: AvailableAction[]
-): { label: string; actions: AvailableAction[] }[] {
-  const groups: { label: string; actions: AvailableAction[] }[] = [];
-  for (const a of extras) {
-    const label = groupLabel(a.ref?.type ?? 'other');
-    const existing = groups.find((g) => g.label === label);
-    if (existing) existing.actions.push(a);
-    else groups.push({ label, actions: [a] });
-  }
-  return groups;
-}
-
-/** economy_slot → pool shape, 1:1 — presentation mapping only; the server
- * decides what each action costs. Slots without a pool (movement, free)
- * get no badge. */
-const SLOT_SHAPE: Partial<Record<EconomySlot, CostShape>> = {
-  [EconomySlot.ACTION]: 'action',
-  [EconomySlot.BONUS_ACTION]: 'bonus',
-  [EconomySlot.REACTION]: 'reaction',
-};
+// Grouping/cost logic promoted to ui/combat/organizeVerbs (slice 1) — the
+// live EncounterDock and this concept organize verbs identically.
 
 export interface CommandBarProps {
   fixture: CombatPanelFixture;
   armedKey?: string;
   onVerb: (refId: string) => void;
   onEndTurn: () => void;
-}
-
-function verbCost(
-  a: AvailableAction,
-  economy: CombatPanelFixture['economy']
-): { shape: CostShape; spent: boolean } | undefined {
-  const shape = SLOT_SHAPE[a.economySlot];
-  if (!shape) return undefined;
-  const remaining = economy
-    ? {
-        action: economy.actionsRemaining,
-        bonus: economy.bonusActionsRemaining,
-        reaction: economy.reactionsRemaining,
-      }[shape]
-    : 1;
-  return { shape, spent: remaining === 0 };
 }
 
 export function CommandBar({
@@ -106,29 +46,9 @@ export function CommandBar({
 }: CommandBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const allCore = fixture.actions.filter((a) =>
-    CORE_TYPES.has(a.ref?.type ?? '')
+  const { core, groups, menuCount, triggerLabel } = organizeVerbs(
+    fixture.actions
   );
-  // The bar stays ONE row at Discord width: core verbs past the cap fold
-  // into the drop-up as an "Actions" section above the provenance groups.
-  const core = allCore.slice(0, INLINE_CORE_LIMIT);
-  const coreOverflow = allCore.slice(INLINE_CORE_LIMIT);
-  const extras = fixture.actions.filter(
-    (a) => !CORE_TYPES.has(a.ref?.type ?? '')
-  );
-  const groups = [
-    ...(coreOverflow.length > 0
-      ? [{ label: 'Actions', actions: coreOverflow }]
-      : []),
-    ...groupByProvenance(extras),
-  ];
-  const menuCount = coreOverflow.length + extras.length;
-  // Trigger says what it holds: one group reads by name ("Features ▾ 4" —
-  // the common case, fits Discord width); several fall back to a total.
-  const triggerLabel =
-    groups.length === 1
-      ? `${groups[0].label} ▾ ${groups[0].actions.length}`
-      : `More ▾ ${menuCount}`;
   const { viewer } = fixture;
   const hpPct =
     viewer.hp.max > 0
@@ -177,7 +97,7 @@ export function CommandBar({
             >
               {groups.map((g) => (
                 <div
-                  key={g.label}
+                  key={g.id}
                   style={{
                     display: 'flex',
                     flexDirection: 'column',

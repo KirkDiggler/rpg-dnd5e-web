@@ -9,6 +9,15 @@
 export { DockShell, type DockShellProps } from './DockShell';
 export { EconomyPips, type EconomyPipsProps } from './EconomyPips';
 export {
+  CORE_TYPES,
+  INLINE_CORE_LIMIT,
+  groupLabel,
+  organizeVerbs,
+  verbCost,
+  type OrganizedVerbs,
+  type VerbGroup,
+} from './organizeVerbs';
+export {
   OverlayPanel,
   OverlayToggle,
   type OverlayPanelProps,

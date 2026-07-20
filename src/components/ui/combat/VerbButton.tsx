@@ -42,6 +42,7 @@ export interface VerbButtonProps {
   armed?: boolean;
   loading?: boolean;
   className?: string;
+  'data-testid'?: string;
 }
 
 export function VerbButton({
@@ -54,6 +55,7 @@ export function VerbButton({
   armed = false,
   loading = false,
   className,
+  'data-testid': testId,
 }: VerbButtonProps) {
   const disabled = !available || loading;
 
@@ -76,6 +78,7 @@ export function VerbButton({
       disabled={disabled}
       title={title}
       data-armed={armed || undefined}
+      data-testid={testId}
     >
       {cost && (
         <span

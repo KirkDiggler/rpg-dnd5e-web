@@ -486,6 +486,10 @@ describe('EncounterView reaction-readiness HUD (rpg-dnd5e-web#432 harness-parity
       />
     );
 
+    // #525 slice 1: reaction readiness is a SETTING now (Kirk: "opportunity
+    // attack is just a setting") — the toggles live behind the gear popover,
+    // not in the bar. Open it first.
+    fireEvent.click(screen.getByLabelText('Combat settings'));
     const oaToggle = screen.getByTestId(
       'reaction-toggle-dnd5e:conditions:opportunity_attack'
     );
@@ -534,6 +538,7 @@ describe('EncounterView reaction-readiness HUD (rpg-dnd5e-web#432 harness-parity
       />
     );
 
+    fireEvent.click(screen.getByLabelText('Combat settings'));
     await act(async () => {
       fireEvent.click(
         screen.getByTestId('reaction-toggle-dnd5e:spells:shield')
@@ -557,6 +562,7 @@ describe('EncounterView reaction-readiness HUD (rpg-dnd5e-web#432 harness-parity
       <EncounterView encounterId="enc-1" playerId="alice" onBack={() => {}} />
     );
 
+    fireEvent.click(screen.getByLabelText('Combat settings'));
     const oa = screen.getByTestId(
       'reaction-toggle-dnd5e:conditions:opportunity_attack'
     ) as HTMLButtonElement;
@@ -612,7 +618,7 @@ describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#43
 
     // rpg-dnd5e-web#519: the log is a closed-by-default overlay now, not an
     // always-reserved column — open it before asserting on its entries.
-    fireEvent.click(screen.getByTestId('encounter-dock-log-toggle'));
+    fireEvent.click(screen.getByLabelText(/Combat log/));
 
     expect(
       screen.getByTestId('combat-log-entry-actionResolved-0').textContent
@@ -669,7 +675,10 @@ describe('EncounterView combat-log parity with PlaytestHarness (rpg-dnd5e-web#43
 });
 
 describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#511)', () => {
-  const HELP_REF = { module: 'dnd5e', type: 'action', id: 'help' };
+  // Wire-true ref.type: the real menu emits "combat_abilities" (see
+  // rpg-api translate_combat) — matters since #525 slice 1, where the dock
+  // renders core types flat and folds other types into the grouped menu.
+  const HELP_REF = { module: 'dnd5e', type: 'combat_abilities', id: 'help' };
 
   function enterTurnWithHelpArmable() {
     act(() =>
@@ -730,7 +739,9 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
     renderAtCharAlice();
     enterTurnWithHelpArmable();
 
-    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    const helpBtn = await screen.findByTestId(
+      'action-dnd5e:combat_abilities:help'
+    );
     fireEvent.click(helpBtn);
     await act(async () => {
       await Promise.resolve();
@@ -744,7 +755,9 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
     renderAtCharAlice();
     enterTurnWithHelpArmable();
 
-    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    const helpBtn = await screen.findByTestId(
+      'action-dnd5e:combat_abilities:help'
+    );
     fireEvent.click(helpBtn);
     await act(async () => {
       await Promise.resolve();
@@ -766,7 +779,9 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
     renderAtCharAlice();
     enterTurnWithHelpArmable();
 
-    fireEvent.click(await screen.findByTestId('action-dnd5e:action:help'));
+    fireEvent.click(
+      await screen.findByTestId('action-dnd5e:combat_abilities:help')
+    );
     await act(async () => {
       await Promise.resolve();
     });
@@ -790,15 +805,17 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
       value: 'goblin-1',
     });
 
-    const helpBtn = screen.getByTestId('action-dnd5e:action:help');
-    expect(helpBtn.getAttribute('data-armed')).toBe('false');
+    const helpBtn = screen.getByTestId('action-dnd5e:combat_abilities:help');
+    expect(helpBtn.getAttribute('data-armed')).toBeNull(); // unarmed = attribute absent (VerbButton)
   });
 
   it('re-clicking the armed action cancels it (no dispatch)', async () => {
     renderAtCharAlice();
     enterTurnWithHelpArmable();
 
-    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    const helpBtn = await screen.findByTestId(
+      'action-dnd5e:combat_abilities:help'
+    );
     fireEvent.click(helpBtn);
     await act(async () => {
       await Promise.resolve();
@@ -810,7 +827,7 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
       await Promise.resolve();
     });
 
-    expect(helpBtn.getAttribute('data-armed')).toBe('false');
+    expect(helpBtn.getAttribute('data-armed')).toBeNull(); // unarmed = attribute absent (VerbButton)
     expect(hoisted.takeActionFn).not.toHaveBeenCalled();
   });
 
@@ -818,7 +835,9 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
     renderAtCharAlice();
     enterTurnWithHelpArmable();
 
-    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    const helpBtn = await screen.findByTestId(
+      'action-dnd5e:combat_abilities:help'
+    );
     fireEvent.click(helpBtn);
     await act(async () => {
       await Promise.resolve();
@@ -830,7 +849,7 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
       await Promise.resolve();
     });
 
-    expect(helpBtn.getAttribute('data-armed')).toBe('false');
+    expect(helpBtn.getAttribute('data-armed')).toBeNull(); // unarmed = attribute absent (VerbButton)
   });
 
   it('a rejected dispatch leaves the action armed (retry, not silent disarm)', async () => {
@@ -838,7 +857,9 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
     renderAtCharAlice();
     enterTurnWithHelpArmable();
 
-    fireEvent.click(await screen.findByTestId('action-dnd5e:action:help'));
+    fireEvent.click(
+      await screen.findByTestId('action-dnd5e:combat_abilities:help')
+    );
     await act(async () => {
       await Promise.resolve();
     });
@@ -849,7 +870,7 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
     });
 
     expect(hoisted.takeActionFn).toHaveBeenCalledOnce();
-    const helpBtn = screen.getByTestId('action-dnd5e:action:help');
+    const helpBtn = screen.getByTestId('action-dnd5e:combat_abilities:help');
     expect(helpBtn.getAttribute('data-armed')).toBe('true');
     expect(screen.getByText(/Action error: illegal target/)).toBeTruthy();
   });
@@ -858,7 +879,9 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
     renderAtCharAlice();
     enterTurnWithHelpArmable();
 
-    const helpBtn = await screen.findByTestId('action-dnd5e:action:help');
+    const helpBtn = await screen.findByTestId(
+      'action-dnd5e:combat_abilities:help'
+    );
     fireEvent.click(helpBtn);
     await act(async () => {
       await Promise.resolve();
@@ -873,9 +896,23 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
       await Promise.resolve();
     });
 
+    // #525 slice 1: spectators get no action surface at all — the verb
+    // unmounts (stronger than the old disabled-but-armed-cleared render).
     expect(
-      screen.getByTestId('action-dnd5e:action:help').getAttribute('data-armed')
-    ).toBe('false');
+      screen.queryByTestId('action-dnd5e:combat_abilities:help')
+    ).toBeNull();
+    // And the armed action really cleared: a goblin click now takes the
+    // basic-attack shortcut path (an armed action would take priority and
+    // dispatch HELP_REF instead).
+    hoisted.takeActionFn.mockClear();
+    fireEvent.click(screen.getByTestId('stub-click-goblin'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const calls = hoisted.takeActionFn.mock.calls as unknown as Array<
+      [{ actionRef: { id: string } }]
+    >;
+    expect(calls.every(([req]) => req.actionRef.id !== 'help')).toBe(true);
   });
 
   it('an armed POSITION-kind action does not resolve on an entity click (Copilot review #514: entityId is the wrong target shape for POSITION/AREA)', async () => {
@@ -909,7 +946,11 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
             },
             availableActions: [
               {
-                ref: { module: 'dnd5e', type: 'action', id: 'move-to' },
+                ref: {
+                  module: 'dnd5e',
+                  type: 'combat_abilities',
+                  id: 'move-to',
+                },
                 displayName: 'Move To',
                 available: true,
                 unavailableReason: '',
@@ -922,7 +963,9 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
       )
     );
 
-    const moveBtn = await screen.findByTestId('action-dnd5e:action:move-to');
+    const moveBtn = await screen.findByTestId(
+      'action-dnd5e:combat_abilities:move-to'
+    );
     fireEvent.click(moveBtn);
     await act(async () => {
       await Promise.resolve();
@@ -937,7 +980,7 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
     expect(hoisted.takeActionFn).not.toHaveBeenCalled();
     expect(
       screen
-        .getByTestId('action-dnd5e:action:move-to')
+        .getByTestId('action-dnd5e:combat_abilities:move-to')
         .getAttribute('data-armed')
     ).toBe('true');
   });
