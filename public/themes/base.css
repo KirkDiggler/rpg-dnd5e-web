@@ -581,10 +581,22 @@
     cursor: pointer;
   }
 
+  /* Equipped sockets wear a proper 9-slice frame (Frame_Box04: clean
+     rails, small gold corners, gem accents that echo --accent-primary) —
+     NOT a stretched box segment; the round-4 "stretch a compose-piece to
+     arbitrary aspect" mistake reads as accidental (Kirk caught the same
+     class of artifact on the first socket pass). Slice 104 captures the
+     corner bracket; `round` tiles the rails at any socket width. Token
+     border-color underneath is the sprites-absent fallback. */
   .hud-skin .equip-socket {
-    background-image: url('/models/synty/ui/library/panels/SPR_FantasyWarrior_Box_Segment01_Variant02.png');
-    background-size: 100% 100%;
-    background-blend-mode: multiply;
+    border-image-source: url('/models/synty/ui/library/frames/SPR_FantasyWarrior_Frame_Box04.png');
+    border-image-slice: 104;
+    border-image-width: 10px;
+    border-image-repeat: round;
+    border-style: solid;
+    border-width: 10px;
+    border-color: var(--border-primary);
+    border-radius: 0;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   }
 
@@ -593,6 +605,15 @@
     opacity: 0.75;
     background-image: none;
     border-style: dashed;
+  }
+
+  /* Empty sockets stay frameless-dashed even under the HUD skin — the
+     equipped/empty distinction must survive the sprite layer. */
+  .hud-skin .equip-socket.empty {
+    border-image-source: none;
+    border-width: 2px;
+    border-style: dashed;
+    border-radius: 0.5rem;
   }
 
   .equip-socket-label {
