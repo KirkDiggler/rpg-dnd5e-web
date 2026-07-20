@@ -97,7 +97,7 @@ export function CommandBar({
             >
               {groups.map((g) => (
                 <div
-                  key={g.label}
+                  key={g.id}
                   style={{
                     display: 'flex',
                     flexDirection: 'column',

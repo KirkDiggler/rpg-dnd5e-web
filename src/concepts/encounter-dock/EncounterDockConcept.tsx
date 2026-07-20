@@ -127,6 +127,7 @@ export function EncounterDockConcept() {
         economy={mockEconomy}
         actions={mockActions}
         mode={EncounterMode.TURN_BASED}
+        encounterEnded={false}
         isMyTurn={true}
         activeEntityName={undefined}
         actionsEnabled={true}

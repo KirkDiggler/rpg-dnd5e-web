@@ -50,6 +50,7 @@ function baseProps(): EncounterDockProps {
     economy: economy(1, 1, 1, 30),
     actions: [action('attack', 'Attack')],
     mode: EncounterMode.TURN_BASED,
+    encounterEnded: false,
     isMyTurn: true,
     activeEntityName: undefined,
     actionsEnabled: true,
@@ -126,6 +127,57 @@ describe('EncounterDock teaching strip (#525 slice 1, #533 direction)', () => {
     expect(screen.queryByTestId('encounter-dock-movement')).toBeNull();
     expect(screen.queryByText('End Turn')).toBeNull();
   });
+
+  it('suppresses the action surface and stops claiming "your turn" once the encounter has ended (gate #1)', () => {
+    // The encounter can end ON your turn: mode stays TURN_BASED and it's
+    // still your turn, but `encounterEnded` must independently kill the
+    // surface and the "your turn" lie.
+    render(
+      <EncounterDock
+        {...baseProps()}
+        encounterEnded={true}
+        mode={EncounterMode.TURN_BASED}
+        isMyTurn={true}
+        actions={[action('attack', 'Attack')]}
+      />
+    );
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      'The encounter has ended.'
+    );
+    expect(screen.queryByTestId('encounter-dock-verbs')).toBeNull();
+    expect(screen.queryByLabelText(/^Action: /)).toBeNull();
+    expect(screen.queryByTestId('encounter-dock-movement')).toBeNull();
+    expect(screen.queryByText('End Turn')).toBeNull();
+  });
+
+  it('shows a neutral connecting line for UNSPECIFIED mode, not "Exploring" (gate #3)', () => {
+    render(
+      <EncounterDock
+        {...baseProps()}
+        mode={EncounterMode.UNSPECIFIED}
+        isMyTurn={false}
+      />
+    );
+    const text = screen.getByTestId('encounter-dock-context').textContent;
+    expect(text).not.toMatch(/Exploring/);
+    expect(text).toBe('Connecting…');
+  });
+
+  it('does not flash armed guidance when it is no longer your turn (gate #4)', () => {
+    // Handover frame: armedActionKey still set for a paint, but isMyTurn
+    // already false — the strip must not say "click a target".
+    render(
+      <EncounterDock
+        {...baseProps()}
+        isMyTurn={false}
+        activeEntityName="Goblin"
+        armedActionKey="dnd5e:combat_abilities:attack"
+      />
+    );
+    expect(screen.getByTestId('encounter-dock-context').textContent).toBe(
+      "Goblin's turn — watch the map."
+    );
+  });
 });
 
 describe('EncounterDock verbs and grouped overflow', () => {
@@ -166,6 +218,58 @@ describe('EncounterDock verbs and grouped overflow', () => {
     fireEvent.click(screen.getByText('Flurry of Blows'));
     expect(props.onSelectAction).toHaveBeenCalledWith(flurry);
     expect(screen.queryByTestId('encounter-dock-menu')).toBeNull();
+  });
+
+  it('folds core verbs past the inline cap into an "Actions" menu section (INLINE_CORE_LIMIT)', () => {
+    // Seven core verbs: five stay flat, the tail folds into the menu.
+    const many = Array.from({ length: 7 }, (_, i) =>
+      action(`core-${i}`, `Core ${i}`)
+    );
+    render(<EncounterDock {...baseProps()} actions={many} />);
+    // The first five render flat in the bar.
+    expect(screen.getByText('Core 0')).toBeTruthy();
+    expect(screen.getByText('Core 4')).toBeTruthy();
+    // The overflow tail is hidden until the menu opens. With only the
+    // core-overflow group present, the trigger reads by that group's name.
+    expect(screen.queryByText('Core 5')).toBeNull();
+    fireEvent.click(screen.getByText('Actions ▾ 2'));
+    const menu = screen.getByTestId('encounter-dock-menu');
+    // Section header (CSS-uppercased; textContent keeps the source casing).
+    expect(menu.textContent).toContain('Actions');
+    expect(screen.getByText('Core 5')).toBeTruthy();
+    expect(screen.getByText('Core 6')).toBeTruthy();
+  });
+});
+
+describe('EncounterDock cost badges', () => {
+  it('marks a verb badge spent when its pool is exhausted', () => {
+    // Action pool spent (0), bonus pool available (1).
+    render(
+      <EncounterDock
+        {...baseProps()}
+        economy={economy(0, 1, 1, 30)}
+        actions={[
+          action('attack', 'Attack'),
+          action('flurry', 'Flurry of Blows', {
+            refType: 'feature',
+            slot: EconomySlot.BONUS_ACTION,
+          }),
+        ]}
+      />
+    );
+    // Attack (action pool, spent) → hollow badge, no `filled` class.
+    const attackBadge = screen
+      .getByTestId('action-dnd5e:combat_abilities:attack')
+      .querySelector('.economy-pip');
+    expect(attackBadge?.className).toContain('shape-action');
+    expect(attackBadge?.className).not.toContain('filled');
+    // Flurry (bonus pool, available) → filled badge.
+    fireEvent.click(screen.getByText('Features ▾ 1'));
+    const flurryBadge = screen
+      .getByTestId('action-dnd5e:feature:flurry')
+      .querySelector('.economy-pip');
+    expect(flurryBadge?.className).toContain('shape-bonus');
+    expect(flurryBadge?.className).toContain('filled');
   });
 });
 

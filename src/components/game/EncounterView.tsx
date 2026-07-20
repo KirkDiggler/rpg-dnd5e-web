@@ -780,6 +780,7 @@ export function EncounterView({
         economy={economy}
         actions={availableActions}
         mode={encounterState.state.mode}
+        encounterEnded={encounterEnded}
         isMyTurn={isMyTurn}
         // Spectator strip (#458): whose turn it is, resolved the same way
         // the dock resolves the local player's own name.

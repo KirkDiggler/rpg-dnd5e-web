@@ -21,8 +21,13 @@ import type {
 import { EconomySlot } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { CostShape } from './VerbButton';
 
-/** Core verbs stay flat in the bar; everything else groups by provenance. */
-export const CORE_TYPES = new Set(['actions', 'combat_abilities']);
+/** Core verbs stay flat in the bar; everything else groups by provenance.
+ * Singular 'action' is included alongside the plural forms: rpg-api's
+ * actionRefToProto fallback (translate.go ~1022) can emit a degenerate
+ * Ref{Type:"action"} for refs it can't fully classify — treating it as core
+ * keeps such a verb flat instead of misfiling it into an "Action" overflow
+ * group. */
+export const CORE_TYPES = new Set(['actions', 'action', 'combat_abilities']);
 
 /** Core verbs shown flat before the tail folds into the drop-up's
  * "Actions" section — keeps the bar one row at Discord width. */
@@ -48,6 +53,10 @@ export function groupLabel(refType: string): string {
 }
 
 export interface VerbGroup {
+  /** Stable, unique key for React lists — labels can collide (a non-core
+   * ref.type sentence-casing to "Actions" vs the core-overflow section), so
+   * consumers key on this, never the label. */
+  id: string;
   label: string;
   actions: AvailableAction[];
 }
@@ -58,7 +67,7 @@ function groupByProvenance(extras: AvailableAction[]): VerbGroup[] {
     const label = groupLabel(a.ref?.type ?? 'other');
     const existing = groups.find((g) => g.label === label);
     if (existing) existing.actions.push(a);
-    else groups.push({ label, actions: [a] });
+    else groups.push({ id: label, label, actions: [a] });
   }
   return groups;
 }
@@ -81,9 +90,11 @@ export function organizeVerbs(actions: AvailableAction[]): OrganizedVerbs {
   const core = allCore.slice(0, INLINE_CORE_LIMIT);
   const coreOverflow = allCore.slice(INLINE_CORE_LIMIT);
   const extras = actions.filter((a) => !CORE_TYPES.has(a.ref?.type ?? ''));
-  const groups = [
+  // Core-overflow section carries a distinct id ("__core") so it can never
+  // collide with a provenance group that also labels "Actions".
+  const groups: VerbGroup[] = [
     ...(coreOverflow.length > 0
-      ? [{ label: 'Actions', actions: coreOverflow }]
+      ? [{ id: '__core', label: 'Actions', actions: coreOverflow }]
       : []),
     ...groupByProvenance(extras),
   ];
@@ -105,7 +116,14 @@ const SLOT_SHAPE: Partial<Record<EconomySlot, CostShape>> = {
 
 /** The badge VerbButton renders for this action: which pool it draws from
  * and whether that pool is currently spent. `economy` absent (pre-turnState
- * window) renders badges as unspent rather than hiding them. */
+ * window) renders badges as unspent rather than hiding them.
+ *
+ * `spent` reflects the POOL, derived independently of the server's
+ * `available` on this action — intentional: the badge answers "is this pool
+ * used up?" (a hollow diamond next to an enabled bonus-action verb correctly
+ * says the bonus pool is gone even while the server still offers the verb via
+ * another route). Availability drives the button's enabled/disabled state
+ * separately in VerbButton. */
 export function verbCost(
   action: AvailableAction,
   economy: ActionEconomy | null | undefined

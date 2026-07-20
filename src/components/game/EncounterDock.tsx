@@ -56,10 +56,15 @@ import {
 } from './encounterDockHelpers';
 import { ReactionReadyPanel } from './ReactionReadyPanel';
 
+// HP tier = traffic-light semantic, NOT resource color: --health is a
+// theme's HP-bar hue (dark-fantasy sets it deep red), so a full bar keyed
+// to it rendered red. Dedicated --hp-* tokens (public/themes/base.css)
+// default green/amber/red; the fallbacks keep the traffic-light even if the
+// stylesheet is absent (Copilot review on #543).
 const HP_TIER_COLOR: Record<'high' | 'mid' | 'low', string> = {
-  high: 'var(--health, #22c55e)',
-  mid: 'var(--mana, #eab308)',
-  low: 'var(--danger, #ef4444)',
+  high: 'var(--hp-high, #22c55e)',
+  mid: 'var(--hp-mid, #eab308)',
+  low: 'var(--hp-low, #ef4444)',
 };
 
 /** Which floating panel is open — at most one, so overlays never stack. */
@@ -77,6 +82,10 @@ export interface EncounterDockProps {
   actions: AvailableAction[];
   /** Server mode verbatim — gates every economy-shaped render (#516). */
   mode: EncounterMode;
+  /** encounterStatus === 'ended' — suppresses the action surface and tells
+   * the strip to stop claiming it's your turn (gate on an encounter that
+   * ends ON your turn: mode stays TURN_BASED, activeEntityId stays you). */
+  encounterEnded: boolean;
   /** TURN_BASED && activeEntityId === entityId, computed by EncounterView. */
   isMyTurn: boolean;
   /** Display name of the active entity when it isn't you — the spectator
@@ -104,21 +113,39 @@ export interface EncounterDockProps {
  * in words, from the same server state the bar renders (#533 direction). */
 function contextMessage(
   mode: EncounterMode,
+  encounterEnded: boolean,
   isMyTurn: boolean,
   activeEntityName: string | undefined,
   armedLabel: string | undefined
 ): { text: string; tone: 'action' | 'info' | 'quiet' } {
-  if (armedLabel) {
+  // Ended wins over everything: the encounter can end ON your turn (mode
+  // stays TURN_BASED, activeEntityId stays you), and the strip must stop
+  // saying "your turn." Not a victory/defeat screen (that's web#471) —
+  // just an honest neutral line.
+  if (encounterEnded) {
+    return { text: 'The encounter has ended.', tone: 'quiet' };
+  }
+  // Armed guidance is turn-gated: on the handover frame armedLabel can
+  // still be set for a paint before it clears (#544), so don't flash
+  // "click a target" once it's no longer your turn.
+  if (armedLabel && mode === EncounterMode.TURN_BASED && isMyTurn) {
     return {
       text: `${armedLabel} armed — click a target on the map. Esc or click again to cancel.`,
       tone: 'action',
     };
   }
-  if (mode !== EncounterMode.TURN_BASED) {
+  // Exploring copy is FREE_ROAM-specific — mode is UNSPECIFIED during the
+  // initial connect/reconnect window, and loading straight into active
+  // combat must not briefly read "Exploring."
+  if (mode === EncounterMode.FREE_ROAM) {
     return {
       text: 'Exploring — click the map to move. Combat will start when enemies appear.',
       tone: 'quiet',
     };
+  }
+  if (mode !== EncounterMode.TURN_BASED) {
+    // UNSPECIFIED (and any future non-combat mode): neutral, no false claim.
+    return { text: 'Connecting…', tone: 'quiet' };
   }
   if (!isMyTurn) {
     return {
@@ -147,6 +174,7 @@ export function EncounterDock({
   economy,
   actions,
   mode,
+  encounterEnded,
   isMyTurn,
   activeEntityName,
   actionsEnabled,
@@ -174,19 +202,29 @@ export function EncounterDock({
   const label = classLabel(classRefId);
   const name = resolveName(displayName, entityId);
 
-  // Everything economy-shaped is gated on YOUR turn in TURN_BASED: outside
-  // TURN_BASED turnState may be stale (#516), and during someone else's
-  // turn the menu/economy aren't yours to act on (#458 — the strip carries
-  // whose turn it is instead).
-  const showActionSurface = mode === EncounterMode.TURN_BASED && isMyTurn;
-  const movementRemaining = isMyTurn
-    ? resolveMovementRemaining(mode, economy)
-    : undefined;
+  // Everything economy-shaped is gated on YOUR turn in TURN_BASED, and never
+  // shown once the encounter has ended: outside TURN_BASED turnState may be
+  // stale (#516), during someone else's turn the menu/economy aren't yours
+  // (#458 — the strip carries whose turn it is), and an encounter that ends
+  // on your turn leaves mode=TURN_BASED + activeEntityId=you, so `ended`
+  // must independently suppress the surface (gate #1).
+  const showActionSurface =
+    !encounterEnded && mode === EncounterMode.TURN_BASED && isMyTurn;
+  const movementRemaining =
+    !encounterEnded && isMyTurn
+      ? resolveMovementRemaining(mode, economy)
+      : undefined;
 
   const armedLabel = armedActionKey
     ? actions.find((a) => actionKey(a) === armedActionKey)?.displayName
     : undefined;
-  const ctx = contextMessage(mode, isMyTurn, activeEntityName, armedLabel);
+  const ctx = contextMessage(
+    mode,
+    encounterEnded,
+    isMyTurn,
+    activeEntityName,
+    armedLabel
+  );
 
   const { core, groups, menuCount, triggerLabel } = organizeVerbs(actions);
 
@@ -258,7 +296,7 @@ export function EncounterDock({
               >
                 {groups.map((g) => (
                   <div
-                    key={g.label}
+                    key={g.id}
                     style={{
                       display: 'flex',
                       flexDirection: 'column',

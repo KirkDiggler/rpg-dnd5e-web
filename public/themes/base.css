@@ -1,6 +1,20 @@
 /* Base styles and typography shared across all themes */
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap');
 
+/* HP-tier traffic-light tokens (rpg-dnd5e-web#525 slice 1, Copilot review).
+   These are SEMANTIC, not resource colors: high/mid/low HP reads as
+   green/amber/red universally, independent of a theme's --health hue (e.g.
+   dark-fantasy sets --health to a deep red for its resource bars — reusing
+   it here painted a FULL bar red). Un-layered :root so a theme's own :root
+   can still override by defining these tokens; no theme does today, so the
+   green/amber/red default carries. Consuming code also passes these as CSS
+   fallbacks, so the traffic-light holds even if this stylesheet is absent. */
+:root {
+  --hp-high: #22c55e;
+  --hp-mid: #eab308;
+  --hp-low: #ef4444;
+}
+
 @layer base {
   body {
     background-color: var(--bg-primary);

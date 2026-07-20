@@ -19,9 +19,12 @@ LobbyView was deleted, every file in the directory was unreferenced.
 Per design.md's "Incompatible — rebuild, no bridge exists" framing, these
 panels got available actions from RPC response payloads; the proven v2
 stack pushes them on the stream as `TurnStateChanged`. The replacement
-combat surface builds on `ActionMenu`/`EconomyBar`
-(`src/components/playtest/`), which already render the server-authored
-`TurnState` verbatim — see [game-view.md](game-view.md#encounterview--the-shared-harness-stack).
+combat surface is `EncounterDock`, composed from the `ui/combat/*`
+primitives (rpg-dnd5e-web#525 slice 1) — it renders the server-authored
+`TurnState` verbatim, with pool-shape cost badges and a teaching strip. It
+bootstrapped from the harness's `ActionMenu`/`EconomyBar`
+(`src/components/playtest/`), which now remain the PlaytestHarness dev-panel
+surface only — see [game-view.md](game-view.md#encounterview--the-shared-harness-stack).
 The old `CombatHistorySidebar`'s "📜 Combat Log" was rebuilt on the push
 model (matching its spirit, not its code) as `CombatLog` +
 `useCombatLog` — see game-view.md's "Combat log + initiative tracker"
