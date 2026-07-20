@@ -1,26 +1,26 @@
 /**
- * Composition C: "Comfortable bar" (round 4 — Kirk: "the panel should be
- * clear and large enough to read; we can have as much room as feels
- * comfortable; we swung to an extreme compensating for the old wasted
- * space"). Height is no longer the scarce resource — CLARITY is.
+ * Compositions C and D — the comfortable two-row bar (rounds 4–5).
  *
- * Same verb-first IA as A/B, at a humane scale, as TWO deliberate rows:
- *   row 1 — WHO and WHAT'S LEFT: name, class, a readable HP gauge with
- *           numbers, AC, economy pips at full size, movement readout.
- *   row 2 — WHAT CAN I DO: large verbs with cost badges, grouped overflow,
- *           End Turn as a properly sized commit button.
- * Teaching strip on top at comfortable type size. All data server-given.
+ * Round 5 (Kirk): the real viewport floor is 1024×768 and typical play is
+ * larger — "our current concept feels like 800×600." So:
+ *   - Scale is tuned for the floor and breathes upward: D (`skin="hud"`,
+ *     THE PICK) takes a full step up in button/gauge/type size over C.
+ *   - Verbs render INLINE by default — all core verbs plus class features
+ *     as a labeled inline group (divider + group label; the diamond cost
+ *     badges carry the cost story). The drop-down exists ONLY as automatic
+ *     overflow when the bar genuinely cannot fit the kit (estimated wrap
+ *     beyond two lines at the measured width) — width-based, never a fixed
+ *     count. At 1024+ a monk's L2 kit sits fully inline.
  *
- * Composition D: the same layout with `skin="hud"` — the Synty Fantasy
- * Warrior HUD sprites skin the shell/buttons/gauges via the `.hud-skin`
- * CSS classes (public/themes/base.css). Sprites are grayscale art tinted
- * through theme tokens with background-blend, and they are GITIGNORED
- * (Synty license): every skinned class keeps its token fallback, so with
- * sprites absent this renders identically to C plus token chrome.
+ * Composition D: same layout with `skin="hud"` — Synty Fantasy Warrior HUD
+ * sprites skin the shell/buttons/gauges via `.hud-skin` CSS
+ * (public/themes/base.css). Sprites are grayscale art tinted through theme
+ * tokens with background-blend, and they are GITIGNORED (Synty license):
+ * every skinned class keeps its token fallback.
  */
 
 import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import {
   EconomyPips,
@@ -29,6 +29,7 @@ import {
   OverlayToggle,
   VerbButton,
   verbCost,
+  type VerbGroup,
 } from '../../components/ui/combat';
 import { getActionIconUrl } from '../../utils/actionIcons';
 import { ContextStrip } from './ContextStrip';
@@ -43,6 +44,31 @@ export interface ComfortBarProps {
   skin?: 'tokens' | 'hud';
 }
 
+/**
+ * Honest-enough width estimate for the verb row: per-button chrome plus
+ * per-character label width at the active scale. Used ONLY to decide when
+ * the inline layout would wrap beyond two lines — the actual layout is
+ * plain flex-wrap, so a few px of estimation error just moves the wrap
+ * point, never clips content.
+ */
+function estimateVerbRowWidth(
+  inline: AvailableAction[],
+  featureGroups: VerbGroup[],
+  big: boolean
+): number {
+  const chrome = big ? 92 : 82; // padding + icon + badge + border + gap
+  const perChar = big ? 8.6 : 7.8;
+  const verb = (a: AvailableAction) => chrome + a.displayName.length * perChar;
+  const inlineW = inline.reduce((w, a) => w + verb(a), 0);
+  const groupsW = featureGroups.reduce(
+    (w, g) =>
+      w + 28 + g.label.length * 7 + g.actions.reduce((x, a) => x + verb(a), 0),
+    0
+  );
+  const endTurnW = 150;
+  return inlineW + groupsW + endTurnW;
+}
+
 export function ComfortBar({
   fixture,
   armedKey,
@@ -52,9 +78,37 @@ export function ComfortBar({
 }: ComfortBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [rowWidth, setRowWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      setRowWidth(entries[0]?.contentRect.width ?? null);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const { core, groups, menuCount, triggerLabel } = organizeVerbs(
     fixture.actions
   );
+  const big = skin === 'hud';
+
+  // Round 5: inline-by-default. Reunite organizeVerbs' core overflow
+  // ("__core") with the flat core, and treat feature/spell/item groups as
+  // inline segments. The drop-down only returns when the estimated inline
+  // width would wrap beyond two lines at the measured row width.
+  const coreOverflow = groups.find((g) => g.id === '__core');
+  const inlineCore = coreOverflow
+    ? [...core, ...coreOverflow.actions]
+    : [...core];
+  const featureGroups = groups.filter((g) => g.id !== '__core');
+  const estimated = estimateVerbRowWidth(inlineCore, featureGroups, big);
+  const collapsed =
+    rowWidth !== null && rowWidth > 0 && estimated / rowWidth > 2;
+
   const { viewer } = fixture;
   const hpPct =
     viewer.hp.max > 0
@@ -85,11 +139,14 @@ export function ComfortBar({
     />
   );
 
-  const showEconomy = fixture.economy !== null;
-
   return (
     <div className={skin === 'hud' ? 'hud-skin' : undefined}>
-      <ContextStrip fixture={fixture} armedKey={armedKey} comfortable />
+      <ContextStrip
+        fixture={fixture}
+        armedKey={armedKey}
+        comfortable={!big}
+        large={big}
+      />
       {/* Two-container shell (the #519 lesson): outer relative anchor with
           no overflow rule; overlays are siblings of the rows. */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -99,8 +156,8 @@ export function ComfortBar({
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 8,
-            padding: '10px 16px 12px',
+            gap: big ? 10 : 8,
+            padding: big ? '12px 20px 14px' : '10px 16px 12px',
             background: 'var(--bg-secondary)',
             borderTop: '2px solid var(--border-primary)',
             boxShadow: '0 -8px 25px -5px rgba(0, 0, 0, 0.3)',
@@ -111,21 +168,26 @@ export function ComfortBar({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 14,
+              gap: big ? 18 : 14,
               flexWrap: 'wrap',
             }}
           >
             <span
               style={{
                 fontWeight: 700,
-                fontSize: 16,
+                fontSize: big ? 18 : 16,
                 color: 'var(--text-primary)',
                 fontFamily: 'Cinzel, serif',
               }}
             >
               {viewer.displayName}
             </span>
-            <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+            <span
+              style={{
+                fontSize: big ? 13.5 : 12.5,
+                color: 'var(--text-muted)',
+              }}
+            >
               {classLabel}
             </span>
             <span
@@ -136,9 +198,9 @@ export function ComfortBar({
                 className="hud-gauge"
                 style={{
                   display: 'inline-block',
-                  width: 120,
-                  height: 10,
-                  borderRadius: 5,
+                  width: big ? 160 : 120,
+                  height: big ? 12 : 10,
+                  borderRadius: 6,
                   background: 'var(--resource-bg)',
                   overflow: 'hidden',
                   border: '1px solid var(--border-primary)',
@@ -156,7 +218,7 @@ export function ComfortBar({
               </span>
               <span
                 style={{
-                  fontSize: 13.5,
+                  fontSize: big ? 15 : 13.5,
                   fontWeight: 600,
                   color: 'var(--text-secondary)',
                   whiteSpace: 'nowrap',
@@ -166,7 +228,7 @@ export function ComfortBar({
               </span>
             </span>
 
-            {showEconomy && fixture.economy && (
+            {fixture.economy && (
               <EconomyPips economy={fixture.economy} className="comfort" />
             )}
 
@@ -177,7 +239,7 @@ export function ComfortBar({
               >
                 <span
                   style={{
-                    fontSize: 14.5,
+                    fontSize: big ? 16 : 14.5,
                     fontWeight: 700,
                     color: 'var(--text-primary)',
                     whiteSpace: 'nowrap',
@@ -190,8 +252,8 @@ export function ComfortBar({
                     className="hud-gauge"
                     style={{
                       display: 'inline-block',
-                      width: 72,
-                      height: 7,
+                      width: big ? 90 : 72,
+                      height: big ? 8 : 7,
                       borderRadius: 4,
                       background: 'var(--resource-bg)',
                       overflow: 'hidden',
@@ -225,8 +287,10 @@ export function ComfortBar({
             </span>
           </div>
 
-          {/* Row 2 — the verbs, large enough to read */}
+          {/* Row 2 — the verbs. Inline core + labeled inline feature groups
+              by default; drop-down only under genuine width pressure. */}
           <div
+            ref={rowRef}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -234,25 +298,48 @@ export function ComfortBar({
               flexWrap: 'wrap',
             }}
           >
-            {core.map((a) => renderVerb(a))}
-            {menuCount > 0 && (
-              <OverlayToggle
-                label={triggerLabel}
-                open={moreOpen}
-                onToggle={() => {
-                  setSettingsOpen(false);
-                  setMoreOpen((o) => !o);
-                }}
-                aria-label={`${menuCount} more options: ${groups
-                  .map((g) => `${g.label} (${g.actions.length})`)
-                  .join(', ')}`}
-                className="comfort"
-              />
+            {collapsed ? (
+              <>
+                {core.map((a) => renderVerb(a))}
+                {menuCount > 0 && (
+                  <OverlayToggle
+                    label={triggerLabel}
+                    open={moreOpen}
+                    onToggle={() => {
+                      setSettingsOpen(false);
+                      setMoreOpen((o) => !o);
+                    }}
+                    aria-label={`${menuCount} more options: ${groups
+                      .map((g) => `${g.label} (${g.actions.length})`)
+                      .join(', ')}`}
+                    className="comfort"
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                {inlineCore.map((a) => renderVerb(a))}
+                {featureGroups.map((g) => (
+                  <span
+                    key={g.id}
+                    data-testid={`inline-group-${g.id}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <span className="verb-group-divider" aria-hidden="true" />
+                    <span className="verb-group-label">{g.label}</span>
+                    {g.actions.map((a) => renderVerb(a))}
+                  </span>
+                ))}
+              </>
             )}
             {fixture.isMyTurn && (
               <Button
                 variant="commit"
-                size="sm"
+                size={big ? 'md' : 'sm'}
                 onClick={onEndTurn}
                 style={{ marginLeft: 'auto', flexShrink: 0 }}
               >
@@ -262,7 +349,10 @@ export function ComfortBar({
           </div>
         </div>
 
-        <OverlayPanel open={moreOpen} data-testid="comfort-bar-more">
+        <OverlayPanel
+          open={moreOpen && collapsed}
+          data-testid="comfort-bar-more"
+        >
           <div
             style={{
               display: 'flex',

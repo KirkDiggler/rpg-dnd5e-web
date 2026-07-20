@@ -2,18 +2,13 @@
  * CombatPanelConcept (rpg-dnd5e-web#525) — the design-review bench for the
  * combat panel's information architecture.
  *
- * Round 4: Kirk's direction — "the panel should be clear and large enough
- * to read; we can have as much room as feels comfortable; we swung in an
- * extreme direction to compensate for the wasted space from before."
- * Three new approaches join A/B (kept for reference):
- *   C — Comfortable bar: same verb-first IA at a humane scale, two rows.
- *   D — HUD-skinned bar: C's layout skinned with the Synty Fantasy Warrior
- *       sprites (form from sprites, color from theme tokens; token
- *       fallback when sprites are absent — they're gitignored).
- *   E — Command cluster: identity card + centered verb grid + anchored
- *       End Turn, floating over the map instead of a full-width dock.
- * Review at Discord activity size AND a comfortable desktop size — the
- * frame toggle switches between them.
+ * Round 5: D (HUD-skinned) is Kirk's pick, and the viewport assumption is
+ * corrected — the real floor is 1024×768, typical play larger ("our
+ * current concept feels like 800×600"). D scales up for the floor and
+ * breathes upward; verbs render INLINE by default with class features as
+ * a labeled inline group, the drop-down reduced to genuine width-pressure
+ * overflow. Frames: 1024×768 (floor) / 1440×900 (typical) / 1920×1080.
+ * C and E remain as references, as do A/B.
  */
 
 import { useEffect, useState } from 'react';
@@ -32,22 +27,22 @@ type CompositionId =
 
 const COMPOSITIONS: { id: CompositionId; label: string; blurb: string }[] = [
   {
-    id: 'comfort',
-    label: 'C — Comfortable bar',
+    id: 'hud-skinned',
+    label: 'D — HUD-skinned (primary)',
     blurb:
-      'Round 4: the same verb-first IA at a humane scale — two deliberate rows, readable HP/AC numbers, full-size pips, large verbs. Height spent on clarity.',
+      "Kirk's pick, tuned for the real viewport floor (1024×768): full-step-up sizes, stone-framed dock, sprite-tinted through theme tokens. Verbs inline — features as a labeled inline group; drop-down only under genuine width pressure.",
   },
   {
-    id: 'hud-skinned',
-    label: 'D — HUD-skinned bar',
+    id: 'comfort',
+    label: 'C — Comfortable bar (ref)',
     blurb:
-      "C's layout wearing the Synty Fantasy Warrior HUD sprites: stone-slab verbs, framed dock, sprite-tinted through theme tokens. Same components, different skin.",
+      'Round-4 token-only reference: same layout one size step down, no sprites.',
   },
   {
     id: 'cluster',
-    label: 'E — Command cluster',
+    label: 'E — Command cluster (ref)',
     blurb:
-      'A different shape entirely: identity card bottom-left, a GRID of large verbs bottom-center under a floating teaching pill, End Turn anchored bottom-right — all floating over the map.',
+      'Round-4 alternate shape: identity card bottom-left, verb GRID bottom-center under a floating teaching pill, End Turn anchored bottom-right — floating over the map.',
   },
   {
     id: 'with-context',
@@ -63,11 +58,14 @@ const COMPOSITIONS: { id: CompositionId; label: string; blurb: string }[] = [
   },
 ];
 
-/** Review frames: Discord activity approximation (#519) and a comfortable
- * desktop window — round 4 judges compositions at BOTH. */
+/** Round-5 review frames — the corrected viewport reality (Kirk): the
+ * floor is 1024×768, typical play is larger. Design FOR the floor, let it
+ * breathe upward. (The 840×472 Discord frame is retired — it drove the
+ * "feels like 800×600" over-compaction.) */
 const FRAMES = {
-  discord: { label: 'Discord (840×472)', width: 840, height: 472 },
-  desktop: { label: 'Desktop (1200×675)', width: 1200, height: 675 },
+  floor: { label: '1024×768 (floor)', width: 1024, height: 768 },
+  typical: { label: '1440×900 (typical)', width: 1440, height: 900 },
+  full: { label: '1920×1080', width: 1920, height: 1080 },
 } as const;
 type FrameId = keyof typeof FRAMES | 'off';
 
@@ -85,8 +83,8 @@ function chipStyle(active: boolean): React.CSSProperties {
 
 export function CombatPanelConcept() {
   const [fixtureId, setFixtureId] = useState(COMBAT_PANEL_FIXTURES[0].id);
-  const [composition, setComposition] = useState<CompositionId>('comfort');
-  const [frame, setFrame] = useState<FrameId>('discord');
+  const [composition, setComposition] = useState<CompositionId>('hud-skinned');
+  const [frame, setFrame] = useState<FrameId>('floor');
   const [armedKey, setArmedKey] = useState<string | undefined>();
   const fixture: CombatPanelFixture =
     COMBAT_PANEL_FIXTURES.find((f) => f.id === fixtureId) ??
@@ -159,14 +157,16 @@ export function CombatPanelConcept() {
   return (
     <div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 12, fontSize: 14 }}>
-        Round-4 concepts for the combat panel (web#525), on Kirk's direction:
-        "the panel should be clear and large enough to read — we can have as
-        much room as feels comfortable." Three approaches (C comfortable / D
-        HUD-skinned / E cluster) join the A/B references. The pool + cost-badge
-        model is unchanged throughout: every verb carries its pool-shape cost
-        badge straight from the server's economy_slot. Interactions are live:
-        click a verb to arm it (Esc cancels), End Turn hands the turn over.
-        Review at Discord size AND desktop size — the frame toggle switches.
+        Round-5 concepts for the combat panel (web#525). D (HUD-skinned) is
+        Kirk's pick, now tuned for the corrected viewport reality: the floor is
+        1024×768 and typical play is larger — design for the floor, let it
+        breathe upward. Verbs render inline by default, class features as a
+        labeled inline group (the diamond badges carry the cost story); the
+        drop-down appears only when the bar genuinely cannot fit the kit. The
+        pool + cost-badge model is unchanged: every badge comes straight from
+        the server's economy_slot. Interactions are live: click a verb to arm it
+        (Esc cancels), End Turn hands the turn over. Prove the busy case with
+        the Monk fixture at 1024 and 1440 — the features sit inline.
       </p>
 
       <div

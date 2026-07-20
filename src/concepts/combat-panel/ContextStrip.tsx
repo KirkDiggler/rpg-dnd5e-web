@@ -25,25 +25,28 @@ export interface ContextStripProps {
   armedKey?: string;
   /** Comfortable-scale strip (round 4): taller line, larger type. */
   comfortable?: boolean;
+  /** Round-5 floor-viewport scale (composition D): larger again. */
+  large?: boolean;
 }
 
 export function ContextStrip({
   fixture,
   armedKey,
   comfortable = false,
+  large = false,
 }: ContextStripProps) {
   const armedLabel = armedKey
     ? fixture.actions.find((a) => a.ref?.id === armedKey)?.displayName
     : undefined;
   const ctx = contextMessage(fixture, armedKey, armedLabel);
-  const line = comfortable ? 26 : 22;
+  const line = large ? 30 : comfortable ? 26 : 22;
 
   return (
     <div
       data-testid="context-strip"
       role="status"
       style={{
-        fontSize: comfortable ? 13.5 : 12,
+        fontSize: large ? 15 : comfortable ? 13.5 : 12,
         lineHeight: `${line}px`,
         height: line,
         padding: '0 12px',

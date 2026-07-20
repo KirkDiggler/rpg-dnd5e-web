@@ -410,6 +410,28 @@
     height: 1rem;
   }
 
+  /* Round-5 inline feature groups: at real viewport sizes (floor
+     1024×768) class options render IN the bar as a labeled segment — the
+     divider + label answer "where does this come from" inline; the cost
+     badges carry the pool story. The drop-down is overflow-only. */
+  .verb-group-divider {
+    display: inline-block;
+    width: 1px;
+    align-self: stretch;
+    min-height: 1.75rem;
+    background: var(--border-primary);
+    margin: 0 2px;
+  }
+
+  .verb-group-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
   /* ---- Round-4 HUD skin (rpg-dnd5e-web#525 composition D) ----
      Synty Fantasy Warrior HUD sprites: FORM from the sprites, COLOR from
      theme tokens via background-blend — so the skin follows the active
@@ -422,12 +444,47 @@
   .hud-skin .hud-dock {
     border-top: none;
     border-image-source: url('/models/synty/ui/library/frames/SPR_FantasyWarrior_Frame_Box03.png');
-    border-image-slice: 96;
-    border-image-width: 12px;
-    border-image-repeat: stretch;
+    /* Slice 116 captures the full stone member of the 512px frame art —
+       round-4's 96 cut mid-member and left the top edge ragged. */
+    border-image-slice: 116;
+    border-image-width: 14px;
+    border-image-repeat: round;
     border-style: solid;
-    border-width: 12px 6px 6px;
+    border-width: 14px 8px 8px;
     border-color: var(--border-primary);
+  }
+
+  /* Round-5 scale for the picked composition D: the viewport floor is
+     1024×768 ("our current concept feels like 800×600" — Kirk), so D
+     takes a full size step over C. */
+  .hud-skin .verb-btn.comfort {
+    min-height: 3rem;
+    padding: 0.625rem 1.125rem;
+    font-size: 1.0625rem;
+    gap: 0.5625rem;
+  }
+
+  .hud-skin .verb-btn.comfort img {
+    width: 22px;
+    height: 22px;
+  }
+
+  .hud-skin .verb-btn.comfort .economy-pip.badge {
+    width: 0.9375rem;
+    height: 0.9375rem;
+  }
+
+  .hud-skin span.comfort > .economy-pip:not(.badge) {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  .hud-skin .verb-group-label {
+    font-size: 0.75rem;
+  }
+
+  .hud-skin .verb-group-divider {
+    min-height: 2.25rem;
   }
 
   .hud-skin .verb-btn:not(.armed):not(.menu-row) {
