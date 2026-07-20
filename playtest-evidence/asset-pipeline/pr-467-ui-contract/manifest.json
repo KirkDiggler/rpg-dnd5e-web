@@ -11,45 +11,45 @@
       "entries": [
         {
           "key": "dnd5e:ui:frame-panel",
-          "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box21_Variant01.png",
+          "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box16.png",
           "width": 512,
           "height": 512,
-          "sizeKB": 67.9,
+          "sizeKB": 59.1,
           "sliceInsets": {
-            "top": 50,
-            "right": 43,
-            "bottom": 56,
-            "left": 43
+            "top": 43,
+            "right": 37,
+            "bottom": 39,
+            "left": 35
           },
-          "notes": "Clean square beveled gold frame, straight edges. General dialog/panel chrome -- default pick for the #525 dock/panel shell primitive."
+          "notes": "REVISION (steel art-direction, see $steelRevisionNote): clean square beveled silver/steel frame, straight edges -- was Frame_Box21_Variant01 (gold). General dialog/panel chrome -- default pick for the #525 dock/panel shell primitive."
         },
         {
           "key": "dnd5e:ui:frame-ornate",
-          "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box18_Variant01.png",
+          "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box23.png",
           "width": 512,
           "height": 512,
-          "sizeKB": 99.2,
+          "sizeKB": 90.8,
           "sliceInsets": {
             "top": 59,
-            "right": 84,
-            "bottom": 53,
-            "left": 83
+            "right": 63,
+            "bottom": 55,
+            "left": 61
           },
-          "notes": "Ornate bracket frame with diamond side-spikes, larger insets. For emphasis surfaces (e.g. victory/defeat modal border, hero ability card) rather than everyday chrome."
+          "notes": "REVISION (steel art-direction, see $steelRevisionNote): bright chrome/silver frame with diamond-cut corners, larger insets -- was Frame_Box18_Variant01 (gold, diamond side-spike brackets). For emphasis surfaces (e.g. victory/defeat modal border, hero ability card) rather than everyday chrome. Frame_Box20 (steel, matching Box18's side-spike ornament more closely) was tried first but rejected -- its single bottom-center diamond notch visibly distorts under a 3x-wide stretch; Box23's cut corners stayed crisp in both 3x-wide and 3x-tall renders."
         },
         {
           "key": "dnd5e:ui:frame-button",
-          "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box_Small01.png",
+          "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box_Small03.png",
           "width": 256,
           "height": 256,
-          "sizeKB": 29.4,
+          "sizeKB": 18.4,
           "sliceInsets": {
             "top": 30,
-            "right": 27,
-            "bottom": 27,
+            "right": 26,
+            "bottom": 25,
             "left": 25
           },
-          "notes": "Compact frame (256x256 source, smaller absolute insets than frame-panel but same proportional bevel weight) sized for action-bar-button-scale chrome."
+          "notes": "REVISION (steel art-direction, see $steelRevisionNote): steel-blue member of the same Box_Small01/02/03 shape family -- was Frame_Box_Small01 (gold). Compact frame (256x256 source, smaller absolute insets than frame-panel but same proportional bevel weight) sized for action-bar-button-scale chrome."
         }
       ]
     },
@@ -71,21 +71,6 @@
         },
         {
           "key": "dnd5e:ui:bar-fill-hp",
-          "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal04.png",
-          "width": 256,
-          "height": 64,
-          "sizeKB": 11.9,
-          "fillDirection": "left-to-right",
-          "capMargin": {
-            "top": 30,
-            "right": 23,
-            "bottom": 23,
-            "left": 22
-          },
-          "notes": "Solid gold gradient fill, tapered diamond end-caps. Clip (do not stretch) to represent percentage; cap margin matches bar-track-hp's interior inset so the fill sits flush inside the bezel."
-        },
-        {
-          "key": "dnd5e:ui:bar-fill-resource",
           "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal05.png",
           "width": 256,
           "height": 64,
@@ -97,7 +82,22 @@
             "bottom": 23,
             "left": 22
           },
-          "notes": "Solid silver/gray gradient fill, same shape as bar-fill-hp. For a secondary resource (stamina/spell-slots/etc.) sharing bar-track-hp so HP and the secondary resource read as the same gauge family in different colors."
+          "notes": "REVISION (steel art-direction, see $steelRevisionNote): solid silver/gray gradient fill, tapered diamond end-caps -- was Bar_Horizontal04 (gold); swapped with bar-fill-resource. No red/crimson fill exists anywhere in the library (checked), so silver is the steel-direction stand-in for the conventional HP-red read. Clip (do not stretch) to represent percentage; cap margin matches bar-track-hp's interior inset so the fill sits flush inside the bezel."
+        },
+        {
+          "key": "dnd5e:ui:bar-fill-resource",
+          "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal04.png",
+          "width": 256,
+          "height": 64,
+          "sizeKB": 11.9,
+          "fillDirection": "left-to-right",
+          "capMargin": {
+            "top": 30,
+            "right": 23,
+            "bottom": 23,
+            "left": 22
+          },
+          "notes": "REVISION (steel art-direction, see $steelRevisionNote): solid gold gradient fill, same shape as bar-fill-hp -- was Bar_Horizontal05 (silver); swapped with bar-fill-hp. The bars family only has these 2 solid fill sprites in the whole pack, so gold remains here as the deliberately-distinct secondary-resource color (stamina/spell-slots/etc.) now that HP has taken silver -- this is the one warm-metal-toned sprite left in the contract, chosen specifically so HP and the secondary resource still read as visually distinct gauges sharing bar-track-hp."
         }
       ]
     },
@@ -201,11 +201,11 @@
       "entries": [
         {
           "key": "dnd5e:ui:banner-victory",
-          "file": "ui/library/banners/SPR_FantasyWarrior_Banner07.png",
+          "file": "ui/library/banners/SPR_FantasyWarrior_Banner12.png",
           "width": 1024,
           "height": 512,
-          "sizeKB": 403.1,
-          "notes": "Warm gold ornate scrollwork title-plate frame, text-free (empty interior for app-rendered text). Judgment call -- see $judgmentCallNote."
+          "sizeKB": 218.0,
+          "notes": "REVISION (steel art-direction, see $steelRevisionNote): bright silver/chrome title-plate frame with flowing wing/leaf-shaped scrollwork, text-free (empty interior for app-rendered text) -- was Banner07 (warm gold celtic-knot scrollwork). A genuine steel/silver celebratory-shaped option exists in this pack (unlike the original judgment call, which assumed none did), so no gold accent remains anywhere in the chrome/banner surfaces."
         },
         {
           "key": "dnd5e:ui:banner-defeat",
@@ -222,47 +222,47 @@
     "dnd5e:ui:frame-panel": {
       "surface": "chrome",
       "key": "dnd5e:ui:frame-panel",
-      "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box21_Variant01.png",
+      "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box16.png",
       "width": 512,
       "height": 512,
-      "sizeKB": 67.9,
+      "sizeKB": 59.1,
       "sliceInsets": {
-        "top": 50,
-        "right": 43,
-        "bottom": 56,
-        "left": 43
+        "top": 43,
+        "right": 37,
+        "bottom": 39,
+        "left": 35
       },
-      "notes": "Clean square beveled gold frame, straight edges. General dialog/panel chrome -- default pick for the #525 dock/panel shell primitive."
+      "notes": "REVISION (steel art-direction, see $steelRevisionNote): clean square beveled silver/steel frame, straight edges -- was Frame_Box21_Variant01 (gold). General dialog/panel chrome -- default pick for the #525 dock/panel shell primitive."
     },
     "dnd5e:ui:frame-ornate": {
       "surface": "chrome",
       "key": "dnd5e:ui:frame-ornate",
-      "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box18_Variant01.png",
+      "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box23.png",
       "width": 512,
       "height": 512,
-      "sizeKB": 99.2,
+      "sizeKB": 90.8,
       "sliceInsets": {
         "top": 59,
-        "right": 84,
-        "bottom": 53,
-        "left": 83
+        "right": 63,
+        "bottom": 55,
+        "left": 61
       },
-      "notes": "Ornate bracket frame with diamond side-spikes, larger insets. For emphasis surfaces (e.g. victory/defeat modal border, hero ability card) rather than everyday chrome."
+      "notes": "REVISION (steel art-direction, see $steelRevisionNote): bright chrome/silver frame with diamond-cut corners, larger insets -- was Frame_Box18_Variant01 (gold, diamond side-spike brackets). For emphasis surfaces (e.g. victory/defeat modal border, hero ability card) rather than everyday chrome. Frame_Box20 (steel, matching Box18's side-spike ornament more closely) was tried first but rejected -- its single bottom-center diamond notch visibly distorts under a 3x-wide stretch; Box23's cut corners stayed crisp in both 3x-wide and 3x-tall renders."
     },
     "dnd5e:ui:frame-button": {
       "surface": "chrome",
       "key": "dnd5e:ui:frame-button",
-      "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box_Small01.png",
+      "file": "ui/library/frames/SPR_FantasyWarrior_Frame_Box_Small03.png",
       "width": 256,
       "height": 256,
-      "sizeKB": 29.4,
+      "sizeKB": 18.4,
       "sliceInsets": {
         "top": 30,
-        "right": 27,
-        "bottom": 27,
+        "right": 26,
+        "bottom": 25,
         "left": 25
       },
-      "notes": "Compact frame (256x256 source, smaller absolute insets than frame-panel but same proportional bevel weight) sized for action-bar-button-scale chrome."
+      "notes": "REVISION (steel art-direction, see $steelRevisionNote): steel-blue member of the same Box_Small01/02/03 shape family -- was Frame_Box_Small01 (gold). Compact frame (256x256 source, smaller absolute insets than frame-panel but same proportional bevel weight) sized for action-bar-button-scale chrome."
     },
     "dnd5e:ui:bar-track-hp": {
       "surface": "bars",
@@ -282,22 +282,6 @@
     "dnd5e:ui:bar-fill-hp": {
       "surface": "bars",
       "key": "dnd5e:ui:bar-fill-hp",
-      "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal04.png",
-      "width": 256,
-      "height": 64,
-      "sizeKB": 11.9,
-      "fillDirection": "left-to-right",
-      "capMargin": {
-        "top": 30,
-        "right": 23,
-        "bottom": 23,
-        "left": 22
-      },
-      "notes": "Solid gold gradient fill, tapered diamond end-caps. Clip (do not stretch) to represent percentage; cap margin matches bar-track-hp's interior inset so the fill sits flush inside the bezel."
-    },
-    "dnd5e:ui:bar-fill-resource": {
-      "surface": "bars",
-      "key": "dnd5e:ui:bar-fill-resource",
       "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal05.png",
       "width": 256,
       "height": 64,
@@ -309,7 +293,23 @@
         "bottom": 23,
         "left": 22
       },
-      "notes": "Solid silver/gray gradient fill, same shape as bar-fill-hp. For a secondary resource (stamina/spell-slots/etc.) sharing bar-track-hp so HP and the secondary resource read as the same gauge family in different colors."
+      "notes": "REVISION (steel art-direction, see $steelRevisionNote): solid silver/gray gradient fill, tapered diamond end-caps -- was Bar_Horizontal04 (gold); swapped with bar-fill-resource. No red/crimson fill exists anywhere in the library (checked), so silver is the steel-direction stand-in for the conventional HP-red read. Clip (do not stretch) to represent percentage; cap margin matches bar-track-hp's interior inset so the fill sits flush inside the bezel."
+    },
+    "dnd5e:ui:bar-fill-resource": {
+      "surface": "bars",
+      "key": "dnd5e:ui:bar-fill-resource",
+      "file": "ui/library/bars/SPR_FantasyWarrior_Bar_Horizontal04.png",
+      "width": 256,
+      "height": 64,
+      "sizeKB": 11.9,
+      "fillDirection": "left-to-right",
+      "capMargin": {
+        "top": 30,
+        "right": 23,
+        "bottom": 23,
+        "left": 22
+      },
+      "notes": "REVISION (steel art-direction, see $steelRevisionNote): solid gold gradient fill, same shape as bar-fill-hp -- was Bar_Horizontal05 (silver); swapped with bar-fill-hp. The bars family only has these 2 solid fill sprites in the whole pack, so gold remains here as the deliberately-distinct secondary-resource color (stamina/spell-slots/etc.) now that HP has taken silver -- this is the one warm-metal-toned sprite left in the contract, chosen specifically so HP and the secondary resource still read as visually distinct gauges sharing bar-track-hp."
     },
     "dnd5e:ui:badge-raging": {
       "surface": "badges",
@@ -413,11 +413,11 @@
     "dnd5e:ui:banner-victory": {
       "surface": "banners",
       "key": "dnd5e:ui:banner-victory",
-      "file": "ui/library/banners/SPR_FantasyWarrior_Banner07.png",
+      "file": "ui/library/banners/SPR_FantasyWarrior_Banner12.png",
       "width": 1024,
       "height": 512,
-      "sizeKB": 403.1,
-      "notes": "Warm gold ornate scrollwork title-plate frame, text-free (empty interior for app-rendered text). Judgment call -- see $judgmentCallNote."
+      "sizeKB": 218.0,
+      "notes": "REVISION (steel art-direction, see $steelRevisionNote): bright silver/chrome title-plate frame with flowing wing/leaf-shaped scrollwork, text-free (empty interior for app-rendered text) -- was Banner07 (warm gold celtic-knot scrollwork). A genuine steel/silver celebratory-shaped option exists in this pack (unlike the original judgment call, which assumed none did), so no gold accent remains anywhere in the chrome/banner surfaces."
     },
     "dnd5e:ui:banner-defeat": {
       "surface": "banners",
