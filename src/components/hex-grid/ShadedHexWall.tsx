@@ -187,16 +187,26 @@ export function ShadedHexWall({
   const isDoor =
     wall.kind === WallKind.DOOR_CLOSED || wall.kind === WallKind.DOOR_OPEN;
 
+  // Copilot review on #549: the click/hover handlers (and their
+  // stopPropagation) must only attach for DOOR_* walls. A plain <group
+  // ref={groupRef} /> with no handlers — same as every non-door wall
+  // rendered before this PR — leaves SOLID/WINDOW/UNSPECIFIED walls'
+  // click/hover behavior completely unchanged; only a door's own group
+  // intercepts and forwards the click.
+  if (!isDoor) {
+    return <group ref={groupRef} />;
+  }
+
   return (
     <group
       ref={groupRef}
       onClick={(e: { stopPropagation: () => void }) => {
         e.stopPropagation();
-        if (isDoor && wall.id) onDoorClick?.(wall.id);
+        if (wall.id) onDoorClick?.(wall.id);
       }}
       onPointerOver={(e: { stopPropagation: () => void }) => {
         e.stopPropagation();
-        if (isDoor && wall.id) document.body.style.cursor = 'pointer';
+        if (wall.id) document.body.style.cursor = 'pointer';
       }}
       onPointerOut={() => {
         document.body.style.cursor = 'auto';
