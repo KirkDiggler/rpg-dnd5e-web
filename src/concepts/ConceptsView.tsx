@@ -3,13 +3,19 @@ import { useState } from 'react';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
 import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
+import { EquipmentConcept } from './equipment/EquipmentConcept';
 
-type ConceptPage = 'class-selection' | 'encounter-dock' | 'combat-panel';
+type ConceptPage =
+  | 'class-selection'
+  | 'encounter-dock'
+  | 'combat-panel'
+  | 'equipment';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'class-selection', label: 'Class Selection' },
   { id: 'encounter-dock', label: 'Encounter Dock' },
   { id: 'combat-panel', label: 'Combat Panel' },
+  { id: 'equipment', label: 'Equipment' },
 ];
 
 interface ConceptsViewProps {
@@ -81,6 +87,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'class-selection' && <ClassSelectionConcept />}
         {activePage === 'encounter-dock' && <EncounterDockConcept />}
         {activePage === 'combat-panel' && <CombatPanelConcept />}
+        {activePage === 'equipment' && <EquipmentConcept />}
       </motion.div>
     </div>
   );
