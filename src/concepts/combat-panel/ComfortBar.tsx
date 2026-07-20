@@ -17,6 +17,12 @@
  * (public/themes/base.css). Sprites are grayscale art tinted through theme
  * tokens with background-blend, and they are GITIGNORED (Synty license):
  * every skinned class keeps its token fallback.
+ *
+ * Round 6 (`strip="pill"`, D): the standing teaching-strip ROW is gone —
+ * "'your turn — pick an action' is vertical space we do not need to take
+ * up" (Kirk). Contextual guidance floats as a zero-layout-height pill
+ * above the dock only for non-obvious states; plain your-turn shows
+ * nothing and the map gets the freed row. See ContextPill.
  */
 
 import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
@@ -32,6 +38,7 @@ import {
   type VerbGroup,
 } from '../../components/ui/combat';
 import { getActionIconUrl } from '../../utils/actionIcons';
+import { ContextPill } from './ContextPill';
 import { ContextStrip } from './ContextStrip';
 import type { CombatPanelFixture } from './fixtures';
 
@@ -42,6 +49,12 @@ export interface ComfortBarProps {
   onEndTurn: () => void;
   /** 'tokens' = composition C; 'hud' = composition D (sprite-skinned). */
   skin?: 'tokens' | 'hud';
+  /**
+   * Round 6: 'pill' (composition D) replaces the standing strip row with a
+   * zero-height floating pill that appears only for non-obvious states —
+   * the map gets the freed row. 'row' keeps the round-4 strip (C ref).
+   */
+  strip?: 'row' | 'pill';
 }
 
 /**
@@ -75,6 +88,7 @@ export function ComfortBar({
   onVerb,
   onEndTurn,
   skin = 'tokens',
+  strip = 'row',
 }: ComfortBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -141,15 +155,20 @@ export function ComfortBar({
 
   return (
     <div className={skin === 'hud' ? 'hud-skin' : undefined}>
-      <ContextStrip
-        fixture={fixture}
-        armedKey={armedKey}
-        comfortable={!big}
-        large={big}
-      />
+      {strip === 'row' && (
+        <ContextStrip
+          fixture={fixture}
+          armedKey={armedKey}
+          comfortable={!big}
+          large={big}
+        />
+      )}
       {/* Two-container shell (the #519 lesson): outer relative anchor with
           no overflow rule; overlays are siblings of the rows. */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
+        {strip === 'pill' && (
+          <ContextPill fixture={fixture} armedKey={armedKey} large={big} />
+        )}
         <div
           className="hud-dock"
           data-testid="comfort-bar"

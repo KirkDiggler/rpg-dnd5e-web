@@ -34,3 +34,26 @@ export function contextMessage(
   }
   return { text: 'Your turn — pick an action.', tone: 'action' };
 }
+
+/**
+ * Round 6 (Kirk: "'your turn — pick an action' is vertical space we do not
+ * need to take up"): the pill variant returns NULL for the plain your-turn
+ * state — enabled verbs + the green initiative highlight already say it.
+ * Teaching appears when needed (armed / spectator / free-roam / ended /
+ * nothing-left / connecting), never as standing furniture (#533).
+ */
+export function pillMessage(
+  fixture: CombatPanelFixture,
+  armedKey: string | undefined,
+  armedLabel: string | undefined
+): { text: string; tone: StripTone } | null {
+  const msg = contextMessage(fixture, armedKey, armedLabel);
+  if (
+    fixture.isMyTurn &&
+    fixture.mode === 'TURN_BASED' &&
+    armedKey === undefined
+  ) {
+    return null;
+  }
+  return msg;
+}

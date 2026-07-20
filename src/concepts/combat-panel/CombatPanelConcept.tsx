@@ -30,7 +30,7 @@ const COMPOSITIONS: { id: CompositionId; label: string; blurb: string }[] = [
     id: 'hud-skinned',
     label: 'D — HUD-skinned (primary)',
     blurb:
-      "Kirk's pick, tuned for the real viewport floor (1024×768): full-step-up sizes, stone-framed dock, sprite-tinted through theme tokens. Verbs inline — features as a labeled inline group; drop-down only under genuine width pressure.",
+      "Kirk's pick, tuned for the real viewport floor (1024×768): full-step-up sizes, stone-framed dock, sprite-tinted through theme tokens. Verbs inline — features as a labeled inline group; drop-down only under genuine width pressure. Round 6: no standing strip — teaching is a floating pill that appears only for non-obvious states; plain your-turn shows NOTHING.",
   },
   {
     id: 'comfort',
@@ -123,7 +123,7 @@ export function CombatPanelConcept() {
     composition === 'comfort' ? (
       <ComfortBar {...panelProps} skin="tokens" />
     ) : composition === 'hud-skinned' ? (
-      <ComfortBar {...panelProps} skin="hud" />
+      <ComfortBar {...panelProps} skin="hud" strip="pill" />
     ) : composition === 'cluster' ? (
       <CommandCluster {...panelProps} />
     ) : composition === 'command-bar' ? (
@@ -157,16 +157,19 @@ export function CombatPanelConcept() {
   return (
     <div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 12, fontSize: 14 }}>
-        Round-5 concepts for the combat panel (web#525). D (HUD-skinned) is
-        Kirk's pick, now tuned for the corrected viewport reality: the floor is
-        1024×768 and typical play is larger — design for the floor, let it
-        breathe upward. Verbs render inline by default, class features as a
-        labeled inline group (the diamond badges carry the cost story); the
-        drop-down appears only when the bar genuinely cannot fit the kit. The
-        pool + cost-badge model is unchanged: every badge comes straight from
-        the server's economy_slot. Interactions are live: click a verb to arm it
-        (Esc cancels), End Turn hands the turn over. Prove the busy case with
-        the Monk fixture at 1024 and 1440 — the features sit inline.
+        Round-6 concepts for the combat panel (web#525). D (HUD-skinned) is
+        Kirk's pick, tuned for the corrected viewport reality (floor 1024×768,
+        typical larger) with verbs inline by default — features as a labeled
+        inline group, drop-down only under genuine width pressure. Round 6
+        removes the standing teaching strip from D: the plain your-turn state
+        shows NO message (enabled verbs + the green initiative highlight already
+        say it); contextual guidance appears as a floating pill above the dock
+        only for the non-obvious states — armed, spectator, free-roam, ended,
+        nothing-left, connecting — and vanishes when the state returns to plain
+        your-turn. The freed row goes to the map. A hidden aria-live region
+        keeps announcing every state for screen readers. Acceptance: fresh
+        fixture = no pill; armed / spectator / free-roam = pill. Pool + cost
+        badges unchanged (server economy_slot).
       </p>
 
       <div
