@@ -379,7 +379,7 @@ export function ComfortBar({
                   label={
                     <img
                       src={EQUIP_CHIP_ICON}
-                      alt=""
+                      alt="Equipment"
                       draggable={false}
                       style={{
                         width: 18,

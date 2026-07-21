@@ -7,7 +7,7 @@
  */
 
 import type { EquipCastFixture, EquipIntent } from './fixtures';
-import { targetSlotFor } from './fixtures';
+import { resolveIconUrl, targetSlotFor } from './fixtures';
 
 interface InventoryLightProps {
   cast: EquipCastFixture;
@@ -31,11 +31,11 @@ export function InventoryLight({
       {carried.length === 0 && (
         <div className="equip-inventory-empty">Nothing carried.</div>
       )}
-      {carried.map((item, idx) => {
+      {carried.map((item) => {
         const target = targetSlotFor(item, cast.slots, equipped);
         return (
           <button
-            key={`${item.ref.id}-${idx}`}
+            key={item.ref.id}
             className={`equip-inv-row${target ? '' : ' gear'}`}
             data-testid={`inv-${item.ref.id}`}
             disabled={!target}
@@ -56,7 +56,7 @@ export function InventoryLight({
           >
             <img
               className="equip-inv-icon"
-              src={item.icon}
+              src={resolveIconUrl(item.iconKey)}
               alt=""
               draggable={false}
             />

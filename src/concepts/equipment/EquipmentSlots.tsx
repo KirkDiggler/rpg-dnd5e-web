@@ -9,6 +9,7 @@
  */
 
 import type { EquipCastFixture, EquipIntent, ItemFixture } from './fixtures';
+import { resolveIconUrl } from './fixtures';
 
 interface EquipmentSlotsProps {
   cast: EquipCastFixture;
@@ -34,6 +35,7 @@ export function EquipmentSlots({
             key={slot.key}
             className={`equip-socket${item ? '' : ' empty'}`}
             data-testid={`equip-socket-${slot.key}`}
+            disabled={!item}
             aria-label={
               item
                 ? `${slot.label}: ${item.name} — click to unequip`
@@ -53,7 +55,7 @@ export function EquipmentSlots({
               <>
                 <img
                   className="equip-socket-icon"
-                  src={item.icon}
+                  src={resolveIconUrl(item.iconKey)}
                   alt=""
                   draggable={false}
                 />

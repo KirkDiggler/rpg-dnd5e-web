@@ -43,7 +43,7 @@ export interface ItemFixture {
   name: string;
   kind: string; // 'weapon' | 'shield' | 'armor' | 'gear'
   statLine: string;
-  icon: string; // sprite path under /models/synty/ui/library/
+  iconKey: string; // manifest key (CONTRACT.md §4 icon_key) — resolveIconUrl turns it into a URL
   /** CONTRACT GAP: two-handed occupancy is server semantics — on equip
    * the server clears/blocks off_hand and the snapshot reflects it. The
    * fixture reducer mimics that so the concept behaves like the wire
@@ -77,12 +77,19 @@ export interface EquipCastFixture {
 
 const LIB = '/models/synty/ui/library';
 
+/** UI-boundary resolver: manifest key -> URL. Components carry the key
+ * (the wire's icon_key) and resolve only at the <img>; swapping fixtures
+ * for wire data touches nothing but the data source. */
+export function resolveIconUrl(iconKey: string): string {
+  return `${LIB}/${iconKey}`;
+}
+
 const item = (
   id: string,
   name: string,
   kind: string,
   statLine: string,
-  icon: string,
+  iconKey: string,
   slots: string[],
   twoHanded?: boolean
 ): ItemFixture => ({
@@ -90,7 +97,7 @@ const item = (
   name,
   kind,
   statLine,
-  icon: `${LIB}/${icon}`,
+  iconKey,
   slots,
   twoHanded,
 });
