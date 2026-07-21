@@ -170,6 +170,16 @@ export function PlaytestMap({
     [showCryptDemo]
   );
 
+  // Every crypt floor hex renders the lit/tinted crypt floor material
+  // (SyntyHexFloor's themeFloorHexKeys prop) — the whole demo room is one
+  // theme, so this is just floorKeys as a Set. Undefined when the flag is
+  // off, so SyntyHexFloor's real-dungeon tiles keep the exact #481/#485
+  // unlit rendering, unchanged.
+  const cryptThemeFloorHexKeys = useMemo(
+    () => (cryptLayout ? new Set(cryptLayout.floorKeys) : undefined),
+    [cryptLayout]
+  );
+
   // Mood lighting (rpg-dnd5e-web#558, Kirk's POLYGON Dark Fortress
   // reference) — near-dark ambient/directional plus sickly-green point
   // lights at candle positions and warm-orange lights at each door (both
@@ -277,6 +287,7 @@ export function PlaytestMap({
         combatState={null}
         syntyDungeon={syntyDungeon}
         themeWallHexKeys={cryptLayout?.themeWallHexKeys}
+        themeFloorHexKeys={cryptThemeFloorHexKeys}
         ambientIntensity={cryptLayout ? 0.08 : undefined}
         directionalIntensity={cryptLayout ? 0.05 : undefined}
         moodPointLights={cryptMoodLights}

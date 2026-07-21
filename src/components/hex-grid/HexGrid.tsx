@@ -126,6 +126,14 @@ export interface HexGridProps {
    */
   themeWallHexKeys?: ReadonlySet<string>;
   /**
+   * Floor-tile keys (hexMath's `coordToKey` format) that should render with
+   * SyntyHexFloor's lit, tinted crypt material instead of the default
+   * unlit one (rpg-dnd5e-web#558 PR review — the floor otherwise ignores
+   * scene lighting entirely). Undefined (every existing caller) means
+   * every tile keeps the exact pre-existing #481/#485 rendering.
+   */
+  themeFloorHexKeys?: ReadonlySet<string>;
+  /**
    * Mood-lighting overrides (rpg-dnd5e-web#558 crypt spike, Kirk's POLYGON
    * Dark Fortress reference) — replaces the flat `ambientLight`/
    * `directionalLight` intensities below when set, so an injected room can
@@ -178,6 +186,7 @@ function Scene({
   walls = [],
   syntyDungeon = false,
   themeWallHexKeys,
+  themeFloorHexKeys,
   ambientIntensity = 0.6,
   directionalIntensity = 0.8,
   moodPointLights = [],
@@ -596,7 +605,11 @@ function Scene({
             />
           }
         >
-          <SyntyHexFloor floorTiles={floorTiles} hexSize={HEX_SIZE} />
+          <SyntyHexFloor
+            floorTiles={floorTiles}
+            hexSize={HEX_SIZE}
+            themeFloorHexKeys={themeFloorHexKeys}
+          />
         </ErrorBoundary>
       ) : (
         <ShadedHexFloor

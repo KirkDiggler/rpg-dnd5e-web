@@ -34,13 +34,36 @@ const FLOOR_TEXTURE = TEX_BASE + 'Dungeons_Texture_FloorTiles_01.png';
 // z-fight if both are ever mounted at once during a toggle transition.
 const FLOOR_Y = 0.2;
 
+/**
+ * Crypt-theme floor tint (mid-flight scope addition, rpg-dnd5e-web#558 PR
+ * review — Kirk: the floor's unlit MeshBasicMaterial renders full-bright
+ * regardless of the scene's near-dark mood lighting, so candle/door light
+ * pools visibly land on walls/props but not the floor — "the glowing-white-
+ * board effect defeats the whole treatment"). Multiplies the floor texture
+ * before it reaches the lit material below, same direction as the wall
+ * tint (WALL_TINT_BY_THEME in SyntyHexWall.tsx).
+ */
+const CRYPT_FLOOR_TINT = new THREE.Color(0.35, 0.38, 0.46);
+
 interface SyntyHexFloorTileProps {
   tile: AbsoluteFloorTile;
   hexSize: number;
   texture: THREE.Texture;
+  /** True for a tile in `themeFloorHexKeys` (rpg-dnd5e-web#558's crypt
+   * demo) — swaps the unlit MeshBasicMaterial for a lit MeshStandardMaterial
+   * so ambient/point lights actually reach the floor. `false` (every real
+   * dungeon tile today) keeps the exact unlit material rpg-dnd5e-web#481/
+   * #485 landed — deliberately tone-mapping-independent so real deployed
+   * floors don't regress to that bug. */
+  isCrypt: boolean;
 }
 
-function SyntyHexFloorTile({ tile, hexSize, texture }: SyntyHexFloorTileProps) {
+function SyntyHexFloorTile({
+  tile,
+  hexSize,
+  texture,
+  isCrypt,
+}: SyntyHexFloorTileProps) {
   const world = cubeToWorld({ x: tile.x, y: tile.y, z: tile.z }, hexSize);
   const geometry = useMemo(() => {
     const shape = new THREE.Shape();
@@ -76,33 +99,42 @@ function SyntyHexFloorTile({ tile, hexSize, texture }: SyntyHexFloorTileProps) {
     return geo;
   }, [hexSize]);
 
+  // rpg-dnd5e-web#481: MeshStandardMaterial (PBR, lit) rendered this floor
+  // nearly invisible in the deployed environment — under the scene's
+  // ambientLight(0.6)/directionalLight(0.8) rig plus r3f's default ACES
+  // tone-mapping, a fully-rough unlit-by-comparison texture compresses down
+  // close to black, and Kirk's Discord webview frame was measurably darker
+  // than local dev frames of the same build (GPU/tone-mapping path
+  // difference, unconfirmed but real). ShadedHexFloor's cel-shader reads
+  // fine in the same rig because it's a hand-tuned custom shader with its
+  // own guaranteed-bright output, not dependent on scene lights at all.
+  // MeshBasicMaterial matches that: fully unlit, renders the texture at a
+  // light-rig-independent brightness. MeshBasicMaterial is still tone-mapped
+  // by default (Copilot review #485) — toneMapped={false} makes the
+  // texture's own pixel values the final word, killing the cross-
+  // environment variance #481 exists to fix.
+  //
+  // `isCrypt` (mid-flight scope addition, rpg-dnd5e-web#558 PR review —
+  // Kirk: "the floor renders full-bright while everything else sits in
+  // near-dark... the glowing-white-board effect defeats the whole
+  // treatment") deliberately does NOT touch this default path — every real
+  // dungeon tile still gets the exact #481/#485 fix, unchanged. Only the
+  // crypt demo's own tiles swap to a lit, tinted MeshStandardMaterial so
+  // the near-dark ambient and candle/door point lights actually reach the
+  // floor and visibly pool on it, at the cost of exactly the tone-mapping
+  // dependence #481 avoided — an acceptable, contained trade for an opt-in
+  // dev-only demo flag, not the production dungeon floor.
   return (
     <mesh geometry={geometry} position={[world.x, FLOOR_Y, world.z]}>
-      {/* rpg-dnd5e-web#481: MeshStandardMaterial (PBR, lit) rendered this
-          floor nearly invisible in the deployed environment — under the
-          scene's ambientLight(0.6)/directionalLight(0.8) rig plus r3f's
-          default ACES tone-mapping, a fully-rough unlit-by-comparison
-          texture compresses down close to black, and Kirk's Discord webview
-          frame was measurably darker than local dev frames of the same
-          build (GPU/tone-mapping path difference, unconfirmed but real).
-          ShadedHexFloor's cel-shader (FloorBuilder.getMaterial →
-          AdvancedCharacterShader) reads fine in the same rig because it's
-          a hand-tuned custom shader with its own guaranteed-bright output,
-          not dependent on scene lights at all. MeshBasicMaterial matches
-          that: fully unlit, renders the texture at a light-rig-independent
-          brightness — the floor no longer needs the ambient/directional
-          setup (or any given deployment's tone-mapping/GPU quirks) to be
-          visibly correct. This is a code-side fix; if it still reads too
-          flat once seen against real deployed lighting, a lighter floor
-          texture variant is the asset-request fallback (#481).
-
-          MeshBasicMaterial is still tone-mapped by default (Copilot review
-          #485) — r3f's renderer applies ACES/exposure to every material
-          unless it opts out, so without toneMapped={false} this floor was
-          still at the mercy of each environment's tone-mapping/exposure,
-          the exact cross-environment variance #481 exists to kill. Opting
-          out makes the texture's own pixel values the final word. */}
-      <meshBasicMaterial map={texture} toneMapped={false} />
+      {isCrypt ? (
+        <meshStandardMaterial
+          map={texture}
+          color={CRYPT_FLOOR_TINT}
+          roughness={1}
+        />
+      ) : (
+        <meshBasicMaterial map={texture} toneMapped={false} />
+      )}
     </mesh>
   );
 }
@@ -110,9 +142,18 @@ function SyntyHexFloorTile({ tile, hexSize, texture }: SyntyHexFloorTileProps) {
 export interface SyntyHexFloorProps {
   floorTiles: Map<string, AbsoluteFloorTile>;
   hexSize: number;
+  /** Floor-tile keys ("x,y,z", coordToKey format) that should render with
+   * the lit, tinted crypt material instead of the default unlit one
+   * (rpg-dnd5e-web#558). Undefined/omitted (every existing caller) means
+   * every tile keeps the exact pre-existing #481/#485 rendering. */
+  themeFloorHexKeys?: ReadonlySet<string>;
 }
 
-export function SyntyHexFloor({ floorTiles, hexSize }: SyntyHexFloorProps) {
+export function SyntyHexFloor({
+  floorTiles,
+  hexSize,
+  themeFloorHexKeys,
+}: SyntyHexFloorProps) {
   // useTexture returns drei's shared, URL-keyed texture cache — mutating it
   // directly during render is a render-phase side effect on shared state
   // (Copilot review on #472). Clone it and configure the clone instead.
@@ -133,14 +174,18 @@ export function SyntyHexFloor({ floorTiles, hexSize }: SyntyHexFloorProps) {
 
   return (
     <Suspense fallback={null}>
-      {tiles.map((tile) => (
-        <SyntyHexFloorTile
-          key={`${tile.x},${tile.y},${tile.z}`}
-          tile={tile}
-          hexSize={hexSize}
-          texture={floorMap}
-        />
-      ))}
+      {tiles.map((tile) => {
+        const key = `${tile.x},${tile.y},${tile.z}`;
+        return (
+          <SyntyHexFloorTile
+            key={key}
+            tile={tile}
+            hexSize={hexSize}
+            texture={floorMap}
+            isCrypt={themeFloorHexKeys?.has(key) ?? false}
+          />
+        );
+      })}
     </Suspense>
   );
 }

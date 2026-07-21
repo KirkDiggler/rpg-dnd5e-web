@@ -39,7 +39,7 @@ import {
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useGLTF } from '@react-three/drei';
-import { Suspense, useMemo } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { WorldPos } from './hexMath';
 import {
@@ -125,33 +125,53 @@ function GlbInstance({
   tint,
 }: GlbInstanceProps) {
   const { scene } = useGLTF(ENV_BASE + file);
-  const cloned = useMemo(() => {
-    const clone = scene.clone(true);
-    if (!tint) return clone;
-    // Clone (never mutate) each mesh's material before tinting — mutating
-    // the shared cached material would darken every other instance of
-    // this same GLB across the whole scene, including 'default'-theme
-    // walls sharing the file.
-    clone.traverse((child) => {
-      if (!(child instanceof THREE.Mesh)) return;
-      const tintOne = (material: THREE.Material) => {
-        if (!('color' in material)) return material;
-        const tinted = material.clone() as THREE.Material & {
-          color: THREE.Color;
-        };
-        tinted.color = (
-          material as THREE.Material & { color: THREE.Color }
-        ).color
-          .clone()
-          .multiply(tint);
-        return tinted;
-      };
-      child.material = Array.isArray(child.material)
-        ? child.material.map(tintOne)
-        : tintOne(child.material);
+  const cloned = useMemo(() => scene.clone(true), [scene]);
+
+  // Snapshot each mesh's original (untinted) material once per `cloned`
+  // identity, so the tint effect below always starts from a clean base —
+  // matches ClassCharacterModel.tsx's identical pattern for the same
+  // reason (never compound a tint onto a previously-tinted clone).
+  const originalMaterials = useMemo(() => {
+    const map = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    cloned.traverse((child) => {
+      if (child instanceof THREE.Mesh) map.set(child, child.material);
     });
-    return clone;
-  }, [scene, tint]);
+    return map;
+  }, [cloned]);
+
+  // Copilot review (PR #566): cloned tint materials were never disposed —
+  // a GPU-memory leak, since `<primitive>` objects aren't auto-disposed by
+  // react-three-fiber (PropModel.tsx's own doc comment). Tinting now lives
+  // in an effect (not the useMemo above) specifically so its cleanup can
+  // dispose exactly the materials THIS run created — never the shared
+  // `originalMaterials`, which are the same instances every other on-screen
+  // copy of this GLB (via useGLTF's cache) still uses.
+  useEffect(() => {
+    if (!tint) {
+      originalMaterials.forEach((mat, mesh) => {
+        mesh.material = mat;
+      });
+      return () => {};
+    }
+    const created: THREE.Material[] = [];
+    originalMaterials.forEach((mat, mesh) => {
+      const wasArray = Array.isArray(mat);
+      const materials = wasArray ? mat : [mat];
+      const tinted = materials.map((m) => {
+        const tintedMat = m.clone();
+        created.push(tintedMat);
+        if ('color' in tintedMat && tintedMat.color instanceof THREE.Color) {
+          tintedMat.color = tintedMat.color.clone().multiply(tint);
+        }
+        return tintedMat;
+      });
+      mesh.material = wasArray ? tinted : tinted[0]!;
+    });
+    return () => {
+      created.forEach((mat) => mat.dispose());
+    };
+  }, [originalMaterials, tint]);
+
   return (
     <primitive
       object={cloned}
