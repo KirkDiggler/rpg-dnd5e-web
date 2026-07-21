@@ -494,17 +494,22 @@ export function buildCryptLayout(): CryptLayout {
   const bossCenter = hexAdd(corridorHexes[2]!, hexScale(DIR_E, 3));
   const bossHexes = hexesWithinRadius(bossCenter, 2); // 19 hexes
 
+  // Copilot review (PR #566): un-namespaced door ids risk colliding with a
+  // real server-provided Wall.id if this demo wiring is ever reused on a
+  // route that calls interact(encounterId, doorId, 'open') — same
+  // "__crypt-demo-*__" convention as cryptProp's entityId below guarantees
+  // these can never collide with a real id.
   const doorEntranceToCorridor = doorWall(
     hexAdd(entranceCenter, DIR_E), // entrance chamber's E hex (already in entranceHexes)
     corridorHexes[0]!,
     WallKind.DOOR_CLOSED,
-    'crypt-door-entrance'
+    '__crypt-demo-door-entrance__'
   );
   const doorCorridorToBoss = doorWall(
     corridorHexes[2]!,
     hexAdd(bossCenter, hexScale(DIR_W, 2)), // boss chamber's westmost hex (already in bossHexes)
     WallKind.DOOR_OPEN,
-    'crypt-door-boss'
+    '__crypt-demo-door-boss__'
   );
 
   const floorHexes = [...entranceHexes, ...corridorHexes, ...bossHexes];

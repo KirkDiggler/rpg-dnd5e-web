@@ -564,6 +564,17 @@ describe('buildCryptLayout (rpg-dnd5e-web#558 crypt spike)', () => {
     }
   });
 
+  it('door ids follow the __crypt-demo-*__ convention — Copilot review (PR #566): an un-namespaced door id risks colliding with a real server-provided Wall.id if this demo wiring is ever reused on a route that calls interact(encounterId, doorId, "open")', () => {
+    const { walls } = buildCryptLayout();
+    const doors = walls.filter(
+      (w) => w.kind === WallKind.DOOR_CLOSED || w.kind === WallKind.DOOR_OPEN
+    );
+    expect(doors).toHaveLength(2);
+    for (const door of doors) {
+      expect(door.id).toMatch(/^__crypt-demo-.+__$/);
+    }
+  });
+
   it('both door edges connect two hexes that are BOTH real floor hexes — the door sits on the shared boundary between rooms, not floating outside either room', () => {
     const { walls, floorKeys } = buildCryptLayout();
     const floorSet = new Set(floorKeys);
