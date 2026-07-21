@@ -42,9 +42,15 @@ import {
 } from '../../components/ui/combat';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import { getActionIconUrl } from '../../utils/actionIcons';
+import { EquipmentPopover } from '../equipment/EquipmentPopover';
 import { ContextPill } from './ContextPill';
 import { ContextStrip } from './ContextStrip';
 import type { CombatPanelFixture } from './fixtures';
+
+/** Chestplate icon for the equipment chip — deliberately NOT another
+ * cogwheel; ⚙ is settings and two cogs would confuse. */
+const EQUIP_CHIP_ICON =
+  '/models/synty/ui/library/icons/inventory/ICON_FantasyWarrior_Inventory_Armor01_Clean.png';
 
 export interface ComfortBarProps {
   fixture: CombatPanelFixture;
@@ -71,6 +77,15 @@ export interface ComfortBarProps {
    * log).
    */
   logEntries?: CombatLogEntry[];
+  /**
+   * Equipment round 2 (Kirk: "a gear icon on our control bar that can
+   * open an animated pop over"): renders the equipment chip (chestplate
+   * icon) beside 📜/⚙ and the animated EquipmentPopover. Concept-only
+   * until the CONTRACT.md wire lands. One-panel policy: while equipment
+   * is open the log yields (its own open state is untouched, so it
+   * restores on close).
+   */
+  equipmentChip?: boolean;
 }
 
 export function ComfortBar({
@@ -81,11 +96,13 @@ export function ComfortBar({
   skin = 'tokens',
   strip = 'row',
   logEntries,
+  equipmentChip = false,
 }: ComfortBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Round 7: OPEN is the default — the toggle exists to hide it.
   const [logOpen, setLogOpen] = useState(true);
+  const [equipOpen, setEquipOpen] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const [rowWidth, setRowWidth] = useState<number | null>(null);
 
@@ -173,7 +190,8 @@ export function ComfortBar({
             either — noted as the chosen overlap strategy). Translucent so
             the map reads through; internal scroll, newest at bottom (the
             real CombatLog handles both). */}
-        {logEntries && logOpen && (
+        {equipmentChip && <EquipmentPopover open={equipOpen} />}
+        {logEntries && logOpen && !equipOpen && (
           <div
             className="floating-log"
             data-testid="floating-log"
@@ -334,11 +352,36 @@ export function ComfortBar({
                   }
                 />
               )}
+              {equipmentChip && (
+                <OverlayToggle
+                  label={
+                    <img
+                      src={EQUIP_CHIP_ICON}
+                      alt="Equipment"
+                      draggable={false}
+                      style={{
+                        width: 18,
+                        height: 18,
+                        objectFit: 'contain',
+                        verticalAlign: 'middle',
+                      }}
+                    />
+                  }
+                  open={equipOpen}
+                  onToggle={() => {
+                    setMoreOpen(false);
+                    setSettingsOpen(false);
+                    setEquipOpen((o) => !o);
+                  }}
+                  aria-label={equipOpen ? 'Close equipment' : 'Open equipment'}
+                />
+              )}
               <OverlayToggle
                 label="⚙"
                 open={settingsOpen}
                 onToggle={() => {
                   setMoreOpen(false);
+                  setEquipOpen(false);
                   setSettingsOpen((o) => !o);
                 }}
                 aria-label="Combat settings"
