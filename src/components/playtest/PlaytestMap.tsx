@@ -43,6 +43,7 @@ import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import { HexGrid } from '../hex-grid';
 import type { CubeCoord } from '../hex-grid/hexMath';
 import {
+  buildCryptDoorLights,
   buildCryptLayout,
   buildCryptMoodLights,
   buildRenderableEntities,
@@ -171,10 +172,19 @@ export function PlaytestMap({
 
   // Mood lighting (rpg-dnd5e-web#558, Kirk's POLYGON Dark Fortress
   // reference) — near-dark ambient/directional plus sickly-green point
-  // lights at candle positions. Undefined when the flag is off, so
-  // HexGrid's own 0.6/0.8 defaults apply unchanged.
+  // lights at candle positions and warm-orange lights at each door (both
+  // the "warm torch contrast" half of the palette and practical door
+  // visibility — see buildCryptDoorLights' own doc comment). Empty array
+  // when the flag is off, so HexGrid's own 0.6/0.8 defaults apply
+  // unchanged and no stray lights render.
   const cryptMoodLights = useMemo(
-    () => (cryptLayout ? buildCryptMoodLights(cryptLayout.props) : []),
+    () =>
+      cryptLayout
+        ? [
+            ...buildCryptMoodLights(cryptLayout.props),
+            ...buildCryptDoorLights(cryptLayout.walls),
+          ]
+        : [],
     [cryptLayout]
   );
 

@@ -40,6 +40,7 @@ import {
   getHexLine,
   HEX_DIRECTIONS,
   hexCorners,
+  hexDistance,
   hexEdgeBetween,
   type CubeCoord,
   type HexEdge,
@@ -246,6 +247,8 @@ function collectWallHexes(walls: Wall[]): Map<string, WallKind> {
     if (!wall.from || !wall.to) continue;
     const start: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
     const end: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
+    const isDegenerate =
+      start.x === end.x && start.y === end.y && start.z === end.z;
     const isDoor =
       wall.kind === WallKind.DOOR_CLOSED || wall.kind === WallKind.DOOR_OPEN;
     // Door walls (design doc §Q2): from/to is a DESIGNATED PASSAGE EDGE —
@@ -256,13 +259,25 @@ function collectWallHexes(walls: Wall[]): Map<string, WallKind> {
     // `from` (the door's own cell) blocks/renders. Degenerate from===to
     // door data (not real server shape, but tolerated) falls through to
     // the line-decompose path below unchanged.
-    if (
-      isDoor &&
-      !(start.x === end.x && start.y === end.y && start.z === end.z)
-    ) {
+    if (isDoor && !isDegenerate) {
       wallKindByHex.set(coordToKey(start), wall.kind);
       continue;
     }
+    // Boundary-edge wall (Kirk's PR review, rpg-dnd5e-web#558 crypt spike):
+    // a non-door Wall whose from/to are exactly one hex step apart is ONE
+    // full-width slab on that specific edge, generalizing the door
+    // real-edge case above to solid walls — `from` is real floor, NOT a
+    // blocked cell, and is deliberately excluded from wall-hex membership
+    // entirely (buildDungeonWallSegments' own boundary-edge branch is the
+    // only source of its segment, and it never participates in corner/
+    // end-cap fitting below — matches SyntyRoomDemo.tsx's reference
+    // approach, which places one piece per room-boundary edge with no
+    // separate corner pieces at all). A MULTI-step span (hexDistance > 1)
+    // still means "decompose into a line of blocked cells" — the
+    // pre-existing hypothetical-multi-hex-wall behavior (never observed in
+    // real data, kept for API-contract generality, see this file's
+    // top-of-file doc comment) is unchanged.
+    if (!isDoor && !isDegenerate && hexDistance(start, end) === 1) continue;
     for (const hex of getHexLine(start, end)) {
       wallKindByHex.set(coordToKey(hex), wall.kind);
     }
@@ -389,6 +404,38 @@ export function buildDungeonWallSegments(
       edge: hexEdgeBetween(hex, neighbor, hexSize),
       kind: wall.kind,
       id: wall.id,
+    });
+  }
+
+  // Boundary-edge walls (Kirk's PR review, rpg-dnd5e-web#558 crypt spike):
+  // a non-door Wall whose from/to are exactly one hex step apart renders
+  // ONE segment directly on that edge — collectWallHexes deliberately
+  // excludes these from wall-hex membership (see its own doc comment), so
+  // this loop is their only source; nothing else will emit them. A
+  // multi-step span (hexDistance > 1) or a degenerate from===to wall falls
+  // through untouched to the generic per-wall-hex loop below.
+  for (const wall of walls) {
+    if (!wall.from || !wall.to) continue;
+    if (
+      wall.kind === WallKind.DOOR_CLOSED ||
+      wall.kind === WallKind.DOOR_OPEN
+    ) {
+      continue; // handled above
+    }
+    const hex: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
+    const neighbor: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
+    const hexKey = coordToKey(hex);
+    const neighborKey = coordToKey(neighbor);
+    if (hexKey === neighborKey) continue; // degenerate: single-cell block, generic loop below
+    if (hexDistance(hex, neighbor) !== 1) continue; // multi-hex line, generic loop below
+
+    const edgeKey = `${hexKey}->${neighborKey}`;
+    if (seenEdgeKeys.has(edgeKey)) continue;
+    seenEdgeKeys.add(edgeKey);
+    segments.push({
+      key: edgeKey,
+      edge: hexEdgeBetween(hex, neighbor, hexSize),
+      kind: wall.kind,
     });
   }
 

@@ -202,6 +202,64 @@ describe('buildDungeonWallSegments — door walls with a real passage edge (from
   });
 });
 
+describe("buildDungeonWallSegments — boundary-edge (non-door) walls with from/to exactly one hex step apart (Kirk's PR #566 review)", () => {
+  it('renders exactly ONE segment for a boundary-edge SOLID wall, on the wire-designated from->to edge', () => {
+    const walls = [wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 })];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments).toHaveLength(1);
+    expect(segments[0]!.key).toBe('0,0,0->1,-1,0');
+    expect(segments[0]!.kind).toBe(WallKind.SOLID);
+  });
+
+  it('does NOT mark the outside neighbor as a wall hex — no phantom segments sourced from it (the exact bug class the blocked-cell model had: a wall-ring hex rendering slabs on every exposed face, not just the one facing the room)', () => {
+    const walls = [wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 })];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments.some((s) => s.key.startsWith('1,-1,0->'))).toBe(false);
+  });
+
+  it('two boundary-edge walls sharing a room (both from the same inside hex) each render their own single segment — no crisscrossing', () => {
+    // A floor hex with 2 boundary edges (e.g. a room corner) — this is the
+    // exact discriminating case for the blocked-cell regression: the old
+    // model would have rendered a slab on every one of a wall-ring hex's
+    // exposed faces (often 3-5), not one slab per actual room edge.
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 }),
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: -1 }),
+    ];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments).toHaveLength(2);
+    expect(segments.map((s) => s.key).sort()).toEqual(
+      ['0,0,0->1,-1,0', '0,0,0->1,0,-1'].sort()
+    );
+  });
+
+  it("a boundary-edge wall never produces corner/end-cap fittings (matches SyntyRoomDemo's reference look — one piece per edge, no separate corner pieces)", () => {
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 }),
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: -1 }),
+      wall({ x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: -1 }),
+    ];
+    expect(classifyWallVertices(walls, 1)).toEqual([]);
+    expect(wallEndEdgeKeys(walls).size).toBe(0);
+  });
+
+  it('a multi-hex-step SOLID wall (hexDistance > 1) still decomposes into a line of blocked cells — the pre-existing hypothetical-multi-hex-wall behavior is unchanged', () => {
+    // Same fixture as the "decomposes a hypothetical multi-hex wall"
+    // test above (0,0,0 -> 2,-2,0, distance 2) — discriminates against
+    // the boundary-edge branch accidentally swallowing this case too.
+    const walls = [wall({ x: 0, y: 0, z: 0 }, { x: 2, y: -2, z: 0 })];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments).toHaveLength(14);
+  });
+
+  it('a degenerate (from === to) SOLID wall still renders as a single-cell block — real server data is unaffected', () => {
+    const walls = [wall({ x: 5, y: -5, z: 0 }, { x: 5, y: -5, z: 0 })];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments).toHaveLength(6);
+    expect(segments.every((s) => s.kind === WallKind.SOLID)).toBe(true);
+  });
+});
+
 describe('selectWallVariant', () => {
   it('is deterministic — the same edge key always returns the same variant', () => {
     const key = '0,0,0->1,-1,0';

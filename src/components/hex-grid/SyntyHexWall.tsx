@@ -40,6 +40,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useGLTF } from '@react-three/drei';
 import { Suspense, useMemo } from 'react';
+import * as THREE from 'three';
 import type { WorldPos } from './hexMath';
 import {
   buildDungeonWallSegments,
@@ -83,20 +84,74 @@ const DOOR_SCALE = SYNTY_SCALE;
 // pose/art; this is only a clearly-observable open-vs-closed state flip.
 const DOOR_OPEN_ROTATION_OFFSET = (80 * Math.PI) / 180;
 
+/**
+ * Per-theme material tint (mid-flight scope addition, rpg-dnd5e-web#558 —
+ * Kirk's POLYGON Dark Fortress reference: dark cool-gray stone, not tan
+ * brick on a bright atlas). No darker Synty atlas exists for this pack
+ * (verified against the source textures — colorways are accent-only, see
+ * memory), so this is a multiplicative color tint applied in-engine,
+ * matching the character-tint pattern already used elsewhere in this
+ * codebase (rpg-dnd5e-web#515). `'default'` gets no entry here, so
+ * `tintForTheme` returns `undefined` for it and GlbInstance skips the
+ * clone-and-tint path entirely — every existing (non-crypt) caller is
+ * untouched.
+ */
+const WALL_TINT_BY_THEME: Partial<Record<WallTheme, THREE.Color>> = {
+  crypt: new THREE.Color(0.32, 0.36, 0.46), // dark, cool blue-gray stone
+};
+
 interface GlbInstanceProps {
   file: string;
   position: WorldPos;
   rotationY: number;
   scale: [number, number, number] | number;
+  /** Multiplicative color tint for this instance only — clones each
+   * mesh's material before tinting it, so the shared useGLTF cache (and
+   * every OTHER instance of the same GLB) is never mutated. Undefined
+   * (every existing caller) renders the GLB's original material,
+   * unchanged. */
+  tint?: THREE.Color;
 }
 
 /** Renders one instance of a GLB. useGLTF caches the loaded scene by URL,
  * so repeated placements of the same file must each clone the cached
  * Object3D — reusing the same instance across multiple `<primitive>`s
  * would just reparent it to the last placement (SyntyRoomDemo.tsx). */
-function GlbInstance({ file, position, rotationY, scale }: GlbInstanceProps) {
+function GlbInstance({
+  file,
+  position,
+  rotationY,
+  scale,
+  tint,
+}: GlbInstanceProps) {
   const { scene } = useGLTF(ENV_BASE + file);
-  const cloned = useMemo(() => scene.clone(true), [scene]);
+  const cloned = useMemo(() => {
+    const clone = scene.clone(true);
+    if (!tint) return clone;
+    // Clone (never mutate) each mesh's material before tinting — mutating
+    // the shared cached material would darken every other instance of
+    // this same GLB across the whole scene, including 'default'-theme
+    // walls sharing the file.
+    clone.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const tintOne = (material: THREE.Material) => {
+        if (!('color' in material)) return material;
+        const tinted = material.clone() as THREE.Material & {
+          color: THREE.Color;
+        };
+        tinted.color = (
+          material as THREE.Material & { color: THREE.Color }
+        ).color
+          .clone()
+          .multiply(tint);
+        return tinted;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(tintOne)
+        : tintOne(child.material);
+    });
+    return clone;
+  }, [scene, tint]);
   return (
     <primitive
       object={cloned}
@@ -223,6 +278,7 @@ export function SyntyHexWall({
             position={edge.a}
             rotationY={edge.rotationY}
             scale={wallVariantScale(variant, WALL_HEIGHT, SYNTY_SCALE)}
+            tint={WALL_TINT_BY_THEME[theme]}
           />
         );
       })}

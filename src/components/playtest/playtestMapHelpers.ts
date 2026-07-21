@@ -380,14 +380,34 @@ function hexesWithinRadius(center: CubeCoord, radius: number): CubeCoord[] {
   return hexes;
 }
 
-/** A single-cell blocked wall (`from === to`, the real-server shape every
- * WALL_VARIANTS-consuming test/renderer assumes — syntyHexWallHelpers.ts's
- * own doc comment). */
-function solidWall(hex: CubeCoord): Wall {
-  const position = create(PositionSchema, hex);
+/**
+ * A boundary-edge wall: `from` is a real (walkable) floor hex, `to` is the
+ * adjacent hex just outside the room — ONE continuous full-width slab on
+ * that specific edge, not a blocked cell. Same shape as a door's real
+ * passage edge (see doorWall below), generalized to solid walls
+ * (syntyHexWallHelpers.ts's `collectWallHexes`/`buildDungeonWallSegments`
+ * treat any non-door Wall with `from`/`to` exactly one hex step apart this
+ * way, rpg-dnd5e-web#558 PR review).
+ *
+ * Load-bearing correction (Kirk's PR review, rpg-dnd5e-web#558): the
+ * original version of this builder used single-cell BLOCKED walls (a ring
+ * of wall-hex cells surrounding the room, matching the real server's wire
+ * shape). That looked like "mangled rubble" in practice: a wall-ring hex
+ * typically has 3-5 non-wall neighbors (floor on one side, open VOID on
+ * the others, since nothing populates the space beyond the ring), and
+ * `buildDungeonWallSegments` renders one slab per exposed face — so most
+ * ring hexes rendered 3-5 crisscrossed slabs each instead of one flat
+ * boundary line. Real server dungeons don't hit this because their wall
+ * rings are dense/contiguous (every ring hex's outward neighbors are also
+ * wall hexes); an isolated demo room's ring is sparse by comparison.
+ * Edge walls sidestep the whole problem: exactly one slab per room-facing
+ * edge, matching SyntyRoomDemo.tsx's `computeBorderEdges` reference
+ * approach (behind `?syntyroom=1`, the visual target Kirk signed off on).
+ */
+function boundaryWall(from: CubeCoord, to: CubeCoord): Wall {
   return create(WallSchema, {
-    from: position,
-    to: position,
+    from: create(PositionSchema, from),
+    to: create(PositionSchema, to),
     kind: WallKind.SOLID,
   });
 }
@@ -431,37 +451,40 @@ function cryptProp(
   };
 }
 
-/** Every hex belonging to any of the crypt's 3 rooms, adjacent to at least
- * one hex OUTSIDE that set, becomes a single-cell solid wall on the OUTSIDE
- * hex (matching buildDungeonWallSegments' "wall hex" model — a wall is a
- * blocked cell bordering the room, not a boundary line ON the room's own
- * floor hex). Neighbors that are themselves floor (the two door junctions
- * below, where the entrance/corridor and corridor/boss floor sets touch
- * directly) are skipped automatically since they're in `floorSet` too. */
-function buildPerimeterWalls(floorHexes: CubeCoord[]): Wall[] {
+/** For every hex belonging to any of the crypt's 3 rooms, for every one of
+ * its 6 edges facing a hex OUTSIDE the floor set, emit ONE boundary-edge
+ * wall on exactly that edge — mirrors SyntyRoomDemo.tsx's
+ * `computeBorderEdges` (iterate room hexes x directions, skip interior
+ * edges), generalized to 3 rooms. No dedup needed: each (floor hex,
+ * direction) pair is inherently unique, unlike the old blocked-cell
+ * approach where multiple floor hexes could share one neighboring wall
+ * cell. Neighbors that are themselves floor (the two door junctions,
+ * where the entrance/corridor and corridor/boss floor sets touch
+ * directly) are skipped automatically since they're in `floorSet` too —
+ * same as before. */
+function buildBoundaryWalls(floorHexes: CubeCoord[]): Wall[] {
   const floorSet = new Set(floorHexes.map(coordToKey));
-  const wallHexes = new Map<string, CubeCoord>();
+  const walls: Wall[] = [];
   for (const hex of floorHexes) {
     for (const dir of HEX_DIRECTIONS) {
       const neighbor = hexAdd(hex, dir);
-      const neighborKey = coordToKey(neighbor);
-      if (floorSet.has(neighborKey)) continue; // interior/door edge, not a wall
-      if (!wallHexes.has(neighborKey)) wallHexes.set(neighborKey, neighbor);
+      if (floorSet.has(coordToKey(neighbor))) continue; // interior/door edge, not a wall
+      walls.push(boundaryWall(hex, neighbor));
     }
   }
-  return Array.from(wallHexes.values()).map(solidWall);
+  return walls;
 }
 
 export interface CryptLayout {
   /** Cube-coord keys ("x,y,z", coordToKey's format — same shape as
    * `state.revealedHexes`) for every floor hex across all 3 rooms. */
   floorKeys: string[];
-  /** Perimeter solid walls plus the 2 inter-room doors. */
+  /** Boundary-edge perimeter walls plus the 2 inter-room doors. */
   walls: Wall[];
   /** Dressing: sarcophagus, candles, pillars, banner, chest, vase. */
   props: RenderableEntity[];
-  /** Wall-hex keys (coordToKey format) for every solid wall this layout
-   * injected — the crypt's own opt-in set for SyntyHexWall's
+  /** Floor-hex keys (coordToKey format) for every boundary wall's `from`
+   * side — the crypt's own opt-in set for SyntyHexWall's
    * `themeWallHexKeys` prop (rpg-dnd5e-web#558), so PlaytestMap can mark
    * exactly these walls `'crypt'`-themed without touching any real dungeon
    * wall sharing the same merged `walls` list. */
@@ -472,10 +495,13 @@ export interface CryptLayout {
  * Build a fixed 3-room crypt: a small entrance chamber (radius-1 hexagon, 7
  * hexes), a short 3-hex corridor, and a larger tomb/boss chamber (radius-2
  * hexagon, 19 hexes) — laid out due east along DIR_E so the whole thing
- * reads left-to-right. The two room/corridor junctions are DOOR walls (one
- * DOOR_CLOSED, one DOOR_OPEN, for visual variety per the brief) sitting on
- * the shared edge between two already-adjacent floor hexes — no separate
- * "door cell" outside either room's floor set (doorHexKinds/isBlocked in
+ * reads left-to-right. Perimeter walls are boundary-edge walls (see
+ * `boundaryWall`'s doc comment for why — Kirk's PR review, rpg-dnd5e-web
+ * #558), not blocked cells: one continuous slab per room-facing edge. The
+ * two room/corridor junctions are DOOR walls (one DOOR_CLOSED, one
+ * DOOR_OPEN, for visual variety per the brief) sitting on the shared edge
+ * between two already-adjacent floor hexes — no separate "door cell"
+ * outside either room's floor set (doorHexKinds/isBlocked in
  * dungeonMapGeometry.ts/HexGrid.tsx key off `Wall.from`, which is always one
  * of the two rooms' own floor hexes here).
  *
@@ -515,8 +541,8 @@ export function buildCryptLayout(): CryptLayout {
   );
 
   const floorHexes = [...entranceHexes, ...corridorHexes, ...bossHexes];
-  const perimeterWalls = buildPerimeterWalls(floorHexes);
-  const walls = [...perimeterWalls, doorEntranceToCorridor, doorCorridorToBoss];
+  const boundaryWalls = buildBoundaryWalls(floorHexes);
+  const walls = [...boundaryWalls, doorEntranceToCorridor, doorCorridorToBoss];
 
   // Entrance chamber dressing: a chest at the back, candles flanking the
   // doorway (both are neighbors of the door hex AND of the chamber center,
@@ -610,7 +636,7 @@ export function buildCryptLayout(): CryptLayout {
     floorKeys: floorHexes.map(coordToKey),
     walls,
     props: [...entranceProps, ...bossProps],
-    themeWallHexKeys: new Set(perimeterWalls.map((w) => coordToKey(w.from!))),
+    themeWallHexKeys: new Set(boundaryWalls.map((w) => coordToKey(w.from!))),
   };
 }
 
@@ -664,6 +690,46 @@ export function buildCryptMoodLights(
       color,
       intensity: 2,
       distance: 4.5,
+    });
+  }
+  return lights;
+}
+
+/** Warm-orange glow color for door lights below — the "warm torch
+ * contrast" half of Kirk's reference palette, otherwise unused today
+ * since no brazier/torch prop exists yet (see MOOD_LIGHT_COLOR_BY_PROP_REF's
+ * doc comment). */
+const DOOR_LIGHT_COLOR = '#ff9d52';
+
+/**
+ * A small warm point light at each door's own cell — two practical wins
+ * at once: (1) the "warm torch contrast" half of the reference palette
+ * actually shows up somewhere even without a shipped brazier/torch prop,
+ * and (2) doors sit far from the nearest candle (entrance/boss chamber
+ * centers) so without this they're nearly invisible under the near-dark
+ * mood lighting, undermining "click the door to open it." Lower intensity/
+ * distance than a candle (a door isn't the room's centerpiece light) —
+ * just enough to read the frame and leaf against the dark wall around it.
+ */
+export function buildCryptDoorLights(walls: Wall[]): MoodPointLight[] {
+  const lights: MoodPointLight[] = [];
+  for (const wall of walls) {
+    if (
+      wall.kind !== WallKind.DOOR_CLOSED &&
+      wall.kind !== WallKind.DOOR_OPEN
+    ) {
+      continue;
+    }
+    if (!wall.from) continue;
+    const world = cubeToWorld(
+      { x: wall.from.x, y: wall.from.y, z: wall.from.z },
+      HEX_SIZE
+    );
+    lights.push({
+      position: [world.x, MOOD_LIGHT_HEIGHT, world.z],
+      color: DOOR_LIGHT_COLOR,
+      intensity: 1.2,
+      distance: 3,
     });
   }
   return lights;
