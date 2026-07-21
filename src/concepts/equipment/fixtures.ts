@@ -36,7 +36,7 @@ export interface EquipSlotDef {
 /** CONTRACT GAP: items need display-ready fields (name, statLine, kind,
  * slot compatibility). The web renders these verbatim — a statLine is a
  * server-composed string like "1d8 slashing · versatile", never client
- * rules math. `icon` is a reference key into the asset-owned manifest
+ * rules math. `iconKey` is a reference key into the asset-owned manifest
  * (keys-not-enums, per the web#523 props convention). */
 export interface ItemFixture {
   ref: ItemRef;
