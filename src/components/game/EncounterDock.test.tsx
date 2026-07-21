@@ -8,8 +8,10 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CharacterEquipment } from '../../hooks/useEncounterState';
 import type { EncounterDockProps } from './EncounterDock';
 import { EncounterDock } from './EncounterDock';
+import { refKey } from './equipment/equipmentTypes';
 
 function economy(
   actions: number,
@@ -73,6 +75,59 @@ function baseProps(): EncounterDockProps {
     endTurnDisabled: false,
     endTurnLoading: false,
     combatLogEntries: [],
+    // rpg-dnd5e-web#571: undefined by default (no equipment data) — tests
+    // exercising the chip/popover pass their own equipment fixture (see
+    // the "equipment chip + popover" describe block below).
+    equipment: undefined,
+    onEquipIntent: vi.fn(),
+    equipLoading: false,
+  };
+}
+
+/** Minimal CharacterEquipment fixture for the equipment chip/popover tests. */
+function equipmentFixture(): CharacterEquipment {
+  return {
+    equipped: {
+      main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
+      off_hand: { module: 'dnd5e', type: 'item', id: 'shield' },
+    },
+    inventory: [
+      {
+        ref: { module: 'dnd5e', type: 'item', id: 'longsword' },
+        name: 'Longsword',
+        statLine: '1d8 slashing · versatile',
+        iconKey: '',
+        kind: 'weapon',
+        slotKeys: ['main_hand', 'off_hand'],
+      },
+      {
+        ref: { module: 'dnd5e', type: 'item', id: 'shield' },
+        name: 'Shield',
+        statLine: '+2 AC',
+        iconKey: '',
+        kind: 'shield',
+        slotKeys: ['off_hand'],
+      },
+      {
+        ref: { module: 'dnd5e', type: 'item', id: 'greatsword' },
+        name: 'Greatsword',
+        statLine: '2d6 slashing · two-handed',
+        iconKey: '',
+        kind: 'weapon',
+        slotKeys: ['main_hand'],
+      },
+    ],
+    slots: [
+      { key: 'main_hand', displayLabel: 'Main hand', accepts: ['weapon'] },
+      {
+        key: 'off_hand',
+        displayLabel: 'Off hand',
+        accepts: ['weapon', 'shield'],
+      },
+      { key: 'armor', displayLabel: 'Armor', accepts: ['armor'] },
+    ],
+    armorClassDetail: { total: 18, note: '16 chain mail + 2 shield' },
+    mainHandDamage: '1d8 slashing',
   };
 }
 
@@ -552,5 +607,70 @@ describe('EncounterDock combat log (round 7: always on by default)', () => {
     const log = screen.getByTestId('floating-log');
     expect(shell.contains(log)).toBe(false);
     expect(log.parentElement).toBe(shell.parentElement);
+  });
+});
+
+describe('EncounterDock equipment chip + popover (rpg-dnd5e-web#571)', () => {
+  it('hides the chip entirely when the entity carries no equipment data', () => {
+    render(<EncounterDock {...baseProps()} equipment={undefined} />);
+    expect(screen.queryByLabelText(/equipment/i)).toBeNull();
+  });
+
+  it('opens the popover from the chip, showing slots/inventory/AC/damage', () => {
+    render(<EncounterDock {...baseProps()} equipment={equipmentFixture()} />);
+    fireEvent.click(screen.getByLabelText('Open equipment'));
+    expect(screen.getByTestId('equipment-popover')).toBeTruthy();
+    expect(screen.getByTestId('equipment-slots')).toBeTruthy();
+    expect(screen.getByTestId('inventory-light')).toBeTruthy();
+    expect(screen.getByText(/18/)).toBeTruthy();
+    expect(screen.getByText(/16 chain mail \+ 2 shield/)).toBeTruthy();
+    // Greatsword is carried (not in `equipped`), so it renders in the
+    // inventory list — proves the popover is fed from the real equipment
+    // prop, not a stale/fixture default.
+    expect(
+      screen.getByTestId(
+        `inv-${refKey({ module: 'dnd5e', type: 'item', id: 'greatsword' })}`
+      )
+    ).toBeTruthy();
+  });
+
+  it('is reachable outside TURN_BASED and off-turn — equip is never turn-gated', () => {
+    render(
+      <EncounterDock
+        {...baseProps()}
+        equipment={equipmentFixture()}
+        mode={EncounterMode.FREE_ROAM}
+        isMyTurn={false}
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Open equipment'));
+    expect(screen.getByTestId('equipment-popover')).toBeTruthy();
+  });
+
+  it('forwards an unequip click as an EquipIntent via onEquipIntent', () => {
+    const onEquipIntent = vi.fn();
+    render(
+      <EncounterDock
+        {...baseProps()}
+        equipment={equipmentFixture()}
+        onEquipIntent={onEquipIntent}
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Open equipment'));
+    fireEvent.click(screen.getByTestId('equip-socket-off_hand'));
+    expect(onEquipIntent).toHaveBeenCalledWith({
+      kind: 'UnequipItem',
+      slotKey: 'off_hand',
+    });
+  });
+
+  it('one-panel policy: opening equipment yields the floating log, which restores on close', () => {
+    render(<EncounterDock {...baseProps()} equipment={equipmentFixture()} />);
+    expect(screen.getByTestId('floating-log')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Open equipment'));
+    expect(screen.queryByTestId('floating-log')).toBeNull();
+    expect(screen.getByTestId('equipment-popover')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Close equipment'));
+    expect(screen.getByTestId('floating-log')).toBeTruthy();
   });
 });

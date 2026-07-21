@@ -52,7 +52,10 @@ import type {
 import { EncounterMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
-import type { EntityStatus } from '../../hooks/useEncounterState';
+import type {
+  CharacterEquipment,
+  EntityStatus,
+} from '../../hooks/useEncounterState';
 import { getActionIconUrl } from '../../utils/actionIcons';
 import { actionKey } from '../playtest/actionMenuHelpers';
 import { Button } from '../ui/Button';
@@ -78,7 +81,15 @@ import {
   resolveMovementRemaining,
   resolveName,
 } from './encounterDockHelpers';
+import { EquipmentPopover } from './equipment/EquipmentPopover';
+import type { EquipIntent } from './equipment/equipmentTypes';
 import { ReactionReadyPanel } from './ReactionReadyPanel';
+
+/** Chestplate icon for the equipment chip — deliberately NOT another
+ * cogwheel; ⚙ is settings and two cogs would confuse (matches the
+ * combat-panel concept's ComfortBar chip, rpg-dnd5e-web#557 round 2). */
+const EQUIP_CHIP_ICON =
+  '/models/synty/ui/library/icons/inventory/ICON_FantasyWarrior_Inventory_Armor01_Clean.png';
 
 // HP tier = traffic-light semantic, NOT resource color: --health is a
 // theme's HP-bar hue (dark-fantasy sets it deep red), so a full bar keyed
@@ -113,7 +124,7 @@ function writeLogHidden(hidden: boolean): void {
 
 /** Which popover is open — at most one, so overlays never stack. The log
  * is NOT a popover: it's a persistent surface with its own state. */
-type OpenPanel = 'menu' | 'settings' | null;
+type OpenPanel = 'menu' | 'settings' | 'equipment' | null;
 
 export interface EncounterDockProps {
   /** The local player's entity id — the resolveName fallback when displayName is absent. */
@@ -152,6 +163,19 @@ export interface EncounterDockProps {
   endTurnDisabled: boolean;
   endTurnLoading: boolean;
   combatLogEntries: CombatLogEntry[];
+  /**
+   * rpg-dnd5e-web#571: the acting player's equipment/inventory display
+   * fields, hydrated from the encounter snapshot's CharacterData. The chip
+   * + popover render only when this is defined (undefined for non-
+   * CHARACTER entities, or before the first snapshot resolves entityId) —
+   * a graceful hide, never a broken/empty popover. Character-scoped and
+   * NOT gated on isMyTurn/mode, unlike the verb row below (protos#187:
+   * encounter-scoped equip with an action cost is deferred to
+   * rpg-project#94).
+   */
+  equipment: CharacterEquipment | undefined;
+  onEquipIntent: (intent: EquipIntent) => void;
+  equipLoading: boolean;
 }
 
 export function EncounterDock({
@@ -179,6 +203,9 @@ export function EncounterDock({
   endTurnDisabled,
   endTurnLoading,
   combatLogEntries,
+  equipment,
+  onEquipIntent,
+  equipLoading,
 }: EncounterDockProps) {
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
   const toggle = (panel: Exclude<OpenPanel, null>) =>
@@ -308,7 +335,26 @@ export function EncounterDock({
       <div style={{ position: 'relative' }}>
         <ContextPill pill={pill} announce={announce} large />
 
-        {logOpen && (
+        {/* rpg-dnd5e-web#571: one-panel policy for the two surfaces that
+            both anchor bottom-right — while the equipment popover is open
+            the log yields (its own open state is untouched, so it
+            restores the instant the popover closes). */}
+        {equipment && (
+          <EquipmentPopover
+            open={openPanel === 'equipment'}
+            characterName={name}
+            classLabel={label ?? undefined}
+            slots={equipment.slots}
+            equipped={equipment.equipped}
+            items={equipment.inventory}
+            armorClass={equipment.armorClassDetail}
+            mainHandDamage={equipment.mainHandDamage}
+            onIntent={onEquipIntent}
+            busy={equipLoading}
+          />
+        )}
+
+        {logOpen && openPanel !== 'equipment' && (
           <div
             className="floating-log"
             data-testid="floating-log"
@@ -467,6 +513,35 @@ export function EncounterDock({
                 }
                 className="encounter-dock-log-toggle"
               />
+              {/* rpg-dnd5e-web#571: hidden entirely when the acting
+                  character carries no equipment data (non-CHARACTER
+                  entity, or before the first snapshot resolves entityId) —
+                  a graceful hide, never a broken/empty popover. */}
+              {equipment && (
+                <OverlayToggle
+                  label={
+                    <img
+                      src={EQUIP_CHIP_ICON}
+                      alt="Equipment"
+                      draggable={false}
+                      style={{
+                        width: 18,
+                        height: 18,
+                        objectFit: 'contain',
+                        verticalAlign: 'middle',
+                      }}
+                    />
+                  }
+                  open={openPanel === 'equipment'}
+                  onToggle={() => toggle('equipment')}
+                  aria-label={
+                    openPanel === 'equipment'
+                      ? 'Close equipment'
+                      : 'Open equipment'
+                  }
+                  className="encounter-dock-equip-toggle"
+                />
+              )}
               <OverlayToggle
                 label="⚙"
                 open={openPanel === 'settings'}

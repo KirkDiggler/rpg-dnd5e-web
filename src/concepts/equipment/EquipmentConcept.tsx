@@ -11,16 +11,17 @@
  */
 
 import { useMemo, useState } from 'react';
-import { EquipmentSlots } from './EquipmentSlots';
+import { EquipmentSlots } from '../../components/game/equipment/EquipmentSlots';
+import { InventoryLight } from '../../components/game/equipment/InventoryLight';
+import type { EquippedMap } from '../../components/game/equipment/equipmentTypes';
 import type { EquipIntent } from './fixtures';
 import { applyIntent, EQUIP_CASTS } from './fixtures';
-import { InventoryLight } from './InventoryLight';
 
 export function EquipmentConcept() {
   const [castId, setCastId] = useState(EQUIP_CASTS[0].id);
   const cast = EQUIP_CASTS.find((c) => c.id === castId) ?? EQUIP_CASTS[0];
   const [equippedByCast, setEquippedByCast] = useState<
-    Record<string, Record<string, string>>
+    Record<string, EquippedMap>
   >(() =>
     Object.fromEntries(EQUIP_CASTS.map((c) => [c.id, { ...c.equipped }]))
   );
@@ -80,7 +81,12 @@ export function EquipmentConcept() {
 
       <div className="equip-bench">
         <div>
-          <EquipmentSlots cast={cast} equipped={equipped} onIntent={onIntent} />
+          <EquipmentSlots
+            slots={cast.slots}
+            equipped={equipped}
+            items={cast.items}
+            onIntent={onIntent}
+          />
           <div
             className="equip-server-stats hud-skin"
             data-testid="server-stats"
@@ -98,7 +104,12 @@ export function EquipmentConcept() {
           </div>
         </div>
 
-        <InventoryLight cast={cast} equipped={equipped} onIntent={onIntent} />
+        <InventoryLight
+          slots={cast.slots}
+          equipped={equipped}
+          items={cast.items}
+          onIntent={onIntent}
+        />
 
         <div className="equip-intent-log" data-testid="intent-log">
           <div className="equip-inventory-header">

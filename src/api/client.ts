@@ -4,6 +4,7 @@ import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { DiceService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
 import { LobbyService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { CharacterService as CharacterServiceV2 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/character/service_pb';
 import { EncounterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 
 import { getDiscordToken, getPlayerId } from './auth';
@@ -79,6 +80,13 @@ const transport = createGrpcWebTransport({
 
 // Create the character service client
 export const characterClient = createClient(CharacterService, transport);
+
+// Create the v1alpha2 character service client (EquipItem/UnequipItem —
+// character-scoped, out-of-encounter equip surface; rpg-dnd5e-web#571).
+// Distinct from `characterClient` above, which is the v1alpha1 character
+// creation/sheet service — the two live on different proto packages with
+// no relation, not a versioned replacement of one another.
+export const characterV2Client = createClient(CharacterServiceV2, transport);
 
 // Create the dice service client
 export const diceClient = createClient(DiceService, transport);

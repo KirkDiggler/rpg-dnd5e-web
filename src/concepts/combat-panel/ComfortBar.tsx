@@ -28,6 +28,11 @@
 import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useEffect, useRef, useState } from 'react';
 import { CombatLog } from '../../components/game/CombatLog';
+import { EquipmentPopover } from '../../components/game/equipment/EquipmentPopover';
+import type {
+  EquipIntent,
+  EquippedMap,
+} from '../../components/game/equipment/equipmentTypes';
 import { Button } from '../../components/ui/Button';
 import {
   EconomyPips,
@@ -42,7 +47,7 @@ import {
 } from '../../components/ui/combat';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import { getActionIconUrl } from '../../utils/actionIcons';
-import { EquipmentPopover } from '../equipment/EquipmentPopover';
+import { applyIntent, EQUIP_CASTS } from '../equipment/fixtures';
 import { ContextPill } from './ContextPill';
 import { ContextStrip } from './ContextStrip';
 import type { CombatPanelFixture } from './fixtures';
@@ -103,6 +108,17 @@ export function ComfortBar({
   // Round 7: OPEN is the default — the toggle exists to hide it.
   const [logOpen, setLogOpen] = useState(true);
   const [equipOpen, setEquipOpen] = useState(false);
+  // Concept-only "plays the server" state (see ../equipment/fixtures.ts's
+  // header) — EquipmentPopover itself is fully prop-driven now that it's
+  // shared with the live game screen (rpg-dnd5e-web#571); this bench pins
+  // it to the fighter cast (richest interactions — sword+board <-> greatsword).
+  const equipCast = EQUIP_CASTS[0];
+  const [equipEquipped, setEquipEquipped] = useState<EquippedMap>(
+    equipCast.equipped
+  );
+  const equipStats = equipCast.serverStats(equipEquipped);
+  const onEquipIntent = (intent: EquipIntent) =>
+    setEquipEquipped((eq) => applyIntent(eq, equipCast.items, intent));
   const rowRef = useRef<HTMLDivElement>(null);
   const [rowWidth, setRowWidth] = useState<number | null>(null);
 
@@ -190,7 +206,19 @@ export function ComfortBar({
             either — noted as the chosen overlap strategy). Translucent so
             the map reads through; internal scroll, newest at bottom (the
             real CombatLog handles both). */}
-        {equipmentChip && <EquipmentPopover open={equipOpen} />}
+        {equipmentChip && (
+          <EquipmentPopover
+            open={equipOpen}
+            characterName={equipCast.name}
+            classLabel={equipCast.classLabel}
+            slots={equipCast.slots}
+            equipped={equipEquipped}
+            items={equipCast.items}
+            armorClass={{ total: equipStats.ac, note: equipStats.acNote }}
+            mainHandDamage={equipStats.damage}
+            onIntent={onEquipIntent}
+          />
+        )}
         {logEntries && logOpen && !equipOpen && (
           <div
             className="floating-log"

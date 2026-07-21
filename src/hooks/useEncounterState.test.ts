@@ -46,7 +46,9 @@ import {
 import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
 import { wallKey } from './dungeonMapGeometry';
+import type { CharacterEquipment } from './useEncounterState';
 import {
+  applyCharacterEquipment,
   applyDoorOpened,
   applyEncounterEnded,
   applyEntityAppeared,
@@ -71,6 +73,34 @@ import {
   setPendingPromptReducer,
   setReactionReadyLocalReducer,
 } from './useEncounterState';
+
+/** Minimal CharacterEquipment fixture for equipment reducer tests
+ * (rpg-dnd5e-web#571). */
+function testEquipment(
+  overrides?: Partial<CharacterEquipment>
+): CharacterEquipment {
+  return {
+    equipped: {
+      main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
+    },
+    inventory: [
+      {
+        ref: { module: 'dnd5e', type: 'item', id: 'longsword' },
+        name: 'Longsword',
+        statLine: '1d8 slashing',
+        iconKey: '',
+        kind: 'weapon',
+        slotKeys: ['main_hand', 'off_hand'],
+      },
+    ],
+    slots: [
+      { key: 'main_hand', displayLabel: 'Main hand', accepts: ['weapon'] },
+    ],
+    armorClassDetail: { total: 16, note: '16 chain mail' },
+    mainHandDamage: '1d8 slashing',
+    ...overrides,
+  };
+}
 
 function makeTestWall(
   from: { x: number; y: number; z: number },
@@ -1279,6 +1309,37 @@ describe('applyEntityMetaFromAppeared', () => {
     );
     expect(after.entityAC.has('char-charli')).toBe(false);
   });
+
+  it('seeds characterEquipment when equipment is provided (rpg-dnd5e-web#571)', () => {
+    const prev = createEmptyEncounterState();
+    const equipment = testEquipment();
+    const after = applyEntityMetaFromAppeared(
+      prev,
+      'char-aldric',
+      EntityType.CHARACTER,
+      undefined,
+      undefined,
+      undefined,
+      'Sir Aldric',
+      'fighter',
+      undefined,
+      equipment
+    );
+    expect(after.characterEquipment.get('char-aldric')).toBe(equipment);
+  });
+
+  it('does not touch characterEquipment when equipment is undefined', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityMetaFromAppeared(
+      prev,
+      'goblin-1',
+      EntityType.MONSTER,
+      'goblin',
+      undefined,
+      undefined
+    );
+    expect(after.characterEquipment.size).toBe(0);
+  });
 });
 
 describe('applySnapshotTurnState', () => {
@@ -1643,6 +1704,63 @@ describe('applyEntityAppearedBatch', () => {
     ]);
     expect(after.entityAC.get('char-charli')).toBe(15);
     expect(after.entityAC.get('goblin-1')).toBe(13);
+  });
+
+  // rpg-dnd5e-web#571: equipment/inventory ride the same CharacterData the
+  // encounter snapshot already hydrates (rpg-api#682) — no separate fetch.
+  describe('snapshot equipment hydration (#571)', () => {
+    it('seeds characterEquipment from equipment carried on a batch entry', () => {
+      const prev = createEmptyEncounterState();
+      const equipment = testEquipment();
+      const after = applyEntityAppearedBatch(prev, [
+        {
+          entity: makeTestEntity('char-aldric', { x: 0, y: 0, z: 0 }),
+          type: EntityType.CHARACTER,
+          monsterRefId: undefined,
+          initialHP: undefined,
+          initialAC: undefined,
+          equipment,
+        },
+      ]);
+      expect(after.characterEquipment.get('char-aldric')).toBe(equipment);
+    });
+
+    it('does not seed characterEquipment for entries without equipment (e.g. monsters)', () => {
+      const prev = createEmptyEncounterState();
+      const after = applyEntityAppearedBatch(prev, [
+        {
+          entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
+          type: EntityType.MONSTER,
+          monsterRefId: 'goblin',
+          initialHP: { current: 7, max: 7 },
+          initialAC: 13,
+        },
+      ]);
+      expect(after.characterEquipment.size).toBe(0);
+    });
+
+    it('preserves other characters equipment entries across a later batch', () => {
+      let state = applyEntityAppearedBatch(createEmptyEncounterState(), [
+        {
+          entity: makeTestEntity('char-aldric', { x: 0, y: 0, z: 0 }),
+          type: EntityType.CHARACTER,
+          monsterRefId: undefined,
+          initialHP: undefined,
+          initialAC: undefined,
+          equipment: testEquipment(),
+        },
+      ]);
+      state = applyEntityAppearedBatch(state, [
+        {
+          entity: makeTestEntity('goblin-1', { x: 1, y: 0, z: -1 }),
+          type: EntityType.MONSTER,
+          monsterRefId: 'goblin',
+          initialHP: { current: 7, max: 7 },
+          initialAC: 13,
+        },
+      ]);
+      expect(state.characterEquipment.has('char-aldric')).toBe(true);
+    });
   });
 
   // rpg-dnd5e-web#462: condition badges never survived a reconnect because
@@ -2050,5 +2168,73 @@ describe('Wave 2.9 setPendingPromptReducer', () => {
       );
       expect(same).toBe(state);
     });
+  });
+});
+
+// rpg-dnd5e-web#571: EquipItem/UnequipItem are character-scoped RPCs that
+// return the full recomputed CharacterData but push no stream event (live
+// push to OTHER clients is rpg-api#681) — the acting client mirrors its own
+// response locally, the same "optimistic local mirror" shape
+// setReactionReadyLocalReducer uses above.
+describe('applyCharacterEquipment', () => {
+  it('stores the equipment for the given entity', () => {
+    const prev = createEmptyEncounterState();
+    const equipment = testEquipment();
+    const after = applyCharacterEquipment(prev, 'char-aldric', equipment);
+    expect(after.characterEquipment.get('char-aldric')).toBe(equipment);
+  });
+
+  it('refreshes entityAC from armorClassDetail.total so the dock stays in sync', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyCharacterEquipment(
+      prev,
+      'char-aldric',
+      testEquipment({ armorClassDetail: { total: 16, note: '16 chain mail' } })
+    );
+    expect(after.entityAC.get('char-aldric')).toBe(16);
+  });
+
+  it('leaves entityAC untouched when armorClassDetail is undefined', () => {
+    let prev = createEmptyEncounterState();
+    prev = applyEntityMetaFromAppeared(
+      prev,
+      'char-aldric',
+      EntityType.CHARACTER,
+      undefined,
+      undefined,
+      18
+    );
+    const after = applyCharacterEquipment(
+      prev,
+      'char-aldric',
+      testEquipment({ armorClassDetail: undefined })
+    );
+    expect(after.entityAC.get('char-aldric')).toBe(18);
+  });
+
+  it('preserves other characters equipment entries', () => {
+    let state = applyCharacterEquipment(
+      createEmptyEncounterState(),
+      'char-aldric',
+      testEquipment()
+    );
+    state = applyCharacterEquipment(
+      state,
+      'char-remy',
+      testEquipment({ mainHandDamage: '1d4 piercing' })
+    );
+    expect(state.characterEquipment.get('char-aldric')?.mainHandDamage).toBe(
+      '1d8 slashing'
+    );
+    expect(state.characterEquipment.get('char-remy')?.mainHandDamage).toBe(
+      '1d4 piercing'
+    );
+  });
+
+  it('does not mutate the previous state', () => {
+    const prev = createEmptyEncounterState();
+    applyCharacterEquipment(prev, 'char-aldric', testEquipment());
+    expect(prev.characterEquipment.size).toBe(0);
+    expect(prev.entityAC.size).toBe(0);
   });
 });
