@@ -20,13 +20,6 @@ export {
   useValidateDraft,
 } from './hooks';
 
-// Re-export equipment hooks
-export {
-  useEquipItem,
-  useGetCharacterInventory,
-  useUnequipItem,
-} from './equipmentHooks';
-
 // Re-export commonly used types from protos
 export type {
   Character,

@@ -50,20 +50,36 @@ Map<string, EntityState>` uses the v1alpha1 `EntityState` proto as its
 
 ## State shape
 
-| Field                                                             | Populated by                                                                                                                                                                          |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `entities`                                                        | `applyEntityAppeared(Batch)`, delta reducers                                                                                                                                          |
-| `revealedHexes`                                                   | `applyHexRevealed` (`GeometryRevealed`)                                                                                                                                               |
-| `walls`                                                           | `applyWallsRevealed` (snapshot's `Space.walls`, `GeometryRevealed.walls`) — sticky `Map<wallKey, Wall>`; overwrites an entry when `kind` changes (e.g. a door opening), never removes |
-| `openDoors`                                                       | `applyDoorOpened` (`DoorOpened`)                                                                                                                                                      |
-| `entityHP`                                                        | `applyEntityDamaged`, entity-appear seeding                                                                                                                                           |
-| `entityAC`                                                        | Entity-appear seeding (initial AC)                                                                                                                                                    |
-| `entityStatuses`                                                  | `applyStatusApplied`/`applyStatusRemoved`                                                                                                                                             |
-| `entityMeta`                                                      | `applyEntityMetaFromAppeared`/batch                                                                                                                                                   |
-| `initiativeOrder`, `activeEntityId`, `round`, `mode`, `turnState` | `applySnapshotTurnState`, `applyTurnStarted`, `applyTurnStateChanged`, `applyModeChanged`                                                                                             |
-| `pendingPrompt`                                                   | `setPendingPromptReducer` (caller-driven, never auto-set)                                                                                                                             |
-| `encounterStatus`, `encounterEndedReason`                         | `applyEncounterEnded`                                                                                                                                                                 |
-| `reactionReadiness`                                               | `setReactionReadyLocalReducer` (optimistic mirror after `SetReactionReady` RPC)                                                                                                       |
+| Field                                                             | Populated by                                                                                                                                                                              |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entities`                                                        | `applyEntityAppeared(Batch)`, delta reducers                                                                                                                                              |
+| `revealedHexes`                                                   | `applyHexRevealed` (`GeometryRevealed`)                                                                                                                                                   |
+| `walls`                                                           | `applyWallsRevealed` (snapshot's `Space.walls`, `GeometryRevealed.walls`) — sticky `Map<wallKey, Wall>`; overwrites an entry when `kind` changes (e.g. a door opening), never removes     |
+| `openDoors`                                                       | `applyDoorOpened` (`DoorOpened`)                                                                                                                                                          |
+| `entityHP`                                                        | `applyEntityDamaged`, entity-appear seeding                                                                                                                                               |
+| `entityAC`                                                        | Entity-appear seeding (initial AC); also refreshed by `applyCharacterEquipment` from `armor_class_detail.total` (rpg-dnd5e-web#571)                                                       |
+| `entityStatuses`                                                  | `applyStatusApplied`/`applyStatusRemoved`                                                                                                                                                 |
+| `entityMeta`                                                      | `applyEntityMetaFromAppeared`/batch                                                                                                                                                       |
+| `characterEquipment`                                              | Entity-appear seeding (CharacterData's `equipped`/`inventory`/`slots`/`armor_class_detail`/`main_hand_damage`, character entities only) and `applyCharacterEquipment` (rpg-dnd5e-web#571) |
+| `initiativeOrder`, `activeEntityId`, `round`, `mode`, `turnState` | `applySnapshotTurnState`, `applyTurnStarted`, `applyTurnStateChanged`, `applyModeChanged`                                                                                                 |
+| `pendingPrompt`                                                   | `setPendingPromptReducer` (caller-driven, never auto-set)                                                                                                                                 |
+| `encounterStatus`, `encounterEndedReason`                         | `applyEncounterEnded`                                                                                                                                                                     |
+| `reactionReadiness`                                               | `setReactionReadyLocalReducer` (optimistic mirror after `SetReactionReady` RPC)                                                                                                           |
+
+## Equipment (rpg-dnd5e-web#571)
+
+`characterEquipment` hydrates from the same `SnapshotDelivered`/
+`EntityAppeared` path as HP/AC/statuses — no separate fetch. It's the ONE
+field with a second write path: `applyCharacterEquipment` is called after
+a successful `EquipItem`/`UnequipItem` RPC (character-scoped, out of
+encounter — `dnd5e.api.v1alpha2.character.CharacterService`), since that
+RPC returns the recomputed `CharacterData` but pushes no stream event
+(live push to other clients is rpg-api#681, out of scope). Same
+"optimistic local mirror" shape `setReactionReadyLocalReducer` uses.
+`applyCharacterEquipment` also refreshes `entityAC` from
+`armor_class_detail.total` so the dock's plain AC number stays in sync
+between snapshots. See
+[equipment.md](equipment.md) for the component tree this feeds.
 
 `applyEntityPositionUpdate`/`mergeEntityPosition` and `reset` round out
 the public API — the former is the `MovementCompletedEvent` fallback when

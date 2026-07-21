@@ -43,6 +43,11 @@ import {
   WallSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useState } from 'react';
+import type {
+  EquippedMap,
+  ItemLike,
+  SlotDefLike,
+} from '../components/game/equipment/equipmentTypes';
 import { hexKey, type CubeHexCoord } from '../utils/hexCoord';
 import { wallKey } from './dungeonMapGeometry';
 
@@ -89,6 +94,25 @@ export interface EntityMeta {
    * rpg-dnd5e-web#523 for the platform hand-off this field is waiting on).
    */
   propRefId?: string;
+}
+
+/**
+ * v1alpha2 character equipment/inventory display fields (rpg-dnd5e-web#571),
+ * populated from CharacterData.equipped/inventory/slots/armor_class_detail/
+ * main_hand_damage — the encounter snapshot hydrates this for CHARACTER
+ * entities the same way it hydrates HP/AC/statuses, so the equipment
+ * popover never needs a separate fetch (rpg-dnd5e-web#557 CONTRACT.md §8).
+ * Also refreshed locally after a successful EquipItem/UnequipItem RPC (see
+ * applyCharacterEquipment below) — those RPCs are character-scoped and
+ * push no stream event, so the acting client mirrors its own response
+ * (rpg-api#681 tracks live push to OTHER clients, out of scope here).
+ */
+export interface CharacterEquipment {
+  equipped: EquippedMap;
+  inventory: ItemLike[];
+  slots: SlotDefLike[];
+  armorClassDetail: { total: number; note: string } | undefined;
+  mainHandDamage: string;
 }
 
 /** v1alpha2 condition tag, populated from StatusApplied.status. */
@@ -170,6 +194,14 @@ export interface LocalEncounterState {
    * shapes need to import the other.
    */
   entityMeta: Map<string, EntityMeta>;
+  /**
+   * v1alpha2 character equipment/inventory display fields keyed by entity
+   * id (rpg-dnd5e-web#571). Populated for CHARACTER entities only —
+   * monsters/props/etc. never have an entry. See CharacterEquipment's doc
+   * comment for the two write paths (snapshot hydration, RPC-response
+   * local mirror).
+   */
+  characterEquipment: Map<string, CharacterEquipment>;
   /**
    * v1alpha2 initiative order — the ordered list of entity ids for the current
    * round. Populated from SnapshotDelivered.encounter.turnState.initiativeOrder.
@@ -276,6 +308,7 @@ export function createEmptyEncounterState(): LocalEncounterState {
     entityAC: new Map(),
     entityStatuses: new Map(),
     entityMeta: new Map(),
+    characterEquipment: new Map(),
     initiativeOrder: [],
     mode: EncounterMode.UNSPECIFIED,
     activeEntityId: '',
@@ -447,6 +480,7 @@ export function applyEntityAppearedBatch(
     displayName?: string;
     classRefId?: string;
     propRefId?: string;
+    equipment?: CharacterEquipment;
   }>
 ): LocalEncounterState {
   if (entries.length === 0) return prev;
@@ -455,9 +489,11 @@ export function applyEntityAppearedBatch(
   const newHP = new Map(prev.entityHP);
   const newAC = new Map(prev.entityAC);
   const newStatuses = new Map(prev.entityStatuses);
+  const newEquipment = new Map(prev.characterEquipment);
   let hpChanged = false;
   let acChanged = false;
   let statusesChanged = false;
+  let equipmentChanged = false;
   for (const {
     entity,
     type,
@@ -468,6 +504,7 @@ export function applyEntityAppearedBatch(
     displayName,
     classRefId,
     propRefId,
+    equipment,
   } of entries) {
     newEntities.set(entity.entityId, { ...entity, ghost: false });
     newMeta.set(entity.entityId, {
@@ -499,6 +536,10 @@ export function applyEntityAppearedBatch(
       }
       statusesChanged = true;
     }
+    if (equipment !== undefined) {
+      newEquipment.set(entity.entityId, equipment);
+      equipmentChanged = true;
+    }
   }
   return {
     ...prev,
@@ -507,6 +548,9 @@ export function applyEntityAppearedBatch(
     entityHP: hpChanged ? newHP : prev.entityHP,
     entityAC: acChanged ? newAC : prev.entityAC,
     entityStatuses: statusesChanged ? newStatuses : prev.entityStatuses,
+    characterEquipment: equipmentChanged
+      ? newEquipment
+      : prev.characterEquipment,
   };
 }
 
@@ -531,7 +575,8 @@ export function applyEntityMetaFromAppeared(
   initialAC: number | undefined,
   displayName?: string,
   classRefId?: string,
-  propRefId?: string
+  propRefId?: string,
+  equipment?: CharacterEquipment
 ): LocalEncounterState {
   const newMeta = new Map(prev.entityMeta);
   newMeta.set(entityId, {
@@ -544,20 +589,33 @@ export function applyEntityMetaFromAppeared(
 
   const hasHP = initialHP !== undefined;
   const hasAC = initialAC !== undefined && initialAC !== 0;
+  const hasEquipment = equipment !== undefined;
 
-  if (hasHP || hasAC) {
-    const newHP = hasHP ? new Map(prev.entityHP) : prev.entityHP;
-    if (hasHP) {
-      newHP.set(entityId, { current: initialHP!.current, max: initialHP!.max });
-    }
-    const newAC = hasAC ? new Map(prev.entityAC) : prev.entityAC;
-    if (hasAC) {
-      newAC.set(entityId, initialAC!);
-    }
-    return { ...prev, entityMeta: newMeta, entityHP: newHP, entityAC: newAC };
+  if (!hasHP && !hasAC && !hasEquipment) {
+    return { ...prev, entityMeta: newMeta };
   }
 
-  return { ...prev, entityMeta: newMeta };
+  const newHP = hasHP ? new Map(prev.entityHP) : prev.entityHP;
+  if (hasHP) {
+    newHP.set(entityId, { current: initialHP!.current, max: initialHP!.max });
+  }
+  const newAC = hasAC ? new Map(prev.entityAC) : prev.entityAC;
+  if (hasAC) {
+    newAC.set(entityId, initialAC!);
+  }
+  const newEquipment = hasEquipment
+    ? new Map(prev.characterEquipment)
+    : prev.characterEquipment;
+  if (hasEquipment) {
+    newEquipment.set(entityId, equipment!);
+  }
+  return {
+    ...prev,
+    entityMeta: newMeta,
+    entityHP: newHP,
+    entityAC: newAC,
+    characterEquipment: newEquipment,
+  };
 }
 
 /**
@@ -1011,6 +1069,38 @@ export function setReactionReadyLocalReducer(
   return { ...prev, reactionReadiness: next };
 }
 
+/**
+ * Wave rpg-dnd5e-web#571 — refresh a character's equipment display fields
+ * after a successful EquipItem/UnequipItem RPC. Those RPCs are character-
+ * scoped and return the full recomputed CharacterData in the response but
+ * push no stream event (live push to OTHER clients is rpg-api#681, out of
+ * scope) — the acting client mirrors its own response locally, the same
+ * "optimistic local mirror" shape setReactionReadyLocalReducer uses.
+ *
+ * Also refreshes `entityAC` from `equipment.armorClassDetail.total` when
+ * present, so the dock's main HP/AC readout (driven by entityAC, not
+ * characterEquipment) stays in sync without waiting for the next snapshot
+ * — rpg-api keeps Entity.armor_class and armor_class_detail.total in sync
+ * on every real snapshot, so mirroring the same total here just keeps that
+ * invariant true between snapshots too.
+ * Exported for testing.
+ */
+export function applyCharacterEquipment(
+  prev: LocalEncounterState,
+  entityId: string,
+  equipment: CharacterEquipment
+): LocalEncounterState {
+  const newEquipment = new Map(prev.characterEquipment);
+  newEquipment.set(entityId, equipment);
+
+  if (equipment.armorClassDetail === undefined) {
+    return { ...prev, characterEquipment: newEquipment };
+  }
+  const newAC = new Map(prev.entityAC);
+  newAC.set(entityId, equipment.armorClassDetail.total);
+  return { ...prev, characterEquipment: newEquipment, entityAC: newAC };
+}
+
 export interface UseEncounterStateResult {
   state: LocalEncounterState;
   /**
@@ -1054,15 +1144,16 @@ export interface UseEncounterStateResult {
     initialAC: number | undefined,
     displayName?: string,
     classRefId?: string,
-    propRefId?: string
+    propRefId?: string,
+    equipment?: CharacterEquipment
   ) => void;
   /**
    * Apply a batch of entity appearances in a single state update to avoid N
    * intermediate renders when seeding multiple entities from a snapshot.
    * Each entry carries the v1alpha1 positional stub plus v1alpha2 type/HP/AC/meta,
-   * and optionally statusEffects (#462) — when present, REPLACES (not merges
-   * into) that entity's entityStatuses entry from the snapshot's authoritative
-   * per-entity condition list.
+   * and optionally statusEffects (#462) / equipment (#571) — when present,
+   * REPLACES (not merges into) that entity's entityStatuses/characterEquipment
+   * entry from the snapshot's authoritative per-entity data.
    */
   applyEntityAppearedBatch: (
     entries: Array<{
@@ -1075,7 +1166,17 @@ export interface UseEncounterStateResult {
       displayName?: string;
       classRefId?: string;
       propRefId?: string;
+      equipment?: CharacterEquipment;
     }>
+  ) => void;
+  /**
+   * Wave rpg-dnd5e-web#571 — refresh a character's equipment display
+   * fields (and entityAC) after a successful EquipItem/UnequipItem RPC.
+   * Optimistic local mirror — see applyCharacterEquipment's doc comment.
+   */
+  applyCharacterEquipment: (
+    entityId: string,
+    equipment: CharacterEquipment
   ) => void;
   /**
    * Apply v1alpha2 turn state from a SnapshotDelivered event.
@@ -1202,7 +1303,8 @@ export function useEncounterState(): UseEncounterStateResult {
       initialAC: number | undefined,
       displayName?: string,
       classRefId?: string,
-      propRefId?: string
+      propRefId?: string,
+      equipment?: CharacterEquipment
     ) => {
       setState((prev) =>
         applyEntityMetaFromAppeared(
@@ -1214,7 +1316,8 @@ export function useEncounterState(): UseEncounterStateResult {
           initialAC,
           displayName,
           classRefId,
-          propRefId
+          propRefId,
+          equipment
         )
       );
     },
@@ -1229,9 +1332,21 @@ export function useEncounterState(): UseEncounterStateResult {
         monsterRefId: string | undefined;
         initialHP: { current: number; max: number } | undefined;
         initialAC: number | undefined;
+        statusEffects?: StatusEffect[];
+        displayName?: string;
+        classRefId?: string;
+        propRefId?: string;
+        equipment?: CharacterEquipment;
       }>
     ) => {
       setState((prev) => applyEntityAppearedBatch(prev, entries));
+    },
+    []
+  );
+
+  const applyCharacterEquipmentCallback = useCallback(
+    (entityId: string, equipment: CharacterEquipment) => {
+      setState((prev) => applyCharacterEquipment(prev, entityId, equipment));
     },
     []
   );
@@ -1322,6 +1437,7 @@ export function useEncounterState(): UseEncounterStateResult {
     applyDoorOpened: applyDoorOpenedCallback,
     applyEntityMeta: applyEntityMetaCallback,
     applyEntityAppearedBatch: applyEntityAppearedBatchCallback,
+    applyCharacterEquipment: applyCharacterEquipmentCallback,
     applySnapshotTurnState: applySnapshotTurnStateCallback,
     setPendingPrompt: setPendingPromptCallback,
     setReactionReadyLocal: setReactionReadyLocalCallback,

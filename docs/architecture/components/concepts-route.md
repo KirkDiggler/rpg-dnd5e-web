@@ -25,7 +25,9 @@ Since the Game-UX charter (web#525) it is also the **outside-in contract bench**
 
 `src/concepts/encounter-dock/` — verification harness for the live `EncounterDock`'s responsive behavior (#494/#519); renders the real component with mock proto data.
 
-`src/concepts/combat-panel/` — round-1 IA design bench for web#525. `fixtures.ts` (proto-typed fixture states incl. armed/spent/spectator/free-roam), `CommandBar.tsx` + `CommandBarWithContext.tsx` (compositions of `src/components/ui/combat/` primitives), `CombatPanelConcept.tsx` (fixture switcher + Discord-viewport frame).
+`src/concepts/combat-panel/` — round-1 IA design bench for web#525. `fixtures.ts` (proto-typed fixture states incl. armed/spent/spectator/free-roam), `CommandBar.tsx` + `CommandBarWithContext.tsx` (compositions of `src/components/ui/combat/` primitives), `CombatPanelConcept.tsx` (fixture switcher + Discord-viewport frame). `ComfortBar.tsx`'s equipment chip imports the production `EquipmentPopover` (see below) with its own local "plays-the-server" state.
+
+`src/concepts/equipment/` — the equipment chip + popover bench (web#531/#557), now promoted to production (web#571, see [equipment.md](equipment.md)): `EquipmentConcept.tsx` imports the production `EquipmentSlots`/`InventoryLight` from `src/components/game/equipment/` directly and feeds them `fixtures.ts` (typed to the same wire-shaped interfaces) plus the concept-only cast switcher and intent log. `CONTRACT.md` records the original wire gaps this bench asked for — all landed (rpg-api-protos#188, rpg-toolkit#812, rpg-api#682).
 
 ## Gap: no promotion process
 

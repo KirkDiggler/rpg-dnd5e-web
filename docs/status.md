@@ -12,6 +12,22 @@ let it rot.
 
 ## Active work
 
+- **Equipment live on the game screen (#571)** — the `/concepts` equipment
+  chip + popover bench (#531/#557) is wired to the real
+  `dnd5e.api.v1alpha2.character.CharacterService.EquipItem`/`UnequipItem`
+  RPCs (`v0.1.110` proto bump). `EncounterDock` gains an equipment chip
+  (chestplate icon, hidden for non-CHARACTER entities) that opens a
+  popover fed from the encounter snapshot's `CharacterData` — no separate
+  fetch. Equip/unequip is character-scoped and never turn-gated
+  (protos#187 defers encounter-scoped equip with an action cost to
+  rpg-project#94). `EquipmentSlots`/`InventoryLight`/`EquipmentPopover`
+  moved from `src/concepts/equipment/` to `src/components/game/equipment/`
+  and now take wire-shaped props; `/concepts` imports them back and feeds
+  fixtures, same pattern `encounter-dock`'s concept already used for the
+  real `EncounterDock`. Live push of an equip change to OTHER clients is
+  deferred (rpg-api#681) — only the acting client updates, from the RPC
+  response. See [equipment.md](architecture/components/equipment.md).
+
 - **Slice 3: clean slate — legacy v1 path deleted, version suffixes dropped
   (#447)** — Closes out the game-screen rebuild's old-vs-new debt.
   `LobbyView.tsx` (and everything only it referenced: the v1alpha1 lobby

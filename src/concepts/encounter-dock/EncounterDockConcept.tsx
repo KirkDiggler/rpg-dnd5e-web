@@ -141,6 +141,12 @@ export function EncounterDockConcept() {
         endTurnDisabled={false}
         endTurnLoading={false}
         combatLogEntries={mockLogEntries}
+        // rpg-dnd5e-web#571: this bench verifies wrap/responsive behavior,
+        // not the equipment chip — undefined hides it, same as any
+        // non-CHARACTER entity or pre-snapshot render on the live screen.
+        equipment={undefined}
+        onEquipIntent={() => {}}
+        equipLoading={false}
       />
     </div>
   );

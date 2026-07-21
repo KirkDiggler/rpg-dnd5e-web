@@ -34,6 +34,7 @@ import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/
 import type { ActionTarget } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import type {
   AvailableAction,
+  CharacterData,
   Entity,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
@@ -46,11 +47,14 @@ import { createPortal } from 'react-dom';
 import { v2PositionToV1 } from '../../api/positionConvert';
 import { useEncounterStream } from '../../api/useEncounterStream';
 import { useEndTurn } from '../../api/useEndTurn';
+import { useEquipItem } from '../../api/useEquipItem';
 import { useInteract } from '../../api/useInteract';
 import { useMoveEntity } from '../../api/useMoveEntity';
 import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useTakeAction } from '../../api/useTakeAction';
+import { useUnequipItem } from '../../api/useUnequipItem';
 import { useCombatLog } from '../../hooks/useCombatLog';
+import type { CharacterEquipment } from '../../hooks/useEncounterState';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { errorMessage } from '../../utils/combatFormat';
 import { protoPositionToHex } from '../../utils/hexCoord';
@@ -62,6 +66,7 @@ import { StatusBadgeList } from '../ui/StatusBadgeList';
 import { EncounterDock } from './EncounterDock';
 import { resolveMovementRemaining, resolveName } from './encounterDockHelpers';
 import { EncounterMap } from './EncounterMap';
+import type { EquipIntent } from './equipment/equipmentTypes';
 import { PromptModal } from './PromptModal';
 
 const ATTACK_ACTION_REF = {
@@ -113,6 +118,47 @@ function resolveMyEntityId(
       entity.data.value.playerId === playerId
   );
   return match?.id;
+}
+
+/**
+ * characterEquipmentFrom projects a CharacterData's equipment-facing fields
+ * (rpg-dnd5e-web#571) into the local CharacterEquipment shape. The proto
+ * fields (Ref/SlotDef/Item/ArmorClassDisplay) are already structurally
+ * identical to equipmentTypes.ts's RefLike/SlotDefLike/ItemLike shapes —
+ * this is a projection, not a conversion: every field is passed through
+ * verbatim, nothing computed. Returns undefined when the entity carries no
+ * CharacterData (used both at snapshot/appear time, keyed on `entity.data`,
+ * and at RPC-response time, keyed on the response's own `character` field).
+ *
+ * Defensive on `equipped`/`inventory`/`slots` being absent: a real
+ * create()-constructed CharacterData always carries these as their proto
+ * zero-value ({}/[]/[]`), but callers building a CharacterData by hand
+ * (older/partial fixtures, a future server response that only sets some
+ * fields) may omit them — this degrades to "no equipment data" for those
+ * fields rather than throwing, matching applyWallsRevealed's guard style
+ * for optional wire fields elsewhere in this codebase.
+ */
+function characterEquipmentFrom(
+  data: CharacterData | undefined
+): CharacterEquipment | undefined {
+  if (!data) return undefined;
+  return {
+    equipped: data.equipped ?? {},
+    // Item.ref is optional on the wire (proto3 sub-message field); ItemLike
+    // requires it (every rendered row needs an id to key/look up by).
+    // Filtering a ref-less entry is defensive only — no real server
+    // response omits it — matching the guard style applyWallsRevealed uses
+    // for Wall.from/to above.
+    inventory: (data.inventory ?? []).filter(
+      (item): item is typeof item & { ref: NonNullable<typeof item.ref> } =>
+        item.ref !== undefined
+    ),
+    slots: data.slots ?? [],
+    armorClassDetail: data.armorClassDetail
+      ? { total: data.armorClassDetail.total, note: data.armorClassDetail.note }
+      : undefined,
+    mainHandDamage: data.mainHandDamage ?? '',
+  };
 }
 
 export function EncounterView({
@@ -184,6 +230,19 @@ export function EncounterView({
   // prompt for a locked door) flow back as events on the stream below, not
   // in this RPC's response.
   const { interact, error: interactError } = useInteract();
+  // rpg-dnd5e-web#571: character-scoped equip surface. Character-scoped, out
+  // of combat (protos#187), so these calls are never gated on isMyTurn/mode
+  // — unlike takeAction/moveEntity/endTurn above.
+  const {
+    equipItem,
+    loading: equipItemLoading,
+    error: equipItemError,
+  } = useEquipItem();
+  const {
+    unequipItem,
+    loading: unequipItemLoading,
+    error: unequipItemError,
+  } = useUnequipItem();
 
   const stream = useEncounterStream(encounterId, playerId, {
     onSnapshotDelivered: (e) => {
@@ -247,6 +306,13 @@ export function EncounterView({
                 : entity.data?.case === 'prop'
                   ? entity.data.value.propRef?.id
                   : undefined,
+            // rpg-dnd5e-web#571: equipment/inventory ride the same
+            // CharacterData the snapshot already hydrates (rpg-api#682
+            // composes it) — no separate fetch on popover open.
+            equipment:
+              entity.data?.case === 'character'
+                ? characterEquipmentFrom(entity.data.value)
+                : undefined,
           }));
         if (entityEntries.length > 0) {
           encounterState.applyEntityAppearedBatch(entityEntries);
@@ -325,7 +391,10 @@ export function EncounterView({
         e.entity.armorClass,
         e.entity.displayName,
         classRefId,
-        propRefId
+        propRefId,
+        e.entity.data?.case === 'character'
+          ? characterEquipmentFrom(e.entity.data.value)
+          : undefined
       );
     },
     onEntityDisappeared: (e) => {
@@ -421,6 +490,7 @@ export function EncounterView({
   const myHP = encounterState.state.entityHP.get(entityId);
   const myAC = encounterState.state.entityAC.get(entityId);
   const myMeta = encounterState.state.entityMeta.get(entityId);
+  const myEquipment = encounterState.state.characterEquipment.get(entityId);
   const myStatuses = encounterState.state.entityStatuses.get(entityId) ?? [];
   const encounterEnded = encounterState.state.encounterStatus === 'ended';
   const isMyTurn =
@@ -624,6 +694,36 @@ export function EncounterView({
     }
   };
 
+  // rpg-dnd5e-web#571: equip/unequip intent -> the real v1alpha2
+  // CharacterService RPCs. Character-scoped (out of combat), so this
+  // never checks isMyTurn/combatEnabled — unlike every other dispatch
+  // above. The response carries the full recomputed CharacterData; there
+  // is no stream push for this RPC's effect (rpg-api#681 tracks live push
+  // to OTHER clients), so the acting client mirrors its own response via
+  // applyCharacterEquipment (also refreshes entityAC — see its doc comment).
+  const handleEquipIntent = async (intent: EquipIntent) => {
+    if (!entityId) return;
+    try {
+      const response =
+        intent.kind === 'EquipItem'
+          ? await equipItem({
+              characterId: entityId,
+              item: intent.ref,
+              slotKey: intent.slotKey,
+            })
+          : await unequipItem({
+              characterId: entityId,
+              slotKey: intent.slotKey,
+            });
+      const equipment = characterEquipmentFrom(response.character);
+      if (equipment) {
+        encounterState.applyCharacterEquipment(entityId, equipment);
+      }
+    } catch {
+      // error surfaced via equipItemError/unequipItemError below
+    }
+  };
+
   // Portaled straight to document.body, position:fixed inset:0 (rpg-dnd5e-web
   // #491): App.tsx's shared shell wraps every non-character-sheet view in
   // `max-w-7xl mx-auto p-8`, which the lobby's centered-card layout wants but
@@ -638,7 +738,9 @@ export function EncounterView({
     takeActionError ||
     endTurnError ||
     setReactionReadyError ||
-    interactError;
+    interactError ||
+    equipItemError ||
+    unequipItemError;
 
   return createPortal(
     <div
@@ -841,6 +943,19 @@ export function EncounterView({
                 Door interaction error: {errorMessage(interactError)}
               </div>
             )}
+            {(equipItemError || unequipItemError) && (
+              <div
+                style={{
+                  color: '#f88',
+                  fontSize: 12,
+                  background: 'rgba(0,0,0,0.6)',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                }}
+              >
+                Equip error: {errorMessage(equipItemError ?? unequipItemError)}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -891,6 +1006,9 @@ export function EncounterView({
         endTurnDisabled={!combatEnabled || endTurnLoading}
         endTurnLoading={endTurnLoading}
         combatLogEntries={combatLog.entries}
+        equipment={myEquipment}
+        onEquipIntent={(intent) => void handleEquipIntent(intent)}
+        equipLoading={equipItemLoading || unequipItemLoading}
       />
     </div>,
     document.body
