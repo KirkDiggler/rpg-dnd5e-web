@@ -12,6 +12,7 @@ import {
   fittingScale,
   selectWallVariant,
   WALL_VARIANTS,
+  WALL_VARIANTS_BY_THEME,
   wallEndEdgeKeys,
   wallVariantScale,
 } from './syntyHexWallHelpers';
@@ -201,6 +202,64 @@ describe('buildDungeonWallSegments — door walls with a real passage edge (from
   });
 });
 
+describe("buildDungeonWallSegments — boundary-edge (non-door) walls with from/to exactly one hex step apart (Kirk's PR #566 review)", () => {
+  it('renders exactly ONE segment for a boundary-edge SOLID wall, on the wire-designated from->to edge', () => {
+    const walls = [wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 })];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments).toHaveLength(1);
+    expect(segments[0]!.key).toBe('0,0,0->1,-1,0');
+    expect(segments[0]!.kind).toBe(WallKind.SOLID);
+  });
+
+  it('does NOT mark the outside neighbor as a wall hex — no phantom segments sourced from it (the exact bug class the blocked-cell model had: a wall-ring hex rendering slabs on every exposed face, not just the one facing the room)', () => {
+    const walls = [wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 })];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments.some((s) => s.key.startsWith('1,-1,0->'))).toBe(false);
+  });
+
+  it('two boundary-edge walls sharing a room (both from the same inside hex) each render their own single segment — no crisscrossing', () => {
+    // A floor hex with 2 boundary edges (e.g. a room corner) — this is the
+    // exact discriminating case for the blocked-cell regression: the old
+    // model would have rendered a slab on every one of a wall-ring hex's
+    // exposed faces (often 3-5), not one slab per actual room edge.
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 }),
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: -1 }),
+    ];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments).toHaveLength(2);
+    expect(segments.map((s) => s.key).sort()).toEqual(
+      ['0,0,0->1,-1,0', '0,0,0->1,0,-1'].sort()
+    );
+  });
+
+  it("a boundary-edge wall never produces corner/end-cap fittings (matches SyntyRoomDemo's reference look — one piece per edge, no separate corner pieces)", () => {
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 }),
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: -1 }),
+      wall({ x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: -1 }),
+    ];
+    expect(classifyWallVertices(walls, 1)).toEqual([]);
+    expect(wallEndEdgeKeys(walls).size).toBe(0);
+  });
+
+  it('a multi-hex-step SOLID wall (hexDistance > 1) still decomposes into a line of blocked cells — the pre-existing hypothetical-multi-hex-wall behavior is unchanged', () => {
+    // Same fixture as the "decomposes a hypothetical multi-hex wall"
+    // test above (0,0,0 -> 2,-2,0, distance 2) — discriminates against
+    // the boundary-edge branch accidentally swallowing this case too.
+    const walls = [wall({ x: 0, y: 0, z: 0 }, { x: 2, y: -2, z: 0 })];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments).toHaveLength(14);
+  });
+
+  it('a degenerate (from === to) SOLID wall still renders as a single-cell block — real server data is unaffected', () => {
+    const walls = [wall({ x: 5, y: -5, z: 0 }, { x: 5, y: -5, z: 0 })];
+    const segments = buildDungeonWallSegments(walls, 1);
+    expect(segments).toHaveLength(6);
+    expect(segments.every((s) => s.kind === WallKind.SOLID)).toBe(true);
+  });
+});
+
 describe('selectWallVariant', () => {
   it('is deterministic — the same edge key always returns the same variant', () => {
     const key = '0,0,0->1,-1,0';
@@ -244,6 +303,75 @@ describe('selectWallVariant', () => {
       expect(counts[variant.name] ?? 0).toBeGreaterThan(expected * 0.5);
       expect(counts[variant.name] ?? 0).toBeLessThan(expected * 1.5);
     }
+  });
+});
+
+describe('selectWallVariant — per-theme weighting (rpg-dnd5e-web#558 crypt spike)', () => {
+  it('with no theme arg, matches the explicit "default" theme exactly — the regression guard for every pre-#558 caller (SyntyHexWall\'s real-dungeon call site never passed a theme)', () => {
+    // If a future refactor accidentally changed the implicit default away
+    // from 'default' (e.g. swapped the parameter order or the fallback
+    // value), this goes RED for every one of these keys.
+    for (let i = 0; i < 100; i++) {
+      const key = `regression-${i}`;
+      expect(selectWallVariant(key)).toBe(selectWallVariant(key, 'default'));
+    }
+  });
+
+  it('"default" theme\'s selections are byte-identical to the pre-theme WALL_VARIANTS pool (same array reference)', () => {
+    // WALL_VARIANTS_BY_THEME.default must literally be WALL_VARIANTS, not a
+    // structurally-equal copy — proves the theme table didn't fork the
+    // default pool's identity/weights.
+    expect(WALL_VARIANTS_BY_THEME.default).toBe(WALL_VARIANTS);
+  });
+
+  it('is deterministic per (edgeKey, theme) pair — same key+theme always returns the same variant', () => {
+    const key = '0,0,0->1,-1,0';
+    const first = selectWallVariant(key, 'crypt');
+    for (let i = 0; i < 20; i++) {
+      expect(selectWallVariant(key, 'crypt')).toBe(first);
+    }
+  });
+
+  it('only ever returns a variant from WALL_VARIANTS_BY_THEME[theme] for that theme', () => {
+    const cryptNames = new Set(WALL_VARIANTS_BY_THEME.crypt.map((v) => v.name));
+    for (let i = 0; i < 50; i++) {
+      expect(
+        cryptNames.has(selectWallVariant(`crypt-edge-${i}`, 'crypt').name)
+      ).toBe(true);
+    }
+  });
+
+  it('"crypt" theme is meaningfully plain-heavier than "default" — proves `theme` actually changes selection instead of being silently ignored (the exact bug a dropped/unused parameter would produce)', () => {
+    // This is the discriminating test: revert SyntyHexWall.tsx's or
+    // selectWallVariant's theme wiring back to always-'default' and this
+    // goes RED (cryptPlainShare collapses to defaultPlainShare).
+    const sampleSize = 4000;
+    let cryptPlainCount = 0;
+    let defaultPlainCount = 0;
+    for (let i = 0; i < sampleSize; i++) {
+      const key = `theme-sample-${i}`;
+      if (selectWallVariant(key, 'crypt').name === 'plain') cryptPlainCount++;
+      if (selectWallVariant(key, 'default').name === 'plain') {
+        defaultPlainCount++;
+      }
+    }
+    // default plain share ~= 3/5 = 60%; crypt plain share ~= 10/13 ~= 77%.
+    // Assert crypt is at least 10 percentage points higher — generous
+    // tolerance for hash-distribution noise, but well beyond what sampling
+    // variance alone could produce if both were drawing from the same pool.
+    expect(cryptPlainCount).toBeGreaterThan(
+      defaultPlainCount + sampleSize * 0.1
+    );
+  });
+
+  it('"crypt" theme keeps "broken" at the same absolute weight as "default" (rare, not eliminated) — only its SHARE drops as plain grows around it', () => {
+    const defaultBroken = WALL_VARIANTS_BY_THEME.default.find(
+      (v) => v.name === 'broken'
+    )!;
+    const cryptBroken = WALL_VARIANTS_BY_THEME.crypt.find(
+      (v) => v.name === 'broken'
+    )!;
+    expect(cryptBroken.weight).toBe(defaultBroken.weight);
   });
 });
 

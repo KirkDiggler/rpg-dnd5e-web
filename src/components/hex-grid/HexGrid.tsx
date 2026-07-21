@@ -117,6 +117,43 @@ export interface HexGridProps {
    * is unchanged for every existing caller until they opt in.
    */
   syntyDungeon?: boolean;
+  /**
+   * Wall-hex keys (hexMath's `coordToKey` format) that should render with
+   * SyntyHexWall's `'crypt'` theme instead of `'default'` (rpg-dnd5e-web
+   * #558) — passed straight through to SyntyHexWall's own prop of the same
+   * name. Undefined (every existing caller) means every wall stays
+   * `'default'`, unchanged.
+   */
+  themeWallHexKeys?: ReadonlySet<string>;
+  /**
+   * Floor-tile keys (hexMath's `coordToKey` format) that should render with
+   * SyntyHexFloor's lit, tinted crypt material instead of the default
+   * unlit one (rpg-dnd5e-web#558 PR review — the floor otherwise ignores
+   * scene lighting entirely). Undefined (every existing caller) means
+   * every tile keeps the exact pre-existing #481/#485 rendering.
+   */
+  themeFloorHexKeys?: ReadonlySet<string>;
+  /**
+   * Mood-lighting overrides (rpg-dnd5e-web#558 crypt spike, Kirk's POLYGON
+   * Dark Fortress reference) — replaces the flat `ambientLight`/
+   * `directionalLight` intensities below when set, so an injected room can
+   * go near-dark instead of evenly lit. Undefined (every existing caller)
+   * keeps the original 0.6/0.8 defaults, unchanged.
+   */
+  ambientIntensity?: number;
+  directionalIntensity?: number;
+  /**
+   * Point lights placed at prop positions (candles, braziers) for the same
+   * mood-lighting pass — simple R3F point lights with distance falloff,
+   * not a lighting engine. Empty/undefined (every existing caller) adds
+   * nothing.
+   */
+  moodPointLights?: Array<{
+    position: [number, number, number];
+    color: string;
+    intensity: number;
+    distance: number;
+  }>;
   /** Extra scene content rendered inside the Canvas after the built-in
    * layers (e.g. the playtest harness's Synty model showcase). */
   children?: React.ReactNode;
@@ -148,6 +185,11 @@ function Scene({
   monsters = [],
   walls = [],
   syntyDungeon = false,
+  themeWallHexKeys,
+  themeFloorHexKeys,
+  ambientIntensity = 0.6,
+  directionalIntensity = 0.8,
+  moodPointLights = [],
   children,
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -510,9 +552,25 @@ function Scene({
 
   return (
     <>
-      {/* Lighting */}
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 5]} intensity={0.8} />
+      {/* Lighting — base ambient/directional defaults to the original 0.6/0.8
+          for every existing caller; the crypt demo (#558) overrides both
+          down to near-dark and adds moodPointLights (candle/brazier glow)
+          on top, via PlaytestMap's mood-lighting computation. */}
+      <ambientLight intensity={ambientIntensity} />
+      <directionalLight
+        position={[10, 10, 5]}
+        intensity={directionalIntensity}
+      />
+      {moodPointLights.map((light, i) => (
+        <pointLight
+          key={i}
+          position={light.position}
+          color={light.color}
+          intensity={light.intensity}
+          distance={light.distance}
+          decay={2}
+        />
+      ))}
 
       {/* Invisible ground plane for hit detection */}
       <mesh
@@ -547,7 +605,11 @@ function Scene({
             />
           }
         >
-          <SyntyHexFloor floorTiles={floorTiles} hexSize={HEX_SIZE} />
+          <SyntyHexFloor
+            floorTiles={floorTiles}
+            hexSize={HEX_SIZE}
+            themeFloorHexKeys={themeFloorHexKeys}
+          />
         </ErrorBoundary>
       ) : (
         <ShadedHexFloor
@@ -584,6 +646,7 @@ function Scene({
             walls={walls}
             hexSize={HEX_SIZE}
             onDoorClick={onDoorClick}
+            themeWallHexKeys={themeWallHexKeys}
           />
         </ErrorBoundary>
       ) : (

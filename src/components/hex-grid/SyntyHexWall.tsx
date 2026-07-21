@@ -39,7 +39,8 @@ import {
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useGLTF } from '@react-three/drei';
-import { Suspense, useMemo } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
+import * as THREE from 'three';
 import type { WorldPos } from './hexMath';
 import {
   buildDungeonWallSegments,
@@ -50,6 +51,7 @@ import {
   selectWallVariant,
   wallEndEdgeKeys,
   wallVariantScale,
+  type WallTheme,
 } from './syntyHexWallHelpers';
 
 const ENV_BASE = '/models/synty/env/';
@@ -82,20 +84,94 @@ const DOOR_SCALE = SYNTY_SCALE;
 // pose/art; this is only a clearly-observable open-vs-closed state flip.
 const DOOR_OPEN_ROTATION_OFFSET = (80 * Math.PI) / 180;
 
+/**
+ * Per-theme material tint (mid-flight scope addition, rpg-dnd5e-web#558 —
+ * Kirk's POLYGON Dark Fortress reference: dark cool-gray stone, not tan
+ * brick on a bright atlas). No darker Synty atlas exists for this pack
+ * (verified against the source textures — colorways are accent-only, see
+ * memory), so this is a multiplicative color tint applied in-engine,
+ * matching the character-tint pattern already used elsewhere in this
+ * codebase (rpg-dnd5e-web#515). `'default'` gets no entry here, so
+ * `tintForTheme` returns `undefined` for it and GlbInstance skips the
+ * clone-and-tint path entirely — every existing (non-crypt) caller is
+ * untouched.
+ */
+const WALL_TINT_BY_THEME: Partial<Record<WallTheme, THREE.Color>> = {
+  crypt: new THREE.Color(0.32, 0.36, 0.46), // dark, cool blue-gray stone
+};
+
 interface GlbInstanceProps {
   file: string;
   position: WorldPos;
   rotationY: number;
   scale: [number, number, number] | number;
+  /** Multiplicative color tint for this instance only — clones each
+   * mesh's material before tinting it, so the shared useGLTF cache (and
+   * every OTHER instance of the same GLB) is never mutated. Undefined
+   * (every existing caller) renders the GLB's original material,
+   * unchanged. */
+  tint?: THREE.Color;
 }
 
 /** Renders one instance of a GLB. useGLTF caches the loaded scene by URL,
  * so repeated placements of the same file must each clone the cached
  * Object3D — reusing the same instance across multiple `<primitive>`s
  * would just reparent it to the last placement (SyntyRoomDemo.tsx). */
-function GlbInstance({ file, position, rotationY, scale }: GlbInstanceProps) {
+function GlbInstance({
+  file,
+  position,
+  rotationY,
+  scale,
+  tint,
+}: GlbInstanceProps) {
   const { scene } = useGLTF(ENV_BASE + file);
   const cloned = useMemo(() => scene.clone(true), [scene]);
+
+  // Snapshot each mesh's original (untinted) material once per `cloned`
+  // identity, so the tint effect below always starts from a clean base —
+  // matches ClassCharacterModel.tsx's identical pattern for the same
+  // reason (never compound a tint onto a previously-tinted clone).
+  const originalMaterials = useMemo(() => {
+    const map = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    cloned.traverse((child) => {
+      if (child instanceof THREE.Mesh) map.set(child, child.material);
+    });
+    return map;
+  }, [cloned]);
+
+  // Copilot review (PR #566): cloned tint materials were never disposed —
+  // a GPU-memory leak, since `<primitive>` objects aren't auto-disposed by
+  // react-three-fiber (PropModel.tsx's own doc comment). Tinting now lives
+  // in an effect (not the useMemo above) specifically so its cleanup can
+  // dispose exactly the materials THIS run created — never the shared
+  // `originalMaterials`, which are the same instances every other on-screen
+  // copy of this GLB (via useGLTF's cache) still uses.
+  useEffect(() => {
+    if (!tint) {
+      originalMaterials.forEach((mat, mesh) => {
+        mesh.material = mat;
+      });
+      return () => {};
+    }
+    const created: THREE.Material[] = [];
+    originalMaterials.forEach((mat, mesh) => {
+      const wasArray = Array.isArray(mat);
+      const materials = wasArray ? mat : [mat];
+      const tinted = materials.map((m) => {
+        const tintedMat = m.clone();
+        created.push(tintedMat);
+        if ('color' in tintedMat && tintedMat.color instanceof THREE.Color) {
+          tintedMat.color = tintedMat.color.clone().multiply(tint);
+        }
+        return tintedMat;
+      });
+      mesh.material = wasArray ? tinted : tinted[0]!;
+    });
+    return () => {
+      created.forEach((mat) => mat.dispose());
+    };
+  }, [originalMaterials, tint]);
+
   return (
     <primitive
       object={cloned}
@@ -114,12 +190,26 @@ export interface SyntyHexWallProps {
    * decides what happens (rpg-dnd5e-web#526). No-op for a door segment
    * whose id is absent. */
   onDoorClick?: (doorId: string) => void;
+  /**
+   * Wall-hex coordinate keys (hexMath's `coordToKey` format, i.e. the part
+   * of a WallEdgeSegment.key before `->`) that should render with the
+   * `'crypt'` variant weighting (syntyHexWallHelpers.ts's
+   * WALL_VARIANTS_BY_THEME) instead of `'default'` (rpg-dnd5e-web#558).
+   * `walls` is one flat list merged from every source (real dungeon walls
+   * plus any demo-injected room), so there's no per-Wall theme field on the
+   * wire proto — this side-channel set is how an injected room's own walls
+   * opt into a different look without touching every other wall.
+   * Undefined/omitted (every real caller today) means every segment uses
+   * `'default'`, unchanged from pre-theme behavior.
+   */
+  themeWallHexKeys?: ReadonlySet<string>;
 }
 
 export function SyntyHexWall({
   walls,
   hexSize,
   onDoorClick,
+  themeWallHexKeys,
 }: SyntyHexWallProps) {
   const segments = useMemo(
     () => buildDungeonWallSegments(walls, hexSize),
@@ -192,8 +282,15 @@ export function SyntyHexWall({
         // stable function of the two hex coordinates this edge sits
         // between (buildDungeonWallSegments), so the same wall always
         // picks the same plain/broken/alcove piece across renders,
-        // reconnects, and remounts — never a per-render reshuffle.
-        const variant = selectWallVariant(key);
+        // reconnects, and remounts — never a per-render reshuffle. The
+        // wall-hex half of `key` (before `->`) decides theme (#558): a
+        // hex in `themeWallHexKeys` renders 'crypt'-weighted, everything
+        // else stays 'default'.
+        const wallHexKey = key.split('->')[0]!;
+        const theme: WallTheme = themeWallHexKeys?.has(wallHexKey)
+          ? 'crypt'
+          : 'default';
+        const variant = selectWallVariant(key, theme);
         return (
           <GlbInstance
             key={key}
@@ -201,6 +298,7 @@ export function SyntyHexWall({
             position={edge.a}
             rotationY={edge.rotationY}
             scale={wallVariantScale(variant, WALL_HEIGHT, SYNTY_SCALE)}
+            tint={WALL_TINT_BY_THEME[theme]}
           />
         );
       })}
