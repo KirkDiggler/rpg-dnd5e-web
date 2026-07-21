@@ -16,7 +16,7 @@ import type {
   ItemLike,
   SlotDefLike,
 } from './equipmentTypes';
-import { resolveIconUrl, targetSlotFor } from './equipmentTypes';
+import { refKey, resolveIconUrl, targetSlotFor } from './equipmentTypes';
 
 export interface InventoryLightProps {
   slots: SlotDefLike[];
@@ -37,8 +37,12 @@ export function InventoryLight({
   onIntent,
   busy,
 }: InventoryLightProps) {
-  const equippedIds = new Set(Object.values(equipped).map((ref) => ref.id));
-  const carried = items.filter((i) => !equippedIds.has(i.ref.id));
+  // Keyed by the full {module,type,id} triple, not bare ref.id — an id is
+  // only unique within one {module,type} pair (Copilot review on #575).
+  const equippedRefKeys = new Set(
+    Object.values(equipped).map((ref) => refKey(ref))
+  );
+  const carried = items.filter((i) => !equippedRefKeys.has(refKey(i.ref)));
   const slotLabel = (key: string) =>
     slots.find((s) => s.key === key)?.displayLabel ?? key;
 

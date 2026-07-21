@@ -13,6 +13,16 @@
  *
  * Motion: scale+fade from the chip's corner (bottom-right), ~200ms,
  * collapsed to a plain fade when the user prefers reduced motion.
+ *
+ * Non-modal (Copilot review on #575): this is a floating panel toggled by
+ * its dock chip, not a modal dialog — it doesn't trap focus, close on
+ * Escape, or return focus on close, the same as every other dock overlay
+ * (`OverlayPanel`, used for the settings/menu popovers right next to this
+ * one — see `src/components/ui/combat/OverlayPanel.tsx`, a plain
+ * unlabeled div with no role at all). `role="dialog"` would claim modal
+ * semantics this component doesn't implement and would make this one
+ * overlay behave inconsistently with its siblings; `role="region"` names
+ * the landmark via `aria-label` without the false modal claim.
  */
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -61,7 +71,7 @@ export function EquipmentPopover({
         <motion.div
           className="equip-popover hud-skin"
           data-testid="equipment-popover"
-          role="dialog"
+          role="region"
           aria-label={`Equipment — ${characterName}`}
           initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92 }}
           animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1 }}

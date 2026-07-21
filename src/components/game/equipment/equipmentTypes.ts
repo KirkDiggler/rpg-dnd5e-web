@@ -54,6 +54,19 @@ export type EquipIntent =
   | { kind: 'EquipItem'; ref: RefLike; slotKey: string }
   | { kind: 'UnequipItem'; slotKey: string };
 
+/**
+ * Canonical string key for a Ref — "module:type:id", the same format the
+ * encounter's `reactionReadiness` map already keys reaction refs by
+ * (`useEncounterState.ts`). Used wherever items/equipped-slots need to be
+ * looked up or deduplicated by identity: `ref.id` alone is only unique
+ * within one `{module, type}` pair — a homebrew module or a future item
+ * `type` split could otherwise collide two different items on the same
+ * bare id (Copilot review on #575).
+ */
+export function refKey(ref: RefLike): string {
+  return `${ref.module}:${ref.type}:${ref.id}`;
+}
+
 const ICON_LIBRARY_BASE = '/models/synty/ui/library';
 
 /**

@@ -19,12 +19,12 @@ import type {
   ItemLike,
   SlotDefLike,
 } from './equipmentTypes';
-import { resolveIconUrl } from './equipmentTypes';
+import { refKey, resolveIconUrl } from './equipmentTypes';
 
 export interface EquipmentSlotsProps {
   slots: SlotDefLike[];
   equipped: EquippedMap;
-  /** Every owned item (equipped or carried) — looked up by ref.id against
+  /** Every owned item (equipped or carried) — looked up by refKey against
    * `equipped`'s Ref values to render each socket's contents. */
   items: ItemLike[];
   onIntent: (intent: EquipIntent) => void;
@@ -40,12 +40,16 @@ export function EquipmentSlots({
   onIntent,
   busy,
 }: EquipmentSlotsProps) {
-  const byId = new Map(items.map((i) => [i.ref.id, i]));
+  // Keyed by the full {module,type,id} triple, not bare ref.id — an id is
+  // only unique within one {module,type} pair (Copilot review on #575).
+  const byRef = new Map(items.map((i) => [refKey(i.ref), i]));
   return (
     <div className="equip-slots hud-skin" data-testid="equipment-slots">
       {slots.map((slot) => {
         const ref = equipped[slot.key];
-        const item: ItemLike | undefined = ref ? byId.get(ref.id) : undefined;
+        const item: ItemLike | undefined = ref
+          ? byRef.get(refKey(ref))
+          : undefined;
         const iconUrl = item ? resolveIconUrl(item.iconKey) : undefined;
         return (
           <button
