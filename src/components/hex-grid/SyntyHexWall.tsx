@@ -50,6 +50,7 @@ import {
   selectWallVariant,
   wallEndEdgeKeys,
   wallVariantScale,
+  type WallTheme,
 } from './syntyHexWallHelpers';
 
 const ENV_BASE = '/models/synty/env/';
@@ -114,12 +115,26 @@ export interface SyntyHexWallProps {
    * decides what happens (rpg-dnd5e-web#526). No-op for a door segment
    * whose id is absent. */
   onDoorClick?: (doorId: string) => void;
+  /**
+   * Wall-hex coordinate keys (hexMath's `coordToKey` format, i.e. the part
+   * of a WallEdgeSegment.key before `->`) that should render with the
+   * `'crypt'` variant weighting (syntyHexWallHelpers.ts's
+   * WALL_VARIANTS_BY_THEME) instead of `'default'` (rpg-dnd5e-web#558).
+   * `walls` is one flat list merged from every source (real dungeon walls
+   * plus any demo-injected room), so there's no per-Wall theme field on the
+   * wire proto — this side-channel set is how an injected room's own walls
+   * opt into a different look without touching every other wall.
+   * Undefined/omitted (every real caller today) means every segment uses
+   * `'default'`, unchanged from pre-theme behavior.
+   */
+  themeWallHexKeys?: ReadonlySet<string>;
 }
 
 export function SyntyHexWall({
   walls,
   hexSize,
   onDoorClick,
+  themeWallHexKeys,
 }: SyntyHexWallProps) {
   const segments = useMemo(
     () => buildDungeonWallSegments(walls, hexSize),
@@ -192,8 +207,15 @@ export function SyntyHexWall({
         // stable function of the two hex coordinates this edge sits
         // between (buildDungeonWallSegments), so the same wall always
         // picks the same plain/broken/alcove piece across renders,
-        // reconnects, and remounts — never a per-render reshuffle.
-        const variant = selectWallVariant(key);
+        // reconnects, and remounts — never a per-render reshuffle. The
+        // wall-hex half of `key` (before `->`) decides theme (#558): a
+        // hex in `themeWallHexKeys` renders 'crypt'-weighted, everything
+        // else stays 'default'.
+        const wallHexKey = key.split('->')[0]!;
+        const theme: WallTheme = themeWallHexKeys?.has(wallHexKey)
+          ? 'crypt'
+          : 'default';
+        const variant = selectWallVariant(key, theme);
         return (
           <GlbInstance
             key={key}

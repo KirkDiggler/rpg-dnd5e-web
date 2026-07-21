@@ -9,10 +9,15 @@
  */
 
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  EntityType,
+  WallKind,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
+import { PROP_KEYS } from '../hex-grid/propManifest';
 import {
+  buildCryptLayout,
   buildDevPropDemoEntities,
   buildRenderableEntities,
   buildTurnOrderCombatState,
@@ -487,5 +492,146 @@ describe('parsePerfProbeWindowMs (Copilot review, rpg-dnd5e-web#546)', () => {
 
   it('parses a valid positive decimal string', () => {
     expect(parsePerfProbeWindowMs('1500.5')).toBe(1500.5);
+  });
+});
+
+describe('buildCryptLayout (rpg-dnd5e-web#558 crypt spike)', () => {
+  it('is deterministic — two calls produce identical floor keys, wall list, and props', () => {
+    const a = buildCryptLayout();
+    const b = buildCryptLayout();
+    expect(a.floorKeys).toEqual(b.floorKeys);
+    expect(a.walls).toEqual(b.walls);
+    expect(a.props).toEqual(b.props);
+    expect(Array.from(a.themeWallHexKeys)).toEqual(
+      Array.from(b.themeWallHexKeys)
+    );
+  });
+
+  it('every floor key is a valid cube coordinate (x + y + z === 0)', () => {
+    const { floorKeys } = buildCryptLayout();
+    expect(floorKeys.length).toBeGreaterThan(0);
+    for (const key of floorKeys) {
+      const [x, y, z] = key.split(',').map(Number);
+      expect(x + y + z).toBe(0);
+    }
+  });
+
+  it('floor keys are unique — entrance chamber, corridor, and boss chamber never overlap', () => {
+    const { floorKeys } = buildCryptLayout();
+    expect(new Set(floorKeys).size).toBe(floorKeys.length);
+  });
+
+  it('produces exactly 29 floor hexes — entrance (7, radius-1 hexagon) + corridor (3) + boss chamber (19, radius-2 hexagon)', () => {
+    // Discriminates against a broken room-shape/radius regression: any
+    // change to hexesWithinRadius or the corridor length changes this
+    // count.
+    expect(buildCryptLayout().floorKeys).toHaveLength(29);
+  });
+
+  it('every non-door wall is a single-cell block — from and to are the exact same position (the real-server shape every renderer assumes)', () => {
+    const { walls } = buildCryptLayout();
+    const solidWalls = walls.filter(
+      (w) => w.kind !== WallKind.DOOR_CLOSED && w.kind !== WallKind.DOOR_OPEN
+    );
+    expect(solidWalls.length).toBeGreaterThan(0);
+    for (const wall of solidWalls) {
+      expect(wall.from).toBeDefined();
+      expect(wall.to).toBeDefined();
+      expect(wall.from).toEqual(wall.to);
+    }
+  });
+
+  it('has exactly 2 door walls, one DOOR_CLOSED and one DOOR_OPEN (variety per the brief), each carrying a real passage edge and an id', () => {
+    const { walls } = buildCryptLayout();
+    const doors = walls.filter(
+      (w) => w.kind === WallKind.DOOR_CLOSED || w.kind === WallKind.DOOR_OPEN
+    );
+    expect(doors).toHaveLength(2);
+    expect(doors.filter((d) => d.kind === WallKind.DOOR_CLOSED)).toHaveLength(
+      1
+    );
+    expect(doors.filter((d) => d.kind === WallKind.DOOR_OPEN)).toHaveLength(1);
+    for (const door of doors) {
+      // A real passage edge (design doc §Q2): from !== to, unlike a solid
+      // block. Discriminates against accidentally building doors the same
+      // way as solid walls (from === to), which would silently fall
+      // through buildDungeonWallSegments's degenerate-door branch instead
+      // of rendering a frame on the intended edge.
+      expect(door.from).toBeDefined();
+      expect(door.to).toBeDefined();
+      expect(door.from).not.toEqual(door.to);
+      expect(door.id).toBeTruthy();
+    }
+  });
+
+  it('both door edges connect two hexes that are BOTH real floor hexes — the door sits on the shared boundary between rooms, not floating outside either room', () => {
+    const { walls, floorKeys } = buildCryptLayout();
+    const floorSet = new Set(floorKeys);
+    const doors = walls.filter(
+      (w) => w.kind === WallKind.DOOR_CLOSED || w.kind === WallKind.DOOR_OPEN
+    );
+    for (const door of doors) {
+      const fromKey = `${door.from!.x},${door.from!.y},${door.from!.z}`;
+      const toKey = `${door.to!.x},${door.to!.y},${door.to!.z}`;
+      expect(floorSet.has(fromKey)).toBe(true);
+      expect(floorSet.has(toKey)).toBe(true);
+    }
+  });
+
+  it('no solid wall hex is also a floor hex — walls and floor never collide', () => {
+    const { walls, floorKeys } = buildCryptLayout();
+    const floorSet = new Set(floorKeys);
+    const solidWalls = walls.filter(
+      (w) => w.kind !== WallKind.DOOR_CLOSED && w.kind !== WallKind.DOOR_OPEN
+    );
+    for (const wall of solidWalls) {
+      const key = `${wall.from!.x},${wall.from!.y},${wall.from!.z}`;
+      expect(floorSet.has(key)).toBe(false);
+    }
+  });
+
+  it("themeWallHexKeys contains exactly the solid perimeter walls' own hex keys (not the doors', which bypass theme selection entirely)", () => {
+    const { walls, themeWallHexKeys } = buildCryptLayout();
+    const solidWalls = walls.filter(
+      (w) => w.kind !== WallKind.DOOR_CLOSED && w.kind !== WallKind.DOOR_OPEN
+    );
+    const expectedKeys = new Set(
+      solidWalls.map((w) => `${w.from!.x},${w.from!.y},${w.from!.z}`)
+    );
+    expect(themeWallHexKeys).toEqual(expectedKeys);
+  });
+
+  it('every prop has a valid cube-coord position and a propRefId that resolves to an already-synced model key in PROP_KEYS', () => {
+    const { props } = buildCryptLayout();
+    expect(props.length).toBeGreaterThan(0);
+    for (const prop of props) {
+      expect(prop.type).toBe('obstacle');
+      expect(prop.position.x + prop.position.y + prop.position.z).toBe(0);
+      expect(prop.propRefId).toBeTruthy();
+      expect(PROP_KEYS[`dnd5e:props:${prop.propRefId}`]).toBeDefined();
+    }
+  });
+
+  it('every prop has a unique entityId, distinct from real server-assigned ids (the __crypt-demo-*__ convention)', () => {
+    const { props } = buildCryptLayout();
+    const ids = props.map((p) => p.entityId);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) {
+      expect(id).toMatch(/^__crypt-demo-.+__$/);
+    }
+  });
+
+  it('every prop sits on an actual floor hex — nothing floats outside the rooms', () => {
+    const { props, floorKeys } = buildCryptLayout();
+    const floorSet = new Set(floorKeys);
+    for (const prop of props) {
+      const key = `${prop.position.x},${prop.position.y},${prop.position.z}`;
+      expect(floorSet.has(key)).toBe(true);
+    }
+  });
+
+  it('the boss chamber has exactly one sarcophagus (tomb) centerpiece', () => {
+    const { props } = buildCryptLayout();
+    expect(props.filter((p) => p.propRefId === 'tomb')).toHaveLength(1);
   });
 });

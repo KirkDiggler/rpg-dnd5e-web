@@ -43,6 +43,7 @@ import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import { HexGrid } from '../hex-grid';
 import type { CubeCoord } from '../hex-grid/hexMath';
 import {
+  buildCryptLayout,
   buildRenderableEntities,
   synthesizeFloorTiles,
 } from './playtestMapHelpers';
@@ -147,19 +148,59 @@ export function PlaytestMap({
   onMove,
   onEntityClick,
 }: PlaytestMapProps) {
-  const floorTiles = useMemo(
-    () =>
-      synthesizeFloorTiles(revealedHexes, entities.values(), fallbackPosition),
-    [revealedHexes, entities, fallbackPosition]
+  // Dev-only crypt-room spike, opted in via `&cryptdemo=1` on the harness
+  // URL (rpg-dnd5e-web#558) — read once, same "read the query string once,
+  // default off" convention as showSynty/showSyntyRoom below. Flag off
+  // (the default) means buildCryptLayout never runs and every downstream
+  // merge below is a no-op passthrough — byte-identical to pre-#558
+  // behavior.
+  const showCryptDemo = useMemo(
+    () => new URLSearchParams(window.location.search).get('cryptdemo') === '1',
+    []
   );
 
-  const wallList = useMemo(() => Array.from(walls.values()), [walls]);
-
-  const renderableEntities = useMemo(
-    () =>
-      buildRenderableEntities(entities, entityMeta, entityHP, entityStatuses),
-    [entities, entityMeta, entityHP, entityStatuses]
+  // buildCryptLayout is a pure, zero-argument, deterministic builder (no
+  // inputs vary its output) — memoized on the flag alone so it runs at most
+  // once per mount instead of rebuilding the same Wall/entity objects every
+  // render.
+  const cryptLayout = useMemo(
+    () => (showCryptDemo ? buildCryptLayout() : null),
+    [showCryptDemo]
   );
+
+  const floorTiles = useMemo(() => {
+    const tiles = synthesizeFloorTiles(
+      revealedHexes,
+      entities.values(),
+      fallbackPosition
+    );
+    if (!cryptLayout) return tiles;
+    // Union the crypt's floor keys in — same shape synthesizeFloorTiles
+    // already produces (roomId '' — HexGrid only uses roomId for legacy
+    // color hinting, not pathing, per synthesizeFloorTiles' own doc
+    // comment).
+    for (const key of cryptLayout.floorKeys) {
+      if (tiles.has(key)) continue;
+      const [x, y, z] = key.split(',').map(Number);
+      tiles.set(key, { x, y, z, roomId: '' });
+    }
+    return tiles;
+  }, [revealedHexes, entities, fallbackPosition, cryptLayout]);
+
+  const wallList = useMemo(() => {
+    const base = Array.from(walls.values());
+    return cryptLayout ? [...base, ...cryptLayout.walls] : base;
+  }, [walls, cryptLayout]);
+
+  const renderableEntities = useMemo(() => {
+    const base = buildRenderableEntities(
+      entities,
+      entityMeta,
+      entityHP,
+      entityStatuses
+    );
+    return cryptLayout ? [...base, ...cryptLayout.props] : base;
+  }, [entities, entityMeta, entityHP, entityStatuses, cryptLayout]);
 
   // Dev-only Synty asset showcase, opted in via `&synty=1` on the harness
   // URL. Read once — the harness never mutates the query string mid-session.
@@ -215,6 +256,7 @@ export function PlaytestMap({
         isPlayerTurn={isMyTurn}
         combatState={null}
         syntyDungeon={syntyDungeon}
+        themeWallHexKeys={cryptLayout?.themeWallHexKeys}
         onMoveComplete={(path: CubeCoord[]) => {
           // HexGrid hands back the full cube-coord path it computed via
           // useHexInteraction's findPath. Forward as plain {x,y,z}; the

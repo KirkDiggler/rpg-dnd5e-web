@@ -132,6 +132,36 @@ export const WALL_VARIANTS: WallVariant[] = [
 ];
 
 /**
+ * Per-room wall "mood" (rpg-dnd5e-web#558 crypt spike). `selectWallVariant`
+ * used to draw from one global pool (WALL_VARIANTS, the "rubble" look —
+ * plain:broken:alcove = 3:1:1). Injected demo rooms (the crypt layout,
+ * playtestMapHelpers.ts's `buildCryptLayout`) want a different feel without
+ * disturbing every existing caller: same 3 GLB variants (no new assets),
+ * different weights per theme. `'default'` is byte-identical to the
+ * pre-theme weights (same array reference) so every caller that doesn't
+ * pass a theme — every real dungeon wall today — selects exactly as before.
+ */
+export type WallTheme = 'default' | 'crypt';
+
+/**
+ * `'crypt'` reuses the same 3 GLBs at plain-heavy weights: a crypt reads as
+ * intact worked masonry, not a ruin, so `broken` stays at the same absolute
+ * weight as default (rare, not eliminated — total collapse still happens)
+ * while `plain`'s weight goes up around it; `alcove` gets a mild bump over
+ * broken for an occasional deliberate-looking recess instead of damage.
+ */
+const CRYPT_WALL_VARIANTS: WallVariant[] = WALL_VARIANTS.map((variant) => {
+  if (variant.name === 'plain') return { ...variant, weight: 10 };
+  if (variant.name === 'alcove') return { ...variant, weight: 2 };
+  return variant; // broken: unchanged weight (1)
+});
+
+export const WALL_VARIANTS_BY_THEME: Record<WallTheme, WallVariant[]> = {
+  default: WALL_VARIANTS,
+  crypt: CRYPT_WALL_VARIANTS,
+};
+
+/**
  * Deterministic string hash (FNV-1a) — same edge key always produces the
  * same hash, so the same wall edge always picks the same variant across
  * renders, reconnects, and remounts. A per-render Math.random() pick would
@@ -151,11 +181,17 @@ function hashEdgeKey(key: string): number {
  * Pick a wall variant for a given edge segment key (WallEdgeSegment.key,
  * itself a stable function of the two hex coordinates the edge sits
  * between — see buildDungeonWallSegments) — deterministic per edge,
- * weighted by the manifest's variant weights. Pure and independent of GLB
- * loading so it's unit-testable directly.
+ * weighted by `theme`'s variant weights (WALL_VARIANTS_BY_THEME). Defaults
+ * to `'default'` so every pre-existing caller (real dungeon walls) keeps
+ * selecting from the original 3:1:1 pool unchanged. Pure and independent of
+ * GLB loading so it's unit-testable directly.
  */
-export function selectWallVariant(edgeKey: string): WallVariant {
-  const totalWeight = WALL_VARIANTS.reduce((sum, v) => sum + v.weight, 0);
+export function selectWallVariant(
+  edgeKey: string,
+  theme: WallTheme = 'default'
+): WallVariant {
+  const variants = WALL_VARIANTS_BY_THEME[theme];
+  const totalWeight = variants.reduce((sum, v) => sum + v.weight, 0);
   // Copilot review #500: makes the "unreachable" comment below actually
   // true. Without this, a future manifest re-sync that zeroed every
   // weight would compute hash % 0 (NaN), and `target < variant.weight`
@@ -163,21 +199,21 @@ export function selectWallVariant(edgeKey: string): WallVariant {
   // WALL_VARIANTS[0] fallback instead of the deterministic pick the rest
   // of this function promises. Fail loud instead: a manifest that can't
   // select anything is a data bug to fix, not something to paper over.
-  if (WALL_VARIANTS.length === 0 || totalWeight <= 0) {
+  if (variants.length === 0 || totalWeight <= 0) {
     throw new Error(
-      'selectWallVariant: WALL_VARIANTS must be non-empty with a positive total weight'
+      `selectWallVariant: WALL_VARIANTS_BY_THEME.${theme} must be non-empty with a positive total weight`
     );
   }
   const hash = hashEdgeKey(edgeKey);
   let target = hash % totalWeight;
-  for (const variant of WALL_VARIANTS) {
+  for (const variant of variants) {
     if (target < variant.weight) return variant;
     target -= variant.weight;
   }
   // Unreachable given totalWeight > 0 (guarded above) and target <
   // totalWeight by construction (hash % totalWeight), but keeps the
   // return type total.
-  return WALL_VARIANTS[0]!;
+  return variants[0]!;
 }
 
 /**

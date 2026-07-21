@@ -11,9 +11,20 @@ import {
   type CombatState,
   type EntityState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import { EntityType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import {
+  EntityType,
+  PositionSchema,
+  WallKind,
+  WallSchema,
+  type Wall,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
+import {
+  coordToKey,
+  HEX_DIRECTIONS,
+  type CubeCoord,
+} from '../hex-grid/hexMath';
 
 /**
  * Render shape consumed by HexGrid for each entity on the map.
@@ -317,4 +328,281 @@ export function parsePerfProbeWindowMs(raw: string | null): number | undefined {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
   return parsed;
+}
+
+// ---------------------------------------------------------------------
+// buildCryptLayout (rpg-dnd5e-web#558 crypt spike) — a fixed, hand-composed
+// 3-room dungeon (entrance chamber -> corridor -> boss/tomb chamber)
+// injected wholesale into the playtest map, opt-in via `?cryptdemo=1`
+// (PlaytestMap.tsx). Exists to give #560 a concrete visual target and to
+// exercise SyntyHexWall's new per-theme wall weighting (syntyHexWallHelpers
+// .ts's WALL_VARIANTS_BY_THEME) end-to-end against real room geometry
+// instead of a synthetic unit-test edge list. Pure and deterministic (no
+// Math.random, no Date.now) — same output every call, same as every other
+// helper in this file.
+// ---------------------------------------------------------------------
+
+/** HEX_DIRECTIONS is ordered E, NE, NW, W, SW, SE (hexMath.ts's own doc
+ * comment) — named locally so the room layout below reads as compass
+ * directions instead of numeric indices. */
+const DIR_E = HEX_DIRECTIONS[0]!;
+const DIR_NE = HEX_DIRECTIONS[1]!;
+const DIR_NW = HEX_DIRECTIONS[2]!;
+const DIR_W = HEX_DIRECTIONS[3]!;
+const DIR_SW = HEX_DIRECTIONS[4]!;
+const DIR_SE = HEX_DIRECTIONS[5]!;
+
+function hexAdd(a: CubeCoord, b: CubeCoord): CubeCoord {
+  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+}
+
+function hexScale(dir: CubeCoord, n: number): CubeCoord {
+  return { x: dir.x * n, y: dir.y * n, z: dir.z * n };
+}
+
+/** Every hex within `radius` cube-distance of `center` — a filled hexagonal
+ * blob (radius 0 = just the center, radius 1 = center + 6 neighbors = 7
+ * hexes, radius 2 = 19 hexes). Standard cube-coordinate range enumeration:
+ * for each x offset in [-radius, radius], y ranges over whatever keeps z
+ * (= -x-y) within radius too. */
+function hexesWithinRadius(center: CubeCoord, radius: number): CubeCoord[] {
+  const hexes: CubeCoord[] = [];
+  for (let dx = -radius; dx <= radius; dx++) {
+    const dyMin = Math.max(-radius, -dx - radius);
+    const dyMax = Math.min(radius, -dx + radius);
+    for (let dy = dyMin; dy <= dyMax; dy++) {
+      const dz = -dx - dy;
+      hexes.push(hexAdd(center, { x: dx, y: dy, z: dz }));
+    }
+  }
+  return hexes;
+}
+
+/** A single-cell blocked wall (`from === to`, the real-server shape every
+ * WALL_VARIANTS-consuming test/renderer assumes — syntyHexWallHelpers.ts's
+ * own doc comment). */
+function solidWall(hex: CubeCoord): Wall {
+  const position = create(PositionSchema, hex);
+  return create(WallSchema, {
+    from: position,
+    to: position,
+    kind: WallKind.SOLID,
+  });
+}
+
+/** A door wall: `from` is the door's own cell, `to` names the single
+ * designated passage edge (design doc §Q2) — NOT a second blocked cell.
+ * `id` is required (unlike solidWall) because a door needs a click surface
+ * (SyntyHexWall's onDoorClick). */
+function doorWall(
+  from: CubeCoord,
+  to: CubeCoord,
+  kind: WallKind,
+  id: string
+): Wall {
+  return create(WallSchema, {
+    from: create(PositionSchema, from),
+    to: create(PositionSchema, to),
+    kind,
+    id,
+  });
+}
+
+/** One dressing piece: an OBSTACLE RenderableEntity carrying a propRefId
+ * that resolves through obstaclePropKeys.ts's resolvePropKeyForRefId
+ * (`dnd5e:props:${refId}`) to an already-synced prop model
+ * (propManifest.ts's PROP_KEYS). Entity ids are prefixed/unique per piece —
+ * same "__<demo>-<key>__" convention as buildDevPropDemoEntities above, so
+ * these can never collide with a real server-assigned entityId. */
+function cryptProp(
+  idSuffix: string,
+  name: string,
+  position: CubeCoord,
+  propRefId: string
+): RenderableEntity {
+  return {
+    entityId: `__crypt-demo-${idSuffix}__`,
+    name,
+    position,
+    type: 'obstacle',
+    propRefId,
+  };
+}
+
+/** Every hex belonging to any of the crypt's 3 rooms, adjacent to at least
+ * one hex OUTSIDE that set, becomes a single-cell solid wall on the OUTSIDE
+ * hex (matching buildDungeonWallSegments' "wall hex" model — a wall is a
+ * blocked cell bordering the room, not a boundary line ON the room's own
+ * floor hex). Neighbors that are themselves floor (the two door junctions
+ * below, where the entrance/corridor and corridor/boss floor sets touch
+ * directly) are skipped automatically since they're in `floorSet` too. */
+function buildPerimeterWalls(floorHexes: CubeCoord[]): Wall[] {
+  const floorSet = new Set(floorHexes.map(coordToKey));
+  const wallHexes = new Map<string, CubeCoord>();
+  for (const hex of floorHexes) {
+    for (const dir of HEX_DIRECTIONS) {
+      const neighbor = hexAdd(hex, dir);
+      const neighborKey = coordToKey(neighbor);
+      if (floorSet.has(neighborKey)) continue; // interior/door edge, not a wall
+      if (!wallHexes.has(neighborKey)) wallHexes.set(neighborKey, neighbor);
+    }
+  }
+  return Array.from(wallHexes.values()).map(solidWall);
+}
+
+export interface CryptLayout {
+  /** Cube-coord keys ("x,y,z", coordToKey's format — same shape as
+   * `state.revealedHexes`) for every floor hex across all 3 rooms. */
+  floorKeys: string[];
+  /** Perimeter solid walls plus the 2 inter-room doors. */
+  walls: Wall[];
+  /** Dressing: sarcophagus, candles, pillars, banner, chest, vase. */
+  props: RenderableEntity[];
+  /** Wall-hex keys (coordToKey format) for every solid wall this layout
+   * injected — the crypt's own opt-in set for SyntyHexWall's
+   * `themeWallHexKeys` prop (rpg-dnd5e-web#558), so PlaytestMap can mark
+   * exactly these walls `'crypt'`-themed without touching any real dungeon
+   * wall sharing the same merged `walls` list. */
+  themeWallHexKeys: Set<string>;
+}
+
+/**
+ * Build a fixed 3-room crypt: a small entrance chamber (radius-1 hexagon, 7
+ * hexes), a short 3-hex corridor, and a larger tomb/boss chamber (radius-2
+ * hexagon, 19 hexes) — laid out due east along DIR_E so the whole thing
+ * reads left-to-right. The two room/corridor junctions are DOOR walls (one
+ * DOOR_CLOSED, one DOOR_OPEN, for visual variety per the brief) sitting on
+ * the shared edge between two already-adjacent floor hexes — no separate
+ * "door cell" outside either room's floor set (doorHexKinds/isBlocked in
+ * dungeonMapGeometry.ts/HexGrid.tsx key off `Wall.from`, which is always one
+ * of the two rooms' own floor hexes here).
+ *
+ * All positions below are computed from named direction constants via
+ * hexAdd/hexScale — never hand-typed cube coordinates — so the geometry is
+ * correct by construction (every result sums to 0) and shifting the layout
+ * later (e.g. a different entrance offset) only touches the constants.
+ */
+export function buildCryptLayout(): CryptLayout {
+  const entranceCenter: CubeCoord = { x: 0, y: 0, z: 0 };
+  const entranceHexes = hexesWithinRadius(entranceCenter, 1); // 7 hexes
+
+  const corridorStart = hexAdd(entranceCenter, hexScale(DIR_E, 2));
+  const corridorHexes = [0, 1, 2].map((i) =>
+    hexAdd(corridorStart, hexScale(DIR_E, i))
+  ); // 3 hexes, straight east
+
+  const bossCenter = hexAdd(corridorHexes[2]!, hexScale(DIR_E, 3));
+  const bossHexes = hexesWithinRadius(bossCenter, 2); // 19 hexes
+
+  const doorEntranceToCorridor = doorWall(
+    hexAdd(entranceCenter, DIR_E), // entrance chamber's E hex (already in entranceHexes)
+    corridorHexes[0]!,
+    WallKind.DOOR_CLOSED,
+    'crypt-door-entrance'
+  );
+  const doorCorridorToBoss = doorWall(
+    corridorHexes[2]!,
+    hexAdd(bossCenter, hexScale(DIR_W, 2)), // boss chamber's westmost hex (already in bossHexes)
+    WallKind.DOOR_OPEN,
+    'crypt-door-boss'
+  );
+
+  const floorHexes = [...entranceHexes, ...corridorHexes, ...bossHexes];
+  const perimeterWalls = buildPerimeterWalls(floorHexes);
+  const walls = [...perimeterWalls, doorEntranceToCorridor, doorCorridorToBoss];
+
+  // Entrance chamber dressing: a chest at the back, candles flanking the
+  // doorway (both are neighbors of the door hex AND of the chamber center,
+  // so they sit just inside the entrance on either side of it), a vase for
+  // detail on the unused corner.
+  const entranceProps: RenderableEntity[] = [
+    cryptProp(
+      'entrance-chest',
+      'Crypt entrance: chest',
+      hexAdd(entranceCenter, DIR_W),
+      'chest'
+    ),
+    cryptProp(
+      'entrance-candle-a',
+      'Crypt entrance: candle (NE)',
+      hexAdd(entranceCenter, DIR_NE),
+      'candles'
+    ),
+    cryptProp(
+      'entrance-candle-b',
+      'Crypt entrance: candle (SE)',
+      hexAdd(entranceCenter, DIR_SE),
+      'candles'
+    ),
+    cryptProp(
+      'entrance-vase',
+      'Crypt entrance: vase',
+      hexAdd(entranceCenter, DIR_NW),
+      'vase'
+    ),
+  ];
+
+  // Boss chamber dressing: sarcophagus centerpiece, a symmetric candle pair
+  // flanking it (perpendicular to the east-west approach axis), a symmetric
+  // pillar pair framing the room further out on the same axis, a rune
+  // pillar on the back (east) wall opposite the entrance, and a banner pair
+  // flanking that rune pillar.
+  const runePillarPos = hexAdd(bossCenter, hexScale(DIR_E, 2));
+  const bossProps: RenderableEntity[] = [
+    cryptProp(
+      'boss-tomb',
+      'Crypt boss chamber: sarcophagus',
+      bossCenter,
+      'tomb'
+    ),
+    cryptProp(
+      'boss-candle-a',
+      'Crypt boss chamber: candle (N)',
+      hexAdd(bossCenter, DIR_NW),
+      'candles'
+    ),
+    cryptProp(
+      'boss-candle-b',
+      'Crypt boss chamber: candle (S)',
+      hexAdd(bossCenter, DIR_SE),
+      'candles'
+    ),
+    cryptProp(
+      'boss-pillar-a',
+      'Crypt boss chamber: pillar (N)',
+      hexAdd(bossCenter, hexScale(DIR_NW, 2)),
+      'pillar'
+    ),
+    cryptProp(
+      'boss-pillar-b',
+      'Crypt boss chamber: pillar (S)',
+      hexAdd(bossCenter, hexScale(DIR_SE, 2)),
+      'pillar'
+    ),
+    cryptProp(
+      'boss-rune-pillar',
+      'Crypt boss chamber: rune pillar (back wall)',
+      runePillarPos,
+      'rune-stone'
+    ),
+    cryptProp(
+      'boss-banner-a',
+      'Crypt boss chamber: banner (NE)',
+      hexAdd(runePillarPos, DIR_NW),
+      'banner'
+    ),
+    cryptProp(
+      'boss-banner-b',
+      'Crypt boss chamber: banner (SW)',
+      hexAdd(runePillarPos, DIR_SW),
+      'banner'
+    ),
+  ];
+
+  return {
+    floorKeys: floorHexes.map(coordToKey),
+    walls,
+    props: [...entranceProps, ...bossProps],
+    themeWallHexKeys: new Set(perimeterWalls.map((w) => coordToKey(w.from!))),
+  };
 }

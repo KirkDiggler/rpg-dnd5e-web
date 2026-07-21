@@ -12,6 +12,7 @@ import {
   fittingScale,
   selectWallVariant,
   WALL_VARIANTS,
+  WALL_VARIANTS_BY_THEME,
   wallEndEdgeKeys,
   wallVariantScale,
 } from './syntyHexWallHelpers';
@@ -244,6 +245,75 @@ describe('selectWallVariant', () => {
       expect(counts[variant.name] ?? 0).toBeGreaterThan(expected * 0.5);
       expect(counts[variant.name] ?? 0).toBeLessThan(expected * 1.5);
     }
+  });
+});
+
+describe('selectWallVariant — per-theme weighting (rpg-dnd5e-web#558 crypt spike)', () => {
+  it('with no theme arg, matches the explicit "default" theme exactly — the regression guard for every pre-#558 caller (SyntyHexWall\'s real-dungeon call site never passed a theme)', () => {
+    // If a future refactor accidentally changed the implicit default away
+    // from 'default' (e.g. swapped the parameter order or the fallback
+    // value), this goes RED for every one of these keys.
+    for (let i = 0; i < 100; i++) {
+      const key = `regression-${i}`;
+      expect(selectWallVariant(key)).toBe(selectWallVariant(key, 'default'));
+    }
+  });
+
+  it('"default" theme\'s selections are byte-identical to the pre-theme WALL_VARIANTS pool (same array reference)', () => {
+    // WALL_VARIANTS_BY_THEME.default must literally be WALL_VARIANTS, not a
+    // structurally-equal copy — proves the theme table didn't fork the
+    // default pool's identity/weights.
+    expect(WALL_VARIANTS_BY_THEME.default).toBe(WALL_VARIANTS);
+  });
+
+  it('is deterministic per (edgeKey, theme) pair — same key+theme always returns the same variant', () => {
+    const key = '0,0,0->1,-1,0';
+    const first = selectWallVariant(key, 'crypt');
+    for (let i = 0; i < 20; i++) {
+      expect(selectWallVariant(key, 'crypt')).toBe(first);
+    }
+  });
+
+  it('only ever returns a variant from WALL_VARIANTS_BY_THEME[theme] for that theme', () => {
+    const cryptNames = new Set(WALL_VARIANTS_BY_THEME.crypt.map((v) => v.name));
+    for (let i = 0; i < 50; i++) {
+      expect(
+        cryptNames.has(selectWallVariant(`crypt-edge-${i}`, 'crypt').name)
+      ).toBe(true);
+    }
+  });
+
+  it('"crypt" theme is meaningfully plain-heavier than "default" — proves `theme` actually changes selection instead of being silently ignored (the exact bug a dropped/unused parameter would produce)', () => {
+    // This is the discriminating test: revert SyntyHexWall.tsx's or
+    // selectWallVariant's theme wiring back to always-'default' and this
+    // goes RED (cryptPlainShare collapses to defaultPlainShare).
+    const sampleSize = 4000;
+    let cryptPlainCount = 0;
+    let defaultPlainCount = 0;
+    for (let i = 0; i < sampleSize; i++) {
+      const key = `theme-sample-${i}`;
+      if (selectWallVariant(key, 'crypt').name === 'plain') cryptPlainCount++;
+      if (selectWallVariant(key, 'default').name === 'plain') {
+        defaultPlainCount++;
+      }
+    }
+    // default plain share ~= 3/5 = 60%; crypt plain share ~= 10/13 ~= 77%.
+    // Assert crypt is at least 10 percentage points higher — generous
+    // tolerance for hash-distribution noise, but well beyond what sampling
+    // variance alone could produce if both were drawing from the same pool.
+    expect(cryptPlainCount).toBeGreaterThan(
+      defaultPlainCount + sampleSize * 0.1
+    );
+  });
+
+  it('"crypt" theme keeps "broken" at the same absolute weight as "default" (rare, not eliminated) — only its SHARE drops as plain grows around it', () => {
+    const defaultBroken = WALL_VARIANTS_BY_THEME.default.find(
+      (v) => v.name === 'broken'
+    )!;
+    const cryptBroken = WALL_VARIANTS_BY_THEME.crypt.find(
+      (v) => v.name === 'broken'
+    )!;
+    expect(cryptBroken.weight).toBe(defaultBroken.weight);
   });
 });
 

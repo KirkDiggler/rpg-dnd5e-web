@@ -117,6 +117,14 @@ export interface HexGridProps {
    * is unchanged for every existing caller until they opt in.
    */
   syntyDungeon?: boolean;
+  /**
+   * Wall-hex keys (hexMath's `coordToKey` format) that should render with
+   * SyntyHexWall's `'crypt'` theme instead of `'default'` (rpg-dnd5e-web
+   * #558) — passed straight through to SyntyHexWall's own prop of the same
+   * name. Undefined (every existing caller) means every wall stays
+   * `'default'`, unchanged.
+   */
+  themeWallHexKeys?: ReadonlySet<string>;
   /** Extra scene content rendered inside the Canvas after the built-in
    * layers (e.g. the playtest harness's Synty model showcase). */
   children?: React.ReactNode;
@@ -148,6 +156,7 @@ function Scene({
   monsters = [],
   walls = [],
   syntyDungeon = false,
+  themeWallHexKeys,
   children,
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -584,6 +593,7 @@ function Scene({
             walls={walls}
             hexSize={HEX_SIZE}
             onDoorClick={onDoorClick}
+            themeWallHexKeys={themeWallHexKeys}
           />
         </ErrorBoundary>
       ) : (
