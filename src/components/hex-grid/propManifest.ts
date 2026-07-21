@@ -53,8 +53,9 @@ export const PROPS_MODEL_BASE = '/models/synty/';
 
 /**
  * key -> ordered variant list, mirroring rpg-game-assets manifest.json's
- * `keys` index exactly (same 17 keys as the #523 comment thread's agreed
- * list). Variant order matches the source manifest's piece order.
+ * `keys` index exactly (the wave-1 17 keys agreed on the #523 comment
+ * thread, plus the 12 keys #559's crypt-dressing wave appended -- 29
+ * total). Variant order matches the source manifest's piece order.
  */
 export const PROP_KEYS: Record<string, PropVariant[]> = {
   'dnd5e:props:pillar': [
@@ -275,6 +276,149 @@ export const PROP_KEYS: Record<string, PropVariant[]> = {
       blocksLoS: false,
     },
   ],
+
+  // --- rpg-dnd5e-web#559 crypt-dressing wave (rpg-game-assets#22/#23,
+  // both merged) -- 12 newly-minted keys extending the wave-1 17-key list
+  // per prop-role-map.json's $crypt559KeysNote. All themes: ["crypt"]. ---
+  'dnd5e:props:altar': [
+    {
+      name: 'SM_Env_Alter_01',
+      file: 'props/SM_Env_Alter_01.glb',
+      role: 'obstacle',
+      footprintHexes: 3,
+      blocksLoS: true,
+    },
+  ],
+  'dnd5e:props:statue-reaper': [
+    {
+      name: 'SM_Env_Statue_01',
+      file: 'props/SM_Env_Statue_01.glb',
+      role: 'obstacle',
+      footprintHexes: 3,
+      blocksLoS: true,
+    },
+  ],
+  'dnd5e:props:statue-knight-hooded': [
+    {
+      name: 'SM_Env_Statue_03',
+      file: 'props/SM_Env_Statue_03.glb',
+      role: 'obstacle',
+      footprintHexes: 2,
+      blocksLoS: true,
+    },
+  ],
+  'dnd5e:props:obelisk': [
+    {
+      name: 'SM_Env_Obelisk_01',
+      file: 'props/SM_Env_Obelisk_01.glb',
+      role: 'obstacle',
+      footprintHexes: 3,
+      blocksLoS: true,
+    },
+  ],
+  'dnd5e:props:skeleton-cage': [
+    {
+      name: 'SM_Prop_Skeleton_Cage_01',
+      file: 'props/SM_Prop_Skeleton_Cage_01.glb',
+      role: 'obstacle',
+      footprintHexes: 1,
+      blocksLoS: true,
+    },
+  ],
+  'dnd5e:props:coffin': [
+    {
+      name: 'SM_Prop_Coffin_01',
+      file: 'props/SM_Prop_Coffin_01.glb',
+      role: 'cover',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:skeleton-table': [
+    {
+      name: 'SM_Prop_Skeleton_Table_01',
+      file: 'props/SM_Prop_Skeleton_Table_01.glb',
+      role: 'cover',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  // Shares one key across 4 size/shape variants -- same bone-pile family,
+  // same $keyNote convention as barrel/crate/etc above.
+  'dnd5e:props:bone-pile': [
+    {
+      name: 'SM_Env_BonePile_01',
+      file: 'props/SM_Env_BonePile_01.glb',
+      role: 'decor',
+      footprintHexes: 3,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Env_BonePile_02',
+      file: 'props/SM_Env_BonePile_02.glb',
+      role: 'decor',
+      footprintHexes: 4,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Env_BonePile_03',
+      file: 'props/SM_Env_BonePile_03.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Env_BonePile_Small_01',
+      file: 'props/SM_Env_BonePile_Small_01.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+  ],
+  // Shares one key across 2 length variants -- same chain family.
+  'dnd5e:props:chain': [
+    {
+      name: 'SM_Prop_Chain_01',
+      file: 'props/SM_Prop_Chain_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Chain_02',
+      file: 'props/SM_Prop_Chain_02.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:brazier': [
+    {
+      name: 'SM_Prop_Brazier_01',
+      file: 'props/SM_Prop_Brazier_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:torch-ornate': [
+    {
+      name: 'SM_Prop_Torch_Ornate_01',
+      file: 'props/SM_Prop_Torch_Ornate_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:skeleton-remains': [
+    {
+      name: 'SM_Prop_Skeleton_01',
+      file: 'props/SM_Prop_Skeleton_01.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+  ],
 };
 
 /**
@@ -306,6 +450,20 @@ export const EXPECTED_PROP_KEYS: readonly string[] = [
   'dnd5e:props:banner',
   'dnd5e:props:books',
   'dnd5e:props:armor-stand',
+  // rpg-dnd5e-web#559 crypt-dressing wave (rpg-game-assets#22/#23) -- 12
+  // more keys appended per this file's own doc comment above.
+  'dnd5e:props:altar',
+  'dnd5e:props:statue-reaper',
+  'dnd5e:props:statue-knight-hooded',
+  'dnd5e:props:obelisk',
+  'dnd5e:props:skeleton-cage',
+  'dnd5e:props:coffin',
+  'dnd5e:props:skeleton-table',
+  'dnd5e:props:bone-pile',
+  'dnd5e:props:chain',
+  'dnd5e:props:brazier',
+  'dnd5e:props:torch-ornate',
+  'dnd5e:props:skeleton-remains',
 ];
 
 /**
