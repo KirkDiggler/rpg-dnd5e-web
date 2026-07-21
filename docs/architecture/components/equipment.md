@@ -62,10 +62,17 @@ one file per verb, mirroring `useTakeAction`/`useInteract`.
   verbatim — except one defensive step: `Item.ref` is optional on the
   wire (proto3 sub-message field) but `ItemLike.ref` is required, so
   ref-less items are filtered out (no real server response omits it;
-  this only guards a hand-built/partial `CharacterData`, and the fields
-  themselves default to `{}`/`[]` rather than throwing if a caller omits
-  them entirely — the reconnect-badge regression test in
-  `EncounterView.test.tsx` covers exactly this).
+  this only guards a hand-built/partial `CharacterData`). The
+  `equipped`/`inventory`/`slots` fields themselves default to `{}`/`[]`
+  rather than throwing if a caller omits them entirely — a real bug this
+  guards against: the reconnect-badge regression test in
+  `EncounterView.test.tsx` (asserts status badges, not equipment) builds
+  its snapshot entity with a bare-minimum `CharacterData` missing every
+  equipment field, and exercising it without these defaults threw inside
+  `onSnapshotDelivered` before the badge assertion ever ran. That test
+  proves the defaults prevent the crash; it does not assert on equipment
+  output itself — see `useEncounterState.test.ts`'s "snapshot equipment
+  hydration" and `applyCharacterEquipment` suites for that.
 - Called from both `onSnapshotDelivered` (batch hydration) and
   `onEntityAppeared` (live), keyed on `entity.data.case === 'character'`.
 - `handleEquipIntent(intent)` calls the real `EquipItem`/`UnequipItem` RPC

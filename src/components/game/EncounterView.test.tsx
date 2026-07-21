@@ -1,3 +1,7 @@
+import type {
+  EquipItemResponse,
+  UnequipItemResponse,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/character/service_pb';
 import type { EncounterEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import type {
   EndTurnResponse,
@@ -31,6 +35,8 @@ const hoisted = vi.hoisted(() => ({
   setReactionReadyFn:
     vi.fn<(req: unknown) => Promise<SetReactionReadyResponse>>(),
   interactFn: vi.fn<(req: unknown) => Promise<InteractResponse>>(),
+  equipItemFn: vi.fn<(req: unknown) => Promise<EquipItemResponse>>(),
+  unequipItemFn: vi.fn<(req: unknown) => Promise<UnequipItemResponse>>(),
 }));
 
 vi.mock('../../api/client', () => ({
@@ -46,6 +52,10 @@ vi.mock('../../api/client', () => ({
     endTurn: hoisted.endTurnFn,
     setReactionReady: hoisted.setReactionReadyFn,
     interact: hoisted.interactFn,
+  },
+  characterV2Client: {
+    equipItem: hoisted.equipItemFn,
+    unequipItem: hoisted.unequipItemFn,
   },
 }));
 
@@ -101,6 +111,8 @@ beforeEach(() => {
   hoisted.endTurnFn.mockReset();
   hoisted.setReactionReadyFn.mockReset();
   hoisted.interactFn.mockReset();
+  hoisted.equipItemFn.mockReset();
+  hoisted.unequipItemFn.mockReset();
 });
 
 afterEach(() => {
@@ -1097,5 +1109,143 @@ describe('EncounterView action-selection survives stray clicks (rpg-dnd5e-web#51
         .getByTestId('action-dnd5e:combat_abilities:move-to')
         .getAttribute('data-armed')
     ).toBe('true');
+  });
+});
+
+describe('EncounterView equip/unequip (rpg-dnd5e-web#571)', () => {
+  function pushCharacterSnapshot() {
+    act(() =>
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'char-alice',
+                  position: { x: 0, y: 0, z: 0 },
+                  type: EntityType.CHARACTER,
+                  data: {
+                    case: 'character',
+                    value: {
+                      playerId: 'alice',
+                      equipped: {
+                        main_hand: {
+                          module: 'dnd5e',
+                          type: 'item',
+                          id: 'longsword',
+                        },
+                      },
+                      inventory: [
+                        {
+                          ref: {
+                            module: 'dnd5e',
+                            type: 'item',
+                            id: 'longsword',
+                          },
+                          name: 'Longsword',
+                          statLine: '1d8 slashing',
+                          iconKey: '',
+                          kind: 'weapon',
+                          slotKeys: ['main_hand', 'off_hand'],
+                        },
+                        {
+                          ref: { module: 'dnd5e', type: 'item', id: 'shield' },
+                          name: 'Shield',
+                          statLine: '+2 AC',
+                          iconKey: '',
+                          kind: 'shield',
+                          slotKeys: ['off_hand'],
+                        },
+                      ],
+                      slots: [
+                        {
+                          key: 'main_hand',
+                          displayLabel: 'Main hand',
+                          accepts: ['weapon'],
+                        },
+                        {
+                          key: 'off_hand',
+                          displayLabel: 'Off hand',
+                          accepts: ['weapon', 'shield'],
+                        },
+                      ],
+                      armorClassDetail: { total: 16, note: '16 base' },
+                      mainHandDamage: '1d8 slashing',
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        })
+      )
+    );
+  }
+
+  it('a rejected EquipItem leaves the equipment display unchanged and surfaces an error', async () => {
+    hoisted.equipItemFn.mockRejectedValue(new Error('item not in inventory'));
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    pushCharacterSnapshot();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByLabelText('Open equipment'));
+    const shieldRow = screen.getByTestId(
+      'inv-dnd5e:item:shield'
+    ) as HTMLButtonElement;
+    fireEvent.click(shieldRow);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.equipItemFn).toHaveBeenCalledOnce();
+    // No optimistic update: handleEquipIntent only calls
+    // applyCharacterEquipment on RPC success, so a rejected call leaves
+    // the snapshot-hydrated state exactly as it was — main hand still
+    // Longsword, off hand still empty, shield still carried.
+    expect(
+      screen.getByLabelText('Main hand: Longsword — click to unequip')
+    ).toBeTruthy();
+    expect(screen.getByLabelText('Off hand: empty')).toBeTruthy();
+    expect(screen.getByTestId('inv-dnd5e:item:shield')).toBeTruthy();
+    expect(screen.getByText(/Equip error: item not in inventory/)).toBeTruthy();
+  });
+
+  it('a rejected UnequipItem leaves the equipped slot unchanged and surfaces an error', async () => {
+    hoisted.unequipItemFn.mockRejectedValue(new Error('slot already empty'));
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    pushCharacterSnapshot();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByLabelText('Open equipment'));
+    fireEvent.click(
+      screen.getByLabelText('Main hand: Longsword — click to unequip')
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hoisted.unequipItemFn).toHaveBeenCalledOnce();
+    expect(
+      screen.getByLabelText('Main hand: Longsword — click to unequip')
+    ).toBeTruthy();
+    expect(screen.getByText(/Equip error: slot already empty/)).toBeTruthy();
   });
 });

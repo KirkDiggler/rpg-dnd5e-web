@@ -57,9 +57,9 @@ export function InventoryLight({
         const iconUrl = resolveIconUrl(item.iconKey);
         return (
           <button
-            key={item.ref.id}
+            key={refKey(item.ref)}
             className={`equip-inv-row${target ? '' : ' gear'}`}
-            data-testid={`inv-${item.ref.id}`}
+            data-testid={`inv-${refKey(item.ref)}`}
             disabled={!target || busy}
             aria-label={
               target

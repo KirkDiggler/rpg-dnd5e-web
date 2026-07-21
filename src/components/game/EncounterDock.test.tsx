@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterEquipment } from '../../hooks/useEncounterState';
 import type { EncounterDockProps } from './EncounterDock';
 import { EncounterDock } from './EncounterDock';
+import { refKey } from './equipment/equipmentTypes';
 
 function economy(
   actions: number,
@@ -626,7 +627,11 @@ describe('EncounterDock equipment chip + popover (rpg-dnd5e-web#571)', () => {
     // Greatsword is carried (not in `equipped`), so it renders in the
     // inventory list — proves the popover is fed from the real equipment
     // prop, not a stale/fixture default.
-    expect(screen.getByTestId('inv-greatsword')).toBeTruthy();
+    expect(
+      screen.getByTestId(
+        `inv-${refKey({ module: 'dnd5e', type: 'item', id: 'greatsword' })}`
+      )
+    ).toBeTruthy();
   });
 
   it('is reachable outside TURN_BASED and off-turn — equip is never turn-gated', () => {

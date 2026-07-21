@@ -2,12 +2,17 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { InventoryLight } from './InventoryLight';
 import type { EquippedMap, ItemLike, SlotDefLike } from './equipmentTypes';
+import { refKey } from './equipmentTypes';
 
 const SLOTS: SlotDefLike[] = [
   { key: 'main_hand', displayLabel: 'Main hand', accepts: ['weapon'] },
   { key: 'off_hand', displayLabel: 'Off hand', accepts: ['weapon', 'shield'] },
   { key: 'armor', displayLabel: 'Armor', accepts: ['armor'] },
 ];
+
+/** Matches InventoryLight's `data-testid={inv-${refKey(item.ref)}}`. */
+const invTestId = (id: string) =>
+  `inv-${refKey({ module: 'dnd5e', type: 'item', id })}`;
 
 const ITEMS: ItemLike[] = [
   {
@@ -49,9 +54,9 @@ describe('InventoryLight', () => {
         onIntent={vi.fn()}
       />
     );
-    expect(screen.queryByTestId('inv-longsword')).toBeNull();
-    expect(screen.getByTestId('inv-greatsword')).toBeTruthy();
-    expect(screen.getByTestId('inv-torch')).toBeTruthy();
+    expect(screen.queryByTestId(invTestId('longsword'))).toBeNull();
+    expect(screen.getByTestId(invTestId('greatsword'))).toBeTruthy();
+    expect(screen.getByTestId(invTestId('torch'))).toBeTruthy();
   });
 
   it('shows the empty-carried message when everything is equipped', () => {
@@ -79,7 +84,7 @@ describe('InventoryLight', () => {
         onIntent={vi.fn()}
       />
     );
-    const torchRow = screen.getByTestId('inv-torch');
+    const torchRow = screen.getByTestId(invTestId('torch'));
     expect((torchRow as HTMLButtonElement).disabled).toBe(true);
     expect(torchRow.textContent).toContain('gear');
   });
@@ -94,7 +99,7 @@ describe('InventoryLight', () => {
         onIntent={onIntent}
       />
     );
-    fireEvent.click(screen.getByTestId('inv-longsword'));
+    fireEvent.click(screen.getByTestId(invTestId('longsword')));
     expect(onIntent).toHaveBeenCalledWith({
       kind: 'EquipItem',
       ref: { module: 'dnd5e', type: 'item', id: 'longsword' },
@@ -116,7 +121,7 @@ describe('InventoryLight', () => {
         onIntent={onIntent}
       />
     );
-    fireEvent.click(screen.getByTestId('inv-greatsword'));
+    fireEvent.click(screen.getByTestId(invTestId('greatsword')));
     expect(onIntent).toHaveBeenCalledWith({
       kind: 'EquipItem',
       ref: { module: 'dnd5e', type: 'item', id: 'greatsword' },
@@ -135,7 +140,7 @@ describe('InventoryLight', () => {
       />
     );
     expect(
-      (screen.getByTestId('inv-longsword') as HTMLButtonElement).disabled
+      (screen.getByTestId(invTestId('longsword')) as HTMLButtonElement).disabled
     ).toBe(true);
   });
 });
