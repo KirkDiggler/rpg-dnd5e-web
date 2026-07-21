@@ -125,6 +125,27 @@ export interface HexGridProps {
    * `'default'`, unchanged.
    */
   themeWallHexKeys?: ReadonlySet<string>;
+  /**
+   * Mood-lighting overrides (rpg-dnd5e-web#558 crypt spike, Kirk's POLYGON
+   * Dark Fortress reference) — replaces the flat `ambientLight`/
+   * `directionalLight` intensities below when set, so an injected room can
+   * go near-dark instead of evenly lit. Undefined (every existing caller)
+   * keeps the original 0.6/0.8 defaults, unchanged.
+   */
+  ambientIntensity?: number;
+  directionalIntensity?: number;
+  /**
+   * Point lights placed at prop positions (candles, braziers) for the same
+   * mood-lighting pass — simple R3F point lights with distance falloff,
+   * not a lighting engine. Empty/undefined (every existing caller) adds
+   * nothing.
+   */
+  moodPointLights?: Array<{
+    position: [number, number, number];
+    color: string;
+    intensity: number;
+    distance: number;
+  }>;
   /** Extra scene content rendered inside the Canvas after the built-in
    * layers (e.g. the playtest harness's Synty model showcase). */
   children?: React.ReactNode;
@@ -157,6 +178,9 @@ function Scene({
   walls = [],
   syntyDungeon = false,
   themeWallHexKeys,
+  ambientIntensity = 0.6,
+  directionalIntensity = 0.8,
+  moodPointLights = [],
   children,
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -519,9 +543,25 @@ function Scene({
 
   return (
     <>
-      {/* Lighting */}
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 5]} intensity={0.8} />
+      {/* Lighting — base ambient/directional defaults to the original 0.6/0.8
+          for every existing caller; the crypt demo (#558) overrides both
+          down to near-dark and adds moodPointLights (candle/brazier glow)
+          on top, via PlaytestMap's mood-lighting computation. */}
+      <ambientLight intensity={ambientIntensity} />
+      <directionalLight
+        position={[10, 10, 5]}
+        intensity={directionalIntensity}
+      />
+      {moodPointLights.map((light, i) => (
+        <pointLight
+          key={i}
+          position={light.position}
+          color={light.color}
+          intensity={light.intensity}
+          distance={light.distance}
+          decay={2}
+        />
+      ))}
 
       {/* Invisible ground plane for hit detection */}
       <mesh

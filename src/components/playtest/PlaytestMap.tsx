@@ -44,6 +44,7 @@ import { HexGrid } from '../hex-grid';
 import type { CubeCoord } from '../hex-grid/hexMath';
 import {
   buildCryptLayout,
+  buildCryptMoodLights,
   buildRenderableEntities,
   synthesizeFloorTiles,
 } from './playtestMapHelpers';
@@ -168,6 +169,15 @@ export function PlaytestMap({
     [showCryptDemo]
   );
 
+  // Mood lighting (rpg-dnd5e-web#558, Kirk's POLYGON Dark Fortress
+  // reference) — near-dark ambient/directional plus sickly-green point
+  // lights at candle positions. Undefined when the flag is off, so
+  // HexGrid's own 0.6/0.8 defaults apply unchanged.
+  const cryptMoodLights = useMemo(
+    () => (cryptLayout ? buildCryptMoodLights(cryptLayout.props) : []),
+    [cryptLayout]
+  );
+
   const floorTiles = useMemo(() => {
     const tiles = synthesizeFloorTiles(
       revealedHexes,
@@ -257,6 +267,9 @@ export function PlaytestMap({
         combatState={null}
         syntyDungeon={syntyDungeon}
         themeWallHexKeys={cryptLayout?.themeWallHexKeys}
+        ambientIntensity={cryptLayout ? 0.08 : undefined}
+        directionalIntensity={cryptLayout ? 0.05 : undefined}
+        moodPointLights={cryptMoodLights}
         onMoveComplete={(path: CubeCoord[]) => {
           // HexGrid hands back the full cube-coord path it computed via
           // useHexInteraction's findPath. Forward as plain {x,y,z}; the

@@ -22,7 +22,9 @@ import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import {
   coordToKey,
+  cubeToWorld,
   HEX_DIRECTIONS,
+  HEX_SIZE,
   type CubeCoord,
 } from '../hex-grid/hexMath';
 
@@ -610,4 +612,59 @@ export function buildCryptLayout(): CryptLayout {
     props: [...entranceProps, ...bossProps],
     themeWallHexKeys: new Set(perimeterWalls.map((w) => coordToKey(w.from!))),
   };
+}
+
+// ---------------------------------------------------------------------
+// buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mid-flight scope
+// addition — Kirk's POLYGON Dark Fortress reference: near-dark ambient
+// with sickly green pools of light around light-source props, warm
+// orange around braziers/torches). Simple R3F point lights with distance
+// falloff, not a lighting engine — this just turns light-source props
+// into <pointLight> configs; HexGrid renders them.
+// ---------------------------------------------------------------------
+
+/** Height above the floor plane for a mood point light — roughly candle-
+ * flame height, not tied to any specific prop's own model height (this is
+ * a lighting approximation, not a per-model attachment point). */
+const MOOD_LIGHT_HEIGHT = 1.2;
+
+/** propRefId -> glow color. Only 'candles' has a shipped catalog piece
+ * today (obstaclePropKeys.ts's own doc comment: BRAZIER has no matching
+ * wave-1 piece yet) — brazier/torch entries would slot in here once one
+ * exists, warm orange instead of green. */
+const MOOD_LIGHT_COLOR_BY_PROP_REF: Record<string, string> = {
+  candles: '#3ddc84',
+};
+
+export interface MoodPointLight {
+  position: [number, number, number];
+  color: string;
+  intensity: number;
+  distance: number;
+}
+
+/**
+ * Derive point-light configs from a crypt layout's light-source props.
+ * Pure (no Three.js/R3F import) — HexGrid's Scene maps these straight to
+ * `<pointLight>` elements. A prop whose `propRefId` isn't a known light
+ * source is skipped, so adding non-light dressing (pillars, banners,
+ * chest, vase, tomb) never produces a light.
+ */
+export function buildCryptMoodLights(
+  props: RenderableEntity[]
+): MoodPointLight[] {
+  const lights: MoodPointLight[] = [];
+  for (const prop of props) {
+    const color =
+      prop.propRefId && MOOD_LIGHT_COLOR_BY_PROP_REF[prop.propRefId];
+    if (!color) continue;
+    const world = cubeToWorld(prop.position, HEX_SIZE);
+    lights.push({
+      position: [world.x, MOOD_LIGHT_HEIGHT, world.z],
+      color,
+      intensity: 2,
+      distance: 4.5,
+    });
+  }
+  return lights;
 }

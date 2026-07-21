@@ -18,6 +18,7 @@ import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import { PROP_KEYS } from '../hex-grid/propManifest';
 import {
   buildCryptLayout,
+  buildCryptMoodLights,
   buildDevPropDemoEntities,
   buildRenderableEntities,
   buildTurnOrderCombatState,
@@ -644,5 +645,86 @@ describe('buildCryptLayout (rpg-dnd5e-web#558 crypt spike)', () => {
   it('the boss chamber has exactly one sarcophagus (tomb) centerpiece', () => {
     const { props } = buildCryptLayout();
     expect(props.filter((p) => p.propRefId === 'tomb')).toHaveLength(1);
+  });
+});
+
+describe('buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mood-lighting pass)', () => {
+  it('returns [] for an empty prop list', () => {
+    expect(buildCryptMoodLights([])).toEqual([]);
+  });
+
+  it('produces a light for a light-source prop (candles) and skips non-light dressing (pillars, banners, chest, vase, tomb)', () => {
+    const props = [
+      {
+        entityId: 'a',
+        name: 'candle',
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'candles',
+      },
+      {
+        entityId: 'b',
+        name: 'pillar',
+        position: { x: 1, y: -1, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'pillar',
+      },
+      {
+        entityId: 'c',
+        name: 'tomb',
+        position: { x: 2, y: -2, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'tomb',
+      },
+      {
+        entityId: 'd',
+        name: 'no ref',
+        position: { x: 3, y: -3, z: 0 },
+        type: 'obstacle' as const,
+      },
+    ];
+    const lights = buildCryptMoodLights(props);
+    expect(lights).toHaveLength(1);
+  });
+
+  it('candle lights use the sickly-green glow color, not a neutral/white default', () => {
+    const props = [
+      {
+        entityId: 'a',
+        name: 'candle',
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'candles',
+      },
+    ];
+    const [light] = buildCryptMoodLights(props);
+    expect(light!.color).toBe('#3ddc84');
+  });
+
+  it('every light has a finite world-space position and positive intensity/distance falloff', () => {
+    const props = [
+      {
+        entityId: 'a',
+        name: 'candle',
+        position: { x: 2, y: -1, z: -1 },
+        type: 'obstacle' as const,
+        propRefId: 'candles',
+      },
+    ];
+    const [light] = buildCryptMoodLights(props);
+    expect(light!.position).toHaveLength(3);
+    for (const coord of light!.position) {
+      expect(Number.isFinite(coord)).toBe(true);
+    }
+    expect(light!.intensity).toBeGreaterThan(0);
+    expect(light!.distance).toBeGreaterThan(0);
+  });
+
+  it('the real crypt layout produces exactly one light per candle prop (2 entrance + 2 boss = 4), discriminating against a layout change silently adding/removing candles without updating lighting', () => {
+    const { props } = buildCryptLayout();
+    const candleCount = props.filter((p) => p.propRefId === 'candles').length;
+    expect(candleCount).toBe(4);
+    const lights = buildCryptMoodLights(props);
+    expect(lights).toHaveLength(candleCount);
   });
 });
