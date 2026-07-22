@@ -115,17 +115,26 @@ const attackRef: RefLike = {
 
 const PLAYER = 'char-aldric';
 const GOBLIN = 'npc-goblin-1';
+const GRUNT = 'npc-goblin-grunt';
 
-const action = (
+const npcAction = (
   sequence: number,
   correlationId: string,
+  actorEntityId: string,
   targetEntityId: string
 ): PacingFixtureEvent => ({
   sequence,
   correlationId,
   case: 'actionResolved',
-  value: { actorEntityId: PLAYER, actionRef: attackRef, targetEntityId },
+  value: { actorEntityId, actionRef: attackRef, targetEntityId },
 });
+
+const action = (
+  sequence: number,
+  correlationId: string,
+  targetEntityId: string
+): PacingFixtureEvent =>
+  npcAction(sequence, correlationId, PLAYER, targetEntityId);
 
 const npcAttack = (
   sequence: number,
@@ -259,9 +268,9 @@ const opportunityAttack: CombatPacingScenario = {
   id: 'opportunity-attack',
   label: 'Opportunity attack (no ActionResolved)',
   description:
-    'NPC opportunity attack triggered by movement: AttackResolved + EntityDamaged, no ActionResolved — the toolkit resolves NPC OAs inline (design.md §"What we know about the wire").',
+    'NPC opportunity attack triggered by movement: AttackResolved + EntityDamaged, no ActionResolved — the toolkit resolves NPC OAs inline (design.md §"What we know about the wire"). The viewer is the TARGET, not the attacker, so this is spectator, not self.',
   viewerEntityId: PLAYER,
-  role: 'self',
+  role: 'spectator',
   pace: 'cinematic',
   events: [
     npcAttack(1, 'corr-oa', 'npc-goblin-2', PLAYER, {
@@ -281,14 +290,14 @@ const npcGruntSwing: CombatPacingScenario = {
   id: 'npc-grunt-swing',
   label: 'NPC grunt swing (Brisk)',
   description:
-    "A goblin grunt attacks and misses — tiered Brisk so four goblins acting doesn't drag (design.md §4).",
+    "A goblin grunt attacks the viewer and misses — tiered Brisk so four goblins acting doesn't drag (design.md §4). The viewer is the TARGET, not the attacker, so this is spectator.",
   viewerEntityId: PLAYER,
   role: 'spectator',
   npcTier: 'grunt',
   pace: 'brisk',
   events: [
-    action(1, 'corr-grunt', PLAYER),
-    attack(2, 'corr-grunt', PLAYER, {
+    npcAction(1, 'corr-grunt', GRUNT, PLAYER),
+    npcAttack(2, 'corr-grunt', GRUNT, PLAYER, {
       hit: false,
       critical: false,
       attackRoll: 11,

@@ -77,6 +77,33 @@ describe('SCENARIOS (design.md §7 round-one cases)', () => {
     const ids = new Set(s.events.map((e) => e.correlationId));
     expect(ids.size).toBe(2);
   });
+
+  it("role matches attack ownership: 'self' iff the viewer owns the roll (is the attacker), 'spectator' otherwise — role is not merely 'participates as target' (design.md's self/spectator split)", () => {
+    for (const s of SCENARIOS) {
+      const attackEvent = s.events.find((e) => e.case === 'attackResolved');
+      if (!attackEvent) continue;
+      const viewerOwnsRoll =
+        attackEvent.value.attackerEntityId === s.viewerEntityId;
+      if (s.role === 'self') {
+        expect(
+          viewerOwnsRoll,
+          `${s.id}: role 'self' requires the viewer to own the attack roll (be the attacker)`
+        ).toBe(true);
+      } else {
+        expect(
+          viewerOwnsRoll,
+          `${s.id}: role 'spectator' requires the viewer to NOT own the attack roll`
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('npc-grunt-swing attacker is an NPC, not the viewer (design.md §4: a grunt swings AT the viewer, it does not become the viewer)', () => {
+    const s = SCENARIOS.find((x) => x.id === 'npc-grunt-swing')!;
+    const attackEvent = s.events.find((e) => e.case === 'attackResolved')!;
+    expect(attackEvent.value.attackerEntityId).not.toBe(s.viewerEntityId);
+    expect(attackEvent.value.attackerEntityId).toMatch(/^npc-/);
+  });
 });
 
 describe('groupByCorrelation', () => {
