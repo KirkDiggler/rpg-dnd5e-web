@@ -129,6 +129,29 @@ describe('InventoryLight', () => {
     });
   });
 
+  it('resolves a canonical icon for a carried item when icon_key is empty (rpg-dnd5e-web#576)', () => {
+    const equipped: EquippedMap = {
+      main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
+    };
+    render(
+      <InventoryLight
+        slots={SLOTS}
+        equipped={equipped}
+        items={ITEMS}
+        onIntent={vi.fn()}
+      />
+    );
+    const row = screen.getByTestId(invTestId('greatsword'));
+    const img = row.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('src')).toBe(
+      '/models/synty/ui/library/icons/inventory/ICON_FantasyWarrior_Inventory_Swords01_Clean.png'
+    );
+    expect(img?.getAttribute('alt')).toBe('');
+    expect(row.getAttribute('title')).toContain('Greatsword');
+    expect(row.getAttribute('aria-label')).toContain('Greatsword');
+  });
+
   it('disables every row while `busy`', () => {
     render(
       <InventoryLight

@@ -10,13 +10,14 @@
  * EquipmentSlots' doc comment.
  */
 
+import { getItemIconUrl } from '../../../utils/itemIcons';
 import type {
   EquipIntent,
   EquippedMap,
   ItemLike,
   SlotDefLike,
 } from './equipmentTypes';
-import { refKey, resolveIconUrl, targetSlotFor } from './equipmentTypes';
+import { refKey, targetSlotFor } from './equipmentTypes';
 
 export interface InventoryLightProps {
   slots: SlotDefLike[];
@@ -54,7 +55,7 @@ export function InventoryLight({
       )}
       {carried.map((item) => {
         const target = targetSlotFor(item, slots, equipped);
-        const iconUrl = resolveIconUrl(item.iconKey);
+        const iconUrl = getItemIconUrl(item.ref, item.iconKey);
         return (
           <button
             key={refKey(item.ref)}

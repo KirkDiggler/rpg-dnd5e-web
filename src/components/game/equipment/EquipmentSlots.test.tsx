@@ -73,8 +73,32 @@ describe('EquipmentSlots', () => {
     });
   });
 
-  it('skips the <img> entirely for an empty icon_key (graceful fallback, rpg-api#680)', () => {
-    const noIconItems: ItemLike[] = [{ ...ITEMS[0], iconKey: '' }];
+  it('skips the <img> entirely for an unknown id with an empty icon_key (never a broken image, rpg-dnd5e-web#576)', () => {
+    const unknownItems: ItemLike[] = [
+      {
+        ...ITEMS[0],
+        ref: { module: 'dnd5e', type: 'item', id: 'homebrew-relic' },
+        iconKey: '',
+      },
+    ];
+    const equipped: EquippedMap = {
+      main_hand: { module: 'dnd5e', type: 'item', id: 'homebrew-relic' },
+    };
+    render(
+      <EquipmentSlots
+        slots={SLOTS}
+        equipped={equipped}
+        items={unknownItems}
+        onIntent={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByTestId('equip-socket-main_hand').querySelector('img')
+    ).toBeNull();
+  });
+
+  it('resolves a canonical icon for a known id even when icon_key is empty (rpg-dnd5e-web#576)', () => {
+    const canonicalItems: ItemLike[] = [{ ...ITEMS[0], iconKey: '' }];
     const equipped: EquippedMap = {
       main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
     };
@@ -82,13 +106,38 @@ describe('EquipmentSlots', () => {
       <EquipmentSlots
         slots={SLOTS}
         equipped={equipped}
-        items={noIconItems}
+        items={canonicalItems}
         onIntent={vi.fn()}
       />
     );
-    expect(
-      screen.getByTestId('equip-socket-main_hand').querySelector('img')
-    ).toBeNull();
+    const socket = screen.getByTestId('equip-socket-main_hand');
+    const img = socket.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('src')).toBe(
+      '/models/synty/ui/library/icons/weapons/ICON_SM_Wep_Sword_02_Clean.png'
+    );
+    expect(img?.getAttribute('alt')).toBe('');
+    expect(socket.getAttribute('title')).toContain('Longsword');
+    expect(socket.getAttribute('aria-label')).toContain('Longsword');
+  });
+
+  it('hides the icon on image load failure while the item name stays visible (onError fallback)', () => {
+    const equipped: EquippedMap = {
+      main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
+    };
+    render(
+      <EquipmentSlots
+        slots={SLOTS}
+        equipped={equipped}
+        items={ITEMS}
+        onIntent={vi.fn()}
+      />
+    );
+    const socket = screen.getByTestId('equip-socket-main_hand');
+    const img = socket.querySelector('img') as HTMLImageElement;
+    fireEvent.error(img);
+    expect(img.style.display).toBe('none');
+    expect(socket.textContent).toContain('Longsword');
   });
 
   it('disables every socket while `busy`', () => {
