@@ -854,3 +854,48 @@ each message's source, not assumed.
   miscalibrated constant).
 - This iteration does not touch `rpg-project` PR #99 (the source design
   doc) — Kirk asked to hold that update for a later visual-review pass.
+
+## Kirk's live visual review (2026-07-22, concept-stage acceptance)
+
+Kirk reviewed the faceted d20 iteration (previous section) live in a
+browser session on 2026-07-22. Decision: **he can get behind it for the
+current stage.** His perceived miss timing — counted from when rolling
+starts, i.e. his own subjective sense of elapsed time watching the beat
+play out, not a stopwatch or `performance.now()` reading — was **just
+under approximately 3 seconds, and felt right**. No timing constants or
+behavior changed as a result of this review; `useBeatSequencer.ts`'s
+`CINEMATIC`/`BRISK`/`CRIT_*_EXTRA_MS` constants and `AUTO_THROW_TIMEOUT_MS`
+are exactly as landed in the "faceted d20 + suspenseful reveal timing"
+commit above — untouched by this section.
+
+**Subjective vs. objective — these are two different measurements, not
+a contradiction to reconcile:** the "Observed timing" table earlier in
+this doc (real-browser confirmation, "Kirk's first interactive-review
+iteration" section above) is `performance.now()`-measured wall clock,
+Cue-through-Release, and reports a Cinematic miss **total** of 4200ms
+target / 4229ms observed. Kirk's ~3-second impression is a human's felt
+sense of a single live playthrough, not a re-measurement of that total,
+and the two numbers are not expected to match: a stopwatch counts every
+millisecond of every beat uniformly, while a person's felt sense of
+"how long until I knew" plausibly weights the earlier, more
+attention-grabbing beats (cue/throw) more heavily than the later
+settle/release tail — a plausible explanation for the gap, not a
+claim verified by any measurement in this doc. Both numbers stay in this
+doc, clearly labeled: the table above is the objective evidence for
+CI/regression purposes; this paragraph is the subjective evidence for
+Kirk's product-feel judgment call. Neither supersedes the other, and
+this section does not attempt to "correct" the measured table to match
+the felt number, or vice versa.
+
+**Scope of this acceptance:** this is **concept-stage acceptance of the
+`/concepts` bench's pacing feel, not production choreography approval.**
+It clears the current round-one fixture-driven bench to stand as-is on
+timing; it is not a sign-off on however this pacing model eventually
+gets wired into the live `EncounterView` route, real stream events, or
+any future choreography pass. The existing honest-limitations notes
+throughout this doc (fixture-driven bench only, no live-stream
+reassembler) still apply unchanged.
+
+**Outcome:** current constants remain unchanged. No code, test, or
+behavior changes accompany this section — it is a record of a live
+review decision only.
