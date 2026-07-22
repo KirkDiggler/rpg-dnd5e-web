@@ -80,44 +80,58 @@ export interface BeatDurations {
   release: number;
 }
 
-/** Cinematic-mode defaults (design.md §1) — the LOW end of each stated
- * range, chosen so the routine-hit/miss budgets land inside design.md's
- * stated bands: hit = 150+600+200+300+200 = 1450ms (design: "≈1.2-1.6s");
- * miss = 150+600+200+200 = 1150ms, skipping Impact (design: "≈1.0s" —
- * close; every value here is tunable, none is a placeholder). */
+/** Cinematic-mode defaults — revised in Kirk's first interactive-review
+ * iteration (rpg-dnd5e-web#561, PR #579): round one's low-end-of-range
+ * values (150/600/200/300/200) read as instant/flat once a real faceted
+ * d20 was on screen — a suspenseful reveal needs a genuinely held tumble
+ * and a genuinely held verdict, not a blink. This iteration's exact
+ * targets land a routine Cinematic hit at 300+2000+1600+900+200... see
+ * below for the exact per-beat accounting: hit =
+ * 300+2000+1600+900+300 = 5100ms (≈5s, Kirk's approved target); miss =
+ * 300+2000+1600+300 = 4200ms (≈4s), skipping Impact. */
 export const CINEMATIC: BeatDurations = {
-  cue: 150,
-  throw: 600,
-  verdict: 200,
-  impact: 300,
-  release: 200,
+  cue: 300,
+  throw: 2000,
+  verdict: 1600,
+  impact: 900,
+  release: 300,
 };
 
 /** Repeat-roll / grunt-tier compression (design.md §4): exactly half of
- * every CINEMATIC duration ("shorter tumble, faster stamp"). */
+ * every CINEMATIC duration ("shorter tumble, faster stamp") — Kirk's
+ * iteration-1 feedback ("Brisk should remain shorter") is satisfied by
+ * this ratio staying fixed at exactly 1/2 as CINEMATIC's own values grew:
+ * hit = 150+1000+800+450+150 = 2550ms; miss = 150+1000+800+150 = 2100ms,
+ * skipping Impact. */
 export const BRISK: BeatDurations = {
-  cue: 75,
-  throw: 300,
-  verdict: 100,
-  impact: 150,
-  release: 100,
+  cue: 150,
+  throw: 1000,
+  verdict: 800,
+  impact: 450,
+  release: 150,
 };
 
-/** Crit stretches Verdict (the frame-breaker) and slightly oversizes
- * Impact, applied ONLY at Cinematic pace so a Cinematic-tier crit's total
- * budget lands at exactly 150+600+(200+1000)+(300+50)+200 = 2500ms —
- * design.md §1's "crit ≈ 2.5s (earned)". A Brisk-pace crit (a grunt's
- * lucky roll) does NOT stretch — grunts stay Brisk even on a crit; only
- * Cinematic actors (players, elites/bosses) get the frame-break, matching
- * design.md §4's "the boss's crit should land like a player's" (the boss
- * scenario is itself tiered Cinematic, not Brisk-with-an-exception). */
+/** Crit stretches Verdict (the frame-breaker) and oversizes Impact,
+ * applied ONLY at Cinematic pace so a Cinematic-tier crit's total budget
+ * lands at exactly 300+2000+(1600+1000)+(900+500)+300 = 6600ms — Kirk's
+ * iteration-1 approved "crit 6-7s" target (design.md §1's original "crit
+ * ≈ 2.5s (earned)" is superseded by this iteration's review). A
+ * Brisk-pace crit (a grunt's lucky roll) does NOT stretch — grunts stay
+ * Brisk even on a crit; only Cinematic actors (players, elites/bosses)
+ * get the frame-break, matching design.md §4's "the boss's crit should
+ * land like a player's" (the boss scenario is itself tiered Cinematic,
+ * not Brisk-with-an-exception). */
 export const CRIT_VERDICT_EXTRA_MS = 1000;
-export const CRIT_IMPACT_EXTRA_MS = 50;
+export const CRIT_IMPACT_EXTRA_MS = 500;
 
 /** A player must never be able to stall the table sitting on an
  * un-thrown die (design.md §2, "a short auto-timeout"). No number is
  * given in the design doc — 3000ms is this round's concrete, tunable
- * choice. */
+ * choice. Deliberately UNCHANGED in Kirk's first interactive-review
+ * iteration (rpg-dnd5e-web#561, PR #579): this is the `armed` *agency
+ * pause* before a throw begins/commits — a separate axis from the
+ * Cue->Release *reveal* duration the CINEMATIC/BRISK tables above tune.
+ * Kirk asked to tune this one separately in a later pass. */
 export const AUTO_THROW_TIMEOUT_MS = 3000;
 
 /** Reduced motion drops the tumble itself but keeps every beat's

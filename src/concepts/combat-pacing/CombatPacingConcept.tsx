@@ -227,7 +227,7 @@ export function CombatPacingConcept() {
             style={chipStyle(false)}
             onClick={seq.throwDie}
           >
-            🎲 Throw
+            Roll d20
           </button>
         )}
         <button

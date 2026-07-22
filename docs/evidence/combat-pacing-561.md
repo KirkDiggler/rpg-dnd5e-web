@@ -636,3 +636,221 @@ None outstanding for this specific finding — it is fixed, tested at
 both the hook and integration level, and confirmed live. General
 honest-limitations notes from the rest of this doc still apply
 (fixture-driven `/concepts` bench only, no live-stream reassembler).
+
+## Kirk's first interactive-review iteration (2026-07-22, faceted d20 + suspenseful reveal)
+
+Two pieces of approved feedback from Kirk's first live look at PR #579:
+replace the generic 🎲 emoji with a recognizable faceted d20, and make
+the reveal substantially more suspenseful (routine Cinematic hit ≈5s,
+miss ≈4s, crit 6–7s; Brisk stays proportionally shorter; Instant stays
+immediate). `AUTO_THROW_TIMEOUT_MS` (the `armed` agency-pause timeout)
+is explicitly UNCHANGED this round — Kirk asked to tune it separately.
+
+### 1. Timing — exact new targets (TDD, hook-level)
+
+**RED**: rewrote `useBeatSequencer.test.ts`'s per-beat assertions to the
+new exact millisecond targets (Cinematic 300/2000/1600/900/300,
+Brisk exact-half 150/1000/800/450/150, crit extras Verdict+1000/
+Impact+500) before touching `useBeatSequencer.ts` — `npx vitest run
+src/concepts/combat-pacing/useBeatSequencer.test.ts` failed 9/17 for
+exactly the expected reason (old low-end-of-range constants still in
+place: e.g. "expected 'armed' to be 'throw'" at the new 300ms cue mark,
+"expected 'done' to be 'verdict'" for the new exact-half Brisk-total
+tests).
+
+**GREEN**: updated `CINEMATIC`/`BRISK`/`CRIT_IMPACT_EXTRA_MS` in
+`useBeatSequencer.ts` (`CRIT_VERDICT_EXTRA_MS` stays `1000`, already
+correct) — `17/17` passed, including two brand-new exact-total Brisk
+tests (2550ms hit / 2100ms miss) that didn't exist before this
+iteration. `CombatPacingConcept.test.tsx`'s own timing-dependent
+`advanceTimersByTime` calls (cue/throw waits for the pace-override and
+reduced-motion regression guards) were updated to the same new values —
+RED confirmed first (5/15 failed against the old test values once the
+hook's constants had changed), then GREEN (15/15) after updating the
+test file's numbers to match.
+
+### 2. Faceted d20 component (TDD, new file)
+
+**RED**: wrote `D20Die.tsx`'s test file, `D20Die.test.tsx`, FIRST — 12
+tests covering a recognizable polygon silhouette + facet lines,
+`currentColor`/no hardcoded color, responsive `viewBox` sizing (no fixed
+`width`/`height`), hidden `?` face while `revealed=false`, the
+authoritative face once `revealed=true`, tumble-class gating (only when
+`tumbling && !reducedMotion`), `aria-hidden` decorative semantics, and
+"the same face renders identically regardless of when it's revealed."
+`npx vitest run src/concepts/combat-pacing/D20Die.test.tsx` failed to
+even resolve — `Failed to resolve import "./D20Die"` — confirmed RED for
+the right reason (component didn't exist yet).
+
+**GREEN**: implemented `D20Die.tsx` — a flat-top hexagon `<polygon>`
+silhouette plus six center-to-vertex `<line>` facets (all
+`stroke="currentColor"`), a `<text>` face showing `?` while hidden or
+the authoritative `face` prop once revealed, `viewBox="0 0 100 100"`
+with no `width`/`height` attribute (sizing delegated to `.d20-die`'s
+CSS `clamp()`), and `aria-hidden="true"` on the root `<svg>`. First run:
+10/12 passed, 2 failed — both false negatives from reading `.className`
+on an `SVGAnimatedString` (SVG elements' `.className` is NOT a plain
+string in the DOM, unlike HTML elements) rather than a real component
+bug; fixed the TEST to read `.getAttribute('class')` instead — 12/12
+green after that correction, no component code changed for those two.
+
+### 3. Wiring into `BeatStage` (TDD, integration)
+
+**RED**: updated `BeatStage.test.tsx` — replaced the emoji-glyph
+assertions with `D20Die`-aware ones (facet/silhouette presence, hidden
+`?` during armed/throw, landed face at verdict/impact/release), added
+new tests for "d20 stays visible and settled through impact/release"
+and "never renders during cue," and — deliberately breaking an
+EXISTING round-one test — rewrote "renders no cue/die theater when done
+with persistResult" into "renders no cue theater ... but shows the
+landed d20 face immediately, settled," since Kirk's brief explicitly
+asks Instant to reveal the die too, not just the verdict/damage text.
+`npx vitest run src/concepts/combat-pacing/BeatStage.test.tsx` — 7
+failed / 29 passed, all failures the expected `Unable to find an
+element by: [data-testid="d20-silhouette"/"beat-die"]` (component still
+rendering the old 🎲 emoji).
+
+**GREEN**: `BeatStage.tsx` now renders `<D20Die>` inside the existing
+`beat-die` wrapper across `armed`/`throw`/`verdict`/`impact`/`release`/
+persisted-`done` (previously: `armed`/`throw` only, and NEVER during
+verdict/impact/release/persisted-done) — `dieRevealed = beat !== 'armed'
+&& beat !== 'throw'`, `dieTumbling = beat === 'throw'`. `36/36` passed.
+Two `CombatPacingConcept.test.tsx` Instant-mode assertions
+(`queryAllByTestId('beat-die')).toHaveLength(0)`) were similarly
+rewritten to assert the die IS present with the correct landed face
+(`14` for player-hit, `20` for player-crit) — this is the same
+deliberate round-one-behavior-change Kirk's brief calls for, not a
+regression.
+
+### 4. `Roll d20` button label (TDD)
+
+**RED**: added "labels the throw button 'Roll d20', not the generic 🎲
+emoji" to `CombatPacingConcept.test.tsx` — failed with `expected '🎲
+Throw' to contain 'Roll d20'`.
+
+**GREEN**: changed the button's text from `🎲 Throw` to `Roll d20` in
+`CombatPacingConcept.tsx`. One line.
+
+### Full verification
+
+- Targeted: `npx vitest run src/concepts/combat-pacing` → **101/101**
+  (81 prior-in-this-iteration + a new `D20Die.test.tsx` file's 12 + the
+  `Roll d20` label test + the die-integration tests above).
+- Full repo suite: `npx vitest run` → **1144/1144** (65 test files, up
+  from 64/1122 at the start of this iteration) — no regressions.
+- `npm run typecheck` → passes.
+- `npm run lint` → passes.
+- `npm run format:check` → passes (three files needed `prettier --write`
+  after the BeatStage/D20Die edits; re-ran clean before commit).
+- `npm run ci-check` → format/lint/typecheck/build/tests all pass; the
+  built theme CSS still carries the combat-HUD block guard.
+
+### Real-browser confirmation (chrome-devtools MCP, this session — unlike every prior round in this doc, the browser MCP WAS available)
+
+Restarted the worktree's `npm run dev` (a stale Vite HMR module graph
+from mid-edit briefly 404'd `BeatStage.tsx`'s export — a fresh `npm run
+dev` process cleared it; unrelated to any code correctness question).
+Reached Combat Pacing via the same `/` → 🧪 "Open Concepts Lab" →
+"Combat Pacing" path every prior round used.
+
+**Observed timing** (real wall-clock, `performance.now()` deltas read
+via an in-page JS driver — not fake timers, and not the tool round-trip
+latency, which this driver runs independently of):
+
+| Scenario                   | Beat                     | Target     | Observed   |
+| -------------------------- | ------------------------ | ---------- | ---------- |
+| player-hit, Cinematic      | cue                      | 300ms      | 312ms      |
+| player-hit, Cinematic      | throw                    | 2000ms     | 2002ms     |
+| player-hit, Cinematic      | verdict                  | 1600ms     | 1603ms     |
+| player-hit, Cinematic      | impact                   | 900ms      | 904ms      |
+| player-hit, Cinematic      | release                  | 300ms      | 302ms      |
+| player-hit, Cinematic      | **total**                | **5100ms** | **5130ms** |
+| player-miss, Cinematic     | **total** (skips impact) | **4200ms** | **4229ms** |
+| player-crit, Cinematic     | verdict (+crit)          | 2600ms     | 2605ms     |
+| player-crit, Cinematic     | impact (+crit)           | 1400ms     | 1402ms     |
+| player-crit, Cinematic     | **total**                | **6600ms** | **6629ms** |
+| player-hit, Brisk override | **total**                | **2550ms** | **2582ms** |
+
+All within ~0.5-1.3% of target — ordinary `setTimeout` jitter in a real
+browser tab, not a systematic drift. Every total lands in Kirk's stated
+band (hit ≈5s, miss ≈4s, crit 6-7s, Brisk visibly shorter than
+Cinematic).
+
+**Hidden-face contract, confirmed live, not just in jsdom**: during the
+crit run above, `d20-face` textContent was read at `armed`, twice mid-
+`throw` (once right as `throw` started, once 500ms later), and never
+showed anything but `?` — the authoritative `20` first appeared exactly
+at the `verdict` transition and stayed through `impact`/`release`. Tap
+timing on "Roll d20" was varied across runs (immediate vs. several
+seconds into the `armed` window) and never changed the eventual face.
+
+**Visual verification** — screenshots at every state the brief asks
+for (armed/mid-throw/landed-hit/crit/reduced-motion/1024-floor/
+larger/narrow), most driven through a temporary in-page `setTimeout`
+scaling technique (multiplying the app's own timer delays by 50x for
+the duration of a single screenshot capture, then restoring the
+original `setTimeout`) rather than racing the several-second latency
+between one MCP tool call finishing and the next one starting — without
+that, beats kept auto-advancing past the exact moment being screenshot
+between one tool call and the next (confirmed directly: several early
+attempts landed on `verdict`/`throw`/`done` instead of the intended
+`armed` because 3-5+ real seconds elapsed between the reset script
+returning and the screenshot tool actually capturing). This technique
+only ever changed _when a screenshot was taken_, never any application
+code or the timing numbers verified numerically above (which used real,
+unscaled timers).
+
+- `combat-pacing-561-iter1-d20-armed-hidden.png` (committed) —
+  `beat: armed`, "Roll d20" button visible, both `BeatStage` columns
+  show the hexagonal d20 with a hidden `?` face — confirmed via DOM read
+  (`d20-face` textContent `?`) at capture time.
+- `combat-pacing-561-iter1-d20-verdict-crit.png` (committed) — `player
+— crit`, `beat: verdict`, d20 shows the landed `20` face, gold `CRIT
+(20+5 vs AC 16)` verdict, both columns promoted to center-stage
+  (accent border) — clearly recognizable hexagon-plus-facets silhouette,
+  not a generic dice emoji.
+- `combat-pacing-561-iter1-d20-1920-large.png` (committed) — real
+  1920×1080 browser viewport, `Pace: instant` on `player-crit`: the d20
+  and its facet lines scale up visibly larger than the 1024-floor
+  screenshot, still crisp (vector SVG, not a raster emoji glyph).
+- `combat-pacing-561-iter1-d20-480-narrow.png` (committed) — real
+  480×640 browser viewport, full-page capture: both `BeatStage` columns
+  stack vertically (existing `flex-wrap` layout, unchanged), the d20
+  scales down and stays legible, no clipping/overlap.
+- Additional captures from the same session (`throw` mid-tumble with
+  the hidden `?` face, the plain-hit landed face, a reduced-motion pass,
+  and the 1024×768 floor by itself) were taken and inspected but not
+  committed — kept as scratch evidence outside this repo (this
+  workspace's existing convention, see "Additional screenshots" note
+  earlier in this doc), since the four above already cover every state
+  the brief lists at least once between them.
+
+**Console**: zero errors from `CombatPacingConcept.tsx`/`BeatStage.tsx`/
+`D20Die.tsx`/`useBeatSequencer.ts` across the entire session (armed/
+throw/verdict/impact/release/done, all four scenarios driven, all four
+viewports). The only console entries are the same pre-existing
+`ERR_CONNECTION_REFUSED` lobby/character-API noise every prior session
+in this doc has also logged (no backend running) — confirmed by reading
+each message's source, not assumed.
+
+### Honest limitations
+
+- `AUTO_THROW_TIMEOUT_MS` (3000ms, the `armed`-beat agency pause before
+  an un-thrown die auto-throws) is UNCHANGED this iteration, per Kirk's
+  explicit instruction to tune it separately — the "≈5s hit" total
+  above is measured from Cue through Release, i.e. AFTER a throw
+  begins/commits (via an explicit "Roll d20" click in every timed run
+  above), not inclusive of however long a player waits at `armed`
+  before throwing.
+- Same fixture-driven-`/concepts`-bench-only scope as every prior
+  section of this doc — nothing here touches the production stream, a
+  live `AttackResolved`/`EntityDamaged` reassembler, or `rpg-api`.
+- The observed-timing table above is a SINGLE representative run per
+  scenario, not a statistical distribution — the ~0.3-1.3% deltas from
+  target are consistent with ordinary browser timer jitter (confirmed:
+  every delta is a small POSITIVE overshoot, not scattered above/below,
+  which is the expected signature of `setTimeout`'s "fires no earlier
+  than" guarantee plus real event-loop/paint overhead, not a
+  miscalibrated constant).
+- This iteration does not touch `rpg-project` PR #99 (the source design
+  doc) — Kirk asked to hold that update for a later visual-review pass.

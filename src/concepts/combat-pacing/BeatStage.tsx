@@ -54,6 +54,7 @@ import type {
   VerdictLabel,
 } from './beatStageTypes';
 import { verdictLabel } from './beatStageTypes';
+import { D20Die } from './D20Die';
 import type { BeatName } from './useBeatSequencer';
 
 export type Placement = 'token-anchored' | 'center-stage';
@@ -129,6 +130,31 @@ export function BeatStage({
   // authoritative outcome those beats would have, instead of nothing.
   const showPersistedResult = persistResult && beat === 'done';
 
+  // Kirk's first interactive-review iteration (PR #579): the d20 is now
+  // visible across the ENTIRE die-through-outcome span, not just
+  // armed/throw — it stays on screen at verdict/impact/release (and a
+  // persisted Instant `done`), always settled on the authoritative
+  // landed face there. Cue/idle/a non-persisted `done` still render no
+  // die at all (unchanged from round one).
+  const showDie =
+    beat === 'armed' ||
+    beat === 'throw' ||
+    beat === 'verdict' ||
+    beat === 'impact' ||
+    beat === 'release' ||
+    showPersistedResult;
+  // Hidden (a `?` face, never the server's real roll) only while armed
+  // or mid-throw; revealed (the real, already-resolved `attackRoll`)
+  // everywhere else the die shows at all — including immediately for a
+  // persisted Instant `done`, per design.md §8's "the authoritative
+  // outcome is always shown."
+  const dieRevealed = beat !== 'armed' && beat !== 'throw';
+  // Tumbles ONLY during `throw` — never during `armed`'s silent wait,
+  // and `D20Die` itself additionally suppresses this under
+  // `reducedMotion` (settled instead), so no separate check is needed
+  // here for that.
+  const dieTumbling = beat === 'throw';
+
   // Token-anchored promotes to center-stage for a crit/nat-1 frame-break
   // (design.md §2) — a pure center-stage placement never moves.
   const effectivePlacement: Placement =
@@ -162,20 +188,31 @@ export function BeatStage({
         </div>
       )}
 
-      {(beat === 'armed' || beat === 'throw') && (
-        // SFX slot: die-tumble rattle (throw) / none (armed, silent wait).
-        // Decorative (aria-hidden) — the verdict beat is the single
-        // announced signal, not the die glyph animating toward it.
+      {showDie && (
+        // SFX slot: die-tumble rattle (throw) / none (armed, silent wait;
+        // verdict/impact/release, already landed). Decorative
+        // (aria-hidden) — the verdict beat remains the single announced
+        // signal, never the die itself (`D20Die` is independently
+        // `aria-hidden` too, belt-and-suspenders for the same contract).
+        // `dieRevealed` hides the authoritative `attackRoll` behind a
+        // `?` face until verdict — this component never leaks the
+        // server's already-resolved roll a beat early, and tap timing
+        // on "Roll d20" can never change what number eventually shows.
         <div
           data-testid="beat-die"
           aria-hidden="true"
           className={
-            beat === 'armed' || reducedMotion
-              ? 'beat-die beat-die--settled'
-              : 'beat-die beat-die--tumbling'
+            dieTumbling && !reducedMotion
+              ? 'beat-die beat-die--tumbling'
+              : 'beat-die beat-die--settled'
           }
         >
-          🎲
+          <D20Die
+            face={attack?.attackRoll}
+            revealed={dieRevealed}
+            tumbling={dieTumbling}
+            reducedMotion={reducedMotion}
+          />
         </div>
       )}
 

@@ -18,14 +18,14 @@ afterEach(() => {
 });
 
 describe('useBeatSequencer', () => {
-  it('a cinematic hit runs cue -> throw -> verdict -> impact -> release -> done over exactly 1450ms', () => {
+  it('a cinematic hit runs cue -> throw -> verdict -> impact -> release -> done over exactly 5100ms (Kirk iteration 1: ≈5s suspenseful hit)', () => {
     const { result } = renderHook(() =>
       useBeatSequencer(scenario('player-hit'))
     );
     expect(result.current.beat).toBe('cue');
 
     act(() => {
-      vi.advanceTimersByTime(150);
+      vi.advanceTimersByTime(300);
     });
     expect(result.current.beat).toBe('armed'); // role: 'self' waits for a throw
 
@@ -35,54 +35,60 @@ describe('useBeatSequencer', () => {
     expect(result.current.beat).toBe('throw');
 
     act(() => {
-      vi.advanceTimersByTime(600);
+      vi.advanceTimersByTime(2000);
     });
     expect(result.current.beat).toBe('verdict');
 
     act(() => {
-      vi.advanceTimersByTime(200);
+      vi.advanceTimersByTime(1600);
     });
     expect(result.current.beat).toBe('impact');
+
+    act(() => {
+      vi.advanceTimersByTime(900);
+    });
+    expect(result.current.beat).toBe('release');
 
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(result.current.beat).toBe('release');
-
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
     expect(result.current.beat).toBe('done');
+    // total: 300 + 2000 + 1600 + 900 + 300 = 5100ms exactly.
   });
 
-  it('a cinematic miss skips impact entirely', () => {
+  it('a cinematic miss skips impact entirely and completes over exactly 4200ms (Kirk iteration 1: ≈4s miss)', () => {
     const { result } = renderHook(() =>
       useBeatSequencer(scenario('player-miss'))
     );
     act(() => {
-      vi.advanceTimersByTime(150);
+      vi.advanceTimersByTime(300);
       result.current.throwDie();
-      vi.advanceTimersByTime(600);
+      vi.advanceTimersByTime(2000);
     });
     expect(result.current.beat).toBe('verdict');
     act(() => {
-      vi.advanceTimersByTime(200);
+      vi.advanceTimersByTime(1600);
     });
     expect(result.current.beat).toBe('release'); // NOT 'impact'
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(result.current.beat).toBe('done');
+    // total: 300 + 2000 + 1600 + 300 = 4200ms exactly.
   });
 
-  it('a cinematic crit stretches verdict + impact to a total budget of exactly 2500ms (design.md §1)', () => {
+  it('a cinematic crit stretches verdict + impact to a total budget of exactly 6600ms (Kirk iteration 1: ≈6-7s crit)', () => {
     const { result } = renderHook(() =>
       useBeatSequencer(scenario('player-crit'))
     );
     act(() => {
-      vi.advanceTimersByTime(150); // cue
+      vi.advanceTimersByTime(300); // cue
       result.current.throwDie();
-      vi.advanceTimersByTime(600); // throw
+      vi.advanceTimersByTime(2000); // throw
     });
     expect(result.current.beat).toBe('verdict');
     act(() => {
-      vi.advanceTimersByTime(1199); // verdict is 200 + 1000 = 1200ms
+      vi.advanceTimersByTime(2599); // verdict is 1600 + 1000 = 2600ms
     });
     expect(result.current.beat).toBe('verdict');
     act(() => {
@@ -90,7 +96,7 @@ describe('useBeatSequencer', () => {
     });
     expect(result.current.beat).toBe('impact');
     act(() => {
-      vi.advanceTimersByTime(349); // impact is 300 + 50 = 350ms
+      vi.advanceTimersByTime(1399); // impact is 900 + 500 = 1400ms
     });
     expect(result.current.beat).toBe('impact');
     act(() => {
@@ -98,10 +104,10 @@ describe('useBeatSequencer', () => {
     });
     expect(result.current.beat).toBe('release');
     act(() => {
-      vi.advanceTimersByTime(200); // release
+      vi.advanceTimersByTime(300); // release
     });
     expect(result.current.beat).toBe('done');
-    // total: 150 + 600 + 1200 + 350 + 200 = 2500ms exactly.
+    // total: 300 + 2000 + 2600 + 1400 + 300 = 6600ms exactly.
   });
 
   it('spectating an NPC grunt auto-plays through Brisk timing with no armed wait', () => {
@@ -110,11 +116,11 @@ describe('useBeatSequencer', () => {
     );
     expect(result.current.beat).toBe('cue');
     act(() => {
-      vi.advanceTimersByTime(75); // Brisk cue
+      vi.advanceTimersByTime(150); // Brisk cue
     });
     expect(result.current.beat).toBe('throw'); // auto-played, no 'armed'
     act(() => {
-      vi.advanceTimersByTime(300); // Brisk throw
+      vi.advanceTimersByTime(1000); // Brisk throw
     });
     expect(result.current.beat).toBe('verdict');
   });
@@ -124,21 +130,21 @@ describe('useBeatSequencer', () => {
       useBeatSequencer(scenario('npc-boss-swing'))
     );
     act(() => {
-      vi.advanceTimersByTime(150); // Cinematic cue
+      vi.advanceTimersByTime(300); // Cinematic cue
     });
     expect(result.current.beat).toBe('throw');
     act(() => {
-      vi.advanceTimersByTime(600);
+      vi.advanceTimersByTime(2000);
     });
     expect(result.current.beat).toBe('verdict');
   });
 
-  it('auto-throws after AUTO_THROW_TIMEOUT_MS if the player never calls throwDie (design.md §2)', () => {
+  it('auto-throws after AUTO_THROW_TIMEOUT_MS if the player never calls throwDie (design.md §2, unchanged this iteration — timeout is the agency pause, not the Cue->Release duration target)', () => {
     const { result } = renderHook(() =>
       useBeatSequencer(scenario('player-hit'))
     );
     act(() => {
-      vi.advanceTimersByTime(150); // cue -> armed
+      vi.advanceTimersByTime(300); // cue -> armed
     });
     expect(result.current.beat).toBe('armed');
     act(() => {
@@ -163,7 +169,7 @@ describe('useBeatSequencer', () => {
     expect(result.current.groupIndex).toBe(1);
     expect(result.current.beat).toBe('cue');
     act(() => {
-      vi.advanceTimersByTime(75); // Brisk cue, NOT Cinematic's 150
+      vi.advanceTimersByTime(150); // Brisk cue, NOT Cinematic's 300
     });
     expect(result.current.beat).toBe('throw'); // auto-played, group index > 0
   });
@@ -244,14 +250,14 @@ describe('useBeatSequencer', () => {
       useBeatSequencer(scenario('player-hit'), { reducedMotion: true })
     );
     act(() => {
-      vi.advanceTimersByTime(150);
+      vi.advanceTimersByTime(300);
       result.current.throwDie();
     });
     expect(result.current.beat).toBe('throw');
     act(() => {
       vi.advanceTimersByTime(REDUCED_MOTION_THROW_MS);
     });
-    expect(result.current.beat).toBe('verdict'); // not still 'throw' at the full 600ms mark
+    expect(result.current.beat).toBe('verdict'); // not still 'throw' at the full 2000ms mark
   });
 
   it('toggling reducedMotion mid group-0 restarts the CURRENT group at cue with the new timing semantics (no stale option closure)', () => {
@@ -261,7 +267,7 @@ describe('useBeatSequencer', () => {
       { initialProps: { reducedMotion: false } }
     );
     act(() => {
-      vi.advanceTimersByTime(150); // cue -> armed
+      vi.advanceTimersByTime(300); // cue -> armed
     });
     expect(result.current.beat).toBe('armed');
     act(() => {
@@ -269,7 +275,7 @@ describe('useBeatSequencer', () => {
     });
     expect(result.current.beat).toBe('throw');
     act(() => {
-      vi.advanceTimersByTime(300); // mid the full 600ms tumble, not yet resolved
+      vi.advanceTimersByTime(1000); // mid the full 2000ms tumble, not yet resolved
     });
     expect(result.current.beat).toBe('throw');
 
@@ -281,7 +287,7 @@ describe('useBeatSequencer', () => {
     expect(result.current.beat).toBe('cue');
 
     act(() => {
-      vi.advanceTimersByTime(150); // cue (unaffected by reducedMotion) -> armed
+      vi.advanceTimersByTime(300); // cue (unaffected by reducedMotion) -> armed
     });
     expect(result.current.beat).toBe('armed');
     act(() => {
@@ -322,11 +328,11 @@ describe('useBeatSequencer', () => {
     expect(result.current.beat).toBe('cue');
 
     act(() => {
-      vi.advanceTimersByTime(75); // group 1's Brisk cue -> auto-plays to throw
+      vi.advanceTimersByTime(150); // group 1's Brisk cue -> auto-plays to throw
     });
     expect(result.current.beat).toBe('throw');
     act(() => {
-      vi.advanceTimersByTime(150); // mid group 1's Brisk 300ms throw, unresolved
+      vi.advanceTimersByTime(500); // mid group 1's Brisk 1000ms throw, unresolved
     });
     expect(result.current.beat).toBe('throw');
 
@@ -338,12 +344,61 @@ describe('useBeatSequencer', () => {
     expect(result.current.beat).toBe('cue');
 
     act(() => {
-      vi.advanceTimersByTime(75); // group 1's Brisk cue again (unaffected) -> auto-plays
+      vi.advanceTimersByTime(150); // group 1's Brisk cue again (unaffected) -> auto-plays
     });
     expect(result.current.beat).toBe('throw');
     act(() => {
       vi.advanceTimersByTime(REDUCED_MOTION_THROW_MS);
     });
     expect(result.current.beat).toBe('verdict'); // restarted throw used the new reduced-motion timing
+  });
+
+  it('a brisk-pace hit completes over exactly 2550ms (Kirk iteration 1: exact half of the new Cinematic budget)', () => {
+    const briskScenario = { ...scenario('player-hit'), pace: 'brisk' as const };
+    const { result } = renderHook(() => useBeatSequencer(briskScenario));
+    act(() => {
+      vi.advanceTimersByTime(150); // Brisk cue -> armed (role: self, group 0)
+    });
+    expect(result.current.beat).toBe('armed');
+    act(() => {
+      result.current.throwDie();
+    });
+    act(() => {
+      vi.advanceTimersByTime(1000); // Brisk throw
+    });
+    expect(result.current.beat).toBe('verdict');
+    act(() => {
+      vi.advanceTimersByTime(800); // Brisk verdict
+    });
+    expect(result.current.beat).toBe('impact');
+    act(() => {
+      vi.advanceTimersByTime(450); // Brisk impact
+    });
+    expect(result.current.beat).toBe('release');
+    act(() => {
+      vi.advanceTimersByTime(150); // Brisk release
+    });
+    expect(result.current.beat).toBe('done');
+    // total: 150 + 1000 + 800 + 450 + 150 = 2550ms exactly.
+  });
+
+  it('a brisk-pace miss skips impact and completes over exactly 2100ms (Kirk iteration 1)', () => {
+    const briskMiss = { ...scenario('player-miss'), pace: 'brisk' as const };
+    const { result } = renderHook(() => useBeatSequencer(briskMiss));
+    act(() => {
+      vi.advanceTimersByTime(150); // Brisk cue -> armed
+      result.current.throwDie();
+      vi.advanceTimersByTime(1000); // Brisk throw
+    });
+    expect(result.current.beat).toBe('verdict');
+    act(() => {
+      vi.advanceTimersByTime(800); // Brisk verdict
+    });
+    expect(result.current.beat).toBe('release'); // NOT 'impact'
+    act(() => {
+      vi.advanceTimersByTime(150); // Brisk release
+    });
+    expect(result.current.beat).toBe('done');
+    // total: 150 + 1000 + 800 + 150 = 2100ms exactly.
   });
 });

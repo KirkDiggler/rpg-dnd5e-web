@@ -1133,7 +1133,14 @@
    (clamp()/max-width: 100%) plus the concept page's own flex-wrap
    layout, the same pattern combat-panel/equip-bench already use (this
    repo does use @media elsewhere, e.g. dnd-sheet.css's breakpoints —
-   this file's block just doesn't need one). */
+   this file's block just doesn't need one).
+
+   Kirk's first interactive-review iteration (PR #579) replaced the
+   round-one 🎲 emoji glyph with `D20Die.tsx`'s inline-SVG faceted d20 —
+   `.beat-die` below is now a plain flex wrapper (sizing/animation moved
+   onto the SVG itself, `.d20-die*`), and `.beat-die--tumbling` still
+   drives the same `dice-roll` keyframe as before, just rotating an SVG
+   instead of an emoji glyph. */
 
 .beat-stage {
   display: flex;
@@ -1161,8 +1168,10 @@
 }
 
 .beat-die {
-  font-size: clamp(1.5rem, 6vw, 2.5rem);
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: 50% 50%;
 }
 
 .beat-die--tumbling {
@@ -1172,6 +1181,25 @@
 .beat-die--settled {
   animation: none;
   transform: none;
+}
+
+/* D20Die.tsx's inline-SVG faceted d20 (Kirk's first interactive-review
+   iteration, PR #579) — replaces the round-one 🎲 emoji glyph. Scales
+   responsively via clamp() against its own box, independent of the
+   `beat-die` wrapper's (now animation-only) sizing above. */
+.d20-die {
+  width: clamp(2.25rem, 7vw, 3.5rem);
+  height: clamp(2.25rem, 7vw, 3.5rem);
+  color: var(--text-secondary);
+  overflow: visible;
+}
+
+.d20-die--revealed {
+  color: var(--text-primary);
+}
+
+.d20-die__face {
+  paint-order: stroke;
 }
 
 .beat-verdict {

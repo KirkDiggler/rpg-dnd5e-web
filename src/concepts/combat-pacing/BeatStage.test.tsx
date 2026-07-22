@@ -96,6 +96,103 @@ describe('BeatStage', () => {
     );
   });
 
+  it('renders a recognizable faceted d20 (SVG silhouette + facet lines), not the generic 🎲 emoji (Kirk iteration 1)', () => {
+    render(
+      <BeatStage
+        beat="armed"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.getByTestId('d20-silhouette')).toBeTruthy();
+    expect(screen.getAllByTestId('d20-facet').length).toBeGreaterThanOrEqual(4);
+    expect(screen.queryByText('🎲')).toBeNull();
+  });
+
+  it('never leaks the server roll during armed — shows a hidden-result "?" face', () => {
+    render(
+      <BeatStage
+        beat="armed"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.getByTestId('d20-face').textContent).toBe('?');
+  });
+
+  it('never leaks the server roll during throw either — still a hidden-result "?" face while tumbling', () => {
+    render(
+      <BeatStage
+        beat="throw"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.getByTestId('d20-face').textContent).toBe('?');
+  });
+
+  it('keeps the d20 visible and settled on the authoritative landed face at verdict', () => {
+    render(
+      <BeatStage
+        beat="verdict"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.getByTestId('beat-die')).toBeTruthy();
+    expect(screen.getByTestId('beat-die').className).toContain(
+      'beat-die--settled'
+    );
+    expect(screen.getByTestId('d20-face').textContent).toBe(
+      String(hitAttack.attackRoll)
+    );
+  });
+
+  it('keeps the d20 visible on the authoritative landed face through impact', () => {
+    render(
+      <BeatStage
+        beat="impact"
+        placement="token-anchored"
+        attack={hitAttack}
+        damage={dmg}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.getByTestId('d20-face').textContent).toBe(
+      String(hitAttack.attackRoll)
+    );
+  });
+
+  it('keeps the d20 visible on the authoritative landed face through release', () => {
+    render(
+      <BeatStage
+        beat="release"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.getByTestId('d20-face').textContent).toBe(
+      String(hitAttack.attackRoll)
+    );
+  });
+
+  it('never renders the d20 during cue (die theater starts at armed, unchanged from round one)', () => {
+    render(
+      <BeatStage
+        beat="cue"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.queryByTestId('beat-die')).toBeNull();
+  });
+
   it('renders no beat-specific content during idle', () => {
     render(
       <BeatStage
@@ -380,7 +477,7 @@ describe('BeatStage', () => {
     expect(screen.queryByTestId('beat-damage')).toBeNull();
   });
 
-  it('renders no cue/die theater when done with persistResult (no tumble, no cue)', () => {
+  it('renders no cue theater when done with persistResult, but shows the landed d20 face immediately, settled (Kirk iteration 1: Instant never hides the die either)', () => {
     render(
       <BeatStage
         beat="done"
@@ -392,7 +489,13 @@ describe('BeatStage', () => {
       />
     );
     expect(screen.queryByTestId('beat-cue')).toBeNull();
-    expect(screen.queryByTestId('beat-die')).toBeNull();
+    expect(screen.getByTestId('beat-die')).toBeTruthy();
+    expect(screen.getByTestId('beat-die').className).toContain(
+      'beat-die--settled'
+    );
+    expect(screen.getByTestId('d20-face').textContent).toBe(
+      String(hitAttack.attackRoll)
+    );
   });
 
   it('announces the persisted verdict politely by default when done with persistResult', () => {

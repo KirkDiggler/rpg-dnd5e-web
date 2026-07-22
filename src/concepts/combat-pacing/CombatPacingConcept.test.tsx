@@ -22,20 +22,31 @@ describe('CombatPacingConcept', () => {
 
   it('shows a throw-die button only while armed, for a self-role scenario', () => {
     render(<CombatPacingConcept />);
-    // default scenario is player-hit (role: self) — cue is 150ms.
+    // default scenario is player-hit (role: self) — cue is 300ms
+    // (Kirk iteration 1: Cinematic cue lengthened for suspense).
     expect(screen.queryByTestId('throw-die-button')).toBeNull();
     act(() => {
-      vi.advanceTimersByTime(150);
+      vi.advanceTimersByTime(300);
     });
     expect(screen.getByTestId('throw-die-button')).toBeTruthy();
     fireEvent.click(screen.getByTestId('throw-die-button'));
     expect(screen.queryByTestId('throw-die-button')).toBeNull();
   });
 
+  it('labels the throw button "Roll d20", not the generic 🎲 emoji (Kirk iteration 1)', () => {
+    render(<CombatPacingConcept />);
+    act(() => {
+      vi.advanceTimersByTime(300); // cue -> armed, throw button appears
+    });
+    const button = screen.getByTestId('throw-die-button');
+    expect(button.textContent).toContain('Roll d20');
+    expect(button.textContent).not.toContain('🎲');
+  });
+
   it('switching scenarios resets the sequencer to cue', () => {
     render(<CombatPacingConcept />);
     act(() => {
-      vi.advanceTimersByTime(150); // player-hit reaches 'armed'
+      vi.advanceTimersByTime(300); // player-hit reaches 'armed'
     });
     fireEvent.click(screen.getByTestId('scenario-button-npc-boss-swing'));
     const stage = screen.getAllByTestId('beat-stage')[0];
@@ -73,7 +84,18 @@ describe('CombatPacingConcept', () => {
       expect(dmg.textContent).toContain('7');
     }
     expect(screen.queryAllByTestId('beat-cue')).toHaveLength(0);
-    expect(screen.queryAllByTestId('beat-die')).toHaveLength(0);
+    // Kirk iteration 1: Instant no longer hides the die either — both
+    // stages show it, landed and settled on the authoritative roll.
+    const dice = screen.getAllByTestId('beat-die');
+    expect(dice).toHaveLength(2);
+    for (const die of dice) {
+      expect(die.className).toContain('beat-die--settled');
+    }
+    const faces = screen.getAllByTestId('d20-face');
+    expect(faces).toHaveLength(2);
+    for (const face of faces) {
+      expect(face.textContent).toBe('14'); // player-hit's attackRoll
+    }
 
     // Exactly one of the two persisted verdicts announces to assistive
     // tech — Instant mode does not regress the single-announcement
@@ -121,7 +143,13 @@ describe('CombatPacingConcept', () => {
       expect(dmg.className).toContain('beat-damage--crit');
     }
     expect(screen.queryAllByTestId('beat-cue')).toHaveLength(0);
-    expect(screen.queryAllByTestId('beat-die')).toHaveLength(0);
+    // Kirk iteration 1: the die shows the NEW scenario's landed face
+    // immediately too — not a stale prior roll.
+    const faces = screen.getAllByTestId('d20-face');
+    expect(faces).toHaveLength(2);
+    for (const face of faces) {
+      expect(face.textContent).toBe('20'); // player-crit's attackRoll
+    }
 
     // The single-announcement contract must still hold after the switch.
     const announced = verdicts.filter(
@@ -154,7 +182,7 @@ describe('CombatPacingConcept', () => {
     fireEvent.click(screen.getByTestId('scenario-button-npc-grunt-swing')); // spectator, no armed wait
     fireEvent.click(screen.getByTestId('pace-override-cinematic'));
     act(() => {
-      vi.advanceTimersByTime(150); // Cinematic cue, not stuck resetting at cue
+      vi.advanceTimersByTime(300); // Cinematic cue, not stuck resetting at cue
     });
     const stage = screen.getAllByTestId('beat-stage')[0];
     expect(stage.getAttribute('data-beat')).toBe('throw');
@@ -164,7 +192,7 @@ describe('CombatPacingConcept', () => {
     render(<CombatPacingConcept />); // default scenario player-hit, role: self
     fireEvent.click(screen.getByTestId('pace-override-brisk'));
     act(() => {
-      vi.advanceTimersByTime(75); // Brisk cue
+      vi.advanceTimersByTime(150); // Brisk cue
     });
     const stage = screen.getAllByTestId('beat-stage')[0];
     expect(stage.getAttribute('data-beat')).toBe('armed'); // NOT stuck at 'cue'
@@ -175,11 +203,11 @@ describe('CombatPacingConcept', () => {
     fireEvent.click(screen.getByTestId('pace-override-cinematic'));
     fireEvent.click(screen.getByTestId('reduced-motion-toggle'));
     act(() => {
-      vi.advanceTimersByTime(150); // cue -> armed
+      vi.advanceTimersByTime(300); // cue -> armed
     });
     fireEvent.click(screen.getByTestId('throw-die-button'));
     act(() => {
-      vi.advanceTimersByTime(80); // REDUCED_MOTION_THROW_MS, not 600
+      vi.advanceTimersByTime(80); // REDUCED_MOTION_THROW_MS, not the full 2000ms tumble
     });
     const stage = screen.getAllByTestId('beat-stage')[0];
     expect(stage.getAttribute('data-beat')).toBe('verdict');
@@ -206,11 +234,11 @@ describe('CombatPacingConcept', () => {
     render(<CombatPacingConcept />);
     fireEvent.click(screen.getByTestId('reduced-motion-toggle'));
     act(() => {
-      vi.advanceTimersByTime(150); // cue -> armed
+      vi.advanceTimersByTime(300); // cue -> armed
     });
     fireEvent.click(screen.getByTestId('throw-die-button'));
     act(() => {
-      vi.advanceTimersByTime(80); // REDUCED_MOTION_THROW_MS, not 600
+      vi.advanceTimersByTime(80); // REDUCED_MOTION_THROW_MS, not the full 2000ms tumble
     });
     const stage = screen.getAllByTestId('beat-stage')[0];
     expect(stage.getAttribute('data-beat')).toBe('verdict');
