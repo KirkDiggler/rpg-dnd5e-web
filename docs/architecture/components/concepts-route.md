@@ -1,7 +1,7 @@
 ---
 name: /concepts route
 description: UI prototyping sandbox — isolated from production, no promotion process
-updated: 2026-05-02
+updated: 2026-07-22
 confidence: high — verified by reading ConceptsView.tsx and the concepts/ directory
 ---
 
@@ -28,6 +28,21 @@ Since the Game-UX charter (web#525) it is also the **outside-in contract bench**
 `src/concepts/combat-panel/` — round-1 IA design bench for web#525. `fixtures.ts` (proto-typed fixture states incl. armed/spent/spectator/free-roam), `CommandBar.tsx` + `CommandBarWithContext.tsx` (compositions of `src/components/ui/combat/` primitives), `CombatPanelConcept.tsx` (fixture switcher + Discord-viewport frame). `ComfortBar.tsx`'s equipment chip imports the production `EquipmentPopover` (see below) with its own local "plays-the-server" state.
 
 `src/concepts/equipment/` — the equipment chip + popover bench (web#531/#557), now promoted to production (web#571, see [equipment.md](equipment.md)): `EquipmentConcept.tsx` imports the production `EquipmentSlots`/`InventoryLight` from `src/components/game/equipment/` directly and feeds them `fixtures.ts` (typed to the same wire-shaped interfaces) plus the concept-only cast switcher and intent log. `CONTRACT.md` records the original wire gaps this bench asked for — all landed (rpg-api-protos#188, rpg-toolkit#812, rpg-api#682).
+
+`src/concepts/combat-pacing/` — the attack-loop beat-sequencer bench
+(web#561): `fixtures.ts` (8 event-shaped round-one scenarios matching the
+real `AttackResolved`/`EntityDamaged`/`ActionResolved` field shapes),
+`useBeatSequencer.ts` (the pure Cue→Throw→Verdict→Impact→Release timing
+state machine — pace-derived durations, crit stretch, auto-throw
+timeout, tap-to-skip, repeat-roll compression), `BeatStage.tsx` (the
+presentational die/verdict/damage surface, beat-shaped props only,
+token-anchored-promotes-to-center-stage on crit/nat-1), and
+`CombatPacingConcept.tsx` (renders both placements side by side against
+the same fixture, plus a pace-override/reduced-motion/viewport-frame
+switcher and an event/intent inspector). `CONTRACT.md` restates
+design.md §6's wire-shape candidates in the equipment concept's
+gap-log STRUCTURE, but stays evidence-only (not yet ask-shaped like the
+equipment file) — no Platform issue filed by this round.
 
 ## Gap: no promotion process
 
