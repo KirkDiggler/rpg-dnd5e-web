@@ -1,7 +1,7 @@
 ---
 name: equipment
 description: The equipment chip + popover on the live game screen — wire-shaped components shared with the /concepts bench
-updated: 2026-07-21
+updated: 2026-07-22
 confidence: high — verified by reading the components/hooks in full and by a live MCP playtest against a running rpg-api/rpg-toolkit stack
 ---
 
