@@ -13,13 +13,14 @@
  * sources, per rpg-dnd5e-web#571 scope.
  */
 
+import { getItemIconUrl } from '../../../utils/itemIcons';
 import type {
   EquipIntent,
   EquippedMap,
   ItemLike,
   SlotDefLike,
 } from './equipmentTypes';
-import { refKey, resolveIconUrl } from './equipmentTypes';
+import { refKey } from './equipmentTypes';
 
 export interface EquipmentSlotsProps {
   slots: SlotDefLike[];
@@ -50,7 +51,9 @@ export function EquipmentSlots({
         const item: ItemLike | undefined = ref
           ? byRef.get(refKey(ref))
           : undefined;
-        const iconUrl = item ? resolveIconUrl(item.iconKey) : undefined;
+        const iconUrl = item
+          ? getItemIconUrl(item.ref, item.iconKey)
+          : undefined;
         return (
           <button
             key={slot.key}

@@ -1,7 +1,7 @@
 ---
 name: equipment
 description: The equipment chip + popover on the live game screen — wire-shaped components shared with the /concepts bench
-updated: 2026-07-21
+updated: 2026-07-22
 confidence: high — verified by reading the components/hooks in full and by a live MCP playtest against a running rpg-api/rpg-toolkit stack
 ---
 
@@ -104,17 +104,27 @@ one file per verb, mirroring `useTakeAction`/`useInteract`.
 - **Icons degrade gracefully, by necessity.** The server sends `icon_key`
   empty today (rpg-api#680 Scope-decision: no toolkit/asset-manifest
   source exists yet for a bare sprite key) — verified against a live
-  server during the #571 playtest. Every icon render is conditional
-  (`resolveIconUrl` returns `undefined` for an empty key) plus an
-  `onError` fallback for a key that resolves but 404s. No item-id-to-icon
-  mapping table lives in the web; when the manifest gap closes, the
-  server sending real keys is the only change needed.
+  server during the #571 playtest. `src/utils/itemIcons.ts` (rpg-dnd5e-web
+  #576) closes most of that gap web-side: `getItemIconUrl(ref, iconKey)`
+  resolves a non-empty wire `iconKey` first (unchanged `resolveIconUrl`
+  behavior — a future manifest key always wins), else looks `ref.id` up
+  in the exhaustive 38-weapon+13-armor `ITEM_ICONS` map, then the small
+  non-exhaustive `SUPPLEMENTAL_ITEM_ICONS` map (ammo/pack ids with no wire
+  enum), else returns `undefined`. Every icon render stays conditional on
+  that `undefined` (never a broken `<img>`) plus the existing `onError`
+  fallback for a path that resolves but 404s. See rpg-project's
+  `ideas/equipment/item-icons/design.md` for the full coverage boundary
+  and tier rationale (dedicated/approximate/generic — recorded metadata,
+  not rendered in v1).
 - **No drag-and-drop, encumbrance, or stacking** — per the `/concepts`
   bench's original scope decisions (CONTRACT.md), unchanged by
   promotion.
 
 ## Tests
 
+- `src/utils/itemIcons.test.ts` — exhaustiveness over the 38+13 canonical
+  ids, entry validity, tier-representative resolution, wire override,
+  supplemental resolution, unknown-id fallback.
 - `src/api/useEquipItem.test.ts` / `useUnequipItem.test.ts` — RPC request
   shape, loading/error state, mirroring `useTakeAction.test.ts`.
 - `src/components/game/equipment/{EquipmentSlots,InventoryLight,EquipmentPopover}.test.tsx`

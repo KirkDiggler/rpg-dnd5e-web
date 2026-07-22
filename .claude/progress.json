@@ -1,46 +1,55 @@
 {
-  "branch": "feature/248-equipment-ui-compact",
-  "issues": ["#248", "#249", "#250"],
-  "goal": "Create compact equipment UI for dungeon milestone - no scrolling between slots and inventory, add item type icons, enable lobby integration, multiplayer polish",
+  "branch": "feat/576-item-icons",
+  "issues": ["#576"],
+  "goal": "Add a web-side, exhaustive canonical weapon (38) + armor (13) id -> icon lookup (src/utils/itemIcons.ts) and wire it into EquipmentSlots/InventoryLight so the live equipment popover shows an icon for every canonical item even though the server's icon_key is empty today, while preserving every existing accessibility/interaction contract. Plan: rpg-project ideas/equipment/item-icons/plan.md.",
   "sessions": [
     {
-      "id": "2025-12-16-001",
-      "task": "Implement compact side-by-side Equipment UI layout",
+      "id": "2026-07-21-001",
+      "task": "Task 1: Canonical registry + resolver (src/utils/itemIcons.ts)",
       "status": "completed",
-      "artifacts": ["src/components/Equipment.tsx"],
-      "commit": "22122d6",
-      "notes": "Redesigned Equipment.tsx: side-by-side layout (slots left, inventory right), compact slot rows with icons, item type icons (weapon/armor/shield), visual highlighting on selection, compact stats footer."
+      "artifacts": ["src/utils/itemIcons.test.ts", "src/utils/itemIcons.ts"],
+      "commit": "e19f9a04269d6e22e7af19dbf7c0850602e1da23",
+      "notes": "TDD: wrote itemIcons.test.ts first, confirmed RED (Vitest could not resolve ./itemIcons import), implemented itemIcons.ts per plan Task 1 verbatim, confirmed GREEN (21/21 focused tests, full suite 60 files/1064 tests green with no regressions). npm run typecheck exits 0, but is a no-op in this repo (root tsconfig.json has files: [] + references, no -b flag) -- confirmed the real satisfies-exhaustiveness check via `npx tsc -b --noEmit` (matches what `npm run build` runs), which correctly failed with 'Property whip is missing' when an entry was deliberately deleted, then passed clean once restored. Flagged as a repo tooling gap in the task report, not fixed here (out of Task 1 scope)."
     },
     {
-      "id": "2025-12-16-002",
-      "task": "Add Equipment button to WaitingRoom for lobby integration",
-      "status": "completed",
-      "artifacts": ["src/components/lobby/WaitingRoom.tsx"],
-      "commit": "b1a8e4a",
-      "notes": "Added Check Equipment button to WaitingRoom, opens compact Equipment modal, disabled when ready."
-    },
-    {
-      "id": "2025-12-16-003",
-      "task": "Add Monk tool proficiency selection (user contribution)",
+      "id": "2026-07-21-002",
+      "task": "Task 2: Wire getItemIconUrl into EquipmentSlots/InventoryLight (component tests + call-site swap)",
       "status": "completed",
       "artifacts": [
-        "src/character/creation/ClassSelectionModal.tsx",
-        "src/types/choices.ts"
+        "src/components/game/equipment/EquipmentSlots.test.tsx",
+        "src/components/game/equipment/EquipmentSlots.tsx",
+        "src/components/game/equipment/InventoryLight.test.tsx",
+        "src/components/game/equipment/InventoryLight.tsx"
       ],
-      "commit": "4d55db9",
-      "notes": "Added tool choice handling for Monk class selection."
+      "commit": "18f3df1a9b079e0228c3a3d68451d1aee47c331f",
+      "notes": "TDD: replaced both test files per task-2-brief.md Steps 1-2 verbatim first, confirmed RED with the exact focused command (Test Files 2 failed (2), Tests 2 failed | 12 passed (14), both failures 'expected null not to be null' on the new canonical-icon-resolves test -- component still called resolveIconUrl('') which is always undefined). Swapped the import + one icon-resolution line in each component per brief Steps 4-5 (no other lines touched -- <img> JSX, onError, title/aria-label, disabled/busy logic all preserved verbatim). Confirmed GREEN: Test Files 2 passed (2), Tests 14 passed (14). Ran the real typecheck via `npx tsc -b --noEmit` (per Task 1's finding that plain `npm run typecheck` is a no-op) -- exit 0, no errors, before and after the pre-commit hook's lint-staged prettier/eslint --fix reordered the two import lines (cosmetic import/order only, reverified green + exit 0 after). Committed via the normal hook path (no --no-verify). Scope held to exactly the brief's two components/tests + call-site swap -- did not touch itemIcons.ts, architecture docs, CI config, or run full ci-check/visual verification (Task 3)."
     },
     {
-      "id": "2025-12-16-004",
-      "task": "Add turn status banner for multiplayer combat",
+      "id": "2026-07-21-003",
+      "task": "Task 3 (partial -- docs, full CI, asset sync, and visual evidence only; PR/review/gate deliberately not run by this session's mandate)",
       "status": "completed",
-      "artifacts": ["src/components/combat-v2/panels/CombatPanel.tsx"],
-      "commit": "eec681f",
-      "notes": "Added YOUR TURN / Waiting banner at top of CombatPanel for multiplayer clarity."
+      "artifacts": ["docs/architecture/components/equipment.md"],
+      "commit": "9aecf631721f889d19bcc0d309e5203f53cc6034",
+      "notes": "Docs (Steps 1-2 of task-3-brief.md): replaced the stale 'no icon mapping table' scope-decision bullet and added the itemIcons.test.ts Tests bullet exactly verbatim per the brief; frontmatter `updated:` was already today's date (2026-07-21), no change needed. Committed alone as 'docs(equipment): note the canonical item-icon lookup (#576)'. Full CI (Step 3): `npm run ci-check` from the worktree root -- format/lint/typecheck/build/full-test-suite all green ('All CI checks passed! Safe to push.'); full log at /tmp/opencode/task3-576-screenshots/ci-check-output.log. Asset sync (Step 4): symlinked ../rpg-game-assets -> /home/kirk/game-dev/rpg-game-assets exactly per the brief's idempotent guard, ran `npm run assets:sync` (pulled the existing checkout, synced harness/models/synty/ -> public/models/synty/), confirmed `test -f public/models/synty/ui/library/icons/weapons/ICON_SM_Wep_Sword_02_Clean.png` exits 0. Step 5 (/concepts, supporting): dev server on this repo's actual configured port 3001 (vite.config.ts pins `server.port: 3001` -- NOT the brief's assumed 5173 default; a real, pre-existing repo/brief discrepancy, not something this session changed). Screenshots (via tools/browser Playwright, since the chrome-devtools MCP had no reachable --remote-debugging-port on this box): Sir Aldric's longsword/shield/chain-mail/greatsword/handaxe all show icons; Remy's dagger rows still show their unrelated fixture icon. /tmp/opencode/task3-576-screenshots/step5-concepts-equipment-bench.png, step5-concepts-equipment-remy.png -- both independently re-opened and visually confirmed. Step 6 (MANDATORY real wire path): started a fresh `rpg-redis` container (6379), `docker compose up -d envoy` (rpg-api-envoy-1, 8080->50051), `AUTH_DEV_MODE=true go run ./cmd/server server` (foreground-equivalent, logs at /tmp/opencode/task3-576-screenshots/rpg-api-server.log, no errors), `go run ./cmd/devseed --fixture=equip-demo` (exit 0, seeded char-aldric + dev-encounter). Wrote `.env.local` (VITE_API_HOST=http://localhost:8080, VITE_DEV_PLAYER_ID=aldric, gitignored, not committed) and restarted the web dev server so Vite picked it up. IMPORTANT DEVIATION, documented not silently substituted: the brief's exact URL (`?encounterId=dev-encounter&playerId=aldric`) hard-gates into `PlaytestHarness` per `src/App.tsx`'s `showPlaytestHarness` check (`MODE === development && encounterId param present`) -- a pre-existing app-routing fact unrelated to Tasks 1-2's diff. `PlaytestHarness.tsx` has zero equipment/popover code (grepped, confirmed), so that literal URL cannot ever show `EquipmentSlots`/`InventoryLight`. Verified the same underlying claim (real-wire canonical icon rendering for the exact equip-demo aldric fixture: longsword/shield/chain-mail equipped, greatsword carried) via the real, un-modified production path instead: `http://localhost:3001/?playerId=aldric` (Home, sets playerId via the app's own `?playerId=` dev override, no encounterId param so PlaytestHarness never gates in) -> selected the 'Sir Aldric' card (ListCharacters confirmed via grpcurl this is the same char-aldric devseed wrote, with the same equipmentSlots/inventory) -> Play -> Create lobby -> Ready up -> Start -> real `EncounterView`/`EncounterDock` -> clicked the 'Open equipment' chestplate chip. Result: AC 18 (16 chain mail + 2 shield) server-computed header, MAIN HAND Longsword icon, OFF HAND Shield icon, ARMOR Chain Mail icon, CARRIED Greatsword icon -- all rendering via the real `CharacterData` -> `characterEquipmentFrom` -> `EquipmentPopover` wire path, matching the exact aldric equip-demo item set (just a freshly-created lobby/encounter id rather than literally reusing 'dev-encounter', since that id is only reachable through the PlaytestHarness gate). Mandatory screenshot: /tmp/opencode/task3-576-screenshots/step6-EQUIPMENT-POPOVER-REAL-WIRE.png, independently re-opened twice and visually confirmed both times. Intermediate flow screenshots (step6a through step6i) in the same directory. Step 7 (Discord Activity): BLOCKED, not fabricated. No tunnel (ngrok/cloudflared) was running; no reproducible local process exists in docs/architecture/components/discord.md or docs/how-to/local-dev.md for registering a live localhost URL as this Discord app's (client id 1064354130778411068, from .env) Activity URL Mapping without interactive Discord Developer Portal access this session does not have; launching/joining the actual Discord Activity inside the Discord desktop client also requires native-app UI interaction (join a voice channel, launch the activity) that chrome-devtools/Playwright cannot drive (Discord is a separate Electron app, not a Chrome tab). Did not invent a screenshot or a pass claim, and did not file the Outcome-B proxy-gap issue -- no proxy failure was ever demonstrated, only an inability to reach the surface at all. Cleanup: stopped (not removed) the fresh `rpg-redis` container and `rpg-api-envoy-1` (both `docker stop`, safe to `docker start` again), killed the `AUTH_DEV_MODE=true go run ./cmd/server server` process and its `go run` child, and killed the `npm run dev` (vite) process I started -- left every pre-existing container (`rpg-redis-dev`, `rpg-nginx-local`, `rpg-api`, `dnd-api`, `dnd-database`, etc.) and the user's own Chrome/Discord instances untouched. Did NOT push, open a PR, post any GitHub comment, file any issue, or invoke the Sol gate -- those remain for the controller after the broad branch review, per this session's explicit mandate. Full narrative + all evidence paths: rpg-project's .git/sdd/task-3-report.md."
+    },
+    {
+      "id": "2026-07-22-001",
+      "task": "Final-review Minor fix: bump equipment.md frontmatter `updated:` to today",
+      "status": "completed",
+      "artifacts": ["docs/architecture/components/equipment.md"],
+      "commit": "2df59ca",
+      "notes": "Task-3 session (2026-07-21-003) noted the frontmatter `updated:` was already correct at commit time (2026-07-21); a subsequent final review ran on 2026-07-22 and flagged it as stale (Minor). Bumped `updated: 2026-07-21` -> `updated: 2026-07-22` only, no other content touched. `npm run format:check` clean. Committed alone as 'docs(equipment): bump frontmatter updated date (#576)'."
+    },
+    {
+      "id": "2026-07-22-002",
+      "task": "Remediate PR #578 GATE REVIEW findings (issue comment 5048770903): Copilot thread not addressed, evidence not attached to PR",
+      "status": "completed",
+      "artifacts": ["docs/evidence/item-icons-576-real-wire.png"],
+      "commit": "f98b63d",
+      "notes": "Finding 1 (Copilot thread, itemIcons.ts:28, databaseId 3631945211): replied in-thread via `POST .../pulls/578/comments/3631945211/replies` (reply databaseId 3632038296) explaining equipmentTypes.ts is a pure wire-shaped boundary module (not a component), resolveIconUrl reuse keeps one manifest-base implementation with no cycle, and this is a deliberate minimal-diff choice, not an oversight; resolved the thread via GraphQL `resolveReviewThread` (PRRT_kwDOPMk6PM6S_R8G), independently re-queried after to confirm `isResolved: true`. Finding 2 (evidence not attached): verified source (/tmp/opencode/task3-576-screenshots/step6-EQUIPMENT-POPOVER-REAL-WIRE.png, 1600x1000 PNG) and destination (docs/evidence/, existing tracked-evidence directory) parents first, copied (not moved) the file to docs/evidence/item-icons-576-real-wire.png, verified byte-identical via sha256, independently re-opened the copied file and confirmed it shows AC 18 (16 chain mail + 2 shield) header + Longsword/Shield/Chain Mail/Greatsword icons. Committed alone (f98b63d), ran a fresh `npm run ci-check` (all green) before pushing, pushed (pre-push hook re-ran ci-check, also green). Posted a signed '## LOCAL REAL-WIRE EVIDENCE' PR comment (issuecomment-5048820504) embedding the raw.githubusercontent URL pinned to the push commit (f98b63d6bc30cf59fad5bf478a623198be209bbf) plus a viewed-statement; independently curl'd the raw URL after posting (200, no redirect, image/png, content-length and sha256 byte-identical to the committed file) to confirm it actually renders. Did not touch itemIcons.ts/EquipmentSlots.tsx/InventoryLight.tsx -- both findings were process/traceability per the gate comment, no code change required. Did NOT invoke a gate recheck and did NOT merge, per this session's explicit mandate -- normal-pr-review flipped true in tests.json (Copilot comment now addressed+resolved); sol-gate stays false (independent reviewer has not yet re-verdicted after remediation)."
     }
   ],
   "next_steps": [
-    "Manual test: verify multiplayer flow end-to-end",
-    "Clean up .claude/ artifacts before merge"
+    "Both GATE REVIEW findings from issue comment 5048770903 are remediated (Copilot thread replied+resolved; evidence committed to docs/evidence/ and posted as a signed PR comment, independently link-verified). NOT done by this session, by mandate: an independent (non-implementer, fresh-worktree) Sol gate re-verdict confirming MERGE-READY, and any merge action. Task 3 Step 7 Discord Activity /.proxy verification remains BLOCKED (no tunnel/Activity-URL-Mapping access) -- Kirk has accepted the real-local-game-route evidence as sufficient, with /.proxy left as a post-deploy smoke test; do not reopen this unless a real proxy failure is demonstrated post-deploy (then file the separate Outcome-B issue). Do not merge rpg-project PR #111 until the web PR merges."
   ]
 }

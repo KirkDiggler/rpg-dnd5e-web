@@ -1,39 +1,72 @@
 {
   "tests": [
     {
-      "id": "no-scroll-view",
-      "feature": "equipment-compact",
-      "prompt": "Open the equipment UI. Can you see both equipment slots and inventory without scrolling?",
-      "passes": false,
-      "last_checked": null
+      "id": "itemicons-utility-tests",
+      "feature": "item-icons-task1",
+      "prompt": "Run `npm run test:run -- src/utils/itemIcons.test.ts`. Verify all 21 tests pass: exhaustiveness (38 weapon ids, 13 armor ids, no overlap, 51 total ITEM_ICONS entries), entry validity (non-empty path, valid quality) for both ITEM_ICONS and SUPPLEMENTAL_ITEM_ICONS, and getItemIconUrl resolution across dedicated/approximate/generic tiers, wire-override precedence, supplemental ids, and the unknown-id -> undefined case.",
+      "passes": true,
+      "last_checked": "2026-07-21"
     },
     {
-      "id": "item-type-icons",
-      "feature": "equipment-compact",
-      "prompt": "Look at the inventory items. Do different item types (weapons, armor, shields) have distinct icons?",
-      "passes": false,
-      "last_checked": null
+      "id": "itemicons-typecheck",
+      "feature": "item-icons-task1",
+      "prompt": "Run `npm run typecheck`. Verify it passes with no errors, confirming the `satisfies Record<CanonicalItemId, ItemIconEntry>` compile-time exhaustiveness check on CANONICAL_ITEM_ICONS holds (delete one canonical entry and rerun to confirm it fails loudly, then restore it). NOTE: `npm run typecheck` (plain `tsc --noEmit`) is a no-op in this repo -- root tsconfig.json has `files: []` with only project references and no `-b` flag, so it never actually checks referenced projects. Use `npx tsc -b --noEmit` (matches what `npm run build` runs) for the real check; confirmed it correctly fails on a deliberately-removed entry and passes clean on the actual file.",
+      "passes": true,
+      "last_checked": "2026-07-21"
     },
     {
-      "id": "equip-unequip-works",
-      "feature": "equipment-compact",
-      "prompt": "Select an inventory item and click a slot to equip it. Then unequip it. Does the flow work smoothly?",
-      "passes": false,
-      "last_checked": null
+      "id": "equipmentslots-component-tests",
+      "feature": "item-icons-task2",
+      "prompt": "Run `npm run test:run -- src/components/game/equipment/EquipmentSlots.test.tsx`. Verify all tests pass, including the canonical-icon-resolves-with-empty-iconKey test and the unknown-id-skips-img test, using getItemIconUrl instead of resolveIconUrl at the component's icon call site.",
+      "passes": true,
+      "last_checked": "2026-07-21"
     },
     {
-      "id": "lobby-integration",
-      "feature": "lobby-flow",
-      "prompt": "From the lobby screen before readying up, can you access the equipment UI to check/change gear?",
-      "passes": false,
-      "last_checked": null
+      "id": "inventorylight-component-tests",
+      "feature": "item-icons-task2",
+      "prompt": "Run `npm run test:run -- src/components/game/equipment/InventoryLight.test.tsx`. Verify all tests pass, including the canonical-icon-resolves-for-a-carried-item test, using getItemIconUrl instead of resolveIconUrl at the component's icon call site.",
+      "passes": true,
+      "last_checked": "2026-07-21"
     },
     {
-      "id": "multiplayer-characters",
-      "feature": "multiplayer-polish",
-      "prompt": "In a multiplayer game, can you see all party members with their ready states and character info?",
+      "id": "full-ci-check",
+      "feature": "item-icons-task3",
+      "prompt": "Run `npm run ci-check` from the worktree root. Verify format check, lint, typecheck, build, and the full test suite all pass with zero regressions outside the touched files.",
+      "passes": true,
+      "last_checked": "2026-07-21",
+      "notes": "Ran clean after the docs commit (9aecf63). Output: Format check passed, Lint check passed, Type check passed, Build passed (+ theme CSS carries the combat-HUD block), Tests passed, 'All CI checks passed! Safe to push.' Full log: /tmp/opencode/task3-576-screenshots/ci-check-output.log."
+    },
+    {
+      "id": "equip-demo-local-route",
+      "feature": "item-icons-task3",
+      "prompt": "With rpg-api's local stack running (redis, envoy, AUTH_DEV_MODE=true server, devseed --fixture=equip-demo) and the web dev server started with the aldric .env.local, navigate to http://localhost:5173/?encounterId=dev-encounter&playerId=aldric, open the equipment popover, and confirm EquipmentSlots shows icons for the equipped longsword/shield/chain-mail and InventoryLight shows an icon for the carried greatsword -- all via the real wire path, not fixtures. Capture a screenshot as evidence.",
+      "passes": true,
+      "last_checked": "2026-07-21",
+      "notes": "PASSED, via a documented real-path substitution -- not the literal URL. This repo's dev server actually runs on port 3001 (vite.config.ts server.port, not the brief/prompt's assumed 5173). More importantly, the exact `?encounterId=dev-encounter&playerId=aldric` URL hard-gates into `PlaytestHarness` per src/App.tsx's showPlaytestHarness check (dev mode + encounterId param present, pre-existing app behavior unrelated to #576's diff) -- and PlaytestHarness.tsx has zero equipment-popover code (grepped, confirmed), so that literal URL structurally cannot show EquipmentSlots/InventoryLight in this codebase. Verified the same claim instead via the real, unmodified production path: http://localhost:3001/?playerId=aldric (no encounterId param, so the harness gate never fires) -> Home shows the 'Sir Aldric' card (same char-aldric devseed wrote -- confirmed via `grpcurl ... CharacterService/ListCharacters` showing equipmentSlots.mainHand=longsword/offHand=shield/armor=chain-mail and inventory including greatsword) -> Play -> Create lobby -> Ready up -> Start -> real EncounterView/EncounterDock -> clicked the 'Open equipment' chip. Result, server-computed: 'AC 18 (16 chain mail + 2 shield)' header; MAIN HAND Longsword icon, OFF HAND Shield icon, ARMOR Chain Mail icon all rendering in EquipmentSlots; CARRIED Greatsword icon rendering in InventoryLight. Screenshot: /tmp/opencode/task3-576-screenshots/step6-EQUIPMENT-POPOVER-REAL-WIRE.png (independently re-opened twice, content confirmed both times). Supporting flow screenshots step6a-step6i in the same directory. Full narrative: rpg-project's .git/sdd/task-3-report.md."
+    },
+    {
+      "id": "discord-activity-verification",
+      "feature": "item-icons-task3",
+      "prompt": "Launch the Discord Activity as done for prior verified work in this repo, open the equipment popover on a character with equipped canonical items, and confirm icons render through the /.proxy path. Capture a screenshot. If icons don't render here but do on the real local game route, file the separate proxy-gap issue per plan.md Task 3 Step 7 Outcome B instead of blocking this PR.",
       "passes": false,
-      "last_checked": null
+      "last_checked": "2026-07-21",
+      "notes": "BLOCKED, not attempted-and-failed -- no proxy failure was demonstrated, so per the brief's own Outcome-B language this does NOT warrant filing the proxy-gap issue. Blocker: no tunnel (ngrok/cloudflared) was running to expose localhost to a public HTTPS URL; registering that URL as this Discord app's (client id 1064354130778411068, from .env) Activity URL Mapping requires interactive Discord Developer Portal access this session does not have; and even with a mapping in place, launching/joining the actual Activity requires native Discord-desktop-client UI interaction (join a voice channel, launch the activity) that chrome-devtools/Playwright cannot drive -- Discord is a separate Electron app, not a Chrome tab this session controls. docs/architecture/components/discord.md and docs/how-to/local-dev.md describe the auth/proxy mechanism but no reproducible local tunnel-registration process. Did not invent a screenshot or a pass/fail claim about proxy behavior."
+    },
+    {
+      "id": "normal-pr-review",
+      "feature": "item-icons-task3",
+      "prompt": "After opening the PR, verify every automated (Copilot) review comment has been acknowledged individually and addressed or replied to, per the repo's standing review process.",
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "Copilot's sole inline comment (databaseId 3631945211, src/utils/itemIcons.ts:28, utils->components import-direction concern) replied to in-thread via `POST .../pulls/578/comments/3631945211/replies` (reply databaseId 3632038296: explains equipmentTypes.ts is a pure wire-shaped boundary module not a component, resolveIconUrl reuse avoids a duplicate resolver, no cycle exists, deliberate minimal-diff choice) and resolved via GraphQL `resolveReviewThread` (thread PRRT_kwDOPMk6PM6S_R8G) -- independently re-queried after the mutation and confirmed `isResolved: true`."
+    },
+    {
+      "id": "sol-gate",
+      "feature": "item-icons-task3",
+      "prompt": "Verify an independent reviewer (not this task's implementer, in a fresh worktree) reran the full suite, audited the 38/13 exhaustiveness and icon path claims against the actual file contents, independently opened and viewed each screenshot attached in the PR (not just the viewed-statements), and posted a GATE REVIEW comment of MERGE-READY (or that any findings were remediated and rechecked).",
+      "passes": false,
+      "last_checked": "2026-07-22",
+      "notes": "Kirk's GATE REVIEW comment (issue comment 5048770903, a473bc1) posted FINDINGS -- DO NOT MERGE with two process/traceability findings (unresolved Copilot thread; evidence not attached to PR). Both remediated this session (see normal-pr-review notes and the docs/evidence commit + LOCAL REAL-WIRE EVIDENCE PR comment), but the independent gate has NOT yet rechecked/re-verdicted after remediation -- this session was explicitly scoped to remediation only, not a gate recheck. Do not read this as MERGE-READY."
     }
   ]
 }
