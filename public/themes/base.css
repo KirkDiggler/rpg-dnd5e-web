@@ -1117,3 +1117,135 @@
   color: var(--text-button);
   opacity: 0.8;
 }
+
+/* Combat-pacing beat stage (rpg-dnd5e-web#561) — reuses this file's own
+   .animate-dice-roll/@keyframes dice-roll (already shipped for
+   src/components/DiceRoller.tsx) for the Throw beat's tumble, and
+   CombatLog.tsx's existing crit-gold (#facc15) / hit (#f87171) / miss
+   (#9ca3af) palette (src/components/game/CombatLog.tsx's lineStyle())
+   for verdict differentiation — NOT this file's unrelated equipment-
+   rarity --legendary token, which is theme-varying and renders RED in
+   dark-fantasy.css, the wrong semantic for a gold crit. Adds only what's
+   new: a nat-1 red "crack" wobble (distinct from both a gray miss and a
+   gold crit), an oversized-crit damage pop, and the token-anchored/
+   center-stage placement treatment. No @media query — this codebase has
+   none (verified); narrow-width behavior instead comes from flexible
+   sizing (clamp()/max-width: 100%) plus the concept page's own flex-wrap
+   layout, the same pattern combat-panel/equip-bench already use. */
+
+.beat-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 96px;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background-color: var(--card-bg);
+  border: 2px solid var(--border-primary);
+  max-width: 100%;
+  transition: border-color 0.2s ease;
+}
+
+.beat-stage--center-stage {
+  border-color: var(--accent-primary);
+}
+
+.beat-cue {
+  font-size: clamp(0.75rem, 2.5vw, 0.9375rem);
+  color: var(--text-secondary);
+  animation: armed-pulse 1.2s ease-in-out infinite;
+}
+
+.beat-die {
+  font-size: clamp(1.5rem, 6vw, 2.5rem);
+  line-height: 1;
+}
+
+.beat-die--tumbling {
+  animation: dice-roll 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+}
+
+.beat-die--settled {
+  animation: none;
+  transform: none;
+}
+
+.beat-verdict {
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  font-size: clamp(0.875rem, 3vw, 1.25rem);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  text-align: center;
+}
+
+/* Palette matches CombatLog.tsx's lineStyle() exactly so the log and this
+   beat stage never disagree on what a color means. */
+.beat-verdict--hit {
+  color: #f87171;
+  background-color: color-mix(in srgb, #f87171 12%, transparent);
+}
+
+.beat-verdict--miss {
+  color: #9ca3af;
+  background-color: color-mix(in srgb, #9ca3af 10%, transparent);
+}
+
+/* Crit gold treatment (design.md §1: "die glows gold... damage number is
+   oversized and gold"). */
+.beat-verdict--crit {
+  color: #facc15;
+  background-color: color-mix(in srgb, #facc15 18%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, #facc15 55%, transparent);
+  animation: glow 1.4s ease-in-out infinite;
+}
+
+/* Nat-1: playful, non-punitive (design.md §1) — a red "crack" wobble
+   distinct from both a plain miss (gray, no animation) and a crit (gold,
+   glow). Short and comedic, not a long frame-break. */
+.beat-verdict--nat1 {
+  color: #ef4444;
+  background-color: color-mix(in srgb, #ef4444 12%, transparent);
+  animation: nat1-crack 0.4s ease-in-out 1;
+}
+
+@keyframes nat1-crack {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(6deg);
+  }
+}
+
+.beat-damage {
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  font-size: clamp(1rem, 4vw, 1.5rem);
+  color: #f87171;
+}
+
+/* Oversized + gold for a crit's damage pop (design.md §1). */
+.beat-damage--crit {
+  font-size: clamp(1.5rem, 6vw, 2.25rem);
+  color: #facc15;
+  text-shadow: 0 0 10px color-mix(in srgb, #facc15 60%, transparent);
+}
+
+/* Reduced motion (design.md §4): keeps every beat's semantics (colors,
+   labels, the crit glow's box-shadow) but drops motion — the tumble
+   (handled by .beat-die--settled above), the nat-1 wobble, and the crit
+   glow's pulsing all stop; a static gold/red state remains. */
+.beat-stage--reduced-motion .beat-verdict--crit {
+  animation: none;
+}
+
+.beat-stage--reduced-motion .beat-verdict--nat1 {
+  animation: none;
+}
