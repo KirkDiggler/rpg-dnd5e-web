@@ -1,37 +1,65 @@
 {
   "tests": [
     {
-      "id": "no-scroll-view",
-      "feature": "equipment-compact",
-      "prompt": "Open the equipment UI. Can you see both equipment slots and inventory without scrolling?",
+      "id": "itemicons-utility-tests",
+      "feature": "item-icons-task1",
+      "prompt": "Run `npm run test:run -- src/utils/itemIcons.test.ts`. Verify all 21 tests pass: exhaustiveness (38 weapon ids, 13 armor ids, no overlap, 51 total ITEM_ICONS entries), entry validity (non-empty path, valid quality) for both ITEM_ICONS and SUPPLEMENTAL_ITEM_ICONS, and getItemIconUrl resolution across dedicated/approximate/generic tiers, wire-override precedence, supplemental ids, and the unknown-id -> undefined case.",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "item-type-icons",
-      "feature": "equipment-compact",
-      "prompt": "Look at the inventory items. Do different item types (weapons, armor, shields) have distinct icons?",
+      "id": "itemicons-typecheck",
+      "feature": "item-icons-task1",
+      "prompt": "Run `npm run typecheck`. Verify it passes with no errors, confirming the `satisfies Record<CanonicalItemId, ItemIconEntry>` compile-time exhaustiveness check on CANONICAL_ITEM_ICONS holds (delete one canonical entry and rerun to confirm it fails loudly, then restore it).",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "equip-unequip-works",
-      "feature": "equipment-compact",
-      "prompt": "Select an inventory item and click a slot to equip it. Then unequip it. Does the flow work smoothly?",
+      "id": "equipmentslots-component-tests",
+      "feature": "item-icons-task2",
+      "prompt": "Run `npm run test:run -- src/components/game/equipment/EquipmentSlots.test.tsx`. Verify all tests pass, including the canonical-icon-resolves-with-empty-iconKey test and the unknown-id-skips-img test, using getItemIconUrl instead of resolveIconUrl at the component's icon call site.",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "lobby-integration",
-      "feature": "lobby-flow",
-      "prompt": "From the lobby screen before readying up, can you access the equipment UI to check/change gear?",
+      "id": "inventorylight-component-tests",
+      "feature": "item-icons-task2",
+      "prompt": "Run `npm run test:run -- src/components/game/equipment/InventoryLight.test.tsx`. Verify all tests pass, including the canonical-icon-resolves-for-a-carried-item test, using getItemIconUrl instead of resolveIconUrl at the component's icon call site.",
       "passes": false,
       "last_checked": null
     },
     {
-      "id": "multiplayer-characters",
-      "feature": "multiplayer-polish",
-      "prompt": "In a multiplayer game, can you see all party members with their ready states and character info?",
+      "id": "full-ci-check",
+      "feature": "item-icons-task3",
+      "prompt": "Run `npm run ci-check` from the worktree root. Verify format check, lint, typecheck, build, and the full test suite all pass with zero regressions outside the touched files.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "equip-demo-local-route",
+      "feature": "item-icons-task3",
+      "prompt": "With rpg-api's local stack running (redis, envoy, AUTH_DEV_MODE=true server, devseed --fixture=equip-demo) and the web dev server started with the aldric .env.local, navigate to http://localhost:5173/?encounterId=dev-encounter&playerId=aldric, open the equipment popover, and confirm EquipmentSlots shows icons for the equipped longsword/shield/chain-mail and InventoryLight shows an icon for the carried greatsword -- all via the real wire path, not fixtures. Capture a screenshot as evidence.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "discord-activity-verification",
+      "feature": "item-icons-task3",
+      "prompt": "Launch the Discord Activity as done for prior verified work in this repo, open the equipment popover on a character with equipped canonical items, and confirm icons render through the /.proxy path. Capture a screenshot. If icons don't render here but do on the real local game route, file the separate proxy-gap issue per plan.md Task 3 Step 7 Outcome B instead of blocking this PR.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "normal-pr-review",
+      "feature": "item-icons-task3",
+      "prompt": "After opening the PR, verify every automated (Copilot) review comment has been acknowledged individually and addressed or replied to, per the repo's standing review process.",
+      "passes": false,
+      "last_checked": null
+    },
+    {
+      "id": "sol-gate",
+      "feature": "item-icons-task3",
+      "prompt": "Verify an independent reviewer (not this task's implementer, in a fresh worktree) reran the full suite, audited the 38/13 exhaustiveness and icon path claims against the actual file contents, independently opened and viewed each screenshot attached in the PR (not just the viewed-statements), and posted a GATE REVIEW comment of MERGE-READY (or that any findings were remediated and rechecked).",
       "passes": false,
       "last_checked": null
     }
