@@ -200,6 +200,45 @@ describe('useBeatSequencer', () => {
     expect(result.current.group?.attack?.hit).toBe(true);
   });
 
+  it('rerendering with a DIFFERENT scenario that also lands on the SAME beat/groupIndex values ("done"/0, both Instant) still returns the NEW group — not a stale prior one', () => {
+    // Regression coverage for a real bug: `startGroup()`'s
+    // `pace === 'instant'` branch calls `setBeat('done')`, and the
+    // scenario-changed effect calls `setGroupIndex(0)` — both same-value
+    // updates when the PREVIOUS render was already 'done'/0. If `group`
+    // were derived from a bare ref mutation instead of real state (see
+    // this file's header), React would bail both same-value updates and
+    // never re-render, so `result.current.group` would keep returning
+    // the FIRST scenario's data forever despite the ref having been
+    // correctly mutated to the second scenario's groups.
+    const hitInstant = {
+      ...scenario('player-hit'),
+      pace: 'instant' as const,
+    };
+    const critInstant = {
+      ...scenario('player-crit'),
+      pace: 'instant' as const,
+    };
+    const { result, rerender } = renderHook(
+      ({ s }: { s: typeof hitInstant }) => useBeatSequencer(s),
+      { initialProps: { s: hitInstant } }
+    );
+    expect(result.current.beat).toBe('done');
+    expect(result.current.groupIndex).toBe(0);
+    expect(result.current.group?.attack?.critical).toBe(false);
+    expect(result.current.group?.attack?.attackRoll).toBe(14);
+
+    rerender({ s: critInstant });
+
+    // beat/groupIndex are UNCHANGED values ('done'/0 both times) — the
+    // bug this test guards against is exactly that this render would be
+    // skipped entirely without a genuinely-changing piece of state to
+    // force it.
+    expect(result.current.beat).toBe('done');
+    expect(result.current.groupIndex).toBe(0);
+    expect(result.current.group?.attack?.critical).toBe(true);
+    expect(result.current.group?.attack?.attackRoll).toBe(20);
+  });
+
   it('reduced motion collapses Throw to REDUCED_MOTION_THROW_MS instead of the full tumble', () => {
     const { result } = renderHook(() =>
       useBeatSequencer(scenario('player-hit'), { reducedMotion: true })

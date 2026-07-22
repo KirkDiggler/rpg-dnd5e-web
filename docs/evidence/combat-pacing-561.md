@@ -345,6 +345,13 @@ more surrounding whitespace).
   final-review fix**: `player-crit` with `Pace: instant` clicked — both
   columns show the gold `CRIT (20+5 vs AC 16)` verdict and `-14` gold
   damage, no die/cue theater. Confirms `persistResult` (see above).
+- `combat-pacing-561-instant-scenario-switch.png` — **new in the PR
+  #579 second final-review fix**: `Pace: instant` selected on
+  `player-hit` FIRST, then switched to `player-crit` via the scenario
+  buttons WITHOUT re-clicking the pace override — both columns
+  immediately show `CRIT (20+5 vs AC 16)` / `-14`, proving the
+  `useBeatSequencer` groups-as-state root fix (see below): no stale
+  `HIT`/`-7` from the previous scenario.
 
 Additional screenshots from the same driven sessions (not required by
 the brief's file list, kept only as the underlying evidence trail for
@@ -438,29 +445,14 @@ crit's full styling into Instant mode, not just a plain hit. Screenshot:
 crit case — gold `CRIT (20+5 vs AC 16)` stamp and `-14` gold damage on
 BOTH columns, no die/cue visible anywhere on the page.
 
-**A real, pre-existing, OUT-OF-SCOPE bug found while writing this
-evidence** (not fixed here — filed as a concern, not touched, per this
-task's explicit "do not alter the sequencer" scope): switching scenarios
-via the scenario buttons WHILE a `Pace: instant` override is already
-active does not update the displayed verdict/damage — the stage keeps
-showing the PREVIOUS scenario's attack data even though the event
-inspector (which reads `scenario.events` directly, not through the
-sequencer) correctly shows the new scenario's fixture events. Root
-cause, isolated with a `renderHook` probe against the UNMODIFIED
-pre-fix `useBeatSequencer.ts` (confirming this is not something this fix
-introduced): `startGroup()`'s `pace === 'instant'` branch calls
-`setBeat('done')` and the scenario-changed effect calls
-`setGroupIndex(0)` — when the PREVIOUS scenario was also Instant and
-already at `beat='done'`/`groupIndex=0`, both of these are same-value
-state updates; React bails the re-render (`Object.is` short-circuit), so
-the component never re-reads the mutated `groupsRef.current` the effect
-already rebuilt with the new scenario's groups. This only manifests
-across a scenario SWITCH while Instant is already active — selecting
-Instant on an already-displayed scenario (the fix's actual use case, and
-every test/browser check above) works correctly, because that is a real
-`beat` value change (e.g. `cue`→`done`) and React does not bail. Filed
-as a concern for a future task; `useBeatSequencer.ts` was not modified
-here.
+**A real bug found while writing the prior evidence pass — now FIXED,
+not just flagged** (see "PR #579 second final-review fix" below for the
+full RED/GREEN root-cause fix): switching scenarios via the scenario
+buttons WHILE a `Pace: instant` override is already active previously
+did not update the displayed verdict/damage — the stage kept showing the
+PREVIOUS scenario's attack data even though the event inspector (which
+reads `scenario.events` directly, not through the sequencer) correctly
+showed the new scenario's fixture events.
 
 **Honest limitations:**
 
@@ -476,3 +468,171 @@ here.
   session (no backend running); zero errors from
   `CombatPacingConcept.tsx`/`BeatStage.tsx`/`useBeatSequencer.ts`/
   `fixtures.ts`.
+
+## PR #579 second final-review fix (2026-07-22, Instant scenario-switch staleness — root-caused and fixed)
+
+The concern flagged above was re-scoped as IN-SCOPE ("the concept
+exposes both scenario selection and persistent pace override, so it
+must be fixed before final approval") and root-caused rather than left
+as a note.
+
+### Root cause
+
+`useBeatSequencer`'s `group`/`groupCount` (returned to consumers) were
+derived by reading `groupsRef.current[groupIndex]` at render time —
+`groupsRef` is a plain `useRef`, mutated directly
+(`groupsRef.current = groupByCorrelation(scenario.events)`) whenever the
+scenario changes. A ref mutation is invisible to React; it only becomes
+visible to a component's next render if SOMETHING ELSE triggers that
+render. The scenario-changed effect also calls `setBeat('done')` (via
+`startGroup`'s `pace === 'instant'` branch) and `setGroupIndex(0)` —
+normally these are real value changes that trigger a render on their
+own. But when the PREVIOUS scenario was ALSO already `pace: 'instant'`
+at `beat: 'done'`, `groupIndex: 0`, both `setBeatState('done')` and
+`setGroupIndexState(0)` are same-value updates; React bails them via
+`Object.is` and schedules NO render at all — so the freshly mutated
+`groupsRef.current` (correctly holding the new scenario's groups) is
+never re-read, and the component keeps showing the OLD group's
+verdict/damage indefinitely, until some unrelated state change finally
+forces a render.
+
+Confirmed via a `renderHook` probe against the **unmodified** pre-fix
+`useBeatSequencer.ts` (verified with `git stash` before writing any of
+this task's code, to be certain the bug predates every earlier fix in
+this doc): rendering with a `pace: 'instant'` `player-hit` scenario,
+then rerendering with a DIFFERENT `pace: 'instant'` `player-crit`
+scenario, left `result.current.group?.attack?.critical` at `false`
+(should be `true`) and `attackRoll` at `14` (should be `20`) — the
+returned `group` never updated.
+
+### Fix — clear state ownership, not a force-render hack
+
+`groups` (the scenario's events split into correlation groups) is now
+real `useState`, following the SAME dual ref+state pattern the file
+already uses for `beat`/`beatRef` and `groupIndex`/`groupIndexRef`:
+
+```ts
+const [groups, setGroupsState] = useState<BeatGroupResult[]>(() =>
+  groupByCorrelation(scenario.events)
+);
+const groupsRef = useRef<BeatGroupResult[]>(groups);
+const setGroups = (g: BeatGroupResult[]) => {
+  groupsRef.current = g;
+  setGroupsState(g);
+};
+```
+
+The scenario-changed effect branch now calls `setGroups(...)` instead of
+a bare `groupsRef.current = ...` mutation; the hook's return statement
+reads `groups[groupIndex]`/`groups.length` (state) instead of
+`groupsRef.current[groupIndex]`/`.length` (ref). `groupsRef` is kept
+alongside, in lockstep, purely for the engine functions
+(`startGroup`/`runVerdict`/`runImpact`/`runRelease`/`finishGroup`/
+`skip`/`throwDie`) that run synchronously from timer callbacks and need
+the CURRENT groups at call time — a ref mutation is visible immediately;
+a `useState` setter's new value is only visible on the NEXT render, too
+late for those callers. This is the same reason the file already keeps
+`beatRef`/`groupIndexRef` alongside `beat`/`groupIndex` state — `groups`
+now follows the identical, already-established pattern rather than
+introducing a new one.
+
+Why this actually fixes it: `groupByCorrelation()` always returns a
+FRESH array (`.map()` over a `Map`), never `Object.is`-equal to the
+previous array — so `setGroupsState(newGroups)` can never be bailed by
+React's same-value short-circuit, regardless of what `beat`/`groupIndex`
+happen to do in the same pass. A render is now guaranteed on every
+genuine scenario change.
+
+**Explicitly rejected alternative**: an unexplained force-render
+counter (e.g. `const [, bump] = useState(0); bump((n) => n + 1);`) would
+also have "worked," but would hide WHY behind an opaque tick with no
+real ownership — the chosen fix instead gives `groups` its own honest
+piece of state, on its own independent axis of change from
+`beat`/`groupIndex`, matching the file's existing ownership model.
+
+### TDD
+
+**`useBeatSequencer.test.ts`** (hook-level, isolates the exact
+same-value-state mechanism): new test "rerendering with a DIFFERENT
+scenario that also lands on the SAME beat/groupIndex values
+('done'/0, both Instant) still returns the NEW group — not a stale
+prior one." RED (confirmed by temporarily `git checkout`-ing the
+pre-fix hook, running the test, then restoring the fix from a backup
+copy — not by inspection): 14 passed / **1 failed** —
+`expected false to be true` on `result.current.group?.attack?.critical`
+(still `false`, i.e. still the player-hit fixture, after switching to
+player-crit). GREEN after the fix: **15/15**.
+
+**`CombatPacingConcept.test.tsx`** (integration-level, the exact
+user-facing repro from the task): two new tests —
+
+1. "switching scenarios while Instant remains selected immediately
+   shows the NEW scenario's verdict/damage, not a stale prior one" —
+   selects Instant on the default `player-hit`, confirms `HIT`/`-7` on
+   both stages, then clicks `scenario-button-player-crit` WITHOUT
+   touching the pace override, and asserts both stages immediately show
+   `CRIT`/`-14` (`beat-verdict--crit`/`beat-damage--crit`), with the
+   `HIT (14`/`7` text gone, no `beat-cue`/`beat-die` anywhere, and
+   exactly one `role=status` announcement.
+2. "switching scenarios while Instant remains selected also updates
+   correctly for a scenario with NO damage (player-miss)" — same
+   pattern, switching to `player-miss` (no `EntityDamaged` fixture at
+   all) and asserting the damage element disappears entirely, not just
+   changes value.
+
+RED (before the hook fix, with only the two new tests + old hook):
+**2 failed / 13 passed** — `expected 'HIT (14+5 vs AC 16)' to contain
+'CRIT'` and `expected 'HIT (14+5 vs AC 16)' to contain 'MISS'`, both the
+right failure for the right reason (stale prior verdict, exactly the
+reported bug). GREEN after the fix: **15/15**.
+
+### Full verification
+
+- Targeted: `npx vitest run src/concepts/combat-pacing` → **79/79**
+  (76 prior + 3 new: 1 hook test, 2 concept tests).
+- Full repo suite: `npx vitest run` → **1122/1122** (64 test files), no
+  regressions — explicitly re-confirmed the pre-existing
+  `reducedMotion`-restart tests (timer cleanup, "never replay an
+  already-completed earlier correlation group") still pass unchanged,
+  since those are the tests most likely to catch a state-ownership
+  refactor breaking something subtle.
+- `npm run build` → succeeds.
+- `npm run ci-check` → format/lint/typecheck/build/tests all pass
+  (format failed once on a doc-comment line length; `npm run format`
+  fixed it, reconfirmed passing before commit).
+
+### Browser re-verification (real Playwright session)
+
+`chrome-devtools` browser MCP unavailable again this round ("Could not
+connect to Chrome") — same fallback, a new driver script
+`game-dev/tools/browser/_job_combat_pacing_561_instant_switch.mjs`
+(untracked scratch file, this directory's existing convention) against
+the live `npm run dev` app. Sequence, WITHOUT ever re-clicking the pace
+override after the first click:
+
+1. `player-hit` + click `Pace: instant` → both stages `HIT (14+5 vs AC 16)`
+   / `-7`.
+2. Click `scenario-button-player-crit` (pace override untouched, still
+   `instant`) → both stages IMMEDIATELY read
+   `CRIT (20+5 vs AC 16)` / `-14`, `beat-verdict--crit` /
+   `beat-damage--crit` — no stale `HIT`/`-7` anywhere. Screenshot:
+   `combat-pacing-561-instant-scenario-switch.png` (committed below).
+3. Click `scenario-button-player-miss` → both stages immediately read
+   `MISS (8+5 vs AC 16)`, zero `beat-damage` elements (miss has no
+   `EntityDamaged` at all — not just a `0` value, the element itself is
+   absent, matching `BeatStage`'s existing damage-gating).
+4. Click `scenario-button-player-nat1` → both stages immediately read
+   `NAT-1 (1+5 vs AC 16)`, `beat-verdict--nat1`, zero damage.
+
+Every step: `data-beat="done"` on both stages, exactly one
+`role="status"` (`[status, null]`), zero `beat-cue`/`beat-die` elements.
+Console: only the same pre-existing `ERR_CONNECTION_REFUSED`
+lobby/character API noise every session logs (no backend running) —
+zero errors from any combat-pacing file.
+
+### Concerns
+
+None outstanding for this specific finding — it is fixed, tested at
+both the hook and integration level, and confirmed live. General
+honest-limitations notes from the rest of this doc still apply
+(fixture-driven `/concepts` bench only, no live-stream reassembler).

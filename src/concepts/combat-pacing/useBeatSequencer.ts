@@ -33,6 +33,29 @@
  * and restarts the CURRENT group at cue under the new timing — it never
  * rebuilds groups or rewinds to group 0, so an already-completed earlier
  * correlation group is never replayed.
+ *
+ * `groups` (the scenario's events split into correlation groups) is
+ * real `useState`, not a bare ref, unlike the internal-only concern
+ * `beat`/`groupIndex` describe above — it is rebuilt wholesale exactly
+ * once per genuine scenario change, on a completely independent axis
+ * from `beat`/`groupIndex`'s own transitions. A ref-only mutation here
+ * would only be VISIBLE to a re-render by accident, riding along on
+ * `beat`/`groupIndex` also happening to change value in the same pass;
+ * when a new scenario happens to land on the exact same `beat`
+ * (`'done'`) and `groupIndex` (`0`) as the previous one — e.g. two
+ * different `pace: 'instant'` scenarios back to back — React bails
+ * those same-value state updates via `Object.is`, no render is
+ * scheduled at all, and the ref mutation is never read again (a real,
+ * previously-shipped bug this hook's tests below guard against). A
+ * freshly built groups array is never `Object.is`-equal to the old one,
+ * so routing it through `useState` (via `setGroups`, the same
+ * dual ref+state pattern as `setBeat`/`setGroupIndex`) guarantees a
+ * render on every genuine scenario change regardless of what
+ * `beat`/`groupIndex` do. `groupsRef` still exists alongside it, kept
+ * in lockstep, because the engine functions below run synchronously
+ * from timer callbacks and need the CURRENT groups at call time — a
+ * ref mutation is visible immediately; a `useState` setter's new value
+ * is only visible on the NEXT render, too late for those callers.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -131,9 +154,14 @@ export function useBeatSequencer(
   const [groupIndex, setGroupIndexState] = useState(0);
   const beatRef = useRef<BeatName>('idle');
   const groupIndexRef = useRef(0);
-  const groupsRef = useRef<BeatGroupResult[]>(
+  // `groups` is real state, not a bare ref — see the file header for why
+  // (same-value `beat`/`groupIndex` updates can otherwise leave a
+  // ref-only mutation unread). `groupsRef` mirrors it for the engine
+  // functions below, which need synchronous access at call time.
+  const [groups, setGroupsState] = useState<BeatGroupResult[]>(() =>
     groupByCorrelation(scenario.events)
   );
+  const groupsRef = useRef<BeatGroupResult[]>(groups);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const setBeat = (b: BeatName) => {
@@ -143,6 +171,10 @@ export function useBeatSequencer(
   const setGroupIndex = (i: number) => {
     groupIndexRef.current = i;
     setGroupIndexState(i);
+  };
+  const setGroups = (g: BeatGroupResult[]) => {
+    groupsRef.current = g;
+    setGroupsState(g);
   };
 
   const clearTimer = () => {
@@ -246,8 +278,11 @@ export function useBeatSequencer(
     prevScenarioRef.current = scenario;
     if (scenarioChanged) {
       // New scenario identity (including the initial mount) — rebuild
-      // groups from scratch and restart at group 0's cue.
-      groupsRef.current = groupByCorrelation(scenario.events);
+      // groups from scratch and restart at group 0's cue. Goes through
+      // `setGroups` (not a bare `groupsRef.current =` mutation) so this
+      // always triggers a render — see `groups` state's own comment
+      // above for why a ref-only mutation is not sufficient here.
+      setGroups(groupByCorrelation(scenario.events));
       setGroupIndex(0);
       startGroup(0);
     } else {
@@ -281,8 +316,8 @@ export function useBeatSequencer(
   return {
     beat,
     groupIndex,
-    groupCount: groupsRef.current.length,
-    group: groupsRef.current[groupIndex],
+    groupCount: groups.length,
+    group: groups[groupIndex],
     throwDie,
     skip,
   };

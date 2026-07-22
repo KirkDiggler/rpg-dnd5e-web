@@ -84,6 +84,71 @@ describe('CombatPacingConcept', () => {
     expect(announced).toHaveLength(1);
   });
 
+  it("switching scenarios while Instant remains selected immediately shows the NEW scenario's verdict/damage, not a stale prior one (design.md §8)", () => {
+    render(<CombatPacingConcept />);
+    // Select Instant on the default player-hit scenario first (hit, -7).
+    fireEvent.click(screen.getByTestId('pace-override-instant'));
+    let verdicts = screen.getAllByTestId('beat-verdict');
+    expect(verdicts).toHaveLength(2);
+    for (const verdict of verdicts) {
+      expect(verdict.textContent).toContain('HIT');
+    }
+
+    // Now switch to a scenario with a VISIBLY DIFFERENT authoritative
+    // outcome (player-crit: CRIT, -14, oversized/gold damage) while
+    // Instant remains selected the whole time — no re-click of the pace
+    // override. Both stages must update immediately to the new outcome,
+    // not keep showing player-hit's stale HIT/-7.
+    fireEvent.click(screen.getByTestId('scenario-button-player-crit'));
+
+    const stages = screen.getAllByTestId('beat-stage');
+    for (const stage of stages) {
+      expect(stage.getAttribute('data-beat')).toBe('done');
+    }
+
+    verdicts = screen.getAllByTestId('beat-verdict');
+    expect(verdicts).toHaveLength(2);
+    for (const verdict of verdicts) {
+      expect(verdict.textContent).toContain('CRIT');
+      expect(verdict.textContent).not.toContain('HIT (14');
+      expect(verdict.className).toContain('beat-verdict--crit');
+    }
+    const damages = screen.getAllByTestId('beat-damage');
+    expect(damages).toHaveLength(2);
+    for (const dmg of damages) {
+      expect(dmg.textContent).toContain('14');
+      expect(dmg.textContent).not.toContain('7');
+      expect(dmg.className).toContain('beat-damage--crit');
+    }
+    expect(screen.queryAllByTestId('beat-cue')).toHaveLength(0);
+    expect(screen.queryAllByTestId('beat-die')).toHaveLength(0);
+
+    // The single-announcement contract must still hold after the switch.
+    const announced = verdicts.filter(
+      (v) => v.getAttribute('role') === 'status'
+    );
+    expect(announced).toHaveLength(1);
+  });
+
+  it('switching scenarios while Instant remains selected also updates correctly for a scenario with NO damage (player-miss)', () => {
+    render(<CombatPacingConcept />);
+    fireEvent.click(screen.getByTestId('pace-override-instant'));
+    // Sanity: default player-hit shows damage before the switch.
+    expect(screen.getAllByTestId('beat-damage')).toHaveLength(2);
+
+    fireEvent.click(screen.getByTestId('scenario-button-player-miss'));
+
+    const verdicts = screen.getAllByTestId('beat-verdict');
+    expect(verdicts).toHaveLength(2);
+    for (const verdict of verdicts) {
+      expect(verdict.textContent).toContain('MISS');
+    }
+    // player-miss has no EntityDamaged fixture at all — no damage
+    // element on either stage, and no stale -7 left over from before
+    // the switch.
+    expect(screen.queryAllByTestId('beat-damage')).toHaveLength(0);
+  });
+
   it('a cinematic pace override progresses beyond cue (object-identity regression guard)', () => {
     render(<CombatPacingConcept />);
     fireEvent.click(screen.getByTestId('scenario-button-npc-grunt-swing')); // spectator, no armed wait
