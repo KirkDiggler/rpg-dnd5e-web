@@ -23,6 +23,16 @@
  * consumer that turns `beat`/`group` into pixels, and it does so through
  * its OWN presentation-owned types, not this module's fixture-shaped
  * ones (see `BeatStage.tsx`'s header).
+ *
+ * `reducedMotion` is a live control in the round-one concept (a user can
+ * flip it mid-scenario), not a one-time mount option, so the bootstrapping
+ * effect below distinguishes two cases by reference-comparing the
+ * incoming `scenario` against the previous one: a genuine scenario-
+ * identity change rebuilds groups and restarts at group 0's cue, while a
+ * `reducedMotion`-only change (same scenario) clears the pending timer
+ * and restarts the CURRENT group at cue under the new timing — it never
+ * rebuilds groups or rewinds to group 0, so an already-completed earlier
+ * correlation group is never replayed.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -223,16 +233,33 @@ export function useBeatSequencer(
     after(d.release, () => finishGroup(index));
   };
 
+  /** Distinguishes "the scenario itself changed" from "only reducedMotion
+   * changed" inside one effect, by reference-comparing against the
+   * PREVIOUS scenario each run — `undefined` on the very first run makes
+   * mount take the same "scenario changed" branch as a real scenario
+   * swap, so mount initializes group 0 exactly once with no separate
+   * effect and no duplicate start. */
+  const prevScenarioRef = useRef<CombatPacingScenario | undefined>(undefined);
+
   useEffect(() => {
-    groupsRef.current = groupByCorrelation(scenario.events);
-    setGroupIndex(0);
-    startGroup(0);
+    const scenarioChanged = prevScenarioRef.current !== scenario;
+    prevScenarioRef.current = scenario;
+    if (scenarioChanged) {
+      // New scenario identity (including the initial mount) — rebuild
+      // groups from scratch and restart at group 0's cue.
+      groupsRef.current = groupByCorrelation(scenario.events);
+      setGroupIndex(0);
+      startGroup(0);
+    } else {
+      // Same scenario, only `reducedMotion` (a live control) changed —
+      // clear whatever timer is pending and restart the CURRENT group at
+      // cue under the new timing semantics. Never rebuild groups or
+      // rewind to group 0 here: earlier correlation groups already
+      // finished and must never be replayed.
+      clearTimer();
+      startGroup(groupIndexRef.current);
+    }
     return clearTimer;
-    // `reducedMotion` is a live control (round-one concept toggle), not a
-    // one-time mount option — including it here means an in-flight chain
-    // never runs on a stale `reducedMotion` closure; toggling it restarts
-    // the current scenario from cue under the new timing semantics
-    // instead of finishing the old one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scenario, reducedMotion]);
 

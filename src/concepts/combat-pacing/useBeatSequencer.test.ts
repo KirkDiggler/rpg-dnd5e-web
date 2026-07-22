@@ -215,7 +215,7 @@ describe('useBeatSequencer', () => {
     expect(result.current.beat).toBe('verdict'); // not still 'throw' at the full 600ms mark
   });
 
-  it('toggling reducedMotion mid-sequence restarts the current scenario at cue with the new timing semantics (no stale option closure)', () => {
+  it('toggling reducedMotion mid group-0 restarts the CURRENT group at cue with the new timing semantics (no stale option closure)', () => {
     const { result, rerender } = renderHook(
       ({ reducedMotion }: { reducedMotion: boolean }) =>
         useBeatSequencer(scenario('player-hit'), { reducedMotion }),
@@ -236,8 +236,8 @@ describe('useBeatSequencer', () => {
 
     // Toggle reducedMotion without changing scenario identity — the
     // in-flight full-tumble throw must NOT resolve on its own stale
-    // schedule; the whole scenario restarts from cue under the new
-    // timing semantics instead.
+    // schedule; the CURRENT group (group 0, the only group here)
+    // restarts from cue under the new timing semantics instead.
     rerender({ reducedMotion: true });
     expect(result.current.beat).toBe('cue');
 
@@ -264,5 +264,47 @@ describe('useBeatSequencer', () => {
       result.current.throwDie();
     });
     expect(result.current.beat).toBe('cue'); // unchanged
+  });
+
+  it('toggling reducedMotion after advancing past group 0 restarts only the CURRENT group at cue — it must never replay an already-completed earlier correlation group', () => {
+    const { result, rerender } = renderHook(
+      ({ reducedMotion }: { reducedMotion: boolean }) =>
+        useBeatSequencer(scenario('repeated-attacks'), { reducedMotion }),
+      { initialProps: { reducedMotion: false } }
+    );
+    // Finish group 0 via two synchronous skip() calls, same as the
+    // repeat-roll compression test above — lands on group 1, which
+    // auto-plays (no armed wait) at Brisk because index > 0.
+    act(() => {
+      result.current.skip(); // group 0: cue/armed/throw -> verdict
+      result.current.skip(); // group 0: verdict/impact/release -> finishes group 0
+    });
+    expect(result.current.groupIndex).toBe(1);
+    expect(result.current.beat).toBe('cue');
+
+    act(() => {
+      vi.advanceTimersByTime(75); // group 1's Brisk cue -> auto-plays to throw
+    });
+    expect(result.current.beat).toBe('throw');
+    act(() => {
+      vi.advanceTimersByTime(150); // mid group 1's Brisk 300ms throw, unresolved
+    });
+    expect(result.current.beat).toBe('throw');
+
+    // Toggle reducedMotion with the SAME scenario identity — must clear
+    // the pending timer and restart the CURRENT group (index 1) at cue,
+    // NOT rebuild/replay group 0.
+    rerender({ reducedMotion: true });
+    expect(result.current.groupIndex).toBe(1); // still group 1, never rewound
+    expect(result.current.beat).toBe('cue');
+
+    act(() => {
+      vi.advanceTimersByTime(75); // group 1's Brisk cue again (unaffected) -> auto-plays
+    });
+    expect(result.current.beat).toBe('throw');
+    act(() => {
+      vi.advanceTimersByTime(REDUCED_MOTION_THROW_MS);
+    });
+    expect(result.current.beat).toBe('verdict'); // restarted throw used the new reduced-motion timing
   });
 });
