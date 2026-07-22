@@ -10,10 +10,22 @@
       "artifacts": ["src/utils/itemIcons.test.ts", "src/utils/itemIcons.ts"],
       "commit": "e19f9a04269d6e22e7af19dbf7c0850602e1da23",
       "notes": "TDD: wrote itemIcons.test.ts first, confirmed RED (Vitest could not resolve ./itemIcons import), implemented itemIcons.ts per plan Task 1 verbatim, confirmed GREEN (21/21 focused tests, full suite 60 files/1064 tests green with no regressions). npm run typecheck exits 0, but is a no-op in this repo (root tsconfig.json has files: [] + references, no -b flag) -- confirmed the real satisfies-exhaustiveness check via `npx tsc -b --noEmit` (matches what `npm run build` runs), which correctly failed with 'Property whip is missing' when an entry was deliberately deleted, then passed clean once restored. Flagged as a repo tooling gap in the task report, not fixed here (out of Task 1 scope)."
+    },
+    {
+      "id": "2026-07-21-002",
+      "task": "Task 2: Wire getItemIconUrl into EquipmentSlots/InventoryLight (component tests + call-site swap)",
+      "status": "completed",
+      "artifacts": [
+        "src/components/game/equipment/EquipmentSlots.test.tsx",
+        "src/components/game/equipment/EquipmentSlots.tsx",
+        "src/components/game/equipment/InventoryLight.test.tsx",
+        "src/components/game/equipment/InventoryLight.tsx"
+      ],
+      "commit": "18f3df1a9b079e0228c3a3d68451d1aee47c331f",
+      "notes": "TDD: replaced both test files per task-2-brief.md Steps 1-2 verbatim first, confirmed RED with the exact focused command (Test Files 2 failed (2), Tests 2 failed | 12 passed (14), both failures 'expected null not to be null' on the new canonical-icon-resolves test -- component still called resolveIconUrl('') which is always undefined). Swapped the import + one icon-resolution line in each component per brief Steps 4-5 (no other lines touched -- <img> JSX, onError, title/aria-label, disabled/busy logic all preserved verbatim). Confirmed GREEN: Test Files 2 passed (2), Tests 14 passed (14). Ran the real typecheck via `npx tsc -b --noEmit` (per Task 1's finding that plain `npm run typecheck` is a no-op) -- exit 0, no errors, before and after the pre-commit hook's lint-staged prettier/eslint --fix reordered the two import lines (cosmetic import/order only, reverified green + exit 0 after). Committed via the normal hook path (no --no-verify). Scope held to exactly the brief's two components/tests + call-site swap -- did not touch itemIcons.ts, architecture docs, CI config, or run full ci-check/visual verification (Task 3)."
     }
   ],
   "next_steps": [
-    "Task 2: Wire getItemIconUrl into EquipmentSlots.tsx and InventoryLight.tsx (replace resolveIconUrl(item.iconKey) call sites), replace EquipmentSlots.test.tsx and InventoryLight.test.tsx per plan.md Task 2",
     "Task 3: Update docs/architecture/components/equipment.md scope-decision + Tests bullet, run full npm run ci-check, sync local Synty assets, mandatory visual verification on the real local game route (rpg-api devseed equip-demo fixture, dev-encounter, aldric), visual verification inside the Discord Activity, PR + screenshot evidence + Sol gate per plan.md Task 3"
   ]
 }

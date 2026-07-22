@@ -18,15 +18,15 @@
       "id": "equipmentslots-component-tests",
       "feature": "item-icons-task2",
       "prompt": "Run `npm run test:run -- src/components/game/equipment/EquipmentSlots.test.tsx`. Verify all tests pass, including the canonical-icon-resolves-with-empty-iconKey test and the unknown-id-skips-img test, using getItemIconUrl instead of resolveIconUrl at the component's icon call site.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-21"
     },
     {
       "id": "inventorylight-component-tests",
       "feature": "item-icons-task2",
       "prompt": "Run `npm run test:run -- src/components/game/equipment/InventoryLight.test.tsx`. Verify all tests pass, including the canonical-icon-resolves-for-a-carried-item test, using getItemIconUrl instead of resolveIconUrl at the component's icon call site.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-21"
     },
     {
       "id": "full-ci-check",
