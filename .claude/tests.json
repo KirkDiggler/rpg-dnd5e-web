@@ -4,15 +4,15 @@
       "id": "itemicons-utility-tests",
       "feature": "item-icons-task1",
       "prompt": "Run `npm run test:run -- src/utils/itemIcons.test.ts`. Verify all 21 tests pass: exhaustiveness (38 weapon ids, 13 armor ids, no overlap, 51 total ITEM_ICONS entries), entry validity (non-empty path, valid quality) for both ITEM_ICONS and SUPPLEMENTAL_ITEM_ICONS, and getItemIconUrl resolution across dedicated/approximate/generic tiers, wire-override precedence, supplemental ids, and the unknown-id -> undefined case.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-21"
     },
     {
       "id": "itemicons-typecheck",
       "feature": "item-icons-task1",
-      "prompt": "Run `npm run typecheck`. Verify it passes with no errors, confirming the `satisfies Record<CanonicalItemId, ItemIconEntry>` compile-time exhaustiveness check on CANONICAL_ITEM_ICONS holds (delete one canonical entry and rerun to confirm it fails loudly, then restore it).",
-      "passes": false,
-      "last_checked": null
+      "prompt": "Run `npm run typecheck`. Verify it passes with no errors, confirming the `satisfies Record<CanonicalItemId, ItemIconEntry>` compile-time exhaustiveness check on CANONICAL_ITEM_ICONS holds (delete one canonical entry and rerun to confirm it fails loudly, then restore it). NOTE: `npm run typecheck` (plain `tsc --noEmit`) is a no-op in this repo -- root tsconfig.json has `files: []` with only project references and no `-b` flag, so it never actually checks referenced projects. Use `npx tsc -b --noEmit` (matches what `npm run build` runs) for the real check; confirmed it correctly fails on a deliberately-removed entry and passes clean on the actual file.",
+      "passes": true,
+      "last_checked": "2026-07-21"
     },
     {
       "id": "equipmentslots-component-tests",

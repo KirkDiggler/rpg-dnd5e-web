@@ -8,8 +8,8 @@
       "task": "Task 1: Canonical registry + resolver (src/utils/itemIcons.ts)",
       "status": "completed",
       "artifacts": ["src/utils/itemIcons.test.ts", "src/utils/itemIcons.ts"],
-      "commit": null,
-      "notes": "TDD: wrote itemIcons.test.ts first, confirmed RED (Vitest could not resolve ./itemIcons import), implemented itemIcons.ts per plan Task 1 verbatim, confirmed GREEN (21/21 focused tests), then npm run typecheck clean. Commit SHA to be filled after commit step."
+      "commit": "e19f9a04269d6e22e7af19dbf7c0850602e1da23",
+      "notes": "TDD: wrote itemIcons.test.ts first, confirmed RED (Vitest could not resolve ./itemIcons import), implemented itemIcons.ts per plan Task 1 verbatim, confirmed GREEN (21/21 focused tests, full suite 60 files/1064 tests green with no regressions). npm run typecheck exits 0, but is a no-op in this repo (root tsconfig.json has files: [] + references, no -b flag) -- confirmed the real satisfies-exhaustiveness check via `npx tsc -b --noEmit` (matches what `npm run build` runs), which correctly failed with 'Property whip is missing' when an entry was deliberately deleted, then passed clean once restored. Flagged as a repo tooling gap in the task report, not fixed here (out of Task 1 scope)."
     }
   ],
   "next_steps": [
