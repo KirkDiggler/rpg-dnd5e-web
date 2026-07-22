@@ -56,15 +56,17 @@
       "id": "normal-pr-review",
       "feature": "item-icons-task3",
       "prompt": "After opening the PR, verify every automated (Copilot) review comment has been acknowledged individually and addressed or replied to, per the repo's standing review process.",
-      "passes": false,
-      "last_checked": null
+      "passes": true,
+      "last_checked": "2026-07-22",
+      "notes": "Copilot's sole inline comment (databaseId 3631945211, src/utils/itemIcons.ts:28, utils->components import-direction concern) replied to in-thread via `POST .../pulls/578/comments/3631945211/replies` (reply databaseId 3632038296: explains equipmentTypes.ts is a pure wire-shaped boundary module not a component, resolveIconUrl reuse avoids a duplicate resolver, no cycle exists, deliberate minimal-diff choice) and resolved via GraphQL `resolveReviewThread` (thread PRRT_kwDOPMk6PM6S_R8G) -- independently re-queried after the mutation and confirmed `isResolved: true`."
     },
     {
       "id": "sol-gate",
       "feature": "item-icons-task3",
       "prompt": "Verify an independent reviewer (not this task's implementer, in a fresh worktree) reran the full suite, audited the 38/13 exhaustiveness and icon path claims against the actual file contents, independently opened and viewed each screenshot attached in the PR (not just the viewed-statements), and posted a GATE REVIEW comment of MERGE-READY (or that any findings were remediated and rechecked).",
       "passes": false,
-      "last_checked": null
+      "last_checked": "2026-07-22",
+      "notes": "Kirk's GATE REVIEW comment (issue comment 5048770903, a473bc1) posted FINDINGS -- DO NOT MERGE with two process/traceability findings (unresolved Copilot thread; evidence not attached to PR). Both remediated this session (see normal-pr-review notes and the docs/evidence commit + LOCAL REAL-WIRE EVIDENCE PR comment), but the independent gate has NOT yet rechecked/re-verdicted after remediation -- this session was explicitly scoped to remediation only, not a gate recheck. Do not read this as MERGE-READY."
     }
   ]
 }
