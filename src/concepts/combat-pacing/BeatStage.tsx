@@ -74,6 +74,17 @@ export interface BeatStageProps {
    * not twice for the same moment.
    */
   announce?: boolean;
+  /**
+   * Skips the Cue/Throw/animation theater and shows the authoritative
+   * verdict (and, for a hit, its damage) as soon as `beat` reaches
+   * `done` — design.md §8: "the authoritative outcome is always shown,
+   * even in Instant mode." Presentation-owned: the sequencer still runs
+   * `pace: 'instant'` straight to `done` (unchanged, see
+   * `useBeatSequencer.ts`); this prop only controls what `BeatStage`
+   * renders for that terminal beat. Defaults to `false` so every other
+   * caller's existing "done renders nothing" behavior is unaffected.
+   */
+  persistResult?: boolean;
 }
 
 /** Frame-break verdicts (design.md §2) promote a token-anchored stage to
@@ -106,10 +117,17 @@ export function BeatStage({
   damage,
   reducedMotion,
   announce = true,
+  persistResult = false,
 }: BeatStageProps) {
   const label = verdictLabel(attack);
   const modifier = verdictModifier(label);
   const isCrit = label === 'CRIT';
+
+  // Instant mode (design.md §8): the sequencer jumps straight to `done`
+  // with no Cue/Throw/Impact/Release beats to carry the verdict/damage —
+  // `persistResult` tells this terminal beat to show the same
+  // authoritative outcome those beats would have, instead of nothing.
+  const showPersistedResult = persistResult && beat === 'done';
 
   // Token-anchored promotes to center-stage for a crit/nat-1 frame-break
   // (design.md §2) — a pure center-stage placement never moves.
@@ -161,7 +179,10 @@ export function BeatStage({
         </div>
       )}
 
-      {(beat === 'verdict' || beat === 'impact' || beat === 'release') &&
+      {(beat === 'verdict' ||
+        beat === 'impact' ||
+        beat === 'release' ||
+        showPersistedResult) &&
         attack && (
           // SFX slot: verdict stamp (gold chime on CRIT, comedic honk on
           // NAT-1, a duller thud on MISS, a clean stamp on HIT).
@@ -175,7 +196,7 @@ export function BeatStage({
           </div>
         )}
 
-      {beat === 'impact' && damage && (
+      {(beat === 'impact' || showPersistedResult) && damage && (
         // SFX slot: impact thud, oversized/gold-tinted on a crit.
         <div
           data-testid="beat-damage"

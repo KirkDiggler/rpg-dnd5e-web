@@ -341,9 +341,138 @@ more surrounding whitespace).
   960px→1280px, `beat-stage` 450px→610px vs. the 1024×768/`floor`
   screenshots above — see the measurement table in "PR #579 review
   round").
+- `combat-pacing-561-instant-persisted.png` — **new in the PR #579
+  final-review fix**: `player-crit` with `Pace: instant` clicked — both
+  columns show the gold `CRIT (20+5 vs AC 16)` verdict and `-14` gold
+  damage, no die/cue theater. Confirms `persistResult` (see above).
 
 Additional screenshots from the same driven sessions (not required by
 the brief's file list, kept only as the underlying evidence trail for
 this doc's claims) live under
 `/tmp/opencode/combat-pacing-evidence/` (not committed —
 `game-dev`'s own workspace, outside this repo).
+
+## PR #579 final-review fix (2026-07-22, Instant-mode persisted result)
+
+A broad-review "Important" finding on PR #579: `pace='instant'` drove
+`useBeatSequencer` straight to `beat='done'` (unchanged, correct — see
+`startGroup()` in `useBeatSequencer.ts`), but `BeatStage` rendered
+NOTHING for `done` — Instant mode showed a blank stage instead of the
+authoritative verdict/damage, violating design.md §8: "the authoritative
+outcome is always shown, even in Instant mode." Instant is meant to be
+"log-only ... a real escape hatch that always shows a readable result"
+(design.md §4), not a silent one.
+
+**Fix scope, explicitly presentation-only**: `useBeatSequencer.ts`,
+`fixtures.ts`, the production stream, and game rules were NOT touched.
+`BeatStage.tsx` gained a `persistResult?: boolean` prop (default
+`false`) — when `true` and `beat === 'done'`, it renders the same
+verdict block `verdict`/`impact`/`release` already render, plus the
+damage block for a hit, instead of nothing. `CombatPacingConcept.tsx`
+computes `isInstant = effectiveScenario.pace === 'instant'` and passes
+`persistResult={isInstant}` to BOTH `BeatStage`s, preserving the
+existing exactly-one-announces split unchanged (token-anchored
+announces, center-stage does not).
+
+**TDD, `BeatStage.test.tsx`** (RED first, confirmed failing for the
+right reason — "Unable to find an element by: `[data-testid="beat-verdict"]"`
+— before any implementation, then GREEN):
+
+- default `done` with `persistResult` omitted (false) still renders
+  nothing — the existing "renders no beat-specific content during done"
+  test is unaffected; a new explicit test names the default case
+  directly.
+- `done` + `persistResult` shows the HIT verdict AND its damage (`-7`).
+- `done` + `persistResult` shows the CRIT verdict AND oversized/gold
+  damage (`beat-damage--crit`).
+- `done` + `persistResult` on a MISS shows the verdict with NO damage
+  element (misses never carry an `EntityDamaged`).
+- `done` + `persistResult` renders no `beat-cue`/`beat-die` — no
+  tumble/cue theater, matching the finding's wording exactly.
+- the persisted verdict still announces (`role=status`) by default and
+  respects `announce={false}`, unchanged from every other beat.
+
+RED: `npx vitest run src/concepts/combat-pacing/BeatStage.test.tsx` — 5
+failed (`Unable to find an element by: [data-testid="beat-verdict"]`) /
+24 passed before implementation. GREEN after adding `persistResult`:
+29/29.
+
+**TDD, `CombatPacingConcept.test.tsx`**: one new failing test —
+"Instant pace still shows the authoritative verdict/damage on both
+placements, with exactly one announcement" — asserts, after clicking
+`pace-override-instant` on the default `player-hit` scenario, both
+`beat-stage` elements report `data-beat="done"`, both render a
+`beat-verdict` containing `HIT` and a `beat-damage` containing `7`, zero
+`beat-cue`/`beat-die` elements exist anywhere, and exactly one of the two
+verdicts carries `role="status"`. RED: failed at
+`screen.getAllByTestId('beat-verdict')` finding zero elements (both
+stages were empty, as expected pre-fix) — 1 failed / 12 passed. GREEN
+after wiring `persistResult={isInstant}`: 13/13.
+
+**Full targeted + suite verification**: `npx vitest run
+src/concepts/combat-pacing` → 76/76 (68 pre-existing + 8 new: 6 in
+BeatStage.test.tsx, 1 in CombatPacingConcept.test.tsx, plus the existing
+instant-override test unaffected). Full repo suite: `npx vitest run` →
+1119/1119 (64 test files), no new failures. `npm run build` succeeds.
+`npm run ci-check` → format, lint, typecheck, build, and the full test
+suite all pass.
+
+**Real-browser confirmation** (`game-dev/tools/browser/
+_job_combat_pacing_561_instant_persist.mjs`, a fresh driver in this
+workspace's approved Playwright harness — `chrome-devtools` browser MCP
+was still unavailable this session, same "Could not connect to Chrome"
+as the original evidence pass): opened `/concepts` → Combat Pacing at a
+real 1024×768 viewport, selected `player-hit` (default scenario, hit +
+`-7` damage), clicked `Pace: instant`, and read back the live DOM —
+both `beat-stage` elements report `data-beat="done"`; both render
+`beat-verdict` text `HIT (14+5 vs AC 16)`; only the token-anchored
+stage's verdict carries `role="status"` (`[status, null]`); both render
+`beat-damage` text `-7`; zero `beat-cue`/`beat-die` elements exist
+anywhere on the page. Separately, selected `player-crit` FIRST (letting
+its own cue/armed/etc. beats run under the still-`cinematic` pace),
+THEN clicked `Pace: instant` — both stages show `CRIT (20+5 vs AC 16)`
+with class `beat-verdict--crit`, and `-14` damage with class
+`beat-damage--crit` (oversized/gold), confirming the fix also carries a
+crit's full styling into Instant mode, not just a plain hit. Screenshot:
+`combat-pacing-561-instant-persisted.png` (committed below) shows the
+crit case — gold `CRIT (20+5 vs AC 16)` stamp and `-14` gold damage on
+BOTH columns, no die/cue visible anywhere on the page.
+
+**A real, pre-existing, OUT-OF-SCOPE bug found while writing this
+evidence** (not fixed here — filed as a concern, not touched, per this
+task's explicit "do not alter the sequencer" scope): switching scenarios
+via the scenario buttons WHILE a `Pace: instant` override is already
+active does not update the displayed verdict/damage — the stage keeps
+showing the PREVIOUS scenario's attack data even though the event
+inspector (which reads `scenario.events` directly, not through the
+sequencer) correctly shows the new scenario's fixture events. Root
+cause, isolated with a `renderHook` probe against the UNMODIFIED
+pre-fix `useBeatSequencer.ts` (confirming this is not something this fix
+introduced): `startGroup()`'s `pace === 'instant'` branch calls
+`setBeat('done')` and the scenario-changed effect calls
+`setGroupIndex(0)` — when the PREVIOUS scenario was also Instant and
+already at `beat='done'`/`groupIndex=0`, both of these are same-value
+state updates; React bails the re-render (`Object.is` short-circuit), so
+the component never re-reads the mutated `groupsRef.current` the effect
+already rebuilt with the new scenario's groups. This only manifests
+across a scenario SWITCH while Instant is already active — selecting
+Instant on an already-displayed scenario (the fix's actual use case, and
+every test/browser check above) works correctly, because that is a real
+`beat` value change (e.g. `cue`→`done`) and React does not bail. Filed
+as a concern for a future task; `useBeatSequencer.ts` was not modified
+here.
+
+**Honest limitations:**
+
+- Same scope as every other section of this doc: fixture-driven
+  `/concepts` bench only, nothing about the production stream or a live
+  `AttackResolved`/`EntityDamaged` reassembler.
+- This fix only changes what `BeatStage` renders for a terminal `done`
+  beat under `persistResult` — it does not change `useBeatSequencer`'s
+  timing, `fixtures.ts`, or any game rule, per the task's explicit scope
+  fence.
+- Console messages during this pass: same pre-existing
+  `ERR_CONNECTION_REFUSED` lobby/character API noise as every prior
+  session (no backend running); zero errors from
+  `CombatPacingConcept.tsx`/`BeatStage.tsx`/`useBeatSequencer.ts`/
+  `fixtures.ts`.

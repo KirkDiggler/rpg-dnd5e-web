@@ -49,6 +49,41 @@ describe('CombatPacingConcept', () => {
     expect(stage.getAttribute('data-beat')).toBe('done');
   });
 
+  it('Instant pace still shows the authoritative verdict/damage on both placements, with exactly one announcement (design.md §8)', () => {
+    render(<CombatPacingConcept />);
+    // default scenario is player-hit (hit, 7 damage) — role: self.
+    fireEvent.click(screen.getByTestId('pace-override-instant'));
+
+    const stages = screen.getAllByTestId('beat-stage');
+    expect(stages).toHaveLength(2);
+    for (const stage of stages) {
+      expect(stage.getAttribute('data-beat')).toBe('done');
+    }
+
+    // Both visual variants (token-anchored AND center-stage) show the
+    // resolved verdict and hit damage — no Cue/Throw/animation theater.
+    const verdicts = screen.getAllByTestId('beat-verdict');
+    expect(verdicts).toHaveLength(2);
+    for (const verdict of verdicts) {
+      expect(verdict.textContent).toContain('HIT');
+    }
+    const damages = screen.getAllByTestId('beat-damage');
+    expect(damages).toHaveLength(2);
+    for (const dmg of damages) {
+      expect(dmg.textContent).toContain('7');
+    }
+    expect(screen.queryAllByTestId('beat-cue')).toHaveLength(0);
+    expect(screen.queryAllByTestId('beat-die')).toHaveLength(0);
+
+    // Exactly one of the two persisted verdicts announces to assistive
+    // tech — Instant mode does not regress the single-announcement
+    // contract any more than the animated beats do.
+    const announced = verdicts.filter(
+      (v) => v.getAttribute('role') === 'status'
+    );
+    expect(announced).toHaveLength(1);
+  });
+
   it('a cinematic pace override progresses beyond cue (object-identity regression guard)', () => {
     render(<CombatPacingConcept />);
     fireEvent.click(screen.getByTestId('scenario-button-npc-grunt-swing')); // spectator, no armed wait

@@ -314,6 +314,120 @@ describe('BeatStage', () => {
     ).toBe('token-anchored');
   });
 
+  it('renders no beat-specific content during done when persistResult is not set (default false)', () => {
+    render(
+      <BeatStage
+        beat="done"
+        placement="token-anchored"
+        attack={hitAttack}
+        damage={dmg}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.queryByTestId('beat-cue')).toBeNull();
+    expect(screen.queryByTestId('beat-die')).toBeNull();
+    expect(screen.queryByTestId('beat-verdict')).toBeNull();
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+  });
+
+  it('shows the verdict and hit damage when done with persistResult (design.md §8 — Instant never hides the outcome)', () => {
+    render(
+      <BeatStage
+        beat="done"
+        placement="token-anchored"
+        attack={hitAttack}
+        damage={dmg}
+        reducedMotion={false}
+        persistResult
+      />
+    );
+    const verdict = screen.getByTestId('beat-verdict');
+    expect(verdict.textContent).toContain('HIT');
+    expect(verdict.className).toContain('beat-verdict--hit');
+    const dmgEl = screen.getByTestId('beat-damage');
+    expect(dmgEl.textContent).toContain('7');
+  });
+
+  it('shows the CRIT verdict and oversized damage when done with persistResult', () => {
+    render(
+      <BeatStage
+        beat="done"
+        placement="token-anchored"
+        attack={critAttack}
+        damage={dmg}
+        reducedMotion={false}
+        persistResult
+      />
+    );
+    const verdict = screen.getByTestId('beat-verdict');
+    expect(verdict.textContent).toContain('CRIT');
+    const dmgEl = screen.getByTestId('beat-damage');
+    expect(dmgEl.className).toContain('beat-damage--crit');
+  });
+
+  it('shows the MISS verdict with no damage when done with persistResult for a miss', () => {
+    render(
+      <BeatStage
+        beat="done"
+        placement="token-anchored"
+        attack={{ ...hitAttack, hit: false }}
+        reducedMotion={false}
+        persistResult
+      />
+    );
+    const verdict = screen.getByTestId('beat-verdict');
+    expect(verdict.textContent).toContain('MISS');
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+  });
+
+  it('renders no cue/die theater when done with persistResult (no tumble, no cue)', () => {
+    render(
+      <BeatStage
+        beat="done"
+        placement="token-anchored"
+        attack={hitAttack}
+        damage={dmg}
+        reducedMotion={false}
+        persistResult
+      />
+    );
+    expect(screen.queryByTestId('beat-cue')).toBeNull();
+    expect(screen.queryByTestId('beat-die')).toBeNull();
+  });
+
+  it('announces the persisted verdict politely by default when done with persistResult', () => {
+    render(
+      <BeatStage
+        beat="done"
+        placement="token-anchored"
+        attack={hitAttack}
+        damage={dmg}
+        reducedMotion={false}
+        persistResult
+      />
+    );
+    const el = screen.getByTestId('beat-verdict');
+    expect(el.getAttribute('role')).toBe('status');
+    expect(el.getAttribute('aria-live')).toBe('polite');
+    expect(el.getAttribute('aria-atomic')).toBe('true');
+  });
+
+  it('omits announcement attributes on the persisted verdict when announce is false', () => {
+    render(
+      <BeatStage
+        beat="done"
+        placement="token-anchored"
+        attack={hitAttack}
+        damage={dmg}
+        reducedMotion={false}
+        persistResult
+        announce={false}
+      />
+    );
+    const el = screen.getByTestId('beat-verdict');
+    expect(el.getAttribute('role')).toBeNull();
+  });
+
   it('applies beat-stage--reduced-motion on the container when reducedMotion is set', () => {
     render(
       <BeatStage

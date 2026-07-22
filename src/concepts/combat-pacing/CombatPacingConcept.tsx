@@ -36,6 +36,17 @@
  * verdict renders visually but carries no live-region semantics.
  * `CombatPacingConcept.test.tsx`'s dedicated announcement-composition
  * test asserts exactly one rendered verdict has `role=status`.
+ *
+ * Instant mode (design.md §8: "the authoritative outcome is always
+ * shown, even in Instant mode") — `useBeatSequencer` drives Instant
+ * scenarios straight to `done` with no Cue/Throw/Impact/Release beats to
+ * carry the verdict/damage (unchanged, sequencer logic untouched here).
+ * `isInstant` passes `persistResult` to BOTH `BeatStage`s only when the
+ * *effective* pace (after any override) is `instant`, so that terminal
+ * beat still renders the resolved verdict/damage instead of nothing,
+ * without any Cue/Throw/animation theater. The existing announce
+ * true/false split above is preserved unchanged — Instant does not
+ * introduce a second announcing stage.
  */
 
 import { useMemo, useState } from 'react';
@@ -90,6 +101,13 @@ export function CombatPacingConcept() {
   );
 
   const seq = useBeatSequencer(effectiveScenario, { reducedMotion });
+
+  // Instant mode (design.md §8) drives the sequencer straight to `done`
+  // with no Cue/Throw/Impact/Release beats — `persistResult` tells both
+  // `BeatStage`s to show that terminal beat's authoritative verdict/
+  // damage anyway, instead of rendering nothing. Presentation-owned:
+  // only affects what BeatStage renders, not the sequencer itself.
+  const isInstant = effectiveScenario.pace === 'instant';
 
   const selectScenario = (id: string) => setScenarioId(id);
 
@@ -183,6 +201,7 @@ export function CombatPacingConcept() {
             attack={seq.group?.attack}
             damage={seq.group?.damage}
             reducedMotion={reducedMotion}
+            persistResult={isInstant}
           />
         </div>
         <div style={{ flex: 1, minWidth: 160 }}>
@@ -196,6 +215,7 @@ export function CombatPacingConcept() {
             damage={seq.group?.damage}
             reducedMotion={reducedMotion}
             announce={false}
+            persistResult={isInstant}
           />
         </div>
       </div>
