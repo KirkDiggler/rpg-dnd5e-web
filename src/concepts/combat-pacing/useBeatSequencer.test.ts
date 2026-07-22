@@ -215,6 +215,46 @@ describe('useBeatSequencer', () => {
     expect(result.current.beat).toBe('verdict'); // not still 'throw' at the full 600ms mark
   });
 
+  it('toggling reducedMotion mid-sequence restarts the current scenario at cue with the new timing semantics (no stale option closure)', () => {
+    const { result, rerender } = renderHook(
+      ({ reducedMotion }: { reducedMotion: boolean }) =>
+        useBeatSequencer(scenario('player-hit'), { reducedMotion }),
+      { initialProps: { reducedMotion: false } }
+    );
+    act(() => {
+      vi.advanceTimersByTime(150); // cue -> armed
+    });
+    expect(result.current.beat).toBe('armed');
+    act(() => {
+      result.current.throwDie();
+    });
+    expect(result.current.beat).toBe('throw');
+    act(() => {
+      vi.advanceTimersByTime(300); // mid the full 600ms tumble, not yet resolved
+    });
+    expect(result.current.beat).toBe('throw');
+
+    // Toggle reducedMotion without changing scenario identity — the
+    // in-flight full-tumble throw must NOT resolve on its own stale
+    // schedule; the whole scenario restarts from cue under the new
+    // timing semantics instead.
+    rerender({ reducedMotion: true });
+    expect(result.current.beat).toBe('cue');
+
+    act(() => {
+      vi.advanceTimersByTime(150); // cue (unaffected by reducedMotion) -> armed
+    });
+    expect(result.current.beat).toBe('armed');
+    act(() => {
+      result.current.throwDie();
+    });
+    expect(result.current.beat).toBe('throw');
+    act(() => {
+      vi.advanceTimersByTime(REDUCED_MOTION_THROW_MS);
+    });
+    expect(result.current.beat).toBe('verdict'); // new reducedMotion timing took effect
+  });
+
   it('throwDie() is a no-op outside the armed beat', () => {
     const { result } = renderHook(() =>
       useBeatSequencer(scenario('player-hit'))

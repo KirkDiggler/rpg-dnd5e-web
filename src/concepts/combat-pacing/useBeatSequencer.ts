@@ -228,8 +228,13 @@ export function useBeatSequencer(
     setGroupIndex(0);
     startGroup(0);
     return clearTimer;
+    // `reducedMotion` is a live control (round-one concept toggle), not a
+    // one-time mount option — including it here means an in-flight chain
+    // never runs on a stale `reducedMotion` closure; toggling it restarts
+    // the current scenario from cue under the new timing semantics
+    // instead of finishing the old one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenario]);
+  }, [scenario, reducedMotion]);
 
   const throwDie = () => {
     if (beatRef.current === 'armed') runThrow(groupIndexRef.current);
