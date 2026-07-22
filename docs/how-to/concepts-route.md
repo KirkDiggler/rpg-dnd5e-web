@@ -1,7 +1,7 @@
 ---
 name: working with /concepts
 description: How to use and add to the UI prototyping sandbox
-updated: 2026-05-02
+updated: 2026-07-22
 ---
 
 # Working with /concepts
@@ -55,8 +55,9 @@ There is no formal process yet. When a concept is ready:
 
 ## Current concepts
 
-| Concept            | Status                   | Notes                                                                                                        |
-| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `class-selection/` | Prototype — not promoted | Enriched class selection UI with guidance panels. Hard-coded data in `data.ts`. Needs API wiring to promote. |
-| `encounter-dock/`  | Verification harness     | Renders the live `EncounterDock` with mock data to check responsive wrap behavior (#494/#519).               |
-| `combat-panel/`    | Design review (web#525)  | Round-1 IA compositions built from `ui/combat` primitives on proto-typed fixtures; fixture-first exemplar.   |
+| Concept            | Status                   | Notes                                                                                                                                                                  |
+| ------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `class-selection/` | Prototype — not promoted | Enriched class selection UI with guidance panels. Hard-coded data in `data.ts`. Needs API wiring to promote.                                                           |
+| `encounter-dock/`  | Verification harness     | Renders the live `EncounterDock` with mock data to check responsive wrap behavior (#494/#519).                                                                         |
+| `combat-panel/`    | Design review (web#525)  | Round-1 IA compositions built from `ui/combat` primitives on proto-typed fixtures; fixture-first exemplar.                                                             |
+| `combat-pacing/`   | Design review (web#561)  | Round-1 beat-sequencer bench (`useBeatSequencer` + `BeatStage`) comparing token-anchored vs. center-stage die placement on identical fixtures; fixture-first exemplar. |
