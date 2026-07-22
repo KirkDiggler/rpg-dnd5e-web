@@ -68,6 +68,64 @@ describe('BeatStage', () => {
     );
   });
 
+  it('renders a settled (not tumbling) die during armed', () => {
+    render(
+      <BeatStage
+        beat="armed"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    const el = screen.getByTestId('beat-die');
+    expect(el.className).toContain('beat-die--settled');
+    expect(el.className).not.toContain('beat-die--tumbling');
+  });
+
+  it('marks the die as decorative (aria-hidden) so the verdict is the single announced signal', () => {
+    render(
+      <BeatStage
+        beat="throw"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.getByTestId('beat-die').getAttribute('aria-hidden')).toBe(
+      'true'
+    );
+  });
+
+  it('renders no beat-specific content during idle', () => {
+    render(
+      <BeatStage
+        beat="idle"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.queryByTestId('beat-cue')).toBeNull();
+    expect(screen.queryByTestId('beat-die')).toBeNull();
+    expect(screen.queryByTestId('beat-verdict')).toBeNull();
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+  });
+
+  it('renders no beat-specific content during done', () => {
+    render(
+      <BeatStage
+        beat="done"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.queryByTestId('beat-cue')).toBeNull();
+    expect(screen.queryByTestId('beat-die')).toBeNull();
+    expect(screen.queryByTestId('beat-verdict')).toBeNull();
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+  });
+
   it('shows HIT with the beat-verdict--hit class for a plain hit verdict', () => {
     render(
       <BeatStage
@@ -124,6 +182,37 @@ describe('BeatStage', () => {
     expect(el.className).toContain('beat-verdict--nat1');
     expect(el.className).not.toContain('beat-verdict--crit');
     expect(el.className).not.toContain('beat-verdict--miss');
+  });
+
+  it('announces the verdict politely by default (role=status, aria-live=polite, aria-atomic=true)', () => {
+    render(
+      <BeatStage
+        beat="verdict"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+      />
+    );
+    const el = screen.getByTestId('beat-verdict');
+    expect(el.getAttribute('role')).toBe('status');
+    expect(el.getAttribute('aria-live')).toBe('polite');
+    expect(el.getAttribute('aria-atomic')).toBe('true');
+  });
+
+  it('omits announcement attributes on the verdict when announce is false', () => {
+    render(
+      <BeatStage
+        beat="verdict"
+        placement="token-anchored"
+        attack={hitAttack}
+        reducedMotion={false}
+        announce={false}
+      />
+    );
+    const el = screen.getByTestId('beat-verdict');
+    expect(el.getAttribute('role')).toBeNull();
+    expect(el.getAttribute('aria-live')).toBeNull();
+    expect(el.getAttribute('aria-atomic')).toBeNull();
   });
 
   it('renders the damage number, oversized/gold (beat-damage--crit) only on a crit', () => {

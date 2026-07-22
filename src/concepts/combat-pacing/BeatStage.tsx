@@ -36,6 +36,16 @@
  * Every SFX-worthy moment is marked with an "SFX slot" comment (design.md
  * §5: "audio hooks only — no actual sound implementation ships round
  * one").
+ *
+ * Accessibility: the verdict is the single announced signal for a beat —
+ * it carries `role=status`/`aria-live=polite`/`aria-atomic=true` when
+ * `announce` is true (the default), and the die glyph is always
+ * `aria-hidden` so its tumble never competes with the verdict as a
+ * screen-reader signal. `announce` exists as a prop (not hardcoded true)
+ * because Task 4's side-by-side token-anchored/center-stage comparison
+ * renders two `BeatStage`s off the same beat data — exactly one of that
+ * pair should announce (`announce={true}`/omitted), the other should
+ * pass `announce={false}`, so a screen reader hears each verdict once.
  */
 
 import type {
@@ -54,6 +64,24 @@ export interface BeatStageProps {
   attack?: BeatAttackView;
   damage?: BeatDamageView;
   reducedMotion: boolean;
+  /**
+   * Whether the verdict announces itself to assistive tech (`role=status`,
+   * `aria-live=polite`, `aria-atomic=true`). Defaults to `true`. Task 4's
+   * side-by-side token-anchored/center-stage comparison renders two
+   * `BeatStage`s off the same beat — exactly ONE should announce
+   * (`announce={true}`, or omitted for the default), and the other should
+   * pass `announce={false}` so a screen reader hears the verdict once,
+   * not twice for the same moment.
+   */
+  announce?: boolean;
+}
+
+/** Frame-break verdicts (design.md §2) promote a token-anchored stage to
+ * center-stage. Derived from the single computed `VerdictLabel` rather
+ * than re-deriving from `attack.critical`/`attackRoll`/`hit` separately,
+ * so the verdict shown and the promotion decision can never drift apart. */
+function isFrameBreakVerdict(label: VerdictLabel): boolean {
+  return label === 'CRIT' || label === 'NAT-1';
 }
 
 function verdictModifier(label: VerdictLabel): string {
@@ -77,17 +105,22 @@ export function BeatStage({
   attack,
   damage,
   reducedMotion,
+  announce = true,
 }: BeatStageProps) {
-  // Token-anchored promotes to center-stage for a crit/nat-1 frame-break
-  // (design.md §2) — a pure center-stage placement never moves.
-  const isFrameBreak =
-    !!attack && (attack.critical || (attack.attackRoll === 1 && !attack.hit));
-  const effectivePlacement: Placement =
-    placement === 'token-anchored' && isFrameBreak ? 'center-stage' : placement;
-
   const label = verdictLabel(attack);
   const modifier = verdictModifier(label);
   const isCrit = label === 'CRIT';
+
+  // Token-anchored promotes to center-stage for a crit/nat-1 frame-break
+  // (design.md §2) — a pure center-stage placement never moves.
+  const effectivePlacement: Placement =
+    placement === 'token-anchored' && isFrameBreakVerdict(label)
+      ? 'center-stage'
+      : placement;
+
+  const announceProps = announce
+    ? { role: 'status', 'aria-live': 'polite' as const, 'aria-atomic': true }
+    : {};
 
   const stageClassName = [
     'beat-stage',
@@ -113,8 +146,11 @@ export function BeatStage({
 
       {(beat === 'armed' || beat === 'throw') && (
         // SFX slot: die-tumble rattle (throw) / none (armed, silent wait).
+        // Decorative (aria-hidden) — the verdict beat is the single
+        // announced signal, not the die glyph animating toward it.
         <div
           data-testid="beat-die"
+          aria-hidden="true"
           className={
             beat === 'armed' || reducedMotion
               ? 'beat-die beat-die--settled'
@@ -132,6 +168,7 @@ export function BeatStage({
           <div
             data-testid="beat-verdict"
             className={`beat-verdict beat-verdict--${modifier}`}
+            {...announceProps}
           >
             {label} ({attack.attackRoll}+{attack.attackBonus} vs AC{' '}
             {attack.targetAc})
