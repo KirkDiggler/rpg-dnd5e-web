@@ -2,8 +2,14 @@
 
 Verifies the round-one `/concepts` → Combat Pacing bench (design.md §8's
 acceptance bar): token-anchored vs. center-stage placement compared
-against identical fixtures at the 1024×768 floor, a larger frame, and a
-non-breaking narrow fallback below the floor.
+against identical fixtures at the 1024×768 floor, a genuinely larger
+real browser viewport, and a non-breaking narrow fallback below the
+floor. **Updated after a PR #579 Copilot review** — see "PR #579 review
+round" below for a real code fix (reduced-motion Cue-pulse suppression,
+TDD'd) and an evidence correction (the original "larger frame" claim
+was captured inside a single fixed 1024×768 real viewport and did not
+actually demonstrate any spacing change; re-verified with genuinely
+different real viewports).
 
 ## Environment
 
@@ -118,12 +124,14 @@ All 8 of Step 5's checks were exercised on the 1024×768 floor frame
    suppressed by this class while the gold/red color and box-shadow
    (non-animated parts) remain, matching design.md §4's "nothing about
    what happened is lost, only the motion." A static screenshot cannot
-   show the ABSENCE of animation directly, so this claim rests on: (a)
-   the DOM class list confirming `beat-stage--reduced-motion` is applied
-   during the crit verdict (`06-reduced-motion-crit-verdict.png`), and
-   (b) reading the CSS rule that scopes `animation: none` to exactly that
-   combination. Toggled reduced motion back off, re-ran `player-hit`'s
-   Throw: die class reverted to `beat-die--tumbling`
+   show the ABSENCE of animation directly, so this claim originally
+   rested only on the DOM class list + reading the CSS text. **PR #579
+   review round found this incomplete — see "PR #579 review round"
+   below**: the Cue beat's `armed-pulse` text pulse was NOT suppressed by
+   `.beat-stage--reduced-motion` (no such CSS rule existed), a real gap
+   a reviewer caught and this round fixed with a computed-style check,
+   not just a class-list check. Toggled reduced motion back off, re-ran
+   `player-hit`'s Throw: die class reverted to `beat-die--tumbling`
    (`06-reduced-motion-off-again-throw.png`) — animations returned.
 
 7. **Manual pace-control verification.** Clicked each of `default`,
@@ -139,20 +147,134 @@ All 8 of Step 5's checks were exercised on the 1024×768 floor frame
    scenario-changed effect on every render and re-frozen the display at
    `cue` forever.
 
-8. **Frame checks.** Clicked each of `floor`/`typical`/`full`/`narrow` in
-   turn on `player-hit`: at 1024×768 (`08-frame-floor.png`) and the two
-   larger frames (`08-frame-typical.png` 1440×900,
-   `08-frame-full.png` 1920×1080) the two `BeatStage` columns get more
-   breathing room, no fixed/clipped elements. At the 480×640 narrow
-   fallback (`08-frame-narrow.png` /
-   `combat-pacing-561-narrow.png`) both columns still render
-   side-by-side without clipping or overlap — the concept's own flex
-   layout (`flex: 1, minWidth: 160`) keeps both stages visible rather
-   than collapsing one behind the other. (Note: these "frames" are the
-   concept's own internal simulated viewport box, not an actual browser
-   window resize — this matches how `CombatPanelConcept.tsx`'s existing
-   FRAMES pattern already works, and is what the component under test is
-   designed to be exercised through.)
+8. **Frame checks — ORIGINAL CLAIM WAS NOT ACTUALLY VERIFIED, corrected
+   below.** Clicked each of `floor`/`typical`/`full`/`narrow` in turn on
+   `player-hit` and claimed "the layout breathes upward at larger
+   frames." **This was wrong to state as verified**: the entire
+   Playwright session ran inside a single real browser viewport fixed at
+   1024×768 (`newPageAt(1024, 768)`, never resized). The concept's
+   in-page frame buttons set an inner box's CSS `width` with
+   `maxWidth: '100%'` — inside a real 1024px-wide viewport, requesting a
+   1920×1080 or 1440×900 inner frame cannot render wider than the real
+   viewport allows, so `08-frame-typical.png`/`08-frame-full.png` show
+   the IDENTICAL layout as `08-frame-floor.png` (confirmed by re-running
+   this exact comparison in the PR #579 review round — see below: at a
+   real 1024×768 viewport, selecting the `full` frame button produces a
+   pixel-identical 960px-wide frame box, not a wider one). This is
+   corrected in "PR #579 review round" below with genuinely different
+   real browser viewports. The narrow-fallback half of this claim
+   (480×640 not clipping/overlapping) remains valid on its own terms —
+   480 is smaller than the 1024 real viewport this session used, so no
+   viewport-vs-frame conflation affected it — but was independently
+   re-verified at a real 480×640 viewport below anyway, for rigor.
+
+## PR #579 review round (2026-07-22, commit after `89fda43`)
+
+A Copilot review on PR #579 caught two real issues, both addressed here
+with fresh, honest verification rather than papering over the original
+evidence's gaps:
+
+### 1. Reduced-motion cue pulse (code bug, fixed with TDD)
+
+**The bug**: `.beat-cue`'s `armed-pulse` animation had no
+`.beat-stage--reduced-motion` override in `base.css` — reduced motion
+suppressed the die tumble and the crit/nat-1 verdict animations but NOT
+the Cue beat's own pulsing text, contradicting design.md §4's "nothing
+about what happened is lost, only the motion" (motion should stop
+everywhere, not selectively).
+
+**TDD**: added
+`src/concepts/combat-pacing/reducedMotionCss.test.ts`, a focused test
+that reads `public/themes/base.css` directly (this repo's theme CSS is a
+static file, not a CSS module — there's no compiled artifact to import
+into jsdom, so reading the source text and asserting the reduced-motion
+selector's declaration block is the most direct contract check
+available, matching this repo's existing CSS-guard convention of
+grep-checking `dist/themes/base.css` in `scripts/ci-check.sh`, web#563).
+
+- **RED**: `npx vitest run src/concepts/combat-pacing/reducedMotionCss.test.ts`
+  — 1 of 4 tests failed: `.beat-stage--reduced-motion .beat-cue rule must
+exist: expected undefined to be defined`. The other 3 (crit/nat1
+  suppression regression guards, base `.beat-cue` still animated)
+  already passed, confirming the test correctly isolated only the real
+  gap.
+- **Fix**: added
+  `.beat-stage--reduced-motion .beat-cue { animation: none; }` to
+  `base.css`, next to the existing crit/nat1 reduced-motion rules.
+- **GREEN**: same command, 4/4 passed.
+- Also corrected the same CSS block's header comment, which claimed
+  "this codebase has none [`@media` queries] (verified)" — false; the
+  reviewer pointed out `src/character/sheet/dnd-sheet.css` has three
+  (`max-width: 1024px`/`768px`/`print`), confirmed by grep. Reworded to
+  "this change adds no new `@media` query" (true) instead of the
+  repo-wide claim (false).
+
+**Real-browser confirmation** (not just the CSS-text test): opened a
+fresh Playwright page and, in-page-JS, rendered the exact class
+combinations `BeatStage.tsx` produces and read `getComputedStyle`
+directly against the app's own loaded `base.css`:
+
+```
+Cue computed animation-name, normal:         armed-pulse
+Cue computed animation-name, reduced motion: none
+Verdict computed animation-names: { critNormal: 'glow', critReduced: 'none',
+  nat1Normal: 'nat1-crack', nat1Reduced: 'none' }
+```
+
+Then confirmed the same thing in the LIVE running sequencer (not a
+synthetic DOM injection): toggled "Reduced motion: on" before selecting
+`player-crit`, read `getComputedStyle(cueElement).animationName`
+immediately after the click (within the 150ms cinematic cue window) —
+result: `none`. Screenshot: `reduced-motion-cue-live.png` (not
+committed — see "Screenshots" below for what's committed vs. kept as
+scratch evidence).
+
+### 2. Real browser viewport vs. in-page simulated frame (evidence correction)
+
+Re-ran verification using genuinely different **real Playwright browser
+viewports**, not just the in-page frame selector, to check whether
+spacing actually changes:
+
+| Real viewport | In-page frame clicked | `beat-stage` width    | frame box width       |
+| ------------- | --------------------- | --------------------- | --------------------- |
+| 1024×768      | `floor` (1024×768)    | 450px                 | 960px                 |
+| 1024×768      | `full` (1920×1080)    | 450px (**unchanged**) | 960px (**unchanged**) |
+| 1920×1080     | `full` (1920×1080)    | 610px                 | 1280px                |
+| 1440×900      | `typical` (1440×900)  | 610px                 | 1280px                |
+| 480×640       | `narrow` (480×640)    | 178px                 | 416px                 |
+
+This confirms the original evidence's claim ("the layout breathes upward
+at larger frames") was **not actually demonstrated** — row 2 proves
+that inside the SAME 1024×768 real viewport the original session ran in
+the whole time, clicking `full` changes nothing. Rows 3-4 prove the
+layout genuinely does get more room, but only when the REAL browser
+viewport is also larger (1280px is the app's own `max-w-7xl` content-width
+cap, not the frame's literal 1920px request — a real, if unsurprising,
+ceiling). Row 5 confirms the narrow fallback holds at a genuinely narrow
+real viewport too (both `BeatStage` columns still side by side, no
+clipping — screenshot below), not just an inner box inside a spacious
+1024-wide window.
+
+Command: `node game-dev/tools/browser/_job_combat_pacing_561_viewport.mjs`
+— launches 5 separate Playwright pages, each at a different real
+`viewport: { width, height }`, drives to Combat Pacing, clicks the
+stated frame button, measures `boundingClientRect()` on the rendered
+`beat-stage` elements and their frame-box ancestor, and screenshots each.
+Console: 0 non-backend errors across all 5 pages (30 total console
+entries per page, all `ERR_CONNECTION_REFUSED`/"Failed to fetch" from
+the same pre-existing lobby/character API calls noted below — none from
+combat-pacing code).
+
+**Corrected screenshots** (see "Screenshots" below): the previous
+`combat-pacing-561-narrow.png` (captured at a real 1024×768 viewport with
+only the in-page frame set to narrow) is replaced with a full-page
+screenshot from a genuinely narrow real 480×640 viewport. A new
+`combat-pacing-561-large-viewport.png` is added, captured at a real
+1920×1080 viewport with the in-page frame also set to `full` — this is
+the first evidence in this doc that actually demonstrates the layout
+getting more breathing room at a larger size, both by measurement (table
+above) and visually (wider gap between the two `BeatStage` columns,
+more surrounding whitespace).
 
 **Honest limitations:**
 
@@ -170,29 +292,58 @@ All 8 of Step 5's checks were exercised on the 1024×768 floor frame
   backend was running — expected and unrelated to `/concepts` or
   combat-pacing, which needs no backend. No console errors or warnings
   originated from `CombatPacingConcept.tsx`, `BeatStage.tsx`,
-  `useBeatSequencer.ts`, or `fixtures.ts` during any of the above.
+  `useBeatSequencer.ts`, or `fixtures.ts` during any of the above,
+  including the PR #579 review round's additional sessions.
 - `opportunity-attack`, `npc-grunt-swing`, `npc-boss-swing`, and
   `repeated-attacks` scenario buttons exist and were visible in every
   screenshot's scenario row but were not individually driven through a
   full beat cycle in this pass — Step 5's 8 checks are all scoped to
   `player-hit`/`player-miss`/`player-crit`/`player-nat1`, and this
   evidence doc follows that scope rather than exercising all 8 fixtures.
-- No regression, clipping, stuck-at-cue, or missing-color defect was
-  found in any of the 8 checks above; nothing here required a code fix.
+- The original pass of this doc claimed item 8's larger-frame spacing
+  claim was verified when it was not (see "PR #579 review round" above)
+  — corrected here rather than removed, so the mistake and its fix are
+  both on the record.
+- The reduced-motion Cue-pulse gap (see "PR #579 review round" above) was
+  a real, if minor, regression: only found by a reviewer, not by the
+  original verification pass. Fixed with a failing test first
+  (`reducedMotionCss.test.ts`, RED→GREEN), then confirmed against real
+  computed styles in a live browser session, not just the CSS text.
+- Screenshots in this doc/repo are all real Playwright captures of a
+  real rendered page; the additional computed-style checks in the PR
+  #579 review round used `page.evaluate`/`getComputedStyle` against the
+  live DOM in the same real browser, not a mock or jsdom simulation.
 
 ## Screenshots
 
 - `combat-pacing-561-token-anchored.png` — `player-hit` at `verdict`:
   left column plain-bordered (token-anchored, not promoted), right
-  column accent-bordered (pure center-stage).
+  column accent-bordered (pure center-stage). (Real viewport 1024×768,
+  in-page frame `floor` — no viewport/frame conflation, since 1024
+  matches the frame's own request exactly.)
 - `combat-pacing-561-center-stage.png` — `player-crit` at `verdict`:
   both columns accent-bordered (token-anchored promoted to match pure
-  center-stage).
-- `combat-pacing-561-narrow.png` — 480×640 (below-floor) frame, both
-  `BeatStage` columns still rendering side by side, no clipping/overlap.
+  center-stage). (Same 1024×768 real viewport / `floor` frame.)
+- `combat-pacing-561-narrow.png` — **replaced in the PR #579 review
+  round**: now a full-page screenshot from a genuinely narrow REAL
+  480×640 browser viewport (previously: a real 1024×768 viewport with
+  only the in-page frame set to narrow — not wrong per se, since 480 <
+  1024 needs no viewport help to render correctly, but re-captured at a
+  real narrow viewport anyway for consistency with the large-viewport
+  fix and to match what an actual narrow device would show). Both
+  `BeatStage` columns still render side by side, no clipping/overlap;
+  measured bounding boxes: left column `x:40,width:178`, right column
+  `x:242,width:178` (24px gap between them, matching the CSS `gap`).
+- `combat-pacing-561-large-viewport.png` — **new in the PR #579 review
+  round**: a real 1920×1080 browser viewport with the in-page frame also
+  set to `full`. This is the evidence that actually demonstrates the
+  layout getting more room at a genuinely larger size (frame box
+  960px→1280px, `beat-stage` 450px→610px vs. the 1024×768/`floor`
+  screenshots above — see the measurement table in "PR #579 review
+  round").
 
-Additional screenshots from the same driven session (not required by the
-brief's file list, kept only as the underlying evidence trail for this
-doc's claims) live under
+Additional screenshots from the same driven sessions (not required by
+the brief's file list, kept only as the underlying evidence trail for
+this doc's claims) live under
 `/tmp/opencode/combat-pacing-evidence/` (not committed —
 `game-dev`'s own workspace, outside this repo).

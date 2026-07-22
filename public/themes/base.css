@@ -1128,10 +1128,12 @@
    dark-fantasy.css, the wrong semantic for a gold crit. Adds only what's
    new: a nat-1 red "crack" wobble (distinct from both a gray miss and a
    gold crit), an oversized-crit damage pop, and the token-anchored/
-   center-stage placement treatment. No @media query — this codebase has
-   none (verified); narrow-width behavior instead comes from flexible
-   sizing (clamp()/max-width: 100%) plus the concept page's own flex-wrap
-   layout, the same pattern combat-panel/equip-bench already use. */
+   center-stage placement treatment. This change adds no new @media
+   query — narrow-width behavior instead comes from flexible sizing
+   (clamp()/max-width: 100%) plus the concept page's own flex-wrap
+   layout, the same pattern combat-panel/equip-bench already use (this
+   repo does use @media elsewhere, e.g. dnd-sheet.css's breakpoints —
+   this file's block just doesn't need one). */
 
 .beat-stage {
   display: flex;
@@ -1240,8 +1242,13 @@
 
 /* Reduced motion (design.md §4): keeps every beat's semantics (colors,
    labels, the crit glow's box-shadow) but drops motion — the tumble
-   (handled by .beat-die--settled above), the nat-1 wobble, and the crit
-   glow's pulsing all stop; a static gold/red state remains. */
+   (handled by .beat-die--settled above), the cue's armed-pulse text
+   pulse, the nat-1 wobble, and the crit glow's pulsing all stop; a
+   static gold/red state remains. */
+.beat-stage--reduced-motion .beat-cue {
+  animation: none;
+}
+
 .beat-stage--reduced-motion .beat-verdict--crit {
   animation: none;
 }

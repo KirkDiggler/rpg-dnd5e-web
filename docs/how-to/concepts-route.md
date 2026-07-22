@@ -12,9 +12,14 @@ updated: 2026-07-22
 
 ## Accessing it
 
-In development, navigate to `http://localhost:5173/concepts` after running `npm run dev`.
-
-The route is defined in `App.tsx` and is available in both dev and production builds. It is not linked from any production UI.
+`/concepts` is not a URL path — `ConceptsView` is a `currentView` React
+state in `App.tsx`, not a router route. In development, run `npm run dev`,
+load the app, then click the floating 🧪 "Open Concepts Lab" button
+(bottom-right, only rendered when `import.meta.env.MODE === 'development'`)
+to switch into it; use the sub-nav buttons at the top of that view to pick
+a concept (e.g. "Combat Pacing"). There is no production entry point —
+the dev-tools button is gated behind the same `isDevelopment` check as
+the rest of `App.tsx`'s dev tools row.
 
 ## Adding a new concept
 
