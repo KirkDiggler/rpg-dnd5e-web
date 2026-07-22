@@ -371,7 +371,7 @@ export const SUPPLEMENTAL_ITEM_ICONS: Record<string, ItemIconEntry> = {
  * getItemIconUrl({ id: 'longsword' }, '');
  * // '/models/synty/ui/library/icons/weapons/ICON_SM_Wep_Sword_02_Clean.png'
  * getItemIconUrl({ id: 'longsword' }, 'icons/weapons/custom.png');
- * // '/models/synty/ui/library/icons/custom.png' — wire wins
+ * // '/models/synty/ui/library/icons/weapons/custom.png' — wire wins
  * getItemIconUrl({ id: 'homebrew-relic' }, '');
  * // undefined — unknown id, caller falls back to text-only
  * ```
