@@ -17,7 +17,10 @@ import { useInteract } from '../../api/useInteract';
 import { useMoveEntity } from '../../api/useMoveEntity';
 import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useTakeAction } from '../../api/useTakeAction';
-import { useEncounterState } from '../../hooks/useEncounterState';
+import {
+  hexesWithPosition,
+  useEncounterState,
+} from '../../hooks/useEncounterState';
 import { errorMessage, formatSourceRefs } from '../../utils/combatFormat';
 import { getConditionDisplay } from '../../utils/conditionIcons';
 import { protoPositionToHex } from '../../utils/hexCoord';
@@ -202,6 +205,11 @@ export function PlaytestHarness() {
             e.encounter.mode,
             e.encounter.turnState
           );
+          encounterState.applySnapshotRegionState(
+            e.encounter.space?.theme ?? '',
+            e.encounter.space?.zones ?? [],
+            e.encounter.space?.hexes ?? []
+          );
           // Seed entities from the snapshot's space entities list in a single
           // batch setState call to avoid N intermediate renders for N entities.
           const entityEntries = (e.encounter.space?.entities ?? [])
@@ -260,15 +268,13 @@ export function PlaytestHarness() {
         addLog(`EntityMoved ${e.entityId} → ${pos}`);
       },
       onGeometryRevealed: (e) => {
-        const positions = e.hexes
-          .map((h) => h.position)
-          .filter((p): p is NonNullable<typeof p> => p !== undefined);
-        encounterState.applyHexRevealed(positions.map(protoPositionToHex));
+        const revealedHexes = hexesWithPosition(e.hexes);
+        encounterState.applyHexesRevealed(revealedHexes);
         const walls = e.walls ?? [];
         if (walls.length > 0) {
           encounterState.applyWallsRevealed(walls);
         }
-        addLog(`GeometryRevealed ${positions.length} hex(es)`);
+        addLog(`GeometryRevealed ${revealedHexes.length} hex(es)`);
       },
       onEntityAppeared: (e) => {
         if (!e.entity || !e.entity.position) return;
@@ -662,7 +668,7 @@ export function PlaytestHarness() {
   };
 
   const entitiesArray = Array.from(encounterState.state.entities.entries());
-  const revealedKeys = Array.from(encounterState.state.revealedHexes);
+  const revealedKeys = Array.from(encounterState.state.revealedHexKeys);
   const openDoorKeys = Array.from(encounterState.state.openDoors);
   const myHP = encounterState.state.entityHP.get(entityId);
   const myStatuses = encounterState.state.entityStatuses.get(entityId) ?? [];
@@ -1094,7 +1100,7 @@ export function PlaytestHarness() {
           <PlaytestMap
             entities={encounterState.state.entities}
             entityMeta={encounterState.state.entityMeta}
-            revealedHexes={encounterState.state.revealedHexes}
+            revealedHexes={encounterState.state.revealedHexKeys}
             walls={encounterState.state.walls}
             entityHP={encounterState.state.entityHP}
             entityStatuses={encounterState.state.entityStatuses}

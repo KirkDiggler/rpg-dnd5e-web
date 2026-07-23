@@ -263,6 +263,11 @@ export function EncounterView({
           e.encounter.mode,
           e.encounter.turnState
         );
+        encounterState.applySnapshotRegionState(
+          e.encounter.space?.theme ?? '',
+          e.encounter.space?.zones ?? [],
+          e.encounter.space?.hexes ?? []
+        );
         const entityEntries = (e.encounter.space?.entities ?? [])
           .filter((entity) => entity.position !== undefined)
           .map((entity) => ({
@@ -339,10 +344,7 @@ export function EncounterView({
       }
     },
     onGeometryRevealed: (e) => {
-      const positions = e.hexes
-        .map((h) => h.position)
-        .filter((p): p is NonNullable<typeof p> => p !== undefined);
-      encounterState.applyHexRevealed(positions.map(protoPositionToHex));
+      encounterState.applyHexesRevealed(e.hexes);
       const walls = e.walls ?? [];
       if (walls.length > 0) {
         encounterState.applyWallsRevealed(walls);
@@ -813,7 +815,7 @@ export function EncounterView({
         <EncounterMap
           entities={encounterState.state.entities}
           entityMeta={encounterState.state.entityMeta}
-          revealedHexes={encounterState.state.revealedHexes}
+          revealedHexes={encounterState.state.revealedHexKeys}
           walls={encounterState.state.walls}
           entityHP={encounterState.state.entityHP}
           entityStatuses={encounterState.state.entityStatuses}

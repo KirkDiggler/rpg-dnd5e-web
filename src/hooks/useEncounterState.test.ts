@@ -33,6 +33,7 @@ import {
   EconomySlot,
   EncounterMode,
   EntityType,
+  HexSchema,
   InputRequiredSchema,
   SkillCheckPromptSchema,
   type StatusEffect,
@@ -42,6 +43,7 @@ import {
   type Wall,
   WallKind,
   WallSchema,
+  ZoneSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import { hexKey } from '../utils/hexCoord';
@@ -58,9 +60,10 @@ import {
   applyEntityDisappeared,
   applyEntityMetaFromAppeared,
   applyEntityRemoved,
-  applyHexRevealed,
+  applyHexesRevealed,
   applyInitiativeRolled,
   applyModeChanged,
+  applySnapshotRegionState,
   applySnapshotTurnState,
   applyStatusApplied,
   applyStatusRemoved,
@@ -69,7 +72,9 @@ import {
   applyTurnStateChanged,
   applyWallsRevealed,
   createEmptyEncounterState,
+  hexesWithPosition,
   mergeEntityPosition,
+  regionForHex,
   setPendingPromptReducer,
   setReactionReadyLocalReducer,
 } from './useEncounterState';
@@ -116,6 +121,20 @@ function makeTestWall(
   });
 }
 
+function makeTestHex(
+  position: { x: number; y: number; z: number },
+  zoneId = ''
+) {
+  return create(HexSchema, {
+    position: create(V2PositionSchema, position),
+    zoneId,
+  });
+}
+
+function makeTestZone(id: string, archetype = '') {
+  return create(ZoneSchema, { id, name: id, archetype });
+}
+
 describe('createEmptyEncounterState', () => {
   it('returns empty state with Maps and default values', () => {
     const state = createEmptyEncounterState();
@@ -124,8 +143,10 @@ describe('createEmptyEncounterState', () => {
     expect(state.dungeonId).toBe('');
     expect(state.entities).toBeInstanceOf(Map);
     expect(state.entities.size).toBe(0);
-    expect(state.revealedHexes).toBeInstanceOf(Set);
+    expect(state.revealedHexes).toBeInstanceOf(Map);
     expect(state.revealedHexes.size).toBe(0);
+    expect(state.revealedHexKeys).toBeInstanceOf(Set);
+    expect(state.revealedHexKeys.size).toBe(0);
     expect(state.walls).toBeInstanceOf(Map);
     expect(state.walls.size).toBe(0);
     expect(state.openDoors).toBeInstanceOf(Set);
@@ -378,13 +399,102 @@ function makeInitiativeRolled(order: string[]): InitiativeRolled {
 // ---------------------------------------------------------------------------
 
 describe('v1alpha2 reducer additions', () => {
-  describe('applyHexRevealed', () => {
+  describe('region identity', () => {
+    it('replaces snapshot region truth and looks up a hex zone by coordinate', () => {
+      const entrance = makeTestZone('entrance', 'entrance');
+      const chamber = makeTestZone('chamber', 'chamber');
+      const entranceHex = makeTestHex({ x: 0, y: 0, z: 0 }, 'entrance');
+      const chamberHex = makeTestHex({ x: 1, y: -1, z: 0 }, 'chamber');
+      const before = createEmptyEncounterState();
+      const snapshot = applySnapshotRegionState(
+        before,
+        'crypt',
+        [entrance, chamber],
+        [entranceHex, chamberHex]
+      );
+
+      expect(snapshot.theme).toBe('crypt');
+      expect(snapshot.zones.get('entrance')).toBe(entrance);
+      expect(snapshot.revealedHexes.get('1,-1,0')).toBe(chamberHex);
+      expect(regionForHex(snapshot, { q: 1, r: -1, s: 0 })).toEqual({
+        theme: 'crypt',
+        zone: chamber,
+      });
+      expect(before.zones.size).toBe(0);
+      expect(before.revealedHexes.size).toBe(0);
+    });
+
+    it('merges incremental hex identity and replaces it only on the next snapshot', () => {
+      const entrance = makeTestZone('entrance', 'entrance');
+      const chamber = makeTestZone('chamber', 'chamber');
+      const entranceHex = makeTestHex({ x: 0, y: 0, z: 0 }, 'entrance');
+      const chamberHex = makeTestHex({ x: 1, y: -1, z: 0 }, 'chamber');
+      const seeded = applySnapshotRegionState(
+        createEmptyEncounterState(),
+        'crypt',
+        [entrance, chamber],
+        [entranceHex]
+      );
+      const revealed = applyHexesRevealed(seeded, [chamberHex]);
+      const replacement = applySnapshotRegionState(
+        revealed,
+        'cave',
+        [chamber],
+        [chamberHex]
+      );
+
+      expect(revealed.revealedHexes.get('0,0,0')).toBe(entranceHex);
+      expect(revealed.revealedHexes.get('1,-1,0')).toBe(chamberHex);
+      expect(seeded.revealedHexes.has('1,-1,0')).toBe(false);
+      expect(replacement.theme).toBe('cave');
+      expect(replacement.revealedHexes.has('0,0,0')).toBe(false);
+      expect(replacement.zones.has('entrance')).toBe(false);
+    });
+
+    it('returns only server metadata for missing and unknown zone data', () => {
+      const unknown = makeTestZone('unknown', 'scrying-room');
+      const unknownHex = makeTestHex({ x: 2, y: -1, z: -1 }, 'unknown');
+      const unzonedHex = makeTestHex({ x: 3, y: -2, z: -1 });
+      const state = applySnapshotRegionState(
+        createEmptyEncounterState(),
+        '',
+        [unknown],
+        [unknownHex, unzonedHex]
+      );
+
+      expect(regionForHex(state, { q: 2, r: -1, s: -1 })).toEqual({
+        theme: undefined,
+        zone: unknown,
+      });
+      expect(regionForHex(state, { q: 3, r: -2, s: -1 })).toEqual({
+        theme: undefined,
+        zone: undefined,
+      });
+      expect(regionForHex(state, { q: 99, r: -99, s: 0 })).toEqual({
+        theme: undefined,
+        zone: undefined,
+      });
+    });
+  });
+
+  describe('applyHexesRevealed', () => {
+    it('filters malformed hexes before they reach reveal merges or harness logs', () => {
+      const positioned = makeTestHex({ x: 0, y: 0, z: 0 }, 'entrance');
+      const malformed = create(HexSchema, { zoneId: 'chamber' });
+
+      expect(hexesWithPosition([positioned, malformed])).toEqual([positioned]);
+    });
+
     it('adds hexes to revealedHexes without dropping existing reveals', () => {
       const prev = createEmptyEncounterState();
-      const after1 = applyHexRevealed(prev, [{ q: 0, r: 0, s: 0 }]);
+      const after1 = applyHexesRevealed(prev, [
+        makeTestHex({ x: 0, y: 0, z: 0 }),
+      ]);
       expect(after1.revealedHexes.has(hexKey({ q: 0, r: 0, s: 0 }))).toBe(true);
 
-      const after2 = applyHexRevealed(after1, [{ q: 1, r: -1, s: 0 }]);
+      const after2 = applyHexesRevealed(after1, [
+        makeTestHex({ x: 1, y: -1, z: 0 }),
+      ]);
       expect(after2.revealedHexes.has(hexKey({ q: 0, r: 0, s: 0 }))).toBe(true);
       expect(after2.revealedHexes.has(hexKey({ q: 1, r: -1, s: 0 }))).toBe(
         true
@@ -392,11 +502,38 @@ describe('v1alpha2 reducer additions', () => {
     });
 
     it('is idempotent on duplicate hexes', () => {
-      const prev = applyHexRevealed(createEmptyEncounterState(), [
-        { q: 2, r: -1, s: -1 },
-      ]);
-      const after = applyHexRevealed(prev, [{ q: 2, r: -1, s: -1 }]);
+      const hex = makeTestHex({ x: 2, y: -1, z: -1 }, 'chamber');
+      const prev = applyHexesRevealed(createEmptyEncounterState(), [hex]);
+      const after = applyHexesRevealed(prev, [hex]);
       expect(after.revealedHexes.size).toBe(1);
+      expect(after).toBe(prev);
+    });
+
+    it('keeps reveal-key identity for metadata-only updates and replaces it for new coordinates', () => {
+      const entrance = makeTestHex({ x: 0, y: 0, z: 0 }, 'entrance');
+      const seeded = applyHexesRevealed(createEmptyEncounterState(), [
+        entrance,
+      ]);
+      const originalMap = seeded.revealedHexes;
+      const originalKeys = seeded.revealedHexKeys;
+      const chamber = makeTestHex({ x: 0, y: 0, z: 0 }, 'chamber');
+
+      const metadataUpdated = applyHexesRevealed(seeded, [chamber]);
+
+      expect(metadataUpdated.revealedHexes).not.toBe(originalMap);
+      expect(metadataUpdated.revealedHexes.get('0,0,0')).toBe(chamber);
+      expect(metadataUpdated.revealedHexKeys).toBe(originalKeys);
+      expect(seeded.revealedHexes.get('0,0,0')).toBe(entrance);
+
+      const withNewCoordinate = applyHexesRevealed(metadataUpdated, [
+        makeTestHex({ x: 1, y: -1, z: 0 }, 'corridor'),
+      ]);
+
+      expect(withNewCoordinate.revealedHexKeys).not.toBe(originalKeys);
+      expect(withNewCoordinate.revealedHexKeys).toEqual(
+        new Set(['0,0,0', '1,-1,0'])
+      );
+      expect(metadataUpdated.revealedHexKeys).toBe(originalKeys);
     });
   });
 
@@ -567,9 +704,9 @@ describe('v1alpha2 reducer additions', () => {
     it('does not touch revealedHexes (cause/effect split)', () => {
       // The toolkit emits DoorOpened (cause) and GeometryRevealed (effect)
       // as two events. applyDoorOpened only updates door state; the hex
-      // reveal flows through applyHexRevealed independently.
+      // reveal flows through applyHexesRevealed independently.
       let state = createEmptyEncounterState();
-      state = applyHexRevealed(state, [{ q: 1, r: -1, s: 0 }]);
+      state = applyHexesRevealed(state, [makeTestHex({ x: 1, y: -1, z: 0 })]);
       const beforeOpen = state.revealedHexes;
       state = applyDoorOpened(state, 'door-east');
       expect(state.revealedHexes).toBe(beforeOpen);
