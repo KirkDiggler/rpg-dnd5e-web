@@ -72,6 +72,7 @@ import {
   applyTurnStateChanged,
   applyWallsRevealed,
   createEmptyEncounterState,
+  hexesWithPosition,
   mergeEntityPosition,
   regionForHex,
   setPendingPromptReducer,
@@ -477,6 +478,13 @@ describe('v1alpha2 reducer additions', () => {
   });
 
   describe('applyHexesRevealed', () => {
+    it('filters malformed hexes before they reach reveal merges or harness logs', () => {
+      const positioned = makeTestHex({ x: 0, y: 0, z: 0 }, 'entrance');
+      const malformed = create(HexSchema, { zoneId: 'chamber' });
+
+      expect(hexesWithPosition([positioned, malformed])).toEqual([positioned]);
+    });
+
     it('adds hexes to revealedHexes without dropping existing reveals', () => {
       const prev = createEmptyEncounterState();
       const after1 = applyHexesRevealed(prev, [
@@ -499,6 +507,33 @@ describe('v1alpha2 reducer additions', () => {
       const after = applyHexesRevealed(prev, [hex]);
       expect(after.revealedHexes.size).toBe(1);
       expect(after).toBe(prev);
+    });
+
+    it('keeps reveal-key identity for metadata-only updates and replaces it for new coordinates', () => {
+      const entrance = makeTestHex({ x: 0, y: 0, z: 0 }, 'entrance');
+      const seeded = applyHexesRevealed(createEmptyEncounterState(), [
+        entrance,
+      ]);
+      const originalMap = seeded.revealedHexes;
+      const originalKeys = seeded.revealedHexKeys;
+      const chamber = makeTestHex({ x: 0, y: 0, z: 0 }, 'chamber');
+
+      const metadataUpdated = applyHexesRevealed(seeded, [chamber]);
+
+      expect(metadataUpdated.revealedHexes).not.toBe(originalMap);
+      expect(metadataUpdated.revealedHexes.get('0,0,0')).toBe(chamber);
+      expect(metadataUpdated.revealedHexKeys).toBe(originalKeys);
+      expect(seeded.revealedHexes.get('0,0,0')).toBe(entrance);
+
+      const withNewCoordinate = applyHexesRevealed(metadataUpdated, [
+        makeTestHex({ x: 1, y: -1, z: 0 }, 'corridor'),
+      ]);
+
+      expect(withNewCoordinate.revealedHexKeys).not.toBe(originalKeys);
+      expect(withNewCoordinate.revealedHexKeys).toEqual(
+        new Set(['0,0,0', '1,-1,0'])
+      );
+      expect(metadataUpdated.revealedHexKeys).toBe(originalKeys);
     });
   });
 

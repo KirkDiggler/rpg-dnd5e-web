@@ -383,6 +383,19 @@ export function mergeEntityPosition(
 }
 
 /**
+ * Return only hexes eligible for coordinate-keyed reveal state. The shared
+ * filter keeps stream reducers and harness diagnostics consistent.
+ */
+export function hexesWithPosition(
+  hexes: Hex[]
+): Array<Hex & { position: NonNullable<Hex['position']> }> {
+  return hexes.filter(
+    (hex): hex is Hex & { position: NonNullable<Hex['position']> } =>
+      hex.position !== undefined
+  );
+}
+
+/**
  * Replace region metadata from the server's snapshot. A reconnect snapshot is
  * authoritative, so omitted theme/zones/hexes clear stale local values.
  * Exported for testing.
@@ -394,8 +407,7 @@ export function applySnapshotRegionState(
   hexes: Hex[]
 ): LocalEncounterState {
   const revealedHexes = new Map<string, Hex>();
-  for (const hex of hexes) {
-    if (!hex.position) continue;
+  for (const hex of hexesWithPosition(hexes)) {
     revealedHexes.set(hexKey(protoPositionToHex(hex.position)), hex);
   }
   return {
@@ -419,20 +431,24 @@ export function applyHexesRevealed(
   hexes: Hex[]
 ): LocalEncounterState {
   let revealedHexes: Map<string, Hex> | undefined;
-  for (const hex of hexes) {
-    if (!hex.position) continue;
+  let revealedHexKeys: Set<string> | undefined;
+  for (const hex of hexesWithPosition(hexes)) {
     const key = hexKey(protoPositionToHex(hex.position));
     const existing = (revealedHexes ?? prev.revealedHexes).get(key);
     const next = !hex.zoneId && existing ? existing : hex;
     if (existing === next) continue;
     if (!revealedHexes) revealedHexes = new Map(prev.revealedHexes);
     revealedHexes.set(key, next);
+    if (!existing) {
+      if (!revealedHexKeys) revealedHexKeys = new Set(prev.revealedHexKeys);
+      revealedHexKeys.add(key);
+    }
   }
   if (!revealedHexes) return prev;
   return {
     ...prev,
     revealedHexes,
-    revealedHexKeys: new Set(revealedHexes.keys()),
+    revealedHexKeys: revealedHexKeys ?? prev.revealedHexKeys,
   };
 }
 

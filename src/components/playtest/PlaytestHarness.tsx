@@ -17,7 +17,10 @@ import { useInteract } from '../../api/useInteract';
 import { useMoveEntity } from '../../api/useMoveEntity';
 import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useTakeAction } from '../../api/useTakeAction';
-import { useEncounterState } from '../../hooks/useEncounterState';
+import {
+  hexesWithPosition,
+  useEncounterState,
+} from '../../hooks/useEncounterState';
 import { errorMessage, formatSourceRefs } from '../../utils/combatFormat';
 import { getConditionDisplay } from '../../utils/conditionIcons';
 import { protoPositionToHex } from '../../utils/hexCoord';
@@ -265,12 +268,13 @@ export function PlaytestHarness() {
         addLog(`EntityMoved ${e.entityId} → ${pos}`);
       },
       onGeometryRevealed: (e) => {
-        encounterState.applyHexesRevealed(e.hexes);
+        const revealedHexes = hexesWithPosition(e.hexes);
+        encounterState.applyHexesRevealed(revealedHexes);
         const walls = e.walls ?? [];
         if (walls.length > 0) {
           encounterState.applyWallsRevealed(walls);
         }
-        addLog(`GeometryRevealed ${e.hexes.length} hex(es)`);
+        addLog(`GeometryRevealed ${revealedHexes.length} hex(es)`);
       },
       onEntityAppeared: (e) => {
         if (!e.entity || !e.entity.position) return;
