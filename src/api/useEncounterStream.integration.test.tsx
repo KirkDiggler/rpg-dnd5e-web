@@ -43,8 +43,12 @@ afterEach(() => {
 function useTestHarness(encounterId: string) {
   const state = useEncounterState();
   useEncounterStream(encounterId, 'alice', {
-    onSnapshotDelivered: () => {
-      /* noop — payload empty in slice 1, just a sync barrier */
+    onSnapshotDelivered: (e) => {
+      state.applySnapshotRegionState(
+        e.encounter?.space?.theme ?? '',
+        e.encounter?.space?.zones ?? [],
+        e.encounter?.space?.hexes ?? []
+      );
     },
     onEntityMoved: (e) => {
       // rpg-dnd5e-web#542: mirrors EncounterView.tsx's real wiring — pass
@@ -59,10 +63,7 @@ function useTestHarness(encounterId: string) {
         );
     },
     onGeometryRevealed: (e) => {
-      const positions = e.hexes
-        .map((h) => h.position)
-        .filter((p): p is NonNullable<typeof p> => p !== undefined);
-      state.applyHexRevealed(positions.map(protoPositionToHex));
+      state.applyHexesRevealed(e.hexes);
     },
     onEntityAppeared: (e) => {
       if (!e.entity || !e.entity.position) return;
@@ -207,6 +208,69 @@ describe('useEncounterStream + useEncounterState — integration', () => {
       expect(
         result.current.revealedHexes.has(hexKey({ q: 6, r: -3, s: -3 }))
       ).toBe(true);
+    });
+  });
+
+  it('replaces snapshot region truth and merges incremental hex zone identity', async () => {
+    const { result } = renderHook(() => useTestHarness('enc-1'));
+
+    act(() =>
+      fake.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              theme: 'crypt',
+              zones: [
+                { id: 'entrance', name: 'Entrance', archetype: 'entrance' },
+                { id: 'chamber', name: 'Chamber', archetype: 'chamber' },
+              ],
+              hexes: [{ position: { x: 0, y: 0, z: 0 }, zoneId: 'entrance' }],
+            },
+          },
+        })
+      )
+    );
+    act(() =>
+      fake.push(
+        makeEvent('geometryRevealed', {
+          hexes: [{ position: { x: 1, y: -1, z: 0 }, zoneId: 'chamber' }],
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(result.current.theme).toBe('crypt');
+      expect(
+        result.current.revealedHexes.get(hexKey({ q: 0, r: 0, s: 0 }))?.zoneId
+      ).toBe('entrance');
+      expect(
+        result.current.revealedHexes.get(hexKey({ q: 1, r: -1, s: 0 }))?.zoneId
+      ).toBe('chamber');
+    });
+
+    act(() =>
+      fake.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              theme: 'cave',
+              zones: [{ id: 'boss', name: 'Boss', archetype: 'boss' }],
+              hexes: [{ position: { x: 2, y: -2, z: 0 }, zoneId: 'boss' }],
+            },
+          },
+        })
+      )
+    );
+
+    await waitFor(() => {
+      expect(result.current.theme).toBe('cave');
+      expect(result.current.zones.has('entrance')).toBe(false);
+      expect(
+        result.current.revealedHexes.has(hexKey({ q: 0, r: 0, s: 0 }))
+      ).toBe(false);
+      expect(
+        result.current.revealedHexes.get(hexKey({ q: 2, r: -2, s: 0 }))?.zoneId
+      ).toBe('boss');
     });
   });
 

@@ -31,10 +31,12 @@ import type {
   TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import type {
+  Hex,
   InputRequired,
   StatusEffect,
   TurnState,
   Wall,
+  Zone,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
@@ -48,7 +50,11 @@ import type {
   ItemLike,
   SlotDefLike,
 } from '../components/game/equipment/equipmentTypes';
-import { hexKey, type CubeHexCoord } from '../utils/hexCoord';
+import {
+  hexKey,
+  protoPositionToHex,
+  type CubeHexCoord,
+} from '../utils/hexCoord';
 import { wallKey } from './dungeonMapGeometry';
 
 /** v1alpha2 per-entity HP, populated from EntityDamaged.hp_after. */
@@ -151,8 +157,14 @@ export interface LocalEncounterState {
     string,
     EntityState & { ghost?: boolean; movePath?: Position[]; moveSeq?: number }
   >;
-  /** v1alpha2-revealed hexes (per-hex granularity). */
-  revealedHexes: Set<string>;
+  /** v1alpha2-revealed hexes, keyed by stable cube coordinate. */
+  revealedHexes: Map<string, Hex>;
+  /** Compatibility projection for existing undifferentiated floor consumers. */
+  revealedHexKeys: Set<string>;
+  /** Server-authored dungeon-wide visual family, absent when unspecified. */
+  theme: string | undefined;
+  /** Server-authored zones keyed by their stable wire ID. */
+  zones: Map<string, Zone>;
   /**
    * v1alpha2 revealed walls, keyed by `wallKey` (canonical, direction-
    * normalized). Sticky like `revealedHexes` — populated from the
@@ -301,7 +313,10 @@ export function createEmptyEncounterState(): LocalEncounterState {
     encounterId: '',
     dungeonId: '',
     entities: new Map(),
-    revealedHexes: new Set(),
+    revealedHexes: new Map(),
+    revealedHexKeys: new Set(),
+    theme: undefined,
+    zones: new Map(),
     walls: new Map(),
     openDoors: new Set(),
     entityHP: new Map(),
@@ -368,20 +383,73 @@ export function mergeEntityPosition(
 }
 
 /**
- * Add hexes to the per-hex reveal set without dropping previously revealed hexes.
- * Uses hexKey() for stable 'q,r,s' string keys. Idempotent — re-adding an
- * already-revealed hex is a no-op (Set semantics).
+ * Replace region metadata from the server's snapshot. A reconnect snapshot is
+ * authoritative, so omitted theme/zones/hexes clear stale local values.
  * Exported for testing.
  */
-export function applyHexRevealed(
+export function applySnapshotRegionState(
   prev: LocalEncounterState,
-  hexes: CubeHexCoord[]
+  theme: string,
+  zones: Zone[],
+  hexes: Hex[]
 ): LocalEncounterState {
-  const next = new Set(prev.revealedHexes);
-  for (const h of hexes) {
-    next.add(hexKey(h));
+  const revealedHexes = new Map<string, Hex>();
+  for (const hex of hexes) {
+    if (!hex.position) continue;
+    revealedHexes.set(hexKey(protoPositionToHex(hex.position)), hex);
   }
-  return { ...prev, revealedHexes: next };
+  return {
+    ...prev,
+    theme: theme || undefined,
+    zones: new Map(zones.map((zone) => [zone.id, zone])),
+    revealedHexes,
+    revealedHexKeys: new Set(revealedHexes.keys()),
+  };
+}
+
+/**
+ * Merge newly revealed wire hexes without dropping previously revealed zone
+ * identity. A malformed incremental record with no zone ID cannot erase an
+ * existing record for that coordinate; the next snapshot remains the explicit
+ * server-authoritative replacement boundary.
+ * Exported for testing.
+ */
+export function applyHexesRevealed(
+  prev: LocalEncounterState,
+  hexes: Hex[]
+): LocalEncounterState {
+  let revealedHexes: Map<string, Hex> | undefined;
+  for (const hex of hexes) {
+    if (!hex.position) continue;
+    const key = hexKey(protoPositionToHex(hex.position));
+    const existing = (revealedHexes ?? prev.revealedHexes).get(key);
+    const next = !hex.zoneId && existing ? existing : hex;
+    if (existing === next) continue;
+    if (!revealedHexes) revealedHexes = new Map(prev.revealedHexes);
+    revealedHexes.set(key, next);
+  }
+  if (!revealedHexes) return prev;
+  return {
+    ...prev,
+    revealedHexes,
+    revealedHexKeys: new Set(revealedHexes.keys()),
+  };
+}
+
+/**
+ * Return only wire-authored metadata for a render coordinate. Unknown zone
+ * IDs and absent fields deliberately remain undefined; renderers choose their
+ * existing undifferentiated fallback without client-side inference.
+ */
+export function regionForHex(
+  state: LocalEncounterState,
+  coord: CubeHexCoord
+): { theme: string | undefined; zone: Zone | undefined } {
+  const hex = state.revealedHexes.get(hexKey(coord));
+  return {
+    theme: state.theme,
+    zone: hex?.zoneId ? state.zones.get(hex.zoneId) : undefined,
+  };
 }
 
 /**
@@ -721,9 +789,9 @@ export function applyEntityDisappeared(
  * same DOOR_OPEN entry; whichever arrives first wins, the second is a
  * same-kind no-op).
  *
- * Does not touch the per-hex revealedHexes set; the toolkit emits a parallel
+ * Does not touch the per-hex revealedHexes map; the toolkit emits a parallel
  * GeometryRevealed event for the newly-visible cells (cause/effect split),
- * which the existing applyHexRevealed reducer handles.
+ * which the applyHexesRevealed reducer handles.
  * Exported for testing.
  */
 export function applyDoorOpened(
@@ -1121,8 +1189,14 @@ export interface UseEncounterStateResult {
   /** Reset to empty state (new encounter or disconnect) */
   reset: () => void;
   // v1alpha2 additions
-  /** Add hexes to the per-hex reveal set (additive, idempotent) */
-  applyHexRevealed: (hexes: CubeHexCoord[]) => void;
+  /** Replace theme, zones, and revealed hexes from an authoritative snapshot. */
+  applySnapshotRegionState: (
+    theme: string,
+    zones: Zone[],
+    hexes: Hex[]
+  ) => void;
+  /** Merge newly revealed wire hexes (additive, identity-preserving). */
+  applyHexesRevealed: (hexes: Hex[]) => void;
   /** Add walls to the sticky wall map, keyed by `wallKey` (additive, idempotent) */
   applyWallsRevealed: (walls: Wall[]) => void;
   /** Add or revive an entity at its first-visible position, clearing ghost */
@@ -1271,8 +1345,15 @@ export function useEncounterState(): UseEncounterStateResult {
     setState(createEmptyEncounterState());
   }, []);
 
-  const applyHexRevealedCallback = useCallback((hexes: CubeHexCoord[]) => {
-    setState((prev) => applyHexRevealed(prev, hexes));
+  const applySnapshotRegionStateCallback = useCallback(
+    (theme: string, zones: Zone[], hexes: Hex[]) => {
+      setState((prev) => applySnapshotRegionState(prev, theme, zones, hexes));
+    },
+    []
+  );
+
+  const applyHexesRevealedCallback = useCallback((hexes: Hex[]) => {
+    setState((prev) => applyHexesRevealed(prev, hexes));
   }, []);
 
   const applyWallsRevealedCallback = useCallback((walls: Wall[]) => {
@@ -1430,7 +1511,8 @@ export function useEncounterState(): UseEncounterStateResult {
     state,
     applyEntityPositionUpdate,
     reset,
-    applyHexRevealed: applyHexRevealedCallback,
+    applySnapshotRegionState: applySnapshotRegionStateCallback,
+    applyHexesRevealed: applyHexesRevealedCallback,
     applyWallsRevealed: applyWallsRevealedCallback,
     applyEntityAppeared: applyEntityAppearedCallback,
     applyEntityDisappeared: applyEntityDisappearedCallback,
