@@ -1,7 +1,7 @@
 ---
 name: useEncounterStream
 description: The only real-time event delivery path — v1alpha2 StreamEncounter, load-bearing for every game route and the playtest harness
-updated: 2026-07-12
+updated: 2026-07-24
 confidence: high — verified by reading useEncounterStream.ts and encounterStreamDispatch.ts in full
 ---
 
@@ -53,12 +53,20 @@ _or_ re-arming its own zombie reconnect that clobbers it.
 ## Event dispatch
 
 `dispatchEncounterStreamEvent` (`src/api/encounterStreamDispatch.ts`) is a
-pure switch over `event.event.case` — one optional callback per event
-type in `EncounterStreamOptions`. It handles reveals (`GeometryRevealed`),
-entity appear/disappear/damage/status, door state, mode/turn changes, the
-TakeAction-wave `TurnStateChanged` menu push, death/removal/encounter-end,
-and stream-delivered prompts. `useEncounterState`'s reducers are the
-typical callback targets — see [use-encounter-state.md](use-encounter-state.md).
+pure switch over `event.event.case` — one optional callback per event type in
+`EncounterStreamOptions`. Every callback receives `(payload, metadata)`, where
+`metadata` is the verbatim wire-derived `EncounterEventMetadata` object:
+`sequence` stays `bigint`, `timestamp` stays `Timestamp | undefined`, and
+`correlationId` stays a string including `""`. The dispatcher constructs one
+metadata object for each envelope and does not validate, convert, group,
+deduplicate, buffer, delay, or otherwise interpret it. Existing one-argument
+callbacks remain valid and continue receiving their unchanged payload.
+
+It handles reveals (`GeometryRevealed`), entity appear/disappear/damage/status,
+door state, mode/turn changes, the TakeAction-wave `TurnStateChanged` menu
+push, death/removal/encounter-end, and stream-delivered prompts.
+`useEncounterState`'s reducers are the typical callback targets — see
+[use-encounter-state.md](use-encounter-state.md).
 
 ## No tests on the hook itself
 
