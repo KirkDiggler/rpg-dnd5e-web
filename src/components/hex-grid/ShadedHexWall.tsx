@@ -20,6 +20,7 @@ import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { WallBuilder, WallColors } from '@/rendering/WallBuilder';
 
 import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
+import { isDoorWallKind } from './syntyHexWallHelpers';
 
 export interface ShadedHexWallProps {
   wall: Wall;
@@ -40,6 +41,8 @@ function getKindColor(kind: WallKind): number {
   switch (kind) {
     case WallKind.DOOR_CLOSED:
       return WallColors.woodMedium;
+    case WallKind.DOOR_LOCKED:
+      return 0x4a3c35;
     case WallKind.DOOR_OPEN:
       return WallColors.woodLight;
     case WallKind.WINDOW:
@@ -75,8 +78,7 @@ export function ShadedHexWall({
     };
 
     const color = getKindColor(wall.kind);
-    const isDoor =
-      wall.kind === WallKind.DOOR_CLOSED || wall.kind === WallKind.DOOR_OPEN;
+    const isDoor = isDoorWallKind(wall.kind);
     const isRealPassageEdge =
       isDoor && !(start.x === end.x && start.y === end.y && start.z === end.z);
 
@@ -184,8 +186,7 @@ export function ShadedHexWall({
     };
   }, [wall, hexSize, invalidate]);
 
-  const isDoor =
-    wall.kind === WallKind.DOOR_CLOSED || wall.kind === WallKind.DOOR_OPEN;
+  const isDoor = isDoorWallKind(wall.kind);
 
   // Copilot review on #549: the click/hover handlers (and their
   // stopPropagation) must only attach for DOOR_* walls. A plain <group

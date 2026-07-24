@@ -364,7 +364,12 @@ function Scene({
     (coord: CubeCoord) => {
       const key = `${coord.x},${coord.y},${coord.z}`;
       const doorKind = doorKinds.get(key);
-      if (doorKind === WallKind.DOOR_CLOSED) return true;
+      if (
+        doorKind === WallKind.DOOR_CLOSED ||
+        doorKind === WallKind.DOOR_LOCKED
+      ) {
+        return true;
+      }
       if (doorKind !== WallKind.DOOR_OPEN && !floorTiles.has(key)) {
         return true;
       }

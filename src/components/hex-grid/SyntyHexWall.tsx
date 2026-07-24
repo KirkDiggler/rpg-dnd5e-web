@@ -34,10 +34,7 @@
  */
 
 import { SYNTY_SCALE, WALL_HEIGHT } from '@/rendering/calibrationConstants';
-import {
-  WallKind,
-  type Wall,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import { type Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useGLTF } from '@react-three/drei';
 import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
@@ -45,9 +42,10 @@ import type { WorldPos } from './hexMath';
 import {
   buildDungeonWallSegments,
   classifyWallVertices,
-  edgePieceKind,
+  doorVisualState,
   FITTINGS,
   fittingScale,
+  isDoorWallKind,
   selectWallVariant,
   wallEndEdgeKeys,
   wallVariantScale,
@@ -83,6 +81,7 @@ const DOOR_SCALE = SYNTY_SCALE;
 // anticipating exactly this). The asset lane (web#523) owns the final open
 // pose/art; this is only a clearly-observable open-vs-closed state flip.
 const DOOR_OPEN_ROTATION_OFFSET = (80 * Math.PI) / 180;
+const LOCKED_DOOR_TINT = new THREE.Color(0.36, 0.31, 0.27);
 
 /**
  * Per-theme material tint (mid-flight scope addition, rpg-dnd5e-web#558 —
@@ -229,8 +228,8 @@ export function SyntyHexWall({
   return (
     <Suspense fallback={null}>
       {segments.map(({ key, edge, kind, id }) => {
-        if (edgePieceKind(kind) === 'door') {
-          const isOpen = kind === WallKind.DOOR_OPEN;
+        if (isDoorWallKind(kind)) {
+          const visualState = doorVisualState(kind)!;
           return (
             <group
               key={key}
@@ -256,9 +255,11 @@ export function SyntyHexWall({
                 file="SM_Env_Door_01.glb"
                 position={edge.a}
                 rotationY={
-                  edge.rotationY + (isOpen ? DOOR_OPEN_ROTATION_OFFSET : 0)
+                  edge.rotationY +
+                  (visualState === 'open' ? DOOR_OPEN_ROTATION_OFFSET : 0)
                 }
                 scale={DOOR_SCALE}
+                tint={visualState === 'locked' ? LOCKED_DOOR_TINT : undefined}
               />
             </group>
           );

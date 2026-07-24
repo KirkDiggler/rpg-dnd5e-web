@@ -49,20 +49,34 @@ import {
 
 export type EdgePieceKind = 'wall' | 'door';
 
+export function isDoorWallKind(kind: WallKind): boolean {
+  return (
+    kind === WallKind.DOOR_CLOSED ||
+    kind === WallKind.DOOR_OPEN ||
+    kind === WallKind.DOOR_LOCKED
+  );
+}
+
+export type DoorVisualState = 'closed' | 'open' | 'locked';
+
+export function doorVisualState(kind: WallKind): DoorVisualState | undefined {
+  switch (kind) {
+    case WallKind.DOOR_CLOSED:
+      return 'closed';
+    case WallKind.DOOR_OPEN:
+      return 'open';
+    case WallKind.DOOR_LOCKED:
+      return 'locked';
+    default:
+      return undefined;
+  }
+}
+
 /** Mirrors ShadedHexWall's getKindColor switch — no WINDOW-specific piece
  * exists in the synced asset set yet, so it falls back to the wall piece
  * (matches the investigation's honest MVP scoping, not silently wrong). */
 export function edgePieceKind(kind: WallKind): EdgePieceKind {
-  switch (kind) {
-    case WallKind.DOOR_CLOSED:
-    case WallKind.DOOR_OPEN:
-      return 'door';
-    case WallKind.WINDOW:
-    case WallKind.SOLID:
-    case WallKind.UNSPECIFIED:
-    default:
-      return 'wall';
-  }
+  return isDoorWallKind(kind) ? 'door' : 'wall';
 }
 
 export interface WallEdgeSegment {
@@ -249,8 +263,7 @@ function collectWallHexes(walls: Wall[]): Map<string, WallKind> {
     const end: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
     const isDegenerate =
       start.x === end.x && start.y === end.y && start.z === end.z;
-    const isDoor =
-      wall.kind === WallKind.DOOR_CLOSED || wall.kind === WallKind.DOOR_OPEN;
+    const isDoor = isDoorWallKind(wall.kind);
     // Door walls (design doc §Q2): from/to is a DESIGNATED PASSAGE EDGE —
     // `to` names which single edge of the door cell to draw the frame on,
     // not a second blocked cell. Decomposing via getHexLine (like solid
@@ -383,10 +396,7 @@ export function buildDungeonWallSegments(
   const directlyHandledHexKeys = new Set<string>();
   for (const wall of walls) {
     if (!wall.from || !wall.to) continue;
-    if (
-      wall.kind !== WallKind.DOOR_CLOSED &&
-      wall.kind !== WallKind.DOOR_OPEN
-    ) {
+    if (!isDoorWallKind(wall.kind)) {
       continue;
     }
     const hex: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
@@ -416,10 +426,7 @@ export function buildDungeonWallSegments(
   // through untouched to the generic per-wall-hex loop below.
   for (const wall of walls) {
     if (!wall.from || !wall.to) continue;
-    if (
-      wall.kind === WallKind.DOOR_CLOSED ||
-      wall.kind === WallKind.DOOR_OPEN
-    ) {
+    if (isDoorWallKind(wall.kind)) {
       continue; // handled above
     }
     const hex: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };

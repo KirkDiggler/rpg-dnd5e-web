@@ -7,6 +7,7 @@ import { coordToKey, HEX_DIRECTIONS } from './hexMath';
 import {
   buildDungeonWallSegments,
   classifyWallVertices,
+  doorVisualState,
   edgePieceKind,
   FITTINGS,
   fittingScale,
@@ -18,15 +19,29 @@ import {
 } from './syntyHexWallHelpers';
 
 describe('edgePieceKind', () => {
-  it('maps DOOR_CLOSED and DOOR_OPEN to "door"', () => {
+  it('maps every DOOR_* kind to "door"', () => {
     expect(edgePieceKind(WallKind.DOOR_CLOSED)).toBe('door');
     expect(edgePieceKind(WallKind.DOOR_OPEN)).toBe('door');
+    expect(edgePieceKind(WallKind.DOOR_LOCKED)).toBe('door');
   });
 
   it('maps SOLID, UNSPECIFIED, and WINDOW to "wall" (no window piece yet)', () => {
     expect(edgePieceKind(WallKind.SOLID)).toBe('wall');
     expect(edgePieceKind(WallKind.UNSPECIFIED)).toBe('wall');
     expect(edgePieceKind(WallKind.WINDOW)).toBe('wall');
+  });
+});
+
+describe('doorVisualState', () => {
+  it('keeps locked visually distinct from closed and open doors', () => {
+    expect(doorVisualState(WallKind.DOOR_CLOSED)).toBe('closed');
+    expect(doorVisualState(WallKind.DOOR_OPEN)).toBe('open');
+    expect(doorVisualState(WallKind.DOOR_LOCKED)).toBe('locked');
+  });
+
+  it('does not assign a door visual state to non-door walls', () => {
+    expect(doorVisualState(WallKind.SOLID)).toBeUndefined();
+    expect(doorVisualState(WallKind.WINDOW)).toBeUndefined();
   });
 });
 
@@ -119,6 +134,27 @@ describe('buildDungeonWallSegments — door walls with a real passage edge (from
     expect(segments[0]!.key).toBe('0,0,0->1,-1,0');
     expect(segments[0]!.kind).toBe(WallKind.DOOR_CLOSED);
     expect(segments[0]!.id).toBe('door-1');
+  });
+
+  it('keeps a locked door interactive on its wire-designated edge', () => {
+    const walls = [
+      wall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_LOCKED,
+        'locked-door-1'
+      ),
+    ];
+
+    const segments = buildDungeonWallSegments(walls, 1);
+
+    expect(segments).toEqual([
+      expect.objectContaining({
+        key: '0,0,0->1,-1,0',
+        kind: WallKind.DOOR_LOCKED,
+        id: 'locked-door-1',
+      }),
+    ]);
   });
 
   it('does NOT mark the passage neighbor as a wall hex — no phantom segments sourced from it', () => {

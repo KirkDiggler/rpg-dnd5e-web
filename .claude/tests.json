@@ -1,6 +1,14 @@
 {
   "tests": [
     {
+      "id": "locked-door-573-focused",
+      "feature": "locked-door-573",
+      "prompt": "Run `npm run test:run -- src/components/hex-grid/syntyHexWallHelpers.test.ts src/components/hex-grid/SyntyHexWall.test.tsx src/hooks/dungeonMapGeometry.test.ts`. Verify a locked door is classified as a door, keeps its designated edge and Wall.id, forwards its click to onDoorClick, uses a distinct visual state, remains blocked until open, and does not make solid walls interactive.",
+      "passes": true,
+      "last_checked": "2026-07-23",
+      "notes": "RED: four geometry/identity assertions failed before the shared door classifier; visual-state RED followed. GREEN: 62 focused tests passed. Mutation: removing DOOR_LOCKED from isDoorWallKind caused five locked-door assertions to fail, including Synty click forwarding; restored classifier passed."
+    },
+    {
       "id": "region-state-reducers",
       "feature": "572-region-theme-state",
       "prompt": "Run the focused useEncounterState tests. Verify multi-zone snapshot theme hydration, missing/unknown fallback, incremental Hex.zoneId retention, reconnect replacement, deterministic lookup, no topology inference, and prior-state non-mutation.",
