@@ -205,12 +205,27 @@ export function EncounterMap({
   // tolerance elsewhere, e.g. EncounterView's "Waiting for your position…"
   // banner) — capMoodLights degrades to a plain positional slice without
   // it, never throws.
+  //
+  // Copilot review (PR #585): reads straight off the `entities` prop (O(1)
+  // map lookup, the authoritative store) rather than scanning
+  // `renderableEntities` — that array also carries render-only injected
+  // entries (e.g. `?devPropDemoKeys` synthetic props) that both cost an
+  // avoidable linear scan and, in principle, could shadow the real
+  // player's id. `x`/`y`/`z` on the wire Position are individually
+  // optional, defaulted to 0 the same way buildRenderableEntities does.
   const myWorldXZ = useMemo((): [number, number] | undefined => {
-    const mine = renderableEntities.find((e) => e.entityId === myEntityId);
-    if (!mine) return undefined;
-    const world = cubeToWorld(mine.position, HEX_SIZE);
+    const minePosition = entities.get(myEntityId)?.position;
+    if (!minePosition) return undefined;
+    const world = cubeToWorld(
+      {
+        x: minePosition.x ?? 0,
+        y: minePosition.y ?? 0,
+        z: minePosition.z ?? 0,
+      },
+      HEX_SIZE
+    );
     return [world.x, world.z];
-  }, [renderableEntities, myEntityId]);
+  }, [entities, myEntityId]);
 
   // Real crypt encounters place obstacle props like obelisk/pillar/coffin/
   // altar/statue (api#702) — none of which are the 'candles' propRefId

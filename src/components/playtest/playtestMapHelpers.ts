@@ -797,6 +797,18 @@ export const MOOD_LIGHT_BUDGET = 8;
  * position this is a plain positional slice — deterministic, just not
  * spatially aware. A no-op (returns `lights` unchanged, not a copy) when
  * already at or under budget.
+ *
+ * Copilot review (PR #585): the KEPT set is nearest-first, but the
+ * RETURNED array preserves `lights`' original relative order rather than
+ * the distance-sorted order. `referenceXZ` is the player's position, which
+ * changes every move — sorting the output itself would reorder this array
+ * as the player walks, and HexGrid renders `moodPointLights` with an
+ * index-based `key` (plain `<pointLight>` primitives, no stable id of
+ * their own), so a reordered array reassigns each array SLOT to a
+ * different light between renders (index 0 might jump from "the door
+ * light" to "a candle light"), a needless source of visual churn distinct
+ * from the light SET itself changing. Order stability removes that failure
+ * mode entirely; only which lights survive the cap is distance-dependent.
  */
 export function capMoodLights(
   lights: MoodPointLight[],
@@ -806,13 +818,13 @@ export function capMoodLights(
   if (lights.length <= maxCount) return lights;
   if (!referenceXZ) return lights.slice(0, maxCount);
   const [refX, refZ] = referenceXZ;
-  return [...lights]
-    .sort((a, b) => {
-      const distA = (a.position[0] - refX) ** 2 + (a.position[2] - refZ) ** 2;
-      const distB = (b.position[0] - refX) ** 2 + (b.position[2] - refZ) ** 2;
-      return distA - distB;
-    })
+  const sqDistance = (light: MoodPointLight) =>
+    (light.position[0] - refX) ** 2 + (light.position[2] - refZ) ** 2;
+  const nearest = [...lights]
+    .sort((a, b) => sqDistance(a) - sqDistance(b))
     .slice(0, maxCount);
+  const kept = new Set(nearest);
+  return lights.filter((light) => kept.has(light));
 }
 
 /**

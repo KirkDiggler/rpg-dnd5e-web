@@ -914,6 +914,19 @@ describe('capMoodLights (rpg-dnd5e-web#558 mood-light performance budget)', () =
     const second = capMoodLights([...lights], 2, [0, 0]);
     expect(second).toEqual(first);
   });
+
+  it("preserves the INPUT's original relative order in the output — does not reorder by distance (Copilot review, PR #585: the reference position is the player's own, which changes every move; HexGrid renders these with an index key, so a distance-sorted output would reassign array slots to different lights as the player walks, reading as light-jumping/flicker even though the SET of surviving lights is correct)", () => {
+    // Input order is deliberately farthest-to-nearest — the opposite of
+    // distance order — so a naive "sort then slice" implementation would
+    // visibly reorder these, while an order-preserving one keeps them in
+    // their original farthest-to-nearest input order.
+    const far = moodLight(100, 100);
+    const mid = moodLight(10, 10);
+    const near = moodLight(1, 1);
+    const lights = [far, mid, near];
+    const capped = capMoodLights(lights, 2, [0, 0]);
+    expect(capped).toEqual([mid, near]); // original order, not [near, mid]
+  });
 });
 
 describe('buildThemeMoodLights (rpg-dnd5e-web#558 real-route mood-light assembly)', () => {
