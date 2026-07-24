@@ -17,7 +17,7 @@ import {
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { render } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HexGridProps } from '../hex-grid';
 
 const hoisted = vi.hoisted(() => ({
@@ -71,13 +71,22 @@ beforeEach(() => {
   hoisted.lastHexGridProps.current = null;
 });
 
+afterEach(() => {
+  // Several tests below set ?cryptAmbient=/?cryptDirectional= via
+  // history.pushState (jsdom's URL, read by EncounterMap's
+  // cryptLightOverride via window.location.search) — reset so it never
+  // leaks into a later test in this file or another file sharing the jsdom
+  // window.
+  window.history.pushState({}, '', '/');
+});
+
 describe('EncounterMap theme wiring (rpg-dnd5e-web#558)', () => {
   it("theme='crypt' passes spaceTheme='crypt' and the real-route crypt ambient/directional intensities through to HexGrid (Kirk's July 24 readability bump — brighter than the ?cryptdemo=1 demo's own values, which PlaytestMap keeps separately unchanged)", () => {
     render(<EncounterMap {...baseProps()} theme="crypt" />);
     const props = hoisted.lastHexGridProps.current!;
     expect(props.spaceTheme).toBe('crypt');
-    expect(props.ambientIntensity).toBe(0.12);
-    expect(props.directionalIntensity).toBe(0.08);
+    expect(props.ambientIntensity).toBe(0.4);
+    expect(props.directionalIntensity).toBe(0.28);
   });
 
   it("theme='crypt' derives a door mood light from the real DOOR_CLOSED wall — real-route light derivation, not just the demo's fixed layout", () => {
@@ -103,5 +112,53 @@ describe('EncounterMap theme wiring (rpg-dnd5e-web#558)', () => {
     expect(props.ambientIntensity).toBeUndefined();
     expect(props.directionalIntensity).toBeUndefined();
     expect(props.moodPointLights).toEqual([]);
+  });
+});
+
+describe('EncounterMap live brightness dial (?cryptAmbient=/?cryptDirectional=, rpg-dnd5e-web#558 follow-up)', () => {
+  it('overrides the baked-in ambient/directional constants when both query params are present', () => {
+    window.history.pushState({}, '', '?cryptAmbient=0.6&cryptDirectional=0.5');
+    render(<EncounterMap {...baseProps()} theme="crypt" />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.ambientIntensity).toBe(0.6);
+    expect(props.directionalIntensity).toBe(0.5);
+  });
+
+  it('falls back to the baked-in constant for whichever param is absent, without the other override leaking across', () => {
+    window.history.pushState({}, '', '?cryptAmbient=0.6');
+    render(<EncounterMap {...baseProps()} theme="crypt" />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.ambientIntensity).toBe(0.6);
+    expect(props.directionalIntensity).toBe(0.28); // untouched baked-in default
+  });
+
+  it('clamps an out-of-range override instead of ignoring it', () => {
+    window.history.pushState({}, '', '?cryptAmbient=5&cryptDirectional=-2');
+    render(<EncounterMap {...baseProps()} theme="crypt" />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.ambientIntensity).toBe(1);
+    expect(props.directionalIntensity).toBe(0);
+  });
+
+  it('ignores an invalid override value and falls back to the baked-in constant', () => {
+    window.history.pushState({}, '', '?cryptAmbient=notanumber');
+    render(<EncounterMap {...baseProps()} theme="crypt" />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.ambientIntensity).toBe(0.4); // untouched baked-in default
+  });
+
+  it('no-ops with no query params at all — byte-identical to the baked-in default', () => {
+    render(<EncounterMap {...baseProps()} theme="crypt" />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.ambientIntensity).toBe(0.4);
+    expect(props.directionalIntensity).toBe(0.28);
+  });
+
+  it('has no effect at all outside the crypt theme — the override only ever applies when spaceTheme is already crypt', () => {
+    window.history.pushState({}, '', '?cryptAmbient=0.9&cryptDirectional=0.9');
+    render(<EncounterMap {...baseProps()} />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.ambientIntensity).toBeUndefined();
+    expect(props.directionalIntensity).toBeUndefined();
   });
 });

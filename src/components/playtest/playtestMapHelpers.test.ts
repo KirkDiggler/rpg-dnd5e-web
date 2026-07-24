@@ -31,6 +31,7 @@ import {
   buildTurnOrderCombatState,
   capMoodLights,
   entityTypeToDisplay,
+  parseCryptLightOverride,
   parseDevPropDemoKeys,
   parsePerfProbeWindowMs,
   resolveSpaceTheme,
@@ -520,6 +521,41 @@ describe('parsePerfProbeWindowMs (Copilot review, rpg-dnd5e-web#546)', () => {
 
   it('parses a valid positive decimal string', () => {
     expect(parsePerfProbeWindowMs('1500.5')).toBe(1500.5);
+  });
+});
+
+describe('parseCryptLightOverride (rpg-dnd5e-web#558 follow-up — live brightness dial)', () => {
+  it('returns undefined for null input (param absent)', () => {
+    expect(parseCryptLightOverride(null)).toBeUndefined();
+  });
+
+  it('returns undefined for an empty string (?cryptAmbient= with no value) rather than treating it as 0', () => {
+    expect(parseCryptLightOverride('')).toBeUndefined();
+  });
+
+  it('returns undefined for a non-numeric value instead of NaN', () => {
+    expect(parseCryptLightOverride('abc')).toBeUndefined();
+  });
+
+  it('returns undefined for Infinity/-Infinity', () => {
+    expect(parseCryptLightOverride('Infinity')).toBeUndefined();
+    expect(parseCryptLightOverride('-Infinity')).toBeUndefined();
+  });
+
+  it('parses a valid in-range value unchanged', () => {
+    expect(parseCryptLightOverride('0.4')).toBe(0.4);
+    expect(parseCryptLightOverride('0')).toBe(0);
+    expect(parseCryptLightOverride('1')).toBe(1);
+  });
+
+  it('clamps a value above 1 down to 1, rather than rejecting it', () => {
+    expect(parseCryptLightOverride('1.5')).toBe(1);
+    expect(parseCryptLightOverride('100')).toBe(1);
+  });
+
+  it('clamps a negative value up to 0, rather than rejecting it', () => {
+    expect(parseCryptLightOverride('-0.5')).toBe(0);
+    expect(parseCryptLightOverride('-100')).toBe(0);
   });
 });
 

@@ -39,9 +39,16 @@ const FLOOR_Y = 0.2;
  * review — Kirk: the floor's unlit MeshBasicMaterial renders full-bright
  * regardless of the scene's near-dark mood lighting, so candle/door light
  * pools visibly land on walls/props but not the floor — "the glowing-white-
- * board effect defeats the whole treatment"). Multiplies the floor texture
- * before it reaches the lit material below, same direction as the wall
- * tint (WALL_TINT_BY_THEME in SyntyHexWall.tsx).
+ * board effect defeats the whole treatment"). Multiplies the floor texture,
+ * same direction as the wall tint (WALL_TINT_BY_THEME in SyntyHexWall.tsx).
+ *
+ * REVISED (rpg-dnd5e-web#558 follow-up, Kirk's live-webview darkness
+ * report): this now feeds an UNLIT `meshBasicMaterial` again (see
+ * `isCrypt`'s branch below), not the lit `MeshStandardMaterial` the
+ * comment above originally described — see that doc comment and this
+ * PR's body for the full tone-mapping-variance rationale. Kept the same
+ * color value across the swap so this is purely a lit-vs-unlit A/B, not
+ * also a simultaneous hue change.
  */
 const CRYPT_FLOOR_TINT = new THREE.Color(0.35, 0.38, 0.46);
 
@@ -51,11 +58,10 @@ interface SyntyHexFloorTileProps {
   texture: THREE.Texture;
   /** True for a tile in `themeFloorHexKeys` (rpg-dnd5e-web#558's crypt
    * demo) OR when the whole space is themed `'crypt'` (rpg-dnd5e-web#558
-   * real-route consumption) — swaps the unlit MeshBasicMaterial for a lit
-   * MeshStandardMaterial so ambient/point lights actually reach the floor.
-   * `false` (every real non-crypt dungeon tile today) keeps the exact unlit
-   * material rpg-dnd5e-web#481/#485 landed — deliberately tone-mapping-
-   * independent so real deployed floors don't regress to that bug. */
+   * real-route consumption) — swaps in `CRYPT_FLOOR_TINT`. Both branches
+   * are unlit `MeshBasicMaterial` (see the doc comment below this
+   * component's `return` for why) — `isCrypt` only changes the tint
+   * color, not the lit/unlit material family, as of the #558 follow-up. */
   isCrypt: boolean;
 }
 
@@ -115,25 +121,36 @@ function SyntyHexFloorTile({
   // texture's own pixel values the final word, killing the cross-
   // environment variance #481 exists to fix.
   //
-  // `isCrypt` (mid-flight scope addition, rpg-dnd5e-web#558 PR review —
-  // Kirk: "the floor renders full-bright while everything else sits in
-  // near-dark... the glowing-white-board effect defeats the whole
-  // treatment") deliberately does NOT touch this default path — every real
-  // dungeon tile still gets the exact #481/#485 fix, unchanged. Only the
-  // crypt demo's own tiles swap to a lit, tinted MeshStandardMaterial so
-  // the near-dark ambient and candle/door point lights actually reach the
-  // floor and visibly pool on it, at the cost of exactly the tone-mapping
-  // dependence #481 avoided — an acceptable, contained trade for an opt-in
-  // dev-only demo flag, not the production dungeon floor.
+  // `isCrypt` REVISED (rpg-dnd5e-web#558 follow-up, Kirk's live-webview
+  // darkness report — "cannot see any assets"): PR #566/#585 originally
+  // swapped the crypt floor to a LIT, tinted MeshStandardMaterial so
+  // ambient/point lights would visibly pool on it ("the glowing-white-
+  // board effect defeats the whole treatment" — see git history for that
+  // version). That reintroduces the EXACT #481 tone-mapping dependence
+  // this file's unlit default exists to avoid, on the one surface that
+  // covers most of the screen — a strong candidate explanation for why
+  // the crypt reads far darker on Kirk's deployed webview than in local
+  // captures. This reverts the crypt branch to the SAME unlit
+  // MeshBasicMaterial family as the default, just re-tinted — trading
+  // away the "light visibly pools on the floor" mood effect for
+  // environment-independent floor brightness. Offered as a judgment call,
+  // not a unilateral decision: see this PR's body for the trade-off
+  // write-up (walls still use lit GLB materials either way, so this alone
+  // doesn't fully close the tone-mapping question — only the floor's
+  // slice of it).
   return (
     <mesh geometry={geometry} position={[world.x, FLOOR_Y, world.z]}>
       {isCrypt ? (
-        <meshStandardMaterial
+        <meshBasicMaterial
           map={texture}
           color={CRYPT_FLOOR_TINT}
-          roughness={1}
+          toneMapped={false}
         />
       ) : (
+        // Byte-identical to every pre-#558 caller: no `color` prop at all
+        // (not even `undefined`), matching this exact branch before the
+        // crypt theme existed — avoids relying on how the reconciler
+        // would handle an explicitly-undefined color prop.
         <meshBasicMaterial map={texture} toneMapped={false} />
       )}
     </mesh>

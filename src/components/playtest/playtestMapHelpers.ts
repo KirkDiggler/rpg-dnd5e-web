@@ -332,6 +332,41 @@ export function parsePerfProbeWindowMs(raw: string | null): number | undefined {
   return parsed;
 }
 
+/**
+ * Parse a `?cryptAmbient=`/`?cryptDirectional=` live-tuning override
+ * (rpg-dnd5e-web#558 follow-up) for the real route's crypt mood lighting.
+ * Kirk's deployed webview reportedly shows the crypt as essentially
+ * unlit — plausibly the SAME cross-environment tone-mapping variance
+ * #481/#485 already fixed the floor for once, now resurfacing via the
+ * lit floor material and scene-light intensities this theme reintroduces
+ * (rpg-dnd5e-web#585's known-risk callout) — and our local screenshots
+ * cannot calibrate a screen we can't see. This override lets Kirk dial
+ * the intensity live, directly in whichever environment he's looking at,
+ * instead of us guessing a value from a different screen/GPU/tone-mapping
+ * path and shipping another wrong default.
+ *
+ * Deliberately NOT gated to development mode (unlike `parsePerfProbeWindowMs`
+ * above) — Kirk needs this on the deployed production build itself, not
+ * just local dev.
+ *
+ * Clamped to `[0, 1]` (the valid range for R3F's `ambientLight`/
+ * `directionalLight` `intensity`, per this codebase's existing 0.6/0.8
+ * defaults living in that range) rather than rejected outside it — an
+ * out-of-range dial input is a user typo to correct for, not a reason to
+ * silently fall back to the (possibly-wrong-for-this-screen) baked-in
+ * default. `null`/empty/non-numeric input returns `undefined` so the
+ * caller's own default applies unchanged — same "absent means no-op"
+ * convention as every other dev query param in this file.
+ */
+export function parseCryptLightOverride(
+  raw: string | null
+): number | undefined {
+  if (raw === null || raw.trim() === '') return undefined;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.min(1, Math.max(0, parsed));
+}
+
 // ---------------------------------------------------------------------
 // buildCryptLayout (rpg-dnd5e-web#558 crypt spike) — a fixed, hand-composed
 // 3-room dungeon (entrance chamber -> corridor -> boss/tomb chamber)
@@ -782,15 +817,22 @@ export const CRYPT_DEMO_DIRECTIONAL_INTENSITY = 0.05;
  * Ambient/directional intensities for the REAL-ROUTE crypt mood-lighting
  * treatment (rpg-dnd5e-web#558/#585) — used whenever `state.theme`
  * (or the harness's `?spaceTheme=crypt` override) resolves to `'crypt'`,
- * as opposed to the `?cryptdemo=1` synthetic room above. Kirk's
- * readability-vs-mood dial (July 24 2026, after viewing gate evidence):
- * the demo's original 0.08/0.05 read too dark on the real route, so this
- * pair is deliberately brighter than CRYPT_DEMO_AMBIENT_INTENSITY/
- * CRYPT_DEMO_DIRECTIONAL_INTENSITY — still near-dark/moody, just not as
- * murky. Only the real-route seam moved; the demo path is untouched.
+ * as opposed to the `?cryptdemo=1` synthetic room above. Baked in from
+ * Kirk's live calibration against this branch tip on his own deployed
+ * webview (July 24 2026), using the `?cryptAmbient=`/`?cryptDirectional=`
+ * dial below plus the brightness-ladder evidence
+ * (playtest-evidence/558-brightness-ladder-*.png, 0.12/0.08 baseline
+ * through 0.42/0.30) — 0.40/0.28 is the value he settled on. His
+ * calibration was against the branch tip INCLUDING the unlit-floor
+ * revert (see SyntyHexFloor.tsx), so the two ship together as one judged
+ * look: this brighter light plus an environment-independent floor.
+ * Deliberately brighter than CRYPT_DEMO_AMBIENT_INTENSITY/
+ * CRYPT_DEMO_DIRECTIONAL_INTENSITY above — still near-dark/moody, just
+ * not as murky. Only the real-route seam moved; the demo path is
+ * untouched.
  */
-export const CRYPT_AMBIENT_INTENSITY = 0.12;
-export const CRYPT_DIRECTIONAL_INTENSITY = 0.08;
+export const CRYPT_AMBIENT_INTENSITY = 0.4;
+export const CRYPT_DIRECTIONAL_INTENSITY = 0.28;
 
 /**
  * Upper bound on simultaneous R3F point lights from the mood-lighting pass
