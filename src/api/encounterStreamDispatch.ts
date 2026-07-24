@@ -241,7 +241,7 @@ export function dispatchEncounterStreamEvent(
     default:
       // Either out-of-current-scope but known to the proto (entityHealed,
       // dialogue, etc. — the proto defines 30 event cases;
-      // we currently handle 21) OR a genuinely unknown case from a proto
+      // we currently handle 22) OR a genuinely unknown case from a proto
       // version mismatch. Either way: warn + continue so the stream doesn't
       // tear down. Add a case arm + callback when the feature lands.
       // The cast strips the narrowed-to-undefined `case` so we can log it.
