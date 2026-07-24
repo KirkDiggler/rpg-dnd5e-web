@@ -42,7 +42,7 @@ function getKindColor(kind: WallKind): number {
     case WallKind.DOOR_CLOSED:
       return WallColors.woodMedium;
     case WallKind.DOOR_LOCKED:
-      return 0x4a3c35;
+      return WallColors.stoneDark;
     case WallKind.DOOR_OPEN:
       return WallColors.woodLight;
     case WallKind.WINDOW:
