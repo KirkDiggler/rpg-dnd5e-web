@@ -723,12 +723,19 @@ interface MoodLightSpec {
  *   room, so it needs the largest reach of the three to plausibly read as
  *   the room's own light source: brighter and wider than even the
  *   candles' accent pools.
+ *
+ * A `Map`, not a plain object: `propRefId` traces back to server-sent
+ * obstacle_ref/prop_ref ids (Copilot review, PR #588) — a plain-object
+ * index lookup would resolve a propRefId of `'constructor'`/`'toString'`/
+ * etc. through the prototype chain to a truthy `Function`, slipping past
+ * `if (!spec) continue` below and pushing a light built from `undefined`
+ * fields. `Map.prototype.get` has no such prototype-chain fallback.
  */
-const MOOD_LIGHT_SPEC_BY_PROP_REF: Record<string, MoodLightSpec> = {
-  candles: { color: '#3ddc84', intensity: 2, distance: 4.5 },
-  'torch-ornate': { color: WARM_LIGHT_COLOR, intensity: 1.6, distance: 3.6 },
-  brazier: { color: WARM_LIGHT_COLOR, intensity: 2.8, distance: 5.5 },
-};
+const MOOD_LIGHT_SPEC_BY_PROP_REF: Map<string, MoodLightSpec> = new Map([
+  ['candles', { color: '#3ddc84', intensity: 2, distance: 4.5 }],
+  ['torch-ornate', { color: WARM_LIGHT_COLOR, intensity: 1.6, distance: 3.6 }],
+  ['brazier', { color: WARM_LIGHT_COLOR, intensity: 2.8, distance: 5.5 }],
+]);
 
 export interface MoodPointLight {
   position: [number, number, number];
@@ -749,7 +756,9 @@ export function buildCryptMoodLights(
 ): MoodPointLight[] {
   const lights: MoodPointLight[] = [];
   for (const prop of props) {
-    const spec = prop.propRefId && MOOD_LIGHT_SPEC_BY_PROP_REF[prop.propRefId];
+    const spec = prop.propRefId
+      ? MOOD_LIGHT_SPEC_BY_PROP_REF.get(prop.propRefId)
+      : undefined;
     if (!spec) continue;
     const world = cubeToWorld(prop.position, HEX_SIZE);
     lights.push({

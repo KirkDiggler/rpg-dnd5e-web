@@ -940,6 +940,22 @@ describe('buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mood-lighting pas
     expect(torch!.intensity).toBeGreaterThan(door!.intensity);
     expect(torch!.distance).toBeGreaterThan(door!.distance);
   });
+
+  it("skips a propRefId matching a Object.prototype member name ('constructor', 'toString', '__proto__') instead of resolving it through the prototype chain into a truthy non-spec value (Copilot review, PR #588: a plain-object index lookup would let these slip past the falsy-spec skip check)", () => {
+    const props = [
+      'constructor',
+      'toString',
+      'hasOwnProperty',
+      '__proto__',
+    ].map((propRefId, i) => ({
+      entityId: `p${i}`,
+      name: propRefId,
+      position: { x: i, y: -i, z: 0 },
+      type: 'obstacle' as const,
+      propRefId,
+    }));
+    expect(buildCryptMoodLights(props)).toEqual([]);
+  });
 });
 
 describe('buildCryptDoorLights (mid-flight scope addition — warm torch contrast + door visibility)', () => {
