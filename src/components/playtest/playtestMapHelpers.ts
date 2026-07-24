@@ -817,15 +817,22 @@ export const CRYPT_DEMO_DIRECTIONAL_INTENSITY = 0.05;
  * Ambient/directional intensities for the REAL-ROUTE crypt mood-lighting
  * treatment (rpg-dnd5e-web#558/#585) — used whenever `state.theme`
  * (or the harness's `?spaceTheme=crypt` override) resolves to `'crypt'`,
- * as opposed to the `?cryptdemo=1` synthetic room above. Kirk's
- * readability-vs-mood dial (July 24 2026, after viewing gate evidence):
- * the demo's original 0.08/0.05 read too dark on the real route, so this
- * pair is deliberately brighter than CRYPT_DEMO_AMBIENT_INTENSITY/
- * CRYPT_DEMO_DIRECTIONAL_INTENSITY — still near-dark/moody, just not as
- * murky. Only the real-route seam moved; the demo path is untouched.
+ * as opposed to the `?cryptdemo=1` synthetic room above. Baked in from
+ * Kirk's live calibration against this branch tip on his own deployed
+ * webview (July 24 2026), using the `?cryptAmbient=`/`?cryptDirectional=`
+ * dial below plus the brightness-ladder evidence
+ * (playtest-evidence/558-brightness-ladder-*.png, 0.12/0.08 baseline
+ * through 0.42/0.30) — 0.40/0.28 is the value he settled on. His
+ * calibration was against the branch tip INCLUDING the unlit-floor
+ * revert (see SyntyHexFloor.tsx), so the two ship together as one judged
+ * look: this brighter light plus an environment-independent floor.
+ * Deliberately brighter than CRYPT_DEMO_AMBIENT_INTENSITY/
+ * CRYPT_DEMO_DIRECTIONAL_INTENSITY above — still near-dark/moody, just
+ * not as murky. Only the real-route seam moved; the demo path is
+ * untouched.
  */
-export const CRYPT_AMBIENT_INTENSITY = 0.12;
-export const CRYPT_DIRECTIONAL_INTENSITY = 0.08;
+export const CRYPT_AMBIENT_INTENSITY = 0.4;
+export const CRYPT_DIRECTIONAL_INTENSITY = 0.28;
 
 /**
  * Upper bound on simultaneous R3F point lights from the mood-lighting pass

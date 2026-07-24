@@ -85,8 +85,8 @@ describe('EncounterMap theme wiring (rpg-dnd5e-web#558)', () => {
     render(<EncounterMap {...baseProps()} theme="crypt" />);
     const props = hoisted.lastHexGridProps.current!;
     expect(props.spaceTheme).toBe('crypt');
-    expect(props.ambientIntensity).toBe(0.12);
-    expect(props.directionalIntensity).toBe(0.08);
+    expect(props.ambientIntensity).toBe(0.4);
+    expect(props.directionalIntensity).toBe(0.28);
   });
 
   it("theme='crypt' derives a door mood light from the real DOOR_CLOSED wall — real-route light derivation, not just the demo's fixed layout", () => {
@@ -117,19 +117,19 @@ describe('EncounterMap theme wiring (rpg-dnd5e-web#558)', () => {
 
 describe('EncounterMap live brightness dial (?cryptAmbient=/?cryptDirectional=, rpg-dnd5e-web#558 follow-up)', () => {
   it('overrides the baked-in ambient/directional constants when both query params are present', () => {
-    window.history.pushState({}, '', '?cryptAmbient=0.4&cryptDirectional=0.28');
+    window.history.pushState({}, '', '?cryptAmbient=0.6&cryptDirectional=0.5');
     render(<EncounterMap {...baseProps()} theme="crypt" />);
     const props = hoisted.lastHexGridProps.current!;
-    expect(props.ambientIntensity).toBe(0.4);
-    expect(props.directionalIntensity).toBe(0.28);
+    expect(props.ambientIntensity).toBe(0.6);
+    expect(props.directionalIntensity).toBe(0.5);
   });
 
   it('falls back to the baked-in constant for whichever param is absent, without the other override leaking across', () => {
-    window.history.pushState({}, '', '?cryptAmbient=0.4');
+    window.history.pushState({}, '', '?cryptAmbient=0.6');
     render(<EncounterMap {...baseProps()} theme="crypt" />);
     const props = hoisted.lastHexGridProps.current!;
-    expect(props.ambientIntensity).toBe(0.4);
-    expect(props.directionalIntensity).toBe(0.08); // untouched baked-in default
+    expect(props.ambientIntensity).toBe(0.6);
+    expect(props.directionalIntensity).toBe(0.28); // untouched baked-in default
   });
 
   it('clamps an out-of-range override instead of ignoring it', () => {
@@ -144,14 +144,14 @@ describe('EncounterMap live brightness dial (?cryptAmbient=/?cryptDirectional=, 
     window.history.pushState({}, '', '?cryptAmbient=notanumber');
     render(<EncounterMap {...baseProps()} theme="crypt" />);
     const props = hoisted.lastHexGridProps.current!;
-    expect(props.ambientIntensity).toBe(0.12); // untouched baked-in default
+    expect(props.ambientIntensity).toBe(0.4); // untouched baked-in default
   });
 
   it('no-ops with no query params at all — byte-identical to the baked-in default', () => {
     render(<EncounterMap {...baseProps()} theme="crypt" />);
     const props = hoisted.lastHexGridProps.current!;
-    expect(props.ambientIntensity).toBe(0.12);
-    expect(props.directionalIntensity).toBe(0.08);
+    expect(props.ambientIntensity).toBe(0.4);
+    expect(props.directionalIntensity).toBe(0.28);
   });
 
   it('has no effect at all outside the crypt theme — the override only ever applies when spaceTheme is already crypt', () => {
