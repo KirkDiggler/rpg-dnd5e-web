@@ -37,6 +37,7 @@ import {
   CRYPT_AMBIENT_INTENSITY,
   CRYPT_DIRECTIONAL_INTENSITY,
   MOOD_LIGHT_BUDGET,
+  parseCryptLightOverride,
   parseDevPropDemoKeys,
   parsePerfProbeWindowMs,
   resolveSpaceTheme,
@@ -196,6 +197,28 @@ export function EncounterMap({
   // `directionalIntensity` below, and `moodPointLights` all no-op for it.
   const spaceTheme = resolveSpaceTheme(theme);
 
+  // Live brightness dial (rpg-dnd5e-web#558 follow-up): `?cryptAmbient=`/
+  // `?cryptDirectional=` (each `0..1`) override CRYPT_AMBIENT_INTENSITY/
+  // CRYPT_DIRECTIONAL_INTENSITY when present. Exists because the baked-in
+  // default (tuned against local dev captures) reportedly renders the
+  // crypt as essentially unlit in Kirk's deployed webview — plausibly the
+  // SAME cross-environment tone-mapping variance #481/#485 already fixed
+  // the floor for once, resurfacing via this theme's lit floor material
+  // and scene-light intensities (this PR's own known-risk callout). A
+  // screenshot from this sandbox can't calibrate a screen it can't see;
+  // this lets Kirk dial it live on the actual affected environment and
+  // hand back the number that belongs in the default. Read once, same
+  // "read the query string once, default off" convention as syntyDungeon/
+  // perfProbe below. Deliberately NOT gated to development mode (unlike
+  // perfProbe) — Kirk needs this on the deployed production build itself.
+  const cryptLightOverride = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      ambient: parseCryptLightOverride(params.get('cryptAmbient')),
+      directional: parseCryptLightOverride(params.get('cryptDirectional')),
+    };
+  }, []);
+
   // Mood-point-light budget reference position (rpg-dnd5e-web#558): the
   // local player's own world position, so capMoodLights can keep the
   // lights nearest the camera (which continuously follows the player, see
@@ -315,11 +338,18 @@ export function EncounterMap({
         // against real synced assets, "it prob could have more light").
         // The demo path (PlaytestMap.tsx) deliberately keeps its own
         // separate, darker CRYPT_DEMO_* constants unchanged.
+        // `cryptLightOverride` (?cryptAmbient=/?cryptDirectional=, #558
+        // follow-up) wins over the baked-in constant when present, so
+        // Kirk can dial this live on whichever screen is showing it dark.
         ambientIntensity={
-          spaceTheme === 'crypt' ? CRYPT_AMBIENT_INTENSITY : undefined
+          spaceTheme === 'crypt'
+            ? (cryptLightOverride.ambient ?? CRYPT_AMBIENT_INTENSITY)
+            : undefined
         }
         directionalIntensity={
-          spaceTheme === 'crypt' ? CRYPT_DIRECTIONAL_INTENSITY : undefined
+          spaceTheme === 'crypt'
+            ? (cryptLightOverride.directional ?? CRYPT_DIRECTIONAL_INTENSITY)
+            : undefined
         }
         moodPointLights={themeMoodLights}
         onMoveComplete={(path: CubeCoord[]) => {
