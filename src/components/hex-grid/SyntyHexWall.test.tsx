@@ -85,3 +85,68 @@ describe('SyntyHexWall R3F scene', () => {
     ).toEqual([]);
   });
 });
+
+// A tinted mesh's base material color (the mocked GLB's pure-white
+// MeshStandardMaterial) multiplied by any WALL_TINT_BY_THEME entry lands
+// with every channel under 0.5 — same pattern the locked-door tint test
+// above already relies on.
+function findTintedMeshes(renderer: {
+  scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+}) {
+  return renderer.scene.findAll((node) => {
+    const mesh = (node as { instance: unknown }).instance as THREE.Mesh;
+    return (
+      mesh instanceof THREE.Mesh &&
+      mesh.material instanceof THREE.MeshStandardMaterial &&
+      mesh.material.color.r < 0.5 &&
+      mesh.material.color.g < 0.5 &&
+      mesh.material.color.b < 0.5
+    );
+  });
+}
+
+describe('SyntyHexWall spaceTheme (rpg-dnd5e-web#558 real-route theme consumption)', () => {
+  it('spaceTheme="crypt" tints a solid wall segment even with no themeWallHexKeys at all — the real-route case, where there is no per-hex demo mix to opt in via', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexWall
+        walls={[wall(WallKind.SOLID)]}
+        hexSize={1}
+        spaceTheme="crypt"
+      />
+    );
+    expect(findTintedMeshes(renderer).length).toBeGreaterThan(0);
+  });
+
+  it('no spaceTheme and no themeWallHexKeys renders untinted — byte-identical to pre-#558 behavior for every real dungeon wall today', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexWall walls={[wall(WallKind.SOLID)]} hexSize={1} />
+    );
+    expect(findTintedMeshes(renderer)).toEqual([]);
+  });
+
+  it('spaceTheme="crypt" themes EVERY wall hex, not just ones named in themeWallHexKeys — multiple independent walls all tint', async () => {
+    const secondWall = {
+      from: { x: 5, y: -5, z: 0 },
+      to: { x: 6, y: -6, z: 0 },
+      kind: WallKind.SOLID,
+    } as Wall;
+    const walls = [wall(WallKind.SOLID), secondWall];
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexWall walls={walls} hexSize={1} spaceTheme="crypt" />
+    );
+    // One tinted mesh per wall segment (2 walls -> 2 segments -> 2 tints).
+    expect(findTintedMeshes(renderer).length).toBe(2);
+  });
+
+  it('spaceTheme is additive with themeWallHexKeys, not a replacement — a hex named in themeWallHexKeys still themes when spaceTheme is absent (the ?cryptdemo=1 harness path keeps working)', async () => {
+    const solidWall = wall(WallKind.SOLID);
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexWall
+        walls={[solidWall]}
+        hexSize={1}
+        themeWallHexKeys={new Set(['0,0,0'])}
+      />
+    );
+    expect(findTintedMeshes(renderer).length).toBeGreaterThan(0);
+  });
+});

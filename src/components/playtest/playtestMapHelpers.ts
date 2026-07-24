@@ -734,3 +734,146 @@ export function buildCryptDoorLights(walls: Wall[]): MoodPointLight[] {
   }
   return lights;
 }
+
+// ---------------------------------------------------------------------
+// Real-route theme consumption (rpg-dnd5e-web#558) — the server-authored
+// `state.theme` (Space.theme via applySnapshotRegionState, api#695) drives
+// the SAME crypt seams #566 built for the `?cryptdemo=1` harness room:
+// wall variant pool + tint, lit/tinted floor material, near-dark mood
+// lighting. This section is the shared logic both EncounterMap.tsx (the
+// real game route) and PlaytestMap.tsx (so the harness can verify it
+// end-to-end) call into, keeping the two routes' theme rendering
+// identical rather than two independent reimplementations drifting apart.
+// ---------------------------------------------------------------------
+
+/**
+ * Normalize the server-authored `state.theme` string into the theme id
+ * this rendering seam understands. Only `'crypt'` currently has a real
+ * visual treatment — any other value (a future theme not yet wired, a
+ * typo, server sending something unexpected) or `undefined`/empty
+ * (unthemed dungeons, the vast majority today) falls back to `undefined`,
+ * which every downstream consumer (HexGrid's `spaceTheme` prop and this
+ * file's own `buildThemeMoodLights`/ambient constants below) already
+ * treats as "byte-identical to pre-#558 rendering." Exported so both
+ * EncounterMap.tsx and PlaytestMap.tsx apply the identical rule instead of
+ * each hand-rolling their own `=== 'crypt'` check.
+ */
+export function resolveSpaceTheme(
+  theme: string | undefined
+): 'crypt' | undefined {
+  return theme === 'crypt' ? 'crypt' : undefined;
+}
+
+/**
+ * Near-dark ambient/directional intensities for the `?cryptdemo=1` harness
+ * room's mood-lighting treatment (Kirk's original POLYGON Dark Fortress
+ * reference, rpg-dnd5e-web#558) — PlaytestMap's original inline 0.08/0.05,
+ * unchanged. Deliberately kept separate from CRYPT_AMBIENT_INTENSITY/
+ * CRYPT_DIRECTIONAL_INTENSITY below: the real route reads too dark at
+ * these values (Kirk, July 24, after viewing gate evidence against real
+ * synced assets — "it prob could have more light"), so the real-route
+ * seam was bumped brighter while the fixed synthetic demo room
+ * deliberately keeps its original tuning.
+ */
+export const CRYPT_DEMO_AMBIENT_INTENSITY = 0.08;
+export const CRYPT_DEMO_DIRECTIONAL_INTENSITY = 0.05;
+
+/**
+ * Ambient/directional intensities for the REAL-ROUTE crypt mood-lighting
+ * treatment (rpg-dnd5e-web#558/#585) — used whenever `state.theme`
+ * (or the harness's `?spaceTheme=crypt` override) resolves to `'crypt'`,
+ * as opposed to the `?cryptdemo=1` synthetic room above. Kirk's
+ * readability-vs-mood dial (July 24 2026, after viewing gate evidence):
+ * the demo's original 0.08/0.05 read too dark on the real route, so this
+ * pair is deliberately brighter than CRYPT_DEMO_AMBIENT_INTENSITY/
+ * CRYPT_DEMO_DIRECTIONAL_INTENSITY — still near-dark/moody, just not as
+ * murky. Only the real-route seam moved; the demo path is untouched.
+ */
+export const CRYPT_AMBIENT_INTENSITY = 0.12;
+export const CRYPT_DIRECTIONAL_INTENSITY = 0.08;
+
+/**
+ * Upper bound on simultaneous R3F point lights from the mood-lighting pass
+ * (rpg-dnd5e-web#558) — point lights are not free, and "performance is a
+ * standing requirement" (this codebase's own convention, see e.g.
+ * rpg-dnd5e-web#537's perf-probe wave). 8 comfortably covers every prop/
+ * door light the current crypt content produces (the fixed 3-room demo
+ * tops out at 6) with headroom, while still bounding a hypothetical
+ * densely-dressed future room instead of letting it render an unbounded
+ * light count.
+ */
+export const MOOD_LIGHT_BUDGET = 8;
+
+/**
+ * Cap `lights` at `maxCount`, keeping the ones nearest `referenceXZ` (world
+ * X/Z — every mood light sits at the same fixed height, MOOD_LIGHT_HEIGHT,
+ * so Y never affects which lights are "nearest") when given. Pass the
+ * local player's own world position: the camera continuously follows the
+ * player (HexGrid's `focusTarget`), so "nearest the player" is a simple,
+ * honest proxy for "nearest the camera" without threading actual Three.js
+ * camera state through this pure, non-R3F helper. Without a reference
+ * position this is a plain positional slice — deterministic, just not
+ * spatially aware. A no-op (returns `lights` unchanged, not a copy) when
+ * already at or under budget.
+ *
+ * Copilot review (PR #585): the KEPT set is nearest-first, but the
+ * RETURNED array preserves `lights`' original relative order rather than
+ * the distance-sorted order. `referenceXZ` is the player's position, which
+ * changes every move — sorting the output itself would reorder this array
+ * as the player walks, and HexGrid renders `moodPointLights` with an
+ * index-based `key` (plain `<pointLight>` primitives, no stable id of
+ * their own), so a reordered array reassigns each array SLOT to a
+ * different light between renders (index 0 might jump from "the door
+ * light" to "a candle light"), a needless source of visual churn distinct
+ * from the light SET itself changing. Order stability removes that failure
+ * mode entirely; only which lights survive the cap is distance-dependent.
+ */
+export function capMoodLights(
+  lights: MoodPointLight[],
+  maxCount: number,
+  referenceXZ?: [number, number]
+): MoodPointLight[] {
+  if (lights.length <= maxCount) return lights;
+  if (!referenceXZ) return lights.slice(0, maxCount);
+  const [refX, refZ] = referenceXZ;
+  const sqDistance = (light: MoodPointLight) =>
+    (light.position[0] - refX) ** 2 + (light.position[2] - refZ) ** 2;
+  const nearest = [...lights]
+    .sort((a, b) => sqDistance(a) - sqDistance(b))
+    .slice(0, maxCount);
+  const kept = new Set(nearest);
+  return lights.filter((light) => kept.has(light));
+}
+
+/**
+ * Derive the full mood-point-light set for a themed space: candle/light-
+ * source props (`buildCryptMoodLights`) plus door lights
+ * (`buildCryptDoorLights`), budget-capped (`capMoodLights`). Returns `[]`
+ * for any theme other than `'crypt'` (including `undefined`) — the single
+ * gate both EncounterMap.tsx and PlaytestMap.tsx call instead of each
+ * re-deriving "is this a themed space" from `state.theme`/`spaceTheme`
+ * independently.
+ *
+ * Real crypt encounters place obstacle props like obelisk/pillar/coffin/
+ * altar/statue (api#702) — NONE of which match
+ * `MOOD_LIGHT_COLOR_BY_PROP_REF`'s `'candles'` key (the only shipped
+ * light-source prop today), so `buildCryptMoodLights` legitimately
+ * contributes zero lights for a real crypt today. That's correct, not a
+ * bug: the real route still gets ambient + door lights, matching the
+ * demo's "warm torch contrast" half of the palette, just not the
+ * candle-glow half until a real encounter places a candle prop.
+ */
+export function buildThemeMoodLights(
+  theme: 'crypt' | undefined,
+  walls: Wall[],
+  entities: RenderableEntity[],
+  maxCount: number,
+  referenceXZ?: [number, number]
+): MoodPointLight[] {
+  if (theme !== 'crypt') return [];
+  const raw = [
+    ...buildCryptMoodLights(entities),
+    ...buildCryptDoorLights(walls),
+  ];
+  return capMoodLights(raw, maxCount, referenceXZ);
+}

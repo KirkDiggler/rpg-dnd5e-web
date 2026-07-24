@@ -69,6 +69,7 @@ vi.mock('./EncounterMap', () => ({
     activeEntityId: string;
     myEntityId: string;
     openDoorIds?: string[];
+    theme?: string;
     onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
     onEntityClick: (entityId: string) => void;
     onDoorClick?: (doorId: string) => void;
@@ -79,6 +80,7 @@ vi.mock('./EncounterMap', () => ({
       data-active-entity-id={props.activeEntityId}
       data-my-entity-id={props.myEntityId}
       data-open-door-ids={(props.openDoorIds ?? []).join(',')}
+      data-theme={props.theme ?? ''}
     >
       <button
         data-testid="stub-move"
@@ -204,6 +206,52 @@ describe('EncounterView turn-order props (mode gating)', () => {
     stub = screen.getByTestId('encounter-map-stub');
     expect(stub.getAttribute('data-active-entity-id')).toBe('');
     expect(stub.getAttribute('data-initiative-order')).toBe('');
+  });
+});
+
+describe('EncounterView theme wiring (rpg-dnd5e-web#558 real-route theme consumption)', () => {
+  it("threads a crypt-themed snapshot's Space.theme through to EncounterMap's theme prop", async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', {
+          encounter: { space: { theme: 'crypt' } },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const stub = screen.getByTestId('encounter-map-stub');
+    expect(stub.getAttribute('data-theme')).toBe('crypt');
+  });
+
+  it('a snapshot with no theme (the vast majority of dungeons today) passes an empty theme through to EncounterMap — the regression guard for byte-identical default-dungeon rendering', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', { encounter: { space: {} } })
+      );
+      await Promise.resolve();
+    });
+
+    const stub = screen.getByTestId('encounter-map-stub');
+    expect(stub.getAttribute('data-theme')).toBe('');
   });
 });
 

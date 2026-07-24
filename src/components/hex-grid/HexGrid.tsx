@@ -134,6 +134,17 @@ export interface HexGridProps {
    */
   themeFloorHexKeys?: ReadonlySet<string>;
   /**
+   * Whole-space theme (rpg-dnd5e-web#558 real-route consumption): when set
+   * to `'crypt'`, passed straight through to SyntyHexWall's/SyntyHexFloor's
+   * own `spaceTheme` prop, which then treats EVERY wall segment/floor tile
+   * as themed regardless of `themeWallHexKeys`/`themeFloorHexKeys` (those
+   * stay the `?cryptdemo=1` harness room's own per-hex mechanism —
+   * additive, not replaced). Undefined (every caller before this prop
+   * existed, and every non-crypt real dungeon) renders byte-identical to
+   * pre-#558 behavior.
+   */
+  spaceTheme?: 'crypt';
+  /**
    * Mood-lighting overrides (rpg-dnd5e-web#558 crypt spike, Kirk's POLYGON
    * Dark Fortress reference) — replaces the flat `ambientLight`/
    * `directionalLight` intensities below when set, so an injected room can
@@ -212,6 +223,7 @@ function Scene({
   syntyDungeon = false,
   themeWallHexKeys,
   themeFloorHexKeys,
+  spaceTheme,
   ambientIntensity = 0.6,
   directionalIntensity = 0.8,
   moodPointLights = [],
@@ -620,6 +632,7 @@ function Scene({
             floorTiles={floorTiles}
             hexSize={HEX_SIZE}
             themeFloorHexKeys={themeFloorHexKeys}
+            spaceTheme={spaceTheme}
           />
         </ErrorBoundary>
       ) : (
@@ -658,6 +671,7 @@ function Scene({
             hexSize={HEX_SIZE}
             onDoorClick={onDoorClick}
             themeWallHexKeys={themeWallHexKeys}
+            spaceTheme={spaceTheme}
           />
         </ErrorBoundary>
       ) : (

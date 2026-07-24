@@ -50,11 +50,12 @@ interface SyntyHexFloorTileProps {
   hexSize: number;
   texture: THREE.Texture;
   /** True for a tile in `themeFloorHexKeys` (rpg-dnd5e-web#558's crypt
-   * demo) — swaps the unlit MeshBasicMaterial for a lit MeshStandardMaterial
-   * so ambient/point lights actually reach the floor. `false` (every real
-   * dungeon tile today) keeps the exact unlit material rpg-dnd5e-web#481/
-   * #485 landed — deliberately tone-mapping-independent so real deployed
-   * floors don't regress to that bug. */
+   * demo) OR when the whole space is themed `'crypt'` (rpg-dnd5e-web#558
+   * real-route consumption) — swaps the unlit MeshBasicMaterial for a lit
+   * MeshStandardMaterial so ambient/point lights actually reach the floor.
+   * `false` (every real non-crypt dungeon tile today) keeps the exact unlit
+   * material rpg-dnd5e-web#481/#485 landed — deliberately tone-mapping-
+   * independent so real deployed floors don't regress to that bug. */
   isCrypt: boolean;
 }
 
@@ -147,12 +148,25 @@ export interface SyntyHexFloorProps {
    * (rpg-dnd5e-web#558). Undefined/omitted (every existing caller) means
    * every tile keeps the exact pre-existing #481/#485 rendering. */
   themeFloorHexKeys?: ReadonlySet<string>;
+  /**
+   * Whole-space theme (rpg-dnd5e-web#558 real-route consumption): when set
+   * to `'crypt'`, EVERY tile renders with the lit/tinted crypt material,
+   * regardless of `themeFloorHexKeys`. Additive with `themeFloorHexKeys`
+   * (a tile counts as crypt if EITHER says so) — the harness's
+   * `?cryptdemo=1` room keeps using the per-hex set to theme only its own
+   * injected floor inside an otherwise real scene; a real crypt encounter
+   * has no such per-hex mix and themes its whole floor via this prop.
+   * Undefined (every caller before this prop existed) is a pure passthrough
+   * to `themeFloorHexKeys`, unchanged.
+   */
+  spaceTheme?: 'crypt';
 }
 
 export function SyntyHexFloor({
   floorTiles,
   hexSize,
   themeFloorHexKeys,
+  spaceTheme,
 }: SyntyHexFloorProps) {
   // useTexture returns drei's shared, URL-keyed texture cache — mutating it
   // directly during render is a render-phase side effect on shared state
@@ -182,7 +196,9 @@ export function SyntyHexFloor({
             tile={tile}
             hexSize={hexSize}
             texture={floorMap}
-            isCrypt={themeFloorHexKeys?.has(key) ?? false}
+            isCrypt={
+              spaceTheme === 'crypt' || (themeFloorHexKeys?.has(key) ?? false)
+            }
           />
         );
       })}

@@ -41,12 +41,17 @@ import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2
 import { useMemo } from 'react';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import { HexGrid } from '../hex-grid';
-import type { CubeCoord } from '../hex-grid/hexMath';
+import { cubeToWorld, HEX_SIZE, type CubeCoord } from '../hex-grid/hexMath';
 import {
-  buildCryptDoorLights,
   buildCryptLayout,
-  buildCryptMoodLights,
   buildRenderableEntities,
+  buildThemeMoodLights,
+  CRYPT_AMBIENT_INTENSITY,
+  CRYPT_DEMO_AMBIENT_INTENSITY,
+  CRYPT_DEMO_DIRECTIONAL_INTENSITY,
+  CRYPT_DIRECTIONAL_INTENSITY,
+  MOOD_LIGHT_BUDGET,
+  resolveSpaceTheme,
   synthesizeFloorTiles,
 } from './playtestMapHelpers';
 import { SyntyRoomDemo } from './SyntyRoomDemo';
@@ -93,6 +98,16 @@ export interface PlaytestMapProps {
    * the downed class-model swap for CHARACTER entities (rpg-dnd5e-web#501).
    */
   entityStatuses?: Map<string, EntityStatus[]>;
+  /**
+   * Server-authored dungeon-wide visual family (`state.theme`,
+   * rpg-dnd5e-web#558) — the same signal EncounterMap.tsx's real route
+   * consumes. Normalized via `resolveSpaceTheme`; only `'crypt'` currently
+   * drives a visual treatment. `?spaceTheme=crypt` on the harness URL
+   * overrides this (see `showCryptDemo`'s sibling flag below) so the theme
+   * can be exercised for evidence-gathering without a live encounter whose
+   * server-side dungeon actually carries `Space.theme = "crypt"`.
+   */
+  theme?: string;
   /**
    * Local player's entity id (e.g. `char-alice`). The hovered/selected
    * entity defaults to this so the path preview originates from the
@@ -143,6 +158,7 @@ export function PlaytestMap({
   walls,
   entityHP,
   entityStatuses,
+  theme,
   myEntityId,
   fallbackPosition,
   isMyTurn,
@@ -180,23 +196,24 @@ export function PlaytestMap({
     [cryptLayout]
   );
 
-  // Mood lighting (rpg-dnd5e-web#558, Kirk's POLYGON Dark Fortress
-  // reference) — near-dark ambient/directional plus sickly-green point
-  // lights at candle positions and warm-orange lights at each door (both
-  // the "warm torch contrast" half of the palette and practical door
-  // visibility — see buildCryptDoorLights' own doc comment). Empty array
-  // when the flag is off, so HexGrid's own 0.6/0.8 defaults apply
-  // unchanged and no stray lights render.
-  const cryptMoodLights = useMemo(
+  // Real-route theme override (rpg-dnd5e-web#558): `?spaceTheme=crypt` on
+  // the harness URL forces the SAME whole-space theme treatment
+  // EncounterMap.tsx's real route drives off `state.theme` — independent
+  // of `?cryptdemo=1` above, which injects a fixed synthetic room via
+  // per-hex theme keys. This exists so the theme can be exercised (and
+  // screenshotted for evidence) against a REAL revealed dungeon/entities
+  // without needing a live encounter whose backend already tags
+  // `Space.theme = "crypt"`. Read once, same convention as every other
+  // dev-only query flag in this file. `theme` (the real `state.theme`
+  // prop, when the harness IS connected to a themed encounter) is the
+  // fallback so this never masks genuine server data with `undefined`.
+  const spaceThemeOverride = useMemo(
     () =>
-      cryptLayout
-        ? [
-            ...buildCryptMoodLights(cryptLayout.props),
-            ...buildCryptDoorLights(cryptLayout.walls),
-          ]
-        : [],
-    [cryptLayout]
+      new URLSearchParams(window.location.search).get('spaceTheme') ??
+      undefined,
+    []
   );
+  const spaceTheme = resolveSpaceTheme(spaceThemeOverride ?? theme);
 
   const floorTiles = useMemo(() => {
     const tiles = synthesizeFloorTiles(
@@ -231,6 +248,80 @@ export function PlaytestMap({
     );
     return cryptLayout ? [...base, ...cryptLayout.props] : base;
   }, [entities, entityMeta, entityHP, entityStatuses, cryptLayout]);
+
+  // Mood lighting (rpg-dnd5e-web#558, Kirk's POLYGON Dark Fortress
+  // reference) — near-dark ambient/directional plus sickly-green point
+  // lights at candle positions and warm-orange lights at each door (both
+  // the "warm torch contrast" half of the palette and practical door
+  // visibility — see buildCryptDoorLights' own doc comment). Applies
+  // whenever EITHER the `?cryptdemo=1` fixed room is active OR the
+  // real-route `spaceTheme` resolves to `'crypt'` (via `?spaceTheme=crypt`
+  // or a genuinely themed `state.theme`) — one unified gate instead of two
+  // independent light computations, so a themed real dungeon and the demo
+  // room read identically. buildThemeMoodLights is sourced from the FULL
+  // merged wallList/renderableEntities (not just cryptLayout's own subset)
+  // — when only `?cryptdemo=1` is set, those merged lists reduce to
+  // exactly the demo's own walls/props (nothing else is revealed in a
+  // fresh dev session), so this is behavior-preserving for that case,
+  // while also correctly lighting a themed REAL dungeon's own doors/props.
+  // Budget-capped (MOOD_LIGHT_BUDGET) nearest the local player, same
+  // rationale as EncounterMap.tsx's identical wiring.
+  //
+  // Copilot review (PR #585): reads straight off the `entities` prop (O(1)
+  // map lookup, the authoritative store) rather than scanning
+  // `renderableEntities` — that array also carries render-only injected
+  // entries (the crypt demo's own props, `?devPropDemoKeys`-equivalents)
+  // that both cost an avoidable linear scan and, in principle, could
+  // shadow the real player's id. `x`/`y`/`z` on the wire Position are
+  // individually optional, defaulted to 0 the same way
+  // buildRenderableEntities does.
+  const useCryptMood = Boolean(cryptLayout) || spaceTheme === 'crypt';
+
+  // Ambient/directional intensity pair: `spaceTheme === 'crypt'` (the
+  // real-route seam, whether from a genuinely themed `state.theme` or the
+  // `?spaceTheme=crypt` override) wins over a bare `?cryptdemo=1` and uses
+  // the brighter real-route pair (Kirk's July 24 readability call) —
+  // `?cryptdemo=1` alone keeps the original demo pair untouched. Combining
+  // both flags is a real-route preview, not "the demo, but darker," so
+  // `spaceTheme` taking precedence here matches its precedence in the
+  // wall/floor theming logic above.
+  const moodAmbientIntensity =
+    spaceTheme === 'crypt'
+      ? CRYPT_AMBIENT_INTENSITY
+      : cryptLayout
+        ? CRYPT_DEMO_AMBIENT_INTENSITY
+        : undefined;
+  const moodDirectionalIntensity =
+    spaceTheme === 'crypt'
+      ? CRYPT_DIRECTIONAL_INTENSITY
+      : cryptLayout
+        ? CRYPT_DEMO_DIRECTIONAL_INTENSITY
+        : undefined;
+
+  const myWorldXZ = useMemo((): [number, number] | undefined => {
+    const minePosition = entities.get(myEntityId)?.position;
+    if (!minePosition) return undefined;
+    const world = cubeToWorld(
+      {
+        x: minePosition.x ?? 0,
+        y: minePosition.y ?? 0,
+        z: minePosition.z ?? 0,
+      },
+      HEX_SIZE
+    );
+    return [world.x, world.z];
+  }, [entities, myEntityId]);
+  const themeMoodLights = useMemo(
+    () =>
+      buildThemeMoodLights(
+        useCryptMood ? 'crypt' : undefined,
+        wallList,
+        renderableEntities,
+        MOOD_LIGHT_BUDGET,
+        myWorldXZ
+      ),
+    [useCryptMood, wallList, renderableEntities, myWorldXZ]
+  );
 
   // Dev-only Synty asset showcase, opted in via `&synty=1` on the harness
   // URL. Read once — the harness never mutates the query string mid-session.
@@ -286,11 +377,12 @@ export function PlaytestMap({
         isPlayerTurn={isMyTurn}
         combatState={null}
         syntyDungeon={syntyDungeon}
+        spaceTheme={spaceTheme}
         themeWallHexKeys={cryptLayout?.themeWallHexKeys}
         themeFloorHexKeys={cryptThemeFloorHexKeys}
-        ambientIntensity={cryptLayout ? 0.08 : undefined}
-        directionalIntensity={cryptLayout ? 0.05 : undefined}
-        moodPointLights={cryptMoodLights}
+        ambientIntensity={moodAmbientIntensity}
+        directionalIntensity={moodDirectionalIntensity}
+        moodPointLights={themeMoodLights}
         onMoveComplete={(path: CubeCoord[]) => {
           // HexGrid hands back the full cube-coord path it computed via
           // useHexInteraction's findPath. Forward as plain {x,y,z}; the
