@@ -308,6 +308,13 @@ export function EncounterMap({
         combatState={combatState}
         syntyDungeon={syntyDungeon}
         spaceTheme={spaceTheme}
+        // CRYPT_AMBIENT_INTENSITY/CRYPT_DIRECTIONAL_INTENSITY (#585) are
+        // Kirk's readability-vs-mood dial for the REAL route specifically
+        // — brighter than the `?cryptdemo=1` demo's original near-dark
+        // tuning (Kirk, July 24: the demo values read too dark once seen
+        // against real synced assets, "it prob could have more light").
+        // The demo path (PlaytestMap.tsx) deliberately keeps its own
+        // separate, darker CRYPT_DEMO_* constants unchanged.
         ambientIntensity={
           spaceTheme === 'crypt' ? CRYPT_AMBIENT_INTENSITY : undefined
         }

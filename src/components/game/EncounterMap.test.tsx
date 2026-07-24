@@ -72,12 +72,12 @@ beforeEach(() => {
 });
 
 describe('EncounterMap theme wiring (rpg-dnd5e-web#558)', () => {
-  it("theme='crypt' passes spaceTheme='crypt' and the crypt near-dark ambient/directional intensities through to HexGrid", () => {
+  it("theme='crypt' passes spaceTheme='crypt' and the real-route crypt ambient/directional intensities through to HexGrid (Kirk's July 24 readability bump — brighter than the ?cryptdemo=1 demo's own values, which PlaytestMap keeps separately unchanged)", () => {
     render(<EncounterMap {...baseProps()} theme="crypt" />);
     const props = hoisted.lastHexGridProps.current!;
     expect(props.spaceTheme).toBe('crypt');
-    expect(props.ambientIntensity).toBe(0.08);
-    expect(props.directionalIntensity).toBe(0.05);
+    expect(props.ambientIntensity).toBe(0.12);
+    expect(props.directionalIntensity).toBe(0.08);
   });
 
   it("theme='crypt' derives a door mood light from the real DOOR_CLOSED wall — real-route light derivation, not just the demo's fixed layout", () => {

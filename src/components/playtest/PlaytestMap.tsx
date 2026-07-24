@@ -47,6 +47,8 @@ import {
   buildRenderableEntities,
   buildThemeMoodLights,
   CRYPT_AMBIENT_INTENSITY,
+  CRYPT_DEMO_AMBIENT_INTENSITY,
+  CRYPT_DEMO_DIRECTIONAL_INTENSITY,
   CRYPT_DIRECTIONAL_INTENSITY,
   MOOD_LIGHT_BUDGET,
   resolveSpaceTheme,
@@ -274,6 +276,28 @@ export function PlaytestMap({
   // individually optional, defaulted to 0 the same way
   // buildRenderableEntities does.
   const useCryptMood = Boolean(cryptLayout) || spaceTheme === 'crypt';
+
+  // Ambient/directional intensity pair: `spaceTheme === 'crypt'` (the
+  // real-route seam, whether from a genuinely themed `state.theme` or the
+  // `?spaceTheme=crypt` override) wins over a bare `?cryptdemo=1` and uses
+  // the brighter real-route pair (Kirk's July 24 readability call) —
+  // `?cryptdemo=1` alone keeps the original demo pair untouched. Combining
+  // both flags is a real-route preview, not "the demo, but darker," so
+  // `spaceTheme` taking precedence here matches its precedence in the
+  // wall/floor theming logic above.
+  const moodAmbientIntensity =
+    spaceTheme === 'crypt'
+      ? CRYPT_AMBIENT_INTENSITY
+      : cryptLayout
+        ? CRYPT_DEMO_AMBIENT_INTENSITY
+        : undefined;
+  const moodDirectionalIntensity =
+    spaceTheme === 'crypt'
+      ? CRYPT_DIRECTIONAL_INTENSITY
+      : cryptLayout
+        ? CRYPT_DEMO_DIRECTIONAL_INTENSITY
+        : undefined;
+
   const myWorldXZ = useMemo((): [number, number] | undefined => {
     const minePosition = entities.get(myEntityId)?.position;
     if (!minePosition) return undefined;
@@ -356,10 +380,8 @@ export function PlaytestMap({
         spaceTheme={spaceTheme}
         themeWallHexKeys={cryptLayout?.themeWallHexKeys}
         themeFloorHexKeys={cryptThemeFloorHexKeys}
-        ambientIntensity={useCryptMood ? CRYPT_AMBIENT_INTENSITY : undefined}
-        directionalIntensity={
-          useCryptMood ? CRYPT_DIRECTIONAL_INTENSITY : undefined
-        }
+        ambientIntensity={moodAmbientIntensity}
+        directionalIntensity={moodDirectionalIntensity}
         moodPointLights={themeMoodLights}
         onMoveComplete={(path: CubeCoord[]) => {
           // HexGrid hands back the full cube-coord path it computed via

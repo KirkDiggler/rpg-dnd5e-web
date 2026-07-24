@@ -765,14 +765,32 @@ export function resolveSpaceTheme(
 }
 
 /**
- * Near-dark ambient/directional intensities for the crypt mood-lighting
- * treatment (Kirk's POLYGON Dark Fortress reference, rpg-dnd5e-web#558) —
- * the exact values the `?cryptdemo=1` harness room already verified look
- * right (PlaytestMap's original inline 0.08/0.05), now the single source
- * both routes read so they can never drift apart.
+ * Near-dark ambient/directional intensities for the `?cryptdemo=1` harness
+ * room's mood-lighting treatment (Kirk's original POLYGON Dark Fortress
+ * reference, rpg-dnd5e-web#558) — PlaytestMap's original inline 0.08/0.05,
+ * unchanged. Deliberately kept separate from CRYPT_AMBIENT_INTENSITY/
+ * CRYPT_DIRECTIONAL_INTENSITY below: the real route reads too dark at
+ * these values (Kirk, July 24, after viewing gate evidence against real
+ * synced assets — "it prob could have more light"), so the real-route
+ * seam was bumped brighter while the fixed synthetic demo room
+ * deliberately keeps its original tuning.
  */
-export const CRYPT_AMBIENT_INTENSITY = 0.08;
-export const CRYPT_DIRECTIONAL_INTENSITY = 0.05;
+export const CRYPT_DEMO_AMBIENT_INTENSITY = 0.08;
+export const CRYPT_DEMO_DIRECTIONAL_INTENSITY = 0.05;
+
+/**
+ * Ambient/directional intensities for the REAL-ROUTE crypt mood-lighting
+ * treatment (rpg-dnd5e-web#558/#585) — used whenever `state.theme`
+ * (or the harness's `?spaceTheme=crypt` override) resolves to `'crypt'`,
+ * as opposed to the `?cryptdemo=1` synthetic room above. Kirk's
+ * readability-vs-mood dial (July 24 2026, after viewing gate evidence):
+ * the demo's original 0.08/0.05 read too dark on the real route, so this
+ * pair is deliberately brighter than CRYPT_DEMO_AMBIENT_INTENSITY/
+ * CRYPT_DEMO_DIRECTIONAL_INTENSITY — still near-dark/moody, just not as
+ * murky. Only the real-route seam moved; the demo path is untouched.
+ */
+export const CRYPT_AMBIENT_INTENSITY = 0.12;
+export const CRYPT_DIRECTIONAL_INTENSITY = 0.08;
 
 /**
  * Upper bound on simultaneous R3F point lights from the mood-lighting pass
