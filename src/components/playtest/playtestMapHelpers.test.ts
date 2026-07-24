@@ -27,11 +27,16 @@ import {
   buildCryptMoodLights,
   buildDevPropDemoEntities,
   buildRenderableEntities,
+  buildThemeMoodLights,
   buildTurnOrderCombatState,
+  capMoodLights,
   entityTypeToDisplay,
   parseDevPropDemoKeys,
   parsePerfProbeWindowMs,
+  resolveSpaceTheme,
   synthesizeFloorTiles,
+  type MoodPointLight,
+  type RenderableEntity,
 } from './playtestMapHelpers';
 
 describe('synthesizeFloorTiles', () => {
@@ -845,5 +850,159 @@ describe('buildCryptDoorLights (mid-flight scope addition — warm torch contras
     const { walls } = buildCryptLayout();
     const lights = buildCryptDoorLights(walls);
     expect(lights).toHaveLength(2);
+  });
+});
+
+describe('resolveSpaceTheme (rpg-dnd5e-web#558 real-route theme normalization)', () => {
+  it("normalizes the server's 'crypt' string to the 'crypt' theme id", () => {
+    expect(resolveSpaceTheme('crypt')).toBe('crypt');
+  });
+
+  it('falls back to undefined for undefined (no theme sent, the vast majority of dungeons today) — the regression guard for byte-identical default rendering', () => {
+    expect(resolveSpaceTheme(undefined)).toBeUndefined();
+  });
+
+  it("falls back to undefined for an empty string (applySnapshotRegionState's `theme || undefined` normalization already produces this for an omitted wire field)", () => {
+    expect(resolveSpaceTheme('')).toBeUndefined();
+  });
+
+  it('falls back to undefined for any recognized-but-not-yet-wired or unexpected theme string, rather than throwing or silently matching', () => {
+    expect(resolveSpaceTheme('forest')).toBeUndefined();
+    expect(resolveSpaceTheme('Crypt')).toBeUndefined(); // case-sensitive, matches the wire value exactly
+  });
+});
+
+function moodLight(x: number, z: number): MoodPointLight {
+  return { position: [x, 0, z], color: '#3ddc84', intensity: 2, distance: 4.5 };
+}
+
+describe('capMoodLights (rpg-dnd5e-web#558 mood-light performance budget)', () => {
+  it('returns the input unchanged (under budget, not just equal) — a no-op below the cap', () => {
+    const lights = [moodLight(0, 0), moodLight(1, 1)];
+    expect(capMoodLights(lights, 8)).toBe(lights);
+  });
+
+  it('returns the input unchanged when exactly at budget', () => {
+    const lights = [moodLight(0, 0), moodLight(1, 1)];
+    expect(capMoodLights(lights, 2)).toBe(lights);
+  });
+
+  it('without a reference position, takes a plain positional slice at the budget', () => {
+    const lights = [moodLight(0, 0), moodLight(1, 1), moodLight(2, 2)];
+    expect(capMoodLights(lights, 2)).toEqual([
+      moodLight(0, 0),
+      moodLight(1, 1),
+    ]);
+  });
+
+  it('with a reference position, keeps the lights nearest it — not just the first N in list order', () => {
+    const far = moodLight(100, 100);
+    const near = moodLight(1, 1);
+    const nearest = moodLight(0, 0);
+    // far/near/nearest deliberately NOT in distance order in the input array.
+    const lights = [far, near, nearest];
+    const capped = capMoodLights(lights, 2, [0, 0]);
+    expect(capped).toHaveLength(2);
+    expect(capped).toContain(nearest);
+    expect(capped).toContain(near);
+    expect(capped).not.toContain(far);
+  });
+
+  it('is stable/deterministic — the same input+budget+reference always caps to the same result', () => {
+    const lights = [moodLight(5, 5), moodLight(1, 1), moodLight(3, 3)];
+    const first = capMoodLights(lights, 2, [0, 0]);
+    const second = capMoodLights([...lights], 2, [0, 0]);
+    expect(second).toEqual(first);
+  });
+});
+
+describe('buildThemeMoodLights (rpg-dnd5e-web#558 real-route mood-light assembly)', () => {
+  const candleProp: RenderableEntity = {
+    entityId: 'candle-1',
+    name: 'candle',
+    position: { x: 0, y: 0, z: 0 },
+    type: 'obstacle',
+    propRefId: 'candles',
+  };
+  const doorWall = wall(
+    { x: 1, y: -1, z: 0 },
+    { x: 2, y: -2, z: 0 },
+    WallKind.DOOR_CLOSED,
+    'door-1'
+  );
+
+  it("returns [] for any theme other than 'crypt', including undefined — no lights leak into an unthemed dungeon", () => {
+    expect(
+      buildThemeMoodLights(undefined, [doorWall], [candleProp], 8)
+    ).toEqual([]);
+  });
+
+  it("combines candle-prop lights and door lights for the 'crypt' theme", () => {
+    const lights = buildThemeMoodLights('crypt', [doorWall], [candleProp], 8);
+    expect(lights).toHaveLength(2);
+  });
+
+  it('returns only door lights for a real crypt whose obstacle props are obelisk/pillar/coffin/altar/statue-shaped — none of which match the candles propRefId (rpg-dnd5e-web#558 real-crypt callout: candle-glow is correctly inert until a real encounter places a candles prop)', () => {
+    const realCryptProps: RenderableEntity[] = [
+      {
+        entityId: 'o1',
+        name: 'obelisk',
+        position: { x: 3, y: -3, z: 0 },
+        type: 'obstacle',
+        propRefId: 'obelisk',
+      },
+      {
+        entityId: 'p1',
+        name: 'pillar',
+        position: { x: 4, y: -4, z: 0 },
+        type: 'obstacle',
+        propRefId: 'pillar',
+      },
+    ];
+    const lights = buildThemeMoodLights('crypt', [doorWall], realCryptProps, 8);
+    expect(lights).toHaveLength(1);
+    expect(lights[0]!.color).toBe('#ff9d52'); // door light, not candle green
+  });
+
+  it('respects the light budget even when the raw combined count exceeds it', () => {
+    const manyCandles: RenderableEntity[] = Array.from(
+      { length: 10 },
+      (_, i) => ({
+        entityId: `candle-${i}`,
+        name: 'candle',
+        position: { x: i, y: -i, z: 0 },
+        type: 'obstacle',
+        propRefId: 'candles',
+      })
+    );
+    const lights = buildThemeMoodLights('crypt', [], manyCandles, 8);
+    expect(lights).toHaveLength(8);
+  });
+
+  it('passes the reference position through to the budget cap, keeping the nearest lights', () => {
+    const nearCandle: RenderableEntity = {
+      entityId: 'near',
+      name: 'candle',
+      position: { x: 0, y: 0, z: 0 },
+      type: 'obstacle',
+      propRefId: 'candles',
+    };
+    const farCandle: RenderableEntity = {
+      entityId: 'far',
+      name: 'candle',
+      position: { x: 20, y: -20, z: 0 },
+      type: 'obstacle',
+      propRefId: 'candles',
+    };
+    const lights = buildThemeMoodLights(
+      'crypt',
+      [],
+      [farCandle, nearCandle],
+      1,
+      [0, 0]
+    );
+    expect(lights).toHaveLength(1);
+    // near candle's world position is [0,...,0]; far candle's is far from [0,0].
+    expect(lights[0]!.position[0]).toBeCloseTo(0, 5);
   });
 });

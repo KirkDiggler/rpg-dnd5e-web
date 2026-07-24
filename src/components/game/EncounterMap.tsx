@@ -28,13 +28,18 @@ import { useMemo } from 'react';
 import { DevPerfProbe } from '../../dev/DevPerfProbe';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import { HexGrid } from '../hex-grid';
-import type { CubeCoord } from '../hex-grid/hexMath';
+import { cubeToWorld, HEX_SIZE, type CubeCoord } from '../hex-grid/hexMath';
 import {
   buildDevPropDemoEntities,
   buildRenderableEntities,
+  buildThemeMoodLights,
   buildTurnOrderCombatState,
+  CRYPT_AMBIENT_INTENSITY,
+  CRYPT_DIRECTIONAL_INTENSITY,
+  MOOD_LIGHT_BUDGET,
   parseDevPropDemoKeys,
   parsePerfProbeWindowMs,
+  resolveSpaceTheme,
   synthesizeFloorTiles,
 } from '../playtest/playtestMapHelpers';
 
@@ -59,6 +64,19 @@ export interface EncounterMapProps {
   /** v1alpha2 active conditions per entity — the "unconscious" ref drives
    * the downed class-model swap for CHARACTER entities (rpg-dnd5e-web#501). */
   entityStatuses?: Map<string, EntityStatus[]>;
+  /**
+   * Server-authored dungeon-wide visual family (`state.theme` from
+   * useEncounterState, sourced from `Space.theme` via
+   * `applySnapshotRegionState` — rpg-dnd5e-web#558). Only `'crypt'`
+   * currently drives a real visual treatment (crypt wall-variant pool +
+   * tint, lit/tinted floor material, near-dark mood lighting); any other
+   * value, `undefined`, or an empty string renders byte-identical to
+   * pre-#558 behavior. Normalized via `resolveSpaceTheme`
+   * (playtestMapHelpers.ts) — the same rule PlaytestMap.tsx applies, so
+   * the harness and the real route can never disagree about what counts
+   * as "themed."
+   */
+  theme?: string;
   /** v1alpha2 initiative order (entity ids) — drives the TurnOrderOverlay. Empty outside TURN_BASED. */
   initiativeOrder: string[];
   /** v1alpha2 active actor's entity id — highlighted in the TurnOrderOverlay. */
@@ -99,6 +117,7 @@ export function EncounterMap({
   walls,
   entityHP,
   entityStatuses,
+  theme,
   initiativeOrder,
   activeEntityId,
   round,
@@ -168,6 +187,52 @@ export function EncounterMap({
     [initiativeOrder, activeEntityId, round, entityMeta]
   );
 
+  // Real-route theme consumption (rpg-dnd5e-web#558): `theme` is the raw
+  // server-authored `state.theme` string (Space.theme, applied via
+  // applySnapshotRegionState); resolveSpaceTheme normalizes it to the one
+  // id this rendering seam understands today. `undefined` (every non-crypt
+  // dungeon, and every dungeon before this wave) renders byte-identical to
+  // pre-#558 behavior — HexGrid's `spaceTheme` prop, `ambientIntensity`/
+  // `directionalIntensity` below, and `moodPointLights` all no-op for it.
+  const spaceTheme = resolveSpaceTheme(theme);
+
+  // Mood-point-light budget reference position (rpg-dnd5e-web#558): the
+  // local player's own world position, so capMoodLights can keep the
+  // lights nearest the camera (which continuously follows the player, see
+  // HexGrid's focusTarget) if the themed space's candle/door lights ever
+  // exceed MOOD_LIGHT_BUDGET. Undefined until the local player's own
+  // entity has appeared (matches this component's existing "no player yet"
+  // tolerance elsewhere, e.g. EncounterView's "Waiting for your position…"
+  // banner) — capMoodLights degrades to a plain positional slice without
+  // it, never throws.
+  const myWorldXZ = useMemo((): [number, number] | undefined => {
+    const mine = renderableEntities.find((e) => e.entityId === myEntityId);
+    if (!mine) return undefined;
+    const world = cubeToWorld(mine.position, HEX_SIZE);
+    return [world.x, world.z];
+  }, [renderableEntities, myEntityId]);
+
+  // Real crypt encounters place obstacle props like obelisk/pillar/coffin/
+  // altar/statue (api#702) — none of which are the 'candles' propRefId
+  // buildCryptMoodLights (inside buildThemeMoodLights) recognizes as a
+  // light source, so this legitimately derives ZERO candle-glow lights for
+  // a real crypt today. Door lights (buildCryptDoorLights) still light up
+  // real DOOR_CLOSED/DOOR_OPEN walls — the "warm torch contrast" half of
+  // the palette works today; the candle-glow half is inert until a real
+  // encounter places a 'candles' prop. See this PR's description for the
+  // full callout.
+  const themeMoodLights = useMemo(
+    () =>
+      buildThemeMoodLights(
+        spaceTheme,
+        wallList,
+        renderableEntities,
+        MOOD_LIGHT_BUDGET,
+        myWorldXZ
+      ),
+    [spaceTheme, wallList, renderableEntities, myWorldXZ]
+  );
+
   // Real-dungeon-rendering flag (rpg-dnd5e-web#432 harness-parity). Read
   // once; the game route never mutates the query string mid-session.
   // Default-on: deployed builds bake Synty assets into the image (docker
@@ -227,6 +292,14 @@ export function EncounterMap({
         isPlayerTurn={isMyTurn}
         combatState={combatState}
         syntyDungeon={syntyDungeon}
+        spaceTheme={spaceTheme}
+        ambientIntensity={
+          spaceTheme === 'crypt' ? CRYPT_AMBIENT_INTENSITY : undefined
+        }
+        directionalIntensity={
+          spaceTheme === 'crypt' ? CRYPT_DIRECTIONAL_INTENSITY : undefined
+        }
+        moodPointLights={themeMoodLights}
         onMoveComplete={(path: CubeCoord[]) => {
           onMove(path.map((c) => ({ x: c.x, y: c.y, z: c.z })));
         }}

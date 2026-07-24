@@ -202,6 +202,19 @@ export interface SyntyHexWallProps {
    * `'default'`, unchanged from pre-theme behavior.
    */
   themeWallHexKeys?: ReadonlySet<string>;
+  /**
+   * Whole-space theme (rpg-dnd5e-web#558 real-route consumption): when set
+   * to `'crypt'`, EVERY wall segment renders `'crypt'`-themed, regardless of
+   * `themeWallHexKeys`. This is the real-route seam — a real encounter has
+   * no per-hex demo mix to disambiguate, the whole space is one theme —
+   * while `themeWallHexKeys` stays the mechanism the `?cryptdemo=1` harness
+   * room uses to theme only its OWN injected walls inside an otherwise
+   * untamed real scene. The two are additive (a hex counts as themed if
+   * EITHER says so), so passing both is safe, if unusual. Undefined (every
+   * caller before this prop existed) falls back to `themeWallHexKeys`
+   * exactly as before — byte-identical for every real dungeon wall today.
+   */
+  spaceTheme?: 'crypt';
 }
 
 export function SyntyHexWall({
@@ -209,6 +222,7 @@ export function SyntyHexWall({
   hexSize,
   onDoorClick,
   themeWallHexKeys,
+  spaceTheme,
 }: SyntyHexWallProps) {
   const segments = useMemo(
     () => buildDungeonWallSegments(walls, hexSize),
@@ -286,11 +300,14 @@ export function SyntyHexWall({
         // reconnects, and remounts — never a per-render reshuffle. The
         // wall-hex half of `key` (before `->`) decides theme (#558): a
         // hex in `themeWallHexKeys` renders 'crypt'-weighted, everything
-        // else stays 'default'.
+        // else stays 'default' — UNLESS `spaceTheme` says the whole space
+        // is 'crypt', in which case every hex is, regardless of
+        // `themeWallHexKeys` membership (real-route consumption, #558).
         const wallHexKey = key.split('->')[0]!;
-        const theme: WallTheme = themeWallHexKeys?.has(wallHexKey)
-          ? 'crypt'
-          : 'default';
+        const theme: WallTheme =
+          spaceTheme === 'crypt' || themeWallHexKeys?.has(wallHexKey)
+            ? 'crypt'
+            : 'default';
         const variant = selectWallVariant(key, theme);
         return (
           <GlbInstance
