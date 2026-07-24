@@ -832,6 +832,130 @@ describe('buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mood-lighting pas
     const lights = buildCryptMoodLights(props);
     expect(lights).toHaveLength(candleCount);
   });
+
+  it('produces a light for each of the three known light-anchor props (candles, brazier, torch-ornate) — rpg-toolkit#839 light-anchor set pieces, rpg-dnd5e-web#569', () => {
+    const props = [
+      {
+        entityId: 'a',
+        name: 'candle',
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'candles',
+      },
+      {
+        entityId: 'b',
+        name: 'brazier',
+        position: { x: 1, y: -1, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'brazier',
+      },
+      {
+        entityId: 'c',
+        name: 'torch',
+        position: { x: 2, y: -2, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'torch-ornate',
+      },
+    ];
+    const lights = buildCryptMoodLights(props);
+    expect(lights).toHaveLength(3);
+  });
+
+  it('brazier and torch-ornate lights use the warm-orange glow color (the door-light family), not the candle green', () => {
+    const [brazier] = buildCryptMoodLights([
+      {
+        entityId: 'b',
+        name: 'brazier',
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'brazier',
+      },
+    ]);
+    const [torch] = buildCryptMoodLights([
+      {
+        entityId: 't',
+        name: 'torch',
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'torch-ornate',
+      },
+    ]);
+    expect(brazier!.color).toBe('#ff9d52');
+    expect(torch!.color).toBe('#ff9d52');
+  });
+
+  it('brazier is the brightest/widest-reaching mood light — the room anchor, tuned stronger and wider than both the candle accent pools and the torch-ornate secondary fixture', () => {
+    const [candle] = buildCryptMoodLights([
+      {
+        entityId: 'a',
+        name: 'candle',
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'candles',
+      },
+    ]);
+    const [brazier] = buildCryptMoodLights([
+      {
+        entityId: 'b',
+        name: 'brazier',
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'brazier',
+      },
+    ]);
+    const [torch] = buildCryptMoodLights([
+      {
+        entityId: 'c',
+        name: 'torch',
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'torch-ornate',
+      },
+    ]);
+    expect(brazier!.intensity).toBeGreaterThan(candle!.intensity);
+    expect(brazier!.distance).toBeGreaterThan(candle!.distance);
+    expect(brazier!.intensity).toBeGreaterThan(torch!.intensity);
+    expect(brazier!.distance).toBeGreaterThan(torch!.distance);
+  });
+
+  it("torch-ornate reads slightly stronger/wider than the inferred door-frame glow below — it's a real light-source dressing piece, not just a highlight — while still sharing that glow's warm color", () => {
+    const [torch] = buildCryptMoodLights([
+      {
+        entityId: 'c',
+        name: 'torch',
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle' as const,
+        propRefId: 'torch-ornate',
+      },
+    ]);
+    const [door] = buildCryptDoorLights([
+      wall(
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: -1, z: 0 },
+        WallKind.DOOR_CLOSED,
+        'door-a'
+      ),
+    ]);
+    expect(torch!.color).toBe(door!.color);
+    expect(torch!.intensity).toBeGreaterThan(door!.intensity);
+    expect(torch!.distance).toBeGreaterThan(door!.distance);
+  });
+
+  it("skips a propRefId matching a Object.prototype member name ('constructor', 'toString', '__proto__') instead of resolving it through the prototype chain into a truthy non-spec value (Copilot review, PR #588: a plain-object index lookup would let these slip past the falsy-spec skip check)", () => {
+    const props = [
+      'constructor',
+      'toString',
+      'hasOwnProperty',
+      '__proto__',
+    ].map((propRefId, i) => ({
+      entityId: `p${i}`,
+      name: propRefId,
+      position: { x: i, y: -i, z: 0 },
+      type: 'obstacle' as const,
+      propRefId,
+    }));
+    expect(buildCryptMoodLights(props)).toEqual([]);
+  });
 });
 
 describe('buildCryptDoorLights (mid-flight scope addition — warm torch contrast + door visibility)', () => {
@@ -1053,5 +1177,114 @@ describe('buildThemeMoodLights (rpg-dnd5e-web#558 real-route mood-light assembly
     expect(lights).toHaveLength(1);
     // near candle's world position is [0,...,0]; far candle's is far from [0,0].
     expect(lights[0]!.position[0]).toBeCloseTo(0, 5);
+  });
+
+  it("returns [] for a non-'crypt' theme even when brazier/torch-ornate light-anchor props are present — the new mappings never leak lights into an unthemed/differently-themed space", () => {
+    const brazierProp: RenderableEntity = {
+      entityId: 'brazier-1',
+      name: 'brazier',
+      position: { x: 0, y: 0, z: 0 },
+      type: 'obstacle',
+      propRefId: 'brazier',
+    };
+    const torchProp: RenderableEntity = {
+      entityId: 'torch-1',
+      name: 'torch',
+      position: { x: 1, y: -1, z: 0 },
+      type: 'obstacle',
+      propRefId: 'torch-ornate',
+    };
+    expect(
+      buildThemeMoodLights(undefined, [doorWall], [brazierProp, torchProp], 8)
+    ).toEqual([]);
+  });
+
+  it('caps a MIXED set of light-anchor types (candles, braziers, torch-ornate) plus door lights at the budget, keeping the ones nearest the reference position regardless of prop type — rpg-toolkit#839 real content will mix these, unlike the homogeneous-candles cap test above', () => {
+    // 2 candles + 2 braziers + 3 torch-ornate (one deliberately far) + 2
+    // doors = 9 raw sources, one over the 8 budget. Every non-far source
+    // sits within world x=0..8 of the [0,0] reference; the far torch sits
+    // at world x=100 — unambiguously the single farthest source — so
+    // exactly it should be the one the cap drops.
+    const mixedProps: RenderableEntity[] = [
+      {
+        entityId: 'candle-1',
+        name: 'candle',
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle',
+        propRefId: 'candles',
+      },
+      {
+        entityId: 'candle-2',
+        name: 'candle',
+        position: { x: 1, y: -1, z: 0 },
+        type: 'obstacle',
+        propRefId: 'candles',
+      },
+      {
+        entityId: 'brazier-1',
+        name: 'brazier',
+        position: { x: 2, y: -2, z: 0 },
+        type: 'obstacle',
+        propRefId: 'brazier',
+      },
+      {
+        entityId: 'brazier-2',
+        name: 'brazier',
+        position: { x: 3, y: -3, z: 0 },
+        type: 'obstacle',
+        propRefId: 'brazier',
+      },
+      {
+        entityId: 'torch-1',
+        name: 'torch',
+        position: { x: 4, y: -4, z: 0 },
+        type: 'obstacle',
+        propRefId: 'torch-ornate',
+      },
+      {
+        entityId: 'torch-2',
+        name: 'torch',
+        position: { x: 5, y: -5, z: 0 },
+        type: 'obstacle',
+        propRefId: 'torch-ornate',
+      },
+      {
+        entityId: 'torch-far',
+        name: 'torch (far outlier)',
+        position: { x: 100, y: -100, z: 0 },
+        type: 'obstacle',
+        propRefId: 'torch-ornate',
+      },
+    ];
+    const doorWalls = [
+      wall(
+        { x: 6, y: -6, z: 0 },
+        { x: 7, y: -7, z: 0 },
+        WallKind.DOOR_CLOSED,
+        'door-1'
+      ),
+      wall(
+        { x: 7, y: -7, z: 0 },
+        { x: 8, y: -8, z: 0 },
+        WallKind.DOOR_CLOSED,
+        'door-2'
+      ),
+    ];
+    const lights = buildThemeMoodLights(
+      'crypt',
+      doorWalls,
+      mixedProps,
+      8,
+      [0, 0]
+    );
+    expect(lights).toHaveLength(8);
+    // Distinguish surviving lights by type via their (color, intensity,
+    // distance) spec, since MoodPointLight carries no entityId to check
+    // directly. Each of the 4 non-far types keeps its full count; only the
+    // lone far torch-ornate is dropped, leaving 2 of its 3 instances.
+    expect(lights.filter((l) => l.distance === 4.5)).toHaveLength(2); // candles
+    expect(lights.filter((l) => l.distance === 5.5)).toHaveLength(2); // braziers
+    expect(lights.filter((l) => l.distance === 3.6)).toHaveLength(2); // torch-ornate (near only)
+    expect(lights.filter((l) => l.distance === 3)).toHaveLength(2); // doors
   });
 });

@@ -689,13 +689,53 @@ export function buildCryptLayout(): CryptLayout {
  * a lighting approximation, not a per-model attachment point). */
 const MOOD_LIGHT_HEIGHT = 1.2;
 
-/** propRefId -> glow color. Only 'candles' has a shipped catalog piece
- * today (obstaclePropKeys.ts's own doc comment: BRAZIER has no matching
- * wave-1 piece yet) — brazier/torch entries would slot in here once one
- * exists, warm orange instead of green. */
-const MOOD_LIGHT_COLOR_BY_PROP_REF: Record<string, string> = {
-  candles: '#3ddc84',
-};
+/** Warm-orange glow — the "warm torch contrast" half of Kirk's POLYGON
+ * Dark Fortress reference palette. Shared by three distinct fixtures
+ * (brazier, torch-ornate, and the door lights below) so the palette reads
+ * as one consistent warm-light family rather than three near-identical
+ * oranges picked independently. */
+const WARM_LIGHT_COLOR = '#ff9d52';
+
+interface MoodLightSpec {
+  color: string;
+  intensity: number;
+  distance: number;
+}
+
+/**
+ * propRefId -> mood light spec (color + falloff), for every light-anchor
+ * prop rpg-toolkit#839 places in a generated crypt (rpg-dnd5e-web#569).
+ * `candles` shipped first (#558); `brazier`/`torch-ornate` both have
+ * shipped catalog pieces (propManifest.ts) but only start actually
+ * appearing in real layouts once toolkit#839 lands.
+ *
+ * Intensity/distance are tuned by role, not just color, smallest to
+ * largest reach:
+ * - candles: the sickly-green ACCENT POOLS — a room can hold several
+ *   (buildCryptLayout's demo places 2 per chamber), so each stays modest;
+ *   many small pools read better than one loud one. Unchanged from #558.
+ * - torch-ornate: a warm wall-mounted dressing piece — a real light
+ *   source (unlike the door glow below, which is an inferred door-frame
+ *   highlight with no prop behind it), but still a secondary/accent
+ *   fixture a room can hold several of, so only a shade past the door
+ *   glow's own falloff.
+ * - brazier: the warm ROOM ANCHOR — toolkit#839 places at most one per
+ *   room, so it needs the largest reach of the three to plausibly read as
+ *   the room's own light source: brighter and wider than even the
+ *   candles' accent pools.
+ *
+ * A `Map`, not a plain object: `propRefId` traces back to server-sent
+ * obstacle_ref/prop_ref ids (Copilot review, PR #588) — a plain-object
+ * index lookup would resolve a propRefId of `'constructor'`/`'toString'`/
+ * etc. through the prototype chain to a truthy `Function`, slipping past
+ * `if (!spec) continue` below and pushing a light built from `undefined`
+ * fields. `Map.prototype.get` has no such prototype-chain fallback.
+ */
+const MOOD_LIGHT_SPEC_BY_PROP_REF: Map<string, MoodLightSpec> = new Map([
+  ['candles', { color: '#3ddc84', intensity: 2, distance: 4.5 }],
+  ['torch-ornate', { color: WARM_LIGHT_COLOR, intensity: 1.6, distance: 3.6 }],
+  ['brazier', { color: WARM_LIGHT_COLOR, intensity: 2.8, distance: 5.5 }],
+]);
 
 export interface MoodPointLight {
   position: [number, number, number];
@@ -716,35 +756,36 @@ export function buildCryptMoodLights(
 ): MoodPointLight[] {
   const lights: MoodPointLight[] = [];
   for (const prop of props) {
-    const color =
-      prop.propRefId && MOOD_LIGHT_COLOR_BY_PROP_REF[prop.propRefId];
-    if (!color) continue;
+    const spec = prop.propRefId
+      ? MOOD_LIGHT_SPEC_BY_PROP_REF.get(prop.propRefId)
+      : undefined;
+    if (!spec) continue;
     const world = cubeToWorld(prop.position, HEX_SIZE);
     lights.push({
       position: [world.x, MOOD_LIGHT_HEIGHT, world.z],
-      color,
-      intensity: 2,
-      distance: 4.5,
+      color: spec.color,
+      intensity: spec.intensity,
+      distance: spec.distance,
     });
   }
   return lights;
 }
 
-/** Warm-orange glow color for door lights below — the "warm torch
- * contrast" half of Kirk's reference palette, otherwise unused today
- * since no brazier/torch prop exists yet (see MOOD_LIGHT_COLOR_BY_PROP_REF's
- * doc comment). */
-const DOOR_LIGHT_COLOR = '#ff9d52';
+/** Warm-orange glow color for door lights below — shares WARM_LIGHT_COLOR
+ * with the brazier/torch-ornate entries above rather than hand-picking its
+ * own shade, so all three warm fixtures read as one family. */
+const DOOR_LIGHT_COLOR = WARM_LIGHT_COLOR;
 
 /**
  * A small warm point light at each door's own cell — two practical wins
  * at once: (1) the "warm torch contrast" half of the reference palette
- * actually shows up somewhere even without a shipped brazier/torch prop,
- * and (2) doors sit far from the nearest candle (entrance/boss chamber
- * centers) so without this they're nearly invisible under the near-dark
- * mood lighting, undermining "click the door to open it." Lower intensity/
- * distance than a candle (a door isn't the room's centerpiece light) —
- * just enough to read the frame and leaf against the dark wall around it.
+ * shows up at every door, independent of whether a brazier/torch-ornate
+ * prop happens to be placed nearby, and (2) doors sit far from the nearest
+ * candle (entrance/boss chamber centers) so without this they're nearly
+ * invisible under the near-dark mood lighting, undermining "click the door
+ * to open it." Lower intensity/distance than a candle (a door isn't the
+ * room's centerpiece light) — just enough to read the frame and leaf
+ * against the dark wall around it.
  */
 export function buildCryptDoorLights(walls: Wall[]): MoodPointLight[] {
   const lights: MoodPointLight[] = [];
@@ -898,12 +939,13 @@ export function capMoodLights(
  *
  * Real crypt encounters place obstacle props like obelisk/pillar/coffin/
  * altar/statue (api#702) — NONE of which match
- * `MOOD_LIGHT_COLOR_BY_PROP_REF`'s `'candles'` key (the only shipped
- * light-source prop today), so `buildCryptMoodLights` legitimately
- * contributes zero lights for a real crypt today. That's correct, not a
- * bug: the real route still gets ambient + door lights, matching the
- * demo's "warm torch contrast" half of the palette, just not the
- * candle-glow half until a real encounter places a candle prop.
+ * `MOOD_LIGHT_SPEC_BY_PROP_REF`'s keys (`candles`/`torch-ornate`/`brazier`),
+ * so `buildCryptMoodLights` legitimately contributes zero lights for a real
+ * crypt until rpg-toolkit#839's light-anchor set pieces land. That's
+ * correct, not a bug: the real route still gets ambient + door lights,
+ * matching the demo's "warm torch contrast" half of the palette, just not
+ * the candle/brazier/torch glow half until a real encounter places one of
+ * those props.
  */
 export function buildThemeMoodLights(
   theme: 'crypt' | undefined,
