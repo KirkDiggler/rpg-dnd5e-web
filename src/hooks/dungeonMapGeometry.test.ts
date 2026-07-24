@@ -85,16 +85,28 @@ describe('doorHexKinds', () => {
       WallKind.DOOR_OPEN,
       'door-open'
     );
+    const locked = createWall(
+      10,
+      -10,
+      0,
+      11,
+      -11,
+      0,
+      WallKind.DOOR_LOCKED,
+      'door-locked'
+    );
 
-    const kinds = doorHexKinds([closed, open]);
+    const kinds = doorHexKinds([closed, open, locked]);
 
-    expect(kinds.size).toBe(2);
+    expect(kinds.size).toBe(3);
     expect(kinds.get('0,0,0')).toBe(WallKind.DOOR_CLOSED);
     expect(kinds.get('5,-5,0')).toBe(WallKind.DOOR_OPEN);
+    expect(kinds.get('10,-10,0')).toBe(WallKind.DOOR_LOCKED);
     // Never the passage neighbor (`to`) — that's real floor in the next
     // chamber, not the door's own cell.
     expect(kinds.has('1,-1,0')).toBe(false);
     expect(kinds.has('6,-6,0')).toBe(false);
+    expect(kinds.has('11,-11,0')).toBe(false);
   });
 
   it('ignores SOLID/WINDOW/UNSPECIFIED walls', () => {
@@ -155,12 +167,23 @@ describe('doorHexPositions', () => {
       'door-1'
     );
     const open = createWall(5, -5, 0, 6, -6, 0, WallKind.DOOR_OPEN, 'door-2');
+    const locked = createWall(
+      10,
+      -10,
+      0,
+      11,
+      -11,
+      0,
+      WallKind.DOOR_LOCKED,
+      'door-3'
+    );
 
-    const positions = doorHexPositions([closed, open]);
+    const positions = doorHexPositions([closed, open, locked]);
 
     expect(positions).toEqual([
       { x: 0, y: 0, z: 0 },
       { x: 5, y: -5, z: 0 },
+      { x: 10, y: -10, z: 0 },
     ]);
   });
 

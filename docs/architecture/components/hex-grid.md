@@ -1,7 +1,7 @@
 ---
 name: hex-grid components and utils
 description: HexGrid, HexTile, HexEntity, MediumHumanoid, hexUtils, hexMath — well-tested geometry, no rendering tests
-updated: 2026-05-02
+updated: 2026-07-23
 confidence: high — verified by reading hexUtils.ts, hexMath.ts, useMovementRange.ts, useHexInteraction.ts, and their test files
 ---
 
@@ -41,6 +41,15 @@ confidence: high — verified by reading hexUtils.ts, hexMath.ts, useMovementRan
 | `PathPreview.tsx`                          | A\* path line preview                                            |
 | `TurnOrderOverlay.tsx`                     | Initiative order numbers on entities                             |
 | `ShadedHexFloor.tsx`                       | Floor with shader-based shading                                  |
+
+## Door wall contract
+
+`DOOR_CLOSED`, `DOOR_OPEN`, and `DOOR_LOCKED` are all door geometry, not
+solid walls. Each uses the wire-designated `Wall.from -> Wall.to` edge and
+retains `Wall.id` for the existing click -> `Interact(id)` intent path. The
+client only renders the state: the server owns lock checks, prompts, retries,
+and unlock outcomes. Locked doors use a distinct material state in both the
+Synty and fallback renderers; only `DOOR_OPEN` is walkable.
 
 ## MediumHumanoid: no error boundary
 

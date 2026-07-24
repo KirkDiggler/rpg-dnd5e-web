@@ -162,6 +162,31 @@ export interface HexGridProps {
 // Ground plane size - large enough to cover the entire grid with plenty of margin
 const GROUND_PLANE_SIZE = 200;
 
+// Scene consumes this exact helper; exporting it permits pathfinding coverage.
+// eslint-disable-next-line react-refresh/only-export-components
+export function isHexBlocked(
+  coord: CubeCoord,
+  floorTileKeys: Pick<ReadonlyMap<string, unknown>, 'has'>,
+  entities: HexGridProps['entities'],
+  currentEntityId: string | null | undefined,
+  doorKinds: ReadonlyMap<string, WallKind>
+): boolean {
+  const key = `${coord.x},${coord.y},${coord.z}`;
+  const doorKind = doorKinds.get(key);
+  if (doorKind === WallKind.DOOR_CLOSED || doorKind === WallKind.DOOR_LOCKED) {
+    return true;
+  }
+  if (doorKind !== WallKind.DOOR_OPEN && !floorTileKeys.has(key)) return true;
+  return entities.some(
+    (entity) =>
+      !entity.isDead &&
+      entity.position.x === coord.x &&
+      entity.position.y === coord.y &&
+      entity.position.z === coord.z &&
+      entity.entityId !== currentEntityId
+  );
+}
+
 /**
  * Scene component - renders inside the Canvas
  * Separated so we can use React Three Fiber hooks
@@ -361,22 +386,8 @@ function Scene({
   // floor tile.
   // Uses useCallback to ensure stable function reference for downstream memoization
   const isBlocked = useCallback(
-    (coord: CubeCoord) => {
-      const key = `${coord.x},${coord.y},${coord.z}`;
-      const doorKind = doorKinds.get(key);
-      if (doorKind === WallKind.DOOR_CLOSED) return true;
-      if (doorKind !== WallKind.DOOR_OPEN && !floorTiles.has(key)) {
-        return true;
-      }
-      return entities.some(
-        (entity) =>
-          !entity.isDead &&
-          entity.position.x === coord.x &&
-          entity.position.y === coord.y &&
-          entity.position.z === coord.z &&
-          entity.entityId !== currentEntityId
-      );
-    },
+    (coord: CubeCoord) =>
+      isHexBlocked(coord, floorTiles, entities, currentEntityId, doorKinds),
     [entities, currentEntityId, floorTiles, doorKinds]
   );
 

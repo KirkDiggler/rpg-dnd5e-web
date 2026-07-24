@@ -1,7 +1,7 @@
 {
-  "branch": "feat/572-region-theme-state",
-  "issues": ["#572"],
-  "goal": "Retain server-authored Space.theme, Space.zones, and Hex.zoneId in canonical encounter state without topology inference, and expose a deterministic render lookup seam for #577.",
+  "branch": "feat/573-locked-door-compatibility",
+  "issues": ["#572", "#573"],
+  "goal": "Render WALL_KIND_DOOR_LOCKED as a distinct, interactive door while preserving the wire-designated edge and Wall.id -> Interact intent bridge. No client-side lock rules.",
   "sessions": [
     {
       "id": "2026-07-23-001",
@@ -18,11 +18,27 @@
       ],
       "commit": null,
       "notes": "Verified protos#196 merge bb80c98 is represented by generated commit 0e4e2d7 in v0.1.113; API#695 is merged. TDD RED: three missing reducer cases and three missing stream-delivery cases failed as expected. GREEN: 252 focused tests and npm run ci-check pass."
+    },
+    {
+      "id": "2026-07-23-002",
+      "task": "Locked-door rendering compatibility (#573)",
+      "status": "in_progress",
+      "artifacts": [
+        "package.json",
+        "package-lock.json",
+        "src/components/hex-grid/syntyHexWallHelpers.ts",
+        "src/components/hex-grid/SyntyHexWall.tsx",
+        "src/components/hex-grid/ShadedHexWall.tsx",
+        "src/components/hex-grid/HexGrid.tsx",
+        "src/hooks/dungeonMapGeometry.ts"
+      ],
+      "commit": null,
+      "notes": "Verified published proto floor v0.1.113 (commit 0e4e2d77d73a27a24f4a01ada4a015e20d07db66), then installed it with npm. RED: locked-door recognition, designated-edge/id, and geometry tests failed. GREEN: shared isDoorWallKind applies across Synty, fallback, and geometry; Synty click test forwards Wall.id; locked material is distinct. Mutation: removing locked from the classifier failed five assertions. Pending full CI and visual-harness assessment; no real locked fixture exists on origin/main and rpg-api#703 is not merged."
     }
   ],
   "next_steps": [
-    "Commit the dependency and state changes",
-    "Push and open a ready PR for #572",
+    "Commit the locked-door dependency and renderer changes",
+    "Push and open a ready PR for #573 with rpg-api#703 sequencing",
     "Acknowledge, address, and resolve every automated review comment"
   ]
 }

@@ -23,6 +23,7 @@ import {
   getHexNeighbors,
   type CubeCoord,
 } from '@/components/hex-grid/hexMath';
+import { isDoorWallKind } from '@/components/hex-grid/syntyHexWallHelpers';
 import {
   WallKind,
   type Wall,
@@ -60,10 +61,7 @@ function coordKey(x: number, y: number, z: number): string {
 export function doorHexKinds(walls: Iterable<Wall>): Map<string, WallKind> {
   const map = new Map<string, WallKind>();
   for (const wall of walls) {
-    if (
-      wall.kind !== WallKind.DOOR_CLOSED &&
-      wall.kind !== WallKind.DOOR_OPEN
-    ) {
+    if (!isDoorWallKind(wall.kind)) {
       continue;
     }
     if (!wall.from) continue;
@@ -81,10 +79,7 @@ export function doorHexKinds(walls: Iterable<Wall>): Map<string, WallKind> {
 export function doorHexPositions(walls: Iterable<Wall>): CubeCoord[] {
   const positions: CubeCoord[] = [];
   for (const wall of walls) {
-    if (
-      wall.kind !== WallKind.DOOR_CLOSED &&
-      wall.kind !== WallKind.DOOR_OPEN
-    ) {
+    if (!isDoorWallKind(wall.kind)) {
       continue;
     }
     if (!wall.from) continue;

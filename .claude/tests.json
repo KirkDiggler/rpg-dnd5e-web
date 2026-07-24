@@ -1,6 +1,14 @@
 {
   "tests": [
     {
+      "id": "locked-door-573-focused",
+      "feature": "locked-door-573",
+      "prompt": "Run `npm run test:run -- src/components/hex-grid/SyntyHexWall.test.tsx src/components/hex-grid/ShadedHexWall.test.tsx src/components/hex-grid/HexGrid.movement.test.ts src/components/hex-grid/syntyHexWallHelpers.test.ts src/hooks/dungeonMapGeometry.test.ts`. Verify R3F hit targets forward locked Wall.id in both renderers, locked tint/color is observable, solid walls have no hit target, and HexGrid's actual A* blocker rejects closed/locked while allowing open doors.",
+      "passes": true,
+      "last_checked": "2026-07-23",
+      "notes": "Initial RED/GREEN covered geometry and click forwarding. Follow-up RED: fallback color assertion rejected the one-off literal; GREEN uses WallColors.stoneDark. Follow-up mutation: removing DOOR_LOCKED from HexGrid's runtime blocker made A* return the formerly blocked path; restored condition passes. 69 focused tests pass."
+    },
+    {
       "id": "region-state-reducers",
       "feature": "572-region-theme-state",
       "prompt": "Run the focused useEncounterState tests. Verify multi-zone snapshot theme hydration, missing/unknown fallback, incremental Hex.zoneId retention, reconnect replacement, deterministic lookup, no topology inference, and prior-state non-mutation.",
