@@ -27,6 +27,7 @@ import {
   advanceFrame,
   computeMoveStart,
   SECONDS_PER_HEX_STEP,
+  segmentHeading,
   useHexMovePath,
   type StepState,
 } from './useHexMovePath';
@@ -378,10 +379,23 @@ describe('useHexMovePath (hook-level regression test)', () => {
     moveSeq: number | undefined;
   };
 
-  function renderMovePath() {
-    return renderHook(
+  function renderMovePath(onHeading?: (radians: number) => void) {
+    // Caller-owned as of rpg-dnd5e-web#590 — the hook no longer creates and
+    // returns this ref, because useEntityFacing drives rotation.y on the same
+    // object. Starts null exactly like the returned ref used to, so the
+    // mount-time layout effect still short-circuits the same way.
+    const groupRef = { current: null } as React.RefObject<THREE.Group | null>;
+    const hook = renderHook(
       ({ entityPosition, movePath, moveSeq }: Props) =>
-        useHexMovePath(entityPosition, movePath, moveSeq, HEX_SIZE, Y_OFFSET),
+        useHexMovePath(
+          entityPosition,
+          movePath,
+          moveSeq,
+          HEX_SIZE,
+          Y_OFFSET,
+          groupRef,
+          onHeading
+        ),
       {
         initialProps: {
           entityPosition: posA,
@@ -390,6 +404,7 @@ describe('useHexMovePath (hook-level regression test)', () => {
         } as Props,
       }
     );
+    return { ...hook, groupRef };
   }
 
   function tick(delta: number) {
@@ -404,16 +419,16 @@ describe('useHexMovePath (hook-level regression test)', () => {
   });
 
   it('treats the first move after a revive as a genuine move (animates), not a snap', () => {
-    const { result, rerender } = renderMovePath();
+    const { result, rerender, groupRef } = renderMovePath();
 
     // renderHook has no real R3F canvas to attach `groupRef` for us, so
     // seed it directly at the already-settled initial-mount position --
     // the same state a real `<group ref={groupRef}>` would be in right
     // after mount.
     act(() => {
-      result.current.groupRef.current = new THREE.Group();
+      groupRef.current = new THREE.Group();
       const start = cubeToWorld(posA, HEX_SIZE);
-      result.current.groupRef.current.position.set(start.x, Y_OFFSET, start.z);
+      groupRef.current.position.set(start.x, Y_OFFSET, start.z);
     });
 
     // 1. First real move: moveSeq 1, path posA -> posB. Must animate.
@@ -429,10 +444,10 @@ describe('useHexMovePath (hook-level regression test)', () => {
     tick(SECONDS_PER_HEX_STEP);
     expect(result.current.isMoving).toBe(false);
     const posBWorld = cubeToWorld(posB, HEX_SIZE);
-    expect(result.current.groupRef.current!.position.x).toBeCloseTo(
+    expect(groupRef.current!.position.x).toBeCloseTo(
       posBWorld.x
     );
-    expect(result.current.groupRef.current!.position.z).toBeCloseTo(
+    expect(groupRef.current!.position.z).toBeCloseTo(
       posBWorld.z
     );
 
@@ -464,10 +479,10 @@ describe('useHexMovePath (hook-level regression test)', () => {
     // `useFrame` interpolate; it never writes `groupRef.current.position`
     // directly (only the non-genuine/snap branch does that).
     expect(result.current.isMoving).toBe(true);
-    expect(result.current.groupRef.current!.position.x).toBeCloseTo(
+    expect(groupRef.current!.position.x).toBeCloseTo(
       posBWorld.x
     );
-    expect(result.current.groupRef.current!.position.z).toBeCloseTo(
+    expect(groupRef.current!.position.z).toBeCloseTo(
       posBWorld.z
     );
 
@@ -475,7 +490,7 @@ describe('useHexMovePath (hook-level regression test)', () => {
     // between posB and posC -- not jumping straight to either endpoint.
     tick(SECONDS_PER_HEX_STEP / 2);
     const posCWorld = cubeToWorld(posC, HEX_SIZE);
-    const midX = result.current.groupRef.current!.position.x;
+    const midX = groupRef.current!.position.x;
     expect(midX).not.toBeCloseTo(posBWorld.x);
     expect(midX).not.toBeCloseTo(posCWorld.x);
   });
@@ -492,3 +507,153 @@ function cubeToWorldPoint(cube: { x: number; y: number; z: number }): {
 function roundPoint(p: { x: number; z: number }): { x: number; z: number } {
   return { x: Math.round(p.x * 1e6) / 1e6, z: Math.round(p.z * 1e6) / 1e6 };
 }
+
+describe('segmentHeading (rpg-dnd5e-web#590)', () => {
+  it('is the heading of the current leg', () => {
+    // Due east in world space -> atan2(1, 0) = PI/2.
+    const step: StepState = {
+      points: [
+        { x: 0, z: 0 },
+        { x: 1, z: 0 },
+      ],
+      index: 0,
+      elapsed: 0,
+    };
+    expect(segmentHeading(step)).toBeCloseTo(Math.PI / 2, 6);
+  });
+
+  it('is undefined once past the final point', () => {
+    const step: StepState = {
+      points: [
+        { x: 0, z: 0 },
+        { x: 1, z: 0 },
+      ],
+      index: 1,
+      elapsed: 0,
+    };
+    expect(segmentHeading(step)).toBeUndefined();
+  });
+
+  it('is undefined for a zero-length leg', () => {
+    // rpg-api#656's same-hex move: a real step that goes nowhere. No heading
+    // opinion, so the character holds whatever it was facing.
+    const step: StepState = {
+      points: [
+        { x: 2, z: 3 },
+        { x: 2, z: 3 },
+      ],
+      index: 0,
+      elapsed: 0,
+    };
+    expect(segmentHeading(step)).toBeUndefined();
+  });
+});
+
+describe('useHexMovePath heading reporting (rpg-dnd5e-web#590)', () => {
+  const Y_OFFSET = 0.5;
+  const posA: CubeCoord = { x: 0, y: 0, z: 0 };
+  const posB: CubeCoord = { x: 1, y: -1, z: 0 };
+  const posC: CubeCoord = { x: 2, y: -2, z: 0 };
+
+  beforeEach(() => {
+    hoisted.frameCallback = undefined;
+    hoisted.invalidate.mockReset();
+  });
+
+  function renderWithHeading(onHeading: (radians: number) => void) {
+    const groupRef = { current: null } as React.RefObject<THREE.Group | null>;
+    const hook = renderHook(
+      ({
+        entityPosition,
+        movePath,
+        moveSeq,
+      }: {
+        entityPosition: CubeCoord;
+        movePath: CubeCoord[] | undefined;
+        moveSeq: number | undefined;
+      }) =>
+        useHexMovePath(
+          entityPosition,
+          movePath,
+          moveSeq,
+          HEX_SIZE,
+          Y_OFFSET,
+          groupRef,
+          onHeading
+        ),
+      {
+        initialProps: {
+          entityPosition: posA,
+          movePath: undefined as CubeCoord[] | undefined,
+          moveSeq: undefined as number | undefined,
+        },
+      }
+    );
+    return { ...hook, groupRef };
+  }
+
+  function tick(delta: number) {
+    act(() => {
+      hoisted.frameCallback?.({}, delta);
+    });
+  }
+
+  it('reports a heading per segment, not per frame', () => {
+    const onHeading = vi.fn();
+    const { rerender, groupRef } = renderWithHeading(onHeading);
+
+    act(() => {
+      groupRef.current = new THREE.Group();
+      const start = cubeToWorld(posA, HEX_SIZE);
+      groupRef.current.position.set(start.x, Y_OFFSET, start.z);
+    });
+
+    // Two-leg path, both due east: posA -> posB -> posC.
+    rerender({
+      entityPosition: { ...posC },
+      movePath: [posA, posB, posC],
+      moveSeq: 1,
+    });
+
+    // One report for the first leg, emitted when the move starts.
+    expect(onHeading).toHaveBeenCalledTimes(1);
+    expect(onHeading.mock.calls[0][0]).toBeCloseTo(Math.PI / 2, 6);
+
+    // Several frames INSIDE the first leg must not add reports.
+    tick(SECONDS_PER_HEX_STEP / 3);
+    tick(SECONDS_PER_HEX_STEP / 3);
+    expect(onHeading).toHaveBeenCalledTimes(1);
+
+    // Crossing into the second leg reports once more.
+    tick(SECONDS_PER_HEX_STEP);
+    expect(onHeading).toHaveBeenCalledTimes(2);
+    expect(onHeading.mock.calls[1][0]).toBeCloseTo(Math.PI / 2, 6);
+  });
+
+  it('reports nothing for a non-genuine move', () => {
+    // moveSeq undefined = initial mount / reconciliation, never an animation.
+    const onHeading = vi.fn();
+    renderWithHeading(onHeading);
+    expect(onHeading).not.toHaveBeenCalled();
+  });
+
+  it('reports nothing for a zero-distance move (rpg-api#656)', () => {
+    const onHeading = vi.fn();
+    const { rerender, groupRef } = renderWithHeading(onHeading);
+
+    act(() => {
+      groupRef.current = new THREE.Group();
+      const start = cubeToWorld(posA, HEX_SIZE);
+      groupRef.current.position.set(start.x, Y_OFFSET, start.z);
+    });
+
+    // A genuine move whose single path point is where we already are.
+    rerender({
+      entityPosition: { ...posA },
+      movePath: [posA],
+      moveSeq: 1,
+    });
+
+    expect(onHeading).not.toHaveBeenCalled();
+  });
+});

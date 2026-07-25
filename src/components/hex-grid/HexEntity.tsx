@@ -241,12 +241,17 @@ export function HexEntity({
   // entities (a no-op hook call, same shape as every other hook here) —
   // only actually wired into the render tree below for the player/monster
   // branch, which is the only one that currently animates position.
-  const { groupRef: movingGroupRef, isMoving } = useHexMovePath(
+  // Caller-owned as of rpg-dnd5e-web#590 — useEntityFacing drives this same
+  // group's rotation.y while useHexMovePath drives its position, so the ref
+  // has to live here rather than inside either hook.
+  const movingGroupRef = useRef<THREE.Group>(null);
+  const { isMoving } = useHexMovePath(
     position,
     movePath,
     moveSeq,
     hexSize,
-    CHARACTER_Y_OFFSET
+    CHARACTER_Y_OFFSET,
+    movingGroupRef
   );
 
   // Same "sticky failure keyed by url, not a bare boolean" shape as

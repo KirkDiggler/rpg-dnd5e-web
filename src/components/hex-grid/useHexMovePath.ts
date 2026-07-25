@@ -74,6 +74,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useLayoutEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { headingFromDelta } from './facing';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 
 /** Seconds to walk ONE hex step (not the whole path). Tuned by eye against
@@ -96,9 +97,6 @@ export interface StepState {
 }
 
 export interface UseHexMovePathResult {
-  /** Attach to the group whose position should reflect the entity's
-   * (possibly-interpolating) board position. */
-  groupRef: React.RefObject<THREE.Group | null>;
   /** True while stepping through a real move — pass straight through to
    * ClassCharacterModel to pick the walk clip over idle. */
   isMoving: boolean;
@@ -194,16 +192,52 @@ export function advanceFrame(
   };
 }
 
+/**
+ * The world heading of the leg currently being walked, or `undefined` when
+ * there is no in-flight leg (already at the final point) or the leg has zero
+ * length (rpg-api#656's same-hex move).
+ *
+ * Pure and stateless, like `computeMoveStart` and `advanceFrame` above, and for
+ * the same reason — it is directly unit-testable with no R3F machinery.
+ *
+ * This hook REPORTS the heading; it does not own facing. See
+ * `useEntityFacing.ts` for why that separation matters (short version: #590
+ * wants attacks to turn the attacker toward its target, and that heading can
+ * never come from a move path).
+ */
+export function segmentHeading(step: StepState): number | undefined {
+  if (step.index >= step.points.length - 1) return undefined;
+  const a = step.points[step.index];
+  const b = step.points[step.index + 1];
+  return headingFromDelta(b.x - a.x, b.z - a.z);
+}
+
 export function useHexMovePath(
   entityPosition: CubeCoord,
   movePath: CubeCoord[] | undefined,
   moveSeq: number | undefined,
   hexSize: number,
-  yOffset: number
+  yOffset: number,
+  // Caller-owned as of rpg-dnd5e-web#590: `useEntityFacing` drives
+  // `.rotation.y` on this same object while this hook drives `.position`. If
+  // this hook created the ref, the two hooks would be circular at the call
+  // site. The two writes are disjoint by property, so they cannot fight.
+  groupRef: React.RefObject<THREE.Group | null>,
+  onHeading?: (radians: number) => void
 ): UseHexMovePathResult {
-  const groupRef = useRef<THREE.Group>(null);
   const [isMoving, setIsMoving] = useState(false);
   const { invalidate } = useThree();
+
+  // Read through a ref so a caller passing an inline closure cannot re-run the
+  // move effect below — its dependency list must track the MOVE, not the
+  // identity of a callback.
+  //
+  // Assigned during render rather than in an effect, deliberately: the move
+  // useLayoutEffect below reports the FIRST leg's heading, and a plain
+  // useEffect assignment would not have run yet at that point, so the very
+  // first leg of every move would report through a stale callback.
+  const onHeadingRef = useRef(onHeading);
+  onHeadingRef.current = onHeading;
 
   const seenSeqRef = useRef<number | undefined>(undefined);
   const stepRef = useRef<StepState>({ points: [], index: 0, elapsed: 0 });
@@ -244,6 +278,11 @@ export function useHexMovePath(
 
     stepRef.current = { points: result.points, index: 0, elapsed: 0 };
     setIsMoving(result.points.length > 1);
+    // Report the first leg's heading. `undefined` for a zero-length leg (the
+    // #656 same-hex move) means "no opinion" — the entity holds whatever it
+    // was already facing rather than snapping to due north.
+    const startHeading = segmentHeading(stepRef.current);
+    if (startHeading !== undefined) onHeadingRef.current?.(startHeading);
     invalidate();
   }, [
     moveSeq,
@@ -268,11 +307,15 @@ export function useHexMovePath(
     if (advanced.stepComplete) {
       s.index += 1;
       s.elapsed = 0;
+      // Once per segment, not once per frame — the heading only changes when
+      // the leg does.
+      const nextHeading = segmentHeading(s);
+      if (nextHeading !== undefined) onHeadingRef.current?.(nextHeading);
       if (s.index >= s.points.length - 1) {
         setIsMoving(false);
       }
     }
   });
 
-  return { groupRef, isMoving };
+  return { isMoving };
 }
