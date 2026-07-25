@@ -28,6 +28,7 @@ describe('WallRunMesh R3F scene', () => {
           { start: { x: 6, z: 0 }, end: { x: 6, z: 1 } },
           { start: { x: 6, z: 3 }, end: { x: 6, z: 4 } },
         ],
+        coveredRows: { minRow: 0, maxRow: 4 },
       },
     ];
 

@@ -177,8 +177,14 @@ export function EncounterMap({
     [regions, connectorDoors]
   );
   const legacySyntyWalls = useMemo(
-    () => legacyRenderWalls(wallList, regions),
-    [wallList, regions]
+    () =>
+      legacyRenderWalls(
+        wallList,
+        regions,
+        wallRunsResult.connectorRuns,
+        connectorDoors
+      ),
+    [wallList, regions, wallRunsResult, connectorDoors]
   );
   const doorRotationOverrides = useMemo(
     () => connectorRunDoorRotations(wallRunsResult.connectorRuns),

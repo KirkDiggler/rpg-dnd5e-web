@@ -20,6 +20,8 @@ import {
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
+  hexColumn,
+  hexRow,
   type ConnectorDoorInput,
   type ConnectorRun,
   type RegionInput,
@@ -76,27 +78,109 @@ export function connectorDoorInputsFromWalls(
 }
 
 /**
+ * Column -> the row range a connector run's segments actually cover,
+ * joining `connectorRuns` back to each door's own cube position (for its
+ * column) via `doors` — `ConnectorRun` itself only carries `doorId`, not
+ * the door's position. A run with no `doorId`, or whose `doorId` has no
+ * matching entry in `doors`, contributes nothing (defensive; every real
+ * connector run traces back to a real `DOOR_*` wall entry, so this never
+ * fires against real data).
+ */
+function coveredRowRangesByColumn(
+  connectorRuns: ConnectorRun[],
+  doors: ConnectorDoorInput[]
+): Map<number, { minRow: number; maxRow: number }> {
+  const doorColumnById = new Map<string, number>();
+  for (const door of doors) {
+    if (door.id) doorColumnById.set(door.id, hexColumn(door.position));
+  }
+  const ranges = new Map<number, { minRow: number; maxRow: number }>();
+  for (const run of connectorRuns) {
+    if (!run.doorId) continue;
+    const column = doorColumnById.get(run.doorId);
+    if (column === undefined) continue;
+    ranges.set(column, run.coveredRows);
+  }
+  return ranges;
+}
+
+/** True when `hex` falls within some connector run's actually-covered
+ * row range at its own column — never "a run exists for this column" in
+ * isolation, since `coveredRows` can be a strict subset of the
+ * connector's true extent under partial reveal (ConnectorRun.coveredRows'
+ * own doc). */
+function isCoveredByConnectorRun(
+  hex: CubeCoord,
+  coveredRowRanges: Map<number, { minRow: number; maxRow: number }>
+): boolean {
+  const range = coveredRowRanges.get(hexColumn(hex));
+  if (!range) return false;
+  const row = hexRow(hex);
+  return row >= range.minRow && row <= range.maxRow;
+}
+
+/**
  * The positive category rule (design.md's W2 slice): the legacy per-cell
- * renderer (SyntyHexWall) now draws ONLY
+ * renderer (SyntyHexWall) draws
  *   (a) door entries, unchanged — their frame/leaf rendering and click
  *       surface are untouched by this design, only their ORIENTATION
  *       changes (see connectorRunDoorRotations below);
- *   (b) degenerate (`from === to`) non-door walls whose cell lies INSIDE
- *       some region's hex set — genuine interior pattern walls (the
- *       crypt has these; the reference-tomb doesn't).
+ *   (b) a non-door wall whose BLOCKING candidate cell lies INSIDE some
+ *       region's hex set — genuine interior pattern walls (the crypt has
+ *       these; the reference-tomb doesn't). For a degenerate
+ *       (`from === to`) entry the candidate is its own cell; for a
+ *       boundary-edge (`from !== to`) entry `from` is always real floor
+ *       ALREADY inside its own region (rpg-toolkit's own construction —
+ *       see below), so this never actually fires for boundary-edge, but
+ *       the check stays generic rather than assuming shape;
+ *   (c) STRUCTURAL SAFETY NET (gate review finding 1, rpg-dnd5e-web#603):
+ *       a non-door wall whose candidate cell is OUTSIDE any known region
+ *       AND whose candidate's column matches a KNOWN door's column (a
+ *       connector-flanking cell, either wire shape) AND is NOT already
+ *       covered by an emitted connector run.
  *
- * Everything else — every boundary-edge (`from !== to`) non-door wall,
- * and every degenerate non-door wall OUTSIDE any region's hex set (a
- * connector-flanking cell, pre- or post-#849 shape alike) — is EXCLUDED:
- * envelope/connector runs (wallRuns.computeWallRuns, rendered by
- * WallRunMesh) now own that geometry instead. This is what makes the rule
- * robust to both wire shapes without branching (design.md): it never asks
- * "is this the old rubble shape or the new boundary-edge shape," it only
- * asks "is this cell inside a region," which is true for neither shape.
+ * "Candidate cell" is what makes this robust to BOTH wire shapes without
+ * branching on which one it is: for a degenerate entry the candidate is
+ * the entry's own (single) cell; for a boundary-edge entry the candidate
+ * is `to` — the far side, since `from` is real region floor that needs
+ * no separate handling here (rpg-toolkit's `perimeterEdgeWalls`/
+ * `connectorBoundaryEdgeWalls`, encounter/dungeon.go, both only ever set
+ * `Start` to real, in-region floor). A candidate NOT inside any known
+ * region is either the dungeon's TRUE outer perimeter (excluded — the
+ * `from` region's own envelope run already covers its outward-facing
+ * sides once that region is known) or a connector-flanking cell — those
+ * two cases are told apart by whether the candidate's own column matches
+ * a KNOWN door's column: connector columns are always strictly interior
+ * (never the whole space's own x=0/width-1 edge — rpg-toolkit's own
+ * generation invariant, encounter/dungeon.go's `perimeterEdgeWalls` doc),
+ * so a true outer-perimeter candidate never coincides with a door column.
+ *
+ * Category (c) exists because region hex membership is per-viewer
+ * REVEAL-GATED (rpg-api's `Space.hexes` is sight-range-gated
+ * `RevealedHexes`, not the whole room), while the `Walls` list is
+ * whole-room and unconditional from wave 1 — so a connector's flanking
+ * wall entries can be on the wire well before `computeWallRuns` has
+ * enough region data to pair the door with both its neighbors (or, even
+ * once paired, before either side's row range has caught up to a given
+ * flanking cell's own row — see `ConnectorRun.coveredRows`' doc).
+ * Without (c), those entries were unconditionally excluded on the
+ * PROMISE a run would cover them, which produced a genuine invisible
+ * wall — a door frame flanked by nothing — for the entire span of
+ * exploration where that promise didn't yet hold; live-verified against
+ * the real running reference-tomb dungeon, this was NOT a theoretical
+ * gap — the production wire emits connector flanks in boundary-edge
+ * shape today, and an earlier, narrower version of this fix (checking
+ * only degenerate entries) caught none of them. (c) makes the
+ * invisible-wall guarantee hold BY CONSTRUCTION for every reveal state
+ * AND either wire shape: a flanking cell only ever loses its legacy
+ * rendering once a run actually draws over that exact cell, never merely
+ * because a run exists somewhere on its column.
  */
 export function legacyRenderWalls(
   walls: Iterable<Wall>,
-  regions: RegionInput[]
+  regions: RegionInput[],
+  connectorRuns: ConnectorRun[],
+  doors: ConnectorDoorInput[]
 ): Wall[] {
   const regionHexKeys = new Set<string>();
   for (const region of regions) {
@@ -104,6 +188,8 @@ export function legacyRenderWalls(
       regionHexKeys.add(coordToKey(hex));
     }
   }
+  const coveredRowRanges = coveredRowRangesByColumn(connectorRuns, doors);
+  const doorColumns = new Set(doors.map((door) => hexColumn(door.position)));
 
   const kept: Wall[] = [];
   for (const wall of walls) {
@@ -112,13 +198,26 @@ export function legacyRenderWalls(
       continue;
     }
     if (!wall.from || !wall.to) continue;
+    const fromHex: CubeCoord = {
+      x: wall.from.x,
+      y: wall.from.y,
+      z: wall.from.z,
+    };
+    const toHex: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
     const isDegenerate =
-      wall.from.x === wall.to.x &&
-      wall.from.y === wall.to.y &&
-      wall.from.z === wall.to.z;
-    if (!isDegenerate) continue; // boundary-edge -> replaced by envelope runs
-    const key = coordToKey({ x: wall.from.x, y: wall.from.y, z: wall.from.z });
-    if (regionHexKeys.has(key)) kept.push(wall);
+      fromHex.x === toHex.x && fromHex.y === toHex.y && fromHex.z === toHex.z;
+    const candidate = isDegenerate ? fromHex : toHex;
+
+    if (regionHexKeys.has(coordToKey(candidate))) {
+      kept.push(wall); // interior pattern wall
+      continue;
+    }
+    if (!doorColumns.has(hexColumn(candidate))) continue; // true outer perimeter
+    // Connector-flanking candidate: keep it via the legacy fallback
+    // UNLESS a connector run already covers this exact cell.
+    if (!isCoveredByConnectorRun(candidate, coveredRowRanges)) {
+      kept.push(wall);
+    }
   }
   return kept;
 }

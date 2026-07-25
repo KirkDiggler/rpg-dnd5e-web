@@ -44,6 +44,20 @@
  *   Zones/Doors either — doors are sorted by id for deterministic wire
  *   output, not by position, so which two regions a door joins is found
  *   purely geometrically (see connectorRegionsForDoor).
+ * - A region's hex membership (`RegionInput.hexes`) is the per-viewer
+ *   REVEALED subset, not the true room (rpg-api projects `Space.hexes`
+ *   from `snap.RevealedHexes`, sight-range-gated per player — unlike the
+ *   `Walls` list, which is whole-room and unconditional from wave 1).
+ *   ACCEPTED v1 consequence (gate review finding 2, rpg-dnd5e-web#603):
+ *   under partial reveal, an envelope run is drawn around the currently-
+ *   revealed blob, not the room's final extent — it tracks the reveal
+ *   frontier and moves outward as exploration proceeds, rather than
+ *   snapping straight to the room's true boundary. This is a fog-of-war
+ *   visual, not a bug, and it's why `connectorRunForDoor`'s row range
+ *   (`coveredRows`) is documented as a lower bound, never the connector's
+ *   true extent — see that field's own doc for the structural guarantee
+ *   this constrains callers to (wallRunAdapters.legacyRenderWalls' safety
+ *   net).
  */
 
 import {
@@ -110,6 +124,23 @@ export interface ConnectorRun {
   regionAId: string;
   regionBId: string;
   segments: WallRunSegment[];
+  /**
+   * The row range (inclusive) these segments were derived to cover — the
+   * union of both paired regions' CURRENTLY KNOWN row bounds at
+   * computation time (see connectorRunForDoor's doc for why union, not
+   * intersection). Region hex membership is per-viewer reveal-gated
+   * (rpg-api's `Space.hexes` is built from sight-range-gated
+   * `RevealedHexes`, not the true room), so this range can be a strict
+   * subset of the connector's true row extent under partial reveal —
+   * gate review finding 1 (rpg-dnd5e-web#603). A connector-flanking wall
+   * entry whose own row falls OUTSIDE `[minRow, maxRow]` is NOT covered
+   * by these segments even though a ConnectorRun exists for its column:
+   * callers needing the invisible-wall guarantee to hold by construction
+   * (wallRunAdapters.legacyRenderWalls' structural safety net) must check
+   * per-cell against this range, never assume "a run exists" implies
+   * "every flanking cell at this column is covered."
+   */
+  coveredRows: { minRow: number; maxRow: number };
 }
 
 export interface WallRunsInput {
@@ -122,8 +153,10 @@ export interface WallRunsInput {
   /** Outward offset (world units) applied to envelope runs beyond the
    * boundary hexes' own centers — the clip-clearance dial the design
    * doc's W4 slice tunes against the largest character mesh. Defaults to
-   * one hex radius: a reasonable starting placeholder for W2's
-   * placeholder-box geometry, not a final art-directed value. */
+   * `sqrt(3)` hex radii (see DEFAULT_ENVELOPE_OFFSET_HEXES's doc — this is
+   * what actually clears the outermost floor tiles' own footprint, not
+   * just their centers), a reasonable starting placeholder for W2/W3's
+   * geometry, not a final art-directed value. */
   envelopeOffset?: number;
   /** How far a run's endpoints extend past the outermost boundary hex's
    * own center, along the run's direction — reaches toward the hex's true
@@ -266,7 +299,24 @@ function buildEnvelopeSegment(
   };
 }
 
-const DEFAULT_ENVELOPE_OFFSET_HEXES = 1;
+/**
+ * Gate review finding 3 (rpg-dnd5e-web#603): under odd-q + pointy-top, a
+ * constant-row line is a staircase in world space, so the straight chord
+ * this module draws across it consumes 0.69-0.87 of whatever offset is
+ * configured (measured against the reference-tomb-shaped fixture's
+ * entrance/hall/tomb widths and the boss-room fixture). At the previous
+ * default (one hex radius), worst-case clearance from the outermost
+ * floor hex CENTERS to the top/bottom run was negative (-0.13 to -0.31) —
+ * the envelope still enclosed every hex center, but up to ~0.73 world
+ * units of the outermost floor tiles' own footprint sat outside the wall
+ * line, since a hex extends ~0.866 from its center to its flat side.
+ * `sqrt(3)` (~1.73) is what actually clears the tile footprint on the
+ * top/bottom sides. Still a placeholder for W2/W3's placeholder-box
+ * geometry, not final art direction — W4's clip-check slice (design.md)
+ * is where this gets tuned against the largest real character/monster
+ * mesh and locked for good.
+ */
+const DEFAULT_ENVELOPE_OFFSET_HEXES = Math.sqrt(3);
 const DEFAULT_CORNER_EXTENSION_HEXES = 0.5;
 
 /**
@@ -321,9 +371,27 @@ function envelopeRunsForRegion(
  * findings: doors are sorted by id for deterministic wire output, NOT by
  * position — never assume declaration/array order reflects physical
  * adjacency). Returns undefined if no such pair exists (a door with no
- * region on one or both sides — malformed data, or a non-dungeon
- * encounter's stray door — is skipped by the caller rather than
- * crashing).
+ * region revealed on one or both sides — malformed data, a non-dungeon
+ * encounter's stray door, or simply too early in exploration — is
+ * skipped by the caller rather than crashing).
+ *
+ * NEAREST region on each side, not exact `doorCol±1` adjacency (gate
+ * review finding 1, rpg-dnd5e-web#603): a region's hex membership is the
+ * per-viewer REVEALED subset, not the true room (rpg-api's `Space.hexes`
+ * is sight-range-gated `RevealedHexes`, never the whole room at once) —
+ * so the column immediately beside the connector can easily be
+ * unexplored while columns further into the same region already are.
+ * Requiring exact adjacency dropped the connector (and, since
+ * `legacyRenderWalls` already excludes every connector wall entry on the
+ * promise a run covers it, rendered nothing at all) for the entire
+ * span of exploration between "door revealed" and "the near column
+ * specifically revealed." Taking the CLOSEST region whose bounds lie
+ * entirely on each side (`maxCol < doorCol` / `minCol > doorCol`) instead
+ * needs only SOME of that region revealed, at any column — correct
+ * even with multiple regions further down the chain (a 3+ room dungeon
+ * has other regions whose columns also satisfy `> doorCol` on the far
+ * side; picking the smallest such `minCol` is exactly "nearest," so it's
+ * never confused with a region two connectors away).
  */
 function connectorRegionsForDoor(
   door: ConnectorDoorInput,
@@ -331,15 +399,38 @@ function connectorRegionsForDoor(
 ): { regionAId: string; regionBId: string } | undefined {
   const doorCol = hexColumn(door.position);
   let regionAId: string | undefined;
+  let regionAMaxCol = -Infinity;
   let regionBId: string | undefined;
+  let regionBMinCol = Infinity;
   for (const [id, bounds] of regionBounds) {
-    if (bounds.maxCol === doorCol - 1) regionAId = id;
-    if (bounds.minCol === doorCol + 1) regionBId = id;
+    if (bounds.maxCol < doorCol && bounds.maxCol > regionAMaxCol) {
+      regionAId = id;
+      regionAMaxCol = bounds.maxCol;
+    }
+    if (bounds.minCol > doorCol && bounds.minCol < regionBMinCol) {
+      regionBId = id;
+      regionBMinCol = bounds.minCol;
+    }
   }
   if (!regionAId || !regionBId) return undefined;
   return { regionAId, regionBId };
 }
 
+/**
+ * `coveredRows` is the UNION of both paired regions' currently-known row
+ * bounds, not the intersection (gate review finding 4, rpg-dnd5e-web#603):
+ * real dungeons share one `Height` across every region in the chain
+ * (`DungeonParams.Height`), so under full reveal both sides agree on the
+ * true row extent regardless of which is taken — the choice only matters
+ * under PARTIAL reveal, where union tracks whichever side has explored
+ * further (matching the envelope's own frontier-tracking behavior,
+ * accepted v1 fog per design), while intersection would shrink the run
+ * below what's already confirmed safe on the more-explored side. A
+ * hypothetical caller with genuinely mismatched-height neighbors would
+ * see the run extend past the shorter region into empty space — latent
+ * today since this module has no such caller, but real given the
+ * type's own protocol-agnostic, reusable framing.
+ */
 function connectorRunForDoor(
   door: ConnectorDoorInput,
   regionAId: string,
@@ -385,7 +476,13 @@ function connectorRunForDoor(
     });
   }
 
-  return { doorId: door.id, regionAId, regionBId, segments };
+  return {
+    doorId: door.id,
+    regionAId,
+    regionBId,
+    segments,
+    coveredRows: { minRow, maxRow },
+  };
 }
 
 /**

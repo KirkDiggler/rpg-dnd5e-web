@@ -159,39 +159,67 @@ describe('computeWallRuns — reference-tomb-shaped fixture (3 rooms, 2 connecto
     }
   });
 
-  it("hall's left/right envelope runs sit at the true column extent, offset outward by one hex", () => {
+  it("hall's left/right envelope runs sit at the room's true corner world positions with extension/offset zeroed, and shift outward by exactly the configured envelopeOffset otherwise (gate review finding 5, rpg-dnd5e-web#603 — real positions, not just dist > 0)", () => {
     const { regions } = referenceTombFixture();
-    const result = computeWallRuns({ regions, doors: [] });
-    const hallLeft = result.envelopeRuns.find(
-      (r) => r.regionId === 'hall' && r.side === 'left'
-    );
-    const hallRight = result.envelopeRuns.find(
-      (r) => r.regionId === 'hall' && r.side === 'right'
-    );
-    expect(hallLeft).toBeDefined();
-    expect(hallRight).toBeDefined();
-
-    // hall spans columns [7, 16] (width 10, offsetX 7). The right run
-    // must sit strictly further from hall's center than the left run (a
-    // real outward offset was applied, not a zero-op).
-    const hallCenterCol = HALL_START + HALL_WIDTH / 2;
-    const centerWorld = cubeToWorld(
-      cubeAtColRow(hallCenterCol, HEIGHT / 2),
+    const topLeft = cubeToWorld(cubeAtColRow(HALL_START, 0), HEX_SIZE);
+    const bottomLeft = cubeToWorld(
+      cubeAtColRow(HALL_START, HEIGHT - 1),
       HEX_SIZE
     );
-    const leftDist = Math.hypot(
-      hallLeft!.start.x - centerWorld.x,
-      hallLeft!.start.z - centerWorld.z
+    const topRight = cubeToWorld(
+      cubeAtColRow(HALL_START + HALL_WIDTH - 1, 0),
+      HEX_SIZE
     );
-    const rightDist = Math.hypot(
-      hallRight!.start.x - centerWorld.x,
-      hallRight!.start.z - centerWorld.z
+    const bottomRight = cubeToWorld(
+      cubeAtColRow(HALL_START + HALL_WIDTH - 1, HEIGHT - 1),
+      HEX_SIZE
     );
-    // Both sides must be pushed outward from the room's own center by a
-    // comparable amount (envelope offset), not left at the raw boundary
-    // hex's own center distance.
-    expect(leftDist).toBeGreaterThan(0);
-    expect(rightDist).toBeGreaterThan(0);
+
+    // Zero-tolerance exact match, isolating "did it find the true
+    // column/row extent" from the extension/offset dial entirely.
+    const zeroed = computeWallRuns({
+      regions,
+      doors: [],
+      cornerExtension: 0,
+      envelopeOffset: 0,
+    });
+    const hallLeftZeroed = zeroed.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'left'
+    )!;
+    const hallRightZeroed = zeroed.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'right'
+    )!;
+    expect(hallLeftZeroed.start).toEqual(topLeft);
+    expect(hallLeftZeroed.end).toEqual(bottomLeft);
+    expect(hallRightZeroed.start).toEqual(topRight);
+    expect(hallRightZeroed.end).toEqual(bottomRight);
+
+    // Nonzero offset: both sides translate outward (away from hall's own
+    // center) by EXACTLY `envelopeOffset` world units — a real check of
+    // magnitude, not merely "distance > 0" (which holds for any output).
+    const envelopeOffset = 1.23;
+    const offsetResult = computeWallRuns({
+      regions,
+      doors: [],
+      cornerExtension: 0,
+      envelopeOffset,
+    });
+    const hallLeftOffset = offsetResult.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'left'
+    )!;
+    const hallRightOffset = offsetResult.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'right'
+    )!;
+    const leftShift = Math.hypot(
+      hallLeftOffset.start.x - topLeft.x,
+      hallLeftOffset.start.z - topLeft.z
+    );
+    const rightShift = Math.hypot(
+      hallRightOffset.start.x - topRight.x,
+      hallRightOffset.start.z - topRight.z
+    );
+    expect(leftShift).toBeCloseTo(envelopeOffset, 9);
+    expect(rightShift).toBeCloseTo(envelopeOffset, 9);
   });
 
   it('boundary columns adjacent to a connector never get their own envelope side there (no side triples up)', () => {
@@ -271,6 +299,159 @@ describe('computeWallRuns — reference-tomb-shaped fixture (3 rooms, 2 connecto
     const result = computeWallRuns({ regions, doors: [strayDoor] });
     expect(result.connectorRuns).toHaveLength(0);
   });
+
+  it('pins both connector segments to the exact connector column and keeps the door cell clear of both (gate review finding 6, rpg-dnd5e-web#603)', () => {
+    const { regions, doorEntranceHallCol } = referenceTombFixture();
+    const doors = [
+      {
+        id: 'door-entrance-hall',
+        position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW),
+      },
+    ];
+    const result = computeWallRuns({ regions, doors, cornerExtension: 0 });
+    const run = result.connectorRuns[0]!;
+    expect(run.segments).toHaveLength(2);
+
+    const columnTop = cubeToWorld(
+      cubeAtColRow(doorEntranceHallCol, 0),
+      HEX_SIZE
+    );
+    const columnBottom = cubeToWorld(
+      cubeAtColRow(doorEntranceHallCol, HEIGHT - 1),
+      HEX_SIZE
+    );
+    const columnDir = {
+      x: columnBottom.x - columnTop.x,
+      z: columnBottom.z - columnTop.z,
+    };
+    // 2D cross product ~= 0 iff `p` is collinear with the column line
+    // through columnTop/columnBottom — every segment endpoint must sit
+    // exactly on the connector's own column, never drifted onto some
+    // other column.
+    const crossZ = (a: { x: number; z: number }, b: { x: number; z: number }) =>
+      a.x * b.z - a.z * b.x;
+    for (const segment of run.segments) {
+      for (const point of [segment.start, segment.end]) {
+        const toPoint = { x: point.x - columnTop.x, z: point.z - columnTop.z };
+        expect(Math.abs(crossZ(columnDir, toPoint))).toBeLessThan(1e-9);
+      }
+    }
+
+    // The door cell's own world position must fall outside BOTH segments'
+    // [start, end] span along the column line — never covered.
+    const doorWorld = cubeToWorld(
+      cubeAtColRow(doorEntranceHallCol, DOOR_ROW),
+      HEX_SIZE
+    );
+    for (const segment of run.segments) {
+      const segLen = Math.hypot(
+        segment.end.x - segment.start.x,
+        segment.end.z - segment.start.z
+      );
+      const segDir = {
+        x: (segment.end.x - segment.start.x) / segLen,
+        z: (segment.end.z - segment.start.z) / segLen,
+      };
+      const toDoor = {
+        x: doorWorld.x - segment.start.x,
+        z: doorWorld.z - segment.start.z,
+      };
+      const along = toDoor.x * segDir.x + toDoor.z * segDir.z;
+      expect(along < 0 || along > segLen).toBe(true);
+    }
+  });
+});
+
+describe('computeWallRuns — partial reveal (gate review finding 1, rpg-dnd5e-web#603): region hex membership is per-viewer reveal-gated, not the whole room', () => {
+  it('still resolves the connector when the neighboring region has NOT yet revealed the column immediately beside the door — the exact-adjacency check this replaces would have failed here', () => {
+    const { doorEntranceHallCol } = referenceTombFixture();
+    const entrance: RegionInput = {
+      id: 'entrance',
+      hexes: regionCubes(ENTRANCE_WIDTH, HEIGHT, ENTRANCE_START),
+    };
+    // Hall's revealed columns start at 12, not its true near column (7) —
+    // only the far half of the room has been seen so far.
+    const partialHall: RegionInput = {
+      id: 'hall',
+      hexes: regionCubes(HALL_WIDTH - 5, HEIGHT, HALL_START + 5),
+    };
+    const doors = [
+      {
+        id: 'door-entrance-hall',
+        position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW),
+      },
+    ];
+    const result = computeWallRuns({
+      regions: [entrance, partialHall],
+      doors,
+    });
+    expect(result.connectorRuns).toHaveLength(1);
+    expect(result.connectorRuns[0]).toMatchObject({
+      regionAId: 'entrance',
+      regionBId: 'hall',
+    });
+  });
+
+  it('picks the NEAREST region on each side, not just any region past the door column, when a 3+ room chain has multiple candidates', () => {
+    const { regions, doorEntranceHallCol } = referenceTombFixture();
+    // Entrance is fully known; hall is only partially known (cols 12-16,
+    // still nearer to the door than tomb's cols 18-29) alongside a fully
+    // known tomb — the door must pair with hall, not tomb, even though
+    // both satisfy "minCol > doorCol."
+    const partialHall: RegionInput = {
+      id: 'hall',
+      hexes: regionCubes(HALL_WIDTH - 5, HEIGHT, HALL_START + 5),
+    };
+    const tomb = regions.find((r) => r.id === 'tomb')!;
+    const entrance = regions.find((r) => r.id === 'entrance')!;
+    const doors = [
+      {
+        id: 'door-entrance-hall',
+        position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW),
+      },
+    ];
+    const result = computeWallRuns({
+      regions: [entrance, partialHall, tomb],
+      doors,
+    });
+    expect(result.connectorRuns).toHaveLength(1);
+    expect(result.connectorRuns[0]).toMatchObject({
+      regionAId: 'entrance',
+      regionBId: 'hall',
+    });
+  });
+
+  it("coveredRows reflects only the currently-known row bounds (the union of both sides), not the room's true full height — accepted v1 fog behavior (gate review finding 2), never asserting the frontier is wrong", () => {
+    const { doorEntranceHallCol } = referenceTombFixture();
+    // Entrance has only revealed rows 0-2 so far; hall is fully revealed
+    // (rows 0-7). The union takes hall's fuller extent even though
+    // entrance's OWN reveal hasn't caught up — whichever side has
+    // explored further governs, matching the envelope's own frontier-
+    // tracking (design.md's accepted v1 behavior).
+    const partialEntrance: RegionInput = {
+      id: 'entrance',
+      hexes: regionCubes(ENTRANCE_WIDTH, 3, ENTRANCE_START),
+    };
+    const fullHall: RegionInput = {
+      id: 'hall',
+      hexes: regionCubes(HALL_WIDTH, HEIGHT, HALL_START),
+    };
+    const doors = [
+      {
+        id: 'door-entrance-hall',
+        position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW),
+      },
+    ];
+    const result = computeWallRuns({
+      regions: [partialEntrance, fullHall],
+      doors,
+    });
+    expect(result.connectorRuns).toHaveLength(1);
+    expect(result.connectorRuns[0]!.coveredRows).toEqual({
+      minRow: 0,
+      maxRow: HEIGHT - 1,
+    });
+  });
 });
 
 describe('computeWallRuns — boss-room fixture (full-width open doorRow must NOT produce envelope gaps)', () => {
@@ -287,21 +468,57 @@ describe('computeWallRuns — boss-room fixture (full-width open doorRow must NO
     hexes: regionCubes(BOSS_WIDTH, HEIGHT, 0),
   };
 
-  it('produces exactly 4 unbroken envelope sides, none gapped at doorRow', () => {
-    const result = computeWallRuns({ regions: [bossRegion], doors: [] });
+  it("produces exactly 4 unbroken envelope sides, each landing EXACTLY on the room's true corner world positions with extension/offset zeroed (gate review finding 5, rpg-dnd5e-web#603 — a real position check, not tautological 'start/end are defined', which EnvelopeRun's non-optional typing makes true for any implementation)", () => {
+    const result = computeWallRuns({
+      regions: [bossRegion],
+      doors: [],
+      cornerExtension: 0,
+      envelopeOffset: 0,
+    });
     expect(result.envelopeRuns).toHaveLength(4);
-    for (const side of ['left', 'right', 'top', 'bottom'] as const) {
-      const run = result.envelopeRuns.find((r) => r.side === side);
-      expect(run).toBeDefined();
-      // A single start/end pair per side IS "unbroken" — there is no
-      // second segment or gap-carrying field on EnvelopeRun at all.
-      expect(run!.start).toBeDefined();
-      expect(run!.end).toBeDefined();
-    }
+
+    const topLeft = cubeToWorld(cubeAtColRow(0, 0), HEX_SIZE);
+    const topRight = cubeToWorld(cubeAtColRow(BOSS_WIDTH - 1, 0), HEX_SIZE);
+    const bottomLeft = cubeToWorld(cubeAtColRow(0, HEIGHT - 1), HEX_SIZE);
+    const bottomRight = cubeToWorld(
+      cubeAtColRow(BOSS_WIDTH - 1, HEIGHT - 1),
+      HEX_SIZE
+    );
+
+    const left = result.envelopeRuns.find((r) => r.side === 'left')!;
+    const right = result.envelopeRuns.find((r) => r.side === 'right')!;
+    const top = result.envelopeRuns.find((r) => r.side === 'top')!;
+    const bottom = result.envelopeRuns.find((r) => r.side === 'bottom')!;
+
+    // Exact equality holds here specifically because extension/offset are
+    // zeroed — this isolates "did it find the true corners of a region
+    // whose doorRow is wide open" from the separately-tested extension/
+    // offset dial. A hypothetical bug that punched a doorRow gap (split
+    // top/bottom into two segments, or shifted an endpoint toward the
+    // room's interior) would fail this exact match; the deliberately
+    // fully-open doorRow this fixture exercises never does, because
+    // envelope derivation reads only hex membership, never wall data.
+    expect(left.start).toEqual(topLeft);
+    expect(left.end).toEqual(bottomLeft);
+    expect(right.start).toEqual(topRight);
+    expect(right.end).toEqual(bottomRight);
+    expect(top.start).toEqual(topLeft);
+    expect(top.end).toEqual(topRight);
+    expect(bottom.start).toEqual(bottomLeft);
+    expect(bottom.end).toEqual(bottomRight);
   });
 
-  it("top/bottom runs span the FULL column range (0..width-1), not stopping short at the doorRow's would-be opening", () => {
-    const result = computeWallRuns({ regions: [bossRegion], doors: [] });
+  it('top/bottom span length equals the true corner-to-corner distance plus exactly 2x cornerExtension — an exact expected value, not just a >= inequality that any non-shrinking implementation would satisfy', () => {
+    const cornerExtension = 0.37;
+    const result = computeWallRuns({
+      regions: [bossRegion],
+      doors: [],
+      cornerExtension,
+      // envelopeOffset only translates both endpoints by the same
+      // vector, so it never affects span length — 0 keeps this test
+      // focused on cornerExtension alone.
+      envelopeOffset: 0,
+    });
     const top = result.envelopeRuns.find((r) => r.side === 'top')!;
     const bottom = result.envelopeRuns.find((r) => r.side === 'bottom')!;
 
@@ -322,11 +539,8 @@ describe('computeWallRuns — boss-room fixture (full-width open doorRow must NO
       bottom.end.x - bottom.start.x,
       bottom.end.z - bottom.start.z
     );
-    // The run (extended past the corners by cornerExtension on both ends)
-    // must be AT LEAST the raw corner-to-corner span — never shorter,
-    // which is what a spurious mid-run gap would produce.
-    expect(topSpan).toBeGreaterThanOrEqual(fullSpan - 1e-9);
-    expect(bottomSpan).toBeGreaterThanOrEqual(fullSpan - 1e-9);
+    expect(topSpan).toBeCloseTo(fullSpan + 2 * cornerExtension, 9);
+    expect(bottomSpan).toBeCloseTo(fullSpan + 2 * cornerExtension, 9);
   });
 });
 
