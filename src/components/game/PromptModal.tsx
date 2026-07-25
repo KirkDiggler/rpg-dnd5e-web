@@ -27,6 +27,20 @@ export interface PromptModalProps {
   onDismiss: () => void;
   /** Optional event-log sink (PlaytestHarness's Recent-events log). */
   onLog?: (message: string) => void;
+  /**
+   * Whether the skill-check branch offers a Dismiss button. Defaults to true
+   * for the playtest harness, where poking at a prompt and walking away is
+   * the point.
+   *
+   * The real game route passes false (rpg-dnd5e-web#589). Dismiss only clears
+   * CLIENT state — the server-side PendingPrompt survives it, and there is no
+   * cancel verb to wire it to (SubmitCheck is the only resolver). So in the
+   * real game a Dismiss puts the player straight back into the invisible
+   * soft-lock #589 is about: prompt pending on the server, nothing on screen,
+   * every subsequent action refused with "resolve the pending prompt before
+   * issuing another action".
+   */
+  allowDismiss?: boolean;
 }
 
 export function PromptModal({
@@ -35,6 +49,7 @@ export function PromptModal({
   prompt,
   onDismiss,
   onLog,
+  allowDismiss = true,
 }: PromptModalProps) {
   const {
     submitCheck,
@@ -228,19 +243,21 @@ export function PromptModal({
             >
               {submitCheckLoading ? 'Submitting…' : 'Submit roll'}
             </button>
-            <button
-              onClick={onDismiss}
-              style={{
-                padding: '4px 8px',
-                background: '#2a2a2a',
-                color: '#888',
-                border: '1px solid #444',
-                cursor: 'pointer',
-                fontSize: 11,
-              }}
-            >
-              Dismiss
-            </button>
+            {allowDismiss && (
+              <button
+                onClick={onDismiss}
+                style={{
+                  padding: '4px 8px',
+                  background: '#2a2a2a',
+                  color: '#888',
+                  border: '1px solid #444',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                }}
+              >
+                Dismiss
+              </button>
+            )}
           </div>
         )}
         {submitCheckError && (
