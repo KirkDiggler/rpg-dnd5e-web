@@ -10,11 +10,7 @@ import {
 import { RECONNECT_CONFIG } from './streamReconnect';
 
 type ConnectionState =
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'disconnected'
-  | 'error';
+  'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
 interface UseEncounterStreamResult {
   connectionState: ConnectionState;

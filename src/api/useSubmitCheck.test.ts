@@ -206,8 +206,7 @@ describe('useSubmitCheck', () => {
     // The mock receives the materialized proto message — takeReaction should
     // be undefined (proto-optional unset) when the caller didn't pass it.
     const call = hoisted.submitCheckFn.mock.calls[0]?.[0] as
-      | { takeReaction?: boolean }
-      | undefined;
+      { takeReaction?: boolean } | undefined;
     expect(call?.takeReaction).toBeUndefined();
   });
 

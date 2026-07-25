@@ -25,11 +25,17 @@ import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { ClassCharacterModel } from './ClassCharacterModel';
 import { resolveClassCharacterModelUrl } from './classCharacterModels';
+import {
+  DEFAULT_HEADING_BY_TYPE,
+  MEDIUM_HUMANOID_FORWARD_OFFSET,
+  SYNTY_GLB_FORWARD_OFFSET,
+} from './facing';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
 import { PROPS_MODEL_BASE } from './propManifest';
 import { PropModel } from './PropModel';
+import { useEntityFacing } from './useEntityFacing';
 import { useHexMovePath } from './useHexMovePath';
 
 export interface HexEntityProps {
@@ -245,13 +251,21 @@ export function HexEntity({
   // group's rotation.y while useHexMovePath drives its position, so the ref
   // has to live here rather than inside either hook.
   const movingGroupRef = useRef<THREE.Group>(null);
+  // rpg-dnd5e-web#590: heading lives here, not in the movement hook, so a
+  // future attack-facing source is another `requestHeading` caller rather than
+  // a refactor. Seeded with the staging pose; movement turns it from there.
+  const { requestHeading } = useEntityFacing(
+    movingGroupRef,
+    DEFAULT_HEADING_BY_TYPE[type] ?? 0
+  );
   const { isMoving } = useHexMovePath(
     position,
     movePath,
     moveSeq,
     hexSize,
     CHARACTER_Y_OFFSET,
-    movingGroupRef
+    movingGroupRef,
+    requestHeading
   );
 
   // Same "sticky failure keyed by url, not a bare boolean" shape as
@@ -384,7 +398,7 @@ export function HexEntity({
         isSelected={!isDead && isSelected}
         variant={type === 'monster' ? 'goblin' : 'human'}
         headVariant={headVariant}
-        facingRotation={type === 'player' ? Math.PI : 0}
+        facingRotation={MEDIUM_HUMANOID_FORWARD_OFFSET}
         race={characterRace}
         characterClass={characterClass}
         monsterType={monsterType}
@@ -435,7 +449,7 @@ export function HexEntity({
                   url={effectiveClassModelUrl}
                   isSelected={!isDead && isSelected}
                   isGhost={isGhost}
-                  facingRotation={Math.PI}
+                  facingRotation={SYNTY_GLB_FORWARD_OFFSET}
                   isMoving={!isDead && !isGhost && isMoving}
                 />
               </ErrorBoundary>

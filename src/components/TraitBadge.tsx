@@ -1,13 +1,7 @@
 import { motion } from 'framer-motion';
 
 export type TraitType =
-  | 'racial'
-  | 'class'
-  | 'background'
-  | 'feat'
-  | 'spell'
-  | 'item'
-  | 'custom';
+  'racial' | 'class' | 'background' | 'feat' | 'spell' | 'item' | 'custom';
 
 export interface TraitBadgeProps {
   name: string;

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_HEADING_BY_TYPE,
   easeHeading,
   headingFromDelta,
+  MEDIUM_HUMANOID_FORWARD_OFFSET,
   shortestTurn,
+  SYNTY_GLB_FORWARD_OFFSET,
   TURN_RATE_RAD_PER_SEC,
 } from './facing';
 import { cubeToWorld, HEX_DIRECTIONS } from './hexMath';
@@ -82,5 +85,53 @@ describe('easeHeading', () => {
   it('resolves a 180 degree reversal inside one hex step', () => {
     // SECONDS_PER_HEX_STEP is 0.45; PI / 8 = 0.393s.
     expect(Math.PI / TURN_RATE_RAD_PER_SEC).toBeLessThan(0.45);
+  });
+});
+
+describe('constant split reproduces the pre-#590 hardcoded values', () => {
+  // The visual-parity gate, as arithmetic. Before #590 the two call sites in
+  // HexEntity were literally:
+  //
+  //   MediumHumanoid:      facingRotation={type === 'player' ? Math.PI : 0}
+  //   ClassCharacterModel: facingRotation={Math.PI}
+  //
+  // Splitting one fused constant into two composed terms can silently cancel
+  // to 2*PI (no rotation) or double. These assertions pin the composition to
+  // the old values so a future edit to either term cannot quietly drift the
+  // rendered pose.
+  const norm = (r: number) =>
+    ((r % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+  it('player on MediumHumanoid still composes to PI', () => {
+    expect(
+      norm(DEFAULT_HEADING_BY_TYPE.player + MEDIUM_HUMANOID_FORWARD_OFFSET)
+    ).toBeCloseTo(Math.PI, 12);
+  });
+
+  it('monster on MediumHumanoid still composes to 0', () => {
+    expect(
+      norm(DEFAULT_HEADING_BY_TYPE.monster + MEDIUM_HUMANOID_FORWARD_OFFSET)
+    ).toBeCloseTo(0, 12);
+  });
+
+  it('player on a Synty class GLB still composes to PI', () => {
+    expect(
+      norm(DEFAULT_HEADING_BY_TYPE.player + SYNTY_GLB_FORWARD_OFFSET)
+    ).toBeCloseTo(Math.PI, 12);
+  });
+
+  it('measured forward offsets are zero because both rigs are +Z-forward', () => {
+    // Recorded as an assertion, not just a comment: this is the MEASURED
+    // finding (see the constants' doc comment). If a future model family
+    // arrives with a different convention it gets its own constant rather
+    // than these changing.
+    expect(SYNTY_GLB_FORWARD_OFFSET).toBe(0);
+    expect(MEDIUM_HUMANOID_FORWARD_OFFSET).toBe(0);
+  });
+
+  it('a heading of 0 points along world +Z, matching the rigs', () => {
+    // Ties the convention to the measurement: headingFromDelta(0, 1) is the
+    // direction the calibration capture showed both rigs facing at rotation 0.
+    expect(headingFromDelta(0, 1)).toBe(0);
   });
 });

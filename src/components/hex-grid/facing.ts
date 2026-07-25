@@ -80,3 +80,37 @@ export function easeHeading(
   if (Math.abs(turn) <= maxStep) return target;
   return current + Math.sign(turn) * maxStep;
 }
+
+/**
+ * Per-model-family correction for a rig whose forward axis is not +Z. A
+ * property of the ASSET, not of the entity using it — a monster rendered on a
+ * Synty GLB needs the Synty value, not a monster-flavoured one.
+ *
+ * MEASURED, not derived (rpg-dnd5e-web#590). Before the split, a single
+ * hardcoded `Math.PI` carried both this correction and the staging default
+ * below, so the two terms could not be recovered by reading the old constants —
+ * a naive split cancels to 2*PI. Both families were rendered at rotation 0 with
+ * the camera on the world +Z axis and captured at rotation 0 vs PI: at 0 both
+ * show their FACE, at PI both show their BACK.
+ *
+ * The result is that BOTH are zero — the rigs are already authored +Z-forward,
+ * which is exactly the convention `headingFromDelta` produces, so no correction
+ * is needed at all. The old `Math.PI` was 100% staging and 0% model correction.
+ * These constants stay (rather than being deleted as no-ops) because the
+ * measured fact "these rigs are +Z-forward" is the thing worth recording, and
+ * because a future model family with a different convention needs this seam
+ * rather than another fused constant.
+ */
+export const SYNTY_GLB_FORWARD_OFFSET = 0;
+export const MEDIUM_HUMANOID_FORWARD_OFFSET = 0;
+
+/**
+ * Spawn pose. NOT a model correction — this is staging: players face up-board
+ * and monsters face down-board so an encounter reads as two sides squaring off.
+ * Preserved deliberately (Kirk, 2026-07-24); entities turn out of it as soon as
+ * they move. Obstacles never move and fall through to 0.
+ */
+export const DEFAULT_HEADING_BY_TYPE: Record<string, number> = {
+  player: Math.PI,
+  monster: 0,
+};

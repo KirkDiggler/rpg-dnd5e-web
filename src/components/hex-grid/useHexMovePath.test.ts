@@ -10,8 +10,7 @@ import { cubeToWorld, type CubeCoord } from './hexMath';
 // `invalidate`.
 const hoisted = vi.hoisted(() => ({
   frameCallback: undefined as
-    | ((state: unknown, delta: number) => void)
-    | undefined,
+    ((state: unknown, delta: number) => void) | undefined,
   invalidate: vi.fn(),
 }));
 
@@ -444,12 +443,8 @@ describe('useHexMovePath (hook-level regression test)', () => {
     tick(SECONDS_PER_HEX_STEP);
     expect(result.current.isMoving).toBe(false);
     const posBWorld = cubeToWorld(posB, HEX_SIZE);
-    expect(groupRef.current!.position.x).toBeCloseTo(
-      posBWorld.x
-    );
-    expect(groupRef.current!.position.z).toBeCloseTo(
-      posBWorld.z
-    );
+    expect(groupRef.current!.position.x).toBeCloseTo(posBWorld.x);
+    expect(groupRef.current!.position.z).toBeCloseTo(posBWorld.z);
 
     // 2. Revive: applyEntityAppearedBatch replaces the entity record
     // wholesale -- moveSeq goes back to undefined.
@@ -479,12 +474,8 @@ describe('useHexMovePath (hook-level regression test)', () => {
     // `useFrame` interpolate; it never writes `groupRef.current.position`
     // directly (only the non-genuine/snap branch does that).
     expect(result.current.isMoving).toBe(true);
-    expect(groupRef.current!.position.x).toBeCloseTo(
-      posBWorld.x
-    );
-    expect(groupRef.current!.position.z).toBeCloseTo(
-      posBWorld.z
-    );
+    expect(groupRef.current!.position.x).toBeCloseTo(posBWorld.x);
+    expect(groupRef.current!.position.z).toBeCloseTo(posBWorld.z);
 
     // And it actually interpolates once a frame ticks, landing strictly
     // between posB and posC -- not jumping straight to either endpoint.
