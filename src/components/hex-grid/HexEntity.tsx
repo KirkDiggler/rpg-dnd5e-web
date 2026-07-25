@@ -119,8 +119,8 @@ const ENTITY_HEIGHT = 1.5; // Height of the cylinder
 const ENTITY_RADIUS_SCALE = 0.3; // Radius as fraction of hex size
 const Y_OFFSET = 0.1; // Small Y offset to sit above the hex plane
 
-// Character model Y offset (characters stand on the ground)
-const CHARACTER_Y_OFFSET = 0.05;
+// Clear the default 0.20 Synty floor and slightly negative GLB foot minima.
+const CHARACTER_Y_OFFSET = 0.21;
 
 /**
  * Whether the dead/downed corpse tilt (60 degrees about Z) should apply.

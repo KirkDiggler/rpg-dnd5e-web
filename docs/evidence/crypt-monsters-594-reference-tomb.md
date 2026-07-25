@@ -31,11 +31,18 @@ zero; `git status --short --ignored public/models/synty/npcs` reported only
 
 ## Reference Tomb Browser Result
 
-Browser verification is blocked, so no screenshots are attached or claimed.
-The active browser session at `http://localhost:3004/?playerId=alice` shows a
-different existing encounter whose only monster label is `entrance...`.
-The current-worktree Vite server is not running, and the repositories contain
-no documented local-stack/content-loading command that imports
-`/home/kirk/game-dev/dungeon-content/reference-tomb.yaml` into the listener on
-port 8080. Consequently this PR has not yet proven the reference tomb's
-Soldier01/Knight standing, moving, and downed sibling rendering in a browser.
+The local content runtime is configured with `RPG_DUNGEON_KEY=reference-tomb`
+and `/home/kirk/game-dev/dungeon-content` mounted at `/content`. A PR-worktree
+Vite server was started on port 3004 with `VITE_API_HOST=http://localhost:8080`.
+Using Alice through the normal lobby flow (create, ready, Start) created a new
+local encounter; `StartEncounter` and `StreamEncounter` returned HTTP 200.
+
+The user-provided runtime screenshot showed both skeletons sunk by about 0.15,
+matching `CHARACTER_Y_OFFSET=0.05` below the default Synty floor top of 0.20.
+The shared placement offset is now 0.21, above both Synty (0.20) and shaded
+(0.15) floor tops, with clearance for slightly negative GLB foot minima.
+
+No post-fix browser screenshot or dynamic movement/death observation is
+claimed: the browser screenshot capture timed out before a reload. The
+resolver's mappings, downed behavior, and two-clip asset contract remain
+covered by their existing unit and export checks.

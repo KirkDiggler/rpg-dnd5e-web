@@ -131,6 +131,16 @@ describe('floor overlay Y offsets clear the floor extrusion top', () => {
     expect(offset).toBeGreaterThan(syntyTop);
   });
 
+  it('shared character placement clears both floor renderers', () => {
+    const entitySrc = readSource('./HexEntity.tsx');
+    const floorSrc = readSource('./SyntyHexFloor.tsx');
+    const characterOffset = extractNumberConst(entitySrc, 'CHARACTER_Y_OFFSET');
+    const syntyTop = extractNumberConst(floorSrc, SYNTY_FLOOR_TOP_CONST);
+
+    expect(characterOffset).toBeGreaterThan(FLOOR_TOP_Y);
+    expect(characterOffset).toBeGreaterThan(syntyTop);
+  });
+
   it('SyntyHexFloor is unextruded, so FLOOR_Y is genuinely its top face', () => {
     // Guard the "flat plane, position IS the top" assumption the two tests
     // above rely on. If SyntyHexFloor ever grows real extrusion depth (an
