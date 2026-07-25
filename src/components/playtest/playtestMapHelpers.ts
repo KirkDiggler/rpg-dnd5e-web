@@ -43,6 +43,11 @@ export interface RenderableEntity {
    * rpg-dnd5e-web#501 class-model hookup. Undefined for monsters/obstacles
    * or when the server hasn't set a class ref. */
   classRefId?: string;
+  /** v1alpha2 MonsterData.monster_ref.id (e.g. "skeleton",
+   * "skeleton-captain"), from entityMeta — rpg-dnd5e-web#559 monster-model
+   * hookup, the monster-side counterpart of `classRefId`. Undefined for
+   * players/obstacles or when the server hasn't set a monster ref. */
+  monsterRefId?: string;
   /** True for CHARACTER entities carrying the "unconscious" condition
    * (rpg-dnd5e-web#501) — the honest downed signal for players, matching
    * entityHelpers.ts's established "only monsters die at 0 HP, characters
@@ -176,6 +181,7 @@ export function buildRenderableEntities(
       isDead,
       isGhost: entity.ghost === true,
       classRefId: meta?.classRefId,
+      monsterRefId: meta?.monsterRefId,
       isDowned,
       propRefId: meta?.propRefId,
       movePath: entity.movePath,

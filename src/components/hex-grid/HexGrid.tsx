@@ -63,6 +63,7 @@ export interface HexGridEntity {
   isDead?: boolean;
   isGhost?: boolean;
   classRefId?: string;
+  monsterRefId?: string;
   isDowned?: boolean;
   obstacleType?: ObstacleType;
   propRefId?: string;
@@ -768,6 +769,7 @@ function Scene({
           onClick={entityClickHandler(entity.knowledgeState, handleEntityClick)}
           character={characterMap.get(entity.entityId)}
           monster={monsterMap.get(entity.entityId)}
+          monsterRefId={entity.monsterRefId}
           isDead={entity.isDead}
           isGhost={entity.isGhost}
           classRefId={entity.classRefId}
