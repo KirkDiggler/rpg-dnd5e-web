@@ -60,9 +60,10 @@ There is no formal process yet. When a concept is ready:
 
 ## Current concepts
 
-| Concept            | Status                   | Notes                                                                                                                                                                  |
-| ------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `class-selection/` | Prototype — not promoted | Enriched class selection UI with guidance panels. Hard-coded data in `data.ts`. Needs API wiring to promote.                                                           |
-| `encounter-dock/`  | Verification harness     | Renders the live `EncounterDock` with mock data to check responsive wrap behavior (#494/#519).                                                                         |
-| `combat-panel/`    | Design review (web#525)  | Round-1 IA compositions built from `ui/combat` primitives on proto-typed fixtures; fixture-first exemplar.                                                             |
-| `combat-pacing/`   | Design review (web#561)  | Round-1 beat-sequencer bench (`useBeatSequencer` + `BeatStage`) comparing token-anchored vs. center-stage die placement on identical fixtures; fixture-first exemplar. |
+| Concept            | Status                   | Notes                                                                                                                                                                                 |
+| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `class-selection/` | Prototype — not promoted | Enriched class selection UI with guidance panels. Hard-coded data in `data.ts`. Needs API wiring to promote.                                                                          |
+| `encounter-dock/`  | Verification harness     | Renders the live `EncounterDock` with mock data to check responsive wrap behavior (#494/#519).                                                                                        |
+| `combat-panel/`    | Design review (web#525)  | Round-1 IA compositions built from `ui/combat` primitives on proto-typed fixtures; fixture-first exemplar.                                                                            |
+| `combat-pacing/`   | Design review (web#561)  | Round-1 beat-sequencer bench (`useBeatSequencer` + `BeatStage`) with one shared tray: routine outcomes upper-center and crit/nat-1 frame breaks center-stage; fixture-first exemplar. |
+| `just-roll/`       | Concept exploration      | Persistent local-only d20 play that reuses one shared `src/components/ui/dice/DiceTray` across rolls.                                                                                 |

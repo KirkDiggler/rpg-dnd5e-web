@@ -10,11 +10,11 @@
  * lint rule — this module sidesteps that too, but the ownership
  * separation above is the actual reason it exists.
  *
- * `BeatAttackView`/`BeatDamageView` are deliberately NOT imported from
+ * `BeatAttackView` is deliberately NOT imported from
  * `./fixtures` — see `BeatStage.tsx`'s header for why. `fixtures.ts`'s
  * `AttackResolvedLike`/`EntityDamagedLike` are a structural superset of
  * these (same field names/types, plus more), so passing one where a
- * `BeatAttackView`/`BeatDamageView` is expected needs no adapter or cast.
+ * `BeatAttackView` is expected needs no adapter or cast.
  */
 
 /** The ONLY fields `BeatStage` reads off an attack. */
@@ -25,11 +25,6 @@ export interface BeatAttackView {
   attackRoll: number;
   attackBonus: number;
   targetAc: number;
-}
-
-/** The ONLY field `BeatStage` reads off a damage event. */
-export interface BeatDamageView {
-  amount: number;
 }
 
 export type VerdictLabel = 'HIT' | 'MISS' | 'CRIT' | 'NAT-1' | '';

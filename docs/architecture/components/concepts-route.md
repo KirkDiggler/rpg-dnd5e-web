@@ -35,14 +35,19 @@ real `AttackResolved`/`EntityDamaged`/`ActionResolved` field shapes),
 `useBeatSequencer.ts` (the pure Cue→Throw→Verdict→Impact→Release timing
 state machine — pace-derived durations, crit stretch, auto-throw
 timeout, tap-to-skip, repeat-roll compression), `BeatStage.tsx` (the
-presentational die/verdict/damage surface, beat-shaped props only,
+presentational verdict and impact surface, beat-shaped props only,
 token-anchored-promotes-to-center-stage on crit/nat-1), and
-`CombatPacingConcept.tsx` (renders both placements side by side against
-the same fixture, plus a pace-override/reduced-motion/viewport-frame
-switcher and an event/intent inspector). `CONTRACT.md` restates
+`CombatPacingConcept.tsx` (one shared tray: routine outcomes sit upper
+center and crit/nat-1 frame breaks promote it center-stage, plus a
+pace-override/reduced-motion/viewport-frame switcher and an event/intent
+inspector). `CONTRACT.md` restates
 design.md §6's wire-shape candidates in the equipment concept's
 gap-log STRUCTURE, but stays evidence-only (not yet ask-shaped like the
 equipment file) — no Platform issue filed by this round.
+
+`src/concepts/just-roll/` — local-only d20 play that reuses one persistent
+presentation-only `src/components/ui/dice/DiceTray` across rolls; it and
+combat pacing supply the tray's phase, outcome, motion, and final face.
 
 ## Gap: no promotion process
 

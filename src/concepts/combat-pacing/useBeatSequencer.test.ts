@@ -401,4 +401,24 @@ describe('useBeatSequencer', () => {
     expect(result.current.beat).toBe('done');
     // total: 150 + 1000 + 800 + 150 = 2100ms exactly.
   });
+
+  it('releases completed correlation groups one at a time, while Instant releases immediately', () => {
+    const { result } = renderHook(() =>
+      useBeatSequencer(scenario('repeated-attacks'))
+    );
+    expect(result.current.releasedGroupCount).toBe(0);
+    act(() => {
+      result.current.skip();
+      result.current.skip();
+    });
+    expect(result.current.releasedGroupCount).toBe(1);
+    expect(result.current.groupIndex).toBe(1);
+
+    const instantScenario = {
+      ...scenario('player-hit'),
+      pace: 'instant' as const,
+    };
+    const instant = renderHook(() => useBeatSequencer(instantScenario));
+    expect(instant.result.current.releasedGroupCount).toBe(1);
+  });
 });

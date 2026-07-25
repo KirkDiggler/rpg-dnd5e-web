@@ -148,6 +148,8 @@ export interface BeatSequencerState {
   groupIndex: number;
   groupCount: number;
   group?: BeatGroupResult;
+  /** Number of correlation groups whose presentation has completed Release. */
+  releasedGroupCount: number;
   /** Throws the player's own die during `armed`; a no-op in any other beat. */
   throwDie: () => void;
   /** Jumps straight to `verdict` from `cue`/`armed`/`throw` (design.md §1:
@@ -166,6 +168,7 @@ export function useBeatSequencer(
   const { reducedMotion = false } = options;
   const [beat, setBeatState] = useState<BeatName>('idle');
   const [groupIndex, setGroupIndexState] = useState(0);
+  const [releasedGroupCount, setReleasedGroupCount] = useState(0);
   const beatRef = useRef<BeatName>('idle');
   const groupIndexRef = useRef(0);
   // `groups` is real state, not a bare ref — see the file header for why
@@ -208,6 +211,7 @@ export function useBeatSequencer(
     scenario.pace === 'brisk' || index > 0 ? BRISK : CINEMATIC;
 
   const finishGroup = (index: number) => {
+    setReleasedGroupCount((current) => Math.max(current, index + 1));
     const next = index + 1;
     if (groupsRef.current[next]) {
       setGroupIndex(next);
@@ -220,6 +224,8 @@ export function useBeatSequencer(
   const startGroup = (index: number) => {
     const group = groupsRef.current[index];
     if (!group || scenario.pace === 'instant') {
+      if (scenario.pace === 'instant')
+        setReleasedGroupCount(groupsRef.current.length);
       setBeat('done');
       return;
     }
@@ -298,6 +304,7 @@ export function useBeatSequencer(
       // above for why a ref-only mutation is not sufficient here.
       setGroups(groupByCorrelation(scenario.events));
       setGroupIndex(0);
+      setReleasedGroupCount(0);
       startGroup(0);
     } else {
       // Same scenario, only `reducedMotion` (a live control) changed —
@@ -332,6 +339,7 @@ export function useBeatSequencer(
     groupIndex,
     groupCount: groups.length,
     group: groups[groupIndex],
+    releasedGroupCount,
     throwDie,
     skip,
   };

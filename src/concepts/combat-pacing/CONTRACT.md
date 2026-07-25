@@ -15,6 +15,9 @@ equipment one does today.
 Almost all of round one is client-side and fixture-driven — there is
 nothing to ask the platform team for yet.
 
+Impact tiers are separate concept-only presentation metadata. Production must
+not invent a game-rule tier from damage, HP, or another client-side heuristic.
+
 ## 1. Correlation/cardinality/completeness (candidate, not a request)
 
 The event spine supports several real shapes, and this concept's
