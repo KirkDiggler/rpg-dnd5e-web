@@ -4,6 +4,7 @@ import {
   easeHeading,
   headingFromDelta,
   MEDIUM_HUMANOID_FORWARD_OFFSET,
+  POLYGON_DUNGEON_FORWARD_OFFSET,
   shortestTurn,
   SYNTY_GLB_FORWARD_OFFSET,
   TURN_RATE_RAD_PER_SEC,
@@ -127,6 +128,10 @@ describe('constant split reproduces the pre-#590 hardcoded values', () => {
     // than these changing.
     expect(SYNTY_GLB_FORWARD_OFFSET).toBe(0);
     expect(MEDIUM_HUMANOID_FORWARD_OFFSET).toBe(0);
+  });
+
+  it('the POLYGON Dungeon npc rig also measures +Z-forward (rpg-dnd5e-web#559) — its own constant, not a reuse of SYNTY_GLB_FORWARD_OFFSET, even though the value agrees', () => {
+    expect(POLYGON_DUNGEON_FORWARD_OFFSET).toBe(0);
   });
 
   it('a heading of 0 points along world +Z, matching the rigs', () => {

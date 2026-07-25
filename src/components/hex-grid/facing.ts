@@ -115,6 +115,30 @@ export const SYNTY_GLB_FORWARD_OFFSET = 0;
 export const MEDIUM_HUMANOID_FORWARD_OFFSET = 0;
 
 /**
+ * Per-model-family correction for the POLYGON Dungeon npc rigs
+ * (rpg-dnd5e-web#559 monster-model resolver) — a DIFFERENT Synty source
+ * pack from the Fantasy Rivals class models `SYNTY_GLB_FORWARD_OFFSET`
+ * measures, so its forward axis is not assumed to match (the #590 design
+ * doc's explicit hazard: two fused terms that happen to both be zero look
+ * identical to "one shared constant" until a future pack isn't zero).
+ *
+ * MEASURED, not assumed (rpg-dnd5e-web#559): rendered Character_
+ * Skeleton_Soldier_01.glb and Character_Skeleton_Knight.glb (the boss
+ * candidate — a visually distinct rig within the same pack, not just the
+ * same asset twice) via the real ClassCharacterModel component at rotation
+ * 0 and rotation PI, camera fixed on the world +Z axis. Both show the
+ * FACE at 0 and the BACK at PI, for both rigs — i.e. this pack is also
+ * already authored +Z-forward, the same convention `headingFromDelta`
+ * produces. Kept as its own named constant rather than reusing
+ * SYNTY_GLB_FORWARD_OFFSET even though the measured value is identical:
+ * the two packs are independent measurements that happen to agree, not one
+ * fact — a future POLYGON Dungeon asset revision or a different npc family
+ * needs this seam to diverge from Fantasy Rivals without touching that
+ * constant's own (separately measured) meaning.
+ */
+export const POLYGON_DUNGEON_FORWARD_OFFSET = 0;
+
+/**
  * Spawn pose. NOT a model correction — this is staging: players face up-board
  * and monsters face down-board so an encounter reads as two sides squaring off.
  * Preserved deliberately (Kirk, 2026-07-24); entities turn out of it as soon as
