@@ -38,7 +38,11 @@ import { HexEntity } from './HexEntity';
 import { cubeToWorld, getHexLine, HEX_SIZE, type CubeCoord } from './hexMath';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
-import { isRemembered, type SceneKnowledgeState } from './sceneKnowledge';
+import {
+  entityClickHandler,
+  isRemembered,
+  type SceneKnowledgeState,
+} from './sceneKnowledge';
 import { resolveEntityTint } from './selectionVisuals';
 import { SelfIndicatorRing } from './SelfIndicatorRing';
 import { ShadedHexFloor } from './ShadedHexFloor';
@@ -761,7 +765,7 @@ function Scene({
             selectedEntityId,
             currentEntityId
           )}
-          onClick={handleEntityClick}
+          onClick={entityClickHandler(entity.knowledgeState, handleEntityClick)}
           character={characterMap.get(entity.entityId)}
           monster={monsterMap.get(entity.entityId)}
           isDead={entity.isDead}

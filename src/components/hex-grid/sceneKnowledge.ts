@@ -11,6 +11,13 @@ export function isRemembered(state?: SceneKnowledgeState): boolean {
   return state === 'remembered';
 }
 
+export function entityClickHandler<T>(
+  state: SceneKnowledgeState | undefined,
+  handler: T | undefined
+): T | undefined {
+  return isRemembered(state) ? undefined : handler;
+}
+
 export function rememberedSegment(
   key: string,
   keys?: ReadonlySet<string>

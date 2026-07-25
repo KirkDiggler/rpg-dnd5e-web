@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   cloneCryptMaterials,
+  entityClickHandler,
   isRemembered,
   rememberedFitting,
   rememberedSegment,
@@ -12,6 +13,13 @@ describe('scene knowledge decisions', () => {
     expect(isRemembered(undefined)).toBe(false);
     expect(isRemembered('visible')).toBe(false);
     expect(isRemembered('remembered')).toBe(true);
+  });
+
+  it('withholds direct entity callbacks only for remembered entities', () => {
+    const onClick = () => {};
+    expect(entityClickHandler(undefined, onClick)).toBe(onClick);
+    expect(entityClickHandler('visible', onClick)).toBe(onClick);
+    expect(entityClickHandler('remembered', onClick)).toBeUndefined();
   });
 
   it('recognizes remembered segment and fitting keys', () => {
