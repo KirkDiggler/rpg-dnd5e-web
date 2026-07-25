@@ -827,6 +827,11 @@ export function EncounterView({
         // runs for the post-resolution auto-clear — that path has already
         // consumed the prompt via SubmitCheck.
         allowDismiss={false}
+        // rpg-dnd5e-web#597: the real game route rolls a real d20 client-side
+        // and shows it — it does not let the player type their own roll. The
+        // playtest harness keeps the typed input (allowManualRoll defaults to
+        // true there) because its tests depend on forcing specific rolls.
+        allowManualRoll={false}
       />
 
       {/* Map fills whatever the header/banner/dock don't take — this
