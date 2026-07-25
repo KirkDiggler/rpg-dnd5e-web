@@ -63,6 +63,10 @@ export interface HexGridProps {
     /** v1alpha2 CharacterData.class_ref.id — drives class-model selection
      * for player entities (rpg-dnd5e-web#501). */
     classRefId?: string;
+    /** v1alpha2 MonsterData.monster_ref.id — drives npc-model selection
+     * for monster entities (rpg-dnd5e-web#559), the monster-side
+     * counterpart of classRefId. */
+    monsterRefId?: string;
     /** True for a CHARACTER entity carrying the "unconscious" condition —
      * the downed class-model swap (rpg-dnd5e-web#501). */
     isDowned?: boolean;
@@ -732,6 +736,7 @@ function Scene({
           onClick={handleEntityClick}
           character={characterMap.get(entity.entityId)}
           monster={monsterMap.get(entity.entityId)}
+          monsterRefId={entity.monsterRefId}
           isDead={entity.isDead}
           isGhost={entity.isGhost}
           classRefId={entity.classRefId}

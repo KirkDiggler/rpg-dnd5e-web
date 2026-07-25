@@ -4,6 +4,7 @@ import {
   easeHeading,
   headingFromDelta,
   MEDIUM_HUMANOID_FORWARD_OFFSET,
+  POLYGON_DUNGEON_FORWARD_OFFSET,
   shortestTurn,
   SYNTY_GLB_FORWARD_OFFSET,
   TURN_RATE_RAD_PER_SEC,
@@ -120,6 +121,12 @@ describe('constant split reproduces the pre-#590 hardcoded values', () => {
     ).toBeCloseTo(Math.PI, 12);
   });
 
+  it('monster on a POLYGON Dungeon npc GLB composes to 0 (rpg-dnd5e-web#559) -- mirrors the player+Synty case above; inert today since both terms are zero, which is exactly when a silent-cancellation bug would hide', () => {
+    expect(
+      norm(DEFAULT_HEADING_BY_TYPE.monster + POLYGON_DUNGEON_FORWARD_OFFSET)
+    ).toBeCloseTo(0, 12);
+  });
+
   it('measured forward offsets are zero because both rigs are +Z-forward', () => {
     // Recorded as an assertion, not just a comment: this is the MEASURED
     // finding (see the constants' doc comment). If a future model family
@@ -127,6 +134,10 @@ describe('constant split reproduces the pre-#590 hardcoded values', () => {
     // than these changing.
     expect(SYNTY_GLB_FORWARD_OFFSET).toBe(0);
     expect(MEDIUM_HUMANOID_FORWARD_OFFSET).toBe(0);
+  });
+
+  it('the POLYGON Dungeon npc rig also measures +Z-forward (rpg-dnd5e-web#559) — its own constant, not a reuse of SYNTY_GLB_FORWARD_OFFSET, even though the value agrees', () => {
+    expect(POLYGON_DUNGEON_FORWARD_OFFSET).toBe(0);
   });
 
   it('a heading of 0 points along world +Z, matching the rigs', () => {

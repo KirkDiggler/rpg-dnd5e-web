@@ -28,10 +28,12 @@ import { resolveClassCharacterModelUrl } from './classCharacterModels';
 import {
   DEFAULT_HEADING_BY_TYPE,
   MEDIUM_HUMANOID_FORWARD_OFFSET,
+  POLYGON_DUNGEON_FORWARD_OFFSET,
   SYNTY_GLB_FORWARD_OFFSET,
 } from './facing';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
+import { resolveMonsterModelUrl } from './monsterModels';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
 import { PROPS_MODEL_BASE } from './propManifest';
 import { PropModel } from './PropModel';
@@ -50,6 +52,13 @@ export interface HexEntityProps {
   character?: Character;
   /** Monster data for texture selection (includes monsterType) */
   monster?: MonsterCombatState;
+  /** v1alpha2 MonsterData.monster_ref.id (e.g. "skeleton",
+   * "skeleton-captain") — resolves an npc GLB for monster entities
+   * (rpg-dnd5e-web#559), the monster-side counterpart of `classRefId`.
+   * Preferred over `monster?.monsterType` when present
+   * (monsterModels.ts's resolveMonsterModelUrl). Unmapped/undefined falls
+   * back to MediumHumanoid, unchanged (the #479 boundary lineage). */
+  monsterRefId?: string;
   /** Override hair style (proto doesn't have this field yet) */
   hairStyle?: HairStyle;
   /** Override hair color as hex string (proto doesn't have this field yet) */
@@ -110,8 +119,32 @@ const ENTITY_HEIGHT = 1.5; // Height of the cylinder
 const ENTITY_RADIUS_SCALE = 0.3; // Radius as fraction of hex size
 const Y_OFFSET = 0.1; // Small Y offset to sit above the hex plane
 
-// Character model Y offset (characters stand on the ground)
-const CHARACTER_Y_OFFSET = 0.05;
+// Clear the default 0.20 Synty floor and slightly negative GLB foot minima.
+const CHARACTER_Y_OFFSET = 0.21;
+
+/**
+ * Whether the dead/downed corpse tilt (60 degrees about Z) should apply.
+ * Exported + pure so the six dead/downed x mapped/unmapped combinations are
+ * covered by a real test (HexEntity.test.ts) instead of only by a reviewer
+ * reading the JSX carefully — same "pull the composition into arithmetic a
+ * test can pin" reasoning as facing.ts's constant-split parity assertions
+ * (#590/#592) and the same "export a pure helper straight off the component
+ * file for coverage" precedent as HexGrid.tsx's isHexBlocked.
+ *
+ * Only tilt when falling back to the primitive/MediumHumanoid rendering
+ * (`!hasResolvedModel`) — a resolved GLB's own downed/dead variant is
+ * already posed for it (rpg-dnd5e-web#501 for players, generalized to
+ * monsters by rpg-dnd5e-web#559), so tilting it on top would double up on
+ * an already-prone body.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function shouldTiltDeadOrDowned(
+  isDead: boolean,
+  isDowned: boolean,
+  hasResolvedModel: boolean
+): boolean {
+  return (isDead || isDowned) && !hasResolvedModel;
+}
 
 /** Map Race enum to head variant for 3D model */
 const RACE_TO_HEAD_VARIANT: Partial<Record<Race, HeadVariant>> = {
@@ -225,6 +258,7 @@ export function HexEntity({
   onClick,
   character,
   monster,
+  monsterRefId,
   hairStyle,
   hairColor,
   facialHairStyle,
@@ -269,22 +303,27 @@ export function HexEntity({
   );
 
   // Same "sticky failure keyed by url, not a bare boolean" shape as
-  // failedClassModelUrl below — a prop GLB that fails to load falls back
+  // failedEntityModelUrl below — a prop GLB that fails to load falls back
   // to the primitive capsule, but a later obstacleType change (a
   // different resolved url) isn't permanently masked by a stale failure.
   const [failedPropModelUrl, setFailedPropModelUrl] = useState<
     string | undefined
   >(undefined);
 
-  // Tracks a class-model GLB url that failed to load (ErrorBoundary caught
-  // a terminal load error), so the downed-tilt check below can still fire
-  // once we've fallen back to MediumHumanoid — otherwise a downed player
-  // whose class GLB happens to be missing/broken would render upright
-  // (rpg-dnd5e-web#502 gate note). Compared against the *current*
-  // classModelUrl each render rather than a bare boolean so a later class/
-  // asset change (new classRefId, or the file becoming available again)
-  // isn't permanently masked by a stale failure from a different url.
-  const [failedClassModelUrl, setFailedClassModelUrl] = useState<
+  // Tracks a resolved Synty GLB url that failed to load (ErrorBoundary
+  // caught a terminal load error) so the downed-tilt check below can still
+  // fire once we've fallen back to MediumHumanoid — otherwise a downed/dead
+  // entity whose GLB happens to be missing/broken would render upright
+  // (rpg-dnd5e-web#502 gate note). One slot covers BOTH the player class
+  // model and the monster model (rpg-dnd5e-web#559) — the two are mutually
+  // exclusive per `type` (a player entity's resolved url is always
+  // `classModelUrl`, a monster's always `monsterModelUrl`, see
+  // `resolvedModelUrl` below), so there's no cross-contamination risk in
+  // sharing one slot. Compared against the *current* resolvedModelUrl each
+  // render rather than a bare boolean so a later class/monster-ref/asset
+  // change (or the file becoming available again) isn't permanently masked
+  // by a stale failure from a different url.
+  const [failedEntityModelUrl, setFailedEntityModelUrl] = useState<
     string | undefined
   >(undefined);
 
@@ -367,21 +406,50 @@ export function HexEntity({
       : resolveWeaponType(character, 'offHand');
     const shield = isTwoHanded ? undefined : resolveShield(character);
 
-    // rpg-dnd5e-web#501: monsters stay on MediumHumanoid this slice (scope
-    // decision — goblin/WarChief GLBs exist but monster classRef mapping is
-    // a different shape). Unmapped class / missing classRefId also falls
-    // through to undefined here, which is exactly the MediumHumanoid
-    // fallback signal below (the #479 boundary lineage: a data gap
-    // degrades to the known-working placeholder, never a broken model ref).
+    // Player class GLB (rpg-dnd5e-web#501). Unmapped class / missing
+    // classRefId falls through to undefined here, which is exactly the
+    // MediumHumanoid fallback signal below (the #479 boundary lineage: a
+    // data gap degrades to the known-working placeholder, never a broken
+    // model ref).
     const classModelUrl =
       type === 'player'
         ? resolveClassCharacterModelUrl(classRefId, isDowned)
         : undefined;
-    // undefined once classModelUrl itself is undefined, or once THIS url
+    // Monster npc GLB (rpg-dnd5e-web#559) — the same resolve-or-undefined
+    // shape as classModelUrl above, one entry per promoted crypt-roster
+    // monster (monsterModels.ts). `isDead` (not `isDowned`, which is a
+    // CHARACTER-only "unconscious" concept — see buildRenderableEntities)
+    // is this family's "use the downed pose variant" signal: monsters die
+    // at 0 HP rather than going unconscious.
+    const monsterModelUrl =
+      type === 'monster'
+        ? resolveMonsterModelUrl(monsterRefId, monsterType, isDead)
+        : undefined;
+    // Mutually exclusive by `type` — never both defined for the same
+    // entity, so combining them into one resolved url + one sticky-failure
+    // slot (failedEntityModelUrl above) is safe.
+    const resolvedModelUrl = classModelUrl ?? monsterModelUrl;
+    // Same per-type selection the two resolver calls above already made
+    // (isDowned for player, isDead for monster) — exposed as its own value
+    // so ClassCharacterModel knows whether a zero-clip mount is expected
+    // (a downed variant's static collapsed pose) or worth its dev-mode
+    // warning (a standing model that should hold a presentable pose).
+    const isDownedModelVariant = type === 'player' ? isDowned : isDead;
+    // The forward-axis correction is a property of WHICH rig is mounted,
+    // not of the entity type in the abstract — a player's resolved model is
+    // always the Fantasy Rivals class rig, a monster's is always the
+    // POLYGON Dungeon npc rig (facing.ts's #559 hazard callout: never reach
+    // for MEDIUM_HUMANOID_FORWARD_OFFSET once an entity renders a real
+    // Synty GLB instead of the MediumHumanoid placeholder).
+    const modelForwardOffset =
+      type === 'player'
+        ? SYNTY_GLB_FORWARD_OFFSET
+        : POLYGON_DUNGEON_FORWARD_OFFSET;
+    // undefined once resolvedModelUrl itself is undefined, or once THIS url
     // has failed to load — never stuck failed against a different url.
-    const effectiveClassModelUrl =
-      classModelUrl && classModelUrl !== failedClassModelUrl
-        ? classModelUrl
+    const effectiveModelUrl =
+      resolvedModelUrl && resolvedModelUrl !== failedEntityModelUrl
+        ? resolvedModelUrl
         : undefined;
 
     // Shared fallback element — used both as the "no class model" branch
@@ -426,13 +494,15 @@ export function HexEntity({
     return (
       <group ref={movingGroupRef} {...interactionProps}>
         {/* Dead/downed entities rendered with tilt when using the
-            MediumHumanoid fallback (no separate collapsed pose asset);
-            the class model's own downed GLB variant is already posed for
-            it, so no extra tilt there. Ghost entities rendered with ghost
+            MediumHumanoid fallback (no separate collapsed pose asset); a
+            resolved GLB's own downed/dead variant is already posed for it,
+            so no extra tilt there — true for both the player class model
+            and the monster npc model (rpg-dnd5e-web#559 generalized this
+            from a player-only check). Ghost entities rendered with ghost
             shader/opacity either way. */}
         <group
           rotation={
-            isDead || (isDowned && !effectiveClassModelUrl)
+            shouldTiltDeadOrDowned(isDead, isDowned, !!effectiveModelUrl)
               ? [0, 0, Math.PI / 3]
               : [0, 0, 0]
           }
@@ -440,17 +510,18 @@ export function HexEntity({
           <Suspense
             fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
           >
-            {effectiveClassModelUrl ? (
+            {effectiveModelUrl ? (
               <ErrorBoundary
                 fallback={mediumHumanoidElement}
-                onError={() => setFailedClassModelUrl(effectiveClassModelUrl)}
+                onError={() => setFailedEntityModelUrl(effectiveModelUrl)}
               >
                 <ClassCharacterModel
-                  url={effectiveClassModelUrl}
+                  url={effectiveModelUrl}
                   isSelected={!isDead && isSelected}
                   isGhost={isGhost}
-                  facingRotation={SYNTY_GLB_FORWARD_OFFSET}
+                  facingRotation={modelForwardOffset}
                   isMoving={!isDead && !isGhost && isMoving}
+                  isDownedVariant={isDownedModelVariant}
                 />
               </ErrorBoundary>
             ) : (

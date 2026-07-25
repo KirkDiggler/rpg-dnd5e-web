@@ -297,6 +297,18 @@ describe('buildRenderableEntities', () => {
     expect(list[0]?.classRefId).toBe('barbarian');
   });
 
+  it('passes monsterRefId through from entityMeta to the renderable entity (rpg-dnd5e-web#559 monster-model resolver signal)', () => {
+    const entities = new Map([
+      ['skeleton-1', makeEntityState('skeleton-1', { x: 1, y: -1, z: 0 })],
+    ]);
+    const meta = new Map<string, EntityMeta>([
+      ['skeleton-1', { type: EntityType.MONSTER, monsterRefId: 'skeleton' }],
+    ]);
+
+    const list = buildRenderableEntities(entities, meta, new Map());
+    expect(list[0]?.monsterRefId).toBe('skeleton');
+  });
+
   it('propagates ghost flag from EntityDisappeared (entity outside LoS)', () => {
     const entities = new Map([
       ['goblin-2', makeEntityState('goblin-2', { x: 4, y: -4, z: 0 }, true)],
