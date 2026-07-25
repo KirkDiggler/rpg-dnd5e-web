@@ -203,10 +203,12 @@ export function ShadedHexWall({
   // click/hover behavior completely unchanged; only a door's own group
   // intercepts and forwards the click.
   const isRemembered =
-    rememberedWallHexKeys?.has(
-      `${wall.from?.x},${wall.from?.y},${wall.from?.z}`
-    ) ?? false;
-  if (!isDoor || isRemembered) {
+    wall.from &&
+    (rememberedWallHexKeys?.has(
+      `${wall.from.x},${wall.from.y},${wall.from.z}`
+    ) ??
+      false);
+  if (!isDoor || !wall.from || !wall.to || isRemembered) {
     return <group ref={groupRef} />;
   }
 

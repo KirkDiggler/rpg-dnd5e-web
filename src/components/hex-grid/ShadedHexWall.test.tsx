@@ -23,6 +23,26 @@ function wall(kind: WallKind, id = 'boss-door'): Wall {
 }
 
 describe('ShadedHexWall R3F scene', () => {
+  it.each(['from', 'to'] as const)(
+    'does not attach door handlers when %s is absent',
+    async (missing) => {
+      const invalidWall = {
+        ...wall(WallKind.DOOR_CLOSED),
+        [missing]: undefined,
+      } as Wall;
+      const renderer = await ReactThreeTestRenderer.create(
+        <ShadedHexWall wall={invalidWall} hexSize={1} />
+      );
+      expect(
+        renderer.scene.findAll((node) =>
+          ['onClick', 'onPointerOver', 'onPointerOut'].some(
+            (handler) => typeof node.props[handler] === 'function'
+          )
+        )
+      ).toEqual([]);
+    }
+  );
+
   it('renders a remembered closed door without a hit target', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <ShadedHexWall

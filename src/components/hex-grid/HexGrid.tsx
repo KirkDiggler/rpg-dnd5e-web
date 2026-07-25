@@ -196,6 +196,19 @@ export function isHexBlocked(
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function visibleTurnOrder<T extends { entityId: string }>(
+  entities: ReadonlyArray<Pick<HexGridEntity, 'entityId' | 'knowledgeState'>>,
+  turnOrder: ReadonlyArray<T>
+): T[] {
+  const rememberedEntityIds = new Set(
+    entities
+      .filter((entity) => isRemembered(entity.knowledgeState))
+      .map((entity) => entity.entityId)
+  );
+  return turnOrder.filter((entry) => !rememberedEntityIds.has(entry.entityId));
+}
+
 /**
  * Scene component - renders inside the Canvas
  * Separated so we can use React Three Fiber hooks
@@ -832,19 +845,13 @@ export function HexGrid(props: HexGridProps) {
   // Build turn order from combat state
   const turnOrder = useMemo((): TurnOrderEntry[] => {
     if (!combatState?.turnOrder) return [];
-    return combatState.turnOrder
-      .filter(
-        (entry) =>
-          !isRemembered(
-            props.entities.find((entity) => entity.entityId === entry.entityId)
-              ?.knowledgeState
-          )
-      )
-      .map((entry) => ({
+    return visibleTurnOrder(props.entities, combatState.turnOrder).map(
+      (entry) => ({
         entityId: entry.entityId,
         entityType: entry.entityType,
         initiative: entry.initiative,
-      }));
+      })
+    );
   }, [combatState, props.entities]);
 
   const activeIndex = combatState?.activeIndex ?? -1;
