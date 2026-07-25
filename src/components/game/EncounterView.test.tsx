@@ -16,7 +16,13 @@ import {
   EntityType,
   TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createFakeStream,
@@ -113,6 +119,11 @@ beforeEach(() => {
   hoisted.endTurnFn.mockReset();
   hoisted.setReactionReadyFn.mockReset();
   hoisted.interactFn.mockReset();
+  // Default: the unlocked-door answer — an empty InteractResponse. The real
+  // RPC always resolves with a message (the prompt field is optional), so
+  // leaving this as bare undefined would let a caller that mishandles the
+  // response still pass. See the #589 tests below.
+  hoisted.interactFn.mockResolvedValue({} as InteractResponse);
   hoisted.equipItemFn.mockReset();
   hoisted.unequipItemFn.mockReset();
 });
@@ -433,6 +444,96 @@ describe('EncounterView door click -> Interact bridge (rpg-dnd5e-web#526)', () =
     });
 
     expect(hoisted.interactFn).toHaveBeenCalledOnce();
+  });
+});
+
+describe('EncounterView locked-door skill-check prompt (rpg-dnd5e-web#589)', () => {
+  // A locked door answers Interact with InputRequired{skill_check} on the RPC
+  // RESPONSE. That is the ONLY delivery channel for it: rpg-api's interact.go
+  // behavior contract says the prompt is "caller-private (no broker event)",
+  // and the server's PublishInputRequired is only ever called for *reaction*
+  // prompts (take_action.go). Nothing re-delivers it either — the Encounter
+  // snapshot message carries no prompt field, so a reconnect resync can't
+  // recover one.
+  //
+  // That makes dropping the response a soft-lock, not a cosmetic miss: the
+  // prompt is persisted server-side, so every subsequent verb is refused with
+  // "resolve the pending prompt before issuing another action" while the
+  // player sees no prompt at all. That is the live bug in #589.
+  function lockedDoorResponse(): InteractResponse {
+    return {
+      inputRequired: {
+        kind: { case: 'skillCheck', value: { dc: 12, ability: 'DEX' } },
+      },
+    } as unknown as InteractResponse;
+  }
+
+  it('renders the skill-check prompt carried on the Interact response', async () => {
+    hoisted.interactFn.mockResolvedValue(lockedDoorResponse());
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy()
+    );
+    expect(screen.getByText(/Skill check: DEX \(DC 12\)/)).toBeTruthy();
+    // The roll entry + submit path must be reachable — a visible prompt with
+    // no way to resolve it is the same soft-lock wearing a hat.
+    expect(screen.getByLabelText(/roll \(1-20\)/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /submit roll/i })).toBeTruthy();
+  });
+
+  it('offers no Dismiss escape hatch — the prompt blocks server-side and there is no cancel verb', async () => {
+    // PromptModal's Dismiss only clears CLIENT state. The server-side
+    // PendingPrompt survives it, so dismissing in the real game silently
+    // re-enters the exact soft-lock this issue is about. There is no cancel
+    // RPC to wire it to (SubmitCheck is the only resolver), so the real game
+    // route must not present the button at all. The playtest harness keeps it
+    // deliberately — see PromptModal's allowDismiss prop.
+    hoisted.interactFn.mockResolvedValue(lockedDoorResponse());
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy()
+    );
+    expect(screen.queryByRole('button', { name: /dismiss/i })).toBeNull();
+  });
+
+  it('leaves no prompt up for an unlocked door (empty InteractResponse)', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('skill-check-prompt')).toBeNull();
   });
 });
 
