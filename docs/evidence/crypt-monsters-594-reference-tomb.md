@@ -42,7 +42,12 @@ matching `CHARACTER_Y_OFFSET=0.05` below the default Synty floor top of 0.20.
 The shared placement offset is now 0.21, above both Synty (0.20) and shaded
 (0.15) floor tops, with clearance for slightly negative GLB foot minima.
 
-No post-fix browser screenshot or dynamic movement/death observation is
-claimed: the browser screenshot capture timed out before a reload. The
-resolver's mappings, downed behavior, and two-clip asset contract remain
-covered by their existing unit and export checks.
+At `5904db5`, Kirk manually reloaded
+`http://127.0.0.1:3004/?playerId=alice`, confirmed that the skeleton runtime
+GLBs visibly load in the reference-tomb encounter, and approved Soldier01's
+post-fix floor contact as "looks great".
+
+This run does not claim captain visibility, `Walk_Forward` dynamic playback,
+or the downed sibling swap. The two-clip export contract and resolver/downed
+behavior remain supported separately by existing private export validation and
+web unit tests.
