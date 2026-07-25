@@ -11,9 +11,11 @@
 import { create } from '@bufbuild/protobuf';
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
+  HexSchema,
   PositionSchema,
   WallKind,
   WallSchema,
+  type Hex,
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { render } from '@testing-library/react';
@@ -42,6 +44,13 @@ function doorWall(id: string): Wall {
   });
 }
 
+function revealedHex(x: number, y: number, z: number, zoneId = ''): Hex {
+  return create(HexSchema, {
+    position: create(PositionSchema, { x, y, z }),
+    zoneId,
+  });
+}
+
 const MY_ENTITY_ID = 'char-alice';
 
 function baseProps() {
@@ -54,7 +63,7 @@ function baseProps() {
   return {
     entities,
     entityMeta: new Map(),
-    revealedHexes: new Set<string>(['0,0,0']),
+    revealedHexes: new Map<string, Hex>([['0,0,0', revealedHex(0, 0, 0)]]),
     walls: new Map<string, Wall>([['door-1', doorWall('door-1')]]),
     entityHP: new Map(),
     initiativeOrder: [],

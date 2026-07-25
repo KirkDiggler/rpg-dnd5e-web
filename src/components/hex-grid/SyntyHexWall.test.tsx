@@ -86,6 +86,65 @@ describe('SyntyHexWall R3F scene', () => {
   });
 });
 
+/** Every Y-rotation of every rendered Object3D in the scene — a door hex
+ * also produces corner-fitting pieces (classifyWallVertices) with their
+ * own unrelated rotations, so these tests check SET MEMBERSHIP (does the
+ * override value appear at all / does it appear identically whether or
+ * not an unrelated override is present) rather than asserting every node
+ * shares one rotation. */
+function allRotationYs(renderer: {
+  scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+}): number[] {
+  return renderer.scene
+    .findAll(
+      (node) =>
+        (node as { props: { rotation?: unknown } }).props.rotation !== undefined
+    )
+    .map(
+      (node) =>
+        (node as { props: { rotation: [number, number, number] } }).props
+          .rotation[1]
+    );
+}
+
+describe('SyntyHexWall doorRotationOverrides (rpg-project#133 dungeon-walls W2)', () => {
+  it('orients the door frame/leaf using the override instead of edge.rotationY when the door id matches', async () => {
+    // A distinctive angle unlikely to coincide with any real edge/fitting
+    // rotation this fixture's geometry would otherwise produce.
+    const override = Math.PI * 0.6789;
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexWall
+        walls={[wall(WallKind.DOOR_CLOSED, 'door-1')]}
+        hexSize={1}
+        doorRotationOverrides={new Map([['door-1', override]])}
+      />
+    );
+    const rotations = allRotationYs(renderer);
+    // Both the frame and the leaf pick up the override -> at least 2 hits.
+    const hits = rotations.filter((r) => Math.abs(r - override) < 1e-9);
+    expect(hits.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('renders identically to the no-override case when the doorRotationOverrides map has no entry for this door', async () => {
+    const withUnrelatedOverride = await ReactThreeTestRenderer.create(
+      <SyntyHexWall
+        walls={[wall(WallKind.DOOR_CLOSED, 'door-1')]}
+        hexSize={1}
+        doorRotationOverrides={new Map([['other-door', Math.PI]])}
+      />
+    );
+    const withoutOverride = await ReactThreeTestRenderer.create(
+      <SyntyHexWall
+        walls={[wall(WallKind.DOOR_CLOSED, 'door-1')]}
+        hexSize={1}
+      />
+    );
+    expect(allRotationYs(withUnrelatedOverride).sort()).toEqual(
+      allRotationYs(withoutOverride).sort()
+    );
+  });
+});
+
 // A tinted mesh's base material color (the mocked GLB's pure-white
 // MeshStandardMaterial) multiplied by any WALL_TINT_BY_THEME entry lands
 // with every channel under 0.5 — same pattern the locked-door tint test
