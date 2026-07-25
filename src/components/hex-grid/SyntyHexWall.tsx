@@ -40,6 +40,11 @@ import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { WorldPos } from './hexMath';
 import {
+  cloneCryptMaterials,
+  rememberedFitting,
+  rememberedSegment,
+} from './sceneKnowledge';
+import {
   buildDungeonWallSegments,
   classifyWallVertices,
   doorVisualState,
@@ -110,6 +115,7 @@ interface GlbInstanceProps {
    * (every existing caller) renders the GLB's original material,
    * unchanged. */
   tint?: THREE.Color;
+  remembered?: boolean;
 }
 
 /** Renders one instance of a GLB. useGLTF caches the loaded scene by URL,
@@ -122,6 +128,7 @@ function GlbInstance({
   rotationY,
   scale,
   tint,
+  remembered = false,
 }: GlbInstanceProps) {
   const { scene } = useGLTF(ENV_BASE + file);
   const cloned = useMemo(() => scene.clone(true), [scene]);
@@ -146,7 +153,7 @@ function GlbInstance({
   // `originalMaterials`, which are the same instances every other on-screen
   // copy of this GLB (via useGLTF's cache) still uses.
   useEffect(() => {
-    if (!tint) {
+    if (!tint && !remembered) {
       originalMaterials.forEach((mat, mesh) => {
         mesh.material = mat;
       });
@@ -156,20 +163,33 @@ function GlbInstance({
     originalMaterials.forEach((mat, mesh) => {
       const wasArray = Array.isArray(mat);
       const materials = wasArray ? mat : [mat];
-      const tinted = materials.map((m) => {
-        const tintedMat = m.clone();
-        created.push(tintedMat);
-        if ('color' in tintedMat && tintedMat.color instanceof THREE.Color) {
-          tintedMat.color = tintedMat.color.clone().multiply(tint);
-        }
-        return tintedMat;
-      });
-      mesh.material = wasArray ? tinted : tinted[0]!;
+      const replacements = remembered
+        ? cloneCryptMaterials(mat)
+        : materials.map((material) => {
+            const tintedMaterial = material.clone();
+            if (
+              'color' in tintedMaterial &&
+              tintedMaterial.color instanceof THREE.Color
+            ) {
+              tintedMaterial.color = tintedMaterial.color
+                .clone()
+                .multiply(tint!);
+            }
+            return tintedMaterial;
+          });
+      const replacementArray = Array.isArray(replacements)
+        ? replacements
+        : [replacements];
+      created.push(...replacementArray);
+      mesh.material = wasArray ? replacementArray : replacementArray[0]!;
     });
     return () => {
-      created.forEach((mat) => mat.dispose());
+      originalMaterials.forEach((mat, mesh) => {
+        mesh.material = mat;
+      });
+      created.forEach((material) => material.dispose());
     };
-  }, [originalMaterials, tint]);
+  }, [originalMaterials, remembered, tint]);
 
   return (
     <primitive
@@ -202,6 +222,7 @@ export interface SyntyHexWallProps {
    * `'default'`, unchanged from pre-theme behavior.
    */
   themeWallHexKeys?: ReadonlySet<string>;
+  rememberedWallHexKeys?: ReadonlySet<string>;
   /**
    * Whole-space theme (rpg-dnd5e-web#558 real-route consumption): when set
    * to `'crypt'`, EVERY wall segment renders `'crypt'`-themed, regardless of
@@ -222,6 +243,7 @@ export function SyntyHexWall({
   hexSize,
   onDoorClick,
   themeWallHexKeys,
+  rememberedWallHexKeys,
   spaceTheme,
 }: SyntyHexWallProps) {
   const segments = useMemo(
@@ -242,28 +264,32 @@ export function SyntyHexWall({
   return (
     <Suspense fallback={null}>
       {segments.map(({ key, edge, kind, id }) => {
+        const isRemembered = rememberedSegment(key, rememberedWallHexKeys);
         if (isDoorWallKind(kind)) {
           const visualState = doorVisualState(kind)!;
           return (
             <group
               key={key}
-              onClick={(e: { stopPropagation: () => void }) => {
-                e.stopPropagation();
-                if (id) onDoorClick?.(id);
-              }}
-              onPointerOver={(e: { stopPropagation: () => void }) => {
-                e.stopPropagation();
-                if (id) document.body.style.cursor = 'pointer';
-              }}
-              onPointerOut={() => {
-                document.body.style.cursor = 'auto';
-              }}
+              {...(!isRemembered && {
+                onClick: (e: { stopPropagation: () => void }) => {
+                  e.stopPropagation();
+                  if (id) onDoorClick?.(id);
+                },
+                onPointerOver: (e: { stopPropagation: () => void }) => {
+                  e.stopPropagation();
+                  if (id) document.body.style.cursor = 'pointer';
+                },
+                onPointerOut: () => {
+                  document.body.style.cursor = 'auto';
+                },
+              })}
             >
               <GlbInstance
                 file="SM_Env_Door_Frame_01.glb"
                 position={edge.mid}
                 rotationY={edge.rotationY}
                 scale={DOOR_FRAME_SCALE}
+                remembered={isRemembered}
               />
               <GlbInstance
                 file="SM_Env_Door_01.glb"
@@ -274,6 +300,7 @@ export function SyntyHexWall({
                 }
                 scale={DOOR_SCALE}
                 tint={visualState === 'locked' ? LOCKED_DOOR_TINT : undefined}
+                remembered={isRemembered}
               />
             </group>
           );
@@ -290,6 +317,7 @@ export function SyntyHexWall({
               position={edge.mid}
               rotationY={edge.rotationY}
               scale={fittingScale(fitting, WALL_HEIGHT)}
+              remembered={isRemembered}
             />
           );
         }
@@ -317,11 +345,13 @@ export function SyntyHexWall({
             rotationY={edge.rotationY}
             scale={wallVariantScale(variant, WALL_HEIGHT, SYNTY_SCALE)}
             tint={WALL_TINT_BY_THEME[theme]}
+            remembered={isRemembered}
           />
         );
       })}
       {vertexFittings.map(({ key, kind, position, rotationY }) => {
         const fitting = FITTINGS[kind];
+        const isRemembered = rememberedFitting(key, rememberedWallHexKeys);
         return (
           <GlbInstance
             key={key}
@@ -329,6 +359,7 @@ export function SyntyHexWall({
             position={position}
             rotationY={rotationY}
             scale={fittingScale(fitting, WALL_HEIGHT)}
+            remembered={isRemembered}
           />
         );
       })}

@@ -16,8 +16,9 @@ import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import { FloorBuilder, FloorColors } from '@/rendering/FloorBuilder';
 
 import { cubeToWorld, type CubeCoord } from './hexMath';
+import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
 
-interface ShadedHexFloorProps {
+export interface ShadedHexFloorProps {
   floorTiles: Map<string, AbsoluteFloorTile>;
   hexSize: number;
   hoveredHex: CubeCoord | null;
@@ -26,6 +27,7 @@ interface ShadedHexFloorProps {
   doorPositions?: CubeCoord[];
   /** Wall positions to color as wall tiles */
   wallPositions?: CubeCoord[];
+  rememberedFloorHexKeys?: ReadonlySet<string>;
 }
 
 // Highlight colors for hover/select/door/wall states
@@ -65,6 +67,7 @@ export function ShadedHexFloor({
   selectedHex,
   doorPositions = [],
   wallPositions = [],
+  rememberedFloorHexKeys,
 }: ShadedHexFloorProps) {
   const { invalidate } = useThree();
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
@@ -190,7 +193,9 @@ export function ShadedHexFloor({
 
       let overrideColor: THREE.Color | null = null;
 
-      if (cubesEqual(selectedHex, cube)) {
+      if (rememberedFloorHexKeys?.has(key)) {
+        overrideColor = CRYPT_MEMORY_COLOR;
+      } else if (cubesEqual(selectedHex, cube)) {
         overrideColor = HIGHLIGHT_COLORS.selected;
       } else if (cubesEqual(hoveredHex, cube)) {
         overrideColor = HIGHLIGHT_COLORS.hovered;
@@ -218,6 +223,7 @@ export function ShadedHexFloor({
     selectedHex,
     doorPositions,
     wallPositions,
+    rememberedFloorHexKeys,
     invalidate,
   ]);
 

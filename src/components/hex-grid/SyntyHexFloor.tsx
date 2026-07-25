@@ -26,6 +26,7 @@ import { useTexture } from '@react-three/drei';
 import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, hexCorners } from './hexMath';
+import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
 
 const TEX_BASE = '/models/synty/textures/';
 const FLOOR_TEXTURE = TEX_BASE + 'Dungeons_Texture_FloorTiles_01.png';
@@ -63,6 +64,7 @@ interface SyntyHexFloorTileProps {
    * component's `return` for why) — `isCrypt` only changes the tint
    * color, not the lit/unlit material family, as of the #558 follow-up. */
   isCrypt: boolean;
+  isRemembered: boolean;
 }
 
 function SyntyHexFloorTile({
@@ -70,6 +72,7 @@ function SyntyHexFloorTile({
   hexSize,
   texture,
   isCrypt,
+  isRemembered,
 }: SyntyHexFloorTileProps) {
   const world = cubeToWorld({ x: tile.x, y: tile.y, z: tile.z }, hexSize);
   const geometry = useMemo(() => {
@@ -140,7 +143,15 @@ function SyntyHexFloorTile({
   // slice of it).
   return (
     <mesh geometry={geometry} position={[world.x, FLOOR_Y, world.z]}>
-      {isCrypt ? (
+      {isRemembered ? (
+        <meshBasicMaterial
+          color={CRYPT_MEMORY_COLOR}
+          opacity={1}
+          transparent={false}
+          depthWrite
+          toneMapped={false}
+        />
+      ) : isCrypt ? (
         <meshBasicMaterial
           map={texture}
           color={CRYPT_FLOOR_TINT}
@@ -165,6 +176,7 @@ export interface SyntyHexFloorProps {
    * (rpg-dnd5e-web#558). Undefined/omitted (every existing caller) means
    * every tile keeps the exact pre-existing #481/#485 rendering. */
   themeFloorHexKeys?: ReadonlySet<string>;
+  rememberedFloorHexKeys?: ReadonlySet<string>;
   /**
    * Whole-space theme (rpg-dnd5e-web#558 real-route consumption): when set
    * to `'crypt'`, EVERY tile renders with the lit/tinted crypt material,
@@ -183,6 +195,7 @@ export function SyntyHexFloor({
   floorTiles,
   hexSize,
   themeFloorHexKeys,
+  rememberedFloorHexKeys,
   spaceTheme,
 }: SyntyHexFloorProps) {
   // useTexture returns drei's shared, URL-keyed texture cache — mutating it
@@ -216,6 +229,7 @@ export function SyntyHexFloor({
             isCrypt={
               spaceTheme === 'crypt' || (themeFloorHexKeys?.has(key) ?? false)
             }
+            isRemembered={rememberedFloorHexKeys?.has(key) ?? false}
           />
         );
       })}

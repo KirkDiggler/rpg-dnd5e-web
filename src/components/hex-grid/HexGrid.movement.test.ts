@@ -24,6 +24,24 @@ function pathForDoor(kind: WallKind) {
 }
 
 describe('HexGrid door movement boundary', () => {
+  it('allows traversal when the visible door map omits a remembered closed door', () => {
+    const walls = [
+      create(WallSchema, {
+        from: door,
+        to: destination,
+        kind: WallKind.DOOR_CLOSED,
+        id: 'remembered-door',
+      }),
+    ];
+    const visibleDoorKinds = doorHexKinds([]);
+    const floorTiles = new Set(['0,0,0', '1,-1,0', '2,-2,0']);
+    const path = findPath(start, destination, (coord) =>
+      isHexBlocked(coord, floorTiles, [], undefined, visibleDoorKinds)
+    );
+    expect(walls).toHaveLength(1);
+    expect(path).toEqual([start, door, destination]);
+  });
+
   it.each([WallKind.DOOR_CLOSED, WallKind.DOOR_LOCKED])(
     '%s blocks A* traversal through the door hex',
     (kind) => {

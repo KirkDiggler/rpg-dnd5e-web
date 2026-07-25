@@ -20,6 +20,7 @@ import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { WallBuilder, WallColors } from '@/rendering/WallBuilder';
 
 import { cubeToWorld, getHexLine, type CubeCoord } from './hexMath';
+import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
 import { isDoorWallKind } from './syntyHexWallHelpers';
 
 export interface ShadedHexWallProps {
@@ -30,6 +31,7 @@ export interface ShadedHexWallProps {
    * (rpg-dnd5e-web#526, wave rpg-project#96 Slice 2). No-op when the wall
    * carries no id. */
   onDoorClick?: (doorId: string) => void;
+  rememberedWallHexKeys?: ReadonlySet<string>;
 }
 
 // Color lookup by wall kind. v1alpha2 Wall carries no material field (the
@@ -58,6 +60,7 @@ export function ShadedHexWall({
   wall,
   hexSize,
   onDoorClick,
+  rememberedWallHexKeys,
 }: ShadedHexWallProps) {
   const { invalidate } = useThree();
   const groupRef = useRef<THREE.Group>(null);
@@ -77,7 +80,12 @@ export function ShadedHexWall({
       z: wall.to.z,
     };
 
-    const color = getKindColor(wall.kind);
+    const isRemembered = rememberedWallHexKeys?.has(
+      `${wall.from.x},${wall.from.y},${wall.from.z}`
+    );
+    const color = isRemembered
+      ? CRYPT_MEMORY_COLOR.getHex()
+      : getKindColor(wall.kind);
     const isDoor = isDoorWallKind(wall.kind);
     const isRealPassageEdge =
       isDoor && !(start.x === end.x && start.y === end.y && start.z === end.z);
@@ -184,7 +192,7 @@ export function ShadedHexWall({
       builder.dispose();
       builderRef.current = null;
     };
-  }, [wall, hexSize, invalidate]);
+  }, [wall, hexSize, invalidate, rememberedWallHexKeys]);
 
   const isDoor = isDoorWallKind(wall.kind);
 
@@ -194,7 +202,11 @@ export function ShadedHexWall({
   // rendered before this PR — leaves SOLID/WINDOW/UNSPECIFIED walls'
   // click/hover behavior completely unchanged; only a door's own group
   // intercepts and forwards the click.
-  if (!isDoor) {
+  const isRemembered =
+    rememberedWallHexKeys?.has(
+      `${wall.from?.x},${wall.from?.y},${wall.from?.z}`
+    ) ?? false;
+  if (!isDoor || isRemembered) {
     return <group ref={groupRef} />;
   }
 
