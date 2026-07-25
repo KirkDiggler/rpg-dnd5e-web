@@ -683,14 +683,30 @@ export function EncounterView({
   };
 
   // rpg-dnd5e-web#526 (wave rpg-project#96 Slice 2): door click -> Interact
-  // bridge. The server decides what happens — open, or (a locked door,
-  // Slice 3) a skill-check prompt via InputRequiredDelivered — so this
-  // handler computes nothing and gates on nothing; it only forwards the
-  // click intent (matches PlaytestHarness's identical
-  // `interact(encounterId, id, 'open')` call).
+  // bridge. The server decides what happens — open, or (a locked door) a
+  // skill-check prompt — so this handler computes nothing and gates on
+  // nothing; it only forwards the click intent and surfaces whatever comes
+  // back (matches PlaytestHarness's identical `interact(encounterId, id,
+  // 'open')` call + response handling).
+  //
+  // rpg-dnd5e-web#589: the locked-door prompt rides the RPC RESPONSE and
+  // nothing else. This comment used to claim it arrived via
+  // InputRequiredDelivered; it does not. rpg-api's interact.go behavior
+  // contract calls the prompt "caller-private (no broker event)", and the
+  // server's PublishInputRequired fires only for reaction prompts
+  // (take_action.go). Dropping the response therefore soft-locked the
+  // player: the prompt persists server-side, so every later verb is refused
+  // with "resolve the pending prompt before issuing another action" while
+  // nothing is on screen to resolve. The world-changing half (door opens,
+  // hexes reveal) still flows as DoorOpened/GeometryRevealed events.
   const handleDoorClick = async (doorId: string) => {
     try {
-      await interact(encounterId, doorId, 'open');
+      const response = await interact(encounterId, doorId, 'open');
+      if (response.inputRequired) {
+        // PromptModal resets its own transient result/timer state whenever
+        // the prompt object identity changes — no reset needed here.
+        encounterState.setPendingPrompt(response.inputRequired);
+      }
     } catch {
       // error surfaced via interactError below
     }
@@ -805,6 +821,17 @@ export function EncounterView({
         entityId={entityId}
         prompt={encounterState.state.pendingPrompt}
         onDismiss={() => encounterState.setPendingPrompt(null)}
+        // rpg-dnd5e-web#589: no Dismiss on the real game route. It would clear
+        // only client state and strand the server-side PendingPrompt, which is
+        // precisely the invisible soft-lock this fix removes. onDismiss still
+        // runs for the post-resolution auto-clear — that path has already
+        // consumed the prompt via SubmitCheck.
+        allowDismiss={false}
+        // rpg-dnd5e-web#597: the real game route rolls a real d20 client-side
+        // and shows it — it does not let the player type their own roll. The
+        // playtest harness keeps the typed input (allowManualRoll defaults to
+        // true there) because its tests depend on forcing specific rolls.
+        allowManualRoll={false}
       />
 
       {/* Map fills whatever the header/banner/dock don't take — this

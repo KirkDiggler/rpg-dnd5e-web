@@ -8,6 +8,7 @@ import type {
   InteractResponse,
   MoveEntityResponse,
   SetReactionReadyResponse,
+  SubmitCheckResponse,
   TakeActionResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import {
@@ -16,7 +17,13 @@ import {
   EntityType,
   TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createFakeStream,
@@ -35,6 +42,7 @@ const hoisted = vi.hoisted(() => ({
   setReactionReadyFn:
     vi.fn<(req: unknown) => Promise<SetReactionReadyResponse>>(),
   interactFn: vi.fn<(req: unknown) => Promise<InteractResponse>>(),
+  submitCheckFn: vi.fn<(req: unknown) => Promise<SubmitCheckResponse>>(),
   equipItemFn: vi.fn<(req: unknown) => Promise<EquipItemResponse>>(),
   unequipItemFn: vi.fn<(req: unknown) => Promise<UnequipItemResponse>>(),
 }));
@@ -52,6 +60,7 @@ vi.mock('../../api/client', () => ({
     endTurn: hoisted.endTurnFn,
     setReactionReady: hoisted.setReactionReadyFn,
     interact: hoisted.interactFn,
+    submitCheck: hoisted.submitCheckFn,
   },
   characterV2Client: {
     equipItem: hoisted.equipItemFn,
@@ -113,6 +122,16 @@ beforeEach(() => {
   hoisted.endTurnFn.mockReset();
   hoisted.setReactionReadyFn.mockReset();
   hoisted.interactFn.mockReset();
+  // Default: the unlocked-door answer — an empty InteractResponse. The real
+  // RPC always resolves with a message (the prompt field is optional), so
+  // leaving this as bare undefined would let a caller that mishandles the
+  // response still pass. See the #589 tests below.
+  hoisted.interactFn.mockResolvedValue({} as InteractResponse);
+  hoisted.submitCheckFn.mockReset();
+  hoisted.submitCheckFn.mockResolvedValue({
+    success: true,
+    total: 18,
+  } as SubmitCheckResponse);
   hoisted.equipItemFn.mockReset();
   hoisted.unequipItemFn.mockReset();
 });
@@ -433,6 +452,207 @@ describe('EncounterView door click -> Interact bridge (rpg-dnd5e-web#526)', () =
     });
 
     expect(hoisted.interactFn).toHaveBeenCalledOnce();
+  });
+});
+
+describe('EncounterView locked-door skill-check prompt (rpg-dnd5e-web#589)', () => {
+  // A locked door answers Interact with InputRequired{skill_check} on the RPC
+  // RESPONSE. That is the ONLY delivery channel for it: rpg-api's interact.go
+  // behavior contract says the prompt is "caller-private (no broker event)",
+  // and the server's PublishInputRequired is only ever called for *reaction*
+  // prompts (take_action.go). Nothing re-delivers it either — the Encounter
+  // snapshot message carries no prompt field, so a reconnect resync can't
+  // recover one.
+  //
+  // That makes dropping the response a soft-lock, not a cosmetic miss: the
+  // prompt is persisted server-side, so every subsequent verb is refused with
+  // "resolve the pending prompt before issuing another action" while the
+  // player sees no prompt at all. That is the live bug in #589.
+  function lockedDoorResponse(): InteractResponse {
+    return {
+      inputRequired: {
+        kind: { case: 'skillCheck', value: { dc: 12, ability: 'DEX' } },
+      },
+    } as unknown as InteractResponse;
+  }
+
+  it('renders the skill-check prompt carried on the Interact response', async () => {
+    hoisted.interactFn.mockResolvedValue(lockedDoorResponse());
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy()
+    );
+    expect(screen.getByText(/Skill check: DEX \(DC 12\)/)).toBeTruthy();
+    // The roll + submit path must be reachable — a visible prompt with no
+    // way to resolve it is the same soft-lock wearing a hat. rpg-dnd5e-web
+    // #597 replaced the hand-typed roll with a real client-rolled d20 — see
+    // the "rolls a real d20" describe block below for that behavior.
+    expect(screen.getByTestId('rolled-value')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /submit roll/i })).toBeTruthy();
+  });
+
+  it('offers no Dismiss escape hatch — the prompt blocks server-side and there is no cancel verb', async () => {
+    // PromptModal's Dismiss only clears CLIENT state. The server-side
+    // PendingPrompt survives it, so dismissing in the real game silently
+    // re-enters the exact soft-lock this issue is about. There is no cancel
+    // RPC to wire it to (SubmitCheck is the only resolver), so the real game
+    // route must not present the button at all. The playtest harness keeps it
+    // deliberately — see PromptModal's allowDismiss prop.
+    hoisted.interactFn.mockResolvedValue(lockedDoorResponse());
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy()
+    );
+    expect(screen.queryByRole('button', { name: /dismiss/i })).toBeNull();
+  });
+
+  it('leaves no prompt up for an unlocked door (empty InteractResponse)', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('skill-check-prompt')).toBeNull();
+  });
+});
+
+describe('EncounterView rolls a real d20 for skill checks (rpg-dnd5e-web#597)', () => {
+  // The pre-#597 bug: PromptModal's skill-check branch was a bare
+  // <input type="number"> defaulting to 10 — the player typed their own
+  // roll and the server accepted it outright. The real game route must
+  // instead roll a real d20 client-side, show it, and submit exactly that
+  // value. (The playtest harness keeps the typed input on purpose — see
+  // PlaytestHarness.test.tsx — since its tests depend on forcing specific
+  // rolls; that path is unaffected by this describe block.)
+  function lockedDoorResponse(): InteractResponse {
+    return {
+      inputRequired: {
+        kind: { case: 'skillCheck', value: { dc: 12, ability: 'DEX' } },
+      },
+    } as unknown as InteractResponse;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('shows no editable roll input — the value is not hand-typed', async () => {
+    hoisted.interactFn.mockResolvedValue(lockedDoorResponse());
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy()
+    );
+
+    const promptEl = screen.getByTestId('skill-check-prompt');
+    expect(promptEl.querySelector('input')).toBeNull();
+  });
+
+  it('submits the client-rolled value, and shows the player that same value', async () => {
+    // Deterministic under test — rollD20 is Math.random-backed by default,
+    // so pin the RNG rather than depending on real Math.random output.
+    // 0.65 -> Math.floor(0.65 * 20) + 1 = 14.
+    vi.spyOn(Math, 'random').mockReturnValue(0.65);
+    hoisted.interactFn.mockResolvedValue(lockedDoorResponse());
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy()
+    );
+
+    // The rolled value shown to the player...
+    const rolledEl = screen.getByTestId('rolled-value');
+    expect(rolledEl.textContent).toContain('14');
+
+    fireEvent.click(screen.getByRole('button', { name: /submit roll/i }));
+
+    // ...is exactly the value submitted to the server.
+    await waitFor(() => {
+      expect(hoisted.submitCheckFn).toHaveBeenCalledOnce();
+    });
+    expect(hoisted.submitCheckFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encounterId: 'enc-1',
+        entityId: 'char-alice',
+        roll: 14,
+      })
+    );
+  });
+
+  it('rolls a value within [1, 20] regardless of the RNG draw', async () => {
+    hoisted.interactFn.mockResolvedValue(lockedDoorResponse());
+
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('stub-click-door'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-check-prompt')).toBeTruthy()
+    );
+
+    const rolled = Number(
+      screen.getByTestId('rolled-value').textContent?.match(/\d+/)?.[0]
+    );
+    expect(rolled).toBeGreaterThanOrEqual(1);
+    expect(rolled).toBeLessThanOrEqual(20);
   });
 });
 

@@ -16,6 +16,7 @@
 import type { InputRequired } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useEffect, useRef, useState } from 'react';
 import { useSubmitCheck } from '../../api/useSubmitCheck';
+import { rollD20 } from '../../utils/rollD20';
 
 export interface PromptModalProps {
   encounterId: string;
@@ -27,6 +28,39 @@ export interface PromptModalProps {
   onDismiss: () => void;
   /** Optional event-log sink (PlaytestHarness's Recent-events log). */
   onLog?: (message: string) => void;
+  /**
+   * Whether the skill-check branch offers a Dismiss button. Defaults to true
+   * for the playtest harness, where poking at a prompt and walking away is
+   * the point.
+   *
+   * The real game route passes false (rpg-dnd5e-web#589). Dismiss only clears
+   * CLIENT state — the server-side PendingPrompt survives it, and there is no
+   * cancel verb to wire it to (SubmitCheck is the only resolver). So in the
+   * real game a Dismiss puts the player straight back into the invisible
+   * soft-lock #589 is about: prompt pending on the server, nothing on screen,
+   * every subsequent action refused with "resolve the pending prompt before
+   * issuing another action".
+   */
+  allowDismiss?: boolean;
+  /**
+   * Whether the skill-check branch shows a typed roll input (the playtest
+   * harness, which needs to force specific rolls for its tests) or rolls a
+   * real d20 client-side and just displays it (the real game route).
+   * Defaults to true — same harness-first default as allowDismiss.
+   *
+   * The real game route passes false (rpg-dnd5e-web#597): a bare
+   * `<input type="number">` let the player type their own roll and the
+   * server accepted it outright — there was no dice roll anywhere. The
+   * server contract is unchanged either way: the client supplies the raw
+   * d20, the server adds modifiers and judges the total.
+   */
+  allowManualRoll?: boolean;
+  /**
+   * Roll source for the real-game (allowManualRoll=false) path. Defaults to
+   * a real d20 (Math.random-backed). Overridable so tests can inject a
+   * deterministic value instead of stubbing the global RNG.
+   */
+  rollDie?: () => number;
 }
 
 export function PromptModal({
@@ -35,13 +69,36 @@ export function PromptModal({
   prompt,
   onDismiss,
   onLog,
+  allowDismiss = true,
+  allowManualRoll = true,
+  rollDie = rollD20,
 }: PromptModalProps) {
   const {
     submitCheck,
     loading: submitCheckLoading,
     error: submitCheckError,
   } = useSubmitCheck();
-  const [rollValue, setRollValue] = useState(10);
+  const [rollValue, setRollValue] = useState(() =>
+    allowManualRoll ? 10 : rollDie()
+  );
+  // Tracks which prompt identity `rollValue` was last rolled for, so the
+  // real-game (allowManualRoll=false) path re-rolls exactly once per new
+  // skill-check prompt — not on every render, and not a second time on
+  // mount (the lazy useState initializer above already covers the first
+  // one). Seeded to the mount-time prompt so that initial roll isn't
+  // immediately discarded and re-rolled by the effect below.
+  const rolledForPromptRef = useRef<InputRequired | null>(
+    !allowManualRoll && prompt?.kind?.case === 'skillCheck' ? prompt : null
+  );
+  useEffect(() => {
+    if (allowManualRoll || prompt?.kind?.case !== 'skillCheck') {
+      return;
+    }
+    if (rolledForPromptRef.current !== prompt) {
+      rolledForPromptRef.current = prompt;
+      setRollValue(rollDie());
+    }
+  }, [prompt, allowManualRoll, rollDie]);
   const [promptResult, setPromptResult] = useState<{
     success: boolean;
     total: number;
@@ -189,32 +246,39 @@ export function PromptModal({
               alignItems: 'center',
             }}
           >
-            <label style={{ fontSize: 12 }}>
-              Roll (1-20){' '}
-              <input
-                type="number"
-                min={1}
-                max={20}
-                step={1}
-                value={rollValue}
-                aria-label="roll value"
-                onChange={(e) =>
-                  setRollValue(
-                    Math.min(
-                      20,
-                      Math.max(1, Math.trunc(Number(e.target.value)))
+            {allowManualRoll ? (
+              <label style={{ fontSize: 12 }}>
+                Roll (1-20){' '}
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  step={1}
+                  value={rollValue}
+                  aria-label="roll value"
+                  onChange={(e) =>
+                    setRollValue(
+                      Math.min(
+                        20,
+                        Math.max(1, Math.trunc(Number(e.target.value)))
+                      )
                     )
-                  )
-                }
-                style={{
-                  width: 60,
-                  background: '#333',
-                  color: '#eee',
-                  border: '1px solid #555',
-                  padding: '2px 4px',
-                }}
-              />
-            </label>
+                  }
+                  style={{
+                    width: 60,
+                    background: '#333',
+                    color: '#eee',
+                    border: '1px solid #555',
+                    padding: '2px 4px',
+                  }}
+                />
+              </label>
+            ) : (
+              <div data-testid="rolled-value" style={{ fontSize: 13 }}>
+                You rolled:{' '}
+                <strong style={{ color: '#aaf' }}>{rollValue}</strong>
+              </div>
+            )}
             <button
               onClick={() => void handleSubmitCheck()}
               disabled={submitCheckLoading}
@@ -228,19 +292,21 @@ export function PromptModal({
             >
               {submitCheckLoading ? 'Submitting…' : 'Submit roll'}
             </button>
-            <button
-              onClick={onDismiss}
-              style={{
-                padding: '4px 8px',
-                background: '#2a2a2a',
-                color: '#888',
-                border: '1px solid #444',
-                cursor: 'pointer',
-                fontSize: 11,
-              }}
-            >
-              Dismiss
-            </button>
+            {allowDismiss && (
+              <button
+                onClick={onDismiss}
+                style={{
+                  padding: '4px 8px',
+                  background: '#2a2a2a',
+                  color: '#888',
+                  border: '1px solid #444',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                }}
+              >
+                Dismiss
+              </button>
+            )}
           </div>
         )}
         {submitCheckError && (
