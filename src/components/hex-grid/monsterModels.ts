@@ -115,7 +115,16 @@ const MONSTER_TYPE_TO_REF_ID: Partial<Record<MonsterType, string>> = {
 };
 
 /** Insert the `-downed` suffix before the extension, matching
- * characters/manifest.json's `<name>-downed.glb` convention. */
+ * characters/manifest.json's `<name>-downed.glb` convention.
+ *
+ * TODO(rpg-dnd5e-web#595): this derivation assumes every promoted standing
+ * candidate has a `-downed.glb` sibling. True for all 7 GLBs promoted this
+ * wave, but nothing enforces it — the first future ref promoted with only a
+ * standing look gets a 404 here, which HexEntity's single ErrorBoundary
+ * currently degrades all the way to a generic MediumHumanoid (losing the
+ * monster's identity, not just its pose). #595 proposes a second fallback
+ * tier (standing GLB, tilted) between this and MediumHumanoid; deliberately
+ * not attempted in this PR. */
 function withDownedSuffix(file: string): string {
   return file.replace(/\.glb$/, '-downed.glb');
 }
@@ -143,6 +152,11 @@ function withDownedSuffix(file: string): string {
 export function resolveMonsterModelUrl(
   monsterRefId: string | undefined,
   monsterType: MonsterType | undefined,
+  /** Named `isDowned` to mirror resolveClassCharacterModelUrl's parameter
+   * (same "pick the downed variant file" meaning), but monsters don't have
+   * a CHARACTER-only "unconscious" concept to feed it with — HexEntity.tsx's
+   * only call site passes `isDead` here instead (monsters die at 0 HP
+   * rather than going unconscious; see buildRenderableEntities). */
   isDowned: boolean
 ): string | undefined {
   const trimmedRefId = monsterRefId?.trim().toLowerCase();

@@ -70,6 +70,12 @@ export interface ClassCharacterModelProps {
    * instead of idle. Defaults false (idle), matching every pre-#542 caller
    * unchanged. */
   isMoving?: boolean;
+  /** True when `url` resolves a downed/dead-pose GLB (rpg-dnd5e-web#501/
+   * #559) — those ship with 0 baked clips BY DESIGN (a static collapsed
+   * pose, not an animated one), so the dev-mode zero-clip warning below
+   * doesn't fire for them. Defaults false, matching every pre-existing
+   * standing-model caller. */
+  isDownedVariant?: boolean;
 }
 
 export function ClassCharacterModel({
@@ -78,6 +84,7 @@ export function ClassCharacterModel({
   isGhost = false,
   facingRotation = 0,
   isMoving = false,
+  isDownedVariant = false,
 }: ClassCharacterModelProps) {
   // useGLTF returns drei's shared, URL-keyed cache — mutating it directly
   // during render is a render-phase side effect on shared state (same
@@ -175,6 +182,32 @@ export function ClassCharacterModel({
       action?.fadeOut(0.2);
     };
   }, [actions, resolvedClipName]);
+
+  // Dev-mode-only zero-clip warning (rpg-dnd5e-web#559 review). A standing
+  // model with NO baked clip at all renders at its raw bind pose, which
+  // reads fine ONLY if the rig's rest pose was itself authored to be
+  // presentable (Kirk: Auto-Rig Pro "made it much easier to get the default
+  // non t pose" — the fix belongs on the asset side, in the rig's rest
+  // pose, not by refusing to mount a perfectly good model here). When it
+  // wasn't, this is silent and looks like a bug rather than reading as an
+  // intentional pose — the exact hazard classCharacterModels.ts's
+  // `_animFixComment`/`_idleClipsComment` already documents for a DIFFERENT
+  // Synty pack ("Stance clips bake their held pose into the FBX's own rest
+  // matrices... silently reproduces the target's T-pose bind"). Warn loudly
+  // in dev instead of suppressing the model — never fires for downed
+  // variants, which ship 0 clips by design (a static collapsed pose).
+  useEffect(() => {
+    if (isDownedVariant) return;
+    if (names.length > 0) return;
+    if (import.meta.env.MODE !== 'development') return;
+    console.warn(
+      `[ClassCharacterModel] ${url} mounted with zero animation clips — ` +
+        'it will render at its raw bind pose. If that pose was not authored ' +
+        "to stand presentably (see this effect's doc comment), it will " +
+        'read as a broken/T-posed model rather than an intentional static ' +
+        'look.'
+    );
+  }, [isDownedVariant, names, url]);
 
   // HexGrid's Canvas runs frameloop="demand" (only re-renders on explicit
   // invalidate() calls, not every rAF tick — see HexEntity.tsx's identical

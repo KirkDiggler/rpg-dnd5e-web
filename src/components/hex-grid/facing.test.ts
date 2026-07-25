@@ -121,6 +121,12 @@ describe('constant split reproduces the pre-#590 hardcoded values', () => {
     ).toBeCloseTo(Math.PI, 12);
   });
 
+  it('monster on a POLYGON Dungeon npc GLB composes to 0 (rpg-dnd5e-web#559) -- mirrors the player+Synty case above; inert today since both terms are zero, which is exactly when a silent-cancellation bug would hide', () => {
+    expect(
+      norm(DEFAULT_HEADING_BY_TYPE.monster + POLYGON_DUNGEON_FORWARD_OFFSET)
+    ).toBeCloseTo(0, 12);
+  });
+
   it('measured forward offsets are zero because both rigs are +Z-forward', () => {
     // Recorded as an assertion, not just a comment: this is the MEASURED
     // finding (see the constants' doc comment). If a future model family

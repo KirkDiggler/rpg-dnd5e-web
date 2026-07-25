@@ -122,6 +122,30 @@ const Y_OFFSET = 0.1; // Small Y offset to sit above the hex plane
 // Character model Y offset (characters stand on the ground)
 const CHARACTER_Y_OFFSET = 0.05;
 
+/**
+ * Whether the dead/downed corpse tilt (60 degrees about Z) should apply.
+ * Exported + pure so the six dead/downed x mapped/unmapped combinations are
+ * covered by a real test (HexEntity.test.ts) instead of only by a reviewer
+ * reading the JSX carefully — same "pull the composition into arithmetic a
+ * test can pin" reasoning as facing.ts's constant-split parity assertions
+ * (#590/#592) and the same "export a pure helper straight off the component
+ * file for coverage" precedent as HexGrid.tsx's isHexBlocked.
+ *
+ * Only tilt when falling back to the primitive/MediumHumanoid rendering
+ * (`!hasResolvedModel`) — a resolved GLB's own downed/dead variant is
+ * already posed for it (rpg-dnd5e-web#501 for players, generalized to
+ * monsters by rpg-dnd5e-web#559), so tilting it on top would double up on
+ * an already-prone body.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function shouldTiltDeadOrDowned(
+  isDead: boolean,
+  isDowned: boolean,
+  hasResolvedModel: boolean
+): boolean {
+  return (isDead || isDowned) && !hasResolvedModel;
+}
+
 /** Map Race enum to head variant for 3D model */
 const RACE_TO_HEAD_VARIANT: Partial<Record<Race, HeadVariant>> = {
   [Race.HUMAN]: 'human',
@@ -405,6 +429,12 @@ export function HexEntity({
     // entity, so combining them into one resolved url + one sticky-failure
     // slot (failedEntityModelUrl above) is safe.
     const resolvedModelUrl = classModelUrl ?? monsterModelUrl;
+    // Same per-type selection the two resolver calls above already made
+    // (isDowned for player, isDead for monster) — exposed as its own value
+    // so ClassCharacterModel knows whether a zero-clip mount is expected
+    // (a downed variant's static collapsed pose) or worth its dev-mode
+    // warning (a standing model that should hold a presentable pose).
+    const isDownedModelVariant = type === 'player' ? isDowned : isDead;
     // The forward-axis correction is a property of WHICH rig is mounted,
     // not of the entity type in the abstract — a player's resolved model is
     // always the Fantasy Rivals class rig, a monster's is always the
@@ -472,7 +502,7 @@ export function HexEntity({
             shader/opacity either way. */}
         <group
           rotation={
-            (isDead || isDowned) && !effectiveModelUrl
+            shouldTiltDeadOrDowned(isDead, isDowned, !!effectiveModelUrl)
               ? [0, 0, Math.PI / 3]
               : [0, 0, 0]
           }
@@ -491,6 +521,7 @@ export function HexEntity({
                   isGhost={isGhost}
                   facingRotation={modelForwardOffset}
                   isMoving={!isDead && !isGhost && isMoving}
+                  isDownedVariant={isDownedModelVariant}
                 />
               </ErrorBoundary>
             ) : (
