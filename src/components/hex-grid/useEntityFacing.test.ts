@@ -102,4 +102,20 @@ describe('useEntityFacing', () => {
     tick(5);
     expect(group.rotation.y).toBe(1.2);
   });
+
+  it('settles when asked for a heading co-terminal with the current one', () => {
+    // Copilot review on #592: shortestTurn returns 0 for headings that differ
+    // by exactly 2PI, so an easeHeading that returned `current` there would
+    // leave current !== target forever. The settle check is exact equality, so
+    // that is a perpetual invalidate loop under frameloop="demand" -- the one
+    // thing this hook's design is explicitly meant to avoid.
+    const { group, hook } = setup(0);
+    act(() => hook.result.current.requestHeading(2 * Math.PI));
+    tick(0.016);
+    hoisted.invalidate.mockClear();
+    tick(0.016);
+    tick(0.016);
+    expect(hoisted.invalidate).not.toHaveBeenCalled();
+    expect(group.rotation.y).toBe(2 * Math.PI);
+  });
 });

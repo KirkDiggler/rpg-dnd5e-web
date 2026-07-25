@@ -135,3 +135,17 @@ describe('constant split reproduces the pre-#590 hardcoded values', () => {
     expect(headingFromDelta(0, 1)).toBe(0);
   });
 });
+
+describe('easeHeading with a modulo-2PI-equivalent target (Copilot review, #592)', () => {
+  it('settles ON the target rather than returning a co-terminal current', () => {
+    // shortestTurn(2PI, 0) is 0 -- the two headings point the same way. But
+    // returning `current` there leaves current !== target forever, and
+    // useEntityFacing's settle check is exact equality, so it would invalidate
+    // every frame in perpetuity under frameloop="demand".
+    expect(easeHeading(2 * Math.PI, 0, 0.016, 8)).toBe(0);
+  });
+
+  it('settles for a negative co-terminal pair too', () => {
+    expect(easeHeading(-2 * Math.PI, 0, 0.016, 8)).toBe(0);
+  });
+});

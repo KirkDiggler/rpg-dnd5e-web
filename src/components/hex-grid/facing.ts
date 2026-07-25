@@ -67,6 +67,16 @@ export const TURN_RATE_RAD_PER_SEC = 8;
  * overshooting. Returns `target` itself (===, not approximately) once within
  * one step, because `useEntityFacing` stops its invalidate loop on an exact
  * equality check.
+ *
+ * That exact-equality settle condition is why the zero-turn branch returns
+ * `target` rather than `current` (Copilot review on #592). The two are usually
+ * the same value, but not always: `shortestTurn` is 0 for any pair that differs
+ * by exactly 2*PI, and those point the same way while comparing unequal.
+ * Returning `current` there would leave `currentRef !== targetRef` forever and
+ * invalidate every frame in perpetuity under `frameloop="demand"` — precisely
+ * the cost `useEntityFacing` is built to avoid. `current` can legitimately
+ * leave (-PI, PI] mid-turn, since the accumulate branch below does not
+ * normalise, so co-terminal pairs are reachable rather than hypothetical.
  */
 export function easeHeading(
   current: number,
@@ -75,7 +85,7 @@ export function easeHeading(
   turnRate: number = TURN_RATE_RAD_PER_SEC
 ): number {
   const turn = shortestTurn(current, target);
-  if (turn === 0) return current;
+  if (turn === 0) return target;
   const maxStep = turnRate * delta;
   if (Math.abs(turn) <= maxStep) return target;
   return current + Math.sign(turn) * maxStep;
