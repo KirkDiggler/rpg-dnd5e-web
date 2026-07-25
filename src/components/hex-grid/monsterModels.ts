@@ -13,22 +13,15 @@
  * class:file convention nor an earlier draft of this file hit:
  * (1) there is no toolkit ref for "ghost"/"specter" at all (see below), so a
  * ref-id-only naming scheme can't even name half the promoted roster; (2)
- * the SRD mapping isn't 1:1 — Skeleton maps to TWO promoted looks
- * (Soldier_01/02) — a ref-id filename would force an arbitrary pick and
- * then lie about it. rpg-game-assets' npcs/manifest.json is the seam that
- * carries the rules mapping (which ref -> which asset file(s)); this table
+ * asset source names remain stable when a rules mapping changes. The private
+ * NPC manifest is the seam that carries the rules mapping; this table
  * is this repo's hand-kept mirror of that mapping, same discipline as
  * classCharacterModels.ts's CLASS_CHARACTER_MODELS.
  *
- * MONSTER_REF_MODELS is ref -> ORDERED CANDIDATE LIST (not ref -> single
- * file), matching propManifest.ts's `PROP_KEYS: Record<string,
- * PropVariant[]>` shape exactly, because Skeleton already has two looks.
- * resolveMonsterModelUrl below picks candidates[0] — no per-instance
- * variant selection yet (same "first available" convention as
- * resolvePropVariant's `PROP_KEYS[key]?.[0]` and
- * classCharacterModels.ts's resolveIdleClipName fallback). Choosing a
- * SPECIFIC look per monster instance (so a room of skeletons doesn't look
- * cloned) is a real future improvement, out of scope here.
+ * Phase 1 has one deterministic candidate per mapped reference: Soldier01
+ * for skeleton and Knight for skeleton-captain. The seven private standing
+ * assets each export exactly `Idle_Relaxed` [2,55] then in-place
+ * `Walk_Forward` [2,33]; only these two assets are runtime-selectable here.
  *
  * This hardcoded table is a stopgap for this slice, not the intended end
  * state. propManifest.ts / rpg-game-assets' prop-role-map.json is the
@@ -91,11 +84,9 @@ const MONSTER_MODEL_BASE = '/models/synty/npcs/';
  * against that file rather than guessed from the proto's MonsterType enum
  * names (which use a different casing convention and, for GHOST/SPECTER,
  * have no equivalent at all). Each value is an ORDERED candidate list of
- * asset-source-named standing-pose files (see this module's doc comment for
- * why); resolveMonsterModelUrl picks candidates[0] and derives the downed
- * filename by suffix. */
+ * asset-source-named standing-pose files. */
 const MONSTER_REF_MODELS: Record<string, string[]> = {
-  skeleton: ['skeleton-soldier-01.glb', 'skeleton-soldier-02.glb'],
+  skeleton: ['skeleton-soldier-01.glb'],
   // The boss's rules identity is skeleton-captain-shaped (rpg-project#110
   // Slice 3 / rpg-toolkit#816 correction — NOT a wight, NOT a juvenile
   // variant of a bigger monster), but the promoted Character_Skeleton_Knight

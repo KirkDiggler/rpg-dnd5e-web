@@ -3,10 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveMonsterModelUrl } from './monsterModels';
 
 describe('resolveMonsterModelUrl', () => {
-  it('resolves the standing model for "skeleton" (v1alpha2 monsterRefId) to its first candidate look', () => {
-    // Skeleton has two promoted looks (Soldier_01/02, rpg-dnd5e-web#559) --
-    // this resolver, like resolvePropVariant's PROP_KEYS[key]?.[0], doesn't
-    // do per-instance variant selection yet, so the first candidate wins.
+  it('resolves the standing model for "skeleton" (v1alpha2 monsterRefId) to deterministic Soldier01', () => {
     expect(resolveMonsterModelUrl('skeleton', undefined, false)).toBe(
       '/models/synty/npcs/skeleton-soldier-01.glb'
     );
@@ -57,13 +54,21 @@ describe('resolveMonsterModelUrl', () => {
     ).toBe('/models/synty/npcs/skeleton-knight.glb');
   });
 
-  it('returns undefined for an unmapped monsterRefId (no promoted GLB yet)', () => {
-    // "ghost"/"specter" have no rpg-toolkit monster ref at all yet (the
-    // undead roster promoted for rpg-dnd5e-web#559 ships those GLBs ahead
-    // of the rules-engine identity that would ever select them) --
-    // MediumHumanoid fallback is correct here, not a gap to fix.
+  it('keeps asset-ready Slave and spirits unselectable in Phase 1', () => {
+    expect(
+      resolveMonsterModelUrl('skeleton-slave', undefined, false)
+    ).toBeUndefined();
     expect(resolveMonsterModelUrl('ghost', undefined, false)).toBeUndefined();
     expect(resolveMonsterModelUrl('specter', undefined, false)).toBeUndefined();
+    expect(
+      resolveMonsterModelUrl('tormented-soul', undefined, false)
+    ).toBeUndefined();
+  });
+
+  it('keeps an authoritative unmapped monsterRefId over a mapped enum fallback', () => {
+    expect(
+      resolveMonsterModelUrl('ghost', MonsterType.SKELETON, false)
+    ).toBeUndefined();
   });
 
   it('returns undefined for an unmapped MonsterType (no zombie GLB is promoted -- rpg-dnd5e-web#559 tracks a green-tinted class-model reuse instead)', () => {
