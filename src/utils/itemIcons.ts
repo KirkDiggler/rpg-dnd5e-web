@@ -112,7 +112,8 @@ export const CANONICAL_ARMOR_IDS = [
  *  registry entry (or misspelling one) is a compile error, not a silent
  *  gap. */
 export type CanonicalItemId =
-  (typeof CANONICAL_WEAPON_IDS)[number] | (typeof CANONICAL_ARMOR_IDS)[number];
+  | (typeof CANONICAL_WEAPON_IDS)[number]
+  | (typeof CANONICAL_ARMOR_IDS)[number];
 
 /** Internal literal, `satisfies`-checked against `Record<CanonicalItemId,
  *  ItemIconEntry>` so TypeScript rejects a missing OR misspelled canonical

@@ -112,7 +112,12 @@ export function parseSourceCategory(sourceRef: string): string | null {
  * Used to determine visual styling for conditions.
  */
 export type ConditionCategory =
-  'class' | 'fighting-style' | 'racial' | 'debuff' | 'buff' | 'unknown';
+  | 'class'
+  | 'fighting-style'
+  | 'racial'
+  | 'debuff'
+  | 'buff'
+  | 'unknown';
 
 export function getConditionCategory(sourceRef: string): ConditionCategory {
   const category = parseSourceCategory(sourceRef);

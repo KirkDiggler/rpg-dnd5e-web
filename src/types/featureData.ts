@@ -61,7 +61,10 @@ export interface ActionSurgeData extends UsageFeatureData {
  * Union type for all feature data variants
  */
 export type FeatureData =
-  RageData | SecondWindData | ActionSurgeData | BaseFeatureData;
+  | RageData
+  | SecondWindData
+  | ActionSurgeData
+  | BaseFeatureData;
 
 /**
  * Type guards for feature data

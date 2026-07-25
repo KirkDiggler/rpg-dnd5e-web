@@ -71,11 +71,13 @@ export type ScaleValue = number | ScaleXYZ;
 
 /** Elevation source: function, or record keyed by "q,r" */
 export type ElevationSource =
-  ((q: number, r: number) => number) | Record<string, number>;
+  | ((q: number, r: number) => number)
+  | Record<string, number>;
 
 /** Scale source: function, or record keyed by "q,r" */
 export type ScaleSource =
-  ((q: number, r: number) => ScaleValue) | Record<string, ScaleValue>;
+  | ((q: number, r: number) => ScaleValue)
+  | Record<string, ScaleValue>;
 
 /** Elevation source that also supports Map (for createFloorFromGeometry) */
 export type ElevationSourceWithMap = ElevationSource | Map<string, number>;

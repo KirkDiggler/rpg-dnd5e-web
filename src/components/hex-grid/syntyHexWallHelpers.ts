@@ -486,7 +486,9 @@ export function buildDungeonWallSegments(
  * X/Z (this phase's original approach) was wrong.
  */
 export type FittingKind =
-  'wall-corner-outer' | 'wall-corner-inner' | 'wall-end';
+  | 'wall-corner-outer'
+  | 'wall-corner-inner'
+  | 'wall-end';
 
 export interface FittingVariant {
   kind: FittingKind;

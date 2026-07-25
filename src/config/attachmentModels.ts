@@ -54,7 +54,8 @@ export interface TwoHandedAttachmentConfig {
 }
 
 export type WeaponConfig =
-  BilateralAttachmentConfig | TwoHandedAttachmentConfig;
+  | BilateralAttachmentConfig
+  | TwoHandedAttachmentConfig;
 
 // ─── Base Paths ───────────────────────────────────────────────────────────────
 

@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // useHexMovePath.test.ts, and for the same reason.
 const hoisted = vi.hoisted(() => ({
   frameCallback: undefined as
-    ((state: unknown, delta: number) => void) | undefined,
+    | ((state: unknown, delta: number) => void)
+    | undefined,
   invalidate: vi.fn(),
 }));
 

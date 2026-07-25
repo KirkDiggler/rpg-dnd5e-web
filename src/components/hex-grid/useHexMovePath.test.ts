@@ -10,7 +10,8 @@ import { cubeToWorld, type CubeCoord } from './hexMath';
 // `invalidate`.
 const hoisted = vi.hoisted(() => ({
   frameCallback: undefined as
-    ((state: unknown, delta: number) => void) | undefined,
+    | ((state: unknown, delta: number) => void)
+    | undefined,
   invalidate: vi.fn(),
 }));
 

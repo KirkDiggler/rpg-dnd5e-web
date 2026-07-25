@@ -41,7 +41,11 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 
 type ConnectionState =
-  'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'error';
 
 interface UseEncounterStreamOptions {
   // Lobby events

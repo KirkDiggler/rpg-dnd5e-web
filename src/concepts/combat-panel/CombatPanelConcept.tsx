@@ -20,7 +20,11 @@ import { COMBAT_PANEL_FIXTURES, type CombatPanelFixture } from './fixtures';
 import { CONCEPT_LOG_ENTRIES } from './logFixtures';
 
 type CompositionId =
-  'comfort' | 'hud-skinned' | 'cluster' | 'with-context' | 'command-bar';
+  | 'comfort'
+  | 'hud-skinned'
+  | 'cluster'
+  | 'with-context'
+  | 'command-bar';
 
 const COMPOSITIONS: { id: CompositionId; label: string; blurb: string }[] = [
   {

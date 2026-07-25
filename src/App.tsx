@@ -16,7 +16,11 @@ import { ConceptsView } from './concepts/ConceptsView';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
 type AppView =
-  'home' | 'character-creation' | 'character-sheet' | 'lobby' | 'concepts';
+  | 'home'
+  | 'character-creation'
+  | 'character-sheet'
+  | 'lobby'
+  | 'concepts';
 
 function AppContent() {
   // Stable gate: dev mode + encounterId URL param → render PlaytestHarness.
