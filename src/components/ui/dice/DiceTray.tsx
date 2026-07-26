@@ -24,12 +24,14 @@ export interface DiceTrayProps {
   outcome: DiceTrayOutcome;
   reducedMotion?: boolean;
   motion?: DiceMotion;
+  presentationRandom?: () => number;
   onPresentationComplete?: () => void;
   children?: React.ReactNode;
   className?: string;
 }
 
 const REDUCED_MOTION_PRESENTATION_FACES = [2, 7, 11, 16, 19];
+const PRESENTATION_RANDOM_RANGE = 2 ** 32;
 const VERTICES: ReadonlyArray<readonly [number, number]> = [
   [50, 4],
   [88.97, 27.5],
@@ -40,12 +42,22 @@ const VERTICES: ReadonlyArray<readonly [number, number]> = [
 ];
 const SILHOUETTE_POINTS = VERTICES.map(([x, y]) => `${x},${y}`).join(' ');
 
+function defaultPresentationRandom() {
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    return (
+      crypto.getRandomValues(new Uint32Array(1))[0] / PRESENTATION_RANDOM_RANGE
+    );
+  }
+  return Math.random();
+}
+
 export function DiceTray({
   phase,
   finalFace,
   outcome,
   reducedMotion = false,
   motion,
+  presentationRandom = defaultPresentationRandom,
   onPresentationComplete,
   children,
   className,
@@ -85,7 +97,7 @@ export function DiceTray({
       (value) => value !== finalFace
     );
     for (let index = faces.length - 1; index > 0; index -= 1) {
-      const shuffledIndex = Math.floor(Math.random() * (index + 1));
+      const shuffledIndex = Math.floor(presentationRandom() * (index + 1));
       [faces[index], faces[shuffledIndex]] = [
         faces[shuffledIndex],
         faces[index],
@@ -108,7 +120,14 @@ export function DiceTray({
       setTimeout(() => onPresentationComplete?.(), elapsed + hold + rollover)
     );
     return () => timers.forEach(clearTimeout);
-  }, [finalFace, motion, onPresentationComplete, phase, reducedMotion]);
+  }, [
+    finalFace,
+    motion,
+    onPresentationComplete,
+    phase,
+    presentationRandom,
+    reducedMotion,
+  ]);
 
   if (phase === 'hidden') return null;
 

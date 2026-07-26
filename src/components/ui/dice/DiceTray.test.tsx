@@ -6,6 +6,7 @@ import { DiceTray } from './DiceTray';
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -55,13 +56,19 @@ describe('DiceTray', () => {
       nearSettleHoldMs: 30,
       rolloverMs: 40,
     };
-    const random = vi.spyOn(Math, 'random');
+    const firstPresentationRandom = vi.fn(() => 0);
+    const secondPresentationRandom = vi.fn(() => 0.999);
     const firstRollFaces: string[] = [];
     const secondRollFaces: string[] = [];
 
-    random.mockReturnValue(0);
     const firstRoll = render(
-      <DiceTray phase="rolling" finalFace={14} outcome="HIT" motion={motion} />
+      <DiceTray
+        phase="rolling"
+        finalFace={14}
+        outcome="HIT"
+        motion={motion}
+        presentationRandom={firstPresentationRandom}
+      />
     );
     firstRollFaces.push(screen.getByTestId('dice-face').textContent ?? '');
     act(() => vi.advanceTimersByTime(30));
@@ -71,9 +78,14 @@ describe('DiceTray', () => {
     firstRollFaces.push(firstDecoy ?? '');
     firstRoll.unmount();
 
-    random.mockReturnValue(0.999);
     render(
-      <DiceTray phase="rolling" finalFace={14} outcome="HIT" motion={motion} />
+      <DiceTray
+        phase="rolling"
+        finalFace={14}
+        outcome="HIT"
+        motion={motion}
+        presentationRandom={secondPresentationRandom}
+      />
     );
     secondRollFaces.push(screen.getByTestId('dice-face').textContent ?? '');
     act(() => vi.advanceTimersByTime(30));
@@ -93,6 +105,22 @@ describe('DiceTray', () => {
     expect(secondDecoyValue).not.toBe(14);
     expect(firstRollFaces).not.toContain('14');
     expect(secondRollFaces).not.toContain('14');
+    expect(firstPresentationRandom).toHaveBeenCalled();
+    expect(secondPresentationRandom).toHaveBeenCalled();
+  });
+
+  it('uses crypto presentation randomness without consuming Math.random', () => {
+    const getRandomValues = vi.fn((values: Uint32Array) => {
+      values[0] = 0;
+      return values;
+    });
+    vi.stubGlobal('crypto', { getRandomValues });
+    const resultRandom = vi.spyOn(Math, 'random').mockReturnValue(0.7);
+
+    render(<DiceTray phase="rolling" finalFace={14} outcome="HIT" />);
+
+    expect(getRandomValues).toHaveBeenCalled();
+    expect(resultRandom).not.toHaveBeenCalled();
   });
 
   it('animates only the d20 shell while keeping the face readable', () => {
