@@ -81,10 +81,16 @@ describe('DiceTray', () => {
     act(() => vi.advanceTimersByTime(40));
     const secondDecoy = screen.getByTestId('dice-face').textContent;
     secondRollFaces.push(secondDecoy ?? '');
+    const firstDecoyValue = Number.parseInt(firstDecoy ?? '', 10);
+    const secondDecoyValue = Number.parseInt(secondDecoy ?? '', 10);
 
     expect(firstDecoy).not.toBe(secondDecoy);
-    expect(firstDecoy).not.toBe('19');
-    expect(secondDecoy).not.toBe('19');
+    expect(firstDecoyValue).toBeGreaterThanOrEqual(1);
+    expect(firstDecoyValue).toBeLessThanOrEqual(20);
+    expect(secondDecoyValue).toBeGreaterThanOrEqual(1);
+    expect(secondDecoyValue).toBeLessThanOrEqual(20);
+    expect(firstDecoyValue).not.toBe(14);
+    expect(secondDecoyValue).not.toBe(14);
     expect(firstRollFaces).not.toContain('14');
     expect(secondRollFaces).not.toContain('14');
   });
