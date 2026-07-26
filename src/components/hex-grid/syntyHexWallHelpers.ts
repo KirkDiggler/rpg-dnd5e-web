@@ -34,6 +34,7 @@ import {
   WallKind,
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import * as THREE from 'three';
 import {
   coordToKey,
   cubeToWorld,
@@ -120,6 +121,39 @@ export interface WallVariant {
   file: string;
   rawWidth: number;
   rawHeight: number;
+  /**
+   * The piece's own local-space bounding-box MIN x (measured directly off
+   * the GLB, same convention as rawWidth/rawHeight) — round-2 W3/W4
+   * finding (Kirk's live walk: "gaps between tiled segments"). `plain`'s
+   * local origin sits near its LEFT bbox edge (min.x=-0.1174, width
+   * 2.672 — the origin is only 0.1174 in from the left edge, but 2.555
+   * from the right), NOT at its geometric center as
+   * `wallRunMeshHelpers.tileWallSegment` used to assume when it placed
+   * every tile's origin at its slot's center (`pieceWidth * (i + 0.5)`).
+   * That assumption is silently wrong for a piece whose authored pivot
+   * isn't centered: it doesn't create gaps BETWEEN adjacent tiles (the
+   * math cancels out identically there — every tile shares the same
+   * scale, so consecutive spans still abut exactly), but it shifts the
+   * ENTIRE tiled run along its own axis by `(rawMinX + rawWidth/2) *
+   * (pieceWidth/rawWidth)` relative to where the run's own
+   * `segment.start`/`segment.end` say it should sit — measured at ~0.456
+   * world units for `plain` at the default 1.0 nominal piece width,
+   * nearly half a hex radius. That's large enough to open a real,
+   * visible gap between a run's own end and whatever it's supposed to
+   * butt against (a corner fitting, a connector, the room's true
+   * boundary) — the actual shape of Kirk's "gaps between tiled segments"
+   * report, not a seam between individual repeated tiles. `broken` has
+   * the same defect, smaller in magnitude (min.x=-0.0832). `alcove` is
+   * measured centered (min.x=-1.2444, essentially exactly -rawWidth/2) —
+   * not every piece in this pack has an off-center pivot, so this can't
+   * be assumed pack-wide and has to be measured per piece. Only `plain`
+   * (`WALL_VARIANTS[0]`, `RUN_WALL_VARIANT` in WallRunMesh.tsx) is
+   * actually tiled by `tileWallSegment` today — `broken`/`alcove` are
+   * legacy SyntyHexWall.tsx's per-cell variety pool, a different
+   * (already Kirk-verified, not touched here) placement path with its
+   * own single-piece-per-edge positioning, out of this fix's scope.
+   */
+  rawMinX: number;
 }
 
 export const WALL_VARIANTS: WallVariant[] = [
@@ -129,6 +163,7 @@ export const WALL_VARIANTS: WallVariant[] = [
     file: 'SM_Env_Wall_Half_01.glb',
     rawWidth: 2.672,
     rawHeight: 5.1022,
+    rawMinX: -0.1174,
   },
   {
     name: 'broken',
@@ -136,6 +171,7 @@ export const WALL_VARIANTS: WallVariant[] = [
     file: 'SM_Env_Wall_Broken_Edge_01.glb',
     rawWidth: 2.1996,
     rawHeight: 5.082,
+    rawMinX: -0.0832,
   },
   {
     name: 'alcove',
@@ -143,6 +179,7 @@ export const WALL_VARIANTS: WallVariant[] = [
     file: 'SM_Env_Wall_Alcove_01.glb',
     rawWidth: 2.4888,
     rawHeight: 3.5618,
+    rawMinX: -1.2444,
   },
 ];
 
@@ -174,6 +211,23 @@ const CRYPT_WALL_VARIANTS: WallVariant[] = WALL_VARIANTS.map((variant) => {
 export const WALL_VARIANTS_BY_THEME: Record<WallTheme, WallVariant[]> = {
   default: WALL_VARIANTS,
   crypt: CRYPT_WALL_VARIANTS,
+};
+
+/**
+ * Per-theme material tint (rpg-dnd5e-web#558 — Kirk's POLYGON Dark
+ * Fortress reference: dark cool-gray stone, not tan brick on a bright
+ * atlas). No darker Synty atlas exists for this pack (verified against the
+ * source textures — colorways are accent-only), so this is a multiplicative
+ * color tint applied in-engine, matching the character-tint pattern already
+ * used elsewhere in this codebase (rpg-dnd5e-web#515). `'default'` gets no
+ * entry here, so a lookup returns `undefined` for it and GlbInstance skips
+ * the clone-and-tint path entirely — every non-crypt caller is untouched.
+ * Moved here (out of SyntyHexWall.tsx) in the dungeon-walls redesign's W3
+ * slice so WallRunMesh.tsx's real Synty pieces share the exact same
+ * per-theme tint instead of a second, easy-to-drift copy.
+ */
+export const WALL_TINT_BY_THEME: Partial<Record<WallTheme, THREE.Color>> = {
+  crypt: new THREE.Color(0.32, 0.36, 0.46), // dark, cool blue-gray stone
 };
 
 /**
@@ -498,27 +552,54 @@ export interface FittingVariant {
   rawHeight: number;
 }
 
+/**
+ * Round-2 W3/W4 course correction: the original 3 files this map pointed
+ * to (`SM_Env_Wall_End_Coner_Outer_01`/`_Coner_Inner_01`/`_End_01`) were
+ * first suspected as a conversion defect (isolated-GLB render showed a
+ * "stacked wafer" look), then confirmed by a deeper asset-side
+ * investigation to be structurally clean, correctly-shaped tall narrow
+ * corner POSTS with faceted brick relief — the wafer look is the wall
+ * role's own fit squash (~6x Y-compression to reach WALL_HEIGHT from a
+ * ~5m raw post), which panel-shaped pieces tolerate but post-shaped
+ * relief does not survive visually. Verdict recorded in rpg-game-assets'
+ * env-role-map fittings notes (PR #33, merged): don't map post-shaped
+ * pieces to wall roles. No re-conversion is coming for this family —
+ * dropped from every role here, permanently (not an interim fix).
+ * `SM_Env_Wall_Quarter_01` (a WALL_VARIANTS-family
+ * panel, already verified clean — see rpg-dnd5e-web#607/#608's isolation
+ * evidence) is the replacement for all 3 kinds: same "context fit"
+ * placement (single point, footprint centered) as before, just a
+ * different source file and its own measured raw dimensions —
+ * `FITTING_FOOTPRINT_SCALE` below is retuned to match, since Quarter's
+ * rawWidth/rawDepth are a different order of magnitude than the dropped
+ * family's.
+ */
+const FITTING_SUBSTITUTE_FILE = 'SM_Env_Wall_Quarter_01.glb';
+const FITTING_SUBSTITUTE_RAW_WIDTH = 2.7245;
+const FITTING_SUBSTITUTE_RAW_DEPTH = 0.4221;
+const FITTING_SUBSTITUTE_RAW_HEIGHT = 2.7068;
+
 export const FITTINGS: Record<FittingKind, FittingVariant> = {
   'wall-corner-outer': {
     kind: 'wall-corner-outer',
-    file: 'SM_Env_Wall_End_Coner_Outer_01.glb',
-    rawWidth: 0.8299,
-    rawDepth: 0.833,
-    rawHeight: 5.026,
+    file: FITTING_SUBSTITUTE_FILE,
+    rawWidth: FITTING_SUBSTITUTE_RAW_WIDTH,
+    rawDepth: FITTING_SUBSTITUTE_RAW_DEPTH,
+    rawHeight: FITTING_SUBSTITUTE_RAW_HEIGHT,
   },
   'wall-corner-inner': {
     kind: 'wall-corner-inner',
-    file: 'SM_Env_Wall_End_Coner_Inner_01.glb',
-    rawWidth: 1.06,
-    rawDepth: 1.1119,
-    rawHeight: 5.0263,
+    file: FITTING_SUBSTITUTE_FILE,
+    rawWidth: FITTING_SUBSTITUTE_RAW_WIDTH,
+    rawDepth: FITTING_SUBSTITUTE_RAW_DEPTH,
+    rawHeight: FITTING_SUBSTITUTE_RAW_HEIGHT,
   },
   'wall-end': {
     kind: 'wall-end',
-    file: 'SM_Env_Wall_End_01.glb',
-    rawWidth: 0.9043,
-    rawDepth: 0.8106,
-    rawHeight: 5.0472,
+    file: FITTING_SUBSTITUTE_FILE,
+    rawWidth: FITTING_SUBSTITUTE_RAW_WIDTH,
+    rawDepth: FITTING_SUBSTITUTE_RAW_DEPTH,
+    rawHeight: FITTING_SUBSTITUTE_RAW_HEIGHT,
   },
 };
 
@@ -530,19 +611,17 @@ export const FITTINGS: Record<FittingKind, FittingVariant> = {
  * sits against -- measured directly off the GLBs (`bbox_glb.py` against
  * `rpg-game-assets/harness/models/synty/env/`): `SM_Env_Wall_Half_01`'s raw
  * depth is 0.4357, which at the wall's own SYNTY_SCALE renders to ~0.327
- * world units of actual wall thickness. `wall-corner-outer`'s raw
- * width/depth (~0.83) at the old flat 0.75 rendered to ~0.62 -- nearly
- * DOUBLE the wall's own thickness, which is exactly why the fittings read
- * as "stacked slabs" dominating the tan wall segments instead of slim caps.
+ * world units of actual wall thickness -- the "slim post/cap" target every
+ * fitting's own footprint aims to match, not dwarf.
  *
- * `FITTING_FOOTPRINT_SCALE` is chosen so `wall-corner-outer` (the most
- * common fitting) renders at ~0.33 -- matching the wall's own rendered
- * thickness almost exactly -- with `wall-corner-inner` (a genuinely
- * chunkier concave-notch piece bridging 2 edges) and `wall-end` landing
- * close behind (~0.32-0.45 range across all 3), all in the same "slim
- * post/cap" order of magnitude as the wall itself rather than dwarfing it.
+ * Round-2 W3/W4 update: all 3 `FITTINGS` entries now share ONE substitute
+ * file (`FITTING_SUBSTITUTE_FILE`, see FITTINGS' own doc comment for why)
+ * with rawWidth ~2.72 -- a different order of magnitude than the original
+ * broken family's ~0.83-1.1 raw footprint this constant was originally
+ * tuned against. Retuned so `rawWidth * FITTING_FOOTPRINT_SCALE` still
+ * lands at that same ~0.33 target (2.7245 * 0.121 ~= 0.33).
  */
-const FITTING_FOOTPRINT_SCALE = 0.4;
+const FITTING_FOOTPRINT_SCALE = 0.121;
 
 /**
  * "Context" fit scale for a fitting: X/Z use each variant's own raw
@@ -647,6 +726,22 @@ export function classifyWallVertices(
   const seenVertexKeys = new Set<string>();
 
   for (const hexKey of wallKindByHex.keys()) {
+    // Round-2 W3/W4 finding (Kirk's live walk: the door-hex "6 mitered
+    // corners" decoration this loop places around every ISOLATED wall
+    // hex is exactly what turned every door into a stack of wafer-thin
+    // cards once the corner-fitting family got remapped to a panel
+    // piece — still clutter, just a different visual defect). A door's
+    // own cell is a wall hex purely so segment-building/corner
+    // classification know it blocks a boundary edge (collectWallHexes'
+    // own doc comment); it is NOT meant to read as a decorated corner
+    // post — the door frame mesh (rendered separately, see
+    // isDoorWallKind's other call site in this file) and the connector
+    // wall runs either side of it already own that visual space.
+    // Decision: an isolated door hex gets NO corner fittings at all —
+    // deleted, not restyled. A non-door wall hex's own vertices are
+    // unaffected (this only skips a hex whose OWN kind is a door).
+    if (isDoorWallKind(wallKindByHex.get(hexKey)!)) continue;
+
     const hex = parseHexKey(hexKey);
     const hexCenter = cubeToWorld(hex, hexSize);
     const corners = hexCorners(hexCenter, hexSize);

@@ -13,18 +13,25 @@
  * this codebase already follows (syntyHexWallHelpers.ts, dungeonMapGeometry.ts).
  */
 
-import { coordToKey, type CubeCoord } from '@/components/hex-grid/hexMath';
+import {
+  coordToKey,
+  cubeToWorld,
+  HEX_SIZE,
+  type CubeCoord,
+} from '@/components/hex-grid/hexMath';
 import { isDoorWallKind } from '@/components/hex-grid/syntyHexWallHelpers';
 import {
   type Hex,
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
+  cubeAtColRow,
   hexColumn,
   hexRow,
   type ConnectorDoorInput,
   type ConnectorRun,
   type RegionInput,
+  type WallRunSegment,
 } from './wallRuns';
 
 /**
@@ -192,28 +199,48 @@ function wireGridBounds(
 }
 
 /**
- * The positive category rule (design.md's W2 slice): the legacy per-cell
- * renderer (SyntyHexWall) draws
- *   (a) door entries, unchanged — their frame/leaf rendering and click
- *       surface are untouched by this design, only their ORIENTATION
- *       changes (see connectorRunDoorRotations below);
- *   (b) a non-door wall whose BLOCKING candidate cell lies INSIDE some
- *       region's hex set — genuine interior pattern walls (the crypt has
- *       these; the reference-tomb doesn't). For a degenerate
+ * The positive category rule (design.md's W2 slice, restructured in W3 to
+ * split its output across two renderers — see below): every non-door,
+ * non-interior wall entry falls into exactly one of:
+ *   (a) 'door' — unchanged; frame/leaf rendering and click surface are
+ *       untouched by this design, only their ORIENTATION changes (see
+ *       connectorRunDoorRotations below). Still rendered by the legacy
+ *       per-cell renderer (SyntyHexWall) via `legacyRenderWalls`.
+ *   (b) 'interior' — a non-door wall whose BLOCKING candidate cell lies
+ *       INSIDE some region's hex set — genuine interior pattern walls (the
+ *       crypt has these; the reference-tomb doesn't). For a degenerate
  *       (`from === to`) entry the candidate is its own cell; for a
  *       boundary-edge (`from !== to`) entry `from` is always real floor
  *       ALREADY inside its own region (rpg-toolkit's own construction —
  *       see below), so this never actually fires for boundary-edge, but
- *       the check stays generic rather than assuming shape;
- *   (c) STRUCTURAL SAFETY NET (gate review finding 1, rpg-dnd5e-web#603):
- *       a non-door wall whose candidate cell is OUTSIDE any known region,
- *       whose candidate's column matches a KNOWN door's column (a
- *       connector-flanking cell, either wire shape), whose candidate is
- *       a real IN-GRID cell (`wireGridBounds` — excludes the one-step-
- *       beyond-the-edge perimeter artifacts a door-column match alone
- *       can't tell apart from a genuine flank, gate review's STILL-
- *       BLOCKED finding), AND is NOT already covered by an emitted
- *       connector run.
+ *       the check stays generic rather than assuming shape. Still rendered
+ *       by the legacy per-cell renderer (SyntyHexWall) via
+ *       `legacyRenderWalls` — design.md defers interior-pattern-wall
+ *       restyle explicitly ("can follow once the envelope/connector
+ *       language is proven").
+ *   (c) 'connector-fallback' — STRUCTURAL SAFETY NET (gate review finding
+ *       1, rpg-dnd5e-web#603): a non-door wall whose candidate cell is
+ *       OUTSIDE any known region, whose candidate's column matches a
+ *       KNOWN door's column (a connector-flanking cell, either wire
+ *       shape), whose candidate is a real IN-GRID cell (`wireGridBounds`
+ *       — excludes the one-step-beyond-the-edge perimeter artifacts a
+ *       door-column match alone can't tell apart from a genuine flank,
+ *       gate review's STILL-BLOCKED finding), AND is NOT already covered
+ *       by an emitted connector run. W3 (team-lead's "fallback restyle"
+ *       ask, Kirk's prod-screenshot follow-up): these no longer render
+ *       through the legacy hex-vertex per-cell path at all —
+ *       `connectorFallbackSegments` turns each candidate into a short,
+ *       column-aligned straight segment rendered with the SAME tiled-run
+ *       visual language as a real ConnectorRun (WallRunMesh), so a
+ *       frontier door's flanking cells match the straight walls right
+ *       next to them instead of standing out as the old chunky hex-wall
+ *       look. The SELECTION logic (which cells get a wall mesh at all) is
+ *       byte-identical to before this split — only which renderer draws
+ *       category (c)'s candidates changed.
+ *   (d) 'excluded' — the dungeon's TRUE outer perimeter (the `from`
+ *       region's own envelope run already covers it once that region is
+ *       known) or any other non-matching candidate. Renders nothing,
+ *       either renderer.
  *
  * "Candidate cell" is what makes this robust to BOTH wire shapes without
  * branching on which one it is: for a degenerate entry the candidate is
@@ -221,30 +248,28 @@ function wireGridBounds(
  * is `to` — the far side, since `from` is real region floor that needs
  * no separate handling here (rpg-toolkit's `perimeterEdgeWalls`/
  * `connectorBoundaryEdgeWalls`, encounter/dungeon.go, both only ever set
- * `Start` to real, in-region floor). A candidate NOT inside any known
- * region is either the dungeon's TRUE outer perimeter (excluded — the
- * `from` region's own envelope run already covers its outward-facing
- * sides once that region is known) or a connector-flanking cell.
+ * `Start` to real, in-region floor).
  *
- * The column-match check ALONE is not sufficient to tell those two cases
- * apart, despite ruling out left/right perimeter edges (connector columns
- * are always strictly interior, never the whole space's own x=0/width-1
- * edge — rpg-toolkit's own generation invariant): a region's OWN top/
- * bottom-row floor hex can have an out-of-grid neighbor (one step above
- * row 0 or below row height-1) that lands on an ADJACENT connector's
- * column purely by coincidence of hex-grid geometry — gate review's
- * STILL-BLOCKED finding, reproduced live (an isolated wall block floating
- * one row above/below the map at every connector column, on the real
- * reference-tomb dungeon at full reveal). Neither "same row as `from`"
- * nor "row differs from `from` by exactly 1" discriminates the two cases
- * either — both were checked by hand against the real cube coordinates
- * from the reported reproduction and both admit false positives (a
- * genuine flank can differ from its source row by 1 via the NE/SE
- * neighbor directions, exactly like the spurious perimeter case does).
- * The only reliable discriminator is the candidate's row/column against
- * the dungeon's TRUE combined bounds — `wireGridBounds`.
+ * The column-match check ALONE is not sufficient to tell (c) apart from
+ * the true perimeter, despite ruling out left/right perimeter edges
+ * (connector columns are always strictly interior, never the whole
+ * space's own x=0/width-1 edge — rpg-toolkit's own generation invariant):
+ * a region's OWN top/bottom-row floor hex can have an out-of-grid
+ * neighbor (one step above row 0 or below row height-1) that lands on an
+ * ADJACENT connector's column purely by coincidence of hex-grid geometry
+ * — gate review's STILL-BLOCKED finding, reproduced live (an isolated
+ * wall block floating one row above/below the map at every connector
+ * column, on the real reference-tomb dungeon at full reveal). Neither
+ * "same row as `from`" nor "row differs from `from` by exactly 1"
+ * discriminates the two cases either — both were checked by hand against
+ * the real cube coordinates from the reported reproduction and both admit
+ * false positives (a genuine flank can differ from its source row by 1
+ * via the NE/SE neighbor directions, exactly like the spurious perimeter
+ * case does). The only reliable discriminator is the candidate's
+ * row/column against the dungeon's TRUE combined bounds —
+ * `wireGridBounds`.
  *
- * Category (c) exists because region hex membership is per-viewer
+ * Category (c) exists at all because region hex membership is per-viewer
  * REVEAL-GATED (rpg-api's `Space.hexes` is sight-range-gated
  * `RevealedHexes`, not the whole room), while the `Walls` list is
  * whole-room and unconditional from wave 1 — so a connector's flanking
@@ -261,10 +286,63 @@ function wireGridBounds(
  * shape today, and an earlier, narrower version of this fix (checking
  * only degenerate entries) caught none of them. (c) makes the
  * invisible-wall guarantee hold BY CONSTRUCTION for every reveal state
- * AND either wire shape: a flanking cell only ever loses its legacy
- * rendering once a run actually draws over that exact cell, never merely
- * because a run exists somewhere on its column.
+ * AND either wire shape: a flanking cell only ever loses coverage once a
+ * run (or, since W3, a fallback segment) actually draws over that exact
+ * cell, never merely because a run exists somewhere on its column.
  */
+type WallCategory =
+  | { type: 'door' }
+  | { type: 'interior' }
+  | { type: 'connector-fallback'; candidate: CubeCoord }
+  | { type: 'excluded' };
+
+function categorizeWall(
+  wall: Wall,
+  regionHexKeys: Set<string>,
+  doorColumns: Set<number>,
+  gridBounds:
+    | { minCol: number; maxCol: number; minRow: number; maxRow: number }
+    | undefined,
+  coveredRowRanges: Map<number, { minRow: number; maxRow: number }>
+): WallCategory {
+  if (isDoorWallKind(wall.kind)) return { type: 'door' };
+  if (!wall.from || !wall.to) return { type: 'excluded' };
+  const fromHex: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
+  const toHex: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
+  const isDegenerate =
+    fromHex.x === toHex.x && fromHex.y === toHex.y && fromHex.z === toHex.z;
+  const candidate = isDegenerate ? fromHex : toHex;
+
+  if (regionHexKeys.has(coordToKey(candidate))) {
+    return { type: 'interior' };
+  }
+  if (!doorColumns.has(hexColumn(candidate))) {
+    return { type: 'excluded' }; // true outer perimeter
+  }
+  // A candidate whose column merely coincides with a door's column can
+  // still be a genuine outer-perimeter cell (a region's own top/bottom
+  // edge landing on an adjacent connector's column) — gate review's
+  // STILL-BLOCKED finding. Require the candidate to be a real in-grid
+  // cell before treating it as a connector flank at all.
+  const candidateCol = hexColumn(candidate);
+  const candidateRow = hexRow(candidate);
+  if (
+    !gridBounds ||
+    candidateCol < gridBounds.minCol ||
+    candidateCol > gridBounds.maxCol ||
+    candidateRow < gridBounds.minRow ||
+    candidateRow > gridBounds.maxRow
+  ) {
+    return { type: 'excluded' };
+  }
+  // Connector-flanking candidate: a fallback UNLESS a connector run
+  // already covers this exact cell.
+  if (isCoveredByConnectorRun(candidate, coveredRowRanges)) {
+    return { type: 'excluded' };
+  }
+  return { type: 'connector-fallback', candidate };
+}
+
 export function legacyRenderWalls(
   walls: Iterable<Wall>,
   regions: RegionInput[],
@@ -283,49 +361,98 @@ export function legacyRenderWalls(
 
   const kept: Wall[] = [];
   for (const wall of walls) {
-    if (isDoorWallKind(wall.kind)) {
-      kept.push(wall);
-      continue;
-    }
-    if (!wall.from || !wall.to) continue;
-    const fromHex: CubeCoord = {
-      x: wall.from.x,
-      y: wall.from.y,
-      z: wall.from.z,
-    };
-    const toHex: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
-    const isDegenerate =
-      fromHex.x === toHex.x && fromHex.y === toHex.y && fromHex.z === toHex.z;
-    const candidate = isDegenerate ? fromHex : toHex;
-
-    if (regionHexKeys.has(coordToKey(candidate))) {
-      kept.push(wall); // interior pattern wall
-      continue;
-    }
-    if (!doorColumns.has(hexColumn(candidate))) continue; // true outer perimeter
-    // A candidate whose column merely coincides with a door's column can
-    // still be a genuine outer-perimeter cell (a region's own top/bottom
-    // edge landing on an adjacent connector's column) — gate review's
-    // STILL-BLOCKED finding. Require the candidate to be a real in-grid
-    // cell before treating it as a connector flank at all.
-    const candidateCol = hexColumn(candidate);
-    const candidateRow = hexRow(candidate);
-    if (
-      !gridBounds ||
-      candidateCol < gridBounds.minCol ||
-      candidateCol > gridBounds.maxCol ||
-      candidateRow < gridBounds.minRow ||
-      candidateRow > gridBounds.maxRow
-    ) {
-      continue;
-    }
-    // Connector-flanking candidate: keep it via the legacy fallback
-    // UNLESS a connector run already covers this exact cell.
-    if (!isCoveredByConnectorRun(candidate, coveredRowRanges)) {
+    const category = categorizeWall(
+      wall,
+      regionHexKeys,
+      doorColumns,
+      gridBounds,
+      coveredRowRanges
+    );
+    if (category.type === 'door' || category.type === 'interior') {
       kept.push(wall);
     }
   }
   return kept;
+}
+
+/**
+ * One connector-flanking candidate cell, turned into a short,
+ * column-aligned WallRunSegment spanning exactly one row — centered on the
+ * candidate's own world position, oriented along the SAME column axis a
+ * real ConnectorRun uses at that column (`cubeAtColRow`/`cubeToWorld` at
+ * `row+1`, the exact per-row world-space step at a fixed column — see
+ * wallRuns.ts's own doc comments for why this is a genuine straight hex
+ * principal direction, unlike the row axis). This is what makes W3's
+ * fallback restyle "same visual language as runs" true: WallRunMesh tiles
+ * this segment with the identical real Synty piece a real connector run
+ * uses, just for a length of one row instead of the run's full span.
+ */
+function candidateToFallbackSegment(
+  candidate: CubeCoord,
+  hexSize: number
+): WallRunSegment {
+  const col = hexColumn(candidate);
+  const row = hexRow(candidate);
+  const center = cubeToWorld(candidate, hexSize);
+  const next = cubeToWorld(cubeAtColRow(col, row + 1), hexSize);
+  const dx = next.x - center.x;
+  const dz = next.z - center.z;
+  return {
+    start: { x: center.x - dx / 2, z: center.z - dz / 2 },
+    end: { x: center.x + dx / 2, z: center.z + dz / 2 },
+  };
+}
+
+/**
+ * Connector-flanking candidates NOT covered by a real ConnectorRun (W1's
+ * structural safety net, category (c) above) — as straight, column-aligned
+ * WallRunSegments for WallRunMesh to tile with the same real Synty pieces
+ * a run uses, instead of routing them through SyntyHexWall's legacy
+ * per-cell hex-vertex renderer (design.md/plan.md's W3 "fallback restyle":
+ * these cells cover frontier doors and far-unexplored rooms, so they're
+ * seen constantly during normal play, right next to the new straight
+ * walls — the old chunky hex-wall look stood out badly there per Kirk's
+ * prod screenshot). The SET of covered cells is unchanged from
+ * `legacyRenderWalls`' pre-W3 behavior (this function and that one
+ * partition the exact same category-rule output) — only the render
+ * target moved. Deduplicated by candidate cell key: a pathological input
+ * with multiple wall entries resolving to the same candidate produces one
+ * segment, not overlapping duplicates.
+ */
+export function connectorFallbackSegments(
+  walls: Iterable<Wall>,
+  regions: RegionInput[],
+  connectorRuns: ConnectorRun[],
+  doors: ConnectorDoorInput[],
+  hexSize: number = HEX_SIZE
+): WallRunSegment[] {
+  const regionHexKeys = new Set<string>();
+  for (const region of regions) {
+    for (const hex of region.hexes) {
+      regionHexKeys.add(coordToKey(hex));
+    }
+  }
+  const coveredRowRanges = coveredRowRangesByColumn(connectorRuns, doors);
+  const doorColumns = new Set(doors.map((door) => hexColumn(door.position)));
+  const gridBounds = wireGridBounds(walls);
+
+  const segments: WallRunSegment[] = [];
+  const seenCandidateKeys = new Set<string>();
+  for (const wall of walls) {
+    const category = categorizeWall(
+      wall,
+      regionHexKeys,
+      doorColumns,
+      gridBounds,
+      coveredRowRanges
+    );
+    if (category.type !== 'connector-fallback') continue;
+    const key = coordToKey(category.candidate);
+    if (seenCandidateKeys.has(key)) continue;
+    seenCandidateKeys.add(key);
+    segments.push(candidateToFallbackSegment(category.candidate, hexSize));
+  }
+  return segments;
 }
 
 /**
