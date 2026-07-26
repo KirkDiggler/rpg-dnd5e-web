@@ -54,6 +54,22 @@ function isCloseTo(a: THREE.Color, b: THREE.Color): boolean {
 }
 
 describe('SyntyHexFloor spaceTheme (rpg-dnd5e-web#558 real-route theme consumption)', () => {
+  it('renders remembered tiles opaque charcoal before the crypt theme', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0])}
+        hexSize={1}
+        spaceTheme="crypt"
+        rememberedFloorHexKeys={new Set(['0,0,0'])}
+      />
+    );
+    const material = renderer.scene.findByType('MeshBasicMaterial')
+      .instance as unknown as THREE.MeshBasicMaterial;
+    expect(material?.color.getHexString()).toBe('465366');
+    expect(material?.transparent).toBe(false);
+    expect(material?.depthWrite).toBe(true);
+  });
+
   it('renders every tile with the default (untinted, unlit) material when no theme/keys are set — byte-identical to the pre-#558 #481/#485 fix', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <SyntyHexFloor floorTiles={tiles([0, 0, 0], [1, -1, 0])} hexSize={1} />

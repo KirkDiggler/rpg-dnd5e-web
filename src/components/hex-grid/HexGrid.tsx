@@ -39,6 +39,11 @@ import { HexEntity } from './HexEntity';
 import { cubeToWorld, getHexLine, HEX_SIZE, type CubeCoord } from './hexMath';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
+import {
+  entityClickHandler,
+  isRemembered,
+  type SceneKnowledgeState,
+} from './sceneKnowledge';
 import { resolveEntityTint } from './selectionVisuals';
 import { SelfIndicatorRing } from './SelfIndicatorRing';
 import { ShadedHexFloor } from './ShadedHexFloor';
@@ -52,40 +57,27 @@ import { useHexInteraction } from './useHexInteraction';
 import { shouldShowMovementBorder, useMovementRange } from './useMovementRange';
 import { WallRunMesh } from './WallRunMesh';
 
+export interface HexGridEntity {
+  entityId: string;
+  name: string;
+  position: { x: number; y: number; z: number };
+  type: 'player' | 'monster' | 'obstacle';
+  isDead?: boolean;
+  isGhost?: boolean;
+  classRefId?: string;
+  monsterRefId?: string;
+  isDowned?: boolean;
+  obstacleType?: ObstacleType;
+  propRefId?: string;
+  movePath?: { x: number; y: number; z: number }[];
+  moveSeq?: number;
+  knowledgeState?: SceneKnowledgeState;
+}
+
 export interface HexGridProps {
   floorTiles: Map<string, AbsoluteFloorTile>;
-  entities: Array<{
-    entityId: string;
-    name: string;
-    position: { x: number; y: number; z: number };
-    type: 'player' | 'monster' | 'obstacle';
-    isDead?: boolean;
-    /** True when entity is outside LoS (v1alpha2 ghost). Render at last-known position with ghost visuals. */
-    isGhost?: boolean;
-    /** v1alpha2 CharacterData.class_ref.id — drives class-model selection
-     * for player entities (rpg-dnd5e-web#501). */
-    classRefId?: string;
-    /** v1alpha2 MonsterData.monster_ref.id — drives npc-model selection
-     * for monster entities (rpg-dnd5e-web#559), the monster-side
-     * counterpart of classRefId. */
-    monsterRefId?: string;
-    /** True for a CHARACTER entity carrying the "unconscious" condition —
-     * the downed class-model swap (rpg-dnd5e-web#501). */
-    isDowned?: boolean;
-    /** For an OBSTACLE entity, the server's ObstacleType — drives the
-     * prop-model resolver (rpg-dnd5e-web#528, charter #523). v1alpha1
-     * signal; propRefId below wins when both are present. */
-    obstacleType?: ObstacleType;
-    /** v1alpha2 obstacle_ref/prop_ref id — the live-route prop-resolver
-     * signal (rpg-dnd5e-web#528, charter #523). Preferred over
-     * obstacleType when present. */
-    propRefId?: string;
-    /** The most recent genuine move's real hex-by-hex route
-     * (rpg-dnd5e-web#542) — drives HexEntity's walk-clip interpolation. */
-    movePath?: { x: number; y: number; z: number }[];
-    /** Monotonic counter bumped only by a genuine move. */
-    moveSeq?: number;
-  }>;
+  rememberedFloorHexKeys?: ReadonlySet<string>;
+  entities: HexGridEntity[];
   selectedEntityId?: string;
   onHexClick?: (coord: { x: number; y: number; z: number }) => void;
   onHexHover?: (coord: { x: number; y: number; z: number } | null) => void;
@@ -112,6 +104,8 @@ export interface HexGridProps {
   // real caller ever populated `doors`) and was removed in this wave rather
   // than kept alongside the real mechanism (feedback_prefer_breaking_changes).
   walls?: Wall[];
+  rememberedWallHexKeys?: ReadonlySet<string>;
+  showFrontierGroundHints?: boolean;
   /**
    * Dungeon-walls redesign (rpg-project#133 design.md/plan.md's W2 slice):
    * the POSITIVE-CATEGORY-FILTERED wall list SyntyHexWall's legacy
@@ -231,6 +225,49 @@ export function isHexBlocked(
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function visibleTurnOrder<T extends { entityId: string }>(
+  entities: ReadonlyArray<Pick<HexGridEntity, 'entityId' | 'knowledgeState'>>,
+  turnOrder: ReadonlyArray<T>
+): T[] {
+  const rememberedEntityIds = new Set(
+    entities
+      .filter((entity) => isRemembered(entity.knowledgeState))
+      .map((entity) => entity.entityId)
+  );
+  return turnOrder.filter((entry) => !rememberedEntityIds.has(entry.entityId));
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function rememberedWallRunIds(
+  floorTiles: ReadonlyMap<string, AbsoluteFloorTile>,
+  rememberedFloorHexKeys: ReadonlySet<string> | undefined,
+  walls: ReadonlyArray<Wall>,
+  rememberedWallHexKeys: ReadonlySet<string> | undefined
+): { envelopeRegionIds: Set<string>; connectorDoorIds: Set<string> } {
+  const regionFloorKeys = new Map<string, string[]>();
+  for (const [key, tile] of floorTiles) {
+    if (!tile.roomId) continue;
+    const keys = regionFloorKeys.get(tile.roomId) ?? [];
+    keys.push(key);
+    regionFloorKeys.set(tile.roomId, keys);
+  }
+
+  const envelopeRegionIds = new Set(
+    [...regionFloorKeys].flatMap(([roomId, keys]) =>
+      keys.every((key) => rememberedFloorHexKeys?.has(key)) ? [roomId] : []
+    )
+  );
+  const connectorDoorIds = new Set<string>();
+  for (const wall of walls) {
+    if (!wall.id || !wall.from) continue;
+    const key = `${wall.from.x},${wall.from.y},${wall.from.z}`;
+    if (rememberedWallHexKeys?.has(key)) connectorDoorIds.add(wall.id);
+  }
+
+  return { envelopeRegionIds, connectorDoorIds };
+}
+
 /**
  * Scene component - renders inside the Canvas
  * Separated so we can use React Three Fiber hooks
@@ -253,6 +290,9 @@ function Scene({
   characters = [],
   monsters = [],
   walls = [],
+  rememberedFloorHexKeys,
+  rememberedWallHexKeys,
+  showFrontierGroundHints = true,
   legacySyntyWalls,
   envelopeRuns = [],
   connectorRuns = [],
@@ -267,6 +307,38 @@ function Scene({
   children,
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const visibleEntities = useMemo(
+    () => entities.filter((entity) => !isRemembered(entity.knowledgeState)),
+    [entities]
+  );
+  const visibleFloorTiles = useMemo(
+    () =>
+      new Map(
+        [...floorTiles].filter(([key]) => !rememberedFloorHexKeys?.has(key))
+      ),
+    [floorTiles, rememberedFloorHexKeys]
+  );
+  const visibleWalls = useMemo(
+    () =>
+      walls.filter((wall) => {
+        if (!wall.from) return true;
+        return !rememberedWallHexKeys?.has(
+          `${wall.from.x},${wall.from.y},${wall.from.z}`
+        );
+      }),
+    [walls, rememberedWallHexKeys]
+  );
+  const rememberedRunIds = useMemo(
+    () =>
+      rememberedWallRunIds(
+        floorTiles,
+        rememberedFloorHexKeys,
+        walls,
+        rememberedWallHexKeys
+      ),
+    [floorTiles, rememberedFloorHexKeys, walls, rememberedWallHexKeys]
+  );
 
   // Create character lookup map by ID for efficient entity -> character mapping
   const characterMap = useMemo(() => {
@@ -300,9 +372,10 @@ function Scene({
           wall={wall}
           hexSize={HEX_SIZE}
           onDoorClick={onDoorClick}
+          rememberedWallHexKeys={rememberedWallHexKeys}
         />
       )),
-    [walls, onDoorClick]
+    [walls, onDoorClick, rememberedWallHexKeys]
   );
 
   // Grid center: bbox center of all revealed floor tiles. Used only as the
@@ -358,9 +431,9 @@ function Scene({
   const myEntity = useMemo(
     () =>
       currentEntityId
-        ? entities.find((e) => e.entityId === currentEntityId)
+        ? visibleEntities.find((e) => e.entityId === currentEntityId)
         : undefined,
-    [currentEntityId, entities]
+    [currentEntityId, visibleEntities]
   );
   const myPosX = myEntity?.position.x;
   const myPosY = myEntity?.position.y;
@@ -388,7 +461,7 @@ function Scene({
   // cannot be hovered, targeted, or path-blocked)
   const entitiesMap = useMemo(() => {
     const map = new Map();
-    entities.forEach((entity) => {
+    visibleEntities.forEach((entity) => {
       if (entity.isDead) return; // Dead entities are not interactive
       // Look up monster type if this is a monster entity
       const monster =
@@ -405,19 +478,19 @@ function Scene({
       });
     });
     return map;
-  }, [entities, monsterMap]);
+  }, [visibleEntities, monsterMap]);
 
   // Get current entity position
   const currentEntityPosition = useMemo(() => {
     if (!currentEntityId) return null;
-    const entity = entities.find((e) => e.entityId === currentEntityId);
+    const entity = visibleEntities.find((e) => e.entityId === currentEntityId);
     if (!entity) return null;
     return {
       x: entity.position.x,
       y: entity.position.y,
       z: entity.position.z,
     };
-  }, [currentEntityId, entities]);
+  }, [currentEntityId, visibleEntities]);
 
   // Map of door-hex key -> WallKind (DOOR_CLOSED/DOOR_OPEN), from the v2
   // `walls` list (rpg-dnd5e-web#526). A door's hex sits on the boundary
@@ -428,7 +501,7 @@ function Scene({
   // OPEN half, A* would see the door as an impassable wall and refuse to
   // path between revealed chambers — the "my pathing on the client never
   // lets me cross" bug. The door-click flow is what flips CLOSED -> OPEN.
-  const doorKinds = useMemo(() => doorHexKinds(walls), [walls]);
+  const doorKinds = useMemo(() => doorHexKinds(visibleWalls), [visibleWalls]);
 
   // Check if a hex is blocked (not a floor tile, or has an entity, or is a
   // closed door). An open door is treated as walkable even when it's not a
@@ -436,8 +509,14 @@ function Scene({
   // Uses useCallback to ensure stable function reference for downstream memoization
   const isBlocked = useCallback(
     (coord: CubeCoord) =>
-      isHexBlocked(coord, floorTiles, entities, currentEntityId, doorKinds),
-    [entities, currentEntityId, floorTiles, doorKinds]
+      isHexBlocked(
+        coord,
+        visibleFloorTiles,
+        visibleEntities,
+        currentEntityId,
+        doorKinds
+      ),
+    [visibleEntities, currentEntityId, visibleFloorTiles, doorKinds]
   );
 
   // Identifies a hex as occupied by another (non-current, non-dead) entity.
@@ -449,7 +528,7 @@ function Scene({
   // review). See useMovementRange.ts's calculateBoundaryEdges doc comment.
   const isOccupiedByOtherEntity = useCallback(
     (coord: CubeCoord) =>
-      entities.some(
+      visibleEntities.some(
         (entity) =>
           !entity.isDead &&
           entity.position.x === coord.x &&
@@ -457,7 +536,7 @@ function Scene({
           entity.position.z === coord.z &&
           entity.entityId !== currentEntityId
       ),
-    [entities, currentEntityId]
+    [visibleEntities, currentEntityId]
   );
 
   // v1alpha2 TURN_BASED signal: buildTurnOrderCombatState (in
@@ -492,7 +571,7 @@ function Scene({
     hoveredEntity,
   } = useHexInteraction({
     hexSize: HEX_SIZE,
-    floorTiles,
+    floorTiles: visibleFloorTiles,
     onHexClick: (coord) => {
       // Only allow interactions on player turn and when not processing
       if (!isPlayerTurn || isProcessing) return;
@@ -559,20 +638,23 @@ function Scene({
   // WallKind, so it extends to DOOR_CLOSED/DOOR_OPEN/WINDOW once wave 2
   // folds doors into this walls array.
   const frontierHints = useMemo(
-    () => frontierGroundHintHexes(walls, new Set(floorTiles.keys())),
-    [walls, floorTiles]
+    () =>
+      showFrontierGroundHints
+        ? frontierGroundHintHexes(walls, new Set(floorTiles.keys()))
+        : [],
+    [showFrontierGroundHints, walls, floorTiles]
   );
 
   // Extract door positions for tile coloring (v2 walls, rpg-dnd5e-web#526).
   const doorPositions = useMemo(
-    (): CubeCoord[] => doorHexPositions(walls),
-    [walls]
+    (): CubeCoord[] => doorHexPositions(visibleWalls),
+    [visibleWalls]
   );
 
   // Extract wall positions for tile coloring (all hexes along each wall)
   const wallPositions = useMemo((): CubeCoord[] => {
     const positions: CubeCoord[] = [];
-    for (const wall of walls) {
+    for (const wall of visibleWalls) {
       if (!wall.from || !wall.to) continue;
       const start: CubeCoord = {
         x: wall.from.x,
@@ -583,7 +665,7 @@ function Scene({
       positions.push(...getHexLine(start, end));
     }
     return positions;
-  }, [walls]);
+  }, [visibleWalls]);
 
   // Handle entity clicks (for attacking)
   const handleEntityClick = (entityId: string) => {
@@ -593,7 +675,7 @@ function Scene({
     }
 
     // Check if this is an enemy that can be attacked
-    const entity = entities.find((e) => e.entityId === entityId);
+    const entity = visibleEntities.find((e) => e.entityId === entityId);
     if (entity?.type === 'monster' && canAttack && attackPath.length > 0) {
       setIsProcessing(true);
       // First move along attack path
@@ -662,6 +744,7 @@ function Scene({
               selectedHex={selectedHex}
               doorPositions={doorPositions}
               wallPositions={wallPositions}
+              rememberedFloorHexKeys={rememberedFloorHexKeys}
             />
           }
         >
@@ -670,6 +753,7 @@ function Scene({
             hexSize={HEX_SIZE}
             themeFloorHexKeys={themeFloorHexKeys}
             spaceTheme={spaceTheme}
+            rememberedFloorHexKeys={rememberedFloorHexKeys}
           />
         </ErrorBoundary>
       ) : (
@@ -680,6 +764,7 @@ function Scene({
           selectedHex={selectedHex}
           doorPositions={doorPositions}
           wallPositions={wallPositions}
+          rememberedFloorHexKeys={rememberedFloorHexKeys}
         />
       )}
 
@@ -709,6 +794,7 @@ function Scene({
             onDoorClick={onDoorClick}
             themeWallHexKeys={themeWallHexKeys}
             spaceTheme={spaceTheme}
+            rememberedWallHexKeys={rememberedWallHexKeys}
             doorRotationOverrides={doorRotationOverrides}
           />
           {/* Dungeon-walls redesign (rpg-project#133): straight envelope/
@@ -721,6 +807,8 @@ function Scene({
           <WallRunMesh
             envelopeRuns={envelopeRuns}
             connectorRuns={connectorRuns}
+            rememberedEnvelopeRegionIds={rememberedRunIds.envelopeRegionIds}
+            rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}
           />
         </ErrorBoundary>
       ) : (
@@ -778,7 +866,7 @@ function Scene({
             selectedEntityId,
             currentEntityId
           )}
-          onClick={handleEntityClick}
+          onClick={entityClickHandler(entity.knowledgeState, handleEntityClick)}
           character={characterMap.get(entity.entityId)}
           monster={monsterMap.get(entity.entityId)}
           monsterRefId={entity.monsterRefId}
@@ -844,12 +932,14 @@ export function HexGrid(props: HexGridProps) {
   // Build turn order from combat state
   const turnOrder = useMemo((): TurnOrderEntry[] => {
     if (!combatState?.turnOrder) return [];
-    return combatState.turnOrder.map((entry) => ({
-      entityId: entry.entityId,
-      entityType: entry.entityType,
-      initiative: entry.initiative,
-    }));
-  }, [combatState]);
+    return visibleTurnOrder(props.entities, combatState.turnOrder).map(
+      (entry) => ({
+        entityId: entry.entityId,
+        entityType: entry.entityType,
+        initiative: entry.initiative,
+      })
+    );
+  }, [combatState, props.entities]);
 
   const activeIndex = combatState?.activeIndex ?? -1;
   const round = combatState?.round ?? 1;
