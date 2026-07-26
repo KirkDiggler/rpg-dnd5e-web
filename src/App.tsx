@@ -33,7 +33,15 @@ function AppContent() {
       !!new URLSearchParams(window.location.search).get('encounterId')
   );
 
-  const [currentView, setCurrentView] = useState<AppView>('home');
+  const [currentView, setCurrentView] = useState<AppView>(
+    // Dev-only deep link: ?concept=<id> boots straight into the Concepts Lab
+    // so a concept can be screenshotted from a URL. Production is unaffected.
+    import.meta.env.MODE === 'development' &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).has('concept')
+      ? 'concepts'
+      : 'home'
+  );
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [currentCharacterId, setCurrentCharacterId] = useState<string | null>(
     null
