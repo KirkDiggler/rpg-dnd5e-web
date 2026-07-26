@@ -31,6 +31,7 @@ export interface DiceTrayProps {
 
 const REDUCED_MOTION_PRESENTATION_FACES = [2, 7, 11, 16, 19];
 const PRESENTATION_RANDOM_RANGE = 2 ** 32;
+let presentationRandomState = Date.now() >>> 0;
 const VERTICES: ReadonlyArray<readonly [number, number]> = [
   [50, 4],
   [88.97, 27.5],
@@ -47,7 +48,10 @@ function defaultPresentationRandom() {
       crypto.getRandomValues(new Uint32Array(1))[0] / PRESENTATION_RANDOM_RANGE
     );
   }
-  return Math.random();
+  // Non-authoritative fallback animation must not advance the result RNG.
+  presentationRandomState =
+    (presentationRandomState * 1_664_525 + 1_013_904_223) >>> 0;
+  return presentationRandomState / PRESENTATION_RANDOM_RANGE;
 }
 
 export function DiceTray({

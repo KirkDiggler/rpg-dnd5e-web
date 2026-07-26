@@ -124,6 +124,15 @@ describe('DiceTray', () => {
     expect(resultRandom).not.toHaveBeenCalled();
   });
 
+  it('does not consume Math.random when crypto is unavailable', () => {
+    vi.stubGlobal('crypto', undefined);
+    const resultRandom = vi.spyOn(Math, 'random').mockReturnValue(0.7);
+
+    render(<DiceTray phase="rolling" finalFace={14} outcome="HIT" />);
+
+    expect(resultRandom).not.toHaveBeenCalled();
+  });
+
   it('animates only the d20 shell while keeping the face readable', () => {
     const { rerender } = render(
       <DiceTray phase="rolling" finalFace={9} outcome="HIT" />
