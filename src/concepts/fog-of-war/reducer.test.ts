@@ -18,9 +18,9 @@ import { emptyKnowledge, fogReducer } from './reducer';
 
 const at = (q: number, r: number) => ({ x: q, y: r, z: -q - r });
 
-const goblin: FogEntity = {
-  entityId: 'goblin-1',
-  name: 'Goblin',
+const skeleton: FogEntity = {
+  entityId: 'skeleton-1',
+  name: 'Skeleton',
   type: 'monster',
 };
 
@@ -44,7 +44,7 @@ const remembered = (record: HexRecord): HexRecord => ({
   state: 'REMEMBERED',
 });
 
-const facingNorth: Placement = { entityId: 'goblin-1', facing: 0 };
+const facingNorth: Placement = { entityId: 'skeleton-1', facing: 0 };
 
 describe('fog reducer', () => {
   it('first sight adds a visible hex', () => {
@@ -59,7 +59,7 @@ describe('fog reducer', () => {
   it('a remembered record carries its own frozen observation', () => {
     const seen = fogReducer(emptyKnowledge(), {
       hexes: [visible(0, 0, [facingNorth])],
-      entities: [goblin],
+      entities: [skeleton],
     });
 
     const lost = fogReducer(seen, {
@@ -70,18 +70,18 @@ describe('fog reducer', () => {
     // The server sends what the viewer observed; the client never freezes.
     expect(lost.hexes.get('0,0,0')?.state).toBe('REMEMBERED');
     expect(lost.hexes.get('0,0,0')?.contents).toEqual([facingNorth]);
-    expect(lost.entities.get('goblin-1')).toBeDefined();
+    expect(lost.entities.get('skeleton-1')).toBeDefined();
   });
 
   it('re-sight replaces memory wholesale, deleting a remembered occupant', () => {
-    // design.md case 8 — the load-bearing one. Nothing "forgets" the goblin;
+    // design.md case 8 — the load-bearing one. Nothing "forgets" the skeleton;
     // it is gone because the arriving record states the hex is empty.
-    const believesGoblinIsThere = fogReducer(emptyKnowledge(), {
+    const believesSkeletonIsThere = fogReducer(emptyKnowledge(), {
       hexes: [remembered(visible(0, 0, [facingNorth]))],
-      entities: [goblin],
+      entities: [skeleton],
     });
 
-    const walksUp = fogReducer(believesGoblinIsThere, {
+    const walksUp = fogReducer(believesSkeletonIsThere, {
       hexes: [visible(0, 0)],
       entities: [],
     });
@@ -103,17 +103,17 @@ describe('fog reducer', () => {
   });
 
   it('freezes the facing that was observed, not one seen later', () => {
-    // This viewer saw the goblin facing 0 and lost sight. The goblin later
+    // This viewer saw the skeleton facing 0 and lost sight. The skeleton later
     // turned and another viewer saw that. Facing rides on the placement, so
     // no other viewer's sighting can reach into this viewer's memory.
     const memory = fogReducer(emptyKnowledge(), {
       hexes: [remembered(visible(0, 0, [facingNorth]))],
-      entities: [goblin],
+      entities: [skeleton],
     });
 
-    // The goblin is re-disclosed, but no record arrives for the remembered
+    // The skeleton is re-disclosed, but no record arrives for the remembered
     // hex — nothing about that memory may move.
-    const later = fogReducer(memory, { hexes: [], entities: [goblin] });
+    const later = fogReducer(memory, { hexes: [], entities: [skeleton] });
 
     expect(later.hexes.get('0,0,0')?.contents).toEqual([facingNorth]);
   });
@@ -121,7 +121,7 @@ describe('fog reducer', () => {
   it('applying the same record twice is idempotent', () => {
     const event: HexKnowledgeChanged = {
       hexes: [visible(0, 0, [facingNorth])],
-      entities: [goblin],
+      entities: [skeleton],
     };
 
     const once = fogReducer(emptyKnowledge(), event);
@@ -144,12 +144,12 @@ describe('fog reducer', () => {
   it('is a pure function of the events applied', () => {
     const session: HexKnowledgeChanged[] = [
       {
-        hexes: [visible(0, 0, [{ entityId: 'goblin-1', facing: 2 }])],
-        entities: [goblin],
+        hexes: [visible(0, 0, [{ entityId: 'skeleton-1', facing: 2 }])],
+        entities: [skeleton],
       },
       {
         hexes: [
-          remembered(visible(0, 0, [{ entityId: 'goblin-1', facing: 2 }])),
+          remembered(visible(0, 0, [{ entityId: 'skeleton-1', facing: 2 }])),
         ],
         entities: [],
       },
@@ -165,11 +165,11 @@ describe('fog reducer', () => {
   it('keeps a disclosed entity known after disclosure stops', () => {
     // The entity map is the vocabulary a remembered placement resolves
     // against, so it must outlive current disclosure — otherwise the frozen
-    // goblin would have nothing to render as. This is the entity-side half of
+    // skeleton would have nothing to render as. This is the entity-side half of
     // "nothing is ever deleted".
     const seen = fogReducer(emptyKnowledge(), {
       hexes: [visible(0, 0, [facingNorth])],
-      entities: [goblin],
+      entities: [skeleton],
     });
 
     const lost = fogReducer(seen, {
@@ -179,7 +179,7 @@ describe('fog reducer', () => {
 
     const muchLater = fogReducer(lost, { hexes: [], entities: [] });
 
-    expect(muchLater.entities.get('goblin-1')).toEqual(goblin);
+    expect(muchLater.entities.get('skeleton-1')).toEqual(skeleton);
     expect(muchLater.hexes.get('0,0,0')?.contents).toEqual([facingNorth]);
   });
 });

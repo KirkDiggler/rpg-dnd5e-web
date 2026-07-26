@@ -122,17 +122,17 @@ export function twoRoomCrypt(): World {
     doorPassage: new Map([[key(at(3, 1)), at(4, 1)]]),
     entities: new Map([
       [
-        'goblin-1',
+        'skeleton-1',
         {
-          entityId: 'goblin-1',
-          name: 'Goblin',
+          entityId: 'skeleton-1',
+          name: 'Skeleton',
           type: 'monster',
-          monsterRefId: 'goblin',
+          monsterRefId: 'skeleton',
         },
       ],
     ]),
-    // The goblin starts in Room B, out of sight behind a closed door.
-    placements: new Map([['goblin-1', { hex: at(5, 0), facing: 0 }]]),
+    // The skeleton starts in Room B, out of sight behind a closed door.
+    placements: new Map([['skeleton-1', { hex: at(5, 0), facing: 0 }]]),
   };
 }
 

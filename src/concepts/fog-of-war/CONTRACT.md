@@ -45,7 +45,7 @@ separately-disclosed entity collection.
 ## 4. Nothing on the wire carries facing
 
 The concept needs facing per _observation_, not per entity — two viewers who
-saw the same goblin face different ways must keep different memories. Facing
+saw the same skeleton face different ways must keep different memories. Facing
 does not appear in `Hex`, `Wall`, or the entity messages.
 
 Related, and possibly the same need from a different direction:

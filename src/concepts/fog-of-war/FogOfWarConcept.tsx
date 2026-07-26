@@ -83,10 +83,10 @@ export function FogOfWarConcept() {
     [apply]
   );
 
-  const wanderGoblin = useCallback(() => {
-    apply('goblin moves', () =>
+  const wanderSkeleton = useCallback(() => {
+    apply('skeleton moves', () =>
       session.current.authority.mutateHidden((world) => {
-        const here = world.placements.get('goblin-1');
+        const here = world.placements.get('skeleton-1');
         // at(4,2) is the hex beyond the doorway, ON the open-door sightline;
         // the other two are in Room B but off it. Cycling through all three
         // lets the demo show seen, then frozen, then corrected.
@@ -95,7 +95,7 @@ export function FogOfWarConcept() {
           (spot) => here && key(spot) === key(here.hex)
         );
         const next = spots[(index + 1) % spots.length]!;
-        world.placements.set('goblin-1', {
+        world.placements.set('skeleton-1', {
           hex: next,
           facing: (index + 2) % 6,
         });
@@ -133,16 +133,16 @@ export function FogOfWarConcept() {
 
   const props = useMemo(() => toHexGridProps(knowledge), [knowledge]);
 
-  const believedGoblin = useMemo(() => {
+  const believedSkeleton = useMemo(() => {
     for (const [hexKey, record] of knowledge.hexes) {
-      if (record.contents.some((p) => p.entityId === 'goblin-1')) {
+      if (record.contents.some((p) => p.entityId === 'skeleton-1')) {
         return `${hexKey} (${record.state.toLowerCase()})`;
       }
     }
     return 'not known';
   }, [knowledge]);
 
-  const truth = session.current.world.placements.get('goblin-1');
+  const truth = session.current.world.placements.get('skeleton-1');
 
   return (
     <div className="flex flex-col gap-4">
@@ -162,10 +162,10 @@ export function FogOfWarConcept() {
         </button>
         <button
           className="px-3 py-1.5 rounded text-sm border"
-          onClick={wanderGoblin}
+          onClick={wanderSkeleton}
           disabled={!started}
         >
-          Goblin moves
+          Skeleton moves
         </button>
         <button
           className="px-3 py-1.5 rounded text-sm border"
@@ -214,7 +214,7 @@ export function FogOfWarConcept() {
               remembered: {props.rememberedFloorHexKeys.size} / entities known:{' '}
               {knowledge.entities.size}
             </div>
-            <div>goblin believed at: {believedGoblin}</div>
+            <div>skeleton believed at: {believedSkeleton}</div>
           </section>
 
           <section>
@@ -223,7 +223,9 @@ export function FogOfWarConcept() {
               Never reaches the reducer. Shown so you can see what you are not
               being told.
             </p>
-            <div>goblin actually at: {truth ? key(truth.hex) : 'unplaced'}</div>
+            <div>
+              skeleton actually at: {truth ? key(truth.hex) : 'unplaced'}
+            </div>
             <div>viewer at: {key(session.current.authority.viewerHex())}</div>
             <div>start: {key(VIEWER_START)}</div>
           </section>

@@ -13,9 +13,9 @@ import { emptyKnowledge, fogReducer } from './reducer';
 
 const at = (q: number, r: number) => ({ x: q, y: r, z: -q - r });
 
-const goblin = {
-  entityId: 'goblin-1',
-  name: 'Goblin',
+const skeleton = {
+  entityId: 'skeleton-1',
+  name: 'Skeleton',
   type: 'monster' as const,
 };
 
@@ -68,10 +68,10 @@ describe('fog adapter', () => {
   it('carries knowledgeState onto occupants', () => {
     const knowledge = fogReducer(emptyKnowledge(), {
       hexes: [
-        record(0, 0, 'REMEMBERED', [{ entityId: 'goblin-1', facing: 0 }]),
-        record(1, 0, 'VISIBLE', [{ entityId: 'goblin-1', facing: 3 }]),
+        record(0, 0, 'REMEMBERED', [{ entityId: 'skeleton-1', facing: 0 }]),
+        record(1, 0, 'VISIBLE', [{ entityId: 'skeleton-1', facing: 3 }]),
       ],
-      entities: [goblin],
+      entities: [skeleton],
     });
 
     const props = toHexGridProps(knowledge);
@@ -84,14 +84,14 @@ describe('fog adapter', () => {
   });
 
   it('a visible hex with empty contents emits no entity', () => {
-    // The remembered goblin is gone from the scene because the record that
+    // The remembered skeleton is gone from the scene because the record that
     // replaced it stated the hex was empty — design.md case 8, seen from the
     // renderer's side.
     const remembered = fogReducer(emptyKnowledge(), {
       hexes: [
-        record(0, 0, 'REMEMBERED', [{ entityId: 'goblin-1', facing: 0 }]),
+        record(0, 0, 'REMEMBERED', [{ entityId: 'skeleton-1', facing: 0 }]),
       ],
-      entities: [goblin],
+      entities: [skeleton],
     });
     expect(toHexGridProps(remembered).entities).toHaveLength(1);
 

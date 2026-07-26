@@ -51,8 +51,8 @@ export type HexState = 'VISIBLE' | 'REMEMBERED';
  * What occupies a hex. Resolves against the event's `entities` collection.
  *
  * `facing` rides on the placement and NOT on the entity. A record is an
- * observation: a viewer who saw a goblin facing north and lost sight must keep
- * that memory after the goblin turns and another viewer sees it face south.
+ * observation: a viewer who saw a skeleton facing north and lost sight must keep
+ * that memory after the skeleton turns and another viewer sees it face south.
  * Moving `facing` onto `FogEntity` would let one viewer's sighting rewrite
  * another viewer's memory.
  */

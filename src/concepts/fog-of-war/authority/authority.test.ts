@@ -26,12 +26,12 @@ const recordAt = (
   event.hexes.find((hex) => key(hex.position) === key(at(q, r)));
 
 const inRoomB = (record: HexRecord) => record.zoneId === 'room-b';
-const goblinAt = (facing: number) => [{ entityId: 'goblin-1', facing }];
+const skeletonAt = (facing: number) => [{ entityId: 'skeleton-1', facing }];
 
-/** Viewer in Room A watching the goblin through the open doorway. */
-const watchingTheGoblin = () => {
+/** Viewer in Room A watching the skeleton through the open doorway. */
+const watchingTheSkeleton = () => {
   const world = twoRoomCrypt();
-  world.placements.set('goblin-1', { hex: at(4, 2), facing: 0 });
+  world.placements.set('skeleton-1', { hex: at(4, 2), facing: 0 });
   const authority = createAuthority(world);
   authority.subscribe();
   return { authority, opened: authority.setDoor(at(3, 1), DOOR_OPEN) };
@@ -48,7 +48,7 @@ describe('fixture authority', () => {
     // Room B is behind a closed door. It is not mentioned at all — unseen is
     // omission, not an empty record.
     expect(first.hexes.some(inRoomB)).toBe(false);
-    // Nor is the goblin standing in it disclosed.
+    // Nor is the skeleton standing in it disclosed.
     expect(first.entities).toEqual([]);
   });
 
@@ -70,7 +70,7 @@ describe('fixture authority', () => {
     authority.subscribe();
 
     const hidden = authority.mutateHidden((world) => {
-      world.placements.set('goblin-1', { hex: at(6, 0), facing: 3 });
+      world.placements.set('skeleton-1', { hex: at(6, 0), facing: 3 });
     });
 
     expect(hidden.hexes).toEqual([]);
@@ -78,23 +78,23 @@ describe('fixture authority', () => {
   });
 
   it('freezes the entity on the hex when that hex stops being visible', () => {
-    // design.md case 7. The door shuts while the goblin is standing there.
-    const { authority, opened } = watchingTheGoblin();
-    expect(recordAt(opened, 4, 2)?.contents).toEqual(goblinAt(0));
+    // design.md case 7. The door shuts while the skeleton is standing there.
+    const { authority, opened } = watchingTheSkeleton();
+    expect(recordAt(opened, 4, 2)?.contents).toEqual(skeletonAt(0));
 
     const shut = authority.setDoor(at(3, 1), DOOR_CLOSED);
     const frozen = recordAt(shut, 4, 2);
 
     expect(frozen?.state).toBe('REMEMBERED');
-    expect(frozen?.contents).toEqual(goblinAt(0));
+    expect(frozen?.contents).toEqual(skeletonAt(0));
   });
 
   it('a frozen memory survives the entity moving away unseen', () => {
-    const { authority } = watchingTheGoblin();
+    const { authority } = watchingTheSkeleton();
     authority.setDoor(at(3, 1), DOOR_CLOSED);
 
     const wandered = authority.mutateHidden((world) => {
-      world.placements.set('goblin-1', { hex: at(6, 0), facing: 3 });
+      world.placements.set('skeleton-1', { hex: at(6, 0), facing: 3 });
     });
 
     expect(wandered.hexes).toEqual([]);
@@ -102,10 +102,10 @@ describe('fixture authority', () => {
 
   it('re-sighting the frozen hex reports it empty', () => {
     // design.md case 8 — the load-bearing one, end to end.
-    const { authority } = watchingTheGoblin();
+    const { authority } = watchingTheSkeleton();
     authority.setDoor(at(3, 1), DOOR_CLOSED);
     authority.mutateHidden((world) => {
-      world.placements.set('goblin-1', { hex: at(6, 0), facing: 3 });
+      world.placements.set('skeleton-1', { hex: at(6, 0), facing: 3 });
     });
 
     const resighted = recordAt(authority.setDoor(at(3, 1), DOOR_OPEN), 4, 2);
@@ -116,9 +116,9 @@ describe('fixture authority', () => {
 
   it('an entity leaving a still-visible hex is seen to leave, not frozen', () => {
     // The other half of case 7: no ghost, because the viewer watched it go.
-    const { authority } = watchingTheGoblin();
+    const { authority } = watchingTheSkeleton();
 
-    const [walked] = authority.moveEntity('goblin-1', [at(6, 0)]);
+    const [walked] = authority.moveEntity('skeleton-1', [at(6, 0)]);
     const vacated = recordAt(walked!, 4, 2);
 
     expect(vacated?.state).toBe('VISIBLE');
