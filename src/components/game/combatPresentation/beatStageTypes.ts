@@ -17,7 +17,6 @@
  * `BeatAttackView` is expected needs no adapter or cast.
  */
 
-/** The ONLY fields `BeatStage` reads off an attack. */
 export interface BeatAttackView {
   attackerEntityId: string;
   hit: boolean;
@@ -25,6 +24,20 @@ export interface BeatAttackView {
   attackRoll: number;
   attackBonus: number;
   targetAc: number;
+}
+
+export type Pace = 'cinematic' | 'brisk' | 'instant';
+
+export interface PresentationGroup<T extends BeatAttackView> {
+  id: string;
+  attack?: T;
+  isViewerAttack: boolean;
+}
+
+export interface BeatSequence<T extends BeatAttackView> {
+  identity: object;
+  pace: Pace;
+  groups: readonly PresentationGroup<T>[];
 }
 
 export type VerdictLabel = 'HIT' | 'MISS' | 'CRIT' | 'NAT-1' | '';

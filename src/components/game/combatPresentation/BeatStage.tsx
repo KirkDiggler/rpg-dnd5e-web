@@ -50,7 +50,6 @@
 
 import type { BeatAttackView, VerdictLabel } from './beatStageTypes';
 import { verdictLabel } from './beatStageTypes';
-import type { ImpactTier } from './fixtures';
 import type { BeatName } from './useBeatSequencer';
 
 export type Placement = 'token-anchored' | 'center-stage';
@@ -82,7 +81,7 @@ export interface BeatStageProps {
    */
   persistResult?: boolean;
   /** Concept-owned intensity metadata, never derived from wire damage or HP. */
-  impactTier?: ImpactTier;
+  impactTier?: string;
   /** Outcome currently cleared for presentation; defaults to the authoritative label. */
   presentationOutcome?: VerdictLabel;
 }

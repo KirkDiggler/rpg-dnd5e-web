@@ -1,14 +1,23 @@
 import { useMemo, useState } from 'react';
+import { BeatStage } from '../../components/game/combatPresentation/BeatStage';
+import {
+  verdictLabel,
+  type BeatSequence,
+  type VerdictLabel,
+} from '../../components/game/combatPresentation/beatStageTypes';
+import { useBeatSequencer } from '../../components/game/combatPresentation/useBeatSequencer';
 import {
   DiceTray,
   type DiceMotion,
   type DiceTrayOutcome,
   type DiceTrayPhase,
 } from '../../components/ui/dice/DiceTray';
-import { BeatStage } from './BeatStage';
-import { verdictLabel, type VerdictLabel } from './beatStageTypes';
-import { groupByCorrelation, SCENARIOS, type Pace } from './fixtures';
-import { useBeatSequencer } from './useBeatSequencer';
+import {
+  groupByCorrelation,
+  SCENARIOS,
+  type AttackResolvedLike,
+  type Pace,
+} from './fixtures';
 
 const FRAMES = {
   narrow: { label: '480x640 (below floor)', width: 480, height: 640 },
@@ -98,12 +107,24 @@ export function CombatPacingConcept() {
     }),
     [paceOverride, replay, scenario]
   );
-  const seq = useBeatSequencer(effectiveScenario, { reducedMotion });
+  const sequence = useMemo<BeatSequence<AttackResolvedLike>>(
+    () => ({
+      identity: effectiveScenario,
+      pace: effectiveScenario.pace,
+      groups: groupByCorrelation(effectiveScenario.events).map((group) => ({
+        id: group.correlationId,
+        attack: group.attack,
+        isViewerAttack:
+          group.attack?.attackerEntityId === effectiveScenario.viewerEntityId,
+      })),
+    }),
+    [effectiveScenario]
+  );
+  const seq = useBeatSequencer(sequence, { reducedMotion });
   const group = seq.group;
   const label = verdictLabel(group?.attack);
   const impactTier = group
-    ? effectiveScenario.presentationByCorrelation?.[group.correlationId]
-        ?.impactTier
+    ? effectiveScenario.presentationByCorrelation?.[group.id]?.impactTier
     : undefined;
   const isInstant = effectiveScenario.pace === 'instant';
   const visibleOutcome: DiceTrayOutcome = presentationOutcome(

@@ -1,6 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SCENARIOS } from './fixtures';
+import {
+  groupByCorrelation,
+  SCENARIOS,
+  type AttackResolvedLike,
+} from '../../../concepts/combat-pacing/fixtures';
+import type { BeatSequence } from './beatStageTypes';
 import {
   AUTO_THROW_TIMEOUT_MS,
   REDUCED_MOTION_THROW_MS,
@@ -8,6 +13,20 @@ import {
 } from './useBeatSequencer';
 
 const scenario = (id: string) => SCENARIOS.find((s) => s.id === id)!;
+const sequenceFromFixture = (
+  fixture: (typeof SCENARIOS)[number]
+): BeatSequence<AttackResolvedLike> => {
+  return {
+    identity: fixture,
+    pace: fixture.pace,
+    groups: groupByCorrelation(fixture.events).map((group) => ({
+      id: group.correlationId,
+      attack: group.attack,
+      isViewerAttack: group.attack?.attackerEntityId === fixture.viewerEntityId,
+    })),
+  };
+};
+const sequence = (id: string) => sequenceFromFixture(scenario(id));
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -20,7 +39,7 @@ afterEach(() => {
 describe('useBeatSequencer', () => {
   it('a cinematic hit runs cue -> throw -> verdict -> impact -> release -> done over exactly 5100ms (Kirk iteration 1: ≈5s suspenseful hit)', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('player-hit'))
+      useBeatSequencer(sequence('player-hit'))
     );
     expect(result.current.beat).toBe('cue');
 
@@ -58,7 +77,7 @@ describe('useBeatSequencer', () => {
 
   it('a cinematic miss skips impact entirely and completes over exactly 4200ms (Kirk iteration 1: ≈4s miss)', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('player-miss'))
+      useBeatSequencer(sequence('player-miss'))
     );
     act(() => {
       vi.advanceTimersByTime(300);
@@ -79,7 +98,7 @@ describe('useBeatSequencer', () => {
 
   it('a cinematic crit stretches verdict + impact to a total budget of exactly 6600ms (Kirk iteration 1: ≈6-7s crit)', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('player-crit'))
+      useBeatSequencer(sequence('player-crit'))
     );
     act(() => {
       vi.advanceTimersByTime(300); // cue
@@ -112,7 +131,7 @@ describe('useBeatSequencer', () => {
 
   it('spectating an NPC grunt auto-plays through Brisk timing with no armed wait', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('npc-grunt-swing'))
+      useBeatSequencer(sequence('npc-grunt-swing'))
     );
     expect(result.current.beat).toBe('cue');
     act(() => {
@@ -127,7 +146,7 @@ describe('useBeatSequencer', () => {
 
   it('spectating an NPC boss crit still gets Cinematic timing (design.md §4)', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('npc-boss-swing'))
+      useBeatSequencer(sequence('npc-boss-swing'))
     );
     act(() => {
       vi.advanceTimersByTime(300); // Cinematic cue
@@ -141,7 +160,7 @@ describe('useBeatSequencer', () => {
 
   it('auto-throws after AUTO_THROW_TIMEOUT_MS if the player never calls throwDie (design.md §2, unchanged this iteration — timeout is the agency pause, not the Cue->Release duration target)', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('player-hit'))
+      useBeatSequencer(sequence('player-hit'))
     );
     act(() => {
       vi.advanceTimersByTime(300); // cue -> armed
@@ -155,7 +174,7 @@ describe('useBeatSequencer', () => {
 
   it('the second correlation group of repeated-attacks compresses to Brisk and auto-plays with no armed wait, even though the scenario role is self', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('repeated-attacks'))
+      useBeatSequencer(sequence('repeated-attacks'))
     );
     // Finish group 0 via two SYNCHRONOUS skip() calls in the same tick —
     // this is the exact case that requires skip()/throwDie() to read a
@@ -176,7 +195,7 @@ describe('useBeatSequencer', () => {
 
   it('skip() from cue/armed/throw jumps straight to verdict (design.md §1: "jumps to the verdict")', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('player-hit'))
+      useBeatSequencer(sequence('player-hit'))
     );
     expect(result.current.beat).toBe('cue');
     act(() => {
@@ -187,7 +206,7 @@ describe('useBeatSequencer', () => {
 
   it('two synchronous skip() calls in one tick finish the current group (verdict -> done)', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('player-hit'))
+      useBeatSequencer(sequence('player-hit'))
     );
     act(() => {
       result.current.skip(); // -> verdict
@@ -201,7 +220,9 @@ describe('useBeatSequencer', () => {
       ...scenario('player-hit'),
       pace: 'instant' as const,
     };
-    const { result } = renderHook(() => useBeatSequencer(instantScenario));
+    const { result } = renderHook(() =>
+      useBeatSequencer(sequenceFromFixture(instantScenario))
+    );
     expect(result.current.beat).toBe('done');
     expect(result.current.group?.attack?.hit).toBe(true);
   });
@@ -225,7 +246,8 @@ describe('useBeatSequencer', () => {
       pace: 'instant' as const,
     };
     const { result, rerender } = renderHook(
-      ({ s }: { s: typeof hitInstant }) => useBeatSequencer(s),
+      ({ s }: { s: typeof hitInstant }) =>
+        useBeatSequencer(sequenceFromFixture(s)),
       { initialProps: { s: hitInstant } }
     );
     expect(result.current.beat).toBe('done');
@@ -247,7 +269,7 @@ describe('useBeatSequencer', () => {
 
   it('reduced motion collapses Throw to REDUCED_MOTION_THROW_MS instead of the full tumble', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('player-hit'), { reducedMotion: true })
+      useBeatSequencer(sequence('player-hit'), { reducedMotion: true })
     );
     act(() => {
       vi.advanceTimersByTime(300);
@@ -263,7 +285,7 @@ describe('useBeatSequencer', () => {
   it('toggling reducedMotion mid group-0 restarts the CURRENT group at cue with the new timing semantics (no stale option closure)', () => {
     const { result, rerender } = renderHook(
       ({ reducedMotion }: { reducedMotion: boolean }) =>
-        useBeatSequencer(scenario('player-hit'), { reducedMotion }),
+        useBeatSequencer(sequence('player-hit'), { reducedMotion }),
       { initialProps: { reducedMotion: false } }
     );
     act(() => {
@@ -302,7 +324,7 @@ describe('useBeatSequencer', () => {
 
   it('throwDie() is a no-op outside the armed beat', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('player-hit'))
+      useBeatSequencer(sequence('player-hit'))
     );
     expect(result.current.beat).toBe('cue');
     act(() => {
@@ -314,7 +336,7 @@ describe('useBeatSequencer', () => {
   it('toggling reducedMotion after advancing past group 0 restarts only the CURRENT group at cue — it must never replay an already-completed earlier correlation group', () => {
     const { result, rerender } = renderHook(
       ({ reducedMotion }: { reducedMotion: boolean }) =>
-        useBeatSequencer(scenario('repeated-attacks'), { reducedMotion }),
+        useBeatSequencer(sequence('repeated-attacks'), { reducedMotion }),
       { initialProps: { reducedMotion: false } }
     );
     // Finish group 0 via two synchronous skip() calls, same as the
@@ -355,7 +377,9 @@ describe('useBeatSequencer', () => {
 
   it('a brisk-pace hit completes over exactly 2550ms (Kirk iteration 1: exact half of the new Cinematic budget)', () => {
     const briskScenario = { ...scenario('player-hit'), pace: 'brisk' as const };
-    const { result } = renderHook(() => useBeatSequencer(briskScenario));
+    const { result } = renderHook(() =>
+      useBeatSequencer(sequenceFromFixture(briskScenario))
+    );
     act(() => {
       vi.advanceTimersByTime(150); // Brisk cue -> armed (role: self, group 0)
     });
@@ -384,7 +408,9 @@ describe('useBeatSequencer', () => {
 
   it('a brisk-pace miss skips impact and completes over exactly 2100ms (Kirk iteration 1)', () => {
     const briskMiss = { ...scenario('player-miss'), pace: 'brisk' as const };
-    const { result } = renderHook(() => useBeatSequencer(briskMiss));
+    const { result } = renderHook(() =>
+      useBeatSequencer(sequenceFromFixture(briskMiss))
+    );
     act(() => {
       vi.advanceTimersByTime(150); // Brisk cue -> armed
       result.current.throwDie();
@@ -404,7 +430,7 @@ describe('useBeatSequencer', () => {
 
   it('releases completed correlation groups one at a time, while Instant releases immediately', () => {
     const { result } = renderHook(() =>
-      useBeatSequencer(scenario('repeated-attacks'))
+      useBeatSequencer(sequence('repeated-attacks'))
     );
     expect(result.current.releasedGroupCount).toBe(0);
     act(() => {
@@ -418,7 +444,9 @@ describe('useBeatSequencer', () => {
       ...scenario('player-hit'),
       pace: 'instant' as const,
     };
-    const instant = renderHook(() => useBeatSequencer(instantScenario));
+    const instant = renderHook(() =>
+      useBeatSequencer(sequenceFromFixture(instantScenario))
+    );
     expect(instant.result.current.releasedGroupCount).toBe(1);
   });
 });
