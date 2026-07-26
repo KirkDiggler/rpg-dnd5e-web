@@ -37,6 +37,11 @@ import { resolveMonsterModelUrl } from './monsterModels';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
 import { PROPS_MODEL_BASE } from './propManifest';
 import { PropModel } from './PropModel';
+import {
+  CRYPT_MEMORY_COLOR,
+  isRemembered,
+  type SceneKnowledgeState,
+} from './sceneKnowledge';
 import { useEntityFacing } from './useEntityFacing';
 import { useHexMovePath } from './useHexMovePath';
 
@@ -69,6 +74,14 @@ export interface HexEntityProps {
   isDead?: boolean;
   /** Whether the entity is outside LoS (v1alpha2). Render at last-known position with ghost shader (semi-transparent, desaturated). */
   isGhost?: boolean;
+  /**
+   * Personal knowledge state (rpg-dnd5e-web#604). `'remembered'` renders the
+   * viewer's last observation, frozen and inert — no handlers, no selection,
+   * no movement, no cursor. Distinct from `isGhost`, which is a live entity
+   * drawn at a last-known position and stays clickable-but-inert.
+   * Undefined means live, so every existing caller is unchanged.
+   */
+  knowledgeState?: SceneKnowledgeState;
   /** v1alpha2 CharacterData.class_ref.id — resolves a class GLB for player
    * entities (rpg-dnd5e-web#501). Unmapped/undefined falls back to
    * MediumHumanoid, unchanged (the #479 boundary lineage). */
@@ -264,6 +277,7 @@ export function HexEntity({
   facialHairStyle,
   isDead = false,
   isGhost = false,
+  knowledgeState,
   classRefId,
   isDowned = false,
   obstacleType,
@@ -292,10 +306,17 @@ export function HexEntity({
     movingGroupRef,
     DEFAULT_HEADING_BY_TYPE[type] ?? 0
   );
+  // A memory does not move. Withholding the path here (rather than ignoring
+  // it downstream) means the frozen entity settles at its last observed hex.
+  const remembered = isRemembered(knowledgeState);
+  // The fallback humanoid is cel-shaded from flat colours rather than GLB
+  // materials, so its crypt treatment is those colours sourced from the one
+  // shared constant — not a second palette.
+  const cryptHex = `#${CRYPT_MEMORY_COLOR.getHexString()}`;
   const { isMoving } = useHexMovePath(
     position,
-    movePath,
-    moveSeq,
+    remembered ? undefined : movePath,
+    remembered ? undefined : moveSeq,
     hexSize,
     CHARACTER_Y_OFFSET,
     movingGroupRef,
@@ -346,16 +367,17 @@ export function HexEntity({
   const geometry = useMemo(() => createEntityGeometry(hexSize), [hexSize]);
 
   // Determine color based on type, selection state, and dead state
+  const selected = isSelected && !remembered;
   const color = isDead
     ? '#666666'
-    : isSelected
+    : selected
       ? COLORS[type].selected
       : COLORS[type].default;
 
   // Handle click events - dead and ghost entities are not interactive.
   // Ghosts represent last-known position outside LoS — clicking would let a
   // player attempt to attack/select an entity they technically can't see.
-  const isInert = isDead || isGhost;
+  const isInert = isDead || isGhost || remembered;
   const handleClick = (event: { stopPropagation: () => void }) => {
     event.stopPropagation(); // Prevent hex click from firing
     if (!isInert && onClick) {
@@ -365,20 +387,25 @@ export function HexEntity({
 
   // Common interaction props for both character models and obstacles.
   // Inert entities (dead or ghost) get no hover/pointer interaction.
-  const interactionProps = isInert
-    ? {
-        onClick: (e: { stopPropagation: () => void }) => e.stopPropagation(),
-      }
-    : {
-        onClick: handleClick,
-        onPointerOver: (e: { stopPropagation: () => void }) => {
-          e.stopPropagation();
-          document.body.style.cursor = 'pointer';
-        },
-        onPointerOut: () => {
-          document.body.style.cursor = 'auto';
-        },
-      };
+  // A remembered entity gets NO handlers at all — not even the ghost's
+  // stop-propagating no-op. It is scenery, and a click should fall through to
+  // the hex underneath it.
+  const interactionProps = remembered
+    ? {}
+    : isInert
+      ? {
+          onClick: (e: { stopPropagation: () => void }) => e.stopPropagation(),
+        }
+      : {
+          onClick: handleClick,
+          onPointerOver: (e: { stopPropagation: () => void }) => {
+            e.stopPropagation();
+            document.body.style.cursor = 'pointer';
+          },
+          onPointerOut: () => {
+            document.body.style.cursor = 'auto';
+          },
+        };
 
   // Use character model for players and monsters
   if (type === 'player' || type === 'monster') {
@@ -462,24 +489,26 @@ export function HexEntity({
     // placeholder (the #479 boundary lineage).
     const mediumHumanoidElement = (
       <MediumHumanoid
-        color={color}
-        isSelected={!isDead && isSelected}
+        color={remembered ? cryptHex : color}
+        isSelected={!isDead && selected}
         variant={type === 'monster' ? 'goblin' : 'human'}
         headVariant={headVariant}
         facingRotation={MEDIUM_HUMANOID_FORWARD_OFFSET}
         race={characterRace}
         characterClass={characterClass}
         monsterType={monsterType}
-        skinTone={isDead ? '#555' : skinTone}
-        primaryColor={isDead ? '#444' : primaryColor}
-        secondaryColor={isDead ? '#333' : secondaryColor}
+        skinTone={remembered ? cryptHex : isDead ? '#555' : skinTone}
+        primaryColor={remembered ? cryptHex : isDead ? '#444' : primaryColor}
+        secondaryColor={
+          remembered ? cryptHex : isDead ? '#333' : secondaryColor
+        }
         hairStyle={hairStyle}
-        hairColor={isDead ? '#333' : hairColor}
+        hairColor={remembered ? cryptHex : isDead ? '#333' : hairColor}
         facialHairStyle={facialHairStyle}
         mainHandWeapon={mainHandWeapon}
         offHandWeapon={offHandWeapon}
         shield={shield}
-        showOutline={!isDead}
+        showOutline={!isDead && !remembered}
         ghostAmount={isGhost ? 1.0 : 0.0}
       />
     );
@@ -517,10 +546,11 @@ export function HexEntity({
               >
                 <ClassCharacterModel
                   url={effectiveModelUrl}
-                  isSelected={!isDead && isSelected}
+                  isSelected={!isDead && selected}
                   isGhost={isGhost}
+                  remembered={remembered}
                   facingRotation={modelForwardOffset}
-                  isMoving={!isDead && !isGhost && isMoving}
+                  isMoving={!isDead && !isGhost && !remembered && isMoving}
                   isDownedVariant={isDownedModelVariant}
                 />
               </ErrorBoundary>
@@ -568,8 +598,8 @@ export function HexEntity({
     >
       <meshStandardMaterial
         color={color}
-        emissive={isSelected ? color : '#000000'}
-        emissiveIntensity={isSelected ? 0.2 : 0}
+        emissive={selected ? color : '#000000'}
+        emissiveIntensity={selected ? 0.2 : 0}
       />
     </mesh>
   );

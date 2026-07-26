@@ -902,6 +902,7 @@ function Scene({
           propRefId={entity.propRefId}
           movePath={entity.movePath}
           moveSeq={entity.moveSeq}
+          knowledgeState={entity.knowledgeState}
         />
       ))}
 

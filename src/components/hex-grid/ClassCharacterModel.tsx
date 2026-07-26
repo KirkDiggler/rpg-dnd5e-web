@@ -57,11 +57,16 @@ import {
   resolveIdleClipName,
   resolveWalkClipName,
 } from './classCharacterModels';
+import { cloneCryptMaterials } from './sceneKnowledge';
 
 export interface ClassCharacterModelProps {
   url: string;
   isSelected?: boolean;
   isGhost?: boolean;
+  /** Render as the viewer's frozen last observation (rpg-dnd5e-web#604):
+   * central crypt-memory treatment, no animation. Memory wins over selection
+   * and ghosting. */
+  remembered?: boolean;
   /** Matches MediumHumanoid's facingRotation convention — players face the
    * camera (PI), monsters/other uses face forward (0). */
   facingRotation?: number;
@@ -82,6 +87,7 @@ export function ClassCharacterModel({
   url,
   isSelected = false,
   isGhost = false,
+  remembered = false,
   facingRotation = 0,
   isMoving = false,
   isDownedVariant = false,
@@ -117,7 +123,7 @@ export function ClassCharacterModel({
   }, [cloned]);
 
   useEffect(() => {
-    if (!isSelected && !isGhost) {
+    if (!isSelected && !isGhost && !remembered) {
       originalMaterials.forEach((mat, mesh) => {
         mesh.material = mat;
       });
@@ -137,6 +143,17 @@ export function ClassCharacterModel({
     // disposed in any of them).
     const created: THREE.Material[] = [];
     originalMaterials.forEach((mat, mesh) => {
+      // Memory wins over every other tint. Uses the one shared crypt
+      // treatment (sceneKnowledge) rather than approximating it here, so
+      // remembered geometry and remembered entities cannot drift apart.
+      if (remembered) {
+        const crypt = cloneCryptMaterials(mat);
+        (Array.isArray(crypt) ? crypt : [crypt]).forEach((m) =>
+          created.push(m)
+        );
+        mesh.material = crypt;
+        return;
+      }
       const wasArray = Array.isArray(mat);
       const materials = wasArray ? mat : [mat];
       const tinted = materials.map((m) => {
@@ -160,7 +177,7 @@ export function ClassCharacterModel({
     return () => {
       created.forEach((mat) => mat.dispose());
     };
-  }, [originalMaterials, isSelected, isGhost]);
+  }, [originalMaterials, isSelected, isGhost, remembered]);
 
   // Play the resolved clip on loop. While `isMoving` (rpg-dnd5e-web#542),
   // prefer a `Walk_*` clip (resolveWalkClipName), falling back to idle if
