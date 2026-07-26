@@ -78,9 +78,10 @@ Immediately flush active and queued presentation and cancel timers on:
 
 - `SnapshotDelivered`, including reconnect snapshots;
 - leaving turn-based mode;
-- `TurnStarted` or `TurnEnded` while theater is active;
 - encounter end;
 - component unmount.
+
+Do not flush on `TurnStarted` or `TurnEnded`. The server's normal NPC loop publishes an NPC attack and then immediately advances to the next turn; a destructive turn-boundary flush would erase witnessed NPC theater before it becomes visible. Authoritative turn state still advances immediately while the independent attack presentation finishes.
 
 This slice does not inspect sequence metadata. Snapshot and lifecycle boundaries provide its explicit reset signals. A later reassembly feature may define sequence-discontinuity behavior if live evidence shows it is needed.
 
@@ -105,7 +106,8 @@ Unit and integration tests must prove:
 - Combat-log entries retain their existing immediate behavior.
 - Existing crit and natural-1 fields select their accepted verdicts without new metadata.
 - Reduced motion preserves readable outcomes and suppresses motion.
-- Snapshot, mode, turn, encounter-end, and unmount flushes cancel theater without affecting authoritative state or the combat log.
+- Snapshot, mode-exit, encounter-end, and unmount flushes cancel theater without affecting authoritative state or the combat log.
+- Turn boundaries update authoritative state immediately without clearing an attack presentation that is already active or queued.
 - The overlay does not intercept normal map input.
 - `/concepts` still exercises the same production-owned sequencer, stage, and tray.
 
