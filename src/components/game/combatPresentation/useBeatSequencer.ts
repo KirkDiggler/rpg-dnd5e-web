@@ -129,13 +129,12 @@ export const CRIT_IMPACT_EXTRA_MS = 500;
 
 /** A player must never be able to stall the table sitting on an
  * un-thrown die (design.md §2, "a short auto-timeout"). No number is
- * given in the design doc — 3000ms is this round's concrete, tunable
- * choice. Deliberately UNCHANGED in Kirk's first interactive-review
- * iteration (rpg-dnd5e-web#561, PR #579): this is the `armed` *agency
- * pause* before a throw begins/commits — a separate axis from the
- * Cue->Release *reveal* duration the CINEMATIC/BRISK tables above tune.
- * Kirk asked to tune this one separately in a later pass. */
-export const AUTO_THROW_TIMEOUT_MS = 3000;
+ * given in the design doc — 1500ms is this round's concrete, tunable
+ * choice. This is the `armed` *agency pause* before a throw begins/
+ * commits — a separate axis from the Cue->Release *reveal* duration the
+ * CINEMATIC/BRISK tables above tune. Kirk asked to tune this one
+ * separately in a later pass, and this pass halves it. */
+export const AUTO_THROW_TIMEOUT_MS = 1500;
 
 /** Reduced motion drops the tumble itself but keeps every beat's
  * semantics (design.md §4) — collapse Throw to a brief settle instead of

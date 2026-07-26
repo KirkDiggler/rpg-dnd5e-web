@@ -430,6 +430,30 @@ describe('classifyWallVertices', () => {
     }
   });
 
+  it('produces NO fittings for an isolated door hex (round-2 W3/W4: "kill door-hex fittings entirely" — the door frame mesh and connector wall runs already own that visual space; deleted, not restyled to a different piece)', () => {
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 }, WallKind.DOOR_CLOSED),
+    ];
+    const fittings = classifyWallVertices(walls, 1);
+    expect(fittings).toHaveLength(0);
+  });
+
+  it('a door hex touching an ADJACENT solid wall hex still suppresses only the door’s own corners — the solid hex’s own fittings are unaffected', () => {
+    // Door at origin, a genuinely solid wall hex 2 steps east (not
+    // adjacent to the door, so the door stays isolated — matches real
+    // dungeon data, where a door's own cell has no wall neighbors) —
+    // this just confirms the solid hex's isolated-hex fittings still
+    // exist independent of the unrelated door elsewhere in the wall list.
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 }, WallKind.DOOR_CLOSED),
+      wall({ x: 5, y: -5, z: 0 }, { x: 5, y: -5, z: 0 }, WallKind.SOLID),
+    ];
+    const fittings = classifyWallVertices(walls, 1);
+    // 0 from the door + 6 from the isolated solid hex.
+    expect(fittings).toHaveLength(6);
+    expect(fittings.every((f) => f.kind === 'wall-corner-outer')).toBe(true);
+  });
+
   it('classifies a straight 3-hex run: middle (straight-through) hex contributes nothing of its own', () => {
     // H0 -(E)- H1 -(E)- H2, all collinear/all walls. H1 has exactly 2 wall
     // neighbors in OPPOSITE directions (E and W) -- a "straight-through"
@@ -575,15 +599,21 @@ describe('wallEndEdgeKeys', () => {
 });
 
 describe('fittingScale', () => {
-  it("scales X/Z by each variant's own raw width/depth (not a flat SYNTY_SCALE) so the footprint reads as slim, not a dominant slab", () => {
+  it("scales X/Z by the variant's own raw width/depth (not a flat SYNTY_SCALE) so the footprint reads as slim, not a dominant slab", () => {
     // QA correction (#536 phase-2 review): the old flat SYNTY_SCALE (0.75)
     // rendered wall-corner-outer's ~0.83 raw footprint to ~0.62 -- nearly
     // double the wall segments' own ~0.327 rendered thickness. The fix
     // should land close to that thickness instead.
+    //
+    // Round-2 W3/W4 update: all 3 FITTINGS kinds now share ONE substitute
+    // file/dims (rawWidth ~2.72, see FITTINGS' own doc comment for why the
+    // original 3-file family was dropped) -- FITTING_FOOTPRINT_SCALE was
+    // retuned (0.4 -> 0.121) to land at the same ~0.33 target footprint
+    // against these larger raw dims, verified below.
     const outer = FITTINGS['wall-corner-outer'];
     const [sx, sy, sz] = fittingScale(outer, 0.8);
-    expect(sx).toBeCloseTo(outer.rawWidth * 0.4, 5);
-    expect(sz).toBeCloseTo(outer.rawDepth * 0.4, 5);
+    expect(sx).toBeCloseTo(outer.rawWidth * 0.121, 5);
+    expect(sz).toBeCloseTo(outer.rawDepth * 0.121, 5);
     expect(sy).toBeCloseTo(0.8 / outer.rawHeight, 5);
     // The rendered footprint (~0.33) should be in the same order of
     // magnitude as the wall's own rendered thickness (~0.327 = 0.4357 raw *
@@ -592,10 +622,12 @@ describe('fittingScale', () => {
     expect(Math.abs(sx - wallRenderedThickness)).toBeLessThan(0.15);
   });
 
-  it("uses each variant's own dims, not a shared constant (inner is chunkier than outer/end)", () => {
+  it('all 3 kinds produce identical scale (round-2 W3/W4: they now share one substitute file/dims — see FITTINGS’ own doc comment for why the original 3 distinct files were dropped)', () => {
     const [outerSx] = fittingScale(FITTINGS['wall-corner-outer'], 0.8);
     const [innerSx] = fittingScale(FITTINGS['wall-corner-inner'], 0.8);
-    expect(innerSx).toBeGreaterThan(outerSx);
+    const [endSx] = fittingScale(FITTINGS['wall-end'], 0.8);
+    expect(innerSx).toBeCloseTo(outerSx, 9);
+    expect(endSx).toBeCloseTo(outerSx, 9);
   });
 });
 

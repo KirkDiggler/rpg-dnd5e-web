@@ -32,6 +32,7 @@ import { DevPerfProbe } from '../../dev/DevPerfProbe';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import {
   connectorDoorInputsFromWalls,
+  connectorFallbackSegments,
   connectorRunDoorRotations,
   legacyRenderWalls,
   regionInputsFromHexes,
@@ -179,6 +180,23 @@ export function EncounterMap({
   const legacySyntyWalls = useMemo(
     () =>
       legacyRenderWalls(
+        wallList,
+        regions,
+        wallRunsResult.connectorRuns,
+        connectorDoors
+      ),
+    [wallList, regions, wallRunsResult, connectorDoors]
+  );
+  // W3 "fallback restyle" (rpg-project#133 design.md/plan.md): the same
+  // structural safety-net candidates legacyRenderWalls used to keep for
+  // SyntyHexWall's legacy per-cell renderer now render as straight,
+  // column-aligned segments via WallRunMesh instead — same invisible-wall
+  // coverage, matching visual language as the real connector runs beside
+  // them (frontier doors, far-unexplored rooms no longer stand out as the
+  // old chunky hex-wall look).
+  const fallbackSegments = useMemo(
+    () =>
+      connectorFallbackSegments(
         wallList,
         regions,
         wallRunsResult.connectorRuns,
@@ -380,7 +398,9 @@ export function EncounterMap({
         walls={wallList}
         legacySyntyWalls={legacySyntyWalls}
         envelopeRuns={wallRunsResult.envelopeRuns}
+        envelopeCorners={wallRunsResult.envelopeCorners}
         connectorRuns={wallRunsResult.connectorRuns}
+        connectorFallbackSegments={fallbackSegments}
         doorRotationOverrides={doorRotationOverrides}
         selectedEntityId={myEntityId}
         currentEntityId={myEntityId}

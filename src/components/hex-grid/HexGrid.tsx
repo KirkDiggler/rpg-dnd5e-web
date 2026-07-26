@@ -19,7 +19,12 @@ import {
   wallKey,
   type AbsoluteFloorTile,
 } from '@/hooks/dungeonMapGeometry';
-import type { ConnectorRun, EnvelopeRun } from '@/hooks/wallRuns';
+import type {
+  ConnectorRun,
+  EnvelopeCorner,
+  EnvelopeRun,
+  WallRunSegment,
+} from '@/hooks/wallRuns';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -119,14 +124,27 @@ export interface HexGridProps {
    */
   legacySyntyWalls?: Wall[];
   /** Envelope runs (wallRuns.computeWallRuns) — one straight run per side
-   * per room, rendered as placeholder boxes by WallRunMesh. Empty/omitted
-   * (every caller not yet updated) renders none, same as before this
-   * design existed. */
+   * per room, rendered with real Synty modular pieces by WallRunMesh (W3).
+   * Empty/omitted (every caller not yet updated) renders none, same as
+   * before this design existed. */
   envelopeRuns?: EnvelopeRun[];
+  /** Envelope corners (wallRuns.computeWallRuns, W3) — one
+   * `wall-corner-outer` fitting placement per room corner, closing the
+   * gap/overlap between adjacent envelope sides' own independent offsets
+   * (Kirk's #1 prod-screenshot defect). Empty/omitted renders no corner
+   * pieces, unchanged from pre-W3 behavior. */
+  envelopeCorners?: EnvelopeCorner[];
   /** Connector runs (wallRuns.computeWallRuns) — one straight run (split
    * around its door gap) per connector column, rendered by WallRunMesh
    * alongside the envelope runs. */
   connectorRuns?: ConnectorRun[];
+  /** Connector-flanking fallback segments (wallRunAdapters.
+   * connectorFallbackSegments, W3 "fallback restyle" ask) — structural
+   * safety-net candidates (frontier doors, far room unexplored) rendered
+   * with the SAME tiled-run visual language as a real ConnectorRun,
+   * instead of SyntyHexWall's legacy per-cell hex-vertex look. Empty/
+   * omitted renders nothing extra, unchanged from pre-W3 behavior. */
+  connectorFallbackSegments?: WallRunSegment[];
   /** Per-door rotationY override (radians), keyed by Wall.id
    * (wallRunAdapters.connectorRunDoorRotations) — passed straight through
    * to SyntyHexWall so a door frame/leaf orients along its connector's
@@ -295,7 +313,9 @@ function Scene({
   showFrontierGroundHints = true,
   legacySyntyWalls,
   envelopeRuns = [],
+  envelopeCorners = [],
   connectorRuns = [],
+  connectorFallbackSegments = [],
   doorRotationOverrides,
   syntyDungeon = false,
   themeWallHexKeys,
@@ -800,13 +820,17 @@ function Scene({
           {/* Dungeon-walls redesign (rpg-project#133): straight envelope/
               connector runs, replacing the boundary-edge geometry
               legacySyntyWalls' positive-category filter just excluded
-              from SyntyHexWall above. Placeholder box geometry (W2);
-              real Synty modular pieces land in W3. Scoped to the Synty
-              path only — the ShadedHexWall fallback below is untouched
-              by this design. */}
+              from SyntyHexWall above. Real Synty modular pieces (W3) —
+              tiled wall segments, corner-piece joins, and the
+              connector-fallback restyle — replace W2's placeholder boxes.
+              Scoped to the Synty path only — the ShadedHexWall fallback
+              below is untouched by this design. */}
           <WallRunMesh
             envelopeRuns={envelopeRuns}
+            envelopeCorners={envelopeCorners}
             connectorRuns={connectorRuns}
+            fallbackSegments={connectorFallbackSegments}
+            spaceTheme={spaceTheme}
             rememberedEnvelopeRegionIds={rememberedRunIds.envelopeRegionIds}
             rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}
           />
@@ -878,6 +902,7 @@ function Scene({
           propRefId={entity.propRefId}
           movePath={entity.movePath}
           moveSeq={entity.moveSeq}
+          knowledgeState={entity.knowledgeState}
         />
       ))}
 

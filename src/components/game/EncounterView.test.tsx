@@ -25,7 +25,10 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EncounterStreamOptions } from '../../api/encounterStreamDispatch';
+import type {
+  EncounterEventMetadata,
+  EncounterStreamOptions,
+} from '../../api/encounterStreamDispatch';
 import {
   createFakeStream,
   type FakeStream,
@@ -1637,7 +1640,8 @@ describe('EncounterView combat pacing', () => {
     ).toBe('throw');
   });
 
-  it('applies HP and the damage log immediately while theater is active', async () => {
+  it('applies HP, shows the exact damage result, and records the damage log immediately while theater is active', async () => {
+    hoisted.captureStreamCallbacks = true;
     render(
       <EncounterView
         encounterId="enc-1"
@@ -1646,9 +1650,31 @@ describe('EncounterView combat pacing', () => {
         onBack={() => {}}
       />
     );
-    await act(async () => {
-      hoisted.fakeRef.current?.push(
-        makeEvent('snapshotDelivered', {
+
+    const callbacks = hoisted.streamCallbacks;
+    if (!callbacks) {
+      throw new Error('EncounterView did not capture stream callbacks');
+    }
+
+    const snapshotMeta: EncounterEventMetadata = {
+      sequence: 1n,
+      timestamp: undefined,
+      correlationId: 'corr-snapshot',
+    };
+    const attackMeta: EncounterEventMetadata = {
+      sequence: 2n,
+      timestamp: undefined,
+      correlationId: 'corr-attack-7',
+    };
+    const damageMeta: EncounterEventMetadata = {
+      sequence: 3n,
+      timestamp: undefined,
+      correlationId: 'corr-attack-7',
+    };
+
+    act(() => {
+      callbacks.onSnapshotDelivered?.(
+        {
           encounter: {
             space: {
               entities: [
@@ -1661,26 +1687,39 @@ describe('EncounterView combat pacing', () => {
               ],
             },
           },
-        })
+        } as never,
+        snapshotMeta
       );
-      hoisted.fakeRef.current?.push(attack());
-      hoisted.fakeRef.current?.push(
-        makeEvent('entityDamaged', {
+      callbacks.onAttackResolved?.(
+        {
+          attackerEntityId: 'char-alice',
+          targetEntityId: 'goblin-1',
+          attackRoll: 14,
+          attackBonus: 5,
+          targetAc: 16,
+          hit: true,
+          critical: false,
+        } as never,
+        attackMeta
+      );
+      callbacks.onEntityDamaged?.(
+        {
           entityId: 'char-alice',
           sourceEntityId: 'goblin-1',
           amount: 7,
           damageType: { module: 'dnd5e', type: 'damage', id: 'slashing' },
           damageBreakdown: [],
           hpAfter: { current: 13, max: 20, temp: 0 },
-        })
+        } as never,
+        damageMeta
       );
-      await Promise.resolve();
     });
+
     expect(screen.getByTitle('HP 13/20')).toBeTruthy();
     expect(screen.getByTestId('combat-log-entry-damage-1')).toBeTruthy();
-    expect(screen.getByTestId('combat-presentation').textContent).not.toContain(
-      '7'
-    );
+    expect(
+      screen.getByTestId('combat-presentation-damage').textContent
+    ).toContain('7 damage');
   });
 
   it.each([

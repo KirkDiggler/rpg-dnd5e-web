@@ -3,6 +3,7 @@
  * W2 "positive category rule" (design.md).
  */
 
+import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { create } from '@bufbuild/protobuf';
 import {
   HexSchema,
@@ -15,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { REAL_REFERENCE_TOMB_WALLS } from './referenceTombRealWireFixture';
 import {
   connectorDoorInputsFromWalls,
+  connectorFallbackSegments,
   connectorRunDoorRotations,
   legacyRenderWalls,
   regionInputsFromHexes,
@@ -22,8 +24,6 @@ import {
 import {
   computeWallRuns,
   cubeAtColRow,
-  hexColumn,
-  hexRow,
   type ConnectorRun,
   type RegionInput,
 } from './wallRuns';
@@ -172,15 +172,22 @@ describe('legacyRenderWalls (positive category rule)', () => {
   // genuinely exercised against a real, independently-established
   // [0,7] row range — never trivially satisfied by a single-entry list.
 
-  it('keeps a degenerate connector-flanking wall NOT covered by any connector run, when its column matches a known door and its row is in-grid (structural safety net)', () => {
+  // W3 (design.md/plan.md's "fallback restyle" ask): a connector-flanking
+  // wall NOT covered by any connector run — category (c), the structural
+  // safety net — no longer renders through legacyRenderWalls' legacy
+  // per-cell path at all. It's excluded here and covered by
+  // connectorFallbackSegments' own describe block below (same category
+  // rule, different output shape/renderer target).
+
+  it('excludes (from legacyRenderWalls) a degenerate connector-flanking wall NOT covered by any connector run — it now belongs to connectorFallbackSegments instead', () => {
     const flanking = cellWall(60, 3);
     const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
     expect(
       legacyRenderWalls([flanking, ...anchors(0, 7)], regions, [], doors)
-    ).toContainEqual(flanking);
+    ).not.toContainEqual(flanking);
   });
 
-  it('keeps a BOUNDARY-EDGE connector-flanking wall NOT covered by any connector run, matching its `to` cell’s column and in-grid row against a known door (the real production wire shape)', () => {
+  it('excludes (from legacyRenderWalls) a BOUNDARY-EDGE connector-flanking wall NOT covered by any connector run — it now belongs to connectorFallbackSegments instead', () => {
     // from = real neighboring floor (col 59), to = the flanking cell
     // itself (col 60, row 3 — in-grid) — exactly rpg-toolkit's
     // connectorBoundaryEdgeWalls shape.
@@ -193,7 +200,7 @@ describe('legacyRenderWalls (positive category rule)', () => {
         [],
         doors
       )
-    ).toContainEqual(boundaryEdgeFlanking);
+    ).not.toContainEqual(boundaryEdgeFlanking);
   });
 
   it('excludes a BOUNDARY-EDGE candidate one row beyond the true grid (the STILL-BLOCKED regression) even though its column matches a known door', () => {
@@ -226,72 +233,6 @@ describe('legacyRenderWalls (positive category rule)', () => {
   // against — see the boundary-edge test above for the shape that
   // actually occurs.
 
-  it('drops a degenerate connector-flanking wall that IS covered by an emitted connector run', () => {
-    const flanking = cellWall(60, 0);
-    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
-    const connectorRuns: ConnectorRun[] = [
-      {
-        doorId: 'door-1',
-        regionAId: 'a',
-        regionBId: 'b',
-        segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 1 } }],
-        coveredRows: { minRow: 0, maxRow: 0 },
-      },
-    ];
-    expect(
-      legacyRenderWalls(
-        [flanking, ...anchors(0, 7)],
-        regions,
-        connectorRuns,
-        doors
-      )
-    ).not.toContainEqual(flanking);
-  });
-
-  it('drops a BOUNDARY-EDGE connector-flanking wall whose `to` cell IS covered by an emitted connector run', () => {
-    const boundaryEdgeFlanking = edgeWall(59, 0, 60, 0);
-    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
-    const connectorRuns: ConnectorRun[] = [
-      {
-        doorId: 'door-1',
-        regionAId: 'a',
-        regionBId: 'b',
-        segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 1 } }],
-        coveredRows: { minRow: 0, maxRow: 0 },
-      },
-    ];
-    expect(
-      legacyRenderWalls(
-        [boundaryEdgeFlanking, ...anchors(0, 7)],
-        regions,
-        connectorRuns,
-        doors
-      )
-    ).not.toContainEqual(boundaryEdgeFlanking);
-  });
-
-  it('keeps a connector-flanking wall whose row falls OUTSIDE the run’s coveredRows range but still in-grid (partial-reveal gap not yet caught up)', () => {
-    const flanking = cellWall(60, 5);
-    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
-    const connectorRuns: ConnectorRun[] = [
-      {
-        doorId: 'door-1',
-        regionAId: 'a',
-        regionBId: 'b',
-        segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 1 } }],
-        coveredRows: { minRow: 0, maxRow: 2 }, // row 5 not covered yet
-      },
-    ];
-    expect(
-      legacyRenderWalls(
-        [flanking, ...anchors(0, 7)],
-        regions,
-        connectorRuns,
-        doors
-      )
-    ).toContainEqual(flanking);
-  });
-
   it('drops a boundary-edge (from !== to) non-door wall with no matching door column — true outer perimeter, replaced by envelope runs', () => {
     const boundaryEdge = wall(10, -10, 0, 11, -11, 0); // hexDistance 1, matches #834 shape, no door anywhere near
     expect(legacyRenderWalls([boundaryEdge], regions, [], [])).toEqual([]);
@@ -303,11 +244,185 @@ describe('legacyRenderWalls (positive category rule)', () => {
   });
 });
 
-// coveredRows is irrelevant to connectorRunDoorRotations (rotation-only
-// concern) — an arbitrary placeholder value keeps these fixtures honest
-// about ConnectorRun's real shape without every test needing to reason
-// about row coverage.
+describe("connectorFallbackSegments (W3 fallback restyle: same category-rule candidates as legacyRenderWalls' old category (c), now rendered as straight column-aligned segments instead of the legacy per-cell path)", () => {
+  const regions: RegionInput[] = [
+    { id: 'hall', hexes: [{ x: 10, y: -10, z: 0 }] },
+  ];
+
+  function cellWall(col: number, row: number, kind?: WallKind, id?: string) {
+    const hex = cubeAtColRow(col, row);
+    return wall(hex.x, hex.y, hex.z, hex.x, hex.y, hex.z, kind, id);
+  }
+
+  function edgeWall(
+    fromCol: number,
+    fromRow: number,
+    toCol: number,
+    toRow: number
+  ) {
+    const from = cubeAtColRow(fromCol, fromRow);
+    const to = cubeAtColRow(toCol, toRow);
+    return wall(from.x, from.y, from.z, to.x, to.y, to.z);
+  }
+
+  function anchors(minRow: number, maxRow: number): Wall[] {
+    return [cellWall(1000, minRow), cellWall(1000, maxRow)];
+  }
+
+  it('produces a segment for a degenerate connector-flanking wall NOT covered by any connector run', () => {
+    const flanking = cellWall(60, 3);
+    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
+    const segments = connectorFallbackSegments(
+      [flanking, ...anchors(0, 7)],
+      regions,
+      [],
+      doors
+    );
+    expect(segments).toHaveLength(1);
+  });
+
+  it('produces a segment for a BOUNDARY-EDGE connector-flanking wall NOT covered by any connector run (the real production wire shape)', () => {
+    const boundaryEdgeFlanking = edgeWall(59, 3, 60, 3);
+    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
+    const segments = connectorFallbackSegments(
+      [boundaryEdgeFlanking, ...anchors(0, 7)],
+      regions,
+      [],
+      doors
+    );
+    expect(segments).toHaveLength(1);
+  });
+
+  it("the produced segment is column-aligned: both endpoints sit exactly on the connector column's own world-space line", () => {
+    const flanking = cellWall(60, 3);
+    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
+    const segments = connectorFallbackSegments(
+      [flanking, ...anchors(0, 7)],
+      regions,
+      [],
+      doors
+    );
+    const columnTop = cubeToWorld(cubeAtColRow(60, 0), HEX_SIZE);
+    const columnBottom = cubeToWorld(cubeAtColRow(60, 7), HEX_SIZE);
+    const columnDir = {
+      x: columnBottom.x - columnTop.x,
+      z: columnBottom.z - columnTop.z,
+    };
+    const crossZ = (a: { x: number; z: number }, b: { x: number; z: number }) =>
+      a.x * b.z - a.z * b.x;
+    for (const point of [segments[0]!.start, segments[0]!.end]) {
+      const toPoint = { x: point.x - columnTop.x, z: point.z - columnTop.z };
+      expect(Math.abs(crossZ(columnDir, toPoint))).toBeLessThan(1e-9);
+    }
+  });
+
+  it('excludes a BOUNDARY-EDGE candidate one row beyond the true grid (STILL-BLOCKED regression) even though its column matches a known door', () => {
+    const offGridBoundaryEdge = edgeWall(59, 7, 60, 8);
+    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
+    const segments = connectorFallbackSegments(
+      [offGridBoundaryEdge, ...anchors(0, 7)],
+      regions,
+      [],
+      doors
+    );
+    expect(segments).toEqual([]);
+  });
+
+  it('produces no segment for a degenerate connector-flanking wall that IS covered by an emitted connector run', () => {
+    const flanking = cellWall(60, 0);
+    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
+    const connectorRuns: ConnectorRun[] = [
+      {
+        doorId: 'door-1',
+        regionAId: 'a',
+        regionBId: 'b',
+        segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 1 } }],
+        coveredRows: { minRow: 0, maxRow: 0 },
+        facing: { x: 1, z: 0 },
+      },
+    ];
+    const segments = connectorFallbackSegments(
+      [flanking, ...anchors(0, 7)],
+      regions,
+      connectorRuns,
+      doors
+    );
+    expect(segments).toEqual([]);
+  });
+
+  it('produces no segment for a BOUNDARY-EDGE connector-flanking wall whose `to` cell IS covered by an emitted connector run', () => {
+    const boundaryEdgeFlanking = edgeWall(59, 0, 60, 0);
+    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
+    const connectorRuns: ConnectorRun[] = [
+      {
+        doorId: 'door-1',
+        regionAId: 'a',
+        regionBId: 'b',
+        segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 1 } }],
+        coveredRows: { minRow: 0, maxRow: 0 },
+        facing: { x: 1, z: 0 },
+      },
+    ];
+    const segments = connectorFallbackSegments(
+      [boundaryEdgeFlanking, ...anchors(0, 7)],
+      regions,
+      connectorRuns,
+      doors
+    );
+    expect(segments).toEqual([]);
+  });
+
+  it("produces a segment for a connector-flanking wall whose row falls OUTSIDE the run's coveredRows range but still in-grid (partial-reveal gap not yet caught up)", () => {
+    const flanking = cellWall(60, 5);
+    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
+    const connectorRuns: ConnectorRun[] = [
+      {
+        doorId: 'door-1',
+        regionAId: 'a',
+        regionBId: 'b',
+        segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 1 } }],
+        coveredRows: { minRow: 0, maxRow: 2 }, // row 5 not covered yet
+        facing: { x: 1, z: 0 },
+      },
+    ];
+    const segments = connectorFallbackSegments(
+      [flanking, ...anchors(0, 7)],
+      regions,
+      connectorRuns,
+      doors
+    );
+    expect(segments).toHaveLength(1);
+  });
+
+  it('produces no segment for a door wall (doors stay on the legacy per-cell renderer, unaffected by this restyle)', () => {
+    const door = wall(1, -1, 0, 2, -2, 0, WallKind.DOOR_CLOSED, 'd1');
+    expect(connectorFallbackSegments([door], [], [], [])).toEqual([]);
+  });
+
+  it('produces no segment for an interior pattern wall (deferred restyle per design.md, unaffected here)', () => {
+    const interior = wall(10, -10, 0); // matches the hall region hex above
+    expect(connectorFallbackSegments([interior], regions, [], [])).toEqual([]);
+  });
+
+  it('deduplicates: two wall entries resolving to the same candidate cell produce exactly one segment', () => {
+    const flanking = cellWall(60, 3);
+    const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
+    const segments = connectorFallbackSegments(
+      [flanking, flanking, ...anchors(0, 7)],
+      regions,
+      [],
+      doors
+    );
+    expect(segments).toHaveLength(1);
+  });
+});
+
+// coveredRows/facing are irrelevant to connectorRunDoorRotations
+// (rotation-only concern) — arbitrary placeholder values keep these
+// fixtures honest about ConnectorRun's real shape without every test
+// needing to reason about row coverage or facing direction.
 const PLACEHOLDER_COVERED_ROWS = { minRow: 0, maxRow: 0 };
+const PLACEHOLDER_FACING = { x: 1, z: 0 };
 
 describe('connectorRunDoorRotations', () => {
   it('derives a rotation from the connector run direction, matching hexEdgeBetween atan2(-dz, dx) convention', () => {
@@ -318,6 +433,7 @@ describe('connectorRunDoorRotations', () => {
         regionBId: 'b',
         segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
         coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: PLACEHOLDER_FACING,
       },
     ];
     const rotations = connectorRunDoorRotations(runs);
@@ -331,6 +447,7 @@ describe('connectorRunDoorRotations', () => {
         regionBId: 'b',
         segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
         coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: PLACEHOLDER_FACING,
       },
     ];
     expect(connectorRunDoorRotations(runs).size).toBe(0);
@@ -344,6 +461,7 @@ describe('connectorRunDoorRotations', () => {
         regionBId: 'b',
         segments: [],
         coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: PLACEHOLDER_FACING,
       },
     ];
     expect(connectorRunDoorRotations(runs).size).toBe(0);
@@ -357,6 +475,7 @@ describe('connectorRunDoorRotations', () => {
         regionBId: 'b',
         segments: [{ start: { x: 3, z: 3 }, end: { x: 3, z: 3 } }],
         coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: PLACEHOLDER_FACING,
       },
     ];
     expect(connectorRunDoorRotations(runs).size).toBe(0);
@@ -394,54 +513,34 @@ describe('legacyRenderWalls — real reference-tomb wire fixture (gate review ST
     expect(connectorRuns).toHaveLength(2);
   });
 
-  it('keeps zero off-grid candidates — the exact reproduction the gate review measured (keptOffGrid=4) no longer survives', () => {
-    const kept = legacyRenderWalls(realWalls, regions, connectorRuns, doors);
-    const offGrid = kept.filter((wall) => {
-      if (!wall.from || !wall.to) return false;
-      const fromHex = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
-      const toHex = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
-      const isDegenerate =
-        fromHex.x === toHex.x && fromHex.y === toHex.y && fromHex.z === toHex.z;
-      const candidate = isDegenerate ? fromHex : toHex;
-      const row = hexRow(candidate);
-      return row < 0 || row > HEIGHT - 1;
-    });
-    expect(offGrid).toEqual([]);
-  });
-
-  it('specifically excludes the exact reported off-grid cells (col 6 row 8, col 17 row -1)', () => {
-    const kept = legacyRenderWalls(realWalls, regions, connectorRuns, doors);
-    const candidateKeys = kept.map((wall) => {
-      const toHex = wall.to!;
-      const fromHex = wall.from!;
-      const isDegenerate =
-        fromHex.x === toHex.x && fromHex.y === toHex.y && fromHex.z === toHex.z;
-      const candidate = isDegenerate ? fromHex : toHex;
-      return `${hexColumn(candidate)}:${hexRow(candidate)}`;
-    });
-    // {x:6,y:-11,z:5} -> col 6, row 8 (one row below the grid).
-    expect(candidateKeys).not.toContain('6:8');
-    // {x:17,y:-8,z:-9} -> col 17, row -1 (one row above the grid).
-    expect(candidateKeys).not.toContain('17:-1');
-  });
-
-  it('still keeps every genuine in-grid connector-flanking cell not covered by a run — the original invisible-wall fix still holds against real data', () => {
+  it('still keeps every genuine in-grid connector-flanking cell not covered by a run — the original invisible-wall fix still holds against real data (checked across BOTH renderer paths, since W3 split category (c) out of legacyRenderWalls into connectorFallbackSegments)', () => {
     // Both connectors fully resolve here (regions are fully known), so
-    // the only thing legacyRenderWalls should still be covering via the
-    // safety net is: nothing genuine, since both runs cover their full
-    // [0, height-1] range minus the door row. Assert every KEPT non-door
-    // wall is either an interior pattern wall or a genuine in-grid
-    // candidate — i.e., kept.length matches exactly "doors only" once
-    // both connectors are fully resolved (no gaps left to fall back on).
+    // there is nothing left to fall back on via EITHER path: every
+    // connector-flanking cell is covered by a real run. legacyRenderWalls
+    // should keep doors only (no interior pattern walls exist in the
+    // reference-tomb fixture); connectorFallbackSegments should produce
+    // nothing at all. This also subsumes the gate review's original
+    // "keptOffGrid=4" regression (rpg-dnd5e-web#603 STILL-BLOCKED
+    // finding): an off-grid leak would surface as a nonzero fallback
+    // segment count here, since categorizeWall's grid-bounds check is
+    // shared by both this function and legacyRenderWalls.
     const kept = legacyRenderWalls(realWalls, regions, connectorRuns, doors);
     const nonDoorKept = kept.filter(
       (wall) =>
         wall.kind !== WallKind.DOOR_OPEN && wall.kind !== WallKind.DOOR_LOCKED
     );
     expect(nonDoorKept).toEqual([]);
+
+    const fallback = connectorFallbackSegments(
+      realWalls,
+      regions,
+      connectorRuns,
+      doors
+    );
+    expect(fallback).toEqual([]);
   });
 
-  it('partial reveal against the same real data: hall unknown — every flanking wall entry at the entrance-hall connector is either run-covered or per-cell rendered, and still zero off-grid', () => {
+  it("partial reveal against the same real data: hall unknown — connectorFallbackSegments covers the entrance-hall connector's flanking cells, with no phantom segment at the reported off-grid positions (col 6 row 8, col 17 row -1)", () => {
     const entranceOnly: RegionInput[] = [regions[0]!];
     const partialConnectorRuns = computeWallRuns({
       regions: entranceOnly,
@@ -451,29 +550,33 @@ describe('legacyRenderWalls — real reference-tomb wire fixture (gate review ST
     // resolve either connector.
     expect(partialConnectorRuns).toHaveLength(0);
 
-    const kept = legacyRenderWalls(realWalls, entranceOnly, [], doors);
-    const offGrid = kept.filter((wall) => {
-      if (!wall.from || !wall.to) return false;
-      const fromHex = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
-      const toHex = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
-      const isDegenerate =
-        fromHex.x === toHex.x && fromHex.y === toHex.y && fromHex.z === toHex.z;
-      const candidate = isDegenerate ? fromHex : toHex;
-      const row = hexRow(candidate);
-      return row < 0 || row > HEIGHT - 1;
-    });
-    expect(offGrid).toEqual([]);
+    const fallback = connectorFallbackSegments(
+      realWalls,
+      entranceOnly,
+      [],
+      doors
+    );
+    // The entrance-hall connector's flanking cells (column 6) must be
+    // covered by fallback segments, since no run covers them yet.
+    expect(fallback.length).toBeGreaterThan(0);
 
-    // The entrance-hall connector's flanking cells (column 6) must all
-    // be kept via the fallback, since no run covers them yet.
-    const col6Kept = kept.filter((wall) => {
-      const toHex = wall.to!;
-      const fromHex = wall.from!;
-      const isDegenerate =
-        fromHex.x === toHex.x && fromHex.y === toHex.y && fromHex.z === toHex.z;
-      const candidate = isDegenerate ? fromHex : toHex;
-      return hexColumn(candidate) === 6 && wall.kind === WallKind.SOLID;
-    });
-    expect(col6Kept.length).toBeGreaterThan(0);
+    // Neither reported off-grid artifact (col 6 row 8; col 17 row -1 —
+    // one row below/above the true [0,7] grid) produced a phantom
+    // segment: every real fallback segment's own midpoint sits well away
+    // from those two specific world positions.
+    const suspectPositions = [
+      cubeToWorld(cubeAtColRow(6, 8), HEX_SIZE),
+      cubeToWorld(cubeAtColRow(17, -1), HEX_SIZE),
+    ];
+    for (const segment of fallback) {
+      const mid = {
+        x: (segment.start.x + segment.end.x) / 2,
+        z: (segment.start.z + segment.end.z) / 2,
+      };
+      for (const suspect of suspectPositions) {
+        const dist = Math.hypot(mid.x - suspect.x, mid.z - suspect.z);
+        expect(dist).toBeGreaterThan(0.01);
+      }
+    }
   });
 });
