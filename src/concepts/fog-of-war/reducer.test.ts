@@ -161,4 +161,25 @@ describe('fog reducer', () => {
 
     expect(replay).toEqual(again);
   });
+
+  it('keeps a disclosed entity known after disclosure stops', () => {
+    // The entity map is the vocabulary a remembered placement resolves
+    // against, so it must outlive current disclosure — otherwise the frozen
+    // goblin would have nothing to render as. This is the entity-side half of
+    // "nothing is ever deleted".
+    const seen = fogReducer(emptyKnowledge(), {
+      hexes: [visible(0, 0, [facingNorth])],
+      entities: [goblin],
+    });
+
+    const lost = fogReducer(seen, {
+      hexes: [remembered(visible(0, 0, [facingNorth]))],
+      entities: [],
+    });
+
+    const muchLater = fogReducer(lost, { hexes: [], entities: [] });
+
+    expect(muchLater.entities.get('goblin-1')).toEqual(goblin);
+    expect(muchLater.hexes.get('0,0,0')?.contents).toEqual([facingNorth]);
+  });
 });
