@@ -30,6 +30,8 @@ export interface DiceTrayProps {
 }
 
 const REDUCED_MOTION_PRESENTATION_FACES = [2, 7, 11, 16, 19];
+const DEFAULT_PRESENTATION_FACE_COUNT = 4;
+const MAX_PRESENTATION_FACE_COUNT = 20;
 const PRESENTATION_RANDOM_RANGE = 2 ** 32;
 let presentationRandomState = Date.now() >>> 0;
 const VERTICES: ReadonlyArray<readonly [number, number]> = [
@@ -91,7 +93,14 @@ export function DiceTray({
       return;
     }
 
-    const count = Math.max(1, motion?.faceCount ?? 4);
+    const requestedFaceCount =
+      motion?.faceCount ?? DEFAULT_PRESENTATION_FACE_COUNT;
+    const count = Number.isFinite(requestedFaceCount)
+      ? Math.min(
+          MAX_PRESENTATION_FACE_COUNT,
+          Math.max(1, Math.floor(requestedFaceCount))
+        )
+      : DEFAULT_PRESENTATION_FACE_COUNT;
     const cadence = motion?.initialCadenceMs ?? 120;
     const deceleration = motion?.decelerationMs ?? 90;
     const hold = motion?.nearSettleHoldMs ?? 240;

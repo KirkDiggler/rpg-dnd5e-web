@@ -144,6 +144,21 @@ describe('DiceTray', () => {
     expect(resultRandom).not.toHaveBeenCalled();
   });
 
+  it('bounds a huge presentation face count to a finite timer schedule', () => {
+    const schedule = vi.spyOn(globalThis, 'setTimeout');
+
+    render(
+      <DiceTray
+        phase="rolling"
+        finalFace={14}
+        outcome="HIT"
+        motion={{ faceCount: 10_000 }}
+      />
+    );
+
+    expect(schedule).toHaveBeenCalledTimes(21);
+  });
+
   it('animates only the d20 shell while keeping the face readable', () => {
     const { rerender } = render(
       <DiceTray phase="rolling" finalFace={9} outcome="HIT" />
