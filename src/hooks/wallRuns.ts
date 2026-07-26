@@ -238,10 +238,12 @@ export interface WallRunsInput {
    * (`SM_Env_Wall_End_Coner_Outer_01` etc.) are correctly-converted tall
    * narrow corner posts, but the wall role's fit squash (~6x Y-compression
    * to reach WALL_HEIGHT) reduces their faceted brick relief to a
-   * "stacked wafer" look that panel-shaped pieces don't suffer from — see
-   * rpg-game-assets' env-role-map notes (post-shaped pieces don't survive
-   * the wall squash; don't map them to wall roles) and this repo's
-   * WallRunMesh doc comment. Rather than adopt a different GLB for that
+   * "stacked wafer" look that panel-shaped pieces don't suffer from —
+   * verdict recorded in rpg-game-assets' env-role-map fittings notes
+   * (PR #33, merged: post-shaped pieces don't survive the wall squash;
+   * don't map them to wall roles) and this repo's WallRunMesh doc
+   * comment. This is PERMANENT, not interim — no re-conversion of this
+   * family is coming. Rather than adopt a different GLB for that
    * slot, this default was raised (from half a hex radius) far enough
    * that two perpendicular runs' own extended ends visually overlap past
    * the true corner (`EnvelopeCorner`'s own line-intersection point) and

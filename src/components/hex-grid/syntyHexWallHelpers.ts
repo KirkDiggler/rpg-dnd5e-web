@@ -561,17 +561,18 @@ export interface FittingVariant {
  * corner POSTS with faceted brick relief — the wafer look is the wall
  * role's own fit squash (~6x Y-compression to reach WALL_HEIGHT from a
  * ~5m raw post), which panel-shaped pieces tolerate but post-shaped
- * relief does not survive visually. See rpg-game-assets' env-role-map
- * notes: don't map post-shaped pieces to wall roles. No re-conversion is
- * coming for this family — dropped from every role here, permanently
- * (not an interim fix). `SM_Env_Wall_Quarter_01` (a WALL_VARIANTS-family
+ * relief does not survive visually. Verdict recorded in rpg-game-assets'
+ * env-role-map fittings notes (PR #33, merged): don't map post-shaped
+ * pieces to wall roles. No re-conversion is coming for this family —
+ * dropped from every role here, permanently (not an interim fix).
+ * `SM_Env_Wall_Quarter_01` (a WALL_VARIANTS-family
  * panel, already verified clean — see rpg-dnd5e-web#607/#608's isolation
  * evidence) is the replacement for all 3 kinds: same "context fit"
  * placement (single point, footprint centered) as before, just a
- * different source file and its own measured raw dimensions/footprint
- * scale (`FITTING_SUBSTITUTE_FOOTPRINT_SCALE`, tuned separately from
- * `FITTING_FOOTPRINT_SCALE` below since Quarter's rawWidth/rawDepth are a
- * different order of magnitude than the dropped family's).
+ * different source file and its own measured raw dimensions —
+ * `FITTING_FOOTPRINT_SCALE` below is retuned to match, since Quarter's
+ * rawWidth/rawDepth are a different order of magnitude than the dropped
+ * family's.
  */
 const FITTING_SUBSTITUTE_FILE = 'SM_Env_Wall_Quarter_01.glb';
 const FITTING_SUBSTITUTE_RAW_WIDTH = 2.7245;

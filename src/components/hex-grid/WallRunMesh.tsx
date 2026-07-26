@@ -236,15 +236,17 @@ const DEFAULT_WALL_HEIGHT = 0.8; // matches calibrationConstants.WALL_HEIGHT
  * load failure past this Suspense.
  *
  * No dedicated corner-fitting GLB is placed at `envelopeCorners` (round-2
- * W3/W4 finding, TODO(asset) rpg-dnd5e-web#607 thread / rpg-game-assets
- * env-role-map notes): `SM_Env_Wall_End_Coner_Outer_01.glb` and its
- * End/Coner_Inner siblings are correctly-converted tall narrow corner
- * POSTS with faceted brick relief, but the wall role's fit squash
+ * W3/W4 finding; verdict recorded in rpg-game-assets' env-role-map
+ * fittings notes, PR #33, merged): `SM_Env_Wall_End_Coner_Outer_01.glb`
+ * and its End/Coner_Inner siblings are correctly-converted tall narrow
+ * corner POSTS with faceted brick relief, but the wall role's fit squash
  * (~6x Y-compression to reach WALL_HEIGHT) reduces that relief to a
  * "stacked wafer" look post-shaped pieces don't survive — a squash panel
- * pieces tolerate fine. Rather than adopt a different GLB for this slot,
- * `envelopeGeometryForRegion`'s own `cornerExtension` (wallRuns.ts) now
- * pushes each side's tiled run PAST the true corner intersection far
+ * pieces tolerate fine. This is PERMANENT, not an interim measure — no
+ * re-conversion of this family is coming; post-shaped pieces simply
+ * don't map to wall roles. Rather than adopt a different GLB for this
+ * slot, `envelopeGeometryForRegion`'s own `cornerExtension` (wallRuns.ts)
+ * now pushes each side's tiled run PAST the true corner intersection far
  * enough that the two perpendicular runs visually overlap and self-cover
  * the joint — the standard modular-kit "overlap-miter" cheat, zero new
  * assets, picked over a small stand-in panel (`SM_Env_Wall_Quarter_01`)
