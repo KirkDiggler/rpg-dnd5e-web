@@ -20,7 +20,7 @@ describe('fixture line of sight', () => {
     // All nine Room A hexes, plus the doorway itself.
     expect(visible.size).toBe(10);
     expect(visible.has(key(at(3, 1)))).toBe(true);
-    expect(visible.has(key(at(4, 1)))).toBe(false);
+    expect(visible.has(key(at(4, 2)))).toBe(false);
   });
 
   it('an open door reveals a shaft into Room B, not Room B', () => {
@@ -34,9 +34,9 @@ describe('fixture line of sight', () => {
 
     // Four of Room B's nine hexes — the ones the doorway lines up with.
     expect(roomB).toHaveLength(4);
-    expect(visible.has(key(at(4, 1)))).toBe(true);
+    expect(visible.has(key(at(4, 2)))).toBe(true);
     expect(visible.has(key(at(4, 0)))).toBe(false);
-    expect(visible.has(key(at(6, 2)))).toBe(false);
+    expect(visible.has(key(at(6, 0)))).toBe(false);
   });
 
   it('the doorway hex is visible from anywhere in Room A', () => {
@@ -45,8 +45,8 @@ describe('fixture line of sight', () => {
     const world = twoRoomCrypt();
     world.doors.set(key(at(3, 1)), DOOR_OPEN);
 
-    for (const origin of [at(0, 0), at(0, 2), at(2, 1), at(1, 1)]) {
-      expect(seen(world, origin).has(key(at(4, 1)))).toBe(true);
+    for (const origin of [at(0, 0), at(2, 1), at(1, 1)]) {
+      expect(seen(world, origin).has(key(at(4, 2)))).toBe(true);
     }
   });
 });

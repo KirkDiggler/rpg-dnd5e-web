@@ -23,12 +23,23 @@ export const WALL_SOLID = 1;
 export const DOOR_CLOSED = 2;
 export const DOOR_OPEN = 3;
 
-/** Axial (q, r) to cube. */
-export const at = (q: number, r: number): PositionLike => ({
-  x: q,
-  y: r,
-  z: -q - r,
-});
+/**
+ * Offset (column, row) to cube, mirroring rpg-toolkit
+ * `tools/spatial/position.go`'s `OffsetCoordinateToCubeWithOrientation`
+ * pointy-top branch: `x := col; z := row - (col - (col&1))/2; y := -x-z`.
+ *
+ * Authored in column/row rather than a convenient axial pair for a load-bearing
+ * reason: the wall renderer draws a room's envelope from its column/row
+ * bounding box (`wallRuns.envelopeRunsForRegion`), so a region MUST be a
+ * rectangle in this space or the walls will not fit the floor. The authority
+ * keeps its own copy of the formula — the server would — and
+ * `world.test.ts` pins that it agrees with the renderer's `cubeAtColRow`.
+ */
+export const at = (col: number, row: number): PositionLike => {
+  const x = col;
+  const z = row - Math.trunc((col - (col & 1)) / 2);
+  return { x, y: -x - z, z };
+};
 
 export const key = (p: PositionLike): string => `${p.x},${p.y},${p.z}`;
 
@@ -74,17 +85,18 @@ export interface World {
   placements: Map<string, { hex: PositionLike; facing: number }>;
 }
 
+/** A solid rectangle of hexes in column/row space. */
 const rect = (
-  qMin: number,
-  qMax: number,
-  rMin: number,
-  rMax: number,
+  colMin: number,
+  colMax: number,
+  rowMin: number,
+  rowMax: number,
   zoneId: string
 ): WorldHex[] => {
   const out: WorldHex[] = [];
-  for (let q = qMin; q <= qMax; q++) {
-    for (let r = rMin; r <= rMax; r++) {
-      out.push({ position: at(q, r), terrain: 0, zoneId });
+  for (let col = colMin; col <= colMax; col++) {
+    for (let row = rowMin; row <= rowMax; row++) {
+      out.push({ position: at(col, row), terrain: 0, zoneId });
     }
   }
   return out;
