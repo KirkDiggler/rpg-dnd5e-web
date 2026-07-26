@@ -95,6 +95,14 @@ describe('tileWallSegment (W3: real Synty pieces tiled along a run, design.md/pl
     expect(pieces).toHaveLength(0);
   });
 
+  it('a sub-epsilon (near-zero, not exactly zero) length also produces zero pieces — review finding (walls-r, PR #608): an exact-zero check alone would let a tiny nonzero pieceWidth through as a near-degenerate GlbInstance scale factor, risking NaN normals', () => {
+    const pieces = tileWallSegment(
+      { start: { x: 2, z: 2 }, end: { x: 2 + 1e-9, z: 2 } },
+      1.0
+    );
+    expect(pieces).toHaveLength(0);
+  });
+
   it('rotation matches the same atan2(-dz, dx) convention as wallRunBoxTransform', () => {
     const pieces = tileWallSegment(
       { start: { x: 0, z: 0 }, end: { x: 0, z: 4 } },

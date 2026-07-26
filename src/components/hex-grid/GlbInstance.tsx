@@ -11,23 +11,23 @@
  * piece this codebase places uses a markedly non-uniform per-axis scale
  * (`wallVariantScale`/`fittingScale`/`DOOR_FRAME_SCALE` all squeeze one
  * axis to fit a hex edge while holding height/thickness at a different
- * ratio). Setting THREE.Object3D.scale to a non-uniform vector relies on
- * the renderer's runtime inverse-transpose normal matrix to keep lighting
- * correct — for this pack's wall/fitting GLBs specifically, that left
- * every such piece rendering as a flat, almost fully black silhouette
- * under the game's actual (non-crypt) default lighting (0.6 ambient / 0.8
- * directional): valid textured MeshStandardMaterial, valid geometry,
- * correctly positioned, but visually unreadable. A/B'd live: switching the
- * SAME instance to a uniform scale immediately restored correct stone/
- * brick shading. Baking the scale into the geometry itself (vertex
- * positions transformed once, normals recomputed from the transformed
- * geometry via `computeVertexNormals`) sidesteps the runtime normal-matrix
- * path entirely and fixes this for every non-uniform-scale caller through
- * this one shared component — not just WallRunMesh's new tiled runs, but
- * SyntyHexWall's existing wall/fitting/door-frame pieces too, which were
- * silently exposed to the same defect (likely masked in crypt by its
- * separately-tinted, deliberately-dark mood lighting, where a too-dark
- * wall reads as "moody" rather than "broken").
+ * ratio). Placing these pieces with that scale on the Object3D itself
+ * (the runtime normal matrix, recomputed by the renderer every frame from
+ * the live model-view matrix) left every such piece rendering as a flat,
+ * almost fully black silhouette under the game's actual (non-crypt)
+ * default lighting (0.6 ambient / 0.8 directional): valid textured
+ * MeshStandardMaterial, valid geometry, correctly positioned, but
+ * visually unreadable. A/B'd live: switching the SAME instance to a
+ * uniform scale immediately restored correct stone/brick shading. Baking
+ * the scale into the geometry itself ONCE, ahead of time (see
+ * `bakedGeometriesFor`'s own doc comment for exactly how normals are
+ * transformed) sidesteps the runtime path entirely and fixes this for
+ * every non-uniform-scale caller through this one shared component — not
+ * just WallRunMesh's new tiled runs, but SyntyHexWall's existing wall/
+ * fitting/door-frame pieces too, which were silently exposed to the same
+ * defect (likely masked in crypt by its separately-tinted, deliberately-
+ * dark mood lighting, where a too-dark wall reads as "moody" rather than
+ * "broken").
  */
 
 import { useGLTF } from '@react-three/drei';
@@ -52,11 +52,36 @@ export const ENV_BASE = '/models/synty/env/';
  */
 const bakedGeometryCache = new Map<string, THREE.BufferGeometry[]>();
 
-/** Baked (scaled + renormaled) geometries for `file` at `(sx, sy, sz)`, one
- * per mesh in `scene`'s own traversal order — cached by that exact key.
- * Callers assign these onto a FRESH `scene.clone(true)`'s own meshes (same
- * traversal order, since clone(true) preserves structure exactly), never
- * mutate them in place. */
+/**
+ * Baked (scaled, exact-normal-transformed) geometries for `file` at
+ * `(sx, sy, sz)`, one per mesh in `scene`'s own traversal order — cached
+ * by that exact key. Callers assign these onto a FRESH `scene.clone(true)`'s
+ * own meshes (same traversal order, since clone(true) preserves structure
+ * exactly), never mutate them in place.
+ *
+ * Review finding (walls-r, PR #608): the original version of this
+ * function called `computeVertexNormals()` after `geometry.scale(...)`,
+ * discarding the pack's AUTHORED normals in favor of ones recomputed from
+ * the (now-scaled) triangle faces — a real risk of flattening intentional
+ * smoothing groups, and a fair question about whether the black-wall fix
+ * this file's own doc comment describes was masking the problem rather
+ * than fixing it at the root. Checked against three.js's own source
+ * (`BufferGeometry.applyMatrix4`, which `.scale()` calls internally):
+ * when a `normal` attribute already exists, `.scale()` transforms it by
+ * the matrix's own normal matrix (`Matrix3.getNormalMatrix` — exactly the
+ * inverse-transpose walls-r described) and renormalizes
+ * (`Vector3.applyNormalMatrix` calls `.normalize()`) — this is ALREADY
+ * the mathematically exact bake, done automatically, using the pack's
+ * real authored normals. `computeVertexNormals()` was pure redundant
+ * (worse: destructive) work sitting on top of an already-correct result.
+ * Removed; `computeVertexNormals()` now runs ONLY as a fallback for the
+ * (unlikely, but not asserted-impossible) case of a mesh with no
+ * authored normal attribute at all, where `.scale()` has nothing to
+ * transform. Live-reverified against the real reference-tomb dungeon
+ * after this change: the wall pieces still render with correct stone/
+ * brick shading — the exact-normal path fixes the defect too, not just
+ * the recompute path.
+ */
 function bakedGeometriesFor(
   scene: THREE.Object3D,
   file: string,
@@ -71,8 +96,11 @@ function bakedGeometriesFor(
   scene.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       const geometry = child.geometry.clone();
+      const hadAuthoredNormals = !!geometry.attributes.normal;
       geometry.scale(sx, sy, sz);
-      geometry.computeVertexNormals();
+      if (!hadAuthoredNormals) {
+        geometry.computeVertexNormals();
+      }
       baked.push(geometry);
     }
   });

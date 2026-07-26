@@ -78,9 +78,22 @@ export interface TiledPiece {
  * instance (never more than half `nominalPieceWidth` either direction,
  * since `count` is the nearest-integer number of nominal-width pieces that
  * fit) rather than a hardcoded assumption that `length` is an exact
- * multiple of it. Zero-length segments (coincident start/end) produce no
- * pieces.
+ * multiple of it. Zero-length AND sub-epsilon (near-zero, floating-point-
+ * noise) segments produce no pieces — review finding (walls-r, PR #608):
+ * an exact `length === 0` check alone lets a tiny nonzero length (e.g.
+ * `1e-12` from upstream geometry rounding, not a real degenerate segment)
+ * through to `pieceWidth`, which then becomes GlbInstance's non-uniform
+ * scale input — an ~0 scale factor on one axis collapses that axis'
+ * triangles to zero area, which can produce NaN/Infinity normals (a
+ * zero-length cross product has no defined direction) that render as a
+ * black silhouette exactly like the defect GlbInstance's own baked-scale
+ * fix (this PR) otherwise resolves. `WALL_RUN_LENGTH_EPSILON` guards this
+ * at the source rather than downstream in GlbInstance, since a segment
+ * this short could never read as a wall segment on screen anyway (it's
+ * geometrically insignificant at world scale, not policy).
  */
+const WALL_RUN_LENGTH_EPSILON = 1e-6;
+
 export function tileWallSegment(
   segment: WallRunSegment,
   nominalPieceWidth: number
@@ -88,7 +101,7 @@ export function tileWallSegment(
   const dx = segment.end.x - segment.start.x;
   const dz = segment.end.z - segment.start.z;
   const length = Math.hypot(dx, dz);
-  if (length === 0) return [];
+  if (length < WALL_RUN_LENGTH_EPSILON) return [];
 
   const count = Math.max(1, Math.round(length / nominalPieceWidth));
   const pieceWidth = length / count;
