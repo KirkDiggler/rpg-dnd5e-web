@@ -238,6 +238,36 @@ export function visibleTurnOrder<T extends { entityId: string }>(
   return turnOrder.filter((entry) => !rememberedEntityIds.has(entry.entityId));
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function rememberedWallRunIds(
+  floorTiles: ReadonlyMap<string, AbsoluteFloorTile>,
+  rememberedFloorHexKeys: ReadonlySet<string> | undefined,
+  walls: ReadonlyArray<Wall>,
+  rememberedWallHexKeys: ReadonlySet<string> | undefined
+): { envelopeRegionIds: Set<string>; connectorDoorIds: Set<string> } {
+  const regionFloorKeys = new Map<string, string[]>();
+  for (const [key, tile] of floorTiles) {
+    if (!tile.roomId) continue;
+    const keys = regionFloorKeys.get(tile.roomId) ?? [];
+    keys.push(key);
+    regionFloorKeys.set(tile.roomId, keys);
+  }
+
+  const envelopeRegionIds = new Set(
+    [...regionFloorKeys].flatMap(([roomId, keys]) =>
+      keys.every((key) => rememberedFloorHexKeys?.has(key)) ? [roomId] : []
+    )
+  );
+  const connectorDoorIds = new Set<string>();
+  for (const wall of walls) {
+    if (!wall.id || !wall.from) continue;
+    const key = `${wall.from.x},${wall.from.y},${wall.from.z}`;
+    if (rememberedWallHexKeys?.has(key)) connectorDoorIds.add(wall.id);
+  }
+
+  return { envelopeRegionIds, connectorDoorIds };
+}
+
 /**
  * Scene component - renders inside the Canvas
  * Separated so we can use React Three Fiber hooks
@@ -298,6 +328,16 @@ function Scene({
         );
       }),
     [walls, rememberedWallHexKeys]
+  );
+  const rememberedRunIds = useMemo(
+    () =>
+      rememberedWallRunIds(
+        floorTiles,
+        rememberedFloorHexKeys,
+        walls,
+        rememberedWallHexKeys
+      ),
+    [floorTiles, rememberedFloorHexKeys, walls, rememberedWallHexKeys]
   );
 
   // Create character lookup map by ID for efficient entity -> character mapping
@@ -767,6 +807,8 @@ function Scene({
           <WallRunMesh
             envelopeRuns={envelopeRuns}
             connectorRuns={connectorRuns}
+            rememberedEnvelopeRegionIds={rememberedRunIds.envelopeRegionIds}
+            rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}
           />
         </ErrorBoundary>
       ) : (

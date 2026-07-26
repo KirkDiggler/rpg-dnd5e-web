@@ -22,7 +22,12 @@ import type {
   EnvelopeRun,
   WallRunSegment,
 } from '@/hooks/wallRuns';
-import { useMemo } from 'react';
+import {
+  CRYPT_MEMORY_COLOR,
+  CRYPT_MEMORY_EMISSIVE,
+  CRYPT_MEMORY_EMISSIVE_INTENSITY,
+  CRYPT_MEMORY_OPACITY,
+} from './sceneKnowledge';
 import { segmentKey, wallRunBoxTransform } from './wallRunMeshHelpers';
 
 /** Placeholder wall thickness (world units) — W3 replaces this box with a
@@ -51,9 +56,11 @@ const FLOOR_SKIRT_HEIGHT = 0.02;
 function WallRunBox({
   segment,
   wallHeight,
+  remembered = false,
 }: {
   segment: WallRunSegment;
   wallHeight: number;
+  remembered?: boolean;
 }) {
   const { position, rotationY, length } = wallRunBoxTransform(segment);
   if (length === 0) return null;
@@ -63,12 +70,29 @@ function WallRunBox({
       rotation={[0, rotationY, 0]}
     >
       <boxGeometry args={[length, wallHeight, WALL_RUN_THICKNESS]} />
-      <meshStandardMaterial color={WALL_RUN_COLOR} />
+      {remembered ? (
+        <meshStandardMaterial
+          color={CRYPT_MEMORY_COLOR}
+          emissive={CRYPT_MEMORY_EMISSIVE}
+          emissiveIntensity={CRYPT_MEMORY_EMISSIVE_INTENSITY}
+          opacity={CRYPT_MEMORY_OPACITY}
+          transparent={false}
+          depthWrite
+        />
+      ) : (
+        <meshStandardMaterial color={WALL_RUN_COLOR} />
+      )}
     </mesh>
   );
 }
 
-function FloorSkirtBox({ segment }: { segment: WallRunSegment }) {
+function FloorSkirtBox({
+  segment,
+  remembered = false,
+}: {
+  segment: WallRunSegment;
+  remembered?: boolean;
+}) {
   const { position, rotationY, length } = wallRunBoxTransform(segment);
   if (length === 0) return null;
   return (
@@ -77,7 +101,18 @@ function FloorSkirtBox({ segment }: { segment: WallRunSegment }) {
       rotation={[0, rotationY, 0]}
     >
       <boxGeometry args={[length, FLOOR_SKIRT_HEIGHT, FLOOR_SKIRT_DEPTH]} />
-      <meshStandardMaterial color={FLOOR_SKIRT_COLOR} />
+      {remembered ? (
+        <meshStandardMaterial
+          color={CRYPT_MEMORY_COLOR}
+          emissive={CRYPT_MEMORY_EMISSIVE}
+          emissiveIntensity={CRYPT_MEMORY_EMISSIVE_INTENSITY}
+          opacity={CRYPT_MEMORY_OPACITY}
+          transparent={false}
+          depthWrite
+        />
+      ) : (
+        <meshStandardMaterial color={FLOOR_SKIRT_COLOR} />
+      )}
     </mesh>
   );
 }
@@ -85,6 +120,8 @@ function FloorSkirtBox({ segment }: { segment: WallRunSegment }) {
 export interface WallRunMeshProps {
   envelopeRuns: EnvelopeRun[];
   connectorRuns: ConnectorRun[];
+  rememberedEnvelopeRegionIds?: ReadonlySet<string>;
+  rememberedConnectorDoorIds?: ReadonlySet<string>;
   /** Wall height, world units — defaults to the game's standard
    * WALL_HEIGHT (calibrationConstants.ts) so this matches every other
    * wall renderer without callers having to pass it explicitly. */
@@ -102,27 +139,41 @@ const DEFAULT_WALL_HEIGHT = 0.8; // matches calibrationConstants.WALL_HEIGHT
 export function WallRunMesh({
   envelopeRuns,
   connectorRuns,
+  rememberedEnvelopeRegionIds,
+  rememberedConnectorDoorIds,
   wallHeight = DEFAULT_WALL_HEIGHT,
 }: WallRunMeshProps) {
-  const connectorSegments = useMemo(
-    () => connectorRuns.flatMap((run) => run.segments),
-    [connectorRuns]
-  );
-
   return (
     <>
       {envelopeRuns.map((run) => (
         <group key={`${run.regionId}-${run.side}`}>
-          <WallRunBox segment={run} wallHeight={wallHeight} />
-          <FloorSkirtBox segment={run} />
+          <WallRunBox
+            segment={run}
+            wallHeight={wallHeight}
+            remembered={rememberedEnvelopeRegionIds?.has(run.regionId)}
+          />
+          <FloorSkirtBox
+            segment={run}
+            remembered={rememberedEnvelopeRegionIds?.has(run.regionId)}
+          />
         </group>
       ))}
-      {connectorSegments.map((segment) => (
-        <group key={segmentKey(segment)}>
-          <WallRunBox segment={segment} wallHeight={wallHeight} />
-          <FloorSkirtBox segment={segment} />
-        </group>
-      ))}
+      {connectorRuns.flatMap((run) =>
+        run.segments.map((segment) => {
+          const remembered =
+            !!run.doorId && rememberedConnectorDoorIds?.has(run.doorId);
+          return (
+            <group key={segmentKey(segment)}>
+              <WallRunBox
+                segment={segment}
+                wallHeight={wallHeight}
+                remembered={remembered}
+              />
+              <FloorSkirtBox segment={segment} remembered={remembered} />
+            </group>
+          );
+        })
+      )}
     </>
   );
 }

@@ -1,6 +1,8 @@
 import type { ConnectorRun, EnvelopeRun } from '@/hooks/wallRuns';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
 import { WallRunMesh } from './WallRunMesh';
 
 describe('WallRunMesh R3F scene', () => {
@@ -65,4 +67,95 @@ describe('WallRunMesh R3F scene', () => {
     const meshes = renderer.scene.findAll((node) => node.type === 'Mesh');
     expect(meshes).toHaveLength(0);
   });
+
+  it('uses crypt materials for a remembered envelope wall and skirt', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[
+          {
+            regionId: 'remembered-room',
+            side: 'left',
+            start: { x: 0, z: 0 },
+            end: { x: 0, z: 4 },
+          },
+        ]}
+        connectorRuns={[]}
+        rememberedEnvelopeRegionIds={new Set(['remembered-room'])}
+      />
+    );
+
+    expectCryptMaterials(renderer);
+  });
+
+  it('uses crypt materials for a remembered connector wall and skirt', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[]}
+        connectorRuns={[
+          {
+            doorId: 'remembered-door',
+            regionAId: 'a',
+            regionBId: 'b',
+            segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 4 } }],
+            coveredRows: { minRow: 0, maxRow: 4 },
+          },
+        ]}
+        rememberedConnectorDoorIds={new Set(['remembered-door'])}
+      />
+    );
+
+    expectCryptMaterials(renderer);
+  });
+
+  it('keeps live runs on their existing placeholder colors', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[
+          {
+            regionId: 'live-room',
+            side: 'left',
+            start: { x: 0, z: 0 },
+            end: { x: 0, z: 4 },
+          },
+        ]}
+        connectorRuns={[]}
+      />
+    );
+    const materials = materialsFor(renderer);
+
+    expect(materials.map((material) => material.color.getHexString())).toEqual([
+      '5b5f66',
+      '3a3630',
+    ]);
+  });
 });
+
+function materialsFor(renderer: {
+  scene: {
+    findAll: (predicate: (node: { type: string }) => boolean) => unknown[];
+  };
+}): THREE.MeshStandardMaterial[] {
+  return renderer.scene
+    .findAll((node) => node.type === 'Mesh')
+    .map(
+      (node) =>
+        (node as { instance: { material: THREE.MeshStandardMaterial } })
+          .instance.material
+    );
+}
+
+function expectCryptMaterials(renderer: {
+  scene: {
+    findAll: (predicate: (node: { type: string }) => boolean) => unknown[];
+  };
+}) {
+  const materials = materialsFor(renderer);
+  expect(materials).toHaveLength(2);
+  for (const material of materials) {
+    expect(material.color.getHex()).toBe(CRYPT_MEMORY_COLOR.getHex());
+    expect(material.transparent).toBe(false);
+    expect(material.depthWrite).toBe(true);
+    expect(material.emissive.getHexString()).toBe('111923');
+    expect(material.emissiveIntensity).toBe(0.08);
+  }
+}
