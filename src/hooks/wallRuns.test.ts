@@ -21,6 +21,7 @@ import {
   cubeToWorld,
   HEX_SIZE,
   type CubeCoord,
+  type WorldPos,
 } from '@/components/hex-grid/hexMath';
 import { describe, expect, it } from 'vitest';
 import {
@@ -176,12 +177,22 @@ describe('computeWallRuns — reference-tomb-shaped fixture (3 rooms, 2 connecto
     );
 
     // Zero-tolerance exact match, isolating "did it find the true
-    // column/row extent" from the extension/offset dial entirely.
+    // column/row extent" from the offset/corner-overlap dials entirely.
+    // Round-2 W3/W4 finding: envelope runs' endpoints now extend to
+    // reach their own corner's EXACT position (computed from BOTH
+    // adjacent sides' own offset lines), so top/bottom's offset must
+    // also be zeroed here — otherwise the corner itself sits away from
+    // the raw hex corner (pulled by top/bottom's own nonzero offset),
+    // and reaching it exactly would no longer land left/right's endpoint
+    // on the raw point either. This coupling (a side's endpoint position
+    // depending on the ADJACENT side's offset too) is intentional and new
+    // this round — see envelopeCornerOverlapMargin's own doc comment.
     const zeroed = computeWallRuns({
       regions,
       doors: [],
-      cornerExtension: 0,
       envelopeOffsetLeftRight: 0,
+      envelopeOffsetTopBottom: 0,
+      envelopeCornerOverlapMargin: 0,
     });
     const hallLeftZeroed = zeroed.envelopeRuns.find(
       (r) => r.regionId === 'hall' && r.side === 'left'
@@ -197,13 +208,15 @@ describe('computeWallRuns — reference-tomb-shaped fixture (3 rooms, 2 connecto
     // Nonzero offset: both sides translate outward (away from hall's own
     // center) by EXACTLY `envelopeOffsetLeftRight` world units — a real
     // check of magnitude, not merely "distance > 0" (which holds for any
-    // output).
+    // output). Top/bottom offset and the corner-overlap margin stay
+    // zeroed so only left/right's own offset contributes to the shift.
     const envelopeOffsetLeftRight = 1.23;
     const offsetResult = computeWallRuns({
       regions,
       doors: [],
-      cornerExtension: 0,
       envelopeOffsetLeftRight,
+      envelopeOffsetTopBottom: 0,
+      envelopeCornerOverlapMargin: 0,
     });
     const hallLeftOffset = offsetResult.envelopeRuns.find(
       (r) => r.regionId === 'hall' && r.side === 'left'
@@ -211,13 +224,35 @@ describe('computeWallRuns — reference-tomb-shaped fixture (3 rooms, 2 connecto
     const hallRightOffset = offsetResult.envelopeRuns.find(
       (r) => r.regionId === 'hall' && r.side === 'right'
     )!;
-    const leftShift = Math.hypot(
-      hallLeftOffset.start.x - topLeft.x,
-      hallLeftOffset.start.z - topLeft.z
+    // Round-2 W3/W4 finding: with the corner-overlap margin zeroed, an
+    // endpoint's distance from the raw corner still isn't PURELY the
+    // offset — reaching the corner's own (offset-shifted) exact
+    // intersection point adds a small second-order distance ALONG the
+    // line too (since 'left's line shifting outward moves where it
+    // crosses 'top's un-shifted line). Perpendicular distance from the
+    // raw point to the run's LINE isolates the offset cleanly: offset
+    // shifts the whole line; reaching-the-corner only moves the endpoint
+    // ALONG that already-shifted line, which doesn't change how far the
+    // raw point sits from the line itself.
+    const perpDistanceToLine = (
+      point: WorldPos,
+      lineStart: WorldPos,
+      lineEnd: WorldPos
+    ): number => {
+      const dir = { x: lineEnd.x - lineStart.x, z: lineEnd.z - lineStart.z };
+      const len = Math.hypot(dir.x, dir.z);
+      const toPoint = { x: point.x - lineStart.x, z: point.z - lineStart.z };
+      return Math.abs(dir.x * toPoint.z - dir.z * toPoint.x) / len;
+    };
+    const leftShift = perpDistanceToLine(
+      topLeft,
+      hallLeftOffset.start,
+      hallLeftOffset.end
     );
-    const rightShift = Math.hypot(
-      hallRightOffset.start.x - topRight.x,
-      hallRightOffset.start.z - topRight.z
+    const rightShift = perpDistanceToLine(
+      topRight,
+      hallRightOffset.start,
+      hallRightOffset.end
     );
     expect(leftShift).toBeCloseTo(envelopeOffsetLeftRight, 9);
     expect(rightShift).toBeCloseTo(envelopeOffsetLeftRight, 9);
@@ -566,9 +601,9 @@ describe('computeWallRuns — boss-room fixture (full-width open doorRow must NO
     const result = computeWallRuns({
       regions: [bossRegion],
       doors: [],
-      cornerExtension: 0,
       envelopeOffsetTopBottom: 0,
       envelopeOffsetLeftRight: 0,
+      envelopeCornerOverlapMargin: 0,
     });
     expect(result.envelopeRuns).toHaveLength(4);
 
@@ -603,15 +638,20 @@ describe('computeWallRuns — boss-room fixture (full-width open doorRow must NO
     expect(bottom.end).toEqual(bottomRight);
   });
 
-  it('top/bottom span length equals the true corner-to-corner distance plus exactly 2x cornerExtension — an exact expected value, not just a >= inequality that any non-shrinking implementation would satisfy', () => {
-    const cornerExtension = 0.37;
+  it('top/bottom span length equals the true corner-to-corner distance plus exactly 2x envelopeCornerOverlapMargin — an exact expected value, not just a >= inequality that any non-shrinking implementation would satisfy', () => {
+    // Round-2 W3/W4 finding: envelope corners now reach their own exact
+    // intersection point (0 extra distance when offsets are zeroed, since
+    // the corner then coincides with the raw hex corner) plus this small
+    // overlap margin — cornerExtension (still a real input) no longer
+    // affects envelope runs at all, only connector runs.
+    const envelopeCornerOverlapMargin = 0.37;
     const result = computeWallRuns({
       regions: [bossRegion],
       doors: [],
-      cornerExtension,
+      envelopeCornerOverlapMargin,
       // envelopeOffset only translates both endpoints by the same
       // vector, so it never affects span length — 0 keeps this test
-      // focused on cornerExtension alone.
+      // focused on the corner-overlap margin alone.
       envelopeOffsetTopBottom: 0,
       envelopeOffsetLeftRight: 0,
     });
@@ -635,8 +675,11 @@ describe('computeWallRuns — boss-room fixture (full-width open doorRow must NO
       bottom.end.x - bottom.start.x,
       bottom.end.z - bottom.start.z
     );
-    expect(topSpan).toBeCloseTo(fullSpan + 2 * cornerExtension, 9);
-    expect(bottomSpan).toBeCloseTo(fullSpan + 2 * cornerExtension, 9);
+    expect(topSpan).toBeCloseTo(fullSpan + 2 * envelopeCornerOverlapMargin, 9);
+    expect(bottomSpan).toBeCloseTo(
+      fullSpan + 2 * envelopeCornerOverlapMargin,
+      9
+    );
   });
 });
 
@@ -776,6 +819,63 @@ describe('computeWallRuns — envelope corners (W3, PR-B: Kirk\'s #1 prod-screen
   it('an empty region list produces no corners', () => {
     const result = computeWallRuns({ regions: [], doors: [] });
     expect(result.envelopeCorners).toHaveLength(0);
+  });
+
+  it('each corner-adjacent endpoint sits EXACTLY envelopeCornerOverlapMargin past the true corner intersection — not a flat hex-radii guess (round-2 W3/W4 regression: "trim the corner overshoot", superseding the first-attempt flat cornerExtension bump that overshot at some corners while barely reaching others)', () => {
+    const { regions } = referenceTombFixture();
+    const margin = 0.2;
+    const result = computeWallRuns({
+      regions,
+      doors: [],
+      envelopeCornerOverlapMargin: margin,
+    });
+    const hallLeft = result.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'left'
+    )!;
+    const hallTop = result.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'top'
+    )!;
+    const hallTopLeftCorner = result.envelopeCorners.find(
+      (c) => c.regionId === 'hall' && c.corner === 'topLeft'
+    )!;
+
+    // hall's 'left' and 'top' sides meet at ~93.7 degrees (verified in the
+    // test above, not 90) — a flat distance applied to both would overshoot
+    // one and undershoot the other. Each side's own endpoint distance from
+    // the SAME shared corner is exactly the margin regardless.
+    expect(
+      Math.hypot(
+        hallLeft.start.x - hallTopLeftCorner.position.x,
+        hallLeft.start.z - hallTopLeftCorner.position.z
+      )
+    ).toBeCloseTo(margin, 9);
+    expect(
+      Math.hypot(
+        hallTop.start.x - hallTopLeftCorner.position.x,
+        hallTop.start.z - hallTopLeftCorner.position.z
+      )
+    ).toBeCloseTo(margin, 9);
+  });
+
+  it('with envelopeCornerOverlapMargin zeroed, a corner-adjacent endpoint lands EXACTLY on the corner — a hairline seam, never a gap, even with zero margin', () => {
+    const { regions } = referenceTombFixture();
+    const result = computeWallRuns({
+      regions,
+      doors: [],
+      envelopeCornerOverlapMargin: 0,
+    });
+    const hallLeft = result.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'left'
+    )!;
+    const hallTopLeftCorner = result.envelopeCorners.find(
+      (c) => c.regionId === 'hall' && c.corner === 'topLeft'
+    )!;
+    // toBeCloseTo, not toEqual: reaching the corner via a distance-based
+    // extension (sqrt/division) accumulates ~1e-15 floating-point noise
+    // relative to the corner's own line-intersection computation — both
+    // exact by construction, just not bit-identical.
+    expect(hallLeft.start.x).toBeCloseTo(hallTopLeftCorner.position.x, 9);
+    expect(hallLeft.start.z).toBeCloseTo(hallTopLeftCorner.position.z, 9);
   });
 });
 

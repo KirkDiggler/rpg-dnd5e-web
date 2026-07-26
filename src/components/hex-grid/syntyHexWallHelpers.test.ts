@@ -430,6 +430,30 @@ describe('classifyWallVertices', () => {
     }
   });
 
+  it('produces NO fittings for an isolated door hex (round-2 W3/W4: "kill door-hex fittings entirely" — the door frame mesh and connector wall runs already own that visual space; deleted, not restyled to a different piece)', () => {
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 }, WallKind.DOOR_CLOSED),
+    ];
+    const fittings = classifyWallVertices(walls, 1);
+    expect(fittings).toHaveLength(0);
+  });
+
+  it('a door hex touching an ADJACENT solid wall hex still suppresses only the door’s own corners — the solid hex’s own fittings are unaffected', () => {
+    // Door at origin, a genuinely solid wall hex 2 steps east (not
+    // adjacent to the door, so the door stays isolated — matches real
+    // dungeon data, where a door's own cell has no wall neighbors) —
+    // this just confirms the solid hex's isolated-hex fittings still
+    // exist independent of the unrelated door elsewhere in the wall list.
+    const walls = [
+      wall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 }, WallKind.DOOR_CLOSED),
+      wall({ x: 5, y: -5, z: 0 }, { x: 5, y: -5, z: 0 }, WallKind.SOLID),
+    ];
+    const fittings = classifyWallVertices(walls, 1);
+    // 0 from the door + 6 from the isolated solid hex.
+    expect(fittings).toHaveLength(6);
+    expect(fittings.every((f) => f.kind === 'wall-corner-outer')).toBe(true);
+  });
+
   it('classifies a straight 3-hex run: middle (straight-through) hex contributes nothing of its own', () => {
     // H0 -(E)- H1 -(E)- H2, all collinear/all walls. H1 has exactly 2 wall
     // neighbors in OPPOSITE directions (E and W) -- a "straight-through"

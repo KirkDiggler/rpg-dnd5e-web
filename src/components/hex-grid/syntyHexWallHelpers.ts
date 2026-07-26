@@ -726,6 +726,22 @@ export function classifyWallVertices(
   const seenVertexKeys = new Set<string>();
 
   for (const hexKey of wallKindByHex.keys()) {
+    // Round-2 W3/W4 finding (Kirk's live walk: the door-hex "6 mitered
+    // corners" decoration this loop places around every ISOLATED wall
+    // hex is exactly what turned every door into a stack of wafer-thin
+    // cards once the corner-fitting family got remapped to a panel
+    // piece — still clutter, just a different visual defect). A door's
+    // own cell is a wall hex purely so segment-building/corner
+    // classification know it blocks a boundary edge (collectWallHexes'
+    // own doc comment); it is NOT meant to read as a decorated corner
+    // post — the door frame mesh (rendered separately, see
+    // isDoorWallKind's other call site in this file) and the connector
+    // wall runs either side of it already own that visual space.
+    // Decision: an isolated door hex gets NO corner fittings at all —
+    // deleted, not restyled. A non-door wall hex's own vertices are
+    // unaffected (this only skips a hex whose OWN kind is a door).
+    if (isDoorWallKind(wallKindByHex.get(hexKey)!)) continue;
+
     const hex = parseHexKey(hexKey);
     const hexCenter = cubeToWorld(hex, hexSize);
     const corners = hexCorners(hexCenter, hexSize);

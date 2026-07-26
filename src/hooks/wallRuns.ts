@@ -229,33 +229,70 @@ export interface WallRunsInput {
    */
   envelopeOffsetLeftRight?: number;
   /**
-   * How far a run's endpoints extend past the outermost boundary hex's
-   * own center, along the run's direction — reaches toward the hex's true
-   * outer face/corner instead of stopping dead-center on the last hex.
-   *
-   * Round-2 W3/W4 finding (Kirk's live walk: "the corners still look like
-   * 2 stacks of tile shaped thingers"): the dedicated corner-fitting GLBs
-   * (`SM_Env_Wall_End_Coner_Outer_01` etc.) are correctly-converted tall
-   * narrow corner posts, but the wall role's fit squash (~6x Y-compression
-   * to reach WALL_HEIGHT) reduces their faceted brick relief to a
-   * "stacked wafer" look that panel-shaped pieces don't suffer from —
-   * verdict recorded in rpg-game-assets' env-role-map fittings notes
-   * (PR #33, merged: post-shaped pieces don't survive the wall squash;
-   * don't map them to wall roles) and this repo's WallRunMesh doc
-   * comment. This is PERMANENT, not interim — no re-conversion of this
-   * family is coming. Rather than adopt a different GLB for that
-   * slot, this default was raised (from half a hex radius) far enough
-   * that two perpendicular runs' own extended ends visually overlap past
-   * the true corner (`EnvelopeCorner`'s own line-intersection point) and
-   * self-cover the joint — the standard modular-kit "overlap-miter"
-   * cheat, picked over a small stand-in panel piece after a live
-   * side-by-side comparison at the same corner. Verified this doesn't
-   * reopen the door-intrusion fix from a different axis: measured the
-   * extended top-left corner's perpendicular distance to its nearest
-   * connector column stays deep on the safe side (~-0.39 world units) at
-   * this value.
+   * How far a CONNECTOR run's own far endpoint (the end away from the
+   * door, toward the row boundary it shares with the adjacent rooms'
+   * envelope corners) extends past that boundary hex's own center, along
+   * the run's direction — reaches toward the hex's true outer
+   * face/corner instead of stopping dead-center on the last hex.
+   * Defaults to half a hex radius. Envelope runs no longer use this
+   * parameter at all — see `envelopeCornerOverlapMargin`'s doc comment
+   * for why they need a geometrically exact reach instead of a flat
+   * additive distance.
    */
   cornerExtension?: number;
+  /**
+   * How far PAST the exact envelope-corner intersection
+   * (`EnvelopeCorner`'s own line-intersection point) each of a room's 4
+   * envelope runs extends, so two perpendicular runs visually overlap
+   * and self-cover the joint — the standard modular-kit "overlap-miter"
+   * cheat.
+   *
+   * Round-2 W3/W4 finding (Kirk's live walk: "the corners still look
+   * like 2 stacks of tile shaped thingers", then later: "trim the
+   * corner overshoot" once a flat-distance approach was tried first):
+   * the dedicated corner-fitting GLBs (`SM_Env_Wall_End_Coner_Outer_01`
+   * etc.) are correctly-converted tall narrow corner posts, but the
+   * wall role's fit squash (~6x Y-compression to reach WALL_HEIGHT)
+   * reduces their faceted brick relief to a "stacked wafer" look that
+   * panel-shaped pieces don't suffer from — verdict recorded in
+   * rpg-game-assets' env-role-map fittings notes (PR #33, merged:
+   * post-shaped pieces don't survive the wall squash; don't map them to
+   * wall roles) and this repo's WallRunMesh doc comment. This is
+   * PERMANENT, not interim — no re-conversion of this family is coming.
+   *
+   * First attempt (superseded): a single flat additive distance applied
+   * to EVERY run endpoint uniformly (like the old `cornerExtension`
+   * everywhere), tuned by eye at one corner. This overshot visibly at a
+   * DIFFERENT corner (Kirk: "bottom-right of the entrance") because a
+   * flat distance is geometrically wrong — how far a given endpoint
+   * actually is from ITS OWN corner (`EnvelopeCorner.position`, computed
+   * via genuine line-intersection) varies per corner/room (rooms' actual
+   * corner angles measure ~93.7 degrees, not a clean 90 — see
+   * EnvelopeCorner's own doc comment), so a flat distance is exactly
+   * right for at most one corner and wrong (too short or too long) for
+   * every other one.
+   *
+   * The fix: each envelope run's endpoint now extends by EXACTLY the
+   * distance to its own corner's true intersection point (computed from
+   * the offset-only, zero-extension lines first — `EnvelopeCorner`'s
+   * position doesn't depend on extension at all, since a line's
+   * direction/position is unaffected by how far along it a segment's
+   * endpoint reaches), and `envelopeCornerOverlapMargin` is ONLY the
+   * small amount ADDED on top of that exact reach — no longer a
+   * from-scratch distance estimate. This margin exists because reaching
+   * the corner exactly makes both runs' CENTERLINES cross there, but
+   * each run's own rendered THICKNESS still needs to reach a little past
+   * that crossing point for the OTHER run's footprint to fully enclose
+   * this run's end-cap (otherwise a sliver of the end-cap peeks out
+   * unenclosed) — so the needed margin is on the order of half the
+   * wall piece's own rendered depth, not a fraction of a hex radius.
+   * Defaults to `DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN` (~half of
+   * `SM_Env_Wall_Half_01`'s rendered thickness, ~0.327 world units at
+   * this game's SYNTY_SCALE). A caller wanting zero risk of any
+   * poke-through at all can pass 0 here — the exact-reach component
+   * alone still closes the joint to a hairline seam, never a gap.
+   */
+  envelopeCornerOverlapMargin?: number;
 }
 
 /**
@@ -436,25 +473,27 @@ function lineIntersection(
 }
 
 /** Extend + offset a raw corner-to-corner line into its final envelope
- * run: push both ends outward along the run's own direction by
- * `cornerExtension` (reach toward the true corner, not the last hex's
- * center), then translate the whole segment along the outward normal by
+ * run: push each end outward along the run's own direction by its own
+ * (independent — see envelopeGeometryForRegion's own doc comment for why
+ * `startExtension`/`endExtension` generally differ) extension distance,
+ * then translate the whole segment along the outward normal by
  * `envelopeOffset` (the clip-clearance dial). */
 function buildEnvelopeSegment(
   rawStart: WorldPos,
   rawEnd: WorldPos,
   roomCenter: WorldPos,
-  cornerExtension: number,
+  startExtension: number,
+  endExtension: number,
   envelopeOffset: number
 ): WallRunSegment & { facing: WorldPos } {
   const dir = unitDirection(rawStart, rawEnd);
   const extendedStart: WorldPos = {
-    x: rawStart.x - dir.x * cornerExtension,
-    z: rawStart.z - dir.z * cornerExtension,
+    x: rawStart.x - dir.x * startExtension,
+    z: rawStart.z - dir.z * startExtension,
   };
   const extendedEnd: WorldPos = {
-    x: rawEnd.x + dir.x * cornerExtension,
-    z: rawEnd.z + dir.z * cornerExtension,
+    x: rawEnd.x + dir.x * endExtension,
+    z: rawEnd.z + dir.z * endExtension,
   };
   const mid: WorldPos = {
     x: (extendedStart.x + extendedEnd.x) / 2,
@@ -531,11 +570,27 @@ const DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES = Math.sqrt(3);
  */
 const DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES = 1.0;
 
-// Round-2 W3/W4 finding — see WallRunsInput.cornerExtension's own doc
-// comment for the full "overlap-miter instead of a corner-fitting GLB"
-// writeup. Was 0.5 (half a hex radius); doubled so adjacent runs overlap
-// past the true corner rather than just reaching it.
-const DEFAULT_CORNER_EXTENSION_HEXES = 1.0;
+// Connector runs only now (envelope corners use
+// DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN instead — see
+// WallRunsInput.envelopeCornerOverlapMargin's own doc comment). Back to
+// its original 0.5 (half a hex radius): the round-2 bump to 1.0 was
+// specifically for envelope corners (superseded by the exact-reach fix
+// below) and was never reported as a problem for connector runs, so
+// there's no reason to carry that bump over to them.
+const DEFAULT_CORNER_EXTENSION_HEXES = 0.5;
+
+/**
+ * See WallRunsInput.envelopeCornerOverlapMargin's own doc comment for
+ * the full derivation. ~Half of `SM_Env_Wall_Half_01`'s rendered
+ * thickness at this game's SYNTY_SCALE (0.4357 raw depth * 0.75 = 0.327
+ * world units; half of that is 0.1635, rounded to 0.16) — enough for the
+ * OTHER run's own footprint to enclose this run's end-cap once both
+ * runs reach their shared corner exactly, without adding enough extra
+ * distance to poke visibly past it. NOT scaled by hexSize (unlike every
+ * other geometry constant in this file) — it's derived from rendered
+ * wall THICKNESS, which has nothing to do with hex size.
+ */
+const DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN = 0.16;
 
 /**
  * The four envelope runs (left/right/top/bottom) AND the four envelope
@@ -551,7 +606,7 @@ function envelopeGeometryForRegion(
   hexSize: number,
   envelopeOffsetTopBottom: number,
   envelopeOffsetLeftRight: number,
-  cornerExtension: number
+  envelopeCornerOverlapMargin: number
 ): { runs: EnvelopeRun[]; corners: EnvelopeCorner[] } {
   const bounds = boundsOf(region.hexes);
   if (!bounds) return { runs: [], corners: [] };
@@ -573,48 +628,64 @@ function envelopeGeometryForRegion(
   // Left/right and top/bottom get their OWN offset (see
   // DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES's doc comment for why a
   // single shared value overshot into the neighboring connector on
-  // left/right specifically).
+  // left/right specifically). `cornerAtStart`/`cornerAtEnd` record which
+  // of the 4 corners each endpoint (`a`/`b`) belongs to — needed below to
+  // look up that corner's own exact position once it's computed.
   const sides: Array<{
     side: EnvelopeSide;
     a: WorldPos;
     b: WorldPos;
     offset: number;
+    cornerAtStart: EnvelopeCorner['corner'];
+    cornerAtEnd: EnvelopeCorner['corner'];
   }> = [
     {
       side: 'left',
       a: topLeft,
       b: bottomLeft,
       offset: envelopeOffsetLeftRight,
+      cornerAtStart: 'topLeft',
+      cornerAtEnd: 'bottomLeft',
     },
     {
       side: 'right',
       a: topRight,
       b: bottomRight,
       offset: envelopeOffsetLeftRight,
+      cornerAtStart: 'topRight',
+      cornerAtEnd: 'bottomRight',
     },
-    { side: 'top', a: topLeft, b: topRight, offset: envelopeOffsetTopBottom },
+    {
+      side: 'top',
+      a: topLeft,
+      b: topRight,
+      offset: envelopeOffsetTopBottom,
+      cornerAtStart: 'topLeft',
+      cornerAtEnd: 'topRight',
+    },
     {
       side: 'bottom',
       a: bottomLeft,
       b: bottomRight,
       offset: envelopeOffsetTopBottom,
+      cornerAtStart: 'bottomLeft',
+      cornerAtEnd: 'bottomRight',
     },
   ];
 
-  const runs = sides.map(({ side, a, b, offset }) => ({
-    regionId: region.id,
+  // Pass 1: offset-only (zero extension) lines, purely to derive each
+  // corner's EXACT position via line-intersection. A line's direction
+  // and position don't depend on how far along it a segment's endpoint
+  // reaches, so these corner positions are identical to what pass 2
+  // below would compute even after real extension is applied — this
+  // pass exists only so pass 2 can know, in advance, exactly how far
+  // each endpoint needs to reach.
+  const zeroExtRuns = sides.map(({ side, a, b, offset }) => ({
     side,
-    ...buildEnvelopeSegment(a, b, center, cornerExtension, offset),
+    ...buildEnvelopeSegment(a, b, center, 0, 0, offset),
   }));
-  const runBySide = new Map(runs.map((run) => [run.side, run]));
+  const zeroExtBySide = new Map(zeroExtRuns.map((run) => [run.side, run]));
 
-  // Miter-join corners (EnvelopeCorner's own doc comment has the full
-  // derivation, including the earlier flawed "assume 90 degrees" attempt
-  // this replaced): each corner is the actual line-line intersection of
-  // its two adjacent sides' own already-built (extended + offset) runs —
-  // correct for whatever the true angle between them is, no assumption
-  // needed. Falls back to the raw (un-offset) corner point in the
-  // unreachable-for-real-data parallel case, rather than throwing.
   const cornerPairs: Array<{
     corner: EnvelopeCorner['corner'];
     rawPoint: WorldPos;
@@ -636,9 +707,10 @@ function envelopeGeometryForRegion(
       sideB: 'bottom',
     },
   ];
-  const corners = cornerPairs.map(({ corner, rawPoint, sideA, sideB }) => {
-    const runA = runBySide.get(sideA)!;
-    const runB = runBySide.get(sideB)!;
+  const cornerPositions = new Map<EnvelopeCorner['corner'], WorldPos>();
+  for (const { corner, rawPoint, sideA, sideB } of cornerPairs) {
+    const runA = zeroExtBySide.get(sideA)!;
+    const runB = zeroExtBySide.get(sideB)!;
     const dirA: WorldPos = {
       x: runA.end.x - runA.start.x,
       z: runA.end.z - runA.start.z,
@@ -647,8 +719,43 @@ function envelopeGeometryForRegion(
       x: runB.end.x - runB.start.x,
       z: runB.end.z - runB.start.z,
     };
-    const position =
-      lineIntersection(runA.start, dirA, runB.start, dirB) ?? rawPoint;
+    cornerPositions.set(
+      corner,
+      lineIntersection(runA.start, dirA, runB.start, dirB) ?? rawPoint
+    );
+  }
+
+  // Pass 2: real runs. Each endpoint extends by the EXACT distance to
+  // its own corner's true position (a genuine per-corner measurement,
+  // not an assumed flat distance — see envelopeCornerOverlapMargin's own
+  // doc comment for why a flat distance visibly overshot at some corners
+  // while barely reaching others), plus the small overlap margin.
+  const runs = sides.map(
+    ({ side, a, b, offset, cornerAtStart, cornerAtEnd }) => {
+      const zeroExt = zeroExtBySide.get(side)!;
+      const startExtension =
+        distance(zeroExt.start, cornerPositions.get(cornerAtStart)!) +
+        envelopeCornerOverlapMargin;
+      const endExtension =
+        distance(zeroExt.end, cornerPositions.get(cornerAtEnd)!) +
+        envelopeCornerOverlapMargin;
+      return {
+        regionId: region.id,
+        side,
+        ...buildEnvelopeSegment(
+          a,
+          b,
+          center,
+          startExtension,
+          endExtension,
+          offset
+        ),
+      };
+    }
+  );
+
+  const corners = cornerPairs.map(({ corner }) => {
+    const position = cornerPositions.get(corner)!;
     const rotationY = Math.atan2(
       -(position.z - center.z),
       position.x - center.x
@@ -820,6 +927,8 @@ export function computeWallRuns(input: WallRunsInput): WallRunsResult {
     DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES * hexSize;
   const cornerExtension =
     input.cornerExtension ?? DEFAULT_CORNER_EXTENSION_HEXES * hexSize;
+  const envelopeCornerOverlapMargin =
+    input.envelopeCornerOverlapMargin ?? DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN;
 
   const envelopeRuns: EnvelopeRun[] = [];
   const envelopeCorners: EnvelopeCorner[] = [];
@@ -830,7 +939,7 @@ export function computeWallRuns(input: WallRunsInput): WallRunsResult {
       hexSize,
       envelopeOffsetTopBottom,
       envelopeOffsetLeftRight,
-      cornerExtension
+      envelopeCornerOverlapMargin
     );
     envelopeRuns.push(...geometry.runs);
     envelopeCorners.push(...geometry.corners);
