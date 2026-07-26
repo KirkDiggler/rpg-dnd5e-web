@@ -1,6 +1,6 @@
 import type { AttackResolved } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { useReducedMotion } from 'framer-motion';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { DiceTray, type DiceTrayPhase } from '../../ui/dice/DiceTray';
 import { BeatStage } from './BeatStage';
 import { type BeatSequence, verdictLabel } from './beatStageTypes';
@@ -43,10 +43,21 @@ export function CombatPresentation({
     [item]
   );
   const seq = useBeatSequencer(sequence, { reducedMotion });
+  const previousItemRef = useRef(item);
+  const completedItemRef = useRef<CombatPresentationAttack>();
 
   useEffect(() => {
-    if (seq.beat === 'done') onComplete(item.id);
-  }, [item.id, onComplete, seq.beat]);
+    // A new item first renders with the previous sequencer beat. Wait for its
+    // sequence reset before allowing that item to complete.
+    if (previousItemRef.current !== item) {
+      previousItemRef.current = item;
+      return;
+    }
+    if (seq.beat === 'done' && completedItemRef.current !== item) {
+      completedItemRef.current = item;
+      onComplete(item.id);
+    }
+  }, [item, onComplete, seq.beat]);
 
   const outcome = ['verdict', 'impact', 'release'].includes(seq.beat)
     ? verdictLabel(item.attack)

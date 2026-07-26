@@ -50,6 +50,67 @@ describe('CombatPresentation', () => {
     expect(complete).toHaveBeenCalledWith(7);
   });
 
+  it('does not complete a newly swapped item until its own sequence finishes', () => {
+    const complete = vi.fn();
+    const firstItem = item();
+    const secondItem = { ...item(), id: 8 };
+    const { rerender } = render(
+      <CombatPresentation item={firstItem} onComplete={complete} />
+    );
+    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    act(() =>
+      vi.advanceTimersByTime(
+        CINEMATIC.throw +
+          CINEMATIC.verdict +
+          CINEMATIC.impact +
+          CINEMATIC.release
+      )
+    );
+    expect(complete).toHaveBeenCalledExactlyOnceWith(7);
+
+    rerender(<CombatPresentation item={secondItem} onComplete={complete} />);
+
+    expect(complete).toHaveBeenCalledExactlyOnceWith(7);
+    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    act(() =>
+      vi.advanceTimersByTime(
+        CINEMATIC.throw +
+          CINEMATIC.verdict +
+          CINEMATIC.impact +
+          CINEMATIC.release
+      )
+    );
+    expect(complete).toHaveBeenLastCalledWith(8);
+  });
+
+  it('completes an item only once when onComplete changes after done', () => {
+    const initialComplete = vi.fn();
+    const replacementComplete = vi.fn();
+    const attack = item();
+    const { rerender } = render(
+      <CombatPresentation item={attack} onComplete={initialComplete} />
+    );
+    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    act(() =>
+      vi.advanceTimersByTime(
+        CINEMATIC.throw +
+          CINEMATIC.verdict +
+          CINEMATIC.impact +
+          CINEMATIC.release
+      )
+    );
+    expect(initialComplete).toHaveBeenCalledExactlyOnceWith(7);
+
+    rerender(
+      <CombatPresentation item={attack} onComplete={replacementComplete} />
+    );
+
+    expect(replacementComplete).not.toHaveBeenCalled();
+  });
+
   it('auto-throws after the existing timeout', () => {
     render(<CombatPresentation item={item()} onComplete={() => {}} />);
     act(() => vi.advanceTimersByTime(CINEMATIC.cue + AUTO_THROW_TIMEOUT_MS));
