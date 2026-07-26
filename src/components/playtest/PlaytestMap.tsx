@@ -323,6 +323,21 @@ export function PlaytestMap({
     [useCryptMood, wallList, renderableEntities, myWorldXZ]
   );
 
+  // Look-lab lighting experiment (rpg-dnd5e-web#558 follow-up) — same
+  // `?floorPools=1`/`?litSurfaces=1` dials as EncounterMap.tsx's real
+  // route, kept in parity so the harness can exercise/screenshot this
+  // exactly like the real game route (see EncounterMap.tsx's identical
+  // dials for the full doc comments on what each does and why).
+  const floorPools = useMemo(
+    () => new URLSearchParams(window.location.search).get('floorPools') === '1',
+    []
+  );
+  const litSurfaces = useMemo(
+    () =>
+      new URLSearchParams(window.location.search).get('litSurfaces') === '1',
+    []
+  );
+
   // Dev-only Synty asset showcase, opted in via `&synty=1` on the harness
   // URL. Read once — the harness never mutates the query string mid-session.
   const showSynty = useMemo(
@@ -383,6 +398,8 @@ export function PlaytestMap({
         ambientIntensity={moodAmbientIntensity}
         directionalIntensity={moodDirectionalIntensity}
         moodPointLights={themeMoodLights}
+        floorPoolLights={floorPools ? themeMoodLights : undefined}
+        litSurfaces={litSurfaces}
         onMoveComplete={(path: CubeCoord[]) => {
           // HexGrid hands back the full cube-coord path it computed via
           // useHexInteraction's findPath. Forward as plain {x,y,z}; the

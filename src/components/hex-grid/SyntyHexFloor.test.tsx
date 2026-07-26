@@ -8,6 +8,11 @@ vi.mock('@react-three/drei', () => ({
 }));
 
 import { SyntyHexFloor } from './SyntyHexFloor';
+import {
+  computeFloorPoolColor,
+  MAX_FLOOR_POOL_BLEND,
+  type FloorPoolLight,
+} from './syntyHexFloorHelpers';
 
 function tiles(...coords: Array<[number, number, number]>) {
   const map = new Map<string, AbsoluteFloorTile>();
@@ -123,5 +128,117 @@ describe('SyntyHexFloor spaceTheme (rpg-dnd5e-web#558 real-route theme consumpti
     for (const color of colors) {
       expect(isCloseTo(color, CRYPT_TINT)).toBe(true);
     }
+  });
+});
+
+describe('SyntyHexFloor floor pooling (look-lab lighting experiment, rpg-dnd5e-web#558 follow-up)', () => {
+  it('blends a crypt tile toward a nearby pool light, matching computeFloorPoolColor directly', async () => {
+    // tile [0,0,0] -> world (0,0); a light at world (0, 1.2, 0) sits exactly
+    // on top of it (hexMath's cubeToWorld), so this is the deterministic
+    // full-weight case computeFloorPoolColor.test.ts already covers on its
+    // own — asserting the SAME expected value here proves the wiring
+    // (prop -> tile -> material color), not just the math.
+    const lights: FloorPoolLight[] = [
+      { position: [0, 1.2, 0], color: '#ff9d52', distance: 5.5 },
+    ];
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0])}
+        hexSize={1}
+        spaceTheme="crypt"
+        poolLights={lights}
+      />
+    );
+    const [color] = floorTileColors(renderer);
+    const expected = computeFloorPoolColor(CRYPT_TINT, 0, 0, lights);
+    expect(isCloseTo(color, expected)).toBe(true);
+    // Sanity: this really did move away from the flat tint, not a no-op.
+    expect(isCloseTo(color, CRYPT_TINT)).toBe(false);
+  });
+
+  it('never pools a non-crypt tile, even with poolLights sitting right on top of it', async () => {
+    const lights: FloorPoolLight[] = [
+      { position: [0, 1.2, 0], color: '#ff9d52', distance: 5.5 },
+    ];
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0])}
+        hexSize={1}
+        poolLights={lights}
+      />
+    );
+    const [color] = floorTileColors(renderer);
+    expect(isCloseTo(color, WHITE)).toBe(true);
+  });
+
+  it('is a no-op (flat CRYPT_TINT) when poolLights is empty/undefined — every caller before this experiment', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0])}
+        hexSize={1}
+        spaceTheme="crypt"
+      />
+    );
+    const [color] = floorTileColors(renderer);
+    expect(isCloseTo(color, CRYPT_TINT)).toBe(true);
+  });
+
+  it('caps the blend at MAX_FLOOR_POOL_BLEND even directly under the light — never fully replaces the stone tint', async () => {
+    const lights: FloorPoolLight[] = [
+      { position: [0, 1.2, 0], color: '#ff9d52', distance: 5.5 },
+    ];
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0])}
+        hexSize={1}
+        spaceTheme="crypt"
+        poolLights={lights}
+      />
+    );
+    const [color] = floorTileColors(renderer);
+    const fullyReplaced = new THREE.Color('#ff9d52');
+    expect(isCloseTo(color, fullyReplaced)).toBe(false);
+    expect(MAX_FLOOR_POOL_BLEND).toBeLessThan(1);
+  });
+});
+
+describe('SyntyHexFloor litSurfaces dev/Kirk-only A/B (look-lab lighting experiment)', () => {
+  it('defaults to the unlit MeshBasicMaterial family — litSurfaces omitted', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0])}
+        hexSize={1}
+        spaceTheme="crypt"
+      />
+    );
+    expect(renderer.scene.findAllByType('MeshBasicMaterial')).toHaveLength(1);
+    expect(renderer.scene.findAllByType('MeshStandardMaterial')).toHaveLength(
+      0
+    );
+  });
+
+  it('renders a lit MeshStandardMaterial for crypt tiles when litSurfaces is true', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0])}
+        hexSize={1}
+        spaceTheme="crypt"
+        litSurfaces
+      />
+    );
+    expect(renderer.scene.findAllByType('MeshStandardMaterial')).toHaveLength(
+      1
+    );
+    expect(renderer.scene.findAllByType('MeshBasicMaterial')).toHaveLength(0);
+  });
+
+  it('leaves non-crypt tiles unlit even when litSurfaces is true — the toggle only ever affects the crypt branch', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor floorTiles={tiles([0, 0, 0])} hexSize={1} litSurfaces />
+    );
+    expect(renderer.scene.findAllByType('MeshBasicMaterial')).toHaveLength(1);
+    expect(renderer.scene.findAllByType('MeshStandardMaterial')).toHaveLength(
+      0
+    );
   });
 });

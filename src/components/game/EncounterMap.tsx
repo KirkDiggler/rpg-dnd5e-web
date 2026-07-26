@@ -343,6 +343,32 @@ export function EncounterMap({
     [spaceTheme, wallList, renderableEntities, myWorldXZ]
   );
 
+  // Look-lab lighting experiment (rpg-dnd5e-web#558 follow-up, deterministic
+  // unlit floor pooling — see syntyHexFloorHelpers.ts's doc comment):
+  // `?floorPools=1` reuses the SAME `themeMoodLights` array already built
+  // above for the real `<pointLight>`s, this time letting SyntyHexFloor
+  // blend each nearby floor tile's tint toward the light's color. Read
+  // once, same "read the query string once, default off" convention as
+  // syntyDungeon/perfProbe below. Default off: this is an experiment
+  // gate, not a baked-in default — every existing session (no query
+  // param) renders byte-identical to pre-experiment behavior.
+  const floorPools = useMemo(
+    () => new URLSearchParams(window.location.search).get('floorPools') === '1',
+    []
+  );
+
+  // Dev/Kirk-only A/B, NOT an experiment result we can judge from this
+  // sandbox (see SyntyHexFloor.tsx's `litSurfaces` prop doc comment for
+  // the full "why" — this is a precise re-creation of the #566/#585 lit
+  // floor PR #587 already reverted, opt-in instead of default, so Kirk
+  // can look at it live on his own deployed webview if he wants a
+  // refresher). `?litSurfaces=1`, read once, default off.
+  const litSurfaces = useMemo(
+    () =>
+      new URLSearchParams(window.location.search).get('litSurfaces') === '1',
+    []
+  );
+
   // Real-dungeon-rendering flag (rpg-dnd5e-web#432 harness-parity). Read
   // once; the game route never mutates the query string mid-session.
   // Default-on: deployed builds bake Synty assets into the image (docker
@@ -430,6 +456,8 @@ export function EncounterMap({
             : undefined
         }
         moodPointLights={themeMoodLights}
+        floorPoolLights={floorPools ? themeMoodLights : undefined}
+        litSurfaces={litSurfaces}
         onMoveComplete={(path: CubeCoord[]) => {
           onMove(path.map((c) => ({ x: c.x, y: c.y, z: c.z })));
         }}

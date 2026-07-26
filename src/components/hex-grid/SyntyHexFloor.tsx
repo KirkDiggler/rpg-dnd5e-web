@@ -27,6 +27,10 @@ import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { cubeToWorld, hexCorners } from './hexMath';
 import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
+import {
+  computeFloorPoolColor,
+  type FloorPoolLight,
+} from './syntyHexFloorHelpers';
 
 const TEX_BASE = '/models/synty/textures/';
 const FLOOR_TEXTURE = TEX_BASE + 'Dungeons_Texture_FloorTiles_01.png';
@@ -65,6 +69,27 @@ interface SyntyHexFloorTileProps {
    * color, not the lit/unlit material family, as of the #558 follow-up. */
   isCrypt: boolean;
   isRemembered: boolean;
+  /** Mood lights (candles/braziers/torches/doors) to pool toward, via
+   * `computeFloorPoolColor` (syntyHexFloorHelpers.ts) — deterministic,
+   * device-independent color blending, NOT a lit material (see that
+   * file's doc comment for why this is a different lever than the
+   * reverted #566/#585 lit-floor experiment). Empty/undefined (every
+   * caller before the look-lab lighting experiment) means every tile
+   * keeps its flat `CRYPT_FLOOR_TINT`, unchanged. No-op when `isCrypt` is
+   * false — pooling only ever applies on top of the crypt tint. */
+  poolLights?: readonly FloorPoolLight[];
+  /**
+   * Dev/Kirk-only A/B toggle back to the reverted #566/#585 approach — a
+   * LIT, tinted `MeshStandardMaterial` instead of the unlit default. This
+   * exists solely so Kirk can look at it live on his OWN deployed webview
+   * if he wants a direct refresher of what was reverted and why; a local
+   * Playwright screenshot of this branch proves nothing about the #481
+   * cross-environment tone-mapping risk that caused the revert (that's
+   * the whole reason it was reverted — it looked fine locally too). Do
+   * NOT treat this path's local screenshots as evidence for or against
+   * anything. Default false/undefined for every caller.
+   */
+  litSurfaces?: boolean;
 }
 
 function SyntyHexFloorTile({
@@ -73,8 +98,20 @@ function SyntyHexFloorTile({
   texture,
   isCrypt,
   isRemembered,
+  poolLights,
+  litSurfaces,
 }: SyntyHexFloorTileProps) {
   const world = cubeToWorld({ x: tile.x, y: tile.y, z: tile.z }, hexSize);
+  const cryptColor = useMemo(() => {
+    if (!isCrypt) return CRYPT_FLOOR_TINT;
+    if (!poolLights || poolLights.length === 0) return CRYPT_FLOOR_TINT;
+    return computeFloorPoolColor(
+      CRYPT_FLOOR_TINT,
+      world.x,
+      world.z,
+      poolLights
+    );
+  }, [isCrypt, poolLights, world.x, world.z]);
   const geometry = useMemo(() => {
     const shape = new THREE.Shape();
     const corners = hexCorners({ x: 0, z: 0 }, hexSize);
@@ -151,10 +188,17 @@ function SyntyHexFloorTile({
           depthWrite
           toneMapped={false}
         />
+      ) : isCrypt && litSurfaces ? (
+        // Dev/Kirk-only A/B — see `litSurfaces` prop doc comment above.
+        // Deliberately the SAME lit/tinted approach #566/#585 shipped and
+        // #587 reverted (not a new untested variant), so what Kirk sees
+        // here is a precise re-creation of the exact thing that was
+        // reverted, opt-in instead of default, rather than a new unknown.
+        <meshStandardMaterial map={texture} color={cryptColor} />
       ) : isCrypt ? (
         <meshBasicMaterial
           map={texture}
-          color={CRYPT_FLOOR_TINT}
+          color={cryptColor}
           toneMapped={false}
         />
       ) : (
@@ -189,6 +233,13 @@ export interface SyntyHexFloorProps {
    * to `themeFloorHexKeys`, unchanged.
    */
   spaceTheme?: 'crypt';
+  /** See `SyntyHexFloorTileProps.poolLights` — forwarded to every tile
+   * unchanged. Empty/undefined (every caller before the look-lab lighting
+   * experiment) is a no-op. */
+  poolLights?: readonly FloorPoolLight[];
+  /** See `SyntyHexFloorTileProps.litSurfaces` — dev/Kirk-only A/B,
+   * default false/undefined for every caller. */
+  litSurfaces?: boolean;
 }
 
 export function SyntyHexFloor({
@@ -197,6 +248,8 @@ export function SyntyHexFloor({
   themeFloorHexKeys,
   rememberedFloorHexKeys,
   spaceTheme,
+  poolLights,
+  litSurfaces,
 }: SyntyHexFloorProps) {
   // useTexture returns drei's shared, URL-keyed texture cache — mutating it
   // directly during render is a render-phase side effect on shared state
@@ -230,6 +283,8 @@ export function SyntyHexFloor({
               spaceTheme === 'crypt' || (themeFloorHexKeys?.has(key) ?? false)
             }
             isRemembered={rememberedFloorHexKeys?.has(key) ?? false}
+            poolLights={poolLights}
+            litSurfaces={litSurfaces}
           />
         );
       })}
