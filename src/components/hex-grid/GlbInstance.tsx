@@ -5,7 +5,7 @@
  * corner tiling) share the exact same load/clone/tint/dispose logic
  * instead of a second, easy-to-drift copy of GPU-leak-prone code.
  *
- * Non-uniform scale is baked into a per-instance CLONED geometry, not
+ * Non-uniform scale is baked into a per-(file, scale) CACHED geometry, not
  * applied as the Object3D's own `.scale` (W3 finding, live-verified
  * against the real reference-tomb dungeon): every wall/fitting/door-frame
  * piece this codebase places uses a markedly non-uniform per-axis scale
@@ -36,6 +36,48 @@ import * as THREE from 'three';
 import type { WorldPos } from './hexMath';
 
 export const ENV_BASE = '/models/synty/env/';
+
+/**
+ * Non-uniform-scale baked geometries, shared across every instance that
+ * places the same file at the same scale — module-level, matching
+ * useGLTF's own shared-cache convention (never disposed; a fixed, small
+ * set of (file, scale) combinations lives for the app's lifetime, the
+ * same way useGLTF's cached scenes/materials do). Many tiled wall-run
+ * pieces within a single run place the exact same file at the exact same
+ * scale (tileWallSegment computes one `pieceWidth` per run, shared by
+ * every tile in it), so without this cache every one of those tiles would
+ * redundantly clone + recompute normals for what is, byte-for-byte, the
+ * same baked result.
+ */
+const bakedGeometryCache = new Map<string, THREE.BufferGeometry[]>();
+
+/** Baked (scaled + renormaled) geometries for `file` at `(sx, sy, sz)`, one
+ * per mesh in `scene`'s own traversal order — cached by that exact key.
+ * Callers assign these onto a FRESH `scene.clone(true)`'s own meshes (same
+ * traversal order, since clone(true) preserves structure exactly), never
+ * mutate them in place. */
+function bakedGeometriesFor(
+  scene: THREE.Object3D,
+  file: string,
+  sx: number,
+  sy: number,
+  sz: number
+): THREE.BufferGeometry[] {
+  const key = `${file}|${sx}|${sy}|${sz}`;
+  const cached = bakedGeometryCache.get(key);
+  if (cached) return cached;
+  const baked: THREE.BufferGeometry[] = [];
+  scene.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      const geometry = child.geometry.clone();
+      geometry.scale(sx, sy, sz);
+      geometry.computeVertexNormals();
+      baked.push(geometry);
+    }
+  });
+  bakedGeometryCache.set(key, baked);
+  return baked;
+}
 
 export interface GlbInstanceProps {
   file: string;
@@ -73,44 +115,31 @@ export function GlbInstance({
 
   // Clone the Object3D hierarchy, then either apply a uniform Object3D
   // scale (the common case: characters/props/doors, cheap, unchanged from
-  // before) or bake a non-uniform scale into a per-instance CLONED
-  // geometry with recomputed normals (see this file's own doc comment for
-  // why — a non-uniform Object3D.scale left these pieces rendering
-  // almost-black under this game's real lighting). Object3D.clone(true)
-  // does NOT deep-clone geometry/material (shared references into
-  // useGLTF's URL-keyed cache) — geometry.clone() below is what makes
-  // baking safe per-instance without mutating that shared cache.
+  // before) or assign this (file, scale)'s CACHED baked geometries onto
+  // the fresh clone's own meshes (see this file's own doc comment for why
+  // baking beats a non-uniform Object3D.scale, and bakedGeometriesFor's
+  // doc comment for why this is cached rather than cloned per instance).
+  // Object3D.clone(true) does NOT deep-clone geometry/material (shared
+  // references into useGLTF's URL-keyed cache) — assigning the cache's
+  // baked geometries here is what makes sharing safe without mutating
+  // that shared cache.
   const cloned = useMemo(() => {
     const obj = scene.clone(true);
     if (isUniform) {
       obj.scale.setScalar(sx);
       return obj;
     }
+    const baked = bakedGeometriesFor(scene, file, sx, sy, sz);
+    let i = 0;
     obj.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        const geometry = child.geometry.clone();
-        geometry.scale(sx, sy, sz);
-        geometry.computeVertexNormals();
-        child.geometry = geometry;
+        child.geometry = baked[i]!;
+        i += 1;
       }
     });
     obj.scale.setScalar(1);
     return obj;
-  }, [scene, isUniform, sx, sy, sz]);
-
-  // Dispose the per-instance BAKED geometries (never the shared cache's
-  // originals — only geometry.clone()'d copies created above ever get
-  // assigned onto `cloned`'s meshes) when this instance's baked geometry
-  // is replaced or unmounted. Mirrors the tint effect's cleanup discipline
-  // below: dispose exactly what THIS run created, nothing shared.
-  useEffect(() => {
-    if (isUniform) return undefined;
-    return () => {
-      cloned.traverse((child) => {
-        if (child instanceof THREE.Mesh) child.geometry.dispose();
-      });
-    };
-  }, [cloned, isUniform]);
+  }, [scene, isUniform, sx, sy, sz, file]);
 
   // Snapshot each mesh's original (untinted) material once per `cloned`
   // identity, so the tint effect below always starts from a clean base —
