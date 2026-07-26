@@ -118,9 +118,15 @@ export function FogOfWarConcept() {
 
   // Subscribe on mount: landing on the page should already show what the
   // viewer knows, the same way joining an encounter delivers a snapshot.
+  const subscribed = useRef(false);
   useEffect(() => {
-    if (!started) subscribe();
-  }, [started, subscribe]);
+    // Ref-guarded: StrictMode double-invokes effects, and a second subscribe
+    // correctly emits zero records, which reads as a confusing empty entry in
+    // the event log.
+    if (subscribed.current) return;
+    subscribed.current = true;
+    subscribe();
+  }, [subscribe]);
 
   const props = useMemo(() => toHexGridProps(knowledge), [knowledge]);
 
@@ -175,6 +181,10 @@ export function FogOfWarConcept() {
               floorTiles={props.floorTiles}
               rememberedFloorHexKeys={props.rememberedFloorHexKeys}
               walls={props.walls}
+              legacySyntyWalls={props.legacySyntyWalls}
+              envelopeRuns={props.envelopeRuns}
+              connectorRuns={props.connectorRuns}
+              doorRotationOverrides={props.doorRotationOverrides}
               rememberedWallHexKeys={props.rememberedWallHexKeys}
               entities={props.entities}
               onHexClick={moveViewer}

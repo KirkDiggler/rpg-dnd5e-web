@@ -94,7 +94,11 @@ export function twoRoomCrypt(): World {
   const hexes = new Map<string, WorldHex>();
   for (const hex of [
     ...rect(0, 2, 0, 2, 'room-a'),
-    { position: at(3, 1), terrain: 0, zoneId: 'doorway' },
+    // The doorway cell belongs to NEITHER chamber, matching the wire
+    // contract (see dungeonMapGeometry's door tests). An empty zoneId keeps
+    // regionInputsFromHexes from turning it into a one-hex room with walls
+    // all the way around it.
+    { position: at(3, 1), terrain: 0, zoneId: '' },
     ...rect(4, 6, 0, 2, 'room-b'),
   ]) {
     hexes.set(key(hex.position), hex);

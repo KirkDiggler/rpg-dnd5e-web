@@ -16,8 +16,20 @@
 import type { HexGridEntity } from '@/components/hex-grid/HexGrid';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import { wallKey } from '@/hooks/dungeonMapGeometry';
+import {
+  connectorDoorInputsFromWalls,
+  connectorRunDoorRotations,
+  legacyRenderWalls,
+  regionInputsFromHexes,
+} from '@/hooks/wallRunAdapters';
+import {
+  computeWallRuns,
+  type ConnectorRun,
+  type EnvelopeRun,
+} from '@/hooks/wallRuns';
 import { create } from '@bufbuild/protobuf';
 import {
+  HexSchema,
   PositionSchema,
   WallSchema,
   type Wall,
@@ -32,6 +44,13 @@ export interface FogHexGridInputs {
   walls: Wall[];
   rememberedWallHexKeys: ReadonlySet<string>;
   entities: HexGridEntity[];
+  /** Straight modular wall runs (rpg-project#133), computed through the same
+   * adapters EncounterMap uses so the concept renders on the production wall
+   * path rather than the legacy per-cell zigzag. */
+  envelopeRuns: EnvelopeRun[];
+  connectorRuns: ConnectorRun[];
+  legacySyntyWalls: Wall[];
+  doorRotationOverrides: ReadonlyMap<string, number>;
 }
 
 const toProtoWall = (edge: WallLike): Wall =>
@@ -99,12 +118,36 @@ export function toHexGridProps(knowledge: FogKnowledge): FogHexGridInputs {
     }
   }
 
+  // Same four steps EncounterMap performs, on knowledge instead of the wire.
+  // Regions come from zoneId; the doorway cell carries '' and is deliberately
+  // in no region, so it becomes a connector rather than a one-hex room.
+  const wallList = [...walls.values()];
+  const protoHexes = [...knowledge.hexes.values()].map((record) =>
+    create(HexSchema, {
+      position: create(PositionSchema, record.position),
+      terrain: record.terrain,
+      zoneId: record.zoneId,
+    })
+  );
+  const regions = regionInputsFromHexes(protoHexes);
+  const connectorDoors = connectorDoorInputsFromWalls(wallList);
+  const runs = computeWallRuns({ regions, doors: connectorDoors });
+
   return {
     floorTiles,
     rememberedFloorHexKeys,
-    walls: [...walls.values()],
+    walls: wallList,
     rememberedWallHexKeys,
     entities,
+    envelopeRuns: runs.envelopeRuns,
+    connectorRuns: runs.connectorRuns,
+    legacySyntyWalls: legacyRenderWalls(
+      wallList,
+      regions,
+      runs.connectorRuns,
+      connectorDoors
+    ),
+    doorRotationOverrides: connectorRunDoorRotations(runs.connectorRuns),
   };
 }
 
