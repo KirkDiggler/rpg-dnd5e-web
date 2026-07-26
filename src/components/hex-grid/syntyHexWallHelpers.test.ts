@@ -3,10 +3,11 @@ import {
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
-import { coordToKey, HEX_DIRECTIONS } from './hexMath';
+import { coordToKey, HEX_DIRECTIONS, hexEdgeBetween } from './hexMath';
 import {
   buildDungeonWallSegments,
   classifyWallVertices,
+  computeWallAdjacentRotationY,
   doorVisualState,
   edgePieceKind,
   FITTINGS,
@@ -595,6 +596,53 @@ describe('wallEndEdgeKeys', () => {
     for (const key of endKeys) {
       expect(key.startsWith('1,-1,0->')).toBe(false);
     }
+  });
+});
+
+describe('computeWallAdjacentRotationY (rpg-game-assets#36 wave-1, issue #623 increment 5 — wall-banner orientation)', () => {
+  it('returns undefined when the hex has no wall neighbor at all', () => {
+    const walls = [wall({ x: 5, y: -5, z: 0 }, { x: 5, y: -5, z: 0 })];
+    expect(
+      computeWallAdjacentRotationY({ x: 0, y: 0, z: 0 }, walls, 1)
+    ).toBeUndefined();
+  });
+
+  it('matches hexEdgeBetween(wallHex, hex) exactly — the same alignment a real wall/door piece on that edge would use', () => {
+    // H0 (open, where the banner sits) with ONE wall neighbor to its
+    // east (HEX_DIRECTIONS[0]).
+    const hex = { x: 0, y: 0, z: 0 };
+    const wallHex = { x: 1, y: -1, z: 0 };
+    const walls = [wall(wallHex, wallHex)];
+    const rotationY = computeWallAdjacentRotationY(hex, walls, 1);
+    expect(rotationY).toBeCloseTo(hexEdgeBetween(wallHex, hex, 1).rotationY);
+  });
+
+  it('gives a DIFFERENT rotation for a wall neighbor on a different side — the banner actually follows which wall it is next to', () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const eastWall = { x: 1, y: -1, z: 0 };
+    const northEastWall = { x: 1, y: 0, z: -1 };
+    const rotationEast = computeWallAdjacentRotationY(
+      hex,
+      [wall(eastWall, eastWall)],
+      1
+    )!;
+    const rotationNE = computeWallAdjacentRotationY(
+      hex,
+      [wall(northEastWall, northEastWall)],
+      1
+    )!;
+    expect(rotationEast).toBeDefined();
+    expect(rotationNE).toBeDefined();
+    expect(rotationEast).not.toBeCloseTo(rotationNE);
+  });
+
+  it('picks the first wall neighbor found (HEX_DIRECTIONS order) when the hex sits in a corner nook with more than one — deterministic, not a crash', () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const eastWall = { x: 1, y: -1, z: 0 }; // HEX_DIRECTIONS[0]
+    const neWall = { x: 1, y: 0, z: -1 }; // HEX_DIRECTIONS[1]
+    const walls = [wall(neWall, neWall), wall(eastWall, eastWall)];
+    const rotationY = computeWallAdjacentRotationY(hex, walls, 1);
+    expect(rotationY).toBeCloseTo(hexEdgeBetween(eastWall, hex, 1).rotationY);
   });
 });
 

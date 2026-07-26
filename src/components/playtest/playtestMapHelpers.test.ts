@@ -968,6 +968,80 @@ describe('buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mood-lighting pas
     }));
     expect(buildCryptMoodLights(props)).toEqual([]);
   });
+
+  // rpg-game-assets#36 wave-1 light props (issue #623, increment 3).
+  function moodLightFor(propRefId: string) {
+    const [light] = buildCryptMoodLights([
+      {
+        entityId: 'p',
+        name: propRefId,
+        position: { x: 0, y: 0, z: 0 },
+        type: 'obstacle' as const,
+        propRefId,
+      },
+    ]);
+    return light!;
+  }
+
+  it('lantern and candle-stand join the warm-orange family, same color as brazier/torch-ornate/door', () => {
+    expect(moodLightFor('lantern').color).toBe('#ff9d52');
+    expect(moodLightFor('candle-stand').color).toBe('#ff9d52');
+  });
+
+  it('glowing-orb and the rune props share a SECOND, cool accent color distinct from both the warm family and the candles green', () => {
+    const orb = moodLightFor('glowing-orb');
+    const marker = moodLightFor('rune-marker');
+    const pillar = moodLightFor('rune-pillar');
+    expect(orb.color).toBe(marker.color);
+    expect(orb.color).toBe(pillar.color);
+    expect(orb.color).not.toBe('#ff9d52');
+    expect(orb.color).not.toBe('#3ddc84');
+  });
+
+  it("glowing-orb matches the candles accent pools' reach — a single set-piece anchor standing in for several small pools", () => {
+    const orb = moodLightFor('glowing-orb');
+    const candle = moodLightFor('candles');
+    expect(orb.intensity).toBe(candle.intensity);
+    expect(orb.distance).toBe(candle.distance);
+  });
+
+  it('brazier is still the single brightest/widest light even after the wave-1 additions', () => {
+    const brazier = moodLightFor('brazier');
+    for (const ref of [
+      'candles',
+      'candle-stand',
+      'lantern',
+      'torch-ornate',
+      'glowing-orb',
+      'rune-marker',
+      'rune-pillar',
+    ]) {
+      const other = moodLightFor(ref);
+      expect(brazier.intensity).toBeGreaterThan(other.intensity);
+      expect(brazier.distance).toBeGreaterThan(other.distance);
+    }
+  });
+
+  it('rune-marker and rune-pillar are the subtlest lights in the whole map — dressing, not a real light source', () => {
+    const marker = moodLightFor('rune-marker');
+    const pillar = moodLightFor('rune-pillar');
+    for (const ref of [
+      'candles',
+      'candle-stand',
+      'lantern',
+      'torch-ornate',
+      'glowing-orb',
+      'brazier',
+    ]) {
+      const other = moodLightFor(ref);
+      expect(other.intensity).toBeGreaterThan(marker.intensity);
+      expect(other.intensity).toBeGreaterThan(pillar.intensity);
+    }
+    // rune-pillar (a tall obstacle) reaches a shade further than
+    // rune-marker (a flat floor decal), per this map's own doc comment.
+    expect(pillar.intensity).toBeGreaterThan(marker.intensity);
+    expect(pillar.distance).toBeGreaterThan(marker.distance);
+  });
 });
 
 describe('buildCryptDoorLights (mid-flight scope addition — warm torch contrast + door visibility)', () => {

@@ -309,7 +309,7 @@ export function wallVariantScale(
  * one source of truth for "what counts as a wall hex" so the segment
  * builder and the new corner/end classifiers can never disagree about it.
  */
-function collectWallHexes(walls: Wall[]): Map<string, WallKind> {
+export function collectWallHexes(walls: Wall[]): Map<string, WallKind> {
   const wallKindByHex = new Map<string, WallKind>();
   for (const wall of walls) {
     if (!wall.from || !wall.to) continue;
@@ -852,4 +852,48 @@ export function wallEndEdgeKeys(walls: Wall[]): Set<string> {
   }
 
   return endKeys;
+}
+
+/**
+ * Facing rotationY for a wall-mounted DECOR prop (rpg-game-assets#36
+ * wave-1, issue #623 increment 5 — wall-banner) placed at `hex`, an open
+ * floor cell adjacent to a wall, not a wall hex itself.
+ *
+ * Reuses `hexEdgeBetween`'s existing "line a piece's local +X (width
+ * axis) up with a hex edge" rotation exactly as SyntyHexWall's own wall/
+ * door pieces already do (see that function's doc comment) — a
+ * wall-mounted banner hangs flush against the SAME edge a real wall piece
+ * there would occupy, wide face parallel to the wall, so it needs the
+ * identical alignment, not a new formula. Called with `(wallHex, hex)` —
+ * same argument order buildDungeonWallSegments already uses
+ * (`hexEdgeBetween(hex, neighbor, hexSize)` where `hex` is the wall side)
+ * — so a banner and the wall segment behind it always agree on which way
+ * "along this edge" points.
+ *
+ * `hex` itself is assumed to NOT be a wall hex (a decor prop sits on open
+ * floor) — its wall-hex neighbors are what this looks for. When `hex` has
+ * more than one wall neighbor (a corner nook), the first found
+ * (HEX_DIRECTIONS order) wins — arbitrary but stable, same convention
+ * resolvePropVariant's own "first variant" doc comment uses for a
+ * comparable "no smarter selection yet" case. Returns `undefined` when
+ * `hex` has no wall neighbor at all (a wall-banner authored away from any
+ * wall — unusual content, not a crash) so callers fall back to the
+ * existing rotationY=0 default, never a broken/undefined-driven rotation.
+ */
+export function computeWallAdjacentRotationY(
+  hex: CubeCoord,
+  walls: Wall[],
+  hexSize: number
+): number | undefined {
+  const wallKindByHex = collectWallHexes(walls);
+  for (const dir of HEX_DIRECTIONS) {
+    const neighbor: CubeCoord = {
+      x: hex.x + dir.x,
+      y: hex.y + dir.y,
+      z: hex.z + dir.z,
+    };
+    if (!wallKindByHex.has(coordToKey(neighbor))) continue;
+    return hexEdgeBetween(neighbor, hex, hexSize).rotationY;
+  }
+  return undefined;
 }
