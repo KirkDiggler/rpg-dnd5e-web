@@ -96,7 +96,6 @@ export function GlbInstance({
     });
     obj.scale.setScalar(1);
     return obj;
-     
   }, [scene, isUniform, sx, sy, sz]);
 
   // Dispose the per-instance BAKED geometries (never the shared cache's
