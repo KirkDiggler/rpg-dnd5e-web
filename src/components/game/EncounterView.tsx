@@ -186,6 +186,10 @@ export function EncounterView({
   const [presentationQueue, setPresentationQueue] = useState<
     CombatPresentationAttack[]
   >([]);
+  // Observed server contract for this path: one EntityDamaged payload per
+  // attack correlation. If the stream ever starts emitting multiple damage
+  // envelopes for one correlation, this last-write map stays a residual
+  // and will need a list model — we are not expanding scope without proof.
   const [damageByCorrelationId, setDamageByCorrelationId] = useState<
     Record<string, EntityDamaged>
   >({});

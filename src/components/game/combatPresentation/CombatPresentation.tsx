@@ -3,10 +3,10 @@ import type {
   EntityDamaged,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { useReducedMotion } from 'framer-motion';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import { DiceTray, type DiceTrayPhase } from '../../ui/dice/DiceTray';
 import { BeatStage } from './BeatStage';
-import { type BeatSequence, verdictLabel } from './beatStageTypes';
+import { verdictLabel, type BeatSequence } from './beatStageTypes';
 import { useBeatSequencer } from './useBeatSequencer';
 
 export interface CombatPresentationAttack {
@@ -29,6 +29,23 @@ function trayPhase(beat: string): DiceTrayPhase {
   if (beat === 'release') return 'exiting';
   if (beat === 'idle' || beat === 'done') return 'hidden';
   return 'settled';
+}
+
+const DAMAGE_ANNOUNCEMENT_STYLE: CSSProperties = {
+  border: 0,
+  clip: 'rect(0 0 0 0)',
+  clipPath: 'inset(50%)',
+  height: 1,
+  margin: -1,
+  overflow: 'hidden',
+  padding: 0,
+  position: 'absolute',
+  width: 1,
+  whiteSpace: 'nowrap',
+};
+
+function damageAnnouncementText(damage: EntityDamaged): string {
+  return `Damage dealt: ${damage.amount}`;
 }
 
 export function CombatPresentation({
@@ -94,19 +111,31 @@ export function CombatPresentation({
         />
       </DiceTray>
       {damage && (
-        <div
-          data-testid="combat-presentation-damage"
-          style={{
-            marginTop: 8,
-            fontSize: 14,
-            fontWeight: 700,
-            color: '#fca5a5',
-            textAlign: 'center',
-            textShadow: '0 1px 2px rgba(0, 0, 0, 0.35)',
-          }}
-        >
-          💥 {damage.amount} damage
-        </div>
+        <>
+          <div
+            data-testid="combat-presentation-damage"
+            aria-hidden="true"
+            style={{
+              marginTop: 8,
+              fontSize: 14,
+              fontWeight: 700,
+              color: '#fca5a5',
+              textAlign: 'center',
+              textShadow: '0 1px 2px rgba(0, 0, 0, 0.35)',
+            }}
+          >
+            💥 {damage.amount} damage
+          </div>
+          <div
+            data-testid="combat-presentation-damage-announce"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            style={DAMAGE_ANNOUNCEMENT_STYLE}
+          >
+            {damageAnnouncementText(damage)}
+          </div>
+        </>
       )}
       {seq.beat === 'armed' && (
         <button

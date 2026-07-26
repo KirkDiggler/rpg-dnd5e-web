@@ -72,20 +72,36 @@ describe('CombatPresentation', () => {
     expect(complete).toHaveBeenCalledWith(7);
   });
 
-  it('renders the server-sent damage result alongside the attack theater', () => {
-    render(
+  it('announces the server-sent damage result once while hiding the decorative copy from assistive tech', () => {
+    const { rerender } = render(
       <CombatPresentation
         item={item()}
         damage={damage()}
         onComplete={() => {}}
       />
     );
-    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
-    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
-    act(() => vi.advanceTimersByTime(CINEMATIC.throw + CINEMATIC.verdict));
-    expect(
-      screen.getByTestId('combat-presentation-damage').textContent
-    ).toContain('7 damage');
+
+    const visualDamage = screen.getByTestId('combat-presentation-damage');
+    const liveDamage = screen.getByTestId(
+      'combat-presentation-damage-announce'
+    );
+
+    expect(visualDamage.getAttribute('aria-hidden')).toBe('true');
+    expect(liveDamage.getAttribute('role')).toBe('status');
+    expect(liveDamage.getAttribute('aria-live')).toBe('polite');
+    expect(liveDamage.getAttribute('aria-atomic')).toBe('true');
+    expect(liveDamage.textContent).toBe('Damage dealt: 7');
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+
+    rerender(
+      <CombatPresentation
+        item={item()}
+        damage={damage()}
+        onComplete={() => {}}
+      />
+    );
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
   });
 
   it('does not complete a newly swapped item until its own sequence finishes', () => {
