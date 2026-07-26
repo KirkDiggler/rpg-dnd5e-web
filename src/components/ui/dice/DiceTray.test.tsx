@@ -53,6 +53,17 @@ describe('DiceTray', () => {
     expect(screen.getByTestId('dice-face').textContent).toBe('14');
   });
 
+  it('retains its settled face while exiting', () => {
+    const { rerender } = render(
+      <DiceTray phase="settled" finalFace={14} outcome="HIT" />
+    );
+
+    expect(screen.getByTestId('dice-face').textContent).toBe('14');
+    rerender(<DiceTray phase="exiting" finalFace={14} outcome="HIT" />);
+
+    expect(screen.getByTestId('dice-face').textContent).toBe('14');
+  });
+
   it('varies the near-settle decoy without revealing the final face', () => {
     const motion = {
       faceCount: 2,

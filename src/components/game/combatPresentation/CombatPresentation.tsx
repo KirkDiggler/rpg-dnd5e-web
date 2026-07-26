@@ -17,6 +17,7 @@ function trayPhase(beat: string): DiceTrayPhase {
   if (beat === 'armed') return 'ready';
   if (beat === 'throw') return 'rolling';
   if (beat === 'release') return 'exiting';
+  if (beat === 'idle' || beat === 'done') return 'hidden';
   return 'settled';
 }
 

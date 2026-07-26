@@ -75,6 +75,7 @@ export function DiceTray({
       setFace(finalFace);
       return;
     }
+    if (phase === 'exiting') return;
     if (phase !== 'rolling') {
       setFace('?');
       return;

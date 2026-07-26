@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useReducedMotion } from 'framer-motion';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CombatPresentation,
@@ -34,6 +35,15 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('CombatPresentation', () => {
+  it('keeps the authoritative roll out of initial static markup', () => {
+    const markup = renderToStaticMarkup(
+      <CombatPresentation item={item()} onComplete={() => {}} />
+    );
+
+    expect(markup).toContain('data-beat="idle"');
+    expect(markup).not.toContain('>14<');
+  });
+
   it('arms a viewer attack, throws on tap, and completes its stable item id', () => {
     const complete = vi.fn();
     render(<CombatPresentation item={item()} onComplete={complete} />);
