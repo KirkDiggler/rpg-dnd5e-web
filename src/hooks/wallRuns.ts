@@ -165,8 +165,61 @@ export interface WallRunsInput {
   cornerExtension?: number;
 }
 
+/**
+ * One room envelope corner, where two adjacent sides (e.g. 'top' and
+ * 'left') should visually meet — a genuine Synty corner-piece placement
+ * point (design.md/plan.md's W3 slice: "map runs to segment/corner/
+ * door-frame pieces"), not a byproduct of either side's own independent
+ * offset.
+ *
+ * Why a dedicated corner point is needed at all, rather than just reusing
+ * one side's own extended/offset endpoint: `buildEnvelopeSegment` offsets
+ * each side OUTWARD ALONG ITS OWN PERPENDICULAR NORMAL, independently.
+ * Translating two lines outward by the same distance along their OWN
+ * normals does not produce a shared endpoint unless a genuine miter point
+ * is computed — each side's own extended start/end lands near the room's
+ * raw corner but at a DIFFERENT world position than the other side's
+ * corresponding endpoint. This is the exact defect Kirk flagged from the
+ * prod screenshot ("the placeholder butt-joins visibly don't meet at room
+ * corners" — the #1 visible defect, W3 kickoff).
+ *
+ * Correction (caught by this file's own tests, not assumed): an earlier
+ * version of this computation assumed adjacent sides meet at EXACTLY 90
+ * degrees, derived from "column span D is even for real room widths." That
+ * derivation had an off-by-one: D = maxCol - minCol = width - 1, so an
+ * EVEN room width (6/10/12, the only real ones) gives an ODD column span,
+ * not even — the parity-correction term does NOT divide out cleanly for
+ * odd D, and the true angle between 'left'/'right' and 'top'/'bottom'
+ * varies per room (measured ~93.7 degrees for the reference-tomb "hall"
+ * fixture, not 90). A closed-form formula that assumed a fixed angle would
+ * have been silently wrong depending on each room's min/maxCol parity.
+ *
+ * The robust fix: compute the corner as the actual 2D line-line
+ * intersection of the two adjacent sides' own already-built (extended +
+ * offset) segments — correct for whatever the true angle happens to be,
+ * with no assumption about it at all. `lineIntersection` below is the
+ * general-purpose helper; a degenerate (near-parallel, det ~ 0) case —
+ * not reachable for any real room shape, since 'left'/'right' and
+ * 'top'/'bottom' directions are never anywhere near parallel on a hex
+ * grid — falls back to the raw (un-offset) corner point rather than
+ * throwing, so a pathological caller-supplied fixture degrades instead of
+ * crashing.
+ */
+export interface EnvelopeCorner {
+  regionId: string;
+  corner: 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
+  position: WorldPos;
+  /** Outward-facing rotation (radians) — points from the room's center
+   * through this corner, matching classifyWallVertices' existing
+   * "wall-corner-outer" rotation convention (syntyHexWallHelpers.ts) so a
+   * corner piece here orients the same way the legacy per-cell corner
+   * fitting already does. */
+  rotationY: number;
+}
+
 export interface WallRunsResult {
   envelopeRuns: EnvelopeRun[];
+  envelopeCorners: EnvelopeCorner[];
   connectorRuns: ConnectorRun[];
 }
 
@@ -263,6 +316,32 @@ function outwardNormal(
   return dot >= 0 ? perp : { x: -perp.x, z: -perp.z };
 }
 
+/**
+ * 2D line-line intersection (not segment-segment — extends both lines
+ * infinitely): line 1 is `{a1 + t*d1 : t in R}`, line 2 is
+ * `{a2 + s*d2 : s in R}`. Used to find an envelope corner as the exact
+ * point where two adjacent (already offset+extended) sides' own lines
+ * meet, whatever the actual angle between them is (see EnvelopeCorner's
+ * doc comment for why this replaced an earlier closed-form formula that
+ * wrongly assumed a fixed 90-degree angle). Returns undefined when the
+ * two directions are parallel (determinant ~0) — not reachable for any
+ * real room shape's 'left'/'right' vs 'top'/'bottom' sides, but callers
+ * fall back to a sane default rather than dividing by ~0.
+ */
+function lineIntersection(
+  a1: WorldPos,
+  d1: WorldPos,
+  a2: WorldPos,
+  d2: WorldPos
+): WorldPos | undefined {
+  const det = d2.x * d1.z - d1.x * d2.z;
+  if (Math.abs(det) < 1e-9) return undefined;
+  const dx = a2.x - a1.x;
+  const dz = a2.z - a1.z;
+  const t = (dx * -d2.z - -d2.x * dz) / det;
+  return { x: a1.x + t * d1.x, z: a1.z + t * d1.z };
+}
+
 /** Extend + offset a raw corner-to-corner line into its final envelope
  * run: push both ends outward along the run's own direction by
  * `cornerExtension` (reach toward the true corner, not the last hex's
@@ -320,21 +399,22 @@ const DEFAULT_ENVELOPE_OFFSET_HEXES = Math.sqrt(3);
 const DEFAULT_CORNER_EXTENSION_HEXES = 0.5;
 
 /**
- * The four envelope runs (left/right/top/bottom) for one region. Derived
- * purely from the region's own hex-membership bounding rect — never from
- * wall/blocking data — so a boss-archetype region's deliberately
- * full-width-open doorRow (rpg-toolkit#819's tactical invariant) can never
- * punch a gap in these: this function has no notion of "openness" at all,
- * only the rectangle's four corners.
+ * The four envelope runs (left/right/top/bottom) AND the four envelope
+ * corners for one region. Derived purely from the region's own
+ * hex-membership bounding rect — never from wall/blocking data — so a
+ * boss-archetype region's deliberately full-width-open doorRow
+ * (rpg-toolkit#819's tactical invariant) can never punch a gap in these:
+ * this function has no notion of "openness" at all, only the rectangle's
+ * four corners.
  */
-function envelopeRunsForRegion(
+function envelopeGeometryForRegion(
   region: RegionInput,
   hexSize: number,
   envelopeOffset: number,
   cornerExtension: number
-): EnvelopeRun[] {
+): { runs: EnvelopeRun[]; corners: EnvelopeCorner[] } {
   const bounds = boundsOf(region.hexes);
-  if (!bounds) return [];
+  if (!bounds) return { runs: [], corners: [] };
   const { minCol, maxCol, minRow, maxRow } = bounds;
 
   const cornerWorld = (col: number, row: number): WorldPos =>
@@ -357,11 +437,62 @@ function envelopeRunsForRegion(
     { side: 'bottom', a: bottomLeft, b: bottomRight },
   ];
 
-  return sides.map(({ side, a, b }) => ({
+  const runs = sides.map(({ side, a, b }) => ({
     regionId: region.id,
     side,
     ...buildEnvelopeSegment(a, b, center, cornerExtension, envelopeOffset),
   }));
+  const runBySide = new Map(runs.map((run) => [run.side, run]));
+
+  // Miter-join corners (EnvelopeCorner's own doc comment has the full
+  // derivation, including the earlier flawed "assume 90 degrees" attempt
+  // this replaced): each corner is the actual line-line intersection of
+  // its two adjacent sides' own already-built (extended + offset) runs —
+  // correct for whatever the true angle between them is, no assumption
+  // needed. Falls back to the raw (un-offset) corner point in the
+  // unreachable-for-real-data parallel case, rather than throwing.
+  const cornerPairs: Array<{
+    corner: EnvelopeCorner['corner'];
+    rawPoint: WorldPos;
+    sideA: EnvelopeSide;
+    sideB: EnvelopeSide;
+  }> = [
+    { corner: 'topLeft', rawPoint: topLeft, sideA: 'left', sideB: 'top' },
+    { corner: 'topRight', rawPoint: topRight, sideA: 'right', sideB: 'top' },
+    {
+      corner: 'bottomLeft',
+      rawPoint: bottomLeft,
+      sideA: 'left',
+      sideB: 'bottom',
+    },
+    {
+      corner: 'bottomRight',
+      rawPoint: bottomRight,
+      sideA: 'right',
+      sideB: 'bottom',
+    },
+  ];
+  const corners = cornerPairs.map(({ corner, rawPoint, sideA, sideB }) => {
+    const runA = runBySide.get(sideA)!;
+    const runB = runBySide.get(sideB)!;
+    const dirA: WorldPos = {
+      x: runA.end.x - runA.start.x,
+      z: runA.end.z - runA.start.z,
+    };
+    const dirB: WorldPos = {
+      x: runB.end.x - runB.start.x,
+      z: runB.end.z - runB.start.z,
+    };
+    const position =
+      lineIntersection(runA.start, dirA, runB.start, dirB) ?? rawPoint;
+    const rotationY = Math.atan2(
+      -(position.z - center.z),
+      position.x - center.x
+    );
+    return { regionId: region.id, corner, position, rotationY };
+  });
+
+  return { runs, corners };
 }
 
 /**
@@ -499,11 +630,17 @@ export function computeWallRuns(input: WallRunsInput): WallRunsResult {
     input.cornerExtension ?? DEFAULT_CORNER_EXTENSION_HEXES * hexSize;
 
   const envelopeRuns: EnvelopeRun[] = [];
+  const envelopeCorners: EnvelopeCorner[] = [];
   const regionBounds = new Map<string, Bounds>();
   for (const region of input.regions) {
-    envelopeRuns.push(
-      ...envelopeRunsForRegion(region, hexSize, envelopeOffset, cornerExtension)
+    const geometry = envelopeGeometryForRegion(
+      region,
+      hexSize,
+      envelopeOffset,
+      cornerExtension
     );
+    envelopeRuns.push(...geometry.runs);
+    envelopeCorners.push(...geometry.corners);
     const bounds = boundsOf(region.hexes);
     if (bounds) regionBounds.set(region.id, bounds);
   }
@@ -524,5 +661,5 @@ export function computeWallRuns(input: WallRunsInput): WallRunsResult {
     );
   }
 
-  return { envelopeRuns, connectorRuns };
+  return { envelopeRuns, envelopeCorners, connectorRuns };
 }

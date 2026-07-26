@@ -544,6 +544,142 @@ describe('computeWallRuns — boss-room fixture (full-width open doorRow must NO
   });
 });
 
+describe('computeWallRuns — envelope corners (W3, PR-B: Kirk\'s #1 prod-screenshot defect — "placeholder butt-joins visibly don\'t meet at room corners")', () => {
+  it('produces exactly 4 corners per region, one per corner label', () => {
+    const { regions } = referenceTombFixture();
+    const result = computeWallRuns({ regions, doors: [] });
+    expect(result.envelopeCorners).toHaveLength(regions.length * 4);
+    for (const region of regions) {
+      const labelsForRegion = result.envelopeCorners
+        .filter((c) => c.regionId === region.id)
+        .map((c) => c.corner);
+      expect(new Set(labelsForRegion)).toEqual(
+        new Set(['topLeft', 'topRight', 'bottomLeft', 'bottomRight'])
+      );
+    }
+  });
+
+  it("with envelopeOffset zeroed, each corner lands exactly on the region's true (un-offset) corner world position", () => {
+    const { regions } = referenceTombFixture();
+    const result = computeWallRuns({
+      regions,
+      doors: [],
+      envelopeOffset: 0,
+    });
+    const hallTopLeft = cubeToWorld(cubeAtColRow(HALL_START, 0), HEX_SIZE);
+    const hallTopLeftCorner = result.envelopeCorners.find(
+      (c) => c.regionId === 'hall' && c.corner === 'topLeft'
+    )!;
+    expect(hallTopLeftCorner.position).toEqual(hallTopLeft);
+  });
+
+  it("the two sides sharing a corner are NOT assumed to meet at exactly 90 degrees (regression for an earlier flawed derivation): the reference-tomb hall's 'left'/'top' angle measures ~93.7 degrees, since real room widths (6/10/12) give an ODD column span (width - 1), not even", () => {
+    const { regions } = referenceTombFixture();
+    const result = computeWallRuns({ regions, doors: [] });
+    const left = result.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'left'
+    )!;
+    const top = result.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'top'
+    )!;
+    const leftDir = {
+      x: left.end.x - left.start.x,
+      z: left.end.z - left.start.z,
+    };
+    const topDir = { x: top.end.x - top.start.x, z: top.end.z - top.start.z };
+    const leftLen = Math.hypot(leftDir.x, leftDir.z);
+    const topLen = Math.hypot(topDir.x, topDir.z);
+    const cosAngle =
+      (leftDir.x * topDir.x + leftDir.z * topDir.z) / (leftLen * topLen);
+    // Deliberately NOT close to 0 (perpendicular) — documents that the
+    // corner computation below must not assume a fixed angle.
+    expect(Math.abs(cosAngle)).toBeGreaterThan(0.01);
+  });
+
+  it("the topLeft corner sits exactly on BOTH adjacent (offset+extended) sides' own lines — the precise regression for the prod-screenshot gap/overlap defect, verified by genuine collinearity rather than any assumed angle", () => {
+    const { regions } = referenceTombFixture();
+    const envelopeOffset = 1.23;
+    const result = computeWallRuns({
+      regions,
+      doors: [],
+      cornerExtension: 0,
+      envelopeOffset,
+    });
+    const hallLeft = result.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'left'
+    )!;
+    const hallTop = result.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'top'
+    )!;
+    const hallTopLeftCorner = result.envelopeCorners.find(
+      (c) => c.regionId === 'hall' && c.corner === 'topLeft'
+    )!;
+
+    // A point P lies on the line through A with direction D iff the 2D
+    // cross product of D and (P - A) is ~0 — independent of any assumed
+    // angle between the two sides, so this verifies the actual
+    // "no gap, no overlap" property Kirk's screenshot flagged.
+    const crossZ = (a: { x: number; z: number }, b: { x: number; z: number }) =>
+      a.x * b.z - a.z * b.x;
+    const onLine = (
+      point: { x: number; z: number },
+      lineStart: { x: number; z: number },
+      lineEnd: { x: number; z: number }
+    ) => {
+      const dir = { x: lineEnd.x - lineStart.x, z: lineEnd.z - lineStart.z };
+      const toPoint = {
+        x: point.x - lineStart.x,
+        z: point.z - lineStart.z,
+      };
+      return Math.abs(crossZ(dir, toPoint));
+    };
+    expect(
+      onLine(hallTopLeftCorner.position, hallLeft.start, hallLeft.end)
+    ).toBeLessThan(1e-9);
+    expect(
+      onLine(hallTopLeftCorner.position, hallTop.start, hallTop.end)
+    ).toBeLessThan(1e-9);
+  });
+
+  it("a corner's rotationY points strictly outward from the room center (stepping along it increases distance from center)", () => {
+    const { regions } = referenceTombFixture();
+    const result = computeWallRuns({
+      regions,
+      doors: [],
+      envelopeOffset: 1.0,
+    });
+    const hallCenterCol =
+      ENTRANCE_START + ENTRANCE_WIDTH + 1 + (HALL_WIDTH - 1) / 2;
+    const hallCenter = cubeToWorld(
+      cubeAtColRow(Math.round(hallCenterCol), Math.round((HEIGHT - 1) / 2)),
+      HEX_SIZE
+    );
+    for (const corner of result.envelopeCorners.filter(
+      (c) => c.regionId === 'hall'
+    )) {
+      const distBefore = Math.hypot(
+        corner.position.x - hallCenter.x,
+        corner.position.z - hallCenter.z
+      );
+      const eps = 0.01;
+      const stepped = {
+        x: corner.position.x + Math.cos(corner.rotationY) * eps,
+        z: corner.position.z - Math.sin(corner.rotationY) * eps,
+      };
+      const distAfter = Math.hypot(
+        stepped.x - hallCenter.x,
+        stepped.z - hallCenter.z
+      );
+      expect(distAfter).toBeGreaterThan(distBefore);
+    }
+  });
+
+  it('an empty region list produces no corners', () => {
+    const result = computeWallRuns({ regions: [], doors: [] });
+    expect(result.envelopeCorners).toHaveLength(0);
+  });
+});
+
 describe('computeWallRuns — parameterization', () => {
   it('a larger envelopeOffset pushes runs further from the room center', () => {
     const region: RegionInput = { id: 'r', hexes: regionCubes(6, 6, 0) };

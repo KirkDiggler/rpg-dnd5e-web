@@ -47,3 +47,66 @@ export function wallRunBoxTransform(
 export function segmentKey(segment: WallRunSegment): string {
   return `${segment.start.x},${segment.start.z}-${segment.end.x},${segment.end.z}`;
 }
+
+/** One placed instance of a repeated modular piece along a run. */
+export interface TiledPiece {
+  position: WorldPos;
+  /** Same atan2(-dz, dx) rotation convention as wallRunBoxTransform, so a
+   * tiled piece's local +X (its width axis, per the "edge" fit scale
+   * formula — wallVariantScale) lines up with the run's own direction. */
+  rotationY: number;
+  /** World-unit width this instance should be scaled to — the run's
+   * length divided evenly by however many pieces fit, NOT the piece's own
+   * nominal width. This is what makes adjacent tiles meet edge-to-edge
+   * with no gap and no overhang past `segment`'s own start/end, matching
+   * real Synty modular wall kits (repeated identical segments), not a
+   * single piece stretched to fit. */
+  pieceWidth: number;
+}
+
+/**
+ * Real Synty pieces are modular — a run spans many hex-units, not the
+ * single hex-edge a "wall" role piece is calibrated for (`wallVariantScale`
+ * squeezes a piece to exactly 1.0 world unit). W3 (design.md/plan.md: "map
+ * runs to segment/corner/door-frame pieces") tiles repeated instances along
+ * a run's length instead of stretching one instance — the same "chain
+ * identical segments" convention the pack's own modular kit is authored
+ * for. `nominalPieceWidth` is the piece's calibrated width (1.0 for the
+ * "wall" role's edge-fit formula); the actual per-instance width is
+ * `length / count`, evenly dividing the run so tiles meet exactly at both
+ * ends with no gap or overhang — a small, deliberate stretch/squeeze per
+ * instance (never more than half `nominalPieceWidth` either direction,
+ * since `count` is the nearest-integer number of nominal-width pieces that
+ * fit) rather than a hardcoded assumption that `length` is an exact
+ * multiple of it. Zero-length segments (coincident start/end) produce no
+ * pieces.
+ */
+export function tileWallSegment(
+  segment: WallRunSegment,
+  nominalPieceWidth: number
+): TiledPiece[] {
+  const dx = segment.end.x - segment.start.x;
+  const dz = segment.end.z - segment.start.z;
+  const length = Math.hypot(dx, dz);
+  if (length === 0) return [];
+
+  const count = Math.max(1, Math.round(length / nominalPieceWidth));
+  const pieceWidth = length / count;
+  const rotationY = Math.atan2(-dz, dx);
+  const ux = dx / length;
+  const uz = dz / length;
+
+  const pieces: TiledPiece[] = [];
+  for (let i = 0; i < count; i++) {
+    const centerDist = pieceWidth * (i + 0.5);
+    pieces.push({
+      position: {
+        x: segment.start.x + ux * centerDist,
+        z: segment.start.z + uz * centerDist,
+      },
+      rotationY,
+      pieceWidth,
+    });
+  }
+  return pieces;
+}

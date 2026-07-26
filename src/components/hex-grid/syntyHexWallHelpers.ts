@@ -34,6 +34,7 @@ import {
   WallKind,
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import * as THREE from 'three';
 import {
   coordToKey,
   cubeToWorld,
@@ -174,6 +175,23 @@ const CRYPT_WALL_VARIANTS: WallVariant[] = WALL_VARIANTS.map((variant) => {
 export const WALL_VARIANTS_BY_THEME: Record<WallTheme, WallVariant[]> = {
   default: WALL_VARIANTS,
   crypt: CRYPT_WALL_VARIANTS,
+};
+
+/**
+ * Per-theme material tint (rpg-dnd5e-web#558 — Kirk's POLYGON Dark
+ * Fortress reference: dark cool-gray stone, not tan brick on a bright
+ * atlas). No darker Synty atlas exists for this pack (verified against the
+ * source textures — colorways are accent-only), so this is a multiplicative
+ * color tint applied in-engine, matching the character-tint pattern already
+ * used elsewhere in this codebase (rpg-dnd5e-web#515). `'default'` gets no
+ * entry here, so a lookup returns `undefined` for it and GlbInstance skips
+ * the clone-and-tint path entirely — every non-crypt caller is untouched.
+ * Moved here (out of SyntyHexWall.tsx) in the dungeon-walls redesign's W3
+ * slice so WallRunMesh.tsx's real Synty pieces share the exact same
+ * per-theme tint instead of a second, easy-to-drift copy.
+ */
+export const WALL_TINT_BY_THEME: Partial<Record<WallTheme, THREE.Color>> = {
+  crypt: new THREE.Color(0.32, 0.36, 0.46), // dark, cool blue-gray stone
 };
 
 /**
