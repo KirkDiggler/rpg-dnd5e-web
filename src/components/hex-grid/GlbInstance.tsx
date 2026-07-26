@@ -34,6 +34,7 @@ import { useGLTF } from '@react-three/drei';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { WorldPos } from './hexMath';
+import { cloneCryptMaterials } from './sceneKnowledge';
 
 export const ENV_BASE = '/models/synty/env/';
 
@@ -88,8 +89,16 @@ export interface GlbInstanceProps {
    * mesh's material before tinting it, so the shared useGLTF cache (and
    * every OTHER instance of the same GLB) is never mutated. Undefined
    * (every existing caller) renders the GLB's original material,
-   * unchanged. */
+   * unchanged. Ignored when `remembered` is true (see that prop's doc). */
   tint?: THREE.Color;
+  /** Fog-of-war memory state (rpg-dnd5e-web#601/#602 scene-knowledge
+   * contract): true renders this instance with the crypt-memory look
+   * (`sceneKnowledge.cloneCryptMaterials` — desaturated color + faint
+   * emissive) instead of `tint`, and takes precedence over it — a
+   * remembered piece reads as "out of current sight, seen before" even
+   * if it would otherwise carry a theme tint. Default false (every caller
+   * before this prop existed) renders exactly as before. */
+  remembered?: boolean;
 }
 
 /** Renders one instance of a GLB. useGLTF caches the loaded scene by URL,
@@ -102,6 +111,7 @@ export function GlbInstance({
   rotationY,
   scale,
   tint,
+  remembered = false,
 }: GlbInstanceProps) {
   const { scene } = useGLTF(ENV_BASE + file);
 
@@ -160,8 +170,17 @@ export function GlbInstance({
   // dispose exactly the materials THIS run created — never the shared
   // `originalMaterials`, which are the same instances every other on-screen
   // copy of this GLB (via useGLTF's cache) still uses.
+  //
+  // `remembered` (rpg-dnd5e-web#601/#602) takes precedence over `tint`
+  // entirely — `cloneCryptMaterials` replaces the normal tint-multiply
+  // rather than composing with it, so a remembered piece always reads as
+  // "seen before, not currently in sight" regardless of what theme tint
+  // it would otherwise carry. Cleanup restores `originalMaterials` onto
+  // the mesh BEFORE disposing the created ones (not just disposing) so a
+  // prop change (remembered/tint flips as game state changes) never
+  // leaves a mesh referencing an already-disposed material mid-transition.
   useEffect(() => {
-    if (!tint) {
+    if (!tint && !remembered) {
       originalMaterials.forEach((mat, mesh) => {
         mesh.material = mat;
       });
@@ -170,21 +189,31 @@ export function GlbInstance({
     const created: THREE.Material[] = [];
     originalMaterials.forEach((mat, mesh) => {
       const wasArray = Array.isArray(mat);
-      const materials = wasArray ? mat : [mat];
-      const tinted = materials.map((m) => {
-        const tintedMat = m.clone();
-        created.push(tintedMat);
-        if ('color' in tintedMat && tintedMat.color instanceof THREE.Color) {
-          tintedMat.color = tintedMat.color.clone().multiply(tint);
-        }
-        return tintedMat;
-      });
-      mesh.material = wasArray ? tinted : tinted[0]!;
+      const replacements = remembered
+        ? cloneCryptMaterials(mat)
+        : (Array.isArray(mat) ? mat : [mat]).map((m) => {
+            const tintedMat = m.clone();
+            if (
+              'color' in tintedMat &&
+              tintedMat.color instanceof THREE.Color
+            ) {
+              tintedMat.color = tintedMat.color.clone().multiply(tint!);
+            }
+            return tintedMat;
+          });
+      const replacementArray = Array.isArray(replacements)
+        ? replacements
+        : [replacements];
+      created.push(...replacementArray);
+      mesh.material = wasArray ? replacementArray : replacementArray[0]!;
     });
     return () => {
+      originalMaterials.forEach((mat, mesh) => {
+        mesh.material = mat;
+      });
       created.forEach((mat) => mat.dispose());
     };
-  }, [originalMaterials, tint]);
+  }, [originalMaterials, remembered, tint]);
 
   return (
     <primitive

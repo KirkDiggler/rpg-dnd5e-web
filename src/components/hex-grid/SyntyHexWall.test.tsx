@@ -29,6 +29,46 @@ function wall(kind: WallKind, id = 'boss-door'): Wall {
 }
 
 describe('SyntyHexWall R3F scene', () => {
+  it('renders a remembered closed door without a hit target', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexWall
+        walls={[wall(WallKind.DOOR_CLOSED)]}
+        hexSize={1}
+        rememberedWallHexKeys={new Set(['0,0,0'])}
+      />
+    );
+    expect(
+      renderer.scene.findAll((node) => typeof node.props.onClick === 'function')
+    ).toEqual([]);
+  });
+
+  it('tints a fitting when any touching wall hex is remembered', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexWall
+        walls={[
+          {
+            from: { x: 0, y: 0, z: 0 },
+            to: { x: 0, y: 0, z: 0 },
+            kind: WallKind.SOLID,
+          } as Wall,
+          {
+            from: { x: 1, y: -1, z: 0 },
+            to: { x: 1, y: -1, z: 0 },
+            kind: WallKind.SOLID,
+          } as Wall,
+          {
+            from: { x: 1, y: 0, z: -1 },
+            to: { x: 1, y: 0, z: -1 },
+            kind: WallKind.SOLID,
+          } as Wall,
+        ]}
+        hexSize={1}
+        rememberedWallHexKeys={new Set(['1,-1,0'])}
+      />
+    );
+    expect(findTintedMeshes(renderer).length).toBeGreaterThan(0);
+  });
+
   it('renders a tinted locked door hit target that forwards its exact Wall.id', async () => {
     const onDoorClick = vi.fn();
     const renderer = await ReactThreeTestRenderer.create(

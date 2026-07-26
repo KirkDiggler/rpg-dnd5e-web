@@ -38,6 +38,7 @@ import { type Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2
 import { Suspense, useMemo } from 'react';
 import * as THREE from 'three';
 import { GlbInstance } from './GlbInstance';
+import { rememberedFitting, rememberedSegment } from './sceneKnowledge';
 import {
   buildDungeonWallSegments,
   classifyWallVertices,
@@ -102,6 +103,7 @@ export interface SyntyHexWallProps {
    * `'default'`, unchanged from pre-theme behavior.
    */
   themeWallHexKeys?: ReadonlySet<string>;
+  rememberedWallHexKeys?: ReadonlySet<string>;
   /**
    * Whole-space theme (rpg-dnd5e-web#558 real-route consumption): when set
    * to `'crypt'`, EVERY wall segment renders `'crypt'`-themed, regardless of
@@ -135,6 +137,7 @@ export function SyntyHexWall({
   hexSize,
   onDoorClick,
   themeWallHexKeys,
+  rememberedWallHexKeys,
   spaceTheme,
   doorRotationOverrides,
 }: SyntyHexWallProps) {
@@ -156,6 +159,7 @@ export function SyntyHexWall({
   return (
     <Suspense fallback={null}>
       {segments.map(({ key, edge, kind, id }) => {
+        const isRemembered = rememberedSegment(key, rememberedWallHexKeys);
         if (isDoorWallKind(kind)) {
           const visualState = doorVisualState(kind)!;
           const rotationY =
@@ -164,23 +168,26 @@ export function SyntyHexWall({
           return (
             <group
               key={key}
-              onClick={(e: { stopPropagation: () => void }) => {
-                e.stopPropagation();
-                if (id) onDoorClick?.(id);
-              }}
-              onPointerOver={(e: { stopPropagation: () => void }) => {
-                e.stopPropagation();
-                if (id) document.body.style.cursor = 'pointer';
-              }}
-              onPointerOut={() => {
-                document.body.style.cursor = 'auto';
-              }}
+              {...(!isRemembered && {
+                onClick: (e: { stopPropagation: () => void }) => {
+                  e.stopPropagation();
+                  if (id) onDoorClick?.(id);
+                },
+                onPointerOver: (e: { stopPropagation: () => void }) => {
+                  e.stopPropagation();
+                  if (id) document.body.style.cursor = 'pointer';
+                },
+                onPointerOut: () => {
+                  document.body.style.cursor = 'auto';
+                },
+              })}
             >
               <GlbInstance
                 file="SM_Env_Door_Frame_01.glb"
                 position={edge.mid}
                 rotationY={rotationY}
                 scale={DOOR_FRAME_SCALE}
+                remembered={isRemembered}
               />
               <GlbInstance
                 file="SM_Env_Door_01.glb"
@@ -191,6 +198,7 @@ export function SyntyHexWall({
                 }
                 scale={DOOR_SCALE}
                 tint={visualState === 'locked' ? LOCKED_DOOR_TINT : undefined}
+                remembered={isRemembered}
               />
             </group>
           );
@@ -207,6 +215,7 @@ export function SyntyHexWall({
               position={edge.mid}
               rotationY={edge.rotationY}
               scale={fittingScale(fitting, WALL_HEIGHT)}
+              remembered={isRemembered}
             />
           );
         }
@@ -234,11 +243,13 @@ export function SyntyHexWall({
             rotationY={edge.rotationY}
             scale={wallVariantScale(variant, WALL_HEIGHT, SYNTY_SCALE)}
             tint={WALL_TINT_BY_THEME[theme]}
+            remembered={isRemembered}
           />
         );
       })}
       {vertexFittings.map(({ key, kind, position, rotationY }) => {
         const fitting = FITTINGS[kind];
+        const isRemembered = rememberedFitting(key, rememberedWallHexKeys);
         return (
           <GlbInstance
             key={key}
@@ -246,6 +257,7 @@ export function SyntyHexWall({
             position={position}
             rotationY={rotationY}
             scale={fittingScale(fitting, WALL_HEIGHT)}
+            remembered={isRemembered}
           />
         );
       })}

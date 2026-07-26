@@ -17,6 +17,19 @@
  * job. The floor skirt (covering the half-hex scallop between the true hex
  * floor edge and the wall line) stays a placeholder box — W3's scope is
  * wall/corner/door-frame meshes (plan.md), not the skirt.
+ *
+ * Fog-of-war memory (rpg-dnd5e-web#601/#602 scene-knowledge contract,
+ * merged in here): `rememberedEnvelopeRegionIds`/`rememberedConnectorDoorIds`
+ * mark which regions/connectors are "seen before, not currently visible" —
+ * every tiled piece (and the corner fitting) for a remembered region/
+ * connector renders via `GlbInstance`'s own `remembered` prop (the
+ * crypt-memory look) instead of `spaceTheme`'s tint. #602 introduced this
+ * contract against the OLD placeholder-box WallRunMesh (a `remembered`
+ * boolean swapping `meshStandardMaterial`); this is the same contract
+ * re-expressed against real tiled Synty pieces. Fallback segments
+ * (`fallbackSegments`, this branch's own addition, postdating #602) have
+ * no natural regionId/doorId of their own to match against a remembered
+ * set — see `WallRunMeshProps.fallbackSegments`'s doc comment.
  */
 
 import type {
@@ -29,6 +42,12 @@ import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { Suspense, useMemo } from 'react';
 import type * as THREE from 'three';
 import { GlbInstance } from './GlbInstance';
+import {
+  CRYPT_MEMORY_COLOR,
+  CRYPT_MEMORY_EMISSIVE,
+  CRYPT_MEMORY_EMISSIVE_INTENSITY,
+  CRYPT_MEMORY_OPACITY,
+} from './sceneKnowledge';
 import {
   FITTINGS,
   fittingScale,
@@ -62,16 +81,37 @@ const RUN_WALL_VARIANT = WALL_VARIANTS[0]!;
 // stretching, is correct here).
 const NOMINAL_PIECE_WIDTH = 1.0;
 
-function FloorSkirtBox({ segment }: { segment: WallRunSegment }) {
+function FloorSkirtBox({
+  segment,
+  remembered = false,
+}: {
+  segment: WallRunSegment;
+  remembered?: boolean;
+}) {
   const { position, rotationY, length } = wallRunBoxTransform(segment);
   if (length === 0) return null;
+  // Still a placeholder box (this file's own doc comment) — #602's
+  // crypt-memory material swap applies directly here since it never
+  // became a GlbInstance, so the skirt dims consistently with the real
+  // wall piece standing on it.
   return (
     <mesh
       position={[position.x, FLOOR_SKIRT_HEIGHT / 2, position.z]}
       rotation={[0, rotationY, 0]}
     >
       <boxGeometry args={[length, FLOOR_SKIRT_HEIGHT, FLOOR_SKIRT_DEPTH]} />
-      <meshStandardMaterial color={FLOOR_SKIRT_COLOR} />
+      {remembered ? (
+        <meshStandardMaterial
+          color={CRYPT_MEMORY_COLOR}
+          emissive={CRYPT_MEMORY_EMISSIVE}
+          emissiveIntensity={CRYPT_MEMORY_EMISSIVE_INTENSITY}
+          opacity={CRYPT_MEMORY_OPACITY}
+          transparent={false}
+          depthWrite
+        />
+      ) : (
+        <meshStandardMaterial color={FLOOR_SKIRT_COLOR} />
+      )}
     </mesh>
   );
 }
@@ -80,10 +120,12 @@ function TiledWallRun({
   segment,
   wallHeight,
   tint,
+  remembered = false,
 }: {
   segment: WallRunSegment;
   wallHeight: number;
   tint?: THREE.Color;
+  remembered?: boolean;
 }) {
   const pieces = useMemo(
     () => tileWallSegment(segment, NOMINAL_PIECE_WIDTH),
@@ -111,6 +153,7 @@ function TiledWallRun({
             SYNTY_SCALE,
           ]}
           tint={tint}
+          remembered={remembered}
         />
       ))}
     </>
@@ -129,8 +172,29 @@ export interface WallRunMeshProps {
    * (frontier doors, far room unexplored) — same invisible-wall coverage,
    * just rendered as a short straight tile instead of the legacy per-cell
    * hex-vertex box. Empty/omitted (every caller not yet updated) renders
-   * nothing extra, unchanged from before this prop existed. */
+   * nothing extra, unchanged from before this prop existed.
+   *
+   * Not currently matched against `rememberedConnectorDoorIds`: a
+   * fallback segment exists precisely because NO region/connector data
+   * was known yet at that column (see connectorFallbackSegments' own doc
+   * comment) — by the time a connector is old enough to be "remembered"
+   * (previously seen, now out of sight) rather than merely unresolved,
+   * both its regions have necessarily been known at some point, so it
+   * should already have graduated to a real ConnectorRun. Latent, not
+   * load-bearing today; flagged here for whoever wires a real
+   * remembered-hexes data source (fog-of-war Task 2+).
+   */
   fallbackSegments?: WallRunSegment[];
+  /** Fog-of-war memory (rpg-dnd5e-web#601/#602 scene-knowledge contract):
+   * region ids whose envelope (all 4 sides + corner) should render via
+   * `GlbInstance`'s `remembered` look instead of `spaceTheme`'s tint.
+   * Undefined/empty (every caller before this prop existed) renders every
+   * envelope normally. */
+  rememberedEnvelopeRegionIds?: ReadonlySet<string>;
+  /** Fog-of-war memory (rpg-dnd5e-web#601/#602): door ids whose connector
+   * run should render remembered. Undefined/empty renders every
+   * connector normally. */
+  rememberedConnectorDoorIds?: ReadonlySet<string>;
   /** Wall height, world units — defaults to the game's standard
    * WALL_HEIGHT (calibrationConstants.ts) so this matches every other
    * wall renderer without callers having to pass it explicitly. */
@@ -160,24 +224,30 @@ export function WallRunMesh({
   envelopeCorners = [],
   connectorRuns,
   fallbackSegments = [],
+  rememberedEnvelopeRegionIds,
+  rememberedConnectorDoorIds,
   wallHeight = DEFAULT_WALL_HEIGHT,
   spaceTheme,
 }: WallRunMeshProps) {
-  const connectorSegments = useMemo(
-    () => connectorRuns.flatMap((run) => run.segments),
-    [connectorRuns]
-  );
   const tint = spaceTheme ? WALL_TINT_BY_THEME[spaceTheme] : undefined;
   const cornerFitting = FITTINGS['wall-corner-outer'];
 
   return (
     <Suspense fallback={null}>
-      {envelopeRuns.map((run) => (
-        <group key={`${run.regionId}-${run.side}`}>
-          <TiledWallRun segment={run} wallHeight={wallHeight} tint={tint} />
-          <FloorSkirtBox segment={run} />
-        </group>
-      ))}
+      {envelopeRuns.map((run) => {
+        const remembered = !!rememberedEnvelopeRegionIds?.has(run.regionId);
+        return (
+          <group key={`${run.regionId}-${run.side}`}>
+            <TiledWallRun
+              segment={run}
+              wallHeight={wallHeight}
+              tint={tint}
+              remembered={remembered}
+            />
+            <FloorSkirtBox segment={run} remembered={remembered} />
+          </group>
+        );
+      })}
       {envelopeCorners.map((corner) => (
         <GlbInstance
           key={`${corner.regionId}-${corner.corner}`}
@@ -186,14 +256,24 @@ export function WallRunMesh({
           rotationY={corner.rotationY}
           scale={fittingScale(cornerFitting, wallHeight)}
           tint={tint}
+          remembered={!!rememberedEnvelopeRegionIds?.has(corner.regionId)}
         />
       ))}
-      {connectorSegments.map((segment) => (
-        <group key={segmentKey(segment)}>
-          <TiledWallRun segment={segment} wallHeight={wallHeight} tint={tint} />
-          <FloorSkirtBox segment={segment} />
-        </group>
-      ))}
+      {connectorRuns.flatMap((run) => {
+        const remembered =
+          !!run.doorId && !!rememberedConnectorDoorIds?.has(run.doorId);
+        return run.segments.map((segment) => (
+          <group key={segmentKey(segment)}>
+            <TiledWallRun
+              segment={segment}
+              wallHeight={wallHeight}
+              tint={tint}
+              remembered={remembered}
+            />
+            <FloorSkirtBox segment={segment} remembered={remembered} />
+          </group>
+        ));
+      })}
       {fallbackSegments.map((segment) => (
         <group key={`fallback-${segmentKey(segment)}`}>
           <TiledWallRun segment={segment} wallHeight={wallHeight} tint={tint} />
