@@ -54,6 +54,7 @@ import {
   type WallTheme,
 } from './syntyHexWallHelpers';
 import {
+  effectiveWallHeight,
   segmentKey,
   tileWallSegment,
   wallRunBoxTransform,
@@ -214,8 +215,20 @@ export interface WallRunMeshProps {
   rememberedConnectorDoorIds?: ReadonlySet<string>;
   /** Wall height, world units — defaults to the game's standard
    * WALL_HEIGHT (calibrationConstants.ts) so this matches every other
-   * wall renderer without callers having to pass it explicitly. */
+   * wall renderer without callers having to pass it explicitly. Doubles as
+   * the cutaway prototype's TALL height when `wallCutaway` is set (team
+   * ask: "make the tall value the ?wallHeight dial so the ladder composes
+   * with cutaway"). */
   wallHeight?: number;
+  /** Cutaway prototype (rpg-project#132, `?wallCutaway=1`): classify each
+   * envelope/connector run as camera-facing (stub, `CUTAWAY_STUB_WALL_HEIGHT`)
+   * or away-facing (tall, `wallHeight`) via its own `facing` vector — see
+   * `effectiveWallHeight`'s own doc comment. Default false renders every
+   * run at the uniform `wallHeight`, unchanged from before this prop
+   * existed. Corners where a tall run meets a stub are NOT reconciled in
+   * this prototype (each run keeps its own height; judge the look first,
+   * polish the joint after). */
+  wallCutaway?: boolean;
   /** Whole-space theme (rpg-dnd5e-web#558) — tints every tiled piece and
    * corner fitting the same way SyntyHexWall's legacy renderer already
    * tints per-cell pieces, so a themed dungeon's straight runs match its
@@ -265,6 +278,7 @@ export function WallRunMesh({
   rememberedEnvelopeRegionIds,
   rememberedConnectorDoorIds,
   wallHeight = DEFAULT_WALL_HEIGHT,
+  wallCutaway = false,
   spaceTheme,
 }: WallRunMeshProps) {
   const tint = spaceTheme ? WALL_TINT_BY_THEME[spaceTheme] : undefined;
@@ -273,11 +287,12 @@ export function WallRunMesh({
     <Suspense fallback={null}>
       {envelopeRuns.map((run) => {
         const remembered = !!rememberedEnvelopeRegionIds?.has(run.regionId);
+        const height = effectiveWallHeight(run.facing, wallCutaway, wallHeight);
         return (
           <group key={`${run.regionId}-${run.side}`}>
             <TiledWallRun
               segment={run}
-              wallHeight={wallHeight}
+              wallHeight={height}
               tint={tint}
               remembered={remembered}
               facing={run.facing}
@@ -289,11 +304,12 @@ export function WallRunMesh({
       {connectorRuns.flatMap((run) => {
         const remembered =
           !!run.doorId && !!rememberedConnectorDoorIds?.has(run.doorId);
+        const height = effectiveWallHeight(run.facing, wallCutaway, wallHeight);
         return run.segments.map((segment) => (
           <group key={segmentKey(segment)}>
             <TiledWallRun
               segment={segment}
-              wallHeight={wallHeight}
+              wallHeight={height}
               tint={tint}
               remembered={remembered}
               facing={run.facing}

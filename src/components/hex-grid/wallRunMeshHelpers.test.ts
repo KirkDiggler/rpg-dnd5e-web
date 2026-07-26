@@ -1,5 +1,7 @@
+import { CUTAWAY_STUB_WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { describe, expect, it } from 'vitest';
 import {
+  effectiveWallHeight,
   facingCorrectedRotationY,
   segmentKey,
   tileWallSegment,
@@ -335,5 +337,33 @@ describe("facingCorrectedRotationY (round-2 W3/W4 fix: tileWallSegment's rotatio
       rotationY + Math.PI,
       9
     );
+  });
+});
+
+describe('effectiveWallHeight (cutaway prototype, rpg-project#132 ?wallCutaway=1: camera-facing runs render as a low stub, away-facing runs stay tall)', () => {
+  const TALL = 2.4;
+  // Toward the fixed isometric camera (matches CAMERA_WARD_XZ's own
+  // direction, derived from CAMERA_OFFSET=[8,10,8] — see
+  // calibrationConstants.ts).
+  const TOWARD_CAMERA = { x: 1, z: 1 };
+  const AWAY_FROM_CAMERA = { x: -1, z: -1 };
+
+  it('renders the uniform tall height when cutaway is off, regardless of facing', () => {
+    expect(effectiveWallHeight(TOWARD_CAMERA, false, TALL)).toBe(TALL);
+    expect(effectiveWallHeight(AWAY_FROM_CAMERA, false, TALL)).toBe(TALL);
+  });
+
+  it('renders tall (never stub) when there is no facing vector at all, even with cutaway on — fallback segments have no room to classify against', () => {
+    expect(effectiveWallHeight(undefined, true, TALL)).toBe(TALL);
+  });
+
+  it('stubs a run whose facing points toward the camera', () => {
+    expect(effectiveWallHeight(TOWARD_CAMERA, true, TALL)).toBe(
+      CUTAWAY_STUB_WALL_HEIGHT
+    );
+  });
+
+  it('keeps a run whose facing points away from the camera at the tall height', () => {
+    expect(effectiveWallHeight(AWAY_FROM_CAMERA, true, TALL)).toBe(TALL);
   });
 });

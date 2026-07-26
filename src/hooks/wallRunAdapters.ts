@@ -18,8 +18,13 @@ import {
   cubeToWorld,
   HEX_SIZE,
   type CubeCoord,
+  type WorldPos,
 } from '@/components/hex-grid/hexMath';
 import { isDoorWallKind } from '@/components/hex-grid/syntyHexWallHelpers';
+import {
+  CAMERA_WARD_XZ,
+  CUTAWAY_STUB_WALL_HEIGHT,
+} from '@/rendering/calibrationConstants';
 import {
   type Hex,
   type Wall,
@@ -466,6 +471,18 @@ export function connectorFallbackSegments(
  * height>=4/doorRow-strictly-interior generator, but not this function's
  * job to assume) contributes no override, and the caller's door rendering
  * falls back to its own pre-existing orientation for that one door.
+ *
+ * SUPERSEDED as of the connector-single-wall follow-up (rpg-project#132):
+ * this only produces an entry once a real `ConnectorRun` resolves (both
+ * neighboring regions known), so a door whose far room is still dark fell
+ * back to `edge.rotationY` — a genuinely different, wire-hex-vertex-
+ * derived angle, not the connector's own plane (Kirk's live-walk regression:
+ * "can our door rotate a little to line up with the wall?"). Kept, still
+ * correct in its own right and still tested, for any caller that only has
+ * `ConnectorRun[]` and no raw door list — but `connectorDoorPlanes` below
+ * is what real callers should use: it needs only each door's own cell
+ * (always exactly ON the connector column by construction, this file's own
+ * header doc), so it produces the SAME plane in both reveal states.
  */
 export function connectorRunDoorRotations(
   connectorRuns: ConnectorRun[]
@@ -484,4 +501,90 @@ export function connectorRunDoorRotations(
     rotations.set(run.doorId, Math.atan2(-dz, dx));
   }
   return rotations;
+}
+
+/** One door's exact position + orientation on its connector's own straight
+ * column plane — see `connectorDoorPlanes`' doc comment. */
+export interface DoorPlane {
+  position: WorldPos;
+  rotationY: number;
+}
+
+/**
+ * Every door's EXACT position + rotationY on its connector's own straight
+ * column line — Kirk's live-walk regression on the connector-single-wall
+ * prototype: "can our door rotate a little to line up with the wall?" The
+ * legacy per-cell renderer (SyntyHexWall) has always placed/oriented door
+ * pieces from `hexEdgeBetween`'s wire-hex-vertex geometry (the midpoint/
+ * corner between the door's own cell and `doorPassageNeighbor`'s
+ * arbitrarily-picked first region-tagged neighbor) — a genuinely DIFFERENT
+ * geometric quantity than the connector's own straight column line
+ * wallRuns.ts computes and WallRunMesh actually tiles real wall pieces
+ * along. Close enough to look plausible most of the time, never guaranteed
+ * to coincide — the exact defect reported.
+ *
+ * Needs only each door's OWN cell (always exactly ON the connector column
+ * by construction — this file's own header doc: "A door's own cell sits ON
+ * the connector column") plus `hexSize`. Zero dependency on region data,
+ * `ConnectorRun`s, or fallback segments at all — unlike
+ * `connectorRunDoorRotations` above (superseded), this produces the exact
+ * same plane whether the far room is dark or fully revealed, satisfying
+ * "same in both reveal states" by construction rather than by coincidence.
+ *
+ * `rotationY` matches `hexEdgeBetween`'s own atan2(-dz, dx) convention
+ * (hexMath.ts) using a second point one row further down the SAME column
+ * (`candidateToFallbackSegment`'s own established "same column axis a real
+ * ConnectorRun uses" convention) — the identical direction the tiled wall
+ * pieces on that column already orient to, so a door frame/leaf placed
+ * here reads as flush with the wall line instead of visibly disagreeing
+ * with it.
+ */
+export function connectorDoorPlanes(
+  doors: Iterable<ConnectorDoorInput>,
+  hexSize: number = HEX_SIZE
+): Map<string, DoorPlane> {
+  const planes = new Map<string, DoorPlane>();
+  for (const door of doors) {
+    if (!door.id) continue;
+    const col = hexColumn(door.position);
+    const row = hexRow(door.position);
+    const position = cubeToWorld(door.position, hexSize);
+    const next = cubeToWorld(cubeAtColRow(col, row + 1), hexSize);
+    const dx = next.x - position.x;
+    const dz = next.z - position.z;
+    if (dx === 0 && dz === 0) continue;
+    planes.set(door.id, { position, rotationY: Math.atan2(-dz, dx) });
+  }
+  return planes;
+}
+
+/**
+ * Cutaway prototype (rpg-project#132, `?wallCutaway=1`): each door's
+ * effective height (stub or tall), classified from its OWN connector run's
+ * `facing` vector via the identical dot-product-against-camera test
+ * `WallRunMesh.effectiveWallHeight` applies to the wall pieces themselves
+ * (`CAMERA_WARD_XZ`, calibrationConstants.ts). Kirk's requirement: "Doors/
+ * frames on a tall run scale with it; connector walls classify by the same
+ * dot product" — so a door's frame/leaf always matches whichever height its
+ * own connector run rendered at, rather than the single global `wallHeight`
+ * every door used before this prototype.
+ *
+ * A connector with no `doorId` (a connector segment with no door on it —
+ * shouldn't occur by construction, but not this function's job to assume)
+ * contributes no entry; the caller's door rendering falls back to its own
+ * pre-existing global height for that one door, same "caller falls back"
+ * contract as `connectorRunDoorRotations` above.
+ */
+export function connectorDoorHeights(
+  connectorRuns: ConnectorRun[],
+  tallHeight: number
+): Map<string, number> {
+  const heights = new Map<string, number>();
+  for (const run of connectorRuns) {
+    if (!run.doorId) continue;
+    const dot =
+      run.facing.x * CAMERA_WARD_XZ.x + run.facing.z * CAMERA_WARD_XZ.z;
+    heights.set(run.doorId, dot > 0 ? CUTAWAY_STUB_WALL_HEIGHT : tallHeight);
+  }
+  return heights;
 }

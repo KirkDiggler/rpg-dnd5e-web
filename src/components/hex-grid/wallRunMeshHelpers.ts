@@ -5,6 +5,10 @@
  */
 
 import type { WallRunSegment } from '@/hooks/wallRuns';
+import {
+  CAMERA_WARD_XZ,
+  CUTAWAY_STUB_WALL_HEIGHT,
+} from '@/rendering/calibrationConstants';
 import type { WorldPos } from './hexMath';
 
 export interface WallRunBoxTransform {
@@ -197,4 +201,31 @@ export function tileWallSegment(
     });
   }
   return pieces;
+}
+
+/**
+ * Classify a run's own outward `facing` vector as camera-facing (near —
+ * gets the low stub) or away-facing (far — gets the tall `wallHeight`),
+ * via a dot product against `CAMERA_WARD_XZ` (calibrationConstants.ts —
+ * the unit direction from the scene toward the fixed camera, derived from
+ * the SAME position the Canvas actually uses, so this can't silently
+ * drift out of sync). A positive dot means `facing` points roughly toward
+ * the camera — this run sits between the camera and the room's interior,
+ * exactly the wall Synty's promo hides so you can see in.
+ *
+ * No `facing` (fallback segments — see `WallRunMeshProps.fallbackSegments`'
+ * own doc comment for why they have none) always gets the tall height:
+ * a fallback exists specifically because NO region data was known yet at
+ * that column, so there's no room to judge "near vs far" relative to at
+ * all; defaulting tall keeps the existing invisible-wall guarantee's
+ * visual weight rather than guessing.
+ */
+export function effectiveWallHeight(
+  facing: WorldPos | undefined,
+  wallCutaway: boolean,
+  tallHeight: number
+): number {
+  if (!wallCutaway || !facing) return tallHeight;
+  const dot = facing.x * CAMERA_WARD_XZ.x + facing.z * CAMERA_WARD_XZ.z;
+  return dot > 0 ? CUTAWAY_STUB_WALL_HEIGHT : tallHeight;
 }

@@ -17,7 +17,9 @@ vi.mock('@react-three/drei', () => {
   return { useGLTF: () => ({ scene }) };
 });
 
+import { SYNTY_SCALE, WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { SyntyHexWall } from './SyntyHexWall';
+import { doorFrameScale, doorLeafScale } from './syntyHexWallHelpers';
 
 function wall(kind: WallKind, id = 'boss-door'): Wall {
   return {
@@ -147,30 +149,75 @@ function allRotationYs(renderer: {
     );
 }
 
-describe('SyntyHexWall doorRotationOverrides (rpg-project#133 dungeon-walls W2)', () => {
-  it('orients the door frame/leaf using the override instead of edge.rotationY when the door id matches', async () => {
+/** Every XZ position of every rendered Object3D in the scene (mirrors
+ * allRotationYs' set-membership approach, same reason: a door hex also
+ * produces unrelated corner-fitting pieces). */
+function allPositionsXZ(renderer: {
+  scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+}): Array<{ x: number; z: number }> {
+  return renderer.scene
+    .findAll(
+      (node) =>
+        (node as { props: { position?: unknown } }).props.position !== undefined
+    )
+    .map((node) => {
+      const [x, , z] = (
+        node as { props: { position: [number, number, number] } }
+      ).props.position;
+      return { x, z };
+    });
+}
+
+describe('SyntyHexWall doorPlaneOverrides (rpg-project#133 dungeon-walls W2, sharpened by the connector-single-wall follow-up rpg-project#132: "can our door rotate a little to line up with the wall?")', () => {
+  it("orients the door frame/leaf using the override's rotationY instead of edge.rotationY when the door id matches", async () => {
     // A distinctive angle unlikely to coincide with any real edge/fitting
     // rotation this fixture's geometry would otherwise produce.
-    const override = Math.PI * 0.6789;
+    const override = { position: { x: 0, z: 0 }, rotationY: Math.PI * 0.6789 };
     const renderer = await ReactThreeTestRenderer.create(
       <SyntyHexWall
         walls={[wall(WallKind.DOOR_CLOSED, 'door-1')]}
         hexSize={1}
-        doorRotationOverrides={new Map([['door-1', override]])}
+        doorPlaneOverrides={new Map([['door-1', override]])}
       />
     );
     const rotations = allRotationYs(renderer);
     // Both the frame and the leaf pick up the override -> at least 2 hits.
-    const hits = rotations.filter((r) => Math.abs(r - override) < 1e-9);
+    const hits = rotations.filter(
+      (r) => Math.abs(r - override.rotationY) < 1e-9
+    );
     expect(hits.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('renders identically to the no-override case when the doorRotationOverrides map has no entry for this door', async () => {
+  it("moves the door frame to the override's exact position, distinct from the wire's own edge.mid — the exact defect this override exists to fix (frame/leaf visibly off the connector's actual wall plane)", async () => {
+    // Distinctive position far from this fixture's own edge.mid (roughly
+    // (0.5,-0.5) for the {0,0,0}->{1,-1,0} boundary-edge wall).
+    const override = { position: { x: 12.5, z: -7.25 }, rotationY: 0.4 };
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexWall
+        walls={[wall(WallKind.DOOR_CLOSED, 'door-1')]}
+        hexSize={1}
+        doorPlaneOverrides={new Map([['door-1', override]])}
+      />
+    );
+    const positions = allPositionsXZ(renderer);
+    const hit = positions.find(
+      (p) =>
+        Math.abs(p.x - override.position.x) < 1e-9 &&
+        Math.abs(p.z - override.position.z) < 1e-9
+    );
+    expect(hit).toBeDefined();
+  });
+
+  it('renders identically to the no-override case when the doorPlaneOverrides map has no entry for this door', async () => {
     const withUnrelatedOverride = await ReactThreeTestRenderer.create(
       <SyntyHexWall
         walls={[wall(WallKind.DOOR_CLOSED, 'door-1')]}
         hexSize={1}
-        doorRotationOverrides={new Map([['other-door', Math.PI]])}
+        doorPlaneOverrides={
+          new Map([
+            ['other-door', { position: { x: 1, z: 1 }, rotationY: Math.PI }],
+          ])
+        }
       />
     );
     const withoutOverride = await ReactThreeTestRenderer.create(
@@ -181,6 +228,9 @@ describe('SyntyHexWall doorRotationOverrides (rpg-project#133 dungeon-walls W2)'
     );
     expect(allRotationYs(withUnrelatedOverride).sort()).toEqual(
       allRotationYs(withoutOverride).sort()
+    );
+    expect(allPositionsXZ(withUnrelatedOverride)).toEqual(
+      allPositionsXZ(withoutOverride)
     );
   });
 });
@@ -247,5 +297,66 @@ describe('SyntyHexWall spaceTheme (rpg-dnd5e-web#558 real-route theme consumptio
       />
     );
     expect(findTintedMeshes(renderer).length).toBeGreaterThan(0);
+  });
+});
+
+describe('doorFrameScale / doorLeafScale (rpg-project#132 wall-height dial: "the height of the walls might be a little low" — door frame/leaf rise the SAME proportion the wall-height dial does, not independently)', () => {
+  it('at heightRatio=1 (the default wallHeight, no override), height is exactly the old flat SYNTY_SCALE — byte-identical to pre-dial behavior', () => {
+    expect(doorFrameScale(1)[1]).toBe(SYNTY_SCALE);
+    expect(doorLeafScale(1)[1]).toBe(SYNTY_SCALE);
+  });
+
+  it('scales height by the ratio, leaving width/depth (X/Z) untouched — only height is what "the wall is a little low" is about', () => {
+    const ratio = 1.5;
+    const frame = doorFrameScale(ratio);
+    const leaf = doorLeafScale(ratio);
+    expect(frame[1]).toBeCloseTo(SYNTY_SCALE * ratio, 9);
+    expect(leaf[1]).toBeCloseTo(SYNTY_SCALE * ratio, 9);
+    // X (width) and Z (depth/thickness) are the SAME regardless of ratio.
+    const frameAtDefault = doorFrameScale(1);
+    const leafAtDefault = doorLeafScale(1);
+    expect(frame[0]).toBe(frameAtDefault[0]);
+    expect(frame[2]).toBe(frameAtDefault[2]);
+    expect(leaf[0]).toBe(leafAtDefault[0]);
+    expect(leaf[2]).toBe(leafAtDefault[2]);
+  });
+
+  it('a wallHeight override translates to the correct ratio (wallHeight / WALL_HEIGHT) — e.g. wallHeight=1.2 at the default WALL_HEIGHT=0.8 gives ratio 1.5', () => {
+    const wallHeight = 1.2;
+    const ratio = wallHeight / WALL_HEIGHT;
+    expect(ratio).toBeCloseTo(1.5, 9);
+    expect(doorFrameScale(ratio)[1]).toBeCloseTo(SYNTY_SCALE * 1.5, 9);
+  });
+});
+
+describe('SyntyHexWall wallHeight prop (rpg-project#132 wall-height dial)', () => {
+  it('renders without error at a taller wallHeight override (smoke test — scale is baked into GlbInstance geometry, not exposed as a scene-graph prop, so the door/wall/fitting scale contract is covered by the doorFrameScale/doorLeafScale + wallVariantScale/fittingScale unit tests instead)', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexWall
+        walls={[
+          wall(WallKind.DOOR_CLOSED, 'door-1'),
+          wall(WallKind.SOLID, undefined),
+        ]}
+        hexSize={1}
+        wallHeight={1.5}
+      />
+    );
+    expect(renderer.scene.children.length).toBeGreaterThan(0);
+  });
+
+  it('defaults to calibrationConstants.WALL_HEIGHT when omitted — byte-identical to every caller before this prop existed', async () => {
+    const withDefault = await ReactThreeTestRenderer.create(
+      <SyntyHexWall walls={[wall(WallKind.SOLID, undefined)]} hexSize={1} />
+    );
+    const withExplicitDefault = await ReactThreeTestRenderer.create(
+      <SyntyHexWall
+        walls={[wall(WallKind.SOLID, undefined)]}
+        hexSize={1}
+        wallHeight={WALL_HEIGHT}
+      />
+    );
+    expect(allRotationYs(withDefault)).toEqual(
+      allRotationYs(withExplicitDefault)
+    );
   });
 });

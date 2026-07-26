@@ -229,15 +229,23 @@ export interface WallRunsInput {
    */
   envelopeOffsetLeftRight?: number;
   /**
-   * How far a CONNECTOR run's own far endpoint (the end away from the
-   * door, toward the row boundary it shares with the adjacent rooms'
-   * envelope corners) extends past that boundary hex's own center, along
-   * the run's direction — reaches toward the hex's true outer
-   * face/corner instead of stopping dead-center on the last hex.
-   * Defaults to half a hex radius. Envelope runs no longer use this
-   * parameter at all — see `envelopeCornerOverlapMargin`'s doc comment
-   * for why they need a geometrically exact reach instead of a flat
-   * additive distance.
+   * UNUSED (accepted for backward API compatibility only — no current
+   * caller reads it, and computeWallRuns never consults this field).
+   *
+   * Originally: how far a CONNECTOR run's own near/far endpoint extended
+   * past its boundary hex's own center, a flat half-hex-radius reach.
+   * Superseded by the connector-single-wall follow-up (rpg-project#132):
+   * once a suppressed envelope side stops closing a room corner via the
+   * overlap-miter cheat (see `WallRunMesh`'s own doc comment), the
+   * CONNECTOR run's endpoint has to become the other half of that joint
+   * instead — which means it must reach the SAME exact envelope-corner
+   * intersection point `EnvelopeCorner` already computes (offset outward
+   * by up to `envelopeOffsetTopBottom`, often much farther than this flat
+   * constant ever reached — the exact defect Kirk's live walk caught:
+   * "a corner went missing... roughly a hex of open gap"). Connector run
+   * endpoints now use that same exact-intersection-plus-margin approach
+   * (`envelopeCornerOverlapMargin`), the same transition envelope runs
+   * themselves already went through — see that field's own doc comment.
    */
   cornerExtension?: number;
   /**
@@ -570,15 +578,6 @@ const DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES = Math.sqrt(3);
  */
 const DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES = 1.0;
 
-// Connector runs only now (envelope corners use
-// DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN instead — see
-// WallRunsInput.envelopeCornerOverlapMargin's own doc comment). Back to
-// its original 0.5 (half a hex radius): the round-2 bump to 1.0 was
-// specifically for envelope corners (superseded by the exact-reach fix
-// below) and was never reported as a problem for connector runs, so
-// there's no reason to carry that bump over to them.
-const DEFAULT_CORNER_EXTENSION_HEXES = 0.5;
-
 /**
  * See WallRunsInput.envelopeCornerOverlapMargin's own doc comment for
  * the full derivation. ~Half of `SM_Env_Wall_Half_01`'s rendered
@@ -594,21 +593,42 @@ const DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN = 0.16;
 
 /**
  * The four envelope runs (left/right/top/bottom) AND the four envelope
- * corners for one region. Derived purely from the region's own
- * hex-membership bounding rect — never from wall/blocking data — so a
- * boss-archetype region's deliberately full-width-open doorRow
- * (rpg-toolkit#819's tactical invariant) can never punch a gap in these:
- * this function has no notion of "openness" at all, only the rectangle's
- * four corners.
+ * corners for one region. Derived purely from `bounds` — never from
+ * wall/blocking data — so a boss-archetype region's deliberately
+ * full-width-open doorRow (rpg-toolkit#819's tactical invariant) can
+ * never punch a gap in these: this function has no notion of "openness"
+ * at all, only the rectangle's four corners. `bounds` is the CALLER's
+ * concern, not this function's — see `widenRegionBoundsAlongConnectors`'
+ * own doc comment for why it's the region's own reveal-gated hex bounds
+ * WIDENED (row extent only) to match any validated connector's shared
+ * extent, not simply `boundsOf(region.hexes)` — this function only cares
+ * that it received the RIGHT rectangle, not where it came from.
+ *
+ * `connectorFacing` (rpg-project#132 connector-single-wall follow-up to
+ * #615/#617's envelope-offset fix — the door-wall audit found 3
+ * independently-correct wall systems crowding the same frame, ~0.5 world
+ * units apart): when a side sits against a reserved connector column, that
+ * side's own EnvelopeRun is SUPPRESSED entirely — the connector's own
+ * ConnectorRun (or, before the far room resolves, the fallback-segment
+ * safety net in wallRunAdapters.ts) becomes the ONLY wall between the two
+ * rooms, the classic one-wall-one-door read. A suppressed side still needs
+ * a real line for corner math, though: the room's adjacent top/bottom run
+ * used to terminate against THIS side's own line, and must now terminate
+ * against the CONNECTOR's line instead so its corner still closes with no
+ * gap (same exact-intersection approach as every other corner — see
+ * `EnvelopeCorner`'s own doc comment). `lineForSide` below is what supplies
+ * that stand-in line; it's used ONLY for corner-intersection math, never
+ * emitted as a run of its own.
  */
 function envelopeGeometryForRegion(
   region: RegionInput,
+  bounds: Bounds | undefined,
   hexSize: number,
   envelopeOffsetTopBottom: number,
   envelopeOffsetLeftRight: number,
-  envelopeCornerOverlapMargin: number
+  envelopeCornerOverlapMargin: number,
+  connectorFacing: { left?: number; right?: number }
 ): { runs: EnvelopeRun[]; corners: EnvelopeCorner[] } {
-  const bounds = boundsOf(region.hexes);
   if (!bounds) return { runs: [], corners: [] };
   const { minCol, maxCol, minRow, maxRow } = bounds;
 
@@ -686,6 +706,32 @@ function envelopeGeometryForRegion(
   }));
   const zeroExtBySide = new Map(zeroExtRuns.map((run) => [run.side, run]));
 
+  const isSuppressed = (side: EnvelopeSide): boolean =>
+    (side === 'left' && connectorFacing.left !== undefined) ||
+    (side === 'right' && connectorFacing.right !== undefined);
+
+  // The line a suppressed side's own corner(s) should intersect against
+  // instead of its own (unrendered) envelope line: a fixed-column line at
+  // the connector's own column. Any two distinct rows at a fixed column
+  // define the identical infinite line (this file's own doc comment on
+  // `EnvelopeSide` — a constant column traces one straight world-space
+  // direction regardless of which rows are used), so minRow/maxRow here
+  // are arbitrary anchors, not a claim about the connector's own extent.
+  const lineForSide = (
+    side: EnvelopeSide
+  ): { start: WorldPos; end: WorldPos } => {
+    const col =
+      side === 'left'
+        ? connectorFacing.left
+        : side === 'right'
+          ? connectorFacing.right
+          : undefined;
+    if (col !== undefined) {
+      return { start: cornerWorld(col, minRow), end: cornerWorld(col, maxRow) };
+    }
+    return zeroExtBySide.get(side)!;
+  };
+
   const cornerPairs: Array<{
     corner: EnvelopeCorner['corner'];
     rawPoint: WorldPos;
@@ -709,8 +755,8 @@ function envelopeGeometryForRegion(
   ];
   const cornerPositions = new Map<EnvelopeCorner['corner'], WorldPos>();
   for (const { corner, rawPoint, sideA, sideB } of cornerPairs) {
-    const runA = zeroExtBySide.get(sideA)!;
-    const runB = zeroExtBySide.get(sideB)!;
+    const runA = lineForSide(sideA);
+    const runB = lineForSide(sideB);
     const dirA: WorldPos = {
       x: runA.end.x - runA.start.x,
       z: runA.end.z - runA.start.z,
@@ -729,9 +775,14 @@ function envelopeGeometryForRegion(
   // its own corner's true position (a genuine per-corner measurement,
   // not an assumed flat distance — see envelopeCornerOverlapMargin's own
   // doc comment for why a flat distance visibly overshot at some corners
-  // while barely reaching others), plus the small overlap margin.
-  const runs = sides.map(
-    ({ side, a, b, offset, cornerAtStart, cornerAtEnd }) => {
+  // while barely reaching others), plus the small overlap margin. A
+  // connector-facing side (see `connectorFacing`'s own doc comment on this
+  // function) is filtered out here — its line only existed to give the
+  // adjacent top/bottom run something exact to terminate against; it never
+  // becomes a run of its own.
+  const runs = sides
+    .filter(({ side }) => !isSuppressed(side))
+    .map(({ side, a, b, offset, cornerAtStart, cornerAtEnd }) => {
       const zeroExt = zeroExtBySide.get(side)!;
       const startExtension =
         distance(zeroExt.start, cornerPositions.get(cornerAtStart)!) +
@@ -751,8 +802,7 @@ function envelopeGeometryForRegion(
           offset
         ),
       };
-    }
-  );
+    });
 
   const corners = cornerPairs.map(({ corner }) => {
     const position = cornerPositions.get(corner)!;
@@ -764,6 +814,45 @@ function envelopeGeometryForRegion(
   });
 
   return { runs, corners };
+}
+
+/**
+ * Which of a region's own left/right sides sit against a connector column
+ * that should become that side's SOLE wall (option-(b), rpg-project#132
+ * connector-single-wall follow-up to #615/#617's envelope-offset fix) —
+ * using ONLY this region's own bounds plus the full door-column list.
+ * Deliberately NOT `connectorRegionsForDoor`'s two-sided pair resolution
+ * below: that needs BOTH neighboring regions' bounds known, which fails
+ * for as long as the far side of a connector stays unrevealed. Doors are
+ * whole-dungeon and unconditional from wave 1 (`connectorDoorInputsFromWalls`
+ * builds them from the Walls list, never from per-viewer region hex
+ * membership — this file's own header doc), so a region's OWN nearest door
+ * on each side resolves correctly regardless of whether the far region has
+ * been revealed at all — exactly the property needed for suppression (and
+ * therefore the fallback-segment safety net becoming the visible wall) to
+ * be correct in BOTH reveal states, not only once a connector's pair fully
+ * resolves.
+ *
+ * "Nearest" (not "any door left/right of me"): a 3+ room chain's OTHER
+ * connectors also satisfy `doorCol < minCol` / `doorCol > maxCol` for a
+ * middle region, so this picks the CLOSEST one on each side — the same
+ * nearest-region convention `connectorRegionsForDoor` uses.
+ */
+function nearestConnectorColumns(
+  bounds: Bounds,
+  doorColumns: number[]
+): { left?: number; right?: number } {
+  let left: number | undefined;
+  let right: number | undefined;
+  for (const col of doorColumns) {
+    if (col > bounds.maxCol && (right === undefined || col < right)) {
+      right = col;
+    }
+    if (col < bounds.minCol && (left === undefined || col > left)) {
+      left = col;
+    }
+  }
+  return { left, right };
 }
 
 /**
@@ -819,6 +908,77 @@ function connectorRegionsForDoor(
 }
 
 /**
+ * Widen each region's OWN row extent (never column extent — see below) to
+ * at least the shared union row bounds of every connector it participates
+ * in, using RAW (reveal-gated, `boundsOf(region.hexes)`) bounds. Real
+ * dungeons share ONE fixed `Height` across every region in a chain
+ * (`DungeonParams.Height` — this file's own established assumption,
+ * already used to justify `connectorRunForDoor`'s union-not-intersection
+ * `coveredRows` choice below), so once ANY region along a connector has
+ * revealed the TRUE row extent (an entrance room fully explored from
+ * spawn, say), every region it connects to structurally shares that SAME
+ * extent even before it has revealed enough of its OWN hexes to know it
+ * directly.
+ *
+ * Without this, a region's OWN top/bottom envelope run (the room's cross
+ * wall, running along the COLUMN axis at a FIXED row) sits at that
+ * region's own current reveal frontier — correct "v1 fog" behavior for an
+ * isolated room, but WRONG at a validated connector: the connector's own
+ * far reach already established the TRUE row via the peer region, so the
+ * unwidened region's cross-wall stalls at its own stale, too-early
+ * frontier — a real physical gap between where it sits and where the
+ * connector's reach (and the peer's TRUE corner) actually meet. Root
+ * cause of Kirk's live-walk regression on look-lab's gallery<->staged
+ * connector ("wall gone for a couple hexes left of it [the door], right
+ * run offset"): measured directly against that regression's real captured
+ * wire data (rpg-project#132 follow-up) — staged's own unwidened "bottom"
+ * run sat ~0.88 world units from the connector's validated far reach,
+ * roughly 4x every other corner-match's established ~0.06-0.24 tolerance
+ * elsewhere in this file. Widening staged's row bounds to match the
+ * connector's shared extent (0.88 unit gap closes to the same small
+ * tolerance every other corner already has) is the fix.
+ *
+ * Column extent is NEVER widened this way: different rooms in a chain have
+ * genuinely different declared widths (dungeonspec YAML — a 20-wide
+ * entrance beside a 10-wide chamber, say), so there is no "same Width"
+ * assumption to borrow the way Height is shared; a region's own
+ * minCol/maxCol always stays exactly its own reveal-gated value.
+ *
+ * A single pass over `doors` (not a fixed-point loop) — sufficient for
+ * the realistic case (each connector widens its own pair once; a 3+ room
+ * chain converges because the most-revealed region is always the one
+ * closest to the player's spawn/entrance, so widening only needs to flow
+ * outward one hop at a time as the player advances, and every render
+ * re-derives bounds from scratch anyway). A chain needing BOTH connectors
+ * to widen in a single sweep to fully converge (order-dependent) is a
+ * known, accepted limitation, not exercised by any dungeon authored in
+ * this codebase today.
+ */
+function widenRegionBoundsAlongConnectors(
+  rawBounds: Map<string, Bounds>,
+  doors: ConnectorDoorInput[]
+): Map<string, Bounds> {
+  const widened = new Map(rawBounds);
+  for (const door of doors) {
+    const pair = connectorRegionsForDoor(door, rawBounds);
+    if (!pair) continue;
+    const a = rawBounds.get(pair.regionAId)!;
+    const b = rawBounds.get(pair.regionBId)!;
+    const minRow = Math.min(a.minRow, b.minRow);
+    const maxRow = Math.max(a.maxRow, b.maxRow);
+    for (const id of [pair.regionAId, pair.regionBId]) {
+      const current = widened.get(id)!;
+      widened.set(id, {
+        ...current,
+        minRow: Math.min(current.minRow, minRow),
+        maxRow: Math.max(current.maxRow, maxRow),
+      });
+    }
+  }
+  return widened;
+}
+
+/**
  * `coveredRows` is the UNION of both paired regions' currently-known row
  * bounds, not the intersection (gate review finding 4, rpg-dnd5e-web#603):
  * real dungeons share one `Height` across every region in the chain
@@ -850,13 +1010,49 @@ function boundsCenter(bounds: Bounds, hexSize: number): WorldPos {
   };
 }
 
+/**
+ * How far past `point` (along `dir`, unsigned) the farthest of the given
+ * (already-filtered-to-meaningful, see call site) neighboring rooms' own
+ * envelope corners reaches — the exact-intersection distance a connector
+ * run's near/far endpoint must match to visually overlap the relevant
+ * room(s) 'top'/'bottom' run(s) at that boundary (Kirk's live walk on the
+ * connector-single-wall prototype: "a corner went missing... roughly a hex
+ * of open gap"). Root cause: this connector endpoint used to only need to
+ * reach a HEX's own outer face (`cornerExtension`, ~0.5 hex radii) because
+ * the room's own now-suppressed side used to close the joint via the
+ * overlap-miter cheat (WallRunMesh's own doc comment — no dedicated corner
+ * GLB, two perpendicular runs physically overlapping is what "closes" a
+ * corner). With that side suppressed, the connector run IS the joint's
+ * other half now, and the true corner (envelope's own exact line-
+ * intersection against THIS connector's column, offset outward by up to
+ * `envelopeOffsetTopBottom` — over an order of magnitude more than the old
+ * flat 0.5 reach) can sit far past where the flat constant ever reached,
+ * opening exactly the gap reported.
+ *
+ * Takes the max across `candidates` (usually both neighboring rooms'
+ * corners, when their independently-offset 'top'/'bottom' lines cross this
+ * connector's column at very slightly different points — reaching the
+ * farther guarantees the nearer is covered too) — but the CALLER is
+ * responsible for excluding a room's corner entirely when that room's own
+ * bounds don't actually reach this boundary (asymmetric partial-reveal
+ * regression, Kirk's live walk on lab-b<->lab-vault: a room's own envelope
+ * corner tracks ITS OWN reveal frontier, a value unrelated to this
+ * boundary when that room hasn't revealed this far yet — see
+ * `connectorRunForDoor`'s own call-site comment for the full reasoning).
+ */
+function distancePastPoint(point: WorldPos, candidates: WorldPos[]): number {
+  return Math.max(...candidates.map((c) => distance(point, c)));
+}
+
 function connectorRunForDoor(
   door: ConnectorDoorInput,
   regionAId: string,
   regionBId: string,
   regionBounds: Map<string, Bounds>,
   hexSize: number,
-  cornerExtension: number
+  envelopeCornerOverlapMargin: number,
+  regionACorners: Map<EnvelopeCorner['corner'], WorldPos>,
+  regionBCorners: Map<EnvelopeCorner['corner'], WorldPos>
 ): ConnectorRun {
   const boundsA = regionBounds.get(regionAId)!;
   const boundsB = regionBounds.get(regionBId)!;
@@ -876,14 +1072,49 @@ function connectorRunForDoor(
 
   const segments: WallRunSegment[] = [];
 
+  // regionA sits on the LOWER-column side of this connector (always —
+  // connectorRegionsForDoor's own convention), so its relevant corners are
+  // 'topRight'/'bottomRight'; regionB's are 'topLeft'/'bottomLeft'.
+  //
+  // A region's own corner is only a MEANINGFUL reach target for a given end
+  // when that region's own bounds actually reach the SAME row `coveredRows`
+  // claims for that end (regression found on the asymmetric lab-b<->
+  // lab-vault connector, Kirk's live walk: wall mostly vanished around the
+  // door once the run took over from the fallback). `coveredRows` is the
+  // UNION of both regions' bounds, so under asymmetric partial reveal one
+  // region can be fully known (its own bounds already sit at the true
+  // boundary) while the other has only revealed a frontier far short of it
+  // — that region's own envelope corner is positioned at ITS OWN frontier,
+  // a value entirely unrelated to the boundary this end is reaching for,
+  // not a slightly-different-but-comparable measurement of the SAME
+  // physical corner the way it is when both regions are equally revealed.
+  // Blindly taking the max across both (the original fix) let that
+  // unrelated, reveal-frontier-dependent distance dominate the extension,
+  // producing wildly wrong reach (verified: a partial vault reveal moved
+  // the near endpoint by >1 world unit from the correct fully-revealed
+  // position, entirely as a side effect of the OTHER region's exploration
+  // state). Excluding a region whose bounds don't reach this boundary
+  // restores exactly one well-defined target — the one whose own row
+  // extent is actually valid for this end — same as before under
+  // symmetric reveal (both regions typically match here, see the
+  // corner-termination tests), correct under asymmetric partial reveal too.
+  // At least one region always qualifies (min/max's own definition
+  // guarantees it), so the candidate list is never empty.
   if (doorRow > minRow) {
     const rawStart = worldAt(minRow);
     const rawEnd = worldAt(doorRow - 1);
     const dir = unitDirection(rawStart, rawEnd);
+    const nearTargets: WorldPos[] = [];
+    if (boundsA.minRow === minRow)
+      nearTargets.push(regionACorners.get('topRight')!);
+    if (boundsB.minRow === minRow)
+      nearTargets.push(regionBCorners.get('topLeft')!);
+    const nearExtension =
+      distancePastPoint(rawStart, nearTargets) + envelopeCornerOverlapMargin;
     segments.push({
       start: {
-        x: rawStart.x - dir.x * cornerExtension,
-        z: rawStart.z - dir.z * cornerExtension,
+        x: rawStart.x - dir.x * nearExtension,
+        z: rawStart.z - dir.z * nearExtension,
       },
       end: rawEnd,
     });
@@ -892,11 +1123,18 @@ function connectorRunForDoor(
     const rawStart = worldAt(doorRow + 1);
     const rawEnd = worldAt(maxRow);
     const dir = unitDirection(rawStart, rawEnd);
+    const farTargets: WorldPos[] = [];
+    if (boundsA.maxRow === maxRow)
+      farTargets.push(regionACorners.get('bottomRight')!);
+    if (boundsB.maxRow === maxRow)
+      farTargets.push(regionBCorners.get('bottomLeft')!);
+    const farExtension =
+      distancePastPoint(rawEnd, farTargets) + envelopeCornerOverlapMargin;
     segments.push({
       start: rawStart,
       end: {
-        x: rawEnd.x + dir.x * cornerExtension,
-        z: rawEnd.z + dir.z * cornerExtension,
+        x: rawEnd.x + dir.x * farExtension,
+        z: rawEnd.z + dir.z * farExtension,
       },
     });
   }
@@ -925,26 +1163,53 @@ export function computeWallRuns(input: WallRunsInput): WallRunsResult {
   const envelopeOffsetLeftRight =
     input.envelopeOffsetLeftRight ??
     DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES * hexSize;
-  const cornerExtension =
-    input.cornerExtension ?? DEFAULT_CORNER_EXTENSION_HEXES * hexSize;
   const envelopeCornerOverlapMargin =
     input.envelopeCornerOverlapMargin ?? DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN;
 
+  const doorColumns = input.doors.map((door) => hexColumn(door.position));
+
+  // Raw (reveal-gated) bounds first, then widened along every validated
+  // connector (see widenRegionBoundsAlongConnectors' own doc comment) —
+  // envelope geometry below uses the WIDENED bounds throughout, so a
+  // region's own cross-wall no longer stalls at its own stale frontier
+  // once a connector has already established the true row extent via its
+  // peer.
+  const rawRegionBounds = new Map<string, Bounds>();
+  for (const region of input.regions) {
+    const bounds = boundsOf(region.hexes);
+    if (bounds) rawRegionBounds.set(region.id, bounds);
+  }
+  const regionBounds = widenRegionBoundsAlongConnectors(
+    rawRegionBounds,
+    input.doors
+  );
+
   const envelopeRuns: EnvelopeRun[] = [];
   const envelopeCorners: EnvelopeCorner[] = [];
-  const regionBounds = new Map<string, Bounds>();
+  const cornersByRegion = new Map<
+    string,
+    Map<EnvelopeCorner['corner'], WorldPos>
+  >();
   for (const region of input.regions) {
+    const bounds = regionBounds.get(region.id);
+    const connectorFacing = bounds
+      ? nearestConnectorColumns(bounds, doorColumns)
+      : {};
     const geometry = envelopeGeometryForRegion(
       region,
+      bounds,
       hexSize,
       envelopeOffsetTopBottom,
       envelopeOffsetLeftRight,
-      envelopeCornerOverlapMargin
+      envelopeCornerOverlapMargin,
+      connectorFacing
     );
     envelopeRuns.push(...geometry.runs);
     envelopeCorners.push(...geometry.corners);
-    const bounds = boundsOf(region.hexes);
-    if (bounds) regionBounds.set(region.id, bounds);
+    cornersByRegion.set(
+      region.id,
+      new Map(geometry.corners.map((c) => [c.corner, c.position]))
+    );
   }
 
   const connectorRuns: ConnectorRun[] = [];
@@ -958,7 +1223,9 @@ export function computeWallRuns(input: WallRunsInput): WallRunsResult {
         pair.regionBId,
         regionBounds,
         hexSize,
-        cornerExtension
+        envelopeCornerOverlapMargin,
+        cornersByRegion.get(pair.regionAId)!,
+        cornersByRegion.get(pair.regionBId)!
       )
     );
   }

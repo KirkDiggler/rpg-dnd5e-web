@@ -25,6 +25,11 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { describe, expect, it } from 'vitest';
 import {
+  REAL_LOOK_LAB_DOORS,
+  REAL_LOOK_LAB_GALLERY_REVEALED_HEXES,
+  REAL_LOOK_LAB_STAGED_REVEALED_HEXES,
+} from './lookLabRealWireFixture';
+import {
   computeWallRuns,
   cubeAtColRow,
   hexColumn,
@@ -1009,5 +1014,568 @@ describe('computeWallRuns — envelope/connector run facing (round-2 W3/W4 regre
     // regionB ('hall') sits at higher columns -> higher world x (odd-q
     // pointy-top cubeToWorld's worldX grows with column) -> facing.x > 0.
     expect(run.facing.x).toBeGreaterThan(0);
+  });
+});
+
+describe('computeWallRuns — connector-facing envelope suppression (option (b), rpg-project#132 connector-single-wall: audit found 3 correct-but-crowding wall systems ~0.5 world units apart at every door)', () => {
+  it("a region's connector-facing side has NO envelope run at all — the connector's own wall is the sole one there; non-connector-facing sides are untouched", () => {
+    const { regions, doorEntranceHallCol, doorHallTombCol } =
+      referenceTombFixture();
+    const doors = [
+      { id: 'd1', position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW) },
+      { id: 'd2', position: cubeAtColRow(doorHallTombCol, DOOR_ROW) },
+    ];
+    const result = computeWallRuns({ regions, doors });
+    const sidesFor = (regionId: string) =>
+      new Set(
+        result.envelopeRuns
+          .filter((r) => r.regionId === regionId)
+          .map((r) => r.side)
+      );
+
+    // entrance: only 'right' is connector-facing (nothing to its left).
+    expect(sidesFor('entrance')).toEqual(new Set(['left', 'top', 'bottom']));
+    // hall: BOTH 'left' and 'right' are connector-facing.
+    expect(sidesFor('hall')).toEqual(new Set(['top', 'bottom']));
+    // tomb: only 'left' is connector-facing (nothing to its right).
+    expect(sidesFor('tomb')).toEqual(new Set(['right', 'top', 'bottom']));
+  });
+
+  it('with no doors at all, every side still renders (pre-option-(b) behavior) — suppression is purely door-driven, never a hardcoded per-region assumption', () => {
+    const { regions } = referenceTombFixture();
+    const result = computeWallRuns({ regions, doors: [] });
+    const hallSides = new Set(
+      result.envelopeRuns
+        .filter((r) => r.regionId === 'hall')
+        .map((r) => r.side)
+    );
+    expect(hallSides).toEqual(new Set(['left', 'right', 'top', 'bottom']));
+  });
+
+  it("far-room-dark reveal state: suppresses the near region's connector-facing side even while the far region has ZERO known hexes — suppression can't depend on connectorRegionsForDoor's two-sided pair resolution, since doors are whole-dungeon/unconditional from wave 1 while region hex membership is per-viewer reveal-gated (this file's own header doc)", () => {
+    const { doorEntranceHallCol } = referenceTombFixture();
+    const entrance: RegionInput = {
+      id: 'entrance',
+      hexes: regionCubes(ENTRANCE_WIDTH, HEIGHT, ENTRANCE_START),
+    };
+    const doors = [
+      { id: 'd1', position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW) },
+    ];
+    // Only entrance is passed — hall/tomb haven't revealed a single hex.
+    const result = computeWallRuns({ regions: [entrance], doors });
+
+    const entranceSides = new Set(result.envelopeRuns.map((r) => r.side));
+    expect(entranceSides).toEqual(new Set(['left', 'top', 'bottom']));
+    // And no ConnectorRun resolves yet either (needs both sides) — so the
+    // fallback-segment safety net (wallRunAdapters.ts, a separate module)
+    // is left to cover the column alone, never alongside an unsuppressed
+    // envelope run at the same side.
+    expect(result.connectorRuns).toHaveLength(0);
+  });
+
+  it('revealed reveal state: the SAME side stays suppressed once the far region resolves too, AND a real ConnectorRun now covers the column — never both a rendered envelope run and a ConnectorRun on the same side at once', () => {
+    const { regions, doorEntranceHallCol } = referenceTombFixture();
+    const entrance = regions.find((r) => r.id === 'entrance')!;
+    const hall = regions.find((r) => r.id === 'hall')!;
+    const doors = [
+      { id: 'd1', position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW) },
+    ];
+    const result = computeWallRuns({ regions: [entrance, hall], doors });
+
+    const entranceSides = new Set(
+      result.envelopeRuns
+        .filter((r) => r.regionId === 'entrance')
+        .map((r) => r.side)
+    );
+    expect(entranceSides).toEqual(new Set(['left', 'top', 'bottom']));
+    expect(result.connectorRuns).toHaveLength(1);
+    expect(result.connectorRuns[0]).toMatchObject({
+      regionAId: 'entrance',
+      regionBId: 'hall',
+    });
+  });
+
+  it("the true outer-perimeter side ('left', with nothing suppressed adjacent to it) is numerically UNCHANGED by 'right' being suppressed; 'top'/'bottom' keep their non-connector-facing endpoint unchanged but extend their connector-facing endpoint FURTHER out to meet the connector's line — requirement (1): \"extend them to the connector wall line so corners still close\", not \"leave every other side untouched\"", () => {
+    const { regions, doorEntranceHallCol } = referenceTombFixture();
+    const withoutDoors = computeWallRuns({ regions, doors: [] });
+    const withDoors = computeWallRuns({
+      regions,
+      doors: [
+        { id: 'd1', position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW) },
+      ],
+    });
+    const find = (
+      result: typeof withoutDoors,
+      side: 'left' | 'top' | 'bottom'
+    ) =>
+      result.envelopeRuns.find(
+        (r) => r.regionId === 'entrance' && r.side === side
+      )!;
+
+    // 'left' shares no corner with the suppressed 'right' side — fully
+    // unchanged, both endpoints.
+    const leftBefore = find(withoutDoors, 'left');
+    const leftAfter = find(withDoors, 'left');
+    expect(leftAfter.start).toEqual(leftBefore.start);
+    expect(leftAfter.end).toEqual(leftBefore.end);
+
+    // 'top'/'bottom' each have one corner shared with 'left' (topLeft/
+    // bottomLeft — untouched) and one that used to be shared with
+    // entrance's own 'right' side (topRight/bottomRight). That corner now
+    // sits on the connector's own column line instead — strictly further
+    // out than entrance's own (now-suppressed) right envelope line ever
+    // reached, since the connector column sits a full column beyond
+    // entrance's true edge while the old right line was only offset a
+    // fraction of a hex radius past it — so the run's far endpoint moves
+    // to meet it.
+    for (const side of ['top', 'bottom'] as const) {
+      const before = find(withoutDoors, side);
+      const after = find(withDoors, side);
+      expect(after.start).toEqual(before.start);
+      expect(after.end).not.toEqual(before.end);
+      // Higher world x = further toward higher columns (this file's own
+      // established odd-q pointy-top fact) = further from entrance toward
+      // the connector, not an arbitrary unrelated shift.
+      expect(after.end.x).toBeGreaterThan(before.end.x);
+    }
+  });
+
+  it("hall's top run still terminates cleanly at both ends even with BOTH its left and right sides suppressed: its topLeft/topRight corners now sit exactly on each neighboring connector's own column line (not hall's own unrendered left/right line), and hall's top run still reaches exactly envelopeCornerOverlapMargin past each — the identical exact-intersection-plus-margin contract every other corner in this file already gets, just against a connector's line instead of a suppressed side's", () => {
+    const { regions, doorEntranceHallCol, doorHallTombCol } =
+      referenceTombFixture();
+    const doors = [
+      { id: 'd1', position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW) },
+      { id: 'd2', position: cubeAtColRow(doorHallTombCol, DOOR_ROW) },
+    ];
+    const margin = 0.2;
+    const result = computeWallRuns({
+      regions,
+      doors,
+      envelopeCornerOverlapMargin: margin,
+    });
+    const hallTop = result.envelopeRuns.find(
+      (r) => r.regionId === 'hall' && r.side === 'top'
+    )!;
+    const hallTopLeftCorner = result.envelopeCorners.find(
+      (c) => c.regionId === 'hall' && c.corner === 'topLeft'
+    )!;
+    const hallTopRightCorner = result.envelopeCorners.find(
+      (c) => c.regionId === 'hall' && c.corner === 'topRight'
+    )!;
+
+    const crossZ = (a: { x: number; z: number }, b: { x: number; z: number }) =>
+      a.x * b.z - a.z * b.x;
+    const onColumnLine = (
+      point: { x: number; z: number },
+      col: number
+    ): number => {
+      const top = cubeToWorld(cubeAtColRow(col, 0), HEX_SIZE);
+      const bottom = cubeToWorld(cubeAtColRow(col, HEIGHT - 1), HEX_SIZE);
+      const dir = { x: bottom.x - top.x, z: bottom.z - top.z };
+      const toPoint = { x: point.x - top.x, z: point.z - top.z };
+      return Math.abs(crossZ(dir, toPoint));
+    };
+
+    // topLeft sits on the entrance<->hall connector's column line; topRight
+    // sits on the hall<->tomb connector's column line.
+    expect(
+      onColumnLine(hallTopLeftCorner.position, doorEntranceHallCol)
+    ).toBeLessThan(1e-9);
+    expect(
+      onColumnLine(hallTopRightCorner.position, doorHallTombCol)
+    ).toBeLessThan(1e-9);
+
+    // hall's top run still reaches EXACTLY margin past each corner.
+    expect(
+      Math.hypot(
+        hallTop.start.x - hallTopLeftCorner.position.x,
+        hallTop.start.z - hallTopLeftCorner.position.z
+      )
+    ).toBeCloseTo(margin, 9);
+    expect(
+      Math.hypot(
+        hallTop.end.x - hallTopRightCorner.position.x,
+        hallTop.end.z - hallTopRightCorner.position.z
+      )
+    ).toBeCloseTo(margin, 9);
+  });
+});
+
+describe('computeWallRuns — connector run corner termination (Kirk\'s live-walk regression on the connector-single-wall prototype: "a corner went missing... roughly a hex of open gap" at the room corner adjacent to a suppressed side)', () => {
+  // Root cause (found by pure-math investigation, not guessed): once a
+  // room's connector-facing envelope side is suppressed, that side can no
+  // longer close its shared corner via the overlap-miter cheat (WallRunMesh's
+  // own doc comment — no dedicated corner GLB; two perpendicular runs
+  // physically overlapping IS what closes a corner). The connector run
+  // becomes the joint's other half, but its OLD near/far endpoints only
+  // reached a flat `cornerExtension` (half a hex radius) past the row
+  // boundary — while the true corner (the room's own offset 'top'/'bottom'
+  // line crossing the connector's column) can sit far past that flat
+  // reach, since `envelopeOffsetTopBottom` (default sqrt(3) ~= 1.73) is
+  // over 3x the old flat constant. Fix: connector endpoints now reach the
+  // exact corner intersection (the SAME `EnvelopeCorner` position each
+  // neighboring room already computes) plus the small overlap margin —
+  // the identical exact-intersection contract envelope runs already use.
+  //
+  // The extension distance is `max(distance-to-regionA-corner,
+  // distance-to-regionB-corner) + margin` (measured BEFORE extension, from
+  // the connector's own unextended row-boundary point) — so AFTER
+  // extension, the corner that was farther away lands at EXACTLY margin
+  // (the SMALLER of the two post-extension distances, since it was the
+  // one the extension was sized for), while the corner that was nearer
+  // lands at margin-plus-the-original-gap (the LARGER post-extension
+  // distance, still comfortably >= margin, never left short of it).
+
+  it("the near (top-side) connector segment's endpoint: whichever neighboring corner (entrance's topRight or hall's topLeft) was farther from the connector's own row-boundary point lands at EXACTLY envelopeCornerOverlapMargin after extension; the nearer one lands at margin or more — never short of margin, which is what reopens Kirk's gap", () => {
+    const { regions, doorEntranceHallCol } = referenceTombFixture();
+    const doors = [
+      { id: 'd1', position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW) },
+    ];
+    const margin = 0.23;
+    const result = computeWallRuns({
+      regions,
+      doors,
+      envelopeCornerOverlapMargin: margin,
+    });
+
+    const entranceTopRight = result.envelopeCorners.find(
+      (c) => c.regionId === 'entrance' && c.corner === 'topRight'
+    )!;
+    const hallTopLeft = result.envelopeCorners.find(
+      (c) => c.regionId === 'hall' && c.corner === 'topLeft'
+    )!;
+
+    const run = result.connectorRuns[0]!;
+    expect(run.segments).toHaveLength(2);
+    const nearEnd = run.segments[0]!.start; // doorRow > minRow branch, pushed first
+
+    const distToEntrance = Math.hypot(
+      nearEnd.x - entranceTopRight.position.x,
+      nearEnd.z - entranceTopRight.position.z
+    );
+    const distToHall = Math.hypot(
+      nearEnd.x - hallTopLeft.position.x,
+      nearEnd.z - hallTopLeft.position.z
+    );
+
+    // The formerly-farther corner is the CLOSER of the two post-extension
+    // distances (the extension was sized exactly to reach it plus margin).
+    expect(Math.min(distToEntrance, distToHall)).toBeCloseTo(margin, 9);
+    // The formerly-nearer corner is still fully enclosed, never short of
+    // margin — a regression here would reopen exactly the gap Kirk found.
+    expect(Math.max(distToEntrance, distToHall)).toBeGreaterThanOrEqual(
+      margin - 1e-9
+    );
+  });
+
+  it('same contract for the far (bottom-side) connector segment, against bottomRight/bottomLeft', () => {
+    const { regions, doorEntranceHallCol } = referenceTombFixture();
+    const doors = [
+      { id: 'd1', position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW) },
+    ];
+    const margin = 0.23;
+    const result = computeWallRuns({
+      regions,
+      doors,
+      envelopeCornerOverlapMargin: margin,
+    });
+
+    const entranceBottomRight = result.envelopeCorners.find(
+      (c) => c.regionId === 'entrance' && c.corner === 'bottomRight'
+    )!;
+    const hallBottomLeft = result.envelopeCorners.find(
+      (c) => c.regionId === 'hall' && c.corner === 'bottomLeft'
+    )!;
+
+    const run = result.connectorRuns[0]!;
+    const farEnd = run.segments[1]!.end; // doorRow < maxRow branch, pushed second
+
+    const distToEntrance = Math.hypot(
+      farEnd.x - entranceBottomRight.position.x,
+      farEnd.z - entranceBottomRight.position.z
+    );
+    const distToHall = Math.hypot(
+      farEnd.x - hallBottomLeft.position.x,
+      farEnd.z - hallBottomLeft.position.z
+    );
+
+    expect(Math.min(distToEntrance, distToHall)).toBeCloseTo(margin, 9);
+    expect(Math.max(distToEntrance, distToHall)).toBeGreaterThanOrEqual(
+      margin - 1e-9
+    );
+  });
+
+  it("connector run endpoints now reach substantially FARTHER than the old flat half-hex-radius cornerExtension default whenever the room offset pushes the true corner well past that flat reach — regression guard for the exact defect class Kirk's live walk found (a silent revert to a flat constant would quietly reopen this gap without failing the exact-distance tests above, since a flat reach could coincidentally still equal one specific margin value)", () => {
+    const { regions, doorEntranceHallCol } = referenceTombFixture();
+    const doors = [
+      { id: 'd1', position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW) },
+    ];
+    const result = computeWallRuns({ regions, doors });
+    const run = result.connectorRuns[0]!;
+    const nearEnd = run.segments[0]!.start;
+    const rawRowZeroPoint = cubeToWorld(
+      cubeAtColRow(doorEntranceHallCol, 0),
+      HEX_SIZE
+    );
+    const reach = Math.hypot(
+      nearEnd.x - rawRowZeroPoint.x,
+      nearEnd.z - rawRowZeroPoint.z
+    );
+    // Old flat default was 0.5 hex radii; the true corner (pushed out by
+    // envelopeOffsetTopBottom, default sqrt(3) ~= 1.73) sits well past
+    // that, so the actual reach must clear it by a wide margin, not
+    // barely tie it.
+    expect(reach).toBeGreaterThan(0.7);
+  });
+
+  it("generalizes to an asymmetric connector (rooms of DIFFERENT widths — entrance 6 vs hall 10 vs tomb 12): the hall<->tomb connector's near endpoint independently satisfies the same farther-corner-reaches-exactly-margin contract", () => {
+    const { regions, doorHallTombCol } = referenceTombFixture();
+    const doors = [
+      { id: 'd1', position: cubeAtColRow(doorHallTombCol, DOOR_ROW) },
+    ];
+    const margin = 0.19;
+    const result = computeWallRuns({
+      regions,
+      doors,
+      envelopeCornerOverlapMargin: margin,
+    });
+
+    const hallTopRight = result.envelopeCorners.find(
+      (c) => c.regionId === 'hall' && c.corner === 'topRight'
+    )!;
+    const tombTopLeft = result.envelopeCorners.find(
+      (c) => c.regionId === 'tomb' && c.corner === 'topLeft'
+    )!;
+    const run = result.connectorRuns[0]!;
+    const nearEnd = run.segments[0]!.start;
+    const distToHall = Math.hypot(
+      nearEnd.x - hallTopRight.position.x,
+      nearEnd.z - hallTopRight.position.z
+    );
+    const distToTomb = Math.hypot(
+      nearEnd.x - tombTopLeft.position.x,
+      nearEnd.z - tombTopLeft.position.z
+    );
+    expect(Math.min(distToHall, distToTomb)).toBeCloseTo(margin, 9);
+    expect(Math.max(distToHall, distToTomb)).toBeGreaterThanOrEqual(
+      margin - 1e-9
+    );
+  });
+});
+
+describe("computeWallRuns — connector reach under ASYMMETRIC partial reveal (Kirk's live-walk regression on the lab-b<->lab-vault connector: wall around the door mostly VANISHED once the far region — an 8-wide vault behind a 10-wide chamber — started partially revealing, immediately after the corner-termination fix above shipped)", () => {
+  // Root cause (found by pure-math investigation before touching any live
+  // state, matching the corner-gap investigation's own methodology):
+  // `connectorRunForDoor`'s reach originally took `Math.max` across BOTH
+  // neighboring regions' own envelope corners unconditionally. A region's
+  // own corner tracks ITS OWN reveal frontier (accepted v1 fog behavior —
+  // this file's own header doc), which is only a MEANINGFUL stand-in for
+  // "where the connector should reach" when that region's own bounds
+  // actually reach the SAME row `coveredRows` (the union of both regions'
+  // bounds) claims for that end. Once one region (the vault) is only
+  // partially revealed while the OTHER (the chamber) is fully revealed,
+  // the vault's own corner sits at ITS OWN frontier row — a value with no
+  // relationship to the boundary the connector is actually reaching for —
+  // and blindly taking the max let that irrelevant, reveal-window-
+  // dependent value swing the connector's reach by over a world unit
+  // (verified directly against these exact dimensions before the fix:
+  // moved by >1.4 units depending purely on which rows of an 8-wide
+  // partially-revealed region happened to be visible). Fix: a region's
+  // corner is only included as a reach target when its own bounds match
+  // the boundary in question — always true for symmetric/full reveal
+  // (see the corner-termination describe block above, unaffected by this
+  // change), and correctly excludes the not-yet-relevant region under
+  // asymmetric partial reveal.
+  const HEIGHT = 8;
+  const DOOR_ROW = 4;
+  const LAB_B_WIDTH = 10;
+  const LAB_VAULT_WIDTH = 8;
+  const LAB_B_START = 9;
+  const LAB_VAULT_START = 20;
+  const DOOR_COL = LAB_B_START + LAB_B_WIDTH; // 19
+
+  function labBFullyRevealed(): RegionInput {
+    return {
+      id: 'lab-b',
+      hexes: regionCubes(LAB_B_WIDTH, HEIGHT, LAB_B_START),
+    };
+  }
+  function labVaultRowRange(minRow: number, maxRow: number): RegionInput {
+    const hexes: RegionInput['hexes'] = [];
+    for (
+      let col = LAB_VAULT_START;
+      col < LAB_VAULT_START + LAB_VAULT_WIDTH;
+      col++
+    ) {
+      for (let row = minRow; row <= maxRow; row++) {
+        hexes.push(cubeAtColRow(col, row));
+      }
+    }
+    return { id: 'lab-vault', hexes };
+  }
+  const doors = [
+    { id: 'door-b-vault', position: cubeAtColRow(DOOR_COL, DOOR_ROW) },
+  ];
+
+  it("the near segment's reach is IDENTICAL across different partial-reveal windows of the far region (vault), as long as none of them reach the true row-0 boundary — proving the fix genuinely EXCLUDES the vault's own (irrelevant) corner rather than merely diluting its influence", () => {
+    const nearStarts = (
+      ['near-door-only', 'sight-range', 'one-sided-below'] as const
+    ).map((label) => {
+      const vault =
+        label === 'near-door-only'
+          ? labVaultRowRange(3, 5)
+          : label === 'sight-range'
+            ? labVaultRowRange(2, 6)
+            : labVaultRowRange(4, 7); // one-sided-below: reveals down to maxRow, never row 0
+      const result = computeWallRuns({
+        regions: [labBFullyRevealed(), vault],
+        doors,
+      });
+      return result.connectorRuns.find((r) => r.doorId === 'door-b-vault')!
+        .segments[0]!.start;
+    });
+    for (let i = 1; i < nearStarts.length; i++) {
+      expect(nearStarts[i]!.x).toBeCloseTo(nearStarts[0]!.x, 9);
+      expect(nearStarts[i]!.z).toBeCloseTo(nearStarts[0]!.z, 9);
+    }
+  });
+
+  it("that stable (vault-excluded) reach stays within a small tolerance of the fully-revealed case — both are legitimate exact-intersection results, just not required to be bit-identical (the two rooms' independently-offset lines were never exactly the same physical point, this file's own established ~0.02-0.15 unit tolerance elsewhere) — never displaced by an order of magnitude the way the regression was (>1 world unit)", () => {
+    const fullResult = computeWallRuns({
+      regions: [labBFullyRevealed(), labVaultRowRange(0, 7)],
+      doors,
+    });
+    const partialResult = computeWallRuns({
+      regions: [labBFullyRevealed(), labVaultRowRange(3, 5)],
+      doors,
+    });
+    const fullStart = fullResult.connectorRuns.find(
+      (r) => r.doorId === 'door-b-vault'
+    )!.segments[0]!.start;
+    const partialStart = partialResult.connectorRuns.find(
+      (r) => r.doorId === 'door-b-vault'
+    )!.segments[0]!.start;
+    const drift = Math.hypot(
+      partialStart.x - fullStart.x,
+      partialStart.z - fullStart.z
+    );
+    expect(drift).toBeLessThan(0.1);
+  });
+
+  it('a region whose OWN bounds DO reach the shared boundary (vault revealed all the way to row 0) is still included as a reach target, exactly like the fully-revealed case — the exclusion is conditional on the boundary match, not a blanket "always ignore the partially-revealed region"', () => {
+    const oneSidedAbove = computeWallRuns({
+      regions: [labBFullyRevealed(), labVaultRowRange(0, 4)],
+      doors,
+    });
+    const full = computeWallRuns({
+      regions: [labBFullyRevealed(), labVaultRowRange(0, 7)],
+      doors,
+    });
+    const a = oneSidedAbove.connectorRuns.find(
+      (r) => r.doorId === 'door-b-vault'
+    )!.segments[0]!.start;
+    const b = full.connectorRuns.find((r) => r.doorId === 'door-b-vault')!
+      .segments[0]!.start;
+    // Vault's own minRow is 0 in BOTH cases here, so it's included in both
+    // — the near segment should land at essentially the same reach.
+    expect(a.x).toBeCloseTo(b.x, 9);
+    expect(a.z).toBeCloseTo(b.z, 9);
+  });
+});
+
+describe('computeWallRuns — real look-lab gallery<->staged partial reveal (Kirk\'s live-walk regression, the asymmetric-partial-reveal takeover\'s second cousin: "wall gone for a couple hexes left of [the door], right run offset")', () => {
+  // Real, live-captured wire data (lookLabRealWireFixture.ts) from the
+  // exact moment Kirk found this: the gallery(20)<->staged(10) door had
+  // just been opened and staged (the far region) had only begun
+  // revealing — 22 of its 80 hexes, an irregular fog-of-war disc around
+  // the player standing at the door, NOT a clean rectangular slice (see
+  // the fixture's own doc comment). Gallery is essentially fully revealed
+  // (159/160 hexes). Root cause: unlike the lab-b<->lab-vault regression
+  // above (a bug in connectorRunForDoor's OWN reach-target selection),
+  // this is a DIFFERENT bug in envelopeGeometryForRegion: staged's OWN
+  // "bottom" envelope run (its cross wall, running along the column axis
+  // at a FIXED row) sat at staged's own reveal frontier (row 4) instead of
+  // the TRUE row (7) the gallery<->staged connector had ALREADY
+  // established via gallery — an ~0.88 world-unit gap between staged's
+  // own run and the connector's validated far reach, confirmed via this
+  // exact real data BEFORE the widenRegionBoundsAlongConnectors fix.
+  function doors() {
+    return [
+      {
+        id: 'gs',
+        position: REAL_LOOK_LAB_DOORS['look-lab-door-gallery-staged'],
+      },
+      { id: 'sv', position: REAL_LOOK_LAB_DOORS['look-lab-door-staged-vault'] },
+    ];
+  }
+  function computeReal() {
+    return computeWallRuns({
+      regions: [
+        { id: 'gallery', hexes: REAL_LOOK_LAB_GALLERY_REVEALED_HEXES },
+        { id: 'staged', hexes: REAL_LOOK_LAB_STAGED_REVEALED_HEXES },
+      ],
+      doors: doors(),
+    });
+  }
+  function dist(a: WorldPos, b: WorldPos): number {
+    return Math.hypot(a.x - b.x, a.z - b.z);
+  }
+
+  it('staged\'s own "bottom" run reaches within the SAME small tolerance every other corner-match in this file already has (~0.06-0.35), not the ~0.88 gap the regression measured — proving the fix, not merely asserting an arbitrary number', () => {
+    const result = computeReal();
+    const conn = result.connectorRuns.find((r) => r.doorId === 'gs')!;
+    const stagedBottom = result.envelopeRuns.find(
+      (r) => r.regionId === 'staged' && r.side === 'bottom'
+    )!;
+    const farEnd = conn.segments[1]!.end;
+    expect(dist(stagedBottom.start, farEnd)).toBeLessThan(0.35);
+  });
+
+  it("gallery's own \"bottom\" run (the side that was ALREADY fully revealed, unaffected by the fix) still reaches the connector's far end at the same tolerance as before — the fix doesn't perturb the side that was already correct", () => {
+    const result = computeReal();
+    const conn = result.connectorRuns.find((r) => r.doorId === 'gs')!;
+    const galleryBottom = result.envelopeRuns.find(
+      (r) => r.regionId === 'gallery' && r.side === 'bottom'
+    )!;
+    const farEnd = conn.segments[1]!.end;
+    expect(dist(galleryBottom.end, farEnd)).toBeLessThan(0.35);
+  });
+
+  it('staged\'s own "top" run (the end that ALREADY matched before the fix, since staged\'s own reveal already reached row 0) is unaffected by widening — still within the same small tolerance', () => {
+    const result = computeReal();
+    const conn = result.connectorRuns.find((r) => r.doorId === 'gs')!;
+    const stagedTop = result.envelopeRuns.find(
+      (r) => r.regionId === 'staged' && r.side === 'top'
+    )!;
+    const nearStart = conn.segments[0]!.start;
+    expect(dist(stagedTop.start, nearStart)).toBeLessThan(0.35);
+  });
+
+  it("gallery's own envelope runs are byte-identical regardless of how much of staged has revealed (partial, the real 22-hex case, vs a hypothetical FULLY revealed staged) — widening only ever pushes staged's bounds UP to match gallery's already-true extent, never pulls gallery's own (already-correct) bounds down; same doors/suppression pattern in both cases, isolating widening from the (expected, unrelated) suppression-changes-corner-geometry effect", () => {
+    const partialResult = computeReal();
+    const fullyRevealedResult = computeWallRuns({
+      regions: [
+        { id: 'gallery', hexes: REAL_LOOK_LAB_GALLERY_REVEALED_HEXES },
+        {
+          id: 'staged',
+          hexes: regionCubes(10, 8, 21), // staged's TRUE full extent
+        },
+      ],
+      doors: doors(),
+    });
+    const galleryPartial = partialResult.envelopeRuns.filter(
+      (r) => r.regionId === 'gallery'
+    );
+    const galleryFull = fullyRevealedResult.envelopeRuns.filter(
+      (r) => r.regionId === 'gallery'
+    );
+    expect(galleryPartial.length).toBe(galleryFull.length);
+    for (const run of galleryPartial) {
+      const full = galleryFull.find((r) => r.side === run.side)!;
+      expect(run.start.x).toBeCloseTo(full.start.x, 9);
+      expect(run.start.z).toBeCloseTo(full.start.z, 9);
+      expect(run.end.x).toBeCloseTo(full.end.x, 9);
+      expect(run.end.z).toBeCloseTo(full.end.z, 9);
+    }
   });
 });

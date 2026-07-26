@@ -4,6 +4,7 @@
  */
 
 import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
+import { CUTAWAY_STUB_WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { create } from '@bufbuild/protobuf';
 import {
   HexSchema,
@@ -15,7 +16,9 @@ import {
 import { describe, expect, it } from 'vitest';
 import { REAL_REFERENCE_TOMB_WALLS } from './referenceTombRealWireFixture';
 import {
+  connectorDoorHeights,
   connectorDoorInputsFromWalls,
+  connectorDoorPlanes,
   connectorFallbackSegments,
   connectorRunDoorRotations,
   legacyRenderWalls,
@@ -24,6 +27,9 @@ import {
 import {
   computeWallRuns,
   cubeAtColRow,
+  hexColumn,
+  hexRow,
+  type ConnectorDoorInput,
   type ConnectorRun,
   type RegionInput,
 } from './wallRuns';
@@ -479,6 +485,159 @@ describe('connectorRunDoorRotations', () => {
       },
     ];
     expect(connectorRunDoorRotations(runs).size).toBe(0);
+  });
+});
+
+describe('connectorDoorPlanes (rpg-project#132 connector-single-wall follow-up, Kirk\'s live-walk regression: "can our door rotate a little to line up with the wall?")', () => {
+  it("a door's plane position is EXACTLY cubeToWorld(door.position) — the door's own cell, always on the connector column by construction, needing no ConnectorRun/region data at all", () => {
+    const doorHex = cubeAtColRow(6, 4);
+    const doors: ConnectorDoorInput[] = [{ id: 'door-1', position: doorHex }];
+    const planes = connectorDoorPlanes(doors, HEX_SIZE);
+    expect(planes.get('door-1')!.position).toEqual(
+      cubeToWorld(doorHex, HEX_SIZE)
+    );
+  });
+
+  it("rotationY matches the column-axis direction (hexEdgeBetween's atan2(-dz, dx) convention), computed from a point one row further down the SAME column — the identical convention connectorFallbackSegments/tileWallSegment already use for the tiled wall pieces on that column", () => {
+    const col = 6;
+    const row = 4;
+    const doorHex = cubeAtColRow(col, row);
+    const doors: ConnectorDoorInput[] = [{ id: 'door-1', position: doorHex }];
+    const planes = connectorDoorPlanes(doors, HEX_SIZE);
+    const here = cubeToWorld(doorHex, HEX_SIZE);
+    const next = cubeToWorld(cubeAtColRow(col, row + 1), HEX_SIZE);
+    const expected = Math.atan2(-(next.z - here.z), next.x - here.x);
+    expect(planes.get('door-1')!.rotationY).toBeCloseTo(expected, 9);
+  });
+
+  it("the plane position is exactly collinear with the connector's own column line (any other row at the same column) — the invariant that made this override necessary in the first place: the wire's own hexEdgeBetween-derived edge.mid is NOT guaranteed to sit on this line", () => {
+    const col = 9;
+    const doorHex = cubeAtColRow(col, 3);
+    const doors: ConnectorDoorInput[] = [{ id: 'door-1', position: doorHex }];
+    const planes = connectorDoorPlanes(doors, HEX_SIZE);
+    const position = planes.get('door-1')!.position;
+
+    const colTop = cubeToWorld(cubeAtColRow(col, 0), HEX_SIZE);
+    const colBottom = cubeToWorld(cubeAtColRow(col, 7), HEX_SIZE);
+    const dir = { x: colBottom.x - colTop.x, z: colBottom.z - colTop.z };
+    const toPoint = { x: position.x - colTop.x, z: position.z - colTop.z };
+    const crossZ = dir.x * toPoint.z - dir.z * toPoint.x;
+    expect(Math.abs(crossZ)).toBeLessThan(1e-9);
+  });
+
+  it('produces independent entries for multiple doors, keyed by id, each using its OWN column/row', () => {
+    const doorA = cubeAtColRow(6, 4);
+    const doorB = cubeAtColRow(17, 4);
+    const doors: ConnectorDoorInput[] = [
+      { id: 'door-a', position: doorA },
+      { id: 'door-b', position: doorB },
+    ];
+    const planes = connectorDoorPlanes(doors, HEX_SIZE);
+    expect(planes.size).toBe(2);
+    expect(planes.get('door-a')!.position).toEqual(
+      cubeToWorld(doorA, HEX_SIZE)
+    );
+    expect(planes.get('door-b')!.position).toEqual(
+      cubeToWorld(doorB, HEX_SIZE)
+    );
+  });
+
+  it('skips a door with no id (nothing to key the resulting map by)', () => {
+    const doors: ConnectorDoorInput[] = [{ position: cubeAtColRow(6, 4) }];
+    expect(connectorDoorPlanes(doors, HEX_SIZE).size).toBe(0);
+  });
+
+  it('needs no region or ConnectorRun data at all — produces the SAME plane whether the far side of the connector is dark or fully revealed, unlike connectorRunDoorRotations (which only produces an entry once a real ConnectorRun resolves)', () => {
+    // Same door, computed with nothing else in scope — no regions, no
+    // connectorRuns, no reveal-state concept at all.
+    const doorHex = cubeAtColRow(6, 4);
+    const doors: ConnectorDoorInput[] = [{ id: 'door-1', position: doorHex }];
+    const planeWhenDark = connectorDoorPlanes(doors, HEX_SIZE).get('door-1')!;
+    const planeWhenRevealed = connectorDoorPlanes(doors, HEX_SIZE).get(
+      'door-1'
+    )!;
+    expect(planeWhenDark).toEqual(planeWhenRevealed);
+    // Sanity: hexColumn/hexRow confirm this really is a connector-column
+    // door (not a coincidental fixture artifact).
+    expect(hexColumn(doorHex)).toBe(6);
+    expect(hexRow(doorHex)).toBe(4);
+  });
+});
+
+describe("connectorDoorHeights (cutaway prototype, rpg-project#132 ?wallCutaway=1: a door's frame/leaf height matches its OWN connector run's classification, not a single global wallHeight)", () => {
+  const TALL = 2.4;
+  // Toward/away from the fixed isometric camera — same directions
+  // wallRunMeshHelpers.test.ts's effectiveWallHeight tests use (matches
+  // CAMERA_WARD_XZ's own direction, calibrationConstants.ts).
+  const TOWARD_CAMERA = { x: 1, z: 1 };
+  const AWAY_FROM_CAMERA = { x: -1, z: -1 };
+
+  it('stubs a door whose connector run faces toward the camera', () => {
+    const runs: ConnectorRun[] = [
+      {
+        doorId: 'door-1',
+        regionAId: 'a',
+        regionBId: 'b',
+        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
+        coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: TOWARD_CAMERA,
+      },
+    ];
+    expect(connectorDoorHeights(runs, TALL).get('door-1')).toBe(
+      CUTAWAY_STUB_WALL_HEIGHT
+    );
+  });
+
+  it('keeps a door at the tall height when its connector run faces away from the camera', () => {
+    const runs: ConnectorRun[] = [
+      {
+        doorId: 'door-1',
+        regionAId: 'a',
+        regionBId: 'b',
+        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
+        coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: AWAY_FROM_CAMERA,
+      },
+    ];
+    expect(connectorDoorHeights(runs, TALL).get('door-1')).toBe(TALL);
+  });
+
+  it('skips a connector run with no doorId — nothing to key the resulting map by', () => {
+    const runs: ConnectorRun[] = [
+      {
+        regionAId: 'a',
+        regionBId: 'b',
+        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
+        coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: TOWARD_CAMERA,
+      },
+    ];
+    expect(connectorDoorHeights(runs, TALL).size).toBe(0);
+  });
+
+  it('produces independent entries for multiple doors, keyed by doorId, each classified by its OWN facing', () => {
+    const runs: ConnectorRun[] = [
+      {
+        doorId: 'door-a',
+        regionAId: 'a',
+        regionBId: 'b',
+        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
+        coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: TOWARD_CAMERA,
+      },
+      {
+        doorId: 'door-b',
+        regionAId: 'c',
+        regionBId: 'd',
+        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
+        coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: AWAY_FROM_CAMERA,
+      },
+    ];
+    const heights = connectorDoorHeights(runs, TALL);
+    expect(heights.size).toBe(2);
+    expect(heights.get('door-a')).toBe(CUTAWAY_STUB_WALL_HEIGHT);
+    expect(heights.get('door-b')).toBe(TALL);
   });
 });
 

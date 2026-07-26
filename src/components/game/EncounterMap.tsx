@@ -31,13 +31,15 @@ import { useMemo } from 'react';
 import { DevPerfProbe } from '../../dev/DevPerfProbe';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import {
+  connectorDoorHeights,
   connectorDoorInputsFromWalls,
+  connectorDoorPlanes,
   connectorFallbackSegments,
-  connectorRunDoorRotations,
   legacyRenderWalls,
   regionInputsFromHexes,
 } from '../../hooks/wallRunAdapters';
 import { computeWallRuns } from '../../hooks/wallRuns';
+import { WALL_HEIGHT } from '../../rendering/calibrationConstants';
 import { HexGrid } from '../hex-grid';
 import { cubeToWorld, HEX_SIZE, type CubeCoord } from '../hex-grid/hexMath';
 import {
@@ -51,7 +53,9 @@ import {
   parseCryptLightOverride,
   parseDevPropDemoKeys,
   parsePerfProbeWindowMs,
+  parseWallHeightOverride,
   resolveSpaceTheme,
+  resolveWallHeightForCutaway,
   synthesizeFloorTiles,
 } from '../playtest/playtestMapHelpers';
 
@@ -204,9 +208,14 @@ export function EncounterMap({
       ),
     [wallList, regions, wallRunsResult, connectorDoors]
   );
-  const doorRotationOverrides = useMemo(
-    () => connectorRunDoorRotations(wallRunsResult.connectorRuns),
-    [wallRunsResult]
+  // Connector-single-wall follow-up (rpg-project#132, Kirk's live-walk
+  // regression: "can our door rotate a little to line up with the wall?"):
+  // needs only the raw door list + hexSize, not wallRunsResult at all — see
+  // connectorDoorPlanes' own doc comment for why that makes this correct
+  // in both reveal states rather than only once a real ConnectorRun exists.
+  const doorPlaneOverrides = useMemo(
+    () => connectorDoorPlanes(connectorDoors, HEX_SIZE),
+    [connectorDoors]
   );
 
   // Prop-model resolver demo (rpg-dnd5e-web#528, charter #523):
@@ -290,6 +299,71 @@ export function EncounterMap({
       directional: parseCryptLightOverride(params.get('cryptDirectional')),
     };
   }, []);
+
+  // Live-tuning wall height dial (rpg-project#132, Kirk's live walk on the
+  // connector-single-wall prototype: "the height of the walls might be a
+  // little low"). Same "read the query string once" convention as
+  // cryptLightOverride above; `undefined` (no param, or an invalid one)
+  // means no EXPLICIT override — resolveWallHeightForCutaway below decides
+  // what that falls back to.
+  const wallHeightExplicitOverride = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return parseWallHeightOverride(params.get('wallHeight'));
+  }, []);
+
+  // Cutaway prototype (rpg-project#132, Kirk: "Synty solves see-into-rooms
+  // by HIDING the camera-facing walls and keeping far walls FULL height —
+  // not by squashing everything"). Same "read the query string once,
+  // default off" convention as syntyDungeon/cryptdemo (PlaytestMap.tsx) —
+  // a simple opt-in boolean flag needs no dedicated parser/validation the
+  // way the numeric wallHeight dial above does.
+  const wallCutawayOverride = useMemo(
+    () =>
+      new URLSearchParams(window.location.search).get('wallCutaway') === '1',
+    []
+  );
+
+  // Effective wall height passed to HexGrid: an explicit ?wallHeight=
+  // always wins, but with NO override, cutaway defaults its TALL value to
+  // CUTAWAY_TALL_WALL_HEIGHT rather than silently falling through to the
+  // ordinary WALL_HEIGHT (Kirk's live-walk papercut: "?wallCutaway=1 alone
+  // gave ankle-high everything" — stub=0.3/tall=0.8, barely
+  // distinguishable). `undefined` (cutaway off, no override) is still
+  // byte-identical to before this resolution existed — HexGrid's/
+  // WallRunMesh's/SyntyHexWall's own WALL_HEIGHT default applies.
+  const wallHeightOverride = useMemo(
+    () =>
+      resolveWallHeightForCutaway(
+        wallHeightExplicitOverride,
+        wallCutawayOverride
+      ),
+    [wallHeightExplicitOverride, wallCutawayOverride]
+  );
+
+  // Per-door height classification for the cutaway prototype — mirrors
+  // WallRunMesh's own effectiveWallHeight dot-product test, but keyed by
+  // Wall.id so SyntyHexWall's door frame/leaf can match whichever height
+  // its own connector run was classified to (see connectorDoorHeights' own
+  // doc comment). Gated on wallCutawayOverride, same as HexGrid's own
+  // wallCutaway prop: when cutaway is off, every door must stay at the
+  // single uniform wallHeight (undefined here means SyntyHexWall's
+  // doorHeights?.get(id) always misses, falling back to `wallHeight`
+  // exactly as before this prototype existed) rather than silently
+  // classifying doors stub/tall while the wall runs themselves stay
+  // uniform. `wallHeightOverride` is already resolved above (explicit
+  // override, or CUTAWAY_TALL_WALL_HEIGHT, or WALL_HEIGHT) — reusing it
+  // here guarantees the tall value doorHeights classifies against always
+  // matches whatever HexGrid actually renders the tall runs at.
+  const doorHeights = useMemo(
+    () =>
+      wallCutawayOverride
+        ? connectorDoorHeights(
+            wallRunsResult.connectorRuns,
+            wallHeightOverride ?? WALL_HEIGHT
+          )
+        : undefined,
+    [wallCutawayOverride, wallRunsResult, wallHeightOverride]
+  );
 
   // Mood-point-light budget reference position (rpg-dnd5e-web#558): the
   // local player's own world position, so capMoodLights can keep the
@@ -401,7 +475,10 @@ export function EncounterMap({
         envelopeCorners={wallRunsResult.envelopeCorners}
         connectorRuns={wallRunsResult.connectorRuns}
         connectorFallbackSegments={fallbackSegments}
-        doorRotationOverrides={doorRotationOverrides}
+        doorPlaneOverrides={doorPlaneOverrides}
+        wallHeight={wallHeightOverride}
+        wallCutaway={wallCutawayOverride}
+        doorHeights={doorHeights}
         selectedEntityId={myEntityId}
         currentEntityId={myEntityId}
         movementRemaining={movementRemaining}
