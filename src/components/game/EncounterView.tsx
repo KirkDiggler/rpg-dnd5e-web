@@ -42,7 +42,7 @@ import {
   EntityType,
   TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { v2PositionToV1 } from '../../api/positionConvert';
 import { useEncounterStream } from '../../api/useEncounterStream';
@@ -63,6 +63,10 @@ import {
   targetKindNeedsPrompt,
 } from '../playtest/actionMenuHelpers';
 import { StatusBadgeList } from '../ui/StatusBadgeList';
+import {
+  CombatPresentation,
+  type CombatPresentationAttack,
+} from './combatPresentation/CombatPresentation';
 import { EncounterDock } from './EncounterDock';
 import { resolveMovementRemaining, resolveName } from './encounterDockHelpers';
 import { EncounterMap } from './EncounterMap';
@@ -173,6 +177,16 @@ export function EncounterView({
   // #445: game-grade combat narrative — the same dispatched events, rendered
   // as a scrolling log instead of PlaytestHarness's raw dev-log text.
   const combatLog = useCombatLog();
+  const [presentationQueue, setPresentationQueue] = useState<
+    CombatPresentationAttack[]
+  >([]);
+  const presentationIdRef = useRef(0);
+  const flushPresentation = () => setPresentationQueue([]);
+  const completePresentation = (id: number) =>
+    setPresentationQueue((queue) =>
+      queue[0]?.id === id ? queue.slice(1) : queue
+    );
+  const activePresentation = presentationQueue[0];
   // rpg-dnd5e-web#511: the action-selection interaction state. Set by
   // clicking a SINGLE_ENTITY/POSITION/AREA-targeted menu action ("arming"
   // it) — survives exploratory clicks (hover/inspect/camera, an empty-hex
@@ -246,6 +260,7 @@ export function EncounterView({
 
   const stream = useEncounterStream(encounterId, playerId, {
     onSnapshotDelivered: (e) => {
+      flushPresentation();
       if (e.encounter) {
         // Resume-after-refresh (#444): when no characterId prop was
         // supplied, this is the only place entityId can be learned — see
@@ -425,7 +440,10 @@ export function EncounterView({
       // can be defeated by a batched round-trip (mode or turn leaves and
       // returns within one commit, so no intermediate state ever renders);
       // the stream handler sees EVERY event, batched or not.
-      if (e.to !== EncounterMode.TURN_BASED) setArmedState(null);
+      if (e.to !== EncounterMode.TURN_BASED) {
+        setArmedState(null);
+        flushPresentation();
+      }
     },
     onInitiativeRolled: (e) => {
       encounterState.applyInitiativeRolled(e);
@@ -456,6 +474,14 @@ export function EncounterView({
     // silent. Damage rides the correlated EntityDamaged above.
     onAttackResolved: (e) => {
       combatLog.recordAttackResolved(e);
+      setPresentationQueue((queue) => [
+        ...queue,
+        {
+          id: ++presentationIdRef.current,
+          attack: e,
+          isViewerAttack: e.attackerEntityId === entityId,
+        },
+      ]);
     },
     onEntityDied: (e) => {
       encounterState.applyEntityDied(e);
@@ -470,6 +496,7 @@ export function EncounterView({
       combatLog.recordEncounterEnded(e);
       // rpg-dnd5e-web#544: an ended encounter has no turns to be armed in.
       setArmedState(null);
+      flushPresentation();
     },
     // Death-save arc (rpg-toolkit#742, wave KirkDiggler/rpg-project#75):
     // PlaytestHarness has logged these since that wave landed; EncounterView
@@ -878,6 +905,26 @@ export function EncounterView({
           onEntityClick={handleVisualEntityClick}
           onDoorClick={(doorId) => void handleDoorClick(doorId)}
         />
+
+        {activePresentation && (
+          <div
+            data-testid="combat-presentation-overlay"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'grid',
+              placeItems: 'center',
+              pointerEvents: 'none',
+              zIndex: 2,
+            }}
+          >
+            <CombatPresentation
+              key={activePresentation.id}
+              item={activePresentation}
+              onComplete={completePresentation}
+            />
+          </div>
+        )}
 
         {!myPosition && (
           <div

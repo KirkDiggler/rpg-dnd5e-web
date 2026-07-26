@@ -1517,3 +1517,243 @@ describe('EncounterView equip/unequip (rpg-dnd5e-web#571)', () => {
     expect(screen.getByText(/Equip error: slot already empty/)).toBeTruthy();
   });
 });
+
+describe('EncounterView combat pacing', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const attack = (overrides = {}) =>
+    makeEvent('attackResolved', {
+      attackerEntityId: 'char-alice',
+      targetEntityId: 'goblin-1',
+      attackRoll: 14,
+      attackBonus: 5,
+      targetAc: 16,
+      hit: true,
+      critical: false,
+      ...overrides,
+    });
+
+  it('queues callback arrivals, records each attack immediately, and advances from viewer to autoplay attack', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    await act(async () => {
+      hoisted.fakeRef.current?.push(makeEvent('snapshotDelivered', {}));
+      hoisted.fakeRef.current?.push(attack());
+      hoisted.fakeRef.current?.push(
+        attack({ attackerEntityId: 'npc-1', hit: false, attackRoll: 8 })
+      );
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('combat-log-entry-attack-0')).toBeTruthy();
+    expect(screen.getByTestId('combat-log-entry-attack-1')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    act(() => vi.advanceTimersByTime(2000 + 1600 + 900 + 300));
+    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(
+      screen.getByTestId('combat-presentation').getAttribute('data-beat')
+    ).toBe('cue');
+    act(() => vi.advanceTimersByTime(300));
+    expect(
+      screen.getByTestId('combat-presentation').getAttribute('data-beat')
+    ).toBe('throw');
+  });
+
+  it('applies HP and the damage log immediately while theater is active', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'char-alice',
+                  position: { x: 0, y: 0, z: 0 },
+                  type: EntityType.CHARACTER,
+                  hp: { current: 20, max: 20, temp: 0 },
+                },
+              ],
+            },
+          },
+        })
+      );
+      hoisted.fakeRef.current?.push(attack());
+      hoisted.fakeRef.current?.push(
+        makeEvent('entityDamaged', {
+          entityId: 'char-alice',
+          sourceEntityId: 'goblin-1',
+          amount: 7,
+          damageType: { module: 'dnd5e', type: 'damage', id: 'slashing' },
+          damageBreakdown: [],
+          hpAfter: { current: 13, max: 20, temp: 0 },
+        })
+      );
+      await Promise.resolve();
+    });
+    expect(screen.getByTitle('HP 13/20')).toBeTruthy();
+    expect(screen.getByTestId('combat-log-entry-damage-1')).toBeTruthy();
+    expect(screen.getByTestId('combat-presentation').textContent).not.toContain(
+      '7'
+    );
+  });
+
+  it.each([
+    ['snapshotDelivered', {}],
+    [
+      'modeChanged',
+      {
+        from: EncounterMode.TURN_BASED,
+        to: EncounterMode.FREE_ROAM,
+        reason: 'leave combat',
+      },
+    ],
+    ['encounterEnded', { reason: 'complete' }],
+  ])(
+    'flushes only on %s and retains the immediate attack log',
+    async (caseName, value) => {
+      render(
+        <EncounterView
+          encounterId="enc-1"
+          characterId="char-alice"
+          playerId="alice"
+          onBack={() => {}}
+        />
+      );
+      await act(async () => {
+        hoisted.fakeRef.current?.push(makeEvent('snapshotDelivered', {}));
+        hoisted.fakeRef.current?.push(attack());
+        await Promise.resolve();
+      });
+      await act(async () => {
+        hoisted.fakeRef.current?.push(makeEvent(caseName, value));
+        await Promise.resolve();
+      });
+      act(() => vi.runAllTimers());
+      expect(screen.queryByTestId('combat-presentation')).toBeNull();
+      expect(screen.getByTestId('combat-log-entry-attack-0')).toBeTruthy();
+    }
+  );
+
+  it('keeps theater through normal turn boundaries', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    await act(async () => {
+      hoisted.fakeRef.current?.push(makeEvent('snapshotDelivered', {}));
+      hoisted.fakeRef.current?.push(
+        makeEvent('modeChanged', {
+          from: EncounterMode.FREE_ROAM,
+          to: EncounterMode.TURN_BASED,
+          reason: 'combat started',
+        })
+      );
+      hoisted.fakeRef.current?.push(
+        attack({ attackerEntityId: 'npc-1', hit: false, attackRoll: 8 })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnEnded', { entityId: 'npc-1', round: 1 })
+      );
+      hoisted.fakeRef.current?.push(
+        makeEvent('turnStarted', { entityId: 'char-alice', round: 2 })
+      );
+      await Promise.resolve();
+    });
+    expect(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-active-entity-id')
+    ).toBe('char-alice');
+    expect(
+      screen.getByTestId('combat-presentation').getAttribute('data-beat')
+    ).toBe('cue');
+    act(() => vi.advanceTimersByTime(300 + 2000));
+    expect(screen.getByTestId('beat-verdict').textContent).toContain('MISS');
+  });
+
+  it('does not intercept the existing map click while theater is armed', async () => {
+    hoisted.takeActionFn.mockResolvedValue({} as TakeActionResponse);
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'goblin-1',
+                  position: { x: 1, y: 0, z: -1 },
+                  type: EntityType.MONSTER,
+                  data: {
+                    case: 'monster',
+                    value: { monsterRef: { id: 'goblin' } },
+                  },
+                },
+              ],
+            },
+          },
+        })
+      );
+      hoisted.fakeRef.current?.push(attack());
+      await Promise.resolve();
+    });
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.click(screen.getByTestId('stub-click-goblin'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByTestId('combat-presentation-overlay').style.pointerEvents
+    ).toBe('none');
+    expect(hoisted.takeActionFn).toHaveBeenCalledOnce();
+  });
+
+  it('cancels timer callbacks on unmount', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const view = render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    await act(async () => {
+      hoisted.fakeRef.current?.push(makeEvent('snapshotDelivered', {}));
+      hoisted.fakeRef.current?.push(attack());
+      await Promise.resolve();
+    });
+    view.unmount();
+    act(() => vi.runAllTimers());
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+});
