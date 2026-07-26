@@ -104,7 +104,11 @@ export interface CombatPacingScenario {
   npcTier?: 'grunt' | 'elite' | 'boss';
   pace: Pace;
   events: PacingFixtureEvent[];
+  /** Concept-only presentation metadata; never inferred from damage or HP. */
+  presentationByCorrelation?: Record<string, { impactTier: ImpactTier }>;
 }
+
+export type ImpactTier = 'GLANCING' | 'SOLID' | 'HEAVY' | 'DEVASTATING';
 
 const slashing: RefLike = { module: 'dnd5e', type: 'damage', id: 'slashing' };
 const attackRef: RefLike = {
@@ -196,6 +200,7 @@ const playerHit: CombatPacingScenario = {
     }),
     damage(3, 'corr-hit', GOBLIN, 7, { current: 8, max: 15, temp: 0 }),
   ],
+  presentationByCorrelation: { 'corr-hit': { impactTier: 'SOLID' } },
 };
 
 const playerMiss: CombatPacingScenario = {
@@ -240,6 +245,7 @@ const playerCrit: CombatPacingScenario = {
     }),
     damage(3, 'corr-crit', GOBLIN, 14, { current: 1, max: 15, temp: 0 }),
   ],
+  presentationByCorrelation: { 'corr-crit': { impactTier: 'DEVASTATING' } },
 };
 
 const playerNat1: CombatPacingScenario = {
@@ -284,6 +290,7 @@ const opportunityAttack: CombatPacingScenario = {
     }),
     damage(2, 'corr-oa', PLAYER, 5, { current: 20, max: 25, temp: 0 }),
   ],
+  presentationByCorrelation: { 'corr-oa': { impactTier: 'HEAVY' } },
 };
 
 const npcGruntSwing: CombatPacingScenario = {
@@ -330,6 +337,7 @@ const npcBossSwing: CombatPacingScenario = {
     }),
     damage(2, 'corr-boss', PLAYER, 22, { current: 3, max: 25, temp: 0 }),
   ],
+  presentationByCorrelation: { 'corr-boss': { impactTier: 'DEVASTATING' } },
 };
 
 const repeatedAttacks: CombatPacingScenario = {
@@ -363,6 +371,10 @@ const repeatedAttacks: CombatPacingScenario = {
       ...NO_DISADV,
     }),
   ],
+  presentationByCorrelation: {
+    'corr-rep-1': { impactTier: 'SOLID' },
+    'corr-rep-2': { impactTier: 'GLANCING' },
+  },
 };
 
 export const SCENARIOS: CombatPacingScenario[] = [

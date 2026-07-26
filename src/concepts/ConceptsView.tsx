@@ -5,13 +5,15 @@ import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
 import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
+import { JustRollConcept } from './just-roll/JustRollConcept';
 
 type ConceptPage =
   | 'class-selection'
   | 'encounter-dock'
   | 'combat-panel'
   | 'equipment'
-  | 'combat-pacing';
+  | 'combat-pacing'
+  | 'just-roll';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'class-selection', label: 'Class Selection' },
@@ -19,6 +21,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'combat-panel', label: 'Combat Panel' },
   { id: 'equipment', label: 'Equipment' },
   { id: 'combat-pacing', label: 'Combat Pacing' },
+  { id: 'just-roll', label: 'Just Roll' },
 ];
 
 interface ConceptsViewProps {
@@ -92,6 +95,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'combat-panel' && <CombatPanelConcept />}
         {activePage === 'equipment' && <EquipmentConcept />}
         {activePage === 'combat-pacing' && <CombatPacingConcept />}
+        {activePage === 'just-roll' && <JustRollConcept />}
       </motion.div>
     </div>
   );

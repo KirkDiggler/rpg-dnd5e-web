@@ -59,8 +59,11 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import type { CombatPacingScenario } from './fixtures';
-import { groupByCorrelation, type BeatGroupResult } from './fixtures';
+import type {
+  BeatAttackView,
+  BeatSequence,
+  PresentationGroup,
+} from './beatStageTypes';
 
 export type BeatName =
   | 'idle'
@@ -143,11 +146,13 @@ export interface UseBeatSequencerOptions {
   reducedMotion?: boolean;
 }
 
-export interface BeatSequencerState {
+export interface BeatSequencerState<T extends BeatAttackView> {
   beat: BeatName;
   groupIndex: number;
   groupCount: number;
-  group?: BeatGroupResult;
+  group?: PresentationGroup<T>;
+  /** Number of correlation groups whose presentation has completed Release. */
+  releasedGroupCount: number;
   /** Throws the player's own die during `armed`; a no-op in any other beat. */
   throwDie: () => void;
   /** Jumps straight to `verdict` from `cue`/`armed`/`throw` (design.md §1:
@@ -159,23 +164,24 @@ export interface BeatSequencerState {
   skip: () => void;
 }
 
-export function useBeatSequencer(
-  scenario: CombatPacingScenario,
+export function useBeatSequencer<T extends BeatAttackView>(
+  sequence: BeatSequence<T>,
   options: UseBeatSequencerOptions = {}
-): BeatSequencerState {
+): BeatSequencerState<T> {
   const { reducedMotion = false } = options;
   const [beat, setBeatState] = useState<BeatName>('idle');
   const [groupIndex, setGroupIndexState] = useState(0);
+  const [releasedGroupCount, setReleasedGroupCount] = useState(0);
   const beatRef = useRef<BeatName>('idle');
   const groupIndexRef = useRef(0);
   // `groups` is real state, not a bare ref — see the file header for why
   // (same-value `beat`/`groupIndex` updates can otherwise leave a
   // ref-only mutation unread). `groupsRef` mirrors it for the engine
   // functions below, which need synchronous access at call time.
-  const [groups, setGroupsState] = useState<BeatGroupResult[]>(() =>
-    groupByCorrelation(scenario.events)
-  );
-  const groupsRef = useRef<BeatGroupResult[]>(groups);
+  const [groups, setGroupsState] = useState<PresentationGroup<T>[]>(() => [
+    ...sequence.groups,
+  ]);
+  const groupsRef = useRef<PresentationGroup<T>[]>(groups);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const setBeat = (b: BeatName) => {
@@ -186,7 +192,7 @@ export function useBeatSequencer(
     groupIndexRef.current = i;
     setGroupIndexState(i);
   };
-  const setGroups = (g: BeatGroupResult[]) => {
+  const setGroups = (g: PresentationGroup<T>[]) => {
     groupsRef.current = g;
     setGroupsState(g);
   };
@@ -205,9 +211,10 @@ export function useBeatSequencer(
    * (not a duration-value heuristic) — every group after the first
    * compresses to BRISK regardless of the scenario's own pace. */
   const durationsFor = (index: number): BeatDurations =>
-    scenario.pace === 'brisk' || index > 0 ? BRISK : CINEMATIC;
+    sequence.pace === 'brisk' || index > 0 ? BRISK : CINEMATIC;
 
   const finishGroup = (index: number) => {
+    setReleasedGroupCount((current) => Math.max(current, index + 1));
     const next = index + 1;
     if (groupsRef.current[next]) {
       setGroupIndex(next);
@@ -219,7 +226,9 @@ export function useBeatSequencer(
 
   const startGroup = (index: number) => {
     const group = groupsRef.current[index];
-    if (!group || scenario.pace === 'instant') {
+    if (!group || sequence.pace === 'instant') {
+      if (sequence.pace === 'instant')
+        setReleasedGroupCount(groupsRef.current.length);
       setBeat('done');
       return;
     }
@@ -230,7 +239,7 @@ export function useBeatSequencer(
       // repeat-roll compression (design.md §4) auto-plays every
       // subsequent group in the same turn, matching the speed the
       // compressed Brisk durations already imply.
-      if (scenario.role === 'self' && index === 0) {
+      if (group.isViewerAttack && index === 0) {
         setBeat('armed');
         after(AUTO_THROW_TIMEOUT_MS, () => runThrow(index));
       } else {
@@ -285,19 +294,20 @@ export function useBeatSequencer(
    * mount take the same "scenario changed" branch as a real scenario
    * swap, so mount initializes group 0 exactly once with no separate
    * effect and no duplicate start. */
-  const prevScenarioRef = useRef<CombatPacingScenario | undefined>(undefined);
+  const prevIdentityRef = useRef<object | undefined>(undefined);
 
   useEffect(() => {
-    const scenarioChanged = prevScenarioRef.current !== scenario;
-    prevScenarioRef.current = scenario;
-    if (scenarioChanged) {
+    const sequenceChanged = prevIdentityRef.current !== sequence.identity;
+    prevIdentityRef.current = sequence.identity;
+    if (sequenceChanged) {
       // New scenario identity (including the initial mount) — rebuild
       // groups from scratch and restart at group 0's cue. Goes through
       // `setGroups` (not a bare `groupsRef.current =` mutation) so this
       // always triggers a render — see `groups` state's own comment
       // above for why a ref-only mutation is not sufficient here.
-      setGroups(groupByCorrelation(scenario.events));
+      setGroups([...sequence.groups]);
       setGroupIndex(0);
+      setReleasedGroupCount(0);
       startGroup(0);
     } else {
       // Same scenario, only `reducedMotion` (a live control) changed —
@@ -310,7 +320,7 @@ export function useBeatSequencer(
     }
     return clearTimer;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenario, reducedMotion]);
+  }, [sequence.identity, reducedMotion]);
 
   const throwDie = () => {
     if (beatRef.current === 'armed') runThrow(groupIndexRef.current);
@@ -332,6 +342,7 @@ export function useBeatSequencer(
     groupIndex,
     groupCount: groups.length,
     group: groups[groupIndex],
+    releasedGroupCount,
     throwDie,
     skip,
   };

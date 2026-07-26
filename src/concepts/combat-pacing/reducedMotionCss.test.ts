@@ -31,8 +31,14 @@ const css = readFileSync(CSS_PATH, 'utf-8');
  * state before this fix, since `.beat-stage--reduced-motion .beat-cue`
  * doesn't exist yet. */
 function ruleBody(source: string, selector: string): string | undefined {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(source);
+  const selectorPattern = selector
+    .trim()
+    .split(/(\s+)/)
+    .map((part) =>
+      /^\s+$/.test(part) ? '\\s+' : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    )
+    .join('');
+  const match = new RegExp(`${selectorPattern}\\s*\\{([^}]*)\\}`).exec(source);
   return match?.[1];
 }
 
@@ -68,5 +74,20 @@ describe('combat-pacing reduced-motion CSS contract (base.css)', () => {
     const body = ruleBody(css, '.beat-cue');
     expect(body).toBeDefined();
     expect(body).toMatch(/animation:\s*armed-pulse/);
+  });
+
+  it('defines exit treatment and removes tray entrance, exit, rollover, and shake motion under reduced motion', () => {
+    expect(ruleBody(css, '.dice-tray--exiting')).toMatch(
+      /animation:\s*dice-tray-exit/
+    );
+    const reducedTray = ruleBody(
+      css,
+      '.dice-tray--reduced-motion, .dice-tray--reduced-motion *'
+    );
+    expect(reducedTray).toMatch(/animation:\s*none/);
+    expect(reducedTray).toMatch(/transition:\s*none/);
+    expect(css).toMatch(/--concept-shake-duration/);
+    expect(css).toMatch(/--concept-crit-shake-multiplier/);
+    expect(css).toMatch(/--concept-color-strength/);
   });
 });

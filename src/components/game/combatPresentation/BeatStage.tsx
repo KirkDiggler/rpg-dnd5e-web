@@ -1,7 +1,7 @@
 /**
  * BeatStage (rpg-dnd5e-web#561) — the presentational die/verdict/damage
  * surface for one beat. Takes ONLY beat-shaped props via its OWN
- * presentation-owned `BeatAttackView`/`BeatDamageView` types
+ * presentation-owned `BeatAttackView` type
  * (`beatStageTypes.ts` — kept in its own module because presentation
  * types are owned by the presentation layer, not the data layer, the
  * same separation `equipmentTypes.ts` gives `EquipmentSlots.tsx`; it
@@ -12,7 +12,7 @@
  * `fixtures.ts`'s real wire-shaped types are a structural SUPERSET of
  * `beatStageTypes.ts`'s (every field there also exists here, same
  * name/type), so `CombatPacingConcept.tsx` can pass a `BeatGroupResult`'s
- * `attack`/`damage` straight through with no adapter function and no
+ * `attack` straight through with no adapter function and no
  * cast — TypeScript's structural typing accepts a wider object wherever
  * a narrower shape is declared. This keeps the promotion story true
  * (design.md §7, "reusable presentation components accept only
@@ -48,13 +48,8 @@
  * pass `announce={false}`, so a screen reader hears each verdict once.
  */
 
-import type {
-  BeatAttackView,
-  BeatDamageView,
-  VerdictLabel,
-} from './beatStageTypes';
+import type { BeatAttackView, VerdictLabel } from './beatStageTypes';
 import { verdictLabel } from './beatStageTypes';
-import { D20Die } from './D20Die';
 import type { BeatName } from './useBeatSequencer';
 
 export type Placement = 'token-anchored' | 'center-stage';
@@ -63,7 +58,6 @@ export interface BeatStageProps {
   beat: BeatName;
   placement: Placement;
   attack?: BeatAttackView;
-  damage?: BeatDamageView;
   reducedMotion: boolean;
   /**
    * Whether the verdict announces itself to assistive tech (`role=status`,
@@ -86,6 +80,10 @@ export interface BeatStageProps {
    * caller's existing "done renders nothing" behavior is unaffected.
    */
   persistResult?: boolean;
+  /** Concept-owned intensity metadata, never derived from wire damage or HP. */
+  impactTier?: string;
+  /** Outcome currently cleared for presentation; defaults to the authoritative label. */
+  presentationOutcome?: VerdictLabel;
 }
 
 /** Frame-break verdicts (design.md §2) promote a token-anchored stage to
@@ -115,10 +113,11 @@ export function BeatStage({
   beat,
   placement,
   attack,
-  damage,
   reducedMotion,
   announce = true,
   persistResult = false,
+  impactTier,
+  presentationOutcome,
 }: BeatStageProps) {
   const label = verdictLabel(attack);
   const modifier = verdictModifier(label);
@@ -130,35 +129,11 @@ export function BeatStage({
   // authoritative outcome those beats would have, instead of nothing.
   const showPersistedResult = persistResult && beat === 'done';
 
-  // Kirk's first interactive-review iteration (PR #579): the d20 is now
-  // visible across the ENTIRE die-through-outcome span, not just
-  // armed/throw — it stays on screen at verdict/impact/release (and a
-  // persisted Instant `done`), always settled on the authoritative
-  // landed face there. Cue/idle/a non-persisted `done` still render no
-  // die at all (unchanged from round one).
-  const showDie =
-    beat === 'armed' ||
-    beat === 'throw' ||
-    beat === 'verdict' ||
-    beat === 'impact' ||
-    beat === 'release' ||
-    showPersistedResult;
-  // Hidden (a `?` face, never the server's real roll) only while armed
-  // or mid-throw; revealed (the real, already-resolved `attackRoll`)
-  // everywhere else the die shows at all — including immediately for a
-  // persisted Instant `done`, per design.md §8's "the authoritative
-  // outcome is always shown."
-  const dieRevealed = beat !== 'armed' && beat !== 'throw';
-  // Tumbles ONLY during `throw` — never during `armed`'s silent wait,
-  // and `D20Die` itself additionally suppresses this under
-  // `reducedMotion` (settled instead), so no separate check is needed
-  // here for that.
-  const dieTumbling = beat === 'throw';
-
   // Token-anchored promotes to center-stage for a crit/nat-1 frame-break
   // (design.md §2) — a pure center-stage placement never moves.
   const effectivePlacement: Placement =
-    placement === 'token-anchored' && isFrameBreakVerdict(label)
+    placement === 'token-anchored' &&
+    isFrameBreakVerdict(presentationOutcome ?? label)
       ? 'center-stage'
       : placement;
 
@@ -188,34 +163,6 @@ export function BeatStage({
         </div>
       )}
 
-      {showDie && (
-        // SFX slot: die-tumble rattle (throw) / none (armed, silent wait;
-        // verdict/impact/release, already landed). Decorative
-        // (aria-hidden) — the verdict beat remains the single announced
-        // signal, never the die itself (`D20Die` is independently
-        // `aria-hidden` too, belt-and-suspenders for the same contract).
-        // `dieRevealed` hides the authoritative `attackRoll` behind a
-        // `?` face until verdict — this component never leaks the
-        // server's already-resolved roll a beat early, and tap timing
-        // on "Roll d20" can never change what number eventually shows.
-        <div
-          data-testid="beat-die"
-          aria-hidden="true"
-          className={
-            dieTumbling && !reducedMotion
-              ? 'beat-die beat-die--tumbling'
-              : 'beat-die beat-die--settled'
-          }
-        >
-          <D20Die
-            face={attack?.attackRoll}
-            revealed={dieRevealed}
-            tumbling={dieTumbling}
-            reducedMotion={reducedMotion}
-          />
-        </div>
-      )}
-
       {(beat === 'verdict' ||
         beat === 'impact' ||
         beat === 'release' ||
@@ -233,13 +180,13 @@ export function BeatStage({
           </div>
         )}
 
-      {(beat === 'impact' || showPersistedResult) && damage && (
+      {(beat === 'impact' || showPersistedResult) && impactTier && (
         // SFX slot: impact thud, oversized/gold-tinted on a crit.
         <div
-          data-testid="beat-damage"
-          className={`beat-damage${isCrit ? ' beat-damage--crit' : ''}`}
+          data-testid="beat-impact"
+          className={`beat-impact beat-impact--${impactTier.toLowerCase()}${isCrit ? ' beat-impact--crit' : ''}`}
         >
-          -{damage.amount}
+          {impactTier}
         </div>
       )}
     </div>
