@@ -1,4 +1,7 @@
-import type { AttackResolved } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
+import type {
+  AttackResolved,
+  EntityDamaged,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { useReducedMotion } from 'framer-motion';
 import { useEffect, useMemo, useRef } from 'react';
 import { DiceTray, type DiceTrayPhase } from '../../ui/dice/DiceTray';
@@ -8,8 +11,15 @@ import { useBeatSequencer } from './useBeatSequencer';
 
 export interface CombatPresentationAttack {
   id: number;
+  correlationId: string;
   attack: AttackResolved;
   isViewerAttack: boolean;
+}
+
+export interface CombatPresentationProps {
+  item: CombatPresentationAttack;
+  damage?: EntityDamaged;
+  onComplete: (id: number) => void;
 }
 
 function trayPhase(beat: string): DiceTrayPhase {
@@ -23,11 +33,9 @@ function trayPhase(beat: string): DiceTrayPhase {
 
 export function CombatPresentation({
   item,
+  damage,
   onComplete,
-}: {
-  item: CombatPresentationAttack;
-  onComplete: (id: number) => void;
-}) {
+}: CombatPresentationProps) {
   const reducedMotion = useReducedMotion() ?? false;
   const sequence = useMemo<BeatSequence<AttackResolved>>(
     () => ({
@@ -85,6 +93,21 @@ export function CombatPresentation({
           reducedMotion={reducedMotion}
         />
       </DiceTray>
+      {damage && (
+        <div
+          data-testid="combat-presentation-damage"
+          style={{
+            marginTop: 8,
+            fontSize: 14,
+            fontWeight: 700,
+            color: '#fca5a5',
+            textAlign: 'center',
+            textShadow: '0 1px 2px rgba(0, 0, 0, 0.35)',
+          }}
+        >
+          💥 {damage.amount} damage
+        </div>
+      )}
       {seq.beat === 'armed' && (
         <button
           type="button"

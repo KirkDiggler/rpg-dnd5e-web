@@ -1,3 +1,4 @@
+import type { EntityDamaged } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useReducedMotion } from 'framer-motion';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -14,6 +15,7 @@ const item = (
   overrides: Partial<CombatPresentationAttack['attack']> = {}
 ): CombatPresentationAttack => ({
   id: 7,
+  correlationId: 'corr-attack-7',
   isViewerAttack: true,
   attack: {
     attackerEntityId: 'char-alice',
@@ -26,6 +28,16 @@ const item = (
     ...overrides,
   } as CombatPresentationAttack['attack'],
 });
+
+const damage = (amount = 7): EntityDamaged =>
+  ({
+    entityId: 'goblin-1',
+    sourceEntityId: 'char-alice',
+    amount,
+    damageType: { module: 'dnd5e', type: 'damage', id: 'slashing' },
+    damageBreakdown: [],
+    hpAfter: { current: 13, max: 20, temp: 0 },
+  }) as unknown as EntityDamaged;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -58,6 +70,22 @@ describe('CombatPresentation', () => {
       )
     );
     expect(complete).toHaveBeenCalledWith(7);
+  });
+
+  it('renders the server-sent damage result alongside the attack theater', () => {
+    render(
+      <CombatPresentation
+        item={item()}
+        damage={damage()}
+        onComplete={() => {}}
+      />
+    );
+    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    act(() => vi.advanceTimersByTime(CINEMATIC.throw + CINEMATIC.verdict));
+    expect(
+      screen.getByTestId('combat-presentation-damage').textContent
+    ).toContain('7 damage');
   });
 
   it('does not complete a newly swapped item until its own sequence finishes', () => {

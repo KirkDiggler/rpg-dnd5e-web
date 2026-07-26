@@ -31,6 +31,7 @@
 
 import { create } from '@bufbuild/protobuf';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import type { EntityDamaged } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import type { ActionTarget } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import type {
   AvailableAction,
@@ -185,12 +186,29 @@ export function EncounterView({
   const [presentationQueue, setPresentationQueue] = useState<
     CombatPresentationAttack[]
   >([]);
+  const [damageByCorrelationId, setDamageByCorrelationId] = useState<
+    Record<string, EntityDamaged>
+  >({});
   const presentationIdRef = useRef(0);
-  const flushPresentation = () => setPresentationQueue([]);
-  const completePresentation = (id: number) =>
+  const flushPresentation = () => {
+    setPresentationQueue([]);
+    setDamageByCorrelationId({});
+  };
+  const completePresentation = (id: number) => {
+    const current = presentationQueue[0];
+    if (current?.id !== id) return;
+    if (current.correlationId) {
+      setDamageByCorrelationId((currentDamage) => {
+        if (!(current.correlationId in currentDamage)) return currentDamage;
+        const next = { ...currentDamage };
+        delete next[current.correlationId];
+        return next;
+      });
+    }
     setPresentationQueue((queue) =>
       queue[0]?.id === id ? queue.slice(1) : queue
     );
+  };
   const activePresentation = presentationQueue[0];
   // rpg-dnd5e-web#511: the action-selection interaction state. Set by
   // clicking a SINGLE_ENTITY/POSITION/AREA-targeted menu action ("arming"
@@ -428,10 +446,6 @@ export function EncounterView({
         );
       }
     },
-    onEntityDamaged: (e) => {
-      encounterState.applyEntityDamaged(e);
-      combatLog.recordEntityDamaged(e);
-    },
     onStatusApplied: (e) => {
       encounterState.applyStatusApplied(e);
       combatLog.recordStatusApplied(e);
@@ -478,16 +492,27 @@ export function EncounterView({
     // TakeAction wave (#426 / #594): per-attack roll detail. Fires on a MISS
     // too (hit=false) — rendered as-is in the combat log so a whiff isn't
     // silent. Damage rides the correlated EntityDamaged above.
-    onAttackResolved: (e) => {
+    onAttackResolved: (e, metadata) => {
       combatLog.recordAttackResolved(e);
       setPresentationQueue((queue) => [
         ...queue,
         {
           id: ++presentationIdRef.current,
+          correlationId: metadata.correlationId,
           attack: e,
           isViewerAttack: e.attackerEntityId === entityIdRef.current,
         },
       ]);
+    },
+    onEntityDamaged: (e, metadata) => {
+      encounterState.applyEntityDamaged(e);
+      combatLog.recordEntityDamaged(e);
+      if (metadata.correlationId) {
+        setDamageByCorrelationId((current) => ({
+          ...current,
+          [metadata.correlationId]: e,
+        }));
+      }
     },
     onEntityDied: (e) => {
       encounterState.applyEntityDied(e);
@@ -927,6 +952,7 @@ export function EncounterView({
             <CombatPresentation
               key={activePresentation.id}
               item={activePresentation}
+              damage={damageByCorrelationId[activePresentation.correlationId]}
               onComplete={completePresentation}
             />
           </div>
