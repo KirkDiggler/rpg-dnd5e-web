@@ -120,6 +120,78 @@ function isCoveredByConnectorRun(
 }
 
 /**
+ * The dungeon's true combined-space bounds, derived ENTIRELY from
+ * `Wall.from` values across the whole (unconditional, whole-dungeon)
+ * walls list — gate review "STILL-BLOCKED" finding, rpg-dnd5e-web#603.
+ *
+ * `Space.width`/`height` do not exist on the wire (verified against
+ * rpg-api-protos: the installed v0.1.113 tag and origin/main HEAD both
+ * lack any such field on the `Space` message, and no open PR adds one) —
+ * despite design.md's own W1 framing listing "combined space dimensions"
+ * as an input, no wire field was ever added to carry it, and adding one
+ * would cross design.md's explicit "zero toolkit/proto/api changes in
+ * v1" line, which is Kirk's call to relax, not this module's to route
+ * around unilaterally.
+ *
+ * This derives the same bound from data ALREADY guaranteed present:
+ * every `Wall.from` — for BOTH generator functions that ever emit a
+ * boundary-edge entry (`perimeterEdgeWalls`/`connectorBoundaryEdgeWalls`,
+ * encounter/dungeon.go) — is always real, in-grid region floor; `to` is
+ * the only field that can be ambiguous (a genuine in-grid flank OR a
+ * one-step-beyond-the-edge perimeter artifact). Every region spans the
+ * dungeon's full shared `Height`, so every region's own row-0 and
+ * row-(height-1) floor hexes sit on the space's true top/bottom edge —
+ * `perimeterEdgeWalls` fires for at least one of their 6 neighbor
+ * directions there BY CONSTRUCTION (the "further out" direction always
+ * lands outside the grid at the true edge), guaranteeing a `from` entry
+ * at exactly row 0 and exactly row height-1 somewhere in the list.
+ * `to`, by contrast, can land at row -1 or row height for those same
+ * entries — one step past the edge — which is exactly the spurious
+ * candidate class this function exists to exclude.
+ *
+ * Unlike deriving bounds from currently-revealed REGION rows (explicitly
+ * rejected — that reintroduces the original invisible-wall bug under
+ * partial reveal, since a region's revealed subset shrinks the bound),
+ * the walls list itself is NEVER reveal-gated — every wall for the whole
+ * dungeon, including rooms never yet seen, is present from the very
+ * first snapshot (verified live: 196 wall entries, spanning all 3
+ * reference-tomb rooms, before hall or tomb were ever revealed). So this
+ * bound is exact and available immediately, with zero partial-reveal
+ * degradation.
+ *
+ * Returns undefined only if `walls` is empty (no dungeon geometry at
+ * all) — the caller's safety net simply keeps nothing in that case
+ * rather than guessing.
+ */
+function wireGridBounds(
+  walls: Iterable<Wall>
+):
+  | { minCol: number; maxCol: number; minRow: number; maxRow: number }
+  | undefined {
+  let minCol = Infinity;
+  let maxCol = -Infinity;
+  let minRow = Infinity;
+  let maxRow = -Infinity;
+  let any = false;
+  for (const wall of walls) {
+    if (!wall.from) continue;
+    any = true;
+    const fromHex: CubeCoord = {
+      x: wall.from.x,
+      y: wall.from.y,
+      z: wall.from.z,
+    };
+    const col = hexColumn(fromHex);
+    const row = hexRow(fromHex);
+    if (col < minCol) minCol = col;
+    if (col > maxCol) maxCol = col;
+    if (row < minRow) minRow = row;
+    if (row > maxRow) maxRow = row;
+  }
+  return any ? { minCol, maxCol, minRow, maxRow } : undefined;
+}
+
+/**
  * The positive category rule (design.md's W2 slice): the legacy per-cell
  * renderer (SyntyHexWall) draws
  *   (a) door entries, unchanged — their frame/leaf rendering and click
@@ -134,10 +206,14 @@ function isCoveredByConnectorRun(
  *       see below), so this never actually fires for boundary-edge, but
  *       the check stays generic rather than assuming shape;
  *   (c) STRUCTURAL SAFETY NET (gate review finding 1, rpg-dnd5e-web#603):
- *       a non-door wall whose candidate cell is OUTSIDE any known region
- *       AND whose candidate's column matches a KNOWN door's column (a
- *       connector-flanking cell, either wire shape) AND is NOT already
- *       covered by an emitted connector run.
+ *       a non-door wall whose candidate cell is OUTSIDE any known region,
+ *       whose candidate's column matches a KNOWN door's column (a
+ *       connector-flanking cell, either wire shape), whose candidate is
+ *       a real IN-GRID cell (`wireGridBounds` — excludes the one-step-
+ *       beyond-the-edge perimeter artifacts a door-column match alone
+ *       can't tell apart from a genuine flank, gate review's STILL-
+ *       BLOCKED finding), AND is NOT already covered by an emitted
+ *       connector run.
  *
  * "Candidate cell" is what makes this robust to BOTH wire shapes without
  * branching on which one it is: for a degenerate entry the candidate is
@@ -148,12 +224,25 @@ function isCoveredByConnectorRun(
  * `Start` to real, in-region floor). A candidate NOT inside any known
  * region is either the dungeon's TRUE outer perimeter (excluded — the
  * `from` region's own envelope run already covers its outward-facing
- * sides once that region is known) or a connector-flanking cell — those
- * two cases are told apart by whether the candidate's own column matches
- * a KNOWN door's column: connector columns are always strictly interior
- * (never the whole space's own x=0/width-1 edge — rpg-toolkit's own
- * generation invariant, encounter/dungeon.go's `perimeterEdgeWalls` doc),
- * so a true outer-perimeter candidate never coincides with a door column.
+ * sides once that region is known) or a connector-flanking cell.
+ *
+ * The column-match check ALONE is not sufficient to tell those two cases
+ * apart, despite ruling out left/right perimeter edges (connector columns
+ * are always strictly interior, never the whole space's own x=0/width-1
+ * edge — rpg-toolkit's own generation invariant): a region's OWN top/
+ * bottom-row floor hex can have an out-of-grid neighbor (one step above
+ * row 0 or below row height-1) that lands on an ADJACENT connector's
+ * column purely by coincidence of hex-grid geometry — gate review's
+ * STILL-BLOCKED finding, reproduced live (an isolated wall block floating
+ * one row above/below the map at every connector column, on the real
+ * reference-tomb dungeon at full reveal). Neither "same row as `from`"
+ * nor "row differs from `from` by exactly 1" discriminates the two cases
+ * either — both were checked by hand against the real cube coordinates
+ * from the reported reproduction and both admit false positives (a
+ * genuine flank can differ from its source row by 1 via the NE/SE
+ * neighbor directions, exactly like the spurious perimeter case does).
+ * The only reliable discriminator is the candidate's row/column against
+ * the dungeon's TRUE combined bounds — `wireGridBounds`.
  *
  * Category (c) exists because region hex membership is per-viewer
  * REVEAL-GATED (rpg-api's `Space.hexes` is sight-range-gated
@@ -190,6 +279,7 @@ export function legacyRenderWalls(
   }
   const coveredRowRanges = coveredRowRangesByColumn(connectorRuns, doors);
   const doorColumns = new Set(doors.map((door) => hexColumn(door.position)));
+  const gridBounds = wireGridBounds(walls);
 
   const kept: Wall[] = [];
   for (const wall of walls) {
@@ -213,6 +303,22 @@ export function legacyRenderWalls(
       continue;
     }
     if (!doorColumns.has(hexColumn(candidate))) continue; // true outer perimeter
+    // A candidate whose column merely coincides with a door's column can
+    // still be a genuine outer-perimeter cell (a region's own top/bottom
+    // edge landing on an adjacent connector's column) — gate review's
+    // STILL-BLOCKED finding. Require the candidate to be a real in-grid
+    // cell before treating it as a connector flank at all.
+    const candidateCol = hexColumn(candidate);
+    const candidateRow = hexRow(candidate);
+    if (
+      !gridBounds ||
+      candidateCol < gridBounds.minCol ||
+      candidateCol > gridBounds.maxCol ||
+      candidateRow < gridBounds.minRow ||
+      candidateRow > gridBounds.maxRow
+    ) {
+      continue;
+    }
     // Connector-flanking candidate: keep it via the legacy fallback
     // UNLESS a connector run already covers this exact cell.
     if (!isCoveredByConnectorRun(candidate, coveredRowRanges)) {
