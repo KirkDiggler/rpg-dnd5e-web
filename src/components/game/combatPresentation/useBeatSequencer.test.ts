@@ -6,11 +6,7 @@ import {
   type AttackResolvedLike,
 } from '../../../concepts/combat-pacing/fixtures';
 import type { BeatSequence } from './beatStageTypes';
-import {
-  AUTO_THROW_TIMEOUT_MS,
-  REDUCED_MOTION_THROW_MS,
-  useBeatSequencer,
-} from './useBeatSequencer';
+import { REDUCED_MOTION_THROW_MS, useBeatSequencer } from './useBeatSequencer';
 
 const scenario = (id: string) => SCENARIOS.find((s) => s.id === id)!;
 const sequenceFromFixture = (
@@ -158,7 +154,7 @@ describe('useBeatSequencer', () => {
     expect(result.current.beat).toBe('verdict');
   });
 
-  it('auto-throws after AUTO_THROW_TIMEOUT_MS if the player never calls throwDie (design.md §2, unchanged this iteration — timeout is the agency pause, not the Cue->Release duration target)', () => {
+  it('auto-throws after the 1500ms agency pause if the player never calls throwDie (roughly half the old wait)', () => {
     const { result } = renderHook(() =>
       useBeatSequencer(sequence('player-hit'))
     );
@@ -167,7 +163,7 @@ describe('useBeatSequencer', () => {
     });
     expect(result.current.beat).toBe('armed');
     act(() => {
-      vi.advanceTimersByTime(AUTO_THROW_TIMEOUT_MS);
+      vi.advanceTimersByTime(1500);
     });
     expect(result.current.beat).toBe('throw');
   });

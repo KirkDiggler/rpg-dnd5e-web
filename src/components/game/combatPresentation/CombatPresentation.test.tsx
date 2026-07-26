@@ -1,3 +1,4 @@
+import type { EntityDamaged } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useReducedMotion } from 'framer-motion';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -14,6 +15,7 @@ const item = (
   overrides: Partial<CombatPresentationAttack['attack']> = {}
 ): CombatPresentationAttack => ({
   id: 7,
+  correlationId: 'corr-attack-7',
   isViewerAttack: true,
   attack: {
     attackerEntityId: 'char-alice',
@@ -26,6 +28,16 @@ const item = (
     ...overrides,
   } as CombatPresentationAttack['attack'],
 });
+
+const damage = (amount = 7): EntityDamaged =>
+  ({
+    entityId: 'goblin-1',
+    sourceEntityId: 'char-alice',
+    amount,
+    damageType: { module: 'dnd5e', type: 'damage', id: 'slashing' },
+    damageBreakdown: [],
+    hpAfter: { current: 13, max: 20, temp: 0 },
+  }) as unknown as EntityDamaged;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -58,6 +70,38 @@ describe('CombatPresentation', () => {
       )
     );
     expect(complete).toHaveBeenCalledWith(7);
+  });
+
+  it('announces the server-sent damage result once while hiding the decorative copy from assistive tech', () => {
+    const { rerender } = render(
+      <CombatPresentation
+        item={item()}
+        damage={damage()}
+        onComplete={() => {}}
+      />
+    );
+
+    const visualDamage = screen.getByTestId('combat-presentation-damage');
+    const liveDamage = screen.getByTestId(
+      'combat-presentation-damage-announce'
+    );
+
+    expect(visualDamage.getAttribute('aria-hidden')).toBe('true');
+    expect(liveDamage.getAttribute('role')).toBe('status');
+    expect(liveDamage.getAttribute('aria-live')).toBe('polite');
+    expect(liveDamage.getAttribute('aria-atomic')).toBe('true');
+    expect(liveDamage.textContent).toBe('Damage dealt: 7');
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+
+    rerender(
+      <CombatPresentation
+        item={item()}
+        damage={damage()}
+        onComplete={() => {}}
+      />
+    );
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
   });
 
   it('does not complete a newly swapped item until its own sequence finishes', () => {
