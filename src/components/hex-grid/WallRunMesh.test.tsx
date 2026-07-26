@@ -85,7 +85,7 @@ describe('WallRunMesh R3F scene', () => {
     expect(countMeshes(renderer)).toBe(14);
   });
 
-  it('places one wall-corner-outer fitting per envelope corner, in addition to the tiled runs', async () => {
+  it('accepts envelopeCorners without rendering a dedicated corner-fitting GLB (round-2 W3/W4: overlap-miter replaces the corner-fitting piece, see WallRunMesh’s own doc comment)', async () => {
     const envelopeRuns: EnvelopeRun[] = [
       {
         regionId: 'hall',
@@ -118,8 +118,11 @@ describe('WallRunMesh R3F scene', () => {
       />
     );
 
-    // 1 tiled wall piece (length-1 run) + 1 skirt + 2 corner fittings = 4.
-    expect(countMeshes(renderer)).toBe(4);
+    // 1 tiled wall piece (length-1 run) + 1 skirt = 2 — envelopeCorners is
+    // accepted (a caller passing it isn't an error) but no longer renders
+    // anything; adjacent runs self-cover the corner via cornerExtension
+    // instead (wallRuns.ts).
+    expect(countMeshes(renderer)).toBe(2);
   });
 
   it('renders connector-fallback segments with the same tiled visual language (W3 fallback restyle)', async () => {

@@ -3,13 +3,12 @@
  * computed envelope/connector runs (rpg-project#133 design.md/plan.md's W3
  * slice). Tiles repeated `wall` "plain" pieces along each run (a run spans
  * many hex-units, not the single hex-edge a "wall" piece is calibrated
- * for — see wallRunMeshHelpers.tileWallSegment's doc comment) and places a
- * `wall-corner-outer` fitting at each room's 4 envelope corners
- * (wallRuns.EnvelopeCorner — computed as the actual line intersection of
- * the two adjacent sides' own offset lines, closing Kirk's #1 prod-
- * screenshot defect: "the placeholder butt-joins visibly don't meet at
- * room corners"). W2's placeholder extruded boxes are gone; this is real
- * geometry now.
+ * for — see wallRunMeshHelpers.tileWallSegment's doc comment). Adjacent
+ * runs meet at room corners via the "overlap-miter" cheat (each run
+ * extended past the true corner intersection so the two overlap and
+ * self-cover the joint) rather than a dedicated corner-fitting GLB — see
+ * this file's own `WallRunMesh` doc comment for why. W2's placeholder
+ * extruded boxes are gone; this is real geometry now.
  *
  * A "run" here is still just a straight line between two world points
  * (WallRunSegment) — this component has no notion of hex adjacency, cube
@@ -21,15 +20,15 @@
  * Fog-of-war memory (rpg-dnd5e-web#601/#602 scene-knowledge contract,
  * merged in here): `rememberedEnvelopeRegionIds`/`rememberedConnectorDoorIds`
  * mark which regions/connectors are "seen before, not currently visible" —
- * every tiled piece (and the corner fitting) for a remembered region/
- * connector renders via `GlbInstance`'s own `remembered` prop (the
- * crypt-memory look) instead of `spaceTheme`'s tint. #602 introduced this
- * contract against the OLD placeholder-box WallRunMesh (a `remembered`
- * boolean swapping `meshStandardMaterial`); this is the same contract
- * re-expressed against real tiled Synty pieces. Fallback segments
- * (`fallbackSegments`, this branch's own addition, postdating #602) have
- * no natural regionId/doorId of their own to match against a remembered
- * set — see `WallRunMeshProps.fallbackSegments`'s doc comment.
+ * every tiled piece for a remembered region/connector renders via
+ * `GlbInstance`'s own `remembered` prop (the crypt-memory look) instead of
+ * `spaceTheme`'s tint. #602 introduced this contract against the OLD
+ * placeholder-box WallRunMesh (a `remembered` boolean swapping
+ * `meshStandardMaterial`); this is the same contract re-expressed against
+ * real tiled Synty pieces. Fallback segments (`fallbackSegments`, this
+ * branch's own addition, postdating #602) have no natural regionId/doorId
+ * of their own to match against a remembered set — see
+ * `WallRunMeshProps.fallbackSegments`'s doc comment.
  */
 
 import type {
@@ -50,8 +49,6 @@ import {
   CRYPT_MEMORY_OPACITY,
 } from './sceneKnowledge';
 import {
-  FITTINGS,
-  fittingScale,
   WALL_TINT_BY_THEME,
   WALL_VARIANTS,
   type WallTheme,
@@ -232,16 +229,35 @@ const DEFAULT_WALL_HEIGHT = 0.8; // matches calibrationConstants.WALL_HEIGHT
 
 /**
  * Renders every envelope run, connector run segment, and connector
- * fallback segment as tiled real Synty wall pieces, plus one
- * `wall-corner-outer` fitting per envelope corner. Own Suspense boundary
+ * fallback segment as tiled real Synty wall pieces. Own Suspense boundary
  * (matching SyntyHexWall's convention) — GLB loading can suspend, unlike
  * W2's placeholder boxes, which needed none. The caller's ErrorBoundary
  * (HexGrid.tsx, same one wrapping SyntyHexWall) still catches a terminal
  * load failure past this Suspense.
+ *
+ * No dedicated corner-fitting GLB is placed at `envelopeCorners` (round-2
+ * W3/W4 finding, TODO(asset) rpg-dnd5e-web#607 thread / rpg-game-assets
+ * env-role-map notes): `SM_Env_Wall_End_Coner_Outer_01.glb` and its
+ * End/Coner_Inner siblings are correctly-converted tall narrow corner
+ * POSTS with faceted brick relief, but the wall role's fit squash
+ * (~6x Y-compression to reach WALL_HEIGHT) reduces that relief to a
+ * "stacked wafer" look post-shaped pieces don't survive — a squash panel
+ * pieces tolerate fine. Rather than adopt a different GLB for this slot,
+ * `envelopeGeometryForRegion`'s own `cornerExtension` (wallRuns.ts) now
+ * pushes each side's tiled run PAST the true corner intersection far
+ * enough that the two perpendicular runs visually overlap and self-cover
+ * the joint — the standard modular-kit "overlap-miter" cheat, zero new
+ * assets, picked over a small stand-in panel (`SM_Env_Wall_Quarter_01`)
+ * after a live side-by-side comparison at the same corner (the panel
+ * left a visible gap at this piece's own current scale/pivot; the
+ * overlap-miter read as a single clean corner). `envelopeCorners` is
+ * still accepted (and still exactly, correctly computed by wallRuns.ts —
+ * true line-intersection position/outward rotation) for whenever a
+ * corner piece that survives the squash exists; not read by this
+ * component today.
  */
 export function WallRunMesh({
   envelopeRuns,
-  envelopeCorners = [],
   connectorRuns,
   fallbackSegments = [],
   rememberedEnvelopeRegionIds,
@@ -250,7 +266,6 @@ export function WallRunMesh({
   spaceTheme,
 }: WallRunMeshProps) {
   const tint = spaceTheme ? WALL_TINT_BY_THEME[spaceTheme] : undefined;
-  const cornerFitting = FITTINGS['wall-corner-outer'];
 
   return (
     <Suspense fallback={null}>
@@ -269,17 +284,6 @@ export function WallRunMesh({
           </group>
         );
       })}
-      {envelopeCorners.map((corner) => (
-        <GlbInstance
-          key={`${corner.regionId}-${corner.corner}`}
-          file={cornerFitting.file}
-          position={corner.position}
-          rotationY={corner.rotationY}
-          scale={fittingScale(cornerFitting, wallHeight)}
-          tint={tint}
-          remembered={!!rememberedEnvelopeRegionIds?.has(corner.regionId)}
-        />
-      ))}
       {connectorRuns.flatMap((run) => {
         const remembered =
           !!run.doorId && !!rememberedConnectorDoorIds?.has(run.doorId);

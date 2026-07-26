@@ -552,27 +552,53 @@ export interface FittingVariant {
   rawHeight: number;
 }
 
+/**
+ * Round-2 W3/W4 course correction: the original 3 files this map pointed
+ * to (`SM_Env_Wall_End_Coner_Outer_01`/`_Coner_Inner_01`/`_End_01`) were
+ * first suspected as a conversion defect (isolated-GLB render showed a
+ * "stacked wafer" look), then confirmed by a deeper asset-side
+ * investigation to be structurally clean, correctly-shaped tall narrow
+ * corner POSTS with faceted brick relief — the wafer look is the wall
+ * role's own fit squash (~6x Y-compression to reach WALL_HEIGHT from a
+ * ~5m raw post), which panel-shaped pieces tolerate but post-shaped
+ * relief does not survive visually. See rpg-game-assets' env-role-map
+ * notes: don't map post-shaped pieces to wall roles. No re-conversion is
+ * coming for this family — dropped from every role here, permanently
+ * (not an interim fix). `SM_Env_Wall_Quarter_01` (a WALL_VARIANTS-family
+ * panel, already verified clean — see rpg-dnd5e-web#607/#608's isolation
+ * evidence) is the replacement for all 3 kinds: same "context fit"
+ * placement (single point, footprint centered) as before, just a
+ * different source file and its own measured raw dimensions/footprint
+ * scale (`FITTING_SUBSTITUTE_FOOTPRINT_SCALE`, tuned separately from
+ * `FITTING_FOOTPRINT_SCALE` below since Quarter's rawWidth/rawDepth are a
+ * different order of magnitude than the dropped family's).
+ */
+const FITTING_SUBSTITUTE_FILE = 'SM_Env_Wall_Quarter_01.glb';
+const FITTING_SUBSTITUTE_RAW_WIDTH = 2.7245;
+const FITTING_SUBSTITUTE_RAW_DEPTH = 0.4221;
+const FITTING_SUBSTITUTE_RAW_HEIGHT = 2.7068;
+
 export const FITTINGS: Record<FittingKind, FittingVariant> = {
   'wall-corner-outer': {
     kind: 'wall-corner-outer',
-    file: 'SM_Env_Wall_End_Coner_Outer_01.glb',
-    rawWidth: 0.8299,
-    rawDepth: 0.833,
-    rawHeight: 5.026,
+    file: FITTING_SUBSTITUTE_FILE,
+    rawWidth: FITTING_SUBSTITUTE_RAW_WIDTH,
+    rawDepth: FITTING_SUBSTITUTE_RAW_DEPTH,
+    rawHeight: FITTING_SUBSTITUTE_RAW_HEIGHT,
   },
   'wall-corner-inner': {
     kind: 'wall-corner-inner',
-    file: 'SM_Env_Wall_End_Coner_Inner_01.glb',
-    rawWidth: 1.06,
-    rawDepth: 1.1119,
-    rawHeight: 5.0263,
+    file: FITTING_SUBSTITUTE_FILE,
+    rawWidth: FITTING_SUBSTITUTE_RAW_WIDTH,
+    rawDepth: FITTING_SUBSTITUTE_RAW_DEPTH,
+    rawHeight: FITTING_SUBSTITUTE_RAW_HEIGHT,
   },
   'wall-end': {
     kind: 'wall-end',
-    file: 'SM_Env_Wall_End_01.glb',
-    rawWidth: 0.9043,
-    rawDepth: 0.8106,
-    rawHeight: 5.0472,
+    file: FITTING_SUBSTITUTE_FILE,
+    rawWidth: FITTING_SUBSTITUTE_RAW_WIDTH,
+    rawDepth: FITTING_SUBSTITUTE_RAW_DEPTH,
+    rawHeight: FITTING_SUBSTITUTE_RAW_HEIGHT,
   },
 };
 
@@ -584,19 +610,17 @@ export const FITTINGS: Record<FittingKind, FittingVariant> = {
  * sits against -- measured directly off the GLBs (`bbox_glb.py` against
  * `rpg-game-assets/harness/models/synty/env/`): `SM_Env_Wall_Half_01`'s raw
  * depth is 0.4357, which at the wall's own SYNTY_SCALE renders to ~0.327
- * world units of actual wall thickness. `wall-corner-outer`'s raw
- * width/depth (~0.83) at the old flat 0.75 rendered to ~0.62 -- nearly
- * DOUBLE the wall's own thickness, which is exactly why the fittings read
- * as "stacked slabs" dominating the tan wall segments instead of slim caps.
+ * world units of actual wall thickness -- the "slim post/cap" target every
+ * fitting's own footprint aims to match, not dwarf.
  *
- * `FITTING_FOOTPRINT_SCALE` is chosen so `wall-corner-outer` (the most
- * common fitting) renders at ~0.33 -- matching the wall's own rendered
- * thickness almost exactly -- with `wall-corner-inner` (a genuinely
- * chunkier concave-notch piece bridging 2 edges) and `wall-end` landing
- * close behind (~0.32-0.45 range across all 3), all in the same "slim
- * post/cap" order of magnitude as the wall itself rather than dwarfing it.
+ * Round-2 W3/W4 update: all 3 `FITTINGS` entries now share ONE substitute
+ * file (`FITTING_SUBSTITUTE_FILE`, see FITTINGS' own doc comment for why)
+ * with rawWidth ~2.72 -- a different order of magnitude than the original
+ * broken family's ~0.83-1.1 raw footprint this constant was originally
+ * tuned against. Retuned so `rawWidth * FITTING_FOOTPRINT_SCALE` still
+ * lands at that same ~0.33 target (2.7245 * 0.121 ~= 0.33).
  */
-const FITTING_FOOTPRINT_SCALE = 0.4;
+const FITTING_FOOTPRINT_SCALE = 0.121;
 
 /**
  * "Context" fit scale for a fitting: X/Z use each variant's own raw

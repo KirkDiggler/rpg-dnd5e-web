@@ -228,10 +228,31 @@ export interface WallRunsInput {
    * Defaults to `DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES`.
    */
   envelopeOffsetLeftRight?: number;
-  /** How far a run's endpoints extend past the outermost boundary hex's
+  /**
+   * How far a run's endpoints extend past the outermost boundary hex's
    * own center, along the run's direction — reaches toward the hex's true
    * outer face/corner instead of stopping dead-center on the last hex.
-   * Defaults to half a hex radius. */
+   *
+   * Round-2 W3/W4 finding (Kirk's live walk: "the corners still look like
+   * 2 stacks of tile shaped thingers"): the dedicated corner-fitting GLBs
+   * (`SM_Env_Wall_End_Coner_Outer_01` etc.) are correctly-converted tall
+   * narrow corner posts, but the wall role's fit squash (~6x Y-compression
+   * to reach WALL_HEIGHT) reduces their faceted brick relief to a
+   * "stacked wafer" look that panel-shaped pieces don't suffer from — see
+   * rpg-game-assets' env-role-map notes (post-shaped pieces don't survive
+   * the wall squash; don't map them to wall roles) and this repo's
+   * WallRunMesh doc comment. Rather than adopt a different GLB for that
+   * slot, this default was raised (from half a hex radius) far enough
+   * that two perpendicular runs' own extended ends visually overlap past
+   * the true corner (`EnvelopeCorner`'s own line-intersection point) and
+   * self-cover the joint — the standard modular-kit "overlap-miter"
+   * cheat, picked over a small stand-in panel piece after a live
+   * side-by-side comparison at the same corner. Verified this doesn't
+   * reopen the door-intrusion fix from a different axis: measured the
+   * extended top-left corner's perpendicular distance to its nearest
+   * connector column stays deep on the safe side (~-0.39 world units) at
+   * this value.
+   */
   cornerExtension?: number;
 }
 
@@ -508,7 +529,11 @@ const DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES = Math.sqrt(3);
  */
 const DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES = 1.0;
 
-const DEFAULT_CORNER_EXTENSION_HEXES = 0.5;
+// Round-2 W3/W4 finding — see WallRunsInput.cornerExtension's own doc
+// comment for the full "overlap-miter instead of a corner-fitting GLB"
+// writeup. Was 0.5 (half a hex radius); doubled so adjacent runs overlap
+// past the true corner rather than just reaching it.
+const DEFAULT_CORNER_EXTENSION_HEXES = 1.0;
 
 /**
  * The four envelope runs (left/right/top/bottom) AND the four envelope
