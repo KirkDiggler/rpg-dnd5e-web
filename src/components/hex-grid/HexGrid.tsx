@@ -19,6 +19,7 @@ import {
   wallKey,
   type AbsoluteFloorTile,
 } from '@/hooks/dungeonMapGeometry';
+import type { ConnectorRun, EnvelopeRun } from '@/hooks/wallRuns';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -49,6 +50,7 @@ import { TurnOrderOverlay } from './TurnOrderOverlay';
 import { useCameraControls } from './useCameraControls';
 import { useHexInteraction } from './useHexInteraction';
 import { shouldShowMovementBorder, useMovementRange } from './useMovementRange';
+import { WallRunMesh } from './WallRunMesh';
 
 export interface HexGridProps {
   floorTiles: Map<string, AbsoluteFloorTile>;
@@ -110,6 +112,33 @@ export interface HexGridProps {
   // real caller ever populated `doors`) and was removed in this wave rather
   // than kept alongside the real mechanism (feedback_prefer_breaking_changes).
   walls?: Wall[];
+  /**
+   * Dungeon-walls redesign (rpg-project#133 design.md/plan.md's W2 slice):
+   * the POSITIVE-CATEGORY-FILTERED wall list SyntyHexWall's legacy
+   * per-cell renderer should draw (doors + interior pattern walls only —
+   * see wallRunAdapters.legacyRenderWalls) now that envelope/connector
+   * runs (below) own the room-boundary geometry instead of boundary-edge
+   * wall entries. Undefined (every caller not yet updated — the
+   * ShadedHexFloor/ShadedHexWall fallback path, and any harness caller
+   * that hasn't threaded region data through yet) falls back to the full,
+   * unfiltered `walls` list — byte-identical to pre-#133 behavior.
+   */
+  legacySyntyWalls?: Wall[];
+  /** Envelope runs (wallRuns.computeWallRuns) — one straight run per side
+   * per room, rendered as placeholder boxes by WallRunMesh. Empty/omitted
+   * (every caller not yet updated) renders none, same as before this
+   * design existed. */
+  envelopeRuns?: EnvelopeRun[];
+  /** Connector runs (wallRuns.computeWallRuns) — one straight run (split
+   * around its door gap) per connector column, rendered by WallRunMesh
+   * alongside the envelope runs. */
+  connectorRuns?: ConnectorRun[];
+  /** Per-door rotationY override (radians), keyed by Wall.id
+   * (wallRunAdapters.connectorRunDoorRotations) — passed straight through
+   * to SyntyHexWall so a door frame/leaf orients along its connector's
+   * real column axis instead of the wire's arbitrary
+   * doorPassageNeighbor pick. */
+  doorRotationOverrides?: ReadonlyMap<string, number>;
   /** Fired with the door's Wall.id (rpg-api-protos#186) when a DOOR_* wall
    * is clicked. The web only sends intent — Interact(id) — the server
    * decides what happens; this component computes nothing. */
@@ -224,6 +253,10 @@ function Scene({
   characters = [],
   monsters = [],
   walls = [],
+  legacySyntyWalls,
+  envelopeRuns = [],
+  connectorRuns = [],
+  doorRotationOverrides,
   syntyDungeon = false,
   themeWallHexKeys,
   themeFloorHexKeys,
@@ -671,11 +704,23 @@ function Scene({
       {syntyDungeon ? (
         <ErrorBoundary fallback={shadedWalls}>
           <SyntyHexWall
-            walls={walls}
+            walls={legacySyntyWalls ?? walls}
             hexSize={HEX_SIZE}
             onDoorClick={onDoorClick}
             themeWallHexKeys={themeWallHexKeys}
             spaceTheme={spaceTheme}
+            doorRotationOverrides={doorRotationOverrides}
+          />
+          {/* Dungeon-walls redesign (rpg-project#133): straight envelope/
+              connector runs, replacing the boundary-edge geometry
+              legacySyntyWalls' positive-category filter just excluded
+              from SyntyHexWall above. Placeholder box geometry (W2);
+              real Synty modular pieces land in W3. Scoped to the Synty
+              path only — the ShadedHexWall fallback below is untouched
+              by this design. */}
+          <WallRunMesh
+            envelopeRuns={envelopeRuns}
+            connectorRuns={connectorRuns}
           />
         </ErrorBoundary>
       ) : (

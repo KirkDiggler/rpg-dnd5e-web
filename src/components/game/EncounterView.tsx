@@ -842,7 +842,7 @@ export function EncounterView({
         <EncounterMap
           entities={encounterState.state.entities}
           entityMeta={encounterState.state.entityMeta}
-          revealedHexes={encounterState.state.revealedHexKeys}
+          revealedHexes={encounterState.state.revealedHexes}
           walls={encounterState.state.walls}
           entityHP={encounterState.state.entityHP}
           entityStatuses={encounterState.state.entityStatuses}
