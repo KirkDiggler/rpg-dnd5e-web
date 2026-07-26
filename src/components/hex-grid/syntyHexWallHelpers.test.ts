@@ -644,6 +644,42 @@ describe('computeWallAdjacentRotationY (rpg-game-assets#36 wave-1, issue #623 in
     const rotationY = computeWallAdjacentRotationY(hex, walls, 1);
     expect(rotationY).toBeCloseTo(hexEdgeBetween(eastWall, hex, 1).rotationY);
   });
+
+  it("recognizes a BOUNDARY-EDGE wall (from===hex, a real one-hex-step room-perimeter edge) — the actual bug found live: a room's own outer wall never matched the degenerate-wall-hex check alone, because collectWallHexes deliberately excludes boundary-edge walls from that set", () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const boundaryTo = { x: 1, y: 0, z: -1 }; // one hex step, non-door
+    const walls = [wall(hex, boundaryTo)];
+    const rotationY = computeWallAdjacentRotationY(hex, walls, 1);
+    expect(rotationY).toBeCloseTo(hexEdgeBetween(hex, boundaryTo, 1).rotationY);
+  });
+
+  it('a boundary-edge wall match takes precedence over a degenerate wall-hex neighbor when both are present', () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const boundaryTo = { x: 1, y: 0, z: -1 };
+    const degenerateWallHex = { x: -1, y: 1, z: 0 }; // HEX_DIRECTIONS[3], W
+    const walls = [
+      wall(degenerateWallHex, degenerateWallHex),
+      wall(hex, boundaryTo),
+    ];
+    const rotationY = computeWallAdjacentRotationY(hex, walls, 1);
+    expect(rotationY).toBeCloseTo(hexEdgeBetween(hex, boundaryTo, 1).rotationY);
+  });
+
+  it('does NOT treat a degenerate (from===to) wall entry as a boundary edge — falls through to the wall-hex-neighbor branch instead', () => {
+    // hex itself is never a wall hex for a real decor placement, but a
+    // degenerate self-wall "from===hex, to===hex" must not be mistaken
+    // for a one-step boundary edge (hexDistance(from,to) would be 0).
+    const hex = { x: 0, y: 0, z: 0 };
+    const walls = [wall(hex, hex)];
+    expect(computeWallAdjacentRotationY(hex, walls, 1)).toBeUndefined();
+  });
+
+  it('does NOT treat a door on this exact edge as a boundary-edge wall — doors are excluded from this branch entirely', () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const doorTo = { x: 1, y: 0, z: -1 };
+    const walls = [wall(hex, doorTo, WallKind.DOOR_CLOSED, 'door-1')];
+    expect(computeWallAdjacentRotationY(hex, walls, 1)).toBeUndefined();
+  });
 });
 
 describe('fittingScale', () => {

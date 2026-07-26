@@ -915,13 +915,26 @@ export const CRYPT_DIRECTIONAL_INTENSITY = 0.28;
  * Upper bound on simultaneous R3F point lights from the mood-lighting pass
  * (rpg-dnd5e-web#558) — point lights are not free, and "performance is a
  * standing requirement" (this codebase's own convention, see e.g.
- * rpg-dnd5e-web#537's perf-probe wave). 8 comfortably covers every prop/
- * door light the current crypt content produces (the fixed 3-room demo
- * tops out at 6) with headroom, while still bounding a hypothetical
- * densely-dressed future room instead of letting it render an unbounded
- * light count.
+ * rpg-dnd5e-web#537's perf-probe wave).
+ *
+ * REVISED (issue #623 fast-follow, live bug: Kirk's gallery walk showed
+ * one brazier lit and another dark in the SAME room): the original 8 was
+ * sized against "the fixed 3-room demo tops out at 6" — before wave-1's
+ * catalog (rpg-game-assets#36) added candle-stand/lantern/glowing-orb/
+ * rune-marker/rune-pillar to MOOD_LIGHT_SPEC_BY_PROP_REF. The look-lab
+ * gallery's row1 shelf ALONE places 8 light-anchor props plus row6's own
+ * brazier — 9, already over the old budget, confirmed live via a raw (9)
+ * vs capped (8) light count on this exact room. `capMoodLights` was
+ * working exactly as designed (dropping the single farthest-from-player
+ * light) — the budget itself was just sized for pre-wave-1 content. 12
+ * comfortably covers a single densely-dressed real room (gallery's own
+ * worst case) with a little headroom, while still bounding a
+ * hypothetical multi-room "remembered" pile-up instead of going
+ * unbounded. Real toolkit-generated dungeons (rpg-toolkit#839 hasn't
+ * landed the wave-1 catalog into procedural placement yet) are unlikely
+ * to approach this in one room today — revisit if/when they do.
  */
-export const MOOD_LIGHT_BUDGET = 8;
+export const MOOD_LIGHT_BUDGET = 12;
 
 /**
  * Cap `lights` at `maxCount`, keeping the ones nearest `referenceXZ` (world

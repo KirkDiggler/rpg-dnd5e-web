@@ -47,6 +47,13 @@
  * is placement-sanity DATA for whatever positions props on the grid
  * (reserving N hexes so a wide piece doesn't visually overlap a
  * neighboring entity), not a scale input to this renderer.
+ *
+ * `variant.renderScale` (rpg-game-assets#36 wave-1, issue #623 fast-follow)
+ * IS a deliberate, separate scale input — an explicit per-variant visual
+ * override (today only the `rug` key uses it) multiplied on top of
+ * SYNTY_SCALE, not derived from `footprintHexes`. See that field's own doc
+ * comment in propManifest.ts for why it exists and how its value was
+ * picked.
  */
 
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
@@ -86,7 +93,11 @@ export function PropModel({
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
   return (
-    <group position={position} rotation={[0, rotationY, 0]} scale={SYNTY_SCALE}>
+    <group
+      position={position}
+      rotation={[0, rotationY, 0]}
+      scale={SYNTY_SCALE * (variant.renderScale ?? 1)}
+    >
       <primitive object={cloned} />
       {variant.companions?.map((companion) => (
         <PropCompanionModel key={companion.file} companion={companion} />

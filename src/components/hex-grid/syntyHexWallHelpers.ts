@@ -861,30 +861,57 @@ export function wallEndEdgeKeys(walls: Wall[]): Set<string> {
  *
  * Reuses `hexEdgeBetween`'s existing "line a piece's local +X (width
  * axis) up with a hex edge" rotation exactly as SyntyHexWall's own wall/
- * door pieces already do (see that function's doc comment) — a
- * wall-mounted banner hangs flush against the SAME edge a real wall piece
- * there would occupy, wide face parallel to the wall, so it needs the
- * identical alignment, not a new formula. Called with `(wallHex, hex)` —
- * same argument order buildDungeonWallSegments already uses
- * (`hexEdgeBetween(hex, neighbor, hexSize)` where `hex` is the wall side)
- * — so a banner and the wall segment behind it always agree on which way
- * "along this edge" points.
+ * door pieces already do (see that function's/buildDungeonWallSegments'
+ * own doc comments) — a wall-mounted banner hangs flush against the SAME
+ * edge a real wall piece there would occupy, wide face parallel to the
+ * wall, so it needs the identical alignment, not a new formula.
  *
- * `hex` itself is assumed to NOT be a wall hex (a decor prop sits on open
- * floor) — its wall-hex neighbors are what this looks for. When `hex` has
- * more than one wall neighbor (a corner nook), the first found
- * (HEX_DIRECTIONS order) wins — arbitrary but stable, same convention
- * resolvePropVariant's own "first variant" doc comment uses for a
- * comparable "no smarter selection yet" case. Returns `undefined` when
- * `hex` has no wall neighbor at all (a wall-banner authored away from any
- * wall — unusual content, not a crash) so callers fall back to the
- * existing rotationY=0 default, never a broken/undefined-driven rotation.
+ * TWO distinct wall shapes to check, matching buildDungeonWallSegments'
+ * own two branches (bug found live, issue #623 fast-follow — Kirk's
+ * gallery walk showed no banner on the room's outer wall at all):
+ *
+ * 1. Boundary-edge walls (a non-door Wall whose `from`/`to` are exactly
+ *    one hex step apart — the shape a ROOM'S OUTER PERIMETER wall
+ *    actually has on the wire). `collectWallHexes` deliberately EXCLUDES
+ *    these from its wall-hex set (`from` is real floor there, not a
+ *    blocked cell — see that function's own doc comment), so the
+ *    degenerate-wall-hex check below can never find a room's own
+ *    boundary wall — exactly the bug: a banner placed against the
+ *    room's actual outer wall got rotationY=0 every time, because
+ *    nothing was ever found. Checked FIRST since a boundary-edge wall is
+ *    the common case for "decor mounted on the room's own wall." Uses
+ *    the identical `hexEdgeBetween(wall.from, wall.to, hexSize)` call
+ *    buildDungeonWallSegments' boundary-edge branch renders that exact
+ *    segment with — same edge, same rotation, by construction.
+ * 2. Degenerate/multi-cell wall hexes (an actual BLOCKED cell, e.g. an
+ *    interior pillar-shaped obstacle) — `hex`'s HEX_DIRECTIONS neighbors
+ *    checked against `collectWallHexes`' wall-hex set, same as before.
+ *    When `hex` has more than one such wall neighbor (a corner nook),
+ *    the first found (HEX_DIRECTIONS order) wins — arbitrary but stable,
+ *    same convention resolvePropVariant's own "first variant" doc
+ *    comment uses for a comparable "no smarter selection yet" case.
+ *
+ * Returns `undefined` when neither shape matches (a wall-banner authored
+ * away from any wall entirely — unusual content, not a crash) so callers
+ * fall back to the existing rotationY=0 default, never a broken/
+ * undefined-driven rotation.
  */
 export function computeWallAdjacentRotationY(
   hex: CubeCoord,
   walls: Wall[],
   hexSize: number
 ): number | undefined {
+  for (const wall of walls) {
+    if (!wall.from || !wall.to) continue;
+    if (isDoorWallKind(wall.kind)) continue;
+    const from: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
+    if (from.x !== hex.x || from.y !== hex.y || from.z !== hex.z) continue;
+    const to: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
+    if (from.x === to.x && from.y === to.y && from.z === to.z) continue; // degenerate, not this branch
+    if (hexDistance(from, to) !== 1) continue; // multi-hex span, not this branch
+    return hexEdgeBetween(from, to, hexSize).rotationY;
+  }
+
   const wallKindByHex = collectWallHexes(walls);
   for (const dir of HEX_DIRECTIONS) {
     const neighbor: CubeCoord = {
