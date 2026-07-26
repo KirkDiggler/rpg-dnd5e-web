@@ -35,6 +35,12 @@ export function fogReducer(
   state: FogKnowledge,
   event: HexKnowledgeChanged
 ): FogKnowledge {
+  // An event with nothing in it must change nothing — including identity.
+  // "Preserve stale memory" is the absence of a message, and a hidden mutation
+  // produces exactly this event; allocating fresh Maps for it would churn
+  // referential equality and re-render every consumer for no reason.
+  if (!event.hexes?.length && !event.entities?.length) return state;
+
   const entities = new Map(state.entities);
   for (const entity of event.entities ?? []) {
     entities.set(entity.entityId, entity);

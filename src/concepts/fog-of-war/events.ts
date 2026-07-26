@@ -108,9 +108,11 @@ export interface FogEntity {
 /**
  * One viewer's slice of knowledge.
  *
- * Hexes say **where**; entities say **what**. They are delivered together so
- * they cannot disagree — a placement can always resolve against an entity in
- * the same message, or it fails closed.
+ * Hexes say **where**; entities say **what**. A placement resolves against the
+ * viewer's known entity set — entities disclosed in this message OR in an
+ * earlier one, since the entity vocabulary outlives current disclosure and a
+ * remembered placement still needs something to render as. A placement that
+ * resolves against nothing is dropped: fail closed.
  */
 export interface HexKnowledgeChanged {
   hexes: HexRecord[];

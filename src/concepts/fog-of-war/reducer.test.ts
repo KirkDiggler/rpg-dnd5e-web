@@ -100,6 +100,10 @@ describe('fog reducer', () => {
     const after = fogReducer(before, { hexes: [], entities: [] });
 
     expect(after.hexes.get('1,0,-1')).toEqual(before.hexes.get('1,0,-1'));
+    // Identity, not just equality: an empty event must not churn referential
+    // equality, or every consumer re-renders for a change they were never
+    // told about.
+    expect(after).toBe(before);
   });
 
   it('freezes the facing that was observed, not one seen later', () => {

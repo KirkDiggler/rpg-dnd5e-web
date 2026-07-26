@@ -103,6 +103,22 @@ describe('fog adapter', () => {
     expect(toHexGridProps(resighted).entities).toEqual([]);
   });
 
+  it('marks a remembered wall by the edge it belongs to, not the record', () => {
+    // The renderer looks wall memory up by `wall.from`. Keying by the record's
+    // own position happens to agree for every edge the authority emits, but an
+    // edge authored against a neighbour would then read as visible and stay
+    // clickable.
+    const knowledge = fogReducer(emptyKnowledge(), {
+      hexes: [record(0, 0, 'REMEMBERED', [], [solidEdge(at(1, 0), at(2, 0))])],
+      entities: [],
+    });
+
+    const props = toHexGridProps(knowledge);
+
+    expect(props.rememberedWallHexKeys.has('1,0,-1')).toBe(true);
+    expect(props.rememberedWallHexKeys.has('0,0,0')).toBe(false);
+  });
+
   it('deduplicates a wall carried by both hexes it separates', () => {
     // Records are self-contained, so the shared edge arrives twice. Neither
     // record knows about the other; the adapter collapses them.

@@ -87,7 +87,13 @@ export function toHexGridProps(knowledge: FogKnowledge): FogHexGridInputs {
       walls.set(wallKey(proto), proto);
       // HexGrid remembers walls by hex key, not by wall id — a wall reads as
       // memory when the hex carrying it is memory.
-      if (remembered) rememberedWallHexKeys.add(key);
+      //
+      // Key by the EDGE's own `from`, which is what the renderer looks up
+      // (sceneKnowledge.rememberedSegment, ShadedHexWall). It equals the
+      // record's position for every edge the authority emits, but keying by
+      // the record would silently mislabel any edge authored against a
+      // neighbour — remembered walls would read as visible and stay clickable.
+      if (remembered) rememberedWallHexKeys.add(hexKey(edge.from));
     }
 
     for (const placement of record.contents) {
