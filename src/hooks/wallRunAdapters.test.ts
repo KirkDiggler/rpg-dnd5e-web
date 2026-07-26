@@ -338,6 +338,7 @@ describe("connectorFallbackSegments (W3 fallback restyle: same category-rule can
         regionBId: 'b',
         segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 1 } }],
         coveredRows: { minRow: 0, maxRow: 0 },
+        facing: { x: 1, z: 0 },
       },
     ];
     const segments = connectorFallbackSegments(
@@ -359,6 +360,7 @@ describe("connectorFallbackSegments (W3 fallback restyle: same category-rule can
         regionBId: 'b',
         segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 1 } }],
         coveredRows: { minRow: 0, maxRow: 0 },
+        facing: { x: 1, z: 0 },
       },
     ];
     const segments = connectorFallbackSegments(
@@ -380,6 +382,7 @@ describe("connectorFallbackSegments (W3 fallback restyle: same category-rule can
         regionBId: 'b',
         segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 1 } }],
         coveredRows: { minRow: 0, maxRow: 2 }, // row 5 not covered yet
+        facing: { x: 1, z: 0 },
       },
     ];
     const segments = connectorFallbackSegments(
@@ -414,11 +417,12 @@ describe("connectorFallbackSegments (W3 fallback restyle: same category-rule can
   });
 });
 
-// coveredRows is irrelevant to connectorRunDoorRotations (rotation-only
-// concern) — an arbitrary placeholder value keeps these fixtures honest
-// about ConnectorRun's real shape without every test needing to reason
-// about row coverage.
+// coveredRows/facing are irrelevant to connectorRunDoorRotations
+// (rotation-only concern) — arbitrary placeholder values keep these
+// fixtures honest about ConnectorRun's real shape without every test
+// needing to reason about row coverage or facing direction.
 const PLACEHOLDER_COVERED_ROWS = { minRow: 0, maxRow: 0 };
+const PLACEHOLDER_FACING = { x: 1, z: 0 };
 
 describe('connectorRunDoorRotations', () => {
   it('derives a rotation from the connector run direction, matching hexEdgeBetween atan2(-dz, dx) convention', () => {
@@ -429,6 +433,7 @@ describe('connectorRunDoorRotations', () => {
         regionBId: 'b',
         segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
         coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: PLACEHOLDER_FACING,
       },
     ];
     const rotations = connectorRunDoorRotations(runs);
@@ -442,6 +447,7 @@ describe('connectorRunDoorRotations', () => {
         regionBId: 'b',
         segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
         coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: PLACEHOLDER_FACING,
       },
     ];
     expect(connectorRunDoorRotations(runs).size).toBe(0);
@@ -455,6 +461,7 @@ describe('connectorRunDoorRotations', () => {
         regionBId: 'b',
         segments: [],
         coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: PLACEHOLDER_FACING,
       },
     ];
     expect(connectorRunDoorRotations(runs).size).toBe(0);
@@ -468,6 +475,7 @@ describe('connectorRunDoorRotations', () => {
         regionBId: 'b',
         segments: [{ start: { x: 3, z: 3 }, end: { x: 3, z: 3 } }],
         coveredRows: PLACEHOLDER_COVERED_ROWS,
+        facing: PLACEHOLDER_FACING,
       },
     ];
     expect(connectorRunDoorRotations(runs).size).toBe(0);

@@ -94,9 +94,56 @@ export interface TiledPiece {
  */
 const WALL_RUN_LENGTH_EPSILON = 1e-6;
 
+/**
+ * Flips a direction-derived `rotationY` by pi when its own front-facing
+ * side doesn't point toward `facing` — round-2 W3/W4 finding (Kirk's live
+ * walk: "west wall is a featureless dark slab while the north wall shows
+ * brick tile detail"; see EnvelopeRun.facing's doc comment in wallRuns.ts
+ * for the full root-cause writeup). `atan2(-dz, dx)`-style rotationY
+ * aligns a piece's local +X with the run's own direction, but says
+ * nothing about which way its local +Z (front vs back) ends up pointing —
+ * empirically calibrated (own isolation screenshots, rotationY=0 shows
+ * the detailed face from a +Z camera, rotationY=pi shows a flat
+ * undecorated back): a piece's front-facing WORLD direction at a given
+ * rotationY is `(sin(rotationY), cos(rotationY))`. If that doesn't point
+ * roughly the same way as `facing` (dot product negative), the piece is
+ * showing its flat back instead of its detailed face — add pi to flip
+ * it 180 degrees, which points the SAME local +X-aligned length axis
+ * along the run (the tiling itself is unaffected) but swaps which local
+ * Z face points outward.
+ */
+export function facingCorrectedRotationY(
+  rotationY: number,
+  facing: WorldPos
+): number {
+  const frontX = Math.sin(rotationY);
+  const frontZ = Math.cos(rotationY);
+  const dot = frontX * facing.x + frontZ * facing.z;
+  return dot < 0 ? rotationY + Math.PI : rotationY;
+}
+
 export function tileWallSegment(
   segment: WallRunSegment,
-  nominalPieceWidth: number
+  nominalPieceWidth: number,
+  /**
+   * The tiled piece's own local bbox MIN x, as a fraction of its own
+   * rawWidth (`WallVariant.rawMinX / rawWidth`) — round-2 W3/W4 finding
+   * (see `WallVariant.rawMinX`'s own doc comment for the measured numbers
+   * and the "run shifts off its own segment line" defect this corrects).
+   * Defaults to -0.5 (the piece's local origin sits exactly at its own
+   * bbox center) — the assumption this function used unconditionally
+   * before this fix, preserved here as the default so a caller that
+   * doesn't know better (or a genuinely centered piece, like this pack's
+   * `alcove` variant) gets the same placement as before.
+   */
+  pivotRatio: number = -0.5,
+  /**
+   * Unit vector this run's tiles should face — see
+   * `facingCorrectedRotationY`'s doc comment. Omitted (every pre-fix
+   * caller) skips the correction entirely, keeping the original
+   * direction-only rotationY unchanged.
+   */
+  facing?: WorldPos
 ): TiledPiece[] {
   const dx = segment.end.x - segment.start.x;
   const dz = segment.end.z - segment.start.z;
@@ -105,17 +152,25 @@ export function tileWallSegment(
 
   const count = Math.max(1, Math.round(length / nominalPieceWidth));
   const pieceWidth = length / count;
-  const rotationY = Math.atan2(-dz, dx);
+  const naiveRotationY = Math.atan2(-dz, dx);
+  const rotationY = facing
+    ? facingCorrectedRotationY(naiveRotationY, facing)
+    : naiveRotationY;
   const ux = dx / length;
   const uz = dz / length;
 
   const pieces: TiledPiece[] = [];
   for (let i = 0; i < count; i++) {
-    const centerDist = pieceWidth * (i + 0.5);
+    // Where to put THIS piece's own local origin (not necessarily its
+    // visual center — see `pivotRatio`'s doc comment) so that its actual
+    // scaled bounding box lands flush at [i, i+1] * pieceWidth along the
+    // run, matching every other tile with zero gap or overlap. Reduces to
+    // the pre-fix `pieceWidth * (i + 0.5)` exactly when pivotRatio = -0.5.
+    const originDist = pieceWidth * (i - pivotRatio);
     pieces.push({
       position: {
-        x: segment.start.x + ux * centerDist,
-        z: segment.start.z + uz * centerDist,
+        x: segment.start.x + ux * originDist,
+        z: segment.start.z + uz * originDist,
       },
       rotationY,
       pieceWidth,

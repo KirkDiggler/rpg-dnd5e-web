@@ -42,6 +42,7 @@ import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { Suspense, useMemo } from 'react';
 import type * as THREE from 'three';
 import { GlbInstance } from './GlbInstance';
+import type { WorldPos } from './hexMath';
 import {
   CRYPT_MEMORY_COLOR,
   CRYPT_MEMORY_EMISSIVE,
@@ -80,6 +81,13 @@ const RUN_WALL_VARIANT = WALL_VARIANTS[0]!;
 // nominal (see tileWallSegment's doc comment for why tiling, not
 // stretching, is correct here).
 const NOMINAL_PIECE_WIDTH = 1.0;
+// RUN_WALL_VARIANT's own local bbox pivot ratio (see tileWallSegment's
+// `pivotRatio` param and WallVariant.rawMinX's doc comment) — round-2
+// W3/W4 finding: this piece's local origin sits near its own left bbox
+// edge, not centered, so tiling by (i + 0.5) alone shifted the whole run
+// off its own segment line by ~0.456 world units.
+const RUN_WALL_PIVOT_RATIO =
+  RUN_WALL_VARIANT.rawMinX / RUN_WALL_VARIANT.rawWidth;
 
 function FloorSkirtBox({
   segment,
@@ -121,15 +129,27 @@ function TiledWallRun({
   wallHeight,
   tint,
   remembered = false,
+  facing,
 }: {
   segment: WallRunSegment;
   wallHeight: number;
   tint?: THREE.Color;
   remembered?: boolean;
+  /** See tileWallSegment's own `facing` param doc comment (round-2 W3/W4
+   * "west wall is a featureless dark slab" fix) — omitted for callers
+   * with no defensible outward reference (fallback segments), which keep
+   * the pre-fix direction-only rotationY. */
+  facing?: WorldPos;
 }) {
   const pieces = useMemo(
-    () => tileWallSegment(segment, NOMINAL_PIECE_WIDTH),
-    [segment]
+    () =>
+      tileWallSegment(
+        segment,
+        NOMINAL_PIECE_WIDTH,
+        RUN_WALL_PIVOT_RATIO,
+        facing
+      ),
+    [segment, facing]
   );
   return (
     <>
@@ -243,6 +263,7 @@ export function WallRunMesh({
               wallHeight={wallHeight}
               tint={tint}
               remembered={remembered}
+              facing={run.facing}
             />
             <FloorSkirtBox segment={run} remembered={remembered} />
           </group>
@@ -269,6 +290,7 @@ export function WallRunMesh({
               wallHeight={wallHeight}
               tint={tint}
               remembered={remembered}
+              facing={run.facing}
             />
             <FloorSkirtBox segment={segment} remembered={remembered} />
           </group>

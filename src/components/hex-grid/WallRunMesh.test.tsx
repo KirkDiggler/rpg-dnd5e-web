@@ -49,12 +49,14 @@ describe('WallRunMesh R3F scene', () => {
         side: 'left',
         start: { x: 0, z: 0 },
         end: { x: 0, z: 4 },
+        facing: { x: -1, z: 0 },
       },
       {
         regionId: 'hall',
         side: 'right',
         start: { x: 4, z: 0 },
         end: { x: 4, z: 4 },
+        facing: { x: 1, z: 0 },
       },
     ];
     const connectorRuns: ConnectorRun[] = [
@@ -67,6 +69,7 @@ describe('WallRunMesh R3F scene', () => {
           { start: { x: 6, z: 3 }, end: { x: 6, z: 4 } },
         ],
         coveredRows: { minRow: 0, maxRow: 4 },
+        facing: { x: 1, z: 0 },
       },
     ];
 
@@ -89,6 +92,7 @@ describe('WallRunMesh R3F scene', () => {
         side: 'left',
         start: { x: 0, z: 0 },
         end: { x: 0, z: 1 },
+        facing: { x: -1, z: 0 },
       },
     ];
     const envelopeCorners: EnvelopeCorner[] = [
@@ -142,6 +146,7 @@ describe('WallRunMesh R3F scene', () => {
         side: 'left',
         start: { x: 1, z: 1 },
         end: { x: 1, z: 1 },
+        facing: { x: -1, z: 0 },
       },
     ];
     const renderer = await ReactThreeTestRenderer.create(
@@ -166,6 +171,7 @@ describe('WallRunMesh R3F scene', () => {
             side: 'left',
             start: { x: 0, z: 0 },
             end: { x: 0, z: 4 },
+            facing: { x: -1, z: 0 },
           },
         ]}
         connectorRuns={[]}
@@ -188,6 +194,7 @@ describe('WallRunMesh R3F scene', () => {
             regionBId: 'b',
             segments: [{ start: { x: 0, z: 0 }, end: { x: 0, z: 4 } }],
             coveredRows: { minRow: 0, maxRow: 4 },
+            facing: { x: 1, z: 0 },
           },
         ]}
         rememberedConnectorDoorIds={new Set(['remembered-door'])}
@@ -206,6 +213,7 @@ describe('WallRunMesh R3F scene', () => {
             side: 'left',
             start: { x: 0, z: 0 },
             end: { x: 0, z: 4 },
+            facing: { x: -1, z: 0 },
           },
         ]}
         connectorRuns={[]}

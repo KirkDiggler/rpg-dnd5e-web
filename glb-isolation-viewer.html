@@ -1,0 +1,247 @@
+<!--
+  DEV-ONLY TOOL — not part of the shipped app, not linked from any route.
+
+  Renders a single Synty env GLB (or N tiled instances of one, matching
+  wallRunMeshHelpers.tileWallSegment/TiledWallRun's exact scale/position
+  math) in isolation, neutral lighting, with no placement/scale code from
+  the rest of the app in the loop — for telling apart "this is a real
+  asset/conversion defect" from "this is a bug in how we place it."
+
+  Originated from the dungeon-walls redesign's W3/W4 round-2 fix round
+  (rpg-dnd5e-web#607/#608): used to confirm the corner/wall-end piece
+  family (SM_Env_Wall_End_Coner_Outer_01.glb etc.) renders as a stacked-
+  slab tower even alone at identity scale — a conversion defect, not a
+  placement bug — and to precisely measure a wall piece's own local bbox
+  (pivot offset, front/back facing) that fed the tileWallSegment
+  pivotRatio/facing fixes in that same round. Kept committed as a
+  reusable diagnostic for the next asset-vs-placement question, not
+  deleted after this investigation closed.
+
+  Usage: `npm run dev`, then open
+  /glb-isolation-viewer.html?file=<name>.glb&sx=1&sy=1&sz=1 (single
+  instance) or add &tileCount=N&pieceWidth=..&rawWidth=..&rawHeight=.. to
+  reproduce a tiled run. See the query-param reads below for the full
+  set (mode, rotY, camX/camY/camZ/camHeight/lookAtX). Two page-level
+  diagnostics are exposed for scripted verification (Playwright
+  page.evaluate, not just eyeballing screenshots): `window.__computeBBox()`
+  (exact mesh bounding box) and `window.__scanForGaps(xMin, xMax, yMin,
+  yMax, step, zFrom)` (horizontal raycast sweep — reports every (x,y)
+  where nothing was hit, i.e. a genuine see-through hole, not a texture
+  crease).
+-->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>GLB isolation viewer</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #808080;
+      }
+      canvas {
+        display: block;
+      }
+      #info {
+        position: fixed;
+        top: 4px;
+        left: 4px;
+        color: #fff;
+        font-family: monospace;
+        font-size: 12px;
+        white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="info">loading...</div>
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+      const params = new URLSearchParams(window.location.search);
+      const file = params.get('file') || 'SM_Env_Wall_Half_01.glb';
+      const sx = Number(params.get('sx') ?? '1');
+      const sy = Number(params.get('sy') ?? '1');
+      const sz = Number(params.get('sz') ?? '1');
+      const rotY = Number(params.get('rotY') ?? '0');
+      const camDist = Number(params.get('camDist') ?? '4');
+      const camHeight = Number(params.get('camHeight') ?? '2');
+      const lookAtX = Number(params.get('lookAtX') ?? '0');
+      const camX = Number(params.get('camX') ?? String(camDist));
+      const camZ = Number(params.get('camZ') ?? String(camDist));
+      // 'bake' mode replicates GlbInstance's own non-uniform scale bake
+      // (clone geometry, geometry.scale(sx,sy,sz), keep authored normals);
+      // 'object' mode applies scale directly to the Object3D instead
+      // (the OLD, pre-fix behavior) for A/B comparison.
+      const mode = params.get('mode') || 'bake';
+      // Tiling reproduction (round-2 "gaps between tiled segments"
+      // investigation): when tileCount > 1, reproduces
+      // wallRunMeshHelpers.tileWallSegment + TiledWallRun's EXACT math for
+      // a straight run along +X — same per-instance scale formula
+      // (pieceWidth/rawWidth on the tiling axis), same center spacing
+      // (pieceWidth * (i + 0.5)), same rawWidth divisor. sx/sy/sz above are
+      // ignored in this mode; rawWidth/rawHeight/pieceWidth drive scale
+      // directly so this is a byte-for-byte match of production, not an
+      // approximation.
+      const tileCount = Number(params.get('tileCount') ?? '1');
+      const pieceWidth = Number(params.get('pieceWidth') ?? '1');
+      const rawWidth = Number(params.get('rawWidth') ?? '1');
+      const rawHeight = Number(params.get('rawHeight') ?? '1');
+      const wallHeight = Number(params.get('wallHeight') ?? '0.8');
+      const syntyScale = Number(params.get('syntyScale') ?? '0.75');
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x808080);
+
+      const camera = new THREE.PerspectiveCamera(
+        50,
+        window.innerWidth / window.innerHeight,
+        0.01,
+        100
+      );
+      camera.position.set(camX, camHeight, camZ);
+      camera.lookAt(lookAtX, 0.5, 0);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      // Neutral, generous lighting so geometry/UV issues are visible on
+      // their own merits, not obscured by low light (per Kirk's ask).
+      scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+      const dir1 = new THREE.DirectionalLight(0xffffff, 1.2);
+      dir1.position.set(5, 10, 5);
+      scene.add(dir1);
+      const dir2 = new THREE.DirectionalLight(0xffffff, 0.6);
+      dir2.position.set(-5, 5, -5);
+      scene.add(dir2);
+
+      // Ground grid for scale/orientation reference.
+      const grid = new THREE.GridHelper(10, 20, 0x333333, 0x555555);
+      scene.add(grid);
+      const axes = new THREE.AxesHelper(1.5);
+      scene.add(axes);
+
+      const info = document.getElementById('info');
+      info.textContent = `file=${file}\nmode=${mode}\nscale=[${sx},${sy},${sz}]\nrotY=${rotY}`;
+
+      // Diagnostics exposed regardless of mode (round-2 investigations):
+      // exact ground-truth bounding box (not a screenshot guess) and a
+      // precise horizontal-raycast gap scan (see below for what each
+      // measures). Both read whatever is currently in `scene`.
+      window.__computeBBox = () => {
+        const box = new THREE.Box3();
+        let any = false;
+        scene.traverse((o) => {
+          if (o.isMesh) {
+            box.expandByObject(o);
+            any = true;
+          }
+        });
+        if (!any) return null;
+        return {
+          min: { x: box.min.x, y: box.min.y, z: box.min.z },
+          max: { x: box.max.x, y: box.max.y, z: box.max.z },
+        };
+      };
+      const raycaster = new THREE.Raycaster();
+      raycaster.far = 8;
+      window.__scanForGaps = (xMin, xMax, yMin, yMax, step, zFrom) => {
+        const meshes = [];
+        scene.traverse((o) => {
+          if (o.isMesh) meshes.push(o);
+        });
+        const misses = [];
+        for (let x = xMin; x <= xMax + 1e-9; x += step) {
+          for (let y = yMin; y <= yMax + 1e-9; y += step) {
+            raycaster.set(
+              new THREE.Vector3(x, y, zFrom),
+              new THREE.Vector3(0, 0, 1)
+            );
+            const hits = raycaster.intersectObjects(meshes, false);
+            if (hits.length === 0) {
+              misses.push([
+                Math.round(x * 1000) / 1000,
+                Math.round(y * 1000) / 1000,
+              ]);
+            }
+          }
+        }
+        return misses;
+      };
+
+      const loader = new GLTFLoader();
+      loader.load(
+        `/models/synty/env/${file}`,
+        (gltf) => {
+          const root = gltf.scene;
+          let meshCount = 0;
+
+          if (tileCount > 1) {
+            // Exact reproduction of tileWallSegment + TiledWallRun for a
+            // straight run of length `tileCount * pieceWidth` along +X:
+            // each instance gets its own baked geometry at
+            // scale=[pieceWidth/rawWidth, wallHeight/rawHeight, syntyScale]
+            // (GlbInstance's non-uniform bake path), centered at
+            // pieceWidth*(i+0.5) — byte-for-byte the same formula as
+            // production, not an approximation.
+            const tsx = pieceWidth / rawWidth;
+            const tsy = wallHeight / rawHeight;
+            const tsz = syntyScale;
+            for (let i = 0; i < tileCount; i++) {
+              const instance = root.clone(true);
+              instance.traverse((child) => {
+                if (child.isMesh) {
+                  meshCount++;
+                  const geometry = child.geometry.clone();
+                  geometry.scale(tsx, tsy, tsz);
+                  child.geometry = geometry;
+                }
+              });
+              instance.position.x = pieceWidth * (i + 0.5);
+              scene.add(instance);
+            }
+            info.textContent = `file=${file}\nmode=tile\ntileCount=${tileCount}\npieceWidth=${pieceWidth}\nrawWidth=${rawWidth}\nscale=[${tsx.toFixed(4)},${tsy.toFixed(4)},${tsz}]`;
+            info.textContent += `\nmeshCount=${meshCount}`;
+            window.__viewerReady = true;
+            render();
+            return;
+          }
+
+          root.traverse((child) => {
+            if (child.isMesh) {
+              meshCount++;
+              if (mode === 'bake') {
+                const geometry = child.geometry.clone();
+                geometry.scale(sx, sy, sz);
+                child.geometry = geometry;
+              }
+            }
+          });
+          if (mode === 'object') {
+            root.scale.set(sx, sy, sz);
+          }
+          root.rotation.y = rotY;
+          scene.add(root);
+          info.textContent += `\nmeshCount=${meshCount}`;
+          render();
+          window.__viewerReady = true;
+        },
+        undefined,
+        (err) => {
+          info.textContent += `\nERROR: ${err}`;
+          window.__viewerReady = true;
+          window.__viewerError = String(err);
+        }
+      );
+
+      function render() {
+        renderer.render(scene, camera);
+      }
+      render();
+    </script>
+  </body>
+</html>

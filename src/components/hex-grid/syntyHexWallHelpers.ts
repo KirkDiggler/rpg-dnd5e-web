@@ -121,6 +121,39 @@ export interface WallVariant {
   file: string;
   rawWidth: number;
   rawHeight: number;
+  /**
+   * The piece's own local-space bounding-box MIN x (measured directly off
+   * the GLB, same convention as rawWidth/rawHeight) — round-2 W3/W4
+   * finding (Kirk's live walk: "gaps between tiled segments"). `plain`'s
+   * local origin sits near its LEFT bbox edge (min.x=-0.1174, width
+   * 2.672 — the origin is only 0.1174 in from the left edge, but 2.555
+   * from the right), NOT at its geometric center as
+   * `wallRunMeshHelpers.tileWallSegment` used to assume when it placed
+   * every tile's origin at its slot's center (`pieceWidth * (i + 0.5)`).
+   * That assumption is silently wrong for a piece whose authored pivot
+   * isn't centered: it doesn't create gaps BETWEEN adjacent tiles (the
+   * math cancels out identically there — every tile shares the same
+   * scale, so consecutive spans still abut exactly), but it shifts the
+   * ENTIRE tiled run along its own axis by `(rawMinX + rawWidth/2) *
+   * (pieceWidth/rawWidth)` relative to where the run's own
+   * `segment.start`/`segment.end` say it should sit — measured at ~0.456
+   * world units for `plain` at the default 1.0 nominal piece width,
+   * nearly half a hex radius. That's large enough to open a real,
+   * visible gap between a run's own end and whatever it's supposed to
+   * butt against (a corner fitting, a connector, the room's true
+   * boundary) — the actual shape of Kirk's "gaps between tiled segments"
+   * report, not a seam between individual repeated tiles. `broken` has
+   * the same defect, smaller in magnitude (min.x=-0.0832). `alcove` is
+   * measured centered (min.x=-1.2444, essentially exactly -rawWidth/2) —
+   * not every piece in this pack has an off-center pivot, so this can't
+   * be assumed pack-wide and has to be measured per piece. Only `plain`
+   * (`WALL_VARIANTS[0]`, `RUN_WALL_VARIANT` in WallRunMesh.tsx) is
+   * actually tiled by `tileWallSegment` today — `broken`/`alcove` are
+   * legacy SyntyHexWall.tsx's per-cell variety pool, a different
+   * (already Kirk-verified, not touched here) placement path with its
+   * own single-piece-per-edge positioning, out of this fix's scope.
+   */
+  rawMinX: number;
 }
 
 export const WALL_VARIANTS: WallVariant[] = [
@@ -130,6 +163,7 @@ export const WALL_VARIANTS: WallVariant[] = [
     file: 'SM_Env_Wall_Half_01.glb',
     rawWidth: 2.672,
     rawHeight: 5.1022,
+    rawMinX: -0.1174,
   },
   {
     name: 'broken',
@@ -137,6 +171,7 @@ export const WALL_VARIANTS: WallVariant[] = [
     file: 'SM_Env_Wall_Broken_Edge_01.glb',
     rawWidth: 2.1996,
     rawHeight: 5.082,
+    rawMinX: -0.0832,
   },
   {
     name: 'alcove',
@@ -144,6 +179,7 @@ export const WALL_VARIANTS: WallVariant[] = [
     file: 'SM_Env_Wall_Alcove_01.glb',
     rawWidth: 2.4888,
     rawHeight: 3.5618,
+    rawMinX: -1.2444,
   },
 ];
 

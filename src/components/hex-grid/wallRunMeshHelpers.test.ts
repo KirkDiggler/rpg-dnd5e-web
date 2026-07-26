@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  facingCorrectedRotationY,
   segmentKey,
   tileWallSegment,
   wallRunBoxTransform,
@@ -111,5 +112,155 @@ describe('tileWallSegment (W3: real Synty pieces tiled along a run, design.md/pl
     for (const piece of pieces) {
       expect(piece.rotationY).toBeCloseTo(Math.atan2(-4, 0), 9);
     }
+  });
+
+  describe('pivotRatio (round-2 W3/W4 regression: "gaps between tiled segments")', () => {
+    // Direct regression for the root cause: RUN_WALL_VARIANT's ("plain"
+    // Wall_Half) local origin measured off its own GLB sits near its LEFT
+    // bbox edge (min.x=-0.1174, rawWidth=2.672), NOT at its geometric
+    // center — pivotRatio = rawMinX/rawWidth = -0.1174/2.672 ≈ -0.04393.
+    // The pre-fix code always assumed pivotRatio=-0.5 (center), silently
+    // shifting the whole run off its own segment.start/end line.
+    const MEASURED_PIVOT_RATIO = -0.1174 / 2.672;
+
+    it('default pivotRatio (-0.5, a centered piece) is unchanged from every pre-fix call site', () => {
+      const withDefault = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0
+      );
+      const withExplicitCenter = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        -0.5
+      );
+      expect(withExplicitCenter).toEqual(withDefault);
+    });
+
+    it('a non-centered pivotRatio still tiles with zero gap/overlap BETWEEN adjacent pieces — the shift is only at the run boundary, not mid-run', () => {
+      const pieces = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        MEASURED_PIVOT_RATIO
+      );
+      expect(pieces).toHaveLength(4);
+      // Every piece still gets the exact same pieceWidth (no per-tile
+      // stretch/squeeze from the pivot correction).
+      for (const piece of pieces) {
+        expect(piece.pieceWidth).toBeCloseTo(1.0, 9);
+      }
+      // Consecutive origins are still exactly pieceWidth apart (the pivot
+      // shift is a CONSTANT offset applied uniformly to every tile, so
+      // relative spacing between tiles is untouched).
+      for (let i = 1; i < pieces.length; i++) {
+        expect(pieces[i]!.position.x - pieces[i - 1]!.position.x).toBeCloseTo(
+          1.0,
+          9
+        );
+      }
+    });
+
+    it('a non-centered pivotRatio moves the FIRST tile’s actual (bbox-corrected) start to exactly the segment’s own start — the fix for the whole-run boundary shift', () => {
+      const pieces = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        MEASURED_PIVOT_RATIO
+      );
+      // The piece's actual scaled bbox min (in the run's own direction)
+      // sits at `position.x + rawMinX * (pieceWidth/rawWidth)`. Simulate
+      // that directly with the measured raw numbers rather than assuming
+      // GlbInstance's own scale math — this is the same relationship
+      // `WallVariant.rawMinX`'s doc comment derives.
+      const rawWidth = 2.672;
+      const rawMinX = -0.1174;
+      const tsx = pieces[0]!.pieceWidth / rawWidth;
+      const actualBboxMinX = pieces[0]!.position.x + rawMinX * tsx;
+      expect(actualBboxMinX).toBeCloseTo(0, 3); // segment.start.x = 0
+
+      const lastTsx = pieces[3]!.pieceWidth / rawWidth;
+      const actualBboxMaxX =
+        pieces[3]!.position.x + (rawMinX + rawWidth) * lastTsx;
+      expect(actualBboxMaxX).toBeCloseTo(4, 3); // segment.end.x = 4
+    });
+
+    it('WITHOUT the fix (pivotRatio=-0.5 on a piece whose true pivot is off-center), the run visibly overshoots its segment — proves the regression test above is not vacuous', () => {
+      const pieces = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        -0.5 // the old, since-replaced "always centered" assumption
+      );
+      const rawWidth = 2.672;
+      const rawMinX = -0.1174;
+      const tsx = pieces[0]!.pieceWidth / rawWidth;
+      const actualBboxMinX = pieces[0]!.position.x + rawMinX * tsx;
+      // Measured ~0.456 world units short of the true segment start — a
+      // real, visible gap, not a rounding artifact.
+      expect(Math.abs(actualBboxMinX - 0)).toBeGreaterThan(0.3);
+    });
+  });
+
+  describe('facing param (round-2 W3/W4 regression: "west wall is a featureless dark slab")', () => {
+    it('omitting facing leaves rotationY exactly at the naive direction-only value (every pre-fix caller)', () => {
+      const pieces = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0
+      );
+      for (const piece of pieces) {
+        expect(piece.rotationY).toBeCloseTo(Math.atan2(-0, 4), 9);
+      }
+    });
+
+    it('a facing vector aligned with the naive front direction leaves rotationY unchanged', () => {
+      // dir=(4,0) -> naiveRotationY=atan2(-0,4)=0 -> front_world=(sin 0,cos 0)=(0,1).
+      const pieces = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        -0.5,
+        { x: 0, z: 1 }
+      );
+      for (const piece of pieces) {
+        expect(piece.rotationY).toBeCloseTo(0, 9);
+      }
+    });
+
+    it('a facing vector opposite the naive front direction flips rotationY by pi', () => {
+      const pieces = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        -0.5,
+        { x: 0, z: -1 } // opposite of the naive front (0,1)
+      );
+      for (const piece of pieces) {
+        expect(piece.rotationY).toBeCloseTo(Math.PI, 9);
+      }
+    });
+  });
+});
+
+describe("facingCorrectedRotationY (round-2 W3/W4 fix: tileWallSegment's rotationY is a pure function of the run's own direction, with no notion of \"outward\" — hall's left/right sides share one direction pair and top/bottom share another, so within each pair the SAME rotationY got computed for both despite opposite outward normals; exactly one of each pair always ended up showing its flat, undecorated back outward, verified against the real reference-tomb fixture: 2 of hall's 4 sides failed)", () => {
+  it('leaves rotationY unchanged when the naive front direction already matches facing', () => {
+    // rotationY=0 -> front_world=(sin 0,cos 0)=(0,1) -> matches facing (0,1).
+    expect(facingCorrectedRotationY(0, { x: 0, z: 1 })).toBeCloseTo(0, 9);
+  });
+
+  it('adds pi when the naive front direction opposes facing', () => {
+    const corrected = facingCorrectedRotationY(0, { x: 0, z: -1 });
+    expect(corrected).toBeCloseTo(Math.PI, 9);
+  });
+
+  it('reproduces the exact reference-tomb hall finding: rotationY=-60deg (left/right shared) flips for one side and not the other depending on facing', () => {
+    const rotationY = -Math.PI / 3; // -60deg, hall's measured left/right rotationY
+    // hall's LEFT outward direction (measured): already aligned -> no flip.
+    const leftFacing = { x: -0.8368, z: 0.5475 };
+    expect(facingCorrectedRotationY(rotationY, leftFacing)).toBeCloseTo(
+      rotationY,
+      9
+    );
+    // hall's RIGHT outward direction (measured, opposite of left's): the
+    // SAME rotationY now needs a flip.
+    const rightFacing = { x: 0.8368, z: -0.5475 };
+    expect(facingCorrectedRotationY(rotationY, rightFacing)).toBeCloseTo(
+      rotationY + Math.PI,
+      9
+    );
   });
 });

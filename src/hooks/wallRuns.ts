@@ -110,6 +110,30 @@ export interface WallRunSegment {
 export interface EnvelopeRun extends WallRunSegment {
   regionId: string;
   side: EnvelopeSide;
+  /**
+   * Unit vector (world x/z) pointing OUTWARD from the room, away from its
+   * center — the same direction `buildEnvelopeSegment` already offsets
+   * this run's own line along. Round-2 W3/W4 finding (Kirk's live walk:
+   * "west wall is a featureless dark slab while the north wall shows
+   * brick tile detail"): a tiled wall piece's detailed face is authored
+   * on only ONE local-Z side, with a flat/undecorated back — and the
+   * per-tile `rotationY` `tileWallSegment` computes is a pure function of
+   * the run's own start->end DIRECTION, with no notion of which side is
+   * "outward." On a hex grid, 'left'/'right' share one absolute
+   * direction pair (both run top-to-bottom) and 'top'/'bottom' share
+   * another (both run left-to-right) — so within each pair, the SAME
+   * rotationY gets computed for both sides despite their outward normals
+   * pointing in opposite directions. Verified exactly against the
+   * reference-tomb fixture: of hall's 4 sides, exactly 2 (left, bottom)
+   * end up with their detailed face pointing outward and the other 2
+   * (right, top) end up facing the flat back outward — a deterministic,
+   * always-reproducible 50/50 split, not a lighting artifact. This field
+   * lets the renderer flip a tile's rotationY by pi when the naive
+   * direction-only orientation doesn't match the room's real outward
+   * side, without `wallRunMeshHelpers.tileWallSegment` (which has no
+   * access to room-center context) needing to guess.
+   */
+  facing: WorldPos;
 }
 
 /** One connector's wall run(s), split around its door gap. A connector
@@ -141,6 +165,23 @@ export interface ConnectorRun {
    * "every flanking cell at this column is covered."
    */
   coveredRows: { minRow: number; maxRow: number };
+  /**
+   * Unit vector (world x/z) this connector's tiled pieces should face —
+   * see `EnvelopeRun.facing`'s doc comment for the underlying defect this
+   * corrects. A connector separates two rooms symmetrically (unlike an
+   * envelope side, it has no single "outward"), so there's no provably
+   * optimal choice here; this points from the connector's own column
+   * toward `regionBId`'s center (the higher-column side) — a
+   * deterministic, defensible convention rather than the pre-fix
+   * behavior's undocumented coin flip (whichever way the run's own
+   * start->end direction happened to fall). Kirk's round-2 report was
+   * specifically about room envelope walls, not connector/door-flanking
+   * ones — if a connector's flat back is still visible from
+   * `regionAId`'s side after this, that's a real follow-up, not
+   * something this fix claims to have solved for both viewing angles at
+   * once.
+   */
+  facing: WorldPos;
 }
 
 export interface WallRunsInput {
@@ -150,14 +191,43 @@ export interface WallRunsInput {
    * every real caller matches every other renderer without having to pass
    * it explicitly. */
   hexSize?: number;
-  /** Outward offset (world units) applied to envelope runs beyond the
-   * boundary hexes' own centers — the clip-clearance dial the design
-   * doc's W4 slice tunes against the largest character mesh. Defaults to
-   * `sqrt(3)` hex radii (see DEFAULT_ENVELOPE_OFFSET_HEXES's doc — this is
-   * what actually clears the outermost floor tiles' own footprint, not
-   * just their centers), a reasonable starting placeholder for W2/W3's
-   * geometry, not a final art-directed value. */
-  envelopeOffset?: number;
+  /**
+   * Outward offset (world units) applied to TOP/BOTTOM envelope sides
+   * beyond the boundary hexes' own centers — the clip-clearance dial the
+   * design doc's W4 slice tunes against the largest character mesh.
+   * Defaults to `sqrt(3)` hex radii (see
+   * DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES's doc — this compensates for
+   * the row-staircase eating most of whatever offset is configured on
+   * these two sides specifically).
+   *
+   * Deliberately SEPARATE from `envelopeOffsetLeftRight` (round-2 W3/W4
+   * finding, Kirk's live walk: "a wall going through the door"): a single
+   * offset applied uniformly to all 4 sides pushed a room's own LEFT/
+   * RIGHT envelope side far enough outward to cross into the neighboring
+   * connector's own column — and, at the shared reference-tomb doorRow,
+   * almost exactly onto the door cell itself. The two side pairs need
+   * genuinely different tuning, not just different in degree: TOP/BOTTOM
+   * sides are a chord across a zigzag (`hexRow`'s odd-q staircase) that
+   * "eats" a large fraction of the configured offset before it reaches
+   * the actual hex footprint, while LEFT/RIGHT sides run along a pure hex
+   * principal direction with NO zigzag at all — the exact same numeric
+   * offset delivers its FULL value as clearance on left/right, with none
+   * of the staircase's "eating" to compensate for. Reusing the
+   * staircase-tuned top/bottom value there wasn't "a bit too generous",
+   * it was solving a problem that side never had, at a magnitude that
+   * measurably overshoots into the neighboring connector (see
+   * `DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES`'s own doc for the exact
+   * numbers). Not a final art-directed value here either — W4 tunes
+   * both independently against the largest character mesh.
+   */
+  envelopeOffsetTopBottom?: number;
+  /**
+   * Outward offset (world units) applied to LEFT/RIGHT envelope sides —
+   * see `envelopeOffsetTopBottom`'s doc comment for why this is a
+   * separate input rather than one value shared across all 4 sides.
+   * Defaults to `DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES`.
+   */
+  envelopeOffsetLeftRight?: number;
   /** How far a run's endpoints extend past the outermost boundary hex's
    * own center, along the run's direction — reaches toward the hex's true
    * outer face/corner instead of stopping dead-center on the last hex.
@@ -353,7 +423,7 @@ function buildEnvelopeSegment(
   roomCenter: WorldPos,
   cornerExtension: number,
   envelopeOffset: number
-): WallRunSegment {
+): WallRunSegment & { facing: WorldPos } {
   const dir = unitDirection(rawStart, rawEnd);
   const extendedStart: WorldPos = {
     x: rawStart.x - dir.x * cornerExtension,
@@ -375,6 +445,7 @@ function buildEnvelopeSegment(
   return {
     start: { x: extendedStart.x + offset.x, z: extendedStart.z + offset.z },
     end: { x: extendedEnd.x + offset.x, z: extendedEnd.z + offset.z },
+    facing: normal,
   };
 }
 
@@ -394,8 +465,49 @@ function buildEnvelopeSegment(
  * geometry, not final art direction — W4's clip-check slice (design.md)
  * is where this gets tuned against the largest real character/monster
  * mesh and locked for good.
+ *
+ * This value is for TOP/BOTTOM sides ONLY as of the round-2 W3/W4 fix
+ * (see `DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES` below for why left/
+ * right sides need their own, much smaller default).
  */
-const DEFAULT_ENVELOPE_OFFSET_HEXES = Math.sqrt(3);
+const DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES = Math.sqrt(3);
+
+/**
+ * Round-2 W3/W4 finding (Kirk's live walk: "a wall going through the
+ * door"): reusing `DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES` for LEFT/
+ * RIGHT sides pushed a room's own envelope wall far enough outward to
+ * cross into the neighboring connector column — measured EXACTLY against
+ * the real reference-tomb fixture, not estimated: the perpendicular
+ * distance from a room's raw (un-offset) left/right envelope line to the
+ * door cell on its neighboring connector is a FIXED -1.5 world units
+ * (verified identical at both the entrance-hall and hall-tomb
+ * connectors, independent of room width — a fixed geometric invariant of
+ * the "one reserved column between rooms" layout, not fixture-specific),
+ * and offsetting outward by any amount ADDS DIRECTLY to that distance
+ * (`perpDistance = envelopeOffset - 1.5`, an exact linear relationship,
+ * also verified). The old default (`sqrt(3)` ~= 1.732) therefore
+ * overshot the door line by ~0.232 world units — inside the wall's own
+ * rendered thickness, exactly the "wall through the door" defect.
+ *
+ * Why left/right needs a genuinely SMALLER value, not just a smaller
+ * fraction of the same one: a left/right envelope side runs along a pure
+ * hex principal direction (verified analytically — `hexRow`'s odd-q
+ * parity correction is an exact linear function of row at a FIXED
+ * column, so the per-row world-space step never varies in direction).
+ * There is no "staircase" for this offset to compensate for, unlike
+ * top/bottom's chord-across-a-zigzag — every unit of offset here is
+ * delivered as pure clearance, none of it "eaten." The hex's own
+ * apothem (`sqrt(3)/2 ~= 0.866`, the center-to-flat-side distance) is
+ * therefore already sufficient to clear the boundary hex's own
+ * footprint on this axis, with ZERO eating-effect correction needed.
+ * `1.0` hex radii gives a full hex-size unit of clearance (~0.134 more
+ * than the bare apothem, a modest safety margin for the character/
+ * monster clip-check W4 still calls for) while staying comfortably
+ * inside the 1.5-unit ceiling before the neighboring connector/door —
+ * 0.5 world units of margin before intruding on anything there.
+ */
+const DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES = 1.0;
+
 const DEFAULT_CORNER_EXTENSION_HEXES = 0.5;
 
 /**
@@ -410,7 +522,8 @@ const DEFAULT_CORNER_EXTENSION_HEXES = 0.5;
 function envelopeGeometryForRegion(
   region: RegionInput,
   hexSize: number,
-  envelopeOffset: number,
+  envelopeOffsetTopBottom: number,
+  envelopeOffsetLeftRight: number,
   cornerExtension: number
 ): { runs: EnvelopeRun[]; corners: EnvelopeCorner[] } {
   const bounds = boundsOf(region.hexes);
@@ -430,17 +543,41 @@ function envelopeGeometryForRegion(
     z: (topLeft.z + topRight.z + bottomLeft.z + bottomRight.z) / 4,
   };
 
-  const sides: Array<{ side: EnvelopeSide; a: WorldPos; b: WorldPos }> = [
-    { side: 'left', a: topLeft, b: bottomLeft },
-    { side: 'right', a: topRight, b: bottomRight },
-    { side: 'top', a: topLeft, b: topRight },
-    { side: 'bottom', a: bottomLeft, b: bottomRight },
+  // Left/right and top/bottom get their OWN offset (see
+  // DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES's doc comment for why a
+  // single shared value overshot into the neighboring connector on
+  // left/right specifically).
+  const sides: Array<{
+    side: EnvelopeSide;
+    a: WorldPos;
+    b: WorldPos;
+    offset: number;
+  }> = [
+    {
+      side: 'left',
+      a: topLeft,
+      b: bottomLeft,
+      offset: envelopeOffsetLeftRight,
+    },
+    {
+      side: 'right',
+      a: topRight,
+      b: bottomRight,
+      offset: envelopeOffsetLeftRight,
+    },
+    { side: 'top', a: topLeft, b: topRight, offset: envelopeOffsetTopBottom },
+    {
+      side: 'bottom',
+      a: bottomLeft,
+      b: bottomRight,
+      offset: envelopeOffsetTopBottom,
+    },
   ];
 
-  const runs = sides.map(({ side, a, b }) => ({
+  const runs = sides.map(({ side, a, b, offset }) => ({
     regionId: region.id,
     side,
-    ...buildEnvelopeSegment(a, b, center, cornerExtension, envelopeOffset),
+    ...buildEnvelopeSegment(a, b, center, cornerExtension, offset),
   }));
   const runBySide = new Map(runs.map((run) => [run.side, run]));
 
@@ -562,6 +699,23 @@ function connectorRegionsForDoor(
  * today since this module has no such caller, but real given the
  * type's own protocol-agnostic, reusable framing.
  */
+/** Average of a bounds rect's 4 corners in world space — same "center"
+ * convention envelopeGeometryForRegion uses for its own room center, just
+ * derived from an already-known Bounds instead of raw hex membership. */
+function boundsCenter(bounds: Bounds, hexSize: number): WorldPos {
+  const { minCol, maxCol, minRow, maxRow } = bounds;
+  const corners = [
+    cubeToWorld(cubeAtColRow(minCol, minRow), hexSize),
+    cubeToWorld(cubeAtColRow(maxCol, minRow), hexSize),
+    cubeToWorld(cubeAtColRow(minCol, maxRow), hexSize),
+    cubeToWorld(cubeAtColRow(maxCol, maxRow), hexSize),
+  ];
+  return {
+    x: corners.reduce((sum, c) => sum + c.x, 0) / 4,
+    z: corners.reduce((sum, c) => sum + c.z, 0) / 4,
+  };
+}
+
 function connectorRunForDoor(
   door: ConnectorDoorInput,
   regionAId: string,
@@ -579,6 +733,12 @@ function connectorRunForDoor(
 
   const worldAt = (row: number): WorldPos =>
     cubeToWorld(cubeAtColRow(col, row), hexSize);
+
+  // See ConnectorRun.facing's own doc comment: a deterministic (not
+  // provably optimal for both rooms) convention — point from the
+  // connector column toward regionB's center, the higher-column side.
+  const doorWorld = worldAt(doorRow);
+  const facing = unitDirection(doorWorld, boundsCenter(boundsB, hexSize));
 
   const segments: WallRunSegment[] = [];
 
@@ -613,6 +773,7 @@ function connectorRunForDoor(
     regionBId,
     segments,
     coveredRows: { minRow, maxRow },
+    facing,
   };
 }
 
@@ -624,8 +785,12 @@ function connectorRunForDoor(
  */
 export function computeWallRuns(input: WallRunsInput): WallRunsResult {
   const hexSize = input.hexSize ?? HEX_SIZE;
-  const envelopeOffset =
-    input.envelopeOffset ?? DEFAULT_ENVELOPE_OFFSET_HEXES * hexSize;
+  const envelopeOffsetTopBottom =
+    input.envelopeOffsetTopBottom ??
+    DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES * hexSize;
+  const envelopeOffsetLeftRight =
+    input.envelopeOffsetLeftRight ??
+    DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES * hexSize;
   const cornerExtension =
     input.cornerExtension ?? DEFAULT_CORNER_EXTENSION_HEXES * hexSize;
 
@@ -636,7 +801,8 @@ export function computeWallRuns(input: WallRunsInput): WallRunsResult {
     const geometry = envelopeGeometryForRegion(
       region,
       hexSize,
-      envelopeOffset,
+      envelopeOffsetTopBottom,
+      envelopeOffsetLeftRight,
       cornerExtension
     );
     envelopeRuns.push(...geometry.runs);
