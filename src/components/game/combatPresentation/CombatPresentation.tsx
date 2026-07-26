@@ -44,7 +44,9 @@ export function CombatPresentation({
   );
   const seq = useBeatSequencer(sequence, { reducedMotion });
   const previousItemRef = useRef(item);
-  const completedItemRef = useRef<CombatPresentationAttack>();
+  const completedItemRef = useRef<CombatPresentationAttack | undefined>(
+    undefined
+  );
 
   useEffect(() => {
     // A new item first renders with the previous sequencer beat. Wait for its
