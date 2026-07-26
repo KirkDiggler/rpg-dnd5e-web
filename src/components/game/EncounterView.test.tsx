@@ -25,6 +25,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EncounterStreamOptions } from '../../api/encounterStreamDispatch';
 import {
   createFakeStream,
   type FakeStream,
@@ -36,6 +37,8 @@ function makeEvent(caseName: string, value: unknown): EncounterEvent {
 
 const hoisted = vi.hoisted(() => ({
   fakeRef: { current: null as FakeStream | null },
+  captureStreamCallbacks: false,
+  streamCallbacks: null as EncounterStreamOptions | null,
   moveEntityFn: vi.fn<() => Promise<MoveEntityResponse>>(),
   takeActionFn: vi.fn<(req: unknown) => Promise<TakeActionResponse>>(),
   endTurnFn: vi.fn<() => Promise<EndTurnResponse>>(),
@@ -67,6 +70,23 @@ vi.mock('../../api/client', () => ({
     unequipItem: hoisted.unequipItemFn,
   },
 }));
+
+vi.mock('../../api/useEncounterStream', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../api/useEncounterStream')>();
+  return {
+    ...actual,
+    useEncounterStream: (
+      ...args: Parameters<typeof actual.useEncounterStream>
+    ) => {
+      if (hoisted.captureStreamCallbacks) {
+        hoisted.streamCallbacks = args[2];
+        return { connectionState: 'connected' as const, error: null };
+      }
+      return actual.useEncounterStream(...args);
+    },
+  };
+});
 
 // EncounterMap wraps HexGrid (Three.js / React Three Fiber), which needs a
 // WebGL canvas not available in jsdom. Stub it and expose the turn-order
@@ -138,6 +158,8 @@ beforeEach(() => {
 
 afterEach(() => {
   hoisted.fakeRef.current = null;
+  hoisted.captureStreamCallbacks = false;
+  hoisted.streamCallbacks = null;
 });
 
 describe('EncounterView turn-order props (mode gating)', () => {
@@ -1533,6 +1555,55 @@ describe('EncounterView combat pacing', () => {
       critical: false,
       ...overrides,
     });
+
+  it('keeps a snapshot-resolved local attack viewer-controlled when callbacks batch before commit', async () => {
+    hoisted.captureStreamCallbacks = true;
+    render(
+      <EncounterView encounterId="enc-1" playerId="alice" onBack={() => {}} />
+    );
+
+    const callbacks = hoisted.streamCallbacks;
+    if (!callbacks)
+      throw new Error('EncounterView did not subscribe to the stream');
+
+    // Invoke both callbacks in one synchronous act. The snapshot resolves
+    // Alice's entity id, but React cannot commit that state update before the
+    // immediately following AttackResolved callback runs.
+    act(() => {
+      callbacks.onSnapshotDelivered?.(
+        {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'char-alice-resolved',
+                  position: { x: 0, y: 0, z: 0 },
+                  type: EntityType.CHARACTER,
+                  data: { case: 'character', value: { playerId: 'alice' } },
+                },
+              ],
+            },
+          },
+        } as never,
+        {} as never
+      );
+      callbacks.onAttackResolved?.(
+        {
+          attackerEntityId: 'char-alice-resolved',
+          targetEntityId: 'goblin-1',
+          attackRoll: 14,
+          attackBonus: 5,
+          targetAc: 16,
+          hit: true,
+          critical: false,
+        } as never,
+        {} as never
+      );
+    });
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+  });
 
   it('queues callback arrivals, records each attack immediately, and advances from viewer to autoplay attack', async () => {
     render(

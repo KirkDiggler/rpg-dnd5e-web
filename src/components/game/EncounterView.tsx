@@ -173,6 +173,11 @@ export function EncounterView({
 }: EncounterViewProps) {
   const [resolvedEntityId, setResolvedEntityId] = useState<string | null>(null);
   const entityId = characterId ?? resolvedEntityId ?? '';
+  // Stream callbacks can arrive together before React commits the snapshot's
+  // identity state. Keep callback-time identity current without changing the
+  // authoritative render-time state source.
+  const entityIdRef = useRef(entityId);
+  entityIdRef.current = entityId;
   const encounterState = useEncounterState();
   // #445: game-grade combat narrative — the same dispatched events, rendered
   // as a scrolling log instead of PlaytestHarness's raw dev-log text.
@@ -271,6 +276,7 @@ export function EncounterView({
             playerId
           );
           if (resolved) {
+            entityIdRef.current = resolved;
             setResolvedEntityId(resolved);
           }
         }
@@ -479,7 +485,7 @@ export function EncounterView({
         {
           id: ++presentationIdRef.current,
           attack: e,
-          isViewerAttack: e.attackerEntityId === entityId,
+          isViewerAttack: e.attackerEntityId === entityIdRef.current,
         },
       ]);
     },
