@@ -234,6 +234,79 @@ describe('tileWallSegment (W3: real Synty pieces tiled along a run, design.md/pl
       }
     });
   });
+
+  describe('pivotRatio + facing interaction (issue #615 regression: "top wall shifted left, right wall shifted a hex")', () => {
+    // Measured in the wall-lab dungeon (rpg-dnd5e-web#615): exactly 2 of
+    // any room's 4 envelope sides get their rotationY flipped by pi
+    // (facingCorrectedRotationY), and RUN_WALL_VARIANT's real pivotRatio
+    // (~-0.044, see WallVariant.rawMinX's doc comment) placed those 2
+    // sides' tiles off by ~0.91 of a full piece width — read as "shifted
+    // by about a hex" — because the un-flipped pivot formula assumes the
+    // piece's local +X always points along the run's own direction, which
+    // is false once the piece is ALSO rotated 180 degrees by the facing
+    // correction.
+    const PIVOT_RATIO = -0.044; // ~RUN_WALL_VARIANT's real measured value
+
+    it('with no flip needed, the pivot formula is unchanged from the pivotRatio-only behavior', () => {
+      const facingMatchingNaive = { x: 0, z: 1 }; // matches naive front for dir=(4,0)
+      const pieces = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        PIVOT_RATIO,
+        facingMatchingNaive
+      );
+      // Same as the pivotRatio-only formula: pieceWidth * (i - pivotRatio).
+      expect(pieces[0]!.position.x).toBeCloseTo(1.0 * (0 - PIVOT_RATIO), 9);
+      expect(pieces[1]!.position.x).toBeCloseTo(1.0 * (1 - PIVOT_RATIO), 9);
+    });
+
+    it('with a flip forced, the pivot formula mirrors correctly — NOT the same distance as the unflipped case, and NOT the naive (i - pivotRatio) applied blindly', () => {
+      const facingOpposingNaive = { x: 0, z: -1 }; // forces a flip for dir=(4,0)
+      const pieces = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        PIVOT_RATIO,
+        facingOpposingNaive
+      );
+      // Correct flipped formula: pieceWidth * (i + pivotRatio + 1).
+      const expectedFlipped = 1.0 * (0 + PIVOT_RATIO + 1);
+      expect(pieces[0]!.position.x).toBeCloseTo(expectedFlipped, 9);
+
+      // Proves this ISN'T just reusing the unflipped formula: the two
+      // differ by ~0.91 of a full piece width (the exact magnitude
+      // measured live in the wall-lab dungeon for this pivotRatio).
+      const unflippedFormula = 1.0 * (0 - PIVOT_RATIO);
+      expect(Math.abs(expectedFlipped - unflippedFormula)).toBeGreaterThan(0.9);
+    });
+
+    it('a perfectly centered pivot (pivotRatio = -0.5, e.g. the "alcove" variant) is unaffected by the flip either way — the two formulas agree exactly', () => {
+      const centeredPivot = -0.5;
+      const facingMatchingNaive = { x: 0, z: 1 };
+      const facingOpposingNaive = { x: 0, z: -1 };
+      const notFlipped = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        centeredPivot,
+        facingMatchingNaive
+      );
+      const flipped = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        centeredPivot,
+        facingOpposingNaive
+      );
+      for (let i = 0; i < notFlipped.length; i++) {
+        expect(flipped[i]!.position.x).toBeCloseTo(
+          notFlipped[i]!.position.x,
+          9
+        );
+        expect(flipped[i]!.position.z).toBeCloseTo(
+          notFlipped[i]!.position.z,
+          9
+        );
+      }
+    });
+  });
 });
 
 describe("facingCorrectedRotationY (round-2 W3/W4 fix: tileWallSegment's rotationY is a pure function of the run's own direction, with no notion of \"outward\" — hall's left/right sides share one direction pair and top/bottom share another, so within each pair the SAME rotationY got computed for both despite opposite outward normals; exactly one of each pair always ended up showing its flat, undecorated back outward, verified against the real reference-tomb fixture: 2 of hall's 4 sides failed)", () => {

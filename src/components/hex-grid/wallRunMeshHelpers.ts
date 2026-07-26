@@ -156,6 +156,21 @@ export function tileWallSegment(
   const rotationY = facing
     ? facingCorrectedRotationY(naiveRotationY, facing)
     : naiveRotationY;
+  // Wall-lab measurement (issue #615): `facingCorrectedRotationY` flips
+  // rotationY by pi on roughly half of any room's 4 sides (whichever ones
+  // don't naturally face outward — see its own doc comment). When that
+  // happens, the piece's local +X axis (which `pivotRatio` assumes always
+  // points along `ux`/`uz`, i.e. toward the run's own end) now points the
+  // OPPOSITE way in world space. Using the un-flipped pivot formula in
+  // that case doesn't just fail to correct the tile's off-center pivot —
+  // it shifts the origin in the WRONG direction while the piece's own
+  // visual bulk is ALSO on the wrong side post-flip, compounding into a
+  // ~1-piece-width error (measured: ~0.91 of a full tile for
+  // `RUN_WALL_VARIANT`'s pivotRatio). This is the exact root cause of the
+  // "top wall shifted left, right wall shifted a hex" defect Kirk found
+  // in prod — those are exactly the 2 of 4 envelope sides
+  // facingCorrectedRotationY flips.
+  const flipped = rotationY !== naiveRotationY;
   const ux = dx / length;
   const uz = dz / length;
 
@@ -165,8 +180,13 @@ export function tileWallSegment(
     // visual center — see `pivotRatio`'s doc comment) so that its actual
     // scaled bounding box lands flush at [i, i+1] * pieceWidth along the
     // run, matching every other tile with zero gap or overlap. Reduces to
-    // the pre-fix `pieceWidth * (i + 0.5)` exactly when pivotRatio = -0.5.
-    const originDist = pieceWidth * (i - pivotRatio);
+    // the pre-fix `pieceWidth * (i + 0.5)` exactly when pivotRatio = -0.5
+    // (a centered pivot behaves identically flipped or not — the two
+    // formulas below agree exactly at pivotRatio = -0.5, which is also
+    // how this was verified).
+    const originDist = flipped
+      ? pieceWidth * (i + pivotRatio + 1)
+      : pieceWidth * (i - pivotRatio);
     pieces.push({
       position: {
         x: segment.start.x + ux * originDist,
