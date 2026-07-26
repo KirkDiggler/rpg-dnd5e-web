@@ -236,6 +236,19 @@ export interface SyntyHexWallProps {
    * exactly as before — byte-identical for every real dungeon wall today.
    */
   spaceTheme?: 'crypt';
+  /**
+   * Per-door rotationY override (radians), keyed by Wall.id — dungeon-walls
+   * redesign (rpg-project#133 design.md's W2 slice): orients a door frame/
+   * leaf along its connector's own column axis
+   * (wallRunAdapters.connectorRunDoorRotations) instead of the wire's
+   * `doorPassageNeighbor`-derived edge, which picks an arbitrary first
+   * region-tagged neighbor rather than the connector's real axis. A door
+   * whose id has no entry (or whose Wall.id is absent) falls back to the
+   * pre-existing `edge.rotationY` exactly as before — undefined/omitted
+   * (every caller before this design) is byte-identical to pre-#133
+   * behavior.
+   */
+  doorRotationOverrides?: ReadonlyMap<string, number>;
 }
 
 export function SyntyHexWall({
@@ -245,6 +258,7 @@ export function SyntyHexWall({
   themeWallHexKeys,
   rememberedWallHexKeys,
   spaceTheme,
+  doorRotationOverrides,
 }: SyntyHexWallProps) {
   const segments = useMemo(
     () => buildDungeonWallSegments(walls, hexSize),
@@ -267,6 +281,9 @@ export function SyntyHexWall({
         const isRemembered = rememberedSegment(key, rememberedWallHexKeys);
         if (isDoorWallKind(kind)) {
           const visualState = doorVisualState(kind)!;
+          const rotationY =
+            (id !== undefined ? doorRotationOverrides?.get(id) : undefined) ??
+            edge.rotationY;
           return (
             <group
               key={key}
@@ -287,7 +304,7 @@ export function SyntyHexWall({
               <GlbInstance
                 file="SM_Env_Door_Frame_01.glb"
                 position={edge.mid}
-                rotationY={edge.rotationY}
+                rotationY={rotationY}
                 scale={DOOR_FRAME_SCALE}
                 remembered={isRemembered}
               />
@@ -295,7 +312,7 @@ export function SyntyHexWall({
                 file="SM_Env_Door_01.glb"
                 position={edge.a}
                 rotationY={
-                  edge.rotationY +
+                  rotationY +
                   (visualState === 'open' ? DOOR_OPEN_ROTATION_OFFSET : 0)
                 }
                 scale={DOOR_SCALE}

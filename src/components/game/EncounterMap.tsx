@@ -23,10 +23,20 @@
  */
 
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import type { Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import type {
+  Hex,
+  Wall,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
 import { DevPerfProbe } from '../../dev/DevPerfProbe';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
+import {
+  connectorDoorInputsFromWalls,
+  connectorRunDoorRotations,
+  legacyRenderWalls,
+  regionInputsFromHexes,
+} from '../../hooks/wallRunAdapters';
+import { computeWallRuns } from '../../hooks/wallRuns';
 import { HexGrid } from '../hex-grid';
 import { cubeToWorld, HEX_SIZE, type CubeCoord } from '../hex-grid/hexMath';
 import {
@@ -56,8 +66,16 @@ export interface EncounterMapProps {
   >;
   /** v1alpha2 identity metadata (type, monsterRefId) keyed by entityId. */
   entityMeta: Map<string, EntityMeta>;
-  /** Per-hex reveal set ("x,y,z" cube-coord keys) from GeometryRevealed events. */
-  revealedHexes: Set<string>;
+  /**
+   * Per-hex reveal map ("x,y,z" cube-coord keys -> the full wire `Hex`,
+   * including `zoneId`) from useEncounterState's `state.revealedHexes`.
+   * Dungeon-walls redesign (rpg-project#133): `zoneId` is what lets this
+   * component reconstruct each room's hex membership
+   * (wallRunAdapters.regionInputsFromHexes) for envelope/connector run
+   * computation — a plain key `Set` (pre-#133) can't carry that. Floor-tile
+   * synthesis below only needs the key set, derived internally.
+   */
+  revealedHexes: Map<string, Hex>;
   /** Sticky revealed walls, keyed by wallKey, from Space.walls/GeometryRevealed.walls. Renders as [] when the server sends none. */
   walls: Map<string, Wall>;
   /** Per-entity HP — marks monsters dead (HP <= 0) so HexGrid renders their corpse. */
@@ -131,11 +149,47 @@ export function EncounterMap({
   onDoorClick,
 }: EncounterMapProps) {
   const floorTiles = useMemo(
-    () => synthesizeFloorTiles(revealedHexes, entities.values()),
+    () =>
+      synthesizeFloorTiles(new Set(revealedHexes.keys()), entities.values()),
     [revealedHexes, entities]
   );
 
   const wallList = useMemo(() => Array.from(walls.values()), [walls]);
+
+  // Dungeon-walls redesign (rpg-project#133 design.md/plan.md's W2 slice):
+  // reconstruct each room's hex membership from the wire's per-hex zoneId
+  // (regions have no width/offset field on the wire at all — see
+  // wallRuns.ts's doc comment), derive each door's own cell from the walls
+  // list, and compute the straight envelope/connector runs those feed.
+  // Also builds the positive-category-filtered legacy wall list
+  // (doors + interior pattern walls only) and the per-door rotation
+  // overrides HexGrid/SyntyHexWall consume below.
+  const regions = useMemo(
+    () => regionInputsFromHexes(revealedHexes.values()),
+    [revealedHexes]
+  );
+  const connectorDoors = useMemo(
+    () => connectorDoorInputsFromWalls(wallList),
+    [wallList]
+  );
+  const wallRunsResult = useMemo(
+    () => computeWallRuns({ regions, doors: connectorDoors }),
+    [regions, connectorDoors]
+  );
+  const legacySyntyWalls = useMemo(
+    () =>
+      legacyRenderWalls(
+        wallList,
+        regions,
+        wallRunsResult.connectorRuns,
+        connectorDoors
+      ),
+    [wallList, regions, wallRunsResult, connectorDoors]
+  );
+  const doorRotationOverrides = useMemo(
+    () => connectorRunDoorRotations(wallRunsResult.connectorRuns),
+    [wallRunsResult]
+  );
 
   // Prop-model resolver demo (rpg-dnd5e-web#528, charter #523):
   // `?devPropDemoKeys=barrel,pillar,rock-pile` injects synthetic OBSTACLE
@@ -324,6 +378,10 @@ export function EncounterMap({
         floorTiles={floorTiles}
         entities={renderableEntities}
         walls={wallList}
+        legacySyntyWalls={legacySyntyWalls}
+        envelopeRuns={wallRunsResult.envelopeRuns}
+        connectorRuns={wallRunsResult.connectorRuns}
+        doorRotationOverrides={doorRotationOverrides}
         selectedEntityId={myEntityId}
         currentEntityId={myEntityId}
         movementRemaining={movementRemaining}
