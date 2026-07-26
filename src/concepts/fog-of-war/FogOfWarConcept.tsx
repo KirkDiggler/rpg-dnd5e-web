@@ -84,10 +84,13 @@ export function FogOfWarConcept() {
   );
 
   const wanderGoblin = useCallback(() => {
-    apply('goblin wanders', () =>
+    apply('goblin moves', () =>
       session.current.authority.mutateHidden((world) => {
         const here = world.placements.get('goblin-1');
-        const spots = [at(4, 1), at(6, 2), at(5, 0)];
+        // at(4,2) is the hex beyond the doorway, ON the open-door sightline;
+        // the other two are in Room B but off it. Cycling through all three
+        // lets the demo show seen, then frozen, then corrected.
+        const spots = [at(4, 2), at(6, 0), at(5, 0)];
         const index = spots.findIndex(
           (spot) => here && key(spot) === key(here.hex)
         );
@@ -162,7 +165,7 @@ export function FogOfWarConcept() {
           onClick={wanderGoblin}
           disabled={!started}
         >
-          Goblin wanders (hidden)
+          Goblin moves
         </button>
         <button
           className="px-3 py-1.5 rounded text-sm border"
@@ -189,6 +192,12 @@ export function FogOfWarConcept() {
               entities={props.entities}
               onHexClick={moveViewer}
               showFrontierGroundHints={false}
+              // Real Synty pieces and the crypt mood, not the procedural
+              // placeholder path. Remembered geometry is a TINT on these
+              // materials (sceneKnowledge.cloneCryptMaterials), so without
+              // them there is nothing for fog to visibly act on.
+              syntyDungeon
+              spaceTheme="crypt"
             />
           ) : (
             <div className="h-full grid place-items-center text-sm opacity-70">
