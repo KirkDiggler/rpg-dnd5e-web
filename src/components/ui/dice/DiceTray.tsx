@@ -24,7 +24,6 @@ export interface DiceTrayProps {
   outcome: DiceTrayOutcome;
   reducedMotion?: boolean;
   motion?: DiceMotion;
-  presentationRandom?: () => number;
   onPresentationComplete?: () => void;
   children?: React.ReactNode;
   className?: string;
@@ -57,7 +56,6 @@ export function DiceTray({
   outcome,
   reducedMotion = false,
   motion,
-  presentationRandom = defaultPresentationRandom,
   onPresentationComplete,
   children,
   className,
@@ -97,7 +95,9 @@ export function DiceTray({
       (value) => value !== finalFace
     );
     for (let index = faces.length - 1; index > 0; index -= 1) {
-      const shuffledIndex = Math.floor(presentationRandom() * (index + 1));
+      const shuffledIndex = Math.floor(
+        defaultPresentationRandom() * (index + 1)
+      );
       [faces[index], faces[shuffledIndex]] = [
         faces[shuffledIndex],
         faces[index],
@@ -120,14 +120,7 @@ export function DiceTray({
       setTimeout(() => onPresentationComplete?.(), elapsed + hold + rollover)
     );
     return () => timers.forEach(clearTimeout);
-  }, [
-    finalFace,
-    motion,
-    onPresentationComplete,
-    phase,
-    presentationRandom,
-    reducedMotion,
-  ]);
+  }, [finalFace, motion, onPresentationComplete, phase, reducedMotion]);
 
   if (phase === 'hidden') return null;
 

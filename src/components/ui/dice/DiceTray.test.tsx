@@ -1,7 +1,12 @@
 import { act, render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DiceTray } from './DiceTray';
+import { DiceTray, type DiceTrayProps } from './DiceTray';
+
+type DiceTrayHasNoPresentationRandom =
+  'presentationRandom' extends keyof DiceTrayProps ? false : true;
+const diceTrayHasNoPresentationRandom: DiceTrayHasNoPresentationRandom = true;
+void diceTrayHasNoPresentationRandom;
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -56,19 +61,20 @@ describe('DiceTray', () => {
       nearSettleHoldMs: 30,
       rolloverMs: 40,
     };
-    const firstPresentationRandom = vi.fn(() => 0);
-    const secondPresentationRandom = vi.fn(() => 0.999);
+    const firstGetRandomValues = vi.fn((values: Uint32Array) => {
+      values[0] = 0;
+      return values;
+    });
+    const secondGetRandomValues = vi.fn((values: Uint32Array) => {
+      values[0] = 0xffffffff;
+      return values;
+    });
     const firstRollFaces: string[] = [];
     const secondRollFaces: string[] = [];
 
+    vi.stubGlobal('crypto', { getRandomValues: firstGetRandomValues });
     const firstRoll = render(
-      <DiceTray
-        phase="rolling"
-        finalFace={14}
-        outcome="HIT"
-        motion={motion}
-        presentationRandom={firstPresentationRandom}
-      />
+      <DiceTray phase="rolling" finalFace={14} outcome="HIT" motion={motion} />
     );
     firstRollFaces.push(screen.getByTestId('dice-face').textContent ?? '');
     act(() => vi.advanceTimersByTime(30));
@@ -78,14 +84,9 @@ describe('DiceTray', () => {
     firstRollFaces.push(firstDecoy ?? '');
     firstRoll.unmount();
 
+    vi.stubGlobal('crypto', { getRandomValues: secondGetRandomValues });
     render(
-      <DiceTray
-        phase="rolling"
-        finalFace={14}
-        outcome="HIT"
-        motion={motion}
-        presentationRandom={secondPresentationRandom}
-      />
+      <DiceTray phase="rolling" finalFace={14} outcome="HIT" motion={motion} />
     );
     secondRollFaces.push(screen.getByTestId('dice-face').textContent ?? '');
     act(() => vi.advanceTimersByTime(30));
@@ -105,8 +106,8 @@ describe('DiceTray', () => {
     expect(secondDecoyValue).not.toBe(14);
     expect(firstRollFaces).not.toContain('14');
     expect(secondRollFaces).not.toContain('14');
-    expect(firstPresentationRandom).toHaveBeenCalled();
-    expect(secondPresentationRandom).toHaveBeenCalled();
+    expect(firstGetRandomValues).toHaveBeenCalled();
+    expect(secondGetRandomValues).toHaveBeenCalled();
   });
 
   it('uses crypto presentation randomness without consuming Math.random', () => {
