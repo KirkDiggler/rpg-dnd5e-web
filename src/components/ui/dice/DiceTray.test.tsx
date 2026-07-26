@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiceTray } from './DiceTray';
 
 beforeEach(() => vi.useFakeTimers());
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe('DiceTray', () => {
   it.each(['entering', 'ready', 'rolling', 'exiting'] as const)(
@@ -42,6 +45,48 @@ describe('DiceTray', () => {
     expect(screen.getByTestId('dice-face').textContent).not.toBe('14');
     rerender(<DiceTray phase="settled" finalFace={14} outcome="HIT" />);
     expect(screen.getByTestId('dice-face').textContent).toBe('14');
+  });
+
+  it('varies the near-settle decoy without revealing the final face', () => {
+    const motion = {
+      faceCount: 2,
+      initialCadenceMs: 20,
+      decelerationMs: 10,
+      nearSettleHoldMs: 30,
+      rolloverMs: 40,
+    };
+    const random = vi.spyOn(Math, 'random');
+    const firstRollFaces: string[] = [];
+    const secondRollFaces: string[] = [];
+
+    random.mockReturnValue(0);
+    const firstRoll = render(
+      <DiceTray phase="rolling" finalFace={14} outcome="HIT" motion={motion} />
+    );
+    firstRollFaces.push(screen.getByTestId('dice-face').textContent ?? '');
+    act(() => vi.advanceTimersByTime(30));
+    firstRollFaces.push(screen.getByTestId('dice-face').textContent ?? '');
+    act(() => vi.advanceTimersByTime(40));
+    const firstDecoy = screen.getByTestId('dice-face').textContent;
+    firstRollFaces.push(firstDecoy ?? '');
+    firstRoll.unmount();
+
+    random.mockReturnValue(0.999);
+    render(
+      <DiceTray phase="rolling" finalFace={14} outcome="HIT" motion={motion} />
+    );
+    secondRollFaces.push(screen.getByTestId('dice-face').textContent ?? '');
+    act(() => vi.advanceTimersByTime(30));
+    secondRollFaces.push(screen.getByTestId('dice-face').textContent ?? '');
+    act(() => vi.advanceTimersByTime(40));
+    const secondDecoy = screen.getByTestId('dice-face').textContent;
+    secondRollFaces.push(secondDecoy ?? '');
+
+    expect(firstDecoy).not.toBe(secondDecoy);
+    expect(firstDecoy).not.toBe('19');
+    expect(secondDecoy).not.toBe('19');
+    expect(firstRollFaces).not.toContain('14');
+    expect(secondRollFaces).not.toContain('14');
   });
 
   it('animates only the d20 shell while keeping the face readable', () => {

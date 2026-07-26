@@ -29,7 +29,7 @@ export interface DiceTrayProps {
   className?: string;
 }
 
-const PRESENTATION_FACES = [2, 7, 11, 16, 19];
+const REDUCED_MOTION_PRESENTATION_FACES = [2, 7, 11, 16, 19];
 const VERTICES: ReadonlyArray<readonly [number, number]> = [
   [50, 4],
   [88.97, 27.5],
@@ -67,7 +67,11 @@ export function DiceTray({
     }
 
     if (reducedMotion) {
-      setFace(PRESENTATION_FACES.find((value) => value !== finalFace) ?? 1);
+      setFace(
+        REDUCED_MOTION_PRESENTATION_FACES.find(
+          (value) => value !== finalFace
+        ) ?? 1
+      );
       onPresentationComplete?.();
       return;
     }
@@ -77,8 +81,17 @@ export function DiceTray({
     const deceleration = motion?.decelerationMs ?? 90;
     const hold = motion?.nearSettleHoldMs ?? 240;
     const rollover = motion?.rolloverMs ?? 120;
-    const faces = PRESENTATION_FACES.filter((value) => value !== finalFace);
-    const decoy = faces[faces.length - 1] ?? (finalFace === 20 ? 19 : 20);
+    const faces = Array.from({ length: 20 }, (_, index) => index + 1).filter(
+      (value) => value !== finalFace
+    );
+    for (let index = faces.length - 1; index > 0; index -= 1) {
+      const shuffledIndex = Math.floor(Math.random() * (index + 1));
+      [faces[index], faces[shuffledIndex]] = [
+        faces[shuffledIndex],
+        faces[index],
+      ];
+    }
+    const decoy = faces[count % faces.length] ?? (finalFace === 20 ? 19 : 20);
     const timers: ReturnType<typeof setTimeout>[] = [];
     let elapsed = 0;
 
