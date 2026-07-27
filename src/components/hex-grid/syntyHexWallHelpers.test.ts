@@ -7,6 +7,7 @@ import { coordToKey, HEX_DIRECTIONS, hexEdgeBetween } from './hexMath';
 import {
   buildDungeonWallSegments,
   classifyWallVertices,
+  collectWallHexes,
   computeWallAdjacentRotationY,
   doorVisualState,
   edgePieceKind,
@@ -679,6 +680,31 @@ describe('computeWallAdjacentRotationY (rpg-game-assets#36 wave-1, issue #623 in
     const doorTo = { x: 1, y: 0, z: -1 };
     const walls = [wall(hex, doorTo, WallKind.DOOR_CLOSED, 'door-1')];
     expect(computeWallAdjacentRotationY(hex, walls, 1)).toBeUndefined();
+  });
+
+  it("cleanly opts out (undefined) when `hex` ITSELF is already a wall hex (Copilot review, PR #625) — a decor prop authored on a blocked cell shouldn't compute a rotation toward one of its own neighboring wall hexes", () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const eastWall = { x: 1, y: -1, z: 0 }; // would otherwise match the degenerate-wall-hex branch
+    // hex itself is part of a wall's decomposed line (a multi-hex span
+    // from hex to a farther cell), NOT a self-degenerate `wall(hex, hex)`
+    // — a distinct way `hex` can end up in collectWallHexes' set.
+    const walls = [wall(hex, { x: -2, y: 2, z: 0 }), wall(eastWall, eastWall)];
+    expect(computeWallAdjacentRotationY(hex, walls, 1)).toBeUndefined();
+  });
+
+  it('accepts a precomputed wallKindByHex (Copilot review, PR #625 — avoids rebuilding collectWallHexes per call) and produces the identical result to the default', () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const eastWall = { x: 1, y: -1, z: 0 };
+    const walls = [wall(eastWall, eastWall)];
+    const precomputed = collectWallHexes(walls);
+    const withDefault = computeWallAdjacentRotationY(hex, walls, 1);
+    const withPrecomputed = computeWallAdjacentRotationY(
+      hex,
+      walls,
+      1,
+      precomputed
+    );
+    expect(withPrecomputed).toBeCloseTo(withDefault!);
   });
 });
 

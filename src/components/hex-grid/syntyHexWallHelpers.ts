@@ -894,13 +894,32 @@ export function wallEndEdgeKeys(walls: Wall[]): Set<string> {
  * Returns `undefined` when neither shape matches (a wall-banner authored
  * away from any wall entirely — unusual content, not a crash) so callers
  * fall back to the existing rotationY=0 default, never a broken/
- * undefined-driven rotation.
+ * undefined-driven rotation. ALSO returns `undefined` up front if `hex`
+ * itself is already a wall hex (Copilot review, PR #625) — the doc
+ * comment above says a decor prop sits on open floor, but the
+ * implementation didn't enforce that; a prop somehow authored ON a
+ * blocked cell now cleanly opts out instead of computing a rotation
+ * toward one of ITS OWN neighboring wall hexes, which would have been a
+ * confusing orientation for content that's already invalid (a decor prop
+ * can't really occupy a blocked cell).
+ *
+ * `wallKindByHex` (Copilot review, PR #625): optional precomputed
+ * `collectWallHexes(walls)` result. Every real caller today
+ * (`HexGrid.tsx`'s `wallAdjacentRotations`) calls this once per
+ * WALL_ADJACENT_PROP_KEYS entity, and rebuilding the wall-hex map fresh
+ * inside each call made that O(entities * walls) instead of O(walls +
+ * entities) — pass the map built once by the caller to keep it linear.
+ * Defaults to a fresh `collectWallHexes(walls)` so every existing/test
+ * caller that doesn't have one handy still works unchanged.
  */
 export function computeWallAdjacentRotationY(
   hex: CubeCoord,
   walls: Wall[],
-  hexSize: number
+  hexSize: number,
+  wallKindByHex: ReadonlyMap<string, WallKind> = collectWallHexes(walls)
 ): number | undefined {
+  if (wallKindByHex.has(coordToKey(hex))) return undefined;
+
   for (const wall of walls) {
     if (!wall.from || !wall.to) continue;
     if (isDoorWallKind(wall.kind)) continue;
@@ -912,7 +931,6 @@ export function computeWallAdjacentRotationY(
     return hexEdgeBetween(from, to, hexSize).rotationY;
   }
 
-  const wallKindByHex = collectWallHexes(walls);
   for (const dir of HEX_DIRECTIONS) {
     const neighbor: CubeCoord = {
       x: hex.x + dir.x,

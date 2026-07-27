@@ -56,7 +56,10 @@ import { ShadedHexFloor } from './ShadedHexFloor';
 import { ShadedHexWall } from './ShadedHexWall';
 import { SyntyHexFloor } from './SyntyHexFloor';
 import { SyntyHexWall } from './SyntyHexWall';
-import { computeWallAdjacentRotationY } from './syntyHexWallHelpers';
+import {
+  collectWallHexes,
+  computeWallAdjacentRotationY,
+} from './syntyHexWallHelpers';
 import type { TurnOrderEntry } from './TurnOrderOverlay';
 import { TurnOrderOverlay } from './TurnOrderOverlay';
 import { useCameraControls } from './useCameraControls';
@@ -379,6 +382,11 @@ function Scene({
   // entries for the specific keys that need it, and PropModel/HexEntity
   // fall back to rotationY=0 (today's default for every non-door prop)
   // when an entityId has no entry here.
+  // Precomputed ONCE per (entities, walls) change and reused for every
+  // matching entity below (Copilot review, PR #625) — computeWallAdjacentRotationY
+  // used to rebuild this same map internally on every call, making this
+  // loop O(entities * walls) instead of O(walls + entities).
+  const wallKindByHex = useMemo(() => collectWallHexes(walls), [walls]);
   const wallAdjacentRotations = useMemo(() => {
     const map = new Map<string, number>();
     for (const entity of entities) {
@@ -390,12 +398,13 @@ function Scene({
       const rotationY = computeWallAdjacentRotationY(
         entity.position,
         walls,
-        HEX_SIZE
+        HEX_SIZE,
+        wallKindByHex
       );
       if (rotationY !== undefined) map.set(entity.entityId, rotationY);
     }
     return map;
-  }, [entities, walls]);
+  }, [entities, walls, wallKindByHex]);
 
   // Create character lookup map by ID for efficient entity -> character mapping
   const characterMap = useMemo(() => {
