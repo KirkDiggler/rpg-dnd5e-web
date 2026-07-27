@@ -15,7 +15,10 @@
 
 import { create } from '@bufbuild/protobuf';
 import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
-import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+import {
+  EntityStateSchema,
+  type EntityState,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type {
   EncounterEnded,
   EntityDamaged,
@@ -42,6 +45,7 @@ import {
   WallSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useState } from 'react';
+import { v2PositionToV1 } from '../api/positionConvert';
 import type {
   EquippedMap,
   ItemLike,
@@ -463,6 +467,111 @@ export function applyWallsRevealed(
 }
 
 /**
+ * Merge live HexKnowledgeChanged records into revealedHexes and reconcile
+ * the entity position cache (`entities`) — the merge-path counterpart to
+ * applySnapshotRegionState's full replace. A snapshot is a reconnect resync
+ * (omitted = gone); a live HexKnowledgeChanged is a DIFF (rpg-api-protos#197,
+ * rpg-dnd5e-web#609) — omitted = untouched, never gone. Positions absent
+ * from `hexes` are never consulted below: their previously-cached region
+ * truth AND cached entity positions stand exactly as they were.
+ *
+ * For each position `hexes` DOES mention:
+ *   - The record REPLACES whatever was cached there WHOLESALE, never a
+ *     field-level merge — a VISIBLE record's `contents` is total (an empty
+ *     list is a positive "nobody here"), and a REMEMBERED record already
+ *     carries its complete frozen observation.
+ *   - Every placement's `entityId` resolves against `prev.entityMeta`. Call
+ *     this AFTER merging the same event's `entities` batch in via
+ *     applyEntityKnowledgeBatch, so a same-message disclosure already
+ *     resolves. An entityId that still doesn't resolve is dropped: fail
+ *     closed, never render an undisclosed occupant (neither added to nor
+ *     removed from the position cache).
+ *   - A resolving placement writes (or overwrites) that entityId's cached
+ *     position. This is always treated as an "appear", not a "move" (a
+ *     fresh `create(EntityStateSchema, ...)`, matching
+ *     applyEntityAppearedBatch's own `{ ...entity, ghost: false }` — the
+ *     real hex-by-hex walk animation is EntityMoved's job, handled
+ *     separately by mergeEntityPosition; a knowledge change is never that).
+ *   - An entityId present in the OLD cached record's contents at this
+ *     position but absent from the NEW one — and not re-placed at any OTHER
+ *     position this SAME event (a move within one message) — is removed
+ *     from the position cache. This is how a remembered occupant
+ *     disappears on re-sight: there is no forget message, the arriving
+ *     record simply omits them.
+ *
+ * Idempotent: re-delivering an identical `hexes` array (same HexRecord
+ * object references) is a full no-op — every map returned unchanged.
+ * Exported for testing.
+ */
+export function applyHexRecordsMerged(
+  prev: LocalEncounterState,
+  hexes: HexRecord[]
+): LocalEncounterState {
+  const positioned = hexesWithPosition(hexes);
+  if (positioned.length === 0) return prev;
+
+  let nextRevealedHexes: Map<string, HexRecord> | undefined;
+  for (const hex of positioned) {
+    const key = hexKey(protoPositionToHex(hex.position));
+    if ((nextRevealedHexes ?? prev.revealedHexes).get(key) === hex) continue;
+    if (!nextRevealedHexes) nextRevealedHexes = new Map(prev.revealedHexes);
+    nextRevealedHexes.set(key, hex);
+  }
+  if (!nextRevealedHexes) return prev;
+
+  // Guards the "moved within one event" case: an entityId placed ANYWHERE
+  // in this event's own contents must not also be pruned by the vacate pass
+  // below, even though it's simultaneously absent from wherever it used to
+  // be cached.
+  const placedThisEvent = new Set<string>();
+  for (const hex of positioned) {
+    for (const placement of hex.contents ?? []) {
+      if (prev.entityMeta.has(placement.entityId)) {
+        placedThisEvent.add(placement.entityId);
+      }
+    }
+  }
+
+  let nextEntities: LocalEncounterState['entities'] | undefined;
+  for (const hex of positioned) {
+    const key = hexKey(protoPositionToHex(hex.position));
+    for (const placement of hex.contents ?? []) {
+      if (!prev.entityMeta.has(placement.entityId)) continue; // fail closed
+      const position = v2PositionToV1(hex.position);
+      const existing = (nextEntities ?? prev.entities).get(placement.entityId);
+      if (
+        existing?.position?.x === position.x &&
+        existing?.position?.y === position.y &&
+        existing?.position?.z === position.z
+      ) {
+        continue;
+      }
+      if (!nextEntities) nextEntities = new Map(prev.entities);
+      nextEntities.set(
+        placement.entityId,
+        create(EntityStateSchema, { entityId: placement.entityId, position })
+      );
+    }
+    const oldContents = prev.revealedHexes.get(key)?.contents ?? [];
+    for (const oldPlacement of oldContents) {
+      if (placedThisEvent.has(oldPlacement.entityId)) continue;
+      if (!(nextEntities ?? prev.entities).has(oldPlacement.entityId)) {
+        continue;
+      }
+      if (!nextEntities) nextEntities = new Map(prev.entities);
+      nextEntities.delete(oldPlacement.entityId);
+    }
+  }
+
+  return {
+    ...prev,
+    revealedHexes: nextRevealedHexes,
+    revealedHexKeys: new Set(nextRevealedHexes.keys()),
+    entities: nextEntities ?? prev.entities,
+  };
+}
+
+/**
  * Converts one wire-shape StatusEffect into the local EntityStatus shape —
  * shared by both the live StatusApplied path (applyStatusApplied) and the
  * snapshot-hydration path below, since Entity.status_effects and
@@ -582,6 +691,115 @@ export function applyEntityAppearedBatch(
   return {
     ...prev,
     entities: newEntities,
+    entityMeta: newMeta,
+    entityHP: hpChanged ? newHP : prev.entityHP,
+    entityAC: acChanged ? newAC : prev.entityAC,
+    entityStatuses: statusesChanged ? newStatuses : prev.entityStatuses,
+    characterEquipment: equipmentChanged
+      ? newEquipment
+      : prev.characterEquipment,
+  };
+}
+
+/**
+ * Wire-projected entity disclosure from a live HexKnowledgeChanged event
+ * (rpg-dnd5e-web#609) — the merge-path counterpart to the position-carrying
+ * entries applyEntityAppearedBatch takes from a snapshot. Deliberately no
+ * `entity`/position field: HexKnowledgeChanged's Entity message carries no
+ * position of its own (see the proto's own Entity doc comment — "what a
+ * thing IS ... deliberately not where"); placement rides separately on each
+ * HexRecord.contents entry, applied by applyHexRecordsMerged.
+ */
+export interface EntityKnowledgeEntry {
+  entityId: string;
+  type: EntityType;
+  monsterRefId: string | undefined;
+  initialHP: { current: number; max: number } | undefined;
+  initialAC: number | undefined;
+  statusEffects?: StatusEffect[];
+  displayName?: string;
+  classRefId?: string;
+  propRefId?: string;
+  equipment?: CharacterEquipment;
+}
+
+/**
+ * Merge a live HexKnowledgeChanged event's `entities` batch into the known-
+ * entity registry (entityMeta/entityHP/entityAC/entityStatuses/
+ * characterEquipment) WITHOUT touching entity position — mirrors
+ * applyEntityAppearedBatch's per-entity meta projection field-for-field, but
+ * entries carry no position (see EntityKnowledgeEntry's doc comment) and are
+ * upserted, never treated as a full resync: an entity absent from `entries`
+ * keeps whatever entry it already had — unlike the snapshot path, this is a
+ * partial disclosure, not a reconnect resync, so there is nothing to clear.
+ *
+ * Call this BEFORE applyHexRecordsMerged for the same event, so its
+ * placement resolution sees this event's own disclosures already merged
+ * into entityMeta.
+ * Exported for testing.
+ */
+export function applyEntityKnowledgeBatch(
+  prev: LocalEncounterState,
+  entries: EntityKnowledgeEntry[]
+): LocalEncounterState {
+  if (entries.length === 0) return prev;
+  const newMeta = new Map(prev.entityMeta);
+  const newHP = new Map(prev.entityHP);
+  const newAC = new Map(prev.entityAC);
+  const newStatuses = new Map(prev.entityStatuses);
+  const newEquipment = new Map(prev.characterEquipment);
+  let hpChanged = false;
+  let acChanged = false;
+  let statusesChanged = false;
+  let equipmentChanged = false;
+  for (const {
+    entityId,
+    type,
+    monsterRefId,
+    initialHP,
+    initialAC,
+    statusEffects,
+    displayName,
+    classRefId,
+    propRefId,
+    equipment,
+  } of entries) {
+    newMeta.set(entityId, {
+      type,
+      monsterRefId,
+      displayName,
+      classRefId,
+      propRefId,
+    });
+    if (initialHP !== undefined) {
+      newHP.set(entityId, {
+        current: initialHP.current,
+        max: initialHP.max,
+      });
+      hpChanged = true;
+    }
+    if (initialAC !== undefined && initialAC !== 0) {
+      newAC.set(entityId, initialAC);
+      acChanged = true;
+    }
+    if (statusEffects !== undefined) {
+      const converted = statusEffects
+        .map(toEntityStatus)
+        .filter((s): s is EntityStatus => s !== undefined);
+      if (converted.length > 0) {
+        newStatuses.set(entityId, converted);
+      } else {
+        newStatuses.delete(entityId);
+      }
+      statusesChanged = true;
+    }
+    if (equipment !== undefined) {
+      newEquipment.set(entityId, equipment);
+      equipmentChanged = true;
+    }
+  }
+  return {
+    ...prev,
     entityMeta: newMeta,
     entityHP: hpChanged ? newHP : prev.entityHP,
     entityAC: acChanged ? newAC : prev.entityAC,
@@ -1102,6 +1320,20 @@ export interface UseEncounterStateResult {
     }>
   ) => void;
   /**
+   * rpg-dnd5e-web#609 — merge a live HexKnowledgeChanged event's `entities`
+   * batch into the known-entity registry WITHOUT touching position. See
+   * applyEntityKnowledgeBatch's doc comment for the full contract; call
+   * this BEFORE applyHexRecordsMerged for the same event.
+   */
+  applyEntityKnowledgeBatch: (entries: EntityKnowledgeEntry[]) => void;
+  /**
+   * rpg-dnd5e-web#609 — merge live HexKnowledgeChanged hex records into
+   * revealedHexes and reconcile cached entity positions. The merge-path
+   * counterpart to applySnapshotRegionState's full replace — see
+   * applyHexRecordsMerged's doc comment for the full contract.
+   */
+  applyHexRecordsMerged: (hexes: HexRecord[]) => void;
+  /**
    * Wave rpg-dnd5e-web#571 — refresh a character's equipment display
    * fields (and entityAC) after a successful EquipItem/UnequipItem RPC.
    * Optimistic local mirror — see applyCharacterEquipment's doc comment.
@@ -1238,6 +1470,17 @@ export function useEncounterState(): UseEncounterStateResult {
     []
   );
 
+  const applyEntityKnowledgeBatchCallback = useCallback(
+    (entries: EntityKnowledgeEntry[]) => {
+      setState((prev) => applyEntityKnowledgeBatch(prev, entries));
+    },
+    []
+  );
+
+  const applyHexRecordsMergedCallback = useCallback((hexes: HexRecord[]) => {
+    setState((prev) => applyHexRecordsMerged(prev, hexes));
+  }, []);
+
   const applyCharacterEquipmentCallback = useCallback(
     (entityId: string, equipment: CharacterEquipment) => {
       setState((prev) => applyCharacterEquipment(prev, entityId, equipment));
@@ -1328,6 +1571,8 @@ export function useEncounterState(): UseEncounterStateResult {
     applyWallsRevealed: applyWallsRevealedCallback,
     applyDoorOpened: applyDoorOpenedCallback,
     applyEntityAppearedBatch: applyEntityAppearedBatchCallback,
+    applyEntityKnowledgeBatch: applyEntityKnowledgeBatchCallback,
+    applyHexRecordsMerged: applyHexRecordsMergedCallback,
     applyCharacterEquipment: applyCharacterEquipmentCallback,
     applySnapshotTurnState: applySnapshotTurnStateCallback,
     setPendingPrompt: setPendingPromptCallback,

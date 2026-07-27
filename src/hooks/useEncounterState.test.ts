@@ -34,7 +34,9 @@ import {
   EncounterMode,
   EntityType,
   HexRecordSchema,
+  HexState,
   InputRequiredSchema,
+  PlacementSchema,
   SkillCheckPromptSchema,
   type StatusEffect,
   TargetKind,
@@ -49,6 +51,7 @@ import { describe, expect, it } from 'vitest';
 import { wallKey } from './dungeonMapGeometry';
 import type {
   CharacterEquipment,
+  EntityKnowledgeEntry,
   LocalEncounterState,
 } from './useEncounterState';
 import {
@@ -58,7 +61,9 @@ import {
   applyEntityAppearedBatch,
   applyEntityDamaged,
   applyEntityDied,
+  applyEntityKnowledgeBatch,
   applyEntityRemoved,
+  applyHexRecordsMerged,
   applyInitiativeRolled,
   applyModeChanged,
   applySnapshotRegionState,
@@ -685,6 +690,198 @@ describe('v1alpha2 reducer additions', () => {
 
       expect(after.walls).toBe(beforeWalls);
       expect(after).toBe(state); // fully idempotent — same top-level reference
+    });
+  });
+
+  describe('live hex knowledge merge (rpg-dnd5e-web#609)', () => {
+    /** Seed a known entity's identity WITHOUT a position — mirrors what
+     * applyEntityKnowledgeBatch does for a live HexKnowledgeChanged's own
+     * `entities` batch, ahead of placement resolution. */
+    function seedKnownEntity(
+      prev: LocalEncounterState,
+      entityId: string,
+      overrides?: Partial<EntityKnowledgeEntry>
+    ): LocalEncounterState {
+      return applyEntityKnowledgeBatch(prev, [
+        {
+          entityId,
+          type: EntityType.MONSTER,
+          monsterRefId: 'goblin',
+          initialHP: undefined,
+          initialAC: undefined,
+          ...overrides,
+        },
+      ]);
+    }
+
+    function makePlacement(entityId: string, facing = 0) {
+      return create(PlacementSchema, { entityId, facing });
+    }
+
+    function makeHexRecord(
+      position: { x: number; y: number; z: number },
+      state: HexState,
+      contents: ReturnType<typeof makePlacement>[] = [],
+      edges: Wall[] = []
+    ) {
+      return create(HexRecordSchema, {
+        position: create(V2PositionSchema, position),
+        state,
+        contents,
+        edges,
+      });
+    }
+
+    describe('applyEntityKnowledgeBatch', () => {
+      it('merges entity meta without creating a position cache entry', () => {
+        const state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+        expect(state.entityMeta.get('goblin-1')?.monsterRefId).toBe('goblin');
+        expect(state.entities.has('goblin-1')).toBe(false);
+      });
+
+      it('upserts by id — a batch mentioning one entity leaves others untouched', () => {
+        let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+        state = seedKnownEntity(state, 'goblin-2');
+        expect(state.entityMeta.get('goblin-1')?.monsterRefId).toBe('goblin');
+        expect(state.entityMeta.get('goblin-2')?.monsterRefId).toBe('goblin');
+        expect(state.entityMeta.size).toBe(2);
+      });
+
+      it('is a no-op on an empty batch (same reference)', () => {
+        const state = createEmptyEncounterState();
+        expect(applyEntityKnowledgeBatch(state, [])).toBe(state);
+      });
+    });
+
+    describe('applyHexRecordsMerged', () => {
+      it('adds new hexes without requiring a prior snapshot', () => {
+        const hex = makeHexRecord({ x: 0, y: 0, z: 0 }, HexState.VISIBLE);
+        const after = applyHexRecordsMerged(createEmptyEncounterState(), [hex]);
+        expect(after.revealedHexes.get('0,0,0')).toBe(hex);
+      });
+
+      it('does NOT clear hexes the event does not mention', () => {
+        const entrance = makeTestHex({ x: 0, y: 0, z: 0 }, 'entrance');
+        const chamber = makeTestHex({ x: 1, y: -1, z: 0 }, 'chamber');
+        const seeded = applySnapshotRegionState(
+          createEmptyEncounterState(),
+          'crypt',
+          [],
+          [entrance, chamber]
+        );
+        const newHex = makeHexRecord({ x: 5, y: -3, z: -2 }, HexState.VISIBLE);
+
+        const after = applyHexRecordsMerged(seeded, [newHex]);
+
+        expect(after.revealedHexes.get('0,0,0')).toBe(entrance);
+        expect(after.revealedHexes.get('1,-1,0')).toBe(chamber);
+        expect(after.revealedHexes.get('5,-3,-2')).toBe(newHex);
+        expect(after.revealedHexes.size).toBe(3);
+      });
+
+      it('resolves a placement against a known entity and caches its position', () => {
+        let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+        const hex = makeHexRecord({ x: 2, y: -1, z: -1 }, HexState.VISIBLE, [
+          makePlacement('goblin-1'),
+        ]);
+
+        state = applyHexRecordsMerged(state, [hex]);
+
+        expect(state.entities.get('goblin-1')?.position).toEqual(
+          create(PositionSchema, { x: 2, y: -1, z: -1 })
+        );
+      });
+
+      it('drops a placement whose entityId is not in the known entity set (fail closed)', () => {
+        const hex = makeHexRecord({ x: 2, y: -1, z: -1 }, HexState.VISIBLE, [
+          makePlacement('undisclosed-trap'),
+        ]);
+
+        const state = applyHexRecordsMerged(createEmptyEncounterState(), [hex]);
+
+        expect(state.entities.has('undisclosed-trap')).toBe(false);
+        // The hex record itself is still stored verbatim — the drop only
+        // withholds rendering (the entities position cache), matching the
+        // existing SnapshotDelivered precedent (EncounterView.tsx already
+        // stores a hex's raw contents wholesale while separately filtering
+        // which placements get a position-cache entry).
+        expect(state.revealedHexes.get('2,-1,-1')).toBe(hex);
+      });
+
+      it('re-sight with contents: [] removes a remembered occupant', () => {
+        let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+        const seen = makeHexRecord({ x: 0, y: 0, z: 0 }, HexState.VISIBLE, [
+          makePlacement('goblin-1'),
+        ]);
+        state = applyHexRecordsMerged(state, [seen]);
+        expect(state.entities.has('goblin-1')).toBe(true);
+
+        const emptied = makeHexRecord(
+          { x: 0, y: 0, z: 0 },
+          HexState.VISIBLE,
+          []
+        );
+        state = applyHexRecordsMerged(state, [emptied]);
+
+        expect(state.entities.has('goblin-1')).toBe(false);
+        expect(state.revealedHexes.get('0,0,0')).toBe(emptied);
+      });
+
+      it('does not delete a vacated placement that moved to another hex in the SAME event', () => {
+        let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+        const origin = makeHexRecord({ x: 0, y: 0, z: 0 }, HexState.VISIBLE, [
+          makePlacement('goblin-1'),
+        ]);
+        state = applyHexRecordsMerged(state, [origin]);
+
+        const vacated = makeHexRecord(
+          { x: 0, y: 0, z: 0 },
+          HexState.VISIBLE,
+          []
+        );
+        const arrived = makeHexRecord({ x: 1, y: -1, z: 0 }, HexState.VISIBLE, [
+          makePlacement('goblin-1'),
+        ]);
+        state = applyHexRecordsMerged(state, [vacated, arrived]);
+
+        expect(state.entities.get('goblin-1')?.position).toEqual(
+          create(PositionSchema, { x: 1, y: -1, z: 0 })
+        );
+      });
+
+      it('an empty event changes nothing (same reference)', () => {
+        const state = createEmptyEncounterState();
+        expect(applyHexRecordsMerged(state, [])).toBe(state);
+      });
+
+      it('is idempotent — applying the same event twice leaves state identical', () => {
+        const seeded = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+        const hex = makeHexRecord({ x: 0, y: 0, z: 0 }, HexState.VISIBLE, [
+          makePlacement('goblin-1'),
+        ]);
+
+        const first = applyHexRecordsMerged(seeded, [hex]);
+        const second = applyHexRecordsMerged(first, [hex]);
+
+        expect(second.revealedHexes).toBe(first.revealedHexes);
+        expect(second.entities).toBe(first.entities);
+        expect(second).toEqual(first);
+      });
+
+      it('walls arrive via edges: flattening hex.edges feeds applyWallsRevealed', () => {
+        const wall = makeTestWall({ x: 0, y: 0, z: 0 }, { x: 1, y: -1, z: 0 });
+        const hex = makeHexRecord(
+          { x: 0, y: 0, z: 0 },
+          HexState.VISIBLE,
+          [],
+          [wall]
+        );
+
+        let state = applyHexRecordsMerged(createEmptyEncounterState(), [hex]);
+        state = applyWallsRevealed(state, hex.edges);
+
+        expect(state.walls.get(wallKey(wall))).toBe(wall);
+      });
     });
   });
 });

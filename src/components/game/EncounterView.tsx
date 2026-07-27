@@ -26,12 +26,12 @@
  * InputRequiredDelivered events, same as every other verb on this stream.
  * DoorOpened is now a pure notification (door identity only,
  * rpg-api-protos#197) — the door's authoritative rendered pose rides the
- * next snapshot's `HexRecord.edges` instead of a parallel reveal event
- * (there is no live per-hex knowledge-change consumption yet, tracked as
- * rpg-dnd5e-web#609). onDoorOpened still flips the matching wall's own kind
- * to DOOR_OPEN locally in useEncounterState (see applyDoorOpened) so the
- * pose updates instantly on the click that caused it, ahead of that next
- * snapshot.
+ * live `HexKnowledgeChanged` stream (rpg-dnd5e-web#609, onHexKnowledgeChanged
+ * below) or the next snapshot's `HexRecord.edges`, instead of a parallel
+ * reveal event. onDoorOpened still flips the matching wall's own kind to
+ * DOOR_OPEN locally in useEncounterState (see applyDoorOpened) so the pose
+ * updates instantly on the click that caused it, ahead of whichever of those
+ * two arrives.
  */
 
 import { create } from '@bufbuild/protobuf';
@@ -412,12 +412,66 @@ export function EncounterView({
       }
     },
     // DoorOpened is a pure notification now (door identity only,
-    // rpg-api-protos#197) — the rendered pose rides the next snapshot's
-    // HexRecord.edges, not a parallel reveal event. HexGrid's door-click
-    // surface still needs a v2-shaped DoorInfo[] (see this file's top
-    // comment) — tracked separately, not this slice.
+    // rpg-api-protos#197) — the rendered pose rides the live
+    // HexKnowledgeChanged stream (onHexKnowledgeChanged below) or the next
+    // snapshot's HexRecord.edges, not a parallel reveal event. HexGrid's
+    // door-click surface still needs a v2-shaped DoorInfo[] (see this file's
+    // top comment) — tracked separately, not this slice.
     onDoorOpened: (e) => {
       encounterState.applyDoorOpened(e.doorEntityId);
+    },
+    // rpg-dnd5e-web#609: the only event that moves fog of war
+    // (rpg-api-protos#197). It is a DIFF — omission means untouched, never
+    // gone — so unlike SnapshotDelivered above this handler MERGES, never
+    // replaces. Order matters: entities are merged into the known-entity
+    // registry FIRST (applyEntityKnowledgeBatch) so applyHexRecordsMerged's
+    // placement resolution — which fails closed against entityMeta, per the
+    // proto's "a placement that resolves against nothing MUST be dropped"
+    // rule — sees this same message's own disclosures already known. See
+    // both reducers' doc comments in useEncounterState.ts for the full
+    // merge-vs-replace contract this handler exists to satisfy.
+    onHexKnowledgeChanged: (e) => {
+      const knowledgeEntries = e.entities.map((entity) => ({
+        entityId: entity.id,
+        type: entity.type,
+        monsterRefId:
+          entity.data?.case === 'monster'
+            ? entity.data.value.monsterRef?.id
+            : undefined,
+        initialHP: entity.hp
+          ? { current: entity.hp.current, max: entity.hp.max }
+          : undefined,
+        initialAC: entity.armorClass,
+        statusEffects: entity.statusEffects,
+        displayName: entity.displayName,
+        classRefId:
+          entity.data?.case === 'character'
+            ? entity.data.value.classRef?.id
+            : undefined,
+        propRefId:
+          entity.data?.case === 'obstacle'
+            ? entity.data.value.obstacleRef?.id
+            : entity.data?.case === 'prop'
+              ? entity.data.value.propRef?.id
+              : undefined,
+        equipment:
+          entity.data?.case === 'character'
+            ? characterEquipmentFrom(entity.data.value)
+            : undefined,
+      }));
+      if (knowledgeEntries.length > 0) {
+        encounterState.applyEntityKnowledgeBatch(knowledgeEntries);
+      }
+
+      encounterState.applyHexRecordsMerged(e.hexes);
+
+      // Walls are additive/idempotent already (applyWallsRevealed); a
+      // REMEMBERED hex carries no edges today (known API-side gap, not
+      // compensated here), so this is a no-op for those.
+      const liveWalls = e.hexes.flatMap((hex) => hex.edges ?? []);
+      if (liveWalls.length > 0) {
+        encounterState.applyWallsRevealed(liveWalls);
+      }
     },
     onStatusApplied: (e) => {
       encounterState.applyStatusApplied(e);

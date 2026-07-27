@@ -10,6 +10,7 @@ import type {
   EntityMoved,
   EntityRemoved,
   EntityStabilized,
+  HexKnowledgeChanged,
   InitiativeRolled,
   InputRequiredDelivered,
   ModeChanged,
@@ -63,6 +64,17 @@ export interface EncounterStreamOptions {
    * owns hex/wall knowledge now.
    */
   onDoorOpened?: EncounterStreamHandler<DoorOpened>;
+  /**
+   * rpg-dnd5e-web#609: the only event that moves fog of war (rpg-api-
+   * protos#197). It is a DIFF — a hex/entity absent from the payload is
+   * untouched, never cleared, and a VISIBLE hex's `contents` is total (an
+   * empty list positively means "nobody here", which is how a remembered
+   * occupant disappears on re-sight with no separate forget message). The
+   * web's entire job on receipt is merge-by-position / upsert-by-id; see
+   * useEncounterState's applyEntityKnowledgeBatch + applyHexRecordsMerged
+   * doc comments for the full contract and call order.
+   */
+  onHexKnowledgeChanged?: EncounterStreamHandler<HexKnowledgeChanged>;
   // Wave 2.8: combat events (TURN_BASED mode + attacks + turn cycle).
   /** Authoritative HP update; carries `hp_after` and `amount`. */
   onEntityDamaged?: EncounterStreamHandler<EntityDamaged>;
@@ -177,6 +189,9 @@ export function dispatchEncounterStreamEvent(
     case 'doorOpened':
       options.onDoorOpened?.(payload.value, metadata);
       break;
+    case 'hexKnowledgeChanged':
+      options.onHexKnowledgeChanged?.(payload.value, metadata);
+      break;
     case 'entityDamaged':
       options.onEntityDamaged?.(payload.value, metadata);
       break;
@@ -227,10 +242,10 @@ export function dispatchEncounterStreamEvent(
       break;
     default:
       // Either out-of-current-scope but known to the proto (entityHealed,
-      // hexKnowledgeChanged, dialogue, etc. — the proto defines 28 event
-      // cases; we currently handle 19) OR a genuinely unknown case from a
-      // proto version mismatch. Either way: warn + continue so the stream doesn't
-      // tear down. Add a case arm + callback when the feature lands.
+      // dialogue, etc. — the proto defines 28 event cases; we currently
+      // handle 20) OR a genuinely unknown case from a proto version
+      // mismatch. Either way: warn + continue so the stream doesn't tear
+      // down. Add a case arm + callback when the feature lands.
       // The cast strips the narrowed-to-undefined `case` so we can log it.
       console.warn(
         '[useEncounterStream] unhandled event case:',
