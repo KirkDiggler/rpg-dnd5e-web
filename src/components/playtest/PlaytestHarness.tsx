@@ -1,7 +1,10 @@
 import { create } from '@bufbuild/protobuf';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { ActionTarget } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
-import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import type {
+  AvailableAction,
+  Position,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
   EntityType,
@@ -17,13 +20,9 @@ import { useInteract } from '../../api/useInteract';
 import { useMoveEntity } from '../../api/useMoveEntity';
 import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useTakeAction } from '../../api/useTakeAction';
-import {
-  hexesWithPosition,
-  useEncounterState,
-} from '../../hooks/useEncounterState';
+import { useEncounterState } from '../../hooks/useEncounterState';
 import { errorMessage, formatSourceRefs } from '../../utils/combatFormat';
 import { getConditionDisplay } from '../../utils/conditionIcons';
-import { protoPositionToHex } from '../../utils/hexCoord';
 import { PromptModal } from '../game/PromptModal';
 import { StatusBadgeList } from '../ui/StatusBadgeList';
 import { ActionMenu } from './ActionMenu';
@@ -205,19 +204,35 @@ export function PlaytestHarness() {
             e.encounter.mode,
             e.encounter.turnState
           );
+          const hexes = e.encounter.space?.hexes ?? [];
           encounterState.applySnapshotRegionState(
             e.encounter.space?.theme ?? '',
             e.encounter.space?.zones ?? [],
-            e.encounter.space?.hexes ?? []
+            hexes
           );
+          // v1alpha2 hex-knowledge contract (rpg-api-protos#197): Entity no
+          // longer carries its own position — a hex states occupancy, an
+          // entity says only what it is. Build a one-shot reverse index
+          // (entityId -> the hex's position) from this snapshot's
+          // authoritative `contents` before mapping entities, rebuilt from
+          // scratch every snapshot (mirrors EncounterView.tsx) rather than
+          // merged into a prior index, since `contents` is total for a
+          // visible hex.
+          const positionByEntityId = new Map<string, Position>();
+          for (const hex of hexes) {
+            if (!hex.position) continue;
+            for (const placement of hex.contents ?? []) {
+              positionByEntityId.set(placement.entityId, hex.position);
+            }
+          }
           // Seed entities from the snapshot's space entities list in a single
           // batch setState call to avoid N intermediate renders for N entities.
           const entityEntries = (e.encounter.space?.entities ?? [])
-            .filter((entity) => entity.position !== undefined)
+            .filter((entity) => positionByEntityId.has(entity.id))
             .map((entity) => ({
               entity: create(EntityStateSchema, {
                 entityId: entity.id,
-                position: v2PositionToV1(entity.position!),
+                position: v2PositionToV1(positionByEntityId.get(entity.id)!),
               }),
               type: entity.type,
               monsterRefId:
@@ -244,7 +259,11 @@ export function PlaytestHarness() {
           if (entityEntries.length > 0) {
             encounterState.applyEntityAppearedBatch(entityEntries);
           }
-          const walls = e.encounter.space?.walls ?? [];
+          // v1alpha2 hex-knowledge contract: walls no longer ride a flat
+          // Space.walls list — each hex carries its own boundary segments as
+          // `edges`. The data moved, not disappeared, so this flattens the
+          // same shape applyWallsRevealed already expects.
+          const walls = hexes.flatMap((hex) => hex.edges ?? []);
           if (walls.length > 0) {
             encounterState.applyWallsRevealed(walls);
           }
@@ -267,61 +286,10 @@ export function PlaytestHarness() {
         const pos = last ? `(${last.x},${last.y},${last.z})` : '(no path)';
         addLog(`EntityMoved ${e.entityId} → ${pos}`);
       },
-      onGeometryRevealed: (e) => {
-        const revealedHexes = hexesWithPosition(e.hexes);
-        encounterState.applyHexesRevealed(revealedHexes);
-        const walls = e.walls ?? [];
-        if (walls.length > 0) {
-          encounterState.applyWallsRevealed(walls);
-        }
-        addLog(`GeometryRevealed ${revealedHexes.length} hex(es)`);
-      },
-      onEntityAppeared: (e) => {
-        if (!e.entity || !e.entity.position) return;
-        // Create a v1alpha1 stub for positional tracking in the entities Map.
-        // The v1alpha2 Entity fields (type, hp, MonsterData) flow separately
-        // into entityMeta and entityHP via applyEntityMeta below.
-        const stub = create(EntityStateSchema, {
-          entityId: e.entity.id,
-          position: v2PositionToV1(e.entity.position),
-        });
-        encounterState.applyEntityAppeared(stub);
-        // Store v1alpha2 identity metadata and seed initial HP + AC.
-        const monsterRefId =
-          e.entity.data?.case === 'monster'
-            ? e.entity.data.value.monsterRef?.id
-            : undefined;
-        const initialHP = e.entity.hp
-          ? { current: e.entity.hp.current, max: e.entity.hp.max }
-          : undefined;
-        const classRefId =
-          e.entity.data?.case === 'character'
-            ? e.entity.data.value.classRef?.id
-            : undefined;
-        encounterState.applyEntityMeta(
-          e.entity.id,
-          e.entity.type,
-          monsterRefId,
-          initialHP,
-          e.entity.armorClass,
-          e.entity.displayName,
-          classRefId
-        );
-        addLog(`EntityAppeared ${e.entity.id}`);
-      },
-      onEntityDisappeared: (e) => {
-        if (e.lastKnownPosition) {
-          encounterState.applyEntityDisappeared(
-            e.entityId,
-            protoPositionToHex(e.lastKnownPosition)
-          );
-        }
-        addLog(`EntityDisappeared ${e.entityId}`);
-      },
       onDoorOpened: (e) => {
-        // Cause/effect split: DoorOpened only carries the door identity in
-        // Wave 2.7; the newly-visible hexes flow on a parallel
-        // GeometryRevealed event handled above. Log both lines independently.
+        // DoorOpened is a pure notification now (door identity only,
+        // rpg-api-protos#197) — the rendered pose rides the next snapshot's
+        // HexRecord.edges, not a parallel reveal event.
         encounterState.applyDoorOpened(e.doorEntityId);
         addLog(`DoorOpened ${e.doorEntityId}`);
       },

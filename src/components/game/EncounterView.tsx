@@ -23,10 +23,15 @@
  * handleDoorClick below fires `useInteract`'s `Interact(encounterId,
  * doorId, 'open')`; the world-changing effects (open/reveal, or a
  * skill-check prompt for a locked door) flow back as DoorOpened/
- * GeometryRevealed/InputRequiredDelivered events, same as every other verb
- * on this stream. onDoorOpened also flips the matching wall's own kind to
- * DOOR_OPEN in useEncounterState (see applyDoorOpened) so the pose updates
- * immediately, without waiting on a walls-bearing GeometryRevealed.
+ * InputRequiredDelivered events, same as every other verb on this stream.
+ * DoorOpened is now a pure notification (door identity only,
+ * rpg-api-protos#197) — the door's authoritative rendered pose rides the
+ * next snapshot's `HexRecord.edges` instead of a parallel reveal event
+ * (there is no live per-hex knowledge-change consumption yet, tracked as
+ * rpg-dnd5e-web#609). onDoorOpened still flips the matching wall's own kind
+ * to DOOR_OPEN locally in useEncounterState (see applyDoorOpened) so the
+ * pose updates instantly on the click that caused it, ahead of that next
+ * snapshot.
  */
 
 import { create } from '@bufbuild/protobuf';
@@ -37,6 +42,7 @@ import type {
   AvailableAction,
   CharacterData,
   Entity,
+  Position,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
@@ -58,7 +64,6 @@ import { useCombatLog } from '../../hooks/useCombatLog';
 import type { CharacterEquipment } from '../../hooks/useEncounterState';
 import { useEncounterState } from '../../hooks/useEncounterState';
 import { errorMessage } from '../../utils/combatFormat';
-import { protoPositionToHex } from '../../utils/hexCoord';
 import {
   actionKey,
   targetKindNeedsPrompt,
@@ -306,17 +311,33 @@ export function EncounterView({
           e.encounter.mode,
           e.encounter.turnState
         );
+        const hexes = e.encounter.space?.hexes ?? [];
         encounterState.applySnapshotRegionState(
           e.encounter.space?.theme ?? '',
           e.encounter.space?.zones ?? [],
-          e.encounter.space?.hexes ?? []
+          hexes
         );
+        // v1alpha2 hex-knowledge contract (rpg-api-protos#197): Entity no
+        // longer carries its own position — a hex states occupancy, an
+        // entity says only what it is. Build a one-shot reverse index
+        // (entityId -> the hex's position) from this snapshot's authoritative
+        // `contents` before mapping entities, and rebuild it from scratch
+        // every snapshot rather than merging into a prior index — `contents`
+        // is total for a visible hex, so a stale carried-over placement could
+        // resurrect an entity the current snapshot no longer places anywhere.
+        const positionByEntityId = new Map<string, Position>();
+        for (const hex of hexes) {
+          if (!hex.position) continue;
+          for (const placement of hex.contents ?? []) {
+            positionByEntityId.set(placement.entityId, hex.position);
+          }
+        }
         const entityEntries = (e.encounter.space?.entities ?? [])
-          .filter((entity) => entity.position !== undefined)
+          .filter((entity) => positionByEntityId.has(entity.id))
           .map((entity) => ({
             entity: create(EntityStateSchema, {
               entityId: entity.id,
-              position: v2PositionToV1(entity.position!),
+              position: v2PositionToV1(positionByEntityId.get(entity.id)!),
             }),
             type: entity.type,
             monsterRefId:
@@ -365,7 +386,11 @@ export function EncounterView({
         if (entityEntries.length > 0) {
           encounterState.applyEntityAppearedBatch(entityEntries);
         }
-        const walls = e.encounter.space?.walls ?? [];
+        // v1alpha2 hex-knowledge contract: walls no longer ride a flat
+        // Space.walls list — each hex carries its own boundary segments as
+        // `edges`. The data moved, not disappeared, so this flattens the
+        // same shape applyWallsRevealed already expects.
+        const walls = hexes.flatMap((hex) => hex.edges ?? []);
         if (walls.length > 0) {
           encounterState.applyWallsRevealed(walls);
         }
@@ -386,69 +411,13 @@ export function EncounterView({
         );
       }
     },
-    onGeometryRevealed: (e) => {
-      encounterState.applyHexesRevealed(e.hexes);
-      const walls = e.walls ?? [];
-      if (walls.length > 0) {
-        encounterState.applyWallsRevealed(walls);
-      }
-    },
-    // Cause/effect split (mirrors PlaytestHarness): DoorOpened only carries
-    // the door identity — the newly-visible geometry rides the parallel
-    // GeometryRevealed above. State-only for now: HexGrid's door-click
+    // DoorOpened is a pure notification now (door identity only,
+    // rpg-api-protos#197) — the rendered pose rides the next snapshot's
+    // HexRecord.edges, not a parallel reveal event. HexGrid's door-click
     // surface still needs a v2-shaped DoorInfo[] (see this file's top
     // comment) — tracked separately, not this slice.
     onDoorOpened: (e) => {
       encounterState.applyDoorOpened(e.doorEntityId);
-    },
-    onEntityAppeared: (e) => {
-      if (!e.entity || !e.entity.position) return;
-      const stub = create(EntityStateSchema, {
-        entityId: e.entity.id,
-        position: v2PositionToV1(e.entity.position),
-      });
-      encounterState.applyEntityAppeared(stub);
-      const monsterRefId =
-        e.entity.data?.case === 'monster'
-          ? e.entity.data.value.monsterRef?.id
-          : undefined;
-      const initialHP = e.entity.hp
-        ? { current: e.entity.hp.current, max: e.entity.hp.max }
-        : undefined;
-      const classRefId =
-        e.entity.data?.case === 'character'
-          ? e.entity.data.value.classRef?.id
-          : undefined;
-      // See the matching onSnapshotDelivered comment above — same
-      // obstacle_ref/prop_ref -> propRefId derivation for the live
-      // (non-snapshot) appearance path.
-      const propRefId =
-        e.entity.data?.case === 'obstacle'
-          ? e.entity.data.value.obstacleRef?.id
-          : e.entity.data?.case === 'prop'
-            ? e.entity.data.value.propRef?.id
-            : undefined;
-      encounterState.applyEntityMeta(
-        e.entity.id,
-        e.entity.type,
-        monsterRefId,
-        initialHP,
-        e.entity.armorClass,
-        e.entity.displayName,
-        classRefId,
-        propRefId,
-        e.entity.data?.case === 'character'
-          ? characterEquipmentFrom(e.entity.data.value)
-          : undefined
-      );
-    },
-    onEntityDisappeared: (e) => {
-      if (e.lastKnownPosition) {
-        encounterState.applyEntityDisappeared(
-          e.entityId,
-          protoPositionToHex(e.lastKnownPosition)
-        );
-      }
     },
     onStatusApplied: (e) => {
       encounterState.applyStatusApplied(e);
@@ -759,8 +728,10 @@ export function EncounterView({
   // (take_action.go). Dropping the response therefore soft-locked the
   // player: the prompt persists server-side, so every later verb is refused
   // with "resolve the pending prompt before issuing another action" while
-  // nothing is on screen to resolve. The world-changing half (door opens,
-  // hexes reveal) still flows as DoorOpened/GeometryRevealed events.
+  // nothing is on screen to resolve. The world-changing half still flows
+  // over the stream: DoorOpened (door identity, pure notification since
+  // rpg-api-protos#197) plus the next snapshot's HexRecord.edges for the
+  // newly-visible geometry — there is no parallel reveal event anymore.
   const handleDoorClick = async (doorId: string) => {
     try {
       const response = await interact(encounterId, doorId, 'open');

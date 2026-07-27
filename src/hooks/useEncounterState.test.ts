@@ -577,68 +577,6 @@ describe('v1alpha2 reducer additions', () => {
     });
   });
 
-  describe('applyEntityAppeared', () => {
-    it('adds a new entity at first-visible position with ghost cleared', () => {
-      const prev = createEmptyEncounterState();
-      const entity = makeTestEntity('goblin-1', { x: 3, y: -2, z: -1 });
-      const after = seedEntity(prev, entity);
-      const stored = after.entities.get('goblin-1');
-      expect(stored).toBeDefined();
-      expect(stored?.ghost).toBeFalsy();
-      expect(stored?.position?.x).toBe(3);
-      expect(stored?.position?.y).toBe(-2);
-      expect(stored?.position?.z).toBe(-1);
-    });
-
-    it('clears the ghost flag on a previously-disappeared entity', () => {
-      const entity = makeTestEntity('alice', { x: 0, y: 0, z: 0 });
-      const withEntity = seedEntity(createEmptyEncounterState(), entity);
-      const ghosted = applyEntityDisappeared(withEntity, 'alice', {
-        q: 1,
-        r: -1,
-        s: 0,
-      });
-      expect(ghosted.entities.get('alice')?.ghost).toBe(true);
-
-      const reappeared = seedEntity(
-        ghosted,
-        makeTestEntity('alice', { x: 5, y: -3, z: -2 })
-      );
-      expect(reappeared.entities.get('alice')?.ghost).toBeFalsy();
-    });
-  });
-
-  describe('applyEntityDisappeared', () => {
-    it('keeps entity in store, sets ghost=true, updates position to last_known', () => {
-      const entity = makeTestEntity('bob', { x: 0, y: 0, z: 0 });
-      const prev = seedEntity(createEmptyEncounterState(), entity);
-      const after = applyEntityDisappeared(prev, 'bob', {
-        q: 4,
-        r: -2,
-        s: -2,
-      });
-      const stored = after.entities.get('bob');
-      expect(stored?.ghost).toBe(true);
-      expect(stored?.position?.x).toBe(4);
-      expect(stored?.position?.y).toBe(-2);
-      expect(stored?.position?.z).toBe(-2);
-    });
-
-    it('is a no-op if the entity is not in state (defensive)', () => {
-      const prev = createEmptyEncounterState();
-      const after = applyEntityDisappeared(prev, 'unknown', {
-        q: 0,
-        r: 0,
-        s: 0,
-      });
-      expect(after.entities.size).toBe(0);
-      // Reference identity preserved on no-op — matches mergeEntityPosition's
-      // pattern; prevents needless React re-renders if a stream loop fires
-      // EntityDisappeared for an entity we never saw.
-      expect(after).toBe(prev);
-    });
-  });
-
   describe('applyDoorOpened', () => {
     it('adds the door entity id to openDoors', () => {
       const prev = createEmptyEncounterState();
@@ -669,12 +607,13 @@ describe('v1alpha2 reducer additions', () => {
       expect(prev.openDoors.size).toBe(0);
     });
 
-    it('does not touch revealedHexes (cause/effect split)', () => {
-      // The toolkit emits DoorOpened (cause) and GeometryRevealed (effect)
-      // as two events. applyDoorOpened only updates door state; the hex
-      // reveal flows through applyHexesRevealed independently.
-      let state = createEmptyEncounterState();
-      state = applyHexesRevealed(state, [makeTestHex({ x: 1, y: -1, z: 0 })]);
+    it('does not touch revealedHexes', () => {
+      let state = applySnapshotRegionState(
+        createEmptyEncounterState(),
+        '',
+        [],
+        [makeTestHex({ x: 1, y: -1, z: 0 })]
+      );
       const beforeOpen = state.revealedHexes;
       state = applyDoorOpened(state, 'door-east');
       expect(state.revealedHexes).toBe(beforeOpen);
@@ -746,38 +685,6 @@ describe('v1alpha2 reducer additions', () => {
 
       expect(after.walls).toBe(beforeWalls);
       expect(after).toBe(state); // fully idempotent — same top-level reference
-    });
-  });
-
-  describe('appear/disappear sequences', () => {
-    it('survives appeared → moved → disappeared → appeared cleanly', () => {
-      let state = createEmptyEncounterState();
-      state = seedEntity(state, makeTestEntity('mover', { x: 0, y: 0, z: 0 }));
-      expect(state.entities.get('mover')?.ghost).toBeFalsy();
-
-      state = mergeEntityPosition(
-        state,
-        'mover',
-        create(PositionSchema, { x: 1, y: -1, z: 0 })
-      );
-      expect(state.entities.get('mover')?.position?.x).toBe(1);
-      expect(state.entities.get('mover')?.position?.y).toBe(-1);
-      expect(state.entities.get('mover')?.position?.z).toBe(0);
-
-      state = applyEntityDisappeared(state, 'mover', { q: 2, r: -1, s: -1 });
-      expect(state.entities.get('mover')?.ghost).toBe(true);
-      expect(state.entities.get('mover')?.position?.x).toBe(2);
-      expect(state.entities.get('mover')?.position?.y).toBe(-1);
-      expect(state.entities.get('mover')?.position?.z).toBe(-1);
-
-      state = seedEntity(
-        state,
-        makeTestEntity('mover', { x: 5, y: -3, z: -2 })
-      );
-      expect(state.entities.get('mover')?.ghost).toBeFalsy();
-      expect(state.entities.get('mover')?.position?.x).toBe(5);
-      expect(state.entities.get('mover')?.position?.y).toBe(-3);
-      expect(state.entities.get('mover')?.position?.z).toBe(-2);
     });
   });
 });
@@ -1232,218 +1139,6 @@ describe('Wave 2.8 combat reducers', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Wave 2.8 display fixes (#397, #399)
-// ---------------------------------------------------------------------------
-
-describe('applyEntityMetaFromAppeared', () => {
-  it('stores type and monsterRefId for a monster entity', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    const meta = after.entityMeta.get('goblin-1');
-    expect(meta?.type).toBe(EntityType.MONSTER);
-    expect(meta?.monsterRefId).toBe('goblin');
-  });
-
-  it('stores type without monsterRefId for a character entity', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'char-alice',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      undefined
-    );
-    const meta = after.entityMeta.get('char-alice');
-    expect(meta?.type).toBe(EntityType.CHARACTER);
-    expect(meta?.monsterRefId).toBeUndefined();
-  });
-
-  it('stores propRefId for an obstacle/prop entity (rpg-dnd5e-web#528)', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'obstacle-1',
-      EntityType.OBSTACLE,
-      undefined,
-      undefined,
-      undefined,
-      'Barrel',
-      undefined,
-      'barrel'
-    );
-    const meta = after.entityMeta.get('obstacle-1');
-    expect(meta?.propRefId).toBe('barrel');
-  });
-
-  it('stores displayName and classRefId when provided (rpg-dnd5e-web#491)', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'char-alice',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      undefined,
-      'Alice',
-      'rogue'
-    );
-    const meta = after.entityMeta.get('char-alice');
-    expect(meta?.displayName).toBe('Alice');
-    expect(meta?.classRefId).toBe('rogue');
-  });
-
-  it('seeds entityHP when initialHP is provided', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      { current: 7, max: 7 },
-      undefined
-    );
-    expect(after.entityHP.get('goblin-1')).toEqual({ current: 7, max: 7 });
-  });
-
-  it('does not touch entityHP when initialHP is undefined', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    expect(after.entityHP.size).toBe(0);
-  });
-
-  it('overwrites existing meta on re-appear (server is authoritative)', () => {
-    let state = createEmptyEncounterState();
-    state = applyEntityMetaFromAppeared(
-      state,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    state = applyEntityMetaFromAppeared(
-      state,
-      'goblin-1',
-      EntityType.MONSTER,
-      'hobgoblin',
-      { current: 11, max: 11 },
-      undefined
-    );
-    expect(state.entityMeta.get('goblin-1')?.monsterRefId).toBe('hobgoblin');
-    expect(state.entityHP.get('goblin-1')).toEqual({ current: 11, max: 11 });
-  });
-
-  it('does not mutate the previous state', () => {
-    const prev = createEmptyEncounterState();
-    applyEntityMetaFromAppeared(
-      prev,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      { current: 5, max: 7 },
-      undefined
-    );
-    expect(prev.entityMeta.size).toBe(0);
-    expect(prev.entityHP.size).toBe(0);
-  });
-
-  it('preserves other entity meta entries', () => {
-    let state = createEmptyEncounterState();
-    state = applyEntityMetaFromAppeared(
-      state,
-      'char-alice',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      undefined
-    );
-    state = applyEntityMetaFromAppeared(
-      state,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    expect(state.entityMeta.size).toBe(2);
-    expect(state.entityMeta.get('char-alice')?.type).toBe(EntityType.CHARACTER);
-    expect(state.entityMeta.get('goblin-1')?.type).toBe(EntityType.MONSTER);
-  });
-
-  it('seeds entityAC from v2 Entity.armor_class', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'char-charli',
-      EntityType.CHARACTER,
-      undefined,
-      { current: 12, max: 12 },
-      15
-    );
-    expect(after.entityAC.get('char-charli')).toBe(15);
-  });
-
-  it('does not touch entityAC when initialAC is undefined', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'char-charli',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      undefined
-    );
-    expect(after.entityAC.has('char-charli')).toBe(false);
-  });
-
-  it('seeds characterEquipment when equipment is provided (rpg-dnd5e-web#571)', () => {
-    const prev = createEmptyEncounterState();
-    const equipment = testEquipment();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'char-aldric',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      undefined,
-      'Sir Aldric',
-      'fighter',
-      undefined,
-      equipment
-    );
-    expect(after.characterEquipment.get('char-aldric')).toBe(equipment);
-  });
-
-  it('does not touch characterEquipment when equipment is undefined', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    expect(after.characterEquipment.size).toBe(0);
-  });
-});
-
 describe('applySnapshotTurnState', () => {
   it('sets initiativeOrder, activeEntityId, round, and mode from snapshot turn state', () => {
     const prev = createEmptyEncounterState();
@@ -1768,10 +1463,17 @@ describe('applyEntityAppearedBatch', () => {
   });
 
   it('sets ghost=false on all batch entities', () => {
-    // applyEntityAppearedBatch should clear ghost just like applyEntityAppeared
+    // applyEntityAppearedBatch clears ghost on revive — there is no longer a
+    // live disappear event, so the ghost precondition is built directly here.
     const entity = makeTestEntity('mover', { x: 0, y: 0, z: 0 });
     let state = seedEntity(createEmptyEncounterState(), entity);
-    state = applyEntityDisappeared(state, 'mover', { q: 1, r: -1, s: 0 });
+    const ghostedEntities = new Map(state.entities);
+    ghostedEntities.set('mover', {
+      ...state.entities.get('mover')!,
+      ghost: true,
+      position: create(PositionSchema, { x: 1, y: -1, z: 0 }),
+    });
+    state = { ...state, entities: ghostedEntities };
     expect(state.entities.get('mover')?.ghost).toBe(true);
 
     state = applyEntityAppearedBatch(state, [
@@ -2298,14 +2000,15 @@ describe('applyCharacterEquipment', () => {
 
   it('leaves entityAC untouched when armorClassDetail is undefined', () => {
     let prev = createEmptyEncounterState();
-    prev = applyEntityMetaFromAppeared(
-      prev,
-      'char-aldric',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      18
-    );
+    prev = applyEntityAppearedBatch(prev, [
+      {
+        entity: makeTestEntity('char-aldric', { x: 0, y: 0, z: 0 }),
+        type: EntityType.CHARACTER,
+        monsterRefId: undefined,
+        initialHP: undefined,
+        initialAC: 18,
+      },
+    ]);
     const after = applyCharacterEquipment(
       prev,
       'char-aldric',

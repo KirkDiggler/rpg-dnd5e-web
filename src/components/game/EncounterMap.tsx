@@ -87,7 +87,7 @@ export interface EncounterMapProps {
    * synthesis below only needs the key set, derived internally.
    */
   revealedHexes: Map<string, HexRecord>;
-  /** Sticky revealed walls, keyed by wallKey, from Space.walls/GeometryRevealed.walls. Renders as [] when the server sends none. */
+  /** Sticky revealed walls, keyed by wallKey, flattened from each revealed hex's `HexRecord.edges` (rpg-api-protos#197 — walls now ride per-hex rather than a flat `Space.walls` list). Renders as [] when the server sends none. */
   walls: Map<string, Wall>;
   /** Per-entity HP — marks monsters dead (HP <= 0) so HexGrid renders their corpse. */
   entityHP: Map<string, { current: number; max: number }>;
