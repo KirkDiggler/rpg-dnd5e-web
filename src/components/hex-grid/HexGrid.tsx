@@ -350,7 +350,13 @@ function Scene({
   ambientIntensity = 0.6,
   directionalIntensity = 0.8,
   moodPointLights = [],
-  floorPoolLights = [],
+  // No `= []` default here (Copilot review, PR #620) — unlike
+  // moodPointLights above, a fresh array literal every render would give
+  // SyntyHexFloor's `poolLights` prop a new identity each time even when
+  // pooling is "off", defeating memoization for no reason. Left
+  // `undefined`, SyntyHexFloorTile's own `!poolLights || poolLights.length
+  // === 0` check already treats that identically to an empty array.
+  floorPoolLights,
   litSurfaces = false,
   children,
 }: HexGridProps) {

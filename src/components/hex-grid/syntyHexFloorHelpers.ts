@@ -77,6 +77,12 @@ export function computeFloorPoolColor(
   let r = 0;
   let g = 0;
   let b = 0;
+  // Single scratch Color reused for parsing every light's color string
+  // this call (Copilot review, PR #620) — `new THREE.Color(light.color)`
+  // inside the loop allocated one object per light per tile per render;
+  // `.set()` only ever needs to be read immediately into r/g/b below, so
+  // one reused instance is equivalent and avoids that per-light churn.
+  const scratch = new THREE.Color();
   for (const light of lights) {
     if (light.distance <= 0) continue;
     const dx = worldX - light.position[0];
@@ -86,10 +92,10 @@ export function computeFloorPoolColor(
     const t = 1 - dist / light.distance;
     const weight = t * t;
     if (weight <= 0) continue;
-    const c = new THREE.Color(light.color);
-    r += c.r * weight;
-    g += c.g * weight;
-    b += c.b * weight;
+    scratch.set(light.color);
+    r += scratch.r * weight;
+    g += scratch.g * weight;
+    b += scratch.b * weight;
     weightSum += weight;
   }
   if (weightSum <= 0) return base;
