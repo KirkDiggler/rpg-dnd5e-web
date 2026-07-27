@@ -147,7 +147,31 @@ export function tileWallSegment(
    * caller) skips the correction entirely, keeping the original
    * direction-only rotationY unchanged.
    */
-  facing?: WorldPos
+  facing?: WorldPos,
+  /**
+   * Extra width (world units) grown symmetrically onto EACH side of
+   * every tile's rendered bounding box, so adjacent tiles OVERLAP by this
+   * amount instead of meeting exactly edge-to-edge (rpg-dnd5e-web#634:
+   * Kirk's tall-wall-default walk found visible air gaps between
+   * adjacent wall segments, worse in the lower half). Root cause,
+   * confirmed via an isolated two-tile render measuring the actual
+   * rendered silhouette (not just the theoretical bounding box, which
+   * DOES meet flush with zero gap by construction — the exact-tiling math
+   * itself was never wrong): this pack's wall panels are authored with a
+   * deliberately irregular, rough-hewn rock-cut edge silhouette, not a
+   * flat rectangular one — the edge recedes inward from the piece's own
+   * bounding box by varying amounts at different heights (measured: ~0.01
+   * unit near the top, up to ~0.05 unit in the lower ~60% of this pack's
+   * "plain" variant specifically), so two tiles placed exactly
+   * bbox-to-bbox leave a real gap wherever BOTH neighbors' edges recede
+   * at the same height. Same class of fix as `envelopeCornerOverlapMargin`
+   * (wallRuns.ts) already uses for room CORNERS — deliberately overlapping
+   * geometry to self-cover an irregular/non-mitered seam rather than
+   * trying to author a perfectly complementary edge profile. Default 0
+   * preserves the exact pre-fix tiling math (and every existing test
+   * asserting on it) for any caller that doesn't pass a value.
+   */
+  overlapMargin = 0
 ): TiledPiece[] {
   const dx = segment.end.x - segment.start.x;
   const dz = segment.end.z - segment.start.z;
@@ -155,6 +179,11 @@ export function tileWallSegment(
   if (length < WALL_RUN_LENGTH_EPSILON) return [];
 
   const count = Math.max(1, Math.round(length / nominalPieceWidth));
+  // `pieceWidth` stays the TRUE, non-overlapping slot width — it's what
+  // determines `count` and where each tile's own slot boundary sits, so
+  // the run's overall coverage/spacing is completely unaffected by
+  // `overlapMargin`. Only the RENDERED width (returned per piece, below)
+  // grows.
   const pieceWidth = length / count;
   const naiveRotationY = Math.atan2(-dz, dx);
   const rotationY = facing
@@ -177,6 +206,17 @@ export function tileWallSegment(
   const flipped = rotationY !== naiveRotationY;
   const ux = dx / length;
   const uz = dz / length;
+  const renderedWidth = pieceWidth + 2 * overlapMargin;
+  // Growing the rendered width by `overlapMargin` on each side shifts
+  // where the origin needs to land relative to the (unchanged) slot
+  // boundary — re-deriving the SAME "scaled bbox lands flush at
+  // [i,i+1]*pieceWidth" relationship the comment below already explains,
+  // just solved for a bbox that now lands at
+  // [i*pieceWidth - overlapMargin, (i+1)*pieceWidth + overlapMargin]
+  // instead. Reduces to the original `marginTerm = 0` exactly when
+  // `overlapMargin = 0`, so every existing caller (and test) is
+  // byte-identical.
+  const marginTerm = overlapMargin * (1 + 2 * pivotRatio);
 
   const pieces: TiledPiece[] = [];
   for (let i = 0; i < count; i++) {
@@ -189,15 +229,15 @@ export function tileWallSegment(
     // formulas below agree exactly at pivotRatio = -0.5, which is also
     // how this was verified).
     const originDist = flipped
-      ? pieceWidth * (i + pivotRatio + 1)
-      : pieceWidth * (i - pivotRatio);
+      ? pieceWidth * (i + pivotRatio + 1) + marginTerm
+      : pieceWidth * (i - pivotRatio) - marginTerm;
     pieces.push({
       position: {
         x: segment.start.x + ux * originDist,
         z: segment.start.z + uz * originDist,
       },
       rotationY,
-      pieceWidth,
+      pieceWidth: renderedWidth,
     });
   }
   return pieces;

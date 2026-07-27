@@ -310,6 +310,152 @@ describe('tileWallSegment (W3: real Synty pieces tiled along a run, design.md/pl
       }
     });
   });
+
+  describe('overlapMargin (issue #634 regression: "air gaps between adjacent wall segments at the tall default")', () => {
+    // Root-caused via an isolated two-tile render (not the theoretical
+    // bounding box, which is already provably gap-free by construction —
+    // see the pivotRatio tests above): RUN_WALL_VARIANT's ("plain"
+    // Wall_Half) authored edge silhouette is a deliberately irregular,
+    // rock-cut profile, not a flat rectangle, and recedes inward from its
+    // own bbox by varying amounts at different heights (measured: up to
+    // ~0.05 unit in the lower ~60% of the panel). overlapMargin grows each
+    // tile's rendered bbox symmetrically so adjacent tiles OVERLAP instead
+    // of meeting exactly flush, self-covering the irregular edge — same
+    // class of fix as envelopeCornerOverlapMargin (wallRuns.ts) already
+    // uses for room corners.
+    const MEASURED_PIVOT_RATIO = -0.1174 / 2.672; // RUN_WALL_VARIANT's real pivotRatio
+    const rawWidth = 2.672;
+    const rawMinX = -0.1174;
+
+    it('default overlapMargin (0) is byte-identical to omitting the parameter entirely', () => {
+      const omitted = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        MEASURED_PIVOT_RATIO
+      );
+      const explicitZero = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        MEASURED_PIVOT_RATIO,
+        undefined,
+        0
+      );
+      expect(explicitZero).toEqual(omitted);
+    });
+
+    it('a non-zero margin grows the RENDERED pieceWidth by exactly 2*overlapMargin, leaving count and inter-tile spacing untouched', () => {
+      const noMargin = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        MEASURED_PIVOT_RATIO
+      );
+      const withMargin = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 4, z: 0 } },
+        1.0,
+        MEASURED_PIVOT_RATIO,
+        undefined,
+        0.08
+      );
+      expect(withMargin).toHaveLength(noMargin.length);
+      for (let i = 0; i < withMargin.length; i++) {
+        expect(withMargin[i]!.pieceWidth).toBeCloseTo(
+          noMargin[i]!.pieceWidth + 0.16,
+          9
+        );
+      }
+      // Margin is a constant offset applied uniformly to every tile's
+      // origin (same relationship the pivotRatio tests above prove for
+      // pivotRatio itself) — never a per-tile stretch/squeeze, so
+      // consecutive origins stay exactly `pieceWidth` (the TRUE slot
+      // width) apart regardless of margin.
+      for (let i = 1; i < withMargin.length; i++) {
+        expect(
+          withMargin[i]!.position.x - withMargin[i - 1]!.position.x
+        ).toBeCloseTo(1.0, 9);
+      }
+    });
+
+    it('closes the measured real-world gap: adjacent tiles’ actual (bbox-corrected) rendered edges OVERLAP by exactly 2*overlapMargin instead of meeting flush — reproduces the exact hand-derived numbers this issue was root-caused against', () => {
+      const overlapMargin = 0.08;
+      const pieces = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 2, z: 0 } },
+        1.0,
+        MEASURED_PIVOT_RATIO,
+        undefined,
+        overlapMargin
+      );
+      expect(pieces).toHaveLength(2);
+
+      const tsx0 = pieces[0]!.pieceWidth / rawWidth;
+      const bboxMin0 = pieces[0]!.position.x + rawMinX * tsx0;
+      const bboxMax0 = pieces[0]!.position.x + (rawMinX + rawWidth) * tsx0;
+      expect(bboxMin0).toBeCloseTo(-overlapMargin, 9); // -0.08
+      expect(bboxMax0).toBeCloseTo(1 + overlapMargin, 9); // 1.08
+
+      const tsx1 = pieces[1]!.pieceWidth / rawWidth;
+      const bboxMin1 = pieces[1]!.position.x + rawMinX * tsx1;
+      const bboxMax1 = pieces[1]!.position.x + (rawMinX + rawWidth) * tsx1;
+      expect(bboxMin1).toBeCloseTo(1 - overlapMargin, 9); // 0.92
+      expect(bboxMax1).toBeCloseTo(2 + overlapMargin, 9); // 2.08
+
+      // The seam itself: piece 0's rendered right edge now sits PAST
+      // piece 1's rendered left edge by exactly 2*overlapMargin — an
+      // overlap, not a flush meet (margin=0 gives exactly 0 here, per
+      // the test below).
+      expect(bboxMax0 - bboxMin1).toBeCloseTo(2 * overlapMargin, 9);
+    });
+
+    it('WITHOUT the margin (margin=0), the same two tiles meet exactly flush — proves the overlap test above is not vacuous', () => {
+      const pieces = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 2, z: 0 } },
+        1.0,
+        MEASURED_PIVOT_RATIO
+      );
+      const tsx0 = pieces[0]!.pieceWidth / rawWidth;
+      const bboxMax0 = pieces[0]!.position.x + (rawMinX + rawWidth) * tsx0;
+      const tsx1 = pieces[1]!.pieceWidth / rawWidth;
+      const bboxMin1 = pieces[1]!.position.x + rawMinX * tsx1;
+      expect(bboxMax0 - bboxMin1).toBeCloseTo(0, 9);
+    });
+
+    it('the origin-shift sign convention holds for a flipped run too (facing forces a 180deg flip): margin still applies as a constant per-tile offset, added (not subtracted) per the flipped branch’s own sign convention', () => {
+      const facingOpposingNaive = { x: 0, z: -1 }; // forces a flip for dir=(2,0)
+      const noMargin = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 2, z: 0 } },
+        1.0,
+        MEASURED_PIVOT_RATIO,
+        facingOpposingNaive
+      );
+      const withMargin = tileWallSegment(
+        { start: { x: 0, z: 0 }, end: { x: 2, z: 0 } },
+        1.0,
+        MEASURED_PIVOT_RATIO,
+        facingOpposingNaive,
+        0.08
+      );
+      // Same constant-offset relationship as the non-flipped case: margin
+      // never changes inter-tile spacing.
+      for (let i = 1; i < withMargin.length; i++) {
+        expect(
+          withMargin[i]!.position.x - withMargin[i - 1]!.position.x
+        ).toBeCloseTo(1.0, 9);
+      }
+      // Reproduces the exact hand-derived flipped-formula shift:
+      // marginTerm = overlapMargin*(1+2*pivotRatio), ADDED for the
+      // flipped branch — opposite sign from the non-flipped branch above,
+      // matching the existing sign-flip convention between the two
+      // branches of the origin formula.
+      const marginTerm = 0.08 * (1 + 2 * MEASURED_PIVOT_RATIO);
+      expect(withMargin[0]!.position.x).toBeCloseTo(
+        noMargin[0]!.position.x + marginTerm,
+        9
+      );
+      expect(withMargin[1]!.position.x).toBeCloseTo(
+        noMargin[1]!.position.x + marginTerm,
+        9
+      );
+    });
+  });
 });
 
 describe("facingCorrectedRotationY (round-2 W3/W4 fix: tileWallSegment's rotationY is a pure function of the run's own direction, with no notion of \"outward\" — hall's left/right sides share one direction pair and top/bottom share another, so within each pair the SAME rotationY got computed for both despite opposite outward normals; exactly one of each pair always ended up showing its flat, undecorated back outward, verified against the real reference-tomb fixture: 2 of hall's 4 sides failed)", () => {
