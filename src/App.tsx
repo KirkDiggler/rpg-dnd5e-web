@@ -15,6 +15,16 @@ import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
+/**
+ * Dev-only deep link: `?concept=<id>` opens the Concepts Lab directly and must
+ * KEEP it open — the active-lobby effect otherwise steals the
+ * view and drops you into a live encounter. Production is unaffected.
+ */
+const hasConceptDeepLink = (): boolean =>
+  import.meta.env.MODE === 'development' &&
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).has('concept');
+
 type AppView =
   | 'home'
   | 'character-creation'
@@ -33,7 +43,9 @@ function AppContent() {
       !!new URLSearchParams(window.location.search).get('encounterId')
   );
 
-  const [currentView, setCurrentView] = useState<AppView>('home');
+  const [currentView, setCurrentView] = useState<AppView>(
+    hasConceptDeepLink() ? 'concepts' : 'home'
+  );
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [currentCharacterId, setCurrentCharacterId] = useState<string | null>(
     null
@@ -79,6 +91,7 @@ function AppContent() {
   // available for real players.
   const myActiveLobby = useMyActiveLobby(playerId);
   useEffect(() => {
+    if (hasConceptDeepLink()) return; // deep link owns the view
     if (!myActiveLobby.data) return;
     if (myActiveLobby.data.encounterId) {
       setResumeEncounterId(myActiveLobby.data.encounterId);

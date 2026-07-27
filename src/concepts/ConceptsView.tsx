@@ -5,6 +5,7 @@ import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
 import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
+import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
 import { JustRollConcept } from './just-roll/JustRollConcept';
 
 type ConceptPage =
@@ -13,7 +14,8 @@ type ConceptPage =
   | 'combat-panel'
   | 'equipment'
   | 'combat-pacing'
-  | 'just-roll';
+  | 'just-roll'
+  | 'fog-of-war';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'class-selection', label: 'Class Selection' },
@@ -22,6 +24,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'equipment', label: 'Equipment' },
   { id: 'combat-pacing', label: 'Combat Pacing' },
   { id: 'just-roll', label: 'Just Roll' },
+  { id: 'fog-of-war', label: 'Fog of War' },
 ];
 
 interface ConceptsViewProps {
@@ -29,7 +32,17 @@ interface ConceptsViewProps {
 }
 
 export function ConceptsView({ onBack }: ConceptsViewProps) {
-  const [activePage, setActivePage] = useState<ConceptPage>('class-selection');
+  // Dev-only deep link: ?concept=<id> opens straight to a concept so visual
+  // evidence is reproducible from a URL. Unknown values fall back silently.
+  const requested =
+    typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('concept');
+  const initialPage = CONCEPT_PAGES.some((page) => page.id === requested)
+    ? (requested as ConceptPage)
+    : 'class-selection';
+
+  const [activePage, setActivePage] = useState<ConceptPage>(initialPage);
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -96,6 +109,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'equipment' && <EquipmentConcept />}
         {activePage === 'combat-pacing' && <CombatPacingConcept />}
         {activePage === 'just-roll' && <JustRollConcept />}
+        {activePage === 'fog-of-war' && <FogOfWarConcept />}
       </motion.div>
     </div>
   );
