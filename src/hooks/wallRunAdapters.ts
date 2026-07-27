@@ -21,10 +21,7 @@ import {
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
 import { isDoorWallKind } from '@/components/hex-grid/syntyHexWallHelpers';
-import {
-  CAMERA_WARD_XZ,
-  CUTAWAY_STUB_WALL_HEIGHT,
-} from '@/rendering/calibrationConstants';
+import { connectorPartitionHeight } from '@/components/hex-grid/wallRunMeshHelpers';
 import {
   type Hex,
   type Wall,
@@ -560,31 +557,51 @@ export function connectorDoorPlanes(
 
 /**
  * Cutaway prototype (rpg-project#132, `?wallCutaway=1`): each door's
- * effective height (stub or tall), classified from its OWN connector run's
- * `facing` vector via the identical dot-product-against-camera test
- * `WallRunMesh.effectiveWallHeight` applies to the wall pieces themselves
- * (`CAMERA_WARD_XZ`, calibrationConstants.ts). Kirk's requirement: "Doors/
- * frames on a tall run scale with it; connector walls classify by the same
- * dot product" — so a door's frame/leaf always matches whichever height its
- * own connector run rendered at, rather than the single global `wallHeight`
- * every door used before this prototype.
+ * effective height (stub or tall), via `WallRunMesh.connectorPartitionHeight`'s
+ * interior-partition rule (tall unless the door sits between the camera
+ * and the player's own current position).
  *
- * A connector with no `doorId` (a connector segment with no door on it —
- * shouldn't occur by construction, but not this function's job to assume)
- * contributes no entry; the caller's door rendering falls back to its own
- * pre-existing global height for that one door, same "caller falls back"
- * contract as `connectorRunDoorRotations` above.
+ * SUPERSEDED classification (originally dotted the door's own connector
+ * run's `facing` against the camera, the SAME rule envelope runs use):
+ * Kirk found two live-walk regressions with that approach. (1) `facing`
+ * is a deterministic-but-arbitrary convention for a connector (points
+ * toward regionB, not a true outward normal — see `ConnectorRun.facing`'s
+ * own doc comment in wallRuns.ts), so dotting it against the camera
+ * resolved toward-camera essentially at random relative to which side
+ * the player actually occupies — EVERY interior partition/door stubbed.
+ * (2) Because this only produced an entry once a real `ConnectorRun`
+ * resolved, a door rendered via the fallback stand-in (far room still
+ * dark) fell back to the caller's global (tall) height, then POPPED to
+ * whatever the resolved run's facing-dot classified once the far side
+ * revealed — "door height pops on open."
+ *
+ * Fix: classify from each door's OWN cube position (`doors`, the raw
+ * wire list — ALWAYS fully known regardless of reveal state, the exact
+ * same "needs no region/ConnectorRun data at all" property
+ * `connectorDoorPlanes` above already relies on) plus the player's own
+ * current position, via the identical rule `WallRunMesh` applies to the
+ * connector wall itself — so the door and the wall it sits in can never
+ * disagree, and the classification can never depend on which reveal
+ * state resolved this column, so it can never pop on open/close again.
+ *
+ * A door with no `id` contributes no entry; the caller's door rendering
+ * falls back to its own pre-existing global height for that one door,
+ * same "caller falls back" contract as `connectorRunDoorRotations` above.
  */
 export function connectorDoorHeights(
-  connectorRuns: ConnectorRun[],
-  tallHeight: number
+  doors: Iterable<ConnectorDoorInput>,
+  playerPosition: WorldPos | undefined,
+  tallHeight: number,
+  hexSize: number = HEX_SIZE
 ): Map<string, number> {
   const heights = new Map<string, number>();
-  for (const run of connectorRuns) {
-    if (!run.doorId) continue;
-    const dot =
-      run.facing.x * CAMERA_WARD_XZ.x + run.facing.z * CAMERA_WARD_XZ.z;
-    heights.set(run.doorId, dot > 0 ? CUTAWAY_STUB_WALL_HEIGHT : tallHeight);
+  for (const door of doors) {
+    if (!door.id) continue;
+    const doorWorld = cubeToWorld(door.position, hexSize);
+    heights.set(
+      door.id,
+      connectorPartitionHeight(doorWorld, playerPosition, true, tallHeight)
+    );
   }
   return heights;
 }

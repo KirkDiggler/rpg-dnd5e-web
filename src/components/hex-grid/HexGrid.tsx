@@ -174,21 +174,34 @@ export interface HexGridProps {
   wallHeight?: number;
   /**
    * Cutaway prototype (rpg-project#132, `?wallCutaway=1`): passed straight
-   * through to WallRunMesh, which classifies each envelope/connector run as
-   * camera-facing (stub) or away-facing (tall, `wallHeight`) via its own
-   * `facing` vector — see WallRunMesh's own `effectiveWallHeight` doc
-   * comment. Default false renders every run at the uniform `wallHeight`,
-   * unchanged from before this prop existed.
+   * through to WallRunMesh. ENVELOPE runs classify camera-facing (stub) or
+   * away-facing (tall, `wallHeight`) via their own `facing` vector — see
+   * WallRunMesh's own `effectiveWallHeight` doc comment. Connector runs
+   * and their fallback stand-ins use a DIFFERENT rule keyed off
+   * `playerPosition` below (WallRunMesh's own `connectorPartitionHeight`
+   * doc comment). Default false renders every run at the uniform
+   * `wallHeight`, unchanged from before this prop existed.
    */
   wallCutaway?: boolean;
+  /**
+   * The local player's own current world position (rpg-project#132
+   * follow-up) — passed straight through to WallRunMesh's interior-
+   * partition classification (`connectorPartitionHeight`): a connector
+   * run/fallback segment stubs only when it sits between the camera and
+   * the player's own current position, otherwise it defaults tall.
+   * Undefined (every caller before this prop existed, or a player
+   * position not yet resolved) defaults every connector/fallback
+   * partition to tall — the same safe fallback as cutaway being off.
+   */
+  playerPosition?: WorldPos;
   /**
    * Cutaway prototype (rpg-project#132): per-door height override, keyed
    * by Wall.id (wallRunAdapters.connectorDoorHeights) — passed straight
    * through to SyntyHexWall so a door's frame/leaf matches whichever
-   * height its OWN connector run was classified to, instead of the single
-   * global `wallHeight` every door used before this prototype. Undefined/
-   * omitted (every caller before this prototype) is byte-identical to
-   * pre-cutaway behavior.
+   * height the connector wall it sits in was classified to, instead of
+   * the single global `wallHeight` every door used before this
+   * prototype. Undefined/omitted (every caller before this prototype) is
+   * byte-identical to pre-cutaway behavior.
    */
   doorHeights?: ReadonlyMap<string, number>;
   /** Fired with the door's Wall.id (rpg-api-protos#186) when a DOOR_* wall
@@ -359,6 +372,7 @@ function Scene({
   doorPlaneOverrides,
   wallHeight,
   wallCutaway = false,
+  playerPosition,
   doorHeights,
   syntyDungeon = false,
   themeWallHexKeys,
@@ -880,6 +894,7 @@ function Scene({
             rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}
             wallHeight={wallHeight}
             wallCutaway={wallCutaway}
+            playerPosition={playerPosition}
           />
         </ErrorBoundary>
       ) : (

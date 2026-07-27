@@ -213,12 +213,12 @@ export function tileWallSegment(
  * the camera — this run sits between the camera and the room's interior,
  * exactly the wall Synty's promo hides so you can see in.
  *
- * No `facing` (fallback segments — see `WallRunMeshProps.fallbackSegments`'
- * own doc comment for why they have none) always gets the tall height:
- * a fallback exists specifically because NO region data was known yet at
- * that column, so there's no room to judge "near vs far" relative to at
- * all; defaulting tall keeps the existing invisible-wall guarantee's
- * visual weight rather than guessing.
+ * No `facing` at all defaults tall: there's no room reference to judge
+ * "near vs far" relative to without one, and defaulting tall keeps the
+ * existing invisible-wall guarantee's visual weight rather than guessing.
+ * ENVELOPE runs only (WallRunMesh's own render loop) — connector runs and
+ * their fallback stand-ins use `connectorPartitionHeight` below instead
+ * (interior partitions need a different rule; see its own doc comment).
  */
 export function effectiveWallHeight(
   facing: WorldPos | undefined,
@@ -228,4 +228,65 @@ export function effectiveWallHeight(
   if (!wallCutaway || !facing) return tallHeight;
   const dot = facing.x * CAMERA_WARD_XZ.x + facing.z * CAMERA_WARD_XZ.z;
   return dot > 0 ? CUTAWAY_STUB_WALL_HEIGHT : tallHeight;
+}
+
+/**
+ * Cutaway prototype's classification for an INTERIOR PARTITION (a
+ * connector run, its fallback stand-in, or a door on either) —
+ * deliberately DIFFERENT from `effectiveWallHeight`'s envelope-side rule
+ * (Kirk's live-walk follow-up, rpg-project#132: "envelope walls keep the
+ * existing dot rule... interior partitions default TALL; a partition
+ * stubs only when it sits between the camera and the player's current/
+ * active room"). A connector's own `facing` is a deterministic-but-
+ * arbitrary convention (points toward regionB, "the higher-column side"
+ * — NOT a true outward normal the way `EnvelopeRun.facing` is; see
+ * `ConnectorRun.facing`'s own doc comment in wallRuns.ts), so dotting it
+ * directly against the camera resolves toward-camera essentially at
+ * random relative to which side the player actually occupies — Kirk
+ * found EVERY interior partition stubbing this way, killing the depth
+ * cutaway should provide between rooms.
+ *
+ * Root geometric test: direction from a point ON the partition toward
+ * the PLAYER'S OWN current position, dotted against `CAMERA_WARD_XZ`. A
+ * positive dot means the player sits roughly toward the camera relative
+ * to the partition (the partition is behind the player from the
+ * camera's viewpoint — it doesn't occlude anything the player needs to
+ * see right now) -> TALL. A negative dot means the partition sits
+ * BETWEEN the camera and the player (it would occlude the room the
+ * player is currently standing in) -> STUB.
+ *
+ * Uses the player's raw world position (not "the region containing the
+ * player's hex") deliberately: it produces the identical classification
+ * whenever the player is unambiguously inside one of the partition's two
+ * flanking regions (a position inside a region is, by definition, on
+ * that region's side of any connector adjacent to it), while ALSO
+ * classifying a fallback stand-in and a door with the exact same formula
+ * and no separate region-matching machinery — a fallback has no known
+ * far region at all (that's why it's a fallback) and a door's own
+ * classification needs to be stable across the fallback->real-
+ * ConnectorRun takeover (Kirk's OTHER live-walk finding: "door height
+ * pops on open" — closed/fallback used to render always-tall, opening
+ * swapped to the real run's own [buggy] facing-dot classification,
+ * popping mid-click). Keying every one of these off the SAME raw-
+ * position test, using each caller's own best-available anchor point
+ * (a run's segment midpoint, a fallback segment's own midpoint, a door's
+ * own cube position), makes the classification depend only on
+ * geometry + player position — never on which reveal state resolved a
+ * given column, so it can never pop on open/close again.
+ *
+ * No known player position (not yet resolved) or cutaway off both
+ * default TALL — "interior partitions default TALL" is exactly the safe
+ * fallback when there's nothing to test against.
+ */
+export function connectorPartitionHeight(
+  partitionPoint: WorldPos,
+  playerPosition: WorldPos | undefined,
+  wallCutaway: boolean,
+  tallHeight: number
+): number {
+  if (!wallCutaway || !playerPosition) return tallHeight;
+  const dx = playerPosition.x - partitionPoint.x;
+  const dz = playerPosition.z - partitionPoint.z;
+  const dot = dx * CAMERA_WARD_XZ.x + dz * CAMERA_WARD_XZ.z;
+  return dot > 0 ? tallHeight : CUTAWAY_STUB_WALL_HEIGHT;
 }

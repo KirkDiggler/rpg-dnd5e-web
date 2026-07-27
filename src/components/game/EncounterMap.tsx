@@ -41,7 +41,12 @@ import {
 import { computeWallRuns } from '../../hooks/wallRuns';
 import { WALL_HEIGHT } from '../../rendering/calibrationConstants';
 import { HexGrid } from '../hex-grid';
-import { cubeToWorld, HEX_SIZE, type CubeCoord } from '../hex-grid/hexMath';
+import {
+  cubeToWorld,
+  HEX_SIZE,
+  type CubeCoord,
+  type WorldPos,
+} from '../hex-grid/hexMath';
 import {
   buildDevPropDemoEntities,
   buildRenderableEntities,
@@ -160,6 +165,35 @@ export function EncounterMap({
   );
 
   const wallList = useMemo(() => Array.from(walls.values()), [walls]);
+
+  // The local player's own current world position — needed both for the
+  // mood-point-light budget (below) and for the cutaway prototype's
+  // interior-partition classification (rpg-project#132 follow-up:
+  // connectorPartitionHeight/connectorDoorHeights need to know whether a
+  // connector wall or door sits between the camera and the player's own
+  // current room). Undefined until the local player's own entity has
+  // appeared (matches this component's existing "no player yet" tolerance
+  // elsewhere, e.g. EncounterView's "Waiting for your position…" banner).
+  //
+  // Copilot review (PR #585): reads straight off the `entities` prop (O(1)
+  // map lookup, the authoritative store) rather than scanning
+  // `renderableEntities` — that array also carries render-only injected
+  // entries (e.g. `?devPropDemoKeys` synthetic props) that both cost an
+  // avoidable linear scan and, in principle, could shadow the real
+  // player's id. `x`/`y`/`z` on the wire Position are individually
+  // optional, defaulted to 0 the same way buildRenderableEntities does.
+  const playerPosition = useMemo((): WorldPos | undefined => {
+    const minePosition = entities.get(myEntityId)?.position;
+    if (!minePosition) return undefined;
+    return cubeToWorld(
+      {
+        x: minePosition.x ?? 0,
+        y: minePosition.y ?? 0,
+        z: minePosition.z ?? 0,
+      },
+      HEX_SIZE
+    );
+  }, [entities, myEntityId]);
 
   // Dungeon-walls redesign (rpg-project#133 design.md/plan.md's W2 slice):
   // reconstruct each room's hex membership from the wire's per-hex zoneId
@@ -340,61 +374,36 @@ export function EncounterMap({
     [wallHeightExplicitOverride, wallCutawayOverride]
   );
 
-  // Per-door height classification for the cutaway prototype — mirrors
-  // WallRunMesh's own effectiveWallHeight dot-product test, but keyed by
-  // Wall.id so SyntyHexWall's door frame/leaf can match whichever height
-  // its own connector run was classified to (see connectorDoorHeights' own
-  // doc comment). Gated on wallCutawayOverride, same as HexGrid's own
-  // wallCutaway prop: when cutaway is off, every door must stay at the
-  // single uniform wallHeight (undefined here means SyntyHexWall's
-  // doorHeights?.get(id) always misses, falling back to `wallHeight`
-  // exactly as before this prototype existed) rather than silently
-  // classifying doors stub/tall while the wall runs themselves stay
-  // uniform. `wallHeightOverride` is already resolved above (explicit
-  // override, or CUTAWAY_TALL_WALL_HEIGHT, or WALL_HEIGHT) — reusing it
-  // here guarantees the tall value doorHeights classifies against always
+  // Per-door height classification for the cutaway prototype — the
+  // interior-partition rule (connectorPartitionHeight, via
+  // connectorDoorHeights' own doc comment), keyed by Wall.id so
+  // SyntyHexWall's door frame/leaf matches whichever height the
+  // connector wall it sits in was classified to. Classified from
+  // `connectorDoors` (the RAW wire door list, always fully known
+  // regardless of reveal state) + `playerPosition`, NOT from
+  // `wallRunsResult.connectorRuns` (which only resolves once a real
+  // ConnectorRun exists) — this is what makes the classification stable
+  // across the fallback->real-run takeover (Kirk's live-walk finding:
+  // "door height pops on open"). Gated on wallCutawayOverride, same as
+  // HexGrid's own wallCutaway prop: when cutaway is off, every door must
+  // stay at the single uniform wallHeight (undefined here means
+  // SyntyHexWall's doorHeights?.get(id) always misses, falling back to
+  // `wallHeight` exactly as before this prototype existed). `wallHeightOverride`
+  // is already resolved above (explicit override, or
+  // CUTAWAY_TALL_WALL_HEIGHT, or WALL_HEIGHT) — reusing it here
+  // guarantees the tall value doorHeights classifies against always
   // matches whatever HexGrid actually renders the tall runs at.
   const doorHeights = useMemo(
     () =>
       wallCutawayOverride
         ? connectorDoorHeights(
-            wallRunsResult.connectorRuns,
+            connectorDoors,
+            playerPosition,
             wallHeightOverride ?? WALL_HEIGHT
           )
         : undefined,
-    [wallCutawayOverride, wallRunsResult, wallHeightOverride]
+    [wallCutawayOverride, connectorDoors, playerPosition, wallHeightOverride]
   );
-
-  // Mood-point-light budget reference position (rpg-dnd5e-web#558): the
-  // local player's own world position, so capMoodLights can keep the
-  // lights nearest the camera (which continuously follows the player, see
-  // HexGrid's focusTarget) if the themed space's candle/door lights ever
-  // exceed MOOD_LIGHT_BUDGET. Undefined until the local player's own
-  // entity has appeared (matches this component's existing "no player yet"
-  // tolerance elsewhere, e.g. EncounterView's "Waiting for your position…"
-  // banner) — capMoodLights degrades to a plain positional slice without
-  // it, never throws.
-  //
-  // Copilot review (PR #585): reads straight off the `entities` prop (O(1)
-  // map lookup, the authoritative store) rather than scanning
-  // `renderableEntities` — that array also carries render-only injected
-  // entries (e.g. `?devPropDemoKeys` synthetic props) that both cost an
-  // avoidable linear scan and, in principle, could shadow the real
-  // player's id. `x`/`y`/`z` on the wire Position are individually
-  // optional, defaulted to 0 the same way buildRenderableEntities does.
-  const myWorldXZ = useMemo((): [number, number] | undefined => {
-    const minePosition = entities.get(myEntityId)?.position;
-    if (!minePosition) return undefined;
-    const world = cubeToWorld(
-      {
-        x: minePosition.x ?? 0,
-        y: minePosition.y ?? 0,
-        z: minePosition.z ?? 0,
-      },
-      HEX_SIZE
-    );
-    return [world.x, world.z];
-  }, [entities, myEntityId]);
 
   // Real crypt encounters place obstacle props like obelisk/pillar/coffin/
   // altar/statue (api#702) — none of which are the 'candles' propRefId
@@ -412,9 +421,9 @@ export function EncounterMap({
         wallList,
         renderableEntities,
         MOOD_LIGHT_BUDGET,
-        myWorldXZ
+        playerPosition ? [playerPosition.x, playerPosition.z] : undefined
       ),
-    [spaceTheme, wallList, renderableEntities, myWorldXZ]
+    [spaceTheme, wallList, renderableEntities, playerPosition]
   );
 
   // Real-dungeon-rendering flag (rpg-dnd5e-web#432 harness-parity). Read
@@ -478,6 +487,7 @@ export function EncounterMap({
         doorPlaneOverrides={doorPlaneOverrides}
         wallHeight={wallHeightOverride}
         wallCutaway={wallCutawayOverride}
+        playerPosition={playerPosition}
         doorHeights={doorHeights}
         selectedEntityId={myEntityId}
         currentEntityId={myEntityId}

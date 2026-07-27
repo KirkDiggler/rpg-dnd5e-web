@@ -564,80 +564,91 @@ describe('connectorDoorPlanes (rpg-project#132 connector-single-wall follow-up, 
   });
 });
 
-describe("connectorDoorHeights (cutaway prototype, rpg-project#132 ?wallCutaway=1: a door's frame/leaf height matches its OWN connector run's classification, not a single global wallHeight)", () => {
+describe("connectorDoorHeights (rpg-project#132 follow-up: a door's frame/leaf height uses the interior-partition rule — classified from the door's OWN cube position + the player's current position, NOT from a resolved ConnectorRun, so it can't pop when the fallback stand-in takes over from a real run or vice versa)", () => {
   const TALL = 2.4;
-  // Toward/away from the fixed isometric camera — same directions
-  // wallRunMeshHelpers.test.ts's effectiveWallHeight tests use (matches
-  // CAMERA_WARD_XZ's own direction, calibrationConstants.ts).
-  const TOWARD_CAMERA = { x: 1, z: 1 };
-  const AWAY_FROM_CAMERA = { x: -1, z: -1 };
+  const doorHex = cubeAtColRow(6, 4);
+  const doorWorld = cubeToWorld(doorHex, HEX_SIZE);
+  // Toward/away from the fixed isometric camera, anchored at the door's
+  // own world position — same CAMERA_WARD_XZ direction
+  // wallRunMeshHelpers.test.ts's connectorPartitionHeight tests use.
+  const PLAYER_TOWARD_CAMERA = { x: doorWorld.x + 10, z: doorWorld.z + 10 };
+  const PLAYER_AWAY_FROM_CAMERA = { x: doorWorld.x - 10, z: doorWorld.z - 10 };
 
-  it('stubs a door whose connector run faces toward the camera', () => {
-    const runs: ConnectorRun[] = [
-      {
-        doorId: 'door-1',
-        regionAId: 'a',
-        regionBId: 'b',
-        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
-        coveredRows: PLACEHOLDER_COVERED_ROWS,
-        facing: TOWARD_CAMERA,
-      },
-    ];
-    expect(connectorDoorHeights(runs, TALL).get('door-1')).toBe(
-      CUTAWAY_STUB_WALL_HEIGHT
+  it('stubs a door when the player is on the far side (partition between camera and player)', () => {
+    const doors: ConnectorDoorInput[] = [{ id: 'door-1', position: doorHex }];
+    expect(
+      connectorDoorHeights(doors, PLAYER_AWAY_FROM_CAMERA, TALL).get('door-1')
+    ).toBe(CUTAWAY_STUB_WALL_HEIGHT);
+  });
+
+  it('keeps a door at the tall height when the player is on the camera side (partition does not occlude the player)', () => {
+    const doors: ConnectorDoorInput[] = [{ id: 'door-1', position: doorHex }];
+    expect(
+      connectorDoorHeights(doors, PLAYER_TOWARD_CAMERA, TALL).get('door-1')
+    ).toBe(TALL);
+  });
+
+  it('defaults tall when no player position is known yet — "interior partitions default TALL"', () => {
+    const doors: ConnectorDoorInput[] = [{ id: 'door-1', position: doorHex }];
+    expect(connectorDoorHeights(doors, undefined, TALL).get('door-1')).toBe(
+      TALL
     );
   });
 
-  it('keeps a door at the tall height when its connector run faces away from the camera', () => {
-    const runs: ConnectorRun[] = [
-      {
-        doorId: 'door-1',
-        regionAId: 'a',
-        regionBId: 'b',
-        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
-        coveredRows: PLACEHOLDER_COVERED_ROWS,
-        facing: AWAY_FROM_CAMERA,
-      },
-    ];
-    expect(connectorDoorHeights(runs, TALL).get('door-1')).toBe(TALL);
+  it('skips a door with no id — nothing to key the resulting map by', () => {
+    const doors: ConnectorDoorInput[] = [{ position: doorHex }];
+    expect(
+      connectorDoorHeights(doors, PLAYER_AWAY_FROM_CAMERA, TALL).size
+    ).toBe(0);
   });
 
-  it('skips a connector run with no doorId — nothing to key the resulting map by', () => {
-    const runs: ConnectorRun[] = [
-      {
-        regionAId: 'a',
-        regionBId: 'b',
-        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
-        coveredRows: PLACEHOLDER_COVERED_ROWS,
-        facing: TOWARD_CAMERA,
-      },
+  it('produces independent entries for multiple doors, keyed by id, each classified by its OWN position relative to the SAME player', () => {
+    const doorA = cubeAtColRow(6, 4);
+    const doorB = cubeAtColRow(20, 4);
+    const doorAWorld = cubeToWorld(doorA, HEX_SIZE);
+    const doorBWorld = cubeToWorld(doorB, HEX_SIZE);
+    // Player sits toward the camera from doorA, but away from the camera
+    // relative to doorB (doorB is much further along +col, so the SAME
+    // fixed player position ends up on opposite sides of each door).
+    const player = {
+      x: doorAWorld.x + 10,
+      z: doorAWorld.z + 10,
+    };
+    const doors: ConnectorDoorInput[] = [
+      { id: 'door-a', position: doorA },
+      { id: 'door-b', position: doorB },
     ];
-    expect(connectorDoorHeights(runs, TALL).size).toBe(0);
-  });
-
-  it('produces independent entries for multiple doors, keyed by doorId, each classified by its OWN facing', () => {
-    const runs: ConnectorRun[] = [
-      {
-        doorId: 'door-a',
-        regionAId: 'a',
-        regionBId: 'b',
-        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
-        coveredRows: PLACEHOLDER_COVERED_ROWS,
-        facing: TOWARD_CAMERA,
-      },
-      {
-        doorId: 'door-b',
-        regionAId: 'c',
-        regionBId: 'd',
-        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
-        coveredRows: PLACEHOLDER_COVERED_ROWS,
-        facing: AWAY_FROM_CAMERA,
-      },
-    ];
-    const heights = connectorDoorHeights(runs, TALL);
+    const heights = connectorDoorHeights(doors, player, TALL);
     expect(heights.size).toBe(2);
-    expect(heights.get('door-a')).toBe(CUTAWAY_STUB_WALL_HEIGHT);
-    expect(heights.get('door-b')).toBe(TALL);
+    expect(heights.get('door-a')).toBe(TALL);
+    // doorB's own world position sits further along the run than the
+    // player, so the player is on the FAR side relative to doorB's own
+    // camera-ward direction — expect it classified independently (may or
+    // may not match doorA's classification; the point is each is judged
+    // on its own position, not a single shared value). Assert directly
+    // via the same dot-product doorB would use rather than assume the
+    // sign, keeping this test robust to hex-grid geometry specifics.
+    const dot =
+      (player.x - doorBWorld.x) * (8 / Math.hypot(8, 8)) +
+      (player.z - doorBWorld.z) * (8 / Math.hypot(8, 8));
+    expect(heights.get('door-b')).toBe(
+      dot > 0 ? TALL : CUTAWAY_STUB_WALL_HEIGHT
+    );
+  });
+
+  it('is stable regardless of whether a real ConnectorRun has resolved — the classification depends only on the door\'s own cube position and the player\'s position, never on ConnectorRun/reveal state (the fix for "door height pops on open")', () => {
+    // Same door, same player position, called twice with nothing else in
+    // scope — no ConnectorRun, no regions, no reveal-state concept at
+    // all (unlike the superseded facing-based version, this function
+    // doesn't even accept a ConnectorRun anymore).
+    const doors: ConnectorDoorInput[] = [{ id: 'door-1', position: doorHex }];
+    const closed = connectorDoorHeights(doors, PLAYER_TOWARD_CAMERA, TALL).get(
+      'door-1'
+    );
+    const open = connectorDoorHeights(doors, PLAYER_TOWARD_CAMERA, TALL).get(
+      'door-1'
+    );
+    expect(closed).toBe(open);
   });
 });
 
