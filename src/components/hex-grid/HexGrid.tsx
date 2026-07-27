@@ -25,6 +25,7 @@ import type {
   EnvelopeRun,
   WallRunSegment,
 } from '@/hooks/wallRuns';
+import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type {
   CombatState,
@@ -41,7 +42,13 @@ import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { FrontierGroundHint } from './FrontierGroundHint';
 import { HexEntity } from './HexEntity';
-import { cubeToWorld, getHexLine, HEX_SIZE, type CubeCoord } from './hexMath';
+import {
+  cubeToWorld,
+  getHexLine,
+  HEX_SIZE,
+  type CubeCoord,
+  type WorldPos,
+} from './hexMath';
 import { MovementRangeBorder } from './MovementRangeBorder';
 import { PathPreview } from './PathPreview';
 import {
@@ -145,12 +152,58 @@ export interface HexGridProps {
    * instead of SyntyHexWall's legacy per-cell hex-vertex look. Empty/
    * omitted renders nothing extra, unchanged from pre-W3 behavior. */
   connectorFallbackSegments?: WallRunSegment[];
-  /** Per-door rotationY override (radians), keyed by Wall.id
-   * (wallRunAdapters.connectorRunDoorRotations) — passed straight through
-   * to SyntyHexWall so a door frame/leaf orients along its connector's
-   * real column axis instead of the wire's arbitrary
-   * doorPassageNeighbor pick. */
-  doorRotationOverrides?: ReadonlyMap<string, number>;
+  /** Per-door exact position + rotationY override, keyed by Wall.id
+   * (wallRunAdapters.connectorDoorPlanes) — passed straight through to
+   * SyntyHexWall so a door frame/leaf sits exactly on its connector's own
+   * straight column plane instead of the wire's arbitrary
+   * doorPassageNeighbor-derived edge geometry. */
+  doorPlaneOverrides?: ReadonlyMap<
+    string,
+    { position: WorldPos; rotationY: number }
+  >;
+  /**
+   * Wall height override, world units — defaults to
+   * calibrationConstants.WALL_HEIGHT (via SyntyHexWall's/WallRunMesh's own
+   * defaults) so every existing caller renders byte-identical to before
+   * this prop existed. Kirk's live-walk ask (rpg-project#132, `?wallHeight=`
+   * dial): passed straight through to BOTH SyntyHexWall (wall segments,
+   * door frame/leaf, corner/end fittings) and WallRunMesh (tiled envelope/
+   * connector run pieces) so everything rises together, not just one or
+   * the other.
+   */
+  wallHeight?: number;
+  /**
+   * Cutaway prototype (rpg-project#132, `?wallCutaway=1`): passed straight
+   * through to WallRunMesh. ENVELOPE runs classify camera-facing (stub) or
+   * away-facing (tall, `wallHeight`) via their own `facing` vector — see
+   * WallRunMesh's own `effectiveWallHeight` doc comment. Connector runs
+   * and their fallback stand-ins use a DIFFERENT rule keyed off
+   * `playerPosition` below (WallRunMesh's own `connectorPartitionHeight`
+   * doc comment). Default false renders every run at the uniform
+   * `wallHeight`, unchanged from before this prop existed.
+   */
+  wallCutaway?: boolean;
+  /**
+   * The local player's own current world position (rpg-project#132
+   * follow-up) — passed straight through to WallRunMesh's interior-
+   * partition classification (`connectorPartitionHeight`): a connector
+   * run/fallback segment stubs only when it sits between the camera and
+   * the player's own current position, otherwise it defaults tall.
+   * Undefined (every caller before this prop existed, or a player
+   * position not yet resolved) defaults every connector/fallback
+   * partition to tall — the same safe fallback as cutaway being off.
+   */
+  playerPosition?: WorldPos;
+  /**
+   * Cutaway prototype (rpg-project#132): per-door height override, keyed
+   * by Wall.id (wallRunAdapters.connectorDoorHeights) — passed straight
+   * through to SyntyHexWall so a door's frame/leaf matches whichever
+   * height the connector wall it sits in was classified to, instead of
+   * the single global `wallHeight` every door used before this
+   * prototype. Undefined/omitted (every caller before this prototype) is
+   * byte-identical to pre-cutaway behavior.
+   */
+  doorHeights?: ReadonlyMap<string, number>;
   /** Fired with the door's Wall.id (rpg-api-protos#186) when a DOOR_* wall
    * is clicked. The web only sends intent — Interact(id) — the server
    * decides what happens; this component computes nothing. */
@@ -316,7 +369,11 @@ function Scene({
   envelopeCorners = [],
   connectorRuns = [],
   connectorFallbackSegments = [],
-  doorRotationOverrides,
+  doorPlaneOverrides,
+  wallHeight,
+  wallCutaway = false,
+  playerPosition,
+  doorHeights,
   syntyDungeon = false,
   themeWallHexKeys,
   themeFloorHexKeys,
@@ -815,7 +872,9 @@ function Scene({
             themeWallHexKeys={themeWallHexKeys}
             spaceTheme={spaceTheme}
             rememberedWallHexKeys={rememberedWallHexKeys}
-            doorRotationOverrides={doorRotationOverrides}
+            doorPlaneOverrides={doorPlaneOverrides}
+            wallHeight={wallHeight}
+            doorHeights={doorHeights}
           />
           {/* Dungeon-walls redesign (rpg-project#133): straight envelope/
               connector runs, replacing the boundary-edge geometry
@@ -833,6 +892,9 @@ function Scene({
             spaceTheme={spaceTheme}
             rememberedEnvelopeRegionIds={rememberedRunIds.envelopeRegionIds}
             rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}
+            wallHeight={wallHeight}
+            wallCutaway={wallCutaway}
+            playerPosition={playerPosition}
           />
         </ErrorBoundary>
       ) : (
@@ -1019,8 +1081,12 @@ export function HexGrid(props: HexGridProps) {
           frameloop="demand"
           onCreated={handleCanvasCreated}
           camera={{
-            // Lower isometric angle similar to Stolen Realm
-            position: [8, 10, 8],
+            // Lower isometric angle similar to Stolen Realm. Single-sourced
+            // from calibrationConstants.CAMERA_OFFSET so the wall-height
+            // cutaway prototype's near/far classification (dots each run's
+            // facing against CAMERA_WARD_XZ, derived from this same value)
+            // can never drift out of sync with the actual camera.
+            position: CAMERA_OFFSET,
             zoom: 80,
             near: 0.1,
             far: 1000,

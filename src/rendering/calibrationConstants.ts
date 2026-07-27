@@ -31,3 +31,60 @@ export const SYNTY_SCALE = 0.75;
  * HexWall.tsx, and SyntyRoomDemo.tsx.
  */
 export const WALL_HEIGHT = 0.8;
+
+/**
+ * The game Canvas's own fixed camera position offset (HexGrid.tsx's
+ * `<Canvas camera={{ position: ... }}>`), single-sourced here so the
+ * wall-height cutaway prototype's near/far classification (rpg-project#132,
+ * `?wallCutaway=1`) can never silently drift out of sync with the actual
+ * camera — classifying a run "camera-facing" against a stale/guessed
+ * direction while the real camera moved would misclassify every wall.
+ */
+export const CAMERA_OFFSET: readonly [number, number, number] = [8, 10, 8];
+
+/**
+ * Unit "ward" direction (world XZ only, Y dropped) — points FROM the scene
+ * TOWARD the camera, derived from `CAMERA_OFFSET`'s own X/Z components.
+ * The wall-height cutaway prototype dots this against each envelope/
+ * connector run's own outward `facing` vector: a positive dot means the
+ * run's outward normal points roughly toward the camera (the run sits on
+ * the near side of its room, the wall Synty's promo shot hides/stubs so
+ * you can see in), a negative dot means it points away (the far wall the
+ * promo keeps full height). See WallRunMesh's own doc comment for the
+ * classification itself — this file only owns the direction, not the
+ * threshold logic.
+ */
+export const CAMERA_WARD_XZ: Readonly<{ x: number; z: number }> = (() => {
+  const [x, , z] = CAMERA_OFFSET;
+  const len = Math.hypot(x, z);
+  return { x: x / len, z: z / len };
+})();
+
+/**
+ * Cutaway prototype's stub height (world units) for a camera-facing wall
+ * run or door (rpg-project#132, `?wallCutaway=1`) — low enough to read as
+ * "hidden so you can see in" while still keeping the room's own boundary
+ * legible from this fixed isometric angle, unlike full removal. Shared
+ * between WallRunMesh.tsx (envelope/connector runs) and
+ * wallRunAdapters.connectorDoorHeights (doors on those same connectors) so
+ * a door's frame/leaf always matches whichever height its own connector
+ * run was classified to.
+ */
+export const CUTAWAY_STUB_WALL_HEIGHT = 0.3;
+
+/**
+ * Cutaway prototype's TALL height (world units) for an away-facing wall
+ * run or door (rpg-project#132, `?wallCutaway=1`) — roughly 3x character
+ * height, Kirk's original ask ("try ~2.4 world units"). This is the
+ * DEFAULT the tall value falls back to when `?wallCutaway=1` is set with
+ * no explicit `?wallHeight=` override — Kirk hit this as a papercut
+ * judging the prototype live: `?wallCutaway=1` alone gave ankle-high
+ * everything, because the tall value rides the SAME `wallHeight` dial
+ * that (with no override at all) falls back to the ordinary
+ * `WALL_HEIGHT` (0.8), producing stub=0.3/tall=0.8 — barely
+ * distinguishable, nothing like the promo's "sense of size." An explicit
+ * `?wallHeight=` still overrides this default when present (the dial
+ * composing with cutaway remains the point) — this only fills in the
+ * gap for cutaway-with-no-explicit-height.
+ */
+export const CUTAWAY_TALL_WALL_HEIGHT = 2.4;

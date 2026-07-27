@@ -38,10 +38,15 @@ import { type Wall } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2
 import { Suspense, useMemo } from 'react';
 import * as THREE from 'three';
 import { GlbInstance } from './GlbInstance';
+import type { WorldPos } from './hexMath';
 import { rememberedFitting, rememberedSegment } from './sceneKnowledge';
 import {
   buildDungeonWallSegments,
   classifyWallVertices,
+  DOOR_FRAME_FILE,
+  DOOR_LEAF_FILE,
+  doorFrameScale,
+  doorLeafScale,
   doorVisualState,
   FITTINGS,
   fittingScale,
@@ -52,26 +57,6 @@ import {
   wallVariantScale,
   type WallTheme,
 } from './syntyHexWallHelpers';
-
-// Raw (scale=1) local-space bounding size measured directly off the GLB
-// (see rpg-dnd5e-web#472's PR description for the inspection script/output).
-// Local X = width, Y = height, Z = thickness/depth. Wall pieces now source
-// their own per-variant raw dimensions from WALL_VARIANTS instead of a
-// single hardcoded pair (rpg-game-assets#2 wall-variety slice).
-const DOOR_FRAME_RAW_WIDTH = 1.999; // SM_Env_Door_Frame_01 (pivot centered)
-
-// Door frame: squeeze width to the edge like the wall, but keep
-// height/depth at SYNTY_SCALE — a human-scale feature, not clamped to the
-// short game wall height.
-const DOOR_FRAME_SCALE: [number, number, number] = [
-  1.0 / DOOR_FRAME_RAW_WIDTH,
-  SYNTY_SCALE,
-  SYNTY_SCALE,
-];
-
-// SM_Env_Door_01 is 1.3236 wide at scale 1 (pivot at one end, like the wall
-// piece) — 1.3236 * 0.75 = 0.9927, a near-perfect fit against a 1.0 edge.
-const DOOR_SCALE = SYNTY_SCALE;
 
 // Placeholder-acceptable open pose (rpg-dnd5e-web#526, wave rpg-project#96
 // Slice 2): the door leaf GLB's pivot is at one end (edge.a, like the wall
@@ -118,18 +103,47 @@ export interface SyntyHexWallProps {
    */
   spaceTheme?: 'crypt';
   /**
-   * Per-door rotationY override (radians), keyed by Wall.id — dungeon-walls
-   * redesign (rpg-project#133 design.md's W2 slice): orients a door frame/
-   * leaf along its connector's own column axis
-   * (wallRunAdapters.connectorRunDoorRotations) instead of the wire's
-   * `doorPassageNeighbor`-derived edge, which picks an arbitrary first
-   * region-tagged neighbor rather than the connector's real axis. A door
-   * whose id has no entry (or whose Wall.id is absent) falls back to the
-   * pre-existing `edge.rotationY` exactly as before — undefined/omitted
+   * Per-door exact position + rotationY override, keyed by Wall.id —
+   * dungeon-walls redesign (rpg-project#133 design.md's W2 slice,
+   * sharpened by the connector-single-wall follow-up rpg-project#132):
+   * places a door frame/leaf exactly on its connector's own straight column
+   * plane (wallRunAdapters.connectorDoorPlanes) instead of the wire's
+   * `hexEdgeBetween`-derived edge geometry (the midpoint/corner between the
+   * door's own cell and `doorPassageNeighbor`'s arbitrarily-picked first
+   * region-tagged neighbor) — a genuinely different position AND rotation
+   * than the connector's own line, close enough to look plausible but
+   * never guaranteed to coincide (Kirk's live-walk regression: "can our
+   * door rotate a little to line up with the wall?"). A door whose id has
+   * no entry (or whose Wall.id is absent) falls back to the pre-existing
+   * `edge.mid`/`edge.rotationY` exactly as before — undefined/omitted
    * (every caller before this design) is byte-identical to pre-#133
    * behavior.
    */
-  doorRotationOverrides?: ReadonlyMap<string, number>;
+  doorPlaneOverrides?: ReadonlyMap<
+    string,
+    { position: WorldPos; rotationY: number }
+  >;
+  /**
+   * Wall height override, world units — defaults to
+   * calibrationConstants.WALL_HEIGHT so every existing caller renders
+   * byte-identical to before this prop existed. Kirk's live-walk ask
+   * (rpg-project#132, `?wallHeight=` dial): wall segment panels, door
+   * frame/leaf, and corner/end fittings all scale off THIS value (not the
+   * hardcoded WALL_HEIGHT import) so they rise together.
+   */
+  wallHeight?: number;
+  /**
+   * Cutaway prototype (rpg-project#132, `?wallCutaway=1`): per-door height
+   * override, keyed by Wall.id, from `wallRunAdapters.connectorDoorHeights`
+   * — a door's frame/leaf scales off ITS OWN connector run's classification
+   * (stub or tall) instead of the single global `wallHeight` every door
+   * used before this prototype (Kirk's requirement: "Doors/frames on a tall
+   * run scale with it"). A door whose id has no entry (or whose Wall.id is
+   * absent) falls back to `wallHeight` exactly as before — undefined/
+   * omitted (every caller before this prototype) is byte-identical to
+   * pre-cutaway behavior.
+   */
+  doorHeights?: ReadonlyMap<string, number>;
 }
 
 export function SyntyHexWall({
@@ -139,7 +153,9 @@ export function SyntyHexWall({
   themeWallHexKeys,
   rememberedWallHexKeys,
   spaceTheme,
-  doorRotationOverrides,
+  doorPlaneOverrides,
+  wallHeight = WALL_HEIGHT,
+  doorHeights,
 }: SyntyHexWallProps) {
   const segments = useMemo(
     () => buildDungeonWallSegments(walls, hexSize),
@@ -162,9 +178,42 @@ export function SyntyHexWall({
         const isRemembered = rememberedSegment(key, rememberedWallHexKeys);
         if (isDoorWallKind(kind)) {
           const visualState = doorVisualState(kind)!;
-          const rotationY =
-            (id !== undefined ? doorRotationOverrides?.get(id) : undefined) ??
-            edge.rotationY;
+          const plane =
+            id !== undefined ? doorPlaneOverrides?.get(id) : undefined;
+          const rotationY = plane?.rotationY ?? edge.rotationY;
+          const framePosition = plane?.position ?? edge.mid;
+          // Door frame/leaf height rises the SAME proportion the wall-height
+          // dial moves its effective height away from the calibrated
+          // default — 1.0 (no-op) at the default, so every existing caller
+          // is byte-identical (doorFrameScale/doorLeafScale's own doc
+          // comments). `doorHeights` (cutaway prototype) overrides THIS
+          // door's own effective height ahead of the global `wallHeight`
+          // when present.
+          const effectiveDoorHeight =
+            (id !== undefined ? doorHeights?.get(id) : undefined) ?? wallHeight;
+          const doorHeightRatio = effectiveDoorHeight / WALL_HEIGHT;
+          // The leaf's pivot sits at one end of the edge, like the wall
+          // pieces (this file's own doc comment) — `edge.a` is exactly
+          // `edge.mid` offset by half the edge's own length, along the
+          // direction matching `edge.rotationY`. Preserve that SAME offset
+          // MAGNITUDE (not a re-derived hex-geometry constant) when a plane
+          // override moves the frame, applied along the override's own
+          // (possibly different) direction so the leaf still sits flush
+          // against the frame instead of at the old wire-edge corner.
+          const leafPosition = plane
+            ? (() => {
+                const offsetDistance = Math.hypot(
+                  edge.a.x - edge.mid.x,
+                  edge.a.z - edge.mid.z
+                );
+                const dirX = Math.cos(rotationY);
+                const dirZ = -Math.sin(rotationY);
+                return {
+                  x: framePosition.x - dirX * offsetDistance,
+                  z: framePosition.z - dirZ * offsetDistance,
+                };
+              })()
+            : edge.a;
           return (
             <group
               key={key}
@@ -183,20 +232,20 @@ export function SyntyHexWall({
               })}
             >
               <GlbInstance
-                file="SM_Env_Door_Frame_01.glb"
-                position={edge.mid}
+                file={DOOR_FRAME_FILE}
+                position={framePosition}
                 rotationY={rotationY}
-                scale={DOOR_FRAME_SCALE}
+                scale={doorFrameScale(doorHeightRatio)}
                 remembered={isRemembered}
               />
               <GlbInstance
-                file="SM_Env_Door_01.glb"
-                position={edge.a}
+                file={DOOR_LEAF_FILE}
+                position={leafPosition}
                 rotationY={
                   rotationY +
                   (visualState === 'open' ? DOOR_OPEN_ROTATION_OFFSET : 0)
                 }
-                scale={DOOR_SCALE}
+                scale={doorLeafScale(doorHeightRatio)}
                 tint={visualState === 'locked' ? LOCKED_DOOR_TINT : undefined}
                 remembered={isRemembered}
               />
@@ -214,7 +263,7 @@ export function SyntyHexWall({
               file={fitting.file}
               position={edge.mid}
               rotationY={edge.rotationY}
-              scale={fittingScale(fitting, WALL_HEIGHT)}
+              scale={fittingScale(fitting, wallHeight)}
               remembered={isRemembered}
             />
           );
@@ -241,7 +290,7 @@ export function SyntyHexWall({
             file={variant.file}
             position={edge.a}
             rotationY={edge.rotationY}
-            scale={wallVariantScale(variant, WALL_HEIGHT, SYNTY_SCALE)}
+            scale={wallVariantScale(variant, wallHeight, SYNTY_SCALE)}
             tint={WALL_TINT_BY_THEME[theme]}
             remembered={isRemembered}
           />
@@ -256,7 +305,7 @@ export function SyntyHexWall({
             file={fitting.file}
             position={position}
             rotationY={rotationY}
-            scale={fittingScale(fitting, WALL_HEIGHT)}
+            scale={fittingScale(fitting, wallHeight)}
             remembered={isRemembered}
           />
         );

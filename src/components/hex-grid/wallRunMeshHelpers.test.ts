@@ -1,5 +1,8 @@
+import { CUTAWAY_STUB_WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { describe, expect, it } from 'vitest';
 import {
+  connectorPartitionHeight,
+  effectiveWallHeight,
   facingCorrectedRotationY,
   segmentKey,
   tileWallSegment,
@@ -335,5 +338,90 @@ describe("facingCorrectedRotationY (round-2 W3/W4 fix: tileWallSegment's rotatio
       rotationY + Math.PI,
       9
     );
+  });
+});
+
+describe('effectiveWallHeight (cutaway prototype, rpg-project#132 ?wallCutaway=1: camera-facing runs render as a low stub, away-facing runs stay tall)', () => {
+  const TALL = 2.4;
+  // Toward the fixed isometric camera (matches CAMERA_WARD_XZ's own
+  // direction, derived from CAMERA_OFFSET=[8,10,8] — see
+  // calibrationConstants.ts).
+  const TOWARD_CAMERA = { x: 1, z: 1 };
+  const AWAY_FROM_CAMERA = { x: -1, z: -1 };
+
+  it('renders the uniform tall height when cutaway is off, regardless of facing', () => {
+    expect(effectiveWallHeight(TOWARD_CAMERA, false, TALL)).toBe(TALL);
+    expect(effectiveWallHeight(AWAY_FROM_CAMERA, false, TALL)).toBe(TALL);
+  });
+
+  it('renders tall (never stub) when there is no facing vector at all, even with cutaway on', () => {
+    expect(effectiveWallHeight(undefined, true, TALL)).toBe(TALL);
+  });
+
+  it('stubs a run whose facing points toward the camera', () => {
+    expect(effectiveWallHeight(TOWARD_CAMERA, true, TALL)).toBe(
+      CUTAWAY_STUB_WALL_HEIGHT
+    );
+  });
+
+  it('keeps a run whose facing points away from the camera at the tall height', () => {
+    expect(effectiveWallHeight(AWAY_FROM_CAMERA, true, TALL)).toBe(TALL);
+  });
+});
+
+describe('connectorPartitionHeight (interior-partition rule, rpg-project#132 follow-up: Kirk\'s live-walk finding that the envelope dot-rule made every interior partition stub — "envelope walls keep the existing dot rule... interior partitions default TALL; a partition stubs only when it sits between the camera and the player\'s current/active room")', () => {
+  const TALL = 2.4;
+  const PARTITION_POINT = { x: 0, z: 0 };
+  // Toward/away from the fixed isometric camera, same CAMERA_WARD_XZ
+  // direction effectiveWallHeight's own tests use — but here it's the
+  // PLAYER's position relative to the partition, not a facing vector.
+  const PLAYER_TOWARD_CAMERA = { x: 10, z: 10 };
+  const PLAYER_AWAY_FROM_CAMERA = { x: -10, z: -10 };
+
+  it('renders the uniform tall height when cutaway is off, regardless of player position', () => {
+    expect(
+      connectorPartitionHeight(
+        PARTITION_POINT,
+        PLAYER_AWAY_FROM_CAMERA,
+        false,
+        TALL
+      )
+    ).toBe(TALL);
+  });
+
+  it('defaults tall when no player position is known yet — "interior partitions default TALL"', () => {
+    expect(
+      connectorPartitionHeight(PARTITION_POINT, undefined, true, TALL)
+    ).toBe(TALL);
+  });
+
+  it('keeps a partition tall when the player sits on the camera side (partition is behind the player, does not occlude their room)', () => {
+    expect(
+      connectorPartitionHeight(
+        PARTITION_POINT,
+        PLAYER_TOWARD_CAMERA,
+        true,
+        TALL
+      )
+    ).toBe(TALL);
+  });
+
+  it("stubs a partition when it sits between the camera and the player (would occlude the player's own current room)", () => {
+    expect(
+      connectorPartitionHeight(
+        PARTITION_POINT,
+        PLAYER_AWAY_FROM_CAMERA,
+        true,
+        TALL
+      )
+    ).toBe(CUTAWAY_STUB_WALL_HEIGHT);
+  });
+
+  it('classifies relative to the partition point, not world origin — shifting both by the same offset gives the identical result', () => {
+    const shiftedPartition = { x: 50, z: -30 };
+    const shiftedPlayerAway = { x: 40, z: -40 };
+    expect(
+      connectorPartitionHeight(shiftedPartition, shiftedPlayerAway, true, TALL)
+    ).toBe(CUTAWAY_STUB_WALL_HEIGHT);
   });
 });

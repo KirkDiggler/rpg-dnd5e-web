@@ -54,6 +54,8 @@ import {
   type WallTheme,
 } from './syntyHexWallHelpers';
 import {
+  connectorPartitionHeight,
+  effectiveWallHeight,
   segmentKey,
   tileWallSegment,
   wallRunBoxTransform,
@@ -214,8 +216,35 @@ export interface WallRunMeshProps {
   rememberedConnectorDoorIds?: ReadonlySet<string>;
   /** Wall height, world units — defaults to the game's standard
    * WALL_HEIGHT (calibrationConstants.ts) so this matches every other
-   * wall renderer without callers having to pass it explicitly. */
+   * wall renderer without callers having to pass it explicitly. Doubles as
+   * the cutaway prototype's TALL height when `wallCutaway` is set (team
+   * ask: "make the tall value the ?wallHeight dial so the ladder composes
+   * with cutaway"). */
   wallHeight?: number;
+  /** Cutaway prototype (rpg-project#132, `?wallCutaway=1`): classifies each
+   * ENVELOPE run as camera-facing (stub, `CUTAWAY_STUB_WALL_HEIGHT`) or
+   * away-facing (tall, `wallHeight`) via its own `facing` vector — see
+   * `effectiveWallHeight`'s own doc comment. Connector runs and their
+   * fallback stand-ins use a DIFFERENT rule (`connectorPartitionHeight`,
+   * keyed off `playerPosition` below) — interior partitions default tall
+   * and stub only when they'd occlude the player's own current room, per
+   * Kirk's live-walk follow-up ("envelope walls keep the existing dot
+   * rule... interior partitions default TALL"). Default false renders
+   * every run at the uniform `wallHeight`, unchanged from before this
+   * prop existed. Corners where a tall run meets a stub are NOT
+   * reconciled in this prototype (each run keeps its own height; judge
+   * the look first, polish the joint after). */
+  wallCutaway?: boolean;
+  /** The local player's own current world position (`EncounterMap`'s
+   * `myWorldXZ`, converted to this shape) — the cutaway prototype's
+   * interior-partition classification (`connectorPartitionHeight`) needs
+   * this to decide whether a connector run/fallback segment sits between
+   * the camera and the player's own current room. Undefined (every
+   * caller before this prop existed, or a player position not yet
+   * resolved) defaults every connector/fallback partition to the tall
+   * height — the same safe "interior partitions default TALL" fallback
+   * as no cutaway at all. */
+  playerPosition?: WorldPos;
   /** Whole-space theme (rpg-dnd5e-web#558) — tints every tiled piece and
    * corner fitting the same way SyntyHexWall's legacy renderer already
    * tints per-cell pieces, so a themed dungeon's straight runs match its
@@ -265,6 +294,8 @@ export function WallRunMesh({
   rememberedEnvelopeRegionIds,
   rememberedConnectorDoorIds,
   wallHeight = DEFAULT_WALL_HEIGHT,
+  wallCutaway = false,
+  playerPosition,
   spaceTheme,
 }: WallRunMeshProps) {
   const tint = spaceTheme ? WALL_TINT_BY_THEME[spaceTheme] : undefined;
@@ -273,11 +304,12 @@ export function WallRunMesh({
     <Suspense fallback={null}>
       {envelopeRuns.map((run) => {
         const remembered = !!rememberedEnvelopeRegionIds?.has(run.regionId);
+        const height = effectiveWallHeight(run.facing, wallCutaway, wallHeight);
         return (
           <group key={`${run.regionId}-${run.side}`}>
             <TiledWallRun
               segment={run}
-              wallHeight={wallHeight}
+              wallHeight={height}
               tint={tint}
               remembered={remembered}
               facing={run.facing}
@@ -289,11 +321,27 @@ export function WallRunMesh({
       {connectorRuns.flatMap((run) => {
         const remembered =
           !!run.doorId && !!rememberedConnectorDoorIds?.has(run.doorId);
+        // Interior partition rule (rpg-project#132 follow-up), NOT
+        // effectiveWallHeight's envelope rule — classified ONCE per run
+        // (a single representative point on the connector's own line),
+        // then applied to every one of its segments, so the near/far
+        // halves of the SAME connector never disagree with each other.
+        const partitionPoint = run.segments[0]
+          ? wallRunBoxTransform(run.segments[0]).position
+          : undefined;
+        const height = partitionPoint
+          ? connectorPartitionHeight(
+              partitionPoint,
+              playerPosition,
+              wallCutaway,
+              wallHeight
+            )
+          : wallHeight;
         return run.segments.map((segment) => (
           <group key={segmentKey(segment)}>
             <TiledWallRun
               segment={segment}
-              wallHeight={wallHeight}
+              wallHeight={height}
               tint={tint}
               remembered={remembered}
               facing={run.facing}
@@ -302,12 +350,27 @@ export function WallRunMesh({
           </group>
         ));
       })}
-      {fallbackSegments.map((segment) => (
-        <group key={`fallback-${segmentKey(segment)}`}>
-          <TiledWallRun segment={segment} wallHeight={wallHeight} tint={tint} />
-          <FloorSkirtBox segment={segment} />
-        </group>
-      ))}
+      {fallbackSegments.map((segment) => {
+        // A fallback stand-in sits on the SAME column line a real
+        // ConnectorRun would eventually resolve to (design.md's own
+        // "structural safety net" framing) — classifying it with the
+        // identical interior-partition rule, keyed off its own segment
+        // midpoint, is what makes closed (fallback) and open (real run)
+        // render at the SAME height instead of popping (Kirk's live-walk
+        // finding: "door height pops on open").
+        const height = connectorPartitionHeight(
+          wallRunBoxTransform(segment).position,
+          playerPosition,
+          wallCutaway,
+          wallHeight
+        );
+        return (
+          <group key={`fallback-${segmentKey(segment)}`}>
+            <TiledWallRun segment={segment} wallHeight={height} tint={tint} />
+            <FloorSkirtBox segment={segment} />
+          </group>
+        );
+      })}
     </Suspense>
   );
 }

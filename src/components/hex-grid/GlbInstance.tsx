@@ -35,8 +35,24 @@ import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { WorldPos } from './hexMath';
 import { cloneCryptMaterials } from './sceneKnowledge';
+import { ENV_GLB_FILES_TO_PRELOAD } from './syntyHexWallHelpers';
 
 export const ENV_BASE = '/models/synty/env/';
+
+// Preload every known wall/door/fitting GLB at module scope (Kirk's
+// live-walk observation: newly-appearing walls sometimes flash at raw
+// mesh height for a frame before snapping to their computed scale — see
+// ENV_GLB_FILES_TO_PRELOAD's own doc comment for the full reasoning).
+// `useGLTF.preload?.(...)` (optional call, not a direct `.preload(...)`)
+// because test suites stub `useGLTF` as a bare function with no
+// `.preload` static (WallRunMesh.test.tsx's/SyntyHexWall.test.tsx's
+// `vi.mock('@react-three/drei', ...)`) — calling a missing method
+// directly would throw at import time and break every test that
+// transitively imports this module; the optional call is a no-op
+// against that mock and a real preload against the actual drei export.
+for (const file of ENV_GLB_FILES_TO_PRELOAD) {
+  useGLTF.preload?.(ENV_BASE + file);
+}
 
 /**
  * Non-uniform-scale baked geometries, shared across every instance that
@@ -104,6 +120,44 @@ function bakedGeometriesFor(
       baked.push(geometry);
     }
   });
+  // Base-anchor the whole instance to the floor plane (Kirk's live-walk
+  // extreme-height test, `?wallCutaway=1&wallHeight=12.4`: tall walls
+  // rendered as FLOATING beams, clear floor visible beneath where their
+  // bodies should meet the ground). Root cause: `geometry.scale(sx,sy,sz)`
+  // above multiplies each vertex's LOCAL position by the scale factors —
+  // correct only when a piece's authored local origin already sits
+  // exactly at its own base (Y=0). These wall/door/fitting GLBs don't
+  // (their measured raw bounding boxes are NOT anchored at their local
+  // Y=0 the way this fix assumes elsewhere for X, e.g. WallVariant's own
+  // `rawMinX` pivot-ratio finding), so scaling Y non-uniformly moves the
+  // base itself: a piece whose local origin sits partway up its own
+  // height lifts its base by roughly half the height DELTA as `sy` grows
+  // — subtle and easy to miss at a small dial value (wallHeight=2.4), a
+  // dramatic ~5-6 unit levitation at the extreme value that exposed it
+  // (wallHeight=12.4) — exactly Kirk's reported symptom, at exactly the
+  // magnitude the math predicts.
+  //
+  // Fix: compute ONE combined bounding box across every mesh THIS file
+  // bakes to (not per-mesh — a multi-mesh GLB's sub-pieces may be
+  // deliberately offset from each other; anchoring each mesh
+  // independently would misalign them), then translate every baked
+  // geometry by the SAME amount so the combined base sits exactly at
+  // local Y=0 — matching where `<primitive position={[x, 0, z]}>` below
+  // actually places the floor, regardless of the model's own authored
+  // pivot. An empty/degenerate `baked` (a GLB with zero meshes, not
+  // expected in practice but not this function's job to assume) safely
+  // no-ops via `Infinity`'s own short-circuit below.
+  let minY = Infinity;
+  for (const geometry of baked) {
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    if (box && box.min.y < minY) minY = box.min.y;
+  }
+  if (Number.isFinite(minY) && minY !== 0) {
+    for (const geometry of baked) {
+      geometry.translate(0, -minY, 0);
+    }
+  }
   bakedGeometryCache.set(key, baked);
   return baked;
 }

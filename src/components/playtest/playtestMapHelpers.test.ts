@@ -34,7 +34,9 @@ import {
   parseCryptLightOverride,
   parseDevPropDemoKeys,
   parsePerfProbeWindowMs,
+  parseWallHeightOverride,
   resolveSpaceTheme,
+  resolveWallHeightForCutaway,
   synthesizeFloorTiles,
   type MoodPointLight,
   type RenderableEntity,
@@ -568,6 +570,49 @@ describe('parseCryptLightOverride (rpg-dnd5e-web#558 follow-up — live brightne
   it('clamps a negative value up to 0, rather than rejecting it', () => {
     expect(parseCryptLightOverride('-0.5')).toBe(0);
     expect(parseCryptLightOverride('-100')).toBe(0);
+  });
+});
+
+describe('parseWallHeightOverride (rpg-project#132, Kirk\'s live walk: "the height of the walls might be a little low" — live wall-height dial)', () => {
+  it('returns undefined for null input (param absent)', () => {
+    expect(parseWallHeightOverride(null)).toBeUndefined();
+  });
+
+  it('returns undefined for a non-numeric value instead of NaN', () => {
+    expect(parseWallHeightOverride('abc')).toBeUndefined();
+  });
+
+  it('returns undefined for Infinity/-Infinity', () => {
+    expect(parseWallHeightOverride('Infinity')).toBeUndefined();
+    expect(parseWallHeightOverride('-Infinity')).toBeUndefined();
+  });
+
+  it('rejects zero and negative values — a non-positive wall height is nonsensical', () => {
+    expect(parseWallHeightOverride('0')).toBeUndefined();
+    expect(parseWallHeightOverride('-1')).toBeUndefined();
+    expect(parseWallHeightOverride('-0.8')).toBeUndefined();
+  });
+
+  it('parses a valid positive value unchanged, with NO upper clamp (unlike parseCryptLightOverride) — the whole point of this dial is exploring values above the current default', () => {
+    expect(parseWallHeightOverride('0.8')).toBe(0.8);
+    expect(parseWallHeightOverride('1.2')).toBe(1.2);
+    expect(parseWallHeightOverride('1.5')).toBe(1.5);
+    expect(parseWallHeightOverride('100')).toBe(100);
+  });
+});
+
+describe('resolveWallHeightForCutaway (rpg-project#132 cutaway prototype, Kirk\'s live-walk papercut: "?wallCutaway=1 alone gave ankle-high everything")', () => {
+  it('an explicit override always wins, cutaway on or off', () => {
+    expect(resolveWallHeightForCutaway(1.2, true)).toBe(1.2);
+    expect(resolveWallHeightForCutaway(1.2, false)).toBe(1.2);
+  });
+
+  it("no override, cutaway OFF: stays undefined — byte-identical to before this function existed, HexGrid/WallRunMesh/SyntyHexWall's own WALL_HEIGHT default applies", () => {
+    expect(resolveWallHeightForCutaway(undefined, false)).toBeUndefined();
+  });
+
+  it('no override, cutaway ON: defaults to CUTAWAY_TALL_WALL_HEIGHT (2.4), not the ordinary WALL_HEIGHT (0.8) — the exact papercut this fixes', () => {
+    expect(resolveWallHeightForCutaway(undefined, true)).toBe(2.4);
   });
 });
 

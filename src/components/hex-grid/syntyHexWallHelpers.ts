@@ -30,6 +30,7 @@
  * neighbor-membership algorithm above.
  */
 
+import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import {
   WallKind,
   type Wall,
@@ -641,6 +642,64 @@ export function fittingScale(
     variant.rawDepth * FITTING_FOOTPRINT_SCALE,
   ];
 }
+
+// SM_Env_Door_Frame_01's own local-space bounding width at scale=1, pivot
+// centered (see SyntyHexWall.tsx's own historical DOOR_FRAME_RAW_WIDTH
+// comment for the measurement provenance).
+const DOOR_FRAME_RAW_WIDTH = 1.999;
+
+/**
+ * Door frame height/leaf height scale — historically a flat SYNTY_SCALE
+ * (a "human-scale feature, not clamped to the short game wall height"),
+ * now scaled by the SAME ratio the `wallHeight` dial applies to every
+ * other wall piece (Kirk's live-walk ask, rpg-project#132 wall-height
+ * dial: "the height of the walls might be a little low" — walls, door
+ * frame, and fittings should all rise TOGETHER when that dial changes, not
+ * just the run boxes). `heightRatio` is `wallHeight / WALL_HEIGHT` (the
+ * calibrated default) — 1.0 at the default wallHeight, so this is
+ * byte-identical to the old flat SYNTY_SCALE for every caller that
+ * doesn't pass an override. Width/depth (X/Z) are deliberately
+ * untouched — door WIDTH still fits the edge exactly, and depth/thickness
+ * still matches the wall's own SYNTY_SCALE convention; only height is
+ * what "the wall is a little low" is about.
+ */
+export const DOOR_FRAME_FILE = 'SM_Env_Door_Frame_01.glb';
+
+export function doorFrameScale(heightRatio: number): [number, number, number] {
+  return [1.0 / DOOR_FRAME_RAW_WIDTH, SYNTY_SCALE * heightRatio, SYNTY_SCALE];
+}
+
+// SM_Env_Door_01 is 1.3236 wide at scale 1 (pivot at one end, like the wall
+// piece) — 1.3236 * 0.75 = 0.9927, a near-perfect fit against a 1.0 edge.
+export const DOOR_LEAF_FILE = 'SM_Env_Door_01.glb';
+
+export function doorLeafScale(heightRatio: number): [number, number, number] {
+  return [SYNTY_SCALE, SYNTY_SCALE * heightRatio, SYNTY_SCALE];
+}
+
+/**
+ * Every env GLB file this codebase's wall-rendering path (SyntyHexWall's
+ * legacy per-cell renderer, WallRunMesh's tiled runs, both share
+ * GlbInstance) ever requests — the full, closed set: 3 wall-role variants,
+ * 1 fitting substitute (every FittingKind maps to the SAME file —
+ * FITTING_SUBSTITUTE_FILE's own doc comment), 2 door pieces. Preloaded via
+ * `useGLTF.preload` at GlbInstance's module scope (Kirk's live-walk
+ * observation: newly-appearing walls sometimes flash at raw mesh height
+ * for a frame before snapping to their computed scale — no confirmed
+ * synchronous/async gap was found in GlbInstance's own bake path, but
+ * preloading removes any conceivable FIRST-request Suspense gap for
+ * these known files regardless of the exact mechanism, at zero cost to
+ * every caller that already has them cached by the time a wall needs
+ * one). Not exhaustive of every GLB the game ever loads (props, monsters,
+ * characters live elsewhere) — scoped to exactly this wall/door/fitting
+ * pipeline.
+ */
+export const ENV_GLB_FILES_TO_PRELOAD: readonly string[] = [
+  ...WALL_VARIANTS.map((variant) => variant.file),
+  FITTING_SUBSTITUTE_FILE,
+  DOOR_FRAME_FILE,
+  DOOR_LEAF_FILE,
+];
 
 export interface VertexFitting {
   /** Order-independent identity for the vertex (the 3 touching hex keys,

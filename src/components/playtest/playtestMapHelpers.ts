@@ -20,6 +20,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
+import { CUTAWAY_TALL_WALL_HEIGHT } from '../../rendering/calibrationConstants';
 import {
   coordToKey,
   cubeToWorld,
@@ -371,6 +372,55 @@ export function parseCryptLightOverride(
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return undefined;
   return Math.min(1, Math.max(0, parsed));
+}
+
+/**
+ * Parse a `?wallHeight=` live-tuning override (Kirk's live walk on the
+ * connector-single-wall prototype, rpg-project#132: "the height of the
+ * walls might be a little low") for the real route's wall height. Replaces
+ * calibrationConstants.WALL_HEIGHT (default 0.8) wherever a caller threads
+ * this through — see SyntyHexWall's and WallRunMesh's own `wallHeight`
+ * prop doc comments for the full list of pieces that rise together (wall
+ * segment panels, door frame/leaf, corner/end fittings, tiled envelope/
+ * connector run pieces).
+ *
+ * Rejects non-positive/non-finite input (same reasoning as
+ * `parsePerfProbeWindowMs` above — a negative or zero wall height is
+ * nonsensical) and returns `undefined` rather than a hardcoded fallback, so
+ * `calibrationConstants.WALL_HEIGHT` stays the single source of truth for
+ * the default. Deliberately NOT clamped to an upper bound (unlike
+ * `parseCryptLightOverride`'s `[0, 1]` light-intensity range) — wall height
+ * has no comparable hard ceiling, and this is exactly the live-tuning dial
+ * meant to explore values above the current default.
+ */
+export function parseWallHeightOverride(
+  raw: string | null
+): number | undefined {
+  if (raw === null) return undefined;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
+/**
+ * Resolves the effective `wallHeight` (the cutaway prototype's TALL value)
+ * to pass down to HexGrid: an explicit `?wallHeight=` override always wins
+ * (the dial composing with cutaway is the whole point — Kirk's original
+ * ask), but with NO override, cutaway should default to
+ * `CUTAWAY_TALL_WALL_HEIGHT` (2.4) rather than silently falling through to
+ * the ordinary `WALL_HEIGHT` (0.8) — the exact papercut Kirk hit judging
+ * the prototype live: `?wallCutaway=1` alone gave "ankle-high everything"
+ * (stub=0.3/tall=0.8, barely distinguishable) instead of the promo's
+ * "sense of size." `undefined` (cutaway off, no override) preserves
+ * byte-identical behavior to before this function existed — HexGrid's/
+ * WallRunMesh's/SyntyHexWall's own WALL_HEIGHT default still applies.
+ */
+export function resolveWallHeightForCutaway(
+  explicitOverride: number | undefined,
+  wallCutaway: boolean
+): number | undefined {
+  if (explicitOverride !== undefined) return explicitOverride;
+  return wallCutaway ? CUTAWAY_TALL_WALL_HEIGHT : undefined;
 }
 
 // ---------------------------------------------------------------------
