@@ -268,6 +268,32 @@ export interface HexGridProps {
     intensity: number;
     distance: number;
   }>;
+  /**
+   * Look-lab lighting experiment (rpg-dnd5e-web#558 follow-up): the SAME
+   * light specs as `moodPointLights` above, passed straight through to
+   * SyntyHexFloor so it can blend each nearby tile's tint toward the
+   * light's color (deterministic per-tile color math, NOT a lit
+   * material — see syntyHexFloorHelpers.ts's doc comment for why this
+   * avoids the #481/#587 cross-environment risk the reverted lit-floor
+   * experiment hit). Callers typically pass the identical array already
+   * built for `moodPointLights` — the two are independent props only so
+   * a caller COULD light the scene without pooling the floor, not because
+   * they're expected to diverge in practice. Empty/undefined (every
+   * caller before this experiment) is a no-op.
+   */
+  floorPoolLights?: Array<{
+    position: [number, number, number];
+    color: string;
+    intensity?: number;
+    distance: number;
+  }>;
+  /**
+   * Dev/Kirk-only A/B, passed straight through to SyntyHexFloor's own
+   * `litSurfaces` prop — see that prop's doc comment. Default
+   * false/undefined for every caller; local screenshots of this path
+   * aren't evidence (see the same doc comment for why).
+   */
+  litSurfaces?: boolean;
   /** Extra scene content rendered inside the Canvas after the built-in
    * layers (e.g. the playtest harness's Synty model showcase). */
   children?: React.ReactNode;
@@ -394,6 +420,14 @@ function Scene({
   ambientIntensity = 0.6,
   directionalIntensity = 0.8,
   moodPointLights = [],
+  // No `= []` default here (Copilot review, PR #620) — unlike
+  // moodPointLights above, a fresh array literal every render would give
+  // SyntyHexFloor's `poolLights` prop a new identity each time even when
+  // pooling is "off", defeating memoization for no reason. Left
+  // `undefined`, SyntyHexFloorTile's own `!poolLights || poolLights.length
+  // === 0` check already treats that identically to an empty array.
+  floorPoolLights,
+  litSurfaces = false,
   children,
 }: HexGridProps) {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -877,6 +911,8 @@ function Scene({
             themeFloorHexKeys={themeFloorHexKeys}
             spaceTheme={spaceTheme}
             rememberedFloorHexKeys={rememberedFloorHexKeys}
+            poolLights={floorPoolLights}
+            litSurfaces={litSurfaces}
           />
         </ErrorBoundary>
       ) : (

@@ -171,3 +171,43 @@ describe('EncounterMap live brightness dial (?cryptAmbient=/?cryptDirectional=, 
     expect(props.directionalIntensity).toBeUndefined();
   });
 });
+
+describe('EncounterMap look-lab lighting experiment dials (?floorPools=1/?litSurfaces=1, rpg-dnd5e-web#558 follow-up)', () => {
+  it('no-ops with no query params at all — floorPoolLights undefined, litSurfaces false, byte-identical to pre-experiment behavior', () => {
+    render(<EncounterMap {...baseProps()} theme="crypt" />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.floorPoolLights).toBeUndefined();
+    expect(props.litSurfaces).toBe(false);
+  });
+
+  it('?floorPools=1 passes the SAME light list already built for moodPointLights through to floorPoolLights', () => {
+    window.history.pushState({}, '', '?floorPools=1');
+    render(<EncounterMap {...baseProps()} theme="crypt" />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.moodPointLights).toHaveLength(1); // the door light from baseProps()
+    expect(props.floorPoolLights).toEqual(props.moodPointLights);
+  });
+
+  it('?floorPools=1 without a crypt theme still forwards whatever moodPointLights resolved to (empty, since theming is off) rather than crashing or defaulting on', () => {
+    window.history.pushState({}, '', '?floorPools=1');
+    render(<EncounterMap {...baseProps()} />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.moodPointLights).toEqual([]);
+    expect(props.floorPoolLights).toEqual([]);
+  });
+
+  it('?litSurfaces=1 sets litSurfaces true', () => {
+    window.history.pushState({}, '', '?litSurfaces=1');
+    render(<EncounterMap {...baseProps()} theme="crypt" />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.litSurfaces).toBe(true);
+  });
+
+  it('an unrecognized value for either dial is treated as off, not on', () => {
+    window.history.pushState({}, '', '?floorPools=true&litSurfaces=yes');
+    render(<EncounterMap {...baseProps()} theme="crypt" />);
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.floorPoolLights).toBeUndefined();
+    expect(props.litSurfaces).toBe(false);
+  });
+});
