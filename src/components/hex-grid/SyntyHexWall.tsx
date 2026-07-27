@@ -182,16 +182,14 @@ export function SyntyHexWall({
             id !== undefined ? doorPlaneOverrides?.get(id) : undefined;
           const rotationY = plane?.rotationY ?? edge.rotationY;
           const framePosition = plane?.position ?? edge.mid;
-          // Door frame/leaf height rises the SAME proportion the wall-height
-          // dial moves its effective height away from the calibrated
-          // default — 1.0 (no-op) at the default, so every existing caller
-          // is byte-identical (doorFrameScale/doorLeafScale's own doc
-          // comments). `doorHeights` (cutaway prototype) overrides THIS
-          // door's own effective height ahead of the global `wallHeight`
-          // when present.
+          // Door frame/leaf height targets `effectiveDoorHeight` directly
+          // (doorFrameScale/doorLeafScale's own doc comments — rpg-project#132
+          // follow-up, Kirk's verdict: door height must equal wall height,
+          // not scale a legacy ratio). `doorHeights` (cutaway prototype)
+          // overrides THIS door's own effective height ahead of the global
+          // `wallHeight` when present.
           const effectiveDoorHeight =
             (id !== undefined ? doorHeights?.get(id) : undefined) ?? wallHeight;
-          const doorHeightRatio = effectiveDoorHeight / WALL_HEIGHT;
           // The leaf's pivot sits at one end of the edge, like the wall
           // pieces (this file's own doc comment) — `edge.a` is exactly
           // `edge.mid` offset by half the edge's own length, along the
@@ -235,7 +233,7 @@ export function SyntyHexWall({
                 file={DOOR_FRAME_FILE}
                 position={framePosition}
                 rotationY={rotationY}
-                scale={doorFrameScale(doorHeightRatio)}
+                scale={doorFrameScale(effectiveDoorHeight)}
                 remembered={isRemembered}
               />
               <GlbInstance
@@ -245,7 +243,7 @@ export function SyntyHexWall({
                   rotationY +
                   (visualState === 'open' ? DOOR_OPEN_ROTATION_OFFSET : 0)
                 }
-                scale={doorLeafScale(doorHeightRatio)}
+                scale={doorLeafScale(effectiveDoorHeight)}
                 tint={visualState === 'locked' ? LOCKED_DOOR_TINT : undefined}
                 remembered={isRemembered}
               />
