@@ -288,10 +288,58 @@ export function PlaytestHarness() {
       },
       onDoorOpened: (e) => {
         // DoorOpened is a pure notification now (door identity only,
-        // rpg-api-protos#197) — the rendered pose rides the next snapshot's
-        // HexRecord.edges, not a parallel reveal event.
+        // rpg-api-protos#197) — the rendered pose rides the live
+        // HexKnowledgeChanged stream (onHexKnowledgeChanged below) or the
+        // next snapshot's HexRecord.edges, not a parallel reveal event.
         encounterState.applyDoorOpened(e.doorEntityId);
         addLog(`DoorOpened ${e.doorEntityId}`);
+      },
+      // rpg-dnd5e-web#609: the only event that moves fog of war
+      // (rpg-api-protos#197). It is a DIFF — omission means untouched,
+      // never gone — so unlike SnapshotDelivered above this MERGES, never
+      // replaces. Mirrors EncounterView.tsx's identical wiring; see
+      // useEncounterState's applyEntityKnowledgeBatch / applyHexRecordsMerged
+      // doc comments for the full contract and required call order (entity
+      // meta batch first, so placement resolution below sees this same
+      // message's own disclosures already known).
+      onHexKnowledgeChanged: (e) => {
+        const knowledgeEntries = e.entities.map((entity) => ({
+          entityId: entity.id,
+          type: entity.type,
+          monsterRefId:
+            entity.data?.case === 'monster'
+              ? entity.data.value.monsterRef?.id
+              : undefined,
+          initialHP: entity.hp
+            ? { current: entity.hp.current, max: entity.hp.max }
+            : undefined,
+          initialAC: entity.armorClass,
+          // #462/#491 parity: the harness hydrates statuses/identity from
+          // snapshots the same way EncounterView does; do the same here.
+          statusEffects: entity.statusEffects,
+          displayName: entity.displayName,
+          classRefId:
+            entity.data?.case === 'character'
+              ? entity.data.value.classRef?.id
+              : undefined,
+          // No equipment field: the harness's snapshot hydration (#571)
+          // never wired equipment either, so this stays feature-parity with
+          // that path rather than adding new scope here.
+        }));
+        if (knowledgeEntries.length > 0) {
+          encounterState.applyEntityKnowledgeBatch(knowledgeEntries);
+        }
+
+        encounterState.applyHexRecordsMerged(e.hexes);
+
+        const liveWalls = e.hexes.flatMap((hex) => hex.edges ?? []);
+        if (liveWalls.length > 0) {
+          encounterState.applyWallsRevealed(liveWalls);
+        }
+
+        addLog(
+          `HexKnowledgeChanged hexes=${e.hexes.length} entities=${e.entities.length}`
+        );
       },
       onEntityDamaged: (e) => {
         encounterState.applyEntityDamaged(e);
