@@ -61,6 +61,26 @@ function regionCubes(
   return hexes;
 }
 
+/** Every hex in an INCLUSIVE [minCol, maxCol] column range — for
+ * constructing a PARTIAL reveal window of a region (a slice of its own
+ * true column extent), unlike `regionCubes` above (always starts at the
+ * region's own true left edge). Needed for the adjacency-gate regression
+ * fixtures below: a partial reveal that does NOT reach either of a
+ * region's true edges. */
+function colRangeCubes(
+  minCol: number,
+  maxCol: number,
+  height: number
+): CubeCoord[] {
+  const hexes: CubeCoord[] = [];
+  for (let col = minCol; col <= maxCol; col++) {
+    for (let row = 0; row < height; row++) {
+      hexes.push(cubeAtColRow(col, row));
+    }
+  }
+  return hexes;
+}
+
 const HEIGHT = 8;
 const DOOR_ROW = 4; // height / 2, per rpg-toolkit's generateDungeonLayout
 
@@ -1199,6 +1219,71 @@ describe('computeWallRuns — connector-facing envelope suppression (option (b),
       )
     ).toBeCloseTo(margin, 9);
   });
+
+  // Gate review (rpg-dnd5e-web#626, BLOCK verdict): nearestConnectorColumns
+  // suppressed a side whenever ANY door column lay beyond a region's
+  // bounds, at ANY distance — under partial reveal, a region's own edge
+  // is usually nowhere near that connector, so the suppressed side
+  // removed the room's only wall there while the connector run meant to
+  // replace it (needing the FAR side revealed too) frequently didn't
+  // exist yet. Fixed via an adjacency gate (`col === bounds.maxCol + 1` /
+  // `col === bounds.minCol - 1`) — nearestConnectorColumns' own doc
+  // comment has the full reasoning + trade-off. These two fixtures are
+  // the reviewer's own live reproductions on this exact reference-tomb
+  // shape, pinned as permanent regressions.
+  it("reviewer's repro 1: hall revealed cols 7-10 only (NOT yet reaching its own true right edge, col 16) with tomb dark — hall's right side must NOT be suppressed (no connector run exists to replace it yet), closing the open-frontier bug", () => {
+    const { doorEntranceHallCol, doorHallTombCol } = referenceTombFixture();
+    const entrance: RegionInput = {
+      id: 'entrance',
+      hexes: regionCubes(ENTRANCE_WIDTH, HEIGHT, ENTRANCE_START),
+    };
+    const hallPartial: RegionInput = {
+      id: 'hall',
+      hexes: colRangeCubes(HALL_START, HALL_START + 3, HEIGHT), // cols 7-10
+    };
+    const doors = [
+      { id: 'd1', position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW) },
+      { id: 'd2', position: cubeAtColRow(doorHallTombCol, DOOR_ROW) },
+    ];
+    const result = computeWallRuns({
+      regions: [entrance, hallPartial],
+      doors,
+    });
+    const hallSides = new Set(
+      result.envelopeRuns
+        .filter((r) => r.regionId === 'hall')
+        .map((r) => r.side)
+    );
+    expect(hallSides.has('right')).toBe(true);
+    // Confirms the bug's own root cause is absent here: no connector run
+    // resolves for the hall<->tomb door (tomb is dark), so if 'right'
+    // WERE suppressed, nothing would be standing in for it at all.
+    expect(result.connectorRuns).toHaveLength(1);
+    expect(result.connectorRuns[0]).toMatchObject({
+      regionAId: 'entrance',
+      regionBId: 'hall',
+    });
+  });
+
+  it("reviewer's repro 2 (the sharper case): hall revealed cols 10-12 only — a middle slice touching NEITHER door column — with entrance and tomb both dark — hall must render BOTH sides, not zero, even though nothing backs either boundary yet", () => {
+    const { doorEntranceHallCol, doorHallTombCol } = referenceTombFixture();
+    const hallMiddleOnly: RegionInput = {
+      id: 'hall',
+      hexes: colRangeCubes(HALL_START + 3, HALL_START + 5, HEIGHT), // cols 10-12
+    };
+    const doors = [
+      { id: 'd1', position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW) },
+      { id: 'd2', position: cubeAtColRow(doorHallTombCol, DOOR_ROW) },
+    ];
+    // Only hall is passed — entrance/tomb haven't revealed a single hex,
+    // matching the reviewer's own repro exactly (isolates suppression
+    // from any real ConnectorRun ever resolving on either side).
+    const result = computeWallRuns({ regions: [hallMiddleOnly], doors });
+    const hallSides = new Set(result.envelopeRuns.map((r) => r.side));
+    expect(hallSides.has('left')).toBe(true);
+    expect(hallSides.has('right')).toBe(true);
+    expect(result.connectorRuns).toHaveLength(0);
+  });
 });
 
 describe('computeWallRuns — connector run corner termination (Kirk\'s live-walk regression on the connector-single-wall prototype: "a corner went missing... roughly a hex of open gap" at the room corner adjacent to a suppressed side)', () => {
@@ -1577,5 +1662,89 @@ describe('computeWallRuns — real look-lab gallery<->staged partial reveal (Kir
       expect(run.end.x).toBeCloseTo(full.end.x, 9);
       expect(run.end.z).toBeCloseTo(full.end.z, 9);
     }
+  });
+});
+
+describe('computeWallRuns — widening propagation across a 3+ room chain (gate review finding, rpg-dnd5e-web#626): a fixed-point pass over doors makes widening actually transitive in ONE call, regardless of door array order', () => {
+  // entrance fully revealed (proves the true row extent 0-7). hall and
+  // tomb are each revealed at a SINGLE row only (row 4) across their own
+  // full column width — degenerate raw bounds (minRow=maxRow=4) with
+  // nothing to prove their own true height directly. hall connects
+  // DIRECTLY to entrance (one hop); tomb connects ONLY to hall, never
+  // directly to entrance — so tomb's own widening can only happen via
+  // hall's ALREADY-widened bounds, the exact transitivity the pre-fix
+  // single pass (reading raw bounds for both sides of every door) could
+  // not deliver when door-b was processed before door-a fully widened
+  // hall. Doors are deliberately ordered [door-b, door-a] below — hall<->
+  // tomb BEFORE entrance<->hall — the unfavorable order for the old code.
+  function singleRowColumnSpan(minCol: number, maxCol: number): CubeCoord[] {
+    const hexes: CubeCoord[] = [];
+    for (let col = minCol; col <= maxCol; col++) {
+      hexes.push(cubeAtColRow(col, DOOR_ROW));
+    }
+    return hexes;
+  }
+
+  it("tomb's row extent widens to the full 0-7 range (entrance's proven height) via hall as an intermediary, even though tomb never directly connects to entrance and hall itself is only known at a single row", () => {
+    const { doorEntranceHallCol, doorHallTombCol } = referenceTombFixture();
+    const entrance: RegionInput = {
+      id: 'entrance',
+      hexes: regionCubes(ENTRANCE_WIDTH, HEIGHT, ENTRANCE_START),
+    };
+    const hallSingleRow: RegionInput = {
+      id: 'hall',
+      hexes: singleRowColumnSpan(HALL_START, HALL_START + HALL_WIDTH - 1),
+    };
+    const tombSingleRow: RegionInput = {
+      id: 'tomb',
+      hexes: singleRowColumnSpan(TOMB_START, TOMB_START + TOMB_WIDTH - 1),
+    };
+    const doorB = {
+      id: 'door-b',
+      position: cubeAtColRow(doorHallTombCol, DOOR_ROW),
+    };
+    const doorA = {
+      id: 'door-a',
+      position: cubeAtColRow(doorEntranceHallCol, DOOR_ROW),
+    };
+
+    const result = computeWallRuns({
+      regions: [entrance, hallSingleRow, tombSingleRow],
+      doors: [doorB, doorA], // unfavorable order for the pre-fix code
+    });
+
+    // tomb's own "top"/"bottom" envelope runs should now span the FULL
+    // true row range (0 to HEIGHT-1), not just row 4 -- proving tomb's
+    // bounds widened all the way through hall to entrance's proven
+    // extent, in ONE computeWallRuns call.
+    const tombTop = result.envelopeRuns.find(
+      (r) => r.regionId === 'tomb' && r.side === 'top'
+    )!;
+    const tombBottom = result.envelopeRuns.find(
+      (r) => r.regionId === 'tomb' && r.side === 'bottom'
+    )!;
+    const expectedTop = cubeToWorld(cubeAtColRow(TOMB_START, 0), HEX_SIZE);
+    const expectedBottom = cubeToWorld(
+      cubeAtColRow(TOMB_START, HEIGHT - 1),
+      HEX_SIZE
+    );
+    // A magic-number distance tolerance would be brittle here (the
+    // envelope offset/corner-extension math legitimately moves a run's
+    // endpoint some distance past the raw hex corner) — instead, prove
+    // widening happened by showing the actual endpoint is unambiguously
+    // CLOSER to the true row-0/row-7 corner than to where it would sit
+    // had tomb stayed stuck at its own raw single-row (row 4) bounds.
+    const stuckAtRow4 = cubeToWorld(
+      cubeAtColRow(TOMB_START, DOOR_ROW),
+      HEX_SIZE
+    );
+    const distance = (a: { z: number }, b: { z: number }) =>
+      Math.abs(a.z - b.z);
+    expect(distance(tombTop.start, expectedTop)).toBeLessThan(
+      distance(tombTop.start, stuckAtRow4)
+    );
+    expect(distance(tombBottom.start, expectedBottom)).toBeLessThan(
+      distance(tombBottom.start, stuckAtRow4)
+    );
   });
 });

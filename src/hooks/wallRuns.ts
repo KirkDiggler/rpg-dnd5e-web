@@ -58,6 +58,22 @@
  *   true extent — see that field's own doc for the structural guarantee
  *   this constrains callers to (wallRunAdapters.legacyRenderWalls' safety
  *   net).
+ *
+ *   TWO-TIER EXCEPTION (gate review finding, rpg-dnd5e-web#626, now
+ *   load-bearing rather than incidental): the above is the FULL picture
+ *   only for a region's ROW extent when it has no validated connector, or
+ *   whose peer across a connector hasn't revealed further either.
+ *   `widenRegionBoundsAlongConnectors` (this file) widens a connector-
+ *   participating region's row bounds to match its peer's proven extent
+ *   the moment ANY region in the chain reveals it — correct, because
+ *   every region shares one `DungeonParams.Height`, so the widened value
+ *   is always the SAME true extent this region would show once fully
+ *   explored anyway, never wrong geometry — but it means row extent can
+ *   snap early for a connected region while an ISOLATED region (or one
+ *   whose peer is equally behind) still tracks its own frontier exactly
+ *   as described above. Column extent is NEVER widened this way (see
+ *   `widenRegionBoundsAlongConnectors`' own doc comment for why — room
+ *   widths genuinely differ, unlike the shared Height assumption).
  */
 
 import {
@@ -817,26 +833,66 @@ function envelopeGeometryForRegion(
 }
 
 /**
- * Which of a region's own left/right sides sit against a connector column
- * that should become that side's SOLE wall (option-(b), rpg-project#132
- * connector-single-wall follow-up to #615/#617's envelope-offset fix) —
- * using ONLY this region's own bounds plus the full door-column list.
- * Deliberately NOT `connectorRegionsForDoor`'s two-sided pair resolution
- * below: that needs BOTH neighboring regions' bounds known, which fails
- * for as long as the far side of a connector stays unrevealed. Doors are
- * whole-dungeon and unconditional from wave 1 (`connectorDoorInputsFromWalls`
- * builds them from the Walls list, never from per-viewer region hex
- * membership — this file's own header doc), so a region's OWN nearest door
- * on each side resolves correctly regardless of whether the far region has
- * been revealed at all — exactly the property needed for suppression (and
- * therefore the fallback-segment safety net becoming the visible wall) to
- * be correct in BOTH reveal states, not only once a connector's pair fully
- * resolves.
+ * Which of a region's own left/right sides sit IMMEDIATELY against a
+ * connector column that should become that side's SOLE wall (option-(b),
+ * rpg-project#132 connector-single-wall follow-up to #615/#617's
+ * envelope-offset fix) — using ONLY this region's own bounds plus the
+ * full door-column list. Deliberately NOT `connectorRegionsForDoor`'s
+ * two-sided pair resolution below: that needs BOTH neighboring regions'
+ * bounds known, which fails for as long as the far side of a connector
+ * stays unrevealed. Doors are whole-dungeon and unconditional from wave 1
+ * (`connectorDoorInputsFromWalls` builds them from the Walls list, never
+ * from per-viewer region hex membership — this file's own header doc),
+ * so a region's OWN nearest door on each side resolves correctly
+ * regardless of whether the far region has been revealed at all — the
+ * property needed for suppression (and therefore the fallback-segment
+ * safety net becoming the visible wall) to be correct in BOTH reveal
+ * states, not only once a connector's pair fully resolves.
  *
- * "Nearest" (not "any door left/right of me"): a 3+ room chain's OTHER
- * connectors also satisfy `doorCol < minCol` / `doorCol > maxCol` for a
- * middle region, so this picks the CLOSEST one on each side — the same
- * nearest-region convention `connectorRegionsForDoor` uses.
+ * ADJACENCY REQUIRED (gate review finding, rpg-dnd5e-web#626 — "the
+ * mirror image of #603's fix, not another instance of it"): a door
+ * column only counts when it sits EXACTLY one past this region's own
+ * CURRENT bounds (`col === bounds.maxCol + 1` / `col === bounds.minCol -
+ * 1`), not merely "the nearest one in that direction at any distance."
+ * The pre-fix version suppressed whenever ANY door lay beyond bounds,
+ * regardless of how far — under partial reveal a region's own edge is
+ * usually nowhere near that connector, so the suppressed side removed
+ * the room's only wall there while the connector run meant to replace it
+ * (which needs the FAR side revealed too) frequently didn't exist yet.
+ * Two live reproductions on the reference-tomb shape (entrance 6@0, hall
+ * 10@7, tomb 12@18): hall revealed cols 7-10 with tomb dark suppressed
+ * hall's right side with ZERO connector run behind it (open frontier);
+ * hall revealed cols 10-12 only (touching neither door) suppressed BOTH
+ * sides with zero runs anywhere (room open on both sides). Reconciling:
+ * reveal-independence is the right goal for PAIRING (`connectorRegionsForDoor`)
+ * since the connector genuinely exists either way, but it's exactly the
+ * wrong goal for SUPPRESSION, which is a claim about THIS region's own
+ * edge — true only once that edge has actually reached the connector.
+ *
+ * Trade-off, chosen deliberately over the alternative (suppress only
+ * once a real ConnectorRun/fallback replacement is confirmed covering
+ * this boundary): that stronger form would need wire-derived fallback
+ * knowledge this module never receives (`computeWallRuns` is
+ * protocol-agnostic by design — see this file's own header doc), so it
+ * isn't achievable purely from `RegionInput`/`ConnectorDoorInput`
+ * geometry the way this adjacency gate is. The adjacency gate's own cost
+ * is a BRIEF, transient double-wall: while this region's OWN edge hasn't
+ * yet revealed all the way to the connector column, suppression stays
+ * OFF (correctly — this region's own envelope wall still renders), but
+ * if the FAR side has ALREADY revealed enough to resolve a real
+ * ConnectorRun (or a fallback already exists) by that point, that run
+ * renders too — briefly, this region's own unsuppressed wall and the
+ * connector's wall both stand near the same boundary, the SAME "two
+ * systems 0.5 units apart" cosmetic defect #621 addressed, until this
+ * region's own reveal catches up to adjacency and suppression takes
+ * over. Still never an open gap either way — a strictly better failure
+ * mode than the one this fixes: at least one wall of some kind always
+ * stands, literally never zero.
+ *
+ * "Nearest" is now moot for the adjacent case (at most one door column
+ * can be adjacent to a given side), but the loop still finds whichever
+ * door (if any) satisfies the adjacency check per side, keeping the same
+ * shape as the 3+ room chain convention `connectorRegionsForDoor` uses.
  */
 function nearestConnectorColumns(
   bounds: Bounds,
@@ -845,10 +901,10 @@ function nearestConnectorColumns(
   let left: number | undefined;
   let right: number | undefined;
   for (const col of doorColumns) {
-    if (col > bounds.maxCol && (right === undefined || col < right)) {
+    if (col === bounds.maxCol + 1) {
       right = col;
     }
-    if (col < bounds.minCol && (left === undefined || col > left)) {
+    if (col === bounds.minCol - 1) {
       left = col;
     }
   }
@@ -944,36 +1000,80 @@ function connectorRegionsForDoor(
  * assumption to borrow the way Height is shared; a region's own
  * minCol/maxCol always stays exactly its own reveal-gated value.
  *
- * A single pass over `doors` (not a fixed-point loop) — sufficient for
- * the realistic case (each connector widens its own pair once; a 3+ room
- * chain converges because the most-revealed region is always the one
- * closest to the player's spawn/entrance, so widening only needs to flow
- * outward one hop at a time as the player advances, and every render
- * re-derives bounds from scratch anyway). A chain needing BOTH connectors
- * to widen in a single sweep to fully converge (order-dependent) is a
- * known, accepted limitation, not exercised by any dungeon authored in
- * this codebase today.
+ * TWO-TIER FOG CONTRACT (gate review finding, rpg-dnd5e-web#626): this
+ * function means connector-participating regions' row extent can SNAP to
+ * the true value the moment a validated peer proves it, while a region
+ * with no connector at all (or one whose peer hasn't revealed further
+ * either) still tracks its own reveal frontier exactly as documented at
+ * the top of this file. That divergence is real and load-bearing, not
+ * merely incidental fog imprecision — a region's own row bounds can jump
+ * by double digits of world units the instant a connector resolves (a
+ * hall revealed at a single row, entrance fully known, moved its own
+ * cross-wall 10.41 units in one measured case) — but it's never WRONG
+ * geometry: `DungeonParams.Height` is uniform across every region in a
+ * chain (this doc's own opening paragraph), so the widened value is
+ * always the SAME true extent the region would show once fully explored
+ * anyway, just revealed earlier via the peer's own proof. This
+ * assumption would stop holding if per-region heights ever land in
+ * dungeonspec (unlike width, which already varies per region and is
+ * correctly EXCLUDED from widening above) — flagging that as the one
+ * condition that would need this reconsidered.
+ *
+ * PROPAGATION (gate review finding): a fixed-point pass — repeat over
+ * every door, reading pairs and their bounds from the IN-PROGRESS
+ * `widened` map (not `rawBounds`), until a full pass changes nothing.
+ * Reading from `widened` lets a later door's widening see an EARLIER
+ * door's already-widened result within the SAME pass; repeating until
+ * stable is what makes a 3+ room chain converge correctly regardless of
+ * `doors`' own array order (a single pass over `rawBounds`, the
+ * PRE-fix version, only propagated one hop per call, and did so only
+ * when `doors` happened to be ordered outward-to-inward — its own claim
+ * that "every render re-derives bounds from scratch anyway" made that
+ * seem safe, but re-deriving from scratch each render doesn't help
+ * PROPAGATION distance within one call; what actually saved a 3+ room
+ * chain pre-fix was the player's own advance revealing the intermediate
+ * region directly, a different and weaker guarantee than the one that
+ * was written down). Bounded at `rawBounds.size` iterations — a real
+ * dungeon's connector graph is a simple chain/tree (never cyclic), so
+ * widening can propagate at most one hop per region in the chain; this
+ * is a safety bound against a malformed/cyclic input, not expected to
+ * bind for any dungeon this codebase authors.
  */
 function widenRegionBoundsAlongConnectors(
   rawBounds: Map<string, Bounds>,
   doors: ConnectorDoorInput[]
 ): Map<string, Bounds> {
   const widened = new Map(rawBounds);
-  for (const door of doors) {
-    const pair = connectorRegionsForDoor(door, rawBounds);
-    if (!pair) continue;
-    const a = rawBounds.get(pair.regionAId)!;
-    const b = rawBounds.get(pair.regionBId)!;
-    const minRow = Math.min(a.minRow, b.minRow);
-    const maxRow = Math.max(a.maxRow, b.maxRow);
-    for (const id of [pair.regionAId, pair.regionBId]) {
-      const current = widened.get(id)!;
-      widened.set(id, {
-        ...current,
-        minRow: Math.min(current.minRow, minRow),
-        maxRow: Math.max(current.maxRow, maxRow),
-      });
+  for (let pass = 0; pass < rawBounds.size; pass++) {
+    let changed = false;
+    for (const door of doors) {
+      // connectorRegionsForDoor only compares COLUMN bounds, which
+      // widening never touches (see above) — reading pairs from
+      // `widened` instead of `rawBounds` is therefore identical for
+      // pairing itself, while letting the ROW values used just below
+      // benefit from any widening an earlier door in this SAME pass
+      // already applied.
+      const pair = connectorRegionsForDoor(door, widened);
+      if (!pair) continue;
+      const a = widened.get(pair.regionAId)!;
+      const b = widened.get(pair.regionBId)!;
+      const minRow = Math.min(a.minRow, b.minRow);
+      const maxRow = Math.max(a.maxRow, b.maxRow);
+      for (const id of [pair.regionAId, pair.regionBId]) {
+        const current = widened.get(id)!;
+        const nextMinRow = Math.min(current.minRow, minRow);
+        const nextMaxRow = Math.max(current.maxRow, maxRow);
+        if (nextMinRow !== current.minRow || nextMaxRow !== current.maxRow) {
+          changed = true;
+          widened.set(id, {
+            ...current,
+            minRow: nextMinRow,
+            maxRow: nextMaxRow,
+          });
+        }
+      }
     }
+    if (!changed) break;
   }
   return widened;
 }
