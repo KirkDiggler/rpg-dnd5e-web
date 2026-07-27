@@ -1,6 +1,6 @@
 /**
  * wallRunAdapters — the W2 seam between the real wire shapes
- * (`Hex`/`Wall` v1alpha2 protos) and wallRuns.ts's pure, protocol-agnostic
+ * (`HexRecord`/`Wall` v1alpha2 protos) and wallRuns.ts's pure, protocol-agnostic
  * `RegionInput`/`ConnectorDoorInput` inputs, plus the "positive category
  * rule" that decides what the LEGACY per-cell renderer (SyntyHexWall) still
  * draws once envelope/connector runs take over the boundary (rpg-project#133
@@ -23,7 +23,7 @@ import {
 import { isDoorWallKind } from '@/components/hex-grid/syntyHexWallHelpers';
 import { connectorPartitionHeight } from '@/components/hex-grid/wallRunMeshHelpers';
 import {
-  type Hex,
+  type HexRecord,
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
@@ -46,7 +46,9 @@ import {
  * connector/door cell, which never carries a region tag by construction)
  * are excluded entirely; they contribute to no region's envelope.
  */
-export function regionInputsFromHexes(hexes: Iterable<Hex>): RegionInput[] {
+export function regionInputsFromHexes(
+  hexes: Iterable<HexRecord>
+): RegionInput[] {
   const byZone = new Map<string, CubeCoord[]>();
   for (const hex of hexes) {
     if (!hex.zoneId || !hex.position) continue;

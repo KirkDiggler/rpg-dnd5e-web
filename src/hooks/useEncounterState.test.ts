@@ -33,7 +33,7 @@ import {
   EconomySlot,
   EncounterMode,
   EntityType,
-  HexSchema,
+  HexRecordSchema,
   InputRequiredSchema,
   SkillCheckPromptSchema,
   type StatusEffect,
@@ -46,21 +46,19 @@ import {
   ZoneSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
-import { hexKey } from '../utils/hexCoord';
 import { wallKey } from './dungeonMapGeometry';
-import type { CharacterEquipment } from './useEncounterState';
+import type {
+  CharacterEquipment,
+  LocalEncounterState,
+} from './useEncounterState';
 import {
   applyCharacterEquipment,
   applyDoorOpened,
   applyEncounterEnded,
-  applyEntityAppeared,
   applyEntityAppearedBatch,
   applyEntityDamaged,
   applyEntityDied,
-  applyEntityDisappeared,
-  applyEntityMetaFromAppeared,
   applyEntityRemoved,
-  applyHexesRevealed,
   applyInitiativeRolled,
   applyModeChanged,
   applySnapshotRegionState,
@@ -125,7 +123,7 @@ function makeTestHex(
   position: { x: number; y: number; z: number },
   zoneId = ''
 ) {
-  return create(HexSchema, {
+  return create(HexRecordSchema, {
     position: create(V2PositionSchema, position),
     zoneId,
   });
@@ -133,6 +131,29 @@ function makeTestHex(
 
 function makeTestZone(id: string, archetype = '') {
   return create(ZoneSchema, { id, name: id, archetype });
+}
+
+/**
+ * Test-only scaffolding: seed a single entity into state the same way
+ * `applyEntityAppearedBatch` does in production (the sole entity-population
+ * path now that entities arrive only via SnapshotDelivered — there is no
+ * live per-entity appear event). Mirrors the old `applyEntityAppeared`
+ * singular reducer's "add/revive entity, clear ghost flag" semantics for
+ * tests that just need an entity in state before exercising something else.
+ */
+function seedEntity(
+  prev: LocalEncounterState,
+  entity: EntityState
+): LocalEncounterState {
+  return applyEntityAppearedBatch(prev, [
+    {
+      entity,
+      type: EntityType.UNSPECIFIED,
+      monsterRefId: undefined,
+      initialHP: undefined,
+      initialAC: undefined,
+    },
+  ]);
 }
 
 describe('createEmptyEncounterState', () => {
@@ -163,7 +184,7 @@ describe('createEmptyEncounterState', () => {
 
 describe('mergeEntityPosition', () => {
   it('updates position of an existing entity', () => {
-    const prev = applyEntityAppeared(
+    const prev = seedEntity(
       createEmptyEncounterState(),
       create(EntityStateSchema, { entityId: 'char-1' })
     );
@@ -181,7 +202,7 @@ describe('mergeEntityPosition', () => {
       currentHitPoints: 12,
       maxHitPoints: 20,
     });
-    const prev = applyEntityAppeared(createEmptyEncounterState(), seeded);
+    const prev = seedEntity(createEmptyEncounterState(), seeded);
 
     const newPos = create(PositionSchema, { x: 5, y: -3, z: -2 });
     const next = mergeEntityPosition(prev, 'char-1', newPos);
@@ -193,7 +214,7 @@ describe('mergeEntityPosition', () => {
   });
 
   it('returns prev unchanged when entity is not present', () => {
-    const prev = applyEntityAppeared(
+    const prev = seedEntity(
       createEmptyEncounterState(),
       create(EntityStateSchema, { entityId: 'char-1' })
     );
@@ -206,7 +227,7 @@ describe('mergeEntityPosition', () => {
   });
 
   it('does not mutate the previous state', () => {
-    const prev = applyEntityAppeared(
+    const prev = seedEntity(
       createEmptyEncounterState(),
       create(EntityStateSchema, { entityId: 'char-1' })
     );
@@ -224,7 +245,7 @@ describe('mergeEntityPosition', () => {
   // (see the field's doc comment on LocalEncounterState.entities).
   describe('path (rpg-dnd5e-web#542)', () => {
     it('stashes the path as movePath and bumps moveSeq from undefined to 1', () => {
-      const prev = applyEntityAppeared(
+      const prev = seedEntity(
         createEmptyEncounterState(),
         create(EntityStateSchema, { entityId: 'char-1' })
       );
@@ -241,7 +262,7 @@ describe('mergeEntityPosition', () => {
     });
 
     it('increments moveSeq on each subsequent genuine move', () => {
-      const prev = applyEntityAppeared(
+      const prev = seedEntity(
         createEmptyEncounterState(),
         create(EntityStateSchema, { entityId: 'char-1' })
       );
@@ -259,7 +280,7 @@ describe('mergeEntityPosition', () => {
     });
 
     it('bumps moveSeq again for a same-destination move (e.g. bounced off a wall)', () => {
-      const prev = applyEntityAppeared(
+      const prev = seedEntity(
         createEmptyEncounterState(),
         create(EntityStateSchema, { entityId: 'char-1' })
       );
@@ -272,7 +293,7 @@ describe('mergeEntityPosition', () => {
     });
 
     it('leaves movePath/moveSeq untouched when path is omitted (pre-#542 call sites)', () => {
-      const prev = applyEntityAppeared(
+      const prev = seedEntity(
         createEmptyEncounterState(),
         create(EntityStateSchema, { entityId: 'char-1' })
       );
@@ -287,7 +308,7 @@ describe('mergeEntityPosition', () => {
     });
 
     it('leaves movePath/moveSeq untouched when path is an empty array', () => {
-      const prev = applyEntityAppeared(
+      const prev = seedEntity(
         createEmptyEncounterState(),
         create(EntityStateSchema, { entityId: 'char-1' })
       );
@@ -424,31 +445,32 @@ describe('v1alpha2 reducer additions', () => {
       expect(before.revealedHexes.size).toBe(0);
     });
 
-    it('merges incremental hex identity and replaces it only on the next snapshot', () => {
+    it('replaces prior region truth wholesale on a second snapshot (reconnect)', () => {
       const entrance = makeTestZone('entrance', 'entrance');
       const chamber = makeTestZone('chamber', 'chamber');
       const entranceHex = makeTestHex({ x: 0, y: 0, z: 0 }, 'entrance');
       const chamberHex = makeTestHex({ x: 1, y: -1, z: 0 }, 'chamber');
-      const seeded = applySnapshotRegionState(
+      const first = applySnapshotRegionState(
         createEmptyEncounterState(),
         'crypt',
         [entrance, chamber],
-        [entranceHex]
+        [entranceHex, chamberHex]
       );
-      const revealed = applyHexesRevealed(seeded, [chamberHex]);
-      const replacement = applySnapshotRegionState(
-        revealed,
+
+      const second = applySnapshotRegionState(
+        first,
         'cave',
         [chamber],
         [chamberHex]
       );
 
-      expect(revealed.revealedHexes.get('0,0,0')).toBe(entranceHex);
-      expect(revealed.revealedHexes.get('1,-1,0')).toBe(chamberHex);
-      expect(seeded.revealedHexes.has('1,-1,0')).toBe(false);
-      expect(replacement.theme).toBe('cave');
-      expect(replacement.revealedHexes.has('0,0,0')).toBe(false);
-      expect(replacement.zones.has('entrance')).toBe(false);
+      expect(second.theme).toBe('cave');
+      expect(second.zones.has('entrance')).toBe(false);
+      expect(second.revealedHexes.has('0,0,0')).toBe(false);
+      expect(second.revealedHexes.get('1,-1,0')).toBe(chamberHex);
+      // The first snapshot's own result is untouched by the second call.
+      expect(first.theme).toBe('crypt');
+      expect(first.revealedHexes.has('0,0,0')).toBe(true);
     });
 
     it('returns only server metadata for missing and unknown zone data', () => {
@@ -477,63 +499,12 @@ describe('v1alpha2 reducer additions', () => {
     });
   });
 
-  describe('applyHexesRevealed', () => {
+  describe('hexesWithPosition', () => {
     it('filters malformed hexes before they reach reveal merges or harness logs', () => {
       const positioned = makeTestHex({ x: 0, y: 0, z: 0 }, 'entrance');
-      const malformed = create(HexSchema, { zoneId: 'chamber' });
+      const malformed = create(HexRecordSchema, { zoneId: 'chamber' });
 
       expect(hexesWithPosition([positioned, malformed])).toEqual([positioned]);
-    });
-
-    it('adds hexes to revealedHexes without dropping existing reveals', () => {
-      const prev = createEmptyEncounterState();
-      const after1 = applyHexesRevealed(prev, [
-        makeTestHex({ x: 0, y: 0, z: 0 }),
-      ]);
-      expect(after1.revealedHexes.has(hexKey({ q: 0, r: 0, s: 0 }))).toBe(true);
-
-      const after2 = applyHexesRevealed(after1, [
-        makeTestHex({ x: 1, y: -1, z: 0 }),
-      ]);
-      expect(after2.revealedHexes.has(hexKey({ q: 0, r: 0, s: 0 }))).toBe(true);
-      expect(after2.revealedHexes.has(hexKey({ q: 1, r: -1, s: 0 }))).toBe(
-        true
-      );
-    });
-
-    it('is idempotent on duplicate hexes', () => {
-      const hex = makeTestHex({ x: 2, y: -1, z: -1 }, 'chamber');
-      const prev = applyHexesRevealed(createEmptyEncounterState(), [hex]);
-      const after = applyHexesRevealed(prev, [hex]);
-      expect(after.revealedHexes.size).toBe(1);
-      expect(after).toBe(prev);
-    });
-
-    it('keeps reveal-key identity for metadata-only updates and replaces it for new coordinates', () => {
-      const entrance = makeTestHex({ x: 0, y: 0, z: 0 }, 'entrance');
-      const seeded = applyHexesRevealed(createEmptyEncounterState(), [
-        entrance,
-      ]);
-      const originalMap = seeded.revealedHexes;
-      const originalKeys = seeded.revealedHexKeys;
-      const chamber = makeTestHex({ x: 0, y: 0, z: 0 }, 'chamber');
-
-      const metadataUpdated = applyHexesRevealed(seeded, [chamber]);
-
-      expect(metadataUpdated.revealedHexes).not.toBe(originalMap);
-      expect(metadataUpdated.revealedHexes.get('0,0,0')).toBe(chamber);
-      expect(metadataUpdated.revealedHexKeys).toBe(originalKeys);
-      expect(seeded.revealedHexes.get('0,0,0')).toBe(entrance);
-
-      const withNewCoordinate = applyHexesRevealed(metadataUpdated, [
-        makeTestHex({ x: 1, y: -1, z: 0 }, 'corridor'),
-      ]);
-
-      expect(withNewCoordinate.revealedHexKeys).not.toBe(originalKeys);
-      expect(withNewCoordinate.revealedHexKeys).toEqual(
-        new Set(['0,0,0', '1,-1,0'])
-      );
-      expect(metadataUpdated.revealedHexKeys).toBe(originalKeys);
     });
   });
 
@@ -606,71 +577,6 @@ describe('v1alpha2 reducer additions', () => {
     });
   });
 
-  describe('applyEntityAppeared', () => {
-    it('adds a new entity at first-visible position with ghost cleared', () => {
-      const prev = createEmptyEncounterState();
-      const entity = makeTestEntity('goblin-1', { x: 3, y: -2, z: -1 });
-      const after = applyEntityAppeared(prev, entity);
-      const stored = after.entities.get('goblin-1');
-      expect(stored).toBeDefined();
-      expect(stored?.ghost).toBeFalsy();
-      expect(stored?.position?.x).toBe(3);
-      expect(stored?.position?.y).toBe(-2);
-      expect(stored?.position?.z).toBe(-1);
-    });
-
-    it('clears the ghost flag on a previously-disappeared entity', () => {
-      const entity = makeTestEntity('alice', { x: 0, y: 0, z: 0 });
-      const withEntity = applyEntityAppeared(
-        createEmptyEncounterState(),
-        entity
-      );
-      const ghosted = applyEntityDisappeared(withEntity, 'alice', {
-        q: 1,
-        r: -1,
-        s: 0,
-      });
-      expect(ghosted.entities.get('alice')?.ghost).toBe(true);
-
-      const reappeared = applyEntityAppeared(
-        ghosted,
-        makeTestEntity('alice', { x: 5, y: -3, z: -2 })
-      );
-      expect(reappeared.entities.get('alice')?.ghost).toBeFalsy();
-    });
-  });
-
-  describe('applyEntityDisappeared', () => {
-    it('keeps entity in store, sets ghost=true, updates position to last_known', () => {
-      const entity = makeTestEntity('bob', { x: 0, y: 0, z: 0 });
-      const prev = applyEntityAppeared(createEmptyEncounterState(), entity);
-      const after = applyEntityDisappeared(prev, 'bob', {
-        q: 4,
-        r: -2,
-        s: -2,
-      });
-      const stored = after.entities.get('bob');
-      expect(stored?.ghost).toBe(true);
-      expect(stored?.position?.x).toBe(4);
-      expect(stored?.position?.y).toBe(-2);
-      expect(stored?.position?.z).toBe(-2);
-    });
-
-    it('is a no-op if the entity is not in state (defensive)', () => {
-      const prev = createEmptyEncounterState();
-      const after = applyEntityDisappeared(prev, 'unknown', {
-        q: 0,
-        r: 0,
-        s: 0,
-      });
-      expect(after.entities.size).toBe(0);
-      // Reference identity preserved on no-op — matches mergeEntityPosition's
-      // pattern; prevents needless React re-renders if a stream loop fires
-      // EntityDisappeared for an entity we never saw.
-      expect(after).toBe(prev);
-    });
-  });
-
   describe('applyDoorOpened', () => {
     it('adds the door entity id to openDoors', () => {
       const prev = createEmptyEncounterState();
@@ -701,12 +607,13 @@ describe('v1alpha2 reducer additions', () => {
       expect(prev.openDoors.size).toBe(0);
     });
 
-    it('does not touch revealedHexes (cause/effect split)', () => {
-      // The toolkit emits DoorOpened (cause) and GeometryRevealed (effect)
-      // as two events. applyDoorOpened only updates door state; the hex
-      // reveal flows through applyHexesRevealed independently.
-      let state = createEmptyEncounterState();
-      state = applyHexesRevealed(state, [makeTestHex({ x: 1, y: -1, z: 0 })]);
+    it('does not touch revealedHexes', () => {
+      let state = applySnapshotRegionState(
+        createEmptyEncounterState(),
+        '',
+        [],
+        [makeTestHex({ x: 1, y: -1, z: 0 })]
+      );
       const beforeOpen = state.revealedHexes;
       state = applyDoorOpened(state, 'door-east');
       expect(state.revealedHexes).toBe(beforeOpen);
@@ -778,41 +685,6 @@ describe('v1alpha2 reducer additions', () => {
 
       expect(after.walls).toBe(beforeWalls);
       expect(after).toBe(state); // fully idempotent — same top-level reference
-    });
-  });
-
-  describe('appear/disappear sequences', () => {
-    it('survives appeared → moved → disappeared → appeared cleanly', () => {
-      let state = createEmptyEncounterState();
-      state = applyEntityAppeared(
-        state,
-        makeTestEntity('mover', { x: 0, y: 0, z: 0 })
-      );
-      expect(state.entities.get('mover')?.ghost).toBeFalsy();
-
-      state = mergeEntityPosition(
-        state,
-        'mover',
-        create(PositionSchema, { x: 1, y: -1, z: 0 })
-      );
-      expect(state.entities.get('mover')?.position?.x).toBe(1);
-      expect(state.entities.get('mover')?.position?.y).toBe(-1);
-      expect(state.entities.get('mover')?.position?.z).toBe(0);
-
-      state = applyEntityDisappeared(state, 'mover', { q: 2, r: -1, s: -1 });
-      expect(state.entities.get('mover')?.ghost).toBe(true);
-      expect(state.entities.get('mover')?.position?.x).toBe(2);
-      expect(state.entities.get('mover')?.position?.y).toBe(-1);
-      expect(state.entities.get('mover')?.position?.z).toBe(-1);
-
-      state = applyEntityAppeared(
-        state,
-        makeTestEntity('mover', { x: 5, y: -3, z: -2 })
-      );
-      expect(state.entities.get('mover')?.ghost).toBeFalsy();
-      expect(state.entities.get('mover')?.position?.x).toBe(5);
-      expect(state.entities.get('mover')?.position?.y).toBe(-3);
-      expect(state.entities.get('mover')?.position?.z).toBe(-2);
     });
   });
 });
@@ -1267,218 +1139,6 @@ describe('Wave 2.8 combat reducers', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Wave 2.8 display fixes (#397, #399)
-// ---------------------------------------------------------------------------
-
-describe('applyEntityMetaFromAppeared', () => {
-  it('stores type and monsterRefId for a monster entity', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    const meta = after.entityMeta.get('goblin-1');
-    expect(meta?.type).toBe(EntityType.MONSTER);
-    expect(meta?.monsterRefId).toBe('goblin');
-  });
-
-  it('stores type without monsterRefId for a character entity', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'char-alice',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      undefined
-    );
-    const meta = after.entityMeta.get('char-alice');
-    expect(meta?.type).toBe(EntityType.CHARACTER);
-    expect(meta?.monsterRefId).toBeUndefined();
-  });
-
-  it('stores propRefId for an obstacle/prop entity (rpg-dnd5e-web#528)', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'obstacle-1',
-      EntityType.OBSTACLE,
-      undefined,
-      undefined,
-      undefined,
-      'Barrel',
-      undefined,
-      'barrel'
-    );
-    const meta = after.entityMeta.get('obstacle-1');
-    expect(meta?.propRefId).toBe('barrel');
-  });
-
-  it('stores displayName and classRefId when provided (rpg-dnd5e-web#491)', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'char-alice',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      undefined,
-      'Alice',
-      'rogue'
-    );
-    const meta = after.entityMeta.get('char-alice');
-    expect(meta?.displayName).toBe('Alice');
-    expect(meta?.classRefId).toBe('rogue');
-  });
-
-  it('seeds entityHP when initialHP is provided', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      { current: 7, max: 7 },
-      undefined
-    );
-    expect(after.entityHP.get('goblin-1')).toEqual({ current: 7, max: 7 });
-  });
-
-  it('does not touch entityHP when initialHP is undefined', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    expect(after.entityHP.size).toBe(0);
-  });
-
-  it('overwrites existing meta on re-appear (server is authoritative)', () => {
-    let state = createEmptyEncounterState();
-    state = applyEntityMetaFromAppeared(
-      state,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    state = applyEntityMetaFromAppeared(
-      state,
-      'goblin-1',
-      EntityType.MONSTER,
-      'hobgoblin',
-      { current: 11, max: 11 },
-      undefined
-    );
-    expect(state.entityMeta.get('goblin-1')?.monsterRefId).toBe('hobgoblin');
-    expect(state.entityHP.get('goblin-1')).toEqual({ current: 11, max: 11 });
-  });
-
-  it('does not mutate the previous state', () => {
-    const prev = createEmptyEncounterState();
-    applyEntityMetaFromAppeared(
-      prev,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      { current: 5, max: 7 },
-      undefined
-    );
-    expect(prev.entityMeta.size).toBe(0);
-    expect(prev.entityHP.size).toBe(0);
-  });
-
-  it('preserves other entity meta entries', () => {
-    let state = createEmptyEncounterState();
-    state = applyEntityMetaFromAppeared(
-      state,
-      'char-alice',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      undefined
-    );
-    state = applyEntityMetaFromAppeared(
-      state,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    expect(state.entityMeta.size).toBe(2);
-    expect(state.entityMeta.get('char-alice')?.type).toBe(EntityType.CHARACTER);
-    expect(state.entityMeta.get('goblin-1')?.type).toBe(EntityType.MONSTER);
-  });
-
-  it('seeds entityAC from v2 Entity.armor_class', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'char-charli',
-      EntityType.CHARACTER,
-      undefined,
-      { current: 12, max: 12 },
-      15
-    );
-    expect(after.entityAC.get('char-charli')).toBe(15);
-  });
-
-  it('does not touch entityAC when initialAC is undefined', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'char-charli',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      undefined
-    );
-    expect(after.entityAC.has('char-charli')).toBe(false);
-  });
-
-  it('seeds characterEquipment when equipment is provided (rpg-dnd5e-web#571)', () => {
-    const prev = createEmptyEncounterState();
-    const equipment = testEquipment();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'char-aldric',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      undefined,
-      'Sir Aldric',
-      'fighter',
-      undefined,
-      equipment
-    );
-    expect(after.characterEquipment.get('char-aldric')).toBe(equipment);
-  });
-
-  it('does not touch characterEquipment when equipment is undefined', () => {
-    const prev = createEmptyEncounterState();
-    const after = applyEntityMetaFromAppeared(
-      prev,
-      'goblin-1',
-      EntityType.MONSTER,
-      'goblin',
-      undefined,
-      undefined
-    );
-    expect(after.characterEquipment.size).toBe(0);
-  });
-});
-
 describe('applySnapshotTurnState', () => {
   it('sets initiativeOrder, activeEntityId, round, and mode from snapshot turn state', () => {
     const prev = createEmptyEncounterState();
@@ -1803,10 +1463,17 @@ describe('applyEntityAppearedBatch', () => {
   });
 
   it('sets ghost=false on all batch entities', () => {
-    // applyEntityAppearedBatch should clear ghost just like applyEntityAppeared
+    // applyEntityAppearedBatch clears ghost on revive — there is no longer a
+    // live disappear event, so the ghost precondition is built directly here.
     const entity = makeTestEntity('mover', { x: 0, y: 0, z: 0 });
-    let state = applyEntityAppeared(createEmptyEncounterState(), entity);
-    state = applyEntityDisappeared(state, 'mover', { q: 1, r: -1, s: 0 });
+    let state = seedEntity(createEmptyEncounterState(), entity);
+    const ghostedEntities = new Map(state.entities);
+    ghostedEntities.set('mover', {
+      ...state.entities.get('mover')!,
+      ghost: true,
+      position: create(PositionSchema, { x: 1, y: -1, z: 0 }),
+    });
+    state = { ...state, entities: ghostedEntities };
     expect(state.entities.get('mover')?.ghost).toBe(true);
 
     state = applyEntityAppearedBatch(state, [
@@ -2115,7 +1782,7 @@ describe('Wave 2.9 setPendingPromptReducer', () => {
     it('does not remove entity from entities map', () => {
       let state = createEmptyEncounterState();
       const entity = create(EntityStateSchema, { entityId: 'goblin-1' });
-      state = applyEntityAppeared(state, entity);
+      state = seedEntity(state, entity);
       const event: EntityDied = {
         entityId: 'goblin-1',
       } as unknown as EntityDied;
@@ -2128,7 +1795,7 @@ describe('Wave 2.9 setPendingPromptReducer', () => {
     it('removes an existing entity from the entities map', () => {
       let state = createEmptyEncounterState();
       const entity = create(EntityStateSchema, { entityId: 'goblin-1' });
-      state = applyEntityAppeared(state, entity);
+      state = seedEntity(state, entity);
       expect(state.entities.has('goblin-1')).toBe(true);
 
       const event: EntityRemoved = {
@@ -2152,11 +1819,11 @@ describe('Wave 2.9 setPendingPromptReducer', () => {
 
     it('does not remove other entities when one is removed', () => {
       let state = createEmptyEncounterState();
-      state = applyEntityAppeared(
+      state = seedEntity(
         state,
         create(EntityStateSchema, { entityId: 'goblin-1' })
       );
-      state = applyEntityAppeared(
+      state = seedEntity(
         state,
         create(EntityStateSchema, { entityId: 'goblin-2' })
       );
@@ -2333,14 +2000,15 @@ describe('applyCharacterEquipment', () => {
 
   it('leaves entityAC untouched when armorClassDetail is undefined', () => {
     let prev = createEmptyEncounterState();
-    prev = applyEntityMetaFromAppeared(
-      prev,
-      'char-aldric',
-      EntityType.CHARACTER,
-      undefined,
-      undefined,
-      18
-    );
+    prev = applyEntityAppearedBatch(prev, [
+      {
+        entity: makeTestEntity('char-aldric', { x: 0, y: 0, z: 0 }),
+        type: EntityType.CHARACTER,
+        monsterRefId: undefined,
+        initialHP: undefined,
+        initialAC: 18,
+      },
+    ]);
     const after = applyCharacterEquipment(
       prev,
       'char-aldric',

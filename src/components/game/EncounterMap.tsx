@@ -24,7 +24,7 @@
 
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type {
-  Hex,
+  HexRecord,
   Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
@@ -77,16 +77,17 @@ export interface EncounterMapProps {
   /** v1alpha2 identity metadata (type, monsterRefId) keyed by entityId. */
   entityMeta: Map<string, EntityMeta>;
   /**
-   * Per-hex reveal map ("x,y,z" cube-coord keys -> the full wire `Hex`,
-   * including `zoneId`) from useEncounterState's `state.revealedHexes`.
+   * Per-hex reveal map ("x,y,z" cube-coord keys -> the full wire
+   * `HexRecord`, including `zoneId`) from useEncounterState's
+   * `state.revealedHexes`.
    * Dungeon-walls redesign (rpg-project#133): `zoneId` is what lets this
    * component reconstruct each room's hex membership
    * (wallRunAdapters.regionInputsFromHexes) for envelope/connector run
    * computation — a plain key `Set` (pre-#133) can't carry that. Floor-tile
    * synthesis below only needs the key set, derived internally.
    */
-  revealedHexes: Map<string, Hex>;
-  /** Sticky revealed walls, keyed by wallKey, from Space.walls/GeometryRevealed.walls. Renders as [] when the server sends none. */
+  revealedHexes: Map<string, HexRecord>;
+  /** Sticky revealed walls, keyed by wallKey, flattened from each revealed hex's `HexRecord.edges` (rpg-api-protos#197 — walls now ride per-hex rather than a flat `Space.walls` list). Renders as [] when the server sends none. */
   walls: Map<string, Wall>;
   /** Per-entity HP — marks monsters dead (HP <= 0) so HexGrid renders their corpse. */
   entityHP: Map<string, { current: number; max: number }>;

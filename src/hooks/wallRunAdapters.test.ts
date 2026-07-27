@@ -7,7 +7,7 @@ import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { CUTAWAY_STUB_WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { create } from '@bufbuild/protobuf';
 import {
-  HexSchema,
+  HexRecordSchema,
   PositionSchema,
   WallKind,
   WallSchema,
@@ -35,7 +35,7 @@ import {
 } from './wallRuns';
 
 function hex(x: number, y: number, z: number, zoneId = '') {
-  return create(HexSchema, {
+  return create(HexRecordSchema, {
     position: create(PositionSchema, { x, y, z }),
     zoneId,
   });
@@ -82,7 +82,7 @@ describe('regionInputsFromHexes', () => {
   });
 
   it('excludes hexes with no position', () => {
-    const positionless = create(HexSchema, { zoneId: 'entrance' });
+    const positionless = create(HexRecordSchema, { zoneId: 'entrance' });
     const regions = regionInputsFromHexes([positionless]);
     expect(regions).toHaveLength(0);
   });

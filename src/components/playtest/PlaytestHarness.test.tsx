@@ -31,6 +31,51 @@ function makeEvent(caseName: string, value: unknown): EncounterEvent {
   return { event: { case: caseName, value } } as unknown as EncounterEvent;
 }
 
+/**
+ * rpg-api-protos#197: entities no longer arrive via a live EntityAppeared
+ * event, and an Entity no longer carries its own position — position comes
+ * from whichever hex's `contents` lists the entity's id. This builds a
+ * SnapshotDelivered payload that seeds one or more entities the same way
+ * PlaytestHarness.tsx's real onSnapshotDelivered reads it: one hex per
+ * entity (by default; pass a shared `position` to co-locate them), each
+ * hex's `contents` pointing back at the entity.
+ */
+function snapshotWithEntities(
+  entities: Array<{
+    id: string;
+    position?: { x: number; y: number; z: number };
+    type?: number;
+    hp?: { current: number; max: number };
+    armorClass?: number;
+    monsterRefId?: string;
+    classRefId?: string;
+    displayName?: string;
+  }>
+): EncounterEvent {
+  return makeEvent('snapshotDelivered', {
+    encounter: {
+      space: {
+        entities: entities.map((e) => ({
+          id: e.id,
+          type: e.type ?? 1, // ENTITY_TYPE_CHARACTER
+          hp: e.hp,
+          armorClass: e.armorClass,
+          displayName: e.displayName,
+          data: e.monsterRefId
+            ? { case: 'monster', value: { monsterRef: { id: e.monsterRefId } } }
+            : e.classRefId
+              ? { case: 'character', value: { classRef: { id: e.classRefId } } }
+              : undefined,
+        })),
+        hexes: entities.map((e) => ({
+          position: e.position ?? { x: 0, y: 0, z: 0 },
+          contents: [{ entityId: e.id }],
+        })),
+      },
+    },
+  });
+}
+
 // vi.hoisted so the mock factory can close over the refs before imports run
 // The concrete signature for setReactionReadyFn is intentionally permissive
 // so the mock.calls tuple types preserve the request object — matches the
@@ -175,21 +220,10 @@ describe('PlaytestHarness', () => {
     expect(screen.getByText(/dev-encounter/)).toBeTruthy();
   });
 
-  it('shows entity in table after EntityAppeared event', async () => {
+  it('shows entity in table after snapshot seeds it', async () => {
     render(<PlaytestHarness />);
 
-    act(() => fake.push(makeEvent('snapshotDelivered', {})));
-    act(() =>
-      fake.push(
-        makeEvent('entityAppeared', {
-          entity: {
-            id: 'char-alice',
-            position: { x: 0, y: 0, z: 0 },
-            reason: '',
-          },
-        })
-      )
-    );
+    act(() => fake.push(snapshotWithEntities([{ id: 'char-alice' }])));
 
     await waitFor(() => {
       expect(screen.getByText('char-alice')).toBeTruthy();
@@ -199,18 +233,7 @@ describe('PlaytestHarness', () => {
   it('updates entity row after EntityMoved event', async () => {
     render(<PlaytestHarness />);
 
-    act(() => fake.push(makeEvent('snapshotDelivered', {})));
-    act(() =>
-      fake.push(
-        makeEvent('entityAppeared', {
-          entity: {
-            id: 'char-alice',
-            position: { x: 0, y: 0, z: 0 },
-            reason: '',
-          },
-        })
-      )
-    );
+    act(() => fake.push(snapshotWithEntities([{ id: 'char-alice' }])));
     await waitFor(() => expect(screen.getByText('char-alice')).toBeTruthy());
 
     act(() =>
@@ -235,17 +258,7 @@ describe('PlaytestHarness', () => {
     render(<PlaytestHarness />);
 
     // Seed entity with position so the Move button becomes enabled
-    act(() => fake.push(makeEvent('snapshotDelivered', {})));
-    act(() =>
-      fake.push(
-        makeEvent('entityAppeared', {
-          entity: {
-            id: 'char-alice',
-            position: { x: 0, y: 0, z: 0 },
-          } as unknown as EntityState,
-        })
-      )
-    );
+    act(() => fake.push(snapshotWithEntities([{ id: 'char-alice' }])));
 
     await waitFor(() => {
       const btn = screen.getByRole('button', { name: /move there/i });
@@ -279,14 +292,7 @@ describe('PlaytestHarness', () => {
 
     render(<PlaytestHarness />);
 
-    act(() => fake.push(makeEvent('snapshotDelivered', {})));
-    act(() =>
-      fake.push(
-        makeEvent('entityAppeared', {
-          entity: { id: 'char-alice', position: { x: 0, y: 0, z: 0 } },
-        })
-      )
-    );
+    act(() => fake.push(snapshotWithEntities([{ id: 'char-alice' }])));
 
     await waitFor(() => {
       const btn = screen.getByRole('button', { name: /move there/i });
@@ -370,9 +376,6 @@ describe('PlaytestHarness', () => {
       fake.push(
         makeEvent('doorOpened', {
           doorEntityId: 'door-east',
-          revealedHexes: [],
-          revealedWalls: [],
-          removedWalls: [],
         })
       )
     );
@@ -383,11 +386,10 @@ describe('PlaytestHarness', () => {
     expect(screen.getByText(/Open doors \(1\):.*door-east/)).toBeTruthy();
   });
 
-  it('logs both DoorOpened and GeometryRevealed independently (cause/effect split)', async () => {
-    // Wave 2.7: the toolkit emits the cause (DoorOpened, no hexes) and the
-    // effect (GeometryRevealed, with hexes) as two separate events. The
-    // harness must surface both in the log; the dispatcher must not collapse
-    // them.
+  it('logs DoorOpened as a pure notification', async () => {
+    // rpg-api-protos#197: DoorOpened is now door identity only — the
+    // world-changing geometry no longer rides a parallel event, it arrives
+    // on the next snapshot's HexRecord.edges instead.
     render(<PlaytestHarness />);
 
     act(() => fake.push(makeEvent('snapshotDelivered', {})));
@@ -395,26 +397,12 @@ describe('PlaytestHarness', () => {
       fake.push(
         makeEvent('doorOpened', {
           doorEntityId: 'door-east',
-          revealedHexes: [],
-          revealedWalls: [],
-          removedWalls: [],
-        })
-      )
-    );
-    act(() =>
-      fake.push(
-        makeEvent('geometryRevealed', {
-          hexes: [
-            { position: { x: 1, y: -1, z: 0 } },
-            { position: { x: 2, y: -2, z: 0 } },
-          ],
         })
       )
     );
 
     await waitFor(() => {
       expect(screen.getByText(/DoorOpened door-east/i)).toBeTruthy();
-      expect(screen.getByText(/GeometryRevealed 2 hex/i)).toBeTruthy();
     });
   });
 
@@ -626,15 +614,14 @@ describe('PlaytestHarness', () => {
 
   it('renders HP in entities table row after EntityDamaged event', async () => {
     // HP is now shown inline in the entities table, not a separate HP table.
-    // goblin-1 must appear first (EntityAppeared) so it has a row in the table.
+    // goblin-1 must appear first (via the snapshot) so it has a row in the table.
     render(<PlaytestHarness />);
 
-    act(() => fake.push(makeEvent('snapshotDelivered', {})));
     act(() =>
       fake.push(
-        makeEvent('entityAppeared', {
-          entity: { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
-        })
+        snapshotWithEntities([
+          { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
+        ])
       )
     );
     act(() =>
@@ -836,12 +823,11 @@ describe('PlaytestHarness', () => {
   it('shows HP inline in entities table after EntityDamaged (fix #398)', async () => {
     render(<PlaytestHarness />);
 
-    act(() => fake.push(makeEvent('snapshotDelivered', {})));
     act(() =>
       fake.push(
-        makeEvent('entityAppeared', {
-          entity: { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
-        })
+        snapshotWithEntities([
+          { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
+        ])
       )
     );
     act(() =>
@@ -860,21 +846,20 @@ describe('PlaytestHarness', () => {
     });
   });
 
-  it('shows entity type in entities table after EntityAppeared with v1alpha2 entity type (fix #397)', async () => {
+  it('shows entity type in entities table from the snapshot with v1alpha2 entity type (fix #397)', async () => {
     render(<PlaytestHarness />);
 
-    act(() => fake.push(makeEvent('snapshotDelivered', {})));
-    // Send an EntityAppeared event with a monster entity carrying type + data
+    // Seed a monster entity carrying type + monster ref via the snapshot.
     act(() =>
       fake.push(
-        makeEvent('entityAppeared', {
-          entity: {
+        snapshotWithEntities([
+          {
             id: 'goblin-1',
             type: 2, // EntityType.MONSTER = 2 in v1alpha2
             position: { x: 1, y: 0, z: -1 },
-            data: { case: 'monster', value: { monsterRef: { id: 'goblin' } } },
+            monsterRefId: 'goblin',
           },
-        })
+        ])
       )
     );
 
@@ -883,20 +868,19 @@ describe('PlaytestHarness', () => {
     });
   });
 
-  it('seeds HP in entities table from EntityAppeared initial hp (fix #397 + #398)', async () => {
+  it('seeds HP in entities table from the snapshot initial hp (fix #397 + #398)', async () => {
     render(<PlaytestHarness />);
 
-    act(() => fake.push(makeEvent('snapshotDelivered', {})));
     act(() =>
       fake.push(
-        makeEvent('entityAppeared', {
-          entity: {
+        snapshotWithEntities([
+          {
             id: 'goblin-1',
             type: 2,
             position: { x: 1, y: 0, z: -1 },
             hp: { current: 7, max: 7 },
           },
-        })
+        ])
       )
     );
 
@@ -909,20 +893,13 @@ describe('PlaytestHarness', () => {
   it('highlights active actor row distinctly from local player row (fix #400)', async () => {
     render(<PlaytestHarness />);
 
-    act(() => fake.push(makeEvent('snapshotDelivered', {})));
-    // Seed both entities
+    // Seed both entities via a single snapshot.
     act(() =>
       fake.push(
-        makeEvent('entityAppeared', {
-          entity: { id: 'char-alice', position: { x: 0, y: 0, z: 0 } },
-        })
-      )
-    );
-    act(() =>
-      fake.push(
-        makeEvent('entityAppeared', {
-          entity: { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
-        })
+        snapshotWithEntities([
+          { id: 'char-alice', position: { x: 0, y: 0, z: 0 } },
+          { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
+        ])
       )
     );
     act(() =>
@@ -1301,12 +1278,11 @@ describe('PlaytestHarness', () => {
   it('removes entity from table after EntityRemoved event', async () => {
     render(<PlaytestHarness />);
 
-    act(() => fake.push(makeEvent('snapshotDelivered', {})));
     act(() =>
       fake.push(
-        makeEvent('entityAppeared', {
-          entity: { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
-        })
+        snapshotWithEntities([
+          { id: 'goblin-1', position: { x: 1, y: 0, z: -1 } },
+        ])
       )
     );
 
@@ -1870,23 +1846,20 @@ describe('PlaytestHarness', () => {
       // the click as an attack target.
       act(() =>
         fake.push(
-          makeEvent('entityAppeared', {
-            entity: {
+          snapshotWithEntities([
+            {
               id: 'goblin-1',
               type: 2, // MONSTER
               position: { x: 1, y: -1, z: 0 },
-              data: {
-                case: 'monster',
-                value: { monsterRef: { id: 'goblin' } },
-              },
+              monsterRefId: 'goblin',
             },
-          })
+          ])
         )
       );
 
-      // Wait for the entity to land in state. EntityAppeared shows up in
-      // both the event log and the dev-panel entity table, so use
-      // findAllByText to settle without a uniqueness assertion.
+      // Wait for the entity to land in state. It shows up in both the
+      // event log and the dev-panel entity table, so use findAllByText to
+      // settle without a uniqueness assertion.
       await waitFor(() => {
         const matches = screen.queryAllByText(/goblin-1/);
         expect(matches.length).toBeGreaterThan(0);
@@ -1925,13 +1898,13 @@ describe('PlaytestHarness', () => {
       // a selection.
       act(() =>
         fake.push(
-          makeEvent('entityAppeared', {
-            entity: {
+          snapshotWithEntities([
+            {
               id: 'char-bob',
               type: 1, // CHARACTER
               position: { x: 2, y: -2, z: 0 },
             },
-          })
+          ])
         )
       );
 
@@ -1954,22 +1927,18 @@ describe('PlaytestHarness', () => {
 
     it('map entity click after EncounterEnded does NOT dispatch attack', async () => {
       render(<PlaytestHarness />);
-      act(() => fake.push(makeEvent('snapshotDelivered', {})));
       // Seed goblin-1 BEFORE ending so the click target exists in
       // entityMeta and the encounter-ended branch is reached.
       act(() =>
         fake.push(
-          makeEvent('entityAppeared', {
-            entity: {
+          snapshotWithEntities([
+            {
               id: 'goblin-1',
               type: 2,
               position: { x: 1, y: -1, z: 0 },
-              data: {
-                case: 'monster',
-                value: { monsterRef: { id: 'goblin' } },
-              },
+              monsterRefId: 'goblin',
             },
-          })
+          ])
         )
       );
       act(() =>
@@ -2213,14 +2182,7 @@ describe('PlaytestHarness', () => {
   describe('status effect rendering (#430)', () => {
     it('renders a Hidden status badge on the entity table row after StatusApplied', async () => {
       render(<PlaytestHarness />);
-      act(() => fake.push(makeEvent('snapshotDelivered', {})));
-      act(() =>
-        fake.push(
-          makeEvent('entityAppeared', {
-            entity: { id: 'char-alice', position: { x: 0, y: 0, z: 0 } },
-          })
-        )
-      );
+      act(() => fake.push(snapshotWithEntities([{ id: 'char-alice' }])));
       act(() =>
         fake.push(
           makeEvent('statusApplied', {
@@ -2245,12 +2207,11 @@ describe('PlaytestHarness', () => {
     // either the helper or the helped ally) must see it too.
     it('renders a Helped status badge on a non-local-player entity (third-party visibility)', async () => {
       render(<PlaytestHarness />);
-      act(() => fake.push(makeEvent('snapshotDelivered', {})));
       act(() =>
         fake.push(
-          makeEvent('entityAppeared', {
-            entity: { id: 'char-fighter', position: { x: 1, y: 0, z: -1 } },
-          })
+          snapshotWithEntities([
+            { id: 'char-fighter', position: { x: 1, y: 0, z: -1 } },
+          ])
         )
       );
       act(() =>
@@ -2283,14 +2244,7 @@ describe('PlaytestHarness', () => {
   describe('status removal + death-save arc (#433)', () => {
     it('clears the status badge after StatusRemoved for the matching source', async () => {
       render(<PlaytestHarness />);
-      act(() => fake.push(makeEvent('snapshotDelivered', {})));
-      act(() =>
-        fake.push(
-          makeEvent('entityAppeared', {
-            entity: { id: 'char-alice', position: { x: 0, y: 0, z: 0 } },
-          })
-        )
-      );
+      act(() => fake.push(snapshotWithEntities([{ id: 'char-alice' }])));
       act(() =>
         fake.push(
           makeEvent('statusApplied', {
