@@ -1,10 +1,7 @@
 import { create } from '@bufbuild/protobuf';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type { ActionTarget } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
-import type {
-  AvailableAction,
-  Position,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import type { AvailableAction } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
   EntityType,
@@ -20,7 +17,10 @@ import { useInteract } from '../../api/useInteract';
 import { useMoveEntity } from '../../api/useMoveEntity';
 import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useTakeAction } from '../../api/useTakeAction';
-import { useEncounterState } from '../../hooks/useEncounterState';
+import {
+  positionByEntityIdFromHexes,
+  useEncounterState,
+} from '../../hooks/useEncounterState';
 import { errorMessage, formatSourceRefs } from '../../utils/combatFormat';
 import { getConditionDisplay } from '../../utils/conditionIcons';
 import { PromptModal } from '../game/PromptModal';
@@ -215,16 +215,12 @@ export function PlaytestHarness() {
           // entity says only what it is. Build a one-shot reverse index
           // (entityId -> the hex's position) from this snapshot's
           // authoritative `contents` before mapping entities, rebuilt from
-          // scratch every snapshot (mirrors EncounterView.tsx) rather than
-          // merged into a prior index, since `contents` is total for a
-          // visible hex.
-          const positionByEntityId = new Map<string, Position>();
-          for (const hex of hexes) {
-            if (!hex.position) continue;
-            for (const placement of hex.contents ?? []) {
-              positionByEntityId.set(placement.entityId, hex.position);
-            }
-          }
+          // scratch every snapshot rather than merged into a prior index,
+          // since `contents` is total for a visible hex.
+          // positionByEntityIdFromHexes (rpg-dnd5e-web#651, shared with
+          // EncounterView.tsx) resolves VISIBLE over REMEMBERED for an
+          // entity present in both, regardless of `hexes`' own array order.
+          const positionByEntityId = positionByEntityIdFromHexes(hexes);
           // Seed entities from the snapshot's space entities list in a single
           // batch setState call to avoid N intermediate renders for N entities.
           const entityEntries = (e.encounter.space?.entities ?? [])

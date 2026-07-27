@@ -11,6 +11,7 @@ import type {
 import {
   EconomySlot,
   EncounterMode,
+  HexState,
   TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
@@ -121,6 +122,7 @@ vi.mock('./PlaytestMap', () => ({
     myEntityId: string;
     isMyTurn: boolean;
     fallbackPosition?: { x: number; y: number; z: number };
+    entities: Map<string, { position?: { x: number; y: number; z: number } }>;
     onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
     onEntityClick: (id: string) => void;
   }) => (
@@ -136,6 +138,12 @@ vi.mock('./PlaytestMap', () => ({
           ? `${props.fallbackPosition.x},${props.fallbackPosition.y},${props.fallbackPosition.z}`
           : '(none)'
       }
+      // rpg-dnd5e-web#651: expose the resolved entity->position cache so
+      // tests can assert VISIBLE-over-REMEMBERED precedence without
+      // reaching into Three.js internals.
+      data-entity-positions={JSON.stringify(
+        [...props.entities.entries()].map(([id, e]) => [id, e.position])
+      )}
     >
       <button
         data-testid="map-simulate-move"
@@ -2349,6 +2357,76 @@ describe('PlaytestHarness', () => {
       await waitFor(() => {
         expect(screen.getByText(/Stabilized char-alice/i)).toBeTruthy();
       });
+    });
+  });
+});
+
+describe('PlaytestHarness snapshot position resolution: VISIBLE beats REMEMBERED (rpg-dnd5e-web#651)', () => {
+  // Same real regression as EncounterView.test.tsx's identically-named
+  // describe block: rpg-api#732 restates a mover's WHOLE known set (visible
+  // + remembered) on every move, so a single snapshot's `hexes` can
+  // legitimately carry the SAME entity in both a REMEMBERED hex (their
+  // just-vacated one) and a VISIBLE hex (where they actually are). Both
+  // call sites shared one (previously buggy) reverse-index loop; this pins
+  // the harness's own copy the same way.
+  const rememberedOrigin = {
+    position: { x: 0, y: 0, z: 0 },
+    state: HexState.REMEMBERED,
+    contents: [{ entityId: 'goblin-1', facing: 0 }],
+  };
+  const visibleDestination = {
+    position: { x: 1, y: -1, z: 0 },
+    state: HexState.VISIBLE,
+    contents: [{ entityId: 'goblin-1', facing: 0 }],
+  };
+
+  function snapshotWith(hexes: unknown[]) {
+    return makeEvent('snapshotDelivered', {
+      encounter: {
+        space: {
+          entities: [
+            {
+              id: 'goblin-1',
+              type: 2, // ENTITY_TYPE_MONSTER
+              data: {
+                case: 'monster',
+                value: { monsterRef: { id: 'goblin' } },
+              },
+            },
+          ],
+          hexes,
+        },
+      },
+    });
+  }
+
+  it('resolves to the VISIBLE hex when the REMEMBERED record sorts LAST in the snapshot', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(snapshotWith([visibleDestination, rememberedOrigin])));
+
+    await waitFor(() => {
+      const stub = screen.getByTestId('playtest-map-stub');
+      const positions = JSON.parse(
+        stub.getAttribute('data-entity-positions')!
+      ) as Array<[string, { x: number; y: number; z: number } | undefined]>;
+      const goblinPosition = positions.find(([id]) => id === 'goblin-1')?.[1];
+      expect(goblinPosition).toMatchObject({ x: 1, y: -1, z: 0 });
+    });
+  });
+
+  it('resolves to the VISIBLE hex when the REMEMBERED record sorts FIRST in the snapshot', async () => {
+    render(<PlaytestHarness />);
+
+    act(() => fake.push(snapshotWith([rememberedOrigin, visibleDestination])));
+
+    await waitFor(() => {
+      const stub = screen.getByTestId('playtest-map-stub');
+      const positions = JSON.parse(
+        stub.getAttribute('data-entity-positions')!
+      ) as Array<[string, { x: number; y: number; z: number } | undefined]>;
+      const goblinPosition = positions.find(([id]) => id === 'goblin-1')?.[1];
+      expect(goblinPosition).toMatchObject({ x: 1, y: -1, z: 0 });
     });
   });
 });
