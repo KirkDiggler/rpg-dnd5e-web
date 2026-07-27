@@ -41,6 +41,7 @@ import type {
 import {
   EncounterMode,
   EntityType,
+  HexState,
   WallKind,
   WallSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
@@ -437,6 +438,29 @@ export function regionForHex(
     theme: state.theme,
     zone: hex?.zoneId ? state.zones.get(hex.zoneId) : undefined,
   };
+}
+
+/**
+ * Fog-of-war knowledge state for a position (rpg-dnd5e-web#605/#609):
+ * a REMEMBERED hex record renders frozen/charcoal (sceneKnowledge.ts's
+ * `SceneKnowledgeState` — kept as a plain literal union here rather than
+ * importing that type, so this state-layer module stays independent of the
+ * render-layer one), everything else — a VISIBLE record, or no record at
+ * all — renders live.
+ *
+ * A position with no matching hex record falls back to 'visible' rather
+ * than fail-closed hiding: `applyHexRecordsMerged` only ever caches an
+ * entity's position from a hex record's own `contents`, so a real entity
+ * should always resolve here — this is a defensive default for a position
+ * this genuinely cannot resolve (e.g. a synthetic/dev-only entity), not an
+ * expected miss.
+ */
+export function knowledgeStateForPosition(
+  revealedHexes: Map<string, HexRecord>,
+  position: { x: number; y: number; z: number }
+): 'visible' | 'remembered' {
+  const hex = revealedHexes.get(hexKey(protoPositionToHex(position)));
+  return hex?.state === HexState.REMEMBERED ? 'remembered' : 'visible';
 }
 
 /**

@@ -76,6 +76,7 @@ import {
   applyWallsRevealed,
   createEmptyEncounterState,
   hexesWithPosition,
+  knowledgeStateForPosition,
   mergeEntityPosition,
   regionForHex,
   setPendingPromptReducer,
@@ -881,6 +882,32 @@ describe('v1alpha2 reducer additions', () => {
         state = applyWallsRevealed(state, hex.edges);
 
         expect(state.walls.get(wallKey(wall))).toBe(wall);
+      });
+    });
+
+    describe('knowledgeStateForPosition (rpg-dnd5e-web#605/#609)', () => {
+      it("returns 'remembered' for a position whose hex record is HEX_STATE_REMEMBERED", () => {
+        const hex = makeHexRecord({ x: 1, y: -1, z: 0 }, HexState.REMEMBERED);
+        const revealedHexes = new Map([['1,-1,0', hex]]);
+
+        expect(
+          knowledgeStateForPosition(revealedHexes, { x: 1, y: -1, z: 0 })
+        ).toBe('remembered');
+      });
+
+      it("returns 'visible' for a position whose hex record is HEX_STATE_VISIBLE", () => {
+        const hex = makeHexRecord({ x: 0, y: 0, z: 0 }, HexState.VISIBLE);
+        const revealedHexes = new Map([['0,0,0', hex]]);
+
+        expect(
+          knowledgeStateForPosition(revealedHexes, { x: 0, y: 0, z: 0 })
+        ).toBe('visible');
+      });
+
+      it("falls back to 'visible' for a position with no hex record at all", () => {
+        expect(
+          knowledgeStateForPosition(new Map(), { x: 9, y: -9, z: 0 })
+        ).toBe('visible');
       });
     });
   });

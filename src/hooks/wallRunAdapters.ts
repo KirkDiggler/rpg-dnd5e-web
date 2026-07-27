@@ -23,6 +23,7 @@ import {
 import { isDoorWallKind } from '@/components/hex-grid/syntyHexWallHelpers';
 import { connectorPartitionHeight } from '@/components/hex-grid/wallRunMeshHelpers';
 import {
+  HexState,
   type HexRecord,
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
@@ -65,6 +66,45 @@ export function regionInputsFromHexes(
     }
   }
   return Array.from(byZone, ([id, coordHexes]) => ({ id, hexes: coordHexes }));
+}
+
+/**
+ * Remembered-hex key sets, in HexGrid's own `rememberedFloorHexKeys`/
+ * `rememberedWallHexKeys` shape (rpg-dnd5e-web#605/#609's
+ * `HexState.REMEMBERED`) — the same VISIBLE/REMEMBERED partition
+ * the fog-of-war CONCEPT's adapter already proved and had signed off
+ * visually (`src/concepts/fog-of-war/adapter.ts`'s `toHexGridProps`),
+ * reused here on the real route's `HexRecord[]` rather than re-derived.
+ *
+ * Floor: every REMEMBERED record's own key (`coordToKey(hex.position)`).
+ *
+ * Walls: keyed by each edge's OWN `from`, NOT the record's position —
+ * matches HexGrid's own lookup (`rememberedWallHexKeys?.has(wallKey-ish
+ * "x,y,z")` against `Wall.from`, see HexGrid.tsx's `visibleWalls`/
+ * `shadedWalls`). Keying by the record instead would silently mislabel any
+ * edge authored against a neighbour.
+ *
+ * A REMEMBERED record's `edges` arrives empty today (known server-side
+ * gap: remembered hexes carry no edges yet, so a remembered room currently
+ * renders with no walls at all rather than shaded ones) — this still
+ * contributes the correct entry once that gap closes, rather than needing a
+ * second pass then.
+ */
+export function rememberedHexKeysFromRecords(hexes: Iterable<HexRecord>): {
+  floorKeys: Set<string>;
+  wallKeys: Set<string>;
+} {
+  const floorKeys = new Set<string>();
+  const wallKeys = new Set<string>();
+  for (const hex of hexes) {
+    if (hex.state !== HexState.REMEMBERED || !hex.position) continue;
+    floorKeys.add(coordToKey(hex.position));
+    for (const edge of hex.edges) {
+      if (!edge.from) continue;
+      wallKeys.add(coordToKey(edge.from));
+    }
+  }
+  return { floorKeys, wallKeys };
 }
 
 /**

@@ -607,7 +607,7 @@ export function HexEntity({
       {...(withInteraction ? interactionProps : {})}
     >
       <meshStandardMaterial
-        color={color}
+        color={remembered ? cryptHex : color}
         emissive={selected ? color : '#000000'}
         emissiveIntensity={selected ? 0.2 : 0}
       />
@@ -629,6 +629,7 @@ export function HexEntity({
             variant={propVariant}
             position={[0, 0, 0]}
             rotationY={propRotationY}
+            remembered={remembered}
           />
         </ErrorBoundary>
       </Suspense>
