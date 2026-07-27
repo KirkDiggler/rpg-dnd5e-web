@@ -8,6 +8,7 @@ import { CharacterService as CharacterServiceV2 } from '@kirkdiggler/rpg-api-pro
 import { EncounterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 
 import { getDiscordToken, getPlayerId } from './auth';
+import { wrapStreamResponseForLogging } from './streamLogging';
 
 // Get API host from environment - handle Discord Activity proxy
 const isDiscordActivity = window.location.hostname.includes('discordsays.com');
@@ -39,8 +40,10 @@ const authInterceptor: Interceptor = (next) => async (req) => {
   return next(req);
 };
 
-// Logging interceptor for debugging
-const loggingInterceptor: Interceptor = (next) => async (req) => {
+// Logging interceptor for debugging. Exported (only) so it can be unit
+// tested directly against fake `next` responses — not intended as a public
+// API for other modules to import interceptors from.
+export const loggingInterceptor: Interceptor = (next) => async (req) => {
   const startTime = Date.now();
   const methodName = `${req.service.typeName}.${req.method.name}`;
 
@@ -52,6 +55,19 @@ const loggingInterceptor: Interceptor = (next) => async (req) => {
   try {
     const response = await next(req);
     const duration = Date.now() - startTime;
+
+    // Server streams: `response.message` is an AsyncIterable, not a
+    // message — logging it directly (the `else` branch below) only ever
+    // shows the iterator object once, at open, and never a single event.
+    // wrapStreamResponseForLogging replaces it with a lazy logging
+    // generator (see its own doc comment for why this must not buffer).
+    if (response.stream) {
+      if (import.meta.env.MODE === 'development') {
+        return wrapStreamResponseForLogging(methodName, response);
+      }
+      return response;
+    }
+
     if (import.meta.env.MODE === 'development') {
       console.log(
         `🟢 Response: ${methodName} (${duration}ms)`,
