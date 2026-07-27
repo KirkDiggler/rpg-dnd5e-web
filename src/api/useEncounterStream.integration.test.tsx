@@ -54,10 +54,19 @@ function useTestHarness(encounterId: string) {
   const state = useEncounterState();
   useEncounterStream(encounterId, 'alice', {
     onSnapshotDelivered: (e) => {
-      const hexes = e.encounter?.space?.hexes ?? [];
+      // Mirrors EncounterView.tsx/PlaytestHarness.tsx: the slice-1 stream-up
+      // sync barrier delivers a SnapshotDelivered with no `encounter` at
+      // all, and that must be a no-op — NOT a clear of existing region/
+      // entity/wall state. Guarding here (rather than relying on the `?.`
+      // chains below) is load-bearing, not cosmetic: without it, an
+      // encounter-less snapshot would call applySnapshotRegionState with
+      // '', [], [] and wipe out theme/zones/hexes that production would
+      // have left untouched.
+      if (!e.encounter) return;
+      const hexes = e.encounter.space?.hexes ?? [];
       state.applySnapshotRegionState(
-        e.encounter?.space?.theme ?? '',
-        e.encounter?.space?.zones ?? [],
+        e.encounter.space?.theme ?? '',
+        e.encounter.space?.zones ?? [],
         hexes
       );
       const positionByEntityId = new Map<string, Position>();
@@ -67,7 +76,7 @@ function useTestHarness(encounterId: string) {
           positionByEntityId.set(placement.entityId, hex.position);
         }
       }
-      const entityEntries = (e.encounter?.space?.entities ?? [])
+      const entityEntries = (e.encounter.space?.entities ?? [])
         .filter((entity) => positionByEntityId.has(entity.id))
         .map((entity) => ({
           entity: create(EntityStateSchema, {
