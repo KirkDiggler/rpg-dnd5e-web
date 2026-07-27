@@ -16,10 +16,15 @@ import {
   PositionSchema,
   WallKind,
   WallSchema,
+  type HexRecord,
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
-import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
+import {
+  knowledgeStateForPosition,
+  type EntityMeta,
+  type EntityStatus,
+} from '../../hooks/useEncounterState';
 import { CUTAWAY_TALL_WALL_HEIGHT } from '../../rendering/calibrationConstants';
 import {
   coordToKey,
@@ -28,6 +33,7 @@ import {
   HEX_SIZE,
   type CubeCoord,
 } from '../hex-grid/hexMath';
+import type { SceneKnowledgeState } from '../hex-grid/sceneKnowledge';
 
 /**
  * Render shape consumed by HexGrid for each entity on the map.
@@ -68,6 +74,14 @@ export interface RenderableEntity {
   /** Monotonic counter bumped only by a genuine move — see
    * `useEncounterState.ts`'s `mergeEntityPosition` doc comment. */
   moveSeq?: number;
+  /** Fog-of-war render state (rpg-dnd5e-web#605/#609) — 'remembered' drives
+   * HexGrid's charcoal tint and click/hover/path suppression for an entity
+   * standing in a hex the viewer no longer has line of sight to. Undefined
+   * (every caller that doesn't pass `revealedHexes` to
+   * `buildRenderableEntities` below, i.e. PlaytestMap's harness route,
+   * which has no per-hex `HexRecord.state` to resolve against) renders
+   * exactly like 'visible' — HexGrid's own `isRemembered` default. */
+  knowledgeState?: SceneKnowledgeState;
 }
 
 /** Checks for a status whose source ref id is "unconscious" — the only
@@ -141,6 +155,13 @@ export function entityTypeToDisplay(
  * callers/tests that don't track conditions keep compiling — an empty
  * statuses map is a legitimate real state (isDowned simply stays false),
  * not a stand-in for a required argument callers must now all supply.
+ *
+ * `revealedHexes` (optional, rpg-dnd5e-web#605/#609): the real route's
+ * per-hex `HexRecord` map, used to resolve each entity's `knowledgeState`
+ * via `knowledgeStateForPosition`. Omitted (PlaytestMap's harness, which
+ * only tracks a bare revealed-position `Set`, never real `HexRecord.state`)
+ * leaves every entity's `knowledgeState` undefined — byte-identical to
+ * before this parameter existed.
  */
 export function buildRenderableEntities(
   entities: Map<
@@ -153,7 +174,8 @@ export function buildRenderableEntities(
   >,
   entityMeta: Map<string, EntityMeta>,
   entityHP: Map<string, { current: number; max: number }>,
-  entityStatuses: Map<string, EntityStatus[]> | undefined = new Map()
+  entityStatuses: Map<string, EntityStatus[]> | undefined = new Map(),
+  revealedHexes?: Map<string, HexRecord>
 ): RenderableEntity[] {
   const result: RenderableEntity[] = [];
   for (const [id, entity] of entities.entries()) {
@@ -170,14 +192,15 @@ export function buildRenderableEntities(
     const displayName = meta?.monsterRefId
       ? `${id} (${meta.monsterRefId})`
       : id;
+    const position = {
+      x: entity.position.x ?? 0,
+      y: entity.position.y ?? 0,
+      z: entity.position.z ?? 0,
+    };
     result.push({
       entityId: id,
       name: displayName,
-      position: {
-        x: entity.position.x ?? 0,
-        y: entity.position.y ?? 0,
-        z: entity.position.z ?? 0,
-      },
+      position,
       type: entityTypeToDisplay(meta?.type),
       isDead,
       isGhost: entity.ghost === true,
@@ -187,6 +210,9 @@ export function buildRenderableEntities(
       propRefId: meta?.propRefId,
       movePath: entity.movePath,
       moveSeq: entity.moveSeq,
+      knowledgeState: revealedHexes
+        ? knowledgeStateForPosition(revealedHexes, position)
+        : undefined,
     });
   }
   return result;

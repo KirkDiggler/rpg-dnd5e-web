@@ -8,6 +8,7 @@ import { CUTAWAY_STUB_WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { create } from '@bufbuild/protobuf';
 import {
   HexRecordSchema,
+  HexState,
   PositionSchema,
   WallKind,
   WallSchema,
@@ -23,6 +24,7 @@ import {
   connectorRunDoorRotations,
   legacyRenderWalls,
   regionInputsFromHexes,
+  rememberedHexKeysFromRecords,
 } from './wallRunAdapters';
 import {
   computeWallRuns,
@@ -34,10 +36,19 @@ import {
   type RegionInput,
 } from './wallRuns';
 
-function hex(x: number, y: number, z: number, zoneId = '') {
+function hex(
+  x: number,
+  y: number,
+  z: number,
+  zoneId = '',
+  state: HexState = HexState.UNSPECIFIED,
+  edges: Wall[] = []
+) {
   return create(HexRecordSchema, {
     position: create(PositionSchema, { x, y, z }),
     zoneId,
+    state,
+    edges,
   });
 }
 
@@ -85,6 +96,45 @@ describe('regionInputsFromHexes', () => {
     const positionless = create(HexRecordSchema, { zoneId: 'entrance' });
     const regions = regionInputsFromHexes([positionless]);
     expect(regions).toHaveLength(0);
+  });
+});
+
+describe('rememberedHexKeysFromRecords (rpg-dnd5e-web#605/#609)', () => {
+  it("collects a REMEMBERED record's own key into floorKeys", () => {
+    const hexes = [
+      hex(0, 0, 0, 'entrance', HexState.VISIBLE),
+      hex(1, -1, 0, 'entrance', HexState.REMEMBERED),
+    ];
+    const { floorKeys } = rememberedHexKeysFromRecords(hexes);
+    expect(floorKeys.has('1,-1,0')).toBe(true);
+    expect(floorKeys.has('0,0,0')).toBe(false);
+  });
+
+  it("collects a REMEMBERED record's own edges by their own `from` key into wallKeys", () => {
+    const edge = wall(1, -1, 0, 2, -2, 0, WallKind.SOLID);
+    const hexes = [hex(1, -1, 0, 'entrance', HexState.REMEMBERED, [edge])];
+    const { wallKeys } = rememberedHexKeysFromRecords(hexes);
+    expect(wallKeys.has('1,-1,0')).toBe(true);
+  });
+
+  it('contributes no wall key for a REMEMBERED record with no edges (known server-side gap)', () => {
+    const hexes = [hex(1, -1, 0, 'entrance', HexState.REMEMBERED, [])];
+    const { wallKeys } = rememberedHexKeysFromRecords(hexes);
+    expect(wallKeys.size).toBe(0);
+  });
+
+  it("ignores a VISIBLE record's edges entirely", () => {
+    const edge = wall(0, 0, 0, 1, -1, 0, WallKind.SOLID);
+    const hexes = [hex(0, 0, 0, 'entrance', HexState.VISIBLE, [edge])];
+    const { floorKeys, wallKeys } = rememberedHexKeysFromRecords(hexes);
+    expect(floorKeys.size).toBe(0);
+    expect(wallKeys.size).toBe(0);
+  });
+
+  it('returns empty sets for no hexes', () => {
+    const { floorKeys, wallKeys } = rememberedHexKeysFromRecords([]);
+    expect(floorKeys.size).toBe(0);
+    expect(wallKeys.size).toBe(0);
   });
 });
 

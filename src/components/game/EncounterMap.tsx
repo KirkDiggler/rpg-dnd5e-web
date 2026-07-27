@@ -37,6 +37,7 @@ import {
   connectorFallbackSegments,
   legacyRenderWalls,
   regionInputsFromHexes,
+  rememberedHexKeysFromRecords,
 } from '../../hooks/wallRunAdapters';
 import { computeWallRuns } from '../../hooks/wallRuns';
 import { WALL_HEIGHT } from '../../rendering/calibrationConstants';
@@ -210,6 +211,17 @@ export function EncounterMap({
     () => regionInputsFromHexes(revealedHexes.values()),
     [revealedHexes]
   );
+  // Fog-of-war render state (rpg-dnd5e-web#605/#609): every REMEMBERED
+  // hex's own key (floor) plus every REMEMBERED hex's edges' own `from` key
+  // (walls) — HexGrid's `rememberedFloorHexKeys`/`rememberedWallHexKeys`
+  // shape, fed straight through below. HexGrid already owns all the actual
+  // charcoal tinting, click/hover/path suppression, and remembered-run
+  // derivation (`rememberedWallRunIds`) once it has these two sets; this is
+  // the only place on this route that was missing them.
+  const rememberedHexKeys = useMemo(
+    () => rememberedHexKeysFromRecords(revealedHexes.values()),
+    [revealedHexes]
+  );
   const connectorDoors = useMemo(
     () => connectorDoorInputsFromWalls(wallList),
     [wallList]
@@ -280,17 +292,22 @@ export function EncounterMap({
       entities,
       entityMeta,
       entityHP,
-      entityStatuses
+      entityStatuses,
+      revealedHexes
     );
     if (devPropDemoKeys.length === 0) return base;
     const anchor = (base.find((e) => e.entityId === myEntityId) ?? base[0])
       ?.position;
+    // Dev prop-demo entities are synthetic and always "here" — they never
+    // get a knowledgeState (undefined, i.e. rendered live), same as every
+    // other field buildDevPropDemoEntities doesn't set.
     return [...base, ...buildDevPropDemoEntities(devPropDemoKeys, anchor)];
   }, [
     entities,
     entityMeta,
     entityHP,
     entityStatuses,
+    revealedHexes,
     devPropDemoKeys,
     myEntityId,
   ]);
@@ -519,8 +536,10 @@ export function EncounterMap({
     >
       <HexGrid
         floorTiles={floorTiles}
+        rememberedFloorHexKeys={rememberedHexKeys.floorKeys}
         entities={renderableEntities}
         walls={wallList}
+        rememberedWallHexKeys={rememberedHexKeys.wallKeys}
         legacySyntyWalls={legacySyntyWalls}
         envelopeRuns={wallRunsResult.envelopeRuns}
         envelopeCorners={wallRunsResult.envelopeCorners}
