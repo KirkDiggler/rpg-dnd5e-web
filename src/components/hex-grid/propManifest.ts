@@ -27,6 +27,21 @@
 
 export type PropRole = 'obstacle' | 'cover' | 'decor';
 
+/** A companion mesh rendered alongside its parent piece at the SAME local
+ * origin (no separate offset in the source manifest — "at the parent's
+ * anchor" per the wave-1 catalog note), e.g. a candle cluster's flame
+ * particle mesh. Not itself a `PropVariant` — a companion has no
+ * independent role/footprint/blocksLoS of its own; it's dressing on top
+ * of whichever variant lists it. */
+export interface PropCompanion {
+  /** Companion piece name, e.g. "SM_Prop_Candles_01_Particle" — for
+   * debugging/logging only. */
+  name: string;
+  /** Path relative to PROPS_MODEL_BASE, same convention as
+   * `PropVariant.file`. */
+  file: string;
+}
+
 export interface PropVariant {
   /** Piece name, e.g. "SM_Prop_Barrel_01" — for debugging/logging only. */
   name: string;
@@ -38,6 +53,36 @@ export interface PropVariant {
    * placement-sanity checks/asserts and future multi-hex layout logic. */
   footprintHexes: number;
   blocksLoS: boolean;
+  /**
+   * Extra meshes to render alongside this variant at its own anchor point
+   * (rpg-game-assets#36 wave-1 look-lab addition) — today only the
+   * `candles` key's Candles_01..04 pieces carry one each, their flame
+   * particle mesh (Candle_01/Candle_Stand_01, the pre-wave-1 pieces, have
+   * none — see this file's own maintenance-history note for why the
+   * originally-planned Candle_Stand_01 pairing was substituted).
+   * Undefined/omitted for every variant without a companion — existing
+   * consumers that don't know about this field are unaffected.
+   */
+  companions?: PropCompanion[];
+  /**
+   * Extra scale multiplier on top of SYNTY_SCALE (rpg-game-assets#36
+   * wave-1, issue #623 fast-follow — Kirk's prop-check verdict: "the room
+   * will be big so I think a rug would be a percentage of the space").
+   * Undefined/omitted means 1 (every existing variant, unchanged) — this
+   * is NOT the same lever as `footprintHexes` (which stays placement-
+   * sanity DATA, never a scale input, per its own doc comment above) —
+   * `renderScale` is an explicit, deliberate visual-size override for a
+   * SPECIFIC variant, picked by eye against a real room, not derived from
+   * measured geometry. Today only the `rug` key's pieces use it (~2x, so
+   * Rug_01's short axis reads as roughly 2-3 hexes wide rather than ~1.3
+   * — see this file's own doc comment on that key for the exact
+   * calculation). Fixed per-variant multiplier for v1 — a true
+   * "percentage of the room's own footprint" would need the room's own
+   * dimensions threaded down to PropModel, which no caller does today;
+   * revisit if rooms start varying enough in size that one fixed rug
+   * scale stops looking right across all of them.
+   */
+  renderScale?: number;
 }
 
 /** Base path props are synced to under public/ (npm run assets:sync
@@ -54,8 +99,9 @@ export const PROPS_MODEL_BASE = '/models/synty/';
 /**
  * key -> ordered variant list, mirroring rpg-game-assets manifest.json's
  * `keys` index exactly (the wave-1 17 keys agreed on the #523 comment
- * thread, plus the 12 keys #559's crypt-dressing wave appended -- 29
- * total). Variant order matches the source manifest's piece order.
+ * thread, the 12 keys #559's crypt-dressing wave appended, plus the 15
+ * keys rpg-game-assets#36's look-lab wave-1 appended -- 44 total).
+ * Variant order matches the source manifest's piece order.
  */
 export const PROP_KEYS: Record<string, PropVariant[]> = {
   'dnd5e:props:pillar': [
@@ -209,8 +255,39 @@ export const PROP_KEYS: Record<string, PropVariant[]> = {
       footprintHexes: 2,
       blocksLoS: false,
     },
+    // rpg-game-assets#36 wave-1.
+    {
+      name: 'SM_Prop_Tomb_Royal_01',
+      file: 'props/SM_Prop_Tomb_Royal_01.glb',
+      role: 'cover',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
   ],
   'dnd5e:props:candles': [
+    // Ordered so a companion-bearing piece is FIRST (issue #623, increment
+    // 2 "kill candles have no flame") — a deliberate break from this
+    // array's usual "arbitrary but stable" order convention
+    // (resolvePropVariant's own doc comment), because `resolvePropVariant`
+    // has no smarter selection than "always take index 0" today (variant
+    // selection by context is explicitly out of scope for this wave, see
+    // that function's doc comment). Without this reordering, every real
+    // `candles` placement would keep resolving to the old flame-less
+    // Candle_01 below and PropModel's new companion rendering would never
+    // actually fire for this key in practice.
+    {
+      name: 'SM_Prop_Candles_01',
+      file: 'props/SM_Prop_Candles_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+      companions: [
+        {
+          name: 'SM_Prop_Candles_01_Particle',
+          file: 'props/SM_Prop_Candles_01_Particle.glb',
+        },
+      ],
+    },
     {
       name: 'SM_Prop_Candle_01',
       file: 'props/SM_Prop_Candle_01.glb',
@@ -224,6 +301,45 @@ export const PROP_KEYS: Record<string, PropVariant[]> = {
       role: 'decor',
       footprintHexes: 1,
       blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Candles_02',
+      file: 'props/SM_Prop_Candles_02.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+      companions: [
+        {
+          name: 'SM_Prop_Candles_02_Particle',
+          file: 'props/SM_Prop_Candles_02_Particle.glb',
+        },
+      ],
+    },
+    {
+      name: 'SM_Prop_Candles_03',
+      file: 'props/SM_Prop_Candles_03.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+      companions: [
+        {
+          name: 'SM_Prop_Candles_03_Particle',
+          file: 'props/SM_Prop_Candles_03_Particle.glb',
+        },
+      ],
+    },
+    {
+      name: 'SM_Prop_Candles_04',
+      file: 'props/SM_Prop_Candles_04.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+      companions: [
+        {
+          name: 'SM_Prop_Candles_04_Particle',
+          file: 'props/SM_Prop_Candles_04_Particle.glb',
+        },
+      ],
     },
   ],
   'dnd5e:props:vase': [
@@ -391,6 +507,37 @@ export const PROP_KEYS: Record<string, PropVariant[]> = {
       footprintHexes: 1,
       blocksLoS: false,
     },
+    // rpg-game-assets#36 wave-1 (Chain_03/05/06/07 join this key; 04/08
+    // are under the separate `chains` key below instead, per the source
+    // manifest's own keys index — mirrored here as-is, not re-derived).
+    {
+      name: 'SM_Prop_Chain_03',
+      file: 'props/SM_Prop_Chain_03.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Chain_05',
+      file: 'props/SM_Prop_Chain_05.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Chain_06',
+      file: 'props/SM_Prop_Chain_06.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Chain_07',
+      file: 'props/SM_Prop_Chain_07.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
   ],
   'dnd5e:props:brazier': [
     {
@@ -409,6 +556,14 @@ export const PROP_KEYS: Record<string, PropVariant[]> = {
       footprintHexes: 1,
       blocksLoS: false,
     },
+    // rpg-game-assets#36 wave-1.
+    {
+      name: 'SM_Prop_Torch_Ornate_02',
+      file: 'props/SM_Prop_Torch_Ornate_02.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
   ],
   'dnd5e:props:skeleton-remains': [
     {
@@ -416,6 +571,296 @@ export const PROP_KEYS: Record<string, PropVariant[]> = {
       file: 'props/SM_Prop_Skeleton_01.glb',
       role: 'decor',
       footprintHexes: 2,
+      blocksLoS: false,
+    },
+    // rpg-game-assets#36 wave-1: narrative-scene skeleton variants
+    // (throne, shackled slave, wall-sitting slave), not just the generic
+    // remains pile above.
+    {
+      name: 'SM_Prop_Skeleton_Knight_Throne_01',
+      file: 'props/SM_Prop_Skeleton_Knight_Throne_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Skeleton_Slave_Lying_01',
+      file: 'props/SM_Prop_Skeleton_Slave_Lying_01.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Skeleton_Slave_Shackles_01',
+      file: 'props/SM_Prop_Skeleton_Slave_Shackles_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Skeleton_Slave_Shackles_02',
+      file: 'props/SM_Prop_Skeleton_Slave_Shackles_02.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Skeleton_Slave_Wall_Sitting_01',
+      file: 'props/SM_Prop_Skeleton_Slave_Wall_Sitting_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+
+  // --- rpg-game-assets#36 wave-1 (look-lab.yaml v3): 15 newly-minted keys
+  // extending the 29-key list above -- 44 total. All themes include
+  // "crypt" (rpg-game-assets manifest's own `themes` field per piece; not
+  // mirrored into this file, which has never carried theme data). ---
+  'dnd5e:props:candle-stand': [
+    {
+      name: 'SM_Prop_Candle_Stand_01',
+      file: 'props/SM_Prop_Candle_Stand_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:lantern': [
+    {
+      name: 'SM_Prop_Lantern_01',
+      file: 'props/SM_Prop_Lantern_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Lantern_02',
+      file: 'props/SM_Prop_Lantern_02.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:stone-lantern': [
+    {
+      name: 'SM_Env_Stone_Lantern_01',
+      file: 'props/SM_Env_Stone_Lantern_01.glb',
+      role: 'cover',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:glowing-orb': [
+    {
+      name: 'SM_Env_GlowingOrb_01',
+      file: 'props/SM_Env_GlowingOrb_01.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Env_GlowingOrb_02',
+      file: 'props/SM_Env_GlowingOrb_02.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:rune-marker': [
+    {
+      name: 'SM_Env_Rune_Square_01',
+      file: 'props/SM_Env_Rune_Square_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:rune-pillar': [
+    {
+      name: 'SM_Env_Rune_Pillar_02',
+      file: 'props/SM_Env_Rune_Pillar_02.glb',
+      role: 'obstacle',
+      footprintHexes: 1,
+      blocksLoS: true,
+    },
+  ],
+  'dnd5e:props:torch': [
+    {
+      name: 'SM_Prop_TorchStick_01',
+      file: 'props/SM_Prop_TorchStick_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  // renderScale 2 on all three (rpg-game-assets#36 wave-1, issue #623
+  // fast-follow — Kirk: "the room will be big so I think a rug would be
+  // a percentage of the space"): each variant's raw geometry has its
+  // SHORT axis around 1.2-1.3 hex-widths at plain SYNTY_SCALE (e.g.
+  // Rug_01's 2.929-unit depth * 0.75 SYNTY_SCALE / (sqrt(3) hex-width)
+  // ~= 1.27) — a uniform 2x brings every variant's short axis to
+  // ~2.4-2.6 hexes, landing in Kirk's "roughly 2-3 hexes" target
+  // consistently across all three rather than needing a different
+  // multiplier per variant. See PropVariant.renderScale's own doc
+  // comment for why this is a fixed multiplier, not yet a true
+  // percentage-of-room-size calculation.
+  'dnd5e:props:rug': [
+    {
+      name: 'SM_Prop_Rug_01',
+      file: 'props/SM_Prop_Rug_01.glb',
+      role: 'decor',
+      footprintHexes: 10,
+      blocksLoS: false,
+      renderScale: 2,
+    },
+    {
+      name: 'SM_Prop_Rug_02',
+      file: 'props/SM_Prop_Rug_02.glb',
+      role: 'decor',
+      footprintHexes: 5,
+      blocksLoS: false,
+      renderScale: 2,
+    },
+    {
+      name: 'SM_Prop_Rug_03',
+      file: 'props/SM_Prop_Rug_03.glb',
+      role: 'decor',
+      footprintHexes: 4,
+      blocksLoS: false,
+      renderScale: 2,
+    },
+  ],
+  'dnd5e:props:wall-banner': [
+    {
+      name: 'SM_Prop_Wall_Banner_02',
+      file: 'props/SM_Prop_Wall_Banner_02.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Wall_Banner_03',
+      file: 'props/SM_Prop_Wall_Banner_03.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Wall_Banner_04',
+      file: 'props/SM_Prop_Wall_Banner_04.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Wall_Banner_05',
+      file: 'props/SM_Prop_Wall_Banner_05.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Wall_Banner_06',
+      file: 'props/SM_Prop_Wall_Banner_06.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:chains': [
+    {
+      name: 'SM_Prop_Chain_04',
+      file: 'props/SM_Prop_Chain_04.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Chain_08',
+      file: 'props/SM_Prop_Chain_08.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:pillar-broken': [
+    {
+      name: 'SM_Env_Pillar_Broken_Pile_01',
+      file: 'props/SM_Env_Pillar_Broken_Pile_01.glb',
+      role: 'cover',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Env_Pillar_Broken_01',
+      file: 'props/SM_Env_Pillar_Broken_01.glb',
+      role: 'cover',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:tomb-open': [
+    {
+      name: 'SM_Prop_Tomb_Lid_01',
+      file: 'props/SM_Prop_Tomb_Lid_01.glb',
+      role: 'cover',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Prop_Tomb_Skeleton_01',
+      file: 'props/SM_Prop_Tomb_Skeleton_01.glb',
+      role: 'cover',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:torture-table': [
+    {
+      name: 'SM_Prop_Toture_StretchTable_01',
+      file: 'props/SM_Prop_Toture_StretchTable_01.glb',
+      role: 'cover',
+      footprintHexes: 3,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:bone-scatter': [
+    {
+      name: 'SM_Env_BonePile_Small_02',
+      file: 'props/SM_Env_BonePile_Small_02.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+  ],
+  'dnd5e:props:rubble-scatter': [
+    {
+      name: 'SM_Env_Rubble_01',
+      file: 'props/SM_Env_Rubble_01.glb',
+      role: 'decor',
+      footprintHexes: 5,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Env_Brick_Rubble_01',
+      file: 'props/SM_Env_Brick_Rubble_01.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Env_Rubble_Pebbles_01',
+      file: 'props/SM_Env_Rubble_Pebbles_01.glb',
+      role: 'decor',
+      footprintHexes: 2,
+      blocksLoS: false,
+    },
+    {
+      name: 'SM_Env_Rubble_Plank_01',
+      file: 'props/SM_Env_Rubble_Plank_01.glb',
+      role: 'decor',
+      footprintHexes: 3,
       blocksLoS: false,
     },
   ],
@@ -464,6 +909,23 @@ export const EXPECTED_PROP_KEYS: readonly string[] = [
   'dnd5e:props:brazier',
   'dnd5e:props:torch-ornate',
   'dnd5e:props:skeleton-remains',
+  // rpg-game-assets#36 wave-1 (look-lab.yaml v3) -- 15 more keys appended,
+  // same convention as the #559 block above.
+  'dnd5e:props:candle-stand',
+  'dnd5e:props:lantern',
+  'dnd5e:props:stone-lantern',
+  'dnd5e:props:glowing-orb',
+  'dnd5e:props:rune-marker',
+  'dnd5e:props:rune-pillar',
+  'dnd5e:props:torch',
+  'dnd5e:props:rug',
+  'dnd5e:props:wall-banner',
+  'dnd5e:props:chains',
+  'dnd5e:props:pillar-broken',
+  'dnd5e:props:tomb-open',
+  'dnd5e:props:torture-table',
+  'dnd5e:props:bone-scatter',
+  'dnd5e:props:rubble-scatter',
 ];
 
 /**

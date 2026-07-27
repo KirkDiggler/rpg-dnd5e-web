@@ -50,6 +50,7 @@ import {
   type WorldPos,
 } from './hexMath';
 import { MovementRangeBorder } from './MovementRangeBorder';
+import { resolvePropKeyForEntity } from './obstaclePropKeys';
 import { PathPreview } from './PathPreview';
 import {
   entityClickHandler,
@@ -62,6 +63,10 @@ import { ShadedHexFloor } from './ShadedHexFloor';
 import { ShadedHexWall } from './ShadedHexWall';
 import { SyntyHexFloor } from './SyntyHexFloor';
 import { SyntyHexWall } from './SyntyHexWall';
+import {
+  collectWallHexes,
+  computeWallAdjacentRotationY,
+} from './syntyHexWallHelpers';
 import type { TurnOrderEntry } from './TurnOrderOverlay';
 import { TurnOrderOverlay } from './TurnOrderOverlay';
 import { useCameraControls } from './useCameraControls';
@@ -271,6 +276,14 @@ export interface HexGridProps {
 // Ground plane size - large enough to cover the entire grid with plenty of margin
 const GROUND_PLANE_SIZE = 200;
 
+/** Prop reference keys that get a computed wall-facing rotationY
+ * (rpg-game-assets#36 wave-1, issue #623 increment 5) instead of the
+ * default 0 — today just wall-banner. A `Set`, not a single hardcoded
+ * key, so a future wall-mounted decor piece (a second banner variant, a
+ * wall-mounted trophy, etc.) opts in by adding its key here rather than
+ * duplicating the whole rotation-computation wiring. */
+const WALL_ADJACENT_PROP_KEYS = new Set<string>(['dnd5e:props:wall-banner']);
+
 // Scene consumes this exact helper; exporting it permits pathfinding coverage.
 // eslint-disable-next-line react-refresh/only-export-components
 export function isHexBlocked(
@@ -416,6 +429,39 @@ function Scene({
       ),
     [floorTiles, rememberedFloorHexKeys, walls, rememberedWallHexKeys]
   );
+
+  // Wall-mounted decor orientation (rpg-game-assets#36 wave-1, issue #623
+  // increment 5) — an entity resolving to one of WALL_ADJACENT_PROP_KEYS
+  // gets a computed rotationY facing the wall it sits next to, same
+  // "align a piece's local +X with the hex edge" math the wall/door
+  // pieces themselves already use (computeWallAdjacentRotationY's own doc
+  // comment). Every other entity is untouched — this map only ever holds
+  // entries for the specific keys that need it, and PropModel/HexEntity
+  // fall back to rotationY=0 (today's default for every non-door prop)
+  // when an entityId has no entry here.
+  // Precomputed ONCE per (entities, walls) change and reused for every
+  // matching entity below (Copilot review, PR #625) — computeWallAdjacentRotationY
+  // used to rebuild this same map internally on every call, making this
+  // loop O(entities * walls) instead of O(walls + entities).
+  const wallKindByHex = useMemo(() => collectWallHexes(walls), [walls]);
+  const wallAdjacentRotations = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const entity of entities) {
+      const propKey = resolvePropKeyForEntity({
+        obstacleType: entity.obstacleType,
+        propRefId: entity.propRefId,
+      });
+      if (!propKey || !WALL_ADJACENT_PROP_KEYS.has(propKey)) continue;
+      const rotationY = computeWallAdjacentRotationY(
+        entity.position,
+        walls,
+        HEX_SIZE,
+        wallKindByHex
+      );
+      if (rotationY !== undefined) map.set(entity.entityId, rotationY);
+    }
+    return map;
+  }, [entities, walls, wallKindByHex]);
 
   // Create character lookup map by ID for efficient entity -> character mapping
   const characterMap = useMemo(() => {
@@ -962,6 +1008,7 @@ function Scene({
           isDowned={entity.isDowned}
           obstacleType={entity.obstacleType}
           propRefId={entity.propRefId}
+          propRotationY={wallAdjacentRotations.get(entity.entityId)}
           movePath={entity.movePath}
           moveSeq={entity.moveSeq}
           knowledgeState={entity.knowledgeState}

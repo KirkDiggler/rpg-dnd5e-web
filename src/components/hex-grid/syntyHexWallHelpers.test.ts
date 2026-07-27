@@ -3,10 +3,12 @@ import {
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
-import { coordToKey, HEX_DIRECTIONS } from './hexMath';
+import { coordToKey, HEX_DIRECTIONS, hexEdgeBetween } from './hexMath';
 import {
   buildDungeonWallSegments,
   classifyWallVertices,
+  collectWallHexes,
+  computeWallAdjacentRotationY,
   doorVisualState,
   edgePieceKind,
   FITTINGS,
@@ -595,6 +597,114 @@ describe('wallEndEdgeKeys', () => {
     for (const key of endKeys) {
       expect(key.startsWith('1,-1,0->')).toBe(false);
     }
+  });
+});
+
+describe('computeWallAdjacentRotationY (rpg-game-assets#36 wave-1, issue #623 increment 5 — wall-banner orientation)', () => {
+  it('returns undefined when the hex has no wall neighbor at all', () => {
+    const walls = [wall({ x: 5, y: -5, z: 0 }, { x: 5, y: -5, z: 0 })];
+    expect(
+      computeWallAdjacentRotationY({ x: 0, y: 0, z: 0 }, walls, 1)
+    ).toBeUndefined();
+  });
+
+  it('matches hexEdgeBetween(wallHex, hex) exactly — the same alignment a real wall/door piece on that edge would use', () => {
+    // H0 (open, where the banner sits) with ONE wall neighbor to its
+    // east (HEX_DIRECTIONS[0]).
+    const hex = { x: 0, y: 0, z: 0 };
+    const wallHex = { x: 1, y: -1, z: 0 };
+    const walls = [wall(wallHex, wallHex)];
+    const rotationY = computeWallAdjacentRotationY(hex, walls, 1);
+    expect(rotationY).toBeCloseTo(hexEdgeBetween(wallHex, hex, 1).rotationY);
+  });
+
+  it('gives a DIFFERENT rotation for a wall neighbor on a different side — the banner actually follows which wall it is next to', () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const eastWall = { x: 1, y: -1, z: 0 };
+    const northEastWall = { x: 1, y: 0, z: -1 };
+    const rotationEast = computeWallAdjacentRotationY(
+      hex,
+      [wall(eastWall, eastWall)],
+      1
+    )!;
+    const rotationNE = computeWallAdjacentRotationY(
+      hex,
+      [wall(northEastWall, northEastWall)],
+      1
+    )!;
+    expect(rotationEast).toBeDefined();
+    expect(rotationNE).toBeDefined();
+    expect(rotationEast).not.toBeCloseTo(rotationNE);
+  });
+
+  it('picks the first wall neighbor found (HEX_DIRECTIONS order) when the hex sits in a corner nook with more than one — deterministic, not a crash', () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const eastWall = { x: 1, y: -1, z: 0 }; // HEX_DIRECTIONS[0]
+    const neWall = { x: 1, y: 0, z: -1 }; // HEX_DIRECTIONS[1]
+    const walls = [wall(neWall, neWall), wall(eastWall, eastWall)];
+    const rotationY = computeWallAdjacentRotationY(hex, walls, 1);
+    expect(rotationY).toBeCloseTo(hexEdgeBetween(eastWall, hex, 1).rotationY);
+  });
+
+  it("recognizes a BOUNDARY-EDGE wall (from===hex, a real one-hex-step room-perimeter edge) — the actual bug found live: a room's own outer wall never matched the degenerate-wall-hex check alone, because collectWallHexes deliberately excludes boundary-edge walls from that set", () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const boundaryTo = { x: 1, y: 0, z: -1 }; // one hex step, non-door
+    const walls = [wall(hex, boundaryTo)];
+    const rotationY = computeWallAdjacentRotationY(hex, walls, 1);
+    expect(rotationY).toBeCloseTo(hexEdgeBetween(hex, boundaryTo, 1).rotationY);
+  });
+
+  it('a boundary-edge wall match takes precedence over a degenerate wall-hex neighbor when both are present', () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const boundaryTo = { x: 1, y: 0, z: -1 };
+    const degenerateWallHex = { x: -1, y: 1, z: 0 }; // HEX_DIRECTIONS[3], W
+    const walls = [
+      wall(degenerateWallHex, degenerateWallHex),
+      wall(hex, boundaryTo),
+    ];
+    const rotationY = computeWallAdjacentRotationY(hex, walls, 1);
+    expect(rotationY).toBeCloseTo(hexEdgeBetween(hex, boundaryTo, 1).rotationY);
+  });
+
+  it('does NOT treat a degenerate (from===to) wall entry as a boundary edge — falls through to the wall-hex-neighbor branch instead', () => {
+    // hex itself is never a wall hex for a real decor placement, but a
+    // degenerate self-wall "from===hex, to===hex" must not be mistaken
+    // for a one-step boundary edge (hexDistance(from,to) would be 0).
+    const hex = { x: 0, y: 0, z: 0 };
+    const walls = [wall(hex, hex)];
+    expect(computeWallAdjacentRotationY(hex, walls, 1)).toBeUndefined();
+  });
+
+  it('does NOT treat a door on this exact edge as a boundary-edge wall — doors are excluded from this branch entirely', () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const doorTo = { x: 1, y: 0, z: -1 };
+    const walls = [wall(hex, doorTo, WallKind.DOOR_CLOSED, 'door-1')];
+    expect(computeWallAdjacentRotationY(hex, walls, 1)).toBeUndefined();
+  });
+
+  it("cleanly opts out (undefined) when `hex` ITSELF is already a wall hex (Copilot review, PR #625) — a decor prop authored on a blocked cell shouldn't compute a rotation toward one of its own neighboring wall hexes", () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const eastWall = { x: 1, y: -1, z: 0 }; // would otherwise match the degenerate-wall-hex branch
+    // hex itself is part of a wall's decomposed line (a multi-hex span
+    // from hex to a farther cell), NOT a self-degenerate `wall(hex, hex)`
+    // — a distinct way `hex` can end up in collectWallHexes' set.
+    const walls = [wall(hex, { x: -2, y: 2, z: 0 }), wall(eastWall, eastWall)];
+    expect(computeWallAdjacentRotationY(hex, walls, 1)).toBeUndefined();
+  });
+
+  it('accepts a precomputed wallKindByHex (Copilot review, PR #625 — avoids rebuilding collectWallHexes per call) and produces the identical result to the default', () => {
+    const hex = { x: 0, y: 0, z: 0 };
+    const eastWall = { x: 1, y: -1, z: 0 };
+    const walls = [wall(eastWall, eastWall)];
+    const precomputed = collectWallHexes(walls);
+    const withDefault = computeWallAdjacentRotationY(hex, walls, 1);
+    const withPrecomputed = computeWallAdjacentRotationY(
+      hex,
+      walls,
+      1,
+      precomputed
+    );
+    expect(withPrecomputed).toBeCloseTo(withDefault!);
   });
 });
 

@@ -4,6 +4,18 @@
  * the entity resolves to a known `dnd5e:props:<name>` reference key (see
  * obstaclePropKeys.ts for how that resolution happens today).
  *
+ * Companion meshes (rpg-game-assets#36 wave-1, issue #623): a variant may
+ * carry `companions` — today only the `candles` key's Candles_01..04
+ * pieces do, each paired with its own flame particle mesh
+ * (propManifest.ts's `PropVariant.companions` doc comment has the full
+ * story). Each companion renders as its own sibling PRIMITIVE inside the
+ * SAME transformed group as the parent variant, at the group's local
+ * origin — "layered at the parent's anchor," not offset — since the
+ * source manifest carries no separate companion transform, only a file
+ * reference. This kills "candles have no flame": the flame particle mesh
+ * sits exactly where its candle cluster is, moves/rotates with it for
+ * free (same group), and needs no per-companion placement math.
+ *
  * Sibling of ClassCharacterModel.tsx's useGLTF lineage, simplified for the
  * static case: props are plain (non-skinned) meshes, so there is no
  * skeleton to re-parent and no rpg-dnd5e-web#510-style SkeletonUtils
@@ -35,12 +47,23 @@
  * is placement-sanity DATA for whatever positions props on the grid
  * (reserving N hexes so a wide piece doesn't visually overlap a
  * neighboring entity), not a scale input to this renderer.
+ *
+ * `variant.renderScale` (rpg-game-assets#36 wave-1, issue #623 fast-follow)
+ * IS a deliberate, separate scale input — an explicit per-variant visual
+ * override (today only the `rug` key uses it) multiplied on top of
+ * SYNTY_SCALE, not derived from `footprintHexes`. See that field's own doc
+ * comment in propManifest.ts for why it exists and how its value was
+ * picked.
  */
 
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { useGLTF } from '@react-three/drei';
 import { useMemo } from 'react';
-import { PROPS_MODEL_BASE, type PropVariant } from './propManifest';
+import {
+  PROPS_MODEL_BASE,
+  type PropCompanion,
+  type PropVariant,
+} from './propManifest';
 
 export interface PropModelProps {
   variant: PropVariant;
@@ -48,6 +71,17 @@ export interface PropModelProps {
    * caller — see HexEntity.tsx's cubeToWorld usage). */
   position: [number, number, number];
   rotationY?: number;
+}
+
+/** One companion mesh, loaded/cloned independently of its parent (its own
+ * `useGLTF` cache entry, same as any other GLB) but rendered with NO
+ * transform of its own — the parent `<group>` in `PropModel` below
+ * supplies position/rotation/scale for both the parent variant and every
+ * companion alike, so a companion always sits at its parent's anchor. */
+function PropCompanionModel({ companion }: { companion: PropCompanion }) {
+  const { scene } = useGLTF(PROPS_MODEL_BASE + companion.file);
+  const cloned = useMemo(() => scene.clone(true), [scene]);
+  return <primitive object={cloned} />;
 }
 
 export function PropModel({
@@ -59,11 +93,15 @@ export function PropModel({
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
   return (
-    <primitive
-      object={cloned}
+    <group
       position={position}
       rotation={[0, rotationY, 0]}
-      scale={SYNTY_SCALE}
-    />
+      scale={SYNTY_SCALE * (variant.renderScale ?? 1)}
+    >
+      <primitive object={cloned} />
+      {variant.companions?.map((companion) => (
+        <PropCompanionModel key={companion.file} companion={companion} />
+      ))}
+    </group>
   );
 }

@@ -100,6 +100,15 @@ export interface HexEntityProps {
    * obstacleType when present (obstaclePropKeys.ts's
    * resolvePropKeyForEntity). */
   propRefId?: string;
+  /**
+   * Computed wall-facing rotationY for a wall-mounted decor prop
+   * (rpg-game-assets#36 wave-1, issue #623 increment 5 — HexGrid's
+   * `WALL_ADJACENT_PROP_KEYS`/`computeWallAdjacentRotationY`). Undefined
+   * for every entity that isn't one of those keys, or that has no wall
+   * neighbor to face — falls back to PropModel's own rotationY=0 default,
+   * unchanged from every pre-#623 caller.
+   */
+  propRotationY?: number;
   /** The most recent genuine move's real hex-by-hex route
    * (`EntityMoved.actualPath`), set only alongside `moveSeq` — see
    * `useEncounterState.ts`'s `mergeEntityPosition` doc comment. Undefined
@@ -282,6 +291,7 @@ export function HexEntity({
   isDowned = false,
   obstacleType,
   propRefId,
+  propRotationY,
   movePath,
   moveSeq,
 }: HexEntityProps) {
@@ -615,7 +625,11 @@ export function HexEntity({
           fallback={renderCapsule([0, yPosition, 0], false)}
           onError={() => setFailedPropModelUrl(effectivePropModelUrl)}
         >
-          <PropModel variant={propVariant} position={[0, 0, 0]} />
+          <PropModel
+            variant={propVariant}
+            position={[0, 0, 0]}
+            rotationY={propRotationY}
+          />
         </ErrorBoundary>
       </Suspense>
     </group>

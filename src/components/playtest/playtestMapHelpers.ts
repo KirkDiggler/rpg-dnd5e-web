@@ -746,11 +746,19 @@ export function buildCryptLayout(): CryptLayout {
 const MOOD_LIGHT_HEIGHT = 1.2;
 
 /** Warm-orange glow — the "warm torch contrast" half of Kirk's POLYGON
- * Dark Fortress reference palette. Shared by three distinct fixtures
- * (brazier, torch-ornate, and the door lights below) so the palette reads
- * as one consistent warm-light family rather than three near-identical
- * oranges picked independently. */
+ * Dark Fortress reference palette. Shared by five distinct fixtures
+ * (brazier, torch-ornate, lantern, candle-stand, and the door lights
+ * below) so the palette reads as one consistent warm-light family rather
+ * than near-identical oranges picked independently. */
 const WARM_LIGHT_COLOR = '#ff9d52';
+
+/** Saturated rune-blue glow — the SECOND accent half of the palette
+ * (issue #623, look-lab wave-1), alongside `candles`' sickly-green pools
+ * rather than duplicating that hue. Same channel-brightness/saturation
+ * "weight" as `candles`' `#3ddc84` (just hue-shifted from green toward
+ * blue) so the two cool accents read as siblings, not an arbitrary third
+ * color. Shared by glowing-orb/rune-marker/rune-pillar. */
+const RUNE_BLUE_COLOR = '#3d84dc';
 
 interface MoodLightSpec {
   color: string;
@@ -760,25 +768,42 @@ interface MoodLightSpec {
 
 /**
  * propRefId -> mood light spec (color + falloff), for every light-anchor
- * prop rpg-toolkit#839 places in a generated crypt (rpg-dnd5e-web#569).
- * `candles` shipped first (#558); `brazier`/`torch-ornate` both have
- * shipped catalog pieces (propManifest.ts) but only start actually
- * appearing in real layouts once toolkit#839 lands.
+ * prop rpg-toolkit#839 places in a generated crypt (rpg-dnd5e-web#569),
+ * plus the wave-1 light props catalogued for look-lab (rpg-game-assets#36,
+ * issue #623). `candles` shipped first (#558); every other entry has a
+ * shipped catalog piece (propManifest.ts) but only starts actually
+ * appearing in a TOOLKIT-GENERATED real layout once that prop is wired
+ * into toolkit's own placement logic — look-lab.yaml's authored content is
+ * the only real-route caller today.
  *
  * Intensity/distance are tuned by role, not just color, smallest to
  * largest reach:
+ * - rune-marker: a subtle floor plaque — the smallest reach of any entry
+ *   here, dressing rather than a real light source (judged by screenshot
+ *   per issue #623 — cheap to drop if it doesn't read well).
+ * - rune-pillar: the same subtle-glow treatment as rune-marker, a shade
+ *   more since it's a taller obstacle piece, not a flat floor decal.
  * - candles: the sickly-green ACCENT POOLS — a room can hold several
  *   (buildCryptLayout's demo places 2 per chamber), so each stays modest;
  *   many small pools read better than one loud one. Unchanged from #558.
+ * - candle-stand / lantern: warm secondary/accent fixtures, same
+ *   "several per room, stay modest" reasoning as torch-ornate below —
+ *   candle-stand a shade softer (a floor candelabra, not wall-mounted),
+ *   lantern a shade softer still (the smallest light-bearing prop of the
+ *   set, per its own raw dimensions in propManifest.ts).
  * - torch-ornate: a warm wall-mounted dressing piece — a real light
  *   source (unlike the door glow below, which is an inferred door-frame
  *   highlight with no prop behind it), but still a secondary/accent
  *   fixture a room can hold several of, so only a shade past the door
  *   glow's own falloff.
+ * - glowing-orb: the cool ROOM ANCHOR half of the new accent pair — a
+ *   deliberate set piece (2-hex footprint, per propManifest.ts), so it
+ *   gets the same reach as `candles`' accent pools despite being a single
+ *   larger fixture rather than several small ones.
  * - brazier: the warm ROOM ANCHOR — toolkit#839 places at most one per
- *   room, so it needs the largest reach of the three to plausibly read as
- *   the room's own light source: brighter and wider than even the
- *   candles' accent pools.
+ *   room, so it needs the largest reach of any entry to plausibly read as
+ *   the room's own light source: brighter and wider than every accent
+ *   fixture above.
  *
  * A `Map`, not a plain object: `propRefId` traces back to server-sent
  * obstacle_ref/prop_ref ids (Copilot review, PR #588) — a plain-object
@@ -788,8 +813,13 @@ interface MoodLightSpec {
  * fields. `Map.prototype.get` has no such prototype-chain fallback.
  */
 const MOOD_LIGHT_SPEC_BY_PROP_REF: Map<string, MoodLightSpec> = new Map([
+  ['rune-marker', { color: RUNE_BLUE_COLOR, intensity: 0.7, distance: 2.2 }],
+  ['rune-pillar', { color: RUNE_BLUE_COLOR, intensity: 0.9, distance: 2.6 }],
   ['candles', { color: '#3ddc84', intensity: 2, distance: 4.5 }],
+  ['candle-stand', { color: WARM_LIGHT_COLOR, intensity: 1.4, distance: 3.2 }],
+  ['lantern', { color: WARM_LIGHT_COLOR, intensity: 1.3, distance: 3 }],
   ['torch-ornate', { color: WARM_LIGHT_COLOR, intensity: 1.6, distance: 3.6 }],
+  ['glowing-orb', { color: RUNE_BLUE_COLOR, intensity: 2, distance: 4.5 }],
   ['brazier', { color: WARM_LIGHT_COLOR, intensity: 2.8, distance: 5.5 }],
 ]);
 
@@ -935,13 +965,26 @@ export const CRYPT_DIRECTIONAL_INTENSITY = 0.28;
  * Upper bound on simultaneous R3F point lights from the mood-lighting pass
  * (rpg-dnd5e-web#558) — point lights are not free, and "performance is a
  * standing requirement" (this codebase's own convention, see e.g.
- * rpg-dnd5e-web#537's perf-probe wave). 8 comfortably covers every prop/
- * door light the current crypt content produces (the fixed 3-room demo
- * tops out at 6) with headroom, while still bounding a hypothetical
- * densely-dressed future room instead of letting it render an unbounded
- * light count.
+ * rpg-dnd5e-web#537's perf-probe wave).
+ *
+ * REVISED (issue #623 fast-follow, live bug: Kirk's gallery walk showed
+ * one brazier lit and another dark in the SAME room): the original 8 was
+ * sized against "the fixed 3-room demo tops out at 6" — before wave-1's
+ * catalog (rpg-game-assets#36) added candle-stand/lantern/glowing-orb/
+ * rune-marker/rune-pillar to MOOD_LIGHT_SPEC_BY_PROP_REF. The look-lab
+ * gallery's row1 shelf ALONE places 8 light-anchor props plus row6's own
+ * brazier — 9, already over the old budget, confirmed live via a raw (9)
+ * vs capped (8) light count on this exact room. `capMoodLights` was
+ * working exactly as designed (dropping the single farthest-from-player
+ * light) — the budget itself was just sized for pre-wave-1 content. 12
+ * comfortably covers a single densely-dressed real room (gallery's own
+ * worst case) with a little headroom, while still bounding a
+ * hypothetical multi-room "remembered" pile-up instead of going
+ * unbounded. Real toolkit-generated dungeons (rpg-toolkit#839 hasn't
+ * landed the wave-1 catalog into procedural placement yet) are unlikely
+ * to approach this in one room today — revisit if/when they do.
  */
-export const MOOD_LIGHT_BUDGET = 8;
+export const MOOD_LIGHT_BUDGET = 12;
 
 /**
  * Cap `lights` at `maxCount`, keeping the ones nearest `referenceXZ` (world
@@ -993,15 +1036,17 @@ export function capMoodLights(
  * re-deriving "is this a themed space" from `state.theme`/`spaceTheme`
  * independently.
  *
- * Real crypt encounters place obstacle props like obelisk/pillar/coffin/
- * altar/statue (api#702) — NONE of which match
- * `MOOD_LIGHT_SPEC_BY_PROP_REF`'s keys (`candles`/`torch-ornate`/`brazier`),
- * so `buildCryptMoodLights` legitimately contributes zero lights for a real
- * crypt until rpg-toolkit#839's light-anchor set pieces land. That's
- * correct, not a bug: the real route still gets ambient + door lights,
- * matching the demo's "warm torch contrast" half of the palette, just not
- * the candle/brazier/torch glow half until a real encounter places one of
- * those props.
+ * A toolkit-GENERATED crypt encounter (api#702) places obstacle props like
+ * obelisk/pillar/coffin/altar/statue — none of which match
+ * `MOOD_LIGHT_SPEC_BY_PROP_REF`'s keys, so `buildCryptMoodLights`
+ * legitimately contributes zero lights for one of those until
+ * rpg-toolkit#839's light-anchor placement lands. That's correct, not a
+ * bug: the real route still gets ambient + door lights, matching the
+ * demo's "warm torch contrast" half of the palette, just not the
+ * candle/brazier/torch/lantern/orb glow half until toolkit actually places
+ * one of the light-anchor props. Authored content (look-lab.yaml, issue
+ * #623) IS a real route caller that places these props directly, so it
+ * already exercises every entry in the map today, ahead of toolkit#839.
  */
 export function buildThemeMoodLights(
   theme: 'crypt' | undefined,
