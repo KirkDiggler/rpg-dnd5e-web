@@ -300,32 +300,53 @@ describe('SyntyHexWall spaceTheme (rpg-dnd5e-web#558 real-route theme consumptio
   });
 });
 
-describe('doorFrameScale / doorLeafScale (rpg-project#132 wall-height dial: "the height of the walls might be a little low" — door frame/leaf rise the SAME proportion the wall-height dial does, not independently)', () => {
-  it('at heightRatio=1 (the default wallHeight, no override), height is exactly the old flat SYNTY_SCALE — byte-identical to pre-dial behavior', () => {
-    expect(doorFrameScale(1)[1]).toBe(SYNTY_SCALE);
-    expect(doorLeafScale(1)[1]).toBe(SYNTY_SCALE);
+describe('doorFrameScale / doorLeafScale (rpg-project#132 follow-up, Kirk\'s verdict walking the tall-wall default: "at tall walls the door is really really high" — door height must target wallHeight DIRECTLY, not multiply a ratio onto the door\'s own legacy baseline)', () => {
+  // SM_Env_Door_Frame_01's own measured raw height at scale=1 (Box3
+  // read — see doorFrameScale's own doc comment for the measurement
+  // provenance; same convention as wallVariantScale's tests hardcoding
+  // WALL_VARIANTS' own known raw dimensions rather than importing a
+  // private module constant).
+  const DOOR_FRAME_RAW_HEIGHT = 2.5347;
+
+  it("targets wallHeight directly: frame height scale * its own raw height equals wallHeight almost exactly (the frame's top edge lands at the wall height, no ratio compounding)", () => {
+    const wallHeight = 2.4;
+    const [, sy] = doorFrameScale(wallHeight);
+    expect(sy * DOOR_FRAME_RAW_HEIGHT).toBeCloseTo(wallHeight, 5);
   });
 
-  it('scales height by the ratio, leaving width/depth (X/Z) untouched — only height is what "the wall is a little low" is about', () => {
-    const ratio = 1.5;
-    const frame = doorFrameScale(ratio);
-    const leaf = doorLeafScale(ratio);
-    expect(frame[1]).toBeCloseTo(SYNTY_SCALE * ratio, 9);
-    expect(leaf[1]).toBeCloseTo(SYNTY_SCALE * ratio, 9);
-    // X (width) and Z (depth/thickness) are the SAME regardless of ratio.
-    const frameAtDefault = doorFrameScale(1);
-    const leafAtDefault = doorLeafScale(1);
-    expect(frame[0]).toBe(frameAtDefault[0]);
-    expect(frame[2]).toBe(frameAtDefault[2]);
-    expect(leaf[0]).toBe(leafAtDefault[0]);
-    expect(leaf[2]).toBe(leafAtDefault[2]);
+  it("the leaf scales by the SAME per-height-unit factor as the frame (not its own raw height) — preserves the leaf's authored ~97% proportion within the frame at any wallHeight", () => {
+    const wallHeight = 2.4;
+    const [, frameSy] = doorFrameScale(wallHeight);
+    const [, leafSy] = doorLeafScale(wallHeight);
+    expect(leafSy).toBeCloseTo(frameSy, 9);
   });
 
-  it('a wallHeight override translates to the correct ratio (wallHeight / WALL_HEIGHT) — e.g. wallHeight=1.2 at the default WALL_HEIGHT=0.8 gives ratio 1.5', () => {
-    const wallHeight = 1.2;
-    const ratio = wallHeight / WALL_HEIGHT;
-    expect(ratio).toBeCloseTo(1.5, 9);
-    expect(doorFrameScale(ratio)[1]).toBeCloseTo(SYNTY_SCALE * 1.5, 9);
+  it('scaling is linear in wallHeight — doubling wallHeight exactly doubles the height scale for both pieces, proving a direct target rather than a ratio against a fixed baseline', () => {
+    const [, sy1] = doorFrameScale(1.2);
+    const [, sy2] = doorFrameScale(2.4);
+    expect(sy2).toBeCloseTo(sy1 * 2, 9);
+    const [, leafSy1] = doorLeafScale(1.2);
+    const [, leafSy2] = doorLeafScale(2.4);
+    expect(leafSy2).toBeCloseTo(leafSy1 * 2, 9);
+  });
+
+  it('leaves width/depth (X/Z) untouched regardless of wallHeight — only height tracks the wall now', () => {
+    const frameLow = doorFrameScale(0.8);
+    const frameHigh = doorFrameScale(12.4);
+    expect(frameLow[0]).toBe(frameHigh[0]);
+    expect(frameLow[2]).toBe(frameHigh[2]);
+    const leafLow = doorLeafScale(0.8);
+    const leafHigh = doorLeafScale(12.4);
+    expect(leafLow[0]).toBe(leafHigh[0]);
+    expect(leafLow[2]).toBe(leafHigh[2]);
+  });
+
+  it('does NOT compound the door\'s old oversized-relative-to-0.8 baseline — at the OLD default (WALL_HEIGHT was 0.8), frame height scale is far below the historical flat SYNTY_SCALE, proving this is no longer "SYNTY_SCALE times a ratio"', () => {
+    const [, sy] = doorFrameScale(0.8);
+    // Old formula would have been exactly SYNTY_SCALE (0.75) at the old
+    // default; the new formula targets 0.8 directly against the frame's
+    // own ~2.53 raw height instead, landing well under that.
+    expect(sy).toBeLessThan(SYNTY_SCALE);
   });
 });
 
