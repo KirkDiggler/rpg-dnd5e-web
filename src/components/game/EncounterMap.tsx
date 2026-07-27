@@ -41,6 +41,8 @@ import {
 import { computeWallRuns } from '../../hooks/wallRuns';
 import { WALL_HEIGHT } from '../../rendering/calibrationConstants';
 import { HexGrid } from '../hex-grid';
+import { AuthorGridLegend } from '../hex-grid/AuthorGridLegend';
+import { AuthorGridOverlay } from '../hex-grid/AuthorGridOverlay';
 import {
   cubeToWorld,
   HEX_SIZE,
@@ -453,6 +455,19 @@ export function EncounterMap({
     []
   );
 
+  // Authoring bridge (`?authorGrid=1`): every revealed floor hex's
+  // room-local [col,row] label plus a facing legend, so Kirk can walk a
+  // room and dictate dungeon-content YAML `place:` coordinates directly
+  // instead of hand-deriving them. Same "read the query string once,
+  // default off" convention as litSurfaces/floorPools above. `regions`/
+  // `connectorDoors` are already computed above for wall-run rendering
+  // — this reuses them rather than re-deriving region membership a
+  // second time.
+  const authorGrid = useMemo(
+    () => new URLSearchParams(window.location.search).get('authorGrid') === '1',
+    []
+  );
+
   // Real-dungeon-rendering flag (rpg-dnd5e-web#432 harness-parity). Read
   // once; the game route never mutates the query string mid-session.
   // Default-on: deployed builds bake Synty assets into the image (docker
@@ -560,7 +575,15 @@ export function EncounterMap({
         {perfProbe && (
           <DevPerfProbe windowMs={perfProbe.windowMs} label={perfProbe.label} />
         )}
+        {authorGrid && (
+          <AuthorGridOverlay
+            regions={regions}
+            doors={connectorDoors}
+            hexSize={HEX_SIZE}
+          />
+        )}
       </HexGrid>
+      {authorGrid && <AuthorGridLegend />}
     </div>
   );
 }
