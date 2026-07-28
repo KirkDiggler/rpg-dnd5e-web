@@ -310,22 +310,22 @@ describe('EncounterView resume-after-refresh entity resolution (#444)', () => {
         makeEvent('snapshotDelivered', {
           encounter: {
             space: {
+              // resolveMyEntityId reads this roster directly off the wire
+              // event (case/playerId match) — it never consumes placement,
+              // so these entities are deliberately left unplaced (no hexes).
               entities: [
                 {
                   id: 'char-alice-resolved',
-                  position: { x: 0, y: 0, z: 0 },
                   type: EntityType.CHARACTER,
                   data: { case: 'character', value: { playerId: 'alice' } },
                 },
                 {
                   id: 'char-bob',
-                  position: { x: 1, y: 0, z: -1 },
                   type: EntityType.CHARACTER,
                   data: { case: 'character', value: { playerId: 'bob' } },
                 },
                 {
                   id: 'goblin-1',
-                  position: { x: 2, y: 0, z: -2 },
                   type: EntityType.MONSTER,
                   data: {
                     case: 'monster',
@@ -362,7 +362,6 @@ describe('EncounterView resume-after-refresh entity resolution (#444)', () => {
               entities: [
                 {
                   id: 'char-alice-resolved',
-                  position: { x: 0, y: 0, z: 0 },
                   type: EntityType.CHARACTER,
                   data: { case: 'character', value: { playerId: 'alice' } },
                 },
@@ -407,7 +406,6 @@ describe('EncounterView ignores interaction before entityId resolves (#461 Copil
               entities: [
                 {
                   id: 'goblin-1',
-                  position: { x: 2, y: 0, z: -2 },
                   type: EntityType.MONSTER,
                   data: {
                     case: 'monster',
@@ -703,7 +701,6 @@ describe('EncounterView renders condition badges hydrated from the snapshot (#46
               entities: [
                 {
                   id: 'char-bob',
-                  position: { x: 0, y: 0, z: 0 },
                   type: EntityType.CHARACTER,
                   data: { case: 'character', value: { playerId: 'bob' } },
                   statusEffects: [
@@ -716,6 +713,12 @@ describe('EncounterView renders condition badges hydrated from the snapshot (#46
                       displayName: 'Raging',
                     },
                   ],
+                },
+              ],
+              hexes: [
+                {
+                  position: { x: 0, y: 0, z: 0 },
+                  contents: [{ entityId: 'char-bob' }],
                 },
               ],
             },
@@ -759,10 +762,15 @@ describe('EncounterView renders condition badges hydrated from the snapshot (#46
               entities: [
                 {
                   id: 'char-bob',
-                  position: { x: 0, y: 0, z: 0 },
                   type: EntityType.CHARACTER,
                   data: { case: 'character', value: { playerId: 'bob' } },
                   statusEffects: [],
+                },
+              ],
+              hexes: [
+                {
+                  position: { x: 0, y: 0, z: 0 },
+                  contents: [{ entityId: 'char-bob' }],
                 },
               ],
             },
@@ -1415,7 +1423,6 @@ describe('EncounterView equip/unequip (rpg-dnd5e-web#571)', () => {
               entities: [
                 {
                   id: 'char-alice',
-                  position: { x: 0, y: 0, z: 0 },
                   type: EntityType.CHARACTER,
                   data: {
                     case: 'character',
@@ -1466,6 +1473,12 @@ describe('EncounterView equip/unequip (rpg-dnd5e-web#571)', () => {
                       mainHandDamage: '1d8 slashing',
                     },
                   },
+                },
+              ],
+              hexes: [
+                {
+                  position: { x: 0, y: 0, z: 0 },
+                  contents: [{ entityId: 'char-alice' }],
                 },
               ],
             },
@@ -1580,7 +1593,6 @@ describe('EncounterView combat pacing', () => {
               entities: [
                 {
                   id: 'char-alice-resolved',
-                  position: { x: 0, y: 0, z: 0 },
                   type: EntityType.CHARACTER,
                   data: { case: 'character', value: { playerId: 'alice' } },
                 },
@@ -1680,9 +1692,14 @@ describe('EncounterView combat pacing', () => {
               entities: [
                 {
                   id: 'char-alice',
-                  position: { x: 0, y: 0, z: 0 },
                   type: EntityType.CHARACTER,
                   hp: { current: 20, max: 20, temp: 0 },
+                },
+              ],
+              hexes: [
+                {
+                  position: { x: 0, y: 0, z: 0 },
+                  contents: [{ entityId: 'char-alice' }],
                 },
               ],
             },
@@ -1818,12 +1835,17 @@ describe('EncounterView combat pacing', () => {
               entities: [
                 {
                   id: 'goblin-1',
-                  position: { x: 1, y: 0, z: -1 },
                   type: EntityType.MONSTER,
                   data: {
                     case: 'monster',
                     value: { monsterRef: { id: 'goblin' } },
                   },
+                },
+              ],
+              hexes: [
+                {
+                  position: { x: 1, y: 0, z: -1 },
+                  contents: [{ entityId: 'goblin-1' }],
                 },
               ],
             },

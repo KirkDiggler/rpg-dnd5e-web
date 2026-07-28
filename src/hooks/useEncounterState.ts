@@ -14,11 +14,11 @@
  */
 
 import { create } from '@bufbuild/protobuf';
+import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
 import {
-  PositionSchema,
-  type Position,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/room_common_pb';
-import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
+  EntityStateSchema,
+  type EntityState,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type {
   EncounterEnded,
   EntityDamaged,
@@ -31,7 +31,7 @@ import type {
   TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import type {
-  Hex,
+  HexRecord,
   InputRequired,
   StatusEffect,
   TurnState,
@@ -41,10 +41,12 @@ import type {
 import {
   EncounterMode,
   EntityType,
+  HexState,
   WallKind,
   WallSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useState } from 'react';
+import { v2PositionToV1 } from '../api/positionConvert';
 import type {
   EquippedMap,
   ItemLike,
@@ -64,7 +66,8 @@ export interface EntityHP {
 }
 
 /**
- * v1alpha2 entity identity metadata, populated from EntityAppeared.entity.
+ * v1alpha2 entity identity metadata, populated from SnapshotDelivered's
+ * per-entity batch (see `applyEntityAppearedBatch`).
  * Carries type and monster ref id so the harness can label entity rows without
  * storing the full v1alpha2 Entity proto alongside the v1alpha1 EntityState.
  */
@@ -141,9 +144,9 @@ export interface LocalEncounterState {
    * `movePath`/`moveSeq` (rpg-dnd5e-web#542): the real hex-by-hex route from
    * the most recent genuine `EntityMoved`/`MovementCompletedEvent`, set ONLY
    * by `mergeEntityPosition` (the sole reducer `onEntityMoved` feeds) — never
-   * by `applyEntityAppeared`/`applyEntityAppearedBatch` (initial placement,
-   * revive-from-ghost), which replace the whole entity record with a fresh
-   * `{...entity, ghost: false}` off the wire and so naturally clear both
+   * by `applyEntityAppearedBatch` (initial placement, revive-from-ghost),
+   * which replaces the whole entity record with a fresh
+   * `{...entity, ghost: false}` off the wire and so naturally clears both
    * fields back to undefined. This is what lets HexEntity's movement
    * interpolation key off "a real move just happened" without a separate
    * boolean: `moveSeq` only ever advances on a genuine move, so watching it
@@ -158,7 +161,7 @@ export interface LocalEncounterState {
     EntityState & { ghost?: boolean; movePath?: Position[]; moveSeq?: number }
   >;
   /** v1alpha2-revealed hexes, keyed by stable cube coordinate. */
-  revealedHexes: Map<string, Hex>;
+  revealedHexes: Map<string, HexRecord>;
   /** Compatibility projection for existing undifferentiated floor consumers. */
   revealedHexKeys: Set<string>;
   /** Server-authored dungeon-wide visual family, absent when unspecified. */
@@ -200,10 +203,10 @@ export interface LocalEncounterState {
   entityStatuses: Map<string, EntityStatus[]>;
   /**
    * v1alpha2 entity identity metadata keyed by entity id. Populated by
-   * `applyEntityMetaFromAppeared` (reducer) / `applyEntityMeta` (hook callback)
-   * from EntityAppeared.entity fields. Carries type and monster ref id; kept
-   * separate from the v1alpha1 EntityState store so neither v1 nor v2 entity
-   * shapes need to import the other.
+   * `applyEntityAppearedBatch` from each SnapshotDelivered entity's fields.
+   * Carries type and monster ref id; kept separate from the v1alpha1
+   * EntityState store so neither v1 nor v2 entity shapes need to import the
+   * other.
    */
   entityMeta: Map<string, EntityMeta>;
   /**
@@ -387,10 +390,12 @@ export function mergeEntityPosition(
  * filter keeps stream reducers and harness diagnostics consistent.
  */
 export function hexesWithPosition(
-  hexes: Hex[]
-): Array<Hex & { position: NonNullable<Hex['position']> }> {
+  hexes: HexRecord[]
+): Array<HexRecord & { position: NonNullable<HexRecord['position']> }> {
   return hexes.filter(
-    (hex): hex is Hex & { position: NonNullable<Hex['position']> } =>
+    (
+      hex
+    ): hex is HexRecord & { position: NonNullable<HexRecord['position']> } =>
       hex.position !== undefined
   );
 }
@@ -404,9 +409,9 @@ export function applySnapshotRegionState(
   prev: LocalEncounterState,
   theme: string,
   zones: Zone[],
-  hexes: Hex[]
+  hexes: HexRecord[]
 ): LocalEncounterState {
-  const revealedHexes = new Map<string, Hex>();
+  const revealedHexes = new Map<string, HexRecord>();
   for (const hex of hexesWithPosition(hexes)) {
     revealedHexes.set(hexKey(protoPositionToHex(hex.position)), hex);
   }
@@ -416,39 +421,6 @@ export function applySnapshotRegionState(
     zones: new Map(zones.map((zone) => [zone.id, zone])),
     revealedHexes,
     revealedHexKeys: new Set(revealedHexes.keys()),
-  };
-}
-
-/**
- * Merge newly revealed wire hexes without dropping previously revealed zone
- * identity. A malformed incremental record with no zone ID cannot erase an
- * existing record for that coordinate; the next snapshot remains the explicit
- * server-authoritative replacement boundary.
- * Exported for testing.
- */
-export function applyHexesRevealed(
-  prev: LocalEncounterState,
-  hexes: Hex[]
-): LocalEncounterState {
-  let revealedHexes: Map<string, Hex> | undefined;
-  let revealedHexKeys: Set<string> | undefined;
-  for (const hex of hexesWithPosition(hexes)) {
-    const key = hexKey(protoPositionToHex(hex.position));
-    const existing = (revealedHexes ?? prev.revealedHexes).get(key);
-    const next = !hex.zoneId && existing ? existing : hex;
-    if (existing === next) continue;
-    if (!revealedHexes) revealedHexes = new Map(prev.revealedHexes);
-    revealedHexes.set(key, next);
-    if (!existing) {
-      if (!revealedHexKeys) revealedHexKeys = new Set(prev.revealedHexKeys);
-      revealedHexKeys.add(key);
-    }
-  }
-  if (!revealedHexes) return prev;
-  return {
-    ...prev,
-    revealedHexes,
-    revealedHexKeys: revealedHexKeys ?? prev.revealedHexKeys,
   };
 }
 
@@ -466,6 +438,29 @@ export function regionForHex(
     theme: state.theme,
     zone: hex?.zoneId ? state.zones.get(hex.zoneId) : undefined,
   };
+}
+
+/**
+ * Fog-of-war knowledge state for a position (rpg-dnd5e-web#605/#609):
+ * a REMEMBERED hex record renders frozen/charcoal (sceneKnowledge.ts's
+ * `SceneKnowledgeState` — kept as a plain literal union here rather than
+ * importing that type, so this state-layer module stays independent of the
+ * render-layer one), everything else — a VISIBLE record, or no record at
+ * all — renders live.
+ *
+ * A position with no matching hex record falls back to 'visible' rather
+ * than fail-closed hiding: `applyHexRecordsMerged` only ever caches an
+ * entity's position from a hex record's own `contents`, so a real entity
+ * should always resolve here — this is a defensive default for a position
+ * this genuinely cannot resolve (e.g. a synthetic/dev-only entity), not an
+ * expected miss.
+ */
+export function knowledgeStateForPosition(
+  revealedHexes: Map<string, HexRecord>,
+  position: { x: number; y: number; z: number }
+): 'visible' | 'remembered' {
+  const hex = revealedHexes.get(hexKey(protoPositionToHex(position)));
+  return hex?.state === HexState.REMEMBERED ? 'remembered' : 'visible';
 }
 
 /**
@@ -496,19 +491,108 @@ export function applyWallsRevealed(
 }
 
 /**
- * Add or revive an entity in the store at its first-visible position.
- * Clears the ghost flag unconditionally — the entity is now visible.
- * Overwrites any prior entry with the same entityId (e.g. a ghosted entity
- * that just re-entered the player's line of sight).
+ * Merge live HexKnowledgeChanged records into revealedHexes and reconcile
+ * the entity position cache (`entities`) — the merge-path counterpart to
+ * applySnapshotRegionState's full replace. A snapshot is a reconnect resync
+ * (omitted = gone); a live HexKnowledgeChanged is a DIFF (rpg-api-protos#197,
+ * rpg-dnd5e-web#609) — omitted = untouched, never gone. Positions absent
+ * from `hexes` are never consulted below: their previously-cached region
+ * truth AND cached entity positions stand exactly as they were.
+ *
+ * For each position `hexes` DOES mention:
+ *   - The record REPLACES whatever was cached there WHOLESALE, never a
+ *     field-level merge — a VISIBLE record's `contents` is total (an empty
+ *     list is a positive "nobody here"), and a REMEMBERED record already
+ *     carries its complete frozen observation.
+ *   - Every placement's `entityId` resolves against `prev.entityMeta`. Call
+ *     this AFTER merging the same event's `entities` batch in via
+ *     applyEntityKnowledgeBatch, so a same-message disclosure already
+ *     resolves. An entityId that still doesn't resolve is dropped: fail
+ *     closed, never render an undisclosed occupant (neither added to nor
+ *     removed from the position cache).
+ *   - A resolving placement writes (or overwrites) that entityId's cached
+ *     position. This is always treated as an "appear", not a "move" (a
+ *     fresh `create(EntityStateSchema, ...)`, matching
+ *     applyEntityAppearedBatch's own `{ ...entity, ghost: false }` — the
+ *     real hex-by-hex walk animation is EntityMoved's job, handled
+ *     separately by mergeEntityPosition; a knowledge change is never that).
+ *   - An entityId present in the OLD cached record's contents at this
+ *     position but absent from the NEW one — and not re-placed at any OTHER
+ *     position this SAME event (a move within one message) — is removed
+ *     from the position cache. This is how a remembered occupant
+ *     disappears on re-sight: there is no forget message, the arriving
+ *     record simply omits them.
+ *
+ * Idempotent: re-delivering an identical `hexes` array (same HexRecord
+ * object references) is a full no-op — every map returned unchanged.
  * Exported for testing.
  */
-export function applyEntityAppeared(
+export function applyHexRecordsMerged(
   prev: LocalEncounterState,
-  entity: EntityState
+  hexes: HexRecord[]
 ): LocalEncounterState {
-  const newEntities = new Map(prev.entities);
-  newEntities.set(entity.entityId, { ...entity, ghost: false });
-  return { ...prev, entities: newEntities };
+  const positioned = hexesWithPosition(hexes);
+  if (positioned.length === 0) return prev;
+
+  let nextRevealedHexes: Map<string, HexRecord> | undefined;
+  for (const hex of positioned) {
+    const key = hexKey(protoPositionToHex(hex.position));
+    if ((nextRevealedHexes ?? prev.revealedHexes).get(key) === hex) continue;
+    if (!nextRevealedHexes) nextRevealedHexes = new Map(prev.revealedHexes);
+    nextRevealedHexes.set(key, hex);
+  }
+  if (!nextRevealedHexes) return prev;
+
+  // Guards the "moved within one event" case: an entityId placed ANYWHERE
+  // in this event's own contents must not also be pruned by the vacate pass
+  // below, even though it's simultaneously absent from wherever it used to
+  // be cached.
+  const placedThisEvent = new Set<string>();
+  for (const hex of positioned) {
+    for (const placement of hex.contents ?? []) {
+      if (prev.entityMeta.has(placement.entityId)) {
+        placedThisEvent.add(placement.entityId);
+      }
+    }
+  }
+
+  let nextEntities: LocalEncounterState['entities'] | undefined;
+  for (const hex of positioned) {
+    const key = hexKey(protoPositionToHex(hex.position));
+    for (const placement of hex.contents ?? []) {
+      if (!prev.entityMeta.has(placement.entityId)) continue; // fail closed
+      const position = v2PositionToV1(hex.position);
+      const existing = (nextEntities ?? prev.entities).get(placement.entityId);
+      if (
+        existing?.position?.x === position.x &&
+        existing?.position?.y === position.y &&
+        existing?.position?.z === position.z
+      ) {
+        continue;
+      }
+      if (!nextEntities) nextEntities = new Map(prev.entities);
+      nextEntities.set(
+        placement.entityId,
+        create(EntityStateSchema, { entityId: placement.entityId, position })
+      );
+    }
+    const oldContents = prev.revealedHexes.get(key)?.contents ?? [];
+    for (const oldPlacement of oldContents) {
+      if (placedThisEvent.has(oldPlacement.entityId)) continue;
+      if (!(nextEntities ?? prev.entities).has(oldPlacement.entityId)) {
+        continue;
+      }
+      if (!nextEntities) nextEntities = new Map(prev.entities);
+      nextEntities.delete(oldPlacement.entityId);
+    }
+  }
+
+  return {
+    ...prev,
+    revealedHexes: nextRevealedHexes,
+    revealedHexKeys: new Set(nextRevealedHexes.keys()),
+    entities: nextEntities ?? prev.entities,
+  };
 }
 
 /**
@@ -536,9 +620,12 @@ function toEntityStatus(effect: StatusEffect): EntityStatus | undefined {
 /**
  * Apply a batch of entity appearances — each carrying both the v1alpha1
  * positional stub AND v1alpha2 meta (type, monsterRefId, initialHP, initialAC) — in a
- * single state update. Use this instead of calling applyEntityAppeared +
- * applyEntityMeta per entity in a loop (which triggers N intermediate renders
- * and N Map clone operations for N entities).
+ * single state update. This is the sole entity-population path: entities
+ * arrive only via SnapshotDelivered now (there is no live per-entity
+ * appear/disappear event), so a single batch call per snapshot replaces what
+ * used to be a per-entity loop over separate appear + meta reducers (which
+ * would trigger N intermediate renders and N Map clone operations for N
+ * entities anyway).
  *
  * statusEffects (rpg-dnd5e-web#462) seeds entityStatuses per entity when
  * present: SnapshotDelivered is a full resync, so each entity's status list
@@ -639,66 +726,111 @@ export function applyEntityAppearedBatch(
 }
 
 /**
- * Record v1alpha2 entity identity metadata from an EntityAppeared event.
- *
- * Stores type and (for monsters) monsterRef.id in `entityMeta` so the harness
- * can render a type column and monster identifier without storing the full
- * v1alpha2 Entity proto. Also seeds `entityHP` and `entityAC` when the entity
- * carries those values — this populates HP/AC in the entities table before any
- * damage events land.
- *
- * Idempotent on a same-entity / same-meta re-appear: the meta entry is always
- * overwritten (the server's word is authoritative). Exported for testing.
+ * Wire-projected entity disclosure from a live HexKnowledgeChanged event
+ * (rpg-dnd5e-web#609) — the merge-path counterpart to the position-carrying
+ * entries applyEntityAppearedBatch takes from a snapshot. Deliberately no
+ * `entity`/position field: HexKnowledgeChanged's Entity message carries no
+ * position of its own (see the proto's own Entity doc comment — "what a
+ * thing IS ... deliberately not where"); placement rides separately on each
+ * HexRecord.contents entry, applied by applyHexRecordsMerged.
  */
-export function applyEntityMetaFromAppeared(
+export interface EntityKnowledgeEntry {
+  entityId: string;
+  type: EntityType;
+  monsterRefId: string | undefined;
+  initialHP: { current: number; max: number } | undefined;
+  initialAC: number | undefined;
+  statusEffects?: StatusEffect[];
+  displayName?: string;
+  classRefId?: string;
+  propRefId?: string;
+  equipment?: CharacterEquipment;
+}
+
+/**
+ * Merge a live HexKnowledgeChanged event's `entities` batch into the known-
+ * entity registry (entityMeta/entityHP/entityAC/entityStatuses/
+ * characterEquipment) WITHOUT touching entity position — mirrors
+ * applyEntityAppearedBatch's per-entity meta projection field-for-field, but
+ * entries carry no position (see EntityKnowledgeEntry's doc comment) and are
+ * upserted, never treated as a full resync: an entity absent from `entries`
+ * keeps whatever entry it already had — unlike the snapshot path, this is a
+ * partial disclosure, not a reconnect resync, so there is nothing to clear.
+ *
+ * Call this BEFORE applyHexRecordsMerged for the same event, so its
+ * placement resolution sees this event's own disclosures already merged
+ * into entityMeta.
+ * Exported for testing.
+ */
+export function applyEntityKnowledgeBatch(
   prev: LocalEncounterState,
-  entityId: string,
-  type: EntityType,
-  monsterRefId: string | undefined,
-  initialHP: { current: number; max: number } | undefined,
-  initialAC: number | undefined,
-  displayName?: string,
-  classRefId?: string,
-  propRefId?: string,
-  equipment?: CharacterEquipment
+  entries: EntityKnowledgeEntry[]
 ): LocalEncounterState {
+  if (entries.length === 0) return prev;
   const newMeta = new Map(prev.entityMeta);
-  newMeta.set(entityId, {
+  const newHP = new Map(prev.entityHP);
+  const newAC = new Map(prev.entityAC);
+  const newStatuses = new Map(prev.entityStatuses);
+  const newEquipment = new Map(prev.characterEquipment);
+  let hpChanged = false;
+  let acChanged = false;
+  let statusesChanged = false;
+  let equipmentChanged = false;
+  for (const {
+    entityId,
     type,
     monsterRefId,
+    initialHP,
+    initialAC,
+    statusEffects,
     displayName,
     classRefId,
     propRefId,
-  });
-
-  const hasHP = initialHP !== undefined;
-  const hasAC = initialAC !== undefined && initialAC !== 0;
-  const hasEquipment = equipment !== undefined;
-
-  if (!hasHP && !hasAC && !hasEquipment) {
-    return { ...prev, entityMeta: newMeta };
-  }
-
-  const newHP = hasHP ? new Map(prev.entityHP) : prev.entityHP;
-  if (hasHP) {
-    newHP.set(entityId, { current: initialHP!.current, max: initialHP!.max });
-  }
-  const newAC = hasAC ? new Map(prev.entityAC) : prev.entityAC;
-  if (hasAC) {
-    newAC.set(entityId, initialAC!);
-  }
-  const newEquipment = hasEquipment
-    ? new Map(prev.characterEquipment)
-    : prev.characterEquipment;
-  if (hasEquipment) {
-    newEquipment.set(entityId, equipment!);
+    equipment,
+  } of entries) {
+    newMeta.set(entityId, {
+      type,
+      monsterRefId,
+      displayName,
+      classRefId,
+      propRefId,
+    });
+    if (initialHP !== undefined) {
+      newHP.set(entityId, {
+        current: initialHP.current,
+        max: initialHP.max,
+      });
+      hpChanged = true;
+    }
+    if (initialAC !== undefined && initialAC !== 0) {
+      newAC.set(entityId, initialAC);
+      acChanged = true;
+    }
+    if (statusEffects !== undefined) {
+      const converted = statusEffects
+        .map(toEntityStatus)
+        .filter((s): s is EntityStatus => s !== undefined);
+      if (converted.length > 0) {
+        newStatuses.set(entityId, converted);
+      } else {
+        newStatuses.delete(entityId);
+      }
+      statusesChanged = true;
+    }
+    if (equipment !== undefined) {
+      newEquipment.set(entityId, equipment);
+      equipmentChanged = true;
+    }
   }
   return {
     ...prev,
     entityMeta: newMeta,
-    entityHP: newHP,
-    entityAC: newAC,
-    characterEquipment: newEquipment,
+    entityHP: hpChanged ? newHP : prev.entityHP,
+    entityAC: acChanged ? newAC : prev.entityAC,
+    entityStatuses: statusesChanged ? newStatuses : prev.entityStatuses,
+    characterEquipment: equipmentChanged
+      ? newEquipment
+      : prev.characterEquipment,
   };
 }
 
@@ -756,32 +888,6 @@ export function applySnapshotTurnState(
     // TurnStateChanged push. Stored verbatim; web computes nothing.
     turnState,
   };
-}
-
-/**
- * Mark an entity as ghosted (no longer visible) and update its position to
- * the last known hex. Renders ghosts at the last place the player saw them.
- * No-op if the entity is not currently tracked (defensive guard).
- * Exported for testing.
- */
-export function applyEntityDisappeared(
-  prev: LocalEncounterState,
-  entityId: string,
-  lastKnown: CubeHexCoord
-): LocalEncounterState {
-  const existing = prev.entities.get(entityId);
-  if (!existing) return prev;
-  const newEntities = new Map(prev.entities);
-  newEntities.set(entityId, {
-    ...existing,
-    ghost: true,
-    position: create(PositionSchema, {
-      x: lastKnown.q,
-      y: lastKnown.r,
-      z: lastKnown.s,
-    }),
-  });
-  return { ...prev, entities: newEntities };
 }
 
 /**
@@ -1209,34 +1315,12 @@ export interface UseEncounterStateResult {
   applySnapshotRegionState: (
     theme: string,
     zones: Zone[],
-    hexes: Hex[]
+    hexes: HexRecord[]
   ) => void;
-  /** Merge newly revealed wire hexes (additive, identity-preserving). */
-  applyHexesRevealed: (hexes: Hex[]) => void;
   /** Add walls to the sticky wall map, keyed by `wallKey` (additive, idempotent) */
   applyWallsRevealed: (walls: Wall[]) => void;
-  /** Add or revive an entity at its first-visible position, clearing ghost */
-  applyEntityAppeared: (entity: EntityState) => void;
-  /** Mark entity as ghosted at last known position; no-op if not tracked */
-  applyEntityDisappeared: (entityId: string, lastKnown: CubeHexCoord) => void;
   /** Mark a door entity as open; idempotent. */
   applyDoorOpened: (doorEntityId: string) => void;
-  /**
-   * Store v1alpha2 entity identity metadata from EntityAppeared.entity.
-   * Also seeds entityHP from entity.hp and entityAC from entity.armor_class.
-   * Call after applyEntityAppeared so the v1alpha1 stub and v2 meta are both stored.
-   */
-  applyEntityMeta: (
-    entityId: string,
-    type: EntityType,
-    monsterRefId: string | undefined,
-    initialHP: { current: number; max: number } | undefined,
-    initialAC: number | undefined,
-    displayName?: string,
-    classRefId?: string,
-    propRefId?: string,
-    equipment?: CharacterEquipment
-  ) => void;
   /**
    * Apply a batch of entity appearances in a single state update to avoid N
    * intermediate renders when seeding multiple entities from a snapshot.
@@ -1259,6 +1343,20 @@ export interface UseEncounterStateResult {
       equipment?: CharacterEquipment;
     }>
   ) => void;
+  /**
+   * rpg-dnd5e-web#609 — merge a live HexKnowledgeChanged event's `entities`
+   * batch into the known-entity registry WITHOUT touching position. See
+   * applyEntityKnowledgeBatch's doc comment for the full contract; call
+   * this BEFORE applyHexRecordsMerged for the same event.
+   */
+  applyEntityKnowledgeBatch: (entries: EntityKnowledgeEntry[]) => void;
+  /**
+   * rpg-dnd5e-web#609 — merge live HexKnowledgeChanged hex records into
+   * revealedHexes and reconcile cached entity positions. The merge-path
+   * counterpart to applySnapshotRegionState's full replace — see
+   * applyHexRecordsMerged's doc comment for the full contract.
+   */
+  applyHexRecordsMerged: (hexes: HexRecord[]) => void;
   /**
    * Wave rpg-dnd5e-web#571 — refresh a character's equipment display
    * fields (and entityAC) after a successful EquipItem/UnequipItem RPC.
@@ -1362,64 +1460,19 @@ export function useEncounterState(): UseEncounterStateResult {
   }, []);
 
   const applySnapshotRegionStateCallback = useCallback(
-    (theme: string, zones: Zone[], hexes: Hex[]) => {
+    (theme: string, zones: Zone[], hexes: HexRecord[]) => {
       setState((prev) => applySnapshotRegionState(prev, theme, zones, hexes));
     },
     []
   );
 
-  const applyHexesRevealedCallback = useCallback((hexes: Hex[]) => {
-    setState((prev) => applyHexesRevealed(prev, hexes));
-  }, []);
-
   const applyWallsRevealedCallback = useCallback((walls: Wall[]) => {
     setState((prev) => applyWallsRevealed(prev, walls));
   }, []);
 
-  const applyEntityAppearedCallback = useCallback((entity: EntityState) => {
-    setState((prev) => applyEntityAppeared(prev, entity));
-  }, []);
-
-  const applyEntityDisappearedCallback = useCallback(
-    (entityId: string, lastKnown: CubeHexCoord) => {
-      setState((prev) => applyEntityDisappeared(prev, entityId, lastKnown));
-    },
-    []
-  );
-
   const applyDoorOpenedCallback = useCallback((doorEntityId: string) => {
     setState((prev) => applyDoorOpened(prev, doorEntityId));
   }, []);
-
-  const applyEntityMetaCallback = useCallback(
-    (
-      entityId: string,
-      type: EntityType,
-      monsterRefId: string | undefined,
-      initialHP: { current: number; max: number } | undefined,
-      initialAC: number | undefined,
-      displayName?: string,
-      classRefId?: string,
-      propRefId?: string,
-      equipment?: CharacterEquipment
-    ) => {
-      setState((prev) =>
-        applyEntityMetaFromAppeared(
-          prev,
-          entityId,
-          type,
-          monsterRefId,
-          initialHP,
-          initialAC,
-          displayName,
-          classRefId,
-          propRefId,
-          equipment
-        )
-      );
-    },
-    []
-  );
 
   const applyEntityAppearedBatchCallback = useCallback(
     (
@@ -1440,6 +1493,17 @@ export function useEncounterState(): UseEncounterStateResult {
     },
     []
   );
+
+  const applyEntityKnowledgeBatchCallback = useCallback(
+    (entries: EntityKnowledgeEntry[]) => {
+      setState((prev) => applyEntityKnowledgeBatch(prev, entries));
+    },
+    []
+  );
+
+  const applyHexRecordsMergedCallback = useCallback((hexes: HexRecord[]) => {
+    setState((prev) => applyHexRecordsMerged(prev, hexes));
+  }, []);
 
   const applyCharacterEquipmentCallback = useCallback(
     (entityId: string, equipment: CharacterEquipment) => {
@@ -1528,13 +1592,11 @@ export function useEncounterState(): UseEncounterStateResult {
     applyEntityPositionUpdate,
     reset,
     applySnapshotRegionState: applySnapshotRegionStateCallback,
-    applyHexesRevealed: applyHexesRevealedCallback,
     applyWallsRevealed: applyWallsRevealedCallback,
-    applyEntityAppeared: applyEntityAppearedCallback,
-    applyEntityDisappeared: applyEntityDisappearedCallback,
     applyDoorOpened: applyDoorOpenedCallback,
-    applyEntityMeta: applyEntityMetaCallback,
     applyEntityAppearedBatch: applyEntityAppearedBatchCallback,
+    applyEntityKnowledgeBatch: applyEntityKnowledgeBatchCallback,
+    applyHexRecordsMerged: applyHexRecordsMergedCallback,
     applyCharacterEquipment: applyCharacterEquipmentCallback,
     applySnapshotTurnState: applySnapshotTurnStateCallback,
     setPendingPrompt: setPendingPromptCallback,

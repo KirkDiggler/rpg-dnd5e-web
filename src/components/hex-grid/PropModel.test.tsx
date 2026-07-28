@@ -160,3 +160,55 @@ describe('PropModel renderScale (rpg-game-assets#36 wave-1, issue #623 fast-foll
     expect(outerGroupScale(renderer)).toBeCloseTo(SYNTY_SCALE * 2);
   });
 });
+
+describe('PropModel remembered tinting (rpg-dnd5e-web#605/#609)', () => {
+  function meshMaterials(renderer: {
+    scene: { findAllByType: (t: string) => unknown[] };
+  }): THREE.MeshStandardMaterial[] {
+    return renderer.scene
+      .findAllByType('Mesh')
+      .map(
+        (n) =>
+          (n as { instance: THREE.Mesh }).instance
+            .material as THREE.MeshStandardMaterial
+      );
+  }
+
+  it('leaves the parent mesh untinted when remembered is omitted — every pre-existing caller, unchanged', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <PropModel variant={BASE_VARIANT} position={[0, 0, 0]} />
+    );
+    const [material] = meshMaterials(renderer);
+    expect(`#${material!.color.getHexString()}`).toBe('#ffffff');
+  });
+
+  it('tints the parent mesh with the shared crypt-memory color when remembered', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <PropModel variant={BASE_VARIANT} position={[0, 0, 0]} remembered />
+    );
+    const [material] = meshMaterials(renderer);
+    // White (the mock's default MeshStandardMaterial color) multiplied by
+    // CRYPT_MEMORY_COLOR is exactly CRYPT_MEMORY_COLOR itself.
+    expect(`#${material!.color.getHexString()}`).toBe('#465366');
+  });
+
+  it('tints every companion mesh alongside the parent when remembered — a remembered candle prop does not leave its flame at full brightness', async () => {
+    const variant: PropVariant = {
+      ...BASE_VARIANT,
+      companions: [
+        {
+          name: 'SM_Prop_Candles_01_Particle',
+          file: 'props/SM_Prop_Candles_01_Particle.glb',
+        },
+      ],
+    };
+    const renderer = await ReactThreeTestRenderer.create(
+      <PropModel variant={variant} position={[0, 0, 0]} remembered />
+    );
+    const materials = meshMaterials(renderer);
+    expect(materials).toHaveLength(2);
+    for (const material of materials) {
+      expect(`#${material.color.getHexString()}`).toBe('#465366');
+    }
+  });
+});

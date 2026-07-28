@@ -643,38 +643,63 @@ export function fittingScale(
   ];
 }
 
-// SM_Env_Door_Frame_01's own local-space bounding width at scale=1, pivot
-// centered (see SyntyHexWall.tsx's own historical DOOR_FRAME_RAW_WIDTH
-// comment for the measurement provenance).
+// SM_Env_Door_Frame_01's own local-space bounding width/height at scale=1
+// (measured directly off the GLB via a live Box3.setFromObject read —
+// same technique WallVariant's own rawWidth/rawHeight use; pivot already
+// sits at floor level, confirmed by the same measurement).
 const DOOR_FRAME_RAW_WIDTH = 1.999;
+const DOOR_FRAME_RAW_HEIGHT = 2.5347;
 
 /**
- * Door frame height/leaf height scale — historically a flat SYNTY_SCALE
- * (a "human-scale feature, not clamped to the short game wall height"),
- * now scaled by the SAME ratio the `wallHeight` dial applies to every
- * other wall piece (Kirk's live-walk ask, rpg-project#132 wall-height
- * dial: "the height of the walls might be a little low" — walls, door
- * frame, and fittings should all rise TOGETHER when that dial changes, not
- * just the run boxes). `heightRatio` is `wallHeight / WALL_HEIGHT` (the
- * calibrated default) — 1.0 at the default wallHeight, so this is
- * byte-identical to the old flat SYNTY_SCALE for every caller that
- * doesn't pass an override. Width/depth (X/Z) are deliberately
- * untouched — door WIDTH still fits the edge exactly, and depth/thickness
- * still matches the wall's own SYNTY_SCALE convention; only height is
- * what "the wall is a little low" is about.
+ * Door frame/leaf height scale (rpg-project#132 follow-up, Kirk's verdict
+ * walking the tall-wall default: "at tall walls the door is really really
+ * high"). SUPERSEDED design: this used to multiply a `heightRatio`
+ * (`wallHeight / WALL_HEIGHT`) onto the door's own historical flat-
+ * `SYNTY_SCALE` baseline — a baseline already sized to stand proud of the
+ * OLD 0.8 knee-wall (a deliberately human-scale feature, "not clamped to
+ * the short game wall height"), so as `WALL_HEIGHT` rose to 2.4 the door
+ * compounded an already-oversized starting point instead of tracking the
+ * wall, rendering far taller than the wall itself.
+ *
+ * Now targets `wallHeight` DIRECTLY — the same "scale = wallHeight /
+ * rawHeight" pattern `wallVariantScale`/`fittingScale` already use for
+ * wall panels/fittings — so the frame's own top edge lands almost
+ * exactly at `wallHeight` (no separate margin term needed:
+ * `DOOR_FRAME_RAW_HEIGHT` already measures the frame's own authored
+ * proportions, so "frame reads as slightly recessed into the wall" falls
+ * out of the asset itself, not this formula). Width/depth (X/Z) stay
+ * untouched — door WIDTH still fits the edge exactly, depth/thickness
+ * still matches the wall's own `SYNTY_SCALE` convention; only height
+ * tracks the wall now.
  */
 export const DOOR_FRAME_FILE = 'SM_Env_Door_Frame_01.glb';
 
-export function doorFrameScale(heightRatio: number): [number, number, number] {
-  return [1.0 / DOOR_FRAME_RAW_WIDTH, SYNTY_SCALE * heightRatio, SYNTY_SCALE];
+export function doorFrameScale(wallHeight: number): [number, number, number] {
+  return [
+    1.0 / DOOR_FRAME_RAW_WIDTH,
+    wallHeight / DOOR_FRAME_RAW_HEIGHT,
+    SYNTY_SCALE,
+  ];
 }
 
-// SM_Env_Door_01 is 1.3236 wide at scale 1 (pivot at one end, like the wall
-// piece) — 1.3236 * 0.75 = 0.9927, a near-perfect fit against a 1.0 edge.
+// SM_Env_Door_01 is 1.3236 wide, 2.4557 tall at scale 1 (pivot at one end
+// like the wall piece, floor-level base) — 1.3236 * 0.75 = 0.9927, a
+// near-perfect fit against a 1.0 edge.
 export const DOOR_LEAF_FILE = 'SM_Env_Door_01.glb';
 
-export function doorLeafScale(heightRatio: number): [number, number, number] {
-  return [SYNTY_SCALE, SYNTY_SCALE * heightRatio, SYNTY_SCALE];
+/**
+ * Leaf height scale uses the SAME per-height-unit factor the frame uses
+ * (`wallHeight / DOOR_FRAME_RAW_HEIGHT` — NOT the leaf's own raw height)
+ * — "leaf proportional within frame" (Kirk's verdict): the leaf's raw
+ * height is already ~97% of the frame's (2.4557 / 2.5347), authored to
+ * sit just inside the frame's opening without poking through the top
+ * lintel. Scaling both pieces by the FRAME's own factor preserves that
+ * authored ratio at any `wallHeight` — scaling the leaf by
+ * `wallHeight / (its own raw height)` instead would make it exactly as
+ * tall as the frame, losing the margin the asset was built with.
+ */
+export function doorLeafScale(wallHeight: number): [number, number, number] {
+  return [SYNTY_SCALE, wallHeight / DOOR_FRAME_RAW_HEIGHT, SYNTY_SCALE];
 }
 
 /**

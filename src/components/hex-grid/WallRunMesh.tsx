@@ -37,7 +37,7 @@ import type {
   EnvelopeRun,
   WallRunSegment,
 } from '@/hooks/wallRuns';
-import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
+import { SYNTY_SCALE, WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { Suspense, useMemo } from 'react';
 import type * as THREE from 'three';
 import { GlbInstance } from './GlbInstance';
@@ -254,8 +254,6 @@ export interface WallRunMeshProps {
   spaceTheme?: WallTheme;
 }
 
-const DEFAULT_WALL_HEIGHT = 0.8; // matches calibrationConstants.WALL_HEIGHT
-
 /**
  * Renders every envelope run, connector run segment, and connector
  * fallback segment as tiled real Synty wall pieces. Own Suspense boundary
@@ -293,7 +291,7 @@ export function WallRunMesh({
   fallbackSegments = [],
   rememberedEnvelopeRegionIds,
   rememberedConnectorDoorIds,
-  wallHeight = DEFAULT_WALL_HEIGHT,
+  wallHeight = WALL_HEIGHT,
   wallCutaway = false,
   playerPosition,
   spaceTheme,

@@ -18,7 +18,6 @@ import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import { wallKey } from '@/hooks/dungeonMapGeometry';
 import {
   connectorDoorInputsFromWalls,
-  connectorRunDoorRotations,
   legacyRenderWalls,
   regionInputsFromHexes,
 } from '@/hooks/wallRunAdapters';
@@ -29,7 +28,7 @@ import {
 } from '@/hooks/wallRuns';
 import { create } from '@bufbuild/protobuf';
 import {
-  HexSchema,
+  HexRecordSchema,
   PositionSchema,
   WallSchema,
   type Wall,
@@ -50,7 +49,6 @@ export interface FogHexGridInputs {
   envelopeRuns: EnvelopeRun[];
   connectorRuns: ConnectorRun[];
   legacySyntyWalls: Wall[];
-  doorRotationOverrides: ReadonlyMap<string, number>;
 }
 
 const toProtoWall = (edge: WallLike): Wall =>
@@ -129,7 +127,7 @@ export function toHexGridProps(knowledge: FogKnowledge): FogHexGridInputs {
   // in no region, so it becomes a connector rather than a one-hex room.
   const wallList = [...walls.values()];
   const protoHexes = [...knowledge.hexes.values()].map((record) =>
-    create(HexSchema, {
+    create(HexRecordSchema, {
       position: create(PositionSchema, record.position),
       terrain: record.terrain,
       zoneId: record.zoneId,
@@ -153,7 +151,6 @@ export function toHexGridProps(knowledge: FogKnowledge): FogHexGridInputs {
       runs.connectorRuns,
       connectorDoors
     ),
-    doorRotationOverrides: connectorRunDoorRotations(runs.connectorRuns),
   };
 }
 
