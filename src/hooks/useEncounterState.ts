@@ -401,6 +401,56 @@ export function hexesWithPosition(
 }
 
 /**
+ * Build a position index (entityId -> the hex position that currently
+ * places it) from a full hex list, honoring VISIBLE-over-REMEMBERED
+ * precedence for an entity present in both (rpg-dnd5e-web#651). Shared by
+ * both full-resync snapshot hydration sites (EncounterView.tsx's and
+ * PlaytestHarness.tsx's `onSnapshotDelivered`) — this exact reverse-index
+ * pattern was independently duplicated in both ("mirrors EncounterView.tsx"
+ * read the harness's own prior comment), and both copies had the same
+ * bug: iterating hexes in plain array order and letting whichever record
+ * for an entity sorted last silently win, with no regard for `hex.state`.
+ * Extracted here so the precedence rule can't drift out of sync between
+ * them, or between them and `applyHexRecordsMerged`'s own live-merge
+ * version of the same rule below.
+ *
+ * An entity present ONLY in REMEMBERED records (never VISIBLE in this same
+ * hex list) still resolves to a position — its last-observed one. That is
+ * deliberate, not a gap: HexRecord's own contract says a remembered
+ * placement "resolves against the viewer's known entity set... because a
+ * remembered occupant still needs something to render as," and a snapshot
+ * (a reconnect resync) carries a viewer's FULL accumulated knowledge —
+ * VISIBLE and REMEMBERED together — so excluding remembered-only entities
+ * here would make a previously-seen-but-now-out-of-sight monster/prop
+ * vanish across a reconnect instead of rendering as the frozen memory
+ * rpg-dnd5e-web#650 built for. What this function guarantees is narrower
+ * and is the actual bug fix: a REMEMBERED placement can never override a
+ * VISIBLE one for the same entity, in either array order.
+ */
+export function positionByEntityIdFromHexes(
+  hexes: HexRecord[]
+): Map<string, NonNullable<HexRecord['position']>> {
+  const positioned = hexesWithPosition(hexes);
+  const positions = new Map<string, NonNullable<HexRecord['position']>>();
+  const claimedByVisible = new Set<string>();
+  for (const hex of positioned) {
+    if (hex.state !== HexState.VISIBLE) continue;
+    for (const placement of hex.contents ?? []) {
+      claimedByVisible.add(placement.entityId);
+      positions.set(placement.entityId, hex.position);
+    }
+  }
+  for (const hex of positioned) {
+    if (hex.state === HexState.VISIBLE) continue;
+    for (const placement of hex.contents ?? []) {
+      if (claimedByVisible.has(placement.entityId)) continue;
+      positions.set(placement.entityId, hex.position);
+    }
+  }
+  return positions;
+}
+
+/**
  * Replace region metadata from the server's snapshot. A reconnect snapshot is
  * authoritative, so omitted theme/zones/hexes clear stale local values.
  * Exported for testing.
@@ -510,12 +560,27 @@ export function applyWallsRevealed(
  *     resolves. An entityId that still doesn't resolve is dropped: fail
  *     closed, never render an undisclosed occupant (neither added to nor
  *     removed from the position cache).
- *   - A resolving placement writes (or overwrites) that entityId's cached
- *     position. This is always treated as an "appear", not a "move" (a
- *     fresh `create(EntityStateSchema, ...)`, matching
- *     applyEntityAppearedBatch's own `{ ...entity, ghost: false }` — the
- *     real hex-by-hex walk animation is EntityMoved's job, handled
- *     separately by mergeEntityPosition; a knowledge change is never that).
+ *   - VISIBLE-over-REMEMBERED precedence (rpg-dnd5e-web#651): an entity can
+ *     legitimately appear in TWO records within the SAME event — the newly
+ *     VISIBLE hex it just moved to, and a REMEMBERED hex that still lists
+ *     it (a remembered record retains its frozen observation until
+ *     something re-derives it — that's the entire point of "remembered").
+ *     Resolving placements in plain array order let whichever hex happened
+ *     to sort last silently win, so a stale REMEMBERED placement could
+ *     revert a fresh VISIBLE position — this is what corrupted the MOVER's
+ *     own cached position on nearly every move once rpg-api#732 started
+ *     restating the mover's whole known set (visible + remembered) on
+ *     every step: wrong position -> excluded from `visibleEntities`
+ *     (rendered as a frozen memory of themselves) -> missing from
+ *     `visibleTurnOrder` -> "my move did nothing until I clicked twice."
+ *     Placements are now resolved in two passes instead of one: every
+ *     VISIBLE placement first (always wins), then REMEMBERED placements
+ *     fill in only entities no VISIBLE record claimed this event — which
+ *     is exactly the legitimate "only ever seen from afar, now out of
+ *     sight" case #650 needs to still resolve to a position so it renders
+ *     as a memory (HexRecord's own doc comment: a remembered placement
+ *     "resolves against the viewer's known entity set... because a
+ *     remembered occupant still needs something to render as").
  *   - An entityId present in the OLD cached record's contents at this
  *     position but absent from the NEW one — and not re-placed at any OTHER
  *     position this SAME event (a move within one message) — is removed
@@ -557,25 +622,54 @@ export function applyHexRecordsMerged(
   }
 
   let nextEntities: LocalEncounterState['entities'] | undefined;
+  const setPosition = (entityId: string, position: Position) => {
+    const existing = (nextEntities ?? prev.entities).get(entityId);
+    if (
+      existing?.position?.x === position.x &&
+      existing?.position?.y === position.y &&
+      existing?.position?.z === position.z
+    ) {
+      return;
+    }
+    if (!nextEntities) nextEntities = new Map(prev.entities);
+    nextEntities.set(
+      entityId,
+      create(EntityStateSchema, { entityId, position })
+    );
+  };
+
+  // Pass 1: every VISIBLE placement this event. Always wins — set
+  // unconditionally, regardless of what a REMEMBERED record for the same
+  // entity says (processed in pass 2 below).
+  const claimedByVisibleThisEvent = new Set<string>();
   for (const hex of positioned) {
-    const key = hexKey(protoPositionToHex(hex.position));
+    if (hex.state !== HexState.VISIBLE) continue;
     for (const placement of hex.contents ?? []) {
       if (!prev.entityMeta.has(placement.entityId)) continue; // fail closed
-      const position = v2PositionToV1(hex.position);
-      const existing = (nextEntities ?? prev.entities).get(placement.entityId);
-      if (
-        existing?.position?.x === position.x &&
-        existing?.position?.y === position.y &&
-        existing?.position?.z === position.z
-      ) {
-        continue;
-      }
-      if (!nextEntities) nextEntities = new Map(prev.entities);
-      nextEntities.set(
-        placement.entityId,
-        create(EntityStateSchema, { entityId: placement.entityId, position })
-      );
+      claimedByVisibleThisEvent.add(placement.entityId);
+      setPosition(placement.entityId, v2PositionToV1(hex.position));
     }
+  }
+  // Pass 2: REMEMBERED placements — only for entities no VISIBLE record
+  // claimed this event. A REMEMBERED record's own placement is otherwise
+  // exactly as authoritative as a VISIBLE one (it's the frozen truth of
+  // what this position held), it just never gets to override a fresher
+  // sighting from the same event.
+  for (const hex of positioned) {
+    if (hex.state === HexState.VISIBLE) continue;
+    for (const placement of hex.contents ?? []) {
+      if (claimedByVisibleThisEvent.has(placement.entityId)) continue;
+      if (!prev.entityMeta.has(placement.entityId)) continue; // fail closed
+      setPosition(placement.entityId, v2PositionToV1(hex.position));
+    }
+  }
+
+  // Vacate pass: an entity that used to sit at a position this event
+  // updates, and isn't re-placed anywhere else this event, is gone from the
+  // cache. Reads only `prev.revealedHexes` (untouched by the two passes
+  // above), so its own ordering relative to them doesn't matter.
+  for (const hex of positioned) {
+    const key = hexKey(protoPositionToHex(hex.position));
     const oldContents = prev.revealedHexes.get(key)?.contents ?? [];
     for (const oldPlacement of oldContents) {
       if (placedThisEvent.has(oldPlacement.entityId)) continue;
