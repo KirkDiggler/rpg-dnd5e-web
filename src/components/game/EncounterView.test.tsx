@@ -15,6 +15,7 @@ import {
   EconomySlot,
   EncounterMode,
   EntityType,
+  HexState,
   TargetKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
@@ -102,6 +103,7 @@ vi.mock('./EncounterMap', () => ({
     myEntityId: string;
     openDoorIds?: string[];
     theme?: string;
+    entities: Map<string, { position?: { x: number; y: number; z: number } }>;
     onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
     onEntityClick: (entityId: string) => void;
     onDoorClick?: (doorId: string) => void;
@@ -113,6 +115,12 @@ vi.mock('./EncounterMap', () => ({
       data-my-entity-id={props.myEntityId}
       data-open-door-ids={(props.openDoorIds ?? []).join(',')}
       data-theme={props.theme ?? ''}
+      // rpg-dnd5e-web#651: expose the resolved entity->position cache so
+      // tests can assert VISIBLE-over-REMEMBERED precedence without
+      // reaching into Three.js internals.
+      data-entity-positions={JSON.stringify(
+        [...props.entities.entries()].map(([id, e]) => [id, e.position])
+      )}
     >
       <button
         data-testid="stub-move"
@@ -375,6 +383,93 @@ describe('EncounterView resume-after-refresh entity resolution (#444)', () => {
 
     const stub = screen.getByTestId('encounter-map-stub');
     expect(stub.getAttribute('data-my-entity-id')).toBe('char-explicit');
+  });
+});
+
+describe('EncounterView snapshot position resolution: VISIBLE beats REMEMBERED (rpg-dnd5e-web#651)', () => {
+  // Real regression: rpg-api#732 restates a mover's WHOLE known set (visible
+  // + remembered) on every move, so this snapshot's own `hexes` array
+  // legitimately carries the SAME entity in both a REMEMBERED hex (their
+  // just-vacated one, still listing them per HexRecord's frozen-observation
+  // contract) and a VISIBLE hex (where they actually are now) in one event.
+  // The old reverse-index loop resolved plain array order, so whichever hex
+  // sorted last silently won — this pins that the VISIBLE one always wins,
+  // in both orderings.
+  function snapshotWith(hexes: unknown[]) {
+    return {
+      encounter: {
+        space: {
+          entities: [
+            {
+              id: 'goblin-1',
+              type: EntityType.MONSTER,
+              data: {
+                case: 'monster',
+                value: { monsterRef: { id: 'goblin' } },
+              },
+            },
+          ],
+          hexes,
+        },
+      },
+    };
+  }
+
+  const rememberedOrigin = {
+    position: { x: 0, y: 0, z: 0 },
+    state: HexState.REMEMBERED,
+    contents: [{ entityId: 'goblin-1', facing: 0 }],
+  };
+  const visibleDestination = {
+    position: { x: 1, y: -1, z: 0 },
+    state: HexState.VISIBLE,
+    contents: [{ entityId: 'goblin-1', facing: 0 }],
+  };
+
+  it('resolves to the VISIBLE hex when the REMEMBERED record sorts LAST in the snapshot', async () => {
+    render(
+      <EncounterView encounterId="enc-1" playerId="alice" onBack={() => {}} />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent(
+          'snapshotDelivered',
+          snapshotWith([visibleDestination, rememberedOrigin])
+        )
+      );
+      await Promise.resolve();
+    });
+
+    const stub = screen.getByTestId('encounter-map-stub');
+    const positions = JSON.parse(
+      stub.getAttribute('data-entity-positions')!
+    ) as Array<[string, { x: number; y: number; z: number } | undefined]>;
+    const goblinPosition = positions.find(([id]) => id === 'goblin-1')?.[1];
+    expect(goblinPosition).toMatchObject({ x: 1, y: -1, z: 0 });
+  });
+
+  it('resolves to the VISIBLE hex when the REMEMBERED record sorts FIRST in the snapshot', async () => {
+    render(
+      <EncounterView encounterId="enc-1" playerId="alice" onBack={() => {}} />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent(
+          'snapshotDelivered',
+          snapshotWith([rememberedOrigin, visibleDestination])
+        )
+      );
+      await Promise.resolve();
+    });
+
+    const stub = screen.getByTestId('encounter-map-stub');
+    const positions = JSON.parse(
+      stub.getAttribute('data-entity-positions')!
+    ) as Array<[string, { x: number; y: number; z: number } | undefined]>;
+    const goblinPosition = positions.find(([id]) => id === 'goblin-1')?.[1];
+    expect(goblinPosition).toMatchObject({ x: 1, y: -1, z: 0 });
   });
 });
 

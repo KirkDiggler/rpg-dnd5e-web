@@ -42,7 +42,6 @@ import type {
   AvailableAction,
   CharacterData,
   Entity,
-  Position,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
@@ -62,7 +61,10 @@ import { useTakeAction } from '../../api/useTakeAction';
 import { useUnequipItem } from '../../api/useUnequipItem';
 import { useCombatLog } from '../../hooks/useCombatLog';
 import type { CharacterEquipment } from '../../hooks/useEncounterState';
-import { useEncounterState } from '../../hooks/useEncounterState';
+import {
+  positionByEntityIdFromHexes,
+  useEncounterState,
+} from '../../hooks/useEncounterState';
 import { errorMessage } from '../../utils/combatFormat';
 import {
   actionKey,
@@ -325,13 +327,11 @@ export function EncounterView({
         // every snapshot rather than merging into a prior index — `contents`
         // is total for a visible hex, so a stale carried-over placement could
         // resurrect an entity the current snapshot no longer places anywhere.
-        const positionByEntityId = new Map<string, Position>();
-        for (const hex of hexes) {
-          if (!hex.position) continue;
-          for (const placement of hex.contents ?? []) {
-            positionByEntityId.set(placement.entityId, hex.position);
-          }
-        }
+        // positionByEntityIdFromHexes (rpg-dnd5e-web#651) resolves VISIBLE
+        // over REMEMBERED for an entity present in both, regardless of
+        // `hexes`' own array order — see its doc comment for why a plain
+        // per-hex loop here corrupted the mover's own position on reconnect.
+        const positionByEntityId = positionByEntityIdFromHexes(hexes);
         const entityEntries = (e.encounter.space?.entities ?? [])
           .filter((entity) => positionByEntityId.has(entity.id))
           .map((entity) => ({

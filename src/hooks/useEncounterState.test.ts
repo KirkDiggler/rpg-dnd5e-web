@@ -78,6 +78,7 @@ import {
   hexesWithPosition,
   knowledgeStateForPosition,
   mergeEntityPosition,
+  positionByEntityIdFromHexes,
   regionForHex,
   setPendingPromptReducer,
   setReactionReadyLocalReducer,
@@ -882,6 +883,187 @@ describe('v1alpha2 reducer additions', () => {
         state = applyWallsRevealed(state, hex.edges);
 
         expect(state.walls.get(wallKey(wall))).toBe(wall);
+      });
+
+      describe('VISIBLE-over-REMEMBERED position precedence (rpg-dnd5e-web#651)', () => {
+        // rpg-api#732 started restating a mover's WHOLE known set (visible +
+        // remembered) on every move, so an entity — very often the mover
+        // themselves — can legitimately appear in a fresh VISIBLE record
+        // AND a stale REMEMBERED record within the exact same event. The
+        // old single-pass loop resolved placements in plain array order, so
+        // whichever record happened to sort last silently won; these tests
+        // pin that a VISIBLE placement always wins, regardless of order.
+        it('resolves to the VISIBLE position when the REMEMBERED record for the same entity sorts LAST', () => {
+          let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+          const visible = makeHexRecord(
+            { x: 1, y: -1, z: 0 },
+            HexState.VISIBLE,
+            [makePlacement('goblin-1')]
+          );
+          const remembered = makeHexRecord(
+            { x: 0, y: 0, z: 0 },
+            HexState.REMEMBERED,
+            [makePlacement('goblin-1')]
+          );
+
+          state = applyHexRecordsMerged(state, [visible, remembered]);
+
+          expect(state.entities.get('goblin-1')?.position).toEqual(
+            create(PositionSchema, { x: 1, y: -1, z: 0 })
+          );
+        });
+
+        it('resolves to the VISIBLE position when the REMEMBERED record for the same entity sorts FIRST', () => {
+          let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+          const remembered = makeHexRecord(
+            { x: 0, y: 0, z: 0 },
+            HexState.REMEMBERED,
+            [makePlacement('goblin-1')]
+          );
+          const visible = makeHexRecord(
+            { x: 1, y: -1, z: 0 },
+            HexState.VISIBLE,
+            [makePlacement('goblin-1')]
+          );
+
+          state = applyHexRecordsMerged(state, [remembered, visible]);
+
+          expect(state.entities.get('goblin-1')?.position).toEqual(
+            create(PositionSchema, { x: 1, y: -1, z: 0 })
+          );
+        });
+
+        it('still resolves a position for an entity present ONLY in a REMEMBERED record this event — its frozen last-observed hex, so it renders as a memory (rpg-dnd5e-web#650) rather than vanishing', () => {
+          let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+          const remembered = makeHexRecord(
+            { x: 3, y: -2, z: -1 },
+            HexState.REMEMBERED,
+            [makePlacement('goblin-1')]
+          );
+
+          state = applyHexRecordsMerged(state, [remembered]);
+
+          expect(state.entities.get('goblin-1')?.position).toEqual(
+            create(PositionSchema, { x: 3, y: -2, z: -1 })
+          );
+        });
+
+        it('a move sequence (visible A, then remembered A + visible B in the next event) leaves the entity at B, not A', () => {
+          let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+          const atA = makeHexRecord({ x: 0, y: 0, z: 0 }, HexState.VISIBLE, [
+            makePlacement('goblin-1'),
+          ]);
+          state = applyHexRecordsMerged(state, [atA]);
+          expect(state.entities.get('goblin-1')?.position).toEqual(
+            create(PositionSchema, { x: 0, y: 0, z: 0 })
+          );
+
+          // The mover walks from A to B: A demotes to REMEMBERED (still
+          // listing goblin-1's old placement, per HexRecord's own "frozen
+          // observation" contract) and B becomes newly VISIBLE with
+          // goblin-1 now placed there — both arrive in the SAME event, as
+          // rpg-api#732's full restatement does on every move.
+          const rememberedA = makeHexRecord(
+            { x: 0, y: 0, z: 0 },
+            HexState.REMEMBERED,
+            [makePlacement('goblin-1')]
+          );
+          const visibleB = makeHexRecord(
+            { x: 1, y: -1, z: 0 },
+            HexState.VISIBLE,
+            [makePlacement('goblin-1')]
+          );
+          state = applyHexRecordsMerged(state, [rememberedA, visibleB]);
+
+          expect(state.entities.get('goblin-1')?.position).toEqual(
+            create(PositionSchema, { x: 1, y: -1, z: 0 })
+          );
+        });
+      });
+    });
+
+    describe('positionByEntityIdFromHexes (rpg-dnd5e-web#651)', () => {
+      // The full-resync snapshot-hydration counterpart to
+      // applyHexRecordsMerged's VISIBLE-over-REMEMBERED precedence above —
+      // same rule, same bug shape, shared by EncounterView.tsx and
+      // PlaytestHarness.tsx's onSnapshotDelivered instead of each keeping
+      // its own (previously identical, previously broken) copy.
+      it('resolves to the VISIBLE position when the REMEMBERED record for the same entity sorts LAST', () => {
+        const visible = makeHexRecord({ x: 1, y: -1, z: 0 }, HexState.VISIBLE, [
+          makePlacement('goblin-1'),
+        ]);
+        const remembered = makeHexRecord(
+          { x: 0, y: 0, z: 0 },
+          HexState.REMEMBERED,
+          [makePlacement('goblin-1')]
+        );
+
+        const positions = positionByEntityIdFromHexes([visible, remembered]);
+
+        expect(positions.get('goblin-1')).toEqual(
+          create(V2PositionSchema, { x: 1, y: -1, z: 0 })
+        );
+      });
+
+      it('resolves to the VISIBLE position when the REMEMBERED record for the same entity sorts FIRST', () => {
+        const remembered = makeHexRecord(
+          { x: 0, y: 0, z: 0 },
+          HexState.REMEMBERED,
+          [makePlacement('goblin-1')]
+        );
+        const visible = makeHexRecord({ x: 1, y: -1, z: 0 }, HexState.VISIBLE, [
+          makePlacement('goblin-1'),
+        ]);
+
+        const positions = positionByEntityIdFromHexes([remembered, visible]);
+
+        expect(positions.get('goblin-1')).toEqual(
+          create(V2PositionSchema, { x: 1, y: -1, z: 0 })
+        );
+      });
+
+      it('still resolves a position for an entity present ONLY in a REMEMBERED record — its frozen last-observed hex, so a reconnect still renders it as a memory (rpg-dnd5e-web#650) instead of dropping it', () => {
+        const remembered = makeHexRecord(
+          { x: 3, y: -2, z: -1 },
+          HexState.REMEMBERED,
+          [makePlacement('goblin-1')]
+        );
+
+        const positions = positionByEntityIdFromHexes([remembered]);
+
+        expect(positions.get('goblin-1')).toEqual(
+          create(V2PositionSchema, { x: 3, y: -2, z: -1 })
+        );
+      });
+
+      it('a move sequence (visible A / remembered A + visible B, all in one hex list) resolves to B, not A', () => {
+        const rememberedA = makeHexRecord(
+          { x: 0, y: 0, z: 0 },
+          HexState.REMEMBERED,
+          [makePlacement('goblin-1')]
+        );
+        const visibleB = makeHexRecord(
+          { x: 1, y: -1, z: 0 },
+          HexState.VISIBLE,
+          [makePlacement('goblin-1')]
+        );
+
+        const positions = positionByEntityIdFromHexes([rememberedA, visibleB]);
+
+        expect(positions.get('goblin-1')).toEqual(
+          create(V2PositionSchema, { x: 1, y: -1, z: 0 })
+        );
+      });
+
+      it('ignores contents on a hex with no position (defensive)', () => {
+        const positionless = create(HexRecordSchema, {
+          state: HexState.VISIBLE,
+          contents: [create(PlacementSchema, { entityId: 'goblin-1' })],
+        });
+
+        const positions = positionByEntityIdFromHexes([positionless]);
+
+        expect(positions.has('goblin-1')).toBe(false);
       });
     });
 
