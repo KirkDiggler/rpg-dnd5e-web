@@ -88,6 +88,23 @@ const NOMINAL_PIECE_WIDTH = 1.0;
 const RUN_WALL_PIVOT_RATIO =
   RUN_WALL_VARIANT.rawMinX / RUN_WALL_VARIANT.rawWidth;
 
+/**
+ * Overlap grown onto each side of every tiled wall piece (rpg-dnd5e-web
+ * #634: Kirk's tall-wall-default walk found visible air gaps between
+ * adjacent wall segments, worse in the lower half). Root-caused via an
+ * isolated two-tile render (measuring the ACTUAL rendered silhouette, not
+ * just the theoretical bounding box, which already met flush with zero
+ * gap by construction — see `tileWallSegment`'s own `overlapMargin` doc
+ * comment): `RUN_WALL_VARIANT`'s ("plain," this run tiling's only
+ * variant — this file's own doc comment on why) authored edge silhouette
+ * is a deliberately irregular rock-cut profile, not a flat rectangle, and
+ * recedes inward from its own bounding box by up to ~0.05 world units in
+ * its lower ~60% specifically (measured directly against the real GLB).
+ * 0.08 comfortably covers that measured worst case with margin to spare,
+ * without visibly bulging the seam.
+ */
+const RUN_WALL_TILE_OVERLAP_MARGIN = 0.08;
+
 function FloorSkirtBox({
   segment,
   remembered = false,
@@ -146,7 +163,8 @@ function TiledWallRun({
         segment,
         NOMINAL_PIECE_WIDTH,
         RUN_WALL_PIVOT_RATIO,
-        facing
+        facing,
+        RUN_WALL_TILE_OVERLAP_MARGIN
       ),
     [segment, facing]
   );
