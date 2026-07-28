@@ -24,9 +24,6 @@ function makeEvent<K extends string, V>(
 const routedCases = [
   ['snapshotDelivered', 'onSnapshotDelivered', { encounter: undefined }],
   ['entityMoved', 'onEntityMoved', { entityId: 'a', actualPath: [] }],
-  ['geometryRevealed', 'onGeometryRevealed', { hexes: [] }],
-  ['entityAppeared', 'onEntityAppeared', { entity: { id: 'g' }, reason: '' }],
-  ['entityDisappeared', 'onEntityDisappeared', { entityId: 'g' }],
   ['doorOpened', 'onDoorOpened', { doorEntityId: 'door-east' }],
   ['entityDamaged', 'onEntityDamaged', { entityId: 'g', amount: 5 }],
   ['statusApplied', 'onStatusApplied', { entityId: 'g', status: {} }],

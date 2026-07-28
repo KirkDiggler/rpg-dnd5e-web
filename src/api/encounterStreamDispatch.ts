@@ -5,14 +5,12 @@ import type {
   DoorOpened,
   EncounterEnded,
   EncounterEvent,
-  EntityAppeared,
   EntityDamaged,
   EntityDied,
-  EntityDisappeared,
   EntityMoved,
   EntityRemoved,
   EntityStabilized,
-  GeometryRevealed,
+  HexKnowledgeChanged,
   InitiativeRolled,
   InputRequiredDelivered,
   ModeChanged,
@@ -42,10 +40,11 @@ export type EncounterStreamHandler<T> = (
  * connect + every reconnect). The payload's `encounter` field is empty in
  * slice 1 — DO NOT apply it as state. Treat as a stream-up sync barrier.
  *
- * Cause/effect split: DoorOpened (cause) carries only the door identity in
- * Wave 2.7; the actual reveal data (newly-visible hexes) flows on a parallel
- * GeometryRevealed (effect) event from the toolkit's deliberate two-phase
- * emission. Consumers should subscribe to BOTH; do not try to combine them.
+ * DoorOpened is a pure notification (door identity only, rpg-api-protos#197)
+ * for sound/narration — the old cause/effect split with a parallel
+ * GeometryRevealed (effect) event is retired along with GeometryRevealed
+ * itself (its hex-knowledge role is superseded by the v1alpha2 fog contract,
+ * see rpg-dnd5e-web#609).
  *
  * The same cause/effect split applies for combat: an action emits an umbrella
  * `ActionResolved` (what + economy cost) correlated via the envelope
@@ -58,15 +57,24 @@ export interface EncounterStreamOptions {
   /** slice-1: encounter field is empty; treat as connect-confirm only. */
   onSnapshotDelivered?: EncounterStreamHandler<SnapshotDelivered>;
   onEntityMoved?: EncounterStreamHandler<EntityMoved>;
-  onGeometryRevealed?: EncounterStreamHandler<GeometryRevealed>;
-  onEntityAppeared?: EncounterStreamHandler<EntityAppeared>;
-  onEntityDisappeared?: EncounterStreamHandler<EntityDisappeared>;
   /**
-   * Wave 2.7: door state transitions to open. The event's revealedHexes /
-   * revealedWalls / removedWalls fields are intentionally empty — the
-   * geometry side flows on a separate GeometryRevealed event.
+   * Wave 2.7: door state transitions to open. Pure notification (door
+   * identity only, rpg-api-protos#197) for sound/narration — geometry no
+   * longer rides a parallel event; the fog contract (rpg-dnd5e-web#609)
+   * owns hex/wall knowledge now.
    */
   onDoorOpened?: EncounterStreamHandler<DoorOpened>;
+  /**
+   * rpg-dnd5e-web#609: the only event that moves fog of war (rpg-api-
+   * protos#197). It is a DIFF — a hex/entity absent from the payload is
+   * untouched, never cleared, and a VISIBLE hex's `contents` is total (an
+   * empty list positively means "nobody here", which is how a remembered
+   * occupant disappears on re-sight with no separate forget message). The
+   * web's entire job on receipt is merge-by-position / upsert-by-id; see
+   * useEncounterState's applyEntityKnowledgeBatch + applyHexRecordsMerged
+   * doc comments for the full contract and call order.
+   */
+  onHexKnowledgeChanged?: EncounterStreamHandler<HexKnowledgeChanged>;
   // Wave 2.8: combat events (TURN_BASED mode + attacks + turn cycle).
   /** Authoritative HP update; carries `hp_after` and `amount`. */
   onEntityDamaged?: EncounterStreamHandler<EntityDamaged>;
@@ -178,17 +186,11 @@ export function dispatchEncounterStreamEvent(
     case 'entityMoved':
       options.onEntityMoved?.(payload.value, metadata);
       break;
-    case 'geometryRevealed':
-      options.onGeometryRevealed?.(payload.value, metadata);
-      break;
-    case 'entityAppeared':
-      options.onEntityAppeared?.(payload.value, metadata);
-      break;
-    case 'entityDisappeared':
-      options.onEntityDisappeared?.(payload.value, metadata);
-      break;
     case 'doorOpened':
       options.onDoorOpened?.(payload.value, metadata);
+      break;
+    case 'hexKnowledgeChanged':
+      options.onHexKnowledgeChanged?.(payload.value, metadata);
       break;
     case 'entityDamaged':
       options.onEntityDamaged?.(payload.value, metadata);
@@ -240,10 +242,10 @@ export function dispatchEncounterStreamEvent(
       break;
     default:
       // Either out-of-current-scope but known to the proto (entityHealed,
-      // dialogue, etc. — the proto defines 30 event cases;
-      // we currently handle 22) OR a genuinely unknown case from a proto
-      // version mismatch. Either way: warn + continue so the stream doesn't
-      // tear down. Add a case arm + callback when the feature lands.
+      // dialogue, etc. — the proto defines 28 event cases; we currently
+      // handle 20) OR a genuinely unknown case from a proto version
+      // mismatch. Either way: warn + continue so the stream doesn't tear
+      // down. Add a case arm + callback when the feature lands.
       // The cast strips the narrowed-to-undefined `case` so we can log it.
       console.warn(
         '[useEncounterStream] unhandled event case:',

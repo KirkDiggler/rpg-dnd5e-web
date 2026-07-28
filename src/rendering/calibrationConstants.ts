@@ -29,8 +29,17 @@ export const SYNTY_SCALE = 0.75;
  * demo, for calibrating Synty wall/door pieces to match — was independently
  * re-declared as `const WALL_HEIGHT = 0.8` in ShadedHexWall.tsx,
  * HexWall.tsx, and SyntyRoomDemo.tsx.
+ *
+ * 2.4 is the DEFAULT the real route actually renders at (rpg-project#132,
+ * Kirk's verdict walking the merged wall-height/cutaway build: "the higher
+ * walls look nice... we can just pan around" — camera rotation makes tall
+ * uniform walls preferable to the old 0.8 knee-wall "game board" look, and
+ * cutaway stubs stay OPT-IN only, never a default). The old 0.8 value and
+ * the `?wallHeight=`/`?wallCutaway=1` dials this constant still feeds are
+ * unchanged — this bump only changes what every caller gets with NO query
+ * params at all.
  */
-export const WALL_HEIGHT = 0.8;
+export const WALL_HEIGHT = 2.4;
 
 /**
  * The game Canvas's own fixed camera position offset (HexGrid.tsx's

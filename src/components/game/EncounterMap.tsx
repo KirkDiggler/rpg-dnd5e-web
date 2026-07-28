@@ -24,7 +24,7 @@
 
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type {
-  Hex,
+  HexRecord,
   Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
@@ -37,10 +37,13 @@ import {
   connectorFallbackSegments,
   legacyRenderWalls,
   regionInputsFromHexes,
+  rememberedHexKeysFromRecords,
 } from '../../hooks/wallRunAdapters';
 import { computeWallRuns } from '../../hooks/wallRuns';
 import { WALL_HEIGHT } from '../../rendering/calibrationConstants';
 import { HexGrid } from '../hex-grid';
+import { AuthorGridLegend } from '../hex-grid/AuthorGridLegend';
+import { AuthorGridOverlay } from '../hex-grid/AuthorGridOverlay';
 import {
   cubeToWorld,
   HEX_SIZE,
@@ -77,16 +80,17 @@ export interface EncounterMapProps {
   /** v1alpha2 identity metadata (type, monsterRefId) keyed by entityId. */
   entityMeta: Map<string, EntityMeta>;
   /**
-   * Per-hex reveal map ("x,y,z" cube-coord keys -> the full wire `Hex`,
-   * including `zoneId`) from useEncounterState's `state.revealedHexes`.
+   * Per-hex reveal map ("x,y,z" cube-coord keys -> the full wire
+   * `HexRecord`, including `zoneId`) from useEncounterState's
+   * `state.revealedHexes`.
    * Dungeon-walls redesign (rpg-project#133): `zoneId` is what lets this
    * component reconstruct each room's hex membership
    * (wallRunAdapters.regionInputsFromHexes) for envelope/connector run
    * computation — a plain key `Set` (pre-#133) can't carry that. Floor-tile
    * synthesis below only needs the key set, derived internally.
    */
-  revealedHexes: Map<string, Hex>;
-  /** Sticky revealed walls, keyed by wallKey, from Space.walls/GeometryRevealed.walls. Renders as [] when the server sends none. */
+  revealedHexes: Map<string, HexRecord>;
+  /** Sticky revealed walls, keyed by wallKey, flattened from each revealed hex's `HexRecord.edges` (rpg-api-protos#197 — walls now ride per-hex rather than a flat `Space.walls` list). Renders as [] when the server sends none. */
   walls: Map<string, Wall>;
   /** Per-entity HP — marks monsters dead (HP <= 0) so HexGrid renders their corpse. */
   entityHP: Map<string, { current: number; max: number }>;
@@ -207,6 +211,17 @@ export function EncounterMap({
     () => regionInputsFromHexes(revealedHexes.values()),
     [revealedHexes]
   );
+  // Fog-of-war render state (rpg-dnd5e-web#605/#609): every REMEMBERED
+  // hex's own key (floor) plus every REMEMBERED hex's edges' own `from` key
+  // (walls) — HexGrid's `rememberedFloorHexKeys`/`rememberedWallHexKeys`
+  // shape, fed straight through below. HexGrid already owns all the actual
+  // charcoal tinting, click/hover/path suppression, and remembered-run
+  // derivation (`rememberedWallRunIds`) once it has these two sets; this is
+  // the only place on this route that was missing them.
+  const rememberedHexKeys = useMemo(
+    () => rememberedHexKeysFromRecords(revealedHexes.values()),
+    [revealedHexes]
+  );
   const connectorDoors = useMemo(
     () => connectorDoorInputsFromWalls(wallList),
     [wallList]
@@ -277,17 +292,22 @@ export function EncounterMap({
       entities,
       entityMeta,
       entityHP,
-      entityStatuses
+      entityStatuses,
+      revealedHexes
     );
     if (devPropDemoKeys.length === 0) return base;
     const anchor = (base.find((e) => e.entityId === myEntityId) ?? base[0])
       ?.position;
+    // Dev prop-demo entities are synthetic and always "here" — they never
+    // get a knowledgeState (undefined, i.e. rendered live), same as every
+    // other field buildDevPropDemoEntities doesn't set.
     return [...base, ...buildDevPropDemoEntities(devPropDemoKeys, anchor)];
   }, [
     entities,
     entityMeta,
     entityHP,
     entityStatuses,
+    revealedHexes,
     devPropDemoKeys,
     myEntityId,
   ]);
@@ -452,6 +472,19 @@ export function EncounterMap({
     []
   );
 
+  // Authoring bridge (`?authorGrid=1`): every revealed floor hex's
+  // room-local [col,row] label plus a facing legend, so Kirk can walk a
+  // room and dictate dungeon-content YAML `place:` coordinates directly
+  // instead of hand-deriving them. Same "read the query string once,
+  // default off" convention as litSurfaces/floorPools above. `regions`/
+  // `connectorDoors` are already computed above for wall-run rendering
+  // — this reuses them rather than re-deriving region membership a
+  // second time.
+  const authorGrid = useMemo(
+    () => new URLSearchParams(window.location.search).get('authorGrid') === '1',
+    []
+  );
+
   // Real-dungeon-rendering flag (rpg-dnd5e-web#432 harness-parity). Read
   // once; the game route never mutates the query string mid-session.
   // Default-on: deployed builds bake Synty assets into the image (docker
@@ -503,8 +536,10 @@ export function EncounterMap({
     >
       <HexGrid
         floorTiles={floorTiles}
+        rememberedFloorHexKeys={rememberedHexKeys.floorKeys}
         entities={renderableEntities}
         walls={wallList}
+        rememberedWallHexKeys={rememberedHexKeys.wallKeys}
         legacySyntyWalls={legacySyntyWalls}
         envelopeRuns={wallRunsResult.envelopeRuns}
         envelopeCorners={wallRunsResult.envelopeCorners}
@@ -559,7 +594,15 @@ export function EncounterMap({
         {perfProbe && (
           <DevPerfProbe windowMs={perfProbe.windowMs} label={perfProbe.label} />
         )}
+        {authorGrid && (
+          <AuthorGridOverlay
+            regions={regions}
+            doors={connectorDoors}
+            hexSize={HEX_SIZE}
+          />
+        )}
       </HexGrid>
+      {authorGrid && <AuthorGridLegend />}
     </div>
   );
 }

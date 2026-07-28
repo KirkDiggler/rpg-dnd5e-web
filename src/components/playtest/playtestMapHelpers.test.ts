@@ -12,6 +12,8 @@ import { create } from '@bufbuild/protobuf';
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
   EntityType,
+  HexRecordSchema,
+  HexState,
   PositionSchema,
   WallKind,
   WallSchema,
@@ -347,6 +349,92 @@ describe('buildRenderableEntities', () => {
     ]);
     const list = buildRenderableEntities(entities, new Map(), new Map());
     expect(list).toHaveLength(0);
+  });
+
+  describe('knowledgeState (rpg-dnd5e-web#605/#609)', () => {
+    it('leaves knowledgeState undefined when revealedHexes is omitted (PlaytestMap harness, byte-identical to pre-fog behavior)', () => {
+      const entities = new Map([
+        ['char-alice', makeEntityState('char-alice', { x: 0, y: 0, z: 0 })],
+      ]);
+      const meta = new Map<string, EntityMeta>([
+        ['char-alice', { type: EntityType.CHARACTER, monsterRefId: undefined }],
+      ]);
+
+      const list = buildRenderableEntities(entities, meta, new Map());
+      expect(list[0]?.knowledgeState).toBeUndefined();
+    });
+
+    it("marks an entity 'remembered' when its position's hex record is HEX_STATE_REMEMBERED", () => {
+      const entities = new Map([
+        ['goblin-1', makeEntityState('goblin-1', { x: 1, y: -1, z: 0 })],
+      ]);
+      const meta = new Map<string, EntityMeta>([
+        ['goblin-1', { type: EntityType.MONSTER, monsterRefId: 'goblin' }],
+      ]);
+      const revealedHexes = new Map([
+        [
+          '1,-1,0',
+          create(HexRecordSchema, {
+            position: create(PositionSchema, { x: 1, y: -1, z: 0 }),
+            state: HexState.REMEMBERED,
+          }),
+        ],
+      ]);
+
+      const list = buildRenderableEntities(
+        entities,
+        meta,
+        new Map(),
+        undefined,
+        revealedHexes
+      );
+      expect(list[0]?.knowledgeState).toBe('remembered');
+    });
+
+    it("marks an entity 'visible' when its position's hex record is HEX_STATE_VISIBLE", () => {
+      const entities = new Map([
+        ['char-alice', makeEntityState('char-alice', { x: 0, y: 0, z: 0 })],
+      ]);
+      const meta = new Map<string, EntityMeta>([
+        ['char-alice', { type: EntityType.CHARACTER, monsterRefId: undefined }],
+      ]);
+      const revealedHexes = new Map([
+        [
+          '0,0,0',
+          create(HexRecordSchema, {
+            position: create(PositionSchema, { x: 0, y: 0, z: 0 }),
+            state: HexState.VISIBLE,
+          }),
+        ],
+      ]);
+
+      const list = buildRenderableEntities(
+        entities,
+        meta,
+        new Map(),
+        undefined,
+        revealedHexes
+      );
+      expect(list[0]?.knowledgeState).toBe('visible');
+    });
+
+    it("falls back to 'visible' when revealedHexes has no record for the entity's position", () => {
+      const entities = new Map([
+        ['char-alice', makeEntityState('char-alice', { x: 5, y: -5, z: 0 })],
+      ]);
+      const meta = new Map<string, EntityMeta>([
+        ['char-alice', { type: EntityType.CHARACTER, monsterRefId: undefined }],
+      ]);
+
+      const list = buildRenderableEntities(
+        entities,
+        meta,
+        new Map(),
+        undefined,
+        new Map()
+      );
+      expect(list[0]?.knowledgeState).toBe('visible');
+    });
   });
 });
 

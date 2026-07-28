@@ -19,7 +19,9 @@
  * - `floorTiles` is synthesized from `revealedHexes` plus every entity's
  *   current cell. Without an entity-cell fallback the local player can't
  *   move from the seeded fallback position before the first
- *   `GeometryRevealed` event lands.
+ *   `SnapshotDelivered` places them (there is no live per-hex reveal event
+ *   after rpg-api-protos#197 — hex/entity knowledge now arrives on
+ *   snapshot only, until rpg-dnd5e-web#609 consumes HexKnowledgeChanged).
  *
  * - `movementRemaining` defaults to 30 ft. The harness is a verification
  *   tool — the server is the source of truth for movement budget and will
@@ -74,7 +76,9 @@ export interface PlaytestMapProps {
   >;
   /**
    * v1alpha2 identity metadata (type, monsterRefId) keyed by entityId.
-   * Populated by `applyEntityMeta` from EntityAppeared events.
+   * Populated by `applyEntityAppearedBatch` from each SnapshotDelivered
+   * entity's fields (rpg-api-protos#197 retired the live per-entity
+   * EntityAppeared event; entities now arrive only via snapshot).
    */
   entityMeta: Map<string, EntityMeta>;
   /**
@@ -83,9 +87,10 @@ export interface PlaytestMapProps {
    */
   revealedHexes: Set<string>;
   /**
-   * Sticky revealed walls, keyed by `wallKey`, from `Space.walls` (snapshot)
-   * merged with `GeometryRevealed.walls` (delta). Degrades to an empty map
-   * — and no walls render — when the server sends none.
+   * Sticky revealed walls, keyed by `wallKey`, flattened from each revealed
+   * hex's `HexRecord.edges` (rpg-api-protos#197 — walls now ride per-hex
+   * rather than a flat `Space.walls` list). Degrades to an empty map — and
+   * no walls render — when the server sends none.
    */
   walls: Map<string, Wall>;
   /**
@@ -116,7 +121,7 @@ export interface PlaytestMapProps {
   myEntityId: string;
   /**
    * Optional fallback position for the local player before the first
-   * EntityAppeared event lands (the dev-seeded encounter). Used only when
+   * SnapshotDelivered places them (the dev-seeded encounter). Used only when
    * the local player isn't present in `entities` yet.
    */
   fallbackPosition?: { x: number; y: number; z: number };

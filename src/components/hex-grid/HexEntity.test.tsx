@@ -121,3 +121,41 @@ describe('remembered entities are inert', () => {
     expect(handlerCount(renderer, 'onClick')).toBe(0);
   });
 });
+
+describe('remembered entities look like a memory (rpg-dnd5e-web#605/#609)', () => {
+  // An obstacle with no obstacleType/propRefId resolves no prop variant
+  // (obstaclePropKeys.ts), so HexEntity falls back to the plain capsule —
+  // the same fallback a real pillar/prop renders through whenever its GLB
+  // hasn't synced (HexGrid's ErrorBoundary lineage), so this capsule path
+  // is not a toy case.
+  function capsuleMaterial(
+    renderer: Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>
+  ) {
+    const mesh = renderer.scene.findAllByType('Mesh')[0] as unknown as {
+      instance: THREE.Mesh;
+    };
+    return mesh.instance.material as THREE.MeshStandardMaterial;
+  }
+
+  it('tints a remembered obstacle capsule with the shared crypt-memory color', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity {...base} type="obstacle" knowledgeState="remembered" />
+    );
+    // '#805ad5' (COLORS.obstacle.default) multiplied by CRYPT_MEMORY_COLOR
+    // '#465366' is exactly CRYPT_MEMORY_COLOR's own hex — matches
+    // cloneCryptMaterials' `color.multiply(CRYPT_MEMORY_COLOR)` when the
+    // fallback capsule is built directly from cryptHex rather than routed
+    // through that helper; either way the visible result is the same
+    // shared memory tint.
+    const color = capsuleMaterial(renderer).color;
+    expect(`#${color.getHexString()}`).toBe('#465366');
+  });
+
+  it('renders a live (non-remembered) obstacle capsule in its normal color, unchanged', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity {...base} type="obstacle" />
+    );
+    const color = capsuleMaterial(renderer).color;
+    expect(`#${color.getHexString()}`).toBe('#805ad5');
+  });
+});
