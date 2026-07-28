@@ -187,7 +187,6 @@ export function FogOfWarConcept() {
               legacySyntyWalls={props.legacySyntyWalls}
               envelopeRuns={props.envelopeRuns}
               connectorRuns={props.connectorRuns}
-              doorRotationOverrides={props.doorRotationOverrides}
               rememberedWallHexKeys={props.rememberedWallHexKeys}
               entities={props.entities}
               onHexClick={moveViewer}
