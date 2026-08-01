@@ -1829,9 +1829,19 @@ describe('EncounterView combat pacing', () => {
 
     expect(screen.getByTitle('HP 13/20')).toBeTruthy();
     expect(screen.getByTestId('combat-log-entry-damage-1')).toBeTruthy();
+    // HP and the combat log apply immediately (server-owned facts), but
+    // the presented damage number must not leak before the roll theater
+    // reaches Impact -- this is the bug this test now proves fixed.
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+    act(() => vi.advanceTimersByTime(2000 + 1600));
     expect(
-      screen.getByTestId('combat-presentation-damage').textContent
-    ).toContain('7 damage');
+      screen.getByTestId('combat-presentation').getAttribute('data-beat')
+    ).toBe('impact');
+    expect(screen.getByTestId('beat-damage').textContent).toContain('7 damage');
   });
 
   it.each([

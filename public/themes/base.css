@@ -1179,6 +1179,23 @@
   text-align: center;
 }
 
+/* Damage joins the verdict's own aria-live region at Impact (design.md:
+   damage reveal belongs to Impact, never earlier) -- rendered inside the
+   existing blue result tray rather than a second surface. Slightly
+   larger/bolder than the verdict line above it so it reads as the
+   headline once it appears. */
+.beat-damage {
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  font-size: clamp(1rem, 3.5vw, 1.5rem);
+  margin-top: 0.25rem;
+}
+
+.beat-verdict--crit .beat-damage {
+  color: #facc15;
+  text-shadow: 0 0 10px currentColor;
+}
+
 /* Palette matches CombatLog.tsx's lineStyle() exactly so the log and this
    beat stage never disagree on what a color means. */
 .beat-verdict--hit {
