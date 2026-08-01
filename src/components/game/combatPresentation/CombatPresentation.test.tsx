@@ -72,36 +72,84 @@ describe('CombatPresentation', () => {
     expect(complete).toHaveBeenCalledWith(7);
   });
 
-  it('announces the server-sent damage result once while hiding the decorative copy from assistive tech', () => {
-    const { rerender } = render(
+  it('gates the server-sent damage behind Impact so the roll is never spoiled, and announces it once in the verdict live-region', () => {
+    render(
       <CombatPresentation
         item={item()}
-        damage={damage()}
+        damage={damage(16)}
         onComplete={() => {}}
       />
     );
 
-    const visualDamage = screen.getByTestId('combat-presentation-damage');
-    const liveDamage = screen.getByTestId(
-      'combat-presentation-damage-announce'
-    );
+    // Damage streamed in immediately (correlation-keyed), but the beat is
+    // still idle/cue/armed/throw — nothing damage-shaped may render yet.
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+    expect(screen.queryByText(/16 damage/)).toBeNull();
 
-    expect(visualDamage.getAttribute('aria-hidden')).toBe('true');
-    expect(liveDamage.getAttribute('role')).toBe('status');
-    expect(liveDamage.getAttribute('aria-live')).toBe('polite');
-    expect(liveDamage.getAttribute('aria-atomic')).toBe('true');
-    expect(liveDamage.textContent).toBe('Damage dealt: 7');
+    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+
+    act(() => vi.advanceTimersByTime(CINEMATIC.throw));
+    // Now in verdict — still gated; the roll's HIT/MISS must resolve on
+    // its own before damage joins it.
+    expect(
+      screen.getByTestId('combat-presentation').getAttribute('data-beat')
+    ).toBe('verdict');
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+
+    act(() => vi.advanceTimersByTime(CINEMATIC.verdict));
+    // Impact: damage appears now, inside the SAME status region as the
+    // verdict — not a second announced surface.
+    expect(
+      screen.getByTestId('combat-presentation').getAttribute('data-beat')
+    ).toBe('impact');
+    const revealed = screen.getByTestId('beat-damage');
+    expect(revealed.textContent).toContain('16 damage');
+    expect(screen.getByTestId('beat-verdict').contains(revealed)).toBe(true);
     expect(screen.getAllByRole('status')).toHaveLength(1);
 
-    rerender(
+    act(() => vi.advanceTimersByTime(CINEMATIC.impact));
+    // Release: damage stays visible, doesn't flash away before the item
+    // completes.
+    expect(screen.getByTestId('beat-damage').textContent).toContain(
+      '16 damage'
+    );
+  });
+
+  it('never reveals damage for a miss', () => {
+    render(
       <CombatPresentation
-        item={item()}
-        damage={damage()}
+        item={item({ hit: false, attackRoll: 8 })}
+        damage={damage(16)}
         onComplete={() => {}}
       />
     );
+    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    act(() => vi.advanceTimersByTime(CINEMATIC.throw + CINEMATIC.verdict));
+    expect(
+      screen.getByTestId('combat-presentation').getAttribute('data-beat')
+    ).toBe('release');
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+  });
 
-    expect(screen.getAllByRole('status')).toHaveLength(1);
+  it('gates damage under reduced motion the same way, using the shortened throw', () => {
+    vi.mocked(useReducedMotion).mockReturnValue(true);
+    render(
+      <CombatPresentation
+        item={item()}
+        damage={damage(16)}
+        onComplete={() => {}}
+      />
+    );
+    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+    act(() => vi.advanceTimersByTime(80 + CINEMATIC.verdict));
+    expect(screen.getByTestId('beat-damage').textContent).toContain(
+      '16 damage'
+    );
   });
 
   it('does not complete a newly swapped item until its own sequence finishes', () => {
