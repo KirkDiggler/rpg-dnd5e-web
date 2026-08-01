@@ -48,8 +48,8 @@ export function hexTrueCellCenter(col: number, row: number): CellPos {
 /** Plain rectangular grid — no hex-column parity correction. Spacing
  * chosen to roughly match hex-true's average column/row pitch so toggling
  * between modes doesn't wildly rescale the board. */
-const FLAT_COL_SPACING = BOARD_HEX_SIZE * Math.sqrt(3);
-const FLAT_ROW_SPACING = BOARD_HEX_SIZE * 1.5;
+export const FLAT_COL_SPACING = BOARD_HEX_SIZE * Math.sqrt(3);
+export const FLAT_ROW_SPACING = BOARD_HEX_SIZE * 1.5;
 
 export function flatCellCenter(col: number, row: number): CellPos {
   return { x: col * FLAT_COL_SPACING, y: row * FLAT_ROW_SPACING };
