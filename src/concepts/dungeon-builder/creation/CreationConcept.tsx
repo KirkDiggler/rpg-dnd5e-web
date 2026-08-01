@@ -3,7 +3,7 @@
  * form, tool strip, board, palette, facing inspector, proposed-YAML pane.
  * Entirely client-side (no server calls) — see CONTRACT.md.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Palette } from '../Palette';
 import type { PaletteSelection } from '../types';
 import { CreationBoard } from './CreationBoard';
@@ -11,6 +11,7 @@ import type { CreationState } from './creationTypes';
 import { DEFAULT_GRID, type CreationGrid, type Tool } from './creationTypes';
 import { ProposedYamlPane } from './ProposedYamlPane';
 import type { CreationActions } from './useCreationState';
+import { useDemoScript } from './useDemoScript';
 
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
   {
@@ -49,6 +50,20 @@ export function CreationConcept({
   const [paletteSelection, setPaletteSelection] =
     useState<PaletteSelection | null>(null);
   const [dims, setDims] = useState<CreationGrid>(DEFAULT_GRID);
+
+  // buildDemoScript is pinned to the dimensions at mount — the script's
+  // own first step resets to them anyway, so a live dims edit mid-script
+  // doesn't need to retarget it.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const demo = useDemoScript(actions, () => stateRef.current, DEFAULT_GRID);
+
+  useEffect(() => {
+    if (demo.isPlaying) {
+      setTool('select');
+      setPaletteSelection(null);
+    }
+  }, [demo.isPlaying]);
 
   const usageCounts: Record<string, number> = {};
   for (const p of state.placements)
@@ -157,8 +172,74 @@ export function CreationConcept({
           >
             New Canvas
           </button>
+          <button
+            onClick={() => (demo.isPlaying ? demo.pause() : demo.play())}
+            style={{
+              background: demo.isPlaying ? '#3a2f18' : '#5fd1c9',
+              color: demo.isPlaying ? '#ffd76a' : '#14110f',
+              border: demo.isPlaying ? '1px solid #c9a227' : 'none',
+              borderRadius: 4,
+              padding: '4px 10px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {demo.isPlaying
+              ? '⏸ Pause'
+              : demo.isDone
+                ? '▶ Replay the pitch'
+                : demo.stepIndex > 0
+                  ? '▶ Resume the pitch'
+                  : '▶ Play the pitch'}
+          </button>
+          {(demo.stepIndex > 0 || demo.isDone) && (
+            <button
+              onClick={() => {
+                demo.restart();
+                actions.resetGrid(dims);
+              }}
+              style={{
+                background: 'transparent',
+                color: 'var(--text-secondary, #8a7a5a)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: 4,
+                padding: '4px 8px',
+                fontSize: 11,
+                cursor: 'pointer',
+              }}
+            >
+              ↺ restart
+            </button>
+          )}
         </div>
       </header>
+
+      {demo.caption && (
+        <div
+          style={{
+            padding: '8px 16px',
+            background: '#18261f',
+            borderBottom: '1px solid #3a5a45',
+            color: '#8fe8b0',
+            fontSize: 13,
+            fontStyle: 'italic',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <span>“{demo.caption}”</span>
+          <span style={{ fontSize: 10, color: '#5a8a6a', marginLeft: 'auto' }}>
+            step {Math.min(demo.stepIndex + 1, demo.stepCount)}/{demo.stepCount}
+            {demo.isDone
+              ? ' — done, take over any time'
+              : !demo.isPlaying
+                ? ' — paused, take over any time'
+                : ''}
+          </span>
+        </div>
+      )}
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <aside
