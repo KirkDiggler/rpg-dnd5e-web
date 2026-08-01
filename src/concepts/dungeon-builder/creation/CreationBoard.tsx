@@ -79,7 +79,14 @@ export function CreationBoard({
 }: CreationBoardProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverEdge, setHoverEdge] = useState<EdgeGeometry | null>(null);
-  const [stroke, setStroke] = useState<{ addMode: boolean } | null>(null);
+  const [stroke, setStroke] = useState<{
+    addMode: boolean;
+    startPoint: { x: number; y: number };
+    /** null until the drag has moved far enough to tell direction —
+     * see handlePointerMove's own comment for why this can't just be the
+     * first touched edge's orientation. */
+    orientation: 'h' | 'v' | null;
+  } | null>(null);
   const [dragPlacement, setDragPlacement] = useState<string | null>(null);
 
   const { grid } = state;
@@ -147,12 +154,17 @@ export function CreationBoard({
     if (!edge) return;
     if (tool === 'wall') {
       const isOn = state.walls.has(edge.key);
-      setStroke({ addMode: !isOn });
+      setStroke({ addMode: !isOn, startPoint: p, orientation: null });
       applyEdgeAction(edge, !isOn);
     } else if (tool === 'door') {
       applyEdgeAction(edge);
     }
   };
+
+  // A quarter cell of movement before committing to a direction — small
+  // enough to feel immediate, large enough not to fire on hand-tremor.
+  const DIRECTION_LOCK_THRESHOLD =
+    Math.min(FLAT_COL_SPACING, FLAT_ROW_SPACING) * 0.25;
 
   const handlePointerMove: React.PointerEventHandler<SVGSVGElement> = (e) => {
     const p = toBoardPoint(e.clientX, e.clientY);
@@ -162,11 +174,32 @@ export function CreationBoard({
       return;
     }
     if (tool === 'wall' || tool === 'door') {
+      if (stroke && tool === 'wall') {
+        let orientation = stroke.orientation;
+        if (orientation === null) {
+          // A horizontal drag draws a horizontal wall (consecutive 'h'
+          // edges share endpoints and connect end-to-end into one
+          // straight line); a vertical drag draws a vertical one — this
+          // is the OPPOSITE of "whichever edge the pointer happens to be
+          // closest to right now" (that's a function of exactly where
+          // inside a cell the cursor sits, not of which way the user is
+          // dragging, and using it produced a crenellated comb instead
+          // of a straight wall — see CONTRACT.md's wall-interaction
+          // finding for the concrete before/after).
+          const dx = p.x - stroke.startPoint.x;
+          const dy = p.y - stroke.startPoint.y;
+          if (Math.hypot(dx, dy) >= DIRECTION_LOCK_THRESHOLD) {
+            orientation = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+            setStroke({ ...stroke, orientation });
+          }
+        }
+        const edge = nearestEdge(p, grid, orientation ?? undefined);
+        setHoverEdge(edge);
+        if (edge) actions.toggleWall(edge.key, 'solid', stroke.addMode);
+        return;
+      }
       const edge = nearestEdge(p, grid);
       setHoverEdge(edge);
-      if (stroke && edge && tool === 'wall') {
-        actions.toggleWall(edge.key, 'solid', stroke.addMode);
-      }
     } else {
       setHoverEdge(null);
     }

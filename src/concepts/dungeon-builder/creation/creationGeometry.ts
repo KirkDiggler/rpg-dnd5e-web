@@ -77,9 +77,20 @@ export function allInternalEdges(grid: CreationGrid): EdgeGeometry[] {
  * offset within that cell to decide whether it's closer to a vertical or
  * horizontal edge, and which side. Returns null for the canvas perimeter
  * (not a togglable internal edge) or genuinely out-of-grid points. */
+/**
+ * `lockOrientation`, when passed, skips the dx-vs-dy comparison and
+ * always resolves to an edge of that orientation. `CreationBoard.tsx`
+ * uses this to hold a wall-drawing stroke to one orientation for its
+ * whole duration once the drag direction is known — without it, the
+ * per-point dx/dy comparison flips which axis "wins" every time the
+ * pointer crosses a cell boundary, turning a straight drag into a
+ * crenellated comb instead of a straight wall (see CONTRACT.md's
+ * wall-interaction finding for the concrete before/after).
+ */
 export function nearestEdge(
   point: CellPos,
-  grid: CreationGrid
+  grid: CreationGrid,
+  lockOrientation?: 'h' | 'v'
 ): EdgeGeometry | null {
   const colF = point.x / FLAT_COL_SPACING;
   const rowF = point.y / FLAT_ROW_SPACING;
@@ -88,7 +99,11 @@ export function nearestEdge(
   const dx = colF - c0;
   const dy = rowF - r0;
 
-  if (Math.abs(dx) > Math.abs(dy)) {
+  const wantVertical = lockOrientation
+    ? lockOrientation === 'v'
+    : Math.abs(dx) > Math.abs(dy);
+
+  if (wantVertical) {
     const col = dx > 0 ? c0 : c0 - 1;
     if (col < 0 || col > grid.width - 2 || r0 < 0 || r0 > grid.height - 1)
       return null;
