@@ -18,6 +18,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const hoisted = vi.hoisted(() => ({
   startEncounterFn: vi.fn(async () => ({ encounterId: 'enc-1' }) as never),
   hostPlayerId: null as string | null,
+  dungeonsError: null as Error | null,
+  refetchDungeonsFn: vi.fn(),
 }));
 
 vi.mock('../../api/useCreateLobby', () => ({
@@ -43,8 +45,8 @@ vi.mock('../../api/useListDungeons', () => ({
       { key: 'smoke-test', name: 'Smoke Test' },
     ] as DungeonSummary[],
     loading: false,
-    error: null,
-    refetch: vi.fn(),
+    error: hoisted.dungeonsError,
+    refetch: hoisted.refetchDungeonsFn,
   }),
 }));
 // A minimal stand-in for the real streaming hook: seeds a single ready,
@@ -89,6 +91,8 @@ import { LobbyFlow } from './LobbyFlow';
 beforeEach(() => {
   hoisted.startEncounterFn.mockClear();
   hoisted.hostPlayerId = null;
+  hoisted.dungeonsError = null;
+  hoisted.refetchDungeonsFn.mockClear();
 });
 
 describe('LobbyFlow — dungeon picker (rpg-project#131)', () => {
@@ -135,6 +139,49 @@ describe('LobbyFlow — dungeon picker (rpg-project#131)', () => {
 
   it('starting without picking a dungeon sends an empty dungeon_key — server keeps its own default precedence', () => {
     hoisted.hostPlayerId = 'alice';
+
+    render(
+      <LobbyFlow
+        playerId="alice"
+        onEncounterStarted={vi.fn()}
+        onBack={vi.fn()}
+        initialLobbyId="lobby-1"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('start-encounter-button'));
+
+    expect(hoisted.startEncounterFn).toHaveBeenCalledWith({
+      lobbyId: 'lobby-1',
+      dungeonKey: '',
+    });
+  });
+
+  it('shows an inline error with retry when ListDungeons fails, instead of a silently-empty picker', () => {
+    hoisted.hostPlayerId = 'alice';
+    hoisted.dungeonsError = new Error('ListDungeons RPC failed');
+
+    render(
+      <LobbyFlow
+        playerId="alice"
+        onEncounterStarted={vi.fn()}
+        onBack={vi.fn()}
+        initialLobbyId="lobby-1"
+      />
+    );
+
+    // The picker itself must not render empty/blank -- that's
+    // indistinguishable from "no dungeons authored".
+    expect(screen.queryByTestId('dungeon-picker')).toBeNull();
+    screen.getByText('ListDungeons RPC failed');
+
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(hoisted.refetchDungeonsFn).toHaveBeenCalledOnce();
+  });
+
+  it('Start still works with the empty-key server default while ListDungeons is erroring', () => {
+    hoisted.hostPlayerId = 'alice';
+    hoisted.dungeonsError = new Error('ListDungeons RPC failed');
 
     render(
       <LobbyFlow

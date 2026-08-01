@@ -83,7 +83,12 @@ export function LobbyFlow({
   const { joinLobby, loading: joinLoading } = useJoinLobby();
   const { setReady, loading: readyLoading } = useSetLobbyReady();
   const { startEncounter, loading: startLoading } = useStartLobbyEncounter();
-  const { dungeons, loading: dungeonsLoading } = useListDungeons();
+  const {
+    dungeons,
+    loading: dungeonsLoading,
+    error: dungeonsError,
+    refetch: refetchDungeons,
+  } = useListDungeons();
 
   // Dev join-ref carrier (lobby-surface.md Decision 2): a URL param supplies
   // the same opaque join_ref the Discord Activity carrier will supply
@@ -349,14 +354,25 @@ export function LobbyFlow({
 
       <PartyRoster members={members} currentPlayerId={playerId} />
 
-      {isHost && (
-        <DungeonPicker
-          dungeons={dungeons}
-          value={selectedDungeonKey}
-          onChange={setSelectedDungeonKey}
-          loading={dungeonsLoading}
-        />
-      )}
+      {isHost &&
+        (dungeonsError ? (
+          // A silently-empty picker here would be indistinguishable from
+          // "no dungeons authored" — surface the failure instead. Start
+          // still works with the empty-key server default below; this
+          // only blocks PICKING a specific dungeon, not starting at all.
+          <ErrorDisplay
+            title="Couldn't load dungeons"
+            message={errorMessage(dungeonsError)}
+            onRetry={refetchDungeons}
+          />
+        ) : (
+          <DungeonPicker
+            dungeons={dungeons}
+            value={selectedDungeonKey}
+            onChange={setSelectedDungeonKey}
+            loading={dungeonsLoading}
+          />
+        ))}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <Button
