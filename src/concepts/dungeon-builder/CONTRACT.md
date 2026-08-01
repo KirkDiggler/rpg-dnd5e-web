@@ -229,3 +229,119 @@ rendering context (revealed 3D rooms, not a flat multi-room chain).
    against** — showcase.yaml (and everything else checked) has zero
    `obstacles:` entries. `RolledContentPanel`'s non-empty path is
    implemented but genuinely untested against real content.
+
+## Proposed schema from the creation flow (Kirk's day-one pitch, 2026-08-01)
+
+Kirk, after seeing the edit-mode concept: "wow it looks amazing" — then the
+real ask: "want 20x30 room -> get 2d top down board -> draw the walls in
+place -> start here, end there -> add door here, monster there, reaper
+statue there facing this way -> load up and play." That's CREATION, not
+editing — a second concept mode (`src/concepts/dungeon-builder/creation/`)
+built to know exactly how that flow should feel, entirely client-side (no
+schema exists for any of this — design.md explicitly defers wall/shape
+authoring to P4+). `proposedYaml.ts` renders the invented schema live,
+styled as a visually distinct "PROPOSED SCHEMA" pane so it's never
+mistaken for something dungeonspec accepts today. This section is the
+write-up; the schema itself is best read live (`ProposedYamlPane.tsx`'s
+output), not re-transcribed here.
+
+### Walls: edge-native, matching a wire type that already exists
+
+The proposed `walls: [{ from: [c,r], to: [c,r], kind: solid|door }]`
+shape is not invented from nothing — it deliberately mirrors
+`EncounterService.Space.walls`' real wire type, `Wall{from, to, kind, id}`
+(edge-native, doors as a `WALL_KIND_DOOR_*` kind, not a separate list —
+confirmed against `fog-of-war/CONTRACT.md`'s own research into that
+message). A freeform-room authoring surface built this way wouldn't need
+a translation layer between "what the author drew" and "what the wire
+already carries for the SAME kind of geometry elsewhere in this system" —
+it's the same shape, just before compilation instead of after. This is
+the strongest single argument for _this_ proposed shape over a
+`grid: [[0,1,1,0],...]` solid/floor bitmap (the other obvious option,
+plainer to author from a full-grid dump but with no natural place for a
+door to attach — a door is inherently an edge concept, not a cell one).
+
+### Wall-drawing interaction: edge-painting, chosen and then fixed once
+
+Built as click-drag edge-painting (draw a wall by tracing it), not
+cell-painting (mark cells solid/floor and let the room shape fall out of
+the boundary). Edge-painting was chosen for two reasons: it's literally
+what Kirk described ("draw the walls"), and per the wire-shape argument
+above, it's the representation with a real precedent already in this
+codebase. Cell-painting would have been simpler to hit-test (one bucket
+per cell, no edge geometry) but has no natural home for a door — you'd
+still need to convert "this edge between two differently-filled cells" to
+a wall after the fact, which is exactly the edge model, just derived
+late instead of drawn directly.
+
+**A real, load-bearing interaction bug surfaced and got fixed during
+this build, not just theorized about**: the first implementation snapped
+each pointer-move to whichever edge orientation was geometrically
+nearest _at that exact pixel_ — correct for a single click, but for a
+drag, that comparison flips every time the pointer crosses a cell
+boundary, so a perfectly straight horizontal mouse drag produced a
+crenellated comb (alternating short vertical ticks and horizontal
+stubs), not a straight wall. Confirmed by actually drawing one and
+looking at the result, not by reasoning about it in the abstract. Fixed
+by locking the whole stroke's orientation to the DRAG'S direction
+(horizontal drag → horizontal wall, vertical → vertical) once the
+pointer clears a small movement threshold, rather than to whichever edge
+the very first touched pixel happened to be closest to — the two are
+not the same thing, and using the wrong one is what broke it. Any real
+wall-drawing tool needs this exact fix (or an equivalent), not just "hit
+the nearest edge" — that's the finding worth carrying forward, not the
+implementation detail.
+
+### Start/end: authored, in real tension with the generator-chosen entrance
+
+`start: [c,r]` / `end: [c,r]`, both null until placed. This sits in
+genuine, unresolved tension with `FloorPlan.entrance` — the compiled
+response's entrance is explicitly generator-chosen (design.md: "not
+derivable from any room's archetype"), which only makes sense for the
+linear room-chain model edit mode authors. A freeform canvas with an
+author-placed start doesn't have a generator to choose FOR the author;
+the author IS choosing it directly. If wall/shape authoring becomes
+real, `entrance` either needs a freeform-canvas-compatible sibling field,
+or the freeform case needs to feed the author's `start:` straight through
+as the compiled entrance with no generator step at all — worth deciding
+explicitly rather than discovering by accident when the two models meet.
+"End" has no analog in the compiled `FloorPlan` today at all (see this
+file's earlier "end/goal has no schema representation" finding) — a
+freeform canvas is the first place this concept needed one.
+
+### Facing: reused the existing 6-direction convention, not a rectangular compass
+
+`place:` entries grow a `facing: E|NE|NW|W|SW|SE` field, reusing
+`authorGridHelpers.ts`'s existing `HEX_FACING_LABELS` enum verbatim
+rather than inventing a rectangular canvas's more natural 4/8-way
+compass. Deliberate: the codebase already has exactly one facing
+convention (defined for the hex-true board, currently mechanically inert
+— its own doc comment says so), and a second, incompatible one for a
+rectangular canvas would immediately create a reconciliation problem the
+moment both were real. The genuine, unresolved tension this creates: 6
+directions spaced 60° apart is a hex-native division of the circle: it
+reads naturally on a hex grid and slightly oddly on a rectangular one
+(no direction points along either canvas axis — see the arrow angles in
+the evidence screenshots, computed via the SAME `cubeToWorld` math
+hex-true mode uses, not a hand-typed table, so this isn't a rendering
+artifact, it's the real shape of the convention applied somewhere it
+wasn't designed for). If freeform/rectangular authoring becomes real,
+whoever picks up facing needs to either accept hex-native angles on a
+rectangular canvas, or design ONE convention that works for both —
+reconciling two separately-invented ones later would be strictly worse.
+
+### What `FloorPlan` (or a freeform sibling message) would need to grow
+
+Not a request — evidence for whoever scopes P4+: a freeform canvas
+response can't reuse `FloorPlan.rooms`/`connectors` (there's no room
+chain), so it's a distinct message, not an extension of the existing
+one. It would need, at minimum: the canvas dimensions; a wall list in the
+edge-native shape above (ideally the SAME `Wall` type
+`EncounterService.Space` already defines, not a parallel one); an
+explicit entrance/start cell (no generator to derive it from); and
+either a real `end`/goal concept on the wire for the first time, or an
+explicit decision that "end" stays author-only bookkeeping the compiled
+response never carries. Facing needs a field on `place:`/`FloorPlanRoom`
+placements either way, hex-true or freeform — that part isn't new to
+freeform authoring, freeform authoring just made it impossible to keep
+deferring.
