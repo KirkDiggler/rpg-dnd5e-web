@@ -247,7 +247,7 @@ export function DungeonBuilderConcept() {
     number | null
   >(null);
   const [wallGashExplainerOpen, setWallGashExplainerOpen] = useState(false);
-  // v2 board tools (Kirk's 2026-08-02 target-dialect reframe, Structural/
+  // Target-dialect board tools (Kirk's 2026-08-02 reframe, Structural/
   // Markers palette categories) — also mutually exclusive with everything
   // above, folded into the same clearOtherSelections below.
   const [selectedTool, setSelectedTool] = useState<BoardTool | null>(null);
@@ -277,7 +277,7 @@ export function DungeonBuilderConcept() {
   // Save & Play result already on screen, or vice versa.
   const walkSave = useSaveDungeon();
 
-  // Kirk's reframe: the document may use v2-only constructs. This is the
+  // Kirk's reframe: the document may use target-dialect-only constructs. This is the
   // SAME strip usePutDungeonPreview already runs internally for the live
   // preview, computed here too so the YAML pane's compile-badge summary
   // and the Save & Play/"Save the compilable subset" swap can both read
@@ -409,8 +409,8 @@ export function DungeonBuilderConcept() {
   const edit = useBoardEditing(cst, doc, syncFromCst, flashToast);
 
   // "New Dungeon" — the SAME cst/DungeonDoc shape edit mode uses, seeded
-  // from an empty v2-only canvas (creation/emptyCanvasDoc.ts — rooms: [],
-  // placements live in the top-level place: field) instead of a real
+  // from an empty target-dialect-only canvas (creation/emptyCanvasDoc.ts —
+  // rooms: [], placements live in the top-level place: field) instead of a real
   // dungeon, and its own useBoardEditing instance so its palette/
   // placement selection is independent of edit mode's (same "remembered
   // per mode" precedent the collapse-state pairs above already set). See
@@ -882,7 +882,7 @@ export function DungeonBuilderConcept() {
               walkSavedKey={walkSave.savedKey}
               walkFieldErrors={walkSave.fieldErrors}
               walkErrorMessage={walkSave.errorMessage}
-              v2Dropped={v1Subset?.dropped ?? []}
+              dialectDropped={v1Subset?.dropped ?? []}
               v1Compilable={v1Subset?.compilable ?? false}
             />
           </CollapsibleSidePanel>

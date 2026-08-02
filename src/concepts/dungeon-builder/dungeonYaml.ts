@@ -60,8 +60,9 @@ function parseTargeting(raw: unknown): string | null {
 }
 
 /** Shared by both `place:` sites — room-scoped (`rooms[].place`, real
- * dungeonspec, room-LOCAL `at`) and top-level (`place:`, v2 proposed,
- * absolute `at` — see TARGET-YAML.md's "top-level placement" section).
+ * dungeonspec, room-LOCAL `at`) and top-level (`place:`, target dialect,
+ * proposed, absolute `at` — see TARGET-YAML.md's "top-level placement"
+ * section).
  * Same fields either way; only what `at` is relative to differs, and
  * that's the caller's concern, not the parser's. */
 function parsePlacementList(raw: unknown, context: string): PlacementDoc[] {
@@ -84,7 +85,7 @@ function parsePlacementList(raw: unknown, context: string): PlacementDoc[] {
   });
 }
 
-/** v2, proposed — see TARGET-YAML.md's "z-axis: mount + height" section.
+/** target dialect, proposed — see TARGET-YAML.md's "z-axis: mount + height" section.
  * `'floor'` (the default — every placement before this field existed)
  * means "unchanged, stands on the floor"; `'wall'` means this placement
  * hangs on the wall at its cell's `facing` edge, `heightMeters` above
@@ -101,19 +102,19 @@ export interface PlacementDoc {
    * see `fixtures.ts`'s `MONSTER_PLACE_CHECK` evidence), so the board
    * gates those controls by ref type. */
   isMonster: boolean;
-  /** v2, proposed — see TARGET-YAML.md's "place:/boss: facing" section.
+  /** target dialect, proposed — see TARGET-YAML.md's "place:/boss: facing" section.
    * `null` = unset. Not compiled server-side; stripped by
    * `stripToV1Subset` before any real PutDungeon call. */
   facing: number | null;
-  /** v2, proposed — see `Mount`'s doc comment. `'floor'` when the YAML
+  /** target dialect, proposed — see `Mount`'s doc comment. `'floor'` when the YAML
    * has no `mount:` key (the pre-existing, only-ever-possible state). */
   mount: Mount;
-  /** v2, proposed — meaningful only when `mount === 'wall'`, meters
+  /** target dialect, proposed — meaningful only when `mount === 'wall'`, meters
    * above the floor. `null` when unset (including every `mount:
    * 'floor'` placement — a floor prop's vertical position is derived
    * from its own model, not authored). */
   height: number | null;
-  /** v2, proposed — see TARGET-YAML.md's "Monster targeting" section. A
+  /** target dialect, proposed — see TARGET-YAML.md's "Monster targeting" section. A
    * REFERENCE to a toolkit AI strategy key, e.g. `"lowest-health"` —
    * never behavior (Boundary Rule). Only meaningful when `isMonster`;
    * `null` when unset. Not compiled server-side. */
@@ -123,9 +124,9 @@ export interface PlacementDoc {
 export interface BossDoc {
   ref: string;
   at: [number, number];
-  /** v2, proposed — see `PlacementDoc.facing`. */
+  /** target dialect, proposed — see `PlacementDoc.facing`. */
   facing: number | null;
-  /** v2, proposed — see `PlacementDoc.targeting`. A boss is always a
+  /** target dialect, proposed — see `PlacementDoc.targeting`. A boss is always a
    * monster, so this is unconditional (no `isMonster` gate needed). */
   targeting: string | null;
 }
@@ -177,7 +178,7 @@ export interface CanvasDoc {
 export type WallKind = 'solid' | 'door';
 
 /** Edge-native: `from`/`to` are orthogonally-adjacent absolute [col,row]
- * cells, the wall sits on the shared edge between them. v2, proposed —
+ * cells, the wall sits on the shared edge between them. target dialect, proposed —
  * see TARGET-YAML.md's annotated example for the full rationale (mirrors
  * the real `EncounterService.Space.walls` wire type). Not compiled
  * server-side; stripped by `stripToV1Subset`. */
@@ -187,7 +188,7 @@ export interface WallDoc {
   kind: WallKind;
 }
 
-/** v2, proposed — dungeon-wide lighting config. See TARGET-YAML.md. */
+/** target dialect, proposed — dungeon-wide lighting config. See TARGET-YAML.md. */
 export interface LightingDoc {
   ambient: number;
 }
@@ -200,7 +201,7 @@ export interface DungeonDoc {
   height: number;
   rooms: RoomDoc[];
   connectors: ConnectorDoc[];
-  // --- v2, proposed — see TARGET-YAML.md. All optional/empty in a pure
+  // --- target dialect, proposed — see TARGET-YAML.md. All optional/empty in a pure
   // v1 document; none of these reach the real PutDungeon (stripToV1Subset
   // drops every one before any live compile or Save & Play). ---
   canvas: CanvasDoc | null;
@@ -219,9 +220,9 @@ export interface DungeonDoc {
    * organizational, not existential, in the target dialect) and
    * `stripToV1Subset`'s map-down-or-drop conversion back to v1's
    * room-scoped shape. No top-level `boss:` — a boss stays room-scoped
-   * even in v2 (dungeonspec's `validateBossCardinality` needs an owning
-   * room; see TARGET-YAML.md for how the target dialect eventually frees
-   * it). */
+   * even in the target dialect (dungeonspec's `validateBossCardinality`
+   * needs an owning room; see TARGET-YAML.md for how the target dialect
+   * eventually frees it). */
   place: PlacementDoc[];
 }
 
@@ -260,9 +261,9 @@ export function parseDungeon(text: string): ParsedDungeon {
  * `doc` without a wasteful serialize+reparse round trip. */
 export function toDungeonDoc(cst: Document): DungeonDoc {
   const raw = cst.toJS() as Record<string, unknown>;
-  // `rooms: []` is a legitimate v2 draft (TARGET-YAML.md: a from-scratch
-  // canvas with nothing declared yet) — only a MISSING rooms: key at all
-  // is a real shape error. The v1-compilability check (>= dungeonspec's
+  // `rooms: []` is a legitimate target-dialect draft (TARGET-YAML.md: a
+  // from-scratch canvas with nothing declared yet) — only a MISSING
+  // rooms: key at all is a real shape error. The v1-compilability check (>= dungeonspec's
   // own minRooms=2) lives in stripToV1Subset, not here — this function's
   // job is "can this concept's own board render it," not "can the real
   // server compile it."
@@ -325,7 +326,7 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     };
   });
 
-  // --- v2, proposed — all optional, absent in a pure v1 document.
+  // --- target dialect, proposed — all optional, absent in a pure v1 document.
   // See TARGET-YAML.md; stripToV1Subset drops every one of these below
   // before anything reaches the real PutDungeon. ---
   const canvas = raw.canvas
@@ -358,7 +359,7 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     ? { ambient: (raw.lighting as Record<string, unknown>).ambient as number }
     : null;
 
-  // Top-level, absolute-[col,row] placements — v2, proposed. See
+  // Top-level, absolute-[col,row] placements — target dialect, proposed. See
   // TARGET-YAML.md's "top-level placement" section and DungeonDoc.place's
   // own doc comment.
   const place = parsePlacementList(raw.place, 'place');
@@ -430,8 +431,9 @@ function createPlacementNode(
 }
 
 /** The `place:` sequence a placement mutator should read/write —
- * room-scoped (`roomId` a real id) or top-level (`roomId === null`, v2
- * proposed — see TARGET-YAML.md's "top-level placement" section).
+ * room-scoped (`roomId` a real id) or top-level (`roomId === null`,
+ * target dialect, proposed — see TARGET-YAML.md's "top-level placement"
+ * section).
  * Creates the sequence if absent, matching every mutator's existing
  * "first placement creates the list" behavior. One shared lookup so
  * every placement mutator below only needs an `if (roomId === null)`
@@ -610,13 +612,13 @@ export function setConnectorLocked(
 }
 
 // ============================================================
-// v2, proposed — see TARGET-YAML.md. Every mutator below writes a field
+// target dialect, proposed — see TARGET-YAML.md. Every mutator below writes a field
 // `stripToV1Subset` (bottom of this file) removes before anything reaches
 // the real PutDungeon — these are the concept's own authoring surface,
 // not a claim any of this compiles today.
 // ============================================================
 
-/** Set or clear a `place:` entry's `facing:` — v2, proposed. */
+/** Set or clear a `place:` entry's `facing:` — target dialect, proposed. */
 export function setPlacementFacing(
   cst: Document,
   roomId: string | null,
@@ -630,7 +632,7 @@ export function setPlacementFacing(
   else item.set('facing', facingLabel(facing));
 }
 
-/** Set or clear a room's `boss:` entry's `facing:` — v2, proposed. */
+/** Set or clear a room's `boss:` entry's `facing:` — target dialect, proposed. */
 export function setBossFacing(
   cst: Document,
   roomId: string,
@@ -643,7 +645,7 @@ export function setBossFacing(
   else boss.set('facing', facingLabel(facing));
 }
 
-/** Set a `place:` entry's `mount:`/`height:` — v2, proposed, see
+/** Set a `place:` entry's `mount:`/`height:` — target dialect, proposed, see
  * TARGET-YAML.md's "z-axis" section. `mount: 'floor'` clears BOTH keys
  * (the pre-existing, only-ever-possible state needs neither); `mount:
  * 'wall'` writes both — `height` is only ever meaningful alongside
@@ -669,7 +671,7 @@ export function setPlacementMount(
   else item.set('height', height);
 }
 
-/** Set or clear a `place:` entry's `targeting:` — v2, proposed. Callers
+/** Set or clear a `place:` entry's `targeting:` — target dialect, proposed. Callers
  * should only invoke this for a monster ref (`isMonster`); nothing here
  * enforces that — same trust boundary `setPlacementFlags` already
  * assumes for its own props-only fields. */
@@ -686,7 +688,7 @@ export function setPlacementTargeting(
   else item.set('targeting', targeting);
 }
 
-/** Set or clear a room's `boss:` entry's `targeting:` — v2, proposed. */
+/** Set or clear a room's `boss:` entry's `targeting:` — target dialect, proposed. */
 export function setBossTargeting(
   cst: Document,
   roomId: string,
@@ -747,7 +749,7 @@ function wallIndexAt(cst: Document, col: number, row: number): number {
 }
 
 /** Wall tool: toggle a wall's PRESENCE at a cell (add as `kind: solid` /
- * remove) — v2, proposed. Adding always starts solid; use
+ * remove) — target dialect, proposed. Adding always starts solid; use
  * `toggleWallKind` to flip an existing one to a door. */
 export function toggleWall(cst: Document, col: number, row: number): void {
   const idx = wallIndexAt(cst, col, row);
@@ -869,7 +871,7 @@ function holeIndexAt(cst: Document, col: number, row: number): number {
   );
 }
 
-/** Hole tool: toggle a cell-native floor opening — v2, proposed. See
+/** Hole tool: toggle a cell-native floor opening — target dialect, proposed. See
  * TARGET-YAML.md's "Structural palette category" for render/semantics
  * (impassable void; fall-damage is a future toolkit game-rule question,
  * not something this concept decides). */
@@ -901,20 +903,20 @@ function setPointField(
   cst.set(key, node);
 }
 
-/** Author-placed party spawn — v2, proposed. See TARGET-YAML.md's "start"
+/** Author-placed party spawn — target dialect, proposed. See TARGET-YAML.md's "start"
  * section for the real, unresolved tension with the generator-chosen
  * `FloorPlan.entrance`. */
 export function setStart(cst: Document, at: [number, number] | null): void {
   setPointField(cst, 'start', at);
 }
 
-/** The goal — v2, proposed, with no analog anywhere in the compiled
+/** The goal — target dialect, proposed, with no analog anywhere in the compiled
  * `FloorPlan` today. See TARGET-YAML.md's "end" section. */
 export function setEnd(cst: Document, at: [number, number] | null): void {
   setPointField(cst, 'end', at);
 }
 
-/** Dungeon-wide lighting config — v2, proposed. `ambient: null` removes
+/** Dungeon-wide lighting config — target dialect, proposed. `ambient: null` removes
  * the whole `lighting:` block. See TARGET-YAML.md's "lighting" section. */
 export function setLightingAmbient(
   cst: Document,
@@ -935,7 +937,7 @@ export function setLightingAmbient(
 
 export interface V1SubsetResult {
   /** The stripped, v1-only YAML text — always `version: 1`, never any
-   * v2-only field. */
+   * target-dialect-only field. */
   yaml: string;
   /** Human-readable list of what got dropped ("3 walls", "1 hole",
    * "start/end", "facing (2 placements)", "lighting") — empty when the
@@ -944,16 +946,17 @@ export interface V1SubsetResult {
   dropped: string[];
   /** False when fewer than 2 rooms remain after stripping — dungeonspec's
    * own `minRooms = 2` (validate.go) makes the result genuinely
-   * unsavable, not merely unenriched. A from-scratch v2 canvas with 0-1
-   * declared rooms has NO compilable subset yet. */
+   * unsavable, not merely unenriched. A from-scratch target-dialect
+   * canvas with 0-1 declared rooms has NO compilable subset yet. */
   compilable: boolean;
 }
 
-/** Strip a v2 document down to exactly what dungeonspec v1 compiles —
- * TARGET-YAML.md's "The v1-subset strip" table, in code. Parses a FRESH
- * CST from `yamlText` (never mutates a caller's live board CST), so this
- * is safe to call on every live-preview debounce tick and every Save &
- * Play click without disturbing what the author is editing. */
+/** Strip a target-dialect document down to exactly what dungeonspec
+ * compiles today (the v1-expressible subset) — TARGET-YAML.md's "The
+ * v1-subset strip" table, in code. Parses a FRESH CST from `yamlText`
+ * (never mutates a caller's live board CST), so this is safe to call on
+ * every live-preview debounce tick and every Save & Play click without
+ * disturbing what the author is editing. */
 export function stripToV1Subset(yamlText: string): V1SubsetResult {
   const { cst, doc } = parseDungeon(yamlText);
   const dropped: string[] = [];
@@ -982,15 +985,15 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
   if (doc.lighting) dropped.push('lighting');
   cst.delete('lighting');
 
-  // Top-level place: (v2, proposed — TARGET-YAML.md's "top-level
+  // Top-level place: (target dialect, proposed — TARGET-YAML.md's "top-level
   // placement" section) has no v1 analog at all; dungeonspec only knows
   // room-scoped place:. A top-level entry whose absolute column falls
   // inside a declared room's own column range MAPS DOWN into that
   // room's place: list (absolute -> room-local `at`) rather than being
   // lost — v1's room-scoped place: is a real subset of what the entry
   // meant, not a different claim. One outside every room's range has no
-  // v1 home and is dropped, counted honestly like every other v2 field
-  // here. Room bounds use the SAME startColumn accumulation rule
+  // v1 home and is dropped, counted honestly like every other
+  // target-dialect field here. Room bounds use the SAME startColumn accumulation rule
   // floorPlanCompile.ts uses server-side (`next.startColumn =
   // prev.startColumn + prev.width + 1`) — pure client math, only ever
   // used here to decide "does this column fall in this room," never to
@@ -1029,11 +1032,12 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
     }
   }
   cst.delete('place');
-  // `dropped` drives BOTH the "Uses: ..." compile badge (what v2 is
-  // currently present) and the post-save "Dropped: ..." honesty note
-  // (YamlPane.tsx) — the same array, doing double duty for every other
-  // v2 field, because for every other field "in use" and "genuinely
-  // lost" are the same set. Top-level placement is the first case where
+  // `dropped` drives BOTH the "Uses: ..." compile badge (what
+  // target-dialect content is currently present) and the post-save
+  // "Dropped: ..." honesty note (YamlPane.tsx) — the same array, doing
+  // double duty for every other target-dialect field, because for every
+  // other field "in use" and "genuinely lost" are the same set. Top-level
+  // placement is the first case where
   // they diverge: a mapped one survives (relocated, not erased), an
   // out-of-room one doesn't. Both still need to show up in "Uses:" (the
   // construct IS present), so both get an entry — worded to stay honest

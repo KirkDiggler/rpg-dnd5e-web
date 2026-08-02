@@ -394,6 +394,36 @@ piece of render work, not attempted this round (doc-only construct; the
 placement inspector's optional height field, when cheap to add for a
 known wall-mountable ref, is the only UI this round ships).
 
+**Open question, not decided here: is 6-direction hex facing too coarse
+for a wall-mounted prop?** The tension named just above ("6 directions
+spaced 60° apart... reads slightly oddly on the flattened board") gets
+sharper once `facing` is driving a mounted prop's actual on-wall
+rotation rather than a floor-standing model's general orientation — a
+banner or sconce genuinely needs to sit FLUSH and SQUARE against the
+wall face it's mounted on, and the wall itself sits at whatever angle
+the edge geometry gives it, not necessarily one of the 6 hex-facing
+directions. Two ways this could go, both live, neither chosen:
+
+- **Keep `facing` as the only rotation input.** Simpler dialect, one
+  facing convention everywhere (place/boss/mount alike, per this
+  section's own reasoning above). Requires the renderer to derive the
+  correct flush-against-the-wall angle FROM the mounting edge's own
+  geometry rather than trusting `facing` as a literal rotation — `facing`
+  becomes "which edge," not "what angle," for a mounted prop specifically.
+- **Add a finer rotation value to `mount:` entries** (degrees, or a
+  fraction-of-circle field) alongside `facing`, so the author can dial in
+  an exact angle the 6-direction convention can't express. Breaks the
+  "one facing convention everywhere" property this section leads with,
+  and raises the same question `place:`/`boss:` facing already begs:
+  would floor-standing props eventually want the same finer control, or
+  is coarse-6-direction genuinely fine there and only wrong for
+  wall-flush mounting specifically?
+
+Recorded per Kirk's 2026-08-02 ask, alongside the wall-mount rotation
+bug that surfaced it — deliberately NOT resolved here; the #176–#180
+slices should pick a side with the actual renderer requirements in hand,
+not a concept spike guessing ahead of them.
+
 ## Monster targeting
 
 `place:`/`boss:` entries for a monster ref may carry an optional

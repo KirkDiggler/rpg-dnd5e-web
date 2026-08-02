@@ -324,8 +324,9 @@ export function CreationBoard({
     }
   }
 
-  // Same dark/dashed treatment Board.tsx (edit mode) uses for a v2 hole —
-  // one visual language for "no floor here" across both boards.
+  // Same dark/dashed treatment Board.tsx (edit mode) uses for a target-
+  // dialect hole — one visual language for "no floor here" across both
+  // boards.
   const holeEls: ReactElement[] = doc.holes.map(([col, row]) => {
     const center = creationCellCenter(col, row);
     const half = { x: FLAT_COL_SPACING * 0.42, y: FLAT_ROW_SPACING * 0.42 };

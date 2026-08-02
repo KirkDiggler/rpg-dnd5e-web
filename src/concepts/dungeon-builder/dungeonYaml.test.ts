@@ -263,8 +263,8 @@ describe('board-driven edits', () => {
   });
 });
 
-describe('v2 target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
-  it('parses a pure v1 document with every v2 field absent/null/empty', () => {
+describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
+  it('parses a pure v1 document with every target-dialect field absent/null/empty', () => {
     const { doc } = parseDungeon(SHOWCASE_YAML);
     expect(doc.canvas).toBeNull();
     expect(doc.walls).toEqual([]);
@@ -404,7 +404,7 @@ describe('v2 target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
       expect(doc.rooms).toHaveLength(3);
     });
 
-    it('drops every v2 construct and reports what it dropped', () => {
+    it('drops every target-dialect construct and reports what it dropped', () => {
       const { cst, doc } = parseDungeon(SHOWCASE_YAML);
       toggleWall(cst, 7, 0);
       toggleWall(cst, 7, 4);

@@ -50,13 +50,14 @@ interface BoardProps {
   /** Door cell clicked — Kirk's 2026-08-02 ask. Index into
    * `floorPlan.connectors`/`doc.connectors` (same order, both derived
    * from the same YAML `connectors:` list). Always wins over any active
-   * `selectedTool` — the REAL connector door outranks a v2 tool mode. */
+   * `selectedTool` — the REAL connector door outranks a target-dialect
+   * tool mode. */
   onSelectConnector: (index: number) => void;
   /** A non-door wall-band cell clicked with NO Structural tool active —
    * the honest "this is a wall, select a tool to author it" explainer.
    * With a tool active, the tool-specific handlers below fire instead. */
   onWallGashClick: () => void;
-  /** v2 authoring — Kirk's 2026-08-02 target-dialect reframe. See
+  /** Target-dialect authoring — Kirk's 2026-08-02 reframe. See
    * TARGET-YAML.md's "Structural palette category" section. `null` means
    * no tool armed (normal placement/selection click behavior applies). */
   selectedTool: BoardTool | null;
@@ -141,10 +142,10 @@ export function Board({
                 : `db-cell-empty${occupied ? '' : ' db-placeable'}`
             }
             onClick={() => {
-              // v2 tools work on any room cell, door-row included — none
-              // of them are gated by the v1 legality rule that reserves
-              // that row (they're independent, not-yet-compiled
-              // concepts). See TARGET-YAML.md.
+              // Target-dialect tools work on any room cell, door-row
+              // included — none of them are gated by the v1 legality rule
+              // that reserves that row (they're independent, not-yet-
+              // compiled concepts). See TARGET-YAML.md.
               if (selectedTool === 'hole') {
                 onToggleHole(col, row);
                 return;
@@ -221,18 +222,19 @@ export function Board({
     }
   }
 
-  // --- v2 overlay: authored walls/holes/start/end, on top of the base
-  // cell grid above. See TARGET-YAML.md's "Structural palette category".
-  // Rendered as a SEPARATE pass (not folded into the loop above) since a
-  // wall/hole/start/end can, in principle, sit on a cell the compiled
-  // FloorPlan doesn't even have a room/connector for yet (a from-scratch
-  // v2 draft) — this pass computes its own geometry independent of what
-  // the base loop already drew there. Deliberately muted/dashed, never
-  // the confident solid style compiled geometry gets — these are
-  // PROPOSED, not compiled (CONTRACT.md/TARGET-YAML.md).
+  // --- target-dialect overlay: authored walls/holes/start/end, on top of
+  // the base cell grid above. See TARGET-YAML.md's "Structural palette
+  // category". Rendered as a SEPARATE pass (not folded into the loop
+  // above) since a wall/hole/start/end can, in principle, sit on a cell
+  // the compiled FloorPlan doesn't even have a room/connector for yet (a
+  // from-scratch target-dialect draft) — this pass computes its own
+  // geometry independent of what the base loop already drew there.
+  // Deliberately muted/dashed, never the confident solid style compiled
+  // geometry gets — these are PROPOSED, not compiled
+  // (CONTRACT.md/TARGET-YAML.md).
   //
-  // Each v2 cell also feeds `trackExtent` (same corners-based call the
-  // base grid loop makes) so the viewBox GROWS to include anything
+  // Each target-dialect cell also feeds `trackExtent` (same corners-based
+  // call the base grid loop makes) so the viewBox GROWS to include anything
   // authored beyond the compiled FloorPlan's own bounding box, rather
   // than silently clipping it. Grow, not clamp, was the deliberate call:
   // this whole round's theme is the dialect running ahead of what's
@@ -316,7 +318,7 @@ export function Board({
     trackCellExtent(doc.start[0], doc.start[1]);
     const center = cellCenter(layoutMode, doc.start[0], doc.start[1]);
     structuralOverlay.push(
-      <g key="v2-start" pointerEvents="none">
+      <g key="dialect-start" pointerEvents="none">
         <circle
           cx={center.x}
           cy={center.y}
@@ -344,7 +346,7 @@ export function Board({
     trackCellExtent(doc.end[0], doc.end[1]);
     const center = cellCenter(layoutMode, doc.end[0], doc.end[1]);
     structuralOverlay.push(
-      <g key="v2-end" pointerEvents="none">
+      <g key="dialect-end" pointerEvents="none">
         <circle
           cx={center.x}
           cy={center.y}

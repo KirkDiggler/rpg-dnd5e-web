@@ -5,14 +5,14 @@
  * an original concept constraint). Also the entrance-blocked warning, the single most
  * persuasive interaction in the standalone concept (see CONTRACT.md).
  *
- * Two v2, proposed controls (Kirk's 2026-08-02 dialect adds — TARGET-
- * YAML.md's "z-axis" and "Monster targeting" sections), both badged:
+ * Two target-dialect, proposed controls (Kirk's 2026-08-02 dialect adds —
+ * TARGET-YAML.md's "z-axis" and "Monster targeting" sections), both badged:
  * a targeting dropdown for any monster placement (boss or general), and
  * a wall-mount height field for the one palette ref this round judged
  * cheap enough to wire up (`WALL_MOUNTABLE_REFS` — `dnd5e:props:
  * wall-banner`, the only ref in this palette whose own name says
  * "wall"). Neither reaches `PutDungeon` — `stripToV1Subset` drops both
- * before any real save, same as every other v2 field.
+ * before any real save, same as every other target-dialect field.
  */
 import { HEX_FACING_LABELS } from '@/components/hex-grid/authorGridHelpers';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
@@ -34,10 +34,10 @@ const TARGETING_OPTIONS = [
   { value: 'closest', label: 'closest' },
 ];
 
-function V2Badge() {
+function TargetDialectBadge() {
   return (
     <span
-      title="v2, proposed — not yet compiled server-side (TARGET-YAML.md)"
+      title="target dialect, proposed — not yet compiled server-side (TARGET-YAML.md)"
       style={{
         fontSize: 9,
         color: '#c9aeff',
@@ -48,7 +48,7 @@ function V2Badge() {
         marginLeft: 6,
       }}
     >
-      v2
+      dialect
     </span>
   );
 }
@@ -113,8 +113,8 @@ export function Inspector({
     ? false
     : (placement?.blocksMovement ?? false);
   const blocksLos = selected.boss ? false : (placement?.blocksLos ?? false);
-  // v2 — mount/height don't exist on a boss entry (bosses aren't wall
-  // furniture); targeting/facing exist on both.
+  // target dialect — mount/height don't exist on a boss entry (bosses
+  // aren't wall furniture); targeting/facing exist on both.
   const mount = selected.boss ? 'floor' : (placement?.mount ?? 'floor');
   const height = selected.boss ? null : (placement?.height ?? null);
   const targeting = selected.boss
@@ -185,7 +185,7 @@ export function Inspector({
           ↻
         </button>
         <span>facing</span>
-        <V2Badge />
+        <TargetDialectBadge />
       </div>
 
       <div
@@ -250,7 +250,7 @@ export function Inspector({
             style={{ display: 'flex', alignItems: 'center', fontSize: 11 }}
           >
             targeting
-            <V2Badge />
+            <TargetDialectBadge />
           </label>
           <select
             id="db-targeting"
@@ -303,7 +303,7 @@ export function Inspector({
               style={{ display: 'flex', alignItems: 'center' }}
             >
               wall-mounted
-              <V2Badge />
+              <TargetDialectBadge />
             </label>
           </div>
           {mount === 'wall' && (

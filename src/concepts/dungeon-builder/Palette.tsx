@@ -11,8 +11,8 @@
  * Structural (Wall/Door/Hole) and Markers' Start/End are TOOLS, not
  * draggable placement items — selecting one arms a `BoardTool` (see
  * `types.ts`) that governs what a board click does, distinct from
- * `PaletteSelection`'s "place this ref" model. All five are v2, proposed
- * — not yet compiled server-side, see TARGET-YAML.md. Markers' Door entry
+ * `PaletteSelection`'s "place this ref" model. All five are target-dialect,
+ * proposed — not yet compiled server-side, see TARGET-YAML.md. Markers' Door entry
  * moved OUT to Structural (Kirk: "they were Markers-adjacent before") —
  * the real, v1 connector door (position derived, `locked:` the only
  * authorable field) is edited via `ConnectorInspector`, reached by
@@ -72,8 +72,8 @@ function Row({
   sub: string;
   isSelected: boolean;
   onClick: () => void;
-  /** v2-only tool/construct — shows the same "not yet compiled
-   * server-side" badge language TARGET-YAML.md standardizes on. */
+  /** target-dialect-only tool/construct — shows the same "not yet
+   * compiled server-side" badge language TARGET-YAML.md standardizes on. */
   notCompiled?: boolean;
 }) {
   return (
@@ -127,7 +127,7 @@ function Row({
       </span>
       {notCompiled && (
         <span
-          title="v2, proposed — not yet compiled server-side (TARGET-YAML.md)"
+          title="target dialect, proposed — not yet compiled server-side (TARGET-YAML.md)"
           style={{
             fontSize: 9,
             color: '#c9aeff',
@@ -138,7 +138,7 @@ function Row({
             whiteSpace: 'nowrap',
           }}
         >
-          v2
+          dialect
         </span>
       )}
     </div>
@@ -390,9 +390,9 @@ export function Palette({
               lineHeight: 1.4,
             }}
           >
-            Structural is v2, proposed — TARGET-YAML.md. The real connector door
-            (locked/DC) lives on the board's own door cell, not here — this
-            "Door" is a door on a drawn wall, a different thing.
+            Structural is target dialect, proposed — TARGET-YAML.md. The real
+            connector door (locked/DC) lives on the board's own door cell, not
+            here — this "Door" is a door on a drawn wall, a different thing.
           </p>
         </CategorySection>
       )}

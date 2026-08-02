@@ -52,9 +52,9 @@ export function WallGashExplainer({ onClose }: WallGashExplainerProps) {
         You CAN author one right here, though: open the{' '}
         <strong style={{ color: '#c9aeff' }}>Structural</strong> category in the
         palette and select <strong>Wall</strong> (or <strong>Door</strong>, to
-        flip an existing one), then click this cell again. It's v2, proposed —
-        badged "not yet compiled server-side" until dungeonspec grows real wall
-        geometry. See TARGET-YAML.md.
+        flip an existing one), then click this cell again. It's target dialect,
+        proposed — badged "not yet compiled server-side" until dungeonspec grows
+        real wall geometry. See TARGET-YAML.md.
       </p>
       <button
         onClick={onClose}

@@ -16,10 +16,11 @@
  * boss standing there. The UI says so rather than implying a true
  * no-encounter walkthrough that doesn't exist yet.
  *
- * Kirk's 2026-08-02 reframe adds `v2Dropped`/`v1Compilable`: the document
- * may now use v2-only constructs (walls/holes/start/end/lighting/facing —
- * TARGET-YAML.md). The compile-badge strip below the server badge names
- * exactly which ones are present and not yet compiled server-side, and
+ * Kirk's 2026-08-02 reframe adds `dialectDropped`/`v1Compilable`: the document
+ * may now use target-dialect-only constructs (walls/holes/start/end/
+ * lighting/facing — TARGET-YAML.md). The compile-badge strip below the
+ * server badge names exactly which ones are present and not yet compiled
+ * server-side, and
  * Save & Play becomes "Save the compilable subset" the moment any are —
  * both computed once in `DungeonBuilderConcept.tsx` (`stripToV1Subset`)
  * and passed down, so this component never re-derives the strip itself.
@@ -50,11 +51,11 @@ interface YamlPaneProps {
   /** What `stripToV1Subset` would drop from the CURRENT document — empty
    * when it's already pure v1. Drives both the compile-badge summary and
    * the Save & Play button's label/behavior. */
-  v2Dropped: string[];
+  dialectDropped: string[];
   /** False when fewer than 2 rooms remain after stripping — there is
    * genuinely nothing compilable to save yet (dungeonspec's own
-   * minRooms=2), distinct from "some v2 fields would be dropped but the
-   * rest still saves fine". */
+   * minRooms=2), distinct from "some target-dialect fields would be
+   * dropped but the rest still saves fine". */
   v1Compilable: boolean;
 }
 
@@ -239,10 +240,10 @@ export function YamlPane({
   walkSavedKey,
   walkFieldErrors,
   walkErrorMessage,
-  v2Dropped,
+  dialectDropped,
   v1Compilable,
 }: YamlPaneProps) {
-  const hasV2 = v2Dropped.length > 0;
+  const hasDialectFields = dialectDropped.length > 0;
   const canSave =
     serverState === 'live' && saveState !== 'saving' && v1Compilable;
   const canWalk = serverState === 'live' && walkState !== 'saving';
@@ -291,7 +292,7 @@ export function YamlPane({
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <ServerBadge serverState={serverState} onRetryProbe={onRetryProbe} />
         </div>
-        <CompileBadgeStrip dropped={v2Dropped} />
+        <CompileBadgeStrip dropped={dialectDropped} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
             onClick={() => onSaveAndPlay()}
@@ -301,8 +302,8 @@ export function YamlPane({
                 ? 'Server unreachable or authoring disabled — nothing to save to.'
                 : !v1Compilable
                   ? 'Nothing compilable yet — declare at least 2 rooms (dungeonspec.Validate requires it).'
-                  : hasV2
-                    ? `Saves the v1-expressible SUBSET (validate_only: false). Dropped: ${v2Dropped.join(', ')}.`
+                  : hasDialectFields
+                    ? `Saves the v1-expressible SUBSET (validate_only: false). Dropped: ${dialectDropped.join(', ')}.`
                     : 'PutDungeon(validate_only: false) — persists this dungeon for real.'
             }
             style={{
@@ -318,13 +319,13 @@ export function YamlPane({
           >
             {saveState === 'saving'
               ? 'Saving…'
-              : hasV2
+              : hasDialectFields
                 ? 'Save the compilable subset'
                 : 'Save & Play'}
           </button>
           <span style={{ fontSize: 11, color: '#8a7a5a' }}>
-            {hasV2
-              ? 'saves the v1 subset — v2 fields dropped, see badge above'
+            {hasDialectFields
+              ? 'saves the v1 subset — target-dialect fields dropped, see badge above'
               : 'persists for real — plays in the lobby dungeon picker'}
           </span>
         </div>
@@ -431,8 +432,8 @@ export function YamlPane({
         saveFieldErrors={saveFieldErrors}
         saveErrorMessage={saveErrorMessage}
         honestyNote={
-          hasV2
-            ? `Saved the compilable subset — dropped: ${v2Dropped.join(', ')} (see TARGET-YAML.md).`
+          hasDialectFields
+            ? `Saved the compilable subset — dropped: ${dialectDropped.join(', ')} (see TARGET-YAML.md).`
             : undefined
         }
       />

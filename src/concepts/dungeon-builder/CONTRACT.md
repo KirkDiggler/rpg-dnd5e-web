@@ -249,6 +249,23 @@ multi-room chain).
    everything else checked) has zero `obstacles:` entries, so
    `RolledContentPanel`'s non-empty path is genuinely untested against
    real content.
+5. **The real editor needs 3D-mode editing for mounted props.** Kirk,
+   2026-08-02, after seeing the 3D preview's wall-mount rotation land
+   crooked: "when we implement for real we will want to be able to edit
+   in 3d mode to get the rotation right." Rotation/alignment correctness
+   for a wall-mounted prop is only judgeable by looking at it mounted, in
+   3D — the 2D board's own top-down view can't show whether a banner sits
+   flush against its wall or floats at a wrong angle, so a 2D-only
+   Inspector (today's shape) structurally can't be the last word on this
+   field. This is a **real, scoped requirement for the eventual real
+   editor**, not this concept's own spike scope — recorded here so the
+   #176–#180 implementation slices inherit it rather than rediscovering
+   it the same way this round did. Not started; this spike's 3D preview
+   stays view-only (see its own "view only (spike)" banner) — the
+   requirement is to make a FUTURE real editor's 3D view accept edits,
+   which is a materially larger surface (drag-to-rotate/orbit-relative
+   gizmo, a write-back path from 3D interaction into the same document
+   the 2D board mutates) than anything this concept has built so far.
 
 ## Proposed schema from the creation flow (Kirk's day-one pitch, 2026-08-01)
 
@@ -862,8 +879,8 @@ future you to understand." The full spec this section implements against
 is **`TARGET-YAML.md`** (new file, this repo) — read that first; this
 section is the implementation record, not a restatement.
 
-**The core move**: `DungeonDoc` (`dungeonYaml.ts`) grew v2 fields
-directly — `canvas`, `walls`, `holes`, `start`, `end`, `lighting`, and a
+**The core move**: `DungeonDoc` (`dungeonYaml.ts`) grew target-dialect
+fields directly — `canvas`, `walls`, `holes`, `start`, `end`, `lighting`, and a
 `facing` key on every `place:`/`boss:` entry — instead of a second,
 incompatible type living only in the creation flow. One document, one
 YAML pane, some of its fields not yet compiled server-side. There is no
@@ -889,21 +906,23 @@ server-side, leave one gameplay knob author-facing — the same shape
 
 ### What shipped, in order
 
-1. **`TARGET-YAML.md`** — the full annotated dialect: every v2 field,
-   the `version: 2` marker's real meaning (concept-only signal; the
-   server is NEVER sent anything but `version: 1` and the stripped
-   subset), the v1-subset strip table, the compile-badge approach, and
-   the Structural category's render/semantics for holes.
-2. **`dungeonYaml.ts` v2 layer** — parsing (tolerant: every v2 field
-   absent/null/empty round-trips a pure v1 document unchanged, confirmed
-   by test), mutators (`toggleWall`/`toggleWallKind`/`toggleHole`/
-   `setStart`/`setEnd`/`setLightingAmbient`/`setPlacementFacing`/
-   `setBossFacing`), and `stripToV1Subset` (strips every v2 field, forces
-   `version: 1`, reports what got dropped + whether ≥2 rooms remain).
-   Relaxed the room-count guard: `rooms: []` is now a legitimate v2 draft
-   (only a genuinely MISSING `rooms:` key is a shape error) — a
-   from-scratch canvas has to be able to exist before any room is
-   declared.
+1. **`TARGET-YAML.md`** — the full annotated dialect: every target-dialect
+   field, the legacy `version: 2` marker's real meaning (a concept-only UI
+   signal, later retired — Kirk's settled model keeps additive
+   capabilities on `version: 1`; the server is NEVER sent anything but
+   `version: 1` and the stripped subset), the v1-subset strip table, the
+   compile-badge approach, and the Structural category's render/semantics
+   for holes.
+2. **`dungeonYaml.ts` target-dialect layer** — parsing (tolerant: every
+   target-dialect field absent/null/empty round-trips a pure v1 document
+   unchanged, confirmed by test), mutators (`toggleWall`/`toggleWallKind`/
+   `toggleHole`/`setStart`/`setEnd`/`setLightingAmbient`/
+   `setPlacementFacing`/`setBossFacing`), and `stripToV1Subset` (strips
+   every target-dialect field, forces `version: 1`, reports what got
+   dropped + whether ≥2 rooms remain). Relaxed the room-count guard:
+   `rooms: []` is now a legitimate target-dialect draft (only a genuinely
+   MISSING `rooms:` key is a shape error) — a from-scratch canvas has to
+   be able to exist before any room is declared.
 
    **Real bug the new tests caught, not inspection**: `wallIndexAt`/
    `holeIndexAt` compared `YAMLSeq.items[n]` (an unresolved `Scalar`
@@ -915,14 +934,17 @@ server-side, leave one gameplay knob author-facing — the same shape
    toggle always "worked" by construction — it's the SECOND lookup, on
    an already-round-tripped node, that silently failed).
 
-3. **Live preview now compiles the v1 subset, not raw v2 text**
-   (`usePutDungeonPreview.ts`) — sending a v2-bearing document verbatim
-   to `PutDungeon` risked an unhelpful decode-level failure instead of a
+3. **Live preview now compiles the v1 subset, not raw target-dialect text**
+   (`usePutDungeonPreview.ts`) — sending a target-dialect-bearing document
+   verbatim to `PutDungeon` risked an unhelpful decode-level failure instead of a
    real `field_errors` response. A not-yet-shape-parseable mid-edit
    document skips that tick silently rather than misfiling a parse
    failure as a request/field error.
 4. **Structural palette category** (Wall/Door/Hole) + Start/End tools in
-   Markers, all badged `v2`. Selecting one arms a `BoardTool` (`types.ts`)
+   Markers, all badged "not yet compiled server-side" (originally `v2`,
+   renamed `dialect` in the 2026-08-02 terminology sweep — see this
+   file's own section on that sweep, below). Selecting one arms a
+   `BoardTool` (`types.ts`)
    `Board.tsx`'s click handlers check before falling into ordinary
    placement logic — the real connector door always wins over any active
    tool on its own cell. `WallGashExplainer` (the no-tool-selected
@@ -930,8 +952,8 @@ server-side, leave one gameplay knob author-facing — the same shape
    correction the same day — it now points at the Structural category in
    THIS view, since walls are authorable right here now.
 5. **Compile-badge summary + Save & Play → "Save the compilable subset"**
-   (`YamlPane.tsx`) — a `CompileBadgeStrip` names exactly which v2
-   constructs are present ("Uses: 2 walls, 1 hole — not yet compiled
+   (`YamlPane.tsx`) — a `CompileBadgeStrip` names exactly which
+   target-dialect constructs are present ("Uses: 2 walls, 1 hole — not yet compiled
    server-side"); Save & Play becomes "Save the compilable subset" the
    moment any are, sends the STRIPPED yaml either way, and disables
    entirely when stripping would leave fewer than 2 rooms (genuinely
@@ -947,7 +969,7 @@ server-side, leave one gameplay knob author-facing — the same shape
 **Verified live, every piece, not just unit-tested**: authored a wall via
 the Structural category and watched it round-trip into the YAML pane and
 render on the board; toggled a hole and a start marker the same way;
-watched the compile badge appear the moment a v2 construct existed and
+watched the compile badge appear the moment a target-dialect construct existed and
 disappear when none did; clicked "Save the compilable subset" and
 confirmed BOTH the success panel's saved key AND its "dropped: 1 wall"
 honesty note; marked a hole, switched to the 3D pane, and confirmed the
@@ -964,7 +986,7 @@ floor mesh has a real gap there, not just a dark tile.
   separate code, not one board. Kirk's own framing ("New Dungeon remains
   the blank-canvas creation entry, not the only home of the target
   dialect") is satisfied for what it says — edit mode is no longer the
-  ONLY place v2 constructs live — but a full merge of the two component
+  ONLY place target-dialect constructs live — but a full merge of the two component
   trees onto one `DungeonDoc`/CST is real, separate follow-up work, sized
   similarly to everything in this section combined, not something a
   single round could respons­ibly fold in alongside it.
@@ -988,7 +1010,7 @@ floor mesh has a real gap there, not just a dark tile.
 
 `targeting`, and the linear-chain finding written into the dialect
 
-Two more v2 constructs, requested alongside the reframe above: a height
+Two more target-dialect constructs, requested alongside the reframe above: a height
 component for wall-mounted props (the dialect's first departure from the
 floor plane), and authorable monster AI targeting as a REFERENCE key
 (Boundary Rule — the builder sets a string, only the toolkit's monster
@@ -1016,9 +1038,10 @@ transitional shim.
    framing verbatim — "what we built was just to start... we cannot be
    held down by our early ideas" — as the operating assumption for the
    whole file, not a note about one feature.
-2. **`dungeonYaml.ts` v2 layer** — `Mount` type, `PlacementDoc`/`BossDoc`
-   gain `mount`/`height`/`targeting`; parse helpers tolerant of
-   absent/wrong-typed input (matches the existing v2-field convention);
+2. **`dungeonYaml.ts` target-dialect layer** — `Mount` type,
+   `PlacementDoc`/`BossDoc` gain `mount`/`height`/`targeting`; parse
+   helpers tolerant of absent/wrong-typed input (matches the existing
+   target-dialect-field convention);
    mutators `setPlacementMount` (sets mount+height together, clears both
    together — never a `height:` orphaned without `mount: wall`),
    `setPlacementTargeting`, `setBossTargeting`; `stripToV1Subset` drops
@@ -1027,7 +1050,9 @@ transitional shim.
    passing, including the round-trip and strip cases for all three new
    fields.
 3. **Inspector.tsx** — targeting `<select>` (shown for monster
-   placements and boss, badged `v2`) and a wall-mount checkbox + height
+   placements and boss, badged "not yet compiled server-side" — see the
+   terminology-sweep section below for the `v2` → `dialect` badge rename)
+   and a wall-mount checkbox + height
    `<input type="number">` (shown only for `WALL_MOUNTABLE_REFS` —
    deliberately just `dnd5e:props:wall-banner` this round, not every
    prop) wired into `DungeonBuilderConcept.tsx`'s `handleSetMount`/
@@ -1119,7 +1144,7 @@ Place Door and Set Start, matching the shared Palette's own Structural
 ordering), click handling in `CreationBoard.tsx` (cell-native, via the
 already-existing `nearestCreationCell` — the same primitive Start/End
 already use), a matching dark-dashed-square render (visually the same
-language `Board.tsx` uses for a v2 hole, adapted from hex corners to a
+language `Board.tsx` uses for a target-dialect hole, adapted from hex corners to a
 plain rect since creation mode's canvas is rectangular), and a
 `holes:` block in `proposedYaml.ts`'s serialization. Also passed the
 real `state.holes.size` into the shared `Palette`'s `holeCount` prop
@@ -1153,8 +1178,9 @@ YAML pane against showcase.yaml's 3-room chain (columns 0–30) — the
 compile badge picked it up (`Uses: 1 hole`), proving it parsed, but nothing
 new was reachable in the visible pane, because `Board.tsx`'s SVG
 `viewBox` was computed **only** from the compiled grid loop's own
-`trackExtent` calls — the separate v2-overlay pass (walls/holes/start/
-end) rendered its shapes but never fed the same bounding-box tracker.
+`trackExtent` calls — the separate target-dialect-overlay pass
+(walls/holes/start/end) rendered its shapes but never fed the same
+bounding-box tracker.
 
 **Decision: grow, not clamp.** This whole round's throughline — TARGET-
 YAML.md's preamble, the compile-badge mechanism, "we cannot be held down
@@ -1214,9 +1240,10 @@ schema gap is smaller than it looks. `DungeonDoc` already carries
 `[col,row]` `from`/`to` — the _exact_ shape `creationTypes.ts`'s own
 `EdgeKey`/`WallKind` model was independently designed to mirror),
 `holes: [number,number][]`, `start`/`end: [number,number] | null` — all
-top-level, all v2, all already exactly what a freeform canvas needs. And
-`rooms: []` is already a legitimate empty v2 draft (an earlier round's
-relaxation, "only a genuinely MISSING `rooms:` key is a shape error").
+top-level, all target-dialect, all already exactly what a freeform canvas
+needs. And `rooms: []` is already a legitimate empty target-dialect draft
+(an earlier round's relaxation, "only a genuinely MISSING `rooms:` key is
+a shape error").
 So `canvas`+`walls`+`holes`+`start`+`end` need **no new schema work** to
 back creation mode's canvas, its wall-drawing, or its start/end/hole
 tools — `useCreationState`'s `toggleWall`/`toggleHole`/`setStart`/
@@ -1236,7 +1263,7 @@ prop on the canvas" has nowhere to attach in the current schema shape.
 Two honest options, neither built yet:
 
 1. **A single synthetic room** (e.g. `id: "canvas"`, archetype some
-   placeholder) that always exists in a from-scratch v2 draft and owns
+   placeholder) that always exists in a from-scratch target-dialect draft and owns
    every `place:`/`boss:` entry until real rooms get carved out by walls
    — reuses 100% of the existing placement mutators/Inspector/YAML
    round-trip untouched, at the cost of a slightly fictional room in the
@@ -1256,7 +1283,7 @@ separate from `Board.tsx` — they render genuinely different geometries
 one component to branch between both would likely be worse than two
 focused renderers sharing one data model. So "unify" means: (a) replace
 `useCreationState` with the shared `cst`/`doc`, initialized from an
-empty v2-only document; (b) `CreationBoard.tsx` reads `doc.canvas`/
+empty target-dialect-only document; (b) `CreationBoard.tsx` reads `doc.canvas`/
 `doc.walls`/`doc.holes`/`doc.start`/`doc.end`/the synthetic room's
 `place`/`boss` instead of `CreationState`'s shape (mechanical but
 real — every read site in a 413-line file); (c) delete
@@ -1298,7 +1325,11 @@ has no rooms yet) and tentatively recommended the cheaper one. Built as
 recommended:
 
 - **`creation/emptyCanvasDoc.ts`** (new) — `emptyCanvasYaml(width, height)`
-  builds the from-scratch v2 document: `version: 2`, `canvas: {width,
+  builds the from-scratch target-dialect document: `version: 2` at the
+  time (this literal marker was retired in the 2026-08-02 terminology
+  sweep — the same file now emits `version: 1`, per Kirk's settled model
+  that additive capabilities stay on `version: 1`; see this file's own
+  terminology-sweep section below), `canvas: {width,
 height}`, and a single synthetic `rooms:` entry (`id: "canvas",
 archetype: "canvas"`) that owns every `place:`/`boss:` entry as the
   bridge, exactly as scoped. `CANVAS_ROOM_ID` and `DEFAULT_CANVAS` are
@@ -1592,7 +1623,7 @@ run against the new routing).
   creation mode's re-pointing, `stripToV1Subset`, and the docs — it did
   not ask for a new Board.tsx render pass, and adding one is a real,
   separate chunk of work (an overlay pass matching the existing wall/
-  hole/start/end v2-overlay visual language, absolute coordinates with
+  hole/start/end target-dialect-overlay visual language, absolute coordinates with
   no room offset, plus wiring `onPlace`/`onSelect`/`onMove` for a
   roomId-less marker). `isCellOccupied` already accounts for `doc.place`
   defensively (see above), so nothing is UNSAFE about a hand-typed
@@ -1643,10 +1674,10 @@ an approximation); the wall's length axis is perpendicular to the
 cell-center-to-cell-center line. Doors render shorter
 (`WALL_DOOR_HEIGHT_RATIO = 0.55`) and orange (`#ffb347`); solid walls
 render full `WALL_HEIGHT` and cream (`#e8e2d8`) — the same convention
-the 2D board's v2-overlay already used, now shared across every view.
+the 2D board's target-dialect overlay already used, now shared across every view.
 
 Wall-mounted props (`mount: 'wall'`) now render at `Y = height` (the
-authored v2 field, meters) instead of the floor plane, with `facing`
+authored target-dialect field, meters) instead of the floor plane, with `facing`
 driving `rotationY` via the same `facingToRotationY`/`cubeToWorld`
 convention used throughout the codebase.
 
@@ -1688,7 +1719,7 @@ the 2D board rendered a solid-black void hex at that cell with the
 existing dashed border, and confirmed `buildFloorTiles` genuinely omits
 that cell's key from the 3D floor-tile map (code-level, since the
 render is small at any single default camera angle to eyeball
-conclusively in a screenshot). Both v2-proposed paths remain intact.
+conclusively in a screenshot). Both target-dialect-proposed paths remain intact.
 Per Kirk's 2026-08-01 authoring-model-settlement commits
 (rpg-project#175), holes stay documented as a deferred exploration
 artifact, not a committed early-dialect construct — this was a

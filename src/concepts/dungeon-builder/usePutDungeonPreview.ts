@@ -27,8 +27,8 @@
  * notes about this exact snippet).
  *
  * Kirk's reframe (TARGET-YAML.md): the YAML pane holds ONE target-dialect
- * document that may use v2-only constructs (walls/holes/start/end/
- * lighting/facing). The live per-edit preview below never sends that
+ * document that may use target-dialect-only constructs (walls/holes/start/
+ * end/lighting/facing). The live per-edit preview below never sends that
  * document verbatim — it strips to the v1-expressible subset first
  * (`stripToV1Subset`) and previews THAT, exactly what Save & Play would
  * actually persist if clicked right now. A document that isn't even
