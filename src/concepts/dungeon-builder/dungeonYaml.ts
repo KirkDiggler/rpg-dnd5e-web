@@ -321,6 +321,44 @@ export function setPlacementFlags(
   item.set('blocks_los', flags.blocksLos);
 }
 
+/** Strip every monster `place:` entry (any `ref` starting
+ * `dnd5e:monsters:`) from every room, leaving props and `boss:` untouched
+ * — the "Walk it (no monsters)" Save & Play variant (Kirk's 2026-08-02
+ * ask). Deliberately does NOT touch `boss:`: dungeonspec requires exactly
+ * one boss per boss-archetype room (`moveBoss`'s own doc comment above),
+ * so a boss-room YAML with `boss:` removed fails that validation rather
+ * than producing a genuinely boss-free dungeon — see
+ * `useWalkItVariant.ts`'s doc comment for how the UI stays honest about
+ * this rather than silently rewriting the room's archetype to dodge it. */
+export function stripMonsterPlacements(cst: Document): void {
+  const rooms = cst.get('rooms');
+  if (!isSeq(rooms)) return;
+  for (const room of rooms.items) {
+    if (!isMap(room)) continue;
+    const place = room.get('place', true);
+    if (!isSeq(place)) continue;
+    place.items = place.items.filter((item) => {
+      if (!isMap(item)) return true;
+      const ref = item.get('ref');
+      return typeof ref !== 'string' || !ref.startsWith('dnd5e:monsters:');
+    });
+  }
+}
+
+/** Build the "Walk it" variant's YAML text: same dungeon, monster
+ * `place:` entries stripped, `key:` renamed to `${walkKey}`. Parses a
+ * FRESH CST from `yamlText` rather than mutating the caller's live board
+ * CST, so building a walk variant never disturbs the board being edited.
+ * `boss:` is left untouched (see `stripMonsterPlacements`'s doc comment)
+ * — the walk variant is NOT monster-free, only place:-monster-free, and
+ * the UI must say so rather than implying a true no-encounter walkthrough. */
+export function buildWalkItYaml(yamlText: string, walkKey: string): string {
+  const { cst } = parseDungeon(yamlText);
+  stripMonsterPlacements(cst);
+  cst.set('key', walkKey);
+  return serializeDungeon(cst);
+}
+
 /** Move the boss pin within its own room (the only room a boss can be
  * in — dungeonspec requires exactly one boss per boss-archetype room, so
  * this never creates or deletes the `boss:` entry, only relocates it). */

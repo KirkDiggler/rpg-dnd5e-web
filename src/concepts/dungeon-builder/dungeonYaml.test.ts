@@ -2,12 +2,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  buildWalkItYaml,
   deletePlacement,
   DungeonParseError,
   movePlacement,
   parseDungeon,
   placeItem,
   serializeDungeon,
+  stripMonsterPlacements,
+  toDungeonDoc,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
 
@@ -49,6 +52,57 @@ describe('parseDungeon', () => {
     expect(() => parseDungeon('rooms: [this is not: valid')).toThrow(
       DungeonParseError
     );
+  });
+});
+
+describe('stripMonsterPlacements / buildWalkItYaml (Walk it, rpg-dnd5e-web#667)', () => {
+  // showcase.yaml itself has zero monster place: entries (only its vault
+  // room's boss:) — inject a synthetic one, same technique the "flags
+  // monster refs" test above uses, so there's something real to strip.
+  const withMonster = SHOWCASE_YAML.replace(
+    '- { ref: "dnd5e:props:brazier", at: [1, 1], blocks_movement: true, blocks_los: false }',
+    '- { ref: "dnd5e:props:brazier", at: [1, 1], blocks_movement: true, blocks_los: false }\n      - { ref: "dnd5e:monsters:skeleton", at: [1, 2] }'
+  );
+
+  it('removes only monster place: entries — props and boss: survive', () => {
+    const { cst, doc: before } = parseDungeon(withMonster);
+    expect(before.rooms[0].place.some((p) => p.isMonster)).toBe(true);
+
+    stripMonsterPlacements(cst);
+    const after = toDungeonDoc(cst);
+
+    expect(after.rooms[0].place.some((p) => p.isMonster)).toBe(false);
+    expect(
+      after.rooms[0].place.some((p) => p.ref === 'dnd5e:props:brazier')
+    ).toBe(true);
+    // The boss-archetype room's boss: is untouched — dungeonspec requires
+    // exactly one boss per boss-archetype room (validateBossCardinality);
+    // stripMonsterPlacements only ever touches place: lists.
+    expect(after.rooms[2].boss).toEqual({
+      ref: 'dnd5e:monsters:skeleton-captain',
+      at: [5, 5],
+    });
+  });
+
+  it('buildWalkItYaml renames the key and strips monsters from a FRESH parse', () => {
+    const walkYaml = buildWalkItYaml(withMonster, 'showcase-walk');
+    const { doc } = parseDungeon(walkYaml);
+
+    expect(doc.key).toBe('showcase-walk');
+    expect(doc.rooms.every((r) => r.place.every((p) => !p.isMonster))).toBe(
+      true
+    );
+    expect(doc.rooms[2].boss).toEqual({
+      ref: 'dnd5e:monsters:skeleton-captain',
+      at: [5, 5],
+    });
+
+    // The input text itself is untouched — buildWalkItYaml parses its own
+    // CST rather than mutating a CST the caller might still be using for
+    // the live board.
+    const { doc: reparsedOriginal } = parseDungeon(withMonster);
+    expect(reparsedOriginal.key).toBe('showcase');
+    expect(reparsedOriginal.rooms[0].place.some((p) => p.isMonster)).toBe(true);
   });
 });
 
