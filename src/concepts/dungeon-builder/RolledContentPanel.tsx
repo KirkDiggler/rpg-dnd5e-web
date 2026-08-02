@@ -1,9 +1,12 @@
 /**
  * RolledContentPanel — off-board list of count-based `obstacles:` entries
  * (rolled at a seed, no [col,row] until then, so they never appear on the
- * board). showcase.yaml has zero of these — this panel's non-empty path
- * is implemented but genuinely untested against real content; see
- * CONTRACT.md.
+ * board). showcase.yaml itself has zero of these, so the non-empty path
+ * below was implemented but genuinely untested against real content —
+ * closed by a synthetic obstacles: fixture (dungeonYaml.test.ts's "parses
+ * room-level obstacles:" test, same synthetic-injection convention as the
+ * monster-flag test beside it) plus a live verification pasting that same
+ * synthetic YAML through "Apply YAML → Board"; see CONTRACT.md.
  */
 import type { DungeonDoc } from './dungeonYaml';
 

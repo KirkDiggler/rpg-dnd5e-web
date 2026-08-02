@@ -1613,3 +1613,113 @@ run against the new routing).
   (see the "What this file tried first" paragraph in TARGET-YAML.md).
   This round's commits convert the SHAPE forward from there, not erase
   the path that led to it.
+
+## Visible-first round, 2026-08-02: walls/doors render, wall-mount height, door/wall 2D clarity
+
+Kirk's own feedback, relayed by the team lead: "would be great if our
+process was more iterative... seeing things work lets us know we are on
+the right track." Two things hadn't landed on his screen in 14 hours
+despite being entirely client-side buildable: walls/doors RENDERING, and
+the wall-mounted banner sitting at height instead of the floor. New
+standing mode: self-directed, continuous small landings, commit+push
+often, report at milestones/blockers rather than every round brief.
+
+### 1–2: drawn walls/doors + wall-mounted props in the 3D preview (SHA `bed593c`)
+
+`wallRuns.ts`/`WallRunMesh.tsx` — the real game's wall renderer — was
+read closely (most of its 1335 lines) and ruled out: it derives envelope/
+connector RUNS from fog-of-war-gated region hex membership, a materially
+different problem from this concept's already-explicit
+`{from,to,kind}` wall edges. Reusing it would have imported its whole
+fog-of-war contract for no reason. Built a genuinely crude box-per-edge
+renderer instead (`DungeonPreview3D.tsx`'s new `WallBox`/
+`wallBoxTransform`), reusing only the codebase's shared `cubeToWorld`/
+`atan2` hex-math conventions — "a crude wall that RENDERS today beats a
+faithful one next week."
+
+A wall's world midpoint is the exact geometric midpoint between its two
+adjacent hex cell centers (a real property of regular hex tilings, not
+an approximation); the wall's length axis is perpendicular to the
+cell-center-to-cell-center line. Doors render shorter
+(`WALL_DOOR_HEIGHT_RATIO = 0.55`) and orange (`#ffb347`); solid walls
+render full `WALL_HEIGHT` and cream (`#e8e2d8`) — the same convention
+the 2D board's v2-overlay already used, now shared across every view.
+
+Wall-mounted props (`mount: 'wall'`) now render at `Y = height` (the
+authored v2 field, meters) instead of the floor plane, with `facing`
+driving `rotationY` via the same `facingToRotationY`/`cubeToWorld`
+convention used throughout the codebase.
+
+Evidence: `docs/evidence/dungeon-builder-walls-doors-3d.png`,
+`docs/evidence/dungeon-builder-wallmount-3d-height.png`.
+
+**A genuine, unrelated trap hit mid-round**: the Vite dev server started
+serving a cached transform of an EMPTY `DungeonPreview3D.tsx` module
+(confirmed by `curl`ing the served module and finding
+`"sourcesContent":[""]` in its embedded sourcemap, while `tsc --noEmit`
+and a direct `esbuild.transformSync` both confirmed the real file on
+disk was valid) — a Vite dev-server cache-staleness bug, not a source
+issue. Fixed by killing the running `vite --port 3001` process tree and
+restarting clean. Worth remembering for future sessions in this same
+worktree/job; not previously documented anywhere in workspace memory.
+
+### 3: 2D door-vs-wall visual distinction (SHA `4ddec75`)
+
+Board.tsx's structural overlay used a subtle purple-on-purple,
+dash-spacing-only distinction between solid walls and doors — hard to
+read at a glance. Switched to the same orange/cream convention items
+1–2 above established: a door gets a filled orange tint + "D" label; a
+solid wall stays outline-only cream. One visual language for this
+construct across every view now (2D edit board, creation board, 3D
+preview), not three independently tuned ones.
+
+Evidence: `docs/evidence/dungeon-builder-door-wall-2d-distinction.png`.
+
+### 4: holes — regression check, not new work (no commit; nothing was broken)
+
+Holes are a completely separate top-level `DungeonDoc.holes:
+[number, number][]` field — structurally untouched by the top-level
+`place:` conversion above, since that conversion only ever concerned
+`place:` entries. Confirmed by reading both consumers directly
+(`Board.tsx`'s void-styling polygon loop, `DungeonPreview3D.tsx`'s
+`buildFloorTiles` skip-set) and by a live check: armed the Hole tool,
+clicked a cell, confirmed the YAML gained `holes: [[0, 6]]`, confirmed
+the 2D board rendered a solid-black void hex at that cell with the
+existing dashed border, and confirmed `buildFloorTiles` genuinely omits
+that cell's key from the 3D floor-tile map (code-level, since the
+render is small at any single default camera angle to eyeball
+conclusively in a screenshot). Both v2-proposed paths remain intact.
+Per Kirk's 2026-08-01 authoring-model-settlement commits
+(rpg-project#175), holes stay documented as a deferred exploration
+artifact, not a committed early-dialect construct — this was a
+regression check, not an invitation to invest further.
+
+### 5: rolled-content panel — synthetic obstacles fixture (this commit)
+
+CONTRACT.md's own "must retain" list has carried this note since the
+design-gate round: `showcase.yaml` (and every other recorded fixture)
+has zero `obstacles:` entries, so `RolledContentPanel`'s non-empty
+render path was implemented but genuinely untested against real
+content. Closed two ways, deliberately NOT by inventing a fake entry in
+`fixtures.ts`'s `SHOWCASE_YAML` — that constant is documented as a
+verbatim copy of a real file and mixing invented content into it would
+break that guarantee:
+
+- `dungeonYaml.test.ts` gained a test using the exact same
+  synthetic-injection convention this file already established for the
+  same class of gap (the "flags monster refs" test just above it, which
+  injects a synthetic monster placement into a copy of `SHOWCASE_YAML`
+  since showcase.yaml has none either) — injects a synthetic
+  `obstacles:` block into a copy of the room chain and asserts
+  `RoomDoc.obstacles` parses to the exact `{ref, count}[]` shape
+  `RolledContentPanel` consumes, plus that untouched rooms still parse
+  to `[]`, not `undefined`.
+- Live verification: pasted the identical synthetic YAML into edit
+  mode's existing "Apply YAML → Board" textarea (no new UI added — this
+  flow already existed) and confirmed the panel actually switches from
+  its italic empty-state message to real rendered rows (`vault:
+dnd5e:hazards:rubble ×3`, `vault: dnd5e:hazards:web ×1`).
+
+Evidence: `docs/evidence/dungeon-builder-rolled-content-panel-non-empty.png`
+(after-state; the panel's own empty-state message is the unedited
+before-state, visible in the fixtures-mode screenshot above it).

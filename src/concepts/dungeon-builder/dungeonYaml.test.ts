@@ -64,6 +64,27 @@ describe('parseDungeon', () => {
     expect(monster?.isMonster).toBe(true);
   });
 
+  it('parses room-level obstacles: into the shape RolledContentPanel consumes', () => {
+    // showcase.yaml has zero obstacles: entries (CONTRACT.md's "add real
+    // rolled-content fixture coverage" note) — same synthetic-injection
+    // approach as the monster-flag test just above, since the field is
+    // real (dungeonYaml.ts's own RoomDoc.obstacles) but nothing recorded
+    // happens to use it yet.
+    const withObstacles = SHOWCASE_YAML.replace(
+      '  - id: vault\n    archetype: boss',
+      '  - id: vault\n    archetype: boss\n    obstacles:\n      - { ref: "dnd5e:hazards:rubble", count: 3 }\n      - { ref: "dnd5e:hazards:web", count: 1 }'
+    );
+    const { doc } = parseDungeon(withObstacles);
+    const vault = doc.rooms.find((r) => r.id === 'vault');
+    expect(vault?.obstacles).toEqual([
+      { ref: 'dnd5e:hazards:rubble', count: 3 },
+      { ref: 'dnd5e:hazards:web', count: 1 },
+    ]);
+    // and the two untouched rooms still parse to an empty list, not undefined
+    expect(doc.rooms[0].obstacles).toEqual([]);
+    expect(doc.rooms[1].obstacles).toEqual([]);
+  });
+
   it('throws DungeonParseError on structurally invalid YAML', () => {
     expect(() => parseDungeon('key: only-a-key\n')).toThrow(DungeonParseError);
   });
