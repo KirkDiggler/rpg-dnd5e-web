@@ -2,6 +2,7 @@ import type { Interceptor } from '@connectrpc/connect';
 import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { DiceService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
+import { AuthoringService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { LobbyService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { CharacterService as CharacterServiceV2 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/character/service_pb';
@@ -115,3 +116,9 @@ export const encounterClient = createClient(EncounterService, transport);
 // EncounterService's CreateEncounter/JoinEncounter/SetReady lobby RPCs,
 // deleted in slice 3 along with LobbyView, their only caller.
 export const lobbyClient = createClient(LobbyService, transport);
+
+// Create the authoring service client (dnd5e.api.authoring.v1alpha1 —
+// PutDungeon). Absent from the server's reflection list (Unimplemented)
+// unless RPG_AUTHORING_ENABLED is set — see the dungeon-builder concept's
+// usePutDungeonPreview hook for how it probes and falls back.
+export const authoringClient = createClient(AuthoringService, transport);

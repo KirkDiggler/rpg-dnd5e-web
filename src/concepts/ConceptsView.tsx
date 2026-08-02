@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
+import { DungeonBuilderConcept } from './dungeon-builder/DungeonBuilderConcept';
 import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
 import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
@@ -15,7 +16,8 @@ type ConceptPage =
   | 'equipment'
   | 'combat-pacing'
   | 'just-roll'
-  | 'fog-of-war';
+  | 'fog-of-war'
+  | 'dungeon-builder';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'class-selection', label: 'Class Selection' },
@@ -25,6 +27,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'combat-pacing', label: 'Combat Pacing' },
   { id: 'just-roll', label: 'Just Roll' },
   { id: 'fog-of-war', label: 'Fog of War' },
+  { id: 'dungeon-builder', label: 'Dungeon Builder' },
 ];
 
 interface ConceptsViewProps {
@@ -110,6 +113,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'combat-pacing' && <CombatPacingConcept />}
         {activePage === 'just-roll' && <JustRollConcept />}
         {activePage === 'fog-of-war' && <FogOfWarConcept />}
+        {activePage === 'dungeon-builder' && <DungeonBuilderConcept />}
       </motion.div>
     </div>
   );

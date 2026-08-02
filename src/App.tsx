@@ -13,6 +13,7 @@ import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { PlaytestHarness } from './components/playtest/PlaytestHarness';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
+import { ThumbHarness } from './concepts/dungeon-builder/thumbs/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
 /**
@@ -41,6 +42,15 @@ function AppContent() {
     () =>
       import.meta.env.MODE === 'development' &&
       !!new URLSearchParams(window.location.search).get('encounterId')
+  );
+
+  // Same shape as showPlaytestHarness above: dev-only, no app chrome.
+  // Thumbnail-baking harness for the dungeon builder palette (rpg-dnd5e-web
+  // #667) — see ThumbHarness.tsx's own doc comment for how it's used.
+  const [showThumbHarness] = useState(
+    () =>
+      import.meta.env.MODE === 'development' &&
+      !!new URLSearchParams(window.location.search).get('thumbGlb')
   );
 
   const [currentView, setCurrentView] = useState<AppView>(
@@ -194,6 +204,14 @@ function AppContent() {
     return (
       <div className="min-h-screen">
         <PlaytestHarness />
+      </div>
+    );
+  }
+
+  if (showThumbHarness) {
+    return (
+      <div className="min-h-screen">
+        <ThumbHarness />
       </div>
     );
   }
