@@ -429,6 +429,18 @@ Rendering:
   decide, not something this concept resolves — "impassable" is the only
   claim being made now.
 
+**A `walls:`/`holes:`/`start:`/`end:` cell can sit outside the compiled
+`FloorPlan`'s own bounding box** — a from-scratch canvas draft, or a
+hand-edited YAML coordinate, has no reason to stay inside whatever a
+room-chain happened to compile to. The board's viewBox **grows** to keep
+any such cell reachable rather than clamping or hiding it — the same
+rule this whole file follows everywhere else (authored-but-uncompiled
+content stays visible, never silently dropped). See CONTRACT.md's
+"viewBox grows for content authored beyond the compiled bounding box"
+section for the live verification and the one named follow-up (growing
+makes distant content _reachable_, not yet _discoverable_ — no minimap
+or auto-scroll).
+
 ## What this file is not
 
 Not a request. Not Kirk-approved as a server-side commitment. Not a
