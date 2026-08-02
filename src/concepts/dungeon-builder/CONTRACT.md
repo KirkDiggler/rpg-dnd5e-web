@@ -706,3 +706,134 @@ honesty note stand alone as the only trace of it: whoever scopes P4+
 should treat "author walkthrough with no combat" as its own real
 requirement with a real server-side shape, not assume Walk it already
 covers it.
+
+## Door/connector editing (Kirk's 2026-08-02 ask, "I cannot set a wall or a door — just realized the gashes are walls")
+
+Evidence: `docs/evidence/dungeon-builder-door-locked-dc-panel.png`,
+`docs/evidence/dungeon-builder-wall-explainer.png`.
+
+### The fourth consumer signal on the wall-geometry gap
+
+This is the same absence this file has now named three times over
+(the door-row-void section above, this iteration's 3D preview section,
+the creation flow's proposed edge-native `walls:` schema) — but this
+time it's not a finding written up after inspecting the code, it's
+Kirk hitting it directly as an author: he clicked where a wall visibly
+is and found nothing behind it. Four independent surfaces now converge
+on the identical gap (`FloorPlan` carries no wall/door edge geometry,
+only `door_row`/`connector.column` to derive legality from): the 2D
+board's own door-row cells (striped, not authored), the 3D preview
+(voided, not rendered), the creation flow's proposed schema (drawn,
+but not real), and now this — an author reaching for the ONE thing
+that visually reads as "a wall" on the real board and finding zero
+affordance. Four is no longer a coincidence pattern; it's the strongest
+version yet of the argument this file has been building for growing
+`FloorPlan` (or a sibling message) a real edge-native wall list.
+
+### What the schema actually allows for a connector — verified against the real dungeonspec Go source, not guessed
+
+Read directly from `rpg-toolkit/encounter/dungeonspec/spec.go` and
+`validate.go` (not inferred from the wire or the YAML alone) — this is
+the one place this task's brief specifically asked to verify rather
+than assume, since it "matters for the wall-schema design":
+
+```go
+// spec.go
+type ConnectorSpec struct {
+	From   string      `yaml:"from"`
+	To     string      `yaml:"to"`
+	Locked *LockedSpec `yaml:"locked,omitempty"`
+}
+type LockedSpec struct {
+	DC      int    `yaml:"dc"`
+	Ability string `yaml:"ability"`
+}
+
+// validate.go's validateChain — the load-bearing constraint
+func validateChain(spec *DungeonSpec) error {
+	if len(spec.Connectors) != len(spec.Rooms)-1 {
+		return fmt.Errorf("connectors must form a linear chain: ...")
+	}
+	for i, c := range spec.Connectors {
+		if c.From != spec.Rooms[i].ID || c.To != spec.Rooms[i+1].ID {
+			return fmt.Errorf("connectors must form a linear chain: ...")
+		}
+	}
+	return nil
+}
+```
+
+**The answer to "arbitrary pairs vs chain-constrained": chain-constrained,
+strictly, with zero flexibility.** A spec MUST have exactly
+`len(rooms)-1` connectors, and connector `i` MUST join `rooms[i]` to
+`rooms[i+1]` — always, no exceptions, no arbitrary room pairs, no
+skipping a room, no branching. `from`/`to` are not independently
+authorable at all; they're a pure function of the room list's own order.
+This is why the UI below offers NO add/remove/repoint affordance for
+connectors — building one would be building a control for a state
+`dungeonspec.Validate` can never accept, exactly the "no fake
+affordances" instruction in this task's brief. The ONLY field a
+connector's author-facing surface actually varies is `locked` — present
+or absent, and its `dc` (1-30, `minLockDC`/`maxLockDC` in validate.go)
+and `ability` (one of `str`/`dex`/`con`/`int`/`wis`/`cha`,
+`rulebooks/dnd5e/abilities.List()`) when present. Confirmed against a
+real fixture, not invented: `rpg-toolkit/encounter/dungeonspec/
+fixtures_test.go`'s `placedTombYAML` (this IS `reference-tomb.yaml`'s
+real content) has `{ from: trap-crossing, to: tomb, locked: { dc: 12,
+ability: dex } }` — the exact shape `dungeonYaml.ts`'s new
+`setConnectorLocked` now produces.
+
+**This matters directly for the wall-schema design** (the brief's own
+framing): if/when `FloorPlan` grows real wall/door edge geometry, a
+compiled connector's chain-constrained shape is precedent for keeping
+the SAME discipline on the new field — position/topology
+server-derived, only the gameplay-relevant knob (locked, someday
+perhaps a wall's material/breakability) author-facing. The creation
+flow's proposed edge-native `walls:` schema (this file's earlier
+section) is a genuinely different, freeform model — worth naming
+explicitly that these are two different design points (chain-derived
+topology vs freely-drawn topology) a single future wall schema will
+have to reconcile, not assume one implies the other.
+
+**A confirming wire detail, found while implementing this**: the
+compiled `FloorPlanConnector` (unlike `FloorPlanRoom`) already echoes a
+`locked: bool` field back on the wire (`door_id`, `locked`,
+`from_room_id`, `to_room_id`, `column` — service_pb.ts) — NOT `dc`/
+`ability`, just the boolean. Nice small confirmation that the server
+already tracks "is this door locked" as a real compiled fact, even
+though the client has to keep the dc/ability detail in its own parsed
+`DungeonDoc` (the compiled response has nowhere to put them).
+
+### The UI: exactly what the schema allows, nothing invented
+
+`ConnectorInspector.tsx` — clicking a door cell (the `db-cell-door`
+band, at `[connector.column, door_row]`) opens this instead of the
+previous unconditional "read-only overlay" rejection toast. Shows the
+derived from/to + position (explicitly labeled "not authorable"), a
+`locked` checkbox, and — only when checked — a DC number input (1-30)
+and an ability dropdown (the six real abbreviations). No add/remove
+connector button anywhere, per the chain-constraint finding above.
+
+`WallGashExplainer.tsx` — clicking any OTHER wall-band cell (previously
+a complete no-op; CSS didn't even mark it interactive) now opens this:
+a plain statement that this cell is derived, not authored, plus a
+"Prototype it in New Dungeon →" button that jumps to the creation
+flow's freeform wall-drawing tool (the one place walls genuinely are
+authorable today, even if only as proposed schema). Both panels are
+mutually exclusive with the existing placement `Inspector` and with each
+other — one `clearOtherSelections` helper in `DungeonBuilderConcept.tsx`
+keeps that invariant every place a selection can change, the same
+discipline the palette/placement pair already followed before this
+iteration.
+
+**Verified live, both directions** — not just that a well-formed edit
+succeeds, but that the server genuinely validates what gets sent, same
+standard as Save & Play/Walk it: locked a connector with `dc: 15,
+ability: dex` and confirmed the live `validate_only` preview accepted it
+cleanly (round-tripped into the YAML pane exactly as `{ from:
+antechamber, to: shrine, locked: { dc: 15, ability: dex } }`); then set
+`dc: 99` (out of `dungeonspec`'s real 1-30 range) and confirmed the live
+preview surfaced the REAL server error ("lock dc must be between 1 and
+30, got 99") rather than silently accepting it — proof this editing
+surface talks to the actual validator, not a client-side approximation
+of it.
