@@ -9,7 +9,7 @@ import type {
   FloorPlanRoom,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { DungeonDoc } from './dungeonYaml';
-import { cellCenter, type CellPos, type LayoutMode } from './hexLayout';
+import { cellCenter, type CellPos } from './hexLayout';
 
 export function roomAtColumn(
   floorPlan: FloorPlan,
@@ -109,15 +109,14 @@ export function isEntranceBlocked(
  * verify than a closed-form inverse of `cellCenter`. */
 export function nearestCell(
   point: CellPos,
-  floorPlan: FloorPlan,
-  mode: LayoutMode
+  floorPlan: FloorPlan
 ): { absCol: number; row: number; room: FloorPlanRoom | null } {
   let best = { absCol: 0, row: 0, room: null as FloorPlanRoom | null };
   let bestDist = Infinity;
   const cols = totalColumns(floorPlan);
   for (let col = 0; col < cols; col++) {
     for (let row = 0; row < floorPlan.height; row++) {
-      const c = cellCenter(mode, col, row);
+      const c = cellCenter(col, row);
       const d = (c.x - point.x) ** 2 + (c.y - point.y) ** 2;
       if (d < bestDist) {
         bestDist = d;

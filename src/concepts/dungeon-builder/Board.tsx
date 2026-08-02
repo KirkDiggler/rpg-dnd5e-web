@@ -18,12 +18,7 @@ import {
   totalColumns,
 } from './boardGeometry';
 import type { DungeonDoc } from './dungeonYaml';
-import {
-  BOARD_HEX_SIZE,
-  cellCenter,
-  cellCorners,
-  type LayoutMode,
-} from './hexLayout';
+import { BOARD_HEX_SIZE, cellCenter, cellCorners } from './hexLayout';
 import {
   BOSS_COLOR,
   MONSTER_COLOR,
@@ -35,7 +30,6 @@ import type { BoardTool, PaletteSelection, PlacementSelection } from './types';
 interface BoardProps {
   floorPlan: FloorPlan;
   doc: DungeonDoc;
-  layoutMode: LayoutMode;
   selectedPalette: PaletteSelection | null;
   selectedPlacement: PlacementSelection | null;
   selectedConnectorIndex: number | null;
@@ -84,7 +78,6 @@ function shortLabel(ref: string, isBoss: boolean): string {
 export function Board({
   floorPlan,
   doc,
-  layoutMode,
   selectedPalette,
   selectedPlacement,
   selectedConnectorIndex,
@@ -122,8 +115,8 @@ export function Board({
     const room = roomAtColumn(floorPlan, col);
     const connector = connectorAtColumn(floorPlan, col);
     for (let row = 0; row < floorPlan.height; row++) {
-      const center = cellCenter(layoutMode, col, row);
-      const corners = cellCorners(layoutMode, center, BOARD_HEX_SIZE - 1.5);
+      const center = cellCenter(col, row);
+      const corners = cellCorners(center, BOARD_HEX_SIZE - 1.5);
       corners.forEach(([x, y]) => trackExtent(x, y));
       const points = corners
         .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
@@ -243,8 +236,8 @@ export function Board({
   // honesty mechanism elsewhere in this concept exists to avoid. See
   // CONTRACT.md.
   const trackCellExtent = (col: number, row: number) => {
-    const center = cellCenter(layoutMode, col, row);
-    cellCorners(layoutMode, center, BOARD_HEX_SIZE - 1.5).forEach(([x, y]) =>
+    const center = cellCenter(col, row);
+    cellCorners(center, BOARD_HEX_SIZE - 1.5).forEach(([x, y]) =>
       trackExtent(x, y)
     );
   };
@@ -252,7 +245,7 @@ export function Board({
   for (const wall of doc.walls) {
     trackCellExtent(wall.from[0], wall.from[1]);
     trackCellExtent(wall.to[0], wall.to[1]);
-    const center = cellCenter(layoutMode, wall.from[0], wall.from[1]);
+    const center = cellCenter(wall.from[0], wall.from[1]);
     const isDoor = wall.kind === 'door';
     // Same orange/cream distinction the creation board's own wall
     // rendering and the 3D preview's wall boxes already use for solid
@@ -298,8 +291,8 @@ export function Board({
   }
   for (const [holeCol, holeRow] of doc.holes) {
     trackCellExtent(holeCol, holeRow);
-    const center = cellCenter(layoutMode, holeCol, holeRow);
-    const corners = cellCorners(layoutMode, center, BOARD_HEX_SIZE - 1.5).map(
+    const center = cellCenter(holeCol, holeRow);
+    const corners = cellCorners(center, BOARD_HEX_SIZE - 1.5).map(
       ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`
     );
     structuralOverlay.push(
@@ -316,7 +309,7 @@ export function Board({
   }
   if (doc.start) {
     trackCellExtent(doc.start[0], doc.start[1]);
-    const center = cellCenter(layoutMode, doc.start[0], doc.start[1]);
+    const center = cellCenter(doc.start[0], doc.start[1]);
     structuralOverlay.push(
       <g key="dialect-start" pointerEvents="none">
         <circle
@@ -344,7 +337,7 @@ export function Board({
   }
   if (doc.end) {
     trackCellExtent(doc.end[0], doc.end[1]);
-    const center = cellCenter(layoutMode, doc.end[0], doc.end[1]);
+    const center = cellCenter(doc.end[0], doc.end[1]);
     structuralOverlay.push(
       <g key="dialect-end" pointerEvents="none">
         <circle
@@ -378,7 +371,7 @@ export function Board({
     room.place.forEach((p, index) => {
       const absCol = fpRoom.startColumn + p.at[0];
       const row = p.at[1];
-      const center = cellCenter(layoutMode, absCol, row);
+      const center = cellCenter(absCol, row);
       const sel: PlacementSelection = { roomId: room.id, index };
       const isSelected =
         !!selectedPlacement &&
@@ -417,7 +410,7 @@ export function Board({
     if (room.boss) {
       const absCol = fpRoom.startColumn + room.boss.at[0];
       const row = room.boss.at[1];
-      const center = cellCenter(layoutMode, absCol, row);
+      const center = cellCenter(absCol, row);
       const sel: PlacementSelection = { roomId: room.id, boss: true };
       const isSelected =
         !!selectedPlacement &&
@@ -456,7 +449,7 @@ export function Board({
 
   // Room labels + entrance marker.
   const labels: ReactElement[] = floorPlan.rooms.map((r) => {
-    const top = cellCenter(layoutMode, r.startColumn, 0);
+    const top = cellCenter(r.startColumn, 0);
     return (
       <text
         key={`label-${r.id}`}
@@ -477,7 +470,6 @@ export function Board({
   let entranceMarker: ReactElement | null = null;
   if (floorPlan.entrance) {
     const center = cellCenter(
-      layoutMode,
       floorPlan.entrance.column,
       floorPlan.entrance.row
     );
@@ -529,8 +521,7 @@ export function Board({
     const boardPt = ctm ? pt.matrixTransform(ctm.inverse()) : { x: 0, y: 0 };
     const { absCol, row, room } = nearestCell(
       { x: boardPt.x, y: boardPt.y },
-      floorPlan,
-      layoutMode
+      floorPlan
     );
     setDragging(null);
     if (!room) {
