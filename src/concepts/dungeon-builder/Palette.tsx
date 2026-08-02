@@ -107,6 +107,19 @@ function Row({
   );
 }
 
+/**
+ * CategorySection — an expandable/collapsible section, not a dropdown.
+ * Kirk's 2026-08-02 feedback: the first pass (an isolated fully-rounded
+ * pill header with a tiny far-right ▸/▾) read as a select-style dropdown
+ * trigger rather than a section that expands in place. Fixed by making
+ * header+content share ONE bordered container (so opening it visibly
+ * grows that same box downward, instead of revealing an unrelated list
+ * below an isolated button) and moving a bigger, rotating chevron to the
+ * LEFT of the label — the conventional expand/collapse position (file
+ * trees, most accordions) — instead of a trailing symbol easy to miss.
+ * Independent per-section `open` state (a `Set` in the parent, not a
+ * single-select index) means multiple sections can be open at once.
+ */
 function CategorySection({
   category,
   count,
@@ -121,37 +134,46 @@ function CategorySection({
   children: React.ReactNode;
 }) {
   return (
-    <div style={{ marginBottom: 4 }}>
+    <div
+      style={{
+        marginBottom: 6,
+        border: '1px solid var(--border-primary)',
+        borderRadius: 6,
+        overflow: 'hidden',
+      }}
+    >
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
         className="w-full flex items-center gap-2 text-xs uppercase tracking-wide"
         style={{
-          padding: '6px 8px',
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border-primary)',
-          borderRadius: 5,
+          padding: '7px 10px',
+          background: open ? '#241d14' : 'var(--bg-secondary)',
+          border: 'none',
+          borderBottom: open ? '1px solid var(--border-primary)' : 'none',
           cursor: 'pointer',
           color: 'var(--text-primary)',
         }}
       >
-        <span>{CATEGORY_LABELS[category]}</span>
         <span
+          aria-hidden="true"
           style={{
-            marginLeft: 'auto',
-            fontSize: 10,
-            color: '#8a7a5a',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
+            display: 'inline-block',
+            fontSize: 9,
+            color: '#c9a227',
+            transition: 'transform 120ms ease',
+            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
           }}
         >
+          ▶
+        </span>
+        <span>{CATEGORY_LABELS[category]}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#8a7a5a' }}>
           {count}
-          <span>{open ? '▾' : '▸'}</span>
         </span>
       </button>
-      {open && <div style={{ padding: '6px 2px 2px' }}>{children}</div>}
+      {open && <div style={{ padding: '7px 7px 9px' }}>{children}</div>}
     </div>
   );
 }
