@@ -17,9 +17,34 @@ own; until then, this is the source of truth for what "the target" means.
 
 **Everything in this file is a proposal.** Nothing here is real
 dungeonspec except the fields explicitly marked "v1, real today." Kirk
-has not reviewed or approved the shape of `walls:`/`holes:`/`start:`/
-`end:`/`lighting:`/`facing:`/`mount:`/`height:`/`targeting:` as a
-server-side commitment — only as the concept's own authoring surface.
+has not reviewed or approved the shape of `walls:`/`start:`/`end:`/
+`lighting:`/`facing:`/`mount:`/`height:`/`targeting:` as a server-side
+commitment — only as the concept's own authoring surface.
+
+### Settled early model (rpg-project#175)
+
+Rooms are **stable semantic regions** with stable IDs: they own reveal,
+placement, spawning, scripting, and archetype meaning. Dungeon space—not
+individual adjacent rooms—owns the canonical wall/door edges. An inner wall
+changes movement and line of sight; it does **not** create or split a semantic
+room. An author who needs distinct gameplay identity draws another region.
+
+`target dialect` is a name for this proposal, **not an actual YAML version
+bump**. Additive capabilities stay compatible with the current document version;
+a real version bump is reserved for an incompatible room/topology change. The
+current concept's legacy `version: 2` marker is only a local UI signal and is not
+a target-contract requirement or a server version.
+
+Holes are deliberately deferred from this early dialect. A collapsed-looking
+blocked cell is authored and rendered as an obstacle/prop until falling,
+bridging, or vertical visibility/traversal establishes a real no-floor primitive.
+The concept's existing Hole prototype remains visible as an exploration artifact;
+it is not a commitment for the early dialect.
+
+Implementation is deliberately sliced, not started here: generated wall/door
+truth (#176), authored start (#177), floor-prop facing (#178), canonical
+wall/door edges including inner walls (#179), then cell-authored semantic room
+regions (#180).
 
 **This gap is permanent, not a phase.** Kirk, same conversation: "what
 we built was just to start... we cannot be held down by our early
@@ -31,7 +56,7 @@ keep landing here before there's any server-side plan to implement them
 building the screen that needs it), not the concept getting ahead of
 itself. The per-feature compile-badge/subset-save mechanism this file
 describes isn't a transitional shim to delete once the schema "catches
-up" — it's the steady state. Don't read a `v2` badge as "coming soon";
+up" — it's the steady state. Don't read a target-dialect badge as "coming soon";
 read it as "here's what this concept found while building the thing
 that needed it."
 
@@ -43,15 +68,15 @@ A dungeon spec is ONE YAML file. Every field in it is either:
   `place:`/`boss:`/`obstacles:` inside a room. These compile against the
   real `dungeonspec.Validate`/`PutDungeon` right now, unchanged from
   before this file existed.
-- **v2, proposed, not yet compiled** — `walls:`, `holes:`, `start:`,
+- **target-dialect-only, proposed, not yet compiled** — `walls:`, `start:`,
   `end:`, `lighting:`, and `facing:`/`mount:`/`height:`/`targeting:` keys
   added to any `place:`/`boss:` entry. These are real, meaningful fields
   in THIS concept — the board renders them, the YAML pane round-trips
   them, editing them works — but `PutDungeon` doesn't know about them
   yet. The concept "compiles the implemented subset and badges the
-  rest," which literally means: strip every v2-only field out, send what's
-  left (a pure v1 document) to the real server for live preview / Save &
-  Play, and show a small badge next to each v2 construct saying it isn't
+  rest," which literally means: strip every target-dialect-only field out,
+  send what's left (a pure v1 document) to the real server for live preview /
+  Save & Play, and show a small badge next to each target construct saying it isn't
   in that server response.
 
 There is no second file, no second pane style, no "proposed schema"
@@ -61,15 +86,16 @@ ghetto. One board, one YAML pane, some of its fields chase-badged.
 
 ```yaml
 # version is OPTIONAL — omitted or 1 means "this document only uses
-# fields dungeonspec v1 already compiles." 2 is a concept-only signal
-# ("this document may also use the v2-proposed fields below") — the REAL
-# server is never sent `version: 2`. When this concept sends anything to
-# PutDungeon, it always sends `version: 1` and the v1-only subset (see
+# fields dungeonspec v1 already compiles." "target dialect" is not a
+# version value: additive target fields do not require `version: 2`.
+# The legacy concept marker is never sent to the real server. When this
+# concept sends anything to PutDungeon, it always sends `version: 1` and
+# the v1-only subset (see
 # "The v1-subset strip" below) — dungeonspec.Validate hard-rejects any
 # version other than 1 (rpg-toolkit encounter/dungeonspec/validate.go:
 # `if spec.Version != 1 { return fmt.Errorf(...) }`), so a real "2" would
 # just be an instant, uninformative server error, not a richer one.
-version: 2
+version: 1 # optional; target-dialect naming does not bump this
 key: shrine-hall # v1. [a-z0-9-]+, must match the request's key
 name: 'The Shrine Hall' # v1. display name
 theme: crypt # v1. optional
@@ -81,12 +107,13 @@ height: 8 # v1. shared by every room in the chain
 # rooms out left-to-right in array order, each with its own
 # start_column (server-computed: next.start_column = prev.start_column +
 # prev.width + 1 — the "+1" is the reserved connector gap column between
-# them). This IS the geometry backbone in both v1 and v2 — v2 does not
+# them). This IS the geometry backbone in both the current and target dialects —
+# the target dialect does not
 # replace it with a second, incompatible "freeform canvas" model (the
 # creation flow's PRE-this-file draft did that, and that mismatch — one
 # tab's board keyed by declared rooms, the other by a canvas with no
 # rooms at all — is exactly the seam Kirk asked to kill). Every
-# coordinate below (`walls:`, `holes:`, `start:`, `end:`, `place.at`) is
+# coordinate below (`walls:`, `start:`, `end:`, `place.at`) is
 # expressed in this SAME absolute [col, row] space a compiled `FloorPlan`
 # already uses, not a second coordinate system.
 rooms:
@@ -100,9 +127,9 @@ rooms:
           blocks_movement: true,
           blocks_los: false,
         }
-      # facing is v2 — see "place:/boss: facing" below.
+      # facing is target-dialect-only — see "place:/boss: facing" below.
       - { ref: 'dnd5e:props:statue-reaper', at: [4, 1], facing: SE }
-      # mount/height are v2 — see "z-axis: mount + height" below. This
+      # mount/height are target-dialect-only — see "z-axis: mount + height" below. This
       # banner hangs on the wall at this cell's SE edge, 2m up, instead
       # of standing on the floor.
       - {
@@ -116,7 +143,7 @@ rooms:
     archetype: chamber
     width: 14
     place:
-      # targeting is v2 — see "monster targeting" below. A REFERENCE to a
+      # targeting is target-dialect-only — see "monster targeting" below. A REFERENCE to a
       # toolkit AI strategy key, never behavior (Boundary Rule) — the
       # toolkit's monster decision chain is what would give this meaning.
       - {
@@ -130,8 +157,8 @@ rooms:
     boss:
       ref: 'dnd5e:monsters:skeleton-captain'
       at: [5, 5]
-      facing: W # v2
-      targeting: closest # v2
+      facing: W # target-dialect-only
+      targeting: closest # target-dialect-only
 
 # v1, real today. from/to are NOT independently authorable — see
 # "Why connectors have no add/remove UI" below. locked (dc/ability) is the
@@ -140,7 +167,7 @@ connectors:
   - { from: antechamber, to: shrine }
   - { from: shrine, to: vault, locked: { dc: 12, ability: dex } }
 
-# --- v2, proposed: the authored structural overlay ---
+# --- target-dialect-only, proposed: the authored structural overlay ---
 
 # OPTIONAL. Only meaningful when rooms: is empty (a from-scratch canvas,
 # nothing declared yet — "New Dungeon"'s starting point) or when you want
@@ -172,26 +199,18 @@ place:
 # both ends of the wall segment (from/to must be orthogonally adjacent
 # cells — a wall sits ON the shared edge between them, matching a hex
 # grid's own edge-vs-cell distinction the same way a real wall run does).
-# This is not invented from nothing — it deliberately mirrors the REAL
-# `EncounterService.Space.walls` wire type, `Wall{from, to, kind, id}`
-# (kind: WALL_KIND_SOLID | WALL_KIND_DOOR_* — doors are a kind, not a
-# separate list). A freeform-authoring surface built this way needs no
-# translation layer between "what the author drew" and "what the wire
-# already carries for the same kind of geometry elsewhere in this
-# system" — see CONTRACT.md's "walls: edge-native" finding, carried over
-# unchanged from the creation flow's original draft of this idea.
+# This is a flat, dungeon-scoped AUTHORING list. Runtime
+# `EncounterService.Space.walls` no longer exists: canonical runtime wall
+# geometry is carried on `HexRecord.edges`. Compilation/projection must turn
+# this source list into those canonical edges, deduplicating a shared edge
+# rather than assigning it independently to both rooms. Doors remain an edge
+# kind, not a separate list — see CONTRACT.md's "walls: edge-native" finding.
 walls:
   - { from: [7, 0], to: [7, 1], kind: solid }
   - { from: [7, 4], to: [7, 5], kind: door }
 
-# Cell-native floor openings (Kirk's 2026-08-02 Structural-category ask —
-# genuinely new, no prior art in this concept). A hole is a [col, row]
-# cell that has NO FLOOR — not a wall, not a placeable cell, a true
-# absence. Simple flat list of cells, not edge-native like walls (a hole
-# is a property of ONE cell, not a boundary between two).
-holes:
-  - [3, 6]
-  - [3, 7]
+# No `holes:` in the early dialect. Use an obstacle/prop for a collapsed
+# visual; a true no-floor cell waits for mechanics that require one.
 
 # Author-placed party spawn — in real, unresolved tension with the
 # compiled `FloorPlan.entrance` field (generator-chosen, only meaningful
@@ -225,7 +244,7 @@ lighting:
   #     radius: 3
 ```
 
-## Top-level placement: rooms are organizational, not existential
+## Top-level placement: rooms are semantic, not placement containers
 
 Every `place:` in dungeonspec v1 lives inside a room — that's not
 incidental, it's the v1 heritage: a room is what a placement has always
@@ -237,10 +256,11 @@ same fields a room-scoped entry does — `ref`, `at`, `facing`,
 `mount`/`height`, `targeting`, `blocks_movement`/`blocks_los` — the only
 difference is that `at` is unconditionally absolute (a room-scoped
 entry's `at` is room-local, added to that room's compiled
-`start_column`) and there is no owning room at all. Rooms become
-**organizational** — a way to group and later compile placements — not
-**existential** — a placement doesn't stop being real just because no
-room claims it yet.
+`start_column`) and there is no owning room at all. That does not weaken
+rooms into disposable geometry: they remain stable semantic regions owning
+reveal, placement, spawning, scripting, and archetype meaning. They are not
+**existential** placement containers — a placement does not stop being real
+just because no room claims it yet.
 
 This is what makes `rooms: []` a genuinely complete, non-fictional
 from-scratch canvas: nothing needs to pretend a room exists just to give
@@ -271,7 +291,7 @@ surface.
 
 A top-level placement has no v1 analog — dungeonspec only ever reads
 room-scoped `place:`. `stripToV1Subset` resolves this the same way it
-resolves every other v2-only construct — convert what can honestly
+resolves every other target-dialect-only construct — convert what can honestly
 convert, drop and count what can't:
 
 - If the placement's absolute column falls inside a DECLARED room's own
@@ -283,7 +303,7 @@ prev.width + 1`), it's **mapped down**: `at` converts absolute →
   what a mapped entry meant, the same as any other v1-subset conversion
   elsewhere in this file.
 - If it falls outside every declared room's range, it's **dropped**,
-  counted honestly like every other v2 field this file strips.
+  counted honestly like every other target field this file strips.
 
 Both outcomes are named in the compile badge ("Uses: N top-level
 placement(s)...") — a mapped placement is genuinely IN USE even though
@@ -400,11 +420,11 @@ implement the strategy — that would be calculating a rule client-side,
 exactly what the Boundary Rule forbids), and the toolkit's monster
 decision chain is the only place `lowest-health` etc. can ever mean
 anything. A `targeting:` key with no matching toolkit strategy is not an
-error in this concept — it's a recorded ask, same status as any other v2
+error in this concept — it's a recorded ask, same status as any other target-dialect-only
 field: authored, badged, not yet compiled.
 
 UI this round: a targeting dropdown in the monster/boss inspector,
-badged `v2` like every other Structural/Markers control.
+badged as target-dialect-only like every other Structural/Markers control.
 
 ## Why connectors have no add/remove UI, and what that means for walls
 
@@ -416,14 +436,14 @@ a pure function of room declaration order — never independently
 authorable, no arbitrary pairs, no skipping a room. The only field a
 connector's author-facing surface actually varies is `locked:`.
 
-This is precedent for `walls:`/`holes:`, not just a connector-specific
+This is precedent for `walls:`, not just a connector-specific
 fact: when/if a wall schema becomes real server-side, keeping the same
 discipline (position/topology mostly server-derived or tightly
 constrained, only the gameplay-relevant knob author-facing) is a
 reasonable default to reach for FIRST, rather than assuming full freeform
-placement is the only option. This concept's own `walls:`/`holes:` ARE
-currently freeform (any `[col,row]` pair, any edge) because nothing
-server-side constrains them yet — that's a property of "not real yet,"
+placement is the only option. This concept's own `walls:` are currently
+freeform (any `[col,row]` pair, any edge) because nothing server-side
+constrains them yet — that's a property of "not real yet,"
 not a design recommendation for what a real wall schema should allow.
 
 **The bigger consequence of this constraint: v1 can only express LINEAR
@@ -435,39 +455,30 @@ feature so much as the CURRENT shape of "connector" itself: a connector
 is defined as "the gap between adjacent declared rooms," which only
 has one meaning in a linear chain.
 
-**The linear chain should be understood as a special case of drawn
-walls + placed doors, not a separate, permanent geometry model.** Once
-`walls:`/a real door-on-a-wall-segment concept are genuinely compiled
-(not just this concept's proposed overlay), a "room" stops needing to
-mean "one link in an ordered array" — it can mean "a region walls
-happen to enclose," and a door stops needing to mean "the one gap
-between array neighbors" — it can mean "an opening in any wall
-segment, connecting whatever two regions sit on either side." Under
-THAT model, today's `rooms:`/`connectors:` linear chain isn't wrong or
-replaced — it's the specific, degenerate case where every wall
-happens to form one hallway end-to-end. Branching topology (a room
-with three doors leading to three different areas, a loop back to an
-earlier room) is exactly what the wall evolution unlocks, not a
-separate ask layered on top of it. Worth stating explicitly so whoever
-eventually scopes real wall/door geometry doesn't treat "make rooms
-linkable in more than one direction" as a second project after walls
-land — it's the SAME project; walls are what make it possible.
+**The linear chain is a current encoding, not the permanent geometry
+model.** Once authored canonical edges and cell-authored semantic regions are
+compiled, a room means a stable gameplay region, not one link in an ordered
+array. Doors are openings on canonical edges. Crucially, an inner wall affects
+movement and line of sight without splitting a room; an author draws a second
+semantic region only when gameplay identity—not geometry alone—requires it.
+Branching topology then follows from the same canonical-edge/semantic-region
+model, rather than from giving every wall its own room boundary.
 
 ## The v1-subset strip — what actually reaches `PutDungeon`
 
-This concept NEVER sends a v2 document to the real server. Before any
+This concept NEVER sends a target-dialect document to the real server. Before any
 live `validate_only` preview call or a real `Save & Play`, the current
 document is stripped down to exactly what v1 compiles
 (`dungeonYaml.ts`'s `stripToV1Subset`):
 
-| Field                                                        | v1 subset                                                                                                                                |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`                                                    | forced to `1` (never `2` — see the annotated example's own note)                                                                         |
-| `key`, `name`, `theme`, `height`                             | kept as-is                                                                                                                               |
-| `rooms:`                                                     | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                    |
-| `connectors:`                                                | kept as-is, including `locked:`                                                                                                          |
-| top-level `place:`                                           | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above |
-| `canvas:`, `walls:`, `holes:`, `start:`, `end:`, `lighting:` | dropped entirely                                                                                                                         |
+| Field                                              | v1 subset                                                                                                                                |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                                          | forced to `1` (never `2` — see the annotated example's own note)                                                                         |
+| `key`, `name`, `theme`, `height`                   | kept as-is                                                                                                                               |
+| `rooms:`                                           | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                    |
+| `connectors:`                                      | kept as-is, including `locked:`                                                                                                          |
+| top-level `place:`                                 | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above |
+| `canvas:`, `walls:`, `start:`, `end:`, `lighting:` | dropped entirely                                                                                                                         |
 
 If, after stripping, `rooms:` has fewer than 2 entries (dungeonspec's own
 `minRooms = 2`), there IS no compilable subset — a from-scratch canvas
@@ -480,58 +491,46 @@ attempting a doomed `PutDungeon` call.
 Per-feature, not per-line — the `yaml` CST doesn't cheaply give this
 concept real line/column spans without more plumbing than the honesty
 this badge is trying to convey needs. When the current document uses any
-v2-only construct, the YAML pane shows a small summary strip naming
-exactly which ones ("Uses: 2 walls, 1 hole, start/end, facing (2
-placements), targeting (1 placement) — not yet compiled server-side")
-and the board renders each v2 construct with a visually distinct
-treatment (dashed/muted, not the solid confident style server-compiled
-geometry gets) so the SAME board that shows real compiled rooms/props
-also shows proposed walls/holes/start/end without pretending they're
-the same kind of fact.
+target-dialect-only construct, the YAML pane shows a small summary strip naming
+exactly which ones ("Uses: 2 walls, start/end, facing (2 placements),
+targeting (1 placement) — not yet compiled server-side") and the board
+renders each target-dialect construct with a visually distinct treatment
+(dashed/muted, not the solid confident style server-compiled geometry gets)
+so the SAME board that shows real compiled rooms/props also shows proposed
+walls/start/end without pretending they're the same kind of fact.
 
 ## Save & Play vs "Save the compilable subset"
 
 - Document uses ONLY v1-expressible constructs → **Save & Play** behaves
   exactly as before this file existed: a real `PutDungeon(validate_only:
 false)` of the whole document.
-- Document uses ANY v2-only construct → the button becomes **"Save the
-  compilable subset"**: computes `stripToV1Subset`, shows a diff summary
-  of exactly what's being dropped, and — only on confirmation — saves
-  THAT reduced document. The play loop stays alive while the schema
+- Document uses ANY target-dialect-only construct → the button becomes
+  **"Save the compilable subset"**: computes `stripToV1Subset`, shows a
+  diff summary of exactly what's being dropped, and — only on confirmation —
+  saves THAT reduced document. The play loop stays alive while the schema
   catches up to the concept, instead of Save & Play just going dark the
-  moment an author touches a v2 field.
+  moment an author touches a target field.
 
 ## Structural palette category (Kirk's 2026-08-02 addition)
 
-A fourth palette category, alongside Monsters / Obstacles & Props /
-Lighting: **Structural** — Wall, Door, Hole. Unlike the other categories
-(draggable/placeable refs), these are TOOLS: selecting one arms a board
-click behavior (paint a wall, toggle a wall's kind, mark/unmark a hole)
-rather than placing a single ref at a cell. Door here means "toggle an
-authored wall segment's `kind` between `solid` and `door`" — a v2-only
+The early Structural palette is **Wall, Door**. Unlike the other categories
+(draggable/placeable refs), these are TOOLS: selecting one arms a board click
+behavior (paint a wall or toggle a wall's kind) rather than placing a single
+ref at a cell. The existing Hole control is a retained prototype, not early-
+dialect UI; use Obstacles & Props for collapse visuals. Door here means "toggle
+an authored wall segment's `kind` between `solid` and `door`" — a target-dialect-only
 concept, distinct from `ConnectorInspector`'s real, v1 `locked:` editing
 on the chain's own doors (both are real, both are "doors," they answer
 different questions: a connector's door is WHERE the chain already
 crosses between two declared rooms; a wall's door is a door on a
 segment the author drew, wherever they drew it).
 
-Rendering:
+The retained Hole prototype is not part of this early target dialect.
+For now, use an obstacle/prop for a collapse visual; do not infer no-floor,
+movement, line-of-sight, falling, bridging, or vertical-traversal semantics
+from that prototype.
 
-- **Holes, 2D** — a distinct dark void cell, deliberately NOT the same
-  visual as the door-row hazard stripe (that's a legality rule; a hole is
-  authored content) and not the same as an empty placeable cell.
-- **Holes, 3D** — the floor tile simply isn't generated for that cell
-  (`DungeonPreview3D.tsx`'s `buildFloorTiles` skips it, same shape as the
-  existing door-row skip) — the honest render, and nearly free given
-  `SyntyHexFloor` already only renders whatever's in the tile map handed
-  to it.
-- **Movement/LoS semantics** — proposed: impassable (nothing occupies a
-  cell with no floor). Fall damage / a pit-trap-style consequence is
-  flagged here as a genuine future GAME-RULE question for the toolkit to
-  decide, not something this concept resolves — "impassable" is the only
-  claim being made now.
-
-**A `walls:`/`holes:`/`start:`/`end:` cell can sit outside the compiled
+**A `walls:`/`start:`/`end:` cell can sit outside the compiled
 `FloorPlan`'s own bounding box** — a from-scratch canvas draft, or a
 hand-edited YAML coordinate, has no reason to stay inside whatever a
 room-chain happened to compile to. The board's viewBox **grows** to keep

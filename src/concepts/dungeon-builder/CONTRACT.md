@@ -20,6 +20,30 @@ against an isolated `rpg-api:local` instance with
 `RPG_AUTHORING_ENABLED=1` (see "Live verification" below) — not guessed
 from memory of the plan.
 
+## Settled early authoring model (rpg-project#175)
+
+This supersedes earlier exploratory claims below where they conflict:
+
+- Rooms are stable semantic regions with stable IDs; they own reveal,
+  placement, spawning, scripting, and archetype meaning.
+- Dungeon space owns canonical wall/door edges. Inner walls affect movement
+  and line of sight without splitting a semantic room; draw another region
+  only when independent gameplay identity is needed.
+- Runtime `EncounterService.Space.walls` is gone. Runtime geometry is on
+  `HexRecord.edges`; the flat dungeon-scoped `walls:` list remains a useful
+  authoring source representation only if compilation/projection produces
+  canonical edges and deduplicates shared edges.
+- Holes are deferred from the early dialect. Collapse visuals use
+  obstacles/props until no-floor mechanics justify a distinct primitive.
+- “Target dialect” names a proposal, not a YAML version bump. Additive
+  capability stays on the current document version; reserve a real bump for
+  incompatible room/topology semantics.
+
+No slice implementation starts on this concept branch. The ordered cross-repo
+slices are #176 (generated wall/door truth), #177 (authored start), #178
+(floor-prop facing), #179 (canonical authored wall/door edges, including inner
+walls), and #180 (cell-authored semantic regions).
+
 ## Two findings from the standalone prototype, now resolved
 
 The standalone concept had no live server and had to guess two things.
@@ -245,21 +269,17 @@ mistaken for something dungeonspec accepts today. This section is the
 write-up; the schema itself is best read live (`ProposedYamlPane.tsx`'s
 output), not re-transcribed here.
 
-### Walls: edge-native, matching a wire type that already exists
+### Walls: edge-native authoring, projected to canonical runtime edges
 
-The proposed `walls: [{ from: [c,r], to: [c,r], kind: solid|door }]`
-shape is not invented from nothing — it deliberately mirrors
-`EncounterService.Space.walls`' real wire type, `Wall{from, to, kind, id}`
-(edge-native, doors as a `WALL_KIND_DOOR_*` kind, not a separate list —
-confirmed against `fog-of-war/CONTRACT.md`'s own research into that
-message). A freeform-room authoring surface built this way wouldn't need
-a translation layer between "what the author drew" and "what the wire
-already carries for the SAME kind of geometry elsewhere in this system" —
-it's the same shape, just before compilation instead of after. This is
-the strongest single argument for _this_ proposed shape over a
-`grid: [[0,1,1,0],...]` solid/floor bitmap (the other obvious option,
-plainer to author from a full-grid dump but with no natural place for a
-door to attach — a door is inherently an edge concept, not a cell one).
+The proposed `walls: [{ from: [c,r], to: [c,r], kind: solid|door }]` shape
+is a flat dungeon-scoped source representation. It does **not** mirror a
+current `EncounterService.Space.walls` field—that runtime field no longer
+exists. Runtime wall geometry lives on `HexRecord.edges`; compilation/projection
+must turn this list into canonical edges and deduplicate shared edges. Doors
+remain an edge kind, not a separate list. This is still stronger than a
+`grid: [[0,1,1,0],...]` solid/floor bitmap: a door has a natural edge home,
+while an inner edge can affect movement/line of sight without fabricating a
+new semantic room.
 
 ### Wall-drawing interaction: edge-painting, chosen and then fixed once
 
@@ -335,11 +355,10 @@ reconciling two separately-invented ones later would be strictly worse.
 Not a request — evidence for whoever scopes P4+: a freeform canvas
 response can't reuse `FloorPlan.rooms`/`connectors` (there's no room
 chain), so it's a distinct message, not an extension of the existing
-one. It would need, at minimum: the canvas dimensions; a wall list in the
-edge-native shape above (ideally the SAME `Wall` type
-`EncounterService.Space` already defines, not a parallel one); an
-explicit entrance/start cell (no generator to derive it from); and
-either a real `end`/goal concept on the wire for the first time, or an
+one. It would need, at minimum: the canvas dimensions; a flat authored wall
+list compiled/projected into canonical `HexRecord.edges` (not a parallel
+runtime wall field); an explicit entrance/start cell (no generator to derive
+it from); and either a real `end`/goal concept on the wire for the first time, or an
 explicit decision that "end" stays author-only bookkeeping the compiled
 response never carries. Facing needs a field on `place:`/`FloorPlanRoom`
 placements either way, hex-true or freeform — that part isn't new to
@@ -546,10 +565,9 @@ wire, only `door_row` (a row index) and `connector.column` (a column
 index) to derive a legality rule from — never an actual wall segment or
 door position a renderer could draw. That convergence is itself the
 strongest argument in this file for growing `FloorPlan` (or a sibling
-message) a real edge-native wall list, ideally the same `Wall{from, to,
-kind}` type `EncounterService.Space` already defines (this file's
-"walls: edge-native, matching a wire type that already exists" finding,
-above) — three independent surfaces hitting the identical gap and
+message) a real edge-native authoring list that compiles/projects to
+canonical `HexRecord.edges` (this file's "walls: edge-native authoring"
+finding above) — three independent surfaces hitting the identical gap and
 inventing three independent workarounds is exactly the signal
 CLAUDE.md's proto-versioning section says to listen for, not something
 each consumer should keep quietly working around forever.
