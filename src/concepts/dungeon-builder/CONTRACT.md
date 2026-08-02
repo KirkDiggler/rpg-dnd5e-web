@@ -837,3 +837,135 @@ preview surfaced the REAL server error ("lock dc must be between 1 and
 30, got 99") rather than silently accepting it — proof this editing
 surface talks to the actual validator, not a client-side approximation
 of it.
+
+## Kirk's reframe (2026-08-02, same day): one target dialect, kill the real-vs-proposed seam
+
+Kirk, looking at the door/connector work above land in the "real" Edit
+tab while walls/start/end/facing stayed quarantined in "New Dungeon"'s
+purple-styled proposed-schema pane: "let's make the yaml that works the
+way we want it to. this is the point of the concept. make this easy for
+future you to understand." The full spec this section implements against
+is **`TARGET-YAML.md`** (new file, this repo) — read that first; this
+section is the implementation record, not a restatement.
+
+**The core move**: `DungeonDoc` (`dungeonYaml.ts`) grew v2 fields
+directly — `canvas`, `walls`, `holes`, `start`, `end`, `lighting`, and a
+`facing` key on every `place:`/`boss:` entry — instead of a second,
+incompatible type living only in the creation flow. One document, one
+YAML pane, some of its fields not yet compiled server-side. There is no
+longer a "proposed schema" ghetto in edit mode: the same board that
+shows compiled rooms/props now ALSO shows authored walls/holes/start/end,
+distinctly styled (dashed/muted, `pointer-events: none` so clicks pass
+through to the real cell handler beneath) but on the SAME view.
+
+### The connector question this task's brief specifically asked to verify
+
+**Answer: chain-constrained, not arbitrary pairs — verified against the
+real Go source**, not guessed. `rpg-toolkit/encounter/dungeonspec/
+validate.go`'s `validateChain`: a spec must have exactly `len(rooms)-1`
+connectors, and connector `i` must always join `rooms[i]` to
+`rooms[i+1]`. `from`/`to` are a pure function of room declaration order —
+never independently authorable. This directly informed the wall-schema
+design: `walls:`/`holes:` in TARGET-YAML.md are, for now, freeform
+(any `[col,row]`, any edge) because nothing server-side constrains them
+yet — but the connector precedent is recorded as a real design option for
+whoever eventually makes wall geometry real (constrain topology
+server-side, leave one gameplay knob author-facing — the same shape
+`locked:` already has), not assumed to be the only path.
+
+### What shipped, in order
+
+1. **`TARGET-YAML.md`** — the full annotated dialect: every v2 field,
+   the `version: 2` marker's real meaning (concept-only signal; the
+   server is NEVER sent anything but `version: 1` and the stripped
+   subset), the v1-subset strip table, the compile-badge approach, and
+   the Structural category's render/semantics for holes.
+2. **`dungeonYaml.ts` v2 layer** — parsing (tolerant: every v2 field
+   absent/null/empty round-trips a pure v1 document unchanged, confirmed
+   by test), mutators (`toggleWall`/`toggleWallKind`/`toggleHole`/
+   `setStart`/`setEnd`/`setLightingAmbient`/`setPlacementFacing`/
+   `setBossFacing`), and `stripToV1Subset` (strips every v2 field, forces
+   `version: 1`, reports what got dropped + whether ≥2 rooms remain).
+   Relaxed the room-count guard: `rooms: []` is now a legitimate v2 draft
+   (only a genuinely MISSING `rooms:` key is a shape error) — a
+   from-scratch canvas has to be able to exist before any room is
+   declared.
+
+   **Real bug the new tests caught, not inspection**: `wallIndexAt`/
+   `holeIndexAt` compared `YAMLSeq.items[n]` (an unresolved `Scalar`
+   wrapper for anything built via `cst.createNode`) against raw numbers,
+   which never matches — every wall/hole lookup silently failed. Fixed to
+   use `.get(n)`, the same auto-resolving accessor `findRoomSeqIndex`
+   already used elsewhere in this file. Worth naming: this is exactly
+   the kind of bug a test catches and a screenshot doesn't (the FIRST
+   toggle always "worked" by construction — it's the SECOND lookup, on
+   an already-round-tripped node, that silently failed).
+
+3. **Live preview now compiles the v1 subset, not raw v2 text**
+   (`usePutDungeonPreview.ts`) — sending a v2-bearing document verbatim
+   to `PutDungeon` risked an unhelpful decode-level failure instead of a
+   real `field_errors` response. A not-yet-shape-parseable mid-edit
+   document skips that tick silently rather than misfiling a parse
+   failure as a request/field error.
+4. **Structural palette category** (Wall/Door/Hole) + Start/End tools in
+   Markers, all badged `v2`. Selecting one arms a `BoardTool` (`types.ts`)
+   `Board.tsx`'s click handlers check before falling into ordinary
+   placement logic — the real connector door always wins over any active
+   tool on its own cell. `WallGashExplainer` (the no-tool-selected
+   fallback) no longer says "go to New Dungeon" — Kirk's own follow-up
+   correction the same day — it now points at the Structural category in
+   THIS view, since walls are authorable right here now.
+5. **Compile-badge summary + Save & Play → "Save the compilable subset"**
+   (`YamlPane.tsx`) — a `CompileBadgeStrip` names exactly which v2
+   constructs are present ("Uses: 2 walls, 1 hole — not yet compiled
+   server-side"); Save & Play becomes "Save the compilable subset" the
+   moment any are, sends the STRIPPED yaml either way, and disables
+   entirely when stripping would leave fewer than 2 rooms (genuinely
+   nothing to save, not just something to warn about). The success panel
+   carries the dropped-fields list as an honesty note, the same pattern
+   Walk it already established.
+6. **3D preview renders holes** — `DungeonPreview3D.tsx`'s
+   `buildFloorTiles` skips a hole's cell, same shape as the pre-existing
+   door-row skip. Exactly the cheap render Kirk predicted ("simply omit
+   the floor hex") — `SyntyHexFloor` only ever renders what's in the tile
+   map it's handed.
+
+**Verified live, every piece, not just unit-tested**: authored a wall via
+the Structural category and watched it round-trip into the YAML pane and
+render on the board; toggled a hole and a start marker the same way;
+watched the compile badge appear the moment a v2 construct existed and
+disappear when none did; clicked "Save the compilable subset" and
+confirmed BOTH the success panel's saved key AND its "dropped: 1 wall"
+honesty note; marked a hole, switched to the 3D pane, and confirmed the
+floor mesh has a real gap there, not just a dark tile.
+
+### What did NOT ship this round — named, not silently dropped
+
+- **The "New Dungeon" tab is NOT internally unified onto the same CST.**
+  It still runs `CreationState`/`creationTypes.ts`'s own bespoke data
+  model and its own `ProposedYamlPane`. What DID change: TARGET-YAML.md
+  is now the single spec BOTH sides' field names/shapes are defined
+  against (no more `canvas:`-only-freeform vs `rooms:`-only-chain
+  mismatch at the SCHEMA level) — but the two React subsystems are still
+  separate code, not one board. Kirk's own framing ("New Dungeon remains
+  the blank-canvas creation entry, not the only home of the target
+  dialect") is satisfied for what it says — edit mode is no longer the
+  ONLY place v2 constructs live — but a full merge of the two component
+  trees onto one `DungeonDoc`/CST is real, separate follow-up work, sized
+  similarly to everything in this section combined, not something a
+  single round could respons­ibly fold in alongside it.
+- **Hole is not wired into creation mode's own Tools strip.** Wall/Door/
+  Start/End already existed there before this round; Hole is new and
+  only landed on the shared `Palette`'s Structural category, which
+  creation mode explicitly hides (`showBoardTools={false}`) to avoid a
+  second, dead-clicking set of controls for the same actions. Adding a
+  sixth "Set Hole" tool to creation's own strip is a small, well-scoped
+  follow-up, not attempted here given the rest of this round's scope.
+- **Wall/hole/start/end authored beyond the compiled `FloorPlan`'s
+  current bounding box may render out of view.** The SVG viewBox is
+  still sized off the room/connector loop, as before this round — a
+  truly from-scratch canvas authoring far beyond any declared room's
+  columns wasn't exercised live this round (everything tested built on
+  showcase.yaml's existing 3-room chain, which already covers the area
+  anything was drawn in). Worth fixing before "New Dungeon" genuinely
+  starts from zero rooms in the unified board, not before.
