@@ -19,12 +19,14 @@ import { DoorOpen, Swords, UserPlus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCreateLobby } from '../../api/useCreateLobby';
 import { useJoinLobby } from '../../api/useJoinLobby';
+import { useListDungeons } from '../../api/useListDungeons';
 import { useLobbyStream } from '../../api/useLobbyStream';
 import { useSetLobbyReady } from '../../api/useSetLobbyReady';
 import { useStartLobbyEncounter } from '../../api/useStartLobbyEncounter';
 import { errorMessage } from '../../utils/combatFormat';
 import { Button } from '../ui/Button';
 import { ErrorDisplay } from '../ui/Feedback';
+import { DungeonPicker } from './DungeonPicker';
 import { JoinCodeChip } from './JoinCodeChip';
 import { PartyRoster } from './PartyRoster';
 
@@ -73,11 +75,20 @@ export function LobbyFlow({
   const [members, setMembers] = useState<LobbyMember[]>([]);
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // '' means "let the server fall back to its own caller->env->default
+  // precedence" — the DungeonPicker placeholder state, not a real key.
+  const [selectedDungeonKey, setSelectedDungeonKey] = useState('');
 
   const { createLobby, loading: createLoading } = useCreateLobby();
   const { joinLobby, loading: joinLoading } = useJoinLobby();
   const { setReady, loading: readyLoading } = useSetLobbyReady();
   const { startEncounter, loading: startLoading } = useStartLobbyEncounter();
+  const {
+    dungeons,
+    loading: dungeonsLoading,
+    error: dungeonsError,
+    refetch: refetchDungeons,
+  } = useListDungeons();
 
   // Dev join-ref carrier (lobby-surface.md Decision 2): a URL param supplies
   // the same opaque join_ref the Discord Activity carrier will supply
@@ -188,7 +199,10 @@ export function LobbyFlow({
     if (!lobbyId) return;
     setError(null);
     try {
-      const resp = await startEncounter({ lobbyId });
+      const resp = await startEncounter({
+        lobbyId,
+        dungeonKey: selectedDungeonKey,
+      });
       // Belt-and-suspenders: also drive off the RPC response directly in
       // case the caller's own StreamLobby delta races the response (the
       // broadcast should reach every member including the host, but the
@@ -339,6 +353,26 @@ export function LobbyFlow({
       {joinRef && <JoinCodeChip code={joinRef} />}
 
       <PartyRoster members={members} currentPlayerId={playerId} />
+
+      {isHost &&
+        (dungeonsError ? (
+          // A silently-empty picker here would be indistinguishable from
+          // "no dungeons authored" — surface the failure instead. Start
+          // still works with the empty-key server default below; this
+          // only blocks PICKING a specific dungeon, not starting at all.
+          <ErrorDisplay
+            title="Couldn't load dungeons"
+            message={errorMessage(dungeonsError)}
+            onRetry={refetchDungeons}
+          />
+        ) : (
+          <DungeonPicker
+            dungeons={dungeons}
+            value={selectedDungeonKey}
+            onChange={setSelectedDungeonKey}
+            loading={dungeonsLoading}
+          />
+        ))}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <Button

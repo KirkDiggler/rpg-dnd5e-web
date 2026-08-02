@@ -6,6 +6,14 @@ import { lobbyClient } from './client';
 
 export interface UseStartLobbyEncounterInput {
   lobbyId: string;
+  /**
+   * Selects which authored dungeon to build the encounter from (rpg-project#131,
+   * fed by the lobby's DungeonPicker / useListDungeons). Omitted or empty
+   * defers to the server's existing caller -> env -> default precedence
+   * (`StartEncounterInput.DungeonKey`) — unchanged behavior for every
+   * caller that doesn't pass one.
+   */
+  dungeonKey?: string;
 }
 
 export interface UseStartLobbyEncounterResult {
@@ -37,6 +45,7 @@ export function useStartLobbyEncounter(): UseStartLobbyEncounterResult {
 
       const request = create(StartEncounterRequestSchema, {
         lobbyId: input.lobbyId,
+        dungeonKey: input.dungeonKey || '',
       });
 
       try {
