@@ -28,6 +28,14 @@
  * it here would mean writing that synthetic-edge-geometry step first, a
  * genuinely separate piece of work. See CONTRACT.md's "3D preview spike"
  * section for the full reuse-vs-new breakdown.
+ *
+ * DOES render `doc.holes` (Kirk's 2026-08-02 Structural-category ask,
+ * TARGET-YAML.md) — `buildFloorTiles` simply skips a hole's cell, the
+ * same shape as the pre-existing door-row skip. Not the same situation
+ * as walls: a hole is cell-native (no edge geometry to invent), and
+ * "omit the floor tile" is the literal, honest render Kirk's own ask
+ * specified, nearly free given `SyntyHexFloor` only renders whatever's
+ * in the tile map it's handed.
  */
 import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { resolvePropVariant } from '@/components/hex-grid/propManifest';
@@ -59,7 +67,18 @@ interface PlacedMonster {
   monsterRefId: string;
 }
 
-function buildFloorTiles(floorPlan: FloorPlan): Map<string, AbsoluteFloorTile> {
+/** `holes` are v2, proposed (TARGET-YAML.md's Structural category, Kirk's
+ * 2026-08-02 ask) — absolute [col,row] cells with no floor. Skipping them
+ * here is the SAME shape as the existing door-row skip just below (both
+ * are "don't generate a tile for this cell"), and it's the honest render
+ * Kirk's own ask specified: "3D preview = simply omit the floor hex" —
+ * nearly free given `SyntyHexFloor` only ever renders whatever's in the
+ * tile map handed to it. */
+function buildFloorTiles(
+  floorPlan: FloorPlan,
+  holes: readonly [number, number][]
+): Map<string, AbsoluteFloorTile> {
+  const holeSet = new Set(holes.map(([c, r]) => `${c},${r}`));
   const tiles = new Map<string, AbsoluteFloorTile>();
   for (const room of floorPlan.rooms) {
     for (
@@ -69,6 +88,7 @@ function buildFloorTiles(floorPlan: FloorPlan): Map<string, AbsoluteFloorTile> {
     ) {
       for (let row = 0; row < floorPlan.height; row++) {
         if (row === floorPlan.doorRow) continue; // same legality rule Board.tsx uses
+        if (holeSet.has(`${col},${row}`)) continue;
         const cube = cubeAtColRow(col, row);
         const key = `${cube.x},${cube.y},${cube.z}`;
         tiles.set(key, { x: cube.x, y: cube.y, z: cube.z, roomId: room.id });
@@ -125,7 +145,10 @@ function buildPlacements(
 }
 
 export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
-  const floorTiles = useMemo(() => buildFloorTiles(floorPlan), [floorPlan]);
+  const floorTiles = useMemo(
+    () => buildFloorTiles(floorPlan, doc.holes),
+    [floorPlan, doc.holes]
+  );
   const { props, monsters } = useMemo(
     () => buildPlacements(floorPlan, doc),
     [floorPlan, doc]
