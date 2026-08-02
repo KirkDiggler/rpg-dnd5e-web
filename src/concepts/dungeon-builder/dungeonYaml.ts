@@ -59,6 +59,31 @@ function parseTargeting(raw: unknown): string | null {
   return typeof raw === 'string' ? raw : null;
 }
 
+/** Shared by both `place:` sites — room-scoped (`rooms[].place`, real
+ * dungeonspec, room-LOCAL `at`) and top-level (`place:`, v2 proposed,
+ * absolute `at` — see TARGET-YAML.md's "top-level placement" section).
+ * Same fields either way; only what `at` is relative to differs, and
+ * that's the caller's concern, not the parser's. */
+function parsePlacementList(raw: unknown, context: string): PlacementDoc[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as Record<string, unknown>[]).map((p, pi) => {
+    if (typeof p.ref !== 'string' || !Array.isArray(p.at)) {
+      throw new DungeonParseError(`${context}[${pi}] missing ref/at`);
+    }
+    return {
+      ref: p.ref,
+      at: [p.at[0] as number, p.at[1] as number] as [number, number],
+      blocksMovement: p.blocks_movement === true,
+      blocksLos: p.blocks_los === true,
+      isMonster: p.ref.startsWith('dnd5e:monsters:'),
+      facing: parseFacing(p.facing),
+      mount: parseMount(p.mount),
+      height: parseHeight(p.height),
+      targeting: parseTargeting(p.targeting),
+    };
+  });
+}
+
 /** v2, proposed — see TARGET-YAML.md's "z-axis: mount + height" section.
  * `'floor'` (the default — every placement before this field existed)
  * means "unchanged, stands on the floor"; `'wall'` means this placement
@@ -187,6 +212,17 @@ export interface DungeonDoc {
   start: [number, number] | null;
   end: [number, number] | null;
   lighting: LightingDoc | null;
+  /** Top-level, absolute-[col,row] placements — same shape as a room's
+   * own `place:`, room-scoping made optional rather than required. See
+   * TARGET-YAML.md's "top-level placement" section for the full
+   * rationale (room-scoped placement is the v1 heritage; rooms become
+   * organizational, not existential, in the target dialect) and
+   * `stripToV1Subset`'s map-down-or-drop conversion back to v1's
+   * room-scoped shape. No top-level `boss:` — a boss stays room-scoped
+   * even in v2 (dungeonspec's `validateBossCardinality` needs an owning
+   * room; see TARGET-YAML.md for how the target dialect eventually frees
+   * it). */
+  place: PlacementDoc[];
 }
 
 export interface ParsedDungeon {
@@ -246,26 +282,7 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     if (typeof room.width !== 'number') {
       throw new DungeonParseError(`Room "${room.id}" has no width`);
     }
-    const place = Array.isArray(room.place)
-      ? (room.place as Record<string, unknown>[]).map((p, pi) => {
-          if (typeof p.ref !== 'string' || !Array.isArray(p.at)) {
-            throw new DungeonParseError(
-              `Room "${room.id}" place[${pi}] missing ref/at`
-            );
-          }
-          return {
-            ref: p.ref,
-            at: [p.at[0] as number, p.at[1] as number] as [number, number],
-            blocksMovement: p.blocks_movement === true,
-            blocksLos: p.blocks_los === true,
-            isMonster: p.ref.startsWith('dnd5e:monsters:'),
-            facing: parseFacing(p.facing),
-            mount: parseMount(p.mount),
-            height: parseHeight(p.height),
-            targeting: parseTargeting(p.targeting),
-          };
-        })
-      : [];
+    const place = parsePlacementList(room.place, `Room "${room.id}" place`);
     const boss = room.boss
       ? (() => {
           const b = room.boss as Record<string, unknown>;
@@ -341,6 +358,11 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     ? { ambient: (raw.lighting as Record<string, unknown>).ambient as number }
     : null;
 
+  // Top-level, absolute-[col,row] placements — v2, proposed. See
+  // TARGET-YAML.md's "top-level placement" section and DungeonDoc.place's
+  // own doc comment.
+  const place = parsePlacementList(raw.place, 'place');
+
   return {
     version: (raw.version as number) ?? 1,
     key: raw.key as string,
@@ -355,6 +377,7 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     start,
     end,
     lighting,
+    place,
   };
 }
 
@@ -406,21 +429,36 @@ function createPlacementNode(
   return node;
 }
 
-/** Add a new prop/monster placement to a room's `place:` list (creating
- * the list if the room has none yet). Monster placements never get
- * blocks_movement/blocks_los keys, matching dungeonspec.Validate's
+/** The `place:` sequence a placement mutator should read/write —
+ * room-scoped (`roomId` a real id) or top-level (`roomId === null`, v2
+ * proposed — see TARGET-YAML.md's "top-level placement" section).
+ * Creates the sequence if absent, matching every mutator's existing
+ * "first placement creates the list" behavior. One shared lookup so
+ * every placement mutator below only needs an `if (roomId === null)`
+ * branch, not a parallel implementation. */
+function placeSeq(cst: Document, roomId: string | null): YAMLSeq {
+  if (roomId === null) return topSeq(cst, 'place');
+  const room = roomMap(cst, roomId);
+  const existing = room.get('place', true);
+  if (isSeq(existing)) return existing;
+  const seq = new YAMLSeq(cst.schema);
+  room.set('place', seq);
+  return seq;
+}
+
+/** Add a new prop/monster placement to a room's `place:` list, or to the
+ * top-level `place:` list when `roomId` is `null` (creating whichever
+ * list is targeted if it doesn't exist yet). Monster placements never
+ * get blocks_movement/blocks_los keys, matching dungeonspec.Validate's
  * rejection of both on monster refs. */
 export function placeItem(
   cst: Document,
-  roomId: string,
+  roomId: string | null,
   ref: string,
   at: [number, number]
 ): void {
-  const room = roomMap(cst, roomId);
+  const place = placeSeq(cst, roomId);
   const isMonster = ref.startsWith('dnd5e:monsters:');
-  const existing = room.get('place', true);
-  const place: YAMLSeq = isSeq(existing) ? existing : new YAMLSeq(cst.schema);
-  if (!isSeq(existing)) room.set('place', place);
   const node = createPlacementNode(
     cst,
     ref,
@@ -430,21 +468,19 @@ export function placeItem(
   place.items.push(node);
 }
 
-/** Move an existing placement (same room only — cross-room moves are
- * modeled as delete+place by the caller, since a placement's index is
- * room-scoped). Mutates the SAME node object, which is what keeps a
- * `commentBefore` attached to it correctly. */
+/** Move an existing placement within the SAME list it's already in
+ * (room-scoped or top-level — cross-list moves are modeled as
+ * delete+place by the caller, since a placement's index is scoped to
+ * whichever list it lives in). Mutates the SAME node object, which is
+ * what keeps a `commentBefore` attached to it correctly. */
 export function movePlacement(
   cst: Document,
-  roomId: string,
+  roomId: string | null,
   index: number,
   at: [number, number]
 ): void {
-  const room = roomMap(cst, roomId);
-  const place = room.get('place', true);
-  if (!isSeq(place))
-    throw new DungeonParseError(`room "${roomId}" has no place: list`);
-  const item = (place as YAMLSeq).items[index];
+  const place = placeSeq(cst, roomId);
+  const item = place.items[index];
   if (!isMap(item)) throw new DungeonParseError(`place[${index}] is not a map`);
   const atNode = new YAMLSeq(cst.schema);
   atNode.flow = true;
@@ -459,27 +495,23 @@ export function movePlacement(
  * this concept's earlier hand-rolled parser. */
 export function deletePlacement(
   cst: Document,
-  roomId: string,
+  roomId: string | null,
   index: number
 ): void {
-  const room = roomMap(cst, roomId);
-  const place = room.get('place', true);
-  if (!isSeq(place)) return;
-  (place as YAMLSeq).items.splice(index, 1);
+  const place = placeSeq(cst, roomId);
+  place.items.splice(index, 1);
 }
 
 /** Set a prop placement's blocks_movement/blocks_los flags (props only —
  * callers must not call this for monster refs). */
 export function setPlacementFlags(
   cst: Document,
-  roomId: string,
+  roomId: string | null,
   index: number,
   flags: { blocksMovement: boolean; blocksLos: boolean }
 ): void {
-  const room = roomMap(cst, roomId);
-  const place = room.get('place', true);
-  if (!isSeq(place)) return;
-  const item = (place as YAMLSeq).items[index];
+  const place = placeSeq(cst, roomId);
+  const item = place.items[index];
   if (!isMap(item)) return;
   item.set('blocks_movement', flags.blocksMovement);
   item.set('blocks_los', flags.blocksLos);
@@ -587,14 +619,12 @@ export function setConnectorLocked(
 /** Set or clear a `place:` entry's `facing:` — v2, proposed. */
 export function setPlacementFacing(
   cst: Document,
-  roomId: string,
+  roomId: string | null,
   index: number,
   facing: number | null
 ): void {
-  const room = roomMap(cst, roomId);
-  const place = room.get('place', true);
-  if (!isSeq(place)) return;
-  const item = (place as YAMLSeq).items[index];
+  const place = placeSeq(cst, roomId);
+  const item = place.items[index];
   if (!isMap(item)) return;
   if (facing === null) item.delete('facing');
   else item.set('facing', facingLabel(facing));
@@ -621,15 +651,13 @@ export function setBossFacing(
  * independent mutators a caller could desync. */
 export function setPlacementMount(
   cst: Document,
-  roomId: string,
+  roomId: string | null,
   index: number,
   mount: Mount,
   height: number | null
 ): void {
-  const room = roomMap(cst, roomId);
-  const place = room.get('place', true);
-  if (!isSeq(place)) return;
-  const item = (place as YAMLSeq).items[index];
+  const place = placeSeq(cst, roomId);
+  const item = place.items[index];
   if (!isMap(item)) return;
   if (mount === 'floor') {
     item.delete('mount');
@@ -647,14 +675,12 @@ export function setPlacementMount(
  * assumes for its own props-only fields. */
 export function setPlacementTargeting(
   cst: Document,
-  roomId: string,
+  roomId: string | null,
   index: number,
   targeting: string | null
 ): void {
-  const room = roomMap(cst, roomId);
-  const place = room.get('place', true);
-  if (!isSeq(place)) return;
-  const item = (place as YAMLSeq).items[index];
+  const place = placeSeq(cst, roomId);
+  const item = place.items[index];
   if (!isMap(item)) return;
   if (targeting === null) item.delete('targeting');
   else item.set('targeting', targeting);
@@ -955,6 +981,73 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
 
   if (doc.lighting) dropped.push('lighting');
   cst.delete('lighting');
+
+  // Top-level place: (v2, proposed — TARGET-YAML.md's "top-level
+  // placement" section) has no v1 analog at all; dungeonspec only knows
+  // room-scoped place:. A top-level entry whose absolute column falls
+  // inside a declared room's own column range MAPS DOWN into that
+  // room's place: list (absolute -> room-local `at`) rather than being
+  // lost — v1's room-scoped place: is a real subset of what the entry
+  // meant, not a different claim. One outside every room's range has no
+  // v1 home and is dropped, counted honestly like every other v2 field
+  // here. Room bounds use the SAME startColumn accumulation rule
+  // floorPlanCompile.ts uses server-side (`next.startColumn =
+  // prev.startColumn + prev.width + 1`) — pure client math, only ever
+  // used here to decide "does this column fall in this room," never to
+  // author a gameplay position.
+  let mappedPlacementCount = 0;
+  let outOfRoomPlacementCount = 0;
+  const topPlace = cst.get('place');
+  if (isSeq(topPlace)) {
+    const roomBounds = doc.rooms.reduce<
+      { id: string; startColumn: number; width: number }[]
+    >((acc, r) => {
+      const prev = acc[acc.length - 1];
+      const startColumn = prev ? prev.startColumn + prev.width + 1 : 0;
+      acc.push({ id: r.id, startColumn, width: r.width });
+      return acc;
+    }, []);
+    for (const item of [...topPlace.items]) {
+      if (!isMap(item)) continue;
+      const atNode = item.get('at');
+      if (!isSeq(atNode)) continue;
+      const col = atNode.get(0) as number;
+      const row = atNode.get(1) as number;
+      const room = roomBounds.find(
+        (r) => col >= r.startColumn && col < r.startColumn + r.width
+      );
+      if (!room) {
+        outOfRoomPlacementCount++;
+        continue;
+      }
+      const localAtNode = new YAMLSeq(cst.schema);
+      localAtNode.flow = true;
+      localAtNode.items = [col - room.startColumn, row];
+      item.set('at', localAtNode);
+      placeSeq(cst, room.id).items.push(item);
+      mappedPlacementCount++;
+    }
+  }
+  cst.delete('place');
+  // `dropped` drives BOTH the "Uses: ..." compile badge (what v2 is
+  // currently present) and the post-save "Dropped: ..." honesty note
+  // (YamlPane.tsx) — the same array, doing double duty for every other
+  // v2 field, because for every other field "in use" and "genuinely
+  // lost" are the same set. Top-level placement is the first case where
+  // they diverge: a mapped one survives (relocated, not erased), an
+  // out-of-room one doesn't. Both still need to show up in "Uses:" (the
+  // construct IS present), so both get an entry — worded to stay honest
+  // in the "Dropped:" reading too ("mapped into rooms" is not "lost").
+  if (mappedPlacementCount > 0) {
+    dropped.push(
+      `${mappedPlacementCount} top-level placement${mappedPlacementCount === 1 ? '' : 's'} (mapped into rooms)`
+    );
+  }
+  if (outOfRoomPlacementCount > 0) {
+    dropped.push(
+      `${outOfRoomPlacementCount} top-level placement${outOfRoomPlacementCount === 1 ? '' : 's'} outside any room`
+    );
+  }
 
   let facingCount = 0;
   let mountCount = 0;

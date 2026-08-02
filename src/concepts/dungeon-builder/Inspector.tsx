@@ -82,41 +82,52 @@ export function Inspector({
   onSetFacing,
 }: InspectorProps) {
   if (!selected) return null;
-  const room = doc.rooms.find((r) => r.id === selected.roomId);
-  if (!room) return null;
+  // Three shapes to resolve, not two: boss (always room-scoped — a real
+  // room lookup), a room-scoped place: entry (selected.roomId a real
+  // id), or a TOP-LEVEL place: entry (selected.roomId === null,
+  // doc.place[selected.index] directly — no room to look up at all).
+  // Requiring a room match unconditionally here was the actual bug this
+  // shape was written to fix: a top-level selection's `doc.rooms.find(r
+  // => r.id === null)` always misses (there may be zero rooms), which
+  // silently returned null — no dialog, no error — for every top-level
+  // placement. See CONTRACT.md's "top-level placement" section.
+  const room = selected.roomId
+    ? doc.rooms.find((r) => r.id === selected.roomId)
+    : undefined;
+  if (selected.roomId && !room) return null;
+  const placement = selected.boss
+    ? undefined
+    : room
+      ? room.place[selected.index]
+      : doc.place[selected.index];
+  const boss = selected.boss ? room?.boss : undefined;
 
   // Boss is always a monster ref (flags never apply); a place: entry
   // carries its own isMonster/blocksMovement/blocksLos already resolved
   // by dungeonYaml.ts's parser.
-  const ref = selected.boss ? room.boss?.ref : room.place[selected.index]?.ref;
-  const at = selected.boss ? room.boss?.at : room.place[selected.index]?.at;
+  const ref = selected.boss ? boss?.ref : placement?.ref;
+  const at = selected.boss ? boss?.at : placement?.at;
   if (!ref || !at) return null;
-  const isMonster = selected.boss
-    ? true
-    : (room.place[selected.index]?.isMonster ?? true);
+  const isMonster = selected.boss ? true : (placement?.isMonster ?? true);
   const blocksMovement = selected.boss
     ? false
-    : (room.place[selected.index]?.blocksMovement ?? false);
-  const blocksLos = selected.boss
-    ? false
-    : (room.place[selected.index]?.blocksLos ?? false);
+    : (placement?.blocksMovement ?? false);
+  const blocksLos = selected.boss ? false : (placement?.blocksLos ?? false);
   // v2 — mount/height don't exist on a boss entry (bosses aren't wall
   // furniture); targeting/facing exist on both.
-  const mount = selected.boss
-    ? 'floor'
-    : (room.place[selected.index]?.mount ?? 'floor');
-  const height = selected.boss
-    ? null
-    : (room.place[selected.index]?.height ?? null);
+  const mount = selected.boss ? 'floor' : (placement?.mount ?? 'floor');
+  const height = selected.boss ? null : (placement?.height ?? null);
   const targeting = selected.boss
-    ? (room.boss?.targeting ?? null)
-    : (room.place[selected.index]?.targeting ?? null);
+    ? (boss?.targeting ?? null)
+    : (placement?.targeting ?? null);
   const facing = selected.boss
-    ? (room.boss?.facing ?? null)
-    : (room.place[selected.index]?.facing ?? null);
+    ? (boss?.facing ?? null)
+    : (placement?.facing ?? null);
   const isWallMountable = !selected.boss && WALL_MOUNTABLE_REFS.has(ref);
 
-  const fpRoom = floorPlan?.rooms.find((r) => r.id === selected.roomId);
+  const fpRoom = selected.roomId
+    ? floorPlan?.rooms.find((r) => r.id === selected.roomId)
+    : undefined;
   const absCol = (fpRoom?.startColumn ?? 0) + at[0];
   const row = at[1];
   const onEntrance =

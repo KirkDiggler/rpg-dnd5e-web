@@ -85,9 +85,7 @@ export function CreationConcept({
   }, [demo.isPlaying]);
 
   const usageCounts: Record<string, number> = {};
-  const canvasRoom = doc.rooms.find((r) => r.archetype === 'canvas');
-  for (const p of canvasRoom?.place ?? [])
-    usageCounts[p.ref] = (usageCounts[p.ref] ?? 0) + 1;
+  for (const p of doc.place) usageCounts[p.ref] = (usageCounts[p.ref] ?? 0) + 1;
 
   // Mirrors edit mode's own clearOtherSelections — a tool selection, a
   // palette selection, and a placement selection are mutually exclusive

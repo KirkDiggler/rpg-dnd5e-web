@@ -443,5 +443,98 @@ connectors: []
       const result = stripToV1Subset(oneRoom);
       expect(result.compilable).toBe(false);
     });
+
+    it('maps a top-level placement inside a room into that room, converting absolute -> room-local at', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      // showcase.yaml's real chain: antechamber [0,6), shrine [7,21),
+      // vault [22,30) — verified against SHOWCASE_FLOORPLAN in
+      // fixtures.ts and floorPlanCompile.test.ts. Column 10 falls inside
+      // shrine's range; local col is 10 - 7 = 3.
+      placeItem(cst, null, 'dnd5e:props:pillar', [10, 3]);
+
+      const result = stripToV1Subset(serializeDungeon(cst));
+      expect(result.dropped).toEqual([
+        '1 top-level placement (mapped into rooms)',
+      ]);
+      expect(result.compilable).toBe(true);
+
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.place).toEqual([]); // top-level place: is gone in v1
+      const shrine = stripped.rooms.find((r) => r.id === 'shrine')!;
+      const mapped = shrine.place.find(
+        (p) => p.ref === 'dnd5e:props:pillar' && p.at[0] === 3 && p.at[1] === 3
+      );
+      expect(mapped).toBeDefined();
+    });
+
+    it('drops a top-level placement outside every room, with an honest count', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      // vault ends at column 30 (22 + 8) — column 50 is outside every
+      // room's range. A distinctive ref (not one showcase.yaml already
+      // places elsewhere) so the "did it end up in some room" check
+      // below can't false-positive against pre-existing content.
+      placeItem(cst, null, 'dnd5e:props:__test_marker__', [50, 3]);
+
+      const result = stripToV1Subset(serializeDungeon(cst));
+      expect(result.dropped).toEqual([
+        '1 top-level placement outside any room',
+      ]);
+      expect(result.compilable).toBe(true);
+
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.place).toEqual([]);
+      for (const room of stripped.rooms) {
+        expect(
+          room.place.some((p) => p.ref === 'dnd5e:props:__test_marker__')
+        ).toBe(false);
+      }
+    });
+
+    it('reports both mapped and out-of-room placements together, in order', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      placeItem(cst, null, 'dnd5e:props:pillar', [10, 3]); // maps into shrine
+      placeItem(cst, null, 'dnd5e:props:altar', [50, 3]); // outside every room
+
+      const result = stripToV1Subset(serializeDungeon(cst));
+      expect(result.dropped).toEqual([
+        '1 top-level placement (mapped into rooms)',
+        '1 top-level placement outside any room',
+      ]);
+    });
+  });
+
+  describe('generalized placement mutators (roomId: null = top-level)', () => {
+    it('placeItem/movePlacement/deletePlacement round-trip a top-level entry', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      placeItem(cst, null, 'dnd5e:props:pillar', [1, 1]);
+      let doc = toDungeonDoc(cst);
+      expect(doc.place).toHaveLength(1);
+      expect(doc.place[0]).toMatchObject({
+        ref: 'dnd5e:props:pillar',
+        at: [1, 1],
+      });
+
+      movePlacement(cst, null, 0, [2, 2]);
+      doc = toDungeonDoc(cst);
+      expect(doc.place[0].at).toEqual([2, 2]);
+
+      deletePlacement(cst, null, 0);
+      doc = toDungeonDoc(cst);
+      expect(doc.place).toEqual([]);
+    });
+
+    it('setPlacementFacing/setPlacementMount/setPlacementTargeting all work on a top-level entry', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      placeItem(cst, null, 'dnd5e:props:wall-banner', [1, 1]);
+      setPlacementFacing(cst, null, 0, 2);
+      setPlacementMount(cst, null, 0, 'wall', 2.0);
+      setPlacementTargeting(cst, null, 0, 'closest');
+
+      const doc = toDungeonDoc(cst);
+      expect(doc.place[0].facing).toBe(2);
+      expect(doc.place[0].mount).toBe('wall');
+      expect(doc.place[0].height).toBe(2.0);
+      expect(doc.place[0].targeting).toBe('closest');
+    });
   });
 });

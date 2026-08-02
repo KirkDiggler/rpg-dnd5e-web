@@ -13,11 +13,7 @@ import { CollapsibleSidePanel } from './CollapsibleSidePanel';
 import { ConnectorInspector } from './ConnectorInspector';
 import { CreationConcept } from './creation/CreationConcept';
 import type { DemoActions } from './creation/demoScript';
-import {
-  CANVAS_ROOM_ID,
-  DEFAULT_CANVAS,
-  emptyCanvasYaml,
-} from './creation/emptyCanvasDoc';
+import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
 import './DungeonBuilderConcept.css';
 import {
   buildWalkItYaml,
@@ -87,10 +83,16 @@ function useBoardEditing(
   const [selectedPlacement, setSelectedPlacement] =
     useState<PlacementSelection | null>(null);
 
-  const handlePlace = (roomId: string, at: [number, number]) => {
+  const handlePlace = (roomId: string | null, at: [number, number]) => {
     if (!selectedPalette) return;
     const isMonster = selectedPalette.kind === 'monster';
     if (selectedPalette.kind === 'boss') {
+      // Boss stays room-scoped even in the target dialect (moveBoss
+      // requires a real roomId) — callers arming the boss tool over a
+      // roomless canvas are expected to reject before ever reaching
+      // here (CreationBoard.tsx does), so this is a defensive backstop,
+      // not the primary guard.
+      if (roomId === null) return;
       moveBoss(cst, roomId, at);
       flashToast?.('Boss pin placed.');
     } else {
@@ -106,21 +108,26 @@ function useBoardEditing(
 
   const handleMove = (
     sel: PlacementSelection,
-    roomId: string,
+    roomId: string | null,
     at: [number, number]
   ) => {
     if (sel.boss) {
-      moveBoss(cst, roomId, at);
+      // A boss never leaves its own room (Board.tsx's own pointer-up
+      // handler already rejects a cross-room boss drop before onMove is
+      // ever called) — sel.roomId is the real, non-null id to use here,
+      // not the destination `roomId` parameter (which stays nullable to
+      // cover the non-boss, top-level case).
+      moveBoss(cst, sel.roomId, at);
     } else if (roomId === sel.roomId) {
       movePlacement(cst, sel.roomId, sel.index, at);
     } else {
-      // Cross-room move: delete + re-place, since a placement's index is
-      // room-scoped (dungeonYaml.ts's own movePlacement is same-room
-      // only). Structurally unreachable in creation mode today — its
-      // single synthetic room means roomId === sel.roomId always — but
-      // kept general rather than assuming that never changes.
-      const room = doc.rooms.find((r) => r.id === sel.roomId);
-      const item = room?.place[sel.index];
+      // Cross-list move (room-scoped <-> top-level, or between two
+      // rooms): delete + re-place, since a placement's index is scoped
+      // to whichever list it's currently in (dungeonYaml.ts's own
+      // movePlacement only rewrites `at` within the SAME list).
+      const item = sel.roomId
+        ? doc.rooms.find((r) => r.id === sel.roomId)?.place[sel.index]
+        : doc.place[sel.index];
       if (!item) return;
       deletePlacement(cst, sel.roomId, sel.index);
       placeItem(cst, roomId, item.ref, at);
@@ -400,12 +407,12 @@ export function DungeonBuilderConcept() {
   const edit = useBoardEditing(cst, doc, syncFromCst, flashToast);
 
   // "New Dungeon" — the SAME cst/DungeonDoc shape edit mode uses, seeded
-  // from an empty v2-only canvas (creation/emptyCanvasDoc.ts's synthetic
-  // CANVAS_ROOM_ID bridge room) instead of a real dungeon, and its own
-  // useBoardEditing instance so its palette/placement selection is
-  // independent of edit mode's (same "remembered per mode" precedent the
-  // collapse-state pairs above already set). See CONTRACT.md's
-  // "unifying New Dungeon onto the shared CST" section.
+  // from an empty v2-only canvas (creation/emptyCanvasDoc.ts — rooms: [],
+  // placements live in the top-level place: field) instead of a real
+  // dungeon, and its own useBoardEditing instance so its palette/
+  // placement selection is independent of edit mode's (same "remembered
+  // per mode" precedent the collapse-state pairs above already set). See
+  // CONTRACT.md's "unifying New Dungeon onto the shared CST" section.
   const creationInitial = parseDungeon(
     emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height)
   );
@@ -528,16 +535,15 @@ export function DungeonBuilderConcept() {
       syncFromCreationCst(creationCst);
     },
     place: (ref, at) => {
-      placeItem(creationCst, CANVAS_ROOM_ID, ref, at);
+      placeItem(creationCst, null, ref, at);
       syncFromCreationCst(creationCst);
     },
     rotateLastFacing: (delta) => {
-      const room = creationDoc.rooms.find((r) => r.id === CANVAS_ROOM_ID);
-      const lastIndex = (room?.place.length ?? 0) - 1;
+      const lastIndex = creationDoc.place.length - 1;
       if (lastIndex < 0) return;
-      const current = room!.place[lastIndex].facing ?? 0;
+      const current = creationDoc.place[lastIndex].facing ?? 0;
       const next = (((current + delta) % 6) + 6) % 6;
-      setPlacementFacing(creationCst, CANVAS_ROOM_ID, lastIndex, next);
+      setPlacementFacing(creationCst, null, lastIndex, next);
       syncFromCreationCst(creationCst);
     },
   };

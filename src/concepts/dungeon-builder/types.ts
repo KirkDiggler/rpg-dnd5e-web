@@ -3,8 +3,16 @@ export type PaletteSelection =
   | { kind: 'monster'; ref: string }
   | { kind: 'boss'; ref: string };
 
+/** `roomId: null` on the non-boss variant means a TOP-LEVEL placement
+ * (`doc.place[index]`, absolute [col,row]) rather than a room-scoped one
+ * (`doc.rooms.find(r => r.id === roomId).place[index]`, room-local
+ * [col,row]) — see dungeonYaml.ts's `DungeonDoc.place` doc comment and
+ * TARGET-YAML.md's "top-level placement" section. A boss stays
+ * room-scoped always (dungeonspec's `validateBossCardinality` needs an
+ * owning room even in the target dialect), so `roomId` is non-nullable
+ * on that variant. */
 export type PlacementSelection =
-  | { roomId: string; index: number; boss?: false }
+  | { roomId: string | null; index: number; boss?: false }
   | { roomId: string; boss: true };
 
 /** A board TOOL (as opposed to `PaletteSelection`'s draggable-item

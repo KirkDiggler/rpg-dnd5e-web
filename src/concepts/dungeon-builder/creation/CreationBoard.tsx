@@ -4,7 +4,12 @@
  * off the SAME `DungeonDoc`/CST edit mode's `Board.tsx` does (the CST
  * unification — see CONTRACT.md's "unifying New Dungeon onto the shared
  * CST" section) via `doc.canvas`/`doc.walls`/`doc.holes`/`doc.start`/
- * `doc.end` and the synthetic `CANVAS_ROOM_ID` bridge room's `place:`.
+ * `doc.end`/`doc.place` — all top-level, absolute-`[col,row]` fields,
+ * `place:` included (the decided target-dialect shape: room-scoped
+ * `place:` is v1's own heritage, not something a from-scratch canvas
+ * with zero rooms needs to fake — see TARGET-YAML.md's "top-level
+ * placement" section; an earlier round briefly tried a synthetic
+ * `archetype: canvas` bridge room instead, rejected, see CONTRACT.md).
  * Still its own specialized renderer, not `Board.tsx` itself — a
  * rectangular free canvas and a compiled hex room-chain are genuinely
  * different geometries, and one component branching between both would
@@ -46,7 +51,7 @@ import {
   vEdgeGeometry,
   type EdgeGeometry,
 } from './creationGeometry';
-import { CANVAS_ROOM_ID, DEFAULT_CANVAS } from './emptyCanvasDoc';
+import { DEFAULT_CANVAS } from './emptyCanvasDoc';
 
 interface CreationBoardProps {
   doc: DungeonDoc;
@@ -149,7 +154,6 @@ export function CreationBoard({
   );
 
   const grid = doc.canvas ?? DEFAULT_CANVAS;
-  const room = doc.rooms.find((r) => r.id === CANVAS_ROOM_ID);
   const width = grid.width * FLAT_COL_SPACING;
   const height = grid.height * FLAT_ROW_SPACING;
   const pad = FLAT_COL_SPACING;
@@ -196,19 +200,21 @@ export function CreationBoard({
     // select/move once something's been placed).
     if (edit.selectedPalette) {
       const cell = nearestCreationCell(p, grid);
-      // Same guard Board.tsx's own click handler makes for edit mode: a
-      // boss pin only ever MOVES an existing boss: entry (moveBoss
-      // throws if one doesn't exist yet — dungeonspec ties boss
-      // existence to a real archetype:boss room). The synthetic canvas
-      // room is never that archetype, so this always rejects rather than
-      // crashing on an uncaught DungeonParseError.
+      // Boss stays room-scoped even in the target dialect (dungeonspec's
+      // validateBossCardinality needs an owning archetype:boss room —
+      // see TARGET-YAML.md's "top-level placement" section) — a
+      // from-scratch canvas has zero rooms, so there is nowhere honest
+      // for a boss pin to go yet. Same guard Board.tsx's own click
+      // handler makes for edit mode (moveBoss throws if the target room
+      // has no existing boss: entry); rejecting here avoids an uncaught
+      // DungeonParseError instead of just avoiding a bad UX.
       if (edit.selectedPalette.kind === 'boss') {
         onReject(
-          'The boss pin can only be placed in a boss-archetype room — this canvas has none yet (see CONTRACT.md).'
+          'Boss stays room-scoped — this canvas has no rooms yet to hold one (see TARGET-YAML.md).'
         );
         return;
       }
-      edit.handlePlace(CANVAS_ROOM_ID, cell);
+      edit.handlePlace(null, cell);
       return;
     }
     if (tool === null) {
@@ -247,7 +253,7 @@ export function CreationBoard({
     const p = toBoardPoint(e.clientX, e.clientY);
     if (dragPlacement) {
       const cell = nearestCreationCell(p, grid);
-      edit.handleMove(dragPlacement, CANVAS_ROOM_ID, cell);
+      edit.handleMove(dragPlacement, null, cell);
       return;
     }
     if (tool === 'wall' || tool === 'door') {
@@ -350,10 +356,16 @@ export function CreationBoard({
       y: at[1] * FLAT_ROW_SPACING,
     };
     const isMonster = ref.startsWith('dnd5e:monsters:');
+    // roomId comparison matters here even though every creation-mode
+    // placement shares roomId: null today — matches Board.tsx's own
+    // isSelected check (roomId + index, not index alone), the correct
+    // general form now that PlacementSelection.roomId is a real,
+    // meaningful discriminator rather than an implicit assumption.
     const selected =
       !!edit.selectedPlacement &&
       !edit.selectedPlacement.boss &&
       !sel.boss &&
+      edit.selectedPlacement.roomId === sel.roomId &&
       edit.selectedPlacement.index === sel.index;
     const angle = facing !== null ? FACING_ANGLES_DEG[facing] : null;
     return (
@@ -398,8 +410,8 @@ export function CreationBoard({
     );
   };
 
-  const placementEls = (room?.place ?? []).map((p, index) =>
-    renderPlacement(p.ref, p.at, p.facing, { roomId: CANVAS_ROOM_ID, index })
+  const placementEls = doc.place.map((p, index) =>
+    renderPlacement(p.ref, p.at, p.facing, { roomId: null, index })
   );
 
   return (

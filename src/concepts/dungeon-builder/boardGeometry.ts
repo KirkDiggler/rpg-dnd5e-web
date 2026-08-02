@@ -36,12 +36,17 @@ export function totalColumns(floorPlan: FloorPlan): number {
 }
 
 export interface OccupiedCheck {
-  roomId: string;
+  /** `null` means the excluded placement is TOP-LEVEL (`doc.place`), not
+   * room-scoped — see `DungeonDoc.place`'s own doc comment. */
+  roomId: string | null;
   index: number | 'boss';
 }
 
 /** Whether `(absCol, row)` already holds a placement or the boss pin,
- * optionally excluding one specific placement (the one being dragged). */
+ * optionally excluding one specific placement (the one being dragged).
+ * Checks room-scoped placements (room-local `at` + the room's compiled
+ * `startColumn`) AND top-level placements (`doc.place`, already absolute
+ * — no room offset to add). */
 export function isCellOccupied(
   floorPlan: FloorPlan,
   doc: DungeonDoc,
@@ -71,6 +76,11 @@ export function isCellOccupied(
       const pr = p.at[1];
       if (pc === absCol && pr === row) return true;
     }
+  }
+  for (let i = 0; i < doc.place.length; i++) {
+    if (exclude && exclude.roomId === null && exclude.index === i) continue;
+    const p = doc.place[i];
+    if (p.at[0] === absCol && p.at[1] === row) return true;
   }
   return false;
 }

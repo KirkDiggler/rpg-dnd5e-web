@@ -153,6 +153,21 @@ canvas:
   width: 20
   height: 30
 
+# TOP-LEVEL place:/boss: — same shape as a room's own place: (ref, at,
+# facing, mount/height, targeting, blocks_*), room-scoping made OPTIONAL
+# rather than required. See "Top-level placement" below for the full
+# rationale; this is what "New Dungeon" writes for every placement now —
+# a from-scratch canvas with zero declared rooms has nowhere else for a
+# placement to live. `at` here is absolute [col,row], the SAME space
+# everything else in this file uses — no conversion needed if a room
+# later gets carved around it.
+place:
+  - { ref: 'dnd5e:props:pillar', at: [10, 15] }
+  - { ref: 'dnd5e:monsters:skeleton-captain', at: [5, 18], targeting: closest }
+# No top-level boss: — a boss stays room-scoped even here (dungeonspec's
+# validateBossCardinality needs an owning archetype: boss room; see
+# "Top-level placement" below for what canvas mode does about this today).
+
 # Edge-native: {from, to, kind}, absolute [col,row] cell coordinates for
 # both ends of the wall segment (from/to must be orthogonally adjacent
 # cells — a wall sits ON the shared edge between them, matching a hex
@@ -209,6 +224,92 @@ lighting:
   #     intensity: 1.0
   #     radius: 3
 ```
+
+## Top-level placement: rooms are organizational, not existential
+
+Every `place:` in dungeonspec v1 lives inside a room — that's not
+incidental, it's the v1 heritage: a room is what a placement has always
+needed to exist at all. The target dialect keeps that as real,
+v1-expressible content, but stops treating it as the ONLY shape a
+placement can take. A TOP-LEVEL `place:` (a sibling of `rooms:`, not
+nested inside one — see the annotated example above) carries the exact
+same fields a room-scoped entry does — `ref`, `at`, `facing`,
+`mount`/`height`, `targeting`, `blocks_movement`/`blocks_los` — the only
+difference is that `at` is unconditionally absolute (a room-scoped
+entry's `at` is room-local, added to that room's compiled
+`start_column`) and there is no owning room at all. Rooms become
+**organizational** — a way to group and later compile placements — not
+**existential** — a placement doesn't stop being real just because no
+room claims it yet.
+
+This is what makes `rooms: []` a genuinely complete, non-fictional
+from-scratch canvas: nothing needs to pretend a room exists just to give
+a placement somewhere to live. `dungeonYaml.ts`'s mutators
+(`placeItem`/`movePlacement`/`deletePlacement`/`setPlacementFlags`/
+`setPlacementMount`/`setPlacementTargeting`/`setPlacementFacing`) all
+take `roomId: string | null` now — `null` writes to the top-level
+`place:` list, a real id writes into that room's own, and it's the exact
+same function either way (`dungeonYaml.ts`'s `placeSeq` helper resolves
+which list before any of them touch the CST).
+
+**Boss stays room-scoped, deliberately, even in the target dialect.**
+`dungeonspec`'s `validateBossCardinality` needs an owning
+`archetype: boss` room — there is no "boss, unattached to anything" that
+means something server-side, today or in any near-term plan, so there's
+no honest top-level `boss:` to propose. A from-scratch canvas ("New
+Dungeon," `rooms: []`) has no boss-archetype room yet, so its own Boss
+tool currently rejects with an honest message rather than either
+crashing (the real failure mode discovered building this — `moveBoss`
+throws on a room with no existing `boss:`) or silently doing nothing.
+When the target dialect eventually frees boss placement from a room
+requirement — the same organizational-not-existential move `place:` just
+made — that's real, separate future work; it needs dungeonspec's own
+cardinality rule to change first, not just this concept's authoring
+surface.
+
+### `stripToV1Subset`'s conversion: map down, or drop and say so
+
+A top-level placement has no v1 analog — dungeonspec only ever reads
+room-scoped `place:`. `stripToV1Subset` resolves this the same way it
+resolves every other v2-only construct — convert what can honestly
+convert, drop and count what can't:
+
+- If the placement's absolute column falls inside a DECLARED room's own
+  column range (computed with the same `start_column` accumulation rule
+  the real server uses — `next.start_column = prev.start_column +
+prev.width + 1`), it's **mapped down**: `at` converts absolute →
+  room-local, and the entry moves into that room's `place:` list. This is
+  not a loss — v1's room-scoped `place:` is a real, compilable subset of
+  what a mapped entry meant, the same as any other v1-subset conversion
+  elsewhere in this file.
+- If it falls outside every declared room's range, it's **dropped**,
+  counted honestly like every other v2 field this file strips.
+
+Both outcomes are named in the compile badge ("Uses: N top-level
+placement(s)...") — a mapped placement is genuinely IN USE even though
+it isn't lost, so it has to show up there too, worded so the same list's
+other job (the post-save "Dropped: ..." honesty note) doesn't
+misleadingly claim something that survived was erased.
+
+### What this file tried first, and why that was wrong
+
+An earlier round tried a different bridge for the exact same "a
+from-scratch canvas has no room to hold a placement" gap: a single
+SYNTHETIC room (`id: "canvas"`, `archetype: canvas`) that every
+placement got nested under, invented specifically so the existing
+room-scoped mutators wouldn't need to change at all. It worked, and it
+shipped for one round. It was also wrong in exactly the way Kirk's own
+framing warns against: "we cannot be held down by our early ideas" isn't
+just about not being SLOW to add new fields — a synthetic room bakes
+room-scoping's status as EXISTENTIAL (rather than organizational) one
+level deeper into the artifact, since now a fictional room has to exist
+to make the old assumption keep looking true. The fix wasn't cheaper
+than the honest one; it just deferred where the assumption lived. Top-
+level `place:` is the version that actually changes the assumption
+instead of working around it — record this here, not silently erase the
+git history, so a future reader who finds a stray `archetype: canvas`
+reference in an old commit understands it was a real, reasoned dead end,
+not an oversight.
 
 ## `place:`/`boss:` facing
 
@@ -359,13 +460,14 @@ live `validate_only` preview call or a real `Save & Play`, the current
 document is stripped down to exactly what v1 compiles
 (`dungeonYaml.ts`'s `stripToV1Subset`):
 
-| Field                                                        | v1 subset                                                                                             |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `version`                                                    | forced to `1` (never `2` — see the annotated example's own note)                                      |
-| `key`, `name`, `theme`, `height`                             | kept as-is                                                                                            |
-| `rooms:`                                                     | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped |
-| `connectors:`                                                | kept as-is, including `locked:`                                                                       |
-| `canvas:`, `walls:`, `holes:`, `start:`, `end:`, `lighting:` | dropped entirely                                                                                      |
+| Field                                                        | v1 subset                                                                                                                                |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                                                    | forced to `1` (never `2` — see the annotated example's own note)                                                                         |
+| `key`, `name`, `theme`, `height`                             | kept as-is                                                                                                                               |
+| `rooms:`                                                     | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                    |
+| `connectors:`                                                | kept as-is, including `locked:`                                                                                                          |
+| top-level `place:`                                           | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above |
+| `canvas:`, `walls:`, `holes:`, `start:`, `end:`, `lighting:` | dropped entirely                                                                                                                         |
 
 If, after stripping, `rooms:` has fewer than 2 entries (dungeonspec's own
 `minRooms = 2`), there IS no compilable subset — a from-scratch canvas
