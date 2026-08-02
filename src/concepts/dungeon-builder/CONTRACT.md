@@ -1077,3 +1077,191 @@ Evidence: `docs/evidence/dungeon-builder-monster-targeting-inspector.png`,
   toolkit monster-AI decision chain yet for these keys to reference —
   the dropdown's options are exactly the open "feature request" list
   TARGET-YAML.md now documents, nothing more.
+
+## Kirk's 2026-08-02 follow-up round: Hole in creation mode, viewBox
+
+growth, and a scoped (not attempted) plan for the CST unification
+
+Three items from this same day's brief. Two shipped in full; the third —
+unifying "New Dungeon" onto the shared CST — turned out to be exactly the
+size this file's own prior estimate said it would be ("sized similarly to
+everything in this section combined"), confirmed by actually reading the
+code this time rather than estimating from the outside. Attempting it
+anyway, mid-round, risked leaving the page broken between commits (the
+one standing rule that overrides everything else this concept does) for
+a rewrite that needs its own round. Scoped and documented instead of
+attempted — the honesty-ledger pattern this file already uses for
+smaller gaps, applied to a bigger one.
+
+### Shipped: Hole in creation mode's own Tools strip
+
+Creation mode's `CreationState` (`creation/creationTypes.ts`) had no
+concept of a hole at all — this needed real state, not just a button.
+Added `holes: Set<CellKey>` (a `"col,row"` string key, same idea as
+`walls`'s `EdgeKey` map but cell- not edge-native) alongside a
+`toggleHole` action in `useCreationState.ts`, a `'hole'` `Tool` variant,
+a "Toggle Hole" button in `CreationConcept.tsx`'s `TOOLS` strip (between
+Place Door and Set Start, matching the shared Palette's own Structural
+ordering), click handling in `CreationBoard.tsx` (cell-native, via the
+already-existing `nearestCreationCell` — the same primitive Start/End
+already use), a matching dark-dashed-square render (visually the same
+language `Board.tsx` uses for a v2 hole, adapted from hex corners to a
+plain rect since creation mode's canvas is rectangular), and a
+`holes:` block in `proposedYaml.ts`'s serialization. Also passed the
+real `state.holes.size` into the shared `Palette`'s `holeCount` prop
+(was hardcoded `0`) and cleaned up a stale doc comment that had been
+pre-written expecting this exact addition and never got true until now.
+
+**Verified live**: switched to "New Dungeon," selected Toggle Hole,
+clicked a canvas cell — a dark square appeared on the board AND the
+Proposed Schema pane updated to `holes:\n  - [10, 15]`, the exact cell
+clicked. Evidence: `docs/evidence/dungeon-builder-creation-hole-tool.png`.
+
+Not touched: `demoScript.ts`'s scripted "Play the pitch" walkthrough
+doesn't call `toggleHole` — it's an illustrative script of Kirk's
+original pitch sentence, which didn't mention holes, so there was
+nothing to add without inventing a step the pitch never had.
+
+### Shipped: viewBox grows for content authored beyond the compiled bounding box
+
+Reproduced first, since the gap as CONTRACT.md previously described it
+("may render out of view") turned out to only be reachable one way:
+**not** by clicking the board (every clickable cell in edit mode's
+`Board.tsx` comes from looping `floorPlan`'s own compiled rooms/
+connectors — there is no click target outside that grid), but by typing
+or pasting a `walls:`/`holes:`/`start:`/`end:` coordinate directly into
+the YAML pane that sits outside the compiled chain's own cells. Real
+path (this is exactly how a from-scratch "New Dungeon" canvas or a
+hand-edited YAML would produce one), just not a board-click path today.
+
+Confirmed the gap live before fixing: added `holes: [[60, 4]]` via the
+YAML pane against showcase.yaml's 3-room chain (columns 0–30) — the
+compile badge picked it up (`Uses: 1 hole`), proving it parsed, but nothing
+new was reachable in the visible pane, because `Board.tsx`'s SVG
+`viewBox` was computed **only** from the compiled grid loop's own
+`trackExtent` calls — the separate v2-overlay pass (walls/holes/start/
+end) rendered its shapes but never fed the same bounding-box tracker.
+
+**Decision: grow, not clamp.** This whole round's throughline — TARGET-
+YAML.md's preamble, the compile-badge mechanism, "we cannot be held down
+by our early ideas" — is that authored-but-not-yet-compiled content stays
+visible and honest, never silently hidden. Clamping the viewBox (or
+refusing to render past the compiled bounds) would have quietly
+contradicted that: exactly the kind of silent drop this concept's own
+badge/dropped-fields discipline exists to prevent elsewhere.
+
+**Fix**: `Board.tsx` gained a `trackCellExtent(col, row)` helper (same
+`cellCorners`-based extent tracking the base grid loop already does) and
+now calls it for every `doc.walls` `from`/`to` cell, every `doc.holes`
+cell, and `doc.start`/`doc.end`, before the `vx`/`vy`/`vw`/`vh` viewBox
+math runs. Placements/boss pins didn't need the same treatment — they're
+always looked up via a real `fpRoom` from the compiled `floorPlan`
+(`if (!fpRoom) continue`), so they're inherently bounded already.
+
+**Verified live**: with a modest overshoot (`holes: [[35, 4]]`, 5 columns
+past the vault room's end at column 30, chosen so the existing chain and
+the new content land in one frame), the viewBox's width grew
+(`1175.79` → `1300.49` units) and scrolling the board pane right shows
+the vault room's real geometry AND the new hole together, both rendering
+correctly — confirmed via a DOM-level check too (241 polygons, 0 with
+`NaN` coordinates, valid finite viewBox). A dramatic overshoot
+(`holes: [[60, 4]]`, 30 columns out) grew the box far enough that the new
+content and the existing chain no longer share one screen without
+scrolling — expected for "grow," not a bug, but worth naming as the
+follow-on UX gap below. Evidence:
+`docs/evidence/dungeon-builder-viewbox-grows-for-out-of-bounds.png`.
+
+**Named follow-up, not built**: "grow" makes distant authored content
+_reachable_ (scroll finds it), not _discoverable_ (nothing tells you
+which direction to scroll, or that anything is out there at all — a
+near-black hole fill against the SVG's unpainted background is easy to
+miss even once it's on-screen). A minimap, an auto-scroll-to-new-content
+on author, or a bounding-box indicator are all reasonable answers; none
+attempted here — this round's brief was "grow or clamp, decide,
+document," not "solve discoverability," and conflating the two would
+have been scope creep on a fix that was itself supposed to be the small
+item of the three.
+
+### Scoped, not attempted: unifying "New Dungeon" onto the shared CST
+
+Read every file in `creation/` before deciding, rather than estimate
+from the outside again. Total: `CreationConcept.tsx` (433 lines),
+`CreationBoard.tsx` (413), `useCreationState.ts` (142),
+`creationTypes.ts` (81, now 91), `proposedYaml.ts` (98, now 116),
+`ProposedYamlPane.tsx` (83), `demoScript.ts` (116), `useDemoScript.ts`
+(100), `creationGeometry.ts` (131) — **~1600 lines**, all built against
+`CreationState`, a plain-React-state model with zero CST/YAML backing
+during editing (`ProposedYamlPane` only ever _serializes to_ text for
+display; nothing ever parses that text back).
+
+**The good news, confirmed by reading `dungeonYaml.ts` closely**: the
+schema gap is smaller than it looks. `DungeonDoc` already carries
+`canvas: CanvasDoc | null`, `walls: WallDoc[]` (edge-native, absolute
+`[col,row]` `from`/`to` — the _exact_ shape `creationTypes.ts`'s own
+`EdgeKey`/`WallKind` model was independently designed to mirror),
+`holes: [number,number][]`, `start`/`end: [number,number] | null` — all
+top-level, all v2, all already exactly what a freeform canvas needs. And
+`rooms: []` is already a legitimate empty v2 draft (an earlier round's
+relaxation, "only a genuinely MISSING `rooms:` key is a shape error").
+So `canvas`+`walls`+`holes`+`start`+`end` need **no new schema work** to
+back creation mode's canvas, its wall-drawing, or its start/end/hole
+tools — `useCreationState`'s `toggleWall`/`toggleHole`/`setStart`/
+`setEnd` could become thin wrappers over the ALREADY-EXISTING
+`toggleWall`/`toggleHole`/`setStart`/`setEnd` mutators in
+`dungeonYaml.ts` with essentially no new mutator code.
+
+**The real gap, and the one genuine design decision a future round needs
+to make first**: every placement mutator (`placeItem`, `movePlacement`,
+`deletePlacement`, `setPlacementFacing`, `moveBoss`, and now this round's
+`setPlacementMount`/`setPlacementTargeting`) takes a `roomId` and writes
+into that room's `place:`/`boss:` list — verified by reading
+`dungeonYaml.ts:411-600` directly, not assumed. Creation mode's whole
+premise is a canvas with **no rooms declared yet** ("walls carve the
+space into rooms," not "rooms exist and get decorated") — so "place a
+prop on the canvas" has nowhere to attach in the current schema shape.
+Two honest options, neither built yet:
+
+1. **A single synthetic room** (e.g. `id: "canvas"`, archetype some
+   placeholder) that always exists in a from-scratch v2 draft and owns
+   every `place:`/`boss:` entry until real rooms get carved out by walls
+   — reuses 100% of the existing placement mutators/Inspector/YAML
+   round-trip untouched, at the cost of a slightly fictional room in the
+   YAML that a reader has to understand is a bridge, not a real room.
+2. **A new top-level placement construct** (`place:`/`boss:` beside
+   `rooms:`, not nested inside one) for the roomless case — cleaner in
+   the YAML, but new mutators, new `DungeonDoc` fields, new Inspector
+   wiring, and a second place `PlacementDoc` gets read from.
+   Option 1 is the cheaper bridge and this round's tentative
+   recommendation, but it's a real design call for whoever picks this up
+   to confirm, not something to silently assume.
+
+**Sizing the rest, now that the gap above has a shape**: even with
+option 1 chosen, `CreationBoard.tsx`'s rendering stays intentionally
+separate from `Board.tsx` — they render genuinely different geometries
+(a rectangular free canvas vs. a compiled hex room-chain), and forcing
+one component to branch between both would likely be worse than two
+focused renderers sharing one data model. So "unify" means: (a) replace
+`useCreationState` with the shared `cst`/`doc`, initialized from an
+empty v2-only document; (b) `CreationBoard.tsx` reads `doc.canvas`/
+`doc.walls`/`doc.holes`/`doc.start`/`doc.end`/the synthetic room's
+`place`/`boss` instead of `CreationState`'s shape (mechanical but
+real — every read site in a 413-line file); (c) delete
+`proposedYaml.ts`/`ProposedYamlPane.tsx` in favor of the shared
+`serializeDungeon(cst)` + a `YamlPane` variant, closing the "two
+proposed-schema renderers" duplication for real; (d) retarget
+`demoScript.ts`/`useDemoScript.ts`'s scripted action calls
+(`actions.toggleWall` etc.) onto the new mutator shape. (b) and (d) are
+where the real hours are — not a same-day addition alongside two other
+items, which is why it wasn't attempted here rather than shipped
+half-finished.
+
+Also worth naming as a **second bridge for "creation mode" to actually
+retire**: once this lands, replacing creation's own Tools strip with the
+shared `Palette`'s Structural/Markers rows (`showBoardTools={true}`)
+becomes free — the only reason `showBoardTools` exists at all is that
+creation mode currently has its own competing tool UI over a different
+data model. Unifying the data model removes the reason for two UIs to
+exist, at which point deleting creation's own Tools strip (not just the
+Hole button added this round) is the natural next cut — named here so
+it isn't rediscovered as a surprise duplication next time someone reads
+both files side by side.
