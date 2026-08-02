@@ -25,6 +25,11 @@ const TOOLS: { id: Tool; label: string; hint: string }[] = [
     label: 'Place Door',
     hint: 'click a drawn wall to add/remove a door',
   },
+  {
+    id: 'hole',
+    label: 'Toggle Hole',
+    hint: 'click a cell — impassable void, no floor',
+  },
   { id: 'start', label: 'Set Start', hint: 'click a cell — party spawn' },
   { id: 'end', label: 'Set End', hint: 'click a cell — the goal' },
   {
@@ -382,16 +387,14 @@ export function CreationConcept({
                 }}
                 usageCounts={usageCounts}
                 // Creation mode's OWN Tools strip (above) already covers
-                // Wall/Door/Start/End against its own data model — hide
-                // the shared Palette's duplicate Structural/Markers tool
-                // rows so there's no second, dead-clicking set of
-                // controls for the same actions. Hole is NOT yet wired
-                // into creation mode's own tools (CONTRACT.md's "known
-                // gap" note) — only edit mode authors holes this round.
+                // Wall/Door/Hole/Start/End against its own data model —
+                // hide the shared Palette's duplicate Structural/Markers
+                // tool rows so there's no second, dead-clicking set of
+                // controls for the same actions.
                 selectedTool={null}
                 onSelectTool={() => {}}
                 wallCount={state.walls.size}
-                holeCount={0}
+                holeCount={state.holes.size}
                 showBoardTools={false}
               />
             </div>

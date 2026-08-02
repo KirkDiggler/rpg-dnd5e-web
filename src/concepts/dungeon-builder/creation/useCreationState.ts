@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import {
+  cellKey,
   DEFAULT_GRID,
   emptyCreationState,
   hEdgeKey,
@@ -21,6 +22,7 @@ export interface CreationActions {
   setGrid: (grid: CreationGrid) => void;
   resetGrid: (grid: CreationGrid) => void;
   toggleWall: (key: EdgeKey, kind: WallKind, forceOn?: boolean) => void;
+  toggleHole: (col: number, row: number) => void;
   setStart: (at: [number, number]) => void;
   setEnd: (at: [number, number]) => void;
   addPlacement: (
@@ -61,6 +63,16 @@ export function useCreationState(initialGrid: CreationGrid = DEFAULT_GRID) {
     },
     []
   );
+
+  const toggleHole = useCallback((col: number, row: number) => {
+    setState((s) => {
+      const holes = new Set(s.holes);
+      const key = cellKey(col, row);
+      if (holes.has(key)) holes.delete(key);
+      else holes.add(key);
+      return { ...s, holes };
+    });
+  }, []);
 
   const setStart = useCallback((at: [number, number]) => {
     setState((s) => ({ ...s, start: at }));
@@ -123,6 +135,7 @@ export function useCreationState(initialGrid: CreationGrid = DEFAULT_GRID) {
     setGrid,
     resetGrid,
     toggleWall,
+    toggleHole,
     setStart,
     setEnd,
     addPlacement,

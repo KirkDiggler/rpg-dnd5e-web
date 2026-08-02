@@ -40,10 +40,10 @@ interface PaletteProps {
   wallCount: number;
   holeCount: number;
   /** Default true. The creation flow (`CreationConcept.tsx`) has its OWN
-   * dedicated Tools strip already covering Wall/Door/Start/End (plus,
-   * with this round's addition, Hole) against its own data model — false
-   * there so this shared Palette doesn't ALSO show Structural/Markers as
-   * a second, dead-clicking set of tool rows for the same actions. */
+   * dedicated Tools strip already covering Wall/Door/Hole/Start/End
+   * against its own data model — false there so this shared Palette
+   * doesn't ALSO show Structural/Markers as a second, dead-clicking set
+   * of tool rows for the same actions. */
   showBoardTools?: boolean;
 }
 

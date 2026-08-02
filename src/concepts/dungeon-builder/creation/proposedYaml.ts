@@ -49,6 +49,24 @@ export function serializeProposedSchema(state: CreationState): string {
   lines.push('');
 
   lines.push(
+    "# Cell-native floor openings — same shape as dungeonYaml.ts's real"
+  );
+  lines.push(
+    '# holes: [number, number][] (edit mode already authors these; see'
+  );
+  lines.push('# TARGET-YAML.md\'s "Structural palette category" section).');
+  if (state.holes.size === 0) {
+    lines.push('holes: []  # none marked yet');
+  } else {
+    lines.push('holes:');
+    for (const key of state.holes) {
+      const [c, r] = key.split(',').map(Number);
+      lines.push(`  - [${c}, ${r}]`);
+    }
+  }
+  lines.push('');
+
+  lines.push(
     '# Authored, not generator-chosen — a real tension with the compiled'
   );
   lines.push(

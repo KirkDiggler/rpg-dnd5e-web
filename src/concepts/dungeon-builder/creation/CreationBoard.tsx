@@ -25,6 +25,7 @@ import { FLAT_COL_SPACING, FLAT_ROW_SPACING } from '../hexLayout';
 import { MONSTER_COLOR, PALETTE_PROPS, ROLE_COLOR } from '../paletteData';
 import type { PaletteSelection } from '../types';
 import {
+  creationCellCenter,
   hEdgeGeometry,
   nearestCreationCell,
   nearestEdge,
@@ -144,6 +145,11 @@ export function CreationBoard({
       actions.selectPlacement(null);
       return;
     }
+    if (tool === 'hole') {
+      const cell = nearestCreationCell(p, grid);
+      actions.toggleHole(cell[0], cell[1]);
+      return;
+    }
     if (tool === 'start' || tool === 'end') {
       const cell = nearestCreationCell(p, grid);
       if (tool === 'start') actions.setStart(cell);
@@ -241,6 +247,29 @@ export function CreationBoard({
         />
       );
     }
+  });
+
+  // Same dark/dashed treatment Board.tsx (edit mode) uses for a v2 hole —
+  // one visual language for "no floor here" across both boards.
+  const holeEls: ReactElement[] = [];
+  state.holes.forEach((key) => {
+    const [c, r] = key.split(',').map(Number);
+    const center = creationCellCenter(c, r);
+    const half = { x: FLAT_COL_SPACING * 0.42, y: FLAT_ROW_SPACING * 0.42 };
+    holeEls.push(
+      <rect
+        key={`hole-${key}`}
+        x={center.x - half.x}
+        y={center.y - half.y}
+        width={half.x * 2}
+        height={half.y * 2}
+        fill="#050403"
+        stroke="#2a1a33"
+        strokeWidth={1.5}
+        strokeDasharray="3 2"
+        pointerEvents="none"
+      />
+    );
   });
 
   const renderPlacement = (p: Placement) => {
@@ -345,6 +374,7 @@ export function CreationBoard({
       />
 
       {wallEls}
+      {holeEls}
 
       {hoverEdge && (tool === 'wall' || tool === 'door') && (
         <line

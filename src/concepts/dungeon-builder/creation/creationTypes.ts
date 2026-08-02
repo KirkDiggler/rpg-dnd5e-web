@@ -39,6 +39,15 @@ export function vEdgeKey(col: number, row: number): EdgeKey {
   return `v:${col},${row}`;
 }
 
+/** A cell (not edge) key, for cell-native constructs like holes — matches
+ * dungeonYaml.ts's `holes: [number, number][]` shape conceptually, just
+ * keyed for O(1) toggle/lookup the way `walls` already is. */
+export type CellKey = string;
+
+export function cellKey(col: number, row: number): CellKey {
+  return `${col},${row}`;
+}
+
 export type WallKind = 'solid' | 'door';
 
 export interface Placement {
@@ -56,11 +65,14 @@ export interface Placement {
   facing: number | null;
 }
 
-export type Tool = 'wall' | 'door' | 'start' | 'end' | 'select';
+export type Tool = 'wall' | 'door' | 'hole' | 'start' | 'end' | 'select';
 
 export interface CreationState {
   grid: CreationGrid;
   walls: Map<EdgeKey, WallKind>;
+  /** Cell-native floor openings — same concept as dungeonYaml.ts's
+   * `holes: [number, number][]`, kept as a Set here for O(1) toggle. */
+  holes: Set<CellKey>;
   start: [number, number] | null;
   end: [number, number] | null;
   placements: Placement[];
@@ -73,6 +85,7 @@ export function emptyCreationState(
   return {
     grid,
     walls: new Map(),
+    holes: new Set(),
     start: null,
     end: null,
     placements: [],
