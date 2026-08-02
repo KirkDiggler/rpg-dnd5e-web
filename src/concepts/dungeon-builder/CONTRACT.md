@@ -345,3 +345,200 @@ response never carries. Facing needs a field on `place:`/`FloorPlanRoom`
 placements either way, hex-true or freeform — that part isn't new to
 freeform authoring, freeform authoring just made it impossible to keep
 deferring.
+
+## Kirk's 2026-08-01 iteration: palette taxonomy, thumbnails, Save & Play, 3D spike
+
+Four follow-ups from "love it" on the creation flow. All four shipped on
+this same PR/branch (rpg-dnd5e-web#667). Evidence screenshots:
+`docs/evidence/dungeon-builder-palette-categorized-thumbnails.png`,
+`dungeon-builder-palette-monsters-lighting.png`,
+`dungeon-builder-save-and-play-success.png`,
+`dungeon-builder-creation-save-play-disabled.png`,
+`dungeon-builder-3d-preview-overview.png`,
+`dungeon-builder-3d-preview-zoomed.png`.
+
+### Palette taxonomy: a proposed vocabulary, not a wire concept
+
+`Palette.tsx` now groups into four collapsible categories — Monsters /
+Obstacles & Props / Lighting / Markers — instead of one flat list.
+`paletteData.ts`'s `PaletteCategory` type and `categoryForProp()` are the
+new pieces. Explicitly a PROPOSED grouping, same status as the creation
+flow's invented schema above: nothing on the wire carries a category
+today, and it does NOT reuse `propManifest.ts`'s existing `role`
+(obstacle/cover/decor) — `role` answers a different question (board-swatch
+color, is-this-solid) and doesn't map onto Kirk's four buckets (brazier,
+candles, and glowing-orb are all `role: 'decor'`, same as non-light
+books/banners, so "Lighting" had to be a hand-picked subset,
+`LIGHTING_PROP_KEYS` in `paletteData.ts`, not a derivation). If this
+taxonomy becomes real, the natural home is a `category` field the toolkit
+refs themselves carry, not a second client-side classification layer
+sitting next to `role` forever. Shared component: the categorized palette
+applies to BOTH edit mode and the New Dungeon creation flow — one
+component, no divergence.
+
+### Thumbnails: pre-baked PNGs, real assets, graceful degradation built in
+
+Palette rows now show a 128×128 thumbnail instead of a colored
+initial-square, via `paletteData.ts`'s `thumbForRef()`. Provenance:
+
+1. `src/concepts/dungeon-builder/thumbs/ThumbHarness.tsx` — a small,
+   dev-only, chrome-free R3F page (`?thumbGlb=<public-path>`) that loads
+   one GLB and auto-frames it with drei's `Bounds`. Wired into `App.tsx`
+   with the exact same shape as the existing `?encounterId=` →
+   `PlaytestHarness` dev gate (development-mode only, no new production
+   code path). Kept in the tree rather than deleted post-bake, so the next
+   new palette entry can be re-baked the same way.
+2. `game-dev/tools/browser/screenshot.mjs` (the established pattern this
+   task named) pointed at that harness, 128×128 viewport, one PNG straight
+   into `thumbs/` — no cropping/resizing needed since the canvas already
+   fills the viewport.
+3. Asset source: `public/models/synty/` in this worktree was NOT populated
+   by `npm run assets:sync` (that script clones a fresh `rpg-game-assets`
+   checkout as a sibling of the web repo) — instead `rsync`'d directly from
+   the existing up-to-date `rpg-game-assets` checkout already on this
+   machine (`~/game-dev/rpg-game-assets`, `main` @ `19e5bed`, verified
+   `git fetch` clean) to avoid a redundant 250MB clone. Byte-identical
+   result to what the real sync script would have produced; only the
+   source of the copy differs.
+4. All 13 refs baked clean on the first pass (12 `PALETTE_PROPS` +
+   `skeleton-captain`) — zero console errors, so the "colored placeholder
+   tiles are acceptable v1" fallback this task's brief pre-authorized
+   was never needed for the real bake. It's still live code, though:
+   `thumbForRef()` returns `undefined` for any ref with no baked PNG
+   (filename mismatch, a future palette addition not yet baked) and
+   `Palette.tsx`'s `Row` falls back to the original colored-square
+   rendering in that case — never a broken `<img>`.
+
+### Save & Play: a real write, verified past the UI's own success banner
+
+Edit mode's `YamlPane` grew a "Save & Play" button
+(`useSaveDungeon.ts`) that calls the SAME `authoringClient.putDungeon`
+the live preview already uses, but with `validate_only: false` — a real,
+explicit, user-triggered persist, not the preview's debounced
+`validate_only: true` read. `PutDungeonResponse` carries no `key` field
+(see `service_pb.ts`'s own doc comment), so the hook echoes back the
+request's own key as "what got saved" rather than inventing a response
+field that doesn't exist.
+
+On success the panel shows `Saved as "<key>". Open http://localhost:3001/
+and pick "<key>" in the dungeon dropdown to play it.` — a plain link, no
+deep-link/preselect plumbing. That was a deliberate scope cut per this
+task's brief ("build NO new lobby plumbing"): `LobbyFlow.tsx`'s
+`selectedDungeonKey` has zero existing URL-param wiring today
+(`useState('')`, no `URLSearchParams` read anywhere in that file), so
+adding a preselect would mean building new lobby plumbing, not using
+"trivially cheap existing routing" — the brief's own condition for doing
+it wasn't met, so it was skipped rather than half-built.
+
+Creation mode's `ProposedYamlPane` gets a permanently-disabled "Save &
+Play" with an honest tooltip ("Proposed schema — the server can't compile
+this yet...") instead of a working button — there is no real
+`PutDungeon`-compatible YAML to send from that mode (the proposed
+wall/start/end/facing schema is 100% invented, see this file's "Proposed
+schema" section above), so a "working" button there would either lie or
+silently no-op.
+
+**Verified past the point most concept work stops**: clicked the real
+button against the isolated `rpg-api-lab3-authoring` instance (same
+container this file's "Live verification" section above already
+describes; this worktree's `.env.local`-equivalent points its dev server
+at `:8090`, confirmed via `/proc/<pid>/environ`, not the shared
+`:8080`/gate-off instance `.env` alone would suggest). Edited the loaded
+`showcase.yaml`'s `key:` to `showcase-thumb-test`, clicked Save & Play,
+got the success banner — then, independently of the UI's own claim,
+called `LobbyService.ListDungeons` directly via `grpcurl` with the app's
+own dev-auth header shape (`authorization: Dev test-player`, read out of
+`src/api/client.ts`'s `authInterceptor`) and confirmed
+`showcase-thumb-test` — "The Shrine Hall" now appears in the real list
+alongside `fog-lab`/`reference-tomb`. The saved dungeon was left in place
+(harmless, isolated local test container Kirk already knows about) rather
+than cleaned up — it's itself a piece of evidence the loop is real, and
+matches exactly what Kirk will see if he clicks the same button.
+
+### 3D preview: NOT a stop — a working minimal spike, floor + props + monsters
+
+The brief's own instruction was to stop and write a cost assessment if a
+minimal version didn't fit. It fit. `DungeonPreview3D.tsx`
+(`src/concepts/dungeon-builder/preview3d/`) is a real, working 3D pane
+behind a 2D/3D toggle in edit mode's board header — screenshots above show
+the full 3-room showcase chain (pillars, statues, glowing orb, tomb
+pieces, the skeleton-captain boss) rendered correctly, including the
+door-row gap reading as a real break in the floor, matching the 2D
+board's own legality rule.
+
+**What's genuinely reused, not re-implemented:**
+
+- `SyntyHexFloor` (`components/hex-grid/SyntyHexFloor.tsx`) — the real
+  floor-tile renderer, taken as-is. Verified by reading it end-to-end: its
+  only required inputs are a `Map<string, AbsoluteFloorTile>`
+  (`{x,y,z,roomId}`, plain cube coords) and a hex size — genuinely no
+  encounter/combat-state coupling at all, every other prop is an optional
+  crypt-theme/memory/lighting extra that safely omits. This was the
+  encouraging finding that changed the shape of this whole spike: the
+  floor renderer everyone would guess is entangled with the live game
+  route turned out not to be.
+- `PropModel` (`components/hex-grid/PropModel.tsx`) — the real prop GLB
+  renderer, taken as-is, same self-contained shape (`variant` + `position`
+  - optional `rotationY`/`remembered`).
+- `cubeToWorld`/`HEX_SIZE` (`hexMath.ts`) and `cubeAtColRow`
+  (`wallRuns.ts`, re-exported through this concept's own `hexLayout.ts`)
+  — the same coordinate primitives the 2D board already reuses (see this
+  file's "the floor plan shears diagonally" finding above), extended to
+  3D world positions the same way.
+
+**What's genuinely new, and why it couldn't be the existing thing:**
+
+- `PreviewMonsterModel.tsx` — a ~45-line component mirroring `PropModel`'s
+  shape (load, clone, place) for monster GLBs via the real
+  `resolveMonsterModelUrl`. The game's actual monster renderer lives
+  inside `HexEntity.tsx`, but folded into 638 lines that also drive
+  movement-path animation (`useHexMovePath`), facing (`useEntityFacing`),
+  downed/dead tilt, and remembered-tint — none of which a static preview
+  wants, and none of which was separately exported to reuse in isolation.
+  Writing a small new component was cheaper and more honest than
+  threading a static "no movement, no combat" mode through that component.
+- `DungeonPreview3D.tsx` itself — a genuinely new `<Canvas>` composition
+  (floor + props + monsters + drei `Bounds`/`OrbitControls`), not a reuse
+  of `HexGrid.tsx`. `HexGrid.tsx` (1194 lines) is the real battle-map
+  component and was deliberately NOT reused directly — its prop surface is
+  built entirely around a live combat encounter (`HexGridEntity[]` with
+  HP/movement-path/turn state, `CombatState`, movement-range borders, path
+  preview, turn-order overlay, click-to-move/attack handlers) that this
+  static, no-combat preview has no analog for. Feeding it fake/empty
+  values for all of that would be pretending to reuse a combat component
+  while stripping out everything that makes it one — this is the
+  "encounter-state entanglement" this task's brief predicted, and it's
+  real, just scoped to `HexGrid.tsx` specifically rather than the whole
+  rendering stack.
+
+**Deliberately NOT rendered: walls and doors.** Three independent
+reasons, not one scope cut: (1) Kirk's own ask listed "floor + props +
+monsters" only; (2) `FloorPlan` carries no wall geometry on the wire at
+all — only `door_row` (a row index) and `connector.column` (see this
+file's "connector door position as a cell must still be derived" finding
+above) — so a real wall render would mean INVENTING synthetic boundary
+edge geometry for the room chain, not translating anything that exists;
+(3) the game's real wall renderer
+(`WallRunMesh`/`wallRuns.computeWallRuns`, 1334 lines) consumes
+encounter-shaped `Wall[]` edge lists, not a `FloorPlan` room chain —
+reusing it here is a separate, real piece of design+implementation work
+(exactly the synthetic-edge-geometry step above), not something this
+spike's timebox could honestly fold in alongside everything else this
+iteration shipped.
+
+**Also not attempted, scope-honest:** click-to-place in 3D (the pane is
+view-only — orbit/zoom, edit via the palette/2D board/YAML same as
+before), lighting/mood parity with the real game's crypt theming
+(`SyntyHexFloor`'s `spaceTheme`/`poolLights` props exist and this spike
+could pass them, but didn't — flat default lighting only), and creation
+mode (no `FloorPlan` exists there to render — the toggle only appears in
+edit mode).
+
+**Verdict for whoever scopes this past a spike**: the floor+props path is
+cheap to make real (it already is, this PR ships it) because
+`SyntyHexFloor`/`PropModel` turned out to be exactly as reusable as hoped.
+The monster path needed one small new component, also now real. Walls are
+the one piece that's genuinely a separate body of work — not because
+reuse failed, but because `FloorPlan` has nothing on the wire for a wall
+renderer (real or reused) to consume yet, the same gap this file's
+`FloorPlan` findings already describe for the freeform-canvas case above.
