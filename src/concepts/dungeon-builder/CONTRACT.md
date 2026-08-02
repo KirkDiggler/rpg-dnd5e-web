@@ -1441,3 +1441,161 @@ Evidence: `docs/evidence/dungeon-builder-creation-cst-unification-demo.png`
 - **Discoverability of distant authored content** (the viewBox-grows
   follow-up from earlier this same day) is unaffected either way by this
   round's work — still open, still named there, not touched here.
+
+## Same-day correction: top-level `place:`, not the synthetic room
+
+The round above shipped and was reported before two decision briefs from
+the team lead arrived — "CST unification: top-level placements" and its
+follow-up "STOP — read decision brief first" — deciding the one real
+design question in that round's own scoping (how does a from-scratch
+canvas give a placement somewhere to live) the OTHER way: a TOP-LEVEL
+`place:` field (a sibling of `rooms:`, absolute `[col,row]`, same fields
+a room-scoped entry has), not the synthetic `archetype: canvas` bridge
+room this file's own prior section describes. Rationale, Kirk's own
+framing: room-scoped placement is v1's real heritage, and the target
+dialect should make rooms organizational (a placement CAN belong to one)
+rather than existential (a placement can only exist inside one) — a
+synthetic room bakes the existential assumption in one level deeper
+instead of removing it, which is the exact "held down by our early
+ideas" failure the reframe exists to prevent. Full rationale now lives
+in TARGET-YAML.md's "Top-level placement" section, including the honest
+paragraph on why the synthetic-room approach was tried first and
+rejected, not silently dropped from the history.
+
+This round converts. New standing process rule set alongside this
+correction: drain the inbox and acknowledge the current decision state
+at the START of a round, before building — the crossing happened once,
+procedurally through no one's individual fault (an announced-but-not-yet-
+read handoff), but the fix is a habit, not a one-time apology.
+
+### What changed, file by file
+
+- **`dungeonYaml.ts`**: `DungeonDoc` gains `place: PlacementDoc[]`
+  (top-level, parsed by a new shared `parsePlacementList` helper used for
+  BOTH the top-level field and every room's own `place:` — one parser,
+  two call sites, not two implementations). Every placement mutator
+  (`placeItem`/`movePlacement`/`deletePlacement`/`setPlacementFlags`/
+  `setPlacementMount`/`setPlacementTargeting`/`setPlacementFacing`) now
+  takes `roomId: string | null` — a new shared `placeSeq` helper resolves
+  to either a room's `place:` list or the top-level one, so every mutator
+  only needed an `if (roomId === null)` branch inside ONE lookup helper,
+  not a parallel implementation per function. `moveBoss`/`setBossFacing`/
+  `setBossTargeting` are UNCHANGED (`roomId: string`, always) — boss
+  stays room-scoped per the decision.
+- **`stripToV1Subset`** gains the map-down/drop conversion: room bounds
+  computed with the same `start_column` accumulation
+  `floorPlanCompile.ts` uses server-side; a top-level placement whose
+  absolute column falls inside a declared room's range gets its `at`
+  converted absolute→local and moved into that room's `place:` list
+  (this is a real live-CST node move — the same node object relocates,
+  not a clone, so any attached comment would travel with it); one outside
+  every room is dropped with an honest count. Both outcomes register in
+  the `dropped` array (which drives BOTH the "Uses:" compile badge and
+  the post-save "Dropped:" note) — the first case where "in use" and
+  "genuinely lost" diverge for this array, worded ("mapped into rooms")
+  to stay honest in both readings.
+- **`types.ts`**: `PlacementSelection`'s non-boss variant is now
+  `roomId: string | null` (`null` = a top-level selection); the boss
+  variant is unchanged (`roomId: string`, always).
+- **`boardGeometry.ts`**: `isCellOccupied`/`OccupiedCheck` extended to
+  also scan `doc.place` (top-level) for occupancy — edit mode's Board.tsx
+  didn't need this for anything it renders yet (see "What did NOT ship"
+  below), but the occupancy check itself needed to stay correct the
+  moment ANY code path could produce a top-level placement, including a
+  hand-typed YAML edit in edit mode.
+- **`Inspector.tsx`**: a REAL bug, not a design gap — the component
+  unconditionally required `doc.rooms.find(r => r.id === selected.roomId)`
+  to succeed before rendering anything. For a top-level selection
+  (`selected.roomId === null`), that lookup always misses (no room has
+  `id === null`, and a from-scratch canvas may have zero rooms at all
+  regardless), so the Inspector silently rendered nothing — no error, no
+  console warning, just a selection that visually did nothing. Caught by
+  live verification (clicking a freshly-placed top-level marker opened no
+  panel), not by inspection or typecheck. Fixed by resolving THREE cases
+  up front (boss → room lookup required; room-scoped → room lookup
+  required; top-level → `doc.place[index]` directly, no room needed) into
+  one `placement`/`boss` pair the rest of the component reads from,
+  instead of the room-requiring lookup gating everything.
+- **`creation/emptyCanvasDoc.ts`**: the synthetic room is gone —
+  `rooms: []` is genuinely empty now, `place: []` sits at the top level.
+- **`CreationBoard.tsx`/`CreationConcept.tsx`/`DungeonBuilderConcept.tsx`**:
+  every creation-mode call site that passed `CANVAS_ROOM_ID` now passes
+  `null` (`edit.handlePlace(null, cell)`, `edit.handleMove(sel, null,
+cell)`, `placeItem(creationCst, null, ref, at)`, etc.) — mechanical
+  once the mutators/selection type were generalized. The Boss tool's
+  guard changed from "this specific room isn't archetype: boss" to "this
+  canvas has no rooms at all" — same honest-rejection shape, updated
+  wording, still fires BEFORE `handlePlace` so `moveBoss`'s
+  "no existing boss: entry" throw is never reached (same defensive
+  pattern the prior round's boss-crash fix established, now also backed
+  by a defensive `roomId === null` check inside `handlePlace` itself in
+  case a future caller ever forgets the board-level guard).
+- **`demoScript.ts`/`useDemoScript.ts`**: unaffected in shape — already
+  built against a `DemoActions.place`/`rotateLastFacing` abstraction from
+  the prior round, so only the CALLERS inside `DungeonBuilderConcept.tsx`
+  needed to swap `CANVAS_ROOM_ID` for `null`. `rotateLastFacing` now
+  reads `creationDoc.place.length - 1` directly instead of looking up a
+  room first.
+
+### Verified live, including the bug the Inspector fix caught
+
+Confirmed via a real browser session, not just `tsc`/`eslint` (both
+clean on the first pass, same as the prior round — `dungeonYaml.ts`'s
+existing type discipline carried through the generalization cleanly):
+
+- A from-scratch canvas's Proposed Schema pane shows `rooms: []` and
+  `place: []` at the top level — no synthetic room anywhere in the
+  serialized YAML.
+- Placing a prop writes directly to the top-level `place:` array:
+  `place: [ { ref: "dnd5e:props:pillar", at: [ 10, 15 ], ... } ]`.
+  clicking that marker (after deselecting the palette — placing and
+  selecting stay separate actions, unchanged UX) opens the shared
+  Inspector — this is the exact interaction the bug above silently broke
+  before the fix, and the exact one re-tested after it to confirm the
+  fix actually closed the gap, not just satisfied the type checker.
+  Rotating facing through the Inspector wrote `facing: NE` onto the
+  top-level entry correctly.
+- Selecting the Boss tool on a from-scratch canvas and clicking the board
+  shows the honest rejection toast ("Boss stays room-scoped — this
+  canvas has no rooms yet"), no crash, no uncaught exception.
+- The full "Play the pitch" demo (17 steps, walls/door/start/end/monster/
+  facing-rotated prop) still runs to completion against the new routing,
+  confirming `DemoActions.place`/`rotateLastFacing`'s abstraction
+  correctly insulated the demo script from the underlying roomId change.
+- Edit mode is unaffected: the real showcase.yaml chain still renders
+  (240 polygons, unchanged), confirming the generalized mutators didn't
+  regress the room-scoped path they still serve there.
+
+Evidence: `docs/evidence/dungeon-builder-toplevel-place-inspector.png`
+(a top-level placement selected, Inspector open, facing set),
+`docs/evidence/dungeon-builder-toplevel-demo-complete.png` (the full demo
+run against the new routing).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **Edit mode's `Board.tsx` does not yet render top-level placements.**
+  The team lead's brief scoped this round to dungeonYaml.ts's mutators,
+  creation mode's re-pointing, `stripToV1Subset`, and the docs — it did
+  not ask for a new Board.tsx render pass, and adding one is a real,
+  separate chunk of work (an overlay pass matching the existing wall/
+  hole/start/end v2-overlay visual language, absolute coordinates with
+  no room offset, plus wiring `onPlace`/`onSelect`/`onMove` for a
+  roomId-less marker). `isCellOccupied` already accounts for `doc.place`
+  defensively (see above), so nothing is UNSAFE about a hand-typed
+  top-level placement in edit mode's YAML pane today — it just isn't
+  visible on the board yet. Reachable only by hand-editing the YAML text
+  in edit mode (creation mode is where this construct is actually
+  authored through the UI this round) — named as the next natural
+  extension, not attempted here to keep this round to what was asked.
+- **Walls still don't carve the canvas into real, separately-addressable
+  rooms.** Unaffected by this round either way — a from-scratch canvas
+  is still one undivided space; the "branching topology" evolution
+  TARGET-YAML.md's linear-chain section gestures at remains real,
+  separate, future work.
+- **The rejected synthetic-room approach's commits (`290ae77`,
+  `c66c689`, and the immediately-following `4b72a02`) are NOT reverted or
+  rewritten** — they stay in git history as the honest record of what was
+  tried and why it didn't survive review, per this file's own convention
+  (see the "What this file tried first" paragraph in TARGET-YAML.md).
+  This round's commits convert the SHAPE forward from there, not erase
+  the path that led to it.
