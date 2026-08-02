@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Board } from './Board';
 import { CollapsibleSidePanel } from './CollapsibleSidePanel';
+import { ConnectorInspector } from './ConnectorInspector';
 import { CreationConcept } from './creation/CreationConcept';
 import { useCreationState } from './creation/useCreationState';
 import './DungeonBuilderConcept.css';
@@ -21,9 +22,11 @@ import {
   parseDungeon,
   placeItem,
   serializeDungeon,
+  setConnectorLocked,
   setPlacementFlags,
   toDungeonDoc,
   type DungeonDoc,
+  type LockedDoc,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
 import type { LayoutMode } from './hexLayout';
@@ -35,6 +38,7 @@ import { RolledContentPanel } from './RolledContentPanel';
 import type { PaletteSelection, PlacementSelection } from './types';
 import { usePutDungeonPreview } from './usePutDungeonPreview';
 import { useSaveDungeon } from './useSaveDungeon';
+import { WallGashExplainer } from './WallGashExplainer';
 import { YamlPane } from './YamlPane';
 
 const APPLY_DEBOUNCE_MS = 700;
@@ -53,6 +57,15 @@ export function DungeonBuilderConcept() {
     useState<PaletteSelection | null>(null);
   const [selectedPlacement, setSelectedPlacement] =
     useState<PlacementSelection | null>(null);
+  // Door/wall editing (Kirk's 2026-08-02 ask). Mutually exclusive with
+  // selectedPalette/selectedPlacement above — every setter for one of
+  // these four clears the other three, so only one floating panel
+  // (Inspector/ConnectorInspector/WallGashExplainer) is ever open, same
+  // discipline the existing palette/placement pair already followed.
+  const [selectedConnectorIndex, setSelectedConnectorIndex] = useState<
+    number | null
+  >(null);
+  const [wallGashExplainerOpen, setWallGashExplainerOpen] = useState(false);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('hex-true');
   const [boardDim, setBoardDim] = useState<'2d' | '3d'>('2d');
   const [toast, setToast] = useState<string | null>(null);
@@ -82,6 +95,27 @@ export function DungeonBuilderConcept() {
   const handleWalkIt = () => {
     const walkKey = `${doc.key}-walk`;
     walkSave.save(walkKey, buildWalkItYaml(yamlText, walkKey));
+  };
+
+  // Clears every OTHER selection kind — called at the start of each of the
+  // four selection setters below so only one floating panel is ever open.
+  const clearOtherSelections = (
+    keep: 'palette' | 'placement' | 'connector' | 'wall-gash' | 'none'
+  ) => {
+    if (keep !== 'palette') setSelectedPalette(null);
+    if (keep !== 'placement') setSelectedPlacement(null);
+    if (keep !== 'connector') setSelectedConnectorIndex(null);
+    if (keep !== 'wall-gash') setWallGashExplainerOpen(false);
+  };
+
+  const handleSelectConnector = (index: number) => {
+    clearOtherSelections('connector');
+    setSelectedConnectorIndex(index);
+  };
+
+  const handleWallGashClick = () => {
+    clearOtherSelections('wall-gash');
+    setWallGashExplainerOpen(true);
   };
 
   const flashToast = (message: string) => {
@@ -127,6 +161,12 @@ export function DungeonBuilderConcept() {
     setDoc(toDungeonDoc(nextCst));
     setYamlText(serializeDungeon(nextCst));
     setParseError(null);
+  };
+
+  const handleSetConnectorLocked = (locked: LockedDoc | null) => {
+    if (selectedConnectorIndex === null) return;
+    setConnectorLocked(cst, selectedConnectorIndex, locked);
+    syncFromCst(cst);
   };
 
   const handlePlace = (roomId: string, at: [number, number]) => {
@@ -401,8 +441,8 @@ export function DungeonBuilderConcept() {
             <Palette
               selected={selectedPalette}
               onSelect={(sel) => {
+                clearOtherSelections('palette');
                 setSelectedPalette(sel);
-                setSelectedPlacement(null);
               }}
               usageCounts={usageCounts}
             />
@@ -437,13 +477,16 @@ export function DungeonBuilderConcept() {
                     layoutMode={layoutMode}
                     selectedPalette={selectedPalette}
                     selectedPlacement={selectedPlacement}
+                    selectedConnectorIndex={selectedConnectorIndex}
                     onPlace={handlePlace}
                     onSelect={(sel) => {
+                      clearOtherSelections('placement');
                       setSelectedPlacement(sel);
-                      setSelectedPalette(null);
                     }}
                     onMove={handleMove}
                     onReject={flashToast}
+                    onSelectConnector={handleSelectConnector}
+                    onWallGashClick={handleWallGashClick}
                   />
                 </div>
               </>
@@ -504,6 +547,26 @@ export function DungeonBuilderConcept() {
           onSetFlags={handleSetFlags}
           onDelete={handleDelete}
         />
+
+        {selectedConnectorIndex !== null && (
+          <ConnectorInspector
+            doc={doc}
+            floorPlan={preview.floorPlan}
+            connectorIndex={selectedConnectorIndex}
+            onSetLocked={handleSetConnectorLocked}
+            onClose={() => setSelectedConnectorIndex(null)}
+          />
+        )}
+
+        {wallGashExplainerOpen && (
+          <WallGashExplainer
+            onClose={() => setWallGashExplainerOpen(false)}
+            onPrototypeInCreation={() => {
+              setWallGashExplainerOpen(false);
+              setMode('create');
+            }}
+          />
+        )}
 
         {toast && <ToastBanner message={toast} />}
       </div>

@@ -38,6 +38,7 @@ interface BoardProps {
   layoutMode: LayoutMode;
   selectedPalette: PaletteSelection | null;
   selectedPlacement: PlacementSelection | null;
+  selectedConnectorIndex: number | null;
   onPlace: (roomId: string, at: [number, number]) => void;
   onSelect: (sel: PlacementSelection | null) => void;
   onMove: (
@@ -46,6 +47,13 @@ interface BoardProps {
     at: [number, number]
   ) => void;
   onReject: (message: string) => void;
+  /** Door cell clicked — Kirk's 2026-08-02 ask. Index into
+   * `floorPlan.connectors`/`doc.connectors` (same order, both derived
+   * from the same YAML `connectors:` list). */
+  onSelectConnector: (index: number) => void;
+  /** A non-door wall-band cell clicked — the honest "this is a wall,
+   * derived not authored" explainer, not a placement handle. */
+  onWallGashClick: () => void;
 }
 
 function markerColor(ref: string, isBoss: boolean): string {
@@ -68,10 +76,13 @@ export function Board({
   layoutMode,
   selectedPalette,
   selectedPlacement,
+  selectedConnectorIndex,
   onPlace,
   onSelect,
   onMove,
   onReject,
+  onSelectConnector,
+  onWallGashClick,
 }: BoardProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState<PlacementSelection | null>(null);
@@ -144,16 +155,23 @@ export function Board({
         );
       } else if (connector) {
         const isDoorRow = row === floorPlan.doorRow;
+        const connectorIndex = floorPlan.connectors.indexOf(connector);
+        const isSelectedDoor =
+          isDoorRow && selectedConnectorIndex === connectorIndex;
         cells.push(
           <polygon
             key={`cell-${col}-${row}`}
             points={points}
-            className={isDoorRow ? 'db-cell-door' : 'db-cell-wall'}
+            className={
+              isDoorRow
+                ? `db-cell-door${isSelectedDoor ? ' db-cell-door-selected' : ''}`
+                : 'db-cell-wall'
+            }
             onClick={() => {
               if (isDoorRow) {
-                onReject(
-                  `Connector door (${connector.fromRoomId} ↔ ${connector.toRoomId}) — read-only overlay. Connectors/doors have no authorable coordinate in dungeonspec today.`
-                );
+                onSelectConnector(connectorIndex);
+              } else {
+                onWallGashClick();
               }
             }}
           />

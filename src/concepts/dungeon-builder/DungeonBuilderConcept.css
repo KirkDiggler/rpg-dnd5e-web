@@ -25,16 +25,35 @@
   opacity: 0.92;
   cursor: not-allowed;
 }
+/* Both wall/door band cells are now honestly interactive (Kirk's
+ * 2026-08-02 "I cannot set a wall or a door — just realized the gashes
+ * are walls" ask) — wall cells open the WallGashExplainer, door cells
+ * open ConnectorInspector. Neither is a placement handle (cursor: pointer,
+ * not "grab" or similar), but neither is `not-allowed` anymore either —
+ * that cursor was actively misleading once these cells became clickable. */
 .db-cell-wall {
   fill: #2a2521;
   stroke: #1c1713;
   stroke-width: 1;
+  cursor: pointer;
+}
+.db-cell-wall:hover {
+  fill: #362f28;
+  stroke: #5a4a3a;
 }
 .db-cell-door {
   fill: #2a2117;
   stroke: #ffb347;
   stroke-width: 1.5;
-  cursor: not-allowed;
+  cursor: pointer;
+}
+.db-cell-door:hover {
+  fill: #3a2a17;
+  stroke: #ffcb70;
+}
+.db-cell-door-selected {
+  stroke: #ffd76a;
+  stroke-width: 3;
 }
 .db-room-label {
   fill: #a89e90;
