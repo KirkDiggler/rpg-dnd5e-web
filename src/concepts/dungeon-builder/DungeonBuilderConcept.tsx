@@ -22,9 +22,12 @@ import {
   parseDungeon,
   placeItem,
   serializeDungeon,
+  setBossTargeting,
   setConnectorLocked,
   setEnd,
   setPlacementFlags,
+  setPlacementMount,
+  setPlacementTargeting,
   setStart,
   stripToV1Subset,
   toDungeonDoc,
@@ -33,6 +36,7 @@ import {
   toggleWallKind,
   type DungeonDoc,
   type LockedDoc,
+  type Mount,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
 import type { LayoutMode } from './hexLayout';
@@ -293,6 +297,35 @@ export function DungeonBuilderConcept() {
       blocksMovement,
       blocksLos,
     });
+    syncFromCst(cst);
+  };
+
+  // Boss entries have no mount/height (bosses aren't wall furniture) —
+  // only place: entries do, matching Inspector.tsx's own gate.
+  const handleSetMount = (mount: Mount, height: number | null) => {
+    if (!selectedPlacement || selectedPlacement.boss) return;
+    setPlacementMount(
+      cst,
+      selectedPlacement.roomId,
+      selectedPlacement.index,
+      mount,
+      height
+    );
+    syncFromCst(cst);
+  };
+
+  const handleSetTargeting = (targeting: string | null) => {
+    if (!selectedPlacement) return;
+    if (selectedPlacement.boss) {
+      setBossTargeting(cst, selectedPlacement.roomId, targeting);
+    } else {
+      setPlacementTargeting(
+        cst,
+        selectedPlacement.roomId,
+        selectedPlacement.index,
+        targeting
+      );
+    }
     syncFromCst(cst);
   };
 
@@ -627,6 +660,8 @@ export function DungeonBuilderConcept() {
           selected={selectedPlacement}
           onSetFlags={handleSetFlags}
           onDelete={handleDelete}
+          onSetMount={handleSetMount}
+          onSetTargeting={handleSetTargeting}
         />
 
         {selectedConnectorIndex !== null && (

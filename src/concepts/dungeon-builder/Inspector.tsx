@@ -4,10 +4,53 @@
  * for monsters (dungeonspec.Validate rejects both on monster placements —
  * S4b's own spec). Also the entrance-blocked warning, the single most
  * persuasive interaction in the standalone concept (see CONTRACT.md).
+ *
+ * Two v2, proposed controls (Kirk's 2026-08-02 dialect adds — TARGET-
+ * YAML.md's "z-axis" and "Monster targeting" sections), both badged:
+ * a targeting dropdown for any monster placement (boss or general), and
+ * a wall-mount height field for the one palette ref this round judged
+ * cheap enough to wire up (`WALL_MOUNTABLE_REFS` — `dnd5e:props:
+ * wall-banner`, the only ref in this palette whose own name says
+ * "wall"). Neither reaches `PutDungeon` — `stripToV1Subset` drops both
+ * before any real save, same as every other v2 field.
  */
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
-import type { DungeonDoc } from './dungeonYaml';
+import type { DungeonDoc, Mount } from './dungeonYaml';
 import type { PlacementSelection } from './types';
+
+/** Wall-mountable props this round wires the mount/height inspector UI
+ * up for — deliberately small (see TARGET-YAML.md's z-axis section:
+ * "the placement inspector's optional height field, when cheap to add
+ * for a known wall-mountable ref, is the only UI this round ships").
+ * `dnd5e:props:wall-banner` is the only palette ref whose own name says
+ * "wall" — not a general "any prop can mount on a wall" affordance. */
+const WALL_MOUNTABLE_REFS = new Set<string>(['dnd5e:props:wall-banner']);
+
+const TARGETING_OPTIONS = [
+  { value: '', label: '(none)' },
+  { value: 'lowest-health', label: 'lowest-health' },
+  { value: 'lowest-ac', label: 'lowest-ac' },
+  { value: 'closest', label: 'closest' },
+];
+
+function V2Badge() {
+  return (
+    <span
+      title="v2, proposed — not yet compiled server-side (TARGET-YAML.md)"
+      style={{
+        fontSize: 9,
+        color: '#c9aeff',
+        background: '#241a33',
+        border: '1px solid #4a3a63',
+        borderRadius: 3,
+        padding: '1px 5px',
+        marginLeft: 6,
+      }}
+    >
+      v2
+    </span>
+  );
+}
 
 interface InspectorProps {
   doc: DungeonDoc;
@@ -15,6 +58,8 @@ interface InspectorProps {
   selected: PlacementSelection | null;
   onSetFlags: (blocksMovement: boolean, blocksLos: boolean) => void;
   onDelete: () => void;
+  onSetMount: (mount: Mount, height: number | null) => void;
+  onSetTargeting: (targeting: string | null) => void;
 }
 
 export function Inspector({
@@ -23,6 +68,8 @@ export function Inspector({
   selected,
   onSetFlags,
   onDelete,
+  onSetMount,
+  onSetTargeting,
 }: InspectorProps) {
   if (!selected) return null;
   const room = doc.rooms.find((r) => r.id === selected.roomId);
@@ -43,6 +90,18 @@ export function Inspector({
   const blocksLos = selected.boss
     ? false
     : (room.place[selected.index]?.blocksLos ?? false);
+  // v2 — mount/height don't exist on a boss entry (bosses aren't wall
+  // furniture); targeting exists on both.
+  const mount = selected.boss
+    ? 'floor'
+    : (room.place[selected.index]?.mount ?? 'floor');
+  const height = selected.boss
+    ? null
+    : (room.place[selected.index]?.height ?? null);
+  const targeting = selected.boss
+    ? (room.boss?.targeting ?? null)
+    : (room.place[selected.index]?.targeting ?? null);
+  const isWallMountable = !selected.boss && WALL_MOUNTABLE_REFS.has(ref);
 
   const fpRoom = floorPlan.rooms.find((r) => r.id === selected.roomId);
   const absCol = (fpRoom?.startColumn ?? 0) + at[0];
@@ -129,6 +188,104 @@ export function Inspector({
         >
           Flags disabled: dungeonspec.Validate rejects
           blocks_movement/blocks_los on monster placements.
+        </div>
+      )}
+
+      {isMonster && (
+        <div style={{ marginTop: 8 }}>
+          <label
+            htmlFor="db-targeting"
+            style={{ display: 'flex', alignItems: 'center', fontSize: 11 }}
+          >
+            targeting
+            <V2Badge />
+          </label>
+          <select
+            id="db-targeting"
+            value={targeting ?? ''}
+            onChange={(e) => onSetTargeting(e.target.value || null)}
+            style={{
+              marginTop: 4,
+              width: '100%',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-primary)',
+              borderRadius: 4,
+              padding: '3px 6px',
+              fontSize: 12,
+            }}
+          >
+            {TARGETING_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <div style={{ fontSize: 10, color: '#8a7a5a', marginTop: 3 }}>
+            a reference to a toolkit AI strategy — the builder sets the key, the
+            toolkit's monster decision chain would give it meaning
+          </div>
+        </div>
+      )}
+
+      {isWallMountable && (
+        <div style={{ marginTop: 8 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 11,
+            }}
+          >
+            <input
+              type="checkbox"
+              id="db-chk-mount"
+              checked={mount === 'wall'}
+              onChange={(e) =>
+                onSetMount(e.target.checked ? 'wall' : 'floor', height ?? 2.0)
+              }
+            />
+            <label
+              htmlFor="db-chk-mount"
+              style={{ display: 'flex', alignItems: 'center' }}
+            >
+              wall-mounted
+              <V2Badge />
+            </label>
+          </div>
+          {mount === 'wall' && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                marginTop: 6,
+              }}
+            >
+              <label htmlFor="db-height" style={{ fontSize: 11 }}>
+                height (m)
+              </label>
+              <input
+                id="db-height"
+                type="number"
+                step={0.1}
+                min={0}
+                value={height ?? 2.0}
+                onChange={(e) =>
+                  onSetMount('wall', Number(e.target.value) || 0)
+                }
+                style={{
+                  width: 60,
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 4,
+                  padding: '2px 6px',
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
 
