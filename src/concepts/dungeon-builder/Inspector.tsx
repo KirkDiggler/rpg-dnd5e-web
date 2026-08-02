@@ -14,6 +14,7 @@
  * "wall"). Neither reaches `PutDungeon` — `stripToV1Subset` drops both
  * before any real save, same as every other v2 field.
  */
+import { HEX_FACING_LABELS } from '@/components/hex-grid/authorGridHelpers';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { DungeonDoc, Mount } from './dungeonYaml';
 import type { PlacementSelection } from './types';
@@ -54,12 +55,20 @@ function V2Badge() {
 
 interface InspectorProps {
   doc: DungeonDoc;
-  floorPlan: FloorPlan;
+  /** Absent for the "New Dungeon" creation board — there is no compiled
+   * FloorPlan for a freeform canvas (no server call at all; see
+   * CreationConcept.tsx's own doc comment). Every FloorPlan-derived value
+   * below degrades to the canvas-native reading when this is undefined:
+   * `at` is already absolute (no room-chain startColumn to add), and the
+   * entrance-blocked warning simply never fires (a canvas draft has no
+   * FloorPlan.entrance to sit on). */
+  floorPlan?: FloorPlan;
   selected: PlacementSelection | null;
   onSetFlags: (blocksMovement: boolean, blocksLos: boolean) => void;
   onDelete: () => void;
   onSetMount: (mount: Mount, height: number | null) => void;
   onSetTargeting: (targeting: string | null) => void;
+  onSetFacing: (facing: number | null) => void;
 }
 
 export function Inspector({
@@ -70,6 +79,7 @@ export function Inspector({
   onDelete,
   onSetMount,
   onSetTargeting,
+  onSetFacing,
 }: InspectorProps) {
   if (!selected) return null;
   const room = doc.rooms.find((r) => r.id === selected.roomId);
@@ -91,7 +101,7 @@ export function Inspector({
     ? false
     : (room.place[selected.index]?.blocksLos ?? false);
   // v2 — mount/height don't exist on a boss entry (bosses aren't wall
-  // furniture); targeting exists on both.
+  // furniture); targeting/facing exist on both.
   const mount = selected.boss
     ? 'floor'
     : (room.place[selected.index]?.mount ?? 'floor');
@@ -101,13 +111,16 @@ export function Inspector({
   const targeting = selected.boss
     ? (room.boss?.targeting ?? null)
     : (room.place[selected.index]?.targeting ?? null);
+  const facing = selected.boss
+    ? (room.boss?.facing ?? null)
+    : (room.place[selected.index]?.facing ?? null);
   const isWallMountable = !selected.boss && WALL_MOUNTABLE_REFS.has(ref);
 
-  const fpRoom = floorPlan.rooms.find((r) => r.id === selected.roomId);
+  const fpRoom = floorPlan?.rooms.find((r) => r.id === selected.roomId);
   const absCol = (fpRoom?.startColumn ?? 0) + at[0];
   const row = at[1];
   const onEntrance =
-    !!floorPlan.entrance &&
+    !!floorPlan?.entrance &&
     floorPlan.entrance.column === absCol &&
     floorPlan.entrance.row === row &&
     blocksMovement;
@@ -135,6 +148,34 @@ export function Inspector({
         {selected.boss ? 'Boss: ' : ''}
         {ref} [{at[0]},{at[1]}]
       </h4>
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          margin: '6px 0',
+          fontSize: 11,
+        }}
+      >
+        <button
+          onClick={() => onSetFacing(((facing ?? 0) + 5) % 6)}
+          style={rotateBtnStyle}
+        >
+          ↺
+        </button>
+        <span style={{ minWidth: 24, textAlign: 'center' }}>
+          {facing !== null ? HEX_FACING_LABELS[facing] : '—'}
+        </span>
+        <button
+          onClick={() => onSetFacing(((facing ?? 0) + 1) % 6)}
+          style={rotateBtnStyle}
+        >
+          ↻
+        </button>
+        <span>facing</span>
+        <V2Badge />
+      </div>
 
       <div
         style={{
@@ -332,3 +373,13 @@ export function Inspector({
     </div>
   );
 }
+
+const rotateBtnStyle: React.CSSProperties = {
+  background: 'var(--bg-secondary)',
+  color: 'var(--text-primary)',
+  border: '1px solid var(--border-primary)',
+  borderRadius: 4,
+  width: 22,
+  height: 22,
+  cursor: 'pointer',
+};

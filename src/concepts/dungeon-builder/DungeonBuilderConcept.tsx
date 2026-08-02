@@ -7,11 +7,17 @@
  * writeup.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Document } from 'yaml';
 import { Board } from './Board';
 import { CollapsibleSidePanel } from './CollapsibleSidePanel';
 import { ConnectorInspector } from './ConnectorInspector';
 import { CreationConcept } from './creation/CreationConcept';
-import { useCreationState } from './creation/useCreationState';
+import type { DemoActions } from './creation/demoScript';
+import {
+  CANVAS_ROOM_ID,
+  DEFAULT_CANVAS,
+  emptyCanvasYaml,
+} from './creation/emptyCanvasDoc';
 import './DungeonBuilderConcept.css';
 import {
   buildWalkItYaml,
@@ -22,13 +28,16 @@ import {
   parseDungeon,
   placeItem,
   serializeDungeon,
+  setBossFacing,
   setBossTargeting,
   setConnectorLocked,
   setEnd,
+  setPlacementFacing,
   setPlacementFlags,
   setPlacementMount,
   setPlacementTargeting,
   setStart,
+  setWallEdge,
   stripToV1Subset,
   toDungeonDoc,
   toggleHole,
@@ -37,6 +46,7 @@ import {
   type DungeonDoc,
   type LockedDoc,
   type Mount,
+  type WallKind,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
 import type { LayoutMode } from './hexLayout';
@@ -55,20 +65,172 @@ const APPLY_DEBOUNCE_MS = 700;
 
 type BuilderMode = 'edit' | 'create';
 
+/** The palette/placement editing core — the part of edit mode's board
+ * interaction that "New Dungeon" needs verbatim once it authors onto its
+ * OWN cst/DungeonDoc instead of the bespoke CreationState (CONTRACT.md's
+ * "unifying New Dungeon onto the shared CST" section). Pulled into one
+ * hook, called once per mode with that mode's own `cst`/`doc`/
+ * `syncFromCst`, rather than duplicated: placement selection is
+ * genuinely identical logic in both modes (a ref at a `[col,row]` inside
+ * an owning room — edit mode's rooms are real, creation mode's is the
+ * single synthetic bridge room from `emptyCanvasDoc.ts`), only the
+ * SURROUNDING board/palette/wall handling differs per mode, and stays
+ * defined separately where it's called. */
+function useBoardEditing(
+  cst: Document,
+  doc: DungeonDoc,
+  syncFromCst: (cst: Document) => void,
+  flashToast?: (message: string) => void
+) {
+  const [selectedPalette, setSelectedPalette] =
+    useState<PaletteSelection | null>(null);
+  const [selectedPlacement, setSelectedPlacement] =
+    useState<PlacementSelection | null>(null);
+
+  const handlePlace = (roomId: string, at: [number, number]) => {
+    if (!selectedPalette) return;
+    const isMonster = selectedPalette.kind === 'monster';
+    if (selectedPalette.kind === 'boss') {
+      moveBoss(cst, roomId, at);
+      flashToast?.('Boss pin placed.');
+    } else {
+      placeItem(cst, roomId, selectedPalette.ref, at);
+      if (isMonster) {
+        flashToast?.(
+          'Monster placed — blocks_movement/blocks_los are forced off and disabled (dungeonspec.Validate rejects both flags on monster placements).'
+        );
+      }
+    }
+    syncFromCst(cst);
+  };
+
+  const handleMove = (
+    sel: PlacementSelection,
+    roomId: string,
+    at: [number, number]
+  ) => {
+    if (sel.boss) {
+      moveBoss(cst, roomId, at);
+    } else if (roomId === sel.roomId) {
+      movePlacement(cst, sel.roomId, sel.index, at);
+    } else {
+      // Cross-room move: delete + re-place, since a placement's index is
+      // room-scoped (dungeonYaml.ts's own movePlacement is same-room
+      // only). Structurally unreachable in creation mode today — its
+      // single synthetic room means roomId === sel.roomId always — but
+      // kept general rather than assuming that never changes.
+      const room = doc.rooms.find((r) => r.id === sel.roomId);
+      const item = room?.place[sel.index];
+      if (!item) return;
+      deletePlacement(cst, sel.roomId, sel.index);
+      placeItem(cst, roomId, item.ref, at);
+    }
+    syncFromCst(cst);
+    if (!sel.boss) {
+      setSelectedPlacement({
+        roomId,
+        // See DungeonBuilderConcept's own git history for the
+        // off-by-one this fixed: a same-room move keeps sel.index
+        // (movePlacement only rewrites `at` in place); only a genuine
+        // cross-room append needs the pre-mutation destination length.
+        index:
+          roomId === sel.roomId
+            ? sel.index
+            : doc.rooms.find((r) => r.id === roomId)!.place.length,
+      });
+    }
+  };
+
+  const handleDelete = () => {
+    if (!selectedPlacement || selectedPlacement.boss) return;
+    deletePlacement(cst, selectedPlacement.roomId, selectedPlacement.index);
+    setSelectedPlacement(null);
+    syncFromCst(cst);
+  };
+
+  const handleSetFlags = (blocksMovement: boolean, blocksLos: boolean) => {
+    if (!selectedPlacement || selectedPlacement.boss) return;
+    setPlacementFlags(cst, selectedPlacement.roomId, selectedPlacement.index, {
+      blocksMovement,
+      blocksLos,
+    });
+    syncFromCst(cst);
+  };
+
+  // Boss entries have no mount/height (bosses aren't wall furniture) —
+  // only place: entries do, matching Inspector.tsx's own gate.
+  const handleSetMount = (mount: Mount, height: number | null) => {
+    if (!selectedPlacement || selectedPlacement.boss) return;
+    setPlacementMount(
+      cst,
+      selectedPlacement.roomId,
+      selectedPlacement.index,
+      mount,
+      height
+    );
+    syncFromCst(cst);
+  };
+
+  const handleSetTargeting = (targeting: string | null) => {
+    if (!selectedPlacement) return;
+    if (selectedPlacement.boss) {
+      setBossTargeting(cst, selectedPlacement.roomId, targeting);
+    } else {
+      setPlacementTargeting(
+        cst,
+        selectedPlacement.roomId,
+        selectedPlacement.index,
+        targeting
+      );
+    }
+    syncFromCst(cst);
+  };
+
+  const handleSetFacing = (facing: number | null) => {
+    if (!selectedPlacement) return;
+    if (selectedPlacement.boss) {
+      setBossFacing(cst, selectedPlacement.roomId, facing);
+    } else {
+      setPlacementFacing(
+        cst,
+        selectedPlacement.roomId,
+        selectedPlacement.index,
+        facing
+      );
+    }
+    syncFromCst(cst);
+  };
+
+  return {
+    selectedPalette,
+    setSelectedPalette,
+    selectedPlacement,
+    setSelectedPlacement,
+    handlePlace,
+    handleMove,
+    handleDelete,
+    handleSetFlags,
+    handleSetMount,
+    handleSetTargeting,
+    handleSetFacing,
+  };
+}
+
+/** The `useBoardEditing` handle — exported so `CreationBoard.tsx`/
+ * `CreationConcept.tsx` can type the `edit` prop they receive without
+ * re-deriving the same shape. */
+export type BoardEditing = ReturnType<typeof useBoardEditing>;
+
 export function DungeonBuilderConcept() {
   const [mode, setMode] = useState<BuilderMode>('edit');
-  const creation = useCreationState();
   const initial = parseDungeon(SHOWCASE_YAML);
   const [cst, setCst] = useState(initial.cst);
   const [doc, setDoc] = useState<DungeonDoc>(initial.doc);
   const [yamlText, setYamlText] = useState(serializeDungeon(initial.cst));
   const [parseError, setParseError] = useState<string | null>(null);
-  const [selectedPalette, setSelectedPalette] =
-    useState<PaletteSelection | null>(null);
-  const [selectedPlacement, setSelectedPlacement] =
-    useState<PlacementSelection | null>(null);
   // Door/wall editing (Kirk's 2026-08-02 ask). Mutually exclusive with
-  // selectedPalette/selectedPlacement above — every setter for one of
+  // selectedPalette/selectedPlacement (now owned by the `edit` =
+  // useBoardEditing(...) call below) — every setter for one of
   // these four clears the other three, so only one floating panel
   // (Inspector/ConnectorInspector/WallGashExplainer) is ever open, same
   // discipline the existing palette/placement pair already followed.
@@ -132,8 +294,8 @@ export function DungeonBuilderConcept() {
   const clearOtherSelections = (
     keep: 'palette' | 'placement' | 'connector' | 'wall-gash' | 'tool' | 'none'
   ) => {
-    if (keep !== 'palette') setSelectedPalette(null);
-    if (keep !== 'placement') setSelectedPlacement(null);
+    if (keep !== 'palette') edit.setSelectedPalette(null);
+    if (keep !== 'placement') edit.setSelectedPlacement(null);
     if (keep !== 'connector') setSelectedConnectorIndex(null);
     if (keep !== 'wall-gash') setWallGashExplainerOpen(false);
     if (keep !== 'tool') setSelectedTool(null);
@@ -191,7 +353,7 @@ export function DungeonBuilderConcept() {
       setCst(parsed.cst);
       setDoc(parsed.doc);
       setParseError(null);
-      setSelectedPlacement(null);
+      edit.setSelectedPlacement(null);
     } catch (err) {
       setParseError(
         err instanceof DungeonParseError ? err.message : String(err)
@@ -230,103 +392,154 @@ export function DungeonBuilderConcept() {
     syncFromCst(cst);
   };
 
-  const handlePlace = (roomId: string, at: [number, number]) => {
-    if (!selectedPalette) return;
-    const isMonster = selectedPalette.kind === 'monster';
-    if (selectedPalette.kind === 'boss') {
-      moveBoss(cst, roomId, at);
-      flashToast('Boss pin placed.');
-    } else {
-      placeItem(cst, roomId, selectedPalette.ref, at);
-      if (isMonster) {
-        flashToast(
-          'Monster placed — blocks_movement/blocks_los are forced off and disabled (dungeonspec.Validate rejects both flags on monster placements).'
-        );
-      }
-    }
-    syncFromCst(cst);
+  // Palette/placement selection + handlePlace/handleMove/handleDelete/
+  // handleSetFlags/handleSetMount/handleSetTargeting/handleSetFacing —
+  // see useBoardEditing's own doc comment for why this is a shared hook
+  // rather than defined inline here (creation mode below calls it a
+  // second time, against its own cst/doc).
+  const edit = useBoardEditing(cst, doc, syncFromCst, flashToast);
+
+  // "New Dungeon" — the SAME cst/DungeonDoc shape edit mode uses, seeded
+  // from an empty v2-only canvas (creation/emptyCanvasDoc.ts's synthetic
+  // CANVAS_ROOM_ID bridge room) instead of a real dungeon, and its own
+  // useBoardEditing instance so its palette/placement selection is
+  // independent of edit mode's (same "remembered per mode" precedent the
+  // collapse-state pairs above already set). See CONTRACT.md's
+  // "unifying New Dungeon onto the shared CST" section.
+  const creationInitial = parseDungeon(
+    emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height)
+  );
+  const [creationCst, setCreationCst] = useState(creationInitial.cst);
+  const [creationDoc, setCreationDoc] = useState<DungeonDoc>(
+    creationInitial.doc
+  );
+  const [creationYamlText, setCreationYamlText] = useState(
+    serializeDungeon(creationInitial.cst)
+  );
+  const [creationSelectedTool, setCreationSelectedTool] =
+    useState<BoardTool | null>('wall');
+  const [creationParseError, setCreationParseError] = useState<string | null>(
+    null
+  );
+  const creationApplyDebounce = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+
+  const syncFromCreationCst = (nextCst: typeof creationCst) => {
+    setCreationCst(nextCst);
+    setCreationDoc(toDungeonDoc(nextCst));
+    setCreationYamlText(serializeDungeon(nextCst));
+    setCreationParseError(null);
   };
 
-  const handleMove = (
-    sel: PlacementSelection,
-    roomId: string,
-    at: [number, number]
+  const creationEdit = useBoardEditing(
+    creationCst,
+    creationDoc,
+    syncFromCreationCst,
+    flashToast
+  );
+
+  const handleCreationToggleWallEdge = (
+    from: [number, number],
+    to: [number, number],
+    kind: WallKind,
+    on: boolean
   ) => {
-    if (sel.boss) {
-      moveBoss(cst, roomId, at);
-    } else if (roomId === sel.roomId) {
-      movePlacement(cst, sel.roomId, sel.index, at);
-    } else {
-      // Cross-room move: delete + re-place, since a placement's index is
-      // room-scoped (dungeonYaml.ts's own movePlacement is same-room only).
-      const room = doc.rooms.find((r) => r.id === sel.roomId);
-      const item = room?.place[sel.index];
-      if (!item) return;
-      deletePlacement(cst, sel.roomId, sel.index);
-      placeItem(cst, roomId, item.ref, at);
-    }
-    syncFromCst(cst);
-    if (!sel.boss)
-      setSelectedPlacement({
-        roomId,
-        // Same-room move: movePlacement only rewrites `at` in place, so the
-        // item keeps sel.index — reusing place.length (pre-mutation) here
-        // was off-by-one and silently pointed selection past the array's
-        // end, which made Inspector's `room.place[selected.index]` lookup
-        // undefined and its `if (!ref || !at) return null` bail with no
-        // visible panel. Cross-room move genuinely appends, so the
-        // pre-mutation length of the *destination* room's place array is
-        // the new item's correct index.
-        index:
-          roomId === sel.roomId
-            ? sel.index
-            : doc.rooms.find((r) => r.id === roomId)!.place.length,
-      });
+    setWallEdge(creationCst, from, to, kind, on);
+    syncFromCreationCst(creationCst);
   };
 
-  const handleDelete = () => {
-    if (!selectedPlacement || selectedPlacement.boss) return;
-    deletePlacement(cst, selectedPlacement.roomId, selectedPlacement.index);
-    setSelectedPlacement(null);
-    syncFromCst(cst);
+  const handleCreationToggleHole = (col: number, row: number) => {
+    toggleHole(creationCst, col, row);
+    syncFromCreationCst(creationCst);
   };
 
-  const handleSetFlags = (blocksMovement: boolean, blocksLos: boolean) => {
-    if (!selectedPlacement || selectedPlacement.boss) return;
-    setPlacementFlags(cst, selectedPlacement.roomId, selectedPlacement.index, {
-      blocksMovement,
-      blocksLos,
-    });
-    syncFromCst(cst);
+  const handleCreationSetPoint = (
+    kind: 'start' | 'end',
+    col: number,
+    row: number
+  ) => {
+    const current = kind === 'start' ? creationDoc.start : creationDoc.end;
+    const alreadyHere = !!current && current[0] === col && current[1] === row;
+    const setter = kind === 'start' ? setStart : setEnd;
+    setter(creationCst, alreadyHere ? null : [col, row]);
+    syncFromCreationCst(creationCst);
   };
 
-  // Boss entries have no mount/height (bosses aren't wall furniture) —
-  // only place: entries do, matching Inspector.tsx's own gate.
-  const handleSetMount = (mount: Mount, height: number | null) => {
-    if (!selectedPlacement || selectedPlacement.boss) return;
-    setPlacementMount(
-      cst,
-      selectedPlacement.roomId,
-      selectedPlacement.index,
-      mount,
-      height
-    );
-    syncFromCst(cst);
+  const handleNewCanvas = (width: number, height: number) => {
+    const fresh = parseDungeon(emptyCanvasYaml(width, height));
+    setCreationCst(fresh.cst);
+    setCreationDoc(fresh.doc);
+    setCreationYamlText(serializeDungeon(fresh.cst));
+    creationEdit.setSelectedPlacement(null);
+    creationEdit.setSelectedPalette(null);
   };
 
-  const handleSetTargeting = (targeting: string | null) => {
-    if (!selectedPlacement) return;
-    if (selectedPlacement.boss) {
-      setBossTargeting(cst, selectedPlacement.roomId, targeting);
-    } else {
-      setPlacementTargeting(
-        cst,
-        selectedPlacement.roomId,
-        selectedPlacement.index,
-        targeting
+  // Same debounced-reparse pattern edit mode's applyText/handleChangeText
+  // use — the ProposedYamlPane textarea is a real, editable view of a
+  // real CST now, not a read-only approximation.
+  const applyCreationText = (text: string) => {
+    try {
+      const parsed = parseDungeon(text);
+      setCreationCst(parsed.cst);
+      setCreationDoc(parsed.doc);
+      setCreationParseError(null);
+      creationEdit.setSelectedPlacement(null);
+    } catch (err) {
+      setCreationParseError(
+        err instanceof DungeonParseError ? err.message : String(err)
       );
     }
-    syncFromCst(cst);
+  };
+
+  const handleChangeCreationText = (text: string) => {
+    setCreationYamlText(text);
+    if (creationApplyDebounce.current)
+      clearTimeout(creationApplyDebounce.current);
+    creationApplyDebounce.current = setTimeout(
+      () => applyCreationText(text),
+      APPLY_DEBOUNCE_MS
+    );
+  };
+
+  useEffect(
+    () => () => {
+      if (creationApplyDebounce.current)
+        clearTimeout(creationApplyDebounce.current);
+    },
+    []
+  );
+
+  // "Play the pitch" (Kirk's own demo script) drives these same mutators
+  // a manual click would — see demoScript.ts's own doc comment. Rebuilt
+  // fresh each render so every method reads the CURRENT creationCst/
+  // creationDoc, not a stale closure from whenever the demo started;
+  // useDemoScript.ts keeps its own ref to the latest object so this
+  // doesn't churn the demo's timer identity.
+  const creationDemoActions: DemoActions = {
+    resetGrid: handleNewCanvas,
+    toggleWallEdge: handleCreationToggleWallEdge,
+    setStart: (at) => {
+      setStart(creationCst, at);
+      syncFromCreationCst(creationCst);
+    },
+    setEnd: (at) => {
+      setEnd(creationCst, at);
+      syncFromCreationCst(creationCst);
+    },
+    place: (ref, at) => {
+      placeItem(creationCst, CANVAS_ROOM_ID, ref, at);
+      syncFromCreationCst(creationCst);
+    },
+    rotateLastFacing: (delta) => {
+      const room = creationDoc.rooms.find((r) => r.id === CANVAS_ROOM_ID);
+      const lastIndex = (room?.place.length ?? 0) - 1;
+      if (lastIndex < 0) return;
+      const current = room!.place[lastIndex].facing ?? 0;
+      const next = (((current + delta) % 6) + 6) % 6;
+      setPlacementFacing(creationCst, CANVAS_ROOM_ID, lastIndex, next);
+      syncFromCreationCst(creationCst);
+    },
   };
 
   const usageCounts: Record<string, number> = {};
@@ -341,30 +554,33 @@ export function DungeonBuilderConcept() {
   const modeBannerText =
     boardDim === '3d'
       ? '3D preview — view only (spike). Orbit/zoom with the mouse; edit via the palette/YAML in 2D.'
-      : selectedPalette
-        ? `Palette: ${selectedPalette.ref.split(':').pop()} selected — click an empty legal cell to place it.`
-        : selectedPlacement
+      : edit.selectedPalette
+        ? `Palette: ${edit.selectedPalette.ref.split(':').pop()} selected — click an empty legal cell to place it.`
+        : edit.selectedPlacement
           ? 'Selected a placed piece — drag to move, Delete key to remove, toggle flags in the inspector.'
           : 'Nothing selected — pick a palette item, or click a placed piece.';
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPlacement) {
+      if (
+        (e.key === 'Delete' || e.key === 'Backspace') &&
+        edit.selectedPlacement
+      ) {
         e.preventDefault();
-        if (selectedPlacement.boss) {
+        if (edit.selectedPlacement.boss) {
           flashToast(
             'Boss required — can’t delete (dungeonspec: "boss room must declare boss"). Drag it instead.'
           );
         } else {
-          handleDelete();
+          edit.handleDelete();
         }
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPlacement, cst]);
+  }, [edit.selectedPlacement, cst]);
 
   const modeTabs = (
     <div style={{ display: 'flex', gap: 6, padding: '10px 16px 0' }}>
@@ -398,8 +614,18 @@ export function DungeonBuilderConcept() {
       <div>
         {modeTabs}
         <CreationConcept
-          state={creation.state}
-          actions={creation.actions}
+          doc={creationDoc}
+          yamlText={creationYamlText}
+          yamlParseError={creationParseError}
+          onChangeYamlText={handleChangeCreationText}
+          edit={creationEdit}
+          selectedTool={creationSelectedTool}
+          onSelectTool={setCreationSelectedTool}
+          onToggleWallEdge={handleCreationToggleWallEdge}
+          onToggleHole={handleCreationToggleHole}
+          onSetPoint={handleCreationSetPoint}
+          onNewCanvas={handleNewCanvas}
+          demoActions={creationDemoActions}
           toast={flashToast}
           paletteCollapsed={createPaletteCollapsed}
           onTogglePalette={() => setCreatePaletteCollapsed((c) => !c)}
@@ -540,10 +766,10 @@ export function DungeonBuilderConcept() {
             onToggle={() => setEditPaletteCollapsed((c) => !c)}
           >
             <Palette
-              selected={selectedPalette}
+              selected={edit.selectedPalette}
               onSelect={(sel) => {
                 clearOtherSelections('palette');
-                setSelectedPalette(sel);
+                edit.setSelectedPalette(sel);
               }}
               usageCounts={usageCounts}
               selectedTool={selectedTool}
@@ -580,15 +806,15 @@ export function DungeonBuilderConcept() {
                     floorPlan={preview.floorPlan}
                     doc={doc}
                     layoutMode={layoutMode}
-                    selectedPalette={selectedPalette}
-                    selectedPlacement={selectedPlacement}
+                    selectedPalette={edit.selectedPalette}
+                    selectedPlacement={edit.selectedPlacement}
                     selectedConnectorIndex={selectedConnectorIndex}
-                    onPlace={handlePlace}
+                    onPlace={edit.handlePlace}
                     onSelect={(sel) => {
                       clearOtherSelections('placement');
-                      setSelectedPlacement(sel);
+                      edit.setSelectedPlacement(sel);
                     }}
-                    onMove={handleMove}
+                    onMove={edit.handleMove}
                     onReject={flashToast}
                     onSelectConnector={handleSelectConnector}
                     onWallGashClick={handleWallGashClick}
@@ -657,11 +883,12 @@ export function DungeonBuilderConcept() {
         <Inspector
           doc={doc}
           floorPlan={preview.floorPlan}
-          selected={selectedPlacement}
-          onSetFlags={handleSetFlags}
-          onDelete={handleDelete}
-          onSetMount={handleSetMount}
-          onSetTargeting={handleSetTargeting}
+          selected={edit.selectedPlacement}
+          onSetFlags={edit.handleSetFlags}
+          onDelete={edit.handleDelete}
+          onSetMount={edit.handleSetMount}
+          onSetTargeting={edit.handleSetTargeting}
+          onSetFacing={edit.handleSetFacing}
         />
 
         {selectedConnectorIndex !== null && (

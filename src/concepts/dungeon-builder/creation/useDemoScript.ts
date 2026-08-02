@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CreationGrid, CreationState } from './creationTypes';
-import { buildDemoScript } from './demoScript';
-import type { CreationActions } from './useCreationState';
+import { buildDemoScript, type DemoActions } from './demoScript';
 
 export interface UseDemoScriptResult {
   isPlaying: boolean;
@@ -19,16 +17,16 @@ export interface UseDemoScriptResult {
 }
 
 /**
- * Runs `demoScript.ts`'s steps against the SAME `actions`/`state` a
- * user's own clicks would use — pausing (or the user just clicking the
- * board mid-run) leaves the real creation state exactly where the script
- * left it, so "take over at any step" needs no special handling: it's
- * already the same board.
+ * Runs `demoScript.ts`'s steps against the SAME `actions` a user's own
+ * clicks would use (dungeonYaml.ts's real mutators, via
+ * DungeonBuilderConcept.tsx's `DemoActions` wiring) — pausing (or the
+ * user just clicking the board mid-run) leaves the real document exactly
+ * where the script left it, so "take over at any step" needs no special
+ * handling: it's already the same board.
  */
 export function useDemoScript(
-  actions: CreationActions,
-  getState: () => CreationState,
-  grid: CreationGrid
+  actions: DemoActions,
+  grid: { width: number; height: number }
 ): UseDemoScriptResult {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isDone, setIsDone] = useState(false);
@@ -37,30 +35,33 @@ export function useDemoScript(
   const playingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scriptRef = useRef(buildDemoScript(grid));
+  // `actions` closes over live cst/doc state each render (DemoActions'
+  // methods read the CURRENT creationCst/creationDoc when called, not a
+  // snapshot) — kept in a ref so `runFrom`'s own identity doesn't need to
+  // change every render just because its caller re-rendered.
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
 
   const clearTimer = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
   };
 
-  const runFrom = useCallback(
-    (index: number) => {
-      const script = scriptRef.current;
-      if (!playingRef.current) return;
-      if (index >= script.length) {
-        playingRef.current = false;
-        setIsPlaying(false);
-        setIsDone(true);
-        return;
-      }
-      const step = script[index];
-      step.run(actions, getState());
-      setStepIndex(index);
-      setCaption(step.caption);
-      timerRef.current = setTimeout(() => runFrom(index + 1), step.holdMs);
-    },
-    [actions, getState]
-  );
+  const runFrom = useCallback((index: number) => {
+    const script = scriptRef.current;
+    if (!playingRef.current) return;
+    if (index >= script.length) {
+      playingRef.current = false;
+      setIsPlaying(false);
+      setIsDone(true);
+      return;
+    }
+    const step = script[index];
+    step.run(actionsRef.current);
+    setStepIndex(index);
+    setCaption(step.caption);
+    timerRef.current = setTimeout(() => runFrom(index + 1), step.holdMs);
+  }, []);
 
   const play = useCallback(() => {
     if (playingRef.current) return;

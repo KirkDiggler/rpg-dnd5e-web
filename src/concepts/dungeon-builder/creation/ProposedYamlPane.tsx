@@ -1,16 +1,28 @@
 /**
- * ProposedYamlPane — renders the invented schema, styled distinctly from
- * the real YAML pane (dashed violet border, hazard-style banner) so it
- * never gets mistaken for something dungeonspec actually accepts today.
- * Carries a disabled "Save & Play" button (Kirk's 2026-08-01 ask) — honest
- * rather than half-real: this pane's schema is invented, so there is
- * nothing a real PutDungeon could persist yet.
+ * ProposedYamlPane — the "New Dungeon" canvas's YAML, styled distinctly
+ * from the real edit-mode pane (dashed violet border, hazard-style
+ * banner) so it never gets mistaken for something dungeonspec accepts
+ * today. As of the CST unification (CONTRACT.md), this is no longer a
+ * hand-serialized approximation — it's the REAL `serializeDungeon(cst)`
+ * text for creation mode's own document, editable and round-tripping
+ * the same way edit mode's YamlPane is, just without that pane's
+ * server/compile-badge/save chrome: creation mode still makes no server
+ * calls (design.md defers wall/shape authoring to P4+; a real
+ * PutDungeon for a freeform canvas needs a dungeonspec extension that
+ * doesn't exist yet), so "Save & Play" stays disabled here rather than
+ * pretending there's somewhere real for this to go.
  */
-import type { CreationState } from './creationTypes';
-import { serializeProposedSchema } from './proposedYaml';
+interface ProposedYamlPaneProps {
+  yamlText: string;
+  onChangeText: (text: string) => void;
+  parseError: string | null;
+}
 
-export function ProposedYamlPane({ state }: { state: CreationState }) {
-  const text = serializeProposedSchema(state);
+export function ProposedYamlPane({
+  yamlText,
+  onChangeText,
+  parseError,
+}: ProposedYamlPaneProps) {
   return (
     <aside
       style={{
@@ -60,9 +72,10 @@ export function ProposedYamlPane({ state }: { state: CreationState }) {
         </button>
       </div>
       <textarea
-        readOnly
         aria-label="Proposed schema (invented, not real dungeonspec)"
-        value={text}
+        value={yamlText}
+        onChange={(e) => onChangeText(e.target.value)}
+        spellCheck={false}
         style={{
           flex: 1,
           minHeight: 0,
@@ -78,6 +91,19 @@ export function ProposedYamlPane({ state }: { state: CreationState }) {
           whiteSpace: 'pre',
         }}
       />
+      {parseError && (
+        <div
+          style={{
+            padding: '6px 12px',
+            background: '#3a1c18',
+            color: '#ff9a8a',
+            fontSize: 11,
+            borderTop: '1px dashed #5a2a20',
+          }}
+        >
+          {parseError}
+        </div>
+      )}
     </aside>
   );
 }

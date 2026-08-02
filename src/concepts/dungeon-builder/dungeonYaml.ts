@@ -149,6 +149,8 @@ export interface CanvasDoc {
   height: number;
 }
 
+export type WallKind = 'solid' | 'door';
+
 /** Edge-native: `from`/`to` are orthogonally-adjacent absolute [col,row]
  * cells, the wall sits on the shared edge between them. v2, proposed —
  * see TARGET-YAML.md's annotated example for the full rationale (mirrors
@@ -157,7 +159,7 @@ export interface CanvasDoc {
 export interface WallDoc {
   from: [number, number];
   to: [number, number];
-  kind: 'solid' | 'door';
+  kind: WallKind;
 }
 
 /** v2, proposed — dungeon-wide lighting config. See TARGET-YAML.md. */
@@ -749,6 +751,80 @@ export function toggleWallKind(
   if (!isMap(item)) return false;
   item.set('kind', item.get('kind') === 'door' ? 'solid' : 'door');
   return true;
+}
+
+/** A wall's index in `walls:`, matched by an EXACT `from`/`to` pair (both
+ * ends, not just `from` — see `wallIndexAt`'s doc comment for why edit
+ * mode's own lookup only needs `from`). General edge lookup for the
+ * "New Dungeon" creation board's freeform edge-painting, where a wall
+ * can be either orientation (a `from`→`to` step of `[0,1]` or `[1,0]`)
+ * at any cell, not just the one fixed edit-mode shape. Callers are
+ * responsible for passing `from`/`to` in ONE canonical order (creation
+ * mode's `hEdgeGeometry`/`vEdgeGeometry` already produce one) — this
+ * does not check the reverse pairing, matching how the CST itself never
+ * stores a wall's endpoints swapped. */
+function wallIndexAtEdge(
+  cst: Document,
+  from: [number, number],
+  to: [number, number]
+): number {
+  const walls = cst.get('walls');
+  if (!isSeq(walls)) return -1;
+  return walls.items.findIndex((w) => {
+    if (!isMap(w)) return false;
+    const f = w.get('from');
+    const t = w.get('to');
+    return (
+      isSeq(f) &&
+      isSeq(t) &&
+      f.get(0) === from[0] &&
+      f.get(1) === from[1] &&
+      t.get(0) === to[0] &&
+      t.get(1) === to[1]
+    );
+  });
+}
+
+/** This edge's wall kind, or `null` if no wall is drawn there — the
+ * creation board's own `state.walls.get(key)` read, now backed by the
+ * shared CST instead of a parallel `Map<EdgeKey, WallKind>`. */
+export function wallKindAtEdge(
+  cst: Document,
+  from: [number, number],
+  to: [number, number]
+): WallKind | null {
+  const idx = wallIndexAtEdge(cst, from, to);
+  if (idx === -1) return null;
+  const item = (cst.get('walls') as YAMLSeq).items[idx];
+  return isMap(item) ? ((item.get('kind') as WallKind) ?? 'solid') : null;
+}
+
+/** Set (add/update) or clear a wall on an arbitrary edge, with an
+ * explicit on/off — the creation board's stroke-painting needs to force
+ * a whole drag's worth of edges to the SAME state (decided by the first
+ * edge touched), which a bare toggle-per-cell can't express. Setting
+ * `on: true` for an edge that already has a wall updates its `kind`
+ * in place (used by the door tool to flip solid↔door without going
+ * through a separate lookup + toggleWallKind-style call). */
+export function setWallEdge(
+  cst: Document,
+  from: [number, number],
+  to: [number, number],
+  kind: WallKind,
+  on: boolean
+): void {
+  const idx = wallIndexAtEdge(cst, from, to);
+  if (!on) {
+    if (idx !== -1) (cst.get('walls') as YAMLSeq).items.splice(idx, 1);
+    return;
+  }
+  if (idx !== -1) {
+    const item = (cst.get('walls') as YAMLSeq).items[idx];
+    if (isMap(item)) item.set('kind', kind);
+    return;
+  }
+  const walls = topSeq(cst, 'walls');
+  walls.items.push(createWallNode(cst, { from, to, kind }));
 }
 
 /** A hole's index in `holes:`, matched by its [col,row] pair. */

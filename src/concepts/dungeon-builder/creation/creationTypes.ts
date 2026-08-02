@@ -1,35 +1,34 @@
 /**
- * creationTypes — the data model for the "New Dungeon" creation flow
- * (Kirk's day-one pitch, 2026-08-01: "20x30 room -> 2d top down board ->
- * draw the walls in place -> start here, end there -> add door here,
- * monster there, reaper statue there facing this way -> load up and
- * play"). This is entirely client-side, invented vocabulary — dungeonspec
- * cannot express drawn walls, freeform room shapes, an explicit start/end,
- * or facing today (design.md defers wall/shape authoring to P4+). See
- * CONTRACT.md's "Proposed schema from the creation flow" section — this
- * file's shapes ARE that proposal, kept separate from `dungeonYaml.ts`'s
- * real dungeonspec types on purpose (concepts-route.md's own rule: where
- * the wire doesn't carry something, keep it in a clearly separated type).
+ * creationTypes — geometry primitives for the "New Dungeon" freeform
+ * canvas. Used to also hold the whole `CreationState` data model
+ * (`Placement`, `Tool`, a bespoke `WallKind`, the state shape itself) —
+ * that's gone now that creation mode authors onto the SAME `DungeonDoc`/
+ * CST edit mode does (CONTRACT.md's "unifying New Dungeon onto the
+ * shared CST" section). What's left is pure edge-addressing math
+ * `creationGeometry.ts` still needs, kept separate from `dungeonYaml.ts`
+ * because it's about hit-testing a rectangular canvas, not about the
+ * document shape.
  */
 
 /** A rectangular canvas of cells, addressed [col,row] like dungeonspec's
  * own `place: {at: [col,row]}` — same addressing convention, deliberately,
- * so a future real implementation doesn't need a second coordinate
- * system. Unlike edit mode's FloorPlan (a chain of fixed-width rooms),
- * creation mode is ONE freeform canvas walls carve into rooms. */
+ * so a from-scratch canvas needs no second coordinate system. Unlike edit
+ * mode's FloorPlan (a chain of fixed-width rooms), creation mode is ONE
+ * freeform canvas walls carve into rooms. */
 export interface CreationGrid {
   width: number;
   height: number;
 }
-
-export const DEFAULT_GRID: CreationGrid = { width: 20, height: 30 };
 
 /** Internal edge between two orthogonally adjacent cells. `h:c,r` is the
  * edge BELOW cell (c,r) (shared with (c,r+1)); `v:c,r` is the edge RIGHT
  * of cell (c,r) (shared with (c+1,r)). The canvas perimeter is an
  * always-on boundary, not a member of this set — only internal edges are
  * toggleable, matching "carve the space into rooms" (you start inside a
- * bounded room and cut it up, you don't have to draw the outer walls). */
+ * bounded room and cut it up, you don't have to draw the outer walls).
+ * Geometry-only now — the actual authored wall lives in `doc.walls`
+ * (`WallDoc[]`, dungeonYaml.ts), addressed by `from`/`to` cells directly;
+ * this key exists purely for `creationGeometry.ts`'s hit-testing. */
 export type EdgeKey = string;
 
 export function hEdgeKey(col: number, row: number): EdgeKey {
@@ -37,58 +36,4 @@ export function hEdgeKey(col: number, row: number): EdgeKey {
 }
 export function vEdgeKey(col: number, row: number): EdgeKey {
   return `v:${col},${row}`;
-}
-
-/** A cell (not edge) key, for cell-native constructs like holes — matches
- * dungeonYaml.ts's `holes: [number, number][]` shape conceptually, just
- * keyed for O(1) toggle/lookup the way `walls` already is. */
-export type CellKey = string;
-
-export function cellKey(col: number, row: number): CellKey {
-  return `${col},${row}`;
-}
-
-export type WallKind = 'solid' | 'door';
-
-export interface Placement {
-  id: string;
-  kind: 'prop' | 'monster';
-  ref: string;
-  at: [number, number];
-  /** Index into the SAME 6-direction hex-facing convention already
-   * defined in authorGridHelpers.ts (`HEX_FACING_LABELS`), reused rather
-   * than inventing a parallel 4/8-direction compass for this rectangular
-   * canvas — see CONTRACT.md's "facing" finding for the tension that
-   * creates (a rectangular grid doesn't map 1:1 onto 6 hex directions,
-   * but reusing the one real convention in the codebase beats inventing
-   * a second, incompatible one). `null` = unset/default. */
-  facing: number | null;
-}
-
-export type Tool = 'wall' | 'door' | 'hole' | 'start' | 'end' | 'select';
-
-export interface CreationState {
-  grid: CreationGrid;
-  walls: Map<EdgeKey, WallKind>;
-  /** Cell-native floor openings — same concept as dungeonYaml.ts's
-   * `holes: [number, number][]`, kept as a Set here for O(1) toggle. */
-  holes: Set<CellKey>;
-  start: [number, number] | null;
-  end: [number, number] | null;
-  placements: Placement[];
-  selectedPlacementId: string | null;
-}
-
-export function emptyCreationState(
-  grid: CreationGrid = DEFAULT_GRID
-): CreationState {
-  return {
-    grid,
-    walls: new Map(),
-    holes: new Set(),
-    start: null,
-    end: null,
-    placements: [],
-    selectedPlacementId: null,
-  };
 }

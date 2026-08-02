@@ -1,55 +1,49 @@
 /**
  * CreationConcept — the "New Dungeon" flow's composition root: dimension
- * form, tool strip, board, palette, facing inspector, proposed-YAML pane.
- * Entirely client-side (no server calls) — see CONTRACT.md.
+ * form, board, palette, Inspector, proposed-YAML pane. No server calls
+ * (design.md defers wall/shape authoring to P4+ — see CONTRACT.md), but
+ * since the CST unification it authors onto the SAME `DungeonDoc`/CST
+ * edit mode does, via the shared `Palette`'s Structural/Markers tool
+ * rows and the shared `Inspector` — no more bespoke Tools strip or
+ * hand-rolled facing/delete panel duplicating what those already do.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CollapsibleSidePanel } from '../CollapsibleSidePanel';
+import type { BoardEditing } from '../DungeonBuilderConcept';
+import type { DungeonDoc, WallKind } from '../dungeonYaml';
+import { Inspector } from '../Inspector';
 import { Palette } from '../Palette';
-import type { PaletteSelection } from '../types';
+import type { BoardTool } from '../types';
 import { CreationBoard } from './CreationBoard';
-import type { CreationState } from './creationTypes';
-import { DEFAULT_GRID, type CreationGrid, type Tool } from './creationTypes';
+import type { DemoActions } from './demoScript';
+import { DEFAULT_CANVAS } from './emptyCanvasDoc';
 import { ProposedYamlPane } from './ProposedYamlPane';
-import type { CreationActions } from './useCreationState';
 import { useDemoScript } from './useDemoScript';
 
-const TOOLS: { id: Tool; label: string; hint: string }[] = [
-  {
-    id: 'wall',
-    label: 'Draw Walls',
-    hint: 'click-drag to paint or erase wall segments',
-  },
-  {
-    id: 'door',
-    label: 'Place Door',
-    hint: 'click a drawn wall to add/remove a door',
-  },
-  {
-    id: 'hole',
-    label: 'Toggle Hole',
-    hint: 'click a cell — impassable void, no floor',
-  },
-  { id: 'start', label: 'Set Start', hint: 'click a cell — party spawn' },
-  { id: 'end', label: 'Set End', hint: 'click a cell — the goal' },
-  {
-    id: 'select',
-    label: 'Select / Move',
-    hint: 'click a placed piece to move, rotate facing, or delete',
-  },
-];
-
-const FACING_LABELS = ['E', 'NE', 'NW', 'W', 'SW', 'SE'];
-
 interface CreationConceptProps {
-  state: CreationState;
-  actions: CreationActions;
+  doc: DungeonDoc;
+  yamlText: string;
+  yamlParseError: string | null;
+  onChangeYamlText: (text: string) => void;
+  edit: BoardEditing;
+  selectedTool: BoardTool | null;
+  onSelectTool: (tool: BoardTool | null) => void;
+  onToggleWallEdge: (
+    from: [number, number],
+    to: [number, number],
+    kind: WallKind,
+    on: boolean
+  ) => void;
+  onToggleHole: (col: number, row: number) => void;
+  onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
+  onNewCanvas: (width: number, height: number) => void;
+  demoActions: DemoActions;
   toast: (message: string) => void;
-  /** Collapse state for the left Tools+Palette sidebar and the right
-   * proposed-schema pane — owned by the parent (`DungeonBuilderConcept`)
-   * so it's remembered across an edit<->create tab switch instead of
-   * resetting every time this component mounts. See
-   * `CollapsibleSidePanel.tsx`'s doc comment. */
+  /** Collapse state for the left Palette and the right proposed-schema
+   * pane — owned by the parent (`DungeonBuilderConcept`) so it's
+   * remembered across an edit<->create tab switch instead of resetting
+   * every time this component mounts. See `CollapsibleSidePanel.tsx`'s
+   * doc comment. */
   paletteCollapsed: boolean;
   onTogglePalette: () => void;
   yamlCollapsed: boolean;
@@ -57,41 +51,53 @@ interface CreationConceptProps {
 }
 
 export function CreationConcept({
-  state,
-  actions,
+  doc,
+  yamlText,
+  yamlParseError,
+  onChangeYamlText,
+  edit,
+  selectedTool,
+  onSelectTool,
+  onToggleWallEdge,
+  onToggleHole,
+  onSetPoint,
+  onNewCanvas,
+  demoActions,
   toast,
   paletteCollapsed,
   onTogglePalette,
   yamlCollapsed,
   onToggleYaml,
 }: CreationConceptProps) {
-  const [tool, setTool] = useState<Tool>('wall');
-  const [paletteSelection, setPaletteSelection] =
-    useState<PaletteSelection | null>(null);
-  const [dims, setDims] = useState<CreationGrid>(DEFAULT_GRID);
+  const [dims, setDims] = useState(DEFAULT_CANVAS);
 
   // buildDemoScript is pinned to the dimensions at mount — the script's
   // own first step resets to them anyway, so a live dims edit mid-script
   // doesn't need to retarget it.
-  const stateRef = useRef(state);
-  stateRef.current = state;
-  const demo = useDemoScript(actions, () => stateRef.current, DEFAULT_GRID);
+  const demo = useDemoScript(demoActions, DEFAULT_CANVAS);
 
   useEffect(() => {
     if (demo.isPlaying) {
-      setTool('select');
-      setPaletteSelection(null);
+      clearOtherSelections('tool');
+      onSelectTool(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demo.isPlaying]);
 
   const usageCounts: Record<string, number> = {};
-  for (const p of state.placements)
+  const canvasRoom = doc.rooms.find((r) => r.archetype === 'canvas');
+  for (const p of canvasRoom?.place ?? [])
     usageCounts[p.ref] = (usageCounts[p.ref] ?? 0) + 1;
 
-  const selected =
-    state.placements.find((p) => p.id === state.selectedPlacementId) ?? null;
-
-  const activeTool = paletteSelection ? null : tool;
+  // Mirrors edit mode's own clearOtherSelections — a tool selection, a
+  // palette selection, and a placement selection are mutually exclusive
+  // here too, now that both flow through the same shared Palette/
+  // Inspector edit mode uses.
+  const clearOtherSelections = (keep: 'palette' | 'placement' | 'tool') => {
+    if (keep !== 'palette') edit.setSelectedPalette(null);
+    if (keep !== 'placement') edit.setSelectedPlacement(null);
+    if (keep !== 'tool') onSelectTool(null);
+  };
 
   return (
     <div
@@ -177,7 +183,7 @@ export function CreationConcept({
             />
           </label>
           <button
-            onClick={() => actions.resetGrid(dims)}
+            onClick={() => onNewCanvas(dims.width, dims.height)}
             style={{
               background: '#c9a227',
               color: '#14110f',
@@ -216,7 +222,7 @@ export function CreationConcept({
             <button
               onClick={() => {
                 demo.restart();
-                actions.resetGrid(dims);
+                onNewCanvas(dims.width, dims.height);
               }}
               style={{
                 background: 'transparent',
@@ -264,150 +270,40 @@ export function CreationConcept({
         <CollapsibleSidePanel
           side="left"
           width={250}
-          label="Tools & Palette"
+          label="Palette"
           collapsed={paletteCollapsed}
           onToggle={onTogglePalette}
         >
-          <aside
-            style={{
-              width: 250,
-              flex: '0 0 250px',
-              overflowY: 'auto',
-              padding: 10,
-              borderRight: '1px solid var(--border-primary)',
+          <Palette
+            selected={edit.selectedPalette}
+            onSelect={(sel) => {
+              clearOtherSelections('palette');
+              edit.setSelectedPalette(sel);
             }}
-          >
-            <h3
-              style={{
-                fontSize: 11,
-                textTransform: 'uppercase',
-                letterSpacing: '.05em',
-                color: 'var(--text-secondary, #8a7a5a)',
-                margin: '0 0 6px',
-              }}
-            >
-              Tools
-            </h3>
-            {TOOLS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => {
-                  setTool(t.id);
-                  setPaletteSelection(null);
-                }}
-                title={t.hint}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '6px 8px',
-                  marginBottom: 3,
-                  borderRadius: 5,
-                  fontSize: 12.5,
-                  cursor: 'pointer',
-                  background: activeTool === t.id ? '#3a2f18' : 'transparent',
-                  border:
-                    activeTool === t.id
-                      ? '1px solid #c9a227'
-                      : '1px solid transparent',
-                  color:
-                    activeTool === t.id ? '#ffd76a' : 'var(--text-primary)',
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
-
-            {selected && (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 8,
-                  background: '#221d19',
-                  border: '1px solid #c9a227',
-                  borderRadius: 6,
-                  fontSize: 12,
-                }}
-              >
-                <div style={{ color: '#ffd76a', marginBottom: 6 }}>
-                  {selected.ref.split(':').pop()} [{selected.at[0]},
-                  {selected.at[1]}]
-                </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    marginBottom: 6,
-                  }}
-                >
-                  <button
-                    onClick={() => actions.rotateFacing(selected.id, -1)}
-                    style={rotateBtnStyle}
-                  >
-                    ↺
-                  </button>
-                  <span style={{ minWidth: 28, textAlign: 'center' }}>
-                    {selected.facing !== null
-                      ? FACING_LABELS[selected.facing]
-                      : '—'}
-                  </span>
-                  <button
-                    onClick={() => actions.rotateFacing(selected.id, 1)}
-                    style={rotateBtnStyle}
-                  >
-                    ↻
-                  </button>
-                  <span style={{ fontSize: 10, color: '#8a7a5a' }}>facing</span>
-                </div>
-                <button
-                  onClick={() => actions.deletePlacement(selected.id)}
-                  style={{
-                    width: '100%',
-                    background: '#3a1c18',
-                    color: '#ff9a8a',
-                    border: '1px solid #5a2a20',
-                    borderRadius: 4,
-                    padding: 5,
-                    fontSize: 11,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-
-            <div style={{ marginTop: 14 }}>
-              <Palette
-                selected={paletteSelection}
-                onSelect={(sel) => {
-                  setPaletteSelection(sel);
-                  if (sel) setTool('select'); // placing then falls back to select/move
-                }}
-                usageCounts={usageCounts}
-                // Creation mode's OWN Tools strip (above) already covers
-                // Wall/Door/Hole/Start/End against its own data model —
-                // hide the shared Palette's duplicate Structural/Markers
-                // tool rows so there's no second, dead-clicking set of
-                // controls for the same actions.
-                selectedTool={null}
-                onSelectTool={() => {}}
-                wallCount={state.walls.size}
-                holeCount={state.holes.size}
-                showBoardTools={false}
-              />
-            </div>
-          </aside>
+            usageCounts={usageCounts}
+            selectedTool={selectedTool}
+            onSelectTool={(tool) => {
+              clearOtherSelections('tool');
+              onSelectTool(tool);
+            }}
+            wallCount={doc.walls.length}
+            holeCount={doc.holes.length}
+          />
         </CollapsibleSidePanel>
 
         <main style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 18 }}>
           <CreationBoard
-            state={state}
-            actions={actions}
-            tool={paletteSelection ? 'select' : tool}
-            paletteSelection={paletteSelection}
+            doc={doc}
+            edit={edit}
+            tool={edit.selectedPalette ? null : selectedTool}
+            onSelectPlacement={(sel) => {
+              clearOtherSelections('placement');
+              edit.setSelectedPlacement(sel);
+            }}
             onReject={toast}
+            onToggleWallEdge={onToggleWallEdge}
+            onToggleHole={onToggleHole}
+            onSetPoint={onSetPoint}
           />
         </main>
 
@@ -418,19 +314,23 @@ export function CreationConcept({
           collapsed={yamlCollapsed}
           onToggle={onToggleYaml}
         >
-          <ProposedYamlPane state={state} />
+          <ProposedYamlPane
+            yamlText={yamlText}
+            onChangeText={onChangeYamlText}
+            parseError={yamlParseError}
+          />
         </CollapsibleSidePanel>
       </div>
+
+      <Inspector
+        doc={doc}
+        selected={edit.selectedPlacement}
+        onSetFlags={edit.handleSetFlags}
+        onDelete={edit.handleDelete}
+        onSetMount={edit.handleSetMount}
+        onSetTargeting={edit.handleSetTargeting}
+        onSetFacing={edit.handleSetFacing}
+      />
     </div>
   );
 }
-
-const rotateBtnStyle: React.CSSProperties = {
-  background: 'var(--bg-secondary)',
-  color: 'var(--text-primary)',
-  border: '1px solid var(--border-primary)',
-  borderRadius: 4,
-  width: 24,
-  height: 24,
-  cursor: 'pointer',
-};

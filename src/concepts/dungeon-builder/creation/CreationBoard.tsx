@@ -1,8 +1,20 @@
 /**
  * CreationBoard — the "New Dungeon" freeform canvas: draw walls, place
- * doors, mark start/end, place props/monsters with facing. Client-side
- * only (design.md defers wall/shape authoring to P4+ — there is no real
- * schema or server call for any of this yet; see CONTRACT.md).
+ * doors, mark start/end/holes, place props/monsters with facing. Renders
+ * off the SAME `DungeonDoc`/CST edit mode's `Board.tsx` does (the CST
+ * unification — see CONTRACT.md's "unifying New Dungeon onto the shared
+ * CST" section) via `doc.canvas`/`doc.walls`/`doc.holes`/`doc.start`/
+ * `doc.end` and the synthetic `CANVAS_ROOM_ID` bridge room's `place:`.
+ * Still its own specialized renderer, not `Board.tsx` itself — a
+ * rectangular free canvas and a compiled hex room-chain are genuinely
+ * different geometries, and one component branching between both would
+ * likely be worse than two focused renderers sharing one data model.
+ *
+ * Client-side only in the sense that matters — no server call happens
+ * here (design.md defers wall/shape authoring to P4+; there is no real
+ * schema for any of this yet). But the DOCUMENT is real: it round-trips
+ * through the same `yaml` CST parser/serializer, the same YAML pane, the
+ * same Inspector, as edit mode's document.
  *
  * Wall interaction: EDGE-PAINTING, not cell-painting (a finding worth
  * recording: cell-painting — mark a cell solid/floor — was the other
@@ -21,9 +33,11 @@ import {
 } from '@/components/hex-grid/authorGridHelpers';
 import { cubeToWorld } from '@/components/hex-grid/hexMath';
 import { useRef, useState, type ReactElement } from 'react';
+import type { BoardEditing } from '../DungeonBuilderConcept';
+import type { DungeonDoc, WallDoc, WallKind } from '../dungeonYaml';
 import { FLAT_COL_SPACING, FLAT_ROW_SPACING } from '../hexLayout';
 import { MONSTER_COLOR, PALETTE_PROPS, ROLE_COLOR } from '../paletteData';
-import type { PaletteSelection } from '../types';
+import type { BoardTool, PlacementSelection } from '../types';
 import {
   creationCellCenter,
   hEdgeGeometry,
@@ -32,28 +46,38 @@ import {
   vEdgeGeometry,
   type EdgeGeometry,
 } from './creationGeometry';
-import type { CreationState, Placement, Tool } from './creationTypes';
-import type { CreationActions } from './useCreationState';
+import { CANVAS_ROOM_ID, DEFAULT_CANVAS } from './emptyCanvasDoc';
 
 interface CreationBoardProps {
-  state: CreationState;
-  actions: CreationActions;
-  tool: Tool;
-  paletteSelection: PaletteSelection | null;
+  doc: DungeonDoc;
+  edit: BoardEditing;
+  tool: BoardTool | null;
+  /** Wraps `edit.setSelectedPlacement` with the caller's own
+   * clear-other-selections discipline (a tool/palette selection must
+   * drop the moment a placement is picked, same as edit mode) — the
+   * board calls this instead of `edit.setSelectedPlacement` directly. */
+  onSelectPlacement: (sel: PlacementSelection | null) => void;
   onReject: (message: string) => void;
+  onToggleWallEdge: (
+    from: [number, number],
+    to: [number, number],
+    kind: WallKind,
+    on: boolean
+  ) => void;
+  onToggleHole: (col: number, row: number) => void;
+  onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
 }
 
 // Same 6-direction convention authorGridHelpers.ts already defines for
 // hex grids (HEX_FACING_LABELS, order E,NE,NW,W,SW,SE) — reused directly
 // rather than inventing a rectangular-grid compass (a finding in its own
 // right: creation mode's rectangular canvas doesn't map 1:1 onto 6 hex
-// directions, but reusing the one real convention already in the
-// codebase beats inventing a second, incompatible one — see
-// CONTRACT.md). The screen angle for each direction is computed through
-// the SAME cubeToWorld math hex-true mode uses (a unit step in that
-// direction, projected to 2D screen space), not a hand-typed table, so
-// it stays provably consistent even though this canvas has no cube
-// coordinates of its own.
+// directions, but reusing the one real convention in the codebase beats
+// inventing a second, incompatible one — see CONTRACT.md). The screen
+// angle for each direction is computed through the SAME cubeToWorld math
+// hex-true mode uses (a unit step in that direction, projected to 2D
+// screen space), not a hand-typed table, so it stays provably consistent
+// even though this canvas has no cube coordinates of its own.
 const FACING_ANGLES_DEG = HEX_FACING_LABELS.map((_, i) => {
   const dir = facingDirection(i);
   const world = cubeToWorld(dir, 1);
@@ -71,12 +95,44 @@ function markerShort(ref: string): string {
   return ref.startsWith('dnd5e:monsters:') ? 'M' : '?';
 }
 
+/** This edge's wall, or `undefined` if none is drawn there — a direct
+ * `doc.walls` scan (creation-mode canvases are small enough that this is
+ * cheap; edit mode's own equivalent lookups are CST-side, in
+ * dungeonYaml.ts, for the same reason: nothing here needs an index). */
+function wallAtEdge(
+  doc: DungeonDoc,
+  from: [number, number],
+  to: [number, number]
+): WallDoc | undefined {
+  return doc.walls.find(
+    (w) =>
+      w.from[0] === from[0] &&
+      w.from[1] === from[1] &&
+      w.to[0] === to[0] &&
+      w.to[1] === to[1]
+  );
+}
+
+/** A wall's line geometry from its stored `from`/`to` — detects
+ * horizontal vs. vertical from the coordinate delta rather than trusting
+ * a separately-stored orientation, since `WallDoc` (the real, shared
+ * shape) doesn't carry one; `hEdgeGeometry`/`vEdgeGeometry` both key off
+ * the SAME (col, row) `from` anchor `setWallEdge` was called with. */
+function wallGeometry(wall: WallDoc): EdgeGeometry {
+  const [fc, fr] = wall.from;
+  const [tc] = wall.to;
+  return tc === fc ? hEdgeGeometry(fc, fr) : vEdgeGeometry(fc, fr);
+}
+
 export function CreationBoard({
-  state,
-  actions,
+  doc,
+  edit,
   tool,
-  paletteSelection,
+  onSelectPlacement,
   onReject,
+  onToggleWallEdge,
+  onToggleHole,
+  onSetPoint,
 }: CreationBoardProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverEdge, setHoverEdge] = useState<EdgeGeometry | null>(null);
@@ -88,9 +144,12 @@ export function CreationBoard({
      * first touched edge's orientation. */
     orientation: 'h' | 'v' | null;
   } | null>(null);
-  const [dragPlacement, setDragPlacement] = useState<string | null>(null);
+  const [dragPlacement, setDragPlacement] = useState<PlacementSelection | null>(
+    null
+  );
 
-  const { grid } = state;
+  const grid = doc.canvas ?? DEFAULT_CANVAS;
+  const room = doc.rooms.find((r) => r.id === CANVAS_ROOM_ID);
   const width = grid.width * FLAT_COL_SPACING;
   const height = grid.height * FLAT_ROW_SPACING;
   const pad = FLAT_COL_SPACING;
@@ -108,16 +167,21 @@ export function CreationBoard({
 
   const applyEdgeAction = (edge: EdgeGeometry, addModeOverride?: boolean) => {
     if (tool === 'wall') {
-      const isOn = state.walls.has(edge.key);
-      const shouldAdd = addModeOverride ?? !isOn;
-      actions.toggleWall(edge.key, 'solid', shouldAdd);
+      const existing = wallAtEdge(doc, edge.cellA, edge.cellB);
+      const shouldAdd = addModeOverride ?? !existing;
+      onToggleWallEdge(edge.cellA, edge.cellB, 'solid', shouldAdd);
     } else if (tool === 'door') {
-      const current = state.walls.get(edge.key);
-      if (!current) {
+      const existing = wallAtEdge(doc, edge.cellA, edge.cellB);
+      if (!existing) {
         onReject('Doors sit on a drawn wall — draw a wall here first.');
         return;
       }
-      actions.toggleWall(edge.key, current === 'door' ? 'solid' : 'door', true);
+      onToggleWallEdge(
+        edge.cellA,
+        edge.cellB,
+        existing.kind === 'door' ? 'solid' : 'door',
+        true
+      );
     }
   };
 
@@ -127,41 +191,48 @@ export function CreationBoard({
     // A palette selection always means "place this on click", regardless
     // of which tool button is still highlighted — it must be checked
     // before the tool branches below, not after, or it's unreachable
-    // whenever the caller also passes tool='select' alongside it (which
+    // whenever the caller also passes a tool alongside it (which
     // CreationConcept does, so the toolbar visually falls back to
     // select/move once something's been placed).
-    if (paletteSelection) {
+    if (edit.selectedPalette) {
       const cell = nearestCreationCell(p, grid);
-      actions.addPlacement(
-        paletteSelection.kind === 'monster' ? 'monster' : 'prop',
-        paletteSelection.ref,
-        cell
-      );
+      // Same guard Board.tsx's own click handler makes for edit mode: a
+      // boss pin only ever MOVES an existing boss: entry (moveBoss
+      // throws if one doesn't exist yet — dungeonspec ties boss
+      // existence to a real archetype:boss room). The synthetic canvas
+      // room is never that archetype, so this always rejects rather than
+      // crashing on an uncaught DungeonParseError.
+      if (edit.selectedPalette.kind === 'boss') {
+        onReject(
+          'The boss pin can only be placed in a boss-archetype room — this canvas has none yet (see CONTRACT.md).'
+        );
+        return;
+      }
+      edit.handlePlace(CANVAS_ROOM_ID, cell);
       return;
     }
-    if (tool === 'select') {
+    if (tool === null) {
       // Placement drag is started from the marker itself (onPointerDown
       // there); clicking empty board space here just deselects.
-      actions.selectPlacement(null);
-      return;
-    }
-    if (tool === 'hole') {
-      const cell = nearestCreationCell(p, grid);
-      actions.toggleHole(cell[0], cell[1]);
+      onSelectPlacement(null);
       return;
     }
     if (tool === 'start' || tool === 'end') {
       const cell = nearestCreationCell(p, grid);
-      if (tool === 'start') actions.setStart(cell);
-      else actions.setEnd(cell);
+      onSetPoint(tool, cell[0], cell[1]);
+      return;
+    }
+    if (tool === 'hole') {
+      const cell = nearestCreationCell(p, grid);
+      onToggleHole(cell[0], cell[1]);
       return;
     }
     const edge = nearestEdge(p, grid);
     if (!edge) return;
     if (tool === 'wall') {
-      const isOn = state.walls.has(edge.key);
-      setStroke({ addMode: !isOn, startPoint: p, orientation: null });
-      applyEdgeAction(edge, !isOn);
+      const existing = wallAtEdge(doc, edge.cellA, edge.cellB);
+      setStroke({ addMode: !existing, startPoint: p, orientation: null });
+      applyEdgeAction(edge, !existing);
     } else if (tool === 'door') {
       applyEdgeAction(edge);
     }
@@ -176,7 +247,7 @@ export function CreationBoard({
     const p = toBoardPoint(e.clientX, e.clientY);
     if (dragPlacement) {
       const cell = nearestCreationCell(p, grid);
-      actions.movePlacement(dragPlacement, cell);
+      edit.handleMove(dragPlacement, CANVAS_ROOM_ID, cell);
       return;
     }
     if (tool === 'wall' || tool === 'door') {
@@ -201,7 +272,8 @@ export function CreationBoard({
         }
         const edge = nearestEdge(p, grid, orientation ?? undefined);
         setHoverEdge(edge);
-        if (edge) actions.toggleWall(edge.key, 'solid', stroke.addMode);
+        if (edge)
+          onToggleWallEdge(edge.cellA, edge.cellB, 'solid', stroke.addMode);
         return;
       }
       const edge = nearestEdge(p, grid);
@@ -217,27 +289,24 @@ export function CreationBoard({
   };
 
   const wallEls: ReactElement[] = [];
-  state.walls.forEach((kind, key) => {
-    const [c, r] = key.slice(2).split(',').map(Number);
-    const edge = key.startsWith('h:')
-      ? hEdgeGeometry(c, r)
-      : vEdgeGeometry(c, r);
+  for (const wall of doc.walls) {
+    const edge = wallGeometry(wall);
     wallEls.push(
       <line
-        key={key}
+        key={`${wall.from.join(',')}-${wall.to.join(',')}`}
         x1={edge.a.x}
         y1={edge.a.y}
         x2={edge.b.x}
         y2={edge.b.y}
-        stroke={kind === 'door' ? '#ffb347' : '#e8e2d8'}
-        strokeWidth={kind === 'door' ? 3 : 4}
+        stroke={wall.kind === 'door' ? '#ffb347' : '#e8e2d8'}
+        strokeWidth={wall.kind === 'door' ? 3 : 4}
         strokeLinecap="round"
       />
     );
-    if (kind === 'door') {
+    if (wall.kind === 'door') {
       wallEls.push(
         <circle
-          key={`${key}-hinge`}
+          key={`${wall.from.join(',')}-${wall.to.join(',')}-hinge`}
           cx={edge.mid.x}
           cy={edge.mid.y}
           r={3.5}
@@ -247,18 +316,16 @@ export function CreationBoard({
         />
       );
     }
-  });
+  }
 
   // Same dark/dashed treatment Board.tsx (edit mode) uses for a v2 hole —
   // one visual language for "no floor here" across both boards.
-  const holeEls: ReactElement[] = [];
-  state.holes.forEach((key) => {
-    const [c, r] = key.split(',').map(Number);
-    const center = creationCellCenter(c, r);
+  const holeEls: ReactElement[] = doc.holes.map(([col, row]) => {
+    const center = creationCellCenter(col, row);
     const half = { x: FLAT_COL_SPACING * 0.42, y: FLAT_ROW_SPACING * 0.42 };
-    holeEls.push(
+    return (
       <rect
-        key={`hole-${key}`}
+        key={`hole-${col}-${row}`}
         x={center.x - half.x}
         y={center.y - half.y}
         width={half.x * 2}
@@ -272,29 +339,39 @@ export function CreationBoard({
     );
   });
 
-  const renderPlacement = (p: Placement) => {
+  const renderPlacement = (
+    ref: string,
+    at: [number, number],
+    facing: number | null,
+    sel: PlacementSelection
+  ) => {
     const center = {
-      x: p.at[0] * FLAT_COL_SPACING,
-      y: p.at[1] * FLAT_ROW_SPACING,
+      x: at[0] * FLAT_COL_SPACING,
+      y: at[1] * FLAT_ROW_SPACING,
     };
-    const selected = state.selectedPlacementId === p.id;
-    const angle = p.facing !== null ? FACING_ANGLES_DEG[p.facing] : null;
+    const isMonster = ref.startsWith('dnd5e:monsters:');
+    const selected =
+      !!edit.selectedPlacement &&
+      !edit.selectedPlacement.boss &&
+      !sel.boss &&
+      edit.selectedPlacement.index === sel.index;
+    const angle = facing !== null ? FACING_ANGLES_DEG[facing] : null;
     return (
       <g
-        key={p.id}
+        key={sel.boss ? 'boss' : `place-${sel.index}`}
         onPointerDown={(e) => {
-          if (tool !== 'select') return;
+          if (tool !== null) return;
           e.stopPropagation();
-          actions.selectPlacement(p.id);
-          setDragPlacement(p.id);
+          onSelectPlacement(sel);
+          setDragPlacement(sel);
         }}
-        style={{ cursor: tool === 'select' ? 'grab' : 'default' }}
+        style={{ cursor: tool === null ? 'grab' : 'default' }}
       >
         <circle
           cx={center.x}
           cy={center.y}
           r={12}
-          fill={markerColor(p.kind, p.ref)}
+          fill={markerColor(isMonster ? 'monster' : 'prop', ref)}
           stroke={selected ? '#ffd76a' : '#000'}
           strokeWidth={selected ? 2.5 : 1}
         />
@@ -305,7 +382,7 @@ export function CreationBoard({
           fill="#fff"
           fontSize={9}
         >
-          {markerShort(p.ref)}
+          {markerShort(ref)}
         </text>
         {angle !== null && (
           <g transform={`translate(${center.x},${center.y}) rotate(${angle})`}>
@@ -320,6 +397,10 @@ export function CreationBoard({
       </g>
     );
   };
+
+  const placementEls = (room?.place ?? []).map((p, index) =>
+    renderPlacement(p.ref, p.at, p.facing, { roomId: CANVAS_ROOM_ID, index })
+  );
 
   return (
     <svg
@@ -390,11 +471,11 @@ export function CreationBoard({
         />
       )}
 
-      {state.start && (
+      {doc.start && (
         <g pointerEvents="none">
           <circle
-            cx={state.start[0] * FLAT_COL_SPACING}
-            cy={state.start[1] * FLAT_ROW_SPACING}
+            cx={doc.start[0] * FLAT_COL_SPACING}
+            cy={doc.start[1] * FLAT_ROW_SPACING}
             r={13}
             fill="none"
             stroke="#5fd1c9"
@@ -402,8 +483,8 @@ export function CreationBoard({
             strokeDasharray="4 3"
           />
           <text
-            x={state.start[0] * FLAT_COL_SPACING}
-            y={state.start[1] * FLAT_ROW_SPACING - 18}
+            x={doc.start[0] * FLAT_COL_SPACING}
+            y={doc.start[1] * FLAT_ROW_SPACING - 18}
             textAnchor="middle"
             fill="#8fe8e0"
             fontSize={10}
@@ -413,11 +494,11 @@ export function CreationBoard({
           </text>
         </g>
       )}
-      {state.end && (
+      {doc.end && (
         <g pointerEvents="none">
           <circle
-            cx={state.end[0] * FLAT_COL_SPACING}
-            cy={state.end[1] * FLAT_ROW_SPACING}
+            cx={doc.end[0] * FLAT_COL_SPACING}
+            cy={doc.end[1] * FLAT_ROW_SPACING}
             r={13}
             fill="none"
             stroke="#c9a227"
@@ -425,8 +506,8 @@ export function CreationBoard({
             strokeDasharray="4 3"
           />
           <text
-            x={state.end[0] * FLAT_COL_SPACING}
-            y={state.end[1] * FLAT_ROW_SPACING - 18}
+            x={doc.end[0] * FLAT_COL_SPACING}
+            y={doc.end[1] * FLAT_ROW_SPACING - 18}
             textAnchor="middle"
             fill="#ffd76a"
             fontSize={10}
@@ -437,7 +518,7 @@ export function CreationBoard({
         </g>
       )}
 
-      {state.placements.map(renderPlacement)}
+      {placementEls}
     </svg>
   );
 }
