@@ -651,6 +651,14 @@ const DOOR_FRAME_RAW_WIDTH = 1.999;
 const DOOR_FRAME_RAW_HEIGHT = 2.5347;
 
 /**
+ * Door frame span along its local X axis after `doorFrameScale` is applied.
+ * This is the calibrated one-hex-edge contract shared by the frame renderer
+ * and connector-run geometry; do not duplicate the raw GLB measurement at
+ * either placement site.
+ */
+export const DOOR_FRAME_CALIBRATED_WIDTH = 1.0;
+
+/**
  * Door frame/leaf height scale (rpg-project#132 follow-up, Kirk's verdict
  * walking the tall-wall default: "at tall walls the door is really really
  * high"). SUPERSEDED design: this used to multiply a `heightRatio`
@@ -676,7 +684,7 @@ export const DOOR_FRAME_FILE = 'SM_Env_Door_Frame_01.glb';
 
 export function doorFrameScale(wallHeight: number): [number, number, number] {
   return [
-    1.0 / DOOR_FRAME_RAW_WIDTH,
+    DOOR_FRAME_CALIBRATED_WIDTH / DOOR_FRAME_RAW_WIDTH,
     wallHeight / DOOR_FRAME_RAW_HEIGHT,
     SYNTY_SCALE,
   ];

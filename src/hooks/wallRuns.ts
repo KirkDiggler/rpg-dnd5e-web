@@ -82,6 +82,7 @@ import {
   type CubeCoord,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
+import { DOOR_FRAME_CALIBRATED_WIDTH } from '@/components/hex-grid/syntyHexWallHelpers';
 
 /** One region's stable id and the set of hex cells the wire currently
  * reports as belonging to it (Space.hexes filtered by zoneId === region
@@ -1171,6 +1172,13 @@ function connectorRunForDoor(
   const facing = unitDirection(doorWorld, boundsCenter(boundsB, hexSize));
 
   const segments: WallRunSegment[] = [];
+  // The frame is centered on the door cell and calibrated to a one-edge
+  // span. Terminating at the adjacent row center leaves a 1.15-unit visual
+  // hole even after WallRunMesh's existing #634 tile overlap; terminate at
+  // the frame's outer envelope instead. WallRunMesh then applies its normal
+  // 0.08 overlap into this boundary, so the rendered wall self-covers the
+  // irregular panel/frame junction without changing ordinary wall tiling.
+  const doorFrameHalfSpan = DOOR_FRAME_CALIBRATED_WIDTH / 2;
 
   // regionA sits on the LOWER-column side of this connector (always —
   // connectorRegionsForDoor's own convention), so its relevant corners are
@@ -1202,8 +1210,9 @@ function connectorRunForDoor(
   // guarantees it), so the candidate list is never empty.
   if (doorRow > minRow) {
     const rawStart = worldAt(minRow);
-    const rawEnd = worldAt(doorRow - 1);
-    const dir = unitDirection(rawStart, rawEnd);
+    // Anchor to the door cell rather than rawEnd: a one-row half-run has
+    // rawStart === rawEnd but still needs the connector column direction.
+    const dir = unitDirection(rawStart, doorWorld);
     const nearTargets: WorldPos[] = [];
     if (boundsA.minRow === minRow)
       nearTargets.push(regionACorners.get('topRight')!);
@@ -1216,13 +1225,16 @@ function connectorRunForDoor(
         x: rawStart.x - dir.x * nearExtension,
         z: rawStart.z - dir.z * nearExtension,
       },
-      end: rawEnd,
+      end: {
+        x: doorWorld.x - dir.x * doorFrameHalfSpan,
+        z: doorWorld.z - dir.z * doorFrameHalfSpan,
+      },
     });
   }
   if (doorRow < maxRow) {
-    const rawStart = worldAt(doorRow + 1);
     const rawEnd = worldAt(maxRow);
-    const dir = unitDirection(rawStart, rawEnd);
+    // Symmetric door-cell anchor keeps a one-row half-run non-degenerate.
+    const dir = unitDirection(doorWorld, rawEnd);
     const farTargets: WorldPos[] = [];
     if (boundsA.maxRow === maxRow)
       farTargets.push(regionACorners.get('bottomRight')!);
@@ -1231,7 +1243,10 @@ function connectorRunForDoor(
     const farExtension =
       distancePastPoint(rawEnd, farTargets) + envelopeCornerOverlapMargin;
     segments.push({
-      start: rawStart,
+      start: {
+        x: doorWorld.x + dir.x * doorFrameHalfSpan,
+        z: doorWorld.z + dir.z * doorFrameHalfSpan,
+      },
       end: {
         x: rawEnd.x + dir.x * farExtension,
         z: rawEnd.z + dir.z * farExtension,
