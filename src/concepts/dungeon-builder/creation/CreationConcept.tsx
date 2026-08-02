@@ -381,6 +381,18 @@ export function CreationConcept({
                   if (sel) setTool('select'); // placing then falls back to select/move
                 }}
                 usageCounts={usageCounts}
+                // Creation mode's OWN Tools strip (above) already covers
+                // Wall/Door/Start/End against its own data model — hide
+                // the shared Palette's duplicate Structural/Markers tool
+                // rows so there's no second, dead-clicking set of
+                // controls for the same actions. Hole is NOT yet wired
+                // into creation mode's own tools (CONTRACT.md's "known
+                // gap" note) — only edit mode authors holes this round.
+                selectedTool={null}
+                onSelectTool={() => {}}
+                wallCount={state.walls.size}
+                holeCount={0}
+                showBoardTools={false}
               />
             </div>
           </aside>

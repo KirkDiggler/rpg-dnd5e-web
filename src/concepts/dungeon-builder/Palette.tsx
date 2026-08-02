@@ -1,15 +1,22 @@
 /**
  * Palette — prop/monster refs drawn from showcase.yaml's own vocabulary
  * via `paletteData.ts` (sourced from the real `propManifest.ts`), grouped
- * into four categorized dropdowns per Kirk's 2026-08-01 ask (see
- * CONTRACT.md's "Palette taxonomy" section): Monsters / Obstacles & Props
- * / Lighting / Markers. Rows show a pre-baked thumbnail when one exists
+ * into five categorized dropdowns: Monsters / Obstacles & Props / Lighting
+ * (Kirk's 2026-08-01 ask, CONTRACT.md's "Palette taxonomy" section) /
+ * Structural / Markers (Kirk's 2026-08-02 target-dialect reframe —
+ * TARGET-YAML.md). Rows show a pre-baked thumbnail when one exists
  * (`paletteData.ts`'s `thumbForRef`), falling back to the original
  * colored-swatch+short-label rendering otherwise — never a broken image.
- * Markers (door/start/end) stay read-only: connectors are `{from, to}`,
- * doors sit at the derived door_row, and the entrance is generator-chosen
- * — none of which is an authorable coordinate (design.md's
- * palette-honesty note).
+ *
+ * Structural (Wall/Door/Hole) and Markers' Start/End are TOOLS, not
+ * draggable placement items — selecting one arms a `BoardTool` (see
+ * `types.ts`) that governs what a board click does, distinct from
+ * `PaletteSelection`'s "place this ref" model. All five are v2, proposed
+ * — not yet compiled server-side, see TARGET-YAML.md. Markers' Door entry
+ * moved OUT to Structural (Kirk: "they were Markers-adjacent before") —
+ * the real, v1 connector door (position derived, `locked:` the only
+ * authorable field) is edited via `ConnectorInspector`, reached by
+ * clicking the board's own door cell directly, not through the palette.
  */
 import { useState } from 'react';
 import {
@@ -22,18 +29,29 @@ import {
   thumbForRef,
   type PaletteCategory,
 } from './paletteData';
-import type { PaletteSelection } from './types';
+import type { BoardTool, PaletteSelection } from './types';
 
 interface PaletteProps {
   selected: PaletteSelection | null;
   onSelect: (sel: PaletteSelection | null) => void;
   usageCounts: Record<string, number>;
+  selectedTool: BoardTool | null;
+  onSelectTool: (tool: BoardTool | null) => void;
+  wallCount: number;
+  holeCount: number;
+  /** Default true. The creation flow (`CreationConcept.tsx`) has its OWN
+   * dedicated Tools strip already covering Wall/Door/Start/End (plus,
+   * with this round's addition, Hole) against its own data model — false
+   * there so this shared Palette doesn't ALSO show Structural/Markers as
+   * a second, dead-clicking set of tool rows for the same actions. */
+  showBoardTools?: boolean;
 }
 
 const CATEGORY_LABELS: Record<PaletteCategory, string> = {
   monsters: 'Monsters',
   'obstacles-props': 'Obstacles & Props',
   lighting: 'Lighting',
+  structural: 'Structural',
   markers: 'Markers',
 };
 
@@ -45,6 +63,7 @@ function Row({
   sub,
   isSelected,
   onClick,
+  notCompiled,
 }: {
   thumb?: string;
   color: string;
@@ -53,6 +72,9 @@ function Row({
   sub: string;
   isSelected: boolean;
   onClick: () => void;
+  /** v2-only tool/construct — shows the same "not yet compiled
+   * server-side" badge language TARGET-YAML.md standardizes on. */
+  notCompiled?: boolean;
 }) {
   return (
     <div
@@ -103,6 +125,22 @@ function Row({
           {sub}
         </div>
       </span>
+      {notCompiled && (
+        <span
+          title="v2, proposed — not yet compiled server-side (TARGET-YAML.md)"
+          style={{
+            fontSize: 9,
+            color: '#c9aeff',
+            background: '#241a33',
+            border: '1px solid #4a3a63',
+            borderRadius: 3,
+            padding: '2px 5px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          v2
+        </span>
+      )}
     </div>
   );
 }
@@ -178,7 +216,16 @@ function CategorySection({
   );
 }
 
-export function Palette({ selected, onSelect, usageCounts }: PaletteProps) {
+export function Palette({
+  selected,
+  onSelect,
+  usageCounts,
+  selectedTool,
+  onSelectTool,
+  wallCount,
+  holeCount,
+  showBoardTools = true,
+}: PaletteProps) {
   const [openCategories, setOpenCategories] = useState<Set<PaletteCategory>>(
     new Set<PaletteCategory>(['obstacles-props'])
   );
@@ -192,6 +239,9 @@ export function Palette({ selected, onSelect, usageCounts }: PaletteProps) {
 
   const isSel = (kind: PaletteSelection['kind'], ref: string) =>
     !!selected && selected.kind === kind && selected.ref === ref;
+
+  const toggleTool = (tool: BoardTool) =>
+    onSelectTool(selectedTool === tool ? null : tool);
 
   const obstaclesProps = PALETTE_PROPS.filter(
     (p) => categoryForProp(p.ref) === 'obstacles-props'
@@ -298,60 +348,93 @@ export function Palette({ selected, onSelect, usageCounts }: PaletteProps) {
         ))}
       </CategorySection>
 
-      <CategorySection
-        category="markers"
-        count={3}
-        open={openCategories.has('markers')}
-        onToggle={() => toggle('markers')}
-      >
-        {[
-          {
-            label: 'Door',
-            border: '#ffb347',
-            note: 'connector column @ door_row',
-          },
-          {
-            label: 'Start / spawn',
-            border: '#5fd1c9',
-            note: 'FloorPlan.entrance',
-          },
-          {
-            label: 'End / goal',
-            border: '#c9a227',
-            note: 'NOT schema-real — see CONTRACT.md',
-          },
-        ].map((o) => (
-          <div
-            key={o.label}
-            className="flex items-center gap-2 px-2 py-1 text-xs"
-            style={{ opacity: 0.9 }}
-          >
-            <span
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: 4,
-                border: `1.5px solid ${o.border}`,
-                background: '#14110f',
-              }}
-            />
-            <span>
-              {o.label} <span style={{ color: '#6a6255' }}>— {o.note}</span>
-            </span>
-          </div>
-        ))}
-        <p
-          style={{
-            fontSize: 11,
-            color: '#8a7a5a',
-            padding: '4px 8px 2px',
-            lineHeight: 1.4,
-          }}
+      {showBoardTools && (
+        <CategorySection
+          category="structural"
+          count={3}
+          open={openCategories.has('structural')}
+          onToggle={() => toggle('structural')}
         >
-          Door/start/end have no authorable coordinate in dungeonspec today —
-          legend only, never placeable.
-        </p>
-      </CategorySection>
+          <Row
+            color="#6a6255"
+            short="W"
+            label="Wall"
+            sub={`${wallCount}× drawn — click a wall cell to add/remove`}
+            isSelected={selectedTool === 'wall'}
+            onClick={() => toggleTool('wall')}
+            notCompiled
+          />
+          <Row
+            color="#9b7fd6"
+            short="D"
+            label="Door (on a drawn wall)"
+            sub="click an existing wall to flip solid ↔ door"
+            isSelected={selectedTool === 'door'}
+            onClick={() => toggleTool('door')}
+            notCompiled
+          />
+          <Row
+            color="#14110f"
+            short="H"
+            label="Hole"
+            sub={`${holeCount}× marked — impassable void, no floor`}
+            isSelected={selectedTool === 'hole'}
+            onClick={() => toggleTool('hole')}
+            notCompiled
+          />
+          <p
+            style={{
+              fontSize: 11,
+              color: '#8a7a5a',
+              padding: '4px 8px 2px',
+              lineHeight: 1.4,
+            }}
+          >
+            Structural is v2, proposed — TARGET-YAML.md. The real connector door
+            (locked/DC) lives on the board's own door cell, not here — this
+            "Door" is a door on a drawn wall, a different thing.
+          </p>
+        </CategorySection>
+      )}
+
+      {showBoardTools && (
+        <CategorySection
+          category="markers"
+          count={2}
+          open={openCategories.has('markers')}
+          onToggle={() => toggle('markers')}
+        >
+          <Row
+            color="#5fd1c9"
+            short="ST"
+            label="Start / spawn"
+            sub="author-placed — in tension with FloorPlan.entrance, see TARGET-YAML.md"
+            isSelected={selectedTool === 'start'}
+            onClick={() => toggleTool('start')}
+            notCompiled
+          />
+          <Row
+            color="#c9a227"
+            short="EN"
+            label="End / goal"
+            sub="no analog anywhere in the compiled FloorPlan today"
+            isSelected={selectedTool === 'end'}
+            onClick={() => toggleTool('end')}
+            notCompiled
+          />
+          <p
+            style={{
+              fontSize: 11,
+              color: '#8a7a5a',
+              padding: '4px 8px 2px',
+              lineHeight: 1.4,
+            }}
+          >
+            Select a tool, then click a cell to place/clear it. Click again on
+            the same cell to clear.
+          </p>
+        </CategorySection>
+      )}
     </aside>
   );
 }

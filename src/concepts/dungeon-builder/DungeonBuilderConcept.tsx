@@ -23,8 +23,13 @@ import {
   placeItem,
   serializeDungeon,
   setConnectorLocked,
+  setEnd,
   setPlacementFlags,
+  setStart,
   toDungeonDoc,
+  toggleHole,
+  toggleWall,
+  toggleWallKind,
   type DungeonDoc,
   type LockedDoc,
 } from './dungeonYaml';
@@ -35,7 +40,7 @@ import { Palette } from './Palette';
 import { PALETTE_PROPS } from './paletteData';
 import { DungeonPreview3D } from './preview3d/DungeonPreview3D';
 import { RolledContentPanel } from './RolledContentPanel';
-import type { PaletteSelection, PlacementSelection } from './types';
+import type { BoardTool, PaletteSelection, PlacementSelection } from './types';
 import { usePutDungeonPreview } from './usePutDungeonPreview';
 import { useSaveDungeon } from './useSaveDungeon';
 import { WallGashExplainer } from './WallGashExplainer';
@@ -66,6 +71,10 @@ export function DungeonBuilderConcept() {
     number | null
   >(null);
   const [wallGashExplainerOpen, setWallGashExplainerOpen] = useState(false);
+  // v2 board tools (Kirk's 2026-08-02 target-dialect reframe, Structural/
+  // Markers palette categories) — also mutually exclusive with everything
+  // above, folded into the same clearOtherSelections below.
+  const [selectedTool, setSelectedTool] = useState<BoardTool | null>(null);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('hex-true');
   const [boardDim, setBoardDim] = useState<'2d' | '3d'>('2d');
   const [toast, setToast] = useState<string | null>(null);
@@ -98,14 +107,16 @@ export function DungeonBuilderConcept() {
   };
 
   // Clears every OTHER selection kind — called at the start of each of the
-  // four selection setters below so only one floating panel is ever open.
+  // five selection setters below so only one floating panel/tool is ever
+  // active at once.
   const clearOtherSelections = (
-    keep: 'palette' | 'placement' | 'connector' | 'wall-gash' | 'none'
+    keep: 'palette' | 'placement' | 'connector' | 'wall-gash' | 'tool' | 'none'
   ) => {
     if (keep !== 'palette') setSelectedPalette(null);
     if (keep !== 'placement') setSelectedPlacement(null);
     if (keep !== 'connector') setSelectedConnectorIndex(null);
     if (keep !== 'wall-gash') setWallGashExplainerOpen(false);
+    if (keep !== 'tool') setSelectedTool(null);
   };
 
   const handleSelectConnector = (index: number) => {
@@ -116,6 +127,36 @@ export function DungeonBuilderConcept() {
   const handleWallGashClick = () => {
     clearOtherSelections('wall-gash');
     setWallGashExplainerOpen(true);
+  };
+
+  const handleSelectTool = (tool: BoardTool | null) => {
+    clearOtherSelections('tool');
+    setSelectedTool(tool);
+  };
+
+  const handleToggleWall = (col: number, row: number) => {
+    toggleWall(cst, col, row);
+    syncFromCst(cst);
+  };
+  const handleToggleWallKind = (col: number, row: number) => {
+    if (!toggleWallKind(cst, col, row)) {
+      flashToast(
+        'No wall here yet — select Wall and click to place one first.'
+      );
+      return;
+    }
+    syncFromCst(cst);
+  };
+  const handleToggleHole = (col: number, row: number) => {
+    toggleHole(cst, col, row);
+    syncFromCst(cst);
+  };
+  const handleSetPoint = (kind: 'start' | 'end', col: number, row: number) => {
+    const current = kind === 'start' ? doc.start : doc.end;
+    const alreadyHere = !!current && current[0] === col && current[1] === row;
+    const setter = kind === 'start' ? setStart : setEnd;
+    setter(cst, alreadyHere ? null : [col, row]);
+    syncFromCst(cst);
   };
 
   const flashToast = (message: string) => {
@@ -445,6 +486,10 @@ export function DungeonBuilderConcept() {
                 setSelectedPalette(sel);
               }}
               usageCounts={usageCounts}
+              selectedTool={selectedTool}
+              onSelectTool={handleSelectTool}
+              wallCount={doc.walls.length}
+              holeCount={doc.holes.length}
             />
           </CollapsibleSidePanel>
           <main
@@ -487,6 +532,11 @@ export function DungeonBuilderConcept() {
                     onReject={flashToast}
                     onSelectConnector={handleSelectConnector}
                     onWallGashClick={handleWallGashClick}
+                    selectedTool={selectedTool}
+                    onToggleWall={handleToggleWall}
+                    onToggleWallKind={handleToggleWallKind}
+                    onToggleHole={handleToggleHole}
+                    onSetPoint={handleSetPoint}
                   />
                 </div>
               </>
@@ -559,13 +609,7 @@ export function DungeonBuilderConcept() {
         )}
 
         {wallGashExplainerOpen && (
-          <WallGashExplainer
-            onClose={() => setWallGashExplainerOpen(false)}
-            onPrototypeInCreation={() => {
-              setWallGashExplainerOpen(false);
-              setMode('create');
-            }}
-          />
+          <WallGashExplainer onClose={() => setWallGashExplainerOpen(false)} />
         )}
 
         {toast && <ToastBanner message={toast} />}

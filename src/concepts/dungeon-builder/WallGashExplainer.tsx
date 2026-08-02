@@ -1,25 +1,22 @@
 /**
- * WallGashExplainer — honest non-affordance for the wall-band cells
- * between rooms (Kirk's 2026-08-02 ask: "I cannot set a wall or a door —
- * just realized the gashes are walls"). Clicking a wall cell no longer
- * does nothing (the previous no-op the brief flagged) — it opens this,
- * which says plainly why there's no placement handle here: `FloorPlan`
- * carries no wall/door edge geometry at all, only `door_row`/
- * `connector.column` to derive a legality rule from (CONTRACT.md's
- * wall-geometry-gap finding, now confirmed a FOURTH time by this exact
- * interaction — the author reached for a wall and found nothing). Points
- * at the one place walls ARE authorable today — the creation flow's
- * proposed, not-yet-real schema.
+ * WallGashExplainer — the NO-TOOL-SELECTED fallback for a wall-band cell
+ * click (Kirk's 2026-08-02 ask: "I cannot set a wall or a door — just
+ * realized the gashes are walls"). Superseded by real authoring the
+ * moment a Structural tool is active — `Board.tsx`'s click handler checks
+ * `selectedTool` FIRST and only falls through to this when nothing is
+ * armed. This is the honest "here's why nothing happened, and here's
+ * where to go" for that one remaining case, not a permanent dead end:
+ * Kirk's follow-up correction (2026-08-02, same day) was explicit that
+ * this must NOT say "go prototype in New Dungeon" anymore — walls are
+ * now authorable in THIS view too, via the Structural palette category,
+ * so the explainer points there instead of bouncing to a different tab.
+ * See TARGET-YAML.md's "Structural palette category" section.
  */
 interface WallGashExplainerProps {
   onClose: () => void;
-  onPrototypeInCreation: () => void;
 }
 
-export function WallGashExplainer({
-  onClose,
-  onPrototypeInCreation,
-}: WallGashExplainerProps) {
+export function WallGashExplainer({ onClose }: WallGashExplainerProps) {
   return (
     <div
       role="dialog"
@@ -50,28 +47,15 @@ export function WallGashExplainer({
           lineHeight: 1.5,
         }}
       >
-        Walls here are DERIVED from room layout + connectors —{' '}
-        <code>FloorPlan</code> carries no wall/door edge geometry to place or
-        move. Authored walls (draw your own, place a door anywhere) are the
-        creation flow's proposed schema — not something dungeonspec accepts
-        today. See CONTRACT.md.
+        Walls here are normally DERIVED from room layout + connectors —{' '}
+        <code>FloorPlan</code> carries no wall/door edge geometry on the wire.
+        You CAN author one right here, though: open the{' '}
+        <strong style={{ color: '#c9aeff' }}>Structural</strong> category in the
+        palette and select <strong>Wall</strong> (or <strong>Door</strong>, to
+        flip an existing one), then click this cell again. It's v2, proposed —
+        badged "not yet compiled server-side" until dungeonspec grows real wall
+        geometry. See TARGET-YAML.md.
       </p>
-      <button
-        onClick={onPrototypeInCreation}
-        style={{
-          width: '100%',
-          background: '#c9a227',
-          color: '#14110f',
-          border: 'none',
-          borderRadius: 4,
-          padding: 6,
-          fontWeight: 600,
-          cursor: 'pointer',
-          marginBottom: 6,
-        }}
-      >
-        Prototype it in New Dungeon →
-      </button>
       <button
         onClick={onClose}
         style={{

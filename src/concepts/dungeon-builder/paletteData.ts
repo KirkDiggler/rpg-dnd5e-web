@@ -34,6 +34,7 @@ export type PaletteCategory =
   | 'monsters'
   | 'obstacles-props'
   | 'lighting'
+  | 'structural'
   | 'markers';
 
 /** Light-emitting props, called out into their own category per Kirk's

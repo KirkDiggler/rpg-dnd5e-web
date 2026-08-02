@@ -30,7 +30,7 @@ import {
   PALETTE_PROPS,
   ROLE_COLOR,
 } from './paletteData';
-import type { PaletteSelection, PlacementSelection } from './types';
+import type { BoardTool, PaletteSelection, PlacementSelection } from './types';
 
 interface BoardProps {
   floorPlan: FloorPlan;
@@ -49,11 +49,21 @@ interface BoardProps {
   onReject: (message: string) => void;
   /** Door cell clicked — Kirk's 2026-08-02 ask. Index into
    * `floorPlan.connectors`/`doc.connectors` (same order, both derived
-   * from the same YAML `connectors:` list). */
+   * from the same YAML `connectors:` list). Always wins over any active
+   * `selectedTool` — the REAL connector door outranks a v2 tool mode. */
   onSelectConnector: (index: number) => void;
-  /** A non-door wall-band cell clicked — the honest "this is a wall,
-   * derived not authored" explainer, not a placement handle. */
+  /** A non-door wall-band cell clicked with NO Structural tool active —
+   * the honest "this is a wall, select a tool to author it" explainer.
+   * With a tool active, the tool-specific handlers below fire instead. */
   onWallGashClick: () => void;
+  /** v2 authoring — Kirk's 2026-08-02 target-dialect reframe. See
+   * TARGET-YAML.md's "Structural palette category" section. `null` means
+   * no tool armed (normal placement/selection click behavior applies). */
+  selectedTool: BoardTool | null;
+  onToggleWall: (col: number, row: number) => void;
+  onToggleWallKind: (col: number, row: number) => void;
+  onToggleHole: (col: number, row: number) => void;
+  onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
 }
 
 function markerColor(ref: string, isBoss: boolean): string {
@@ -83,6 +93,11 @@ export function Board({
   onReject,
   onSelectConnector,
   onWallGashClick,
+  selectedTool,
+  onToggleWall,
+  onToggleWallKind,
+  onToggleHole,
+  onSetPoint,
 }: BoardProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState<PlacementSelection | null>(null);
@@ -126,6 +141,18 @@ export function Board({
                 : `db-cell-empty${occupied ? '' : ' db-placeable'}`
             }
             onClick={() => {
+              // v2 tools work on any room cell, door-row included — none
+              // of them are gated by the v1 legality rule that reserves
+              // that row (they're independent, not-yet-compiled
+              // concepts). See TARGET-YAML.md.
+              if (selectedTool === 'hole') {
+                onToggleHole(col, row);
+                return;
+              }
+              if (selectedTool === 'start' || selectedTool === 'end') {
+                onSetPoint(selectedTool, col, row);
+                return;
+              }
               if (isDoorRow) {
                 onReject(
                   'Reserved door row (height/2) — not placeable. FloorPlan.door_row applies uniformly to every room.'
@@ -168,16 +195,131 @@ export function Board({
                 : 'db-cell-wall'
             }
             onClick={() => {
+              // The REAL connector door always wins over any active tool
+              // — it's the one thing on this cell that's genuinely v1.
               if (isDoorRow) {
                 onSelectConnector(connectorIndex);
-              } else {
-                onWallGashClick();
+                return;
               }
+              if (selectedTool === 'wall') {
+                onToggleWall(col, row);
+                return;
+              }
+              if (selectedTool === 'door') {
+                onToggleWallKind(col, row);
+                return;
+              }
+              if (selectedTool === 'hole') {
+                onToggleHole(col, row);
+                return;
+              }
+              onWallGashClick();
             }}
           />
         );
       }
     }
+  }
+
+  // --- v2 overlay: authored walls/holes/start/end, on top of the base
+  // cell grid above. See TARGET-YAML.md's "Structural palette category".
+  // Rendered as a SEPARATE pass (not folded into the loop above) since a
+  // wall/hole/start/end can, in principle, sit on a cell the compiled
+  // FloorPlan doesn't even have a room/connector for yet (a from-scratch
+  // v2 draft) — this pass computes its own geometry independent of what
+  // the base loop already drew there. Deliberately muted/dashed, never
+  // the confident solid style compiled geometry gets — these are
+  // PROPOSED, not compiled (CONTRACT.md/TARGET-YAML.md).
+  const structuralOverlay: ReactElement[] = [];
+  for (const wall of doc.walls) {
+    const center = cellCenter(layoutMode, wall.from[0], wall.from[1]);
+    const isDoor = wall.kind === 'door';
+    structuralOverlay.push(
+      <rect
+        key={`wall-${wall.from[0]}-${wall.from[1]}`}
+        x={center.x - BOARD_HEX_SIZE * 0.55}
+        y={center.y - BOARD_HEX_SIZE * 0.55}
+        width={BOARD_HEX_SIZE * 1.1}
+        height={BOARD_HEX_SIZE * 1.1}
+        fill="none"
+        stroke={isDoor ? '#9b7fd6' : '#6a5a8a'}
+        strokeWidth={2}
+        strokeDasharray={isDoor ? '2 2' : '5 3'}
+        rx={3}
+        pointerEvents="none"
+      />
+    );
+  }
+  for (const [holeCol, holeRow] of doc.holes) {
+    const center = cellCenter(layoutMode, holeCol, holeRow);
+    const corners = cellCorners(layoutMode, center, BOARD_HEX_SIZE - 1.5).map(
+      ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`
+    );
+    structuralOverlay.push(
+      <polygon
+        key={`hole-${holeCol}-${holeRow}`}
+        points={corners.join(' ')}
+        fill="#050403"
+        stroke="#2a1a33"
+        strokeWidth={1.5}
+        strokeDasharray="3 2"
+        pointerEvents="none"
+      />
+    );
+  }
+  if (doc.start) {
+    const center = cellCenter(layoutMode, doc.start[0], doc.start[1]);
+    structuralOverlay.push(
+      <g key="v2-start" pointerEvents="none">
+        <circle
+          cx={center.x}
+          cy={center.y}
+          r={BOARD_HEX_SIZE * 0.4}
+          fill="#5fd1c9"
+          fillOpacity={0.25}
+          stroke="#5fd1c9"
+          strokeWidth={2}
+          strokeDasharray="3 2"
+        />
+        <text
+          x={center.x}
+          y={center.y + 3}
+          textAnchor="middle"
+          fill="#5fd1c9"
+          fontSize={8}
+          fontWeight={700}
+        >
+          ST
+        </text>
+      </g>
+    );
+  }
+  if (doc.end) {
+    const center = cellCenter(layoutMode, doc.end[0], doc.end[1]);
+    structuralOverlay.push(
+      <g key="v2-end" pointerEvents="none">
+        <circle
+          cx={center.x}
+          cy={center.y}
+          r={BOARD_HEX_SIZE * 0.4}
+          fill="#c9a227"
+          fillOpacity={0.25}
+          stroke="#c9a227"
+          strokeWidth={2}
+          strokeDasharray="3 2"
+        />
+        <text
+          x={center.x}
+          y={center.y + 3}
+          textAnchor="middle"
+          fill="#c9a227"
+          fontSize={8}
+          fontWeight={700}
+        >
+          EN
+        </text>
+      </g>
+    );
   }
 
   // Placements + boss pins.
@@ -391,6 +533,7 @@ export function Board({
       </defs>
       <g>
         {cells}
+        {structuralOverlay}
         {labels}
         {markers}
         {entranceMarker}
