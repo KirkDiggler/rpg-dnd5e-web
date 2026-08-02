@@ -9,6 +9,7 @@ import {
   parseDungeon,
   placeItem,
   serializeDungeon,
+  setConnectorLocked,
   stripMonsterPlacements,
   toDungeonDoc,
 } from './dungeonYaml';
@@ -30,6 +31,11 @@ describe('parseDungeon', () => {
     });
     // 3 in antechamber's place: list, matching the source file exactly.
     expect(doc.rooms[0].place).toHaveLength(3);
+    // showcase.yaml's own 2 connectors, neither locked.
+    expect(doc.connectors).toEqual([
+      { from: 'antechamber', to: 'shrine', locked: null },
+      { from: 'shrine', to: 'vault', locked: null },
+    ]);
   });
 
   it('flags monster refs and never reads flags off them', () => {
@@ -52,6 +58,33 @@ describe('parseDungeon', () => {
     expect(() => parseDungeon('rooms: [this is not: valid')).toThrow(
       DungeonParseError
     );
+  });
+});
+
+describe('setConnectorLocked (door editing, rpg-dnd5e-web#667)', () => {
+  it('adds a flow-style locked: block matching the real dungeonspec shape', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setConnectorLocked(cst, 0, { dc: 12, ability: 'dex' });
+    const out = serializeDungeon(cst);
+    expect(out).toContain(
+      '- { from: antechamber, to: shrine, locked: { dc: 12, ability: dex } }'
+    );
+    const { doc } = parseDungeon(out);
+    expect(doc.connectors[0]).toEqual({
+      from: 'antechamber',
+      to: 'shrine',
+      locked: { dc: 12, ability: 'dex' },
+    });
+    // The untouched connector stays untouched.
+    expect(doc.connectors[1].locked).toBeNull();
+  });
+
+  it('removes locked: entirely when set to null', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setConnectorLocked(cst, 0, { dc: 15, ability: 'str' });
+    setConnectorLocked(cst, 0, null);
+    const { doc } = parseDungeon(serializeDungeon(cst));
+    expect(doc.connectors[0].locked).toBeNull();
   });
 });
 

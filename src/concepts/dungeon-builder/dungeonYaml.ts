@@ -71,9 +71,25 @@ export interface RoomDoc {
   obstacles: ObstacleDoc[];
 }
 
+export interface LockedDoc {
+  dc: number;
+  ability: string;
+}
+
+/** A connector's `from`/`to` are NOT independently authorable — verified
+ * against the real `dungeonspec.Validate` (rpg-toolkit
+ * encounter/dungeonspec/validate.go's `validateChain`): a spec must have
+ * exactly `len(rooms)-1` connectors, and connector `i` must join
+ * `rooms[i]` to `rooms[i+1]`, always, no exceptions. `locked` (present or
+ * absent, and its `dc`/`ability` when present) is the ONLY field a
+ * connector's own author-facing surface actually varies — see
+ * CONTRACT.md's "Door/connector editing" section for the full
+ * verification and why the UI doesn't offer add/remove/repoint
+ * affordances for connectors at all. */
 export interface ConnectorDoc {
   from: string;
   to: string;
+  locked: LockedDoc | null;
 }
 
 export interface DungeonDoc {
@@ -180,7 +196,14 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
   }
   const connectors: ConnectorDoc[] = raw.connectors.map((c) => {
     const conn = c as Record<string, unknown>;
-    return { from: conn.from as string, to: conn.to as string };
+    const locked = conn.locked as Record<string, unknown> | undefined;
+    return {
+      from: conn.from as string,
+      to: conn.to as string,
+      locked: locked
+        ? { dc: locked.dc as number, ability: locked.ability as string }
+        : null,
+    };
   });
 
   return {
@@ -375,4 +398,40 @@ export function moveBoss(
   atNode.flow = true;
   atNode.items = at.map((n) => n);
   boss.set('at', atNode);
+}
+
+function connectorMap(cst: Document, index: number): YAMLMap {
+  const connectors = cst.get('connectors');
+  if (!isSeq(connectors))
+    throw new DungeonParseError('connectors: is not a sequence');
+  const item = connectors.items[index];
+  if (!isMap(item))
+    throw new DungeonParseError(`connectors[${index}] is not a map`);
+  return item;
+}
+
+/** Set or clear a connector's `locked:` block — the ONLY field a
+ * connector's own author-facing surface actually varies (see this file's
+ * `ConnectorDoc` doc comment: `from`/`to` are fixed by room chain order,
+ * never independently authorable). `locked: null` removes the key
+ * entirely (an unlocked door), matching showcase.yaml's own two
+ * connectors, neither of which carries one. Flow-style `{ dc: ..., ability:
+ * ... }`, matching the real `{ dc: 12, ability: dex }` shape confirmed
+ * against rpg-toolkit's own dungeonspec fixtures (reference-tomb.yaml). */
+export function setConnectorLocked(
+  cst: Document,
+  index: number,
+  locked: LockedDoc | null
+): void {
+  const conn = connectorMap(cst, index);
+  if (locked === null) {
+    conn.delete('locked');
+    return;
+  }
+  const lockedNode = cst.createNode({
+    dc: locked.dc,
+    ability: locked.ability,
+  }) as YAMLMap;
+  lockedNode.flow = true;
+  conn.set('locked', lockedNode);
 }
