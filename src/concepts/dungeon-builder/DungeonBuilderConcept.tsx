@@ -265,7 +265,18 @@ export function DungeonBuilderConcept() {
     if (!sel.boss)
       setSelectedPlacement({
         roomId,
-        index: doc.rooms.find((r) => r.id === roomId)!.place.length,
+        // Same-room move: movePlacement only rewrites `at` in place, so the
+        // item keeps sel.index — reusing place.length (pre-mutation) here
+        // was off-by-one and silently pointed selection past the array's
+        // end, which made Inspector's `room.place[selected.index]` lookup
+        // undefined and its `if (!ref || !at) return null` bail with no
+        // visible panel. Cross-room move genuinely appends, so the
+        // pre-mutation length of the *destination* room's place array is
+        // the new item's correct index.
+        index:
+          roomId === sel.roomId
+            ? sel.index
+            : doc.rooms.find((r) => r.id === roomId)!.place.length,
       });
   };
 
