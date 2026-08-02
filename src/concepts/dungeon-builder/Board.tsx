@@ -252,6 +252,15 @@ export function Board({
     trackCellExtent(wall.to[0], wall.to[1]);
     const center = cellCenter(layoutMode, wall.from[0], wall.from[1]);
     const isDoor = wall.kind === 'door';
+    // Same orange/cream distinction the creation board's own wall
+    // rendering and the 3D preview's wall boxes already use for solid
+    // vs. door — the previous purple-on-purple, dash-spacing-only
+    // difference here was hard to read at a glance (Kirk's own "make
+    // sure drawn doors read as doors" ask), one visual language for
+    // this construct across every view now, not three independently
+    // tuned ones. A door also gets a filled tint (a solid wall stays
+    // outline-only) and a small "D" label, matching this file's own
+    // start/end marker convention just below.
     structuralOverlay.push(
       <rect
         key={`wall-${wall.from[0]}-${wall.from[1]}`}
@@ -259,14 +268,31 @@ export function Board({
         y={center.y - BOARD_HEX_SIZE * 0.55}
         width={BOARD_HEX_SIZE * 1.1}
         height={BOARD_HEX_SIZE * 1.1}
-        fill="none"
-        stroke={isDoor ? '#9b7fd6' : '#6a5a8a'}
+        fill={isDoor ? '#ffb347' : 'none'}
+        fillOpacity={isDoor ? 0.2 : 1}
+        stroke={isDoor ? '#ffb347' : '#e8e2d8'}
         strokeWidth={2}
         strokeDasharray={isDoor ? '2 2' : '5 3'}
         rx={3}
         pointerEvents="none"
       />
     );
+    if (isDoor) {
+      structuralOverlay.push(
+        <text
+          key={`wall-${wall.from[0]}-${wall.from[1]}-label`}
+          x={center.x}
+          y={center.y + 3}
+          textAnchor="middle"
+          fill="#ffb347"
+          fontSize={8}
+          fontWeight={700}
+          pointerEvents="none"
+        >
+          D
+        </text>
+      );
+    }
   }
   for (const [holeCol, holeRow] of doc.holes) {
     trackCellExtent(holeCol, holeRow);
