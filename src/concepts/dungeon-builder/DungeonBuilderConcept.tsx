@@ -28,6 +28,7 @@ import type { LayoutMode } from './hexLayout';
 import { Inspector } from './Inspector';
 import { Palette } from './Palette';
 import { PALETTE_PROPS } from './paletteData';
+import { DungeonPreview3D } from './preview3d/DungeonPreview3D';
 import { RolledContentPanel } from './RolledContentPanel';
 import type { PaletteSelection, PlacementSelection } from './types';
 import { usePutDungeonPreview } from './usePutDungeonPreview';
@@ -51,6 +52,7 @@ export function DungeonBuilderConcept() {
   const [selectedPlacement, setSelectedPlacement] =
     useState<PlacementSelection | null>(null);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('hex-true');
+  const [boardDim, setBoardDim] = useState<'2d' | '3d'>('2d');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const applyDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -171,11 +173,14 @@ export function DungeonBuilderConcept() {
   // Guard against the palette silently drifting from the manifest.
   for (const p of PALETTE_PROPS) usageCounts[p.ref] ??= 0;
 
-  const modeBannerText = selectedPalette
-    ? `Palette: ${selectedPalette.ref.split(':').pop()} selected — click an empty legal cell to place it.`
-    : selectedPlacement
-      ? 'Selected a placed piece — drag to move, Delete key to remove, toggle flags in the inspector.'
-      : 'Nothing selected — pick a palette item, or click a placed piece.';
+  const modeBannerText =
+    boardDim === '3d'
+      ? '3D preview — view only (spike). Orbit/zoom with the mouse; edit via the palette/YAML in 2D.'
+      : selectedPalette
+        ? `Palette: ${selectedPalette.ref.split(':').pop()} selected — click an empty legal cell to place it.`
+        : selectedPlacement
+          ? 'Selected a placed piece — drag to move, Delete key to remove, toggle flags in the inspector.'
+          : 'Nothing selected — pick a palette item, or click a placed piece.';
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -282,33 +287,65 @@ export function DungeonBuilderConcept() {
           <span style={{ fontSize: 12, color: '#a89e90' }}>
             rpg-project#170/#169 · The Shrine Hall
           </span>
-          <label
+          <div
+            role="group"
+            aria-label="2D or 3D board"
             style={{
               marginLeft: 'auto',
-              fontSize: 12,
               display: 'flex',
-              alignItems: 'center',
-              gap: 6,
+              gap: 2,
+              border: '1px solid var(--border-primary)',
+              borderRadius: 5,
+              padding: 2,
             }}
           >
-            Layout:
-            <select
-              value={layoutMode}
-              onChange={(e) => setLayoutMode(e.target.value as LayoutMode)}
+            {(['2d', '3d'] as const).map((d) => (
+              <button
+                key={d}
+                onClick={() => setBoardDim(d)}
+                style={{
+                  padding: '3px 10px',
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  borderRadius: 3,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: boardDim === d ? '#5fd1c9' : 'transparent',
+                  color: boardDim === d ? '#14110f' : 'var(--text-primary)',
+                }}
+              >
+                {d.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          {boardDim === '2d' && (
+            <label
               style={{
-                background: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 4,
-                padding: '2px 6px',
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
               }}
             >
-              <option value="hex-true">
-                hex-true (shears — real game math)
-              </option>
-              <option value="flattened">flattened (plain grid)</option>
-            </select>
-          </label>
+              Layout:
+              <select
+                value={layoutMode}
+                onChange={(e) => setLayoutMode(e.target.value as LayoutMode)}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 4,
+                  padding: '2px 6px',
+                }}
+              >
+                <option value="hex-true">
+                  hex-true (shears — real game math)
+                </option>
+                <option value="flattened">flattened (plain grid)</option>
+              </select>
+            </label>
+          )}
           <div
             style={{
               fontSize: 12.5,
@@ -343,30 +380,55 @@ export function DungeonBuilderConcept() {
               overflow: 'hidden',
             }}
           >
-            <div
-              style={{ padding: '4px 16px 0', fontSize: 11, color: '#8a7a5a' }}
-            >
-              Board renders the game's actual odd-q pointy-top hex math when
-              "hex-true" is selected — the diagonal shear across the chain is a
-              real property of that addressing, not a rendering bug. Toggle to
-              "flattened" to compare. See CONTRACT.md.
-            </div>
-            <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
-              <Board
-                floorPlan={preview.floorPlan}
-                doc={doc}
-                layoutMode={layoutMode}
-                selectedPalette={selectedPalette}
-                selectedPlacement={selectedPlacement}
-                onPlace={handlePlace}
-                onSelect={(sel) => {
-                  setSelectedPlacement(sel);
-                  setSelectedPalette(null);
-                }}
-                onMove={handleMove}
-                onReject={flashToast}
-              />
-            </div>
+            {boardDim === '2d' ? (
+              <>
+                <div
+                  style={{
+                    padding: '4px 16px 0',
+                    fontSize: 11,
+                    color: '#8a7a5a',
+                  }}
+                >
+                  Board renders the game's actual odd-q pointy-top hex math when
+                  "hex-true" is selected — the diagonal shear across the chain
+                  is a real property of that addressing, not a rendering bug.
+                  Toggle to "flattened" to compare. See CONTRACT.md.
+                </div>
+                <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
+                  <Board
+                    floorPlan={preview.floorPlan}
+                    doc={doc}
+                    layoutMode={layoutMode}
+                    selectedPalette={selectedPalette}
+                    selectedPlacement={selectedPlacement}
+                    onPlace={handlePlace}
+                    onSelect={(sel) => {
+                      setSelectedPlacement(sel);
+                      setSelectedPalette(null);
+                    }}
+                    onMove={handleMove}
+                    onReject={flashToast}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    padding: '4px 16px 0',
+                    fontSize: 11,
+                    color: '#8a7a5a',
+                  }}
+                >
+                  Spike: floor + props + monsters only — no walls/doors (not on
+                  the FloorPlan wire), no combat/fog. See CONTRACT.md's "3D
+                  preview spike" section.
+                </div>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <DungeonPreview3D floorPlan={preview.floorPlan} doc={doc} />
+                </div>
+              </>
+            )}
             <RolledContentPanel doc={doc} />
           </main>
           <YamlPane
