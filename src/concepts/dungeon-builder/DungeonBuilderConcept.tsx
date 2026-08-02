@@ -66,12 +66,14 @@ type BuilderMode = 'edit' | 'create';
  * OWN cst/DungeonDoc instead of the bespoke CreationState (CONTRACT.md's
  * "unifying New Dungeon onto the shared CST" section). Pulled into one
  * hook, called once per mode with that mode's own `cst`/`doc`/
- * `syncFromCst`, rather than duplicated: placement selection is
- * genuinely identical logic in both modes (a ref at a `[col,row]` inside
- * an owning room — edit mode's rooms are real, creation mode's is the
- * single synthetic bridge room from `emptyCanvasDoc.ts`), only the
- * SURROUNDING board/palette/wall handling differs per mode, and stays
- * defined separately where it's called. */
+ * `syncFromCst`, rather than duplicated: placement selection is a `ref`
+ * at a `[col,row]`, room-scoped (`roomId` a real id) or top-level
+ * (`roomId: null`, TARGET-YAML.md's "top-level placement" section) —
+ * `handlePlace`/`handleMove`/etc. below already generalize over both via
+ * dungeonYaml.ts's own `roomId: string | null` mutators, so this hook
+ * needs no special-casing per mode; only the SURROUNDING board/palette/
+ * wall handling differs per mode, and stays defined separately where
+ * it's called. */
 function useBoardEditing(
   cst: Document,
   doc: DungeonDoc,

@@ -26,10 +26,11 @@ export interface DemoActions {
   setEnd: (at: [number, number]) => void;
   place: (ref: string, at: [number, number]) => void;
   /** Rotates whichever placement was added MOST RECENTLY — resolved
-   * fresh against the live document each call (the synthetic room's
-   * last `place:` entry), not a remembered id, since a from-scratch
-   * canvas's placements are plain array entries, not the old
-   * `CreationState.placements`' locally-generated `p1`/`p2`/... ids. */
+   * fresh against the live document each call (the top-level `place:`
+   * list's last entry — TARGET-YAML.md's "top-level placement" section),
+   * not a remembered id, since a from-scratch canvas's placements are
+   * plain array entries, not the old `CreationState.placements`'
+   * locally-generated `p1`/`p2`/... ids. */
   rotateLastFacing: (delta: 1 | -1) => void;
 }
 

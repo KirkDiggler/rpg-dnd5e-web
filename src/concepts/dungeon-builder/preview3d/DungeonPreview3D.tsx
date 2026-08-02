@@ -15,38 +15,55 @@
  * reused directly (638 lines, mostly combat-movement/facing/tint machinery
  * this static preview doesn't want).
  *
- * Deliberately does NOT render walls or doors. Three real reasons, not
- * scope-cutting for its own sake: (1) Kirk's own ask omitted them — floor
- * + props + monsters only; (2) `FloorPlan` carries no wall geometry at all
- * (only `door_row`, a row index, and `connector.column`) — a real wall
- * render would need synthetic edge geometry invented for the chain's
- * boundary, not a translation of anything on the wire (see CONTRACT.md's
- * "hex orientation/parity is not on the wire" and "connector door position
- * must still be derived" findings, same gap); (3) the game's own wall
- * renderer (`WallRunMesh`/`wallRuns.computeWallRuns`, 1334 lines) consumes
- * encounter-shaped `Wall[]` edges, not a room-chain `FloorPlan` — reusing
- * it here would mean writing that synthetic-edge-geometry step first, a
- * genuinely separate piece of work. See CONTRACT.md's "3D preview spike"
- * section for the full reuse-vs-new breakdown.
- *
  * DOES render `doc.holes` (Kirk's 2026-08-02 Structural-category ask,
  * TARGET-YAML.md) — `buildFloorTiles` simply skips a hole's cell, the
  * same shape as the pre-existing door-row skip. Not the same situation
- * as walls: a hole is cell-native (no edge geometry to invent), and
- * "omit the floor tile" is the literal, honest render Kirk's own ask
- * specified, nearly free given `SyntyHexFloor` only renders whatever's
- * in the tile map it's handed.
+ * as walls used to be: a hole is cell-native (no edge geometry to
+ * invent), and "omit the floor tile" is the literal, honest render Kirk's
+ * own ask specified, nearly free given `SyntyHexFloor` only renders
+ * whatever's in the tile map it's handed.
+ *
+ * ALSO renders `doc.walls` (Kirk's 2026-08-02 "visible-first" backlog:
+ * "a crude wall that RENDERS today beats a faithful one next week").
+ * This file's ORIGINAL reasoning for skipping walls doesn't apply here —
+ * it was about the compiled `FloorPlan` carrying no wall geometry on the
+ * wire, requiring synthetic edge geometry to be invented from nothing.
+ * `doc.walls` isn't wire data at all: it's this concept's OWN client-owned
+ * v2 authoring surface (edge-native `{from, to, kind}`, already deliberately
+ * shaped to mirror the real `EncounterService.Space.walls` wire type — see
+ * TARGET-YAML.md's annotated example), so the edges already exist, explicit,
+ * with nothing to derive. The real game's own wall renderer
+ * (`WallRunMesh`/`wallRuns.computeWallRuns`, ~1300 lines) is NOT reused
+ * here — it derives envelope/connector RUNS from fog-of-war-gated region
+ * HEX MEMBERSHIP (`RegionInput.hexes`), a problem this concept doesn't
+ * have (every wall is already an explicit, fully-known edge, no reveal
+ * gating) — reusing it would mean building the derivation step it exists
+ * to avoid needing. `WallRunMesh`'s tiled-piece/corner-miter fidelity is
+ * a deliberate non-goal for this first landing (see `WallBox` below).
+ * Doors (`kind: 'door'`) render as a distinctly colored/shorter box, not
+ * an opening — the door ROW concept in edit mode's compiled chain is a
+ * different thing (a legality rule on a whole grid row) from a wall
+ * segment's own `kind`, and this landing doesn't attempt to cut a real
+ * gap in the box for a door frame — reads as "a marked door," not yet
+ * "a walkable door," and is named honestly as the next fidelity step
+ * rather than attempted here.
  */
-import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
+import { facingDirection } from '@/components/hex-grid/authorGridHelpers';
+import {
+  cubeToWorld,
+  HEX_SIZE,
+  type WorldPos,
+} from '@/components/hex-grid/hexMath';
 import { resolvePropVariant } from '@/components/hex-grid/propManifest';
 import { PropModel } from '@/components/hex-grid/PropModel';
 import { SyntyHexFloor } from '@/components/hex-grid/SyntyHexFloor';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
+import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { Bounds, OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { Suspense, useMemo } from 'react';
-import type { DungeonDoc } from '../dungeonYaml';
+import type { DungeonDoc, WallDoc } from '../dungeonYaml';
 import { cubeAtColRow } from '../hexLayout';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
 
@@ -59,6 +76,14 @@ interface PlacedProp {
   key: string;
   position: [number, number, number];
   variantRef: string;
+  rotationY: number;
+}
+
+interface PlacedWall {
+  key: string;
+  position: [number, number, number];
+  rotationY: number;
+  isDoor: boolean;
 }
 
 interface PlacedMonster {
@@ -98,10 +123,80 @@ function buildFloorTiles(
   return tiles;
 }
 
-function worldPosition(absCol: number, row: number): [number, number, number] {
+function worldPosition(
+  absCol: number,
+  row: number,
+  y = 0
+): [number, number, number] {
   const cube = cubeAtColRow(absCol, row);
   const world = cubeToWorld(cube, HEX_SIZE);
-  return [world.x, 0, world.z];
+  return [world.x, y, world.z];
+}
+
+/** A `facing:` index (0-5, HEX_FACING_LABELS order) to a Three.js Y
+ * rotation (radians) — same `atan2(-dz, dx)` convention every other
+ * facing-to-rotationY conversion in this codebase uses (hexMath.ts's
+ * `hexEdgeMidpoint`, wallRuns.ts's envelope-corner rotation), so a
+ * facing-rotated preview mesh orients the same way the real game's own
+ * facing-aware renderers would. `mount: wall` placements use this as a
+ * cheap "point toward the wall this hangs on" first cut — TARGET-YAML.md's
+ * own annotated example already treats `facing` as which edge a
+ * wall-mounted prop hangs on, so pointing the model that direction is a
+ * reasonable reading, not an invented meaning. */
+function facingToRotationY(facing: number): number {
+  const dir = facingDirection(facing);
+  const world = cubeToWorld(dir, 1);
+  return Math.atan2(-world.z, world.x);
+}
+
+/** `doc.walls[].from`/`.to` are already ABSOLUTE [col,row] cells
+ * (dungeonYaml.ts's own `WallDoc` doc comment — same space `doc.start`/
+ * `doc.end`/`doc.holes` already use, no room `startColumn` to add, unlike
+ * room-scoped `place.at`). A wall segment sits ON the shared edge between
+ * two orthogonally-adjacent cells: for any regular hex tiling, that
+ * edge's own midpoint coincides with the midpoint between the two cells'
+ * centers (a real geometric property, not an approximation), so `mid`
+ * below is exact. The edge's own LENGTH axis, though, is PERPENDICULAR to
+ * the cell-center-to-cell-center line (the two cells sit on either side
+ * of the wall, not along it) — rotating that direction 90 degrees gives
+ * the wall's own run direction, same `atan2(-dz, dx)` convention every
+ * other facing/rotation computation in this codebase uses. A regular
+ * hexagon's edge length equals its own circumradius (HEX_SIZE) exactly —
+ * no separate "apothem"/"edge length" constant to look up, this is just
+ * the math. */
+function wallBoxTransform(wall: WallDoc): {
+  position: [number, number, number];
+  rotationY: number;
+} {
+  const worldA = cubeToWorld(
+    cubeAtColRow(wall.from[0], wall.from[1]),
+    HEX_SIZE
+  );
+  const worldB = cubeToWorld(cubeAtColRow(wall.to[0], wall.to[1]), HEX_SIZE);
+  const mid: WorldPos = {
+    x: (worldA.x + worldB.x) / 2,
+    z: (worldA.z + worldB.z) / 2,
+  };
+  const dx = worldB.x - worldA.x;
+  const dz = worldB.z - worldA.z;
+  const centerDist = Math.hypot(dx, dz) || 1;
+  // Perpendicular to the cell-center direction — the wall's own run axis.
+  const wallDirX = -dz / centerDist;
+  const wallDirZ = dx / centerDist;
+  const rotationY = Math.atan2(-wallDirZ, wallDirX);
+  return { position: [mid.x, WALL_HEIGHT / 2, mid.z], rotationY };
+}
+
+function buildWalls(walls: readonly WallDoc[]): PlacedWall[] {
+  return walls.map((wall) => {
+    const { position, rotationY } = wallBoxTransform(wall);
+    return {
+      key: `${wall.from.join(',')}-${wall.to.join(',')}`,
+      position,
+      rotationY,
+      isDoor: wall.kind === 'door',
+    };
+  });
 }
 
 function buildPlacements(
@@ -117,13 +212,24 @@ function buildPlacements(
 
     for (const p of room.place) {
       const absCol = fpRoom.startColumn + p.at[0];
-      const position = worldPosition(absCol, p.at[1]);
+      // v2, proposed (TARGET-YAML.md's "z-axis: mount + height" section) —
+      // mount: 'wall' placements render at their authored height instead
+      // of the floor plane, facing the direction they're mounted on (a
+      // plain Y offset + facing-driven rotation, not a true snap to the
+      // wall edge's own geometry — "iterate fidelity later" per Kirk's
+      // own framing, see CONTRACT.md's "visible-first" round).
+      const position = worldPosition(
+        absCol,
+        p.at[1],
+        p.mount === 'wall' ? (p.height ?? 0) : 0
+      );
+      const rotationY = p.facing !== null ? facingToRotationY(p.facing) : 0;
       const key = `${room.id}:${p.at[0]},${p.at[1]}:${p.ref}`;
       if (p.isMonster) {
         const monsterRefId = p.ref.split(':').pop();
         if (monsterRefId) monsters.push({ key, position, monsterRefId });
       } else {
-        props.push({ key, position, variantRef: p.ref });
+        props.push({ key, position, variantRef: p.ref, rotationY });
       }
     }
 
@@ -144,6 +250,39 @@ function buildPlacements(
   return { props, monsters };
 }
 
+// Crude box-per-edge placeholder (this file's own doc comment) — NOT the
+// real game's tiled/mitered `WallRunMesh`. Solid vs. door reuses the
+// EXACT colors the 2D board's own v2 structural overlay already uses for
+// the same distinction (Board.tsx/CreationBoard.tsx: '#e8e2d8' solid,
+// '#ffb347' door) — one visual language for "this is a drawn wall" across
+// both previews, same principle the hole rendering already established.
+// A door renders shorter (a marked threshold, not a walkable gap — see
+// this file's header doc comment for why a real opening isn't attempted
+// this round) so it reads as different from a solid run at a glance, not
+// just a different color at a distance.
+const WALL_SOLID_COLOR = '#e8e2d8';
+const WALL_DOOR_COLOR = '#ffb347';
+const WALL_THICKNESS = 0.12;
+const WALL_DOOR_HEIGHT_RATIO = 0.55;
+
+function WallBox({ wall }: { wall: PlacedWall }) {
+  const height = wall.isDoor
+    ? WALL_HEIGHT * WALL_DOOR_HEIGHT_RATIO
+    : WALL_HEIGHT;
+  const y = wall.isDoor ? (height - WALL_HEIGHT) / 2 : 0;
+  return (
+    <mesh
+      position={[wall.position[0], wall.position[1] + y, wall.position[2]]}
+      rotation={[0, wall.rotationY, 0]}
+    >
+      <boxGeometry args={[HEX_SIZE, height, WALL_THICKNESS]} />
+      <meshStandardMaterial
+        color={wall.isDoor ? WALL_DOOR_COLOR : WALL_SOLID_COLOR}
+      />
+    </mesh>
+  );
+}
+
 export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
   const floorTiles = useMemo(
     () => buildFloorTiles(floorPlan, doc.holes),
@@ -153,6 +292,7 @@ export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
     () => buildPlacements(floorPlan, doc),
     [floorPlan, doc]
   );
+  const walls = useMemo(() => buildWalls(doc.walls), [doc.walls]);
 
   return (
     <div style={{ width: '100%', height: '100%', background: '#0c0a08' }}>
@@ -163,6 +303,9 @@ export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
         <Suspense fallback={null}>
           <Bounds fit clip margin={1.25}>
             <SyntyHexFloor floorTiles={floorTiles} hexSize={HEX_SIZE} />
+            {walls.map((w) => (
+              <WallBox key={w.key} wall={w} />
+            ))}
             {props.map((p) => {
               const variant = resolvePropVariant(p.variantRef);
               if (!variant) return null;
@@ -171,6 +314,7 @@ export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
                   key={p.key}
                   variant={variant}
                   position={p.position}
+                  rotationY={p.rotationY}
                 />
               );
             })}
