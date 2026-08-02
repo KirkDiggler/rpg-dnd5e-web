@@ -969,3 +969,111 @@ floor mesh has a real gap there, not just a dark tile.
   showcase.yaml's existing 3-room chain, which already covers the area
   anything was drawn in). Worth fixing before "New Dungeon" genuinely
   starts from zero rooms in the unified board, not before.
+
+## Kirk's 2026-08-02 follow-up: z-axis (`mount`/`height`), monster
+
+`targeting`, and the linear-chain finding written into the dialect
+
+Two more v2 constructs, requested alongside the reframe above: a height
+component for wall-mounted props (the dialect's first departure from the
+floor plane), and authorable monster AI targeting as a REFERENCE key
+(Boundary Rule — the builder sets a string, only the toolkit's monster
+decision chain could ever give it meaning). Also folded in: writing up
+this task's own earlier finding that today's chain-constrained connectors
+mean v1 can only express LINEAR dungeons, and recording Kirk's framing
+that the dialect is expected to permanently run ahead of what's
+compilable — the badge/subset-save mechanism is the steady state, not a
+transitional shim.
+
+### What shipped, in order
+
+1. **`TARGET-YAML.md`** — new "z-axis: `mount` + `height`" section (why
+   `mount: 'floor' | 'wall'` + `height: number` beats a bare `z:` field —
+   mount carries intent, not just a number — and reuses the existing
+   `at`/`facing` fields rather than inventing a parallel wall-reference
+   system; documents what `PlacedEntry` (rpg-toolkit `spec.go`) and
+   `PropModel.tsx` would need if this ever compiles); new "Monster
+   targeting" section (vocabulary `lowest-health | lowest-ac | closest`,
+   framed explicitly as an open feature-request list against the
+   toolkit's monster-AI work, not an implementation); extended the
+   connector/wall section with "v1 can only express LINEAR dungeons" and
+   "the linear chain is a special case of drawn walls + placed doors, not
+   a separate, permanent geometry model"; preamble now records Kirk's own
+   framing verbatim — "what we built was just to start... we cannot be
+   held down by our early ideas" — as the operating assumption for the
+   whole file, not a note about one feature.
+2. **`dungeonYaml.ts` v2 layer** — `Mount` type, `PlacementDoc`/`BossDoc`
+   gain `mount`/`height`/`targeting`; parse helpers tolerant of
+   absent/wrong-typed input (matches the existing v2-field convention);
+   mutators `setPlacementMount` (sets mount+height together, clears both
+   together — never a `height:` orphaned without `mount: wall`),
+   `setPlacementTargeting`, `setBossTargeting`; `stripToV1Subset` drops
+   all three, reporting `wall-mount (N placements)` and
+   `targeting (N placements)` in the dropped-fields list. 37/37 tests
+   passing, including the round-trip and strip cases for all three new
+   fields.
+3. **Inspector.tsx** — targeting `<select>` (shown for monster
+   placements and boss, badged `v2`) and a wall-mount checkbox + height
+   `<input type="number">` (shown only for `WALL_MOUNTABLE_REFS` —
+   deliberately just `dnd5e:props:wall-banner` this round, not every
+   prop) wired into `DungeonBuilderConcept.tsx`'s `handleSetMount`/
+   `handleSetTargeting`.
+
+**Real bug found and fixed while live-verifying the wall-mount UI, not
+inspection**: clicking any non-boss placement marker on the board
+silently failed to open the Inspector — no error, no dialog, nothing.
+Root cause was in `handleMove` (`DungeonBuilderConcept.tsx`), pre-dating
+this round: `Board.tsx`'s marker `<g>` starts a drag on `onPointerDown`,
+and even a plain click still fires the SVG's `onPointerUp`, which commits
+a zero-distance "move." `handleMove` unconditionally reset
+`selectedPlacement.index` to `doc.rooms.find(...).place.length` — one
+past the last valid array index — using the pre-mutation `doc`. That's
+the _correct_ index only for a cross-room append; for a same-room move,
+`movePlacement` only rewrites `at` in place (verified against its source)
+so the item never changes index, and the reassignment silently pointed
+selection past the end of the array. `Inspector.tsx`'s
+`room.place[selected.index]` then read `undefined`, its
+`if (!ref || !at) return null` guard fired, and the panel just didn't
+render — with no console error and the mode banner still (correctly)
+saying "Selected a placed piece," which is what made it look like a
+click-targeting problem rather than a state bug. Boss selection never
+hit this path (`if (!sel.boss)` guards the reassignment), which is
+exactly why boss-targeting verification worked cleanly on the first try
+while every wall-banner attempt failed. Fixed by only reassigning the
+index on an actual cross-room move; a same-room move now keeps
+`sel.index` unchanged. This was a real regression in the base
+click-to-inspect interaction for every non-boss placement — not scoped
+to mount/targeting — worth the fix landing in this round rather than
+being logged as a known issue, since it silently broke the pre-existing
+`blocks_movement`/`blocks_los` checkboxes too.
+
+**Verified live**: clicked the boss pin, set `targeting: closest` in the
+Inspector, confirmed the YAML updated to
+`boss: { ref: "dnd5e:monsters:skeleton-captain", at: [ 5, 5 ], targeting: closest }`
+and the compile badge read "Uses: targeting (1 placement) — not yet
+compiled server-side." After the `handleMove` fix, clicked a wall-banner
+marker, checked "wall-mounted," set height to `2.5`, confirmed the YAML
+updated to
+`{ ref: "dnd5e:props:wall-banner", at: [ 5, 0 ], blocks_movement: false, blocks_los: false, mount: wall, height: 2.5 }`
+and the compile badge read "Uses: wall-mount (1 placement) — not yet
+compiled server-side"; unchecked it and confirmed both `mount` and
+`height` cleared together, leaving the entry back to its plain v1 shape.
+Evidence: `docs/evidence/dungeon-builder-monster-targeting-inspector.png`,
+`docs/evidence/dungeon-builder-wall-mount-height-inspector.png`.
+
+### What did NOT ship this round — named, not silently dropped
+
+- **`WALL_MOUNTABLE_REFS` covers only `dnd5e:props:wall-banner`.** Other
+  wall furniture Kirk named as coming later (sconces, etc.) isn't in the
+  palette yet, so there was nothing real to wire the checkbox to; the set
+  is a one-line addition once those refs exist.
+- **No renderer changes.** `mount`/`height` are dialect-only this round —
+  `PropModel.tsx` still places every prop on the floor plane regardless
+  of what's authored; TARGET-YAML.md names what it would need (a wall
+  reference plus a vertical offset) but doesn't build it, matching this
+  round's brief ("UI: if cheap ... otherwise doc-only").
+- **`targeting`'s vocabulary (`lowest-health | lowest-ac | closest`) is
+  a starting list, not validated against anything real.** There is no
+  toolkit monster-AI decision chain yet for these keys to reference —
+  the dropdown's options are exactly the open "feature request" list
+  TARGET-YAML.md now documents, nothing more.
