@@ -31,6 +31,7 @@ import { PALETTE_PROPS } from './paletteData';
 import { RolledContentPanel } from './RolledContentPanel';
 import type { PaletteSelection, PlacementSelection } from './types';
 import { usePutDungeonPreview } from './usePutDungeonPreview';
+import { useSaveDungeon } from './useSaveDungeon';
 import { YamlPane } from './YamlPane';
 
 const APPLY_DEBOUNCE_MS = 700;
@@ -55,6 +56,7 @@ export function DungeonBuilderConcept() {
   const applyDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const preview = usePutDungeonPreview(doc, yamlText);
+  const save = useSaveDungeon();
 
   const flashToast = (message: string) => {
     setToast(message);
@@ -376,6 +378,11 @@ export function DungeonBuilderConcept() {
             requestError={preview.requestError}
             fieldErrors={preview.fieldErrors}
             onRetryProbe={preview.retryProbe}
+            onSaveAndPlay={() => save.save(doc.key, yamlText)}
+            saveState={save.state}
+            savedKey={save.savedKey}
+            saveFieldErrors={save.fieldErrors}
+            saveErrorMessage={save.errorMessage}
           />
         </div>
 

@@ -3,10 +3,13 @@
  * edits update this text immediately (via the parent's CST mutations);
  * text edits here re-parse (debounced + an explicit Apply button) back
  * into the board's doc model. Also carries the FIXTURES MODE / can't-
- * reach-server badges — plan.md S4a's probe semantics made visible.
+ * reach-server badges — plan.md S4a's probe semantics made visible — and
+ * the "Save & Play" action (`useSaveDungeon.ts`), Kirk's 2026-08-01 ask to
+ * close the loop from edit to a real playable dungeon.
  */
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import type { ServerState } from './usePutDungeonPreview';
+import type { SaveState } from './useSaveDungeon';
 
 interface YamlPaneProps {
   yamlText: string;
@@ -17,6 +20,11 @@ interface YamlPaneProps {
   requestError: string | null;
   fieldErrors: ValidationError[];
   onRetryProbe: () => void;
+  onSaveAndPlay: () => void;
+  saveState: SaveState;
+  savedKey: string | null;
+  saveFieldErrors: ValidationError[];
+  saveErrorMessage: string | null;
 }
 
 function ServerBadge({
@@ -77,6 +85,78 @@ function ServerBadge({
   );
 }
 
+function SaveAndPlayPanel({
+  saveState,
+  savedKey,
+  saveFieldErrors,
+  saveErrorMessage,
+}: {
+  saveState: SaveState;
+  savedKey: string | null;
+  saveFieldErrors: ValidationError[];
+  saveErrorMessage: string | null;
+}) {
+  if (saveState === 'saved') {
+    return (
+      <div
+        style={{
+          background: '#16261c',
+          borderTop: '1px solid #3a5a45',
+          color: '#8fe8b0',
+          fontSize: 12,
+          padding: '8px 12px',
+          lineHeight: 1.5,
+        }}
+      >
+        <strong>Saved as "{savedKey}".</strong> Open{' '}
+        <a
+          href="http://localhost:3001/"
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: '#5fd1c9' }}
+        >
+          http://localhost:3001/
+        </a>{' '}
+        and pick "{savedKey}" in the dungeon dropdown to play it.
+      </div>
+    );
+  }
+  if (saveState === 'invalid') {
+    return (
+      <div
+        style={{
+          background: '#2a1512',
+          borderTop: '1px solid #5a2a20',
+          color: '#ff9a8a',
+          fontSize: 11.5,
+          padding: '8px 12px',
+        }}
+      >
+        <strong>Save rejected — dungeonspec.Validate failed:</strong>
+        {saveFieldErrors.map((e, i) => (
+          <div key={i}>{e.message}</div>
+        ))}
+      </div>
+    );
+  }
+  if (saveState === 'error') {
+    return (
+      <div
+        style={{
+          background: '#2a1512',
+          borderTop: '1px solid #5a2a20',
+          color: '#ff9a8a',
+          fontSize: 11.5,
+          padding: '8px 12px',
+        }}
+      >
+        Save failed: {saveErrorMessage}
+      </div>
+    );
+  }
+  return null;
+}
+
 export function YamlPane({
   yamlText,
   onChangeText,
@@ -86,7 +166,13 @@ export function YamlPane({
   requestError,
   fieldErrors,
   onRetryProbe,
+  onSaveAndPlay,
+  saveState,
+  savedKey,
+  saveFieldErrors,
+  saveErrorMessage,
 }: YamlPaneProps) {
+  const canSave = serverState === 'live' && saveState !== 'saving';
   return (
     <aside
       style={{
@@ -129,7 +215,35 @@ export function YamlPane({
             {parseError ? 'parse error — board unchanged' : 'in sync'}
           </span>
         </div>
-        <ServerBadge serverState={serverState} onRetryProbe={onRetryProbe} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ServerBadge serverState={serverState} onRetryProbe={onRetryProbe} />
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={() => onSaveAndPlay()}
+            disabled={!canSave}
+            title={
+              serverState !== 'live'
+                ? 'Server unreachable or authoring disabled — nothing to save to.'
+                : 'PutDungeon(validate_only: false) — persists this dungeon for real.'
+            }
+            style={{
+              background: canSave ? '#5fd1c9' : 'var(--bg-secondary)',
+              color: canSave ? '#14110f' : '#6a6255',
+              border: canSave ? 'none' : '1px solid var(--border-primary)',
+              borderRadius: 4,
+              padding: '5px 10px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: canSave ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {saveState === 'saving' ? 'Saving…' : 'Save & Play'}
+          </button>
+          <span style={{ fontSize: 11, color: '#8a7a5a' }}>
+            persists for real — plays in the lobby dungeon picker
+          </span>
+        </div>
       </div>
 
       <textarea
@@ -199,6 +313,13 @@ export function YamlPane({
           {requestError}
         </div>
       )}
+
+      <SaveAndPlayPanel
+        saveState={saveState}
+        savedKey={savedKey}
+        saveFieldErrors={saveFieldErrors}
+        saveErrorMessage={saveErrorMessage}
+      />
     </aside>
   );
 }
