@@ -24,7 +24,7 @@
  */
 
 import type { EquipmentItem } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EquipmentCard } from './EquipmentCard';
 
 export interface EquipmentCategoryPickerProps {
@@ -62,7 +62,10 @@ export function EquipmentCategoryPicker({
 }: EquipmentCategoryPickerProps) {
   const rootId =
     id ??
-    `equipment-category-picker-${label.replace(/\s+/g, '-').toLowerCase()}`;
+    `equipment-category-picker-${label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')}`;
   const listboxId = `${rootId}-listbox`;
   const optionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -71,6 +74,23 @@ export function EquipmentCategoryPicker({
   const [activeId, setActiveId] = useState<string | null>(
     () => selectedIds[0] ?? options[0]?.selectionId ?? null
   );
+
+  // Options can arrive asynchronously (isLoading -> populated) after mount,
+  // or the currently-active option can disappear from a refreshed list.
+  // Keep the roving tabindex pointed at a real, present option whenever
+  // possible so the listbox never becomes keyboard-unreachable (Copilot
+  // review, PR #670).
+  useEffect(() => {
+    if (options.length === 0) {
+      if (activeId !== null) setActiveId(null);
+      return;
+    }
+    const stillPresent = options.some((o) => o.selectionId === activeId);
+    if (!stillPresent) {
+      setActiveId(selectedIds[0] ?? options[0].selectionId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options]);
 
   const activeIndex = useMemo(
     () => options.findIndex((o) => o.selectionId === activeId),

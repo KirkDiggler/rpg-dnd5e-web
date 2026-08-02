@@ -47,6 +47,18 @@ interface WeaponSpec {
   costGp: number;
 }
 
+function equipmentCategoryFor(
+  weaponCategory: WeaponCategory
+): EquipmentCategory {
+  switch (weaponCategory) {
+    case WeaponCategory.MARTIAL:
+      return EquipmentCategory.MARTIAL_WEAPON;
+    case WeaponCategory.SIMPLE:
+    default:
+      return EquipmentCategory.SIMPLE_WEAPON;
+  }
+}
+
 function weaponItem(spec: WeaponSpec): EquipmentItem {
   return create(EquipmentItemSchema, {
     selectionId: spec.id,
@@ -55,7 +67,7 @@ function weaponItem(spec: WeaponSpec): EquipmentItem {
     equipmentDetail: create(EquipmentSchema, {
       id: spec.id,
       name: spec.name,
-      category: EquipmentCategory.SIMPLE_WEAPON,
+      category: equipmentCategoryFor(spec.category),
       cost: { quantity: spec.costGp, unit: 'gp' },
       weight: { quantity: spec.weightLb, unit: 'lb' },
       equipmentData: {

@@ -288,4 +288,32 @@ describe('EquipmentCategoryPicker', () => {
     );
     screen.getByText('mystery-item');
   });
+
+  it('recovers a focusable active option when options load in after mount (Copilot review, PR #670)', () => {
+    const { rerender } = render(
+      <EquipmentCategoryPicker
+        label="Choose a simple melee weapon"
+        chooseCount={1}
+        options={[]}
+        isLoading
+        selectedIds={[]}
+        onChange={vi.fn()}
+      />
+    );
+
+    rerender(
+      <EquipmentCategoryPicker
+        label="Choose a simple melee weapon"
+        chooseCount={1}
+        options={SIMPLE_CATEGORY_OPTIONS}
+        selectedIds={[]}
+        onChange={vi.fn()}
+      />
+    );
+
+    const focusable = screen
+      .getAllByRole('option')
+      .filter((option) => option.getAttribute('tabindex') === '0');
+    expect(focusable).toHaveLength(1);
+  });
 });
