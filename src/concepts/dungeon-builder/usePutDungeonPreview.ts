@@ -25,6 +25,15 @@
  * charset validation before any decode/compile ever runs — a pure
  * liveness check, never a real write (same comment plan.md's own S4a
  * checklist makes about this exact snippet).
+ *
+ * Kirk's reframe (TARGET-YAML.md): the YAML pane holds ONE target-dialect
+ * document that may use v2-only constructs (walls/holes/start/end/
+ * lighting/facing). The live per-edit preview below never sends that
+ * document verbatim — it strips to the v1-expressible subset first
+ * (`stripToV1Subset`) and previews THAT, exactly what Save & Play would
+ * actually persist if clicked right now. A document that isn't even
+ * shape-parseable yet (mid-edit) skips this tick silently — the YAML
+ * pane's own parse-error path already owns surfacing that.
  */
 import { authoringClient } from '@/api/client';
 import { create } from '@bufbuild/protobuf';
@@ -35,7 +44,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { useEffect, useRef, useState } from 'react';
-import type { DungeonDoc } from './dungeonYaml';
+import { stripToV1Subset, type DungeonDoc } from './dungeonYaml';
 import { SHOWCASE_FLOORPLAN } from './fixtures';
 import { compileFloorPlanLocally } from './floorPlanCompile';
 
@@ -117,11 +126,21 @@ export function usePutDungeonPreview(
     debounceRef.current = setTimeout(() => {
       (async () => {
         setRequestError(null);
+        let subsetYaml: string;
+        try {
+          subsetYaml = stripToV1Subset(yamlText).yaml;
+        } catch {
+          // Not even shape-parseable yet (mid-edit) — nothing to preview
+          // this tick. Not a request/field error; the YAML pane's own
+          // parse-error path (DungeonBuilderConcept's applyText) already
+          // owns surfacing this.
+          return;
+        }
         try {
           const response = await authoringClient.putDungeon(
             create(PutDungeonRequestSchema, {
               key: doc.key,
-              yaml: yamlText,
+              yaml: subsetYaml,
               validateOnly: true,
             })
           );
