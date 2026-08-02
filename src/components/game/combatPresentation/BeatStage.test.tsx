@@ -180,4 +180,54 @@ describe('BeatStage', () => {
     expect(screen.queryByTestId('beat-cue')).toBeNull();
     expect(screen.queryByTestId('beat-die')).toBeNull();
   });
+
+  it('renders damage inside the verdict live-region at impact, not before, and never for a miss', () => {
+    const { rerender } = render(
+      <BeatStage
+        beat="verdict"
+        placement="center-stage"
+        attack={hitAttack}
+        reducedMotion={false}
+        damageAmount={16}
+      />
+    );
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+
+    rerender(
+      <BeatStage
+        beat="impact"
+        placement="center-stage"
+        attack={hitAttack}
+        reducedMotion={false}
+        damageAmount={16}
+      />
+    );
+    const damage = screen.getByTestId('beat-damage');
+    expect(damage.textContent).toContain('16 damage');
+    expect(screen.getByTestId('beat-verdict').contains(damage)).toBe(true);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+
+    rerender(
+      <BeatStage
+        beat="release"
+        placement="center-stage"
+        attack={hitAttack}
+        reducedMotion={false}
+        damageAmount={16}
+      />
+    );
+    expect(screen.getByTestId('beat-damage').textContent).toContain(
+      '16 damage'
+    );
+
+    rerender(
+      <BeatStage
+        beat="impact"
+        placement="center-stage"
+        attack={{ ...hitAttack, hit: false }}
+        reducedMotion={false}
+      />
+    );
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+  });
 });
