@@ -8,10 +8,12 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Board } from './Board';
+import { CollapsibleSidePanel } from './CollapsibleSidePanel';
 import { CreationConcept } from './creation/CreationConcept';
 import { useCreationState } from './creation/useCreationState';
 import './DungeonBuilderConcept.css';
 import {
+  buildWalkItYaml,
   deletePlacement,
   DungeonParseError,
   moveBoss,
@@ -57,8 +59,30 @@ export function DungeonBuilderConcept() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const applyDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Collapse state for the side panels (Kirk's 2026-08-02 ask), kept HERE
+  // rather than inside Palette/YamlPane/CreationConcept — this component
+  // never unmounts across an edit<->create tab switch (only the JSX
+  // subtree it returns differs), so state living here is genuinely
+  // "remembered per mode": edit's flags and create's flags are two
+  // independent pairs that each survive leaving and returning to their
+  // own mode. See CollapsibleSidePanel.tsx's own doc comment.
+  const [editPaletteCollapsed, setEditPaletteCollapsed] = useState(false);
+  const [editYamlCollapsed, setEditYamlCollapsed] = useState(false);
+  const [createPaletteCollapsed, setCreatePaletteCollapsed] = useState(false);
+  const [createYamlCollapsed, setCreateYamlCollapsed] = useState(false);
+
   const preview = usePutDungeonPreview(doc, yamlText);
   const save = useSaveDungeon();
+  // Separate instance from `save` above — "Walk it" is an independent
+  // save action (its own key, its own idle/saving/saved/invalid/error
+  // lifecycle) that can succeed or fail without disturbing the main
+  // Save & Play result already on screen, or vice versa.
+  const walkSave = useSaveDungeon();
+
+  const handleWalkIt = () => {
+    const walkKey = `${doc.key}-walk`;
+    walkSave.save(walkKey, buildWalkItYaml(yamlText, walkKey));
+  };
 
   const flashToast = (message: string) => {
     setToast(message);
@@ -236,6 +260,10 @@ export function DungeonBuilderConcept() {
           state={creation.state}
           actions={creation.actions}
           toast={flashToast}
+          paletteCollapsed={createPaletteCollapsed}
+          onTogglePalette={() => setCreatePaletteCollapsed((c) => !c)}
+          yamlCollapsed={createYamlCollapsed}
+          onToggleYaml={() => setCreateYamlCollapsed((c) => !c)}
         />
         {toast && <ToastBanner message={toast} />}
       </div>
@@ -363,14 +391,22 @@ export function DungeonBuilderConcept() {
         </header>
 
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          <Palette
-            selected={selectedPalette}
-            onSelect={(sel) => {
-              setSelectedPalette(sel);
-              setSelectedPlacement(null);
-            }}
-            usageCounts={usageCounts}
-          />
+          <CollapsibleSidePanel
+            side="left"
+            width={250}
+            label="Palette"
+            collapsed={editPaletteCollapsed}
+            onToggle={() => setEditPaletteCollapsed((c) => !c)}
+          >
+            <Palette
+              selected={selectedPalette}
+              onSelect={(sel) => {
+                setSelectedPalette(sel);
+                setSelectedPlacement(null);
+              }}
+              usageCounts={usageCounts}
+            />
+          </CollapsibleSidePanel>
           <main
             style={{
               flex: 1,
@@ -431,21 +467,34 @@ export function DungeonBuilderConcept() {
             )}
             <RolledContentPanel doc={doc} />
           </main>
-          <YamlPane
-            yamlText={yamlText}
-            onChangeText={handleChangeText}
-            onApply={() => applyText(yamlText)}
-            parseError={parseError}
-            serverState={preview.serverState}
-            requestError={preview.requestError}
-            fieldErrors={preview.fieldErrors}
-            onRetryProbe={preview.retryProbe}
-            onSaveAndPlay={() => save.save(doc.key, yamlText)}
-            saveState={save.state}
-            savedKey={save.savedKey}
-            saveFieldErrors={save.fieldErrors}
-            saveErrorMessage={save.errorMessage}
-          />
+          <CollapsibleSidePanel
+            side="right"
+            width={420}
+            label="YAML"
+            collapsed={editYamlCollapsed}
+            onToggle={() => setEditYamlCollapsed((c) => !c)}
+          >
+            <YamlPane
+              yamlText={yamlText}
+              onChangeText={handleChangeText}
+              onApply={() => applyText(yamlText)}
+              parseError={parseError}
+              serverState={preview.serverState}
+              requestError={preview.requestError}
+              fieldErrors={preview.fieldErrors}
+              onRetryProbe={preview.retryProbe}
+              onSaveAndPlay={() => save.save(doc.key, yamlText)}
+              saveState={save.state}
+              savedKey={save.savedKey}
+              saveFieldErrors={save.fieldErrors}
+              saveErrorMessage={save.errorMessage}
+              onWalkIt={handleWalkIt}
+              walkState={walkSave.state}
+              walkSavedKey={walkSave.savedKey}
+              walkFieldErrors={walkSave.fieldErrors}
+              walkErrorMessage={walkSave.errorMessage}
+            />
+          </CollapsibleSidePanel>
         </div>
 
         <Inspector

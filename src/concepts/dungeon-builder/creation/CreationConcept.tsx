@@ -4,6 +4,7 @@
  * Entirely client-side (no server calls) — see CONTRACT.md.
  */
 import { useEffect, useRef, useState } from 'react';
+import { CollapsibleSidePanel } from '../CollapsibleSidePanel';
 import { Palette } from '../Palette';
 import type { PaletteSelection } from '../types';
 import { CreationBoard } from './CreationBoard';
@@ -39,12 +40,25 @@ interface CreationConceptProps {
   state: CreationState;
   actions: CreationActions;
   toast: (message: string) => void;
+  /** Collapse state for the left Tools+Palette sidebar and the right
+   * proposed-schema pane — owned by the parent (`DungeonBuilderConcept`)
+   * so it's remembered across an edit<->create tab switch instead of
+   * resetting every time this component mounts. See
+   * `CollapsibleSidePanel.tsx`'s doc comment. */
+  paletteCollapsed: boolean;
+  onTogglePalette: () => void;
+  yamlCollapsed: boolean;
+  onToggleYaml: () => void;
 }
 
 export function CreationConcept({
   state,
   actions,
   toast,
+  paletteCollapsed,
+  onTogglePalette,
+  yamlCollapsed,
+  onToggleYaml,
 }: CreationConceptProps) {
   const [tool, setTool] = useState<Tool>('wall');
   const [paletteSelection, setPaletteSelection] =
@@ -242,126 +256,135 @@ export function CreationConcept({
       )}
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <aside
-          style={{
-            width: 250,
-            flex: '0 0 250px',
-            overflowY: 'auto',
-            padding: 10,
-            borderRight: '1px solid var(--border-primary)',
-          }}
+        <CollapsibleSidePanel
+          side="left"
+          width={250}
+          label="Tools & Palette"
+          collapsed={paletteCollapsed}
+          onToggle={onTogglePalette}
         >
-          <h3
+          <aside
             style={{
-              fontSize: 11,
-              textTransform: 'uppercase',
-              letterSpacing: '.05em',
-              color: 'var(--text-secondary, #8a7a5a)',
-              margin: '0 0 6px',
+              width: 250,
+              flex: '0 0 250px',
+              overflowY: 'auto',
+              padding: 10,
+              borderRight: '1px solid var(--border-primary)',
             }}
           >
-            Tools
-          </h3>
-          {TOOLS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => {
-                setTool(t.id);
-                setPaletteSelection(null);
-              }}
-              title={t.hint}
+            <h3
               style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '6px 8px',
-                marginBottom: 3,
-                borderRadius: 5,
-                fontSize: 12.5,
-                cursor: 'pointer',
-                background: activeTool === t.id ? '#3a2f18' : 'transparent',
-                border:
-                  activeTool === t.id
-                    ? '1px solid #c9a227'
-                    : '1px solid transparent',
-                color: activeTool === t.id ? '#ffd76a' : 'var(--text-primary)',
+                fontSize: 11,
+                textTransform: 'uppercase',
+                letterSpacing: '.05em',
+                color: 'var(--text-secondary, #8a7a5a)',
+                margin: '0 0 6px',
               }}
             >
-              {t.label}
-            </button>
-          ))}
+              Tools
+            </h3>
+            {TOOLS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  setTool(t.id);
+                  setPaletteSelection(null);
+                }}
+                title={t.hint}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '6px 8px',
+                  marginBottom: 3,
+                  borderRadius: 5,
+                  fontSize: 12.5,
+                  cursor: 'pointer',
+                  background: activeTool === t.id ? '#3a2f18' : 'transparent',
+                  border:
+                    activeTool === t.id
+                      ? '1px solid #c9a227'
+                      : '1px solid transparent',
+                  color:
+                    activeTool === t.id ? '#ffd76a' : 'var(--text-primary)',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
 
-          {selected && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: 8,
-                background: '#221d19',
-                border: '1px solid #c9a227',
-                borderRadius: 6,
-                fontSize: 12,
-              }}
-            >
-              <div style={{ color: '#ffd76a', marginBottom: 6 }}>
-                {selected.ref.split(':').pop()} [{selected.at[0]},
-                {selected.at[1]}]
-              </div>
+            {selected && (
               <div
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  marginBottom: 6,
+                  marginTop: 12,
+                  padding: 8,
+                  background: '#221d19',
+                  border: '1px solid #c9a227',
+                  borderRadius: 6,
+                  fontSize: 12,
                 }}
               >
-                <button
-                  onClick={() => actions.rotateFacing(selected.id, -1)}
-                  style={rotateBtnStyle}
+                <div style={{ color: '#ffd76a', marginBottom: 6 }}>
+                  {selected.ref.split(':').pop()} [{selected.at[0]},
+                  {selected.at[1]}]
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginBottom: 6,
+                  }}
                 >
-                  ↺
-                </button>
-                <span style={{ minWidth: 28, textAlign: 'center' }}>
-                  {selected.facing !== null
-                    ? FACING_LABELS[selected.facing]
-                    : '—'}
-                </span>
+                  <button
+                    onClick={() => actions.rotateFacing(selected.id, -1)}
+                    style={rotateBtnStyle}
+                  >
+                    ↺
+                  </button>
+                  <span style={{ minWidth: 28, textAlign: 'center' }}>
+                    {selected.facing !== null
+                      ? FACING_LABELS[selected.facing]
+                      : '—'}
+                  </span>
+                  <button
+                    onClick={() => actions.rotateFacing(selected.id, 1)}
+                    style={rotateBtnStyle}
+                  >
+                    ↻
+                  </button>
+                  <span style={{ fontSize: 10, color: '#8a7a5a' }}>facing</span>
+                </div>
                 <button
-                  onClick={() => actions.rotateFacing(selected.id, 1)}
-                  style={rotateBtnStyle}
+                  onClick={() => actions.deletePlacement(selected.id)}
+                  style={{
+                    width: '100%',
+                    background: '#3a1c18',
+                    color: '#ff9a8a',
+                    border: '1px solid #5a2a20',
+                    borderRadius: 4,
+                    padding: 5,
+                    fontSize: 11,
+                    cursor: 'pointer',
+                  }}
                 >
-                  ↻
+                  Delete
                 </button>
-                <span style={{ fontSize: 10, color: '#8a7a5a' }}>facing</span>
               </div>
-              <button
-                onClick={() => actions.deletePlacement(selected.id)}
-                style={{
-                  width: '100%',
-                  background: '#3a1c18',
-                  color: '#ff9a8a',
-                  border: '1px solid #5a2a20',
-                  borderRadius: 4,
-                  padding: 5,
-                  fontSize: 11,
-                  cursor: 'pointer',
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          )}
+            )}
 
-          <div style={{ marginTop: 14 }}>
-            <Palette
-              selected={paletteSelection}
-              onSelect={(sel) => {
-                setPaletteSelection(sel);
-                if (sel) setTool('select'); // placing then falls back to select/move
-              }}
-              usageCounts={usageCounts}
-            />
-          </div>
-        </aside>
+            <div style={{ marginTop: 14 }}>
+              <Palette
+                selected={paletteSelection}
+                onSelect={(sel) => {
+                  setPaletteSelection(sel);
+                  if (sel) setTool('select'); // placing then falls back to select/move
+                }}
+                usageCounts={usageCounts}
+              />
+            </div>
+          </aside>
+        </CollapsibleSidePanel>
 
         <main style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 18 }}>
           <CreationBoard
@@ -373,7 +396,15 @@ export function CreationConcept({
           />
         </main>
 
-        <ProposedYamlPane state={state} />
+        <CollapsibleSidePanel
+          side="right"
+          width={420}
+          label="Proposed Schema"
+          collapsed={yamlCollapsed}
+          onToggle={onToggleYaml}
+        >
+          <ProposedYamlPane state={state} />
+        </CollapsibleSidePanel>
       </div>
     </div>
   );

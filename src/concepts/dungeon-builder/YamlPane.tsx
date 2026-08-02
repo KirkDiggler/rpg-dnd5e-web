@@ -3,9 +3,18 @@
  * edits update this text immediately (via the parent's CST mutations);
  * text edits here re-parse (debounced + an explicit Apply button) back
  * into the board's doc model. Also carries the FIXTURES MODE / can't-
- * reach-server badges — plan.md S4a's probe semantics made visible — and
- * the "Save & Play" action (`useSaveDungeon.ts`), Kirk's 2026-08-01 ask to
- * close the loop from edit to a real playable dungeon.
+ * reach-server badges — plan.md S4a's probe semantics made visible —
+ * "Save & Play" (`useSaveDungeon.ts`, Kirk's 2026-08-01 ask), and "Walk it
+ * (no monsters)" (Kirk's 2026-08-02 ask): a second, independent save of a
+ * `<key>-walk` variant with monster `place:` entries stripped. Both
+ * actions share the SAME `useSaveDungeon` hook shape (two separate
+ * instances, one per action, in `DungeonBuilderConcept.tsx`) and the same
+ * `SaveResultPanel` rendering, distinguished only by an `honestyNote` for
+ * Walk it's one real caveat: `boss:` is NOT stripped (dungeonspec requires
+ * exactly one boss per boss-archetype room — `stripMonsterPlacements`'s
+ * own doc comment in `dungeonYaml.ts`), so the walk variant still has its
+ * boss standing there. The UI says so rather than implying a true
+ * no-encounter walkthrough that doesn't exist yet.
  */
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import type { ServerState } from './usePutDungeonPreview';
@@ -25,6 +34,11 @@ interface YamlPaneProps {
   savedKey: string | null;
   saveFieldErrors: ValidationError[];
   saveErrorMessage: string | null;
+  onWalkIt: () => void;
+  walkState: SaveState;
+  walkSavedKey: string | null;
+  walkFieldErrors: ValidationError[];
+  walkErrorMessage: string | null;
 }
 
 function ServerBadge({
@@ -85,16 +99,21 @@ function ServerBadge({
   );
 }
 
-function SaveAndPlayPanel({
+/** Shared by both Save & Play and Walk it — `honestyNote`, when given, is
+ * appended to the success message (Walk it's one real caveat: the boss
+ * pin survives). */
+function SaveResultPanel({
   saveState,
   savedKey,
   saveFieldErrors,
   saveErrorMessage,
+  honestyNote,
 }: {
   saveState: SaveState;
   savedKey: string | null;
   saveFieldErrors: ValidationError[];
   saveErrorMessage: string | null;
+  honestyNote?: string;
 }) {
   if (saveState === 'saved') {
     return (
@@ -118,6 +137,9 @@ function SaveAndPlayPanel({
           http://localhost:3001/
         </a>{' '}
         and pick "{savedKey}" in the dungeon dropdown to play it.
+        {honestyNote && (
+          <div style={{ color: '#ffb347', marginTop: 4 }}>{honestyNote}</div>
+        )}
       </div>
     );
   }
@@ -171,8 +193,14 @@ export function YamlPane({
   savedKey,
   saveFieldErrors,
   saveErrorMessage,
+  onWalkIt,
+  walkState,
+  walkSavedKey,
+  walkFieldErrors,
+  walkErrorMessage,
 }: YamlPaneProps) {
   const canSave = serverState === 'live' && saveState !== 'saving';
+  const canWalk = serverState === 'live' && walkState !== 'saving';
   return (
     <aside
       style={{
@@ -242,6 +270,34 @@ export function YamlPane({
           </button>
           <span style={{ fontSize: 11, color: '#8a7a5a' }}>
             persists for real — plays in the lobby dungeon picker
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={() => onWalkIt()}
+            disabled={!canWalk}
+            title={
+              serverState !== 'live'
+                ? 'Server unreachable or authoring disabled — nothing to save to.'
+                : 'Saves a "<key>-walk" variant with monster place: entries stripped. The boss pin stays — dungeonspec requires a boss in a boss-archetype room, so this is not a true no-encounter walkthrough yet.'
+            }
+            style={{
+              background: canWalk ? 'transparent' : 'var(--bg-secondary)',
+              color: canWalk ? '#c9a227' : '#6a6255',
+              border: canWalk
+                ? '1px solid #c9a227'
+                : '1px solid var(--border-primary)',
+              borderRadius: 4,
+              padding: '5px 10px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: canWalk ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {walkState === 'saving' ? 'Saving…' : 'Walk it (no monsters)'}
+          </button>
+          <span style={{ fontSize: 11, color: '#8a7a5a' }}>
+            saves "&lt;key&gt;-walk" — boss stays (see tooltip)
           </span>
         </div>
       </div>
@@ -314,11 +370,18 @@ export function YamlPane({
         </div>
       )}
 
-      <SaveAndPlayPanel
+      <SaveResultPanel
         saveState={saveState}
         savedKey={savedKey}
         saveFieldErrors={saveFieldErrors}
         saveErrorMessage={saveErrorMessage}
+      />
+      <SaveResultPanel
+        saveState={walkState}
+        savedKey={walkSavedKey}
+        saveFieldErrors={walkFieldErrors}
+        saveErrorMessage={walkErrorMessage}
+        honestyNote="Boss remains — real free-roam mode needs server support (see CONTRACT.md)."
       />
     </aside>
   );
