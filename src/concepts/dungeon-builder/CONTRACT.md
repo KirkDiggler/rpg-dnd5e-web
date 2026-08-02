@@ -43,6 +43,67 @@ slices are #176 (generated wall/door truth), #177 (authored start), #178
 (floor-prop facing), #179 (canonical authored wall/door edges, including inner
 walls), and #180 (cell-authored semantic regions).
 
+## Operating bar: this concept incubates the real components (2026-08-02)
+
+#667 merged into `dev`. Kirk's direction update, verbatim intent: "our
+concept could make the real components we will use while we wait for the
+protos to be done and implemented." **This changes the quality bar for
+everything built or touched in `src/concepts/dungeon-builder/` from here
+on.** The throwaway-friendly standard that governed the concept through
+#667 — "iterate fidelity later," crude-but-visible first landings, code
+written to prove a shape rather than to last — ENDS here. It was the
+right bar while the concept's job was discovery (find the requirement by
+building the screen that needs it, per `[[outside-in-waves]]`); it is the
+wrong bar now that `dev` contains this code and Kirk's own framing has
+named it as the source for the real editor's components, not just their
+proof-of-concept.
+
+From now on:
+
+- **Clean interfaces, not concept-only scaffolding.** A component should
+  not deep-couple into this concept's own state shape (`DungeonDoc`/CST,
+  `PlacementSelection`, etc.) any more than necessary to do its one job —
+  the coupling that's fine for a spike becomes the rewrite tax the moment
+  a real editor tries to reuse the piece wholesale instead of wiring it.
+- **Typed against the generated proto shapes where they exist.** Where a
+  real wire type already exists (`FloorPlan`, its rooms/connectors), keep
+  using it directly, as this concept already does (`fixtures.ts`'s own
+  doc comment: "the board component cannot tell a fixture from a real
+  `PutDungeon` response"). Where no proto exists yet (everything
+  target-dialect: walls, holes, mount/height, targeting, facing), that's
+  exactly the gap #176–#180 are closing — build against this concept's
+  own `DungeonDoc` types today, but shaped so a future proto-typed
+  `DungeonDoc` swap is a type change at the boundary, not a rewrite of
+  the component's internals.
+- **Tests that survive extraction.** A test that only makes sense
+  wired into this concept's own `DungeonBuilderConcept.tsx` harness
+  isn't testing the component, it's testing the harness. Prefer testing
+  a component's own props/behavior directly (this file's own
+  `dungeonYaml.test.ts` already does this for the data layer — the
+  bar now extends to the render layer too).
+- **The graduation path is wiring, not rewriting.** When a #176–#180
+  slice lands a real proto for a target-dialect field, the matching
+  component (already built to the bar above) should graduate by having
+  its prop types swapped to the real generated shape and its concept-only
+  parsing/mutation layer (`dungeonYaml.ts`'s hand-rolled CST parsing)
+  retired in favor of the real wire — not rebuilt from scratch. If a
+  future graduation attempt turns out to require a rewrite anyway, that's
+  a signal this bar wasn't actually met at build time, worth naming
+  honestly rather than quietly absorbing as normal churn.
+
+**What this does NOT change**: the concept is still not a pre-authored
+cross-repo ask (see this file's own opening paragraph) — nothing here
+becomes a server-side commitment until Kirk reviews it. It does not
+retroactively demand a quality pass over everything already shipped
+through #667; the bar applies going forward, to what gets built or
+TOUCHED from here on, the same "don't rewrite history, note it and move
+forward" principle this file already applies to the rejected
+synthetic-room approach and the "v2" terminology retirement. Mechanically:
+`dev` now contains this concept (no more stacking on a feature branch —
+`#667`'s mega-PR shape is retired too), so new work is a fresh branch off
+`origin/dev`, one coherent chunk per PR, still visible-first/self-directed
+off this file's own ledger.
+
 ## Two findings from the standalone prototype, now resolved
 
 The standalone concept had no live server and had to guess two things.
