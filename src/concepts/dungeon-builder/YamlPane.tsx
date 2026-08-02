@@ -15,6 +15,14 @@
  * own doc comment in `dungeonYaml.ts`), so the walk variant still has its
  * boss standing there. The UI says so rather than implying a true
  * no-encounter walkthrough that doesn't exist yet.
+ *
+ * Kirk's 2026-08-02 reframe adds `v2Dropped`/`v1Compilable`: the document
+ * may now use v2-only constructs (walls/holes/start/end/lighting/facing —
+ * TARGET-YAML.md). The compile-badge strip below the server badge names
+ * exactly which ones are present and not yet compiled server-side, and
+ * Save & Play becomes "Save the compilable subset" the moment any are —
+ * both computed once in `DungeonBuilderConcept.tsx` (`stripToV1Subset`)
+ * and passed down, so this component never re-derives the strip itself.
  */
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import type { ServerState } from './usePutDungeonPreview';
@@ -39,6 +47,15 @@ interface YamlPaneProps {
   walkSavedKey: string | null;
   walkFieldErrors: ValidationError[];
   walkErrorMessage: string | null;
+  /** What `stripToV1Subset` would drop from the CURRENT document — empty
+   * when it's already pure v1. Drives both the compile-badge summary and
+   * the Save & Play button's label/behavior. */
+  v2Dropped: string[];
+  /** False when fewer than 2 rooms remain after stripping — there is
+   * genuinely nothing compilable to save yet (dungeonspec's own
+   * minRooms=2), distinct from "some v2 fields would be dropped but the
+   * rest still saves fine". */
+  v1Compilable: boolean;
 }
 
 function ServerBadge({
@@ -96,6 +113,30 @@ function ServerBadge({
         retry
       </button>
     </span>
+  );
+}
+
+/** The compile-badge summary, TARGET-YAML.md's "Compile badges" section:
+ * per-feature, not per-line (the `yaml` CST doesn't cheaply give real
+ * line/column spans without more plumbing than this honesty is worth).
+ * Renders nothing for a pure-v1 document — the badge only appears the
+ * moment there's something real to say. */
+function CompileBadgeStrip({ dropped }: { dropped: string[] }) {
+  if (dropped.length === 0) return null;
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        color: '#c9aeff',
+        background: '#1c1526',
+        border: '1px solid #3a2f52',
+        borderRadius: 4,
+        padding: '5px 8px',
+        lineHeight: 1.4,
+      }}
+    >
+      Uses: {dropped.join(', ')} — not yet compiled server-side (TARGET-YAML.md)
+    </div>
   );
 }
 
@@ -198,8 +239,12 @@ export function YamlPane({
   walkSavedKey,
   walkFieldErrors,
   walkErrorMessage,
+  v2Dropped,
+  v1Compilable,
 }: YamlPaneProps) {
-  const canSave = serverState === 'live' && saveState !== 'saving';
+  const hasV2 = v2Dropped.length > 0;
+  const canSave =
+    serverState === 'live' && saveState !== 'saving' && v1Compilable;
   const canWalk = serverState === 'live' && walkState !== 'saving';
   return (
     <aside
@@ -246,6 +291,7 @@ export function YamlPane({
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <ServerBadge serverState={serverState} onRetryProbe={onRetryProbe} />
         </div>
+        <CompileBadgeStrip dropped={v2Dropped} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
             onClick={() => onSaveAndPlay()}
@@ -253,7 +299,11 @@ export function YamlPane({
             title={
               serverState !== 'live'
                 ? 'Server unreachable or authoring disabled — nothing to save to.'
-                : 'PutDungeon(validate_only: false) — persists this dungeon for real.'
+                : !v1Compilable
+                  ? 'Nothing compilable yet — declare at least 2 rooms (dungeonspec.Validate requires it).'
+                  : hasV2
+                    ? `Saves the v1-expressible SUBSET (validate_only: false). Dropped: ${v2Dropped.join(', ')}.`
+                    : 'PutDungeon(validate_only: false) — persists this dungeon for real.'
             }
             style={{
               background: canSave ? '#5fd1c9' : 'var(--bg-secondary)',
@@ -266,10 +316,16 @@ export function YamlPane({
               cursor: canSave ? 'pointer' : 'not-allowed',
             }}
           >
-            {saveState === 'saving' ? 'Saving…' : 'Save & Play'}
+            {saveState === 'saving'
+              ? 'Saving…'
+              : hasV2
+                ? 'Save the compilable subset'
+                : 'Save & Play'}
           </button>
           <span style={{ fontSize: 11, color: '#8a7a5a' }}>
-            persists for real — plays in the lobby dungeon picker
+            {hasV2
+              ? 'saves the v1 subset — v2 fields dropped, see badge above'
+              : 'persists for real — plays in the lobby dungeon picker'}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -375,6 +431,11 @@ export function YamlPane({
         savedKey={savedKey}
         saveFieldErrors={saveFieldErrors}
         saveErrorMessage={saveErrorMessage}
+        honestyNote={
+          hasV2
+            ? `Saved the compilable subset — dropped: ${v2Dropped.join(', ')} (see TARGET-YAML.md).`
+            : undefined
+        }
       />
       <SaveResultPanel
         saveState={walkState}

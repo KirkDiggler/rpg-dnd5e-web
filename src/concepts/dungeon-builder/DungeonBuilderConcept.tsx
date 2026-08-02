@@ -6,7 +6,7 @@
  * hex-true/flattened layout toggle. See CONTRACT.md for the full findings
  * writeup.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Board } from './Board';
 import { CollapsibleSidePanel } from './CollapsibleSidePanel';
 import { ConnectorInspector } from './ConnectorInspector';
@@ -26,6 +26,7 @@ import {
   setEnd,
   setPlacementFlags,
   setStart,
+  stripToV1Subset,
   toDungeonDoc,
   toggleHole,
   toggleWall,
@@ -100,6 +101,21 @@ export function DungeonBuilderConcept() {
   // lifecycle) that can succeed or fail without disturbing the main
   // Save & Play result already on screen, or vice versa.
   const walkSave = useSaveDungeon();
+
+  // Kirk's reframe: the document may use v2-only constructs. This is the
+  // SAME strip usePutDungeonPreview already runs internally for the live
+  // preview, computed here too so the YAML pane's compile-badge summary
+  // and the Save & Play/"Save the compilable subset" swap can both read
+  // it without re-deriving it twice. `null` while yamlText is mid-edit
+  // and not even shape-parseable yet — every consumer below treats that
+  // the same as "nothing to report."
+  const v1Subset = useMemo(() => {
+    try {
+      return stripToV1Subset(yamlText);
+    } catch {
+      return null;
+    }
+  }, [yamlText]);
 
   const handleWalkIt = () => {
     const walkKey = `${doc.key}-walk`;
@@ -576,7 +592,9 @@ export function DungeonBuilderConcept() {
               requestError={preview.requestError}
               fieldErrors={preview.fieldErrors}
               onRetryProbe={preview.retryProbe}
-              onSaveAndPlay={() => save.save(doc.key, yamlText)}
+              onSaveAndPlay={() =>
+                save.save(doc.key, v1Subset?.yaml ?? yamlText)
+              }
               saveState={save.state}
               savedKey={save.savedKey}
               saveFieldErrors={save.fieldErrors}
@@ -586,6 +604,8 @@ export function DungeonBuilderConcept() {
               walkSavedKey={walkSave.savedKey}
               walkFieldErrors={walkSave.fieldErrors}
               walkErrorMessage={walkSave.errorMessage}
+              v2Dropped={v1Subset?.dropped ?? []}
+              v1Compilable={v1Subset?.compilable ?? false}
             />
           </CollapsibleSidePanel>
         </div>
