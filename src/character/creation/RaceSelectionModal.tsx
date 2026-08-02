@@ -783,19 +783,17 @@ export function RaceSelectionModal({
             })()}
 
             {/* Racial Traits */}
-            <CollapsibleSection title="Racial Traits" defaultOpen={true}>
-              <div
-                style={{
-                  maxHeight: '140px',
-                  overflowY: 'auto',
-                  padding: '8px',
-                  backgroundColor: bgSecondary,
-                  borderRadius: '6px',
-                  border: `1px solid ${borderPrimary}`,
-                }}
-              >
-                {currentRaceData.traits && currentRaceData.traits.length > 0 ? (
-                  currentRaceData.traits.map((trait, i) => (
+            {currentRaceData.traits.length > 0 && (
+              <CollapsibleSection title="Racial Traits" defaultOpen={true}>
+                <div
+                  style={{
+                    padding: '8px',
+                    backgroundColor: bgSecondary,
+                    borderRadius: '6px',
+                    border: `1px solid ${borderPrimary}`,
+                  }}
+                >
+                  {currentRaceData.traits.map((trait, i) => (
                     <div key={i} style={{ marginBottom: '8px' }}>
                       <div
                         style={{
@@ -848,14 +846,10 @@ export function RaceSelectionModal({
                           </div>
                         )}
                     </div>
-                  ))
-                ) : (
-                  <div style={{ color: textMuted, fontSize: '14px' }}>
-                    No racial traits available
-                  </div>
-                )}
-              </div>
-            </CollapsibleSection>
+                  ))}
+                </div>
+              </CollapsibleSection>
+            )}
 
             {/* Proficiencies - RaceInfo no longer has proficiencies field - they come through choices now */}
           </div>
