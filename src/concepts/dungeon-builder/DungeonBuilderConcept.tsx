@@ -1,6 +1,6 @@
 /**
  * DungeonBuilderConcept — composition root for the /concepts port of the
- * standalone dungeon-builder HTML concept (rpg-project#170/#169 S4a/S4b).
+ * standalone dungeon-builder HTML concept (rpg-project#170 design gate).
  * Owns the CST/doc state board clicks and YAML edits both mutate, the
  * live-vs-fixtures data source (`usePutDungeonPreview`), and the
  * hex-true/flattened layout toggle. See CONTRACT.md for the full findings
@@ -841,9 +841,9 @@ export function DungeonBuilderConcept() {
                     color: '#8a7a5a',
                   }}
                 >
-                  Spike: floor + props + monsters only — no walls/doors (not on
-                  the FloorPlan wire), no combat/fog. See CONTRACT.md's "3D
-                  preview spike" section.
+                  Spike: floor + props + monsters + drawn walls/doors (crude
+                  boxes — not the real game's tiled/mitered wall pieces) — no
+                  combat/fog. See CONTRACT.md's "3D preview spike" section.
                 </div>
                 <div style={{ flex: 1, minHeight: 0 }}>
                   <DungeonPreview3D floorPlan={preview.floorPlan} doc={doc} />

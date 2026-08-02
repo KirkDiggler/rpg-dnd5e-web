@@ -1,15 +1,15 @@
 /**
  * dungeonYaml — the CST-preserving YAML layer for the dungeon-builder
- * concept (rpg-project#170/#169 S4a/S4b, board 19 "The Dungeon").
+ * concept (rpg-project#170 design gate, board 19 "The Dungeon").
  *
- * This is the "delta" data plan.md's own fixture-first convention calls
+ * This is the "delta" data the concept's fixture-first convention calls
  * for (`docs/how-to/concepts-route.md`): dungeonspec YAML has no proto
  * representation on the wire at all — `PutDungeonRequest.yaml` is just a
  * string — so everything here is this concept's own type, not a generated
  * one. `DungeonDoc`/`RoomDoc`/`PlacementDoc` below are that separated type.
  *
- * Uses the real `yaml` npm package's `Document` CST API per plan.md S4a's
- * explicit requirement ("hard requirement: comment-preserving round-trip
+ * Uses the real `yaml` npm package's `Document` CST API per the original
+ * concept brief's explicit requirement ("hard requirement: comment-preserving round-trip
  * ... Use a CST-round-trip YAML parser") — this module does NOT hand-roll
  * a parser. `parseDungeonDoc`/`mutateDoc` operate on the live `Document`
  * object (kept in caller state) so edits preserve comments and formatting

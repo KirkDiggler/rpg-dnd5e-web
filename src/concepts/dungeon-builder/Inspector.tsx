@@ -2,7 +2,7 @@
  * Inspector — the selected placement's flag controls. Ref-type-gated:
  * blocks_movement/blocks_los are live checkboxes for props, disabled/gray
  * for monsters (dungeonspec.Validate rejects both on monster placements —
- * S4b's own spec). Also the entrance-blocked warning, the single most
+ * an original concept constraint). Also the entrance-blocked warning, the single most
  * persuasive interaction in the standalone concept (see CONTRACT.md).
  *
  * Two v2, proposed controls (Kirk's 2026-08-02 dialect adds — TARGET-

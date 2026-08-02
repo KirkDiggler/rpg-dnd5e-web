@@ -3,7 +3,7 @@
  * `AuthoringService.PutDungeon` RPC once on mount, then either drives the
  * board from LIVE `validate_only` responses (debounced on YAML changes)
  * or falls back to `compileFloorPlanLocally` + the embedded fixture —
- * mirroring plan.md S4a's `/author` route probe semantics exactly (the
+ * mirroring the concept's `/author` route probe semantics exactly (the
  * same three-way split the real route's mount-time probe uses):
  *
  *   - `Unimplemented`      -> authoring gate is off server-side -> FIXTURES
@@ -12,8 +12,8 @@
  *     (`Unavailable` or a
  *     non-ConnectError throw) -> can't reach the server at all -> FIXTURES
  *                             mode, a DISTINCT "can't reach server" state
- *                             with a retry action — plan.md is explicit
- *                             this must not collapse into the same state
+ *                             with a retry action — the concept keeps this
+ *                             distinct from the same state
  *                             as gate-off.
  *   - anything else,
  *     including the probe's
@@ -23,8 +23,8 @@
  *
  * The probe payload is deliberately invalid (`key: ''`) so it fails
  * charset validation before any decode/compile ever runs — a pure
- * liveness check, never a real write (same comment plan.md's own S4a
- * checklist makes about this exact snippet).
+ * liveness check, never a real write (as the original concept brief
+ * notes about this exact snippet).
  *
  * Kirk's reframe (TARGET-YAML.md): the YAML pane holds ONE target-dialect
  * document that may use v2-only constructs (walls/holes/start/end/
@@ -63,7 +63,7 @@ export interface UsePutDungeonPreviewResult {
    * can't see semantic errors" finding. */
   fieldErrors: ValidationError[];
   /** A malformed-request (InvalidArgument) response is a programming
-   * error per plan.md S4c's error-transport decision, never author
+   * error per the concept's error-transport decision, never author
    * feedback — surfaced separately so callers don't render it as a
    * field_errors-shaped message. */
   requestError: string | null;
@@ -160,7 +160,7 @@ export function usePutDungeonPreview(
           }
           // InvalidArgument (key/yaml mismatch, charset) reaching here
           // means the editor itself constructed a malformed request — a
-          // programming error, per plan.md S4c, never author feedback.
+          // programming error, never author feedback.
           setRequestError(
             err instanceof ConnectError
               ? err.message

@@ -3,7 +3,7 @@
  * edits update this text immediately (via the parent's CST mutations);
  * text edits here re-parse (debounced + an explicit Apply button) back
  * into the board's doc model. Also carries the FIXTURES MODE / can't-
- * reach-server badges — plan.md S4a's probe semantics made visible —
+ * reach-server badges — the concept's probe semantics made visible —
  * "Save & Play" (`useSaveDungeon.ts`, Kirk's 2026-08-01 ask), and "Walk it
  * (no monsters)" (Kirk's 2026-08-02 ask): a second, independent save of a
  * `<key>-walk` variant with monster `place:` entries stripped. Both
@@ -421,8 +421,7 @@ export function YamlPane({
             padding: '8px 12px',
           }}
         >
-          Request error (programming error, not author feedback — plan.md S4c):{' '}
-          {requestError}
+          Request error (programming error, not author feedback): {requestError}
         </div>
       )}
 

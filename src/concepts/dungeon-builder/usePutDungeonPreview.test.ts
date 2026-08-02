@@ -25,7 +25,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('usePutDungeonPreview — mount-time probe semantics (plan.md S4a)', () => {
+describe('usePutDungeonPreview — mount-time probe semantics', () => {
   it('Unimplemented -> gate-off, falls back to the local/fixture floor plan', async () => {
     hoisted.putDungeonFn.mockRejectedValue(
       new ConnectError('unknown service', Code.Unimplemented)

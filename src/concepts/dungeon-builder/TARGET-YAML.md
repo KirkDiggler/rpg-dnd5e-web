@@ -545,7 +545,8 @@ or auto-scroll).
 ## What this file is not
 
 Not a request. Not Kirk-approved as a server-side commitment. Not a
-replacement for design.md/plan.md's own P4+ scoping — it's the concrete
-artifact THAT scoping should read once it's ready, so implementers build
+replacement for the design approval gate (rpg-project#170) and its
+ordered #176–#180 slices — it's the concrete artifact those slices should
+read once they're ready, so implementers build
 against a written document instead of reverse-engineering this concept's
 UI behavior (the exact failure mode `[[outside-in-waves]]` names).

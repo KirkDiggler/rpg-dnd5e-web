@@ -8,8 +8,7 @@ Dungeon Builder), ported from a standalone HTML prototype
 today, and where those differ. Not a pre-authored feature request —
 nothing here becomes a cross-repo ask until Kirk reviews the concept.
 
-Design: `rpg-project/ideas/dungeon-builder/design.md` (rpg-project#170).
-Plan: `rpg-project/ideas/dungeon-builder/plan.md` (rpg-project#169), S4a/S4b.
+Design approval gate: rpg-project#170. After approval, implementation proceeds in order through rpg-project#176 (generated wall/door truth), #177 (authored start), #178 (floor-prop facing), #179 (canonical authored wall/door edges), and #180 (cell-authored semantic regions).
 
 Checked against the real proto at rpg-api-protos **v0.1.115**
 (`dnd5e/api/authoring/v1alpha1/service.proto`), the real `FloorPlan`
@@ -18,7 +17,7 @@ responses recorded in rpg-api PR #750/#752, a **real recorded
 (`fixtures.ts`'s `SHOWCASE_FLOORPLAN`), and a **live end-to-end run**
 against an isolated `rpg-api:local` instance with
 `RPG_AUTHORING_ENABLED=1` (see "Live verification" below) — not guessed
-from memory of the plan.
+from memory of a superseded proposal.
 
 ## Settled early authoring model (rpg-project#175)
 
@@ -111,7 +110,7 @@ Both are now settled with real evidence:
 
 ## New finding from this port: `yaml` doesn't fully close the round-trip requirement
 
-plan.md S4a's checklist says to use the `yaml` npm package for
+The original concept brief says to use the `yaml` npm package for
 comment-preserving round-trip, implying it's a solved problem once you
 reach for the right library. Two things worth knowing before assuming
 that:
@@ -142,8 +141,8 @@ that:
 comment too`) demonstrate both directions of the failure mode this
    causes: dragging that first pillar carries the heading away with it;
    deleting it removes the heading even though 7 pillars remain. **This
-   is a real, load-bearing UX question for S4a/S4b, not solved by
-   picking the recommended library** — a production implementation needs
+   is a real, load-bearing UX question for the approved delivery
+   slices, not solved by picking the recommended library** — a production implementation needs
    an explicit decision (attach group comments to the room instead of the
    first item? warn on delete/move of a comment-carrying item? accept the
    loss?), not just "use `yaml`".
@@ -193,19 +192,20 @@ are covered by `usePutDungeonPreview.test.ts`'s mocked cases instead.
 
 Rendering `FloorPlan`'s `[col,row]` addressing through the game's real
 hex math (`hexTrueCellCenter`, reusing `hexMath.ts`/`wallRuns.ts` per
-S4a's own checklist instruction) shears diagonally across a wide room
+the original concept brief) shears diagonally across a wide room
 chain: `hexRow(col,row) = row + floor(col/2)`, so at a fixed row,
 world-Z drifts roughly linearly with column. Verified analytically, not
 a porting bug. This port adds the `flattened` layout mode
 (`hexLayout.ts`'s `flatCellCenter` — plain Cartesian, no hex-parity
 correction) specifically so this can be compared in place, one FloorPlan,
 two renderings, via the board's own toggle — see the evidence
-screenshots. **S4a's own checklist ("reuse the odd-q/hex-position
-helpers... for hex-to-screen positioning") needs an explicit decision
-here**: embrace the sheared/authentic-hex look, or specify a different
-flattening for the 2D top-down authoring board. This should not be
-inherited silently from reusing production code written for a different
-rendering context (revealed 3D rooms, not a flat multi-room chain).
+screenshots. **The original concept brief's "reuse the odd-q/hex-position
+helpers... for hex-to-screen positioning" direction needs an explicit
+decision in the ordered slices**: embrace the sheared/authentic-hex look,
+or specify a different flattening for the 2D top-down authoring board.
+This should not be inherited silently from reusing production code written
+for a different rendering context (revealed 3D rooms, not a flat
+multi-room chain).
 
 ## UX learnings
 
@@ -234,25 +234,21 @@ rendering context (revealed 3D rooms, not a flat multi-room chain).
    immediately legible to someone who hasn't read this file — a stronger
    argument than the writeup alone.
 
-## What plan.md's S4a/S4b should change
+## What the approved design gate and ordered slices must retain
 
-1. **Revisit "reuse the existing odd-q/hex-position helpers" given the
-   shear finding** — make the flattened-vs-hex-true call explicit in the
-   plan rather than inherited from a checklist item written before this
-   was known.
-2. **Widen S4a's board contract test fixture past 2 rooms** — its
-   pointer ("a recorded FloorPlan response, e.g. captured from S1's
-   grpcurl smoke test") is the 2-room smoke-test fixture; a 3-room
-   fixture (showcase.yaml's own, now available — see `fixtures.ts`)
-   would actually catch a chain-accumulation regression.
-3. **The comment-preservation requirement needs a real design decision,
-   not just "use the yaml package."** See this file's "yaml package
-   doesn't fully close..." finding above — group-comment orphaning on
-   delete/move is real even with the recommended library.
-4. **S4b's "rolled content" panel still has no real fixture to test
-   against** — showcase.yaml (and everything else checked) has zero
-   `obstacles:` entries. `RolledContentPanel`'s non-empty path is
-   implemented but genuinely untested against real content.
+1. **Make the flattened-vs-hex-true call explicit** given the shear
+   finding, rather than inheriting it from the original concept brief.
+2. **Use a board contract fixture wider than 2 rooms.** The old 2-room
+   smoke-test fixture cannot catch chain accumulation; the available
+   3-room `showcase.yaml` fixture (see `fixtures.ts`) can.
+3. **Make a real comment-preservation decision, not just "use the yaml
+   package."** See this file's "yaml package doesn't fully close..."
+   finding above — group-comment orphaning on delete/move is real even
+   with the recommended library.
+4. **Add real rolled-content fixture coverage.** `showcase.yaml` (and
+   everything else checked) has zero `obstacles:` entries, so
+   `RolledContentPanel`'s non-empty path is genuinely untested against
+   real content.
 
 ## Proposed schema from the creation flow (Kirk's day-one pitch, 2026-08-01)
 
