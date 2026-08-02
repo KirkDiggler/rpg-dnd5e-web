@@ -1754,3 +1754,48 @@ dnd5e:hazards:rubble ×3`, `vault: dnd5e:hazards:web ×1`).
 Evidence: `docs/evidence/dungeon-builder-rolled-content-panel-non-empty.png`
 (after-state; the panel's own empty-state message is the unedited
 before-state, visible in the fixtures-mode screenshot above it).
+
+## Terminology sweep + Hole "exploration" badge, 2026-08-02
+
+Kirk's pop-in feedback on the 3D landings above also carried two approved
+follow-ups, run after the door-distinction item per the team lead's
+sequencing.
+
+**Terminology sweep** (SHA `800cacc`): every "v2" surface across the
+concept — palette/Inspector badges, ~50 doc comments across 12 files,
+`stripToV1Subset`'s wording, a stray literal `version: 2` in
+`emptyCanvasDoc.ts`'s generated YAML — moves to Kirk's settled framing
+from TARGET-YAML.md's own "Settled early model" section: "target dialect"
+for the aspirational fields, additive on `version: 1`, no version-bump
+language anywhere except the reserved-for-incompatible-topology note. The
+`V2Badge` component (Inspector.tsx) is now `TargetDialectBadge`, its
+label text "v2" → "dialect"; `YamlPane.tsx`'s `v2Dropped` prop is now
+`dialectDropped`. Historical CONTRACT.md narrative that genuinely used
+"v2" as the real term in effect at that point in time is annotated
+in-place rather than silently rewritten (e.g. item 4 in "What shipped, in
+order" above now reads "badged 'not yet compiled server-side' (originally
+`v2`, renamed `dialect` in the 2026-08-02 terminology sweep...)") — this
+file's own convention for honestly recording what changed and why, the
+same principle that keeps the rejected synthetic-room commits unrewritten
+in git history. Verified live: the Structural category shows the
+"dialect" badge on Wall/Door, zero "v2" text anywhere on the page.
+
+**Hole tool "exploration" badge** (this commit): the Hole row in the
+shared `Palette` (used identically by both edit and creation mode — no
+separate creation-only Hole button exists to also update) previously
+shared the same generic "dialect, proposed — not yet compiled" badge as
+Wall/Door. That understates Hole's actual status — TARGET-YAML.md's
+settled model is explicit that holes are "deliberately deferred from this
+early dialect... an exploration artifact... not a commitment for the
+early dialect," a stronger disclaimer than "proposed, not yet compiled."
+`Palette.tsx`'s `Row` component gains a `deferred` prop, rendered INSTEAD
+of `notCompiled` when both would apply (a stronger claim subsumes a
+weaker one) — a distinctly muted-stone "exploration" badge whose tooltip
+quotes Kirk's settled text verbatim, attributed (rpg-project#175,
+TARGET-YAML.md). The tool stays fully usable — this is a status badge on
+an active tool, not a disabled state, per Kirk's own "tool stays usable."
+
+Verified live: hovering the badge surfaces the full verbatim tooltip
+text; Wall/Door still show the generic "dialect" badge (2 total),
+confirming the new badge type doesn't leak onto rows it shouldn't.
+Evidence: `docs/evidence/dungeon-builder-hole-exploration-badge.png`.

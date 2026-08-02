@@ -64,6 +64,7 @@ function Row({
   isSelected,
   onClick,
   notCompiled,
+  deferred,
 }: {
   thumb?: string;
   color: string;
@@ -75,6 +76,17 @@ function Row({
   /** target-dialect-only tool/construct — shows the same "not yet
    * compiled server-side" badge language TARGET-YAML.md standardizes on. */
   notCompiled?: boolean;
+  /** Stronger disclaimer than `notCompiled` — the Hole tool specifically
+   * (TARGET-YAML.md's "Settled early model" section, rpg-project#175,
+   * Kirk's own verbatim text): not merely "proposed, not yet compiled"
+   * like Wall/Door, but deliberately deferred from the early dialect
+   * entirely, an exploration artifact rather than a commitment. Renders
+   * INSTEAD of the `notCompiled` badge when both would apply — the
+   * deferred status already implies "not yet compiled," a stronger claim
+   * subsumes a weaker one, no reason to show both. Tool stays usable
+   * either way (Kirk: "tool stays usable") — this is a status badge, not
+   * a disabled state. */
+  deferred?: boolean;
 }) {
   return (
     <div
@@ -125,21 +137,46 @@ function Row({
           {sub}
         </div>
       </span>
-      {notCompiled && (
+      {deferred ? (
         <span
-          title="target dialect, proposed — not yet compiled server-side (TARGET-YAML.md)"
+          title={
+            'Deliberately deferred from this early dialect. A collapsed-' +
+            'looking blocked cell is authored and rendered as an ' +
+            'obstacle/prop until falling, bridging, or vertical ' +
+            'visibility/traversal establishes a real no-floor primitive. ' +
+            'The concept’s existing Hole prototype remains visible as ' +
+            'an exploration artifact; it is not a commitment for the ' +
+            'early dialect. — Kirk, rpg-project#175, TARGET-YAML.md'
+          }
           style={{
             fontSize: 9,
-            color: '#c9aeff',
-            background: '#241a33',
-            border: '1px solid #4a3a63',
+            color: '#b8a888',
+            background: '#2a2521',
+            border: '1px solid #4a4238',
             borderRadius: 3,
             padding: '2px 5px',
             whiteSpace: 'nowrap',
           }}
         >
-          dialect
+          exploration
         </span>
+      ) : (
+        notCompiled && (
+          <span
+            title="target dialect, proposed — not yet compiled server-side (TARGET-YAML.md)"
+            style={{
+              fontSize: 9,
+              color: '#c9aeff',
+              background: '#241a33',
+              border: '1px solid #4a3a63',
+              borderRadius: 3,
+              padding: '2px 5px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            dialect
+          </span>
+        )
       )}
     </div>
   );
@@ -380,7 +417,7 @@ export function Palette({
             sub={`${holeCount}× marked — impassable void, no floor`}
             isSelected={selectedTool === 'hole'}
             onClick={() => toggleTool('hole')}
-            notCompiled
+            deferred
           />
           <p
             style={{
