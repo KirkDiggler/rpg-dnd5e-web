@@ -3,7 +3,13 @@
  * W2 "positive category rule" (design.md).
  */
 
-import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
+import {
+  cubeToWorld,
+  HEX_DIRECTIONS,
+  HEX_SIZE,
+  type CubeCoord,
+} from '@/components/hex-grid/hexMath';
+import { DOOR_FRAME_CALIBRATED_WIDTH } from '@/components/hex-grid/syntyHexWallHelpers';
 import { CUTAWAY_STUB_WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { create } from '@bufbuild/protobuf';
 import {
@@ -372,6 +378,78 @@ describe("connectorFallbackSegments (W3 fallback restyle: same category-rule can
     }
   });
 
+  it('terminates a one-sided fallback at the same calibrated frame envelope as its resolved ConnectorRun successor', () => {
+    const door = { id: 'door-1', position: cubeAtColRow(60, 4) };
+    const fallback = connectorFallbackSegments(
+      [cellWall(60, 3), ...anchors(0, 7)],
+      regions,
+      [],
+      [door]
+    )[0]!;
+    const rows = (minCol: number, maxCol: number): CubeCoord[] => {
+      const hexes: CubeCoord[] = [];
+      for (let col = minCol; col <= maxCol; col++) {
+        for (let row = 0; row <= 7; row++) hexes.push(cubeAtColRow(col, row));
+      }
+      return hexes;
+    };
+    const resolved = computeWallRuns({
+      regions: [
+        { id: 'left', hexes: rows(58, 59) },
+        { id: 'right', hexes: rows(61, 62) },
+      ],
+      doors: [door],
+    }).connectorRuns[0]!.segments[0]!;
+    const doorCenter = cubeToWorld(door.position, HEX_SIZE);
+    const candidateCenter = cubeToWorld(cubeAtColRow(60, 3), HEX_SIZE);
+    const length = Math.hypot(
+      doorCenter.x - candidateCenter.x,
+      doorCenter.z - candidateCenter.z
+    );
+    const towardDoor = {
+      x: (doorCenter.x - candidateCenter.x) / length,
+      z: (doorCenter.z - candidateCenter.z) / length,
+    };
+    const expected = {
+      x: doorCenter.x - towardDoor.x * (DOOR_FRAME_CALIBRATED_WIDTH / 2),
+      z: doorCenter.z - towardDoor.z * (DOOR_FRAME_CALIBRATED_WIDTH / 2),
+    };
+
+    expect(fallback.end).toEqual(expected);
+    expect(resolved.end).toEqual(expected);
+
+    const afterFallback = connectorFallbackSegments(
+      [cellWall(60, 5), ...anchors(0, 7)],
+      regions,
+      [],
+      [door]
+    )[0]!;
+    const afterResolved = computeWallRuns({
+      regions: [
+        { id: 'left', hexes: rows(58, 59) },
+        { id: 'right', hexes: rows(61, 62) },
+      ],
+      doors: [door],
+    }).connectorRuns[0]!.segments[1]!;
+    const afterCandidateCenter = cubeToWorld(cubeAtColRow(60, 5), HEX_SIZE);
+    const afterLength = Math.hypot(
+      afterCandidateCenter.x - doorCenter.x,
+      afterCandidateCenter.z - doorCenter.z
+    );
+    const afterExpected = {
+      x:
+        doorCenter.x +
+        ((afterCandidateCenter.x - doorCenter.x) / afterLength) *
+          (DOOR_FRAME_CALIBRATED_WIDTH / 2),
+      z:
+        doorCenter.z +
+        ((afterCandidateCenter.z - doorCenter.z) / afterLength) *
+          (DOOR_FRAME_CALIBRATED_WIDTH / 2),
+    };
+    expect(afterFallback.start).toEqual(afterExpected);
+    expect(afterResolved.start).toEqual(afterExpected);
+  });
+
   it('excludes a BOUNDARY-EDGE candidate one row beyond the true grid (STILL-BLOCKED regression) even though its column matches a known door', () => {
     const offGridBoundaryEdge = edgeWall(59, 7, 60, 8);
     const doors = [{ id: 'door-1', position: cubeAtColRow(60, 4) }];
@@ -611,6 +689,37 @@ describe('connectorDoorPlanes (rpg-project#132 connector-single-wall follow-up, 
     // door (not a coincidental fixture artifact).
     expect(hexColumn(doorHex)).toBe(6);
     expect(hexRow(doorHex)).toBe(4);
+  });
+
+  it('keeps the calibrated connector plane stable for all six wire passage orientations and closed/open/locked states', () => {
+    const doorHex = cubeAtColRow(6, 4);
+    const planes = HEX_DIRECTIONS.map((direction, index) => {
+      const kind = [
+        WallKind.DOOR_CLOSED,
+        WallKind.DOOR_OPEN,
+        WallKind.DOOR_LOCKED,
+      ][index % 3]!;
+      const wireDoor = wall(
+        doorHex.x,
+        doorHex.y,
+        doorHex.z,
+        doorHex.x + direction.x,
+        doorHex.y + direction.y,
+        doorHex.z + direction.z,
+        kind,
+        `door-${index}`
+      );
+      const input = connectorDoorInputsFromWalls([wireDoor]);
+      return connectorDoorPlanes(input, HEX_SIZE).get(`door-${index}`)!;
+    });
+
+    // The production adapter intentionally ignores the arbitrary passage
+    // edge: all states/orientations place the frame on the same connector
+    // column plane from the door cell itself.
+    for (const plane of planes) {
+      expect(plane.position).toEqual(cubeToWorld(doorHex, HEX_SIZE));
+      expect(plane.rotationY).toBeCloseTo(planes[0]!.rotationY, 9);
+    }
   });
 });
 

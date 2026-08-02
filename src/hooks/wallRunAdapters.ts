@@ -20,7 +20,10 @@ import {
   type CubeCoord,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
-import { isDoorWallKind } from '@/components/hex-grid/syntyHexWallHelpers';
+import {
+  DOOR_FRAME_CALIBRATED_WIDTH,
+  isDoorWallKind,
+} from '@/components/hex-grid/syntyHexWallHelpers';
 import { connectorPartitionHeight } from '@/components/hex-grid/wallRunMeshHelpers';
 import {
   HexState,
@@ -433,7 +436,8 @@ export function legacyRenderWalls(
  */
 function candidateToFallbackSegment(
   candidate: CubeCoord,
-  hexSize: number
+  hexSize: number,
+  doorAtAdjacentRow: ConnectorDoorInput | undefined
 ): WallRunSegment {
   const col = hexColumn(candidate);
   const row = hexRow(candidate);
@@ -441,6 +445,35 @@ function candidateToFallbackSegment(
   const next = cubeToWorld(cubeAtColRow(col, row + 1), hexSize);
   const dx = next.x - center.x;
   const dz = next.z - center.z;
+  const halfFrame = DOOR_FRAME_CALIBRATED_WIDTH / 2;
+  if (doorAtAdjacentRow) {
+    const doorCenter = cubeToWorld(doorAtAdjacentRow.position, hexSize);
+    const distance = Math.hypot(
+      doorCenter.x - center.x,
+      doorCenter.z - center.z
+    );
+    const towardDoor = {
+      x: (doorCenter.x - center.x) / distance,
+      z: (doorCenter.z - center.z) / distance,
+    };
+    const outerHalfRow = Math.hypot(dx, dz) / 2;
+    // Match connectorRunForDoor's exact frame-envelope termination while
+    // this column is still represented by individual fallback cells.
+    const outer = {
+      x: center.x - towardDoor.x * outerHalfRow,
+      z: center.z - towardDoor.z * outerHalfRow,
+    };
+    const frameEnvelope = {
+      x: doorCenter.x - towardDoor.x * halfFrame,
+      z: doorCenter.z - towardDoor.z * halfFrame,
+    };
+    // Preserve the ordinary increasing-row segment direction on both
+    // sides of the door. It keeps fallback tile orientation identical to
+    // the pre-fix path while changing only the inner endpoint.
+    return row < hexRow(doorAtAdjacentRow.position)
+      ? { start: outer, end: frameEnvelope }
+      : { start: frameEnvelope, end: outer };
+  }
   return {
     start: { x: center.x - dx / 2, z: center.z - dz / 2 },
     end: { x: center.x + dx / 2, z: center.z + dz / 2 },
@@ -482,6 +515,13 @@ export function connectorFallbackSegments(
 
   const segments: WallRunSegment[] = [];
   const seenCandidateKeys = new Set<string>();
+  const doorByColumnRow = new Map<string, ConnectorDoorInput>();
+  for (const door of doors) {
+    doorByColumnRow.set(
+      `${hexColumn(door.position)},${hexRow(door.position)}`,
+      door
+    );
+  }
   for (const wall of walls) {
     const category = categorizeWall(
       wall,
@@ -494,7 +534,14 @@ export function connectorFallbackSegments(
     const key = coordToKey(category.candidate);
     if (seenCandidateKeys.has(key)) continue;
     seenCandidateKeys.add(key);
-    segments.push(candidateToFallbackSegment(category.candidate, hexSize));
+    const candidateCol = hexColumn(category.candidate);
+    const candidateRow = hexRow(category.candidate);
+    const doorAtAdjacentRow =
+      doorByColumnRow.get(`${candidateCol},${candidateRow - 1}`) ??
+      doorByColumnRow.get(`${candidateCol},${candidateRow + 1}`);
+    segments.push(
+      candidateToFallbackSegment(category.candidate, hexSize, doorAtAdjacentRow)
+    );
   }
   return segments;
 }
