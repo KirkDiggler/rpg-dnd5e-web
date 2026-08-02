@@ -10,10 +10,13 @@ import {
   placeItem,
   serializeDungeon,
   setBossFacing,
+  setBossTargeting,
   setConnectorLocked,
   setEnd,
   setLightingAmbient,
   setPlacementFacing,
+  setPlacementMount,
+  setPlacementTargeting,
   setStart,
   stripMonsterPlacements,
   stripToV1Subset,
@@ -38,6 +41,7 @@ describe('parseDungeon', () => {
       ref: 'dnd5e:monsters:skeleton-captain',
       at: [5, 5],
       facing: null,
+      targeting: null,
     });
     // 3 in antechamber's place: list, matching the source file exactly.
     expect(doc.rooms[0].place).toHaveLength(3);
@@ -125,6 +129,7 @@ describe('stripMonsterPlacements / buildWalkItYaml (Walk it, rpg-dnd5e-web#667)'
       ref: 'dnd5e:monsters:skeleton-captain',
       at: [5, 5],
       facing: null,
+      targeting: null,
     });
   });
 
@@ -140,6 +145,7 @@ describe('stripMonsterPlacements / buildWalkItYaml (Walk it, rpg-dnd5e-web#667)'
       ref: 'dnd5e:monsters:skeleton-captain',
       at: [5, 5],
       facing: null,
+      targeting: null,
     });
 
     // The input text itself is untouched — buildWalkItYaml parses its own
@@ -246,6 +252,10 @@ describe('v2 target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
     expect(doc.end).toBeNull();
     expect(doc.lighting).toBeNull();
     expect(doc.rooms[0].place[0].facing).toBeNull();
+    expect(doc.rooms[0].place[0].mount).toBe('floor');
+    expect(doc.rooms[0].place[0].height).toBeNull();
+    expect(doc.rooms[0].place[0].targeting).toBeNull();
+    expect(doc.rooms[2].boss?.targeting).toBeNull();
   });
 
   it('toggleWall adds a solid wall, then removes it on a second toggle', () => {
@@ -330,6 +340,39 @@ describe('v2 target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
     expect(toDungeonDoc(cst).rooms[0].place[0].facing).toBeNull();
   });
 
+  it('setPlacementMount writes mount+height together, clears both together', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setPlacementMount(cst, 'antechamber', 0, 'wall', 2.0);
+    const placed = toDungeonDoc(cst).rooms[0].place[0];
+    expect(placed.mount).toBe('wall');
+    expect(placed.height).toBe(2.0);
+    expect(serializeDungeon(cst)).toContain('mount: wall');
+    expect(serializeDungeon(cst)).toContain('height: 2');
+
+    setPlacementMount(cst, 'antechamber', 0, 'floor', null);
+    const cleared = toDungeonDoc(cst).rooms[0].place[0];
+    expect(cleared.mount).toBe('floor');
+    expect(cleared.height).toBeNull();
+    // `mount:` only ever appears on a wall-mounted placement — a clean
+    // string check. `height:` also names the dungeon's own top-level
+    // field (room-chain height), so that assertion is covered by
+    // `cleared.height` above instead of a substring search here.
+    expect(serializeDungeon(cst)).not.toContain('mount:');
+  });
+
+  it('setPlacementTargeting / setBossTargeting write/clear a targeting: key', () => {
+    const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+    setPlacementTargeting(cst, 'antechamber', 0, 'lowest-health');
+    expect(toDungeonDoc(cst).rooms[0].place[0].targeting).toBe('lowest-health');
+
+    const bossRoomId = doc.rooms[2].id;
+    setBossTargeting(cst, bossRoomId, 'closest');
+    expect(toDungeonDoc(cst).rooms[2].boss?.targeting).toBe('closest');
+
+    setPlacementTargeting(cst, 'antechamber', 0, null);
+    expect(toDungeonDoc(cst).rooms[0].place[0].targeting).toBeNull();
+  });
+
   describe('stripToV1Subset', () => {
     it('is a no-op (besides key/dropped) on an already-pure-v1 document', () => {
       const result = stripToV1Subset(SHOWCASE_YAML);
@@ -341,7 +384,7 @@ describe('v2 target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
     });
 
     it('drops every v2 construct and reports what it dropped', () => {
-      const { cst } = parseDungeon(SHOWCASE_YAML);
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
       toggleWall(cst, 7, 0);
       toggleWall(cst, 7, 4);
       toggleHole(cst, 3, 6);
@@ -349,6 +392,9 @@ describe('v2 target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
       setEnd(cst, [19, 25]);
       setLightingAmbient(cst, 0.8);
       setPlacementFacing(cst, 'antechamber', 0, 2);
+      setPlacementMount(cst, 'antechamber', 0, 'wall', 2.0);
+      setPlacementTargeting(cst, 'antechamber', 0, 'lowest-health');
+      setBossTargeting(cst, doc.rooms[2].id, 'closest');
 
       const result = stripToV1Subset(serializeDungeon(cst));
       expect(result.dropped).toEqual([
@@ -357,19 +403,25 @@ describe('v2 target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
         'start/end',
         'lighting',
         'facing (1 placement)',
+        'wall-mount (1 placement)',
+        'targeting (2 placements)',
       ]);
       expect(result.compilable).toBe(true);
 
-      const { doc } = parseDungeon(result.yaml);
-      expect(doc.version).toBe(1);
-      expect(doc.walls).toEqual([]);
-      expect(doc.holes).toEqual([]);
-      expect(doc.start).toBeNull();
-      expect(doc.end).toBeNull();
-      expect(doc.lighting).toBeNull();
-      expect(doc.rooms[0].place[0].facing).toBeNull();
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.version).toBe(1);
+      expect(stripped.walls).toEqual([]);
+      expect(stripped.holes).toEqual([]);
+      expect(stripped.start).toBeNull();
+      expect(stripped.end).toBeNull();
+      expect(stripped.lighting).toBeNull();
+      expect(stripped.rooms[0].place[0].facing).toBeNull();
+      expect(stripped.rooms[0].place[0].mount).toBe('floor');
+      expect(stripped.rooms[0].place[0].height).toBeNull();
+      expect(stripped.rooms[0].place[0].targeting).toBeNull();
+      expect(stripped.rooms[2].boss?.targeting).toBeNull();
       // Real v1 content untouched.
-      expect(doc.rooms.map((r) => r.id)).toEqual([
+      expect(stripped.rooms.map((r) => r.id)).toEqual([
         'antechamber',
         'shrine',
         'vault',

@@ -47,6 +47,25 @@ function facingLabel(facing: number): string {
   return HEX_FACING_LABELS[((facing % 6) + 6) % 6];
 }
 
+function parseMount(raw: unknown): Mount {
+  return raw === 'wall' ? 'wall' : 'floor';
+}
+
+function parseHeight(raw: unknown): number | null {
+  return typeof raw === 'number' ? raw : null;
+}
+
+function parseTargeting(raw: unknown): string | null {
+  return typeof raw === 'string' ? raw : null;
+}
+
+/** v2, proposed — see TARGET-YAML.md's "z-axis: mount + height" section.
+ * `'floor'` (the default — every placement before this field existed)
+ * means "unchanged, stands on the floor"; `'wall'` means this placement
+ * hangs on the wall at its cell's `facing` edge, `heightMeters` above
+ * the floor. Not compiled server-side. */
+export type Mount = 'floor' | 'wall';
+
 export interface PlacementDoc {
   ref: string;
   at: [number, number];
@@ -61,6 +80,19 @@ export interface PlacementDoc {
    * `null` = unset. Not compiled server-side; stripped by
    * `stripToV1Subset` before any real PutDungeon call. */
   facing: number | null;
+  /** v2, proposed — see `Mount`'s doc comment. `'floor'` when the YAML
+   * has no `mount:` key (the pre-existing, only-ever-possible state). */
+  mount: Mount;
+  /** v2, proposed — meaningful only when `mount === 'wall'`, meters
+   * above the floor. `null` when unset (including every `mount:
+   * 'floor'` placement — a floor prop's vertical position is derived
+   * from its own model, not authored). */
+  height: number | null;
+  /** v2, proposed — see TARGET-YAML.md's "Monster targeting" section. A
+   * REFERENCE to a toolkit AI strategy key, e.g. `"lowest-health"` —
+   * never behavior (Boundary Rule). Only meaningful when `isMonster`;
+   * `null` when unset. Not compiled server-side. */
+  targeting: string | null;
 }
 
 export interface BossDoc {
@@ -68,6 +100,9 @@ export interface BossDoc {
   at: [number, number];
   /** v2, proposed — see `PlacementDoc.facing`. */
   facing: number | null;
+  /** v2, proposed — see `PlacementDoc.targeting`. A boss is always a
+   * monster, so this is unconditional (no `isMonster` gate needed). */
+  targeting: string | null;
 }
 
 export interface ObstacleDoc {
@@ -223,6 +258,9 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
             blocksLos: p.blocks_los === true,
             isMonster: p.ref.startsWith('dnd5e:monsters:'),
             facing: parseFacing(p.facing),
+            mount: parseMount(p.mount),
+            height: parseHeight(p.height),
+            targeting: parseTargeting(p.targeting),
           };
         })
       : [];
@@ -233,6 +271,7 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
             ref: b.ref as string,
             at: b.at as [number, number],
             facing: parseFacing(b.facing),
+            targeting: parseTargeting(b.targeting),
           };
         })()
       : null;
@@ -572,6 +611,66 @@ export function setBossFacing(
   else boss.set('facing', facingLabel(facing));
 }
 
+/** Set a `place:` entry's `mount:`/`height:` — v2, proposed, see
+ * TARGET-YAML.md's "z-axis" section. `mount: 'floor'` clears BOTH keys
+ * (the pre-existing, only-ever-possible state needs neither); `mount:
+ * 'wall'` writes both — `height` is only ever meaningful alongside
+ * `mount: wall`, so the two are set/cleared together rather than as two
+ * independent mutators a caller could desync. */
+export function setPlacementMount(
+  cst: Document,
+  roomId: string,
+  index: number,
+  mount: Mount,
+  height: number | null
+): void {
+  const room = roomMap(cst, roomId);
+  const place = room.get('place', true);
+  if (!isSeq(place)) return;
+  const item = (place as YAMLSeq).items[index];
+  if (!isMap(item)) return;
+  if (mount === 'floor') {
+    item.delete('mount');
+    item.delete('height');
+    return;
+  }
+  item.set('mount', 'wall');
+  if (height === null) item.delete('height');
+  else item.set('height', height);
+}
+
+/** Set or clear a `place:` entry's `targeting:` — v2, proposed. Callers
+ * should only invoke this for a monster ref (`isMonster`); nothing here
+ * enforces that — same trust boundary `setPlacementFlags` already
+ * assumes for its own props-only fields. */
+export function setPlacementTargeting(
+  cst: Document,
+  roomId: string,
+  index: number,
+  targeting: string | null
+): void {
+  const room = roomMap(cst, roomId);
+  const place = room.get('place', true);
+  if (!isSeq(place)) return;
+  const item = (place as YAMLSeq).items[index];
+  if (!isMap(item)) return;
+  if (targeting === null) item.delete('targeting');
+  else item.set('targeting', targeting);
+}
+
+/** Set or clear a room's `boss:` entry's `targeting:` — v2, proposed. */
+export function setBossTargeting(
+  cst: Document,
+  roomId: string,
+  targeting: string | null
+): void {
+  const room = roomMap(cst, roomId);
+  const boss = room.get('boss', true);
+  if (!isMap(boss)) return;
+  if (targeting === null) boss.delete('targeting');
+  else boss.set('targeting', targeting);
+}
+
 /** Get-or-create a top-level sequence field (`walls:`/`holes:`), matching
  * `roomMap`'s "get or create, mutate the live node" discipline. */
 function topSeq(cst: Document, key: string): YAMLSeq {
@@ -782,6 +881,25 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
   cst.delete('lighting');
 
   let facingCount = 0;
+  let mountCount = 0;
+  let targetingCount = 0;
+  const stripPlacementFields = (item: YAMLMap) => {
+    if (item.has('facing')) {
+      item.delete('facing');
+      facingCount++;
+    }
+    // mount/height are one concept (see setPlacementMount's doc comment)
+    // — counted together, stripped together.
+    if (item.has('mount') || item.has('height')) {
+      item.delete('mount');
+      item.delete('height');
+      mountCount++;
+    }
+    if (item.has('targeting')) {
+      item.delete('targeting');
+      targetingCount++;
+    }
+  };
   const rooms = cst.get('rooms');
   if (isSeq(rooms)) {
     for (const room of rooms.items) {
@@ -789,22 +907,26 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
       const place = room.get('place', true);
       if (isSeq(place)) {
         for (const item of place.items) {
-          if (isMap(item) && item.has('facing')) {
-            item.delete('facing');
-            facingCount++;
-          }
+          if (isMap(item)) stripPlacementFields(item);
         }
       }
       const boss = room.get('boss', true);
-      if (isMap(boss) && boss.has('facing')) {
-        boss.delete('facing');
-        facingCount++;
-      }
+      if (isMap(boss)) stripPlacementFields(boss);
     }
   }
   if (facingCount > 0) {
     dropped.push(
       `facing (${facingCount} placement${facingCount === 1 ? '' : 's'})`
+    );
+  }
+  if (mountCount > 0) {
+    dropped.push(
+      `wall-mount (${mountCount} placement${mountCount === 1 ? '' : 's'})`
+    );
+  }
+  if (targetingCount > 0) {
+    dropped.push(
+      `targeting (${targetingCount} placement${targetingCount === 1 ? '' : 's'})`
     );
   }
 
