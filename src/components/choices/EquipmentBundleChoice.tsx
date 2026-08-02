@@ -12,6 +12,7 @@ import { useCallback, useState } from 'react';
 import { useListEquipmentByType } from '../../api/hooks';
 import { useEquipmentBundleSelection } from '../../hooks/useEquipmentBundleSelection';
 import { EquipmentCard } from '../equipment/EquipmentCard';
+import { EquipmentCategoryDropdown } from '../equipment/EquipmentCategoryDropdown';
 
 interface EquipmentBundleChoiceProps {
   choice: Choice;
@@ -78,7 +79,12 @@ function CategorySelector({
   // Fetch equipment - always enabled since we're not using expand/collapse
   const types = equipmentTypes();
   const primaryType = types[0] || EquipmentType.UNSPECIFIED;
-  const { data: equipment } = useListEquipmentByType({
+  const {
+    data: equipment,
+    loading: equipmentLoading,
+    error: equipmentError,
+    refetch: refetchEquipment,
+  } = useListEquipmentByType({
     equipmentType: primaryType,
     enabled: types.length > 0,
   });
@@ -107,18 +113,6 @@ function CategorySelector({
     return new Set(selectedIds).size !== selectedIds.length;
   })();
 
-  const selectStyle = {
-    width: '100%',
-    padding: '8px 12px',
-    backgroundColor: 'var(--bg-secondary)',
-    border: '1px solid var(--border-primary)',
-    borderRadius: '4px',
-    color: 'var(--text-primary)',
-    fontSize: '13px',
-    cursor: 'pointer',
-    outline: 'none',
-  };
-
   return (
     <div style={{ marginTop: '8px' }}>
       <label
@@ -137,24 +131,26 @@ function CategorySelector({
           const selectedItem = selectedBySlot[slotIndex]
             ? equipment?.find((e) => e.id === selectedBySlot[slotIndex])
             : undefined;
+          const slotLabel =
+            chooseCount > 1
+              ? `${category.label || 'equipment'} — item ${slotIndex + 1}`
+              : category.label || 'Choose item';
 
           return (
             <div key={slotIndex}>
-              <select
-                value={selectedBySlot[slotIndex] || ''}
-                onChange={(e) => handleSlotChange(slotIndex, e.target.value)}
-                style={selectStyle}
-              >
-                <option value="">
-                  -- Select {chooseCount > 1 ? `item ${slotIndex + 1}` : 'item'}{' '}
-                  --
-                </option>
-                {equipment?.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+              <EquipmentCategoryDropdown
+                id={`equipment-category-${categoryIndex}-slot-${slotIndex}`}
+                ariaLabel={slotLabel}
+                placeholder={`-- Select ${
+                  chooseCount > 1 ? `item ${slotIndex + 1}` : 'item'
+                } --`}
+                options={equipment ?? []}
+                selectedId={selectedBySlot[slotIndex]}
+                onChange={(value) => handleSlotChange(slotIndex, value)}
+                isLoading={equipmentLoading}
+                error={equipmentError}
+                onRetry={() => refetchEquipment()}
+              />
               {selectedItem && (
                 <div style={{ marginTop: '6px' }}>
                   <EquipmentCard equipment={selectedItem} compact />

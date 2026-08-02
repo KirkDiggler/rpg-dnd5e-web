@@ -4,7 +4,6 @@ import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
 import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
-import { EquipmentCategoryPickerConcept } from './equipment-category-picker/EquipmentCategoryPickerConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
 import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
 import { JustRollConcept } from './just-roll/JustRollConcept';
@@ -14,7 +13,6 @@ type ConceptPage =
   | 'encounter-dock'
   | 'combat-panel'
   | 'equipment'
-  | 'equipment-category-picker'
   | 'combat-pacing'
   | 'just-roll'
   | 'fog-of-war';
@@ -24,10 +22,6 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'encounter-dock', label: 'Encounter Dock' },
   { id: 'combat-panel', label: 'Combat Panel' },
   { id: 'equipment', label: 'Equipment' },
-  {
-    id: 'equipment-category-picker',
-    label: 'Equipment Category Picker',
-  },
   { id: 'combat-pacing', label: 'Combat Pacing' },
   { id: 'just-roll', label: 'Just Roll' },
   { id: 'fog-of-war', label: 'Fog of War' },
@@ -113,9 +107,6 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'encounter-dock' && <EncounterDockConcept />}
         {activePage === 'combat-panel' && <CombatPanelConcept />}
         {activePage === 'equipment' && <EquipmentConcept />}
-        {activePage === 'equipment-category-picker' && (
-          <EquipmentCategoryPickerConcept />
-        )}
         {activePage === 'combat-pacing' && <CombatPacingConcept />}
         {activePage === 'just-roll' && <JustRollConcept />}
         {activePage === 'fog-of-war' && <FogOfWarConcept />}
