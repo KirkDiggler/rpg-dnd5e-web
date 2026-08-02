@@ -459,16 +459,20 @@ function candidateToFallbackSegment(
     const outerHalfRow = Math.hypot(dx, dz) / 2;
     // Match connectorRunForDoor's exact frame-envelope termination while
     // this column is still represented by individual fallback cells.
-    return {
-      start: {
-        x: center.x - towardDoor.x * outerHalfRow,
-        z: center.z - towardDoor.z * outerHalfRow,
-      },
-      end: {
-        x: doorCenter.x - towardDoor.x * halfFrame,
-        z: doorCenter.z - towardDoor.z * halfFrame,
-      },
+    const outer = {
+      x: center.x - towardDoor.x * outerHalfRow,
+      z: center.z - towardDoor.z * outerHalfRow,
     };
+    const frameEnvelope = {
+      x: doorCenter.x - towardDoor.x * halfFrame,
+      z: doorCenter.z - towardDoor.z * halfFrame,
+    };
+    // Preserve the ordinary increasing-row segment direction on both
+    // sides of the door. It keeps fallback tile orientation identical to
+    // the pre-fix path while changing only the inner endpoint.
+    return row < hexRow(doorAtAdjacentRow.position)
+      ? { start: outer, end: frameEnvelope }
+      : { start: frameEnvelope, end: outer };
   }
   return {
     start: { x: center.x - dx / 2, z: center.z - dz / 2 },

@@ -417,6 +417,37 @@ describe("connectorFallbackSegments (W3 fallback restyle: same category-rule can
 
     expect(fallback.end).toEqual(expected);
     expect(resolved.end).toEqual(expected);
+
+    const afterFallback = connectorFallbackSegments(
+      [cellWall(60, 5), ...anchors(0, 7)],
+      regions,
+      [],
+      [door]
+    )[0]!;
+    const afterResolved = computeWallRuns({
+      regions: [
+        { id: 'left', hexes: rows(58, 59) },
+        { id: 'right', hexes: rows(61, 62) },
+      ],
+      doors: [door],
+    }).connectorRuns[0]!.segments[1]!;
+    const afterCandidateCenter = cubeToWorld(cubeAtColRow(60, 5), HEX_SIZE);
+    const afterLength = Math.hypot(
+      afterCandidateCenter.x - doorCenter.x,
+      afterCandidateCenter.z - doorCenter.z
+    );
+    const afterExpected = {
+      x:
+        doorCenter.x +
+        ((afterCandidateCenter.x - doorCenter.x) / afterLength) *
+          (DOOR_FRAME_CALIBRATED_WIDTH / 2),
+      z:
+        doorCenter.z +
+        ((afterCandidateCenter.z - doorCenter.z) / afterLength) *
+          (DOOR_FRAME_CALIBRATED_WIDTH / 2),
+    };
+    expect(afterFallback.start).toEqual(afterExpected);
+    expect(afterResolved.start).toEqual(afterExpected);
   });
 
   it('excludes a BOUNDARY-EDGE candidate one row beyond the true grid (STILL-BLOCKED regression) even though its column matches a known door', () => {
