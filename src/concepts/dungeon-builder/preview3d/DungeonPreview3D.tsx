@@ -29,7 +29,7 @@
  * it was about the compiled `FloorPlan` carrying no wall geometry on the
  * wire, requiring synthetic edge geometry to be invented from nothing.
  * `doc.walls` isn't wire data at all: it's this concept's OWN client-owned
- * v2 authoring surface (edge-native `{from, to, kind}`, already deliberately
+ * target-dialect authoring surface (edge-native `{from, to, kind}`, already deliberately
  * shaped to mirror the real `EncounterService.Space.walls` wire type — see
  * TARGET-YAML.md's annotated example), so the edges already exist, explicit,
  * with nothing to derive. The real game's own wall renderer
@@ -50,9 +50,10 @@
  */
 import { facingDirection } from '@/components/hex-grid/authorGridHelpers';
 import {
+  type CubeCoord,
   cubeToWorld,
   HEX_SIZE,
-  type WorldPos,
+  hexEdgeBetween,
 } from '@/components/hex-grid/hexMath';
 import { resolvePropVariant } from '@/components/hex-grid/propManifest';
 import { PropModel } from '@/components/hex-grid/PropModel';
@@ -92,7 +93,7 @@ interface PlacedMonster {
   monsterRefId: string;
 }
 
-/** `holes` are v2, proposed (TARGET-YAML.md's Structural category, Kirk's
+/** `holes` are target dialect, proposed (TARGET-YAML.md's Structural category, Kirk's
  * 2026-08-02 ask) — absolute [col,row] cells with no floor. Skipping them
  * here is the SAME shape as the existing door-row skip just below (both
  * are "don't generate a tile for this cell"), and it's the honest render
@@ -136,55 +137,86 @@ function worldPosition(
 /** A `facing:` index (0-5, HEX_FACING_LABELS order) to a Three.js Y
  * rotation (radians) — same `atan2(-dz, dx)` convention every other
  * facing-to-rotationY conversion in this codebase uses (hexMath.ts's
- * `hexEdgeMidpoint`, wallRuns.ts's envelope-corner rotation), so a
+ * `hexEdgeBetween`, wallRuns.ts's envelope-corner rotation), so a
  * facing-rotated preview mesh orients the same way the real game's own
- * facing-aware renderers would. `mount: wall` placements use this as a
- * cheap "point toward the wall this hangs on" first cut — TARGET-YAML.md's
- * own annotated example already treats `facing` as which edge a
- * wall-mounted prop hangs on, so pointing the model that direction is a
- * reasonable reading, not an invented meaning. */
+ * facing-aware renderers would. Floor-standing props only — a
+ * `mount: wall` placement uses `wallMountRotationY` below instead, which
+ * squares the model flush against its actual wall edge rather than just
+ * pointing toward it. */
 function facingToRotationY(facing: number): number {
   const dir = facingDirection(facing);
   const world = cubeToWorld(dir, 1);
   return Math.atan2(-world.z, world.x);
 }
 
-/** `doc.walls[].from`/`.to` are already ABSOLUTE [col,row] cells
- * (dungeonYaml.ts's own `WallDoc` doc comment — same space `doc.start`/
- * `doc.end`/`doc.holes` already use, no room `startColumn` to add, unlike
- * room-scoped `place.at`). A wall segment sits ON the shared edge between
- * two orthogonally-adjacent cells: for any regular hex tiling, that
- * edge's own midpoint coincides with the midpoint between the two cells'
- * centers (a real geometric property, not an approximation), so `mid`
- * below is exact. The edge's own LENGTH axis, though, is PERPENDICULAR to
- * the cell-center-to-cell-center line (the two cells sit on either side
- * of the wall, not along it) — rotating that direction 90 degrees gives
- * the wall's own run direction, same `atan2(-dz, dx)` convention every
- * other facing/rotation computation in this codebase uses. A regular
- * hexagon's edge length equals its own circumradius (HEX_SIZE) exactly —
- * no separate "apothem"/"edge length" constant to look up, this is just
- * the math. */
+/** The edge geometry between two adjacent hex cells — position + rotation
+ * both come from `hexMath.ts`'s `hexEdgeBetween`, the SAME function every
+ * other edge-aligned Synty piece in the real game uses (envelope walls,
+ * connectors). This file used to hand-derive an equivalent rotation by
+ * rotating the cell-center-to-cell-center line 90° — geometrically valid
+ * (that line IS perpendicular to the shared edge for any regular hex
+ * tiling) but a DIFFERENT perpendicular than `hexEdgeBetween`'s own
+ * corner-pair-derived one, off by a constant 180° from the rest of the
+ * codebase's convention. Invisible on a symmetric wall box (a box looks
+ * identical rotated 180°), but wrong for any future asymmetric wall piece
+ * (a tiled/mitered `WallRunMesh`-style GLB) and inconsistent with every
+ * other edge-aligned piece — worth fixing now rather than carrying the
+ * drift forward. Kirk, 2026-08-02, after seeing this live: walls read as
+ * misaligned; verified against `hexEdgeBetween` directly rather than
+ * guessing at the fix. */
+function edgeBetweenCells(
+  colA: number,
+  rowA: number,
+  colB: number,
+  rowB: number
+) {
+  return hexEdgeBetween(
+    cubeAtColRow(colA, rowA),
+    cubeAtColRow(colB, rowB),
+    HEX_SIZE
+  );
+}
+
 function wallBoxTransform(wall: WallDoc): {
   position: [number, number, number];
   rotationY: number;
 } {
-  const worldA = cubeToWorld(
-    cubeAtColRow(wall.from[0], wall.from[1]),
-    HEX_SIZE
+  const edge = edgeBetweenCells(
+    wall.from[0],
+    wall.from[1],
+    wall.to[0],
+    wall.to[1]
   );
-  const worldB = cubeToWorld(cubeAtColRow(wall.to[0], wall.to[1]), HEX_SIZE);
-  const mid: WorldPos = {
-    x: (worldA.x + worldB.x) / 2,
-    z: (worldA.z + worldB.z) / 2,
+  return {
+    position: [edge.mid.x, WALL_HEIGHT / 2, edge.mid.z],
+    rotationY: edge.rotationY,
   };
-  const dx = worldB.x - worldA.x;
-  const dz = worldB.z - worldA.z;
-  const centerDist = Math.hypot(dx, dz) || 1;
-  // Perpendicular to the cell-center direction — the wall's own run axis.
-  const wallDirX = -dz / centerDist;
-  const wallDirZ = dx / centerDist;
-  const rotationY = Math.atan2(-wallDirZ, wallDirX);
-  return { position: [mid.x, WALL_HEIGHT / 2, mid.z], rotationY };
+}
+
+/** A wall-mounted prop's rotation: flush against the wall face it hangs
+ * on, squared to that edge — the same `hexEdgeBetween` convention
+ * `wallBoxTransform` above uses, not `facingToRotationY`'s "point toward
+ * the wall" approximation (which orients the model's local +X straight
+ * OUT through the wall, perpendicular to the face it's supposedly
+ * mounted flush against — the actual bug behind Kirk's "banner renders
+ * slightly angled" report). `facing` names which of the cell's 6 edges
+ * the prop mounts on (TARGET-YAML.md's z-axis section); the neighbor
+ * cell in that direction, fed through the same edge function every wall
+ * uses, gives the correct flush-against-the-face rotation for free —
+ * one convention, not two. */
+function wallMountRotationY(
+  absCol: number,
+  row: number,
+  facing: number
+): number {
+  const here = cubeAtColRow(absCol, row);
+  const dir = facingDirection(facing);
+  const there: CubeCoord = {
+    x: here.x + dir.x,
+    y: here.y + dir.y,
+    z: here.z + dir.z,
+  };
+  return hexEdgeBetween(here, there, HEX_SIZE).rotationY;
 }
 
 function buildWalls(walls: readonly WallDoc[]): PlacedWall[] {
@@ -212,18 +244,23 @@ function buildPlacements(
 
     for (const p of room.place) {
       const absCol = fpRoom.startColumn + p.at[0];
-      // v2, proposed (TARGET-YAML.md's "z-axis: mount + height" section) —
-      // mount: 'wall' placements render at their authored height instead
-      // of the floor plane, facing the direction they're mounted on (a
-      // plain Y offset + facing-driven rotation, not a true snap to the
-      // wall edge's own geometry — "iterate fidelity later" per Kirk's
-      // own framing, see CONTRACT.md's "visible-first" round).
+      // Target dialect, proposed (TARGET-YAML.md's "z-axis: mount +
+      // height" section) — mount: 'wall' placements render at their
+      // authored height instead of the floor plane, rotated flush
+      // against the wall edge they hang on via `wallMountRotationY` (the
+      // same `hexEdgeBetween` convention `wallBoxTransform` uses, not a
+      // floor prop's `facingToRotationY`).
       const position = worldPosition(
         absCol,
         p.at[1],
         p.mount === 'wall' ? (p.height ?? 0) : 0
       );
-      const rotationY = p.facing !== null ? facingToRotationY(p.facing) : 0;
+      const rotationY =
+        p.facing === null
+          ? 0
+          : p.mount === 'wall'
+            ? wallMountRotationY(absCol, p.at[1], p.facing)
+            : facingToRotationY(p.facing);
       const key = `${room.id}:${p.at[0]},${p.at[1]}:${p.ref}`;
       if (p.isMonster) {
         const monsterRefId = p.ref.split(':').pop();
@@ -252,7 +289,7 @@ function buildPlacements(
 
 // Crude box-per-edge placeholder (this file's own doc comment) — NOT the
 // real game's tiled/mitered `WallRunMesh`. Solid vs. door reuses the
-// EXACT colors the 2D board's own v2 structural overlay already uses for
+// EXACT colors the 2D board's own target-dialect structural overlay already uses for
 // the same distinction (Board.tsx/CreationBoard.tsx: '#e8e2d8' solid,
 // '#ffb347' door) — one visual language for "this is a drawn wall" across
 // both previews, same principle the hole rendering already established.

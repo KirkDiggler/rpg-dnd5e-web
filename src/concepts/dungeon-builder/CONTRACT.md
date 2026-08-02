@@ -1668,18 +1668,24 @@ renderer instead (`DungeonPreview3D.tsx`'s new `WallBox`/
 `atan2` hex-math conventions — "a crude wall that RENDERS today beats a
 faithful one next week."
 
-A wall's world midpoint is the exact geometric midpoint between its two
-adjacent hex cell centers (a real property of regular hex tilings, not
-an approximation); the wall's length axis is perpendicular to the
-cell-center-to-cell-center line. Doors render shorter
+**Original approach (superseded same day — see "Wall/banner alignment
+fix" below):** a wall's world midpoint is the exact geometric midpoint
+between its two adjacent hex cell centers (a real property of regular
+hex tilings, not an approximation); `wallBoxTransform` computed the
+wall's length axis by rotating the cell-center-to-cell-center line 90°.
+Geometrically valid but not the codebase's own edge-rotation convention
+— see the fix below for why that mattered. Doors render shorter
 (`WALL_DOOR_HEIGHT_RATIO = 0.55`) and orange (`#ffb347`); solid walls
 render full `WALL_HEIGHT` and cream (`#e8e2d8`) — the same convention
-the 2D board's target-dialect overlay already used, now shared across every view.
+the 2D board's target-dialect overlay already used, now shared across
+every view. This part is unaffected by the fix below (colors/heights,
+not rotation).
 
 Wall-mounted props (`mount: 'wall'`) now render at `Y = height` (the
-authored target-dialect field, meters) instead of the floor plane, with `facing`
-driving `rotationY` via the same `facingToRotationY`/`cubeToWorld`
-convention used throughout the codebase.
+authored target-dialect field, meters) instead of the floor plane; the
+`facing`-driven rotation approach described here originally (pointing
+the model outward via `facingToRotationY`) was also superseded same day
+— see below.
 
 Evidence: `docs/evidence/dungeon-builder-walls-doors-3d.png`,
 `docs/evidence/dungeon-builder-wallmount-3d-height.png`.
@@ -1799,3 +1805,68 @@ Verified live: hovering the badge surfaces the full verbatim tooltip
 text; Wall/Door still show the generic "dialect" badge (2 total),
 confirming the new badge type doesn't leak onto rows it shouldn't.
 Evidence: `docs/evidence/dungeon-builder-hole-exploration-badge.png`.
+
+## Wall/banner 3D alignment fix, 2026-08-02
+
+Kirk pop-in feedback, watching the walls/doors/wall-mount 3D landing
+directly: wall boxes read as misaligned (perpendicular to the seam
+rather than lying along it), and the wall-mounted banner rendered at a
+slight angle instead of flush against its wall. High priority — "these
+are the exact things he's watching."
+
+**Investigated before touching code.** A dispatched research pass
+compared `wallBoxTransform`'s hand-derived rotation against
+`hexMath.ts`'s `hexEdgeBetween` — the function every OTHER edge-aligned
+piece in the real game (envelope walls, connectors) uses for this exact
+problem. Finding: `wallBoxTransform`'s rotation was NOT actually
+perpendicular — the geometric claim it was built on (cell-center line ⊥
+shared edge, true for any regular hex tiling) held, and its long axis
+WAS parallel to the real edge. It was off by a constant 180° from
+`hexEdgeBetween`'s own convention instead — invisible on a symmetric box
+(a box looks identical rotated 180°), which is why independent math
+review kept confirming "this should render fine" against a screenshot
+that looked wrong. The 180° drift would matter the moment an asymmetric
+wall piece (a future tiled/mitered GLB) replaced the symmetric box, and
+was already inconsistent with the one-convention-everywhere principle
+this file names repeatedly. Kirk's own report likely predated the
+bed593c walls landing in the first place (his message referenced
+"perpendicular," which the live page — post-landing, pre-fix — did not
+actually show when re-examined; the ambiguity was real enough that
+guessing at a fix without the `hexEdgeBetween` comparison would have
+been the wrong move either way).
+
+**Fix**: `wallBoxTransform` now calls `hexEdgeBetween(cubeAtColRow(...),
+cubeAtColRow(...), HEX_SIZE)` directly and uses its `mid`/`rotationY`,
+replacing the hand-derived perpendicular math entirely — one shared
+convention, not two independently-arrived-at equivalent ones. New
+`wallMountRotationY(absCol, row, facing)` does the same for wall-mounted
+props: resolves the neighbor cell in the `facing` direction, then feeds
+BOTH cells through the identical `hexEdgeBetween` call `wallBoxTransform`
+uses, giving a rotation that's genuinely flush against the wall face
+(local +X runs along the edge) rather than `facingToRotationY`'s old
+behavior of pointing the model's axis straight OUT through the wall,
+perpendicular to the face — the actual mechanism behind "renders
+slightly angled." `facingToRotationY` itself is unchanged and still used
+for floor-standing props' facing, which was never wrong.
+
+**Verified live**, not just re-read the math: authored an isolated
+5-segment wall run (4 solid + 1 door) across a straight line of columns
+via the YAML pane's existing "Apply YAML → Board" flow, deliberately
+choosing a run longer and more isolated than showcase.yaml's own
+scattered walls — a single clean diagonal line of aligned boxes is far
+easier to judge than one small box lost among clutter. Screenshot
+confirms one continuous, correctly-aligned line, matching the room's own
+floor-tile boundary direction. Separately authored a `mount: wall` +
+`facing` override on an existing wall-banner placement and confirmed the
+banner now sits attached flush against its floor edge rather than
+floating tilted above the void, as it did before the fix. Both via a
+fresh isolated test case, not by re-eyeballing the original ambiguous
+screenshots. Evidence:
+`docs/evidence/dungeon-builder-3d-wall-alignment-fixed.png`,
+`docs/evidence/dungeon-builder-3d-wallmount-flush-fixed.png`.
+
+Also recorded per this same feedback (not built): CONTRACT.md's "must
+retain" list item 5 (3D-mode editing requirement for the eventual real
+editor) and TARGET-YAML.md's open question on whether 6-direction hex
+facing is too coarse for wall-mounted props — both landed in the earlier
+terminology-sweep commit (800cacc), before this fix.
