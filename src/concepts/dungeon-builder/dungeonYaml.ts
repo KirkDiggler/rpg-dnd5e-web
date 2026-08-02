@@ -26,6 +26,7 @@
  * unpadded-bracket styling at once; a production implementation would need
  * a custom per-node stringifier to close this last gap.
  */
+import { HEX_FACING_LABELS } from '@/components/hex-grid/authorGridHelpers';
 import {
   Document,
   isMap,
@@ -35,6 +36,16 @@ import {
   YAMLMap,
   YAMLSeq,
 } from 'yaml';
+
+function parseFacing(raw: unknown): number | null {
+  if (typeof raw !== 'string') return null;
+  const idx = (HEX_FACING_LABELS as readonly string[]).indexOf(raw);
+  return idx === -1 ? null : idx;
+}
+
+function facingLabel(facing: number): string {
+  return HEX_FACING_LABELS[((facing % 6) + 6) % 6];
+}
 
 export interface PlacementDoc {
   ref: string;
@@ -46,11 +57,17 @@ export interface PlacementDoc {
    * see `fixtures.ts`'s `MONSTER_PLACE_CHECK` evidence), so the board
    * gates those controls by ref type. */
   isMonster: boolean;
+  /** v2, proposed — see TARGET-YAML.md's "place:/boss: facing" section.
+   * `null` = unset. Not compiled server-side; stripped by
+   * `stripToV1Subset` before any real PutDungeon call. */
+  facing: number | null;
 }
 
 export interface BossDoc {
   ref: string;
   at: [number, number];
+  /** v2, proposed — see `PlacementDoc.facing`. */
+  facing: number | null;
 }
 
 export interface ObstacleDoc {
@@ -92,6 +109,27 @@ export interface ConnectorDoc {
   locked: LockedDoc | null;
 }
 
+export interface CanvasDoc {
+  width: number;
+  height: number;
+}
+
+/** Edge-native: `from`/`to` are orthogonally-adjacent absolute [col,row]
+ * cells, the wall sits on the shared edge between them. v2, proposed —
+ * see TARGET-YAML.md's annotated example for the full rationale (mirrors
+ * the real `EncounterService.Space.walls` wire type). Not compiled
+ * server-side; stripped by `stripToV1Subset`. */
+export interface WallDoc {
+  from: [number, number];
+  to: [number, number];
+  kind: 'solid' | 'door';
+}
+
+/** v2, proposed — dungeon-wide lighting config. See TARGET-YAML.md. */
+export interface LightingDoc {
+  ambient: number;
+}
+
 export interface DungeonDoc {
   version: number;
   key: string;
@@ -100,6 +138,18 @@ export interface DungeonDoc {
   height: number;
   rooms: RoomDoc[];
   connectors: ConnectorDoc[];
+  // --- v2, proposed — see TARGET-YAML.md. All optional/empty in a pure
+  // v1 document; none of these reach the real PutDungeon (stripToV1Subset
+  // drops every one before any live compile or Save & Play). ---
+  canvas: CanvasDoc | null;
+  walls: WallDoc[];
+  /** Cell-native floor openings — absolute [col,row]. Kirk's 2026-08-02
+   * Structural-category ask. See TARGET-YAML.md's "Structural palette
+   * category" section for render/semantics. */
+  holes: [number, number][];
+  start: [number, number] | null;
+  end: [number, number] | null;
+  lighting: LightingDoc | null;
 }
 
 export interface ParsedDungeon {
@@ -137,9 +187,15 @@ export function parseDungeon(text: string): ParsedDungeon {
  * `doc` without a wasteful serialize+reparse round trip. */
 export function toDungeonDoc(cst: Document): DungeonDoc {
   const raw = cst.toJS() as Record<string, unknown>;
-  if (!Array.isArray(raw.rooms) || raw.rooms.length === 0) {
+  // `rooms: []` is a legitimate v2 draft (TARGET-YAML.md: a from-scratch
+  // canvas with nothing declared yet) — only a MISSING rooms: key at all
+  // is a real shape error. The v1-compilability check (>= dungeonspec's
+  // own minRooms=2) lives in stripToV1Subset, not here — this function's
+  // job is "can this concept's own board render it," not "can the real
+  // server compile it."
+  if (!Array.isArray(raw.rooms)) {
     throw new DungeonParseError(
-      'No rooms parsed — need at least one entry under rooms:'
+      'No rooms: list found (need rooms: [] at minimum)'
     );
   }
   const rooms: RoomDoc[] = raw.rooms.map((r, i) => {
@@ -166,13 +222,18 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
             blocksMovement: p.blocks_movement === true,
             blocksLos: p.blocks_los === true,
             isMonster: p.ref.startsWith('dnd5e:monsters:'),
+            facing: parseFacing(p.facing),
           };
         })
       : [];
     const boss = room.boss
       ? (() => {
           const b = room.boss as Record<string, unknown>;
-          return { ref: b.ref as string, at: b.at as [number, number] };
+          return {
+            ref: b.ref as string,
+            at: b.at as [number, number],
+            facing: parseFacing(b.facing),
+          };
         })()
       : null;
     const obstacles = Array.isArray(room.obstacles)
@@ -206,6 +267,39 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     };
   });
 
+  // --- v2, proposed — all optional, absent in a pure v1 document.
+  // See TARGET-YAML.md; stripToV1Subset drops every one of these below
+  // before anything reaches the real PutDungeon. ---
+  const canvas = raw.canvas
+    ? (() => {
+        const c = raw.canvas as Record<string, unknown>;
+        return { width: c.width as number, height: c.height as number };
+      })()
+    : null;
+
+  const walls: WallDoc[] = Array.isArray(raw.walls)
+    ? (raw.walls as Record<string, unknown>[]).map((w) => ({
+        from: w.from as [number, number],
+        to: w.to as [number, number],
+        kind: w.kind === 'door' ? 'door' : 'solid',
+      }))
+    : [];
+
+  const holes: [number, number][] = Array.isArray(raw.holes)
+    ? (raw.holes as [number, number][]).map(
+        (h) => [h[0], h[1]] as [number, number]
+      )
+    : [];
+
+  const start = Array.isArray(raw.start)
+    ? (raw.start as [number, number])
+    : null;
+  const end = Array.isArray(raw.end) ? (raw.end as [number, number]) : null;
+
+  const lighting = raw.lighting
+    ? { ambient: (raw.lighting as Record<string, unknown>).ambient as number }
+    : null;
+
   return {
     version: (raw.version as number) ?? 1,
     key: raw.key as string,
@@ -214,6 +308,12 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     height: raw.height as number,
     rooms,
     connectors,
+    canvas,
+    walls,
+    holes,
+    start,
+    end,
+    lighting,
   };
 }
 
@@ -434,4 +534,284 @@ export function setConnectorLocked(
   }) as YAMLMap;
   lockedNode.flow = true;
   conn.set('locked', lockedNode);
+}
+
+// ============================================================
+// v2, proposed — see TARGET-YAML.md. Every mutator below writes a field
+// `stripToV1Subset` (bottom of this file) removes before anything reaches
+// the real PutDungeon — these are the concept's own authoring surface,
+// not a claim any of this compiles today.
+// ============================================================
+
+/** Set or clear a `place:` entry's `facing:` — v2, proposed. */
+export function setPlacementFacing(
+  cst: Document,
+  roomId: string,
+  index: number,
+  facing: number | null
+): void {
+  const room = roomMap(cst, roomId);
+  const place = room.get('place', true);
+  if (!isSeq(place)) return;
+  const item = (place as YAMLSeq).items[index];
+  if (!isMap(item)) return;
+  if (facing === null) item.delete('facing');
+  else item.set('facing', facingLabel(facing));
+}
+
+/** Set or clear a room's `boss:` entry's `facing:` — v2, proposed. */
+export function setBossFacing(
+  cst: Document,
+  roomId: string,
+  facing: number | null
+): void {
+  const room = roomMap(cst, roomId);
+  const boss = room.get('boss', true);
+  if (!isMap(boss)) return;
+  if (facing === null) boss.delete('facing');
+  else boss.set('facing', facingLabel(facing));
+}
+
+/** Get-or-create a top-level sequence field (`walls:`/`holes:`), matching
+ * `roomMap`'s "get or create, mutate the live node" discipline. */
+function topSeq(cst: Document, key: string): YAMLSeq {
+  const existing = cst.get(key, true);
+  if (isSeq(existing)) return existing;
+  const seq = new YAMLSeq(cst.schema);
+  cst.set(key, seq);
+  return seq;
+}
+
+function createWallNode(cst: Document, wall: WallDoc): YAMLMap {
+  const node = cst.createNode({
+    from: wall.from,
+    to: wall.to,
+    kind: wall.kind,
+  }) as YAMLMap;
+  node.flow = true;
+  const fromNode = node.get('from', true);
+  if (isSeq(fromNode)) fromNode.flow = true;
+  const toNode = node.get('to', true);
+  if (isSeq(toNode)) toNode.flow = true;
+  return node;
+}
+
+/** A wall's index in `walls:`, matched by its `from` cell — this concept
+ * represents one authored wall as ONE unit anchored at a specific
+ * absolute [col,row] cell (its bottom edge, `to: [col, row+1]`) rather
+ * than requiring a drag gesture to specify an arbitrary edge; see
+ * TARGET-YAML.md's "Structural palette category" section for why a
+ * single click-to-toggle affordance was chosen over full free-hand edge
+ * drawing for this pass. */
+function wallIndexAt(cst: Document, col: number, row: number): number {
+  const walls = cst.get('walls');
+  if (!isSeq(walls)) return -1;
+  return walls.items.findIndex((w) => {
+    if (!isMap(w)) return false;
+    const from = w.get('from');
+    // `.get(0)`/`.get(1)`, not `.items[0]`/`.items[1]` — a sequence built
+    // via `cst.createNode(...)` (createWallNode below) wraps its number
+    // children in `Scalar` nodes; indexing `.items` directly returns
+    // those wrapper objects, which never `===` a raw number. `.get()`
+    // auto-resolves to the JS value, same contract `YAMLMap.get` already
+    // uses everywhere else in this file (see `findRoomSeqIndex`).
+    return isSeq(from) && from.get(0) === col && from.get(1) === row;
+  });
+}
+
+/** Wall tool: toggle a wall's PRESENCE at a cell (add as `kind: solid` /
+ * remove) — v2, proposed. Adding always starts solid; use
+ * `toggleWallKind` to flip an existing one to a door. */
+export function toggleWall(cst: Document, col: number, row: number): void {
+  const idx = wallIndexAt(cst, col, row);
+  if (idx !== -1) {
+    (cst.get('walls') as YAMLSeq).items.splice(idx, 1);
+    return;
+  }
+  const walls = topSeq(cst, 'walls');
+  walls.items.push(
+    createWallNode(cst, { from: [col, row], to: [col, row + 1], kind: 'solid' })
+  );
+}
+
+/** Door tool: flip an EXISTING wall's `kind` between `solid`/`door` — a
+ * no-op if there's no wall at this cell yet (caller should reject/toast
+ * "place a wall here first", matching the Structural category's own
+ * two-tool split in TARGET-YAML.md). Returns whether a wall existed to
+ * toggle, so the caller can distinguish "toggled" from "nothing there". */
+export function toggleWallKind(
+  cst: Document,
+  col: number,
+  row: number
+): boolean {
+  const idx = wallIndexAt(cst, col, row);
+  if (idx === -1) return false;
+  const item = (cst.get('walls') as YAMLSeq).items[idx];
+  if (!isMap(item)) return false;
+  item.set('kind', item.get('kind') === 'door' ? 'solid' : 'door');
+  return true;
+}
+
+/** A hole's index in `holes:`, matched by its [col,row] pair. */
+function holeIndexAt(cst: Document, col: number, row: number): number {
+  const holes = cst.get('holes');
+  if (!isSeq(holes)) return -1;
+  // `.get(0)`/`.get(1)` — see `wallIndexAt`'s doc comment for why
+  // `.items[n]` would compare against an unresolved Scalar wrapper here.
+  // (Not applicable to a hole created by `toggleHole` itself, which
+  // assigns `.items` directly with raw numbers, same as `movePlacement`
+  // — but IS applicable to any hole this concept round-trips through a
+  // fresh `parseDocument`/`createNode` path, so `.get()` is the only
+  // choice that's correct for both origins.)
+  return holes.items.findIndex(
+    (h) => isSeq(h) && h.get(0) === col && h.get(1) === row
+  );
+}
+
+/** Hole tool: toggle a cell-native floor opening — v2, proposed. See
+ * TARGET-YAML.md's "Structural palette category" for render/semantics
+ * (impassable void; fall-damage is a future toolkit game-rule question,
+ * not something this concept decides). */
+export function toggleHole(cst: Document, col: number, row: number): void {
+  const idx = holeIndexAt(cst, col, row);
+  if (idx !== -1) {
+    (cst.get('holes') as YAMLSeq).items.splice(idx, 1);
+    return;
+  }
+  const holes = topSeq(cst, 'holes');
+  const node = new YAMLSeq(cst.schema);
+  node.flow = true;
+  node.items = [col, row];
+  holes.items.push(node);
+}
+
+function setPointField(
+  cst: Document,
+  key: 'start' | 'end',
+  at: [number, number] | null
+): void {
+  if (at === null) {
+    cst.delete(key);
+    return;
+  }
+  const node = new YAMLSeq(cst.schema);
+  node.flow = true;
+  node.items = [...at];
+  cst.set(key, node);
+}
+
+/** Author-placed party spawn — v2, proposed. See TARGET-YAML.md's "start"
+ * section for the real, unresolved tension with the generator-chosen
+ * `FloorPlan.entrance`. */
+export function setStart(cst: Document, at: [number, number] | null): void {
+  setPointField(cst, 'start', at);
+}
+
+/** The goal — v2, proposed, with no analog anywhere in the compiled
+ * `FloorPlan` today. See TARGET-YAML.md's "end" section. */
+export function setEnd(cst: Document, at: [number, number] | null): void {
+  setPointField(cst, 'end', at);
+}
+
+/** Dungeon-wide lighting config — v2, proposed. `ambient: null` removes
+ * the whole `lighting:` block. See TARGET-YAML.md's "lighting" section. */
+export function setLightingAmbient(
+  cst: Document,
+  ambient: number | null
+): void {
+  if (ambient === null) {
+    cst.delete('lighting');
+    return;
+  }
+  const existing = cst.get('lighting', true);
+  if (isMap(existing)) {
+    existing.set('ambient', ambient);
+    return;
+  }
+  const node = cst.createNode({ ambient }) as YAMLMap;
+  cst.set('lighting', node);
+}
+
+export interface V1SubsetResult {
+  /** The stripped, v1-only YAML text — always `version: 1`, never any
+   * v2-only field. */
+  yaml: string;
+  /** Human-readable list of what got dropped ("3 walls", "1 hole",
+   * "start/end", "facing (2 placements)", "lighting") — empty when the
+   * input was already pure v1. Drives the "Save the compilable subset"
+   * diff summary (TARGET-YAML.md). */
+  dropped: string[];
+  /** False when fewer than 2 rooms remain after stripping — dungeonspec's
+   * own `minRooms = 2` (validate.go) makes the result genuinely
+   * unsavable, not merely unenriched. A from-scratch v2 canvas with 0-1
+   * declared rooms has NO compilable subset yet. */
+  compilable: boolean;
+}
+
+/** Strip a v2 document down to exactly what dungeonspec v1 compiles —
+ * TARGET-YAML.md's "The v1-subset strip" table, in code. Parses a FRESH
+ * CST from `yamlText` (never mutates a caller's live board CST), so this
+ * is safe to call on every live-preview debounce tick and every Save &
+ * Play click without disturbing what the author is editing. */
+export function stripToV1Subset(yamlText: string): V1SubsetResult {
+  const { cst, doc } = parseDungeon(yamlText);
+  const dropped: string[] = [];
+
+  cst.set('version', 1);
+  cst.delete('canvas');
+
+  if (doc.walls.length > 0) {
+    dropped.push(
+      `${doc.walls.length} wall${doc.walls.length === 1 ? '' : 's'}`
+    );
+  }
+  cst.delete('walls');
+
+  if (doc.holes.length > 0) {
+    dropped.push(
+      `${doc.holes.length} hole${doc.holes.length === 1 ? '' : 's'}`
+    );
+  }
+  cst.delete('holes');
+
+  if (doc.start || doc.end) dropped.push('start/end');
+  cst.delete('start');
+  cst.delete('end');
+
+  if (doc.lighting) dropped.push('lighting');
+  cst.delete('lighting');
+
+  let facingCount = 0;
+  const rooms = cst.get('rooms');
+  if (isSeq(rooms)) {
+    for (const room of rooms.items) {
+      if (!isMap(room)) continue;
+      const place = room.get('place', true);
+      if (isSeq(place)) {
+        for (const item of place.items) {
+          if (isMap(item) && item.has('facing')) {
+            item.delete('facing');
+            facingCount++;
+          }
+        }
+      }
+      const boss = room.get('boss', true);
+      if (isMap(boss) && boss.has('facing')) {
+        boss.delete('facing');
+        facingCount++;
+      }
+    }
+  }
+  if (facingCount > 0) {
+    dropped.push(
+      `facing (${facingCount} placement${facingCount === 1 ? '' : 's'})`
+    );
+  }
+
+  const strippedDoc = toDungeonDoc(cst);
+  return {
+    yaml: serializeDungeon(cst),
+    dropped,
+    compilable: strippedDoc.rooms.length >= 2,
+  };
 }

@@ -9,9 +9,18 @@ import {
   parseDungeon,
   placeItem,
   serializeDungeon,
+  setBossFacing,
   setConnectorLocked,
+  setEnd,
+  setLightingAmbient,
+  setPlacementFacing,
+  setStart,
   stripMonsterPlacements,
+  stripToV1Subset,
   toDungeonDoc,
+  toggleHole,
+  toggleWall,
+  toggleWallKind,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
 
@@ -28,6 +37,7 @@ describe('parseDungeon', () => {
     expect(doc.rooms[2].boss).toEqual({
       ref: 'dnd5e:monsters:skeleton-captain',
       at: [5, 5],
+      facing: null,
     });
     // 3 in antechamber's place: list, matching the source file exactly.
     expect(doc.rooms[0].place).toHaveLength(3);
@@ -114,6 +124,7 @@ describe('stripMonsterPlacements / buildWalkItYaml (Walk it, rpg-dnd5e-web#667)'
     expect(after.rooms[2].boss).toEqual({
       ref: 'dnd5e:monsters:skeleton-captain',
       at: [5, 5],
+      facing: null,
     });
   });
 
@@ -128,6 +139,7 @@ describe('stripMonsterPlacements / buildWalkItYaml (Walk it, rpg-dnd5e-web#667)'
     expect(doc.rooms[2].boss).toEqual({
       ref: 'dnd5e:monsters:skeleton-captain',
       at: [5, 5],
+      facing: null,
     });
 
     // The input text itself is untouched — buildWalkItYaml parses its own
@@ -221,5 +233,163 @@ describe('board-driven edits', () => {
     // The other 7 pillars remain, but the heading that described all 8 is gone.
     expect(out).not.toContain('# colonnade: 8 pillars');
     expect(out).toContain('dnd5e:props:pillar", at: [ 4, 2 ]');
+  });
+});
+
+describe('v2 target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
+  it('parses a pure v1 document with every v2 field absent/null/empty', () => {
+    const { doc } = parseDungeon(SHOWCASE_YAML);
+    expect(doc.canvas).toBeNull();
+    expect(doc.walls).toEqual([]);
+    expect(doc.holes).toEqual([]);
+    expect(doc.start).toBeNull();
+    expect(doc.end).toBeNull();
+    expect(doc.lighting).toBeNull();
+    expect(doc.rooms[0].place[0].facing).toBeNull();
+  });
+
+  it('toggleWall adds a solid wall, then removes it on a second toggle', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    toggleWall(cst, 7, 0);
+    let doc = toDungeonDoc(cst);
+    expect(doc.walls).toEqual([{ from: [7, 0], to: [7, 1], kind: 'solid' }]);
+    // The `yaml` library pads flow sequences (`[ 7, 0 ]`, not `[7, 0]`) —
+    // this file's own known residual round-trip gap, see its top-of-file
+    // doc comment.
+    expect(serializeDungeon(cst)).toContain(
+      'walls:\n  - { from: [ 7, 0 ], to: [ 7, 1 ], kind: solid }'
+    );
+
+    toggleWall(cst, 7, 0);
+    doc = toDungeonDoc(cst);
+    expect(doc.walls).toEqual([]);
+  });
+
+  it('toggleWallKind flips solid<->door on an existing wall, no-ops with none there', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    expect(toggleWallKind(cst, 3, 3)).toBe(false); // nothing there yet
+    expect(toDungeonDoc(cst).walls).toEqual([]);
+
+    toggleWall(cst, 3, 3);
+    expect(toggleWallKind(cst, 3, 3)).toBe(true);
+    expect(toDungeonDoc(cst).walls[0].kind).toBe('door');
+    toggleWallKind(cst, 3, 3);
+    expect(toDungeonDoc(cst).walls[0].kind).toBe('solid');
+  });
+
+  it('toggleHole adds then removes a hole', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    toggleHole(cst, 3, 6);
+    toggleHole(cst, 3, 7);
+    expect(toDungeonDoc(cst).holes).toEqual([
+      [3, 6],
+      [3, 7],
+    ]);
+    toggleHole(cst, 3, 6);
+    expect(toDungeonDoc(cst).holes).toEqual([[3, 7]]);
+  });
+
+  it('setStart/setEnd write and clear flow-style [c,r] pairs', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setStart(cst, [0, 4]);
+    setEnd(cst, [19, 25]);
+    let doc = toDungeonDoc(cst);
+    expect(doc.start).toEqual([0, 4]);
+    expect(doc.end).toEqual([19, 25]);
+    // Padded flow sequences again — see the toggleWall test's own note.
+    expect(serializeDungeon(cst)).toContain('start: [ 0, 4 ]');
+    expect(serializeDungeon(cst)).toContain('end: [ 19, 25 ]');
+
+    setStart(cst, null);
+    doc = toDungeonDoc(cst);
+    expect(doc.start).toBeNull();
+    expect(doc.end).toEqual([19, 25]); // untouched
+  });
+
+  it('setLightingAmbient writes and clears the lighting: block', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setLightingAmbient(cst, 0.8);
+    expect(toDungeonDoc(cst).lighting).toEqual({ ambient: 0.8 });
+    setLightingAmbient(cst, 0.5);
+    expect(toDungeonDoc(cst).lighting).toEqual({ ambient: 0.5 }); // update in place
+    setLightingAmbient(cst, null);
+    expect(toDungeonDoc(cst).lighting).toBeNull();
+  });
+
+  it('setPlacementFacing / setBossFacing write real HEX_FACING_LABELS strings', () => {
+    const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+    setPlacementFacing(cst, 'antechamber', 0, 5); // index 5 = 'SE'
+    expect(toDungeonDoc(cst).rooms[0].place[0].facing).toBe(5);
+    expect(serializeDungeon(cst)).toContain('facing: SE');
+
+    const bossRoomId = doc.rooms[2].id;
+    setBossFacing(cst, bossRoomId, 3); // index 3 = 'W'
+    expect(toDungeonDoc(cst).rooms[2].boss?.facing).toBe(3);
+
+    setPlacementFacing(cst, 'antechamber', 0, null);
+    expect(toDungeonDoc(cst).rooms[0].place[0].facing).toBeNull();
+  });
+
+  describe('stripToV1Subset', () => {
+    it('is a no-op (besides key/dropped) on an already-pure-v1 document', () => {
+      const result = stripToV1Subset(SHOWCASE_YAML);
+      expect(result.dropped).toEqual([]);
+      expect(result.compilable).toBe(true);
+      const { doc } = parseDungeon(result.yaml);
+      expect(doc.key).toBe('showcase');
+      expect(doc.rooms).toHaveLength(3);
+    });
+
+    it('drops every v2 construct and reports what it dropped', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      toggleWall(cst, 7, 0);
+      toggleWall(cst, 7, 4);
+      toggleHole(cst, 3, 6);
+      setStart(cst, [0, 4]);
+      setEnd(cst, [19, 25]);
+      setLightingAmbient(cst, 0.8);
+      setPlacementFacing(cst, 'antechamber', 0, 2);
+
+      const result = stripToV1Subset(serializeDungeon(cst));
+      expect(result.dropped).toEqual([
+        '2 walls',
+        '1 hole',
+        'start/end',
+        'lighting',
+        'facing (1 placement)',
+      ]);
+      expect(result.compilable).toBe(true);
+
+      const { doc } = parseDungeon(result.yaml);
+      expect(doc.version).toBe(1);
+      expect(doc.walls).toEqual([]);
+      expect(doc.holes).toEqual([]);
+      expect(doc.start).toBeNull();
+      expect(doc.end).toBeNull();
+      expect(doc.lighting).toBeNull();
+      expect(doc.rooms[0].place[0].facing).toBeNull();
+      // Real v1 content untouched.
+      expect(doc.rooms.map((r) => r.id)).toEqual([
+        'antechamber',
+        'shrine',
+        'vault',
+      ]);
+    });
+
+    it('reports not-compilable when fewer than 2 rooms remain', () => {
+      const oneRoom = `
+version: 1
+key: bare
+name: "Bare"
+height: 8
+rooms:
+  - id: only
+    archetype: entrance
+    width: 6
+connectors: []
+`;
+      const result = stripToV1Subset(oneRoom);
+      expect(result.compilable).toBe(false);
+    });
   });
 });
