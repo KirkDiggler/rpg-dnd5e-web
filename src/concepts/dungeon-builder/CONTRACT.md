@@ -1265,3 +1265,179 @@ exist, at which point deleting creation's own Tools strip (not just the
 Hole button added this round) is the natural next cut — named here so
 it isn't rediscovered as a surprise duplication next time someone reads
 both files side by side.
+
+## Kirk's next-day follow-up: the CST unification, actually built
+
+The team lead's next brief asked for the same three items again — z-axis/
+targeting (already shipped, see above), Hole in creation mode (already
+shipped, see above), and the CST unification, this time asking for it
+directly: "take the care it needs." Having already scoped it properly
+the round before (the synthetic-room bridge decision, the size estimate),
+there was a real decision to execute rather than re-derive, so this round
+built it — the one item the two rounds before this deliberately deferred.
+
+### The design executed: option 1 from the prior scoping, confirmed live
+
+The prior round's writeup proposed two options for the one real schema
+gap (every placement mutator requires a `roomId`; a from-scratch canvas
+has no rooms yet) and tentatively recommended the cheaper one. Built as
+recommended:
+
+- **`creation/emptyCanvasDoc.ts`** (new) — `emptyCanvasYaml(width, height)`
+  builds the from-scratch v2 document: `version: 2`, `canvas: {width,
+height}`, and a single synthetic `rooms:` entry (`id: "canvas",
+archetype: "canvas"`) that owns every `place:`/`boss:` entry as the
+  bridge, exactly as scoped. `CANVAS_ROOM_ID` and `DEFAULT_CANVAS` are
+  exported for every creation-mode call site that needs them.
+- **`dungeonYaml.ts` gained one real gap-filler**: `wallKindAtEdge`/
+  `setWallEdge`, a general edge-addressed wall lookup/mutator (arbitrary
+  `from`/`to`, explicit on/off) alongside the EXISTING `toggleWall`/
+  `toggleWallKind` (col,row)-anchored pair edit mode already used —
+  verified by reading `wallIndexAt`'s own doc comment that edit mode's
+  version deliberately represents "one authored wall as ONE unit
+  anchored at a specific absolute [col,row] cell... rather than requiring
+  a drag gesture to specify an arbitrary edge," which is exactly what
+  creation mode's edge-painting stroke needs and edit mode's simpler
+  wall-band click never did. `holes`/`start`/`end` needed no new
+  mutators at all — `toggleHole`/`setStart`/`setEnd` were already
+  general-purpose. Also exported a real `WallKind` type (was an inline
+  literal on `WallDoc.kind`) and added `onSetFacing` to the shared
+  `Inspector` — facing had a real mutator (`setPlacementFacing`/
+  `setBossFacing`) since an earlier round but no board UI anywhere;
+  creation mode's own rotate buttons were the ONLY thing that ever called
+  it. Wiring it into the shared Inspector closes that gap for edit mode
+  too, as a direct consequence of the unification, not a separate ask.
+- **`useBoardEditing`** (new, `DungeonBuilderConcept.tsx`) — the
+  palette/placement selection state and `handlePlace`/`handleMove`/
+  `handleDelete`/`handleSetFlags`/`handleSetMount`/`handleSetTargeting`/
+  `handleSetFacing` handlers, previously defined once inline for edit
+  mode, pulled into one hook and called TWICE — once per mode, each
+  against its own `cst`/`doc`/`syncFromCst` — instead of duplicated.
+  This is also where last round's `handleMove` off-by-one fix lives now;
+  a comment points at the fix's own history rather than re-explaining it,
+  since both modes share the corrected logic by construction.
+- **`CreationBoard.tsx`** rewritten against `DungeonDoc` instead of
+  `CreationState`: `doc.canvas` (grid), `doc.walls`/`doc.holes`/
+  `doc.start`/`doc.end` (all direct, no key-string parsing needed for
+  holes/start/end since those were already `[number,number]`-native;
+  walls gained a small `wallGeometry`/`wallAtEdge` pair since `WallDoc`
+  stores real `from`/`to` cells instead of a parsed edge-key string),
+  and the synthetic room's `place`/`boss` for placements, addressed with
+  the SAME `PlacementSelection` type (`{roomId, index}`) edit mode's
+  `Board.tsx`/`Inspector.tsx` already use — not a bespoke locally-
+  generated `p1`/`p2`/... id scheme anymore.
+- **`CreationConcept.tsx`** rewritten as a much thinner composition root:
+  its own hand-rolled Tools strip and facing/delete mini-panel are BOTH
+  gone, replaced by the shared `Palette` (`showBoardTools` now defaults
+  true for it, per last round's own prediction) and the shared
+  `Inspector` — the exact "second bridge" the prior round named as
+  becoming free once the data model unified, cut in the same round
+  rather than left as yet another follow-up.
+- **`demoScript.ts`/`useDemoScript.ts`** retargeted from the
+  `CreationActions`/`CreationState` shape onto a new `DemoActions`
+  interface (`resetGrid`/`toggleWallEdge`/`setStart`/`setEnd`/`place`/
+  `rotateLastFacing`) built in `DungeonBuilderConcept.tsx` from the SAME
+  mutators a manual click uses — `rotateLastFacing` resolves "the most
+  recently placed item" fresh against the LIVE document each call
+  (the synthetic room's last `place:` entry) rather than a remembered id,
+  since plain array entries don't carry the old scheme's ids.
+- **`ProposedYamlPane.tsx`** stopped being a read-only hand-serialized
+  approximation (`proposedYaml.ts`, deleted) and became a real, editable
+  view of `serializeDungeon(cst)` — the REAL CST's text, round-tripping
+  through the same debounced-reparse pattern edit mode's `YamlPane` uses,
+  just without that pane's server/compile-badge/save chrome (creation
+  mode still makes zero server calls — a real PutDungeon for a freeform
+  canvas needs a dungeonspec extension that doesn't exist yet, unchanged
+  from every prior round's framing). Closes the actual "two proposed-
+  schema renderers" duplication, not just the schema-level unification
+  TARGET-YAML.md already did.
+- **Dead code removed**: `useCreationState.ts` (deleted — zero remaining
+  importers, confirmed by grep before deleting); `creationTypes.ts`
+  trimmed from the full `CreationState` data model down to just the
+  edge-addressing geometry primitives `creationGeometry.ts` still needs
+  (`CreationGrid`, `EdgeKey`, `hEdgeKey`, `vEdgeKey`) — `Placement`,
+  `Tool`, a redundant local `WallKind`, `CellKey`/`cellKey`,
+  `emptyCreationState` are all gone.
+
+### A real crash bug found and fixed while wiring this up, not by inspection
+
+The shared `Palette` offers a "Boss" placement kind (confirmed by reading
+`Palette.tsx` directly), and the shared `handlePlace` routes a boss
+selection to `moveBoss(cst, roomId, at)`. `moveBoss` THROWS
+(`DungeonParseError`) if the target room has no existing `boss:` entry —
+verified by reading its source — because edit mode's real rooms always
+either have one (dungeonspec requires exactly one boss per
+`archetype: boss` room) or the palette's own room-archetype gate in
+`Board.tsx` (`room.archetype !== 'boss'` → reject before ever calling
+`onPlace`) stops the call from happening at all. Creation mode's
+synthetic room is never that archetype and starts with `boss: null` — so
+selecting "Boss" and clicking the canvas would have thrown an uncaught
+exception and crashed the board. Fixed by replicating `Board.tsx`'s own
+guard in `CreationBoard.tsx`'s placement handler: reject with an honest
+message ("this canvas has none yet") before ever reaching `handlePlace`,
+the same pattern edit mode already established, not a new invention.
+Worth naming as the same category of finding as last round's `handleMove`
+off-by-one — caught by actually tracing what a shared-component reuse
+would do, not by a user hitting it first.
+
+### Verified live, every piece — not shipped on typecheck alone
+
+`npx tsc --noEmit` and `eslint` were clean on the first attempt for the
+whole rewrite (a genuinely good sign for how well-typed `dungeonYaml.ts`'s
+existing mutators already were), but this round's own standing rule is
+live verification before claiming done, so:
+
+- Drew a multi-segment wall via click-drag on the shared board — the real
+  `walls:` array grows with the correct `from`/`to`/`kind` shape, and the
+  Palette's own "N× drawn" count updates live.
+- Selected "Door" and clicked precisely on the just-drawn wall's own
+  rendered `<line>` — `kind` flips to `door`. (Two of this round's own
+  Playwright attempts against this failed first, both confirmed as test
+  bugs, not app bugs, before the fix landed: one used a wall's bounding
+  box computed BEFORE selecting the Door tool auto-scrolled the page —
+  stale coordinates; the other clicked 150px below the 1000px test
+  viewport's own bottom edge. Named because a fresh session hitting the
+  same two mistakes would otherwise waste the same hour re-deriving
+  them.)
+- Toggled a hole; `holes:` gained the cell.
+- Placed a pillar prop, then selected its board marker (placing and
+  selecting are separate actions, matching edit mode's own established
+  UX) — the shared Inspector opened, and its facing rotate control
+  (this round's addition) wrote `facing: NE` into the real place: entry.
+- Ran "Play the pitch" to completion (17/17 steps) against the real
+  board: 8 wall segments carving the room, a door partway through, a
+  `start`/`end` pair, a monster placement, and a facing-rotated prop —
+  all landing in the same live document the YAML pane shows, rendering
+  correctly on the actual shared visual language (not a separate
+  demo-only renderer).
+- "New Canvas" correctly wipes `walls:`/`place:` back to the empty
+  template.
+- Confirmed edit mode is untouched by any of this — switching to "Edit:
+  The Shrine Hall" after a full creation-mode session still shows
+  `key: showcase`, unaffected, matching the "remembered per mode"
+  precedent the collapse-state pairs already established.
+
+Evidence: `docs/evidence/dungeon-builder-creation-cst-unification-demo.png`
+(the completed demo run), `docs/evidence/dungeon-builder-creation-shared-inspector.png`
+(the shared Inspector open on a creation-mode placement).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **A real dungeonspec extension for freeform canvases doesn't exist.**
+  Creation mode still makes zero server calls — `ProposedYamlPane`'s
+  "Save & Play" stays disabled, honestly. Unifying the DATA MODEL and
+  UI doesn't change what the server can compile; that's a separate,
+  much larger initiative this round never claimed to start.
+- **Walls don't carve the canvas into real, separately-addressable
+  rooms.** The synthetic `CANVAS_ROOM_ID` room is permanent this round,
+  regardless of how many walls get drawn — exactly the bridge the prior
+  round scoped, not the "branching topology" evolution TARGET-YAML.md's
+  linear-chain section gestures at. That remains real, separate,
+  future work.
+- **`CreationBoard.tsx` is still its own renderer, not `Board.tsx`
+  itself** — a deliberate call from the prior round's scoping (two
+  genuinely different geometries), reconfirmed rather than revisited
+  here.
+- **Discoverability of distant authored content** (the viewBox-grows
+  follow-up from earlier this same day) is unaffected either way by this
+  round's work — still open, still named there, not touched here.
