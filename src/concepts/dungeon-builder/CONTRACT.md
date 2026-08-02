@@ -526,6 +526,34 @@ reusing it here is a separate, real piece of design+implementation work
 spike's timebox could honestly fold in alongside everything else this
 iteration shipped.
 
+**2026-08-02 update — the door-row void is the SAME gap, seen a third
+time.** `DungeonPreview3D`'s floor genuinely just skips `row ===
+floorPlan.doorRow` when building tiles (`buildFloorTiles` in
+`DungeonPreview3D.tsx`) — no wall renders there, so it reads as a plain
+gash of black void cutting across the floor, not a wall with a door in
+it. Kirk saw this live and confirmed it's the same underlying absence
+this file already had two other findings about, not a new, unrelated
+gap: the 2D board answers "where can't I click" by STRIPING the door row
+(the amber hazard pattern, this file's "loud beats subtle" UX learning
+below); the 3D preview answers the same missing-geometry question by
+VOIDING it (no floor tile, so nothing to texture); and the creation
+flow's proposed `walls:` schema (this file's "Proposed schema" section
+above) exists specifically because an author needs to DRAW a door, not
+just view where dungeonspec's `door_row` derivation puts one. Three
+different consumers, three different UI treatments, ALL standing on the
+identical absence: `FloorPlan` has no wall/door edge geometry on the
+wire, only `door_row` (a row index) and `connector.column` (a column
+index) to derive a legality rule from — never an actual wall segment or
+door position a renderer could draw. That convergence is itself the
+strongest argument in this file for growing `FloorPlan` (or a sibling
+message) a real edge-native wall list, ideally the same `Wall{from, to,
+kind}` type `EncounterService.Space` already defines (this file's
+"walls: edge-native, matching a wire type that already exists" finding,
+above) — three independent surfaces hitting the identical gap and
+inventing three independent workarounds is exactly the signal
+CLAUDE.md's proto-versioning section says to listen for, not something
+each consumer should keep quietly working around forever.
+
 **Also not attempted, scope-honest:** click-to-place in 3D (the pane is
 view-only — orbit/zoom, edit via the palette/2D board/YAML same as
 before), lighting/mood parity with the real game's crypt theming
@@ -542,3 +570,139 @@ the one piece that's genuinely a separate body of work — not because
 reuse failed, but because `FloorPlan` has nothing on the wire for a wall
 renderer (real or reused) to consume yet, the same gap this file's
 `FloorPlan` findings already describe for the freeform-canvas case above.
+
+## Kirk's 2026-08-02 iteration: expandable sections, collapsible panels, Walk it, lighting/free-mode follow-ups
+
+"Loving it. top notch" — rotate/drag interaction specifically praised.
+Four more follow-ups, all shipped on the same PR/branch. Evidence:
+`docs/evidence/dungeon-builder-sections-expanded.png`,
+`dungeon-builder-panels-collapsed-max-map.png`,
+`dungeon-builder-panels-remembered-per-mode.png`,
+`dungeon-builder-walk-it-success.png`.
+
+### Palette: from dropdown-read to genuinely expandable sections
+
+Kirk's exact words: "the drop downs could be expandable sections." The
+2026-08-01 palette (this file's earlier section) WAS already an
+accordion — independently toggleable, more than one open at once — but
+its header rendering (an isolated, fully-rounded pill button with a tiny
+far-right ▸/▾) apparently read as a `<select>`-style trigger rather than
+a section that expands in place, not a functional gap. Fixed purely
+visually: header and content now share ONE bordered container (so
+opening a section visibly grows that same box downward instead of
+revealing an unrelated list below a separate button), and the chevron
+moved to the LEFT of the label — the position most accordions/file-trees
+use — with a background tint distinguishing the open state. Worth
+recording as its own finding: an accordion that is functionally correct
+can still read as the wrong control if its visual affordance borrows too
+heavily from a different pattern's conventions (rounded-pill-with-count
+reads as "trigger for a hidden list," not "section that grows").
+
+### Collapsible side panels: state ownership is the actual design decision
+
+Both `Palette`/`YamlPane` (edit mode) and their creation-mode
+equivalents (the Tools+Palette sidebar, `ProposedYamlPane`) collapse to a
+28px labeled strip via a new shared `CollapsibleSidePanel.tsx`, freeing
+their ~250px/420px width back to the board — Kirk's "max map" ask.
+
+The one real design decision here wasn't the visual chrome, it was WHERE
+the collapsed/expanded boolean lives. `Palette`/`YamlPane` themselves
+were deliberately left untouched (no new props) — the wrapper owns
+collapse purely as an outer concern, so wrapping an existing component
+in it can never change that component's own internal behavior. The
+`collapsed` state itself lives in `DungeonBuilderConcept` — NOT inside
+`CreationConcept`, even for creation-mode's own panels — because
+`DungeonBuilderConcept` never unmounts when the edit/create tab flips
+(only the JSX subtree it returns differs), while `CreationConcept` does
+unmount whenever `mode` leaves `'create'`. State kept inside a component
+that unmounts resets on remount; state kept in the parent that never
+unmounts survives a tab switch. This is "remembered per mode," verified
+live: collapsed both edit panels, switched to New Dungeon (rendered
+expanded — a fully independent pair of flags, not a shared one),
+collapsed those too, switched back to Edit, and confirmed edit's panels
+were STILL collapsed rather than reset. A subtler bug caught while
+building this: the wrapper's inner content slot must stay row-direction,
+not column — `Palette`/`YamlPane`'s own root elements set `flex: '0 0
+<width>px'` expecting to be a direct child of a ROW flex container (their
+original, unwrapped position); nesting them inside a COLUMN flex
+container instead would silently reinterpret that same flex-basis value
+as a HEIGHT rather than a width. Caught by reasoning about the CSS before
+it shipped, not by a visual bug — worth flagging since it's exactly the
+kind of thing that looks fine in a quick glance and only breaks once
+content is tall enough to reveal a clipped panel.
+
+### Walk it (no monsters): a real save, honest about the one thing it can't do
+
+A second "Save & Play" action, `<key>-walk`, with monster `place:`
+entries stripped (`dungeonYaml.ts`'s `stripMonsterPlacements`/
+`buildWalkItYaml`, `dungeonYaml.test.ts` covers both). The one constraint
+this task's brief called out by name — `validateBossCardinality`, a
+boss-archetype room must declare a boss — is real and was NOT worked
+around: `stripMonsterPlacements` only ever touches `place:` lists, never
+`boss:`, so a boss-room's boss pin survives into the walk variant
+unchanged. The alternative (rewriting the room's `archetype` away from
+`boss` to dodge the validator) was explicitly ruled out by the brief and
+not attempted here either — that would produce a dungeon whose compiled
+`FloorPlan` no longer matches what the author actually built, a much
+worse dishonesty than a walk mode that still has its boss standing
+there. The UI says so directly: the success panel's `honestyNote` reads
+"Boss remains — real free-roam mode needs server support," and the
+button's own tooltip says the same before the click. See "Free mode"
+below for what closing this gap for real would need.
+
+**Verified past the button's own success claim**, same standard as Save
+& Play: clicked Walk it live against `rpg-api-lab3-authoring` (a fresh
+`walkit-test` base key with a synthetic injected monster placement, since
+showcase.yaml's own `place:` lists are monster-free — only its `boss:`
+uses a monster ref), then confirmed via a direct `ListDungeons` grpcurl
+call that BOTH `walkit-test` and `walkit-test-walk` persisted
+server-side, not just a client-side success banner.
+
+### Proposed: a `lighting:` config block for the dungeon YAML
+
+Kirk's ask: an intensity knob now, full light-source configuration
+later. This sits in the same "proposed, not real" bucket as the creation
+flow's `walls:`/`start:`/`end:`/`facing:` schema above — nothing here is
+implemented, this is a sketch for whoever picks it up. Minimal coherent
+shape, growing in place rather than needing a later breaking change:
+
+```yaml
+lighting:
+  ambient: 0.8 # 0..1, dungeon-wide multiplier — the only knob today
+  # sources:          # P4+: per-source config, once this exists at all
+  #   - ref: dnd5e:props:brazier
+  #     at: [1, 1]
+  #     intensity: 1.0
+  #     radius: 3
+```
+
+Precedent this leans on: the game's rendering stack already has a real,
+shipped instance of exactly this "tuning dial that starts as a query
+param and could graduate to config" shape — `?wallHeight=`/`?wallCutaway=
+1`/`?floorPools=1` (`calibrationConstants.ts`, `EncounterMap.tsx`,
+`PlaytestMap.tsx`) are dev-only URL dials over the same kind of visual
+knob (wall height, wall stub-vs-tall, floor mood-light pooling) this
+`lighting:` block would make an AUTHORED, per-dungeon setting instead of
+a runtime query param every session has to re-specify. The direction
+those dials point — start with one coarse global knob, grow toward
+per-source config later — is the same direction `ambient` growing into
+`sources` above follows; this isn't a new pattern for this codebase, it's
+the existing dial-growth pattern moved from a URL param onto the
+authored document.
+
+### Follow-up, named not built: "free mode" needs real server support
+
+`DungeonPreview3D`'s 3D pane and Walk it's monster-stripped variant both
+run into the same wall: neither can produce a TRUE no-aggro author
+walkthrough today. Walk it still has to leave a boss-archetype room's
+boss standing (validateBossCardinality, above); nothing in this concept
+touches combat/aggro logic at all — StartEncounter has no dial for "spawn
+this dungeon but nothing acts hostile." A real "free mode" needs an
+explicit StartEncounter option (or a sibling RPC) that either omits
+monster spawning entirely or spawns monsters in a genuinely passive
+state, which is toolkit+api work, not something a client-side YAML
+transform can produce. Naming this here rather than letting Walk it's
+honesty note stand alone as the only trace of it: whoever scopes P4+
+should treat "author walkthrough with no combat" as its own real
+requirement with a real server-side shape, not assume Walk it already
+covers it.
