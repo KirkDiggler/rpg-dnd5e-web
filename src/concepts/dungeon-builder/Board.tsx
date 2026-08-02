@@ -230,8 +230,26 @@ export function Board({
   // the base loop already drew there. Deliberately muted/dashed, never
   // the confident solid style compiled geometry gets — these are
   // PROPOSED, not compiled (CONTRACT.md/TARGET-YAML.md).
+  //
+  // Each v2 cell also feeds `trackExtent` (same corners-based call the
+  // base grid loop makes) so the viewBox GROWS to include anything
+  // authored beyond the compiled FloorPlan's own bounding box, rather
+  // than silently clipping it. Grow, not clamp, was the deliberate call:
+  // this whole round's theme is the dialect running ahead of what's
+  // compiled — clamping would silently hide legitimately authored
+  // content, which is exactly the thing the compile-badge/dropped-fields
+  // honesty mechanism elsewhere in this concept exists to avoid. See
+  // CONTRACT.md.
+  const trackCellExtent = (col: number, row: number) => {
+    const center = cellCenter(layoutMode, col, row);
+    cellCorners(layoutMode, center, BOARD_HEX_SIZE - 1.5).forEach(([x, y]) =>
+      trackExtent(x, y)
+    );
+  };
   const structuralOverlay: ReactElement[] = [];
   for (const wall of doc.walls) {
+    trackCellExtent(wall.from[0], wall.from[1]);
+    trackCellExtent(wall.to[0], wall.to[1]);
     const center = cellCenter(layoutMode, wall.from[0], wall.from[1]);
     const isDoor = wall.kind === 'door';
     structuralOverlay.push(
@@ -251,6 +269,7 @@ export function Board({
     );
   }
   for (const [holeCol, holeRow] of doc.holes) {
+    trackCellExtent(holeCol, holeRow);
     const center = cellCenter(layoutMode, holeCol, holeRow);
     const corners = cellCorners(layoutMode, center, BOARD_HEX_SIZE - 1.5).map(
       ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`
@@ -268,6 +287,7 @@ export function Board({
     );
   }
   if (doc.start) {
+    trackCellExtent(doc.start[0], doc.start[1]);
     const center = cellCenter(layoutMode, doc.start[0], doc.start[1]);
     structuralOverlay.push(
       <g key="v2-start" pointerEvents="none">
@@ -295,6 +315,7 @@ export function Board({
     );
   }
   if (doc.end) {
+    trackCellExtent(doc.end[0], doc.end[1]);
     const center = cellCenter(layoutMode, doc.end[0], doc.end[1]);
     structuralOverlay.push(
       <g key="v2-end" pointerEvents="none">
