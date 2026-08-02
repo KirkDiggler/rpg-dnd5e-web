@@ -21,6 +21,62 @@ export interface PaletteProp {
   blocksLoS: boolean;
 }
 
+/**
+ * Palette category taxonomy (Kirk's 2026-08-01 ask, see CONTRACT.md's
+ * "Palette taxonomy" section). This is a PROPOSED grouping — nothing on
+ * the wire carries a category today; `role` (obstacle/cover/decor, from
+ * the real propManifest.ts) already exists for a different purpose
+ * (board-swatch coloring) and doesn't map 1:1 onto these four buckets. If
+ * this taxonomy becomes real, it's the toolkit's refs that would need to
+ * grow a category, not this file re-deriving one from `role` forever.
+ */
+export type PaletteCategory =
+  | 'monsters'
+  | 'obstacles-props'
+  | 'lighting'
+  | 'markers';
+
+/** Light-emitting props, called out into their own category per Kirk's
+ * ask ("Lighting = light-emitting props (brazier, candles, glowing-orb)")
+ * — a hand-picked subset of PALETTE_PROPS, not derivable from `role`
+ * (brazier/candles/glowing-orb are all `role: 'decor'`, same as
+ * non-light-emitting decor like books or banners). */
+const LIGHTING_PROP_KEYS = new Set<string>([
+  'dnd5e:props:brazier',
+  'dnd5e:props:candles',
+  'dnd5e:props:glowing-orb',
+]);
+
+export function categoryForProp(
+  ref: string
+): Extract<PaletteCategory, 'obstacles-props' | 'lighting'> {
+  return LIGHTING_PROP_KEYS.has(ref) ? 'lighting' : 'obstacles-props';
+}
+
+/**
+ * Pre-baked palette thumbnails (rpg-dnd5e-web#667, Kirk's "rich entries
+ * that SHOW the assets" ask). Baked via the throwaway `?thumbGlb=` R3F
+ * harness (`src/concepts/dungeon-builder/thumbs/ThumbHarness.tsx`) +
+ * `game-dev/tools/browser/screenshot.mjs` — see that harness file's own
+ * doc comment and CONTRACT.md's "Thumbnail provenance" section for the
+ * exact bake process. Filename convention: `<ref's last segment>.png`
+ * (e.g. `dnd5e:props:pillar` -> `thumbs/pillar.png`). `import.meta.glob`
+ * rather than one static import per key so a newly-baked thumbnail is
+ * picked up automatically without touching this file — a ref with no
+ * baked thumbnail yet resolves to `undefined` and the palette Row falls
+ * back to its colored-swatch+short-label rendering (same as before this
+ * change), never a broken <img>.
+ */
+const THUMB_MODULES = import.meta.glob<string>('./thumbs/*.png', {
+  eager: true,
+  import: 'default',
+});
+
+export function thumbForRef(ref: string): string | undefined {
+  const slug = ref.split(':').pop();
+  return slug ? THUMB_MODULES[`./thumbs/${slug}.png`] : undefined;
+}
+
 /** Role -> board swatch color. Not itself wire data (propManifest.ts's
  * `role` is a client-only rendering concept — see CONTRACT.md's "prop
  * visual metadata" finding) — this mapping is this concept's own choice,
