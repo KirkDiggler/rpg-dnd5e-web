@@ -20,12 +20,7 @@ import {
 } from './boardGeometry';
 import type { DungeonDoc } from './dungeonYaml';
 import { BOARD_HEX_SIZE, cellCenter, cellCorners } from './hexLayout';
-import {
-  BOSS_COLOR,
-  MONSTER_COLOR,
-  PALETTE_PROPS,
-  ROLE_COLOR,
-} from './paletteData';
+import { resolveMarkerStyle } from './markerStyle';
 import type { BoardTool, PaletteSelection, PlacementSelection } from './types';
 
 interface BoardProps {
@@ -70,20 +65,6 @@ interface BoardProps {
   onToggleWallKind: (col: number, row: number) => void;
   onToggleHole: (col: number, row: number) => void;
   onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
-}
-
-function markerColor(ref: string, isBoss: boolean): string {
-  if (isBoss) return BOSS_COLOR;
-  if (ref.startsWith('dnd5e:monsters:')) return MONSTER_COLOR;
-  const prop = PALETTE_PROPS.find((p) => p.ref === ref);
-  return prop ? ROLE_COLOR[prop.role] : '#888';
-}
-
-function shortLabel(ref: string, isBoss: boolean): string {
-  if (isBoss) return 'BOSS';
-  const prop = PALETTE_PROPS.find((p) => p.ref === ref);
-  if (prop) return prop.short;
-  return ref.startsWith('dnd5e:monsters:') ? 'M' : '?';
 }
 
 export function Board({
@@ -398,7 +379,7 @@ export function Board({
             cx={center.x}
             cy={center.y}
             r={BOARD_HEX_SIZE * 0.5}
-            fill={markerColor(p.ref, false)}
+            fill={resolveMarkerStyle(p.ref).color}
             stroke={isSelected ? '#ffd76a' : '#000'}
             strokeWidth={isSelected ? 2.5 : 1}
           />
@@ -409,7 +390,7 @@ export function Board({
             fill="#fff"
             fontSize={9}
           >
-            {shortLabel(p.ref, false)}
+            {resolveMarkerStyle(p.ref).short}
           </text>
         </g>
       );
@@ -433,7 +414,7 @@ export function Board({
             cx={center.x}
             cy={center.y}
             r={BOARD_HEX_SIZE * 0.62}
-            fill={markerColor(room.boss.ref, true)}
+            fill={resolveMarkerStyle(room.boss.ref, { isBoss: true }).color}
             stroke={isSelected ? '#ffd76a' : '#ffd76a'}
             strokeWidth={2}
           />
@@ -479,7 +460,7 @@ export function Board({
           cx={center.x}
           cy={center.y}
           r={BOARD_HEX_SIZE * 0.5}
-          fill={markerColor(p.ref, false)}
+          fill={resolveMarkerStyle(p.ref).color}
           stroke={isSelected ? '#ffd76a' : '#000'}
           strokeWidth={isSelected ? 2.5 : 1}
         />
@@ -490,7 +471,7 @@ export function Board({
           fill="#fff"
           fontSize={9}
         >
-          {shortLabel(p.ref, false)}
+          {resolveMarkerStyle(p.ref).short}
         </text>
       </g>
     );

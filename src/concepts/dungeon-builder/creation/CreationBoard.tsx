@@ -41,7 +41,7 @@ import { useRef, useState, type ReactElement } from 'react';
 import type { BoardEditing } from '../DungeonBuilderConcept';
 import type { DungeonDoc, WallDoc, WallKind } from '../dungeonYaml';
 import { FLAT_COL_SPACING, FLAT_ROW_SPACING } from '../hexLayout';
-import { MONSTER_COLOR, PALETTE_PROPS, ROLE_COLOR } from '../paletteData';
+import { resolveMarkerStyle } from '../markerStyle';
 import type { BoardTool, PlacementSelection } from '../types';
 import {
   creationCellCenter,
@@ -88,17 +88,6 @@ const FACING_ANGLES_DEG = HEX_FACING_LABELS.map((_, i) => {
   const world = cubeToWorld(dir, 1);
   return (Math.atan2(world.z, world.x) * 180) / Math.PI;
 });
-
-function markerColor(kind: 'prop' | 'monster', ref: string): string {
-  if (kind === 'monster') return MONSTER_COLOR;
-  const prop = PALETTE_PROPS.find((p) => p.ref === ref);
-  return prop ? ROLE_COLOR[prop.role] : '#888';
-}
-function markerShort(ref: string): string {
-  const prop = PALETTE_PROPS.find((p) => p.ref === ref);
-  if (prop) return prop.short;
-  return ref.startsWith('dnd5e:monsters:') ? 'M' : '?';
-}
 
 /** This edge's wall, or `undefined` if none is drawn there — a direct
  * `doc.walls` scan (creation-mode canvases are small enough that this is
@@ -356,7 +345,7 @@ export function CreationBoard({
       x: at[0] * FLAT_COL_SPACING,
       y: at[1] * FLAT_ROW_SPACING,
     };
-    const isMonster = ref.startsWith('dnd5e:monsters:');
+    const style = resolveMarkerStyle(ref);
     // roomId comparison matters here even though every creation-mode
     // placement shares roomId: null today — matches Board.tsx's own
     // isSelected check (roomId + index, not index alone), the correct
@@ -384,7 +373,7 @@ export function CreationBoard({
           cx={center.x}
           cy={center.y}
           r={12}
-          fill={markerColor(isMonster ? 'monster' : 'prop', ref)}
+          fill={style.color}
           stroke={selected ? '#ffd76a' : '#000'}
           strokeWidth={selected ? 2.5 : 1}
         />
@@ -395,7 +384,7 @@ export function CreationBoard({
           fill="#fff"
           fontSize={9}
         >
-          {markerShort(ref)}
+          {style.short}
         </text>
         {angle !== null && (
           <g transform={`translate(${center.x},${center.y}) rotate(${angle})`}>
