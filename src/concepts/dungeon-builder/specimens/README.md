@@ -73,6 +73,7 @@ import {
   setLightingAmbient,
   setPlacementFacing,
   setPlacementFlags,
+  setPlacementHeight,
   setPlacementMount,
   setPlacementRotationDegrees,
   setPlacementTargeting,
@@ -129,7 +130,8 @@ connectors:
 
     placeItem(cst, 'hall', 'dnd5e:props:wall-banner', [7, 1]);
     setPlacementFacing(cst, 'hall', 1, 1); // NE
-    setPlacementMount(cst, 'hall', 1, 'wall', 2.0);
+    setPlacementMount(cst, 'hall', 1, 'wall');
+    setPlacementHeight(cst, 'hall', 1, 2.0);
     setPlacementRotationDegrees(cst, 'hall', 1, 12);
     setWallEdge(cst, [7, 1], [8, 0], 'solid', true);
     setWallEdge(cst, [7, 3], [8, 2], 'door', true);
@@ -143,7 +145,8 @@ connectors:
 
     placeItem(cst, null, 'dnd5e:props:wall-banner', [15, 3]);
     setPlacementFacing(cst, null, 0, 0); // E
-    setPlacementMount(cst, null, 0, 'wall', 1.5);
+    setPlacementMount(cst, null, 0, 'wall');
+    setPlacementHeight(cst, null, 0, 1.5);
     setPlacementRotationDegrees(cst, null, 0, -8);
     placeItem(cst, null, 'dnd5e:props:candles', [16, 3]);
     setPlacementFlags(cst, null, 1, {
