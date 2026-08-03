@@ -187,7 +187,7 @@ describe('serializeDungeon round-trip', () => {
     // fixtures.ts drifting from the source of truth too.
     const realPath = join(
       __dirname,
-      '../../../../../dungeon-content/showcase.yaml'
+      '../../../../dungeon-content/showcase.yaml'
     );
     let real: string;
     try {
