@@ -64,6 +64,8 @@ import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/aut
 import { Bounds, OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { Suspense, useMemo } from 'react';
+import { DoubleSide } from 'three';
+import { isEntranceBlocked } from '../boardGeometry';
 import type { DungeonDoc, WallDoc } from '../dungeonYaml';
 import { cubeAtColRow } from '../hexLayout';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
@@ -320,6 +322,46 @@ function WallBox({ wall }: { wall: PlacedWall }) {
   );
 }
 
+/** Start/end/entrance markers — genuinely ABSENT from this preview before
+ * Kirk's 2026-08-02 "3D editing" arc's alignment audit named them as a
+ * class to check (CONTRACT.md): not a misalignment (nothing rendered to
+ * be misaligned), a real gap. Same three points the 2D board's own
+ * `Board.tsx` already shows (`doc.start`/`doc.end`'s teal/gold "ST"/"EN"
+ * rings, `floorPlan.entrance`'s teal/red "PARTY SPAWN" ring, colored via
+ * the SAME `isEntranceBlocked` check, imported rather than
+ * re-derived) — a flat ring lying on the floor plane, since this static
+ * preview has no camera-facing billboard text to spend on a label the
+ * way the 2D SVG board does. */
+const START_COLOR = '#5fd1c9';
+const END_COLOR = '#c9a227';
+const ENTRANCE_CLEAR_COLOR = '#5fd1c9';
+const ENTRANCE_BLOCKED_COLOR = '#ff5a3a';
+const MARKER_RING_INNER = HEX_SIZE * 0.32;
+const MARKER_RING_OUTER = HEX_SIZE * 0.48;
+const MARKER_Y = 0.02; // just above the floor plane — avoids z-fighting
+
+function PointMarker({
+  worldX,
+  worldZ,
+  color,
+}: {
+  worldX: number;
+  worldZ: number;
+  color: string;
+}) {
+  return (
+    <mesh position={[worldX, MARKER_Y, worldZ]} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[MARKER_RING_INNER, MARKER_RING_OUTER, 32]} />
+      <meshStandardMaterial
+        color={color}
+        emissive={color}
+        emissiveIntensity={0.5}
+        side={DoubleSide}
+      />
+    </mesh>
+  );
+}
+
 export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
   const floorTiles = useMemo(
     () => buildFloorTiles(floorPlan, doc.holes),
@@ -330,6 +372,10 @@ export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
     [floorPlan, doc]
   );
   const walls = useMemo(() => buildWalls(doc.walls), [doc.walls]);
+  const entranceBlocked = useMemo(
+    () => isEntranceBlocked(floorPlan, doc),
+    [floorPlan, doc]
+  );
 
   return (
     <div style={{ width: '100%', height: '100%', background: '#0c0a08' }}>
@@ -362,6 +408,42 @@ export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
                 position={m.position}
               />
             ))}
+            {doc.start &&
+              (() => {
+                const w = worldPosition(doc.start[0], doc.start[1]);
+                return (
+                  <PointMarker
+                    worldX={w[0]}
+                    worldZ={w[2]}
+                    color={START_COLOR}
+                  />
+                );
+              })()}
+            {doc.end &&
+              (() => {
+                const w = worldPosition(doc.end[0], doc.end[1]);
+                return (
+                  <PointMarker worldX={w[0]} worldZ={w[2]} color={END_COLOR} />
+                );
+              })()}
+            {floorPlan.entrance &&
+              (() => {
+                const w = worldPosition(
+                  floorPlan.entrance.column,
+                  floorPlan.entrance.row
+                );
+                return (
+                  <PointMarker
+                    worldX={w[0]}
+                    worldZ={w[2]}
+                    color={
+                      entranceBlocked
+                        ? ENTRANCE_BLOCKED_COLOR
+                        : ENTRANCE_CLEAR_COLOR
+                    }
+                  />
+                );
+              })()}
           </Bounds>
         </Suspense>
         <OrbitControls makeDefault />
