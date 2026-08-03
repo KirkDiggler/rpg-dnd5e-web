@@ -39,6 +39,14 @@ interface PaletteProps {
   onSelectTool: (tool: BoardTool | null) => void;
   wallCount: number;
   holeCount: number;
+  /** Region tool (rpg-project#180) — creation-mode-only this round
+   * (TARGET-YAML.md's "regions:" section: "creation-mode is the author
+   * surface this round"). `false`/omitted hides the row entirely rather
+   * than showing an inert tool — edit mode still RENDERS any authored
+   * regions read-only (`Board.tsx`), it just doesn't offer a way to
+   * create/edit them yet. */
+  showRegionTool?: boolean;
+  regionCount?: number;
 }
 
 const CATEGORY_LABELS: Record<PaletteCategory, string> = {
@@ -255,6 +263,8 @@ export function Palette({
   onSelectTool,
   wallCount,
   holeCount,
+  showRegionTool = false,
+  regionCount = 0,
 }: PaletteProps) {
   const [openCategories, setOpenCategories] = useState<Set<PaletteCategory>>(
     new Set<PaletteCategory>(['obstacles-props'])
@@ -380,7 +390,7 @@ export function Palette({
 
       <CategorySection
         category="structural"
-        count={3}
+        count={showRegionTool ? 4 : 3}
         open={openCategories.has('structural')}
         onToggle={() => toggle('structural')}
       >
@@ -411,6 +421,17 @@ export function Palette({
           onClick={() => toggleTool('hole')}
           deferred
         />
+        {showRegionTool && (
+          <Row
+            color="#3a9b6a"
+            short="R"
+            label="Region"
+            sub={`${regionCount}× drawn — paint cells, then name + connect (rpg-project#180)`}
+            isSelected={selectedTool === 'region'}
+            onClick={() => toggleTool('region')}
+            notCompiled
+          />
+        )}
         <p
           style={{
             fontSize: 11,

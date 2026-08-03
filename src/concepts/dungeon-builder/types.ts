@@ -17,9 +17,13 @@ export type PlacementSelection =
 
 /** A board TOOL (as opposed to `PaletteSelection`'s draggable-item
  * selection) — target-dialect-only, proposed authoring actions from the
- * Structural (wall/door/hole) and Markers (start/end) palette categories. See
- * TARGET-YAML.md's "Structural palette category" section. Mutually
- * exclusive with `PaletteSelection`/`PlacementSelection`/connector
+ * Structural (wall/door/hole/region) and Markers (start/end) palette
+ * categories. See TARGET-YAML.md's "Structural palette category" section.
+ * Mutually exclusive with `PaletteSelection`/`PlacementSelection`/connector
  * selection — `DungeonBuilderConcept.tsx`'s `clearOtherSelections` keeps
- * that invariant. */
-export type BoardTool = 'wall' | 'door' | 'hole' | 'start' | 'end';
+ * that invariant. `'region'` (rpg-project#180, "cell-authored semantic
+ * room regions") is creation-mode-only this round — see
+ * `creation/CreationBoard.tsx`'s region-painting handling and
+ * `RegionPanel.tsx`; edit mode renders any authored `regions:` read-only,
+ * with no tool to create/edit them there yet. */
+export type BoardTool = 'wall' | 'door' | 'hole' | 'start' | 'end' | 'region';

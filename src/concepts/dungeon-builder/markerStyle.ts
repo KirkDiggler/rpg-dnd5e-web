@@ -36,6 +36,26 @@ export interface MarkerStyle {
 export const START_COLOR = '#5fd1c9';
 export const END_COLOR = '#c9a227';
 
+/** Cell-authored semantic region overlay color (rpg-project#180), by
+ * `RegionDoc.archetype` — the SAME vocabulary `RoomDoc.archetype` uses
+ * (entrance|chamber|corridor|boss), reusing that alignment rather than
+ * inventing a second color scheme. Shared by `Board.tsx`'s read-only edit-
+ * mode overlay and `creation/CreationBoard.tsx`'s interactive one, so a
+ * region reads as the same archetype in both boards. Falls back to a
+ * neutral gray for an archetype string outside this vocabulary (nothing
+ * validates `archetype` against an enum client-side — see
+ * `setRegionArchetype`'s own doc comment). */
+const REGION_ARCHETYPE_COLOR: Record<string, string> = {
+  entrance: '#5fd1c9',
+  chamber: '#3a9b6a',
+  corridor: '#c9a227',
+  boss: '#a02020',
+};
+
+export function regionArchetypeColor(archetype: string): string {
+  return REGION_ARCHETYPE_COLOR[archetype] ?? '#8a7a5a';
+}
+
 export function resolveMarkerStyle(
   ref: string,
   opts: { isBoss?: boolean } = {}

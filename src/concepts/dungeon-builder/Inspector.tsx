@@ -109,6 +109,47 @@ function ExperimentBadge() {
   );
 }
 
+/** More conservative than `TargetDialectBadge` for exactly one field:
+ * `facing` on a monster, a boss, or a `mount: wall` placement. Per the
+ * 2026-08-03 backend probe (rpg-project#175's "Backend feedback:
+ * exercising the new authoring API" comment — real `PutDungeon` calls
+ * against an isolated authoring server, not a guess): floor-prop `facing`
+ * on a room-scoped, non-monster, non-wall-mounted placement now genuinely
+ * COMPILES on Kirk's branch, but a monster's, a boss's, or a wall-mount's
+ * `facing` decodes and is then explicitly rejected — the real validator's
+ * own error names the constraint verbatim: `"facing only supported on
+ * room-scoped floor props"`. `TargetDialectBadge` alone ("not yet
+ * compiled server-side") reads as one uniform claim about the WHOLE
+ * `facing` field; it stops being honest the moment part of that field is
+ * real for one entry type and still rejected for three others. This badge
+ * says so explicitly rather than lumping every entry type under the same
+ * blanket "not yet compiled" language. */
+function FacingConservativeBadge() {
+  return (
+    <span
+      title={
+        'not yet server-supported for this entry type — the real validator ' +
+        'compiles facing ONLY for room-scoped, non-monster, non-wall-mounted ' +
+        '(floor-standing) props (rpg-project#175 backend probe, 2026-08-03: ' +
+        '"facing only supported on room-scoped floor props"). A plain ' +
+        "room-scoped floor prop's facing is real on Kirk's branch — see " +
+        'the other facing badge for that case.'
+      }
+      style={{
+        fontSize: 9,
+        color: '#ffb347',
+        background: '#2a2015',
+        border: '1px solid #5a4a1f',
+        borderRadius: 3,
+        padding: '1px 5px',
+        marginLeft: 6,
+      }}
+    >
+      not yet supported (this entry type)
+    </span>
+  );
+}
+
 /** A field is showing its ref's `defaults:` entry (target dialect,
  * proposed — `resolvePlacement`'s own doc comment), not a value set on
  * this placement itself. Distinct, muted color from both badges above so
@@ -455,7 +496,11 @@ export function Inspector({
           ↻
         </button>
         <span>facing</span>
-        <TargetDialectBadge />
+        {isMonster || selected.boss || mount === 'wall' ? (
+          <FacingConservativeBadge />
+        ) : (
+          <TargetDialectBadge />
+        )}
         {inherited.facing && <InheritedTag />}
         {canRevert.facing && (
           <RevertToDefaultButton onClick={() => onSetFacing(null)} />

@@ -3034,3 +3034,158 @@ tests passing (up from 112 — the 84-test shared base plus #693's 13 plus
 #691's 15, confirming no coverage was lost composing the two — plus 5
 new composition cases), `ci-check` clean (format/lint/typecheck/build/
 test).
+
+## Region-authoring unit: creation, attachment, and the folded backend-sync items (2026-08-03)
+
+Kirk's ask, verbatim: "creating a region and ideally attaching it to the
+next region" — the first real prototype of rpg-project#180 (cell-authored
+semantic room regions), proposed shape only until this round (this file's
+own "Regions section" the rpg-project#175 comment sketched, no mutator
+behind it). Real CST mutators, a creation-mode authoring UI, and an
+edit-mode read-only overlay now exist. Three small backend-sync items
+(facing badge split, holes reconciliation, a status-tracking note) folded
+into the same PR per this unit's brief — see their own subsections below.
+
+### `regions:` — shape, invariants, and where it lives
+
+`RegionDoc { id, name?, archetype, cells: [col,row][] }`
+(`dungeonYaml.ts`), matching the shape Kirk's own rpg-project#175 comment
+already sketched. Full design writeup — including three alternative cell
+encodings considered and rejected (run-length, bounding-box bitmap,
+per-row span list — all premature for the small regions this concept
+authors today) and the open questions this prototype deliberately does
+NOT decide (rooms/regions precedence in one document, whether regions
+must fully tile the space, minimum region size) — lives in
+`TARGET-YAML.md`'s new "regions:" section, not duplicated here.
+
+Client-side validation (`validateRegionCells`, `regionGeometry.ts`'s
+`cellsAreContiguous`/BFS) enforces exactly rpg-project#180's own
+acceptance criteria — non-empty, orthogonally contiguous, non-overlapping
+— on every mutator that changes a region's cell set
+(`createRegion`/`addCellToRegion`/`removeCellFromRegion`), not just at
+creation. `removeCellFromRegion` additionally refuses to empty a region
+(delete it instead) or split it into two disconnected pieces.
+
+### Attachment: a door edge on the shared boundary, distinct from chain `connectors:`
+
+`connectRegions` (`dungeonYaml.ts`) computes every shared orthogonal
+boundary edge between two regions (`regionGeometry.ts`'s
+`sharedBoundaryEdges`) and places a door on the MIDPOINT one
+(`pickAttachmentEdge`) via the existing `setWallEdge` mutator — mechanically
+just another `walls:` entry. Verified against the real
+`dungeonspec.Validate` source (rpg-project#175's own spot-check finding,
+re-confirmed here): an authored door edge does NOT replace, satisfy, or
+count as a chain connector — `connectors:` stays independently
+chain-constrained. `TARGET-YAML.md`'s new "Region attachment vs. chain
+connectors" section has the full side-by-side comparison.
+
+### UI: creation-mode paint-then-name, edit-mode read-only
+
+`creation/useRegionEditing.ts` (state: pending cells for a not-yet-created
+region, the selected existing region) + `creation/RegionPanel.tsx` (the
+floating create/connect/edit panel, `Inspector.tsx`'s visual language) +
+`CreationBoard.tsx`'s region-tool pointer handling and tinted-overlay
+rendering. Palette gets a 4th Structural row, **creation-mode only**
+(`Palette.tsx`'s new `showRegionTool` prop, `false` by default — edit
+mode's own `Palette` usage never passes it). Immediately after creating a
+SECOND-or-later region, the panel offers a one-click "Connect to
+'&lt;previous region&gt;'?" prompt if the two share a boundary — the
+"ideally attaching it to the next region" flow named directly.
+
+**A real bug caught by live verification, not just unit tests**: the
+panel's own early-return guard (`if (pendingCells.length === 0 &&
+!editingRegion) return null`) didn't account for the just-created-region
+state (`justCreatedId`), so the "connect to previous" callout never
+rendered — the panel just vanished the instant a region was created, no
+matter how many other regions already existed. Unit tests never caught
+this because they call the mutators directly, never render the component;
+only driving the actual browser (see "Live verification" below) surfaced
+it. Fixed by adding `justCreatedId` to the guard's own condition.
+
+Edit mode (`Board.tsx`, hex-true) renders any `regions:` a document
+carries — hand-typed in the YAML pane, or round-tripped from a document
+first built in creation mode — as a read-only tinted-hex overlay +
+centroid label (`regionGeometry.ts`'s `regionCentroid`), same archetype
+coloring (`markerStyle.ts`'s new `regionArchetypeColor`) as the creation
+board's own overlay, `pointerEvents="none"` throughout — no create/edit
+affordance there this round, matching this unit's own brief.
+
+### Folded sync item (a): facing badge now splits by entry type
+
+A real backend probe (rpg-project#175's "Backend feedback: exercising the
+new authoring API" comment, 2026-08-03) found floor-prop `facing` now
+genuinely compiles on Kirk's authoring branch — but ONLY for a
+room-scoped, non-monster, non-`mount:wall` placement; every other entry
+type (monster, boss, wall-mount) decodes and is then explicitly rejected
+(`"facing only supported on room-scoped floor props"`). The Inspector's
+single `TargetDialectBadge` on `facing` was therefore overstating "not yet
+compiled" uniformly the moment part of the field became real for one
+shape. Fixed: a new `FacingConservativeBadge` (`Inspector.tsx`) renders
+instead of the ordinary dialect badge whenever the selected placement is a
+monster, a boss, or `mount: wall` — its tooltip carries the real
+validator's own rejection message. `TARGET-YAML.md`'s "compile status now
+varies by entry type" section has the full per-entry-type table.
+
+### Folded sync item (b): holes reconciled out of the main specimen
+
+The v0.1/v0.2 kitchen-sink specimen inconsistently carried a `holes:`
+entry despite holes being deliberately deferred from the near-term dialect
+— fixed by dropping `holes:` from `kitchen-sink.yaml` (v0.3) and adding a
+small standalone `specimens/exploration/holes.yaml`, generated the same
+way (the real serializer, not hand-typed), so demonstrating the retained
+prototype never implies it carries the main pack's status. See
+`specimens/README.md`'s v0.3 changelog.
+
+### Folded sync item (c): status-tracking note, not a badge flip
+
+`start:` and floor-prop `facing` both now compile on Kirk's authoring
+branch (same 2026-08-03 probe) — but that branch is UNRELEASED, so every
+badge in this concept stays exactly as it was (target-dialect / the new
+conservative variant) until the branch actually merges. `TARGET-YAML.md`'s
+new "Status tracking note" section records this so the next session
+doesn't have to re-discover it, while being explicit that this note alone
+is not authorization to flip any badge.
+
+### Specimen pack v0.3
+
+`kitchen-sink.yaml` regenerated via the real serializer (the README's
+documented throwaway-`_regen.test.ts` process, not hand-typed): two
+regions (`hall-inner`, `hall-annex`) inside `hall`'s absolute column
+range, connected via `connectRegions` — the resulting door edge is a
+THIRD `walls:` entry, counted under the existing `"3 walls"` drop tally;
+`regions:` itself drops as a new, independent `"2 regions"` entry.
+`specimens/README.md`'s changelog has the full diff.
+
+### Live verification
+
+Real browser, real dev server (`npm run dev -- --port 5173`, this
+concept's own `/concepts?concept=dungeon-builder` route), driven via a
+throwaway Playwright script (`game-dev/tools/browser/_job_regions_*.mjs`,
+gitignored scratch pattern, not this repo). Three screenshots:
+
+1. A 2×2 region ("North Alcove") painted, created, and rendered with its
+   tinted overlay + label on the creation board, the Palette's Region row
+   showing a live count, and the proposed-YAML pane showing the real
+   `regions:` block this session's own click sequence produced.
+2. A second adjacent region ("East Annex") created, the "Connect to
+   'North Alcove'?" prompt accepted, and the resulting door
+   (`{ from: [5,4], to: [4,4], kind: door }`) visible in both the board
+   overlay and the YAML pane — the exact edge `pickAttachmentEdge`'s
+   midpoint rule predicts for this two-edge boundary.
+3. Edit mode (hex-true board) rendering a hand-typed `regions:` block
+   read-only — the "Inner Sanctum" region's tinted hex overlay + label,
+   and the compile-badge strip correctly showing "Uses: 1 region — not
+   yet compiled server-side" (the existing generic `dropped`-array badge
+   mechanism, unchanged, picking up the new construct automatically).
+
+The two expected `PutDungeon`/authoring-service console errors
+(`[unimplemented] unknown service ...AuthoringService`) are this concept's
+normal FIXTURES-MODE behavior against a dev server with no local `rpg-api`
+running — not a regression, and unrelated to regions.
+
+162 dungeon-builder tests passing (up from 117 — 45 new: 28 in
+`dungeonYaml.test.ts`'s new `regions:` describe block covering parse,
+every mutator, `connectRegions`, comment-safety, and `stripToV1Subset`;
+17 in the new `regionGeometry.test.ts` covering the pure adjacency/
+contiguity/boundary-edge/centroid math directly). `ci-check` clean
+(format/lint/typecheck/build/test).

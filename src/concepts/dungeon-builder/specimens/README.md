@@ -1,8 +1,9 @@
 # Dungeon Builder — specimen pack
 
-**Specimen pack version: v0.2** (2026-08-03). Posted in full on
+**Specimen pack version: v0.3** (2026-08-03). v0.1 was posted in full on
 [rpg-project#175](https://github.com/KirkDiggler/rpg-project/issues/175)
-for the backend session implementing YAML processing.
+for the backend session implementing YAML processing; this and later
+versions post as short diffs on the same issue.
 
 **Versioning note — read this before touching anything here.** The
 number above is the _specimen pack's own_ version. It is NOT the
@@ -16,6 +17,27 @@ addition. Never conflate the two numbers.
 
 ## Changelog
 
+- **v0.3** (2026-08-03) — `+ regions: construct (proposed, rpg-project#180)`:
+  `kitchen-sink.yaml` now declares two cell-authored semantic regions
+  (`hall-inner`, `hall-annex`) inside the `hall` room's absolute column
+  range, connected via `connectRegions` — the door edge it places shows up
+  as a THIRD entry in `walls:` (`{ from: [10,3], to: [11,3], kind: door }`),
+  alongside the two hand-drawn ones. `kitchen-sink.v1-subset.dropped.json`
+  now carries a `"2 regions"` entry (regions have no v1 representation of
+  any kind), and the region-attachment door is counted under the existing
+  `"3 walls"` entry — a region-attachment door is architecturally just
+  another `walls:` entry, not a separate wire concept; see
+  `TARGET-YAML.md`'s "regions:" section for the shape, invariants, and the
+  region-attachment-vs-chain-connector distinction.
+  `+ holes moved to exploration appendix`: the v0.1/v0.2 kitchen-sink doc
+  inconsistently carried a `holes:` entry despite holes being deliberately
+  deferred from the near-term dialect (TARGET-YAML.md's own framing) —
+  fixed by dropping `holes:` from `kitchen-sink.yaml` entirely and adding
+  `exploration/holes.yaml`, a small standalone specimen (also generated via
+  the real serializer, not hand-typed) demonstrating the construct without
+  implying it carries the same status as the main pack's contents.
+  `defaults: (v0.2)` — unchanged, still present on `kitchen-sink.yaml`
+  exactly as v0.2 left it.
 - **v0.2** (2026-08-03) — `+ height on any placement (#688)`: the
   top-level `candles` placement now carries an explicit `height: 0.4`
   with NO `mount:` key at all — the decoupled floor-standing/floating
@@ -39,12 +61,13 @@ of them)"` entry names both outcomes explicitly.
 
 ## Files
 
-| File                                  | What it is                                                                                                                                                                                                                                     |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kitchen-sink.yaml`                   | One document exercising every construct + field variation the builder can emit today (3-room chain, locked connector, every `place:` field combo, boss facing+targeting, both wall kinds, a hole, start/end, lighting, count-based obstacles). |
-| `kitchen-sink.v1-subset.yaml`         | The same document run through `stripToV1Subset` — exactly what Save & Play would persist right now.                                                                                                                                            |
-| `kitchen-sink.v1-subset.dropped.json` | What `stripToV1Subset` dropped from the kitchen-sink doc, and whether the result is `compilable` (≥2 rooms).                                                                                                                                   |
-| `canvas.yaml`                         | What creation mode ("New Dungeon," a blank canvas) emits after a few walls/doors/placements/start/end — the second real document shape (`rooms: []` + `canvas: {width,height}`, so every placement is top-level).                              |
+| File                                  | What it is                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kitchen-sink.yaml`                   | One document exercising every construct + field variation the builder can emit today (3-room chain, locked connector, every `place:` field combo, boss facing+targeting, both wall kinds including a region-attachment door, two cell-authored regions, start/end, lighting, count-based obstacles). No `holes:` as of v0.3 — see `exploration/holes.yaml`. |
+| `kitchen-sink.v1-subset.yaml`         | The same document run through `stripToV1Subset` — exactly what Save & Play would persist right now.                                                                                                                                                                                                                                                         |
+| `kitchen-sink.v1-subset.dropped.json` | What `stripToV1Subset` dropped from the kitchen-sink doc, and whether the result is `compilable` (≥2 rooms).                                                                                                                                                                                                                                                |
+| `canvas.yaml`                         | What creation mode ("New Dungeon," a blank canvas) emits after a few walls/doors/placements/start/end — the second real document shape (`rooms: []` + `canvas: {width,height}`, so every placement is top-level). Unchanged since v0.2.                                                                                                                     |
+| `exploration/holes.yaml`              | v0.3+. A minimal standalone specimen for the retained Hole prototype — deliberately deferred from the near-term dialect (TARGET-YAML.md), kept out of the main kitchen-sink doc so it doesn't read as carrying the same status as everything else in it.                                                                                                    |
 
 **Live-verified, not just claimed**: `kitchen-sink.v1-subset.yaml` was
 run through a real `PutDungeon(validate_only: true)` against an isolated
@@ -79,6 +102,8 @@ import { resolve } from 'node:path';
 import { describe, it } from 'vitest';
 import {
   clearPlacementFlag,
+  connectRegions,
+  createRegion,
   moveBoss,
   parseDungeon,
   placeItem,
@@ -98,11 +123,13 @@ import {
   setStart,
   setWallEdge,
   stripToV1Subset,
+  toDungeonDoc,
   toggleHole,
 } from './dungeonYaml';
 import { emptyCanvasYaml, DEFAULT_CANVAS } from './creation/emptyCanvasDoc';
 
 const OUT_DIR = resolve(__dirname, 'specimens');
+const EXPLORATION_DIR = resolve(__dirname, 'specimens/exploration');
 
 describe('specimen generator', () => {
   it('kitchen-sink', () => {
@@ -143,10 +170,10 @@ connectors:
     placeItem(cst, 'entry', 'dnd5e:props:statue-reaper', [3, 1]);
     setPlacementFacing(cst, 'entry', 1, 2); // NW
 
-    // v0.2: a placement lacking blocks_movement/blocks_los entirely
-    // (cleared right back off after placeItem's own auto-stamp) --
-    // exercises clearPlacementFlag AND gives `defaults:` below a REAL
-    // instance to inherit blocks_movement onto, materialized on strip.
+    // a placement lacking blocks_movement/blocks_los entirely (cleared
+    // right back off after placeItem's own auto-stamp) -- exercises
+    // clearPlacementFlag AND gives `defaults:` below a REAL instance to
+    // inherit blocks_movement onto, materialized on strip.
     placeItem(cst, 'entry', 'dnd5e:props:tomb-open', [5, 1]);
     clearPlacementFlag(cst, 'entry', 2, 'blocksMovement');
     clearPlacementFlag(cst, 'entry', 2, 'blocksLos');
@@ -162,7 +189,25 @@ connectors:
     setWallEdge(cst, [7, 1], [8, 0], 'solid', true);
     setWallEdge(cst, [7, 3], [8, 2], 'door', true);
 
-    toggleHole(cst, 10, 4);
+    // v0.3 (rpg-project#180): two cell-authored semantic regions inside
+    // "hall"'s absolute column range (hall's start_column = entry's width
+    // 6 + the reserved connector gap column = 7, so hall = [7,19)),
+    // connected via connectRegions -- the door edge it places lands in
+    // walls: as a THIRD entry, alongside the two hand-drawn ones above.
+    const docForRegions = toDungeonDoc(cst);
+    createRegion(cst, docForRegions, 'hall-inner', 'chamber', [
+      [9, 2],
+      [9, 3],
+      [10, 2],
+      [10, 3],
+    ]);
+    const docWithFirstRegion = toDungeonDoc(cst);
+    createRegion(cst, docWithFirstRegion, 'hall-annex', 'chamber', [
+      [11, 2],
+      [11, 3],
+    ]);
+    const docWithBothRegions = toDungeonDoc(cst);
+    connectRegions(cst, docWithBothRegions, 'hall-inner', 'hall-annex');
 
     // row 4 is the reserved door row (height/2) -- avoid it.
     moveBoss(cst, 'sanctum', [4, 3]);
@@ -180,9 +225,9 @@ connectors:
       blocksMovement: false,
       blocksLos: false,
     });
-    // v0.2 (#688): height decoupled from mount -- a FLOOR-standing
-    // placement (no mount: key at all) carrying its own height, the
-    // "floating candle" case the decoupling exists for.
+    // height decoupled from mount -- a FLOOR-standing placement (no
+    // mount: key at all) carrying its own height, the "floating candle"
+    // case the decoupling exists for.
     setPlacementHeight(cst, null, 1, 0.4);
 
     setConnectorLocked(cst, 0, { dc: 14, ability: 'dex' });
@@ -192,11 +237,16 @@ connectors:
     setEnd(cst, [4, 5]);
     setLightingAmbient(cst, 0.35);
 
-    // v0.2: defaults: map (this PR). Two different shapes on purpose --
-    // see this file's changelog entry above for the full explanation of
-    // what each one demonstrates (materialize-on-strip vs plain drop).
+    // defaults: map. Two different shapes on purpose -- see this file's
+    // changelog entry above for the full explanation of what each one
+    // demonstrates (materialize-on-strip vs plain drop).
     setRefDefault(cst, 'dnd5e:props:tomb-open', 'blocksMovement', true);
     setRefDefault(cst, 'dnd5e:props:statue-reaper', 'height', 1.0);
+
+    // v0.3: NO holes in the main kitchen-sink doc anymore -- see the
+    // separate exploration/holes.yaml specimen below for the deferred
+    // construct (this file's own "Holes moved to exploration appendix"
+    // changelog entry).
 
     const yaml = serializeDungeon(cst);
     writeFileSync(resolve(OUT_DIR, 'kitchen-sink.yaml'), yaml);
@@ -235,11 +285,40 @@ connectors:
     const yaml = serializeDungeon(cst);
     writeFileSync(resolve(OUT_DIR, 'canvas.yaml'), yaml);
   });
+
+  it('exploration/holes', () => {
+    // A minimal, standalone doc -- deliberately NOT folded into
+    // kitchen-sink.yaml (v0.3's "holes moved to exploration appendix"
+    // changelog entry) so demonstrating the retained Hole prototype never
+    // implies it carries the same status as the main pack's contents.
+    const skeleton = `version: 1
+key: specimen-holes-exploration
+name: Specimen — Holes (exploration)
+theme: crypt
+height: 8
+rooms:
+  - id: entry
+    archetype: entrance
+    width: 6
+  - id: hall
+    archetype: chamber
+    width: 12
+connectors:
+  - { from: entry, to: hall }
+`;
+    const { cst } = parseDungeon(skeleton);
+    toggleHole(cst, 10, 4);
+    const yaml = serializeDungeon(cst);
+    writeFileSync(resolve(EXPLORATION_DIR, 'holes.yaml'), yaml);
+  });
 });
 ```
 
-When the next version adds new fields (e.g. v0.2's height-decouples-
-from-mount, or a `defaults:` map prototype), extend the script above
-with new mutator calls exercising them, add a "Regions section" example
-if #180 ever gains a real mutator (today it's proposed-shape-only, not
-emitted — see the rpg-project#175 comment), and re-run.
+When the next version adds new fields, extend the script above with new
+mutator calls exercising them and re-run. `regions:` (rpg-project#180) now
+has a real mutator set (`createRegion`/`addCellToRegion`/
+`removeCellFromRegion`/`renameRegion`/`setRegionArchetype`/`deleteRegion`/
+`connectRegions`) as of v0.3 — see `TARGET-YAML.md`'s "regions:" section
+for the full design; extend the kitchen-sink script's region block above,
+don't add a second one, if a future round adds more region field
+coverage.

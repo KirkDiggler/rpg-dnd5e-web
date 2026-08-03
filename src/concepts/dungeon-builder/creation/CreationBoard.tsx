@@ -40,8 +40,14 @@ import { cubeToWorld } from '@/components/hex-grid/hexMath';
 import { useRef, useState, type ReactElement } from 'react';
 import type { DungeonDoc, WallDoc, WallKind } from '../dungeonYaml';
 import { FLAT_COL_SPACING, FLAT_ROW_SPACING } from '../hexLayout';
-import { END_COLOR, resolveMarkerStyle, START_COLOR } from '../markerStyle';
+import {
+  END_COLOR,
+  regionArchetypeColor,
+  resolveMarkerStyle,
+  START_COLOR,
+} from '../markerStyle';
 import { PlacementMarker } from '../PlacementMarker';
+import { regionCentroid } from '../regionGeometry';
 import type { BoardTool, PlacementSelection } from '../types';
 import type { BoardEditing } from '../useBoardEditing';
 import {
@@ -53,6 +59,7 @@ import {
   type EdgeGeometry,
 } from './creationGeometry';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
+import type { RegionEditing } from './useRegionEditing';
 
 interface CreationBoardProps {
   doc: DungeonDoc;
@@ -72,6 +79,11 @@ interface CreationBoardProps {
   ) => void;
   onToggleHole: (col: number, row: number) => void;
   onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
+  /** Cell-authored semantic region editing (rpg-project#180) — only
+   * meaningful when `tool === 'region'`; the board reads `regionEdit`'s
+   * own `pendingCells`/`selectedRegionId` to decide what a click does.
+   * See `useRegionEditing.ts`'s own doc comment. */
+  regionEdit: RegionEditing;
 }
 
 // Same 6-direction convention authorGridHelpers.ts already defines for
@@ -128,6 +140,7 @@ export function CreationBoard({
   onToggleWallEdge,
   onToggleHole,
   onSetPoint,
+  regionEdit,
 }: CreationBoardProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverEdge, setHoverEdge] = useState<EdgeGeometry | null>(null);
@@ -221,6 +234,37 @@ export function CreationBoard({
     if (tool === 'hole') {
       const cell = nearestCreationCell(p, grid);
       onToggleHole(cell[0], cell[1]);
+      return;
+    }
+    if (tool === 'region') {
+      const cell = nearestCreationCell(p, grid);
+      if (regionEdit.selectedRegionId) {
+        // Editing an existing region's membership — every click toggles
+        // this cell in/out of THAT region, regardless of whether it
+        // belongs to some other region already (addCellToRegion's own
+        // overlap validation catches that case and surfaces a toast).
+        regionEdit.handleToggleCellOnSelected(cell);
+        return;
+      }
+      // No region selected yet: a click on an EXISTING region's cell
+      // selects it for editing (only when there's no in-progress new-
+      // region paint session — a mid-paint click always means "toggle
+      // this cell into the region I'm painting," even if it happens to
+      // land on another region's territory, since createRegion's own
+      // overlap check is what should catch that, not a silent
+      // reinterpretation of the click). Otherwise, toggle the cell into
+      // the pending (not-yet-created) region.
+      const hit =
+        regionEdit.pendingCells.length === 0
+          ? doc.regions.find((r) =>
+              r.cells.some((c) => c[0] === cell[0] && c[1] === cell[1])
+            )
+          : undefined;
+      if (hit) {
+        regionEdit.selectRegion(hit.id);
+      } else {
+        regionEdit.togglePendingCell(cell);
+      }
       return;
     }
     const edge = nearestEdge(p, grid);
@@ -336,6 +380,82 @@ export function CreationBoard({
     );
   });
 
+  // Cell-authored semantic regions (rpg-project#180) — a tinted rect per
+  // member cell (archetype-colored via `regionArchetypeColor`, the SAME
+  // color the edit-mode hex board's read-only overlay uses) plus one
+  // label at the region's centroid. `pointerEvents="none"` throughout:
+  // the board's own `handlePointerDown` already resolves "was an existing
+  // region clicked" via `nearestCreationCell` + a `doc.regions` scan, so
+  // these elements are purely visual, not a second independent hit-test
+  // surface.
+  const regionEls: ReactElement[] = [];
+  for (const region of doc.regions) {
+    const color = regionArchetypeColor(region.archetype);
+    const selected = regionEdit.selectedRegionId === region.id;
+    for (const [col, row] of region.cells) {
+      const center = creationCellCenter(col, row);
+      const half = { x: FLAT_COL_SPACING * 0.46, y: FLAT_ROW_SPACING * 0.46 };
+      regionEls.push(
+        <rect
+          key={`region-${region.id}-${col}-${row}`}
+          x={center.x - half.x}
+          y={center.y - half.y}
+          width={half.x * 2}
+          height={half.y * 2}
+          fill={color}
+          fillOpacity={selected ? 0.32 : 0.18}
+          stroke={color}
+          strokeWidth={selected ? 2 : 1}
+          strokeDasharray={selected ? undefined : '3 2'}
+          pointerEvents="none"
+        />
+      );
+    }
+    const centroid = regionCentroid(region.cells);
+    const labelPos = creationCellCenter(centroid.col, centroid.row);
+    regionEls.push(
+      <text
+        key={`region-${region.id}-label`}
+        x={labelPos.x}
+        y={labelPos.y + 3}
+        textAnchor="middle"
+        fill={color}
+        fontSize={10}
+        fontWeight={700}
+        pointerEvents="none"
+        style={{ paintOrder: 'stroke', stroke: '#100d0b', strokeWidth: 3 }}
+      >
+        {region.name ?? region.id}
+      </text>
+    );
+  }
+
+  // The in-progress, not-yet-created region's own pending cells — same
+  // rect treatment, dashed amber to read as "not committed yet" (matching
+  // this file's own hover-edge/wall-drawing amber-for-provisional
+  // convention elsewhere in this component).
+  const pendingRegionEls: ReactElement[] = regionEdit.pendingCells.map(
+    ([col, row]) => {
+      const center = creationCellCenter(col, row);
+      const half = { x: FLAT_COL_SPACING * 0.46, y: FLAT_ROW_SPACING * 0.46 };
+      return (
+        <rect
+          key={`region-pending-${col}-${row}`}
+          x={center.x - half.x}
+          y={center.y - half.y}
+          width={half.x * 2}
+          height={half.y * 2}
+          fill="#ffb347"
+          fillOpacity={0.28}
+          stroke="#ffb347"
+          strokeWidth={2}
+          strokeDasharray="3 2"
+          pointerEvents="none"
+        />
+      );
+    }
+  );
+
   const renderPlacement = (
     ref: string,
     at: [number, number],
@@ -405,7 +525,10 @@ export function CreationBoard({
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
       style={{
-        cursor: tool === 'wall' || tool === 'door' ? 'crosshair' : 'default',
+        cursor:
+          tool === 'wall' || tool === 'door' || tool === 'region'
+            ? 'crosshair'
+            : 'default',
       }}
     >
       <defs>
@@ -446,6 +569,8 @@ export function CreationBoard({
         strokeWidth={3}
       />
 
+      {regionEls}
+      {pendingRegionEls}
       {wallEls}
       {holeEls}
 

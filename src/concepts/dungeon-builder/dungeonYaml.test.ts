@@ -2,15 +2,22 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  addCellToRegion,
   buildWalkItYaml,
   clearPlacementFlag,
   clearRefDefault,
+  connectRegions,
+  createRegion,
   deletePlacement,
+  deleteRegion,
   DungeonParseError,
   movePlacement,
   movePlacementAcrossLists,
   parseDungeon,
   placeItem,
+  RegionValidationError,
+  removeCellFromRegion,
+  renameRegion,
   resolvePlacement,
   serializeDungeon,
   setBossFacing,
@@ -24,6 +31,7 @@ import {
   setPlacementRotationDegrees,
   setPlacementTargeting,
   setRefDefault,
+  setRegionArchetype,
   setStart,
   setWallEdge,
   stripMonsterPlacements,
@@ -32,6 +40,7 @@ import {
   toggleHole,
   toggleWall,
   toggleWallKind,
+  validateRegionCells,
   wallKindAtEdge,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
@@ -1018,6 +1027,382 @@ describe('defaults: ref-keyed inherited fields (rpg-project#175, Kirk\'s ask ver
       expect(stripped.dropped.find((d) => d.startsWith('defaults ('))).toBe(
         'defaults (1 ref)'
       );
+    });
+  });
+});
+
+describe('regions: cell-authored semantic room regions (rpg-project#180)', () => {
+  it('parses a regions: list into RegionDoc[], id/name/archetype/cells', () => {
+    const yaml = `${SHOWCASE_YAML}
+regions:
+  - id: shrine-inner
+    name: "Shrine — Inner Sanctum"
+    archetype: chamber
+    cells: [[9, 2], [9, 3], [10, 2], [10, 3]]
+`;
+    const { doc } = parseDungeon(yaml);
+    expect(doc.regions).toHaveLength(1);
+    expect(doc.regions[0]).toEqual({
+      id: 'shrine-inner',
+      name: 'Shrine — Inner Sanctum',
+      archetype: 'chamber',
+      cells: [
+        [9, 2],
+        [9, 3],
+        [10, 2],
+        [10, 3],
+      ],
+    });
+  });
+
+  it('defaults to an empty regions: list when absent — every pure v1 document', () => {
+    const { doc } = parseDungeon(SHOWCASE_YAML);
+    expect(doc.regions).toEqual([]);
+  });
+
+  it('a region with no name parses name: undefined, not a fabricated string', () => {
+    const yaml = `${SHOWCASE_YAML}
+regions:
+  - id: vault-annex
+    archetype: chamber
+    cells: [[1, 1]]
+`;
+    const { doc } = parseDungeon(yaml);
+    expect(doc.regions[0].name).toBeUndefined();
+  });
+
+  describe('validateRegionCells', () => {
+    it('rejects an empty cell set', () => {
+      const { doc } = parseDungeon(SHOWCASE_YAML);
+      expect(validateRegionCells(doc, [])).toMatch(/at least one cell/);
+    });
+
+    it('rejects a duplicate cell within the same set', () => {
+      const { doc } = parseDungeon(SHOWCASE_YAML);
+      expect(
+        validateRegionCells(doc, [
+          [1, 1],
+          [1, 1],
+        ])
+      ).toMatch(/selected twice/);
+    });
+
+    it('rejects a disconnected (non-contiguous) cell set', () => {
+      const { doc } = parseDungeon(SHOWCASE_YAML);
+      expect(
+        validateRegionCells(doc, [
+          [1, 1],
+          [9, 9],
+        ])
+      ).toMatch(/contiguous/);
+    });
+
+    it('accepts a single cell and a contiguous run', () => {
+      const { doc } = parseDungeon(SHOWCASE_YAML);
+      expect(validateRegionCells(doc, [[1, 1]])).toBeNull();
+      expect(
+        validateRegionCells(doc, [
+          [1, 1],
+          [2, 1],
+          [2, 2],
+        ])
+      ).toBeNull();
+    });
+
+    it('rejects a cell set overlapping an existing region, but allows it when self-excluded', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [
+        [1, 1],
+        [2, 1],
+      ]);
+      const doc2 = toDungeonDoc(cst);
+      expect(
+        validateRegionCells(doc2, [
+          [2, 1],
+          [3, 1],
+        ])
+      ).toMatch(/already belong to another region/);
+      // Excluding r1's own id lets r1's proposed new cell set (which still
+      // legitimately reuses its own current cells) validate cleanly.
+      expect(
+        validateRegionCells(
+          doc2,
+          [
+            [1, 1],
+            [2, 1],
+            [3, 1],
+          ],
+          'r1'
+        )
+      ).toBeNull();
+    });
+  });
+
+  describe('createRegion', () => {
+    it("adds a region with a block-style entry and flow-style cells, matching this file's cell-native convention", () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'shrine-inner', 'chamber', [
+        [9, 2],
+        [9, 3],
+      ]);
+      const yaml = serializeDungeon(cst);
+      expect(yaml).toContain('regions:');
+      expect(yaml).toContain('id: shrine-inner');
+      // `yaml`'s own flow-sequence padding (this file's header doc
+      // comment names the same residual diff for `at: [1, 1]` etc.) —
+      // exact byte content isn't the point here, round-trip fidelity is
+      // (asserted via the reparse below).
+      expect(yaml).toMatch(
+        /cells: \[\s*\[\s*9,\s*2\s*\],\s*\[\s*9,\s*3\s*\]\s*\]/
+      );
+
+      const { doc: reparsed } = parseDungeon(yaml);
+      expect(reparsed.regions).toHaveLength(1);
+      expect(reparsed.regions[0].cells).toEqual([
+        [9, 2],
+        [9, 3],
+      ]);
+    });
+
+    it('writes an optional name: only when provided', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [[1, 1]], 'The Annex');
+      const { doc: reparsed } = parseDungeon(serializeDungeon(cst));
+      expect(reparsed.regions[0].name).toBe('The Annex');
+
+      const { cst: cst2, doc: doc2 } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst2, doc2, 'r2', 'chamber', [[1, 1]]);
+      const { doc: reparsed2 } = parseDungeon(serializeDungeon(cst2));
+      expect(reparsed2.regions[0].name).toBeUndefined();
+    });
+
+    it('throws RegionValidationError on a duplicate id', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+      const doc2 = toDungeonDoc(cst);
+      expect(() => createRegion(cst, doc2, 'r1', 'chamber', [[2, 1]])).toThrow(
+        RegionValidationError
+      );
+    });
+
+    it('throws RegionValidationError on an invalid cell set instead of writing anything', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      expect(() => createRegion(cst, doc, 'bad', 'chamber', [])).toThrow(
+        RegionValidationError
+      );
+      expect(toDungeonDoc(cst).regions).toEqual([]);
+    });
+  });
+
+  describe('addCellToRegion / removeCellFromRegion', () => {
+    it('adds an adjacent cell to an existing region', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+      const doc2 = toDungeonDoc(cst);
+      addCellToRegion(cst, doc2, 'r1', [2, 1]);
+      const doc3 = toDungeonDoc(cst);
+      expect(doc3.regions[0].cells).toEqual([
+        [1, 1],
+        [2, 1],
+      ]);
+    });
+
+    it('is a no-op when the cell is already a member', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+      const doc2 = toDungeonDoc(cst);
+      addCellToRegion(cst, doc2, 'r1', [1, 1]);
+      expect(toDungeonDoc(cst).regions[0].cells).toEqual([[1, 1]]);
+    });
+
+    it('refuses a cell that would make the region non-contiguous', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+      const doc2 = toDungeonDoc(cst);
+      expect(() => addCellToRegion(cst, doc2, 'r1', [9, 9])).toThrow(
+        RegionValidationError
+      );
+      expect(toDungeonDoc(cst).regions[0].cells).toEqual([[1, 1]]);
+    });
+
+    it('refuses a cell already claimed by another region', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+      const doc2 = toDungeonDoc(cst);
+      createRegion(cst, doc2, 'r2', 'chamber', [[5, 1]]);
+      const doc3 = toDungeonDoc(cst);
+      expect(() => addCellToRegion(cst, doc3, 'r2', [1, 1])).toThrow(
+        RegionValidationError
+      );
+    });
+
+    it('removes a member cell, leaving the rest intact', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [
+        [1, 1],
+        [2, 1],
+      ]);
+      const doc2 = toDungeonDoc(cst);
+      removeCellFromRegion(cst, doc2, 'r1', [2, 1]);
+      expect(toDungeonDoc(cst).regions[0].cells).toEqual([[1, 1]]);
+    });
+
+    it('refuses to remove the last cell — delete the region instead', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+      const doc2 = toDungeonDoc(cst);
+      expect(() => removeCellFromRegion(cst, doc2, 'r1', [1, 1])).toThrow(
+        RegionValidationError
+      );
+      expect(toDungeonDoc(cst).regions[0].cells).toEqual([[1, 1]]);
+    });
+
+    it('refuses a removal that would split the region into two pieces', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      // A 1x3 strip — removing the middle cell splits it into two islands.
+      createRegion(cst, doc, 'r1', 'chamber', [
+        [1, 1],
+        [2, 1],
+        [3, 1],
+      ]);
+      const doc2 = toDungeonDoc(cst);
+      expect(() => removeCellFromRegion(cst, doc2, 'r1', [2, 1])).toThrow(
+        RegionValidationError
+      );
+      expect(toDungeonDoc(cst).regions[0].cells).toHaveLength(3);
+    });
+  });
+
+  it('renameRegion sets/clears name:, setRegionArchetype updates archetype:', () => {
+    const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+    createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+    renameRegion(cst, 'r1', 'The Annex');
+    setRegionArchetype(cst, 'r1', 'boss');
+    let reparsed = toDungeonDoc(cst);
+    expect(reparsed.regions[0].name).toBe('The Annex');
+    expect(reparsed.regions[0].archetype).toBe('boss');
+
+    renameRegion(cst, 'r1', null);
+    reparsed = toDungeonDoc(cst);
+    expect(reparsed.regions[0].name).toBeUndefined();
+  });
+
+  it('deleteRegion removes the region entirely; a no-op for an unknown id', () => {
+    const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+    createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+    deleteRegion(cst, 'r1');
+    expect(toDungeonDoc(cst).regions).toEqual([]);
+    // No throw:
+    deleteRegion(cst, 'does-not-exist');
+  });
+
+  describe('connectRegions — attach via a door edge, distinct from chain connectors:', () => {
+    it('places a door edge on the shared boundary and returns it', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'north', 'chamber', [
+        [1, 1],
+        [2, 1],
+      ]);
+      const doc2 = toDungeonDoc(cst);
+      createRegion(cst, doc2, 'south', 'chamber', [
+        [1, 2],
+        [2, 2],
+      ]);
+      const doc3 = toDungeonDoc(cst);
+
+      const result = connectRegions(cst, doc3, 'north', 'south');
+      expect(result.edge).not.toBeNull();
+      // Two candidate edges ([1,1]-[1,2] and [2,1]-[2,2]) sorted by
+      // (row, col) of `to` — the midpoint of 2 picks the SECOND
+      // (index 1) per pickAttachmentEdge's own floor(n/2) rule.
+      expect(result.edge).toEqual({ from: [2, 1], to: [2, 2] });
+
+      const finalDoc = toDungeonDoc(cst);
+      expect(finalDoc.walls).toHaveLength(1);
+      expect(finalDoc.walls[0]).toEqual({
+        from: [2, 1],
+        to: [2, 2],
+        kind: 'door',
+      });
+      // The connectors: chain is completely untouched — a region-
+      // attachment door is not a chain connector (rpg-project#175 spot-
+      // check finding).
+      expect(finalDoc.connectors).toEqual(doc.connectors);
+    });
+
+    it('returns { edge: null } and writes nothing when the two regions share no boundary', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'north', 'chamber', [[1, 1]]);
+      const doc2 = toDungeonDoc(cst);
+      createRegion(cst, doc2, 'far', 'chamber', [[9, 9]]);
+      const doc3 = toDungeonDoc(cst);
+
+      const result = connectRegions(cst, doc3, 'north', 'far');
+      expect(result.edge).toBeNull();
+      expect(toDungeonDoc(cst).walls).toEqual([]);
+    });
+
+    it('throws DungeonParseError for an unknown region id', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'north', 'chamber', [[1, 1]]);
+      const doc2 = toDungeonDoc(cst);
+      expect(() => connectRegions(cst, doc2, 'north', 'nope')).toThrow(
+        DungeonParseError
+      );
+    });
+  });
+
+  it('comment-safety: a comment elsewhere in the document survives creating/editing a region', () => {
+    const yaml = `${SHOWCASE_YAML.trimEnd()}
+# a durable comment, unrelated to regions
+`;
+    const { cst, doc } = parseDungeon(yaml);
+    createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+    const doc2 = toDungeonDoc(cst);
+    addCellToRegion(cst, doc2, 'r1', [2, 1]);
+    expect(serializeDungeon(cst)).toContain(
+      '# a durable comment, unrelated to regions'
+    );
+  });
+
+  describe('stripToV1Subset', () => {
+    it('drops regions: entirely, with an honest count, and reports "1 region" (singular)', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+      const result = stripToV1Subset(serializeDungeon(cst));
+      expect(result.dropped).toContain('1 region');
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.regions).toEqual([]);
+    });
+
+    it('reports "N regions" (plural) and leaves the real room chain untouched', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+      const doc2 = toDungeonDoc(cst);
+      createRegion(cst, doc2, 'r2', 'chamber', [[5, 1]]);
+      const result = stripToV1Subset(serializeDungeon(cst));
+      expect(result.dropped).toContain('2 regions');
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.rooms.map((r) => r.id)).toEqual(
+        doc.rooms.map((r) => r.id)
+      );
+    });
+
+    it('a connectRegions door edge is dropped independently, via the existing walls: count, not the regions: count', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'north', 'chamber', [[1, 1]]);
+      const doc2 = toDungeonDoc(cst);
+      createRegion(cst, doc2, 'south', 'chamber', [[1, 2]]);
+      const doc3 = toDungeonDoc(cst);
+      connectRegions(cst, doc3, 'north', 'south');
+
+      const result = stripToV1Subset(serializeDungeon(cst));
+      expect(result.dropped).toEqual(
+        expect.arrayContaining(['1 wall', '2 regions'])
+      );
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.walls).toEqual([]);
+      expect(stripped.regions).toEqual([]);
     });
   });
 });

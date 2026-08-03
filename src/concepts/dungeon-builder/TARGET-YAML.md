@@ -821,6 +821,259 @@ semantic region only when gameplay identity—not geometry alone—requires it.
 Branching topology then follows from the same canonical-edge/semantic-region
 model, rather than from giving every wall its own room boundary.
 
+## `regions:` — cell-authored semantic room regions (rpg-project#180)
+
+Target dialect, proposed — not compiled server-side, and not emitted by
+this concept before this round (the "Regions section" this file used to
+carry, and the matching sketch posted to rpg-project#175, were both
+proposed-shape-only with no mutator behind them; a real create/edit/
+attach UI and CST mutators now exist — see `dungeonYaml.ts`'s
+`createRegion`/`addCellToRegion`/`removeCellFromRegion`/`renameRegion`/
+`setRegionArchetype`/`deleteRegion`/`connectRegions` and
+`creation/RegionPanel.tsx`).
+
+Per the settled early-authoring model above (rpg-project#175): dungeon
+space owns canonical wall/door edges; rooms are stable semantic regions
+carrying reveal/placement/spawning/scripting/archetype meaning; an inner
+wall never splits a semantic room. `regions:` is the CELL-NATIVE
+alternative to the declared `rooms:` chain for expressing that same
+"stable semantic region" concept — instead of an `id`/`archetype`/`width`
+against a server-computed `start_column`, a region is an explicit list of
+absolute `[col,row]` cells, so it can be non-rectangular and takes no part
+in the linear connector chain at all.
+
+```yaml
+regions:
+  - id: shrine-inner
+    name: 'Shrine — Inner Sanctum' # optional; id doubles as the label otherwise, same as a room (RoomDoc has no separate name field either)
+    archetype: chamber # same vocabulary RoomDoc.archetype uses: entrance | chamber | corridor | boss
+    cells: [[9, 2], [9, 3], [9, 4], [10, 2], [10, 3], [10, 4]] # absolute [col,row], same space every other cell-native field uses
+```
+
+### Shape
+
+`RegionDoc { id: string; name?: string; archetype: string; cells:
+[number, number][] }` — see `dungeonYaml.ts`'s own doc comment for the
+full rationale. `name` is the one field a declared room doesn't have
+(CONTRACT.md's "room display names" finding: `id` doubles as the label for
+a room); it's offered here only because a hand-authored region id is more
+likely to be an opaque slug (`region-3`) than a room chain's own
+meaningful ids (`entry`, `vault`).
+
+**Alternatives considered for the cell encoding**, before settling on the
+plain `[[c,r],...]` array Kirk's own rpg-project#175 sketch already used:
+
+- **A compact run-length encoding** (e.g. row ranges per column) — rejected
+  as premature: every region this concept has authored or is likely to in
+  the near term is small (a handful to a few dozen cells), so the byte
+  savings don't yet justify a harder-to-hand-edit, harder-to-diff shape. A
+  plain cell list is also what a future real validator's own error
+  messages (à la the connector/boss messages already seen in the backend
+  probe) can point at directly, cell by cell.
+- **A bitmap/grid mask scoped to the region's own bounding box** (`origin:
+[c,r], mask: [[0,1,1],[1,1,0]]`) — rejected for the same reason
+  cell-painting lost to edge-painting for `walls:` (CONTRACT.md's
+  "wall-drawing interaction" finding): a mask needs a second decode step
+  before any consumer (this board, a future server) can answer "is cell
+  X in this region," where a flat cell list answers it by direct
+  membership. It would also complicate a sparse/scattered region (unusual,
+  but not disallowed — see "Open questions" below) far more than it helps
+  a compact rectangular one.
+- **Reusing `rooms:`'s `width`-against-`start_column` shape, generalized
+  to non-rectangular via a per-row `[startCol, endCol]` pair list** —
+  rejected: this is really the run-length encoding above wearing a
+  room-flavored name, and inherits the same "premature" objection; it also
+  couldn't express a region with more than one contiguous span in a single
+  row (an author drawing an L-shape or a room with a wall-hugging alcove)
+  without escalating to a list-of-lists anyway, at which point it's no
+  simpler than the flat cell list.
+
+### Invariants — validated client-side, matching rpg-project#180's own acceptance criteria
+
+`dungeonYaml.ts`'s `validateRegionCells` enforces exactly what #180's
+issue body already states as acceptance criteria ("Overlapping,
+disconnected, empty, and invalid cell sets fail with author-facing
+validation errors"), so this concept's authoring surface can never
+produce a region shape the eventual real #180 validator is already known
+to reject:
+
+- **Non-empty** — a region needs at least one cell.
+- **Orthogonally contiguous** — every cell must be reachable from every
+  other cell in the same region via 4-neighbor (not diagonal) adjacency
+  (`regionGeometry.ts`'s `cellsAreContiguous`, a plain BFS/flood-fill).
+  Diagonal-only adjacency doesn't count, matching `walls:`'s own
+  "orthogonally adjacent cells" requirement — there is no diagonal edge to
+  ever author a wall/door on between two cells that only touch at a
+  corner.
+- **Non-overlapping** — no cell may belong to more than one region at
+  once (`cellsOverlapAnotherRegion`). Enforced on create AND on every
+  membership edit (`addCellToRegion`), not just at creation time.
+- **No duplicate cell within one region's own list.**
+
+These four are enforced on every mutator that changes a region's cell
+set — `createRegion`, `addCellToRegion`, and (its own mirror-image
+version: removing a cell must not leave the region empty or split it in
+two) `removeCellFromRegion`.
+
+### Open questions this prototype records, and deliberately does NOT decide
+
+Per rpg-project#180's own acceptance criteria and non-goals, plus what
+this round's implementation had to assume to ship something usable —
+recorded here rather than silently decided, same discipline
+`defaults:`'s own "Open questions" section above follows:
+
+- **Precedence between a declared `rooms:` chain and `regions:` in the
+  SAME document.** #180's acceptance criteria call for "existing
+  rectangular specs retain a documented compatibility path," but don't say
+  what that path IS. This prototype does not attempt reconciliation: a
+  document can carry both `rooms:` and `regions:` today with no
+  cross-validation between them (a region's cells are never checked
+  against a declared room's own column range, or vice versa) — the two
+  are simply independent lists as far as this concept's own parser/board
+  are concerned. Recommendation, not a decision: the cleanest eventual
+  answer is probably that `regions:` supersedes `rooms:` once a document
+  declares any — i.e. a document picks ONE of the two topology models,
+  not both at once — but that's a real server-side compiler decision
+  #180's own implementer should make, not something a client-side
+  prototype should quietly assume by, say, hiding `rooms:` the moment
+  `regions:` appears.
+- **Must regions fully tile the dungeon's space?** No — not enforced, and
+  recommended not to be. Per the settled model, dungeon space owns
+  edges independent of semantic rooms/regions; a region is a claim about
+  gameplay identity for the cells it lists, not a partition of the whole
+  canvas. Sparse, disjoint regions (with "unclaimed" cells between or
+  around them) are allowed by this prototype's own validation.
+- **Minimum region size.** A single-cell region is allowed (trivially
+  contiguous, trivially non-overlapping) — not explicitly ruled in or out
+  by #180's issue body, but nothing about the acceptance criteria implies
+  a floor above 1.
+- **Does an inner wall inside a region ever split it?** No — this follows
+  directly from the settled model (rpg-project#175/#179), not a new
+  decision this file is making: "an inner wall never splits a semantic
+  room" applies to a `regions:`-declared region exactly as it does to a
+  `rooms:`-declared one. Drawing a `walls:` edge entirely inside one
+  region's cells changes movement/line-of-sight only; the region's own
+  `cells:` membership is untouched by any wall mutator.
+
+### Region attachment vs. chain `connectors:` — deliberately distinct constructs
+
+"Attach to the next region" (Kirk's ask) is implemented as placing a DOOR
+edge on the shared boundary between two regions — mechanically nothing
+more than an ordinary `walls:` entry with `kind: door`
+(`dungeonYaml.ts`'s `connectRegions`, `regionGeometry.ts`'s
+`sharedBoundaryEdges`/`pickAttachmentEdge`). This is DELIBERATELY NOT the
+same construct as a chain `connectors:` entry, and the distinction matters
+enough to spell out, not just imply:
+
+|                         | chain `connectors:`                                                                                                                                                       | region-attachment door                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `from`/`to`             | fixed by declared-room ARRAY ORDER — never independently authorable (`validateChain`, verified against the real Go source: "Why connectors have no add/remove UI," above) | freely chosen — any shared boundary edge between any two regions |
+| Cardinality             | exactly `len(rooms)-1`, always                                                                                                                                            | zero, one, or many between any pair of regions                   |
+| Server validation today | real, v1, `dungeonspec.Validate`                                                                                                                                          | none — this is a `walls:` entry, itself target-dialect-only      |
+| What it IS              | a required link in the linear room chain                                                                                                                                  | wall/door geometry only                                          |
+
+Per rpg-project#175's own spot-check finding (confirmed against the real
+`validateChain` source): **an authored door edge does NOT replace,
+satisfy, or count as a chain connector.** A document with two regions
+connected by a region-attachment door still needs its OWN, independently
+satisfied `connectors:` list if it also declares a `rooms:` chain — the
+two constructs coexist without one implying the other. Connecting two
+regions this way, on a `regions:`-only (no `rooms:`) document, produces a
+dungeon with real wall/door geometry between two semantic areas but NO
+chain topology at all — consistent with "the linear chain is a current
+encoding, not the permanent geometry model" (see "Why connectors have no
+add/remove UI," above): a `regions:`-only document was never trying to
+express a linear chain in the first place.
+
+**Which edge, when a boundary has more than one**: the MIDPOINT edge
+along the shared boundary run, chosen automatically
+(`pickAttachmentEdge`) rather than letting the author click a specific
+edge — the simplest first-pass choice, at the cost of not handling an
+L-shaped or multi-segment boundary as gracefully as an interactive picker
+would. See `regionGeometry.ts`'s own doc comment for the exact
+(deterministic, but not physically-distance-ordered) tie-breaking rule.
+An author who wants a DIFFERENT edge than the one auto-picked can still
+draw one directly with the Wall/Door tools — `connectRegions` is a
+convenience for the common case, not the only way to place a door between
+two regions.
+
+### UI: creation-mode-only this round
+
+The Region tool (Palette's Structural category, a 4th row alongside
+Wall/Door/Hole) exists only in creation mode
+(`creation/CreationBoard.tsx`, `creation/RegionPanel.tsx`,
+`creation/useRegionEditing.ts`) — matching this file's own "Settled early
+model" framing that a from-scratch canvas is the natural home for
+freeform, cell-native authoring. Painting cells with no region selected
+builds a PENDING (not-yet-created) region; a floating panel
+(`RegionPanel.tsx`, same visual language as `Inspector.tsx`) lets the
+author set an auto-suggested id, an optional name, and an archetype, then
+Create. Clicking an already-existing region selects it for editing:
+rename, change archetype, add/remove member cells by clicking board
+cells, connect to any other existing region, or delete. Immediately after
+a create, if a PREVIOUS region exists and shares a boundary, the panel
+offers a one-click "Connect to '<previous region>'?" prompt — the
+"ideally attaching it to the next region" flow Kirk's ask named directly.
+
+Edit mode (`Board.tsx`, the hex-true board) renders any `regions:` a
+document carries — hand-authored in the YAML pane, or round-tripped from
+a document first built in creation mode — as a read-only tinted-hex
+overlay + centroid label, same archetype coloring
+(`markerStyle.ts`'s `regionArchetypeColor`) as the creation board's own
+overlay, but with zero interaction: no tool exists there to create, edit,
+or delete a region this round.
+
+## `place:`/`boss:` facing — compile status now varies by entry type (2026-08-03)
+
+**Update, 2026-08-03, from a real backend probe (rpg-project#175's
+"Backend feedback: exercising the new authoring API" comment) — this
+supersedes the blanket "not yet compiled" framing this section's own
+badge used to give `facing` uniformly.** Reflection + `validate_only`
+calls against Kirk's authoring branch show floor-prop `facing` genuinely
+COMPILES now — but only for one specific shape: a room-scoped, non-monster,
+non-`mount:wall` placement. Every other entry type still decodes (the
+field is now schema-known) and is then explicitly rejected, with an
+author-actionable message naming the constraint: `"facing only supported
+on room-scoped floor props"`.
+
+| Entry type                                                        | Compile status                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| room-scoped floor prop (`mount` unset/`floor`, not a monster ref) | **compiles** — real, on Kirk's branch                                                                                                                                                                                           |
+| monster `place:` entry                                            | decodes, rejected ("floor props" only)                                                                                                                                                                                          |
+| `boss:` entry                                                     | decodes, rejected (same message)                                                                                                                                                                                                |
+| `mount: wall` placement (any ref)                                 | decodes, rejected (same message)                                                                                                                                                                                                |
+| top-level `place:` (any ref, any mount)                           | rejected for an INDEPENDENT reason first — top-level placement itself isn't supported yet ("place[0]: unsupported capability: top-level placement is not supported") — facing's own support never gets evaluated for this shape |
+
+The Inspector now renders TWO different badges on the same `facing`
+control depending on which of these applies to the currently-selected
+placement (`Inspector.tsx`'s `FacingConservativeBadge` vs.
+`TargetDialectBadge`) — a monster, a boss, or a `mount: wall` selection
+shows the more conservative "not yet supported (this entry type)" badge
+with the real validator's own rejection message in its tooltip; a plain
+room-scoped floor prop keeps the ordinary "target dialect, proposed"
+badge, which is now honestly stale in the OPPOSITE direction (see the
+tracking note immediately below) rather than overstated.
+
+## Status tracking note (2026-08-03): two fields now compile on Kirk's branch, unreleased
+
+Per the same rpg-project#175 backend-probe comment: **`start:`** (a bare
+`start: [c,r]`) and **floor-prop `facing`** (the one entry-type shape
+named above) now genuinely compile against Kirk's authoring branch — `start:`
+directly overrides the generator-chosen `FloorPlan.entrance`, exactly the
+"feed straight through, no generator step" resolution this file's own
+"Start/end" section left as an open question. **This branch is
+unreleased** — the shared, gate-off `rpg-api` instance this concept's own
+live-verification arc otherwise talks to does not have it yet. Every
+badge in this concept (`TargetDialectBadge` on `start:`, the facing split
+above) stays exactly as it is — "target dialect, proposed" / the new
+conservative variant — until the branch actually merges/releases; this
+note exists purely so the NEXT session that touches either field knows
+real server support already exists upstream, rather than re-discovering
+it from scratch. Do not flip either badge to "compiles" based on this
+note alone — badge state should track what the shared server this
+concept's own live-preview probe actually reaches, not what exists on an
+unmerged branch.
+
 ## The v1-subset strip — what actually reaches `PutDungeon`
 
 This concept NEVER sends a target-dialect document to the real server. Before any
@@ -828,15 +1081,16 @@ live `validate_only` preview call or a real `Save & Play`, the current
 document is stripped down to exactly what v1 compiles
 (`dungeonYaml.ts`'s `stripToV1Subset`):
 
-| Field                                              | v1 subset                                                                                                                                                          |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `version`                                          | forced to `1` (never `2` — see the annotated example's own note)                                                                                                   |
-| `key`, `name`, `theme`, `height`                   | kept as-is                                                                                                                                                         |
-| `rooms:`                                           | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                                              |
-| `connectors:`                                      | kept as-is, including `locked:`                                                                                                                                    |
-| top-level `place:`                                 | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above                           |
-| `canvas:`, `walls:`, `start:`, `end:`, `lighting:` | dropped entirely                                                                                                                                                   |
-| `defaults:`                                        | dropped, but not silently — every placement INHERITING a `blocks_movement`/`blocks_los` value first gets it materialized as a literal key; see "`defaults:`" above |
+| Field                                              | v1 subset                                                                                                                                                                                          |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                                          | forced to `1` (never `2` — see the annotated example's own note)                                                                                                                                   |
+| `key`, `name`, `theme`, `height`                   | kept as-is                                                                                                                                                                                         |
+| `rooms:`                                           | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                                                                              |
+| `connectors:`                                      | kept as-is, including `locked:`                                                                                                                                                                    |
+| top-level `place:`                                 | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above                                                           |
+| `canvas:`, `walls:`, `start:`, `end:`, `lighting:` | dropped entirely                                                                                                                                                                                   |
+| `regions:`                                         | dropped entirely — no v1 representation of any kind (dungeonspec only knows the declared `rooms:` chain); a region-attachment door edge (`walls:`) is stripped independently, see "regions:" above |
+| `defaults:`                                        | dropped, but not silently — every placement INHERITING a `blocks_movement`/`blocks_los` value first gets it materialized as a literal key; see "`defaults:`" above                                 |
 
 If, after stripping, `rooms:` has fewer than 2 entries (dungeonspec's own
 `minRooms = 2`), there IS no compilable subset — a from-scratch canvas
@@ -869,24 +1123,40 @@ false)` of the whole document.
   catches up to the concept, instead of Save & Play just going dark the
   moment an author touches a target field.
 
-## Structural palette category (Kirk's 2026-08-02 addition)
+## Structural palette category (Kirk's 2026-08-02 addition, Region added 2026-08-03)
 
-The early Structural palette is **Wall, Door**. Unlike the other categories
-(draggable/placeable refs), these are TOOLS: selecting one arms a board click
-behavior (paint a wall or toggle a wall's kind) rather than placing a single
-ref at a cell. The existing Hole control is a retained prototype, not early-
-dialect UI; use Obstacles & Props for collapse visuals. Door here means "toggle
-an authored wall segment's `kind` between `solid` and `door`" — a target-dialect-only
-concept, distinct from `ConnectorInspector`'s real, v1 `locked:` editing
-on the chain's own doors (both are real, both are "doors," they answer
-different questions: a connector's door is WHERE the chain already
-crosses between two declared rooms; a wall's door is a door on a
-segment the author drew, wherever they drew it).
+The early Structural palette is **Wall, Door, Hole**, plus **Region**
+(creation mode only — see "regions:" above) since this round. Unlike the
+other categories (draggable/placeable refs), these are TOOLS: selecting
+one arms a board click behavior (paint a wall, toggle a wall's kind, paint
+region membership) rather than placing a single ref at a cell. Door here
+means "toggle an authored wall segment's `kind` between `solid` and
+`door`" — a target-dialect-only concept, distinct from
+`ConnectorInspector`'s real, v1 `locked:` editing on the chain's own doors
+(both are real, both are "doors," they answer different questions: a
+connector's door is WHERE the chain already crosses between two declared
+rooms; a wall's door is a door on a segment the author drew, wherever they
+drew it) — and ALSO distinct from a region-attachment door (see "Region
+attachment vs. chain connectors," above): three different "door" concepts
+in this one dialect, each answering a different question.
 
-The retained Hole prototype is not part of this early target dialect.
-For now, use an obstacle/prop for a collapse visual; do not infer no-floor,
-movement, line-of-sight, falling, bridging, or vertical-traversal semantics
-from that prototype.
+**Holes reconciled (2026-08-03) — moved out of the main kitchen-sink
+specimen, into an exploration appendix.** The retained Hole prototype is
+NOT part of this early target dialect (unchanged from before this round —
+see "Holes are deliberately deferred," above) — but the v0.1/v0.2
+kitchen-sink specimen (`specimens/kitchen-sink.yaml`) inconsistently
+included a `holes:` entry anyway, which read as a stronger commitment than
+"deferred exploration" actually is: a reader skimming the specimen would
+reasonably conclude holes are as real as walls/start/end, since they sat
+in the same main document. Fixed by regenerating the kitchen-sink specimen
+WITHOUT `holes:` (v0.3, see `specimens/README.md`'s changelog) and moving a
+minimal holes sample into a clearly-labeled
+`specimens/exploration/holes.yaml` appendix instead — the main pack now
+only contains constructs this file treats as real dialect proposals,
+whether compiled today or not; holes stay demonstrable without implying
+that same status. Use an obstacle/prop for a collapse visual in any
+real document; do not infer no-floor, movement, line-of-sight, falling,
+bridging, or vertical-traversal semantics from the retained prototype.
 
 **A `walls:`/`start:`/`end:` cell can sit outside the compiled
 `FloorPlan`'s own bounding box** — a from-scratch canvas draft, or a
