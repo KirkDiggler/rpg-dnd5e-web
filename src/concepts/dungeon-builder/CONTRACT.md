@@ -2253,3 +2253,89 @@ visibly rotated to match, confirming the full round trip (click → select
 
 `ci-check` clean, full suite passing (56 tests: the pre-existing 48 +
 8 new `isSameSelection` cases).
+
+## New arc: 3D editing, part 2 follow-up — free-rotation prototype
+
+Directly answers the team lead's design note on top of part 2's
+click-select-and-rotate landing: present BOTH rotation granularities —
+the 6-direction facing stepper already shipped, plus a free/fine
+control — side by side on the same object, so Kirk can feel the
+difference by hand instead of the open question in TARGET-YAML.md
+("is 6-direction hex facing too coarse for a wall-mounted prop?")
+staying an abstract debate.
+
+**Design: additive, not a replacement.** `rotationDegrees` (`rotate_degrees:`
+in YAML) is a ±30° fine adjustment layered ON TOP of the existing coarse
+`wallMountRotationY`-derived flush rotation for `mount: wall` placements
+only — `finalRotationY = wallMountRotationY(...) + (rotationDegrees ??
+0) * (Math.PI / 180)`. ±30° is deliberately half of one 6-direction step
+(60°), so the fine control can reach exactly halfway to either neighboring
+facing without ever being able to substitute for picking a different
+facing outright — it's a nudge, not a second way to choose direction.
+Chosen over a replacement design because the real open question is
+whether the coarse pick gets CLOSE ENOUGH that a small nudge closes the
+gap, not whether facing should be abolished; an additive field tests
+that question directly, and a replacement field wouldn't let both
+granularities coexist on one object for Kirk to compare "side by side on
+the same banner" as asked.
+
+**Explicitly not a target-dialect proposal.** Same status as the
+alignment-audit round's own experiments: `PlacementDoc.rotationDegrees`'s
+doc comment and the Inspector's new `ExperimentBadge` (teal, distinct
+from the purple `TargetDialectBadge`) both say so, and `stripToV1Subset`
+drops `rotate_degrees` along with the other target-dialect-adjacent
+fields, reporting it in the compile badge's dropped-constructs list
+(`fine-rotation experiment (N placements)`) so its presence is tracked
+honestly through the existing "what would survive a real compile" system
+rather than silently riding along.
+
+**What shipped**:
+
+- `dungeonYaml.ts`: `PlacementDoc.rotationDegrees: number | null`,
+  `parseRotationDegrees` (mirrors `parseHeight`), the
+  `setPlacementRotationDegrees(cst, roomId, index, rotationDegrees)`
+  mutator (clears the key on both `null` and `0` — a 0° nudge and no
+  nudge render identically, so the document doesn't carry a
+  distinguishable-but-meaningless zero), and `stripToV1Subset` handling.
+- `DungeonPreview3D.tsx`: `buildOnePlacement`'s wall-mount rotation branch
+  adds the degrees-to-radians nudge on top of `wallMountRotationY`, gated
+  to `mount === 'wall'` the same way the coarse rotation already is.
+- `Inspector.tsx`: a new "fine rotation" range slider (±30°, step 1),
+  shown only when `mount === 'wall'` (a boss can never be wall-mounted,
+  so the same boss-excluded gate `handleSetMount` already uses applies
+  here too), with the `ExperimentBadge` and a caption naming the open
+  question it's testing.
+- `DungeonBuilderConcept.tsx`'s `useBoardEditing` hook gains
+  `handleSetRotationDegrees`, wired into both Inspector call sites — edit
+  mode here AND creation mode in `creation/CreationConcept.tsx`, since
+  both share the one `<Inspector>` component.
+
+**Verified live**: built an isolated single-room document (one
+`wall-banner` at `mount: wall, facing: NE, height: 2.0` plus a matching
+wall on the same edge), clicked to select it, confirmed the Inspector
+showed both the existing facing stepper and the new fine-rotation slider
+together. Dragged the slider to 20°: the YAML gained `rotate_degrees: 20`
+and the 3D model visibly rotated (before/after evidence below). Then
+clicked the facing stepper's rotate button: `facing` changed (`NE` → `E`)
+while `rotate_degrees: 20` was preserved — confirming the two controls
+are genuinely independent and coexist on the same object exactly as
+designed, not one silently resetting the other. Compile badge correctly
+tracked the new field throughout (`Uses: 1 wall, facing (1 placement),
+wall-mount (1 placement), fine-rotation experiment (1 placement) — not
+yet compiled server-side`). Evidence:
+`docs/evidence/dungeon-builder-free-rotation-zero.png`,
+`docs/evidence/dungeon-builder-free-rotation-20deg.png`.
+
+**Open, pending Kirk**: this prototype is the probe, not the answer. The
+question it exists to test — whether 6-direction facing alone is enough
+for wall-mounted props, or the fine control turns out to matter — is
+unresolved until Kirk has actually tried both controls by hand. What his
+hands choose (reaches for the slider vs. never touches it; wants finer
+than ±30°; wants it available beyond wall-mounts) should get recorded
+back into this section and into TARGET-YAML.md's open-question writeup
+once he weighs in — not assumed here.
+
+Full suite passing (`dungeonYaml.test.ts`: 33 tests, including the new
+`setPlacementRotationDegrees` coverage and updated assertions on the two
+existing strip/parse tests), typecheck and lint clean, `ci-check` run
+before commit.

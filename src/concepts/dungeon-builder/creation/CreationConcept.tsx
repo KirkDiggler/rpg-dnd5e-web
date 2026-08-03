@@ -326,6 +326,7 @@ export function CreationConcept({
         onSetFlags={edit.handleSetFlags}
         onDelete={edit.handleDelete}
         onSetMount={edit.handleSetMount}
+        onSetRotationDegrees={edit.handleSetRotationDegrees}
         onSetTargeting={edit.handleSetTargeting}
         onSetFacing={edit.handleSetFacing}
       />

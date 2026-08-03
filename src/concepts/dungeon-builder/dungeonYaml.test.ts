@@ -16,6 +16,7 @@ import {
   setLightingAmbient,
   setPlacementFacing,
   setPlacementMount,
+  setPlacementRotationDegrees,
   setPlacementTargeting,
   setStart,
   stripMonsterPlacements,
@@ -275,6 +276,7 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
     expect(doc.rooms[0].place[0].facing).toBeNull();
     expect(doc.rooms[0].place[0].mount).toBe('floor');
     expect(doc.rooms[0].place[0].height).toBeNull();
+    expect(doc.rooms[0].place[0].rotationDegrees).toBeNull();
     expect(doc.rooms[0].place[0].targeting).toBeNull();
     expect(doc.rooms[2].boss?.targeting).toBeNull();
   });
@@ -381,6 +383,23 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
     expect(serializeDungeon(cst)).not.toContain('mount:');
   });
 
+  it('setPlacementRotationDegrees writes a rotate_degrees: key, clears on null AND on 0 (a 0° nudge and no nudge render identically)', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setPlacementRotationDegrees(cst, 'antechamber', 0, 12);
+    expect(toDungeonDoc(cst).rooms[0].place[0].rotationDegrees).toBe(12);
+    expect(serializeDungeon(cst)).toContain('rotate_degrees: 12');
+
+    setPlacementRotationDegrees(cst, 'antechamber', 0, 0);
+    expect(toDungeonDoc(cst).rooms[0].place[0].rotationDegrees).toBeNull();
+    expect(serializeDungeon(cst)).not.toContain('rotate_degrees');
+
+    setPlacementRotationDegrees(cst, 'antechamber', 0, -8);
+    expect(toDungeonDoc(cst).rooms[0].place[0].rotationDegrees).toBe(-8);
+    setPlacementRotationDegrees(cst, 'antechamber', 0, null);
+    expect(toDungeonDoc(cst).rooms[0].place[0].rotationDegrees).toBeNull();
+    expect(serializeDungeon(cst)).not.toContain('rotate_degrees');
+  });
+
   it('setPlacementTargeting / setBossTargeting write/clear a targeting: key', () => {
     const { cst, doc } = parseDungeon(SHOWCASE_YAML);
     setPlacementTargeting(cst, 'antechamber', 0, 'lowest-health');
@@ -414,6 +433,7 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
       setLightingAmbient(cst, 0.8);
       setPlacementFacing(cst, 'antechamber', 0, 2);
       setPlacementMount(cst, 'antechamber', 0, 'wall', 2.0);
+      setPlacementRotationDegrees(cst, 'antechamber', 0, 15);
       setPlacementTargeting(cst, 'antechamber', 0, 'lowest-health');
       setBossTargeting(cst, doc.rooms[2].id, 'closest');
 
@@ -426,6 +446,7 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
         'facing (1 placement)',
         'wall-mount (1 placement)',
         'targeting (2 placements)',
+        'fine-rotation experiment (1 placement)',
       ]);
       expect(result.compilable).toBe(true);
 
@@ -439,6 +460,7 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
       expect(stripped.rooms[0].place[0].facing).toBeNull();
       expect(stripped.rooms[0].place[0].mount).toBe('floor');
       expect(stripped.rooms[0].place[0].height).toBeNull();
+      expect(stripped.rooms[0].place[0].rotationDegrees).toBeNull();
       expect(stripped.rooms[0].place[0].targeting).toBeNull();
       expect(stripped.rooms[2].boss?.targeting).toBeNull();
       // Real v1 content untouched.

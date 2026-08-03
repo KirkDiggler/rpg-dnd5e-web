@@ -276,7 +276,17 @@ function buildOnePlacement(
     p.facing === null
       ? 0
       : p.mount === 'wall'
-        ? wallMountRotationY(absCol, row, p.facing)
+        ? // EXPERIMENT (see PlacementDoc.rotationDegrees's own doc
+          // comment) — `rotationDegrees` is a fine ADJUSTMENT added on
+          // top of the coarse 6-direction flush rotation, never a
+          // replacement for it. `facing` still picks which wall edge;
+          // this nudges the exact angle against that wall, the same
+          // shape as the open question it exists to let Kirk answer by
+          // feel: does the coarse pick get close enough that a small
+          // nudge covers the gap, or is a from-scratch free control
+          // needed instead?
+          wallMountRotationY(absCol, row, p.facing) +
+          ((p.rotationDegrees ?? 0) * Math.PI) / 180
         : facingToRotationY(p.facing);
   if (p.isMonster) {
     const monsterRefId = p.ref.split(':').pop();
