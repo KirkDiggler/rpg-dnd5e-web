@@ -16,6 +16,13 @@
  */
 import { HEX_FACING_LABELS } from '@/components/hex-grid/authorGridHelpers';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import {
+  isCellOccupied,
+  neighborCell,
+  roomAtColumn,
+  stepWallFacing,
+  wallBearingFacings,
+} from './boardGeometry';
 import type { DungeonDoc, Mount } from './dungeonYaml';
 import type { PlacementSelection } from './types';
 
@@ -101,6 +108,20 @@ interface InspectorProps {
    * nudge and no nudge render identically, so there is no reason to
    * distinguish them in the document). */
   onSetRotationDegrees: (rotationDegrees: number | null) => void;
+  /** Wall-mount edge-selection rework, part 2 (Kirk's 2026-08-02 "flush
+   * with a wall on one side but not the other" finding) — move the
+   * selected `mount: wall` placement to the wall's far cell, mirroring
+   * facing so it stays flush against the SAME wall, just hung from the
+   * other side. The Inspector computes `flipTarget` itself (it already
+   * has `doc`+`floorPlan`) and only ever calls this with a validated
+   * target — optional so a caller that doesn't wire it (creation mode,
+   * which has no `floorPlan` to validate against) simply never shows the
+   * button as enabled. */
+  onFlipMountSide?: (target: {
+    roomId: string;
+    at: [number, number];
+    newFacing: number;
+  }) => void;
 }
 
 export function Inspector({
@@ -113,6 +134,7 @@ export function Inspector({
   onSetTargeting,
   onSetFacing,
   onSetRotationDegrees,
+  onFlipMountSide,
 }: InspectorProps) {
   if (!selected) return null;
   // Three shapes to resolve, not two: boss (always room-scoped — a real
@@ -172,6 +194,45 @@ export function Inspector({
     floorPlan.entrance.row === row &&
     blocksMovement;
 
+  // Wall-mount edge-selection rework (Kirk's 2026-08-02 "I can only line
+  // up 1 direction — flush with a wall on one side but not the other"
+  // finding). Computed for every selection (not gated on mount === 'wall'
+  // up front) so `bearingFacings.length` can also inform the honest hint
+  // shown below the facing control. Works identically in creation mode
+  // (`floorPlan` undefined) since `absCol`/`row` above already resolve
+  // correctly there — this only ever reads `doc.walls`, never floorPlan.
+  const bearingFacings =
+    mount === 'wall' ? wallBearingFacings(doc.walls, absCol, row) : [];
+
+  // "Flip to other side" (same finding, part 2): move this mount to the
+  // wall's far cell and mirror facing, one click instead of
+  // delete-and-replace. Needs `floorPlan` to validate the far cell is a
+  // real floor cell in bounds — creation mode has no FloorPlan at all
+  // (CreationConcept.tsx's own doc comment), so this is edit-mode only
+  // for its first landing; `flipTarget` stays `null` there and the
+  // button shows an honest disabled tooltip rather than guessing at
+  // canvas-mode validity.
+  const flipTarget = (() => {
+    if (!floorPlan || mount !== 'wall' || facing === null || selected.boss) {
+      return null;
+    }
+    const n = neighborCell(absCol, row, facing);
+    if (n.row === floorPlan.doorRow || n.row < 0 || n.row >= floorPlan.height) {
+      return null;
+    }
+    const nRoom = roomAtColumn(floorPlan, n.col);
+    if (!nRoom) return null;
+    if (doc.holes.some(([hc, hr]) => hc === n.col && hr === n.row)) {
+      return null;
+    }
+    if (isCellOccupied(floorPlan, doc, n.col, n.row)) return null;
+    return {
+      roomId: nRoom.id,
+      at: [n.col - nRoom.startColumn, n.row] as [number, number],
+      newFacing: (facing + 3) % 6,
+    };
+  })();
+
   return (
     <div
       role="dialog"
@@ -206,7 +267,13 @@ export function Inspector({
         }}
       >
         <button
-          onClick={() => onSetFacing(((facing ?? 0) + 5) % 6)}
+          onClick={() =>
+            onSetFacing(
+              mount === 'wall'
+                ? stepWallFacing(facing, bearingFacings, -1)
+                : ((facing ?? 0) + 5) % 6
+            )
+          }
           style={rotateBtnStyle}
         >
           ↺
@@ -215,7 +282,13 @@ export function Inspector({
           {facing !== null ? HEX_FACING_LABELS[facing] : '—'}
         </span>
         <button
-          onClick={() => onSetFacing(((facing ?? 0) + 1) % 6)}
+          onClick={() =>
+            onSetFacing(
+              mount === 'wall'
+                ? stepWallFacing(facing, bearingFacings, 1)
+                : ((facing ?? 0) + 1) % 6
+            )
+          }
           style={rotateBtnStyle}
         >
           ↻
@@ -223,6 +296,45 @@ export function Inspector({
         <span>facing</span>
         <TargetDialectBadge />
       </div>
+
+      {mount === 'wall' && (
+        <div style={{ fontSize: 10, color: '#8a7a5a', margin: '-2px 0 6px' }}>
+          {bearingFacings.length > 0 ? (
+            <>
+              stepping cycles this cell's {bearingFacings.length} wall
+              {bearingFacings.length === 1 ? '' : 's'} only — flush by
+              construction
+            </>
+          ) : (
+            'no wall on this cell yet — stepping cycles all 6 directions'
+          )}
+          {onFlipMountSide && (
+            <button
+              onClick={() => flipTarget && onFlipMountSide(flipTarget)}
+              disabled={!flipTarget}
+              title={
+                flipTarget
+                  ? "move to the wall's far side, mirroring facing"
+                  : !floorPlan
+                    ? 'not available in New Dungeon mode yet (no compiled floor plan to validate against)'
+                    : "the wall's far cell is out of bounds, not a floor cell, or already occupied"
+              }
+              style={{
+                marginLeft: 8,
+                fontSize: 10,
+                background: 'transparent',
+                color: flipTarget ? '#8fe8e0' : '#5a4f42',
+                border: `1px solid ${flipTarget ? '#2a5a54' : '#3a332c'}`,
+                borderRadius: 3,
+                padding: '1px 6px',
+                cursor: flipTarget ? 'pointer' : 'not-allowed',
+              }}
+            >
+              flip to other side
+            </button>
+          )}
+        </div>
+      )}
 
       <div
         style={{

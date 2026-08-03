@@ -3,13 +3,20 @@
  * `DungeonDoc`, shared by `Board.tsx` and its drag logic. Kept separate
  * from the component so it's unit-testable without React.
  */
+import { facingDirection } from '@/components/hex-grid/authorGridHelpers';
 import type {
   FloorPlan,
   FloorPlanConnector,
   FloorPlanRoom,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
-import type { DungeonDoc } from './dungeonYaml';
-import { cellCenter, type CellPos } from './hexLayout';
+import type { DungeonDoc, WallDoc } from './dungeonYaml';
+import {
+  cellCenter,
+  cubeAtColRow,
+  hexColumn,
+  hexRow,
+  type CellPos,
+} from './hexLayout';
 import type { PlacementSelection } from './types';
 
 /** Whether `current` (a board's live `selectedPlacement` state) IS `sel`
@@ -148,4 +155,82 @@ export function nearestCell(
     }
   }
   return best;
+}
+
+/** The neighbor cell (col, row) in a given `facing` direction (0-5,
+ * HEX_FACING_LABELS order) from an absolute cell — the same
+ * `facingDirection` + cube-neighbor math `wallMountRotationY`
+ * (`preview3d/DungeonPreview3D.tsx`) already uses for its rotation, here
+ * exposed as a pure coordinate lookup so both the 3D renderer and this
+ * file's own edge logic below share one derivation instead of two. */
+export function neighborCell(
+  absCol: number,
+  row: number,
+  facing: number
+): { col: number; row: number } {
+  const here = cubeAtColRow(absCol, row);
+  const dir = facingDirection(facing);
+  const there = { x: here.x + dir.x, y: here.y + dir.y, z: here.z + dir.z };
+  return { col: hexColumn(there), row: hexRow(there) };
+}
+
+/** The `facing` indices (0-5) where `walls` actually has an edge between
+ * `(absCol, row)` and that neighbor — checked both authoring orders (a
+ * wall can be recorded `{from: here, to: there}` or `{from: there, to:
+ * here}`; `dungeonYaml.ts`'s own `wallIndexAtEdge` only ever matches one
+ * fixed order, which is fine for its own toggle-by-the-same-caller use
+ * but wrong for this lookup, which has to recognize a wall regardless of
+ * which side authored it). Kirk's 2026-08-02 finding this exists to fix:
+ * "I can only line up 1 direction — flush with a wall on one side but
+ * not the other" — a mount's `facing` stepper cycling ALL 6 hex
+ * directions blindly, most of which have no real wall to be flush
+ * against, made the one direction that DOES look right hard to find by
+ * feel. Restricting the stepper to exactly this list is the fix; see
+ * `stepWallFacing` below. */
+export function wallBearingFacings(
+  walls: readonly WallDoc[],
+  absCol: number,
+  row: number
+): number[] {
+  const result: number[] = [];
+  for (let facing = 0; facing < 6; facing++) {
+    const { col: nCol, row: nRow } = neighborCell(absCol, row, facing);
+    const hasWall = walls.some(
+      (w) =>
+        (w.from[0] === absCol &&
+          w.from[1] === row &&
+          w.to[0] === nCol &&
+          w.to[1] === nRow) ||
+        (w.to[0] === absCol &&
+          w.to[1] === row &&
+          w.from[0] === nCol &&
+          w.from[1] === nRow)
+    );
+    if (hasWall) result.push(facing);
+  }
+  return result;
+}
+
+/** Step a `mount: wall` placement's `facing` to the NEXT (delta +1) or
+ * PREVIOUS (delta -1) wall-bearing edge in `bearing` (from
+ * `wallBearingFacings`), cyclically — the edge-selection stepping
+ * interaction itself. Falls back to plain 6-direction stepping when
+ * `bearing` is empty (a wall-mounted prop with no adjacent wall at all
+ * — an incomplete authoring state, not one this control should go fully
+ * inert over) or when the current facing isn't one of the bearing edges
+ * yet (snaps forward to the first real one rather than guessing a
+ * direction to step from). */
+export function stepWallFacing(
+  current: number | null,
+  bearing: readonly number[],
+  delta: 1 | -1
+): number {
+  if (bearing.length === 0) {
+    return ((((current ?? 0) + delta) % 6) + 6) % 6;
+  }
+  const idx = bearing.indexOf(current ?? -1);
+  if (idx === -1) return bearing[0]!;
+  const next =
+    (((idx + delta) % bearing.length) + bearing.length) % bearing.length;
+  return bearing[next]!;
 }
