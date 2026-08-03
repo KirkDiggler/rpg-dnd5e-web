@@ -40,20 +40,29 @@ export function ChoiceRenderer({
       Array.isArray(currentSelections) && currentSelections.length > 0
         ? currentSelections[0]
         : null;
-    // Extract item IDs from category selections (skip first element which is bundleId)
-    const initialItemIds =
-      Array.isArray(currentSelections) && currentSelections.length > 1
-        ? currentSelections.slice(1).map((sel: string) => {
-            // Format is "cat{index}:{id}:{name}" - extract the id
-            const parts = sel.split(':');
-            return parts.length >= 2 ? parts[1] : sel;
-          })
-        : undefined;
+    // Rehydrate each item into its persisted category. The legacy fallback
+    // keeps unprefixed selections in category 0, but indexed selections must
+    // never be collapsed there.
+    const initialCategoryItemIds = (() => {
+      if (!Array.isArray(currentSelections) || currentSelections.length <= 1) {
+        return undefined;
+      }
+      const byCategory = new Map<number, string[]>();
+      currentSelections.slice(1).forEach((selection: string) => {
+        const match = /^cat(\d+):([^:]+)(?::.*)?$/.exec(selection);
+        const categoryIndex = match ? Number(match[1]) : 0;
+        const selectionId = match ? match[2] : selection;
+        const itemIds = byCategory.get(categoryIndex) ?? [];
+        itemIds.push(selectionId);
+        byCategory.set(categoryIndex, itemIds);
+      });
+      return byCategory;
+    })();
     return (
       <EquipmentBundleChoice
         choice={choice}
         initialBundleId={initialBundleId}
-        initialItemIds={initialItemIds}
+        initialCategoryItemIds={initialCategoryItemIds}
         onSelectionChange={(bundleId, categorySelections) => {
           // Convert EquipmentBundleChoice format back to standard format
           // Store equipment selections with both id and name: "cat0:id:name"

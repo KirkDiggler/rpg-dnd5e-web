@@ -9,6 +9,7 @@ import {
   ChoiceCategory,
   ChoiceDataSchema,
   ChoiceSource,
+  EquipmentItemSchema,
   EquipmentSelectionItemSchema,
   EquipmentSelectionSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
@@ -17,21 +18,28 @@ import { useCallback, useState } from 'react';
 export function useEquipmentBundleSelection(
   choice: Choice,
   initialBundleId?: string | null,
-  initialItemIds?: string[]
+  initialCategoryItemIds?: ReadonlyMap<number, string[]>
 ) {
   const [selectedBundleId, setSelectedBundleId] = useState<string | null>(
     initialBundleId ?? null
   );
-  // Initialize category selections with initial items (all in category 0 for now).
+  // Reopened drafts encode each selection's category index. Preserve that
+  // partition rather than collapsing every restored item into category 0.
   const [categorySelections, setCategorySelections] = useState<
     Map<number, EquipmentItem[]>
-  >(() => {
-    if (initialItemIds && initialItemIds.length > 0) {
-      const items = initialItemIds.map((selectionId) => ({ selectionId }));
-      return new Map([[0, items]]);
-    }
-    return new Map();
-  });
+  >(
+    () =>
+      new Map(
+        [...(initialCategoryItemIds ?? new Map<number, string[]>())].map(
+          ([categoryIndex, selectionIds]) => [
+            categoryIndex,
+            selectionIds.map((selectionId) =>
+              create(EquipmentItemSchema, { selectionId })
+            ),
+          ]
+        )
+      )
+  );
 
   // When user selects a bundle
   const selectBundle = useCallback((bundleId: string) => {

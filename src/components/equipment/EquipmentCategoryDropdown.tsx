@@ -149,7 +149,10 @@ export function EquipmentCategoryDropdown({
         case 'ArrowUp':
           event.preventDefault();
           if (!open) {
-            setActiveId(selectedId ?? options[0]?.selectionId ?? null);
+            setOpen(true);
+            setActiveId(
+              selectedId ?? options[options.length - 1]?.selectionId ?? null
+            );
           } else {
             moveActive(activeIndex - 1);
           }

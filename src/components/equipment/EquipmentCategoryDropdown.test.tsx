@@ -163,6 +163,29 @@ describe('EquipmentCategoryDropdown', () => {
     expect(screen.getByRole('combobox').textContent).toMatch(/Dagger/);
   });
 
+  it('opens the listbox from a closed trigger on ArrowUp with its accessible name intact', () => {
+    render(
+      <EquipmentCategoryDropdown
+        id="test-dropdown"
+        ariaLabel="Choose item"
+        options={OPTIONS}
+        selectedId={null}
+        onChange={vi.fn()}
+      />
+    );
+
+    const trigger = screen.getByRole('combobox', { name: 'Choose item' });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowUp' });
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('listbox', { name: 'Choose item' })).toBeTruthy();
+    // APG select-only combobox behavior: ArrowUp opens at the last option.
+    expect(trigger.getAttribute('aria-activedescendant')).toBe(
+      'test-dropdown-option-dagger'
+    );
+  });
+
   it('supports ArrowDown/Enter keyboard selection without a mouse', () => {
     const onChange = vi.fn();
     render(

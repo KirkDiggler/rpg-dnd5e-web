@@ -22,6 +22,7 @@ vi.mock('../../api/client', () => ({
   characterClient: { listEquipmentByType: hoisted.listEquipmentByType },
 }));
 
+import { ChoiceRenderer } from '../ChoiceRenderer';
 import { EquipmentBundleChoice } from './EquipmentBundleChoice';
 
 const CLUB = create(EquipmentItemSchema, {
@@ -168,12 +169,64 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
       <EquipmentBundleChoice
         choice={choice()}
         initialBundleId="bundle-a"
-        initialItemIds={['dart-selection']}
+        initialCategoryItemIds={new Map([[0, ['dart-selection']]])}
         onSelectionChange={vi.fn()}
       />
     );
 
     expect(screen.getByRole('combobox').textContent).toMatch(/Dart/);
+    expect(screen.getByText(/Equipment selection complete/)).toBeTruthy();
+  });
+
+  it('rehydrates indexed multi-category selections into their matching categories', () => {
+    const multiCategoryChoice = create(ChoiceSchema, {
+      id: 'multi-category-equipment',
+      choiceType: ChoiceCategory.EQUIPMENT,
+      options: {
+        case: 'equipmentOptions',
+        value: create(EquipmentOptionsSchema, {
+          bundles: [
+            create(EquipmentBundleSchema, {
+              id: 'bundle-a',
+              label: 'Two categories',
+              categoryChoices: [
+                create(EquipmentCategoryChoiceSchema, {
+                  choose: 1,
+                  label: 'First weapon',
+                  options: [CLUB],
+                }),
+                create(EquipmentCategoryChoiceSchema, {
+                  choose: 1,
+                  label: 'Second weapon',
+                  options: [DART],
+                }),
+              ],
+            }),
+          ],
+        }),
+      },
+    });
+
+    render(
+      <ChoiceRenderer
+        choice={multiCategoryChoice}
+        currentSelections={[
+          'bundle-a',
+          'cat0:club-selection:Club',
+          'cat1:dart-selection:Dart',
+        ]}
+        onSelectionChange={vi.fn()}
+      />
+    );
+
+    // These different option sets make a category-0 collapse observable:
+    // the old hydration showed no saved item in the second category.
+    expect(
+      screen.getByRole('combobox', { name: 'First weapon' }).textContent
+    ).toMatch(/Club/);
+    expect(
+      screen.getByRole('combobox', { name: 'Second weapon' }).textContent
+    ).toMatch(/Dart/);
     expect(screen.getByText(/Equipment selection complete/)).toBeTruthy();
   });
 });
