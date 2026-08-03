@@ -576,7 +576,9 @@ export function DungeonBuilderConcept() {
 
   const modeBannerText =
     boardDim === '3d'
-      ? '3D preview — click a prop/monster to select it (the same Inspector the 2D board uses opens, rotate there); orbit/zoom with the mouse. Placing/moving/deleting still needs the palette/YAML or the 2D board.'
+      ? edit.selectedPalette
+        ? `Palette: ${edit.selectedPalette.ref.split(':').pop()} selected — click an empty floor hex to place it (highlighted teal); orbit/zoom with the mouse.`
+        : '3D preview — click a prop/monster to select it (the same Inspector the 2D board uses opens, rotate/delete there); pick a palette item to place it here too. Drag-to-move in 3D is next up; use the 2D board for that today.'
       : edit.selectedPalette
         ? `Palette: ${edit.selectedPalette.ref.split(':').pop()} selected — click an empty legal cell to place it.`
         : edit.selectedPlacement
@@ -841,6 +843,9 @@ export function DungeonBuilderConcept() {
                       clearOtherSelections('placement');
                       edit.setSelectedPlacement(sel);
                     }}
+                    selectedPalette={edit.selectedPalette}
+                    onPlace={edit.handlePlace}
+                    onReject={flashToast}
                   />
                 </div>
               </>

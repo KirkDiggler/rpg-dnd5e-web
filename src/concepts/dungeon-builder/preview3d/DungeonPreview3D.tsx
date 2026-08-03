@@ -23,6 +23,20 @@
  * own ask specified, nearly free given `SyntyHexFloor` only renders
  * whatever's in the tile map it's handed.
  *
+ * ALSO supports click-to-place (Kirk's 2026-08-02 "3D editing" arc, part
+ * 3: "being able to place objects in the 3d view would be really great if
+ * possible" — click-place lands first, drag-move in 3D is the deliberate
+ * follow-up, not this landing's gate). One invisible hex-shaped hit mesh
+ * per floor tile (`FloorHitCell` below), positioned ABOVE the visual
+ * floor texture so a downward ray from the orbit camera always meets it
+ * first — R3F/Three fire pointer events nearest-hit-first, so a placed
+ * prop's OWN click handler (its geometry sits higher still, and calls
+ * `stopPropagation()`) naturally wins over the floor hit-cell underneath
+ * it, with no manual raycasting anywhere in this file. Room-scoped only,
+ * matching `Board.tsx`'s own click-to-place exactly — a top-level
+ * placement is authored via YAML or moved there, never created by a
+ * floor click in either view.
+ *
  * ALSO renders `doc.walls` (Kirk's 2026-08-02 "visible-first" backlog:
  * "a crude wall that RENDERS today beats a faithful one next week").
  * This file's ORIGINAL reasoning for skipping walls doesn't apply here —
@@ -53,6 +67,7 @@ import {
   type CubeCoord,
   cubeToWorld,
   HEX_SIZE,
+  hexCorners,
   hexEdgeBetween,
 } from '@/components/hex-grid/hexMath';
 import { resolvePropVariant } from '@/components/hex-grid/propManifest';
@@ -64,11 +79,15 @@ import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/aut
 import { Bounds, OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { Suspense, useMemo } from 'react';
-import { DoubleSide } from 'three';
-import { isEntranceBlocked, isSameSelection } from '../boardGeometry';
+import { DoubleSide, Shape } from 'three';
+import {
+  isCellOccupied,
+  isEntranceBlocked,
+  isSameSelection,
+} from '../boardGeometry';
 import type { DungeonDoc, PlacementDoc, WallDoc } from '../dungeonYaml';
-import { cubeAtColRow } from '../hexLayout';
-import type { PlacementSelection } from '../types';
+import { cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
+import type { PaletteSelection, PlacementSelection } from '../types';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
 
 interface DungeonPreview3DProps {
@@ -85,6 +104,17 @@ interface DungeonPreview3DProps {
    * degrades to view-only, unchanged from before this prop existed. */
   selectedPlacement?: PlacementSelection | null;
   onSelect?: (sel: PlacementSelection | null) => void;
+  /** Kirk's 2026-08-02 "3D editing" arc, part 3 — click-to-place. The
+   * SAME `PaletteSelection`/`onPlace` contract `Board.tsx` already uses:
+   * a palette item selected + a floor hex clicked places it via the
+   * identical `handlePlace` mutator, room-scoped only (Board.tsx's own
+   * click-to-place never produces a top-level placement either). All
+   * three optional together — omitting them (no caller does today, but
+   * nothing structurally requires wiring this) degrades to the
+   * select-and-rotate-only behavior part 2 shipped, unchanged. */
+  selectedPalette?: PaletteSelection | null;
+  onPlace?: (roomId: string, at: [number, number]) => void;
+  onReject?: (message: string) => void;
 }
 
 interface PlacedProp {
@@ -358,6 +388,112 @@ function buildPlacements(
   return { props, monsters };
 }
 
+interface PlaceableCell {
+  key: string;
+  col: number;
+  row: number;
+  roomId: string;
+  worldX: number;
+  worldZ: number;
+  occupied: boolean;
+}
+
+/** Click-to-place targets (Kirk's "3D editing" arc, part 3) — one entry
+ * per floor tile `buildFloorTiles` already generated, resolved back to
+ * (col, row) via `hexColumn`/`hexRow` — the exact inverse of
+ * `cubeAtColRow`, so this never re-derives placement math independently
+ * of the rest of the concept. Every floor tile already belongs to a real
+ * room (`buildFloorTiles` only ever iterates `floorPlan.rooms`), so
+ * `roomId` here is always non-null — matches `Board.tsx`'s own click-to-
+ * place, which is room-scoped only. */
+function buildPlaceableCells(
+  floorPlan: FloorPlan,
+  doc: DungeonDoc,
+  floorTiles: Map<string, AbsoluteFloorTile>
+): PlaceableCell[] {
+  const cells: PlaceableCell[] = [];
+  for (const tile of floorTiles.values()) {
+    const cube: CubeCoord = { x: tile.x, y: tile.y, z: tile.z };
+    const col = hexColumn(cube);
+    const row = hexRow(cube);
+    const world = cubeToWorld(cube, HEX_SIZE);
+    cells.push({
+      key: `${tile.x},${tile.y},${tile.z}`,
+      col,
+      row,
+      roomId: tile.roomId,
+      worldX: world.x,
+      worldZ: world.z,
+      occupied: isCellOccupied(floorPlan, doc, col, row),
+    });
+  }
+  return cells;
+}
+
+/** Local-space hexagon outline centered on the origin, shared by every
+ * floor hit-cell below — same corner math + z-negation
+ * `SyntyHexFloorTile` uses to keep the shape's winding (and therefore its
+ * face normal) consistent with the rest of this file's floor geometry.
+ * Slightly smaller than a full hex (`* 0.92`) so adjacent hit cells never
+ * visually overlap at the seam. */
+function buildHexHitShape(): Shape {
+  const shape = new Shape();
+  const corners = hexCorners({ x: 0, z: 0 }, HEX_SIZE * 0.92);
+  corners.forEach((c, i) => {
+    if (i === 0) shape.moveTo(c.x, -c.z);
+    else shape.lineTo(c.x, -c.z);
+  });
+  shape.closePath();
+  return shape;
+}
+
+// Above SyntyHexFloorTile's own FLOOR_Y (0.2) so a downward ray from the
+// orbit camera always meets this layer before the visual floor texture —
+// see this file's header doc comment for why that ordering alone is
+// enough to let a placed prop's own click handler win, with no manual
+// raycasting.
+const HIT_CELL_Y = 0.22;
+const HIT_CLEAR_COLOR = '#5fd1c9';
+const HIT_OCCUPIED_COLOR = '#ff5a3a';
+
+/** Always mounted and always clickable — even with nothing selected, so
+ * clicking a floor cell gives the same "pick a palette item first" honesty
+ * `Board.tsx` gives on a 2D empty-cell click, rather than silently doing
+ * nothing. Only VISIBLE (a faint tint) while `placing` (a palette item is
+ * selected) — otherwise fully transparent, so browsing/orbiting the scene
+ * looks exactly like it did before this landing. */
+function FloorHitCell({
+  cell,
+  shape,
+  placing,
+  onClickCell,
+}: {
+  cell: PlaceableCell;
+  shape: Shape;
+  placing: boolean;
+  onClickCell: (cell: PlaceableCell) => void;
+}) {
+  return (
+    <mesh
+      position={[cell.worldX, HIT_CELL_Y, cell.worldZ]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClickCell(cell);
+      }}
+    >
+      <shapeGeometry args={[shape]} />
+      <meshBasicMaterial
+        color={cell.occupied ? HIT_OCCUPIED_COLOR : HIT_CLEAR_COLOR}
+        transparent
+        opacity={placing ? (cell.occupied ? 0.08 : 0.22) : 0}
+        depthWrite={false}
+        side={DoubleSide}
+      />
+    </mesh>
+  );
+}
+
 // Crude box-per-edge placeholder (this file's own doc comment) — NOT the
 // real game's tiled/mitered `WallRunMesh`. Solid vs. door reuses the
 // EXACT colors the 2D board's own target-dialect structural overlay already uses for
@@ -445,6 +581,9 @@ export function DungeonPreview3D({
   doc,
   selectedPlacement,
   onSelect,
+  selectedPalette,
+  onPlace,
+  onReject,
 }: DungeonPreview3DProps) {
   const floorTiles = useMemo(
     () => buildFloorTiles(floorPlan, doc.holes),
@@ -459,6 +598,36 @@ export function DungeonPreview3D({
     () => isEntranceBlocked(floorPlan, doc),
     [floorPlan, doc]
   );
+  const placeableCells = useMemo(
+    () => buildPlaceableCells(floorPlan, doc, floorTiles),
+    [floorPlan, doc, floorTiles]
+  );
+  const hitShape = useMemo(() => buildHexHitShape(), []);
+
+  // Mirrors Board.tsx's own click-to-place cell handler almost exactly
+  // (same messages, same boss/occupied rules) — see this file's header
+  // doc comment for why click-to-place is room-scoped only.
+  const handleClickCell = (cell: PlaceableCell) => {
+    if (!selectedPalette || !onPlace) {
+      onReject?.(
+        'Pick a palette item first, then click an empty cell to place it.'
+      );
+      return;
+    }
+    if (selectedPalette.kind === 'boss') {
+      const room = floorPlan.rooms.find((r) => r.id === cell.roomId);
+      if (room?.archetype !== 'boss') {
+        onReject?.(
+          'The boss pin can only be placed in the boss-archetype room (dungeonspec requires exactly one boss per boss room).'
+        );
+        return;
+      }
+    }
+    if (cell.occupied) return;
+    const room = floorPlan.rooms.find((r) => r.id === cell.roomId);
+    if (!room) return;
+    onPlace(cell.roomId, [cell.col - room.startColumn, cell.row]);
+  };
 
   return (
     <div style={{ width: '100%', height: '100%', background: '#0c0a08' }}>
@@ -472,6 +641,15 @@ export function DungeonPreview3D({
         <Suspense fallback={null}>
           <Bounds fit clip margin={1.25}>
             <SyntyHexFloor floorTiles={floorTiles} hexSize={HEX_SIZE} />
+            {placeableCells.map((cell) => (
+              <FloorHitCell
+                key={cell.key}
+                cell={cell}
+                shape={hitShape}
+                placing={!!selectedPalette}
+                onClickCell={handleClickCell}
+              />
+            ))}
             {walls.map((w) => (
               <WallBox key={w.key} wall={w} />
             ))}

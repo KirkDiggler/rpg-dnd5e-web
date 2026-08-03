@@ -2326,16 +2326,102 @@ yet compiled server-side`). Evidence:
 `docs/evidence/dungeon-builder-free-rotation-zero.png`,
 `docs/evidence/dungeon-builder-free-rotation-20deg.png`.
 
-**Open, pending Kirk**: this prototype is the probe, not the answer. The
-question it exists to test — whether 6-direction facing alone is enough
-for wall-mounted props, or the fine control turns out to matter — is
-unresolved until Kirk has actually tried both controls by hand. What his
-hands choose (reaches for the slider vs. never touches it; wants finer
-than ±30°; wants it available beyond wall-mounts) should get recorded
-back into this section and into TARGET-YAML.md's open-question writeup
-once he weighs in — not assumed here.
+**Resolved by Kirk's own hands, live play, 2026-08-02** (the prototype did
+its job): "fine tuning is cool for sure but the other direction is a 30
+deg to be flat on the wall." That 30° is the pointy-top interleave
+between neighbor/facing directions and edge orientations — the two are
+never aligned, so `facing`'s 6-direction ENUM can structurally never
+produce a wall-flush rotation by stepping alone, no matter how it's
+wired. This CONFIRMS (not changes) the direction this file's own
+`wallMountRotationY` already took — edge-derived rotation via
+`hexEdgeBetween`, never `facingToRotationY` — but surfaces a real,
+separate UX gap the math being correct doesn't fix: Kirk also reported
+"I can only line up 1 direction — flush with a wall on one side but not
+the other," i.e. which EDGE a mount uses is currently implicit (nearest/
+facing-implied), not an explicit, steppable choice, and there's no way to
+flip a mount to the wall's far face without delete-and-replace. Queued as
+the wall-mount interaction rework (edge-selection stepping restricted to
+edges that actually carry a wall, plus a "flip to other side" affordance)
+— tracked as this concept's next round, not attempted in this one. See
+TARGET-YAML.md's open-question section for the citation and the
+resolved-vs-still-open split.
 
 Full suite passing (`dungeonYaml.test.ts`: 33 tests, including the new
 `setPlacementRotationDegrees` coverage and updated assertions on the two
 existing strip/parse tests), typecheck and lint clean, `ci-check` run
 before commit.
+
+## New arc: 3D editing, part 3 — click-to-place
+
+Closes the third and last piece of the "3D editing" arc's original
+brief: "being able to place objects in the 3d view would be really great
+if possible." Click-place lands here; drag-move in 3D stays the explicit
+follow-up (Kirk's own framing) — the 2D board remains the only way to
+drag-move a placement today, in either view's mode banner.
+
+**Select/delete parity was already free.** Part 2 wired 3D click-select
+into the SAME `selectedPlacement` state the global Delete/Backspace
+keydown listener (`DungeonBuilderConcept.tsx`) and `useBoardEditing`'s
+`handleDelete` already read — neither is view-aware, so once an object
+can be selected in 3D, deleting it already works without touching either
+code path. Verified live rather than assumed: selected a pre-placed
+pillar in 3D, confirmed the Inspector showed
+`dnd5e:props:pillar [2,0]`, pressed Delete, confirmed the YAML's `place:`
+list emptied. Evidence:
+`docs/evidence/dungeon-builder-3d-select-delete-parity.png`.
+
+**What shipped — click-to-place**: a new invisible-by-default hex-shaped
+hit-mesh layer (`FloorHitCell`), one per floor tile, positioned just
+above `SyntyHexFloor`'s own floor texture (`HIT_CELL_Y` > `FLOOR_Y`) so a
+downward ray from the orbit camera always meets it before the visual
+floor — R3F/Three fire pointer events nearest-hit-first, so a placed
+prop's own click handler (its geometry sits higher still, and calls
+`stopPropagation()`) naturally wins over the floor hit-cell underneath
+it. No manual raycasting anywhere in this file, matching the brief's own
+constraint. Each hit-cell resolves back to `(col, row)` via
+`hexColumn`/`hexRow` — the exact inverse of `cubeAtColRow` this concept
+already uses everywhere else, never independently re-derived.
+
+Room-scoped only, deliberately mirroring `Board.tsx`'s own click-to-place
+exactly (same gate order, same reject messages verbatim: "Pick a palette
+item first...", "The boss pin can only be placed in the boss-archetype
+room..."): a top-level placement is authored via YAML or moved there,
+never created by a floor click in either view. `selectedPalette`/
+`onPlace`/`onReject` thread through from `DungeonBuilderConcept.tsx`
+exactly like `Board.tsx` already receives them — `edit.handlePlace`
+itself needed zero changes, this only adds a second caller.
+
+**A hit-cell is always mounted and always clickable, even with nothing
+selected** — clicking a floor cell with no palette item chosen gives the
+same "pick a palette item first" honesty `Board.tsx`'s 2D empty-cell
+click already gives, rather than silently doing nothing. Only the
+TINT is conditional (fully transparent unless `placing`) so browsing/
+orbiting the scene looks unchanged from before this round. One side
+effect worth naming: since the hit-cell layer now covers the whole
+floor, a click that used to be a Three.js "miss" (deselecting via
+`onPointerMissed`) is now a "hit" on any floor cell — but this makes 3D
+click behavior MORE consistent with 2D, not less: `Board.tsx`'s own
+empty-cell click was never a deselect either (only a raw click on the
+SVG background outside all drawn geometry deselects). True background
+(the void beyond the floor) still deselects via `onPointerMissed`,
+unchanged.
+
+**Verified live**: built an isolated single-room test document, selected
+"pillar" from the palette (confirmed the 3D mode banner switched to
+"Palette: pillar selected — click an empty floor hex to place it..."),
+clicked two different empty floor hexes — both placements landed in the
+YAML at the correct room-local coordinates
+(`place: [{ref: dnd5e:props:pillar, at: [2, 0]}, {ref: ..., at: [2,
+7]}]`) and both pillars rendered visibly in the 3D view. Also confirmed
+parity with 2D's palette-clears-on-select behavior: clicking an
+already-placed pillar (instead of an empty cell) opened the Inspector
+and cleared the active palette selection, exactly like clicking an
+existing 2D marker does. Evidence:
+`docs/evidence/dungeon-builder-3d-clickplace-palette-selected.png`,
+`docs/evidence/dungeon-builder-3d-clickplace-placed.png`.
+
+`ci-check` clean, full suite passing — no test-file changes this round
+(the new hit-cell layer is pure rendering/interaction wiring over
+already-tested mutators; see this file's own "test coverage, per the
+operating bar" precedent from part 2 for why a full R3F scene test
+wasn't attempted here either).
