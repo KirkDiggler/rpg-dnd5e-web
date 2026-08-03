@@ -18,7 +18,9 @@ import { CreationBoard } from './CreationBoard';
 import type { DemoActions } from './demoScript';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
 import { ProposedYamlPane } from './ProposedYamlPane';
+import { RegionPanel } from './RegionPanel';
 import { useDemoScript } from './useDemoScript';
+import type { RegionEditing } from './useRegionEditing';
 
 interface CreationConceptProps {
   doc: DungeonDoc;
@@ -39,6 +41,9 @@ interface CreationConceptProps {
   onNewCanvas: (width: number, height: number) => void;
   demoActions: DemoActions;
   toast: (message: string) => void;
+  /** Cell-authored semantic region editing (rpg-project#180) —
+   * creation-mode-only this round. See `useRegionEditing.ts`. */
+  regionEdit: RegionEditing;
   /** Collapse state for the left Palette and the right proposed-schema
    * pane — owned by the parent (`DungeonBuilderConcept`) so it's
    * remembered across an edit<->create tab switch instead of resetting
@@ -64,6 +69,7 @@ export function CreationConcept({
   onNewCanvas,
   demoActions,
   toast,
+  regionEdit,
   paletteCollapsed,
   onTogglePalette,
   yamlCollapsed,
@@ -286,6 +292,8 @@ export function CreationConcept({
             }}
             wallCount={doc.walls.length}
             holeCount={doc.holes.length}
+            showRegionTool
+            regionCount={doc.regions.length}
           />
         </CollapsibleSidePanel>
 
@@ -302,6 +310,7 @@ export function CreationConcept({
             onToggleWallEdge={onToggleWallEdge}
             onToggleHole={onToggleHole}
             onSetPoint={onSetPoint}
+            regionEdit={regionEdit}
           />
         </main>
 
@@ -334,6 +343,14 @@ export function CreationConcept({
         onSetFacing={edit.handleSetFacing}
         onFlipMountSide={edit.handleFlipMountSide}
       />
+      {/* Gated on the Region tool being active — `regionEdit`'s own
+          pending/selected state is preserved when the author switches to
+          a different tool and back, but the panel itself only shows while
+          Region is the live tool, matching every other tool-scoped panel
+          in this concept. */}
+      {selectedTool === 'region' && (
+        <RegionPanel doc={doc} regionEdit={regionEdit} />
+      )}
     </div>
   );
 }

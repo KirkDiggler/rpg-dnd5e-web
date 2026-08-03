@@ -13,6 +13,7 @@ import { ConnectorInspector } from './ConnectorInspector';
 import { CreationConcept } from './creation/CreationConcept';
 import type { DemoActions } from './creation/demoScript';
 import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
+import { useRegionEditing } from './creation/useRegionEditing';
 import './DungeonBuilderConcept.css';
 import {
   buildWalkItYaml,
@@ -272,6 +273,17 @@ export function DungeonBuilderConcept() {
     syncFromCreationCst,
     flashToast
   );
+  // Cell-authored semantic region editing (rpg-project#180) —
+  // creation-mode-only this round (TARGET-YAML.md's "regions:" section).
+  // Same cst/doc/syncFromCst wiring as `creationEdit` above, since regions
+  // live on the SAME creation-mode CST every other creation-mode mutator
+  // does.
+  const regionEdit = useRegionEditing(
+    creationCst,
+    creationDoc,
+    syncFromCreationCst,
+    flashToast
+  );
 
   const handleCreationToggleWallEdge = (
     from: [number, number],
@@ -462,6 +474,7 @@ export function DungeonBuilderConcept() {
           onNewCanvas={handleNewCanvas}
           demoActions={creationDemoActions}
           toast={flashToast}
+          regionEdit={regionEdit}
           paletteCollapsed={createPaletteCollapsed}
           onTogglePalette={() => setCreatePaletteCollapsed((c) => !c)}
           yamlCollapsed={createYamlCollapsed}

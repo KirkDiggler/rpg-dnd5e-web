@@ -36,6 +36,13 @@ import {
   YAMLMap,
   YAMLSeq,
 } from 'yaml';
+import {
+  cellsAreContiguous,
+  cellsEqual,
+  pickAttachmentEdge,
+  sharedBoundaryEdges,
+  type Cell,
+} from './regionGeometry';
 
 function parseFacing(raw: unknown): number | null {
   if (typeof raw !== 'string') return null;
@@ -233,6 +240,40 @@ export interface CanvasDoc {
   height: number;
 }
 
+/** Cell-authored semantic room region — target dialect, proposed
+ * (rpg-project#180, "cell-authored semantic room regions"). See
+ * TARGET-YAML.md's "regions:" section for the full design writeup and the
+ * open questions this prototype records rather than decides. Distinct
+ * from the declared `rooms:` chain (`RoomDoc`): a region is drawn as an
+ * explicit set of absolute [col,row] cells rather than a width against a
+ * server-computed `start_column`, so it can be non-rectangular and takes
+ * no part in the linear connector chain at all — it exists purely as an
+ * additional semantic layer over the same edge-owning dungeon space (the
+ * settled model, rpg-project#175: dungeon space owns wall/door edges;
+ * rooms/regions are stable semantic regions carrying reveal/placement/
+ * spawning/archetype meaning). Same archetype vocabulary `RoomDoc.archetype`
+ * already uses (entrance|chamber|corridor|boss) so a future compiler could
+ * treat a region exactly like a room for reveal/placement/spawning/
+ * scripting purposes once #180 lands server-side. Not compiled
+ * server-side today; stripped by `stripToV1Subset`. */
+export interface RegionDoc {
+  id: string;
+  /** Optional display name — `RoomDoc` has no separate name field either
+   * (its `id` doubles as the label, confirmed against the real dungeonspec
+   * schema — CONTRACT.md's "room display names" finding); `name` is
+   * offered here only because a hand-authored region id is more likely to
+   * be an opaque slug (`region-3`) than a room chain's own meaningful ids
+   * (`entry`, `vault`). Purely cosmetic — no v1 analog either way. */
+  name?: string;
+  archetype: string;
+  /** Absolute [col,row] pairs, the SAME coordinate space every other
+   * cell-native field in this file uses (`walls:`, `holes:`, `start`,
+   * `end`, top-level `place:`). Order is authoring order, not spatially
+   * meaningful — see `regionGeometry.ts`'s `cellsAreContiguous` for how
+   * membership's own adjacency is actually determined. */
+  cells: [number, number][];
+}
+
 export type WallKind = 'solid' | 'door';
 
 /** Edge-native: `from`/`to` are orthogonally-adjacent absolute [col,row]
@@ -312,6 +353,12 @@ export interface DungeonDoc {
    * needs an owning room; see TARGET-YAML.md for how the target dialect
    * eventually frees it). */
   place: PlacementDoc[];
+  /** Cell-authored semantic regions — target dialect, proposed
+   * (rpg-project#180). See `RegionDoc`'s own doc comment and
+   * TARGET-YAML.md's "regions:" section. Empty in every document authored
+   * before this field existed and in any pure v1 document; not compiled
+   * server-side, dropped entirely by `stripToV1Subset`. */
+  regions: RegionDoc[];
   /** Dungeon-wide, ref-keyed default fields — target dialect, proposed
    * (Kirk's ask, verbatim: "maybe we can set a default for all
    * skeletons"). See TARGET-YAML.md's "defaults:" section for the full
@@ -477,6 +524,34 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
   // own doc comment.
   const place = parsePlacementList(raw.place, 'place');
 
+  // Cell-authored semantic regions — target dialect, proposed
+  // (rpg-project#180). See RegionDoc's own doc comment. A region with a
+  // missing/non-string id or archetype is a shape error, same discipline
+  // parseDungeon already applies to rooms/connectors above — this
+  // concept's own "can the board render it" check, not dungeonspec's real
+  // semantic validator (which doesn't know this field at all yet).
+  const regions: RegionDoc[] = Array.isArray(raw.regions)
+    ? (raw.regions as Record<string, unknown>[]).map((r, ri) => {
+        if (typeof r.id !== 'string') {
+          throw new DungeonParseError(`regions[${ri}] is missing id`);
+        }
+        if (typeof r.archetype !== 'string') {
+          throw new DungeonParseError(`region "${r.id}" has no archetype`);
+        }
+        const cells: [number, number][] = Array.isArray(r.cells)
+          ? (r.cells as [number, number][]).map(
+              (c) => [c[0], c[1]] as [number, number]
+            )
+          : [];
+        return {
+          id: r.id,
+          name: typeof r.name === 'string' ? r.name : undefined,
+          archetype: r.archetype,
+          cells,
+        };
+      })
+    : [];
+
   // Ref-keyed default fields — target dialect, proposed. See
   // DungeonDoc.defaults's own doc comment. Every field is independently
   // optional on a given ref's entry; an entry present with none of the
@@ -519,6 +594,7 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     end,
     lighting,
     place,
+    regions,
     defaults,
   };
 }
@@ -1287,6 +1363,288 @@ export function setLightingAmbient(
   cst.set('lighting', node);
 }
 
+// ============================================================
+// regions: — cell-authored semantic room regions, target dialect,
+// proposed (rpg-project#180). See RegionDoc's own doc comment and
+// TARGET-YAML.md's "regions:" section for the full design writeup.
+// ============================================================
+
+export class RegionValidationError extends Error {}
+
+/** Whether `cells` shares any member with an EXISTING region OTHER than
+ * `excludeRegionId` (the region currently being edited, if any) —
+ * rpg-project#180's own "Overlapping... cell sets fail" acceptance
+ * criterion. */
+export function cellsOverlapAnotherRegion(
+  doc: DungeonDoc,
+  cells: readonly Cell[],
+  excludeRegionId?: string
+): boolean {
+  const claimed = new Set<string>();
+  for (const region of doc.regions) {
+    if (region.id === excludeRegionId) continue;
+    for (const c of region.cells) claimed.add(`${c[0]},${c[1]}`);
+  }
+  return cells.some((c) => claimed.has(`${c[0]},${c[1]}`));
+}
+
+/** Validate a candidate cell set for `createRegion`/membership edits —
+ * rpg-project#180's own acceptance criteria ("Overlapping, disconnected,
+ * empty, and invalid cell sets fail with author-facing validation
+ * errors"), enforced client-side here so this concept's authoring surface
+ * can never produce a document the eventual real #180 validator is
+ * already known to reject. Returns a human-readable rejection reason, or
+ * `null` when the cell set is valid. `excludeRegionId` lets a membership
+ * edit on region X check its own PROPOSED new cell set against every
+ * OTHER region without X's own existing cells counting as a
+ * self-overlap. */
+export function validateRegionCells(
+  doc: DungeonDoc,
+  cells: readonly Cell[],
+  excludeRegionId?: string
+): string | null {
+  if (cells.length === 0) return 'a region needs at least one cell';
+  const seen = new Set<string>();
+  for (const c of cells) {
+    const key = `${c[0]},${c[1]}`;
+    if (seen.has(key)) return `cell [${c[0]},${c[1]}] is selected twice`;
+    seen.add(key);
+  }
+  if (!cellsAreContiguous(cells)) {
+    return 'cells must be orthogonally contiguous (rpg-project#180)';
+  }
+  if (cellsOverlapAnotherRegion(doc, cells, excludeRegionId)) {
+    return 'one or more cells already belong to another region';
+  }
+  return null;
+}
+
+function regionsSeqReadonly(cst: Document): YAMLSeq | undefined {
+  const existing = cst.get('regions', true);
+  return isSeq(existing) ? existing : undefined;
+}
+
+function findRegionIndex(cst: Document, regionId: string): number {
+  const regions = regionsSeqReadonly(cst);
+  if (!regions) return -1;
+  return regions.items.findIndex((r) => isMap(r) && r.get('id') === regionId);
+}
+
+function regionMap(cst: Document, regionId: string): YAMLMap {
+  const idx = findRegionIndex(cst, regionId);
+  if (idx === -1) throw new DungeonParseError(`Unknown region "${regionId}"`);
+  const region = (cst.get('regions') as YAMLSeq).items[idx];
+  if (!isMap(region))
+    throw new DungeonParseError(`region "${regionId}" is not a map`);
+  return region;
+}
+
+/** Build a block-style `{ id, name?, archetype, cells: [[c,r],...] }` node
+ * — block (not flow) at the region's own top level so a region with many
+ * cells doesn't produce one unreadably long line, but the `cells:`
+ * sequence itself and each `[c,r]` pair inside it ARE flow-style, matching
+ * every other cell-native list in this file (`walls:`, `holes:`, `at:`). */
+function createRegionNode(
+  cst: Document,
+  region: { id: string; name?: string; archetype: string; cells: Cell[] }
+): YAMLMap {
+  const obj: Record<string, unknown> = { id: region.id };
+  if (region.name) obj.name = region.name;
+  obj.archetype = region.archetype;
+  obj.cells = region.cells;
+  const node = cst.createNode(obj) as YAMLMap;
+  const cellsNode = node.get('cells', true);
+  if (isSeq(cellsNode)) {
+    cellsNode.flow = true;
+    for (const item of cellsNode.items) {
+      if (isSeq(item)) item.flow = true;
+    }
+  }
+  return node;
+}
+
+/** Create a new cell-authored semantic region — target dialect, proposed
+ * (rpg-project#180). Throws `RegionValidationError` (a duplicate id, or a
+ * cell set `validateRegionCells` rejects) rather than silently no-op-ing
+ * or producing an invalid document — the region-authoring panel should
+ * catch this and surface the message, not let it propagate as an
+ * unhandled error. */
+export function createRegion(
+  cst: Document,
+  doc: DungeonDoc,
+  id: string,
+  archetype: string,
+  cells: Cell[],
+  name?: string
+): void {
+  if (findRegionIndex(cst, id) !== -1) {
+    throw new RegionValidationError(`region "${id}" already exists`);
+  }
+  const reason = validateRegionCells(doc, cells);
+  if (reason) throw new RegionValidationError(reason);
+  const regions = topSeq(cst, 'regions');
+  regions.items.push(createRegionNode(cst, { id, name, archetype, cells }));
+}
+
+/** Remove a region entirely — target dialect, proposed. A no-op if the id
+ * doesn't exist, matching this file's general "clearing something absent
+ * is fine" discipline. Never touches `walls:` — an attachment door edge a
+ * `connectRegions` call placed on this region's former boundary is
+ * independent authored content (see `connectRegions`'s own doc comment)
+ * and survives the region's own deletion, same as a hand-drawn wall
+ * survives whatever rooms it happened to sit near. */
+export function deleteRegion(cst: Document, regionId: string): void {
+  const idx = findRegionIndex(cst, regionId);
+  if (idx === -1) return;
+  (cst.get('regions') as YAMLSeq).items.splice(idx, 1);
+}
+
+/** Set or clear a region's optional `name:` — target dialect, proposed.
+ * `null` or an empty/whitespace-only string clears the key entirely
+ * (falls back to `id` as the label, same as a room). */
+export function renameRegion(
+  cst: Document,
+  regionId: string,
+  name: string | null
+): void {
+  const region = regionMap(cst, regionId);
+  if (name === null || name.trim() === '') region.delete('name');
+  else region.set('name', name);
+}
+
+/** Set a region's `archetype:` — target dialect, proposed. Same
+ * vocabulary `RoomDoc.archetype` uses (entrance|chamber|corridor|boss);
+ * not enforced as an enum here (rooms aren't validated against one
+ * client-side either — dungeonspec's own real validator would own that
+ * the day #180 lands). */
+export function setRegionArchetype(
+  cst: Document,
+  regionId: string,
+  archetype: string
+): void {
+  const region = regionMap(cst, regionId);
+  region.set('archetype', archetype);
+}
+
+function regionCellsSeq(cst: Document, regionId: string): YAMLSeq {
+  const region = regionMap(cst, regionId);
+  const existing = region.get('cells', true);
+  if (isSeq(existing)) return existing;
+  const seq = new YAMLSeq(cst.schema);
+  seq.flow = true;
+  region.set('cells', seq);
+  return seq;
+}
+
+/** Add one cell to an existing region's membership — validated against
+ * rpg-project#180's own contiguity/overlap rules (`validateRegionCells`),
+ * same as `createRegion`, so an interactive "click to add a cell" board
+ * affordance can never grow a region into an invalid shape. A no-op (not
+ * an error) when `cell` is already a member — matching this file's
+ * general toggle-shaped mutators. Throws `RegionValidationError` when
+ * adding would make the region non-contiguous (a cell not touching any
+ * existing member) or would claim a cell another region already owns. */
+export function addCellToRegion(
+  cst: Document,
+  doc: DungeonDoc,
+  regionId: string,
+  cell: Cell
+): void {
+  const region = doc.regions.find((r) => r.id === regionId);
+  if (!region) throw new DungeonParseError(`Unknown region "${regionId}"`);
+  if (region.cells.some((c) => cellsEqual(c, cell))) return;
+  const nextCells = [...region.cells, cell];
+  const reason = validateRegionCells(doc, nextCells, regionId);
+  if (reason) throw new RegionValidationError(reason);
+  const cellsSeq = regionCellsSeq(cst, regionId);
+  const cellNode = new YAMLSeq(cst.schema);
+  cellNode.flow = true;
+  cellNode.items = [...cell];
+  cellsSeq.items.push(cellNode);
+}
+
+/** Remove one cell from an existing region's membership — target
+ * dialect, proposed. A no-op when `cell` isn't currently a member.
+ * Refuses (throws `RegionValidationError`) a removal that would leave the
+ * region either EMPTY (delete the region instead — `deleteRegion`) or
+ * DISCONNECTED into two pieces — rpg-project#180's acceptance criteria
+ * apply to every post-edit state, not just creation, so this mutator
+ * enforces them on the way out the same way `addCellToRegion` enforces
+ * them on the way in. */
+export function removeCellFromRegion(
+  cst: Document,
+  doc: DungeonDoc,
+  regionId: string,
+  cell: Cell
+): void {
+  const region = doc.regions.find((r) => r.id === regionId);
+  if (!region) throw new DungeonParseError(`Unknown region "${regionId}"`);
+  const nextCells = region.cells.filter((c) => !cellsEqual(c, cell));
+  if (nextCells.length === region.cells.length) return;
+  if (nextCells.length === 0) {
+    throw new RegionValidationError(
+      'cannot remove the last cell — delete the region instead'
+    );
+  }
+  if (!cellsAreContiguous(nextCells)) {
+    throw new RegionValidationError(
+      'removing this cell would split the region into two disconnected pieces'
+    );
+  }
+  const cellsSeq = regionCellsSeq(cst, regionId);
+  const idx = cellsSeq.items.findIndex(
+    (c) => isSeq(c) && c.get(0) === cell[0] && c.get(1) === cell[1]
+  );
+  if (idx !== -1) cellsSeq.items.splice(idx, 1);
+}
+
+export interface ConnectRegionsResult {
+  /** The edge a door was placed on, or `null` when the two regions share
+   * no orthogonal boundary at all (nothing was written). */
+  edge: { from: Cell; to: Cell } | null;
+}
+
+/** "Attach to next region" (Kirk's ask) — places a DOOR edge on the
+ * shared boundary between two regions, chosen via `regionGeometry.ts`'s
+ * `pickAttachmentEdge` (the midpoint of the shared boundary run; see that
+ * function's own doc comment for why an automatic midpoint, not an
+ * author-clicked edge, was this round's choice).
+ *
+ * Mechanically this is nothing more than an ordinary `setWallEdge(cst,
+ * edge.from, edge.to, 'door', true)` call — a region-attachment door is
+ * DISTINCT from a chain `connectors:` entry (TARGET-YAML.md's "region
+ * attachment vs. chain connectors" section has the full writeup): a
+ * connector's `from`/`to` are fixed by declared-room order and validated
+ * server-side (`validateChain`, `rpg-toolkit/encounter/dungeonspec/
+ * validate.go`) — an authored door edge does NOT replace, satisfy, or
+ * count as one (confirmed against the real Go source, rpg-project#175's
+ * spot-check finding). A region-attachment door is just another `walls:`
+ * entry: freely authorable, no chain participation, no cardinality
+ * constraint. Two regions can be "attached" by any number of doors, or by
+ * none at all — this function is a convenience for placing one, not a
+ * requirement the document enforces.
+ *
+ * Returns `{ edge: null }` (writes nothing) when the two regions share no
+ * orthogonal boundary — the caller should surface this as a rejection
+ * ("these regions aren't adjacent"), not treat it as silent success. */
+export function connectRegions(
+  cst: Document,
+  doc: DungeonDoc,
+  regionAId: string,
+  regionBId: string
+): ConnectRegionsResult {
+  const a = doc.regions.find((r) => r.id === regionAId);
+  const b = doc.regions.find((r) => r.id === regionBId);
+  if (!a || !b) {
+    throw new DungeonParseError('connectRegions: unknown region');
+  }
+  const edges = sharedBoundaryEdges(a.cells, b.cells);
+  const edge = pickAttachmentEdge(edges);
+  if (!edge) return { edge: null };
+  setWallEdge(cst, edge.from, edge.to, 'door', true);
+  return { edge };
+}
+
 /** `DefaultableField`'s camelCase name -> the wire's snake_case key —
  * one lookup table so `setRefDefault`/`clearRefDefault` share a single
  * mapping instead of hand-rolling it twice. */
@@ -1552,6 +1910,20 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
     );
   }
   cst.delete('holes');
+
+  // Cell-authored semantic regions (rpg-project#180) have no v1
+  // representation at all — dungeonspec only knows the declared `rooms:`
+  // chain. Dropped entirely, counted honestly like every other
+  // target-dialect construct here. A door edge a `connectRegions` call
+  // placed on a region's boundary is a SEPARATE `walls:` entry (see
+  // `connectRegions`'s own doc comment) and is stripped independently by
+  // the `walls:` handling above — deleting `regions:` here never touches it.
+  if (doc.regions.length > 0) {
+    dropped.push(
+      `${doc.regions.length} region${doc.regions.length === 1 ? '' : 's'}`
+    );
+  }
+  cst.delete('regions');
 
   if (doc.start || doc.end) dropped.push('start/end');
   cst.delete('start');

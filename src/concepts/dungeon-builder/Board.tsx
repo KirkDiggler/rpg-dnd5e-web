@@ -25,8 +25,14 @@ import {
   cellCorners,
   edgeBetweenCells,
 } from './hexLayout';
-import { END_COLOR, resolveMarkerStyle, START_COLOR } from './markerStyle';
+import {
+  END_COLOR,
+  regionArchetypeColor,
+  resolveMarkerStyle,
+  START_COLOR,
+} from './markerStyle';
 import { PlacementMarker } from './PlacementMarker';
+import { regionCentroid } from './regionGeometry';
 import type { BoardTool, PaletteSelection, PlacementSelection } from './types';
 
 interface BoardProps {
@@ -317,6 +323,54 @@ export function Board({
         strokeDasharray="3 2"
         pointerEvents="none"
       />
+    );
+  }
+  // Cell-authored semantic regions (rpg-project#180) — READ-ONLY here.
+  // Creation mode is the author surface for regions this round
+  // (TARGET-YAML.md's "regions:" section); edit mode only renders
+  // whatever a document already carries (typically hand-authored in the
+  // YAML pane, or round-tripped from a creation-mode document opened in
+  // edit mode), with no create/select/edit affordance — no pointer
+  // handlers, `pointerEvents="none"` throughout, same as the wall/hole
+  // overlay above. Same `regionArchetypeColor` the interactive creation
+  // board uses, so a region reads as the same archetype in both boards.
+  for (const region of doc.regions) {
+    const color = regionArchetypeColor(region.archetype);
+    for (const [col, row] of region.cells) {
+      trackCellExtent(col, row);
+      const center = cellCenter(col, row);
+      const corners = cellCorners(center, BOARD_HEX_SIZE - 1.5).map(
+        ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`
+      );
+      structuralOverlay.push(
+        <polygon
+          key={`region-${region.id}-${col}-${row}`}
+          points={corners.join(' ')}
+          fill={color}
+          fillOpacity={0.18}
+          stroke={color}
+          strokeWidth={1}
+          strokeDasharray="3 2"
+          pointerEvents="none"
+        />
+      );
+    }
+    const centroid = regionCentroid(region.cells);
+    const labelPos = cellCenter(centroid.col, centroid.row);
+    structuralOverlay.push(
+      <text
+        key={`region-${region.id}-label`}
+        x={labelPos.x}
+        y={labelPos.y + 3}
+        textAnchor="middle"
+        fill={color}
+        fontSize={9}
+        fontWeight={700}
+        pointerEvents="none"
+        style={{ paintOrder: 'stroke', stroke: '#100d0b', strokeWidth: 3 }}
+      >
+        {region.name ?? region.id}
+      </text>
     );
   }
   if (doc.start) {

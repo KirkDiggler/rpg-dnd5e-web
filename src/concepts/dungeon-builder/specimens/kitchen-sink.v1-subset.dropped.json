@@ -1,8 +1,8 @@
 {
   "dropped": [
     "defaults (2 refs; blocks_movement/blocks_los materialized onto 1 placement from 1 of them)",
-    "2 walls",
-    "1 hole",
+    "3 walls",
+    "2 regions",
     "start/end",
     "lighting",
     "2 top-level placements (mapped into rooms)",
