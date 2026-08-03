@@ -2710,6 +2710,124 @@ settles.
 69 before this sweep — 15 new: 8 `nearestEdge` + 7 `useSaveDungeon`),
 1772 repo-wide.
 
+## `defaults:` — dungeon-wide, ref-keyed default fields (2026-08-03)
+
+Kirk's ask, verbatim: "maybe we can set a default for all skeletons." A
+ref-keyed `defaults:` map — target dialect, proposed, same status as
+every other construct this file tracks. Full design writeup, the
+defaultable-field rationale table, the `mount`-exclusion reasoning, and
+the recorded (not decided) open questions live in TARGET-YAML.md's own
+`` `defaults:` `` section — this is the shipping ledger entry, not a
+duplicate of that write-up.
+
+**What shipped**:
+
+- `dungeonYaml.ts`: `PlacementDoc` grows an `explicit` companion
+  (`{ blocksMovement, blocksLos, height, facing, targeting }`) recording
+  which fields were literally present on that instance's own YAML,
+  distinguishing "explicitly false/absent" from "inheriting." New
+  `DungeonDoc.defaults: Record<string, RefDefaultsDoc>` and
+  `resolvePlacement(doc, placement)` — the one accessor that applies
+  inheritance (a placement's own explicit field always wins), returning
+  effective values plus an `inheritedFrom` map. Never mutates the
+  document and never runs at parse time — the serialized YAML stays
+  sparse. New mutators `setRefDefault`/`clearRefDefault` (the ref key is
+  forced double-quoted via an explicit `Scalar` — `YAMLMap.set()` with a
+  bare JS string key stores a plain string and only wraps it at
+  stringify time, too late to mark it quoted; confirmed by hand before
+  landing, not assumed) and `clearPlacementFlag` (deletes
+  `blocks_movement`/`blocks_los` entirely — distinct from
+  `setPlacementFlags`, which always writes a literal boolean and has no
+  reason to delete either key; needed for a real "revert to default,"
+  which must un-set the key, not copy the default's current value into
+  it).
+- `stripToV1Subset` materializes-on-strip: every placement INHERITING a
+  `blocks_movement`/`blocks_los` value gets it baked on as a literal key
+  before `defaults:` itself is dropped, so the compilable subset
+  preserves the authored behavior a default was standing in for — a
+  `blocks_movement: true` default silently vanishing on save would
+  reintroduce the exact entrance-blocked gap this file's own UX learning
+  exists to catch. Monster placements are skipped (dungeonspec rejects
+  both flags on a monster ref). `targeting`/`height`/`facing` have no v1
+  form regardless of inheritance and just drop, counted the same way an
+  explicit one already was — not double-counted against the new
+  `defaults (...)` entry.
+- `boardGeometry.ts`'s `isEntranceBlocked` and
+  `DungeonPreview3D.tsx`'s `buildOnePlacement` now read placement
+  fields through `resolvePlacement` instead of the raw `PlacementDoc`
+  fields — a defaulted `blocks_movement` trips the entrance-blocked
+  warning exactly like an explicit one; a defaulted `height` floats a
+  candle in the 3D preview exactly like an explicit one. Reading the raw
+  field instead would have silently missed both the moment any dungeon
+  actually used `defaults:`.
+- `Inspector.tsx`: `facing`/`height`/`targeting`/`blocks_movement`/
+  `blocks_los` now render resolved (not raw) values. A field currently
+  following its ref's default renders muted with a small "inherited"
+  tag — visually distinct from the existing "dialect"/"experiment"
+  badges (those mark a CONSTRUCT as uncompiled; "inherited" marks a
+  VALUE as not-this-instance's-own; a field is routinely both).
+  Override-in-place needed no new affordance — every setter already
+  writes an explicit value the moment a control is touched. A "revert to
+  default" button appears only when a field is both explicit on this
+  placement and has a ref default to fall back to.
+
+**A named, honest limitation, not silently glossed over** (also
+recorded in TARGET-YAML.md): for `height`/`targeting`/`facing`,
+"clear" and "revert to default" are the same action, because absence of
+the key IS the inherit signal — there is no way today to author
+"explicitly no height, overriding a default that provides one."
+Unchecking an inherited `height` checkbox is a documented no-op, not a
+bug: nothing explicit exists yet to delete, so the value keeps following
+the default until either overridden with a real number or the default
+itself is cleared.
+
+**Verified live**, hand-editing the YAML pane directly (the same
+"only a hand-editor can produce this" path CONTRACT.md's comment-
+orphaning finding already established, since `placeItem` always stamps
+fresh prop placements with explicit `blocks_movement`/`blocks_los` —
+true inheritance for those two fields needs a hand-authored or
+`clearPlacementFlag`-cleared instance): added
+`` `defaults: { "dnd5e:props:pillar": { height: 1.2, facing: SE } }` ``
+to showcase.yaml's live document, then selected a placed pillar.
+Screenshot 1 (`docs/evidence/dungeon-builder-defaults-inherited.png`)
+shows both `facing` and `height` muted with the "inherited" tag, and the
+YAML pane's own compile badge reading `Uses: defaults (1 ref) — not yet
+compiled server-side`. Edited the height field to `2` in place; screenshot
+2 (`docs/evidence/dungeon-builder-defaults-overridden.png`) shows, in ONE
+frame, `height` now explicit (value `2`, a "revert to default" button,
+the "inherited" tag gone) sitting right above `facing`, still muted and
+still inherited — the contrast the whole feature is for. The compile
+badge updated live to `Uses: defaults (1 ref), height (1 placement)`.
+Clicked "revert to default"; screenshot 3
+(`docs/evidence/dungeon-builder-defaults-reverted.png`) shows `height`
+back to `1.2`, muted, "inherited" tag restored, compile badge back to
+`Uses: defaults (1 ref)` — the full inherit → override → revert cycle,
+live, not just unit-tested. Console showed only the expected FIXTURES-mode
+`AuthoringService` gate-off errors this concept's own live-preview probe
+always produces locally (CONTRACT.md's "Live verification" section) — no
+new errors from this change.
+
+**Not independently re-verified in the browser**: materialize-on-strip
+itself (covered thoroughly at the data layer — see `dungeonYaml.test.ts`
+below — but not re-clicked through "Save the compilable subset" live;
+the compile-badge wiring shown live above is the same code path that
+feeds that button's diff summary) and the 3D preview's resolved-height
+render (attempted; this ephemeral worktree's `public/models/synty` isn't
+populated the way a `rsync`'d checkout is, per this file's own "Save &
+Play" section note, so the 3D canvas rendered blank from missing
+textures/models — an environment gap, not a regression, and not
+conflated with a real finding here).
+
+`ci-check` clean. 99 dungeon-builder tests passing (up from 84 — 15
+new: parsing, `resolvePlacement` inheritance/override, `setRefDefault`/
+`clearRefDefault`/`clearPlacementFlag`, boss-exclusion, and
+materialize-on-strip both directions — a real v1-expressible field that
+bakes in, and a target-dialect-only one that doesn't), 1802 repo-wide.
+Specimen pack bumped to v0.2 (`specimens/README.md`'s own changelog) —
+`kitchen-sink.yaml` now shows a decoupled floor-standing `height` (#688)
+and the new `defaults:` map exercising both outcomes above;
+`kitchen-sink.v1-subset.yaml`/`.dropped.json` regenerated to match.
+
 ## Fine rotation, restored and generalized to floor-standing props (2026-08-03)
 
 Kirk's report, verbatim: placing in 3D and adjusting height works, but "we
@@ -2873,3 +2991,46 @@ result in under a minute by loading the same test YAML above and
 toggling to 3D.
 
 `ci-check` clean.
+
+### Reconciled with the `defaults:` resolver, same day
+
+This section and the `defaults:` one above it (this file's prior
+section) shipped on separate branches — #693 (fine rotation) and #691
+(`defaults:`) — that never coexisted in either PR's own history, so
+neither had a chance to prove the two compose. Reconciling #693 onto
+`dev` after #691 landed there surfaced the real seam: `buildOnePlacement`
+(`preview3d/DungeonPreview3D.tsx`) and the Inspector's fine-rotation gate
+both need the RESOLVED facing (`resolvePlacement`'s output), not the
+placement's own raw `facing`, for an inherited facing to compose with a
+fine-rotation nudge the same way an explicit one already did — `mount`
+stays a raw read either way, since it's deliberately not a defaultable
+field (`DungeonDoc.defaults`'s own doc comment). Composed, not merely
+merged: `buildOnePlacement`'s `rotationY` formula and `worldPosition`
+call now read `resolved.facing`/`resolved.height` (from `resolvePlacement`)
+while keeping the fine-rotation generalization's "apply `rotationDegrees`
+on top of BOTH the wall and floor-standing branches" shape from this
+section above; the Inspector's slider-disabled and snap-flush-target
+gates (`facing === null`) already resolved cleanly through git's own
+merge (both read the same `facing` local, itself now
+`resolved?.facing ?? null`) — confirmed by adding coverage rather than
+assumed. `buildOnePlacement` exported (previously private) so this could
+be asserted directly against the real render-path code, same "one shared
+definition, not a private duplicate" reasoning `facingToRotationY`/
+`wallMountRotationY` already used moving into `boardGeometry.ts`.
+
+New composition tests, none of which existed on either source branch:
+`preview3d/DungeonPreview3D.test.ts` (new file) — an inherited facing
+composes with an explicit `rotate_degrees` through both the floor-standing
+and `mount: wall` branches, asserted against the actual exported
+`buildOnePlacement`, not a hand-copied formula. `Inspector.test.tsx` (new
+file) — an inherited facing enables the fine-rotation slider exactly like
+an explicit one, and the no-facing-at-all case still disables it with the
+same honest hint. `dungeonYaml.test.ts`'s `defaults:` describe block gains
+one case: `handleSnapFlush`'s two-mutator write (`setPlacementFacing` +
+`setPlacementRotationDegrees`) produces an EXPLICIT facing that overrides
+a ref-level default, using a snap-flush answer deliberately different
+from the default so a silent no-op couldn't pass. 117 dungeon-builder
+tests passing (up from 112 — the 84-test shared base plus #693's 13 plus
+#691's 15, confirming no coverage was lost composing the two — plus 5
+new composition cases), `ci-check` clean (format/lint/typecheck/build/
+test).

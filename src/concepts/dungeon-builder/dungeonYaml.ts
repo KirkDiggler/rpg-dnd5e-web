@@ -86,6 +86,13 @@ function parsePlacementList(raw: unknown, context: string): PlacementDoc[] {
       height: parseHeight(p.height),
       rotationDegrees: parseRotationDegrees(p.rotate_degrees),
       targeting: parseTargeting(p.targeting),
+      explicit: {
+        blocksMovement: p.blocks_movement !== undefined,
+        blocksLos: p.blocks_los !== undefined,
+        height: p.height !== undefined,
+        facing: p.facing !== undefined,
+        targeting: p.targeting !== undefined,
+      },
     };
   });
 }
@@ -151,6 +158,25 @@ export interface PlacementDoc {
    * never behavior (Boundary Rule). Only meaningful when `isMonster`;
    * `null` when unset. Not compiled server-side. */
   targeting: string | null;
+  /** Which of the fields above were actually present as a literal key on
+   * THIS placement, as parsed straight from the raw YAML — as opposed to
+   * absent and (as of the `defaults:` map, target dialect, proposed —
+   * see `DungeonDoc.defaults`'s own doc comment) potentially INHERITED
+   * from the placement's `ref`. `blocksMovement`/`blocksLos`/`height`/
+   * `facing`/`targeting` above are always populated with a concrete
+   * fallback (`false`/`null`) when absent, same as before `defaults:`
+   * existed — this field is what lets `resolvePlacement` (below) tell
+   * "explicitly false/absent" apart from "inheriting a default," which
+   * the fallback-carrying fields alone cannot. `mount` has no entry here
+   * — it is deliberately not defaultable, see `DungeonDoc.defaults`'s own
+   * doc comment for why. */
+  explicit: {
+    blocksMovement: boolean;
+    blocksLos: boolean;
+    height: boolean;
+    facing: boolean;
+    targeting: boolean;
+  };
 }
 
 export interface BossDoc {
@@ -225,6 +251,36 @@ export interface LightingDoc {
   ambient: number;
 }
 
+/** The fields a ref-keyed `defaults:` entry may carry — target dialect,
+ * proposed, Kirk's ask verbatim: "maybe we can set a default for all
+ * skeletons." See TARGET-YAML.md's "defaults:" section for the full
+ * design writeup and the rationale for each field's inclusion.
+ * Deliberately NOT included: `mount` — see `DungeonDoc.defaults`'s own
+ * doc comment. All optional; an entry with only some fields set is the
+ * normal case (`{ targeting: lowest-health }`, no blocks_movement,
+ * blocks_los, height, or facing at all). */
+export type DefaultableField =
+  | 'targeting'
+  | 'blocksMovement'
+  | 'blocksLos'
+  | 'height'
+  | 'facing';
+
+export interface RefDefaultsDoc {
+  targeting?: string;
+  blocksMovement?: boolean;
+  blocksLos?: boolean;
+  height?: number;
+  /** Same numeric HEX_FACING_LABELS index every other `facing` field
+   * uses — never a bare string on this side of the parse boundary. */
+  facing?: number;
+}
+
+/** Ref-keyed, e.g. `{ "dnd5e:monsters:skeleton": { targeting:
+ * "lowest-health" } }` — target dialect, proposed. See TARGET-YAML.md's
+ * "defaults:" section. */
+export type DefaultsDoc = Record<string, RefDefaultsDoc>;
+
 export interface DungeonDoc {
   version: number;
   key: string;
@@ -256,6 +312,31 @@ export interface DungeonDoc {
    * needs an owning room; see TARGET-YAML.md for how the target dialect
    * eventually frees it). */
   place: PlacementDoc[];
+  /** Dungeon-wide, ref-keyed default fields — target dialect, proposed
+   * (Kirk's ask, verbatim: "maybe we can set a default for all
+   * skeletons"). See TARGET-YAML.md's "defaults:" section for the full
+   * design. A placement's own explicit field (per-instance, tracked in
+   * `PlacementDoc.explicit`) always overrides its ref's entry here — see
+   * `resolvePlacement` below, the one accessor that applies this
+   * inheritance. This map itself changes NOTHING about how a placement
+   * parses (`PlacementDoc.blocksMovement`/`height`/etc. above stay exactly
+   * what's literally on that instance) — inheritance is resolved at READ
+   * time, not baked into the parse, so the serialized YAML stays sparse
+   * (defaults + only the overrides that actually differ, never every
+   * inherited value materialized onto every instance).
+   *
+   * `mount` is deliberately NOT a defaultable field: it's edge-dependent
+   * (TARGET-YAML.md's "wall-mount edge-selection rework" — WHICH wall
+   * edge a `mount: wall` placement uses is a property of the specific
+   * cell it sits in, not of its ref; two skeletons at two different
+   * cells could need two different edges even if both are "wall-mounted
+   * by default," so a single ref-level default has no one honest value
+   * to carry). Not compiled server-side, dropped entirely by
+   * `stripToV1Subset` — except that its v1-EXPRESSIBLE effects
+   * (`blocks_movement`/`blocks_los` on props) are first MATERIALIZED onto
+   * every inheriting placement so the compilable subset preserves
+   * authored behavior; see `stripToV1Subset`'s own doc comment. */
+  defaults: DefaultsDoc;
 }
 
 export interface ParsedDungeon {
@@ -396,6 +477,33 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
   // own doc comment.
   const place = parsePlacementList(raw.place, 'place');
 
+  // Ref-keyed default fields — target dialect, proposed. See
+  // DungeonDoc.defaults's own doc comment. Every field is independently
+  // optional on a given ref's entry; an entry present with none of the
+  // five recognized keys parses to `{}` rather than being skipped, same
+  // "authored but currently inert" honesty every other target-dialect
+  // parse in this function follows (e.g. an empty `lighting: {}`).
+  const defaults: DefaultsDoc = {};
+  if (raw.defaults && typeof raw.defaults === 'object') {
+    for (const [ref, v] of Object.entries(
+      raw.defaults as Record<string, unknown>
+    )) {
+      if (!v || typeof v !== 'object') continue;
+      const entry = v as Record<string, unknown>;
+      const parsed: RefDefaultsDoc = {};
+      if (typeof entry.targeting === 'string')
+        parsed.targeting = entry.targeting;
+      if (typeof entry.blocks_movement === 'boolean')
+        parsed.blocksMovement = entry.blocks_movement;
+      if (typeof entry.blocks_los === 'boolean')
+        parsed.blocksLos = entry.blocks_los;
+      if (typeof entry.height === 'number') parsed.height = entry.height;
+      const facing = parseFacing(entry.facing);
+      if (facing !== null) parsed.facing = facing;
+      defaults[ref] = parsed;
+    }
+  }
+
   return {
     version: (raw.version as number) ?? 1,
     key: raw.key as string,
@@ -411,6 +519,98 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     end,
     lighting,
     place,
+    defaults,
+  };
+}
+
+export interface ResolvedPlacementFields {
+  blocksMovement: boolean;
+  blocksLos: boolean;
+  height: number | null;
+  facing: number | null;
+  targeting: string | null;
+  /** Which fields above are the placement's OWN default rather than an
+   * inherited one — `true` only when the field is absent on the
+   * placement itself (`!explicit.X`) AND its ref has a `defaults:` entry
+   * carrying that field. `false` whenever the ref has no defaults entry
+   * at all (the overwhelmingly common case today), so most callers can
+   * ignore this and only the Inspector's inherited/muted rendering needs
+   * it. */
+  inheritedFrom: {
+    blocksMovement: boolean;
+    blocksLos: boolean;
+    height: boolean;
+    facing: boolean;
+    targeting: boolean;
+  };
+}
+
+/** Resolve a placement's EFFECTIVE field values — its own explicit
+ * fields where present, else its ref's `defaults:` entry, else the
+ * pre-existing plain fallback (`false`/`null`) — target dialect,
+ * proposed, see `DungeonDoc.defaults`'s own doc comment.
+ *
+ * Pure function over already-parsed `DungeonDoc`/`PlacementDoc` state,
+ * no CST access — safe to call from render code on every frame, and
+ * this is exactly what board/3D rendering should do: `DungeonPreview3D`'s
+ * `buildOnePlacement` and `boardGeometry.ts`'s `isEntranceBlocked` both
+ * read placement fields through this now rather than a placement's own
+ * `PlacementDoc.height`/`blocksMovement` directly, so a `defaults:`-driven
+ * value (a defaulted `height` floating a candle, a defaulted
+ * `blocks_movement` correctly tripping the entrance-blocked warning) is
+ * never silently invisible to a consumer that only ever looked at the
+ * instance.
+ *
+ * Never mutates `placement` or writes an inherited value back into the
+ * document — the serialized YAML stays SPARSE (only defaults + the
+ * overrides that genuinely differ), which is the entire point of
+ * inheritance living here instead of being baked in at parse time. Only
+ * `stripToV1Subset` ever materializes a resolved value onto an instance,
+ * and only into the STRIPPED copy it returns, never the live document —
+ * see that function's own doc comment.
+ *
+ * Deliberately takes a `PlacementDoc`, not a `BossDoc` — whether
+ * `defaults:` should apply to a room's `boss:` entry at all is an open
+ * question this prototype records, not decides (TARGET-YAML.md's
+ * "defaults:" section); `BossDoc` doesn't even carry
+ * blocksMovement/blocksLos/height fields (a boss isn't wall furniture),
+ * and extending inheritance to its facing/targeting fields is exactly
+ * the kind of scope this file's `PlacementDoc`-only signature is
+ * deliberately NOT deciding yet. */
+export function resolvePlacement(
+  doc: DungeonDoc,
+  placement: PlacementDoc
+): ResolvedPlacementFields {
+  const d = doc.defaults[placement.ref];
+  const blocksMovement = placement.explicit.blocksMovement
+    ? placement.blocksMovement
+    : (d?.blocksMovement ?? false);
+  const blocksLos = placement.explicit.blocksLos
+    ? placement.blocksLos
+    : (d?.blocksLos ?? false);
+  const height = placement.explicit.height
+    ? placement.height
+    : (d?.height ?? null);
+  const facing = placement.explicit.facing
+    ? placement.facing
+    : (d?.facing ?? null);
+  const targeting = placement.explicit.targeting
+    ? placement.targeting
+    : (d?.targeting ?? null);
+  return {
+    blocksMovement,
+    blocksLos,
+    height,
+    facing,
+    targeting,
+    inheritedFrom: {
+      blocksMovement:
+        !placement.explicit.blocksMovement && d?.blocksMovement !== undefined,
+      blocksLos: !placement.explicit.blocksLos && d?.blocksLos !== undefined,
+      height: !placement.explicit.height && d?.height !== undefined,
+      facing: !placement.explicit.facing && d?.facing !== undefined,
+      targeting: !placement.explicit.targeting && d?.targeting !== undefined,
+    },
   };
 }
 
@@ -603,6 +803,30 @@ export function setPlacementFlags(
   if (!isMap(item)) return;
   item.set('blocks_movement', flags.blocksMovement);
   item.set('blocks_los', flags.blocksLos);
+}
+
+/** Clear a `place:` entry's `blocks_movement` or `blocks_los` key
+ * entirely — distinct from `setPlacementFlags` (which always writes a
+ * literal boolean; correct for the board's own flag checkboxes, which
+ * always want an explicit value the moment an author touches them).
+ * This exists for the Inspector's "revert to default" affordance
+ * (`defaults:`, target dialect, proposed — see `DungeonDoc.defaults`'s
+ * own doc comment): reverting must remove the key so the placement goes
+ * back to actually INHERITING its ref's default through
+ * `resolvePlacement`, not merely get re-set to match the default's
+ * CURRENT value — the latter would render identically today but would
+ * silently stop tracking the ref's default if it changes later, which
+ * defeats the entire point of inheriting rather than copying. */
+export function clearPlacementFlag(
+  cst: Document,
+  roomId: string | null,
+  index: number,
+  flag: 'blocksMovement' | 'blocksLos'
+): void {
+  const place = placeSeq(cst, roomId);
+  const item = place.items[index];
+  if (!isMap(item)) return;
+  item.delete(flag === 'blocksMovement' ? 'blocks_movement' : 'blocks_los');
 }
 
 /** Strip every monster `place:` entry (any `ref` starting
@@ -1063,6 +1287,198 @@ export function setLightingAmbient(
   cst.set('lighting', node);
 }
 
+/** `DefaultableField`'s camelCase name -> the wire's snake_case key —
+ * one lookup table so `setRefDefault`/`clearRefDefault` share a single
+ * mapping instead of hand-rolling it twice. */
+const DEFAULT_FIELD_KEYS: Record<DefaultableField, string> = {
+  targeting: 'targeting',
+  blocksMovement: 'blocks_movement',
+  blocksLos: 'blocks_los',
+  height: 'height',
+  facing: 'facing',
+};
+
+/** Get-or-create the top-level `defaults:` map — same "get or create,
+ * mutate the live node" discipline as `topSeq`, for a `YAMLMap` instead
+ * of a `YAMLSeq`. */
+function defaultsMap(cst: Document): YAMLMap {
+  const existing = cst.get('defaults', true);
+  if (isMap(existing)) return existing;
+  const node = new YAMLMap(cst.schema);
+  cst.set('defaults', node);
+  return node;
+}
+
+/** A ref's own entry inside `defaults:` — created flow-style
+ * (`{ targeting: ... }`, matching every other small inline map this file
+ * creates) when `create` is true and absent; `undefined` when `create` is
+ * false and either `defaults:` or the ref's own entry doesn't exist yet
+ * (the read-only path `clearRefDefault` uses — clearing a field that was
+ * never set is a no-op, not an error). */
+function refDefaultEntry(
+  cst: Document,
+  ref: string,
+  create: boolean
+): YAMLMap | undefined {
+  if (!create) {
+    const existing = cst.get('defaults', true);
+    if (!isMap(existing)) return undefined;
+    const entry = existing.get(ref, true);
+    return isMap(entry) ? entry : undefined;
+  }
+  const defaults = defaultsMap(cst);
+  const existing = defaults.get(ref, true);
+  if (isMap(existing)) return existing;
+  const node = new YAMLMap(cst.schema);
+  node.flow = true;
+  // The key must be an explicit `Scalar` (not a plain JS string handed to
+  // `.set()`, which `yaml` stores as a bare string and only wraps at
+  // stringify time, too late to mark it quoted) to force double-quoting —
+  // matching `createPlacementNode`'s own `ref` field and TARGET-YAML.md's
+  // annotated example (`"dnd5e:monsters:skeleton": { ... }`). A
+  // colon-bearing key parses fine unquoted in block style too, but
+  // quoting keeps every ref-shaped key in this file rendered identically,
+  // never ambiguous.
+  const keyNode = new Scalar(ref);
+  keyNode.type = Scalar.QUOTE_DOUBLE;
+  defaults.set(keyNode, node);
+  return node;
+}
+
+/** Set (or update) one field of a ref's dungeon-wide `defaults:` entry —
+ * target dialect, proposed, Kirk's ask verbatim: "maybe we can set a
+ * default for all skeletons." See `DungeonDoc.defaults`'s own doc
+ * comment for the full design. Creates `defaults:` and the ref's own
+ * flow-style entry if either is absent yet. `facing` is written as the
+ * same `HEX_FACING_LABELS` string every other facing field uses
+ * (`facingLabel`), matching `setPlacementFacing`'s own convention —
+ * never a bare numeric index on the wire.
+ *
+ * Deliberately does NOT reach into any existing placement of this ref
+ * and stamp the value on — the whole point of a ref-level default is
+ * that placements stay sparse and inherit through `resolvePlacement` at
+ * read time, not that authoring one rewrites every instance that already
+ * exists. */
+export function setRefDefault(
+  cst: Document,
+  ref: string,
+  field: DefaultableField,
+  value: string | number | boolean
+): void {
+  const entry = refDefaultEntry(cst, ref, true)!;
+  const key = DEFAULT_FIELD_KEYS[field];
+  entry.set(key, field === 'facing' ? facingLabel(value as number) : value);
+}
+
+/** Clear one field from a ref's `defaults:` entry — target dialect,
+ * proposed. Removes the ref's own entry entirely once its last field is
+ * cleared, and removes `defaults:` itself once its last ref is cleared —
+ * an empty `{}` / stray `defaults: {}` left behind after every field is
+ * reverted would be a no-op construct on the wire, the same
+ * "don't materialize nothing" discipline `setLightingAmbient`/
+ * `setConnectorLocked` already follow via `cst.delete(...)`. A no-op
+ * (not an error) when the field, the ref's entry, or `defaults:` itself
+ * doesn't exist yet — matching every other `clear`-shaped mutator in
+ * this file (e.g. `setPlacementFacing(cst, ..., null)` on a placement
+ * with no `facing:` key). */
+export function clearRefDefault(
+  cst: Document,
+  ref: string,
+  field: DefaultableField
+): void {
+  const entry = refDefaultEntry(cst, ref, false);
+  if (!entry) return;
+  entry.delete(DEFAULT_FIELD_KEYS[field]);
+  if (entry.items.length === 0) {
+    const defaults = cst.get('defaults', true);
+    if (isMap(defaults)) {
+      defaults.delete(ref);
+      if (defaults.items.length === 0) cst.delete('defaults');
+    }
+  }
+}
+
+/** Bake every INHERITED `blocks_movement`/`blocks_los` value onto the CST
+ * placement that inherits it — the materialize-on-strip half of
+ * `defaults:` (target dialect, proposed, see `DungeonDoc.defaults`'s own
+ * doc comment). Called by `stripToV1Subset` BEFORE `defaults:` itself is
+ * dropped and before any other stripping runs, so it can still see the
+ * original `defaults:` map and the original (pre-mapping) top-level
+ * `place:` list.
+ *
+ * Only `blocks_movement`/`blocks_los` are handled here — they're the
+ * only two defaultable fields with a real v1 wire representation on a
+ * prop placement at all. `targeting`/`height`/`facing` have NO v1
+ * representation regardless of whether they're inherited or explicit;
+ * they're simply dropped (and counted) by the existing
+ * `stripPlacementFields` pass further down, same as always — inheriting
+ * one doesn't make it any more compilable. Monster placements are
+ * skipped entirely: `dungeonspec.Validate` rejects `blocks_movement`/
+ * `blocks_los` on a monster ref (confirmed real, see `PlacementDoc.isMonster`'s
+ * own doc comment), so materializing either onto one would turn a
+ * currently-valid v1 subset into one the real server rejects — a
+ * monster ref's `defaults:` entry is only ever meaningful for
+ * `targeting`, which this function doesn't touch anyway.
+ *
+ * Walks the CST in lockstep with `doc` (`doc` was derived from this same
+ * `cst` via `toDungeonDoc`, so `doc.rooms[i].place[j]` and the `j`-th
+ * item of `cst`'s `rooms[i].place:` sequence are guaranteed to be the
+ * same node in the same order) rather than re-resolving placements by
+ * ref/at, which would be ambiguous the moment two placements share a
+ * ref and a defaults entry differs from what either one already has
+ * explicit. */
+function materializeRefDefaults(
+  cst: Document,
+  doc: DungeonDoc
+): { usedRefs: Set<string>; placementsMaterialized: number } {
+  const usedRefs = new Set<string>();
+  let placementsMaterialized = 0;
+
+  const materializeOne = (item: YAMLMap, placement: PlacementDoc) => {
+    if (placement.isMonster) return;
+    const resolved = resolvePlacement(doc, placement);
+    let touched = false;
+    if (resolved.inheritedFrom.blocksMovement) {
+      item.set('blocks_movement', resolved.blocksMovement);
+      touched = true;
+    }
+    if (resolved.inheritedFrom.blocksLos) {
+      item.set('blocks_los', resolved.blocksLos);
+      touched = true;
+    }
+    if (touched) {
+      usedRefs.add(placement.ref);
+      placementsMaterialized++;
+    }
+  };
+
+  const roomsSeq = cst.get('rooms');
+  if (isSeq(roomsSeq)) {
+    roomsSeq.items.forEach((room, ri) => {
+      if (!isMap(room)) return;
+      const place = room.get('place', true);
+      const docPlacements = doc.rooms[ri]?.place;
+      if (!isSeq(place) || !docPlacements) return;
+      place.items.forEach((item, pi) => {
+        if (isMap(item) && docPlacements[pi]) {
+          materializeOne(item, docPlacements[pi]);
+        }
+      });
+    });
+  }
+
+  const topPlace = cst.get('place');
+  if (isSeq(topPlace)) {
+    topPlace.items.forEach((item, pi) => {
+      if (isMap(item) && doc.place[pi]) {
+        materializeOne(item, doc.place[pi]);
+      }
+    });
+  }
+
+  return { usedRefs, placementsMaterialized };
+}
+
 export interface V1SubsetResult {
   /** The stripped, v1-only YAML text — always `version: 1`, never any
    * target-dialect-only field. */
@@ -1084,13 +1500,44 @@ export interface V1SubsetResult {
  * v1-subset strip" table, in code. Parses a FRESH CST from `yamlText`
  * (never mutates a caller's live board CST), so this is safe to call on
  * every live-preview debounce tick and every Save & Play click without
- * disturbing what the author is editing. */
+ * disturbing what the author is editing.
+ *
+ * `defaults:` (target dialect, proposed — see `DungeonDoc.defaults`'s own
+ * doc comment) is the one dropped construct that isn't simply discarded:
+ * `materializeRefDefaults` bakes every inherited `blocks_movement`/
+ * `blocks_los` onto its placement FIRST, so the returned subset preserves
+ * the authored behavior a default was standing in for. `targeting`/
+ * `height`/`facing` defaults have no v1 representation regardless and are
+ * lost the same way an explicit one would be — only counted via the
+ * `defaults (...)` entry below, not double-counted in the per-field
+ * facing/height/targeting tallies further down (those only ever count a
+ * literal key actually present on the instance). */
 export function stripToV1Subset(yamlText: string): V1SubsetResult {
   const { cst, doc } = parseDungeon(yamlText);
   const dropped: string[] = [];
 
   cst.set('version', 1);
   cst.delete('canvas');
+
+  // Materialize-on-strip (see `materializeRefDefaults`'s own doc
+  // comment): bake every INHERITED blocks_movement/blocks_los onto its
+  // placement BEFORE defaults: is dropped below, so the compilable
+  // subset preserves the authored behavior a ref-level default was
+  // standing in for — a `blocks_movement: true` default silently
+  // vanishing on strip would be exactly the kind of gap CONTRACT.md's
+  // "entrance-blocked" UX learning exists to catch, just moved from the
+  // live board to the saved subset.
+  const { usedRefs: defaultRefsUsed, placementsMaterialized } =
+    materializeRefDefaults(cst, doc);
+  const defaultRefCount = Object.keys(doc.defaults).length;
+  if (defaultRefCount > 0) {
+    dropped.push(
+      placementsMaterialized > 0
+        ? `defaults (${defaultRefCount} ref${defaultRefCount === 1 ? '' : 's'}; blocks_movement/blocks_los materialized onto ${placementsMaterialized} placement${placementsMaterialized === 1 ? '' : 's'} from ${defaultRefsUsed.size} of them)`
+        : `defaults (${defaultRefCount} ref${defaultRefCount === 1 ? '' : 's'})`
+    );
+  }
+  cst.delete('defaults');
 
   if (doc.walls.length > 0) {
     dropped.push(

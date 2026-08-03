@@ -324,6 +324,7 @@ export function CreationConcept({
         doc={doc}
         selected={edit.selectedPlacement}
         onSetFlags={edit.handleSetFlags}
+        onClearFlag={edit.handleClearFlag}
         onDelete={edit.handleDelete}
         onSetMount={edit.handleSetMount}
         onSetHeight={edit.handleSetHeight}

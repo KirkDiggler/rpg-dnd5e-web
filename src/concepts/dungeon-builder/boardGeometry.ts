@@ -10,7 +10,7 @@ import type {
   FloorPlanConnector,
   FloorPlanRoom,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
-import type { DungeonDoc, WallDoc } from './dungeonYaml';
+import { resolvePlacement, type DungeonDoc, type WallDoc } from './dungeonYaml';
 import {
   cellCenter,
   cubeAtColRow,
@@ -127,7 +127,20 @@ export function isEntranceBlocked(
     if (!fpRoom) continue;
     for (const p of room.place) {
       const absCol = fpRoom.startColumn + p.at[0];
-      if (absCol === column && p.at[1] === row && p.blocksMovement) return true;
+      // Resolved, not raw `p.blocksMovement` — a `blocks_movement: true`
+      // ref-level default (`defaults:`, target dialect, proposed) must trip
+      // this warning exactly like an explicit one does. Reading the raw
+      // field here would silently miss an inherited block, reintroducing
+      // the exact gap CONTRACT.md's "entrance-blocked" UX learning exists
+      // to catch, just one layer removed (via a default instead of a
+      // direct per-instance flag).
+      if (
+        absCol === column &&
+        p.at[1] === row &&
+        resolvePlacement(doc, p).blocksMovement
+      ) {
+        return true;
+      }
     }
   }
   return false;

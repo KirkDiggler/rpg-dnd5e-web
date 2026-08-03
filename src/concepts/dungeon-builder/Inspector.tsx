@@ -45,7 +45,7 @@ import {
   stepWallFacing,
   wallBearingFacings,
 } from './boardGeometry';
-import type { DungeonDoc, Mount } from './dungeonYaml';
+import { resolvePlacement, type DungeonDoc, type Mount } from './dungeonYaml';
 import type { PlacementSelection } from './types';
 
 /** Wall-mountable props this round wires the `mount:` checkbox UI up
@@ -109,6 +109,62 @@ function ExperimentBadge() {
   );
 }
 
+/** A field is showing its ref's `defaults:` entry (target dialect,
+ * proposed — `resolvePlacement`'s own doc comment), not a value set on
+ * this placement itself. Distinct, muted color from both badges above so
+ * "this construct isn't compiled yet" (dialect/experiment) and "this
+ * VALUE isn't this instance's own" (inherited) never get visually
+ * conflated — a field can be target-dialect AND inherited at once
+ * (height, facing, targeting all are), and a reader needs to tell the
+ * two facts apart. */
+function InheritedTag() {
+  return (
+    <span
+      title="following this ref's dungeon-wide default (defaults:, target dialect, proposed) — not set on this placement itself"
+      style={{
+        fontSize: 9,
+        fontStyle: 'italic',
+        color: '#8a7a5a',
+        background: '#2a2015',
+        border: '1px solid #4a3a1f',
+        borderRadius: 3,
+        padding: '1px 5px',
+        marginLeft: 6,
+      }}
+    >
+      inherited
+    </span>
+  );
+}
+
+/** Clears this placement's own explicit override for one field, falling
+ * back to its ref's `defaults:` entry — only ever rendered when an
+ * explicit value AND a ref default both exist (otherwise there is
+ * nothing to revert TO, or nothing to revert FROM). See
+ * `clearPlacementFlag`'s doc comment in dungeonYaml.ts for why
+ * blocks_movement/blocks_los route through a dedicated clear rather than
+ * `onSetFlags`. */
+function RevertToDefaultButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title="clear this placement's own value and fall back to the ref's default"
+      style={{
+        marginLeft: 6,
+        fontSize: 9,
+        background: 'transparent',
+        color: '#8fe8e0',
+        border: '1px solid #2a5a54',
+        borderRadius: 3,
+        padding: '0 5px',
+        cursor: 'pointer',
+      }}
+    >
+      revert to default
+    </button>
+  );
+}
+
 interface InspectorProps {
   doc: DungeonDoc;
   /** Absent for the "New Dungeon" creation board — there is no compiled
@@ -121,6 +177,12 @@ interface InspectorProps {
   floorPlan?: FloorPlan;
   selected: PlacementSelection | null;
   onSetFlags: (blocksMovement: boolean, blocksLos: boolean) => void;
+  /** Revert-to-default for blocks_movement/blocks_los (`defaults:`,
+   * target dialect, proposed) — deletes the key so the placement goes
+   * back to inheriting its ref's default, rather than re-setting it to
+   * match that default's current value. See `clearPlacementFlag`'s own
+   * doc comment. */
+  onClearFlag: (flag: 'blocksMovement' | 'blocksLos') => void;
   onDelete: () => void;
   onSetMount: (mount: Mount) => void;
   /** DECOUPLED from `onSetMount` (Kirk-batch, 2026-08-02 — see
@@ -166,6 +228,7 @@ export function Inspector({
   floorPlan,
   selected,
   onSetFlags,
+  onClearFlag,
   onDelete,
   onSetMount,
   onSetHeight,
@@ -203,24 +266,72 @@ export function Inspector({
   const at = selected.boss ? boss?.at : placement?.at;
   if (!ref || !at) return null;
   const isMonster = selected.boss ? true : (placement?.isMonster ?? true);
+  // `defaults:` (target dialect, proposed — see `resolvePlacement`'s own
+  // doc comment) resolves a PLACEMENT's inherited fields; a boss entry is
+  // deliberately excluded (TARGET-YAML.md's "defaults:" section records
+  // "does defaults apply to boss?" as an open question, not decided
+  // here) — a boss's own facing/targeting below stay direct reads of
+  // `BossDoc`, exactly as before this feature existed.
+  const resolved =
+    !selected.boss && placement ? resolvePlacement(doc, placement) : undefined;
+  const refDefaults = !selected.boss ? doc.defaults[ref] : undefined;
   const blocksMovement = selected.boss
     ? false
-    : (placement?.blocksMovement ?? false);
-  const blocksLos = selected.boss ? false : (placement?.blocksLos ?? false);
+    : (resolved?.blocksMovement ?? false);
+  const blocksLos = selected.boss ? false : (resolved?.blocksLos ?? false);
   // target dialect — mount/height don't exist on a boss entry (bosses
-  // aren't wall furniture); targeting/facing exist on both.
+  // aren't wall furniture); targeting/facing exist on both. `mount` is
+  // NOT resolved — it is deliberately not a defaultable field at all
+  // (`DungeonDoc.defaults`'s own doc comment: which wall edge a mount
+  // uses is a property of the specific cell, not the ref).
   const mount = selected.boss ? 'floor' : (placement?.mount ?? 'floor');
-  const height = selected.boss ? null : (placement?.height ?? null);
+  const height = selected.boss ? null : (resolved?.height ?? null);
   const rotationDegrees = selected.boss
     ? null
     : (placement?.rotationDegrees ?? null);
   const targeting = selected.boss
     ? (boss?.targeting ?? null)
-    : (placement?.targeting ?? null);
+    : (resolved?.targeting ?? null);
   const facing = selected.boss
     ? (boss?.facing ?? null)
-    : (placement?.facing ?? null);
+    : (resolved?.facing ?? null);
   const isWallMountable = !selected.boss && WALL_MOUNTABLE_REFS.has(ref);
+
+  // Which fields are showing an INHERITED value right now (muted +
+  // "inherited" tag below), and which can be REVERTED to that default
+  // (an explicit value on this placement AND a default on its ref both
+  // exist — otherwise there's nothing to revert to, or nothing to revert
+  // from). Both stay all-false for a boss selection (see above).
+  const inherited = resolved?.inheritedFrom ?? {
+    blocksMovement: false,
+    blocksLos: false,
+    height: false,
+    facing: false,
+    targeting: false,
+  };
+  const canRevert = selected.boss
+    ? {
+        blocksMovement: false,
+        blocksLos: false,
+        height: false,
+        facing: false,
+        targeting: false,
+      }
+    : {
+        blocksMovement:
+          !!placement?.explicit.blocksMovement &&
+          refDefaults?.blocksMovement !== undefined,
+        blocksLos:
+          !!placement?.explicit.blocksLos &&
+          refDefaults?.blocksLos !== undefined,
+        height:
+          !!placement?.explicit.height && refDefaults?.height !== undefined,
+        facing:
+          !!placement?.explicit.facing && refDefaults?.facing !== undefined,
+        targeting:
+          !!placement?.explicit.targeting &&
+          refDefaults?.targeting !== undefined,
+      };
 
   const fpRoom = selected.roomId
     ? floorPlan?.rooms.find((r) => r.id === selected.roomId)
@@ -313,6 +424,7 @@ export function Inspector({
           gap: 6,
           margin: '6px 0',
           fontSize: 11,
+          opacity: inherited.facing ? 0.65 : 1,
         }}
       >
         <button
@@ -344,6 +456,10 @@ export function Inspector({
         </button>
         <span>facing</span>
         <TargetDialectBadge />
+        {inherited.facing && <InheritedTag />}
+        {canRevert.facing && (
+          <RevertToDefaultButton onClick={() => onSetFacing(null)} />
+        )}
       </div>
 
       {mount === 'wall' && (
@@ -391,7 +507,7 @@ export function Inspector({
           alignItems: 'center',
           gap: 8,
           margin: '6px 0',
-          opacity: isMonster ? 0.5 : 1,
+          opacity: isMonster ? 0.5 : inherited.blocksMovement ? 0.65 : 1,
         }}
       >
         <input
@@ -402,6 +518,12 @@ export function Inspector({
           onChange={(e) => onSetFlags(e.target.checked, blocksLos)}
         />
         <label htmlFor="db-chk-bm">blocks_movement</label>
+        {!isMonster && inherited.blocksMovement && <InheritedTag />}
+        {!isMonster && canRevert.blocksMovement && (
+          <RevertToDefaultButton
+            onClick={() => onClearFlag('blocksMovement')}
+          />
+        )}
       </div>
       <div
         style={{
@@ -409,7 +531,7 @@ export function Inspector({
           alignItems: 'center',
           gap: 8,
           margin: '6px 0',
-          opacity: isMonster ? 0.5 : 1,
+          opacity: isMonster ? 0.5 : inherited.blocksLos ? 0.65 : 1,
         }}
       >
         <input
@@ -420,15 +542,27 @@ export function Inspector({
           onChange={(e) => onSetFlags(blocksMovement, e.target.checked)}
         />
         <label htmlFor="db-chk-bl">blocks_los</label>
+        {!isMonster && inherited.blocksLos && <InheritedTag />}
+        {!isMonster && canRevert.blocksLos && (
+          <RevertToDefaultButton onClick={() => onClearFlag('blocksLos')} />
+        )}
       </div>
 
       {!isMonster && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 8, opacity: inherited.height ? 0.65 : 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               type="checkbox"
               id="db-chk-height"
               checked={height !== null}
+              // Unchecking while INHERITED is a documented no-op (nothing
+              // explicit to delete yet — see TARGET-YAML.md's "defaults:"
+              // section, "reverting a field with no explicit-null
+              // sentinel"): the value keeps following the ref default
+              // until either overridden (type a new number below) or the
+              // default itself changes. This never corrupts state, it's
+              // just not a way to say "explicitly no height" while a
+              // default is active.
               onChange={(e) => onSetHeight(e.target.checked ? 0.5 : null)}
             />
             <label
@@ -437,6 +571,10 @@ export function Inspector({
             >
               height (m)
               <TargetDialectBadge />
+              {inherited.height && <InheritedTag />}
+              {canRevert.height && (
+                <RevertToDefaultButton onClick={() => onSetHeight(null)} />
+              )}
             </label>
           </div>
           {/* DECOUPLED from mount (Kirk-batch, 2026-08-02: "height:
@@ -587,13 +725,17 @@ export function Inspector({
       )}
 
       {isMonster && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 8, opacity: inherited.targeting ? 0.65 : 1 }}>
           <label
             htmlFor="db-targeting"
             style={{ display: 'flex', alignItems: 'center', fontSize: 11 }}
           >
             targeting
             <TargetDialectBadge />
+            {inherited.targeting && <InheritedTag />}
+            {canRevert.targeting && (
+              <RevertToDefaultButton onClick={() => onSetTargeting(null)} />
+            )}
           </label>
           <select
             id="db-targeting"

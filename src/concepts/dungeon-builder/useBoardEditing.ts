@@ -19,6 +19,7 @@
 import { useState } from 'react';
 import type { Document } from 'yaml';
 import {
+  clearPlacementFlag,
   deletePlacement,
   moveBoss,
   movePlacement,
@@ -212,6 +213,22 @@ export function useBoardEditing(
     syncFromCst(cst);
   };
 
+  // Inspector's "revert to default" affordance for blocks_movement/
+  // blocks_los (`defaults:`, target dialect, proposed — see
+  // `clearPlacementFlag`'s own doc comment for why this is a distinct
+  // handler from `handleSetFlags` rather than a call to it with the
+  // default's own value).
+  const handleClearFlag = (flag: 'blocksMovement' | 'blocksLos') => {
+    if (!selectedPlacement || selectedPlacement.boss) return;
+    clearPlacementFlag(
+      cst,
+      selectedPlacement.roomId,
+      selectedPlacement.index,
+      flag
+    );
+    syncFromCst(cst);
+  };
+
   const handleSetTargeting = (targeting: string | null) => {
     if (!selectedPlacement) return;
     if (selectedPlacement.boss) {
@@ -283,6 +300,7 @@ export function useBoardEditing(
     handleMove,
     handleDelete,
     handleSetFlags,
+    handleClearFlag,
     handleSetMount,
     handleSetHeight,
     handleSetRotationDegrees,

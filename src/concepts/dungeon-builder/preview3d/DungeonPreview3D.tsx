@@ -63,11 +63,11 @@
  * rather than attempted here.
  */
 import {
-  type CubeCoord,
   cubeToWorld,
   HEX_SIZE,
   hexCorners,
   hexEdgeBetween,
+  type CubeCoord,
 } from '@/components/hex-grid/hexMath';
 import { resolvePropVariant } from '@/components/hex-grid/propManifest';
 import { PropModel } from '@/components/hex-grid/PropModel';
@@ -86,7 +86,12 @@ import {
   isSameSelection,
   wallMountRotationY,
 } from '../boardGeometry';
-import type { DungeonDoc, PlacementDoc, WallDoc } from '../dungeonYaml';
+import {
+  resolvePlacement,
+  type DungeonDoc,
+  type PlacementDoc,
+  type WallDoc,
+} from '../dungeonYaml';
 import { cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
 import { END_COLOR, START_COLOR } from '../markerStyle';
 import type { PaletteSelection, PlacementSelection } from '../types';
@@ -244,14 +249,31 @@ function buildWalls(walls: readonly WallDoc[]): PlacedWall[] {
  * `at` + the room's `startColumn` for one, already-absolute `at` for the
  * other) and the `PlacementSelection` identity a click needs to report
  * back (`roomId: null` for a top-level entry — `types.ts`'s own
- * `PlacementSelection` doc comment). */
-function buildOnePlacement(
+ * `PlacementSelection` doc comment).
+ *
+ * Exported (2026-08-03, fine-rotation/defaults reconciliation) so the
+ * resolved-facing + resolved-height + fine-rotation composition can be
+ * unit-tested directly against the real render path, rather than only
+ * re-asserted against `boardGeometry.ts`'s standalone geometry tests —
+ * same reasoning as `facingToRotationY`/`wallMountRotationY` moving there
+ * for one shared definition instead of a private, untestable duplicate. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildOnePlacement(
+  doc: DungeonDoc,
   p: PlacementDoc,
   absCol: number,
   row: number,
   sel: PlacementSelection,
   key: string
 ): { prop?: PlacedProp; monster?: PlacedMonster } {
+  // Resolved, not raw `p.height`/`p.facing` — a ref-level `defaults:`
+  // entry (target dialect, proposed) must render identically to an
+  // explicit field: a defaulted `height` still floats the candle, a
+  // defaulted `facing` still orients the prop. `resolvePlacement` is a
+  // no-op read (falls through to the placement's own explicit value)
+  // whenever `doc.defaults` has nothing for this ref, so this costs
+  // nothing for the overwhelmingly common case of no defaults at all.
+  const resolved = resolvePlacement(doc, p);
   // Target dialect, proposed (TARGET-YAML.md's "z-axis: mount +
   // height" section) — `height` is DECOUPLED from `mount` (Kirk-batch,
   // 2026-08-02: "height: decouples from mount... any placement may
@@ -262,7 +284,7 @@ function buildOnePlacement(
   // the decoupling exists for). Rotation stays mount-gated below —
   // ROTATION is still a wall-vs-floor question (flush-against-the-edge
   // vs. general facing), height no longer is.
-  const position = worldPosition(absCol, row, p.height ?? 0);
+  const position = worldPosition(absCol, row, resolved.height ?? 0);
   // EXPERIMENT (see PlacementDoc.rotationDegrees's own doc comment) —
   // `rotationDegrees` is a fine ADJUSTMENT added on top of whichever
   // coarse rotation `facing` produces, never a replacement for it.
@@ -274,13 +296,17 @@ function buildOnePlacement(
   // (`boardGeometry.ts`'s `computeFlushRotation` has the full geometry).
   // `facing === null` still means "no base to nudge" for either branch —
   // there's nothing for the fine adjustment to be relative to, so it's
-  // ignored rather than applied against an arbitrary zero.
+  // ignored rather than applied against an arbitrary zero. Reads
+  // `resolved.facing` (not raw `p.facing`) so an inherited `defaults:`
+  // facing produces the same coarse+fine composition as an explicit one
+  // — `mount` itself is deliberately NOT defaultable (TARGET-YAML.md's
+  // `defaults:` section), so `p.mount` stays raw.
   const rotationY =
-    p.facing === null
+    resolved.facing === null
       ? 0
       : (p.mount === 'wall'
-          ? wallMountRotationY(absCol, row, p.facing)
-          : facingToRotationY(p.facing)) +
+          ? wallMountRotationY(absCol, row, resolved.facing)
+          : facingToRotationY(resolved.facing)) +
         ((p.rotationDegrees ?? 0) * Math.PI) / 180;
   if (p.isMonster) {
     const monsterRefId = p.ref.split(':').pop();
@@ -305,6 +331,7 @@ function buildPlacements(
     room.place.forEach((p, index) => {
       const absCol = fpRoom.startColumn + p.at[0];
       const { prop, monster } = buildOnePlacement(
+        doc,
         p,
         absCol,
         p.at[1],
@@ -339,6 +366,7 @@ function buildPlacements(
   // pass (rpg-dnd5e-web#679).
   doc.place.forEach((p, index) => {
     const { prop, monster } = buildOnePlacement(
+      doc,
       p,
       p.at[0],
       p.at[1],

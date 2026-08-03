@@ -242,6 +242,15 @@ lighting:
   #     at: [1, 1]
   #     intensity: 1.0
   #     radius: 3
+
+# Dungeon-wide, ref-keyed default fields (Kirk's ask, verbatim: "maybe we
+# can set a default for all skeletons") — see "defaults:" below for the
+# full design. A placement's own explicit field always overrides its
+# ref's entry here; the serialized YAML stays SPARSE either way (a
+# placement never needs to repeat what its ref already defaults).
+defaults:
+  'dnd5e:monsters:skeleton': { targeting: lowest-health }
+  'dnd5e:props:candles': { blocks_movement: false, height: 1.2 }
 ```
 
 ## Top-level placement: rooms are semantic, not placement containers
@@ -619,6 +628,161 @@ field: authored, badged, not yet compiled.
 UI this round: a targeting dropdown in the monster/boss inspector,
 badged as target-dialect-only like every other Structural/Markers control.
 
+## `defaults:` — dungeon-wide, ref-keyed default fields
+
+Kirk's ask, verbatim: "maybe we can set a default for all skeletons." A
+dungeon-wide, ref-keyed map — target dialect, proposed, same status as
+every other construct in this file. A placement's own explicit field
+always overrides its ref's entry here; when it doesn't set the field at
+all, it inherits the ref's default.
+
+```yaml
+defaults:
+  'dnd5e:monsters:skeleton': { targeting: lowest-health }
+  'dnd5e:props:candles': { blocks_movement: false, height: 1.2 }
+```
+
+### Defaultable fields, and why each one qualifies
+
+| Field             | Why it's defaultable                                                                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `targeting`       | Purely a property of the REF (a skeleton's preferred AI strategy doesn't vary by which cell it's standing in) — the textbook case for a ref-level default.        |
+| `blocks_movement` | Usually a property of what the prop IS (a pillar always blocks; a candle never does) — an instance overriding it is the exception, not the rule.                  |
+| `blocks_los`      | Same reasoning as `blocks_movement` — most props of one ref agree on whether they block sight, and per-instance overrides stay rare and worth flagging as such.   |
+| `height`          | A ref usually has one natural resting height (a floating candle floats every time) — worth stating once per ref rather than repeating on every placement.         |
+| `facing`          | Some refs have a natural canonical orientation (a wall-banner ref that's always hung one way) even though most individual placements still want their own facing. |
+
+### `mount` is deliberately NOT defaultable
+
+Every other field above is a property of the REF. `mount` isn't: WHICH
+wall edge a `mount: wall` placement uses is a property of the specific
+CELL it sits in (see "wall-mount edge-selection rework" under "z-axis:
+`mount` + `height`," above) — two placements of the identical ref at two
+different cells can need two different edges, or one might not even be
+adjacent to a wall at all. A single ref-level default has no one honest
+value to carry, so `mount` stays a purely per-instance field with no
+inheritance path.
+
+### Inheritance lives in an accessor, not in the parse
+
+`resolvePlacement(doc, placement)` (`dungeonYaml.ts`) is the ONE place
+this inheritance is resolved: it returns the placement's effective
+`blocksMovement`/`blocksLos`/`height`/`facing`/`targeting`, using the
+placement's own field wherever it's explicitly set and falling back to
+its ref's `defaults:` entry otherwise, plus an `inheritedFrom` map saying
+which fields came from the default. Deliberately NOT resolved at parse
+time and NOT written back into the document — `PlacementDoc`'s own
+fields stay exactly what's literally on that instance (a placement
+without an explicit `height` still parses to `height: null`, `defaults:`
+or no `defaults:`), and telling "explicitly absent" apart from
+"literally false/null" is what `PlacementDoc.explicit` (a small
+`{ blocksMovement, blocksLos, height, facing, targeting }` boolean
+companion, populated straight from which raw YAML keys were actually
+present) exists for.
+
+This keeps the serialized YAML SPARSE: a placement only ever carries
+`defaults:` itself plus whatever explicit overrides genuinely differ
+from the default, never every inherited value stamped onto every
+instance. Any consumer that renders a placement's fields — the board,
+the 3D preview, the entrance-blocked check — must read them through
+`resolvePlacement`, not off `PlacementDoc` directly, once a document has
+any `defaults:` at all; reading the raw field would silently miss an
+inherited value (a defaulted `height` that should float a candle, a
+defaulted `blocks_movement` that should trip the entrance-blocked
+warning). `DungeonPreview3D.tsx`'s placement builder and
+`boardGeometry.ts`'s `isEntranceBlocked` both do this now.
+
+### Inspector: inherited vs. explicit, override-in-place, revert-to-default
+
+A field currently following its ref's default renders muted with a small
+"inherited" tag, distinct from the existing "dialect"/"experiment"
+badges (those mark a CONSTRUCT as not-yet-compiled; "inherited" marks a
+VALUE as not-this-instance's-own — a field can be both at once, and a
+reader needs to tell the two facts apart). Editing any control always
+writes an explicit value on THAT placement — override-in-place needs no
+separate affordance, since every setter (`setPlacementFacing`,
+`setPlacementHeight`, `setPlacementTargeting`, `setPlacementFlags`)
+already writes a literal value the moment an author touches it. A
+"revert to default" button appears only when a field is BOTH explicit
+on this placement AND has a ref-level default to fall back to (nothing
+to revert to, or from, otherwise) — it deletes the explicit key rather
+than re-setting it to match the default's current value, so the
+placement goes back to genuinely INHERITING (and keeps tracking the
+default if it changes later, rather than freezing a copy of today's
+value). `blocks_movement`/`blocks_los` route through a dedicated
+`clearPlacementFlag` mutator for this, since the board's own flag
+checkboxes (`setPlacementFlags`) always want to write both fields
+explicitly and have no reason to ever delete them.
+
+**A named, honest limitation, not silently glossed over**: for
+`height`/`targeting`/`facing`, "clear this field" and "revert to
+default" are the SAME action (calling the field's existing
+`setX(cst, ..., null)`, which deletes the key) — there is no way to
+author "explicitly no height, overriding a ref default that provides
+one" today, because absence of the key IS the inherit signal. Concretely:
+unchecking an inherited `height` checkbox is a documented no-op (nothing
+explicit exists yet to delete), so the value keeps floating until either
+overridden with a real number or the ref default itself is cleared. This
+never corrupts state — it's a UX rough edge, not a data bug — and is
+recorded here rather than worked around with a new explicit-null
+sentinel, which would be a real schema decision (`height: null` written
+literally IS already distinguishable from absence by
+`PlacementDoc.explicit`, so the plumbing exists — nothing currently
+writes that value on purpose) worth deciding deliberately, not as a
+side effect of this prototype.
+
+### Board/3D rendering uses RESOLVED values
+
+A defaulted `height` floats the candle in `DungeonPreview3D.tsx` exactly
+like an explicit one would; a defaulted `blocks_movement` trips
+`isEntranceBlocked`'s warning exactly like an explicit one would. Both
+consumers call `resolvePlacement` now rather than reading
+`PlacementDoc.height`/`blocksMovement` directly — see "Inheritance lives
+in an accessor," above.
+
+### `stripToV1Subset`: `defaults:` drops, but MATERIALIZES first
+
+`defaults:` itself is target-dialect-only and is dropped like any other
+construct in "The v1-subset strip," below — but not silently. Before it's
+removed, every placement that INHERITS a `blocks_movement`/`blocks_los`
+value from its ref gets that value baked onto it as a literal key first
+(`materializeRefDefaults` in `dungeonYaml.ts`), so the compilable subset
+preserves the authored behavior the default was standing in for — a
+`blocks_movement: true` default silently vanishing on save would
+reintroduce exactly the entrance-blocked gap this file's own UX learning
+exists to catch, just moved from the live board to the saved document.
+`targeting`/`height`/`facing` have no v1 wire representation at all,
+inherited or not, so they simply drop — counted the same way an explicit
+one would be, via the existing per-field facing/height/targeting tallies
+"The v1-subset strip" already describes; they are NOT double-counted
+against the `defaults (...)` entry. Monster placements are skipped
+entirely (dungeonspec rejects `blocks_movement`/`blocks_los` on a
+monster ref) — a monster ref's `defaults:` entry is only ever meaningful
+for `targeting`, which materialization doesn't touch anyway since it has
+no v1 form to preserve.
+
+### Open questions this prototype records, and deliberately does NOT decide
+
+- **Does `defaults:` apply to a room's `boss:` entry?** Not implemented
+  either way here — `resolvePlacement` only ever takes a `PlacementDoc`,
+  never a `BossDoc`, so a `defaults:` entry matching a boss's own ref is
+  simply inert today (confirmed by this unit's own test: a
+  `targeting` default for the exact ref a room's `boss:` uses does not
+  change `BossDoc.targeting`). `BossDoc` doesn't even carry
+  `blocksMovement`/`blocksLos`/`height` fields at all (a boss isn't wall
+  furniture) — only `facing`/`targeting` would be in scope if this were
+  ever decided yes.
+- **Wildcard/category keys** (e.g. "all monsters," "all props") — the
+  map today is keyed by an exact ref string only; nothing here proposes
+  or implements a broader match.
+- **Interaction with a future toolkit prop registry** — if a real
+  prop/monster registry ever grows its OWN server-side defaults (a
+  registry-level "skeletons block movement by default" fact, as opposed
+  to this dungeon-level authoring convenience), the two would need a
+  reconciliation rule (which wins? does a dungeon-level default only
+  override a registry default, or can it also unset one?) that this
+  prototype does not attempt to answer.
+
 ## Why connectors have no add/remove UI, and what that means for walls
 
 Verified against the real Go source
@@ -664,14 +828,15 @@ live `validate_only` preview call or a real `Save & Play`, the current
 document is stripped down to exactly what v1 compiles
 (`dungeonYaml.ts`'s `stripToV1Subset`):
 
-| Field                                              | v1 subset                                                                                                                                |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`                                          | forced to `1` (never `2` — see the annotated example's own note)                                                                         |
-| `key`, `name`, `theme`, `height`                   | kept as-is                                                                                                                               |
-| `rooms:`                                           | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                    |
-| `connectors:`                                      | kept as-is, including `locked:`                                                                                                          |
-| top-level `place:`                                 | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above |
-| `canvas:`, `walls:`, `start:`, `end:`, `lighting:` | dropped entirely                                                                                                                         |
+| Field                                              | v1 subset                                                                                                                                                          |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `version`                                          | forced to `1` (never `2` — see the annotated example's own note)                                                                                                   |
+| `key`, `name`, `theme`, `height`                   | kept as-is                                                                                                                                                         |
+| `rooms:`                                           | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                                              |
+| `connectors:`                                      | kept as-is, including `locked:`                                                                                                                                    |
+| top-level `place:`                                 | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above                           |
+| `canvas:`, `walls:`, `start:`, `end:`, `lighting:` | dropped entirely                                                                                                                                                   |
+| `defaults:`                                        | dropped, but not silently — every placement INHERITING a `blocks_movement`/`blocks_los` value first gets it materialized as a literal key; see "`defaults:`" above |
 
 If, after stripping, `rooms:` has fewer than 2 entries (dungeonspec's own
 `minRooms = 2`), there IS no compilable subset — a from-scratch canvas

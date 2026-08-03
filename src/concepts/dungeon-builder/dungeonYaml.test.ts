@@ -3,12 +3,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildWalkItYaml,
+  clearPlacementFlag,
+  clearRefDefault,
   deletePlacement,
   DungeonParseError,
   movePlacement,
   movePlacementAcrossLists,
   parseDungeon,
   placeItem,
+  resolvePlacement,
   serializeDungeon,
   setBossFacing,
   setBossTargeting,
@@ -20,6 +23,7 @@ import {
   setPlacementMount,
   setPlacementRotationDegrees,
   setPlacementTargeting,
+  setRefDefault,
   setStart,
   setWallEdge,
   stripMonsterPlacements,
@@ -715,6 +719,305 @@ connectors: []
       expect(doc.place[0].mount).toBe('wall');
       expect(doc.place[0].height).toBe(2.0);
       expect(doc.place[0].targeting).toBe('closest');
+    });
+  });
+});
+
+describe('defaults: ref-keyed inherited fields (rpg-project#175, Kirk\'s ask verbatim: "maybe we can set a default for all skeletons")', () => {
+  it('parses a defaults: map, snake_case wire keys converted to the same camelCase shape a placement itself uses', () => {
+    const withDefaults = SHOWCASE_YAML.replace(
+      'rooms:',
+      'defaults:\n  "dnd5e:monsters:skeleton-captain": { targeting: lowest-health }\n  "dnd5e:props:candles": { blocks_movement: false, height: 1.2, facing: SE }\nrooms:'
+    );
+    const { doc } = parseDungeon(withDefaults);
+    expect(doc.defaults['dnd5e:monsters:skeleton-captain']).toEqual({
+      targeting: 'lowest-health',
+    });
+    expect(doc.defaults['dnd5e:props:candles']).toEqual({
+      blocksMovement: false,
+      height: 1.2,
+      facing: 5, // SE — HEX_FACING_LABELS index, same convention as every other facing field
+    });
+  });
+
+  it('resolvePlacement falls back to the plain false/null default when the ref has no defaults: entry at all — the overwhelmingly common case today', () => {
+    const { doc } = parseDungeon(SHOWCASE_YAML);
+    const room = doc.rooms.find((r) => r.id === 'shrine')!;
+    // showcase.yaml's own statue-reaper carries no blocks_movement/
+    // blocks_los/height/facing/targeting at all (fixtures.ts) — a real,
+    // pre-existing "nothing explicit" instance, not one hand-crafted for
+    // this test.
+    const statue = room.place.find(
+      (p) => p.ref === 'dnd5e:props:statue-reaper'
+    )!;
+    expect(resolvePlacement(doc, statue)).toEqual({
+      blocksMovement: false,
+      blocksLos: false,
+      height: null,
+      facing: null,
+      targeting: null,
+      inheritedFrom: {
+        blocksMovement: false,
+        blocksLos: false,
+        height: false,
+        facing: false,
+        targeting: false,
+      },
+    });
+  });
+
+  it('resolvePlacement inherits a ref default for every field the placement itself leaves unset', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setRefDefault(cst, 'dnd5e:props:statue-reaper', 'blocksMovement', true);
+    setRefDefault(cst, 'dnd5e:props:statue-reaper', 'height', 1.5);
+    const doc = toDungeonDoc(cst);
+    const room = doc.rooms.find((r) => r.id === 'shrine')!;
+    const statue = room.place.find(
+      (p) => p.ref === 'dnd5e:props:statue-reaper'
+    )!;
+    const resolved = resolvePlacement(doc, statue);
+    expect(resolved.blocksMovement).toBe(true);
+    expect(resolved.height).toBe(1.5);
+    expect(resolved.inheritedFrom.blocksMovement).toBe(true);
+    expect(resolved.inheritedFrom.height).toBe(true);
+    // A field with no matching default key stays at its plain fallback.
+    expect(resolved.blocksLos).toBe(false);
+    expect(resolved.inheritedFrom.blocksLos).toBe(false);
+  });
+
+  it("a placement's own EXPLICIT field always overrides its ref's default, never the other way around", () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    // showcase.yaml's own braziers are already explicit blocks_movement: true.
+    setRefDefault(cst, 'dnd5e:props:brazier', 'blocksMovement', false);
+    const doc = toDungeonDoc(cst);
+    const room = doc.rooms.find((r) => r.id === 'antechamber')!;
+    const brazier = room.place.find((p) => p.ref === 'dnd5e:props:brazier')!;
+    const resolved = resolvePlacement(doc, brazier);
+    expect(resolved.blocksMovement).toBe(true);
+    expect(resolved.inheritedFrom.blocksMovement).toBe(false);
+  });
+
+  it('setRefDefault creates defaults: and a flow-style ref entry, accumulating multiple fields on the same ref', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setRefDefault(
+      cst,
+      'dnd5e:monsters:skeleton-captain',
+      'targeting',
+      'lowest-health'
+    );
+    setRefDefault(cst, 'dnd5e:monsters:skeleton-captain', 'facing', 5); // SE
+    const yaml = serializeDungeon(cst);
+    expect(yaml).toContain('defaults:');
+    expect(yaml).toMatch(
+      /"dnd5e:monsters:skeleton-captain":\s*\{\s*targeting:\s*lowest-health,\s*facing:\s*SE\s*\}/
+    );
+  });
+
+  it('clearRefDefault removes one field, then the ref entry once empty, then defaults: itself once the last ref is cleared', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setRefDefault(cst, 'dnd5e:props:candles', 'blocksMovement', false);
+    setRefDefault(cst, 'dnd5e:props:candles', 'height', 0.5);
+
+    clearRefDefault(cst, 'dnd5e:props:candles', 'blocksMovement');
+    expect(toDungeonDoc(cst).defaults['dnd5e:props:candles']).toEqual({
+      height: 0.5,
+    });
+
+    clearRefDefault(cst, 'dnd5e:props:candles', 'height');
+    expect(toDungeonDoc(cst).defaults['dnd5e:props:candles']).toBeUndefined();
+    expect(serializeDungeon(cst)).not.toContain('defaults:');
+  });
+
+  it('clearRefDefault on a field/ref/defaults: that was never set is a no-op, not an error', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    expect(() =>
+      clearRefDefault(cst, 'dnd5e:props:candles', 'height')
+    ).not.toThrow();
+    expect(toDungeonDoc(cst).defaults).toEqual({});
+  });
+
+  it("clearPlacementFlag reverts an explicit blocks_movement back to inheriting the ref's default — the Inspector's revert-to-default affordance", () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setRefDefault(cst, 'dnd5e:props:brazier', 'blocksMovement', false);
+
+    let doc = toDungeonDoc(cst);
+    let brazier = doc.rooms.find((r) => r.id === 'antechamber')!.place[0];
+    expect(brazier.explicit.blocksMovement).toBe(true); // showcase's own explicit true
+    expect(resolvePlacement(doc, brazier).blocksMovement).toBe(true);
+
+    clearPlacementFlag(cst, 'antechamber', 0, 'blocksMovement');
+
+    doc = toDungeonDoc(cst);
+    brazier = doc.rooms.find((r) => r.id === 'antechamber')!.place[0];
+    expect(brazier.explicit.blocksMovement).toBe(false);
+    const resolved = resolvePlacement(doc, brazier);
+    expect(resolved.blocksMovement).toBe(false); // now following the ref default
+    expect(resolved.inheritedFrom.blocksMovement).toBe(true);
+  });
+
+  it('boss inheritance is an open question this prototype records, not decides — a defaults: entry never applies to a BossDoc', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    setRefDefault(
+      cst,
+      'dnd5e:monsters:skeleton-captain',
+      'targeting',
+      'lowest-health'
+    );
+    const doc = toDungeonDoc(cst);
+    const vault = doc.rooms.find((r) => r.id === 'vault')!;
+    expect(vault.boss?.ref).toBe('dnd5e:monsters:skeleton-captain');
+    // A matching defaults: entry exists for this exact ref, and yet the
+    // boss's own targeting stays null — resolvePlacement only ever takes
+    // a PlacementDoc, never a BossDoc (see its own doc comment).
+    expect(vault.boss?.targeting).toBeNull();
+  });
+
+  it('"snap flush to nearest wall" (useBoardEditing.ts\'s handleSnapFlush, fine-rotation generalization round) writes an EXPLICIT facing that overrides a ref-level defaulted one, and an explicit rotate_degrees alongside it', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    // Give this ref an inherited facing default — same shape this whole
+    // describe block is about, just on the prop the fine-rotation round
+    // uses for its own floor-standing test case.
+    setRefDefault(cst, 'dnd5e:props:statue-reaper', 'facing', 2); // NE
+    let doc = toDungeonDoc(cst);
+    let room = doc.rooms.find((r) => r.id === 'shrine')!;
+    const statueIndex = room.place.findIndex(
+      (p) => p.ref === 'dnd5e:props:statue-reaper'
+    );
+    let resolved = resolvePlacement(doc, room.place[statueIndex]!);
+    expect(resolved.facing).toBe(2);
+    expect(resolved.inheritedFrom.facing).toBe(true);
+
+    // handleSnapFlush itself: two independent mutator calls against the
+    // SAME (roomId, index), the pre-validated (facing, rotationDegrees)
+    // pair `computeFlushRotation` would have produced — the "flush"
+    // answer here (SW) is deliberately different from the ref default
+    // (NE) so an accidental no-op wouldn't pass this assertion.
+    setPlacementFacing(cst, 'shrine', statueIndex, 4); // SW
+    setPlacementRotationDegrees(cst, 'shrine', statueIndex, 15);
+
+    doc = toDungeonDoc(cst);
+    room = doc.rooms.find((r) => r.id === 'shrine')!;
+    const statue = room.place[statueIndex]!;
+    resolved = resolvePlacement(doc, statue);
+    // The snap-flush facing is now EXPLICIT on this instance and wins
+    // over the ref default, exactly like every other explicit-vs-default
+    // case above — a default facing never blocks overriding it.
+    expect(statue.explicit.facing).toBe(true);
+    expect(resolved.facing).toBe(4);
+    expect(resolved.inheritedFrom.facing).toBe(false);
+    expect(statue.rotationDegrees).toBe(15);
+  });
+
+  describe('stripToV1Subset: materialize-on-strip', () => {
+    it('bakes an inherited blocks_movement: true onto EVERY placement of that ref that never set it explicitly', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      // showcase.yaml's own statue-reaper appears twice, in two different
+      // rooms (shrine [13,3] and vault [1,1]), neither with an explicit
+      // blocks_movement — a real fixture case, not one hand-crafted for
+      // this test, that happens to exercise "materializes across more
+      // than one instance of the same ref" for free.
+      setRefDefault(cst, 'dnd5e:props:statue-reaper', 'blocksMovement', true);
+      const stripped = stripToV1Subset(serializeDungeon(cst));
+
+      expect(stripped.compilable).toBe(true);
+      const entry = stripped.dropped.find((d) => d.startsWith('defaults ('));
+      expect(entry).toContain('materialized onto 2 placements');
+
+      const { doc: strippedDoc } = parseDungeon(stripped.yaml);
+      expect(strippedDoc.defaults).toEqual({}); // defaults: itself is gone
+      for (const roomId of ['shrine', 'vault']) {
+        const statue = strippedDoc.rooms
+          .find((r) => r.id === roomId)!
+          .place.find((p) => p.ref === 'dnd5e:props:statue-reaper')!;
+        expect(statue.blocksMovement).toBe(true);
+        expect(statue.explicit.blocksMovement).toBe(true); // now a real, literal key
+      }
+    });
+
+    it('bakes an inherited blocks_los: false too — materializing does not gate on the value being true', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      setRefDefault(
+        cst,
+        'dnd5e:props:statue-knight-hooded',
+        'blocksLos',
+        false
+      );
+      const stripped = stripToV1Subset(serializeDungeon(cst));
+      const { doc: strippedDoc } = parseDungeon(stripped.yaml);
+      const statue = strippedDoc.rooms
+        .find((r) => r.id === 'shrine')!
+        .place.find((p) => p.ref === 'dnd5e:props:statue-knight-hooded')!;
+      expect(statue.explicit.blocksLos).toBe(true);
+      expect(statue.blocksLos).toBe(false);
+    });
+
+    it('does NOT touch an already-EXPLICIT placement — its own value wins and stays exactly as authored', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      // showcase's own braziers are already explicit blocks_movement: true.
+      setRefDefault(cst, 'dnd5e:props:brazier', 'blocksMovement', false);
+      const stripped = stripToV1Subset(serializeDungeon(cst));
+      const { doc: strippedDoc } = parseDungeon(stripped.yaml);
+      const brazier = strippedDoc.rooms
+        .find((r) => r.id === 'antechamber')!
+        .place.find((p) => p.ref === 'dnd5e:props:brazier')!;
+      expect(brazier.blocksMovement).toBe(true);
+    });
+
+    it('never materializes blocks_movement/blocks_los onto a MONSTER placement, even with a matching default — dungeonspec rejects both on monster refs', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      placeItem(cst, 'shrine', 'dnd5e:monsters:skeleton-captain', [3, 3]);
+      setRefDefault(
+        cst,
+        'dnd5e:monsters:skeleton-captain',
+        'targeting',
+        'lowest-health'
+      );
+      const stripped = stripToV1Subset(serializeDungeon(cst));
+      const { doc: strippedDoc } = parseDungeon(stripped.yaml);
+      const monster = strippedDoc.rooms
+        .find((r) => r.id === 'shrine')!
+        .place.find((p) => p.ref === 'dnd5e:monsters:skeleton-captain')!;
+      expect(monster.explicit.blocksMovement).toBe(false);
+      expect(monster.explicit.blocksLos).toBe(false);
+      // targeting has no v1 representation regardless of inheritance —
+      // dropped like every other target-dialect-only field, never baked in.
+      expect(monster.targeting).toBeNull();
+    });
+
+    it('materializes a top-level placement BEFORE it is mapped down into its containing room', () => {
+      // NOT via `placeItem` — it always stamps a fresh prop placement
+      // with EXPLICIT blocks_movement/blocks_los: false (see `placeItem`'s
+      // own doc comment), so a board-placed instance can never actually
+      // be inheriting either field; only a hand-authored YAML entry
+      // (typed directly into the pane, CONTRACT.md's own framing for
+      // what a hand-editor can produce that the board itself wouldn't)
+      // omits them. Column 2 falls inside antechamber's range
+      // (startColumn 0, width 6).
+      const withTopPlace = `${SHOWCASE_YAML}\nplace:\n  - { ref: "dnd5e:props:statue-reaper", at: [2, 2] }\n`;
+      const { cst } = parseDungeon(withTopPlace);
+      setRefDefault(cst, 'dnd5e:props:statue-reaper', 'blocksMovement', true);
+      const stripped = stripToV1Subset(serializeDungeon(cst));
+      const { doc: strippedDoc } = parseDungeon(stripped.yaml);
+      const mapped = strippedDoc.rooms
+        .find((r) => r.id === 'antechamber')!
+        .place.find(
+          (p) =>
+            p.ref === 'dnd5e:props:statue-reaper' &&
+            p.at[0] === 2 &&
+            p.at[1] === 2
+        );
+      expect(mapped).toBeDefined();
+      expect(mapped!.blocksMovement).toBe(true);
+      expect(mapped!.explicit.blocksMovement).toBe(true);
+    });
+
+    it('reports a plain "defaults (N refs)" — no materialize wording — when nothing actually inherits from the ref', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      setRefDefault(cst, 'dnd5e:props:not-placed-anywhere', 'height', 1.0);
+      const stripped = stripToV1Subset(serializeDungeon(cst));
+      expect(stripped.dropped.find((d) => d.startsWith('defaults ('))).toBe(
+        'defaults (1 ref)'
+      );
     });
   });
 });
