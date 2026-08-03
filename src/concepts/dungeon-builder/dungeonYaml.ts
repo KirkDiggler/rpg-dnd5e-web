@@ -604,9 +604,10 @@ export function setPlacementFlags(
  * ask). Deliberately does NOT touch `boss:`: dungeonspec requires exactly
  * one boss per boss-archetype room (`moveBoss`'s own doc comment above),
  * so a boss-room YAML with `boss:` removed fails that validation rather
- * than producing a genuinely boss-free dungeon — see
- * `useWalkItVariant.ts`'s doc comment for how the UI stays honest about
- * this rather than silently rewriting the room's archetype to dodge it. */
+ * than producing a genuinely boss-free dungeon — see `YamlPane.tsx`'s
+ * `honestyNote` ("Boss remains — real free-roam mode needs server
+ * support") for how the UI stays honest about this rather than silently
+ * rewriting the room's archetype to dodge it. */
 export function stripMonsterPlacements(cst: Document): void {
   const rooms = cst.get('rooms');
   if (!isSeq(rooms)) return;

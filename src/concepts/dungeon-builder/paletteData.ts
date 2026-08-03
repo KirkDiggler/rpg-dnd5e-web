@@ -3,9 +3,8 @@
  * `propManifest.ts` (`PROP_KEYS`), not a hand-rolled color/icon table.
  * The standalone HTML concept had to invent per-key colors because it had
  * no module system to import the real manifest; this port fixes that —
- * `role`/`footprintHexes`/`blocksLoS` below all come straight from the
- * shared source of truth `src/components/hex-grid/PropModel.tsx` also
- * reads.
+ * `role` below comes straight from the shared source of truth
+ * `src/components/hex-grid/PropModel.tsx` also reads.
  *
  * Filtered to exactly the keys showcase.yaml's own `place:`/`boss:`
  * entries reference (task requirement: no invented refs) — see
@@ -17,8 +16,6 @@ export interface PaletteProp {
   ref: string;
   short: string;
   role: PropRole;
-  footprintHexes: number;
-  blocksLoS: boolean;
 }
 
 /**
@@ -111,25 +108,16 @@ function shortLabel(key: string): string {
 }
 
 /** The palette's prop list — one entry per key showcase.yaml references,
- * pulling role/footprint/blocksLoS from the first variant `propManifest`
- * lists for that key (same "first available" convention
- * `resolvePropVariant` itself uses). A key that's somehow missing from
- * `PROP_KEYS` is dropped rather than crashing the board — the concept
- * should degrade, not blank-page, if the manifest and showcase.yaml ever
- * drift. */
+ * pulling `role` from the first variant `propManifest` lists for that key
+ * (same "first available" convention `resolvePropVariant` itself uses). A
+ * key that's somehow missing from `PROP_KEYS` is dropped rather than
+ * crashing the board — the concept should degrade, not blank-page, if the
+ * manifest and showcase.yaml ever drift. */
 export const PALETTE_PROPS: PaletteProp[] = SHOWCASE_PROP_KEYS.flatMap(
   (ref) => {
     const variant = PROP_KEYS[ref]?.[0];
     if (!variant) return [];
-    return [
-      {
-        ref,
-        short: shortLabel(ref),
-        role: variant.role,
-        footprintHexes: variant.footprintHexes,
-        blocksLoS: variant.blocksLoS,
-      },
-    ];
+    return [{ ref, short: shortLabel(ref), role: variant.role }];
   }
 );
 

@@ -213,4 +213,3 @@ export const S2_LOOP_FLOORPLAN: FloorPlan = create(FloorPlanSchema, {
  * This is why the palette below offers a general monster placement, not
  * just the boss pin.
  */
-export const MONSTER_PLACE_CHECK_VERIFIED = true;

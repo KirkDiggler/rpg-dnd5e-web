@@ -554,12 +554,6 @@ export function Board({
   const vw = maxX - minX + pad * 2;
   const vh = maxY - minY + pad * 2 + 14;
 
-  const handlePointerMove: React.PointerEventHandler<SVGSVGElement> = () => {
-    // Visual-only during drag today; commit happens on pointer up. Kept as
-    // a named handler (rather than omitted) so a future hover-preview of
-    // the drop target has an obvious place to live.
-  };
-
   const handlePointerUp: React.PointerEventHandler<SVGSVGElement> = (e) => {
     if (!dragging || !svgRef.current) return;
     const svg = svgRef.current;
@@ -619,7 +613,6 @@ export function Board({
       viewBox={`${vx} ${vy} ${vw} ${vh}`}
       width={Math.max(vw, 600)}
       height={Math.max(vh, 420)}
-      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onClick={(e) => {
         if (e.target === svgRef.current) onSelect(null);
