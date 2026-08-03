@@ -23,6 +23,19 @@ export interface MarkerStyle {
   short: string;
 }
 
+/** `doc.start`/`doc.end` marker colors — independently hardcoded to the
+ * identical `#5fd1c9`/`#c9a227` values in Board.tsx, CreationBoard.tsx,
+ * and the 3D preview (graduation audit item) before this consolidation.
+ * Only the color constants are shared here: the three renderers' actual
+ * start/end circle+label JSX still differs by design intent (Board.tsx's
+ * filled swatch + "ST"/"EN" abbreviation vs CreationBoard.tsx's outline
+ * ring + full "START"/"END" label above it) — unifying THAT is a visual
+ * decision for Kirk to make, not a mechanical dedup, so it's left alone
+ * here; only the genuinely-identical-with-zero-semantic-difference color
+ * values are consolidated. */
+export const START_COLOR = '#5fd1c9';
+export const END_COLOR = '#c9a227';
+
 export function resolveMarkerStyle(
   ref: string,
   opts: { isBoss?: boolean } = {}

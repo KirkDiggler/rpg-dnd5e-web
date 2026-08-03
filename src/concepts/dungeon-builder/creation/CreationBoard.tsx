@@ -40,7 +40,8 @@ import { cubeToWorld } from '@/components/hex-grid/hexMath';
 import { useRef, useState, type ReactElement } from 'react';
 import type { DungeonDoc, WallDoc, WallKind } from '../dungeonYaml';
 import { FLAT_COL_SPACING, FLAT_ROW_SPACING } from '../hexLayout';
-import { resolveMarkerStyle } from '../markerStyle';
+import { END_COLOR, resolveMarkerStyle, START_COLOR } from '../markerStyle';
+import { PlacementMarker } from '../PlacementMarker';
 import type { BoardTool, PlacementSelection } from '../types';
 import type { BoardEditing } from '../useBoardEditing';
 import {
@@ -369,23 +370,12 @@ export function CreationBoard({
         }}
         style={{ cursor: tool === null ? 'grab' : 'default' }}
       >
-        <circle
-          cx={center.x}
-          cy={center.y}
-          r={12}
-          fill={style.color}
-          stroke={selected ? '#ffd76a' : '#000'}
-          strokeWidth={selected ? 2.5 : 1}
+        <PlacementMarker
+          center={center}
+          color={style.color}
+          short={style.short}
+          selected={selected}
         />
-        <text
-          x={center.x}
-          y={center.y + 3.5}
-          textAnchor="middle"
-          fill="#fff"
-          fontSize={9}
-        >
-          {style.short}
-        </text>
         {angle !== null && (
           <g transform={`translate(${center.x},${center.y}) rotate(${angle})`}>
             <polygon
@@ -480,7 +470,7 @@ export function CreationBoard({
             cy={doc.start[1] * FLAT_ROW_SPACING}
             r={13}
             fill="none"
-            stroke="#5fd1c9"
+            stroke={START_COLOR}
             strokeWidth={2.5}
             strokeDasharray="4 3"
           />
@@ -503,7 +493,7 @@ export function CreationBoard({
             cy={doc.end[1] * FLAT_ROW_SPACING}
             r={13}
             fill="none"
-            stroke="#c9a227"
+            stroke={END_COLOR}
             strokeWidth={2.5}
             strokeDasharray="4 3"
           />

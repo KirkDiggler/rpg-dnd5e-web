@@ -25,7 +25,8 @@ import {
   cellCorners,
   edgeBetweenCells,
 } from './hexLayout';
-import { resolveMarkerStyle } from './markerStyle';
+import { END_COLOR, resolveMarkerStyle, START_COLOR } from './markerStyle';
+import { PlacementMarker } from './PlacementMarker';
 import type { BoardTool, PaletteSelection, PlacementSelection } from './types';
 
 interface BoardProps {
@@ -327,9 +328,9 @@ export function Board({
           cx={center.x}
           cy={center.y}
           r={BOARD_HEX_SIZE * 0.4}
-          fill="#5fd1c9"
+          fill={START_COLOR}
           fillOpacity={0.25}
-          stroke="#5fd1c9"
+          stroke={START_COLOR}
           strokeWidth={2}
           strokeDasharray="3 2"
         />
@@ -337,7 +338,7 @@ export function Board({
           x={center.x}
           y={center.y + 3}
           textAnchor="middle"
-          fill="#5fd1c9"
+          fill={START_COLOR}
           fontSize={8}
           fontWeight={700}
         >
@@ -355,9 +356,9 @@ export function Board({
           cx={center.x}
           cy={center.y}
           r={BOARD_HEX_SIZE * 0.4}
-          fill="#c9a227"
+          fill={END_COLOR}
           fillOpacity={0.25}
-          stroke="#c9a227"
+          stroke={END_COLOR}
           strokeWidth={2}
           strokeDasharray="3 2"
         />
@@ -365,7 +366,7 @@ export function Board({
           x={center.x}
           y={center.y + 3}
           textAnchor="middle"
-          fill="#c9a227"
+          fill={END_COLOR}
           fontSize={8}
           fontWeight={700}
         >
@@ -385,6 +386,7 @@ export function Board({
       const center = cellCenter(absCol, row);
       const sel: PlacementSelection = { roomId: room.id, index };
       const isSelected = isSameSelection(selectedPlacement, sel);
+      const style = resolveMarkerStyle(p.ref);
       markers.push(
         <g
           key={`place-${room.id}-${index}`}
@@ -394,23 +396,12 @@ export function Board({
             setDragging(sel);
           }}
         >
-          <circle
-            cx={center.x}
-            cy={center.y}
-            r={BOARD_HEX_SIZE * 0.5}
-            fill={resolveMarkerStyle(p.ref).color}
-            stroke={isSelected ? '#ffd76a' : '#000'}
-            strokeWidth={isSelected ? 2.5 : 1}
+          <PlacementMarker
+            center={center}
+            color={style.color}
+            short={style.short}
+            selected={isSelected}
           />
-          <text
-            x={center.x}
-            y={center.y + 3.5}
-            textAnchor="middle"
-            fill="#fff"
-            fontSize={9}
-          >
-            {resolveMarkerStyle(p.ref).short}
-          </text>
         </g>
       );
     });
@@ -466,6 +457,7 @@ export function Board({
     const center = cellCenter(p.at[0], p.at[1]);
     const sel: PlacementSelection = { roomId: null, index };
     const isSelected = isSameSelection(selectedPlacement, sel);
+    const style = resolveMarkerStyle(p.ref);
     markers.push(
       <g
         key={`place-top-${index}`}
@@ -475,23 +467,12 @@ export function Board({
           setDragging(sel);
         }}
       >
-        <circle
-          cx={center.x}
-          cy={center.y}
-          r={BOARD_HEX_SIZE * 0.5}
-          fill={resolveMarkerStyle(p.ref).color}
-          stroke={isSelected ? '#ffd76a' : '#000'}
-          strokeWidth={isSelected ? 2.5 : 1}
+        <PlacementMarker
+          center={center}
+          color={style.color}
+          short={style.short}
+          selected={isSelected}
         />
-        <text
-          x={center.x}
-          y={center.y + 3.5}
-          textAnchor="middle"
-          fill="#fff"
-          fontSize={9}
-        >
-          {resolveMarkerStyle(p.ref).short}
-        </text>
       </g>
     );
   });
