@@ -87,6 +87,7 @@ import {
 } from '../boardGeometry';
 import type { DungeonDoc, PlacementDoc, WallDoc } from '../dungeonYaml';
 import { cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
+import { END_COLOR, START_COLOR } from '../markerStyle';
 import type { PaletteSelection, PlacementSelection } from '../types';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
 
@@ -537,8 +538,6 @@ function WallBox({ wall }: { wall: PlacedWall }) {
  * re-derived) — a flat ring lying on the floor plane, since this static
  * preview has no camera-facing billboard text to spend on a label the
  * way the 2D SVG board does. */
-const START_COLOR = '#5fd1c9';
-const END_COLOR = '#c9a227';
 const ENTRANCE_CLEAR_COLOR = '#5fd1c9';
 const ENTRANCE_BLOCKED_COLOR = '#ff5a3a';
 const MARKER_RING_INNER = HEX_SIZE * 0.32;

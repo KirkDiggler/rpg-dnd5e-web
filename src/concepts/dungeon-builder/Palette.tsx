@@ -39,12 +39,6 @@ interface PaletteProps {
   onSelectTool: (tool: BoardTool | null) => void;
   wallCount: number;
   holeCount: number;
-  /** Default true. The creation flow (`CreationConcept.tsx`) has its OWN
-   * dedicated Tools strip already covering Wall/Door/Hole/Start/End
-   * against its own data model — false there so this shared Palette
-   * doesn't ALSO show Structural/Markers as a second, dead-clicking set
-   * of tool rows for the same actions. */
-  showBoardTools?: boolean;
 }
 
 const CATEGORY_LABELS: Record<PaletteCategory, string> = {
@@ -261,7 +255,6 @@ export function Palette({
   onSelectTool,
   wallCount,
   holeCount,
-  showBoardTools = true,
 }: PaletteProps) {
   const [openCategories, setOpenCategories] = useState<Set<PaletteCategory>>(
     new Set<PaletteCategory>(['obstacles-props'])
@@ -385,93 +378,89 @@ export function Palette({
         ))}
       </CategorySection>
 
-      {showBoardTools && (
-        <CategorySection
-          category="structural"
-          count={3}
-          open={openCategories.has('structural')}
-          onToggle={() => toggle('structural')}
+      <CategorySection
+        category="structural"
+        count={3}
+        open={openCategories.has('structural')}
+        onToggle={() => toggle('structural')}
+      >
+        <Row
+          color="#6a6255"
+          short="W"
+          label="Wall"
+          sub={`${wallCount}× drawn — click a wall cell to add/remove`}
+          isSelected={selectedTool === 'wall'}
+          onClick={() => toggleTool('wall')}
+          notCompiled
+        />
+        <Row
+          color="#9b7fd6"
+          short="D"
+          label="Door (on a drawn wall)"
+          sub="click an existing wall to flip solid ↔ door"
+          isSelected={selectedTool === 'door'}
+          onClick={() => toggleTool('door')}
+          notCompiled
+        />
+        <Row
+          color="#14110f"
+          short="H"
+          label="Hole"
+          sub={`${holeCount}× marked — impassable void, no floor`}
+          isSelected={selectedTool === 'hole'}
+          onClick={() => toggleTool('hole')}
+          deferred
+        />
+        <p
+          style={{
+            fontSize: 11,
+            color: '#8a7a5a',
+            padding: '4px 8px 2px',
+            lineHeight: 1.4,
+          }}
         >
-          <Row
-            color="#6a6255"
-            short="W"
-            label="Wall"
-            sub={`${wallCount}× drawn — click a wall cell to add/remove`}
-            isSelected={selectedTool === 'wall'}
-            onClick={() => toggleTool('wall')}
-            notCompiled
-          />
-          <Row
-            color="#9b7fd6"
-            short="D"
-            label="Door (on a drawn wall)"
-            sub="click an existing wall to flip solid ↔ door"
-            isSelected={selectedTool === 'door'}
-            onClick={() => toggleTool('door')}
-            notCompiled
-          />
-          <Row
-            color="#14110f"
-            short="H"
-            label="Hole"
-            sub={`${holeCount}× marked — impassable void, no floor`}
-            isSelected={selectedTool === 'hole'}
-            onClick={() => toggleTool('hole')}
-            deferred
-          />
-          <p
-            style={{
-              fontSize: 11,
-              color: '#8a7a5a',
-              padding: '4px 8px 2px',
-              lineHeight: 1.4,
-            }}
-          >
-            Structural is target dialect, proposed — TARGET-YAML.md. The real
-            connector door (locked/DC) lives on the board's own door cell, not
-            here — this "Door" is a door on a drawn wall, a different thing.
-          </p>
-        </CategorySection>
-      )}
+          Structural is target dialect, proposed — TARGET-YAML.md. The real
+          connector door (locked/DC) lives on the board's own door cell, not
+          here — this "Door" is a door on a drawn wall, a different thing.
+        </p>
+      </CategorySection>
 
-      {showBoardTools && (
-        <CategorySection
-          category="markers"
-          count={2}
-          open={openCategories.has('markers')}
-          onToggle={() => toggle('markers')}
+      <CategorySection
+        category="markers"
+        count={2}
+        open={openCategories.has('markers')}
+        onToggle={() => toggle('markers')}
+      >
+        <Row
+          color="#5fd1c9"
+          short="ST"
+          label="Start / spawn"
+          sub="author-placed — in tension with FloorPlan.entrance, see TARGET-YAML.md"
+          isSelected={selectedTool === 'start'}
+          onClick={() => toggleTool('start')}
+          notCompiled
+        />
+        <Row
+          color="#c9a227"
+          short="EN"
+          label="End / goal"
+          sub="no analog anywhere in the compiled FloorPlan today"
+          isSelected={selectedTool === 'end'}
+          onClick={() => toggleTool('end')}
+          notCompiled
+        />
+        <p
+          style={{
+            fontSize: 11,
+            color: '#8a7a5a',
+            padding: '4px 8px 2px',
+            lineHeight: 1.4,
+          }}
         >
-          <Row
-            color="#5fd1c9"
-            short="ST"
-            label="Start / spawn"
-            sub="author-placed — in tension with FloorPlan.entrance, see TARGET-YAML.md"
-            isSelected={selectedTool === 'start'}
-            onClick={() => toggleTool('start')}
-            notCompiled
-          />
-          <Row
-            color="#c9a227"
-            short="EN"
-            label="End / goal"
-            sub="no analog anywhere in the compiled FloorPlan today"
-            isSelected={selectedTool === 'end'}
-            onClick={() => toggleTool('end')}
-            notCompiled
-          />
-          <p
-            style={{
-              fontSize: 11,
-              color: '#8a7a5a',
-              padding: '4px 8px 2px',
-              lineHeight: 1.4,
-            }}
-          >
-            Select a tool, then click a cell to place/clear it. Click again on
-            the same cell to clear.
-          </p>
-        </CategorySection>
-      )}
+          Select a tool, then click a cell to place/clear it. Click again on the
+          same cell to clear.
+        </p>
+      </CategorySection>
     </aside>
   );
 }

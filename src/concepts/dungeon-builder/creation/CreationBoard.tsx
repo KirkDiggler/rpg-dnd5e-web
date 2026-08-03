@@ -38,11 +38,12 @@ import {
 } from '@/components/hex-grid/authorGridHelpers';
 import { cubeToWorld } from '@/components/hex-grid/hexMath';
 import { useRef, useState, type ReactElement } from 'react';
-import type { BoardEditing } from '../DungeonBuilderConcept';
 import type { DungeonDoc, WallDoc, WallKind } from '../dungeonYaml';
 import { FLAT_COL_SPACING, FLAT_ROW_SPACING } from '../hexLayout';
-import { MONSTER_COLOR, PALETTE_PROPS, ROLE_COLOR } from '../paletteData';
+import { END_COLOR, resolveMarkerStyle, START_COLOR } from '../markerStyle';
+import { PlacementMarker } from '../PlacementMarker';
 import type { BoardTool, PlacementSelection } from '../types';
+import type { BoardEditing } from '../useBoardEditing';
 import {
   creationCellCenter,
   hEdgeGeometry,
@@ -88,17 +89,6 @@ const FACING_ANGLES_DEG = HEX_FACING_LABELS.map((_, i) => {
   const world = cubeToWorld(dir, 1);
   return (Math.atan2(world.z, world.x) * 180) / Math.PI;
 });
-
-function markerColor(kind: 'prop' | 'monster', ref: string): string {
-  if (kind === 'monster') return MONSTER_COLOR;
-  const prop = PALETTE_PROPS.find((p) => p.ref === ref);
-  return prop ? ROLE_COLOR[prop.role] : '#888';
-}
-function markerShort(ref: string): string {
-  const prop = PALETTE_PROPS.find((p) => p.ref === ref);
-  if (prop) return prop.short;
-  return ref.startsWith('dnd5e:monsters:') ? 'M' : '?';
-}
 
 /** This edge's wall, or `undefined` if none is drawn there — a direct
  * `doc.walls` scan (creation-mode canvases are small enough that this is
@@ -356,7 +346,7 @@ export function CreationBoard({
       x: at[0] * FLAT_COL_SPACING,
       y: at[1] * FLAT_ROW_SPACING,
     };
-    const isMonster = ref.startsWith('dnd5e:monsters:');
+    const style = resolveMarkerStyle(ref);
     // roomId comparison matters here even though every creation-mode
     // placement shares roomId: null today — matches Board.tsx's own
     // isSelected check (roomId + index, not index alone), the correct
@@ -380,23 +370,12 @@ export function CreationBoard({
         }}
         style={{ cursor: tool === null ? 'grab' : 'default' }}
       >
-        <circle
-          cx={center.x}
-          cy={center.y}
-          r={12}
-          fill={markerColor(isMonster ? 'monster' : 'prop', ref)}
-          stroke={selected ? '#ffd76a' : '#000'}
-          strokeWidth={selected ? 2.5 : 1}
+        <PlacementMarker
+          center={center}
+          color={style.color}
+          short={style.short}
+          selected={selected}
         />
-        <text
-          x={center.x}
-          y={center.y + 3.5}
-          textAnchor="middle"
-          fill="#fff"
-          fontSize={9}
-        >
-          {markerShort(ref)}
-        </text>
         {angle !== null && (
           <g transform={`translate(${center.x},${center.y}) rotate(${angle})`}>
             <polygon
@@ -491,7 +470,7 @@ export function CreationBoard({
             cy={doc.start[1] * FLAT_ROW_SPACING}
             r={13}
             fill="none"
-            stroke="#5fd1c9"
+            stroke={START_COLOR}
             strokeWidth={2.5}
             strokeDasharray="4 3"
           />
@@ -514,7 +493,7 @@ export function CreationBoard({
             cy={doc.end[1] * FLAT_ROW_SPACING}
             r={13}
             fill="none"
-            stroke="#c9a227"
+            stroke={END_COLOR}
             strokeWidth={2.5}
             strokeDasharray="4 3"
           />

@@ -7,7 +7,6 @@
  * hex-true/flattened layout toggle, explored and rejected 2026-08-02.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Document } from 'yaml';
 import { Board } from './Board';
 import { CollapsibleSidePanel } from './CollapsibleSidePanel';
 import { ConnectorInspector } from './ConnectorInspector';
@@ -17,24 +16,13 @@ import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
 import './DungeonBuilderConcept.css';
 import {
   buildWalkItYaml,
-  deletePlacement,
   DungeonParseError,
-  moveBoss,
-  movePlacement,
-  movePlacementAcrossLists,
   parseDungeon,
   placeItem,
   serializeDungeon,
-  setBossFacing,
-  setBossTargeting,
   setConnectorLocked,
   setEnd,
   setPlacementFacing,
-  setPlacementFlags,
-  setPlacementHeight,
-  setPlacementMount,
-  setPlacementRotationDegrees,
-  setPlacementTargeting,
   setStart,
   setWallEdge,
   stripToV1Subset,
@@ -44,7 +32,6 @@ import {
   toggleWallKind,
   type DungeonDoc,
   type LockedDoc,
-  type Mount,
   type WallKind,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
@@ -53,7 +40,8 @@ import { Palette } from './Palette';
 import { PALETTE_PROPS } from './paletteData';
 import { DungeonPreview3D } from './preview3d/DungeonPreview3D';
 import { RolledContentPanel } from './RolledContentPanel';
-import type { BoardTool, PaletteSelection, PlacementSelection } from './types';
+import type { BoardTool } from './types';
+import { useBoardEditing } from './useBoardEditing';
 import { usePutDungeonPreview } from './usePutDungeonPreview';
 import { useSaveDungeon } from './useSaveDungeon';
 import { WallGashExplainer } from './WallGashExplainer';
@@ -63,249 +51,16 @@ const APPLY_DEBOUNCE_MS = 700;
 
 type BuilderMode = 'edit' | 'create';
 
-/** The palette/placement editing core — the part of edit mode's board
- * interaction that "New Dungeon" needs verbatim once it authors onto its
- * OWN cst/DungeonDoc instead of the bespoke CreationState (CONTRACT.md's
- * "unifying New Dungeon onto the shared CST" section). Pulled into one
- * hook, called once per mode with that mode's own `cst`/`doc`/
- * `syncFromCst`, rather than duplicated: placement selection is a `ref`
- * at a `[col,row]`, room-scoped (`roomId` a real id) or top-level
- * (`roomId: null`, TARGET-YAML.md's "top-level placement" section) —
- * `handlePlace`/`handleMove`/etc. below already generalize over both via
- * dungeonYaml.ts's own `roomId: string | null` mutators, so this hook
- * needs no special-casing per mode; only the SURROUNDING board/palette/
- * wall handling differs per mode, and stays defined separately where
- * it's called. */
-function useBoardEditing(
-  cst: Document,
-  doc: DungeonDoc,
-  syncFromCst: (cst: Document) => void,
-  flashToast?: (message: string) => void
-) {
-  const [selectedPalette, setSelectedPalette] =
-    useState<PaletteSelection | null>(null);
-  const [selectedPlacement, setSelectedPlacement] =
-    useState<PlacementSelection | null>(null);
-
-  const handlePlace = (roomId: string | null, at: [number, number]) => {
-    if (!selectedPalette) return;
-    const isMonster = selectedPalette.kind === 'monster';
-    if (selectedPalette.kind === 'boss') {
-      // Boss stays room-scoped even in the target dialect (moveBoss
-      // requires a real roomId) — callers arming the boss tool over a
-      // roomless canvas are expected to reject before ever reaching
-      // here (CreationBoard.tsx does), so this is a defensive backstop,
-      // not the primary guard.
-      if (roomId === null) return;
-      moveBoss(cst, roomId, at);
-      flashToast?.('Boss pin placed.');
-    } else {
-      placeItem(cst, roomId, selectedPalette.ref, at);
-      if (isMonster) {
-        flashToast?.(
-          'Monster placed — blocks_movement/blocks_los are forced off and disabled (dungeonspec.Validate rejects both flags on monster placements).'
-        );
-      }
-    }
-    syncFromCst(cst);
-  };
-
-  const handleMove = (
-    sel: PlacementSelection,
-    roomId: string | null,
-    at: [number, number]
-  ) => {
-    if (sel.boss) {
-      // A boss never leaves its own room (Board.tsx's own pointer-up
-      // handler already rejects a cross-room boss drop before onMove is
-      // ever called) — sel.roomId is the real, non-null id to use here,
-      // not the destination `roomId` parameter (which stays nullable to
-      // cover the non-boss, top-level case).
-      moveBoss(cst, sel.roomId, at);
-      syncFromCst(cst);
-      return;
-    }
-    if (roomId === sel.roomId) {
-      movePlacement(cst, sel.roomId, sel.index, at);
-      syncFromCst(cst);
-      setSelectedPlacement({ roomId, index: sel.index });
-      return;
-    }
-    // Cross-list move (room-scoped <-> top-level, or between two rooms):
-    // `movePlacementAcrossLists` preserves every field (facing/mount/
-    // height/rotate_degrees/targeting/blocks_*), not just ref+at — the
-    // naive delete+placeItem shape this used to be silently dropped all
-    // of those (2026-08-02 graduation audit finding). It also returns
-    // the item's real new index directly, rather than this caller
-    // re-deriving it from possibly-stale `doc` state via a
-    // `.find(...)!.place.length` that used to throw outright for a
-    // roomId: null destination (no room has id null to find).
-    const item = sel.roomId
-      ? doc.rooms.find((r) => r.id === sel.roomId)?.place[sel.index]
-      : doc.place[sel.index];
-    if (!item) return;
-    const newIndex = movePlacementAcrossLists(
-      cst,
-      sel.roomId,
-      sel.index,
-      roomId,
-      at,
-      item
-    );
-    syncFromCst(cst);
-    setSelectedPlacement({ roomId, index: newIndex });
-  };
-
-  const handleDelete = () => {
-    if (!selectedPlacement || selectedPlacement.boss) return;
-    deletePlacement(cst, selectedPlacement.roomId, selectedPlacement.index);
-    setSelectedPlacement(null);
-    syncFromCst(cst);
-  };
-
-  const handleSetFlags = (blocksMovement: boolean, blocksLos: boolean) => {
-    if (!selectedPlacement || selectedPlacement.boss) return;
-    setPlacementFlags(cst, selectedPlacement.roomId, selectedPlacement.index, {
-      blocksMovement,
-      blocksLos,
-    });
-    syncFromCst(cst);
-  };
-
-  // Boss entries have no mount/height (bosses aren't wall furniture) —
-  // only place: entries do, matching Inspector.tsx's own gate. Two
-  // separate handlers, not one — mount/height are DECOUPLED (Kirk-batch,
-  // 2026-08-02: "height: decouples from mount... any placement may carry
-  // height"), matching `setPlacementMount`'s/`setPlacementHeight`'s own
-  // now-independent shape.
-  const handleSetMount = (mount: Mount) => {
-    if (!selectedPlacement || selectedPlacement.boss) return;
-    setPlacementMount(
-      cst,
-      selectedPlacement.roomId,
-      selectedPlacement.index,
-      mount
-    );
-    syncFromCst(cst);
-  };
-
-  const handleSetHeight = (height: number | null) => {
-    if (!selectedPlacement || selectedPlacement.boss) return;
-    setPlacementHeight(
-      cst,
-      selectedPlacement.roomId,
-      selectedPlacement.index,
-      height
-    );
-    syncFromCst(cst);
-  };
-
-  // EXPERIMENT, not a target-dialect field (Inspector.tsx's own
-  // ExperimentBadge doc comment) — same boss-excluded gate as
-  // handleSetMount, since the control only ever shows for a
-  // mount: 'wall' place: entry, which a boss can never be.
-  const handleSetRotationDegrees = (rotationDegrees: number | null) => {
-    if (!selectedPlacement || selectedPlacement.boss) return;
-    setPlacementRotationDegrees(
-      cst,
-      selectedPlacement.roomId,
-      selectedPlacement.index,
-      rotationDegrees
-    );
-    syncFromCst(cst);
-  };
-
-  const handleSetTargeting = (targeting: string | null) => {
-    if (!selectedPlacement) return;
-    if (selectedPlacement.boss) {
-      setBossTargeting(cst, selectedPlacement.roomId, targeting);
-    } else {
-      setPlacementTargeting(
-        cst,
-        selectedPlacement.roomId,
-        selectedPlacement.index,
-        targeting
-      );
-    }
-    syncFromCst(cst);
-  };
-
-  const handleSetFacing = (facing: number | null) => {
-    if (!selectedPlacement) return;
-    if (selectedPlacement.boss) {
-      setBossFacing(cst, selectedPlacement.roomId, facing);
-    } else {
-      setPlacementFacing(
-        cst,
-        selectedPlacement.roomId,
-        selectedPlacement.index,
-        facing
-      );
-    }
-    syncFromCst(cst);
-  };
-
-  // Wall-mount edge-selection rework, part 2 (Inspector.tsx's own
-  // `onFlipMountSide` doc comment) — the Inspector already validated
-  // `target` against a real floor cell before ever calling this, so this
-  // handler's job is purely the mutation: a cross-list move (via
-  // `movePlacementAcrossLists`, which preserves every field) carrying
-  // the NEW mirrored facing instead of the old one. Boss-excluded, same
-  // gate every other placement-only handler here uses — a boss is never
-  // wall-mounted.
-  const handleFlipMountSide = (target: {
-    roomId: string;
-    at: [number, number];
-    newFacing: number;
-  }) => {
-    if (!selectedPlacement || selectedPlacement.boss) return;
-    const item = selectedPlacement.roomId
-      ? doc.rooms.find((r) => r.id === selectedPlacement.roomId)?.place[
-          selectedPlacement.index
-        ]
-      : doc.place[selectedPlacement.index];
-    if (!item) return;
-    const newIndex = movePlacementAcrossLists(
-      cst,
-      selectedPlacement.roomId,
-      selectedPlacement.index,
-      target.roomId,
-      target.at,
-      { ...item, facing: target.newFacing }
-    );
-    syncFromCst(cst);
-    setSelectedPlacement({ roomId: target.roomId, index: newIndex });
-  };
-
-  return {
-    selectedPalette,
-    setSelectedPalette,
-    selectedPlacement,
-    setSelectedPlacement,
-    handlePlace,
-    handleMove,
-    handleDelete,
-    handleSetFlags,
-    handleSetMount,
-    handleSetHeight,
-    handleSetRotationDegrees,
-    handleSetTargeting,
-    handleSetFacing,
-    handleFlipMountSide,
-  };
-}
-
-/** The `useBoardEditing` handle — exported so `CreationBoard.tsx`/
- * `CreationConcept.tsx` can type the `edit` prop they receive without
- * re-deriving the same shape. */
-export type BoardEditing = ReturnType<typeof useBoardEditing>;
-
 export function DungeonBuilderConcept() {
   const [mode, setMode] = useState<BuilderMode>('edit');
-  const initial = parseDungeon(SHOWCASE_YAML);
+  // Lazy initializers (graduation audit item) — parseDungeon/
+  // serializeDungeon both do real parsing/stringification work, and a
+  // bare `useState(parseDungeon(...))` evaluates that argument on EVERY
+  // render (React only USES it on the first), not just once on mount.
+  const [initial] = useState(() => parseDungeon(SHOWCASE_YAML));
   const [cst, setCst] = useState(initial.cst);
   const [doc, setDoc] = useState<DungeonDoc>(initial.doc);
-  const [yamlText, setYamlText] = useState(serializeDungeon(initial.cst));
+  const [yamlText, setYamlText] = useState(() => serializeDungeon(initial.cst));
   const [parseError, setParseError] = useState<string | null>(null);
   // Door/wall editing (Kirk's 2026-08-02 ask). Mutually exclusive with
   // selectedPalette/selectedPlacement (now owned by the `edit` =
@@ -484,14 +239,15 @@ export function DungeonBuilderConcept() {
   // placement selection is independent of edit mode's (same "remembered
   // per mode" precedent the collapse-state pairs above already set). See
   // CONTRACT.md's "unifying New Dungeon onto the shared CST" section.
-  const creationInitial = parseDungeon(
-    emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height)
+  // Same lazy-initializer fix as `initial` above.
+  const [creationInitial] = useState(() =>
+    parseDungeon(emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height))
   );
   const [creationCst, setCreationCst] = useState(creationInitial.cst);
   const [creationDoc, setCreationDoc] = useState<DungeonDoc>(
     creationInitial.doc
   );
-  const [creationYamlText, setCreationYamlText] = useState(
+  const [creationYamlText, setCreationYamlText] = useState(() =>
     serializeDungeon(creationInitial.cst)
   );
   const [creationSelectedTool, setCreationSelectedTool] =

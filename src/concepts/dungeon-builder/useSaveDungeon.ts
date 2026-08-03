@@ -41,7 +41,6 @@ export interface UseSaveDungeonResult {
    * draws between field_errors and requestError. */
   errorMessage: string | null;
   save: (key: string, yamlText: string) => void;
-  reset: () => void;
 }
 
 export function useSaveDungeon(): UseSaveDungeonResult {
@@ -81,12 +80,5 @@ export function useSaveDungeon(): UseSaveDungeonResult {
     })();
   };
 
-  const reset = () => {
-    setState('idle');
-    setSavedKey(null);
-    setFieldErrors([]);
-    setErrorMessage(null);
-  };
-
-  return { state, savedKey, fieldErrors, errorMessage, save, reset };
+  return { state, savedKey, fieldErrors, errorMessage, save };
 }

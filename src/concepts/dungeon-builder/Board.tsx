@@ -19,13 +19,14 @@ import {
   totalColumns,
 } from './boardGeometry';
 import type { DungeonDoc } from './dungeonYaml';
-import { BOARD_HEX_SIZE, cellCenter, cellCorners } from './hexLayout';
 import {
-  BOSS_COLOR,
-  MONSTER_COLOR,
-  PALETTE_PROPS,
-  ROLE_COLOR,
-} from './paletteData';
+  BOARD_HEX_SIZE,
+  cellCenter,
+  cellCorners,
+  edgeBetweenCells,
+} from './hexLayout';
+import { END_COLOR, resolveMarkerStyle, START_COLOR } from './markerStyle';
+import { PlacementMarker } from './PlacementMarker';
 import type { BoardTool, PaletteSelection, PlacementSelection } from './types';
 
 interface BoardProps {
@@ -70,20 +71,6 @@ interface BoardProps {
   onToggleWallKind: (col: number, row: number) => void;
   onToggleHole: (col: number, row: number) => void;
   onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
-}
-
-function markerColor(ref: string, isBoss: boolean): string {
-  if (isBoss) return BOSS_COLOR;
-  if (ref.startsWith('dnd5e:monsters:')) return MONSTER_COLOR;
-  const prop = PALETTE_PROPS.find((p) => p.ref === ref);
-  return prop ? ROLE_COLOR[prop.role] : '#888';
-}
-
-function shortLabel(ref: string, isBoss: boolean): string {
-  if (isBoss) return 'BOSS';
-  const prop = PALETTE_PROPS.find((p) => p.ref === ref);
-  if (prop) return prop.short;
-  return ref.startsWith('dnd5e:monsters:') ? 'M' : '?';
 }
 
 export function Board({
@@ -256,7 +243,21 @@ export function Board({
   for (const wall of doc.walls) {
     trackCellExtent(wall.from[0], wall.from[1]);
     trackCellExtent(wall.to[0], wall.to[1]);
-    const center = cellCenter(wall.from[0], wall.from[1]);
+    // Real edge geometry (the actual shared hex edge between `from`/`to`),
+    // not a full-cell rect centered at `from` — the previous rendering
+    // drew a box covering the WHOLE `from` cell regardless of which of
+    // its 6 edges the wall was actually on, indistinguishable from a
+    // wall on any other edge of that same cell. Same `edgeBetweenCells`
+    // geometry the creation board (`CreationBoard.tsx`'s `wallGeometry`)
+    // and the 3D preview (`DungeonPreview3D.tsx`'s `edgeBetweenCells`)
+    // already draw walls with — one geometry convention across all three
+    // renderers now, not two correct ones and edit mode's own outlier.
+    const edge = edgeBetweenCells(
+      wall.from[0],
+      wall.from[1],
+      wall.to[0],
+      wall.to[1]
+    );
     const isDoor = wall.kind === 'door';
     // Same orange/cream distinction the creation board's own wall
     // rendering and the 3D preview's wall boxes already use for solid
@@ -264,31 +265,31 @@ export function Board({
     // difference here was hard to read at a glance (Kirk's own "make
     // sure drawn doors read as doors" ask), one visual language for
     // this construct across every view now, not three independently
-    // tuned ones. A door also gets a filled tint (a solid wall stays
-    // outline-only) and a small "D" label, matching this file's own
-    // start/end marker convention just below.
+    // tuned ones. Dashed/muted stays edit mode's own deliberate
+    // "PROPOSED, not compiled" language (this file's own header comment
+    // on this section) — creation mode draws walls solid, but its
+    // target-dialect status is signaled elsewhere (TARGET-YAML.md), not
+    // by line style, so the two aren't in conflict.
     structuralOverlay.push(
-      <rect
-        key={`wall-${wall.from[0]}-${wall.from[1]}`}
-        x={center.x - BOARD_HEX_SIZE * 0.55}
-        y={center.y - BOARD_HEX_SIZE * 0.55}
-        width={BOARD_HEX_SIZE * 1.1}
-        height={BOARD_HEX_SIZE * 1.1}
-        fill={isDoor ? '#ffb347' : 'none'}
-        fillOpacity={isDoor ? 0.2 : 1}
+      <line
+        key={`wall-${wall.from[0]}-${wall.from[1]}-${wall.to[0]}-${wall.to[1]}`}
+        x1={edge.a.x}
+        y1={edge.a.y}
+        x2={edge.b.x}
+        y2={edge.b.y}
         stroke={isDoor ? '#ffb347' : '#e8e2d8'}
-        strokeWidth={2}
+        strokeWidth={3}
         strokeDasharray={isDoor ? '2 2' : '5 3'}
-        rx={3}
+        strokeLinecap="round"
         pointerEvents="none"
       />
     );
     if (isDoor) {
       structuralOverlay.push(
         <text
-          key={`wall-${wall.from[0]}-${wall.from[1]}-label`}
-          x={center.x}
-          y={center.y + 3}
+          key={`wall-${wall.from[0]}-${wall.from[1]}-${wall.to[0]}-${wall.to[1]}-label`}
+          x={edge.mid.x}
+          y={edge.mid.y + 3}
           textAnchor="middle"
           fill="#ffb347"
           fontSize={8}
@@ -327,9 +328,9 @@ export function Board({
           cx={center.x}
           cy={center.y}
           r={BOARD_HEX_SIZE * 0.4}
-          fill="#5fd1c9"
+          fill={START_COLOR}
           fillOpacity={0.25}
-          stroke="#5fd1c9"
+          stroke={START_COLOR}
           strokeWidth={2}
           strokeDasharray="3 2"
         />
@@ -337,7 +338,7 @@ export function Board({
           x={center.x}
           y={center.y + 3}
           textAnchor="middle"
-          fill="#5fd1c9"
+          fill={START_COLOR}
           fontSize={8}
           fontWeight={700}
         >
@@ -355,9 +356,9 @@ export function Board({
           cx={center.x}
           cy={center.y}
           r={BOARD_HEX_SIZE * 0.4}
-          fill="#c9a227"
+          fill={END_COLOR}
           fillOpacity={0.25}
-          stroke="#c9a227"
+          stroke={END_COLOR}
           strokeWidth={2}
           strokeDasharray="3 2"
         />
@@ -365,7 +366,7 @@ export function Board({
           x={center.x}
           y={center.y + 3}
           textAnchor="middle"
-          fill="#c9a227"
+          fill={END_COLOR}
           fontSize={8}
           fontWeight={700}
         >
@@ -385,6 +386,7 @@ export function Board({
       const center = cellCenter(absCol, row);
       const sel: PlacementSelection = { roomId: room.id, index };
       const isSelected = isSameSelection(selectedPlacement, sel);
+      const style = resolveMarkerStyle(p.ref);
       markers.push(
         <g
           key={`place-${room.id}-${index}`}
@@ -394,23 +396,12 @@ export function Board({
             setDragging(sel);
           }}
         >
-          <circle
-            cx={center.x}
-            cy={center.y}
-            r={BOARD_HEX_SIZE * 0.5}
-            fill={markerColor(p.ref, false)}
-            stroke={isSelected ? '#ffd76a' : '#000'}
-            strokeWidth={isSelected ? 2.5 : 1}
+          <PlacementMarker
+            center={center}
+            color={style.color}
+            short={style.short}
+            selected={isSelected}
           />
-          <text
-            x={center.x}
-            y={center.y + 3.5}
-            textAnchor="middle"
-            fill="#fff"
-            fontSize={9}
-          >
-            {shortLabel(p.ref, false)}
-          </text>
         </g>
       );
     });
@@ -433,7 +424,7 @@ export function Board({
             cx={center.x}
             cy={center.y}
             r={BOARD_HEX_SIZE * 0.62}
-            fill={markerColor(room.boss.ref, true)}
+            fill={resolveMarkerStyle(room.boss.ref, { isBoss: true }).color}
             stroke={isSelected ? '#ffd76a' : '#ffd76a'}
             strokeWidth={2}
           />
@@ -466,6 +457,7 @@ export function Board({
     const center = cellCenter(p.at[0], p.at[1]);
     const sel: PlacementSelection = { roomId: null, index };
     const isSelected = isSameSelection(selectedPlacement, sel);
+    const style = resolveMarkerStyle(p.ref);
     markers.push(
       <g
         key={`place-top-${index}`}
@@ -475,23 +467,12 @@ export function Board({
           setDragging(sel);
         }}
       >
-        <circle
-          cx={center.x}
-          cy={center.y}
-          r={BOARD_HEX_SIZE * 0.5}
-          fill={markerColor(p.ref, false)}
-          stroke={isSelected ? '#ffd76a' : '#000'}
-          strokeWidth={isSelected ? 2.5 : 1}
+        <PlacementMarker
+          center={center}
+          color={style.color}
+          short={style.short}
+          selected={isSelected}
         />
-        <text
-          x={center.x}
-          y={center.y + 3.5}
-          textAnchor="middle"
-          fill="#fff"
-          fontSize={9}
-        >
-          {shortLabel(p.ref, false)}
-        </text>
       </g>
     );
   });
@@ -554,12 +535,6 @@ export function Board({
   const vw = maxX - minX + pad * 2;
   const vh = maxY - minY + pad * 2 + 14;
 
-  const handlePointerMove: React.PointerEventHandler<SVGSVGElement> = () => {
-    // Visual-only during drag today; commit happens on pointer up. Kept as
-    // a named handler (rather than omitted) so a future hover-preview of
-    // the drop target has an obvious place to live.
-  };
-
   const handlePointerUp: React.PointerEventHandler<SVGSVGElement> = (e) => {
     if (!dragging || !svgRef.current) return;
     const svg = svgRef.current;
@@ -619,7 +594,6 @@ export function Board({
       viewBox={`${vx} ${vy} ${vw} ${vh}`}
       width={Math.max(vw, 600)}
       height={Math.max(vh, 420)}
-      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onClick={(e) => {
         if (e.target === svgRef.current) onSelect(null);

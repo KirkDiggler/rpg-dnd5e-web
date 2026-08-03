@@ -604,9 +604,10 @@ export function setPlacementFlags(
  * ask). Deliberately does NOT touch `boss:`: dungeonspec requires exactly
  * one boss per boss-archetype room (`moveBoss`'s own doc comment above),
  * so a boss-room YAML with `boss:` removed fails that validation rather
- * than producing a genuinely boss-free dungeon — see
- * `useWalkItVariant.ts`'s doc comment for how the UI stays honest about
- * this rather than silently rewriting the room's archetype to dodge it. */
+ * than producing a genuinely boss-free dungeon — see `YamlPane.tsx`'s
+ * `honestyNote` ("Boss remains — real free-roam mode needs server
+ * support") for how the UI stays honest about this rather than silently
+ * rewriting the room's archetype to dodge it. */
 export function stripMonsterPlacements(cst: Document): void {
   const rooms = cst.get('rooms');
   if (!isSeq(rooms)) return;
@@ -852,34 +853,23 @@ function createWallNode(cst: Document, wall: WallDoc): YAMLMap {
   return node;
 }
 
-/** A wall's index in `walls:`, matched by its `from` cell — this concept
- * represents one authored wall as ONE unit anchored at a specific
- * absolute [col,row] cell (its bottom edge, `to: [col, row+1]`) rather
- * than requiring a drag gesture to specify an arbitrary edge; see
- * TARGET-YAML.md's "Structural palette category" section for why a
- * single click-to-toggle affordance was chosen over full free-hand edge
- * drawing for this pass. */
-function wallIndexAt(cst: Document, col: number, row: number): number {
-  const walls = cst.get('walls');
-  if (!isSeq(walls)) return -1;
-  return walls.items.findIndex((w) => {
-    if (!isMap(w)) return false;
-    const from = w.get('from');
-    // `.get(0)`/`.get(1)`, not `.items[0]`/`.items[1]` — a sequence built
-    // via `cst.createNode(...)` (createWallNode below) wraps its number
-    // children in `Scalar` nodes; indexing `.items` directly returns
-    // those wrapper objects, which never `===` a raw number. `.get()`
-    // auto-resolves to the JS value, same contract `YAMLMap.get` already
-    // uses everywhere else in this file (see `findRoomSeqIndex`).
-    return isSeq(from) && from.get(0) === col && from.get(1) === row;
-  });
-}
-
 /** Wall tool: toggle a wall's PRESENCE at a cell (add as `kind: solid` /
  * remove) — target dialect, proposed. Adding always starts solid; use
- * `toggleWallKind` to flip an existing one to a door. */
+ * `toggleWallKind` to flip an existing one to a door. Anchored at a
+ * specific absolute [col,row] cell's bottom edge (`to: [col, row+1]`)
+ * rather than requiring a drag gesture to specify an arbitrary edge; see
+ * TARGET-YAML.md's "Structural palette category" section for why a
+ * single click-to-toggle affordance was chosen over full free-hand edge
+ * drawing for this pass. Looks the wall up by `wallIndexAtEdge`'s EXACT
+ * `from`/`to` match, not a from-cell-only match — a from-only match used
+ * to let this tool find and delete a wall drawn on a DIFFERENT edge that
+ * merely shared this cell as its `from` (e.g. a creation-mode-drawn
+ * `[c,r]->[c+1,r]` wall, reachable by clicking cell (c,r) with edit
+ * mode's Wall tool, which only ever intends the (c,r)->(c,r+1) edge) —
+ * graduation audit item, reconciling this with `wallIndexAtEdge` so
+ * there's one lookup convention, not two. */
 export function toggleWall(cst: Document, col: number, row: number): void {
-  const idx = wallIndexAt(cst, col, row);
+  const idx = wallIndexAtEdge(cst, [col, row], [col, row + 1]);
   if (idx !== -1) {
     (cst.get('walls') as YAMLSeq).items.splice(idx, 1);
     return;
@@ -894,13 +884,14 @@ export function toggleWall(cst: Document, col: number, row: number): void {
  * no-op if there's no wall at this cell yet (caller should reject/toast
  * "place a wall here first", matching the Structural category's own
  * two-tool split in TARGET-YAML.md). Returns whether a wall existed to
- * toggle, so the caller can distinguish "toggled" from "nothing there". */
+ * toggle, so the caller can distinguish "toggled" from "nothing there".
+ * Same exact-edge lookup as `toggleWall` above, for the same reason. */
 export function toggleWallKind(
   cst: Document,
   col: number,
   row: number
 ): boolean {
-  const idx = wallIndexAt(cst, col, row);
+  const idx = wallIndexAtEdge(cst, [col, row], [col, row + 1]);
   if (idx === -1) return false;
   const item = (cst.get('walls') as YAMLSeq).items[idx];
   if (!isMap(item)) return false;
@@ -909,15 +900,17 @@ export function toggleWallKind(
 }
 
 /** A wall's index in `walls:`, matched by an EXACT `from`/`to` pair (both
- * ends, not just `from` — see `wallIndexAt`'s doc comment for why edit
- * mode's own lookup only needs `from`). General edge lookup for the
+ * ends, not just `from`) — the one wall-lookup convention this concept
+ * uses now (`toggleWall`/`toggleWallKind` above route through this too,
+ * not a separate from-cell-only lookup). General edge lookup for the
  * "New Dungeon" creation board's freeform edge-painting, where a wall
  * can be either orientation (a `from`→`to` step of `[0,1]` or `[1,0]`)
- * at any cell, not just the one fixed edit-mode shape. Callers are
- * responsible for passing `from`/`to` in ONE canonical order (creation
- * mode's `hEdgeGeometry`/`vEdgeGeometry` already produce one) — this
- * does not check the reverse pairing, matching how the CST itself never
- * stores a wall's endpoints swapped. */
+ * at any cell, not just edit mode's own fixed (col,row)->(col,row+1)
+ * shape. Callers are responsible for passing `from`/`to` in ONE
+ * canonical order (creation mode's `hEdgeGeometry`/`vEdgeGeometry`
+ * already produce one, edit mode's `toggleWall`/`toggleWallKind` always
+ * pass `to: [col, row+1]`) — this does not check the reverse pairing,
+ * matching how the CST itself never stores a wall's endpoints swapped. */
 function wallIndexAtEdge(
   cst: Document,
   from: [number, number],

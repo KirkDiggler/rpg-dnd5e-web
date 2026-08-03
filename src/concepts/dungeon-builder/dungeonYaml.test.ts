@@ -21,12 +21,14 @@ import {
   setPlacementRotationDegrees,
   setPlacementTargeting,
   setStart,
+  setWallEdge,
   stripMonsterPlacements,
   stripToV1Subset,
   toDungeonDoc,
   toggleHole,
   toggleWall,
   toggleWallKind,
+  wallKindAtEdge,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
 
@@ -187,7 +189,7 @@ describe('serializeDungeon round-trip', () => {
     // fixtures.ts drifting from the source of truth too.
     const realPath = join(
       __dirname,
-      '../../../../../dungeon-content/showcase.yaml'
+      '../../../../dungeon-content/showcase.yaml'
     );
     let real: string;
     try {
@@ -389,6 +391,37 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
     expect(toDungeonDoc(cst).walls[0].kind).toBe('door');
     toggleWallKind(cst, 3, 3);
     expect(toDungeonDoc(cst).walls[0].kind).toBe('solid');
+  });
+
+  it('toggleWall/toggleWallKind never touch a wall on a DIFFERENT edge that merely shares the same `from` cell (wallIndexAt/wallIndexAtEdge reconciliation)', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    // A creation-mode-style wall on cell (7,0)'s OTHER edge — same `from`
+    // cell edit mode's Wall tool would use at (7,0), but a different `to`
+    // ([8,0] instead of [7,1]). Before the reconciliation this was
+    // reachable and deletable by clicking cell (7,0) with edit mode's
+    // Wall tool, since the old from-cell-only lookup didn't check `to`.
+    setWallEdge(cst, [7, 0], [8, 0], 'solid', true);
+    expect(wallKindAtEdge(cst, [7, 0], [8, 0])).toBe('solid');
+
+    // toggleWall on the SAME (7,0) cell must ADD a new wall on edit
+    // mode's own (7,0)->(7,1) edge, not touch the [7,0]->[8,0] one.
+    toggleWall(cst, 7, 0);
+    expect(toDungeonDoc(cst).walls).toEqual([
+      { from: [7, 0], to: [8, 0], kind: 'solid' },
+      { from: [7, 0], to: [7, 1], kind: 'solid' },
+    ]);
+
+    // toggleWallKind on (7,0) must flip ONLY the (7,0)->(7,1) wall.
+    expect(toggleWallKind(cst, 7, 0)).toBe(true);
+    expect(wallKindAtEdge(cst, [7, 0], [7, 1])).toBe('door');
+    expect(wallKindAtEdge(cst, [7, 0], [8, 0])).toBe('solid'); // untouched
+
+    // A second toggleWall on (7,0) must remove ONLY the (7,0)->(7,1)
+    // wall, leaving the [7,0]->[8,0] wall standing.
+    toggleWall(cst, 7, 0);
+    expect(toDungeonDoc(cst).walls).toEqual([
+      { from: [7, 0], to: [8, 0], kind: 'solid' },
+    ]);
   });
 
   it('toggleHole adds then removes a hole', () => {

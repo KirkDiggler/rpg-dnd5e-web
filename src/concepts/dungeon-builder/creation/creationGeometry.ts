@@ -4,19 +4,13 @@
  * `boardGeometry.ts`/`Board.tsx`.
  */
 import { FLAT_COL_SPACING, FLAT_ROW_SPACING, type CellPos } from '../hexLayout';
-import {
-  hEdgeKey,
-  vEdgeKey,
-  type CreationGrid,
-  type EdgeKey,
-} from './creationTypes';
+import { type CreationGrid } from './creationTypes';
 
 export function creationCellCenter(col: number, row: number): CellPos {
   return { x: col * FLAT_COL_SPACING, y: row * FLAT_ROW_SPACING };
 }
 
 export interface EdgeGeometry {
-  key: EdgeKey;
   orientation: 'h' | 'v';
   /** The two cells the edge sits between. */
   cellA: [number, number];
@@ -32,7 +26,6 @@ export function hEdgeGeometry(col: number, row: number): EdgeGeometry {
   const x0 = (col - 0.5) * FLAT_COL_SPACING;
   const x1 = (col + 0.5) * FLAT_COL_SPACING;
   return {
-    key: hEdgeKey(col, row),
     orientation: 'h',
     cellA: [col, row],
     cellB: [col, row + 1],
@@ -47,7 +40,6 @@ export function vEdgeGeometry(col: number, row: number): EdgeGeometry {
   const y0 = (row - 0.5) * FLAT_ROW_SPACING;
   const y1 = (row + 0.5) * FLAT_ROW_SPACING;
   return {
-    key: vEdgeKey(col, row),
     orientation: 'v',
     cellA: [col, row],
     cellB: [col + 1, row],
@@ -55,17 +47,6 @@ export function vEdgeGeometry(col: number, row: number): EdgeGeometry {
     b: { x, y: y1 },
     mid: { x, y: (y0 + y1) / 2 },
   };
-}
-
-export function allInternalEdges(grid: CreationGrid): EdgeGeometry[] {
-  const edges: EdgeGeometry[] = [];
-  for (let c = 0; c < grid.width; c++) {
-    for (let r = 0; r < grid.height - 1; r++) edges.push(hEdgeGeometry(c, r));
-  }
-  for (let c = 0; c < grid.width - 1; c++) {
-    for (let r = 0; r < grid.height; r++) edges.push(vEdgeGeometry(c, r));
-  }
-  return edges;
 }
 
 /** Nearest internal edge to a board-space point — computed analytically

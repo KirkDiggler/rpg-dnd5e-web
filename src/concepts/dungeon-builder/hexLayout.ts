@@ -28,6 +28,7 @@
  */
 import {
   cubeToWorld,
+  hexEdgeBetween,
   hexCorners as realHexCorners,
 } from '@/components/hex-grid/hexMath';
 import { cubeAtColRow, hexColumn, hexRow } from '@/hooks/wallRuns';
@@ -55,6 +56,39 @@ export function cellCorners(center: CellPos, size: number): [number, number][] {
   return realHexCorners({ x: center.x, z: center.y }, size).map(
     (c) => [c.x, c.z] as [number, number]
   );
+}
+
+export interface CellEdge {
+  a: CellPos;
+  b: CellPos;
+  mid: CellPos;
+}
+
+/** The shared edge between two adjacent hex cells, in this file's board
+ * space — the SAME `hexEdgeBetween` geometry the 3D preview's wall boxes
+ * and wall-mount rotation use (`preview3d/DungeonPreview3D.tsx`'s
+ * `edgeBetweenCells`/`wallBoxTransform`/`wallMountRotationY`), just
+ * projected onto `CellPos`'s 2D plane instead of a Three.js Y rotation.
+ * Lets the 2D edit board draw walls as real edge segments (graduation
+ * audit item: it used to draw a dashed full-cell rect at the wall's
+ * `from` cell instead of the actual shared edge, the one place in this
+ * concept still drawing wall geometry wrong). */
+export function edgeBetweenCells(
+  colA: number,
+  rowA: number,
+  colB: number,
+  rowB: number
+): CellEdge {
+  const edge = hexEdgeBetween(
+    cubeAtColRow(colA, rowA),
+    cubeAtColRow(colB, rowB),
+    BOARD_HEX_SIZE
+  );
+  return {
+    a: { x: edge.a.x, y: edge.a.z },
+    b: { x: edge.b.x, y: edge.b.z },
+    mid: { x: edge.mid.x, y: edge.mid.z },
+  };
 }
 
 /** Creation mode's rectangular-canvas spacing — see this file's header
