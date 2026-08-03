@@ -396,35 +396,49 @@ piece of render work, not attempted this round (doc-only construct; the
 placement inspector's optional height field, when cheap to add for a
 known wall-mountable ref, is the only UI this round ships).
 
-**Open question, not decided here: is 6-direction hex facing too coarse
-for a wall-mounted prop?** 6 directions spaced 60° apart is a coarse
-division of the circle, and gets sharper as a limitation once `facing`
-is driving a mounted prop's actual on-wall rotation rather than a
-floor-standing model's general orientation — a
-banner or sconce genuinely needs to sit FLUSH and SQUARE against the
-wall face it's mounted on, and the wall itself sits at whatever angle
-the edge geometry gives it, not necessarily one of the 6 hex-facing
-directions. Two ways this could go, both live, neither chosen:
+**Was an open question, RESOLVED 2026-08-02 by Kirk's own hands in live
+play: is 6-direction hex facing too coarse for a wall-mounted prop?**
+Originally recorded per Kirk's 2026-08-02 ask alongside the wall-mount
+rotation bug that surfaced it, with two live options and neither chosen.
+Both halves are now settled:
 
-- **Keep `facing` as the only rotation input.** Simpler dialect, one
-  facing convention everywhere (place/boss/mount alike, per this
-  section's own reasoning above). Requires the renderer to derive the
-  correct flush-against-the-wall angle FROM the mounting edge's own
-  geometry rather than trusting `facing` as a literal rotation — `facing`
-  becomes "which edge," not "what angle," for a mounted prop specifically.
-- **Add a finer rotation value to `mount:` entries** (degrees, or a
-  fraction-of-circle field) alongside `facing`, so the author can dial in
-  an exact angle the 6-direction convention can't express. Breaks the
-  "one facing convention everywhere" property this section leads with,
-  and raises the same question `place:`/`boss:` facing already begs:
-  would floor-standing props eventually want the same finer control, or
-  is coarse-6-direction genuinely fine there and only wrong for
-  wall-flush mounting specifically?
+- **The rotation-MATH half.** Kirk: "fine tuning is cool for sure but
+  the other direction is a 30 deg to be flat on the wall." That 30° is
+  the pointy-top interleave between neighbor/facing directions and edge
+  orientations — the two are never aligned by construction, so
+  `facing`'s 6-direction ENUM can never produce a wall-flush rotation by
+  stepping alone, no matter how it's wired. This confirms (doesn't
+  change) the direction `wallMountRotationY` already took: orientation
+  is EDGE-derived (`hexEdgeBetween`), never `facingToRotationY`'s literal
+  enum-to-angle mapping. **Resolved model**: floor-standing props keep
+  `facing` as the plain 6-direction neighbor enum (never in question);
+  wall-mounted props derive orientation from the edge, with the
+  `rotate_degrees` EXPERIMENT (`dungeonYaml.ts`'s own doc comment) as an
+  optional fine offset WITHIN that edge's plane — re-scoped by this
+  finding from "an independent granularity to compare" to "the correct
+  within-edge fine control," which is what it always functionally was
+  once the edge, not the enum, is understood as the base rotation.
+- **The edge-SELECTION half.** A distinct gap the math being correct
+  didn't fix: Kirk, same session — "I can only line up 1 direction —
+  flush with a wall on one side but not the other — oh that is which
+  tile I put it on, but still." Which wall EDGE a mount uses was
+  implicit (nearest/facing-implied), not an explicit, steppable choice.
+  **Resolved**: the Inspector's facing stepper, for `mount: wall`
+  placements only, now cycles exactly the owning cell's wall-BEARING
+  edges (`boardGeometry.ts`'s `wallBearingFacings`/`stepWallFacing`) —
+  skipping any of the 6 directions with no real wall to be flush
+  against — plus a "flip to other side" affordance that moves the
+  placement to the wall's far cell and mirrors facing, one click instead
+  of delete-and-replace. See CONTRACT.md's "Wall-mount edge-selection
+  rework" section for the full landing writeup and live verification.
 
-Recorded per Kirk's 2026-08-02 ask, alongside the wall-mount rotation
-bug that surfaced it — deliberately NOT resolved here; the #176–#180
-slices should pick a side with the actual renderer requirements in hand,
-not a concept spike guessing ahead of them.
+Nothing left open on this question as of this writing — both the
+rotation math and the edge-selection UX are resolved and shipped. A
+possible future refinement (not queued, not asked for): the `flip to
+other side` affordance is edit-mode only today (no compiled `FloorPlan`
+exists in creation mode to validate the far cell against) — extending it
+there would need a canvas-bounds-based validity check instead of a
+`FloorPlan`-based one.
 
 **Update, 2026-08-02 — the second option now exists as a live, testable
 prototype, not just a described option.** `PlacementDoc.rotationDegrees`

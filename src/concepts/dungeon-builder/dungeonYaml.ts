@@ -525,6 +525,57 @@ export function deletePlacement(
   place.items.splice(index, 1);
 }
 
+/** Move a placement ACROSS lists — room-scoped to top-level, top-level to
+ * room-scoped, or between two different rooms — preserving every field
+ * it carries, not just `ref`/`at`. Fixes a real data-loss bug: the
+ * delete+`placeItem` shape callers used to hand-roll for this (still
+ * true of `movePlacement`'s own doc comment, "cross-list moves are
+ * modeled as delete+place by the caller") silently dropped
+ * facing/mount/height/rotate_degrees/targeting and reset
+ * blocks_movement/blocks_los to their defaults, because `placeItem`
+ * alone only ever writes ref+at+flags for a fresh node (2026-08-02
+ * graduation audit finding). `item` is the FULL `PlacementDoc` read from
+ * the source by the caller BEFORE it deletes anything — passed in
+ * rather than re-read here, since a caller that already has `doc` can
+ * hand it over without this function needing its own CST traversal to
+ * find the same node twice, and because the caller is what knows WHICH
+ * list-relative index the item currently has. Returns the item's new
+ * index in `toRoomId`'s list — `placeItem` always appends, so this is
+ * always correct without the caller having to re-derive it from
+ * possibly-stale `doc` state (the other real bug this same audit finding
+ * flagged: a bare `.find(...)!.place.length` throws outright when
+ * `toRoomId` is `null`, since no room has id `null` to find). */
+export function movePlacementAcrossLists(
+  cst: Document,
+  fromRoomId: string | null,
+  fromIndex: number,
+  toRoomId: string | null,
+  at: [number, number],
+  item: PlacementDoc
+): number {
+  deletePlacement(cst, fromRoomId, fromIndex);
+  placeItem(cst, toRoomId, item.ref, at);
+  const newIndex = placeSeq(cst, toRoomId).items.length - 1;
+  if (!item.isMonster) {
+    setPlacementFlags(cst, toRoomId, newIndex, {
+      blocksMovement: item.blocksMovement,
+      blocksLos: item.blocksLos,
+    });
+  }
+  if (item.facing !== null)
+    setPlacementFacing(cst, toRoomId, newIndex, item.facing);
+  if (item.mount === 'wall') {
+    setPlacementMount(cst, toRoomId, newIndex, 'wall', item.height);
+  }
+  if (item.rotationDegrees !== null) {
+    setPlacementRotationDegrees(cst, toRoomId, newIndex, item.rotationDegrees);
+  }
+  if (item.targeting !== null) {
+    setPlacementTargeting(cst, toRoomId, newIndex, item.targeting);
+  }
+  return newIndex;
+}
+
 /** Set a prop placement's blocks_movement/blocks_los flags (props only —
  * callers must not call this for monster refs). */
 export function setPlacementFlags(

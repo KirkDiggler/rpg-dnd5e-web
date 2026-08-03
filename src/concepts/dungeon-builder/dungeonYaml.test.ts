@@ -6,6 +6,7 @@ import {
   deletePlacement,
   DungeonParseError,
   movePlacement,
+  movePlacementAcrossLists,
   parseDungeon,
   placeItem,
   serializeDungeon,
@@ -261,6 +262,84 @@ describe('board-driven edits', () => {
     // The other 7 pillars remain, but the heading that described all 8 is gone.
     expect(out).not.toContain('# colonnade: 8 pillars');
     expect(out).toContain('dnd5e:props:pillar", at: [ 4, 2 ]');
+  });
+
+  it('movePlacementAcrossLists preserves every field, not just ref/at — 2026-08-02 graduation-audit fix', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    // Build a fully-loaded placement first, via the real mutators, so
+    // this test proves preservation of every field a placement can
+    // carry — the old delete+placeItem shape only ever kept ref+at,
+    // silently dropping the rest.
+    placeItem(cst, 'shrine', 'dnd5e:props:wall-banner', [1, 2]);
+    const afterPlace = toDungeonDoc(cst);
+    const shrineIndex =
+      afterPlace.rooms.find((r) => r.id === 'shrine')!.place.length - 1;
+    setPlacementFacing(cst, 'shrine', shrineIndex, 1); // NE
+    setPlacementMount(cst, 'shrine', shrineIndex, 'wall', 2.5);
+    setPlacementRotationDegrees(cst, 'shrine', shrineIndex, 15);
+    setPlacementTargeting(
+      cst,
+      'shrine',
+      shrineIndex,
+      'dnd5e:targeting:nearest'
+    );
+
+    const docBefore = toDungeonDoc(cst);
+    const item = docBefore.rooms.find((r) => r.id === 'shrine')!.place[
+      shrineIndex
+    ];
+    expect(item).toMatchObject({
+      facing: 1,
+      mount: 'wall',
+      height: 2.5,
+      rotationDegrees: 15,
+      targeting: 'dnd5e:targeting:nearest',
+    });
+
+    // Cross-list move: room-scoped (shrine) -> top-level (roomId: null).
+    const newIndex = movePlacementAcrossLists(
+      cst,
+      'shrine',
+      shrineIndex,
+      null,
+      [20, 3],
+      item
+    );
+
+    const docAfter = toDungeonDoc(cst);
+    const moved = docAfter.place[newIndex];
+    expect(moved).toMatchObject({
+      ref: 'dnd5e:props:wall-banner',
+      at: [20, 3],
+      facing: 1,
+      mount: 'wall',
+      height: 2.5,
+      rotationDegrees: 15,
+      targeting: 'dnd5e:targeting:nearest',
+      blocksMovement: false,
+      blocksLos: false,
+    });
+  });
+
+  it('movePlacementAcrossLists returns the correct new index for a roomId: null destination — the exact case the old `.find(...)!.place.length` crashed on (no room has id null)', () => {
+    const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+    const pillarIndex = doc.rooms[1].place.findIndex(
+      (p) => p.ref === 'dnd5e:props:pillar' && p.at[0] === 2 && p.at[1] === 2
+    );
+    const item = doc.rooms[1].place[pillarIndex];
+    const newIndex = movePlacementAcrossLists(
+      cst,
+      'shrine',
+      pillarIndex,
+      null,
+      [25, 1],
+      item
+    );
+    const after = toDungeonDoc(cst);
+    expect(after.place[newIndex]).toMatchObject({
+      ref: 'dnd5e:props:pillar',
+      at: [25, 1],
+    });
   });
 });
 

@@ -2425,3 +2425,87 @@ existing 2D marker does. Evidence:
 already-tested mutators; see this file's own "test coverage, per the
 operating bar" precedent from part 2 for why a full R3F scene test
 wasn't attempted here either).
+
+## Wall-mount edge-selection rework
+
+Closes the second, distinct gap Kirk found live-testing the free-rotation
+prototype (separate from the rotation-MATH question that prototype
+answered): "I can only line up 1 direction — flush with a wall on one
+side but not the other — oh that is which tile I put it on, but still."
+The rotation math was never the problem (`wallMountRotationY` already
+derives flush rotation from the real edge geometry, confirmed correct by
+Kirk's own "30 deg to be flat on the wall" finding) — the problem was
+that the facing STEPPER cycled all 6 hex directions blindly, most of
+which have no real wall on that cell to be flush against, making the one
+direction that DOES look right hard to find by feel.
+
+**What shipped**:
+
+- `boardGeometry.ts` gains three pure functions: `neighborCell` (the
+  (col,row) of a cell's neighbor in a given facing direction — shared
+  coordinate math, not re-derived a third time alongside
+  `wallMountRotationY`'s own copy and `DungeonPreview3D.tsx`'s click-
+  to-place hit-cell math), `wallBearingFacings` (which of a cell's 6
+  facing directions actually have a wall — checked both authoring
+  orders, since `dungeonYaml.ts`'s own `wallIndexAtEdge` only matches
+  one fixed `{from,to}` order and this lookup has to recognize a wall
+  regardless of which side authored it), and `stepWallFacing` (steps
+  the CURRENT facing to the next/previous entry in that bearing list,
+  cyclically — not raw ±1 on the full 6-direction range). 10 new unit
+  tests, all built via `neighborCell` itself for fixture coordinates
+  rather than hand-derived cube math (self-consistent, not guessable-
+  wrong).
+- `Inspector.tsx`'s facing rotate buttons now route through
+  `stepWallFacing` for `mount: wall` placements specifically (floor-
+  standing props are untouched — the enum was never the question for
+  them). A hint line under the facing control says exactly what's
+  happening: "stepping cycles this cell's N walls only — flush by
+  construction," or an honest "no wall on this cell yet — stepping
+  cycles all 6 directions" when the cell has none (degrades gracefully
+  rather than going inert on an incomplete authoring state).
+- **"Flip to other side"**: a new Inspector button for `mount: wall`
+  placements that moves the placement to the wall's far cell and
+  mirrors `facing` ((facing+3)%6 — the same wall edge, viewed from the
+  opposite side), one click instead of delete-and-replace. Validated
+  before it's ever offered: the far cell must be in bounds, not the
+  reserved door row, belong to a real room, not a hole, and not already
+  occupied — otherwise the button shows disabled with an honest tooltip
+  naming which check failed. Edit-mode only for this landing: creation
+  mode has no compiled `FloorPlan` to validate room/bounds against at
+  all (`CreationConcept.tsx`'s own doc comment), so the button always
+  reads "not available in New Dungeon mode yet" there rather than
+  guessing at canvas-mode validity — named honestly, not silently
+  hidden.
+
+**Also fixed in the same pass — a real bug, not scope creep**: flip
+needed a cross-room move that preserves every field (facing, mount,
+height, rotate_degrees, targeting), which is exactly the data-loss bug
+the 2026-08-02 graduation audit flagged in `handleMove`'s existing
+cross-list path (`DungeonBuilderConcept.tsx:129-135` — a naive
+delete+`placeItem` shape that only ever carried `ref`+`at`, silently
+dropping everything else, plus an adjacent `.find(...)!` that threw
+outright for a `roomId: null` destination since no room has id `null`).
+Fixed at the root with a new `movePlacementAcrossLists` mutator
+(`dungeonYaml.ts`) that preserves the full `PlacementDoc` and returns
+the item's real new index directly, so callers never have to re-derive
+it from possibly-stale `doc` state. `handleMove` now calls it for every
+cross-list move — not just the new flip feature — closing the audit
+item everywhere it applied, not only on the path this round happened to
+need. 2 new `dungeonYaml.test.ts` cases cover field preservation and the
+`roomId: null` destination specifically (the exact case that used to
+crash).
+
+**Verified live**: an isolated test cell with 2 real walls (E and NW
+edges) and a wall-banner starting at `facing: E` — clicking rotate (↻)
+jumped DIRECTLY from E to NW, correctly skipping NE (no wall there)
+entirely; clicking again wrapped back to E (only 2 entries in the
+bearing list). Clicked "flip to other side": the placement moved from
+`at: [2,2]` to `at: [3,2]` (the real E-neighbor) with `facing` mirrored
+to W, while `mount: wall` and `height: 2` both survived untouched —
+proving `movePlacementAcrossLists`' field preservation in the real flow,
+not just the unit test. Evidence:
+`docs/evidence/dungeon-builder-wallmount-edge-stepping.png`,
+`docs/evidence/dungeon-builder-wallmount-flip-to-other-side.png`.
+
+`ci-check` clean, full suite passing (69 tests: the pre-existing 57 + 10
+new wall-bearing/step cases + 2 new `movePlacementAcrossLists` cases).

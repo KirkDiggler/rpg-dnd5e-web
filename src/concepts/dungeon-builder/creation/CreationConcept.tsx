@@ -329,6 +329,7 @@ export function CreationConcept({
         onSetRotationDegrees={edit.handleSetRotationDegrees}
         onSetTargeting={edit.handleSetTargeting}
         onSetFacing={edit.handleSetFacing}
+        onFlipMountSide={edit.handleFlipMountSide}
       />
     </div>
   );
