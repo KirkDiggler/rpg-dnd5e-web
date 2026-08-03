@@ -1,0 +1,9 @@
+# Dungeon Builder specimen pack (rpg-project#175) — real output from
+# dungeonYaml.ts's own serializeDungeon/stripToV1Subset, committed
+# byte-accurate on purpose. Prettier's YAML formatter reformats flow-style
+# maps onto multiple lines and swaps double quotes for single, which would
+# silently diverge these files from both what the real serializer emits
+# and what's posted verbatim on rpg-project#175 — see
+# src/concepts/dungeon-builder/specimens/README.md for the full context.
+src/concepts/dungeon-builder/specimens/*.yaml
+src/concepts/dungeon-builder/specimens/*.json
