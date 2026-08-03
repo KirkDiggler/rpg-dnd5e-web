@@ -2509,3 +2509,62 @@ not just the unit test. Evidence:
 
 `ci-check` clean, full suite passing (69 tests: the pre-existing 57 + 10
 new wall-bearing/step cases + 2 new `movePlacementAcrossLists` cases).
+
+## Height decouples from mount
+
+Kirk-batch ask, 2026-08-02: "height: decouples from mount. Any placement
+may carry height (floating candles); mount:wall remains the wall-flush
+case." Before this, `mount`/`height` were one mutator
+(`setPlacementMount(cst, roomId, index, mount, height)`) — `height` was
+only ever meaningful alongside `mount: wall`, so the two were set/cleared
+together. Now they're fully independent, matching
+`setPlacementRotationDegrees`'s own already-independent shape.
+
+**What shipped**:
+
+- `dungeonYaml.ts`: `setPlacementMount` drops its `height` parameter —
+  it only ever sets/clears `mount:` now. New `setPlacementHeight(cst,
+roomId, index, height)` sets/clears `height:` on its own. Neither
+  touches the other's key. `stripToV1Subset`'s dropped-fields counting
+  splits accordingly: `mountCount`/`heightCount` tracked and reported
+  separately (`wall-mount (N placements)` / `height (N placements)`),
+  matching `rotate_degrees`'s own independent counting rather than the
+  old combined "wall-mount" bucket.
+- `Inspector.tsx`: the height field is no longer nested inside the
+  `mount === 'wall'` conditional or gated by `WALL_MOUNTABLE_REFS` — it's
+  its own checkbox+number control, available for any non-monster
+  placement (matching the same `!isMonster` boundary
+  `blocks_movement`/`blocks_los` already use). Checking it defaults to
+  0.5m (a judgment call for "floating decoration," distinct from the
+  wall-mount checkbox's own 2.0m default for "banner at eye height" — no
+  brief-specified value existed for either, both are named as defaults
+  in their own doc comments). When height is set and the placement is
+  NOT wall-mounted, a hint appears: "floats above the floor — pair with
+  blocks_movement off to keep it passable" — directly answering the
+  Kirk-batch's item 3 ask (make the passable-floating composition FEEL
+  discoverable) by surfacing the pairing at the exact moment it's
+  relevant, rather than requiring the author to already know it.
+- `DungeonPreview3D.tsx`: `buildOnePlacement`'s position calculation
+  changes from `p.mount === 'wall' ? (p.height ?? 0) : 0` (height
+  silently discarded for any floor-standing placement, regardless of
+  whether one was authored) to plain `p.height ?? 0` — a floor-standing
+  prop with a height now actually renders elevated, not just accepts the
+  field into the document without visual effect. Rotation stays
+  mount-gated, deliberately: orientation is still a wall-vs-floor
+  question (flush-against-the-edge vs. general facing convention),
+  height no longer is.
+- `TARGET-YAML.md`'s z-axis section updated with the decoupled
+  semantics and a floor-standing-with-height example.
+
+**Verified live**: an isolated floor-standing `dnd5e:props:candles`
+placement (`blocks_movement: false`, `height: 1.5`, no `mount:` key) —
+the Inspector correctly showed the height checkbox checked at 1.5 with
+NO wall-mounted checkbox at all (candles isn't in
+`WALL_MOUNTABLE_REFS`), the passable-floating hint visible, and the
+compile badge honestly tracking `Uses: height (1 placement) — not yet
+compiled server-side`. Evidence:
+`docs/evidence/dungeon-builder-height-decouple-inspector.png`,
+`docs/evidence/dungeon-builder-height-decouple-3d-floating.png`.
+
+`ci-check` clean, full suite passing (58 tests: the `setPlacementMount`
+test split into a decoupling-focused pair, net +1 over the prior count).

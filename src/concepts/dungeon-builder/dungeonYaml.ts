@@ -114,10 +114,14 @@ export interface PlacementDoc {
   /** target dialect, proposed — see `Mount`'s doc comment. `'floor'` when the YAML
    * has no `mount:` key (the pre-existing, only-ever-possible state). */
   mount: Mount;
-  /** target dialect, proposed — meaningful only when `mount === 'wall'`, meters
-   * above the floor. `null` when unset (including every `mount:
-   * 'floor'` placement — a floor prop's vertical position is derived
-   * from its own model, not authored). */
+  /** target dialect, proposed — meters above the floor. DECOUPLED from
+   * `mount` (Kirk-batch, 2026-08-02 — see `setPlacementHeight`'s own doc
+   * comment): meaningful for ANY placement, not gated on `mount ===
+   * 'wall'` — a `mount: wall` prop typically carries it (how far up the
+   * wall), but so can a floor-standing one, authoring a floating prop
+   * (a candle, `blocks_movement: false`) independent of wall-mounting.
+   * `null` when unset — the common case, and every placement's vertical
+   * position before this field existed at all. */
   height: number | null;
   /** EXPERIMENT, not even a target-dialect proposal yet (Kirk's
    * 2026-08-02 "3D editing" arc, part 2 follow-up) — a fine rotation
@@ -565,7 +569,10 @@ export function movePlacementAcrossLists(
   if (item.facing !== null)
     setPlacementFacing(cst, toRoomId, newIndex, item.facing);
   if (item.mount === 'wall') {
-    setPlacementMount(cst, toRoomId, newIndex, 'wall', item.height);
+    setPlacementMount(cst, toRoomId, newIndex, 'wall');
+  }
+  if (item.height !== null) {
+    setPlacementHeight(cst, toRoomId, newIndex, item.height);
   }
   if (item.rotationDegrees !== null) {
     setPlacementRotationDegrees(cst, toRoomId, newIndex, item.rotationDegrees);
@@ -717,28 +724,51 @@ export function setBossFacing(
   else boss.set('facing', facingLabel(facing));
 }
 
-/** Set a `place:` entry's `mount:`/`height:` — target dialect, proposed, see
- * TARGET-YAML.md's "z-axis" section. `mount: 'floor'` clears BOTH keys
- * (the pre-existing, only-ever-possible state needs neither); `mount:
- * 'wall'` writes both — `height` is only ever meaningful alongside
- * `mount: wall`, so the two are set/cleared together rather than as two
- * independent mutators a caller could desync. */
+/** Set or clear a `place:` entry's `mount:` — target dialect, proposed,
+ * see TARGET-YAML.md's "z-axis" section. `mount: 'floor'` clears the key
+ * (the pre-existing, only-ever-possible state needs no key at all).
+ *
+ * DECOUPLED FROM `height` (Kirk-batch, 2026-08-02: "height: decouples
+ * from mount... any placement may carry height (floating candles);
+ * mount:wall remains the wall-flush case"). Before this, `mount`/
+ * `height` were one mutator (`height` was only ever meaningful alongside
+ * `mount: wall`) — now they're independent, matching
+ * `setPlacementRotationDegrees`'s own already-independent shape. Toggling
+ * `mount` off does NOT clear an existing `height` (a floor-standing prop
+ * can still float — that's the entire point of the decoupling); toggling
+ * it on does NOT set a default height either — the Inspector's own "has
+ * height" checkbox owns that default, same separation of concerns
+ * `setPlacementHeight` below documents from its own side. */
 export function setPlacementMount(
   cst: Document,
   roomId: string | null,
   index: number,
-  mount: Mount,
+  mount: Mount
+): void {
+  const place = placeSeq(cst, roomId);
+  const item = place.items[index];
+  if (!isMap(item)) return;
+  if (mount === 'floor') item.delete('mount');
+  else item.set('mount', 'wall');
+}
+
+/** Set or clear a `place:` entry's `height:` — target dialect, proposed,
+ * see TARGET-YAML.md's "z-axis" section. Independent of `mount`
+ * (Kirk-batch, 2026-08-02 decoupling — see `setPlacementMount`'s own doc
+ * comment for the full rationale): a `mount: wall` placement typically
+ * carries height (how far up the wall), but so can a floor-standing one
+ * (a floating candle, `blocks_movement: false`) — `mount` no longer
+ * gates whether `height` is meaningful, only what it means alongside
+ * (wall clearance vs. float height). `null` clears the key. */
+export function setPlacementHeight(
+  cst: Document,
+  roomId: string | null,
+  index: number,
   height: number | null
 ): void {
   const place = placeSeq(cst, roomId);
   const item = place.items[index];
   if (!isMap(item)) return;
-  if (mount === 'floor') {
-    item.delete('mount');
-    item.delete('height');
-    return;
-  }
-  item.set('mount', 'wall');
   if (height === null) item.delete('height');
   else item.set('height', height);
 }
@@ -1152,6 +1182,7 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
 
   let facingCount = 0;
   let mountCount = 0;
+  let heightCount = 0;
   let targetingCount = 0;
   let rotationDegreesCount = 0;
   const stripPlacementFields = (item: YAMLMap) => {
@@ -1159,12 +1190,18 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
       item.delete('facing');
       facingCount++;
     }
-    // mount/height are one concept (see setPlacementMount's doc comment)
-    // — counted together, stripped together.
-    if (item.has('mount') || item.has('height')) {
+    // mount/height are DECOUPLED (Kirk-batch, 2026-08-02 — see
+    // setPlacementMount's/setPlacementHeight's own doc comments): a
+    // placement can carry either, both, or neither, so each is counted
+    // and stripped independently, matching rotate_degrees's own
+    // already-independent shape just below.
+    if (item.has('mount')) {
       item.delete('mount');
-      item.delete('height');
       mountCount++;
+    }
+    if (item.has('height')) {
+      item.delete('height');
+      heightCount++;
     }
     if (item.has('targeting')) {
       item.delete('targeting');
@@ -1203,6 +1240,11 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
   if (mountCount > 0) {
     dropped.push(
       `wall-mount (${mountCount} placement${mountCount === 1 ? '' : 's'})`
+    );
+  }
+  if (heightCount > 0) {
+    dropped.push(
+      `height (${heightCount} placement${heightCount === 1 ? '' : 's'})`
     );
   }
   if (targetingCount > 0) {

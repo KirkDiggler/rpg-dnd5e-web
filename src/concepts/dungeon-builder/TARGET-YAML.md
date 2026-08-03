@@ -371,9 +371,27 @@ which the schema had no way to say until now.
 
 - **`mount`**: `floor` (default, omit it) | `wall`. Whether this
   placement stands on the floor or hangs on a wall.
-- **`height`**: meters above the floor. Only meaningful when
-  `mount: wall`; ignored/omit for `mount: floor` (a floor-standing prop's
-  vertical position is derived from its own model, same as today).
+- **`height`**: meters above the floor. **DECOUPLED from `mount`**
+  (Kirk-batch, 2026-08-02: "height: decouples from mount... any
+  placement may carry height (floating candles); mount:wall remains the
+  wall-flush case"). A `mount: wall` placement typically still carries
+  it (how far up the wall it hangs), but so can a `mount: floor`
+  placement — a floating decoration (a candle, `blocks_movement: false`
+  so it stays passable) hovering above the floor plane, unrelated to any
+  wall. Omit for the common case: a floor-standing prop whose vertical
+  position is derived from its own model, same as before this field
+  existed.
+
+```yaml
+# a floor-standing floating candle -- no mount:, height alone.
+- {
+    ref: 'dnd5e:props:candles',
+    at: [4, 4],
+    height: 0.5,
+    blocks_movement: false,
+    blocks_los: false,
+  }
+```
 
 **Why this shape and not a bare `z: <number>` field**: a raw Z offset
 answers "how high" but not "on which surface, positioned how" — `mount`
@@ -391,10 +409,12 @@ already reads. `height` is the one genuinely new field.
 fields alongside `ref`/`at`/`blocks_movement`/`blocks_los`. The 3D
 renderer (`PropModel.tsx`) would need to read `mount: wall` +
 `facing` + `height` and compute a wall-relative position/rotation
-instead of the floor-center placement it does today — a real, scoped
-piece of render work, not attempted this round (doc-only construct; the
-placement inspector's optional height field, when cheap to add for a
-known wall-mountable ref, is the only UI this round ships).
+instead of the floor-center placement it does today for the wall case,
+and a simple vertical offset above the floor plane for the
+`mount: floor` + `height` case — both real, scoped pieces of render
+work. This concept's own 3D preview (`DungeonPreview3D.tsx`) already
+does both (verified live, CONTRACT.md's "height decouples from mount"
+section) — the real game's renderer does not yet.
 
 **Was an open question, RESOLVED 2026-08-02 by Kirk's own hands in live
 play: is 6-direction hex facing too coarse for a wall-mounted prop?**
