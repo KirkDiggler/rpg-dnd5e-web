@@ -30,6 +30,7 @@ import {
   setEnd,
   setPlacementFacing,
   setPlacementFlags,
+  setPlacementHeight,
   setPlacementMount,
   setPlacementRotationDegrees,
   setPlacementTargeting,
@@ -167,14 +168,28 @@ function useBoardEditing(
   };
 
   // Boss entries have no mount/height (bosses aren't wall furniture) —
-  // only place: entries do, matching Inspector.tsx's own gate.
-  const handleSetMount = (mount: Mount, height: number | null) => {
+  // only place: entries do, matching Inspector.tsx's own gate. Two
+  // separate handlers, not one — mount/height are DECOUPLED (Kirk-batch,
+  // 2026-08-02: "height: decouples from mount... any placement may carry
+  // height"), matching `setPlacementMount`'s/`setPlacementHeight`'s own
+  // now-independent shape.
+  const handleSetMount = (mount: Mount) => {
     if (!selectedPlacement || selectedPlacement.boss) return;
     setPlacementMount(
       cst,
       selectedPlacement.roomId,
       selectedPlacement.index,
-      mount,
+      mount
+    );
+    syncFromCst(cst);
+  };
+
+  const handleSetHeight = (height: number | null) => {
+    if (!selectedPlacement || selectedPlacement.boss) return;
+    setPlacementHeight(
+      cst,
+      selectedPlacement.roomId,
+      selectedPlacement.index,
       height
     );
     syncFromCst(cst);
@@ -235,6 +250,7 @@ function useBoardEditing(
     handleDelete,
     handleSetFlags,
     handleSetMount,
+    handleSetHeight,
     handleSetRotationDegrees,
     handleSetTargeting,
     handleSetFacing,
@@ -893,6 +909,7 @@ export function DungeonBuilderConcept() {
           onSetFlags={edit.handleSetFlags}
           onDelete={edit.handleDelete}
           onSetMount={edit.handleSetMount}
+          onSetHeight={edit.handleSetHeight}
           onSetRotationDegrees={edit.handleSetRotationDegrees}
           onSetTargeting={edit.handleSetTargeting}
           onSetFacing={edit.handleSetFacing}

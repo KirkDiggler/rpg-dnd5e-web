@@ -292,16 +292,16 @@ function buildOnePlacement(
   key: string
 ): { prop?: PlacedProp; monster?: PlacedMonster } {
   // Target dialect, proposed (TARGET-YAML.md's "z-axis: mount +
-  // height" section) — mount: 'wall' placements render at their
-  // authored height instead of the floor plane, rotated flush
-  // against the wall edge they hang on via `wallMountRotationY` (the
-  // same `hexEdgeBetween` convention `wallBoxTransform` uses, not a
-  // floor prop's `facingToRotationY`).
-  const position = worldPosition(
-    absCol,
-    row,
-    p.mount === 'wall' ? (p.height ?? 0) : 0
-  );
+  // height" section) — `height` is DECOUPLED from `mount` (Kirk-batch,
+  // 2026-08-02: "height: decouples from mount... any placement may
+  // carry height (floating candles)"), so it's honored here regardless
+  // of mount: a mount:wall placement renders at its authored height on
+  // the wall; a floor-standing one with a height set floats above the
+  // floor plane at that same height (the exact "floating candle" shape
+  // the decoupling exists for). Rotation stays mount-gated below —
+  // ROTATION is still a wall-vs-floor question (flush-against-the-edge
+  // vs. general facing), height no longer is.
+  const position = worldPosition(absCol, row, p.height ?? 0);
   const rotationY =
     p.facing === null
       ? 0

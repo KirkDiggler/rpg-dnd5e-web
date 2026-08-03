@@ -15,6 +15,7 @@ import {
   setEnd,
   setLightingAmbient,
   setPlacementFacing,
+  setPlacementHeight,
   setPlacementMount,
   setPlacementRotationDegrees,
   setPlacementTargeting,
@@ -363,24 +364,44 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
     expect(toDungeonDoc(cst).rooms[0].place[0].facing).toBeNull();
   });
 
-  it('setPlacementMount writes mount+height together, clears both together', () => {
+  it('setPlacementMount sets/clears mount: alone, independent of height', () => {
     const { cst } = parseDungeon(SHOWCASE_YAML);
-    setPlacementMount(cst, 'antechamber', 0, 'wall', 2.0);
+    setPlacementMount(cst, 'antechamber', 0, 'wall');
     const placed = toDungeonDoc(cst).rooms[0].place[0];
     expect(placed.mount).toBe('wall');
-    expect(placed.height).toBe(2.0);
+    expect(placed.height).toBeNull(); // mount alone never sets height
     expect(serializeDungeon(cst)).toContain('mount: wall');
-    expect(serializeDungeon(cst)).toContain('height: 2');
 
-    setPlacementMount(cst, 'antechamber', 0, 'floor', null);
+    setPlacementMount(cst, 'antechamber', 0, 'floor');
     const cleared = toDungeonDoc(cst).rooms[0].place[0];
     expect(cleared.mount).toBe('floor');
-    expect(cleared.height).toBeNull();
     // `mount:` only ever appears on a wall-mounted placement — a clean
-    // string check. `height:` also names the dungeon's own top-level
-    // field (room-chain height), so that assertion is covered by
-    // `cleared.height` above instead of a substring search here.
+    // string check.
     expect(serializeDungeon(cst)).not.toContain('mount:');
+  });
+
+  it('setPlacementHeight is DECOUPLED from mount (Kirk-batch, 2026-08-02) — sets/clears height: independently, on a floor-standing placement too', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    // Floor-standing (mount stays 'floor') but floating -- the exact
+    // "floating candle" shape the decoupling exists for.
+    setPlacementHeight(cst, 'antechamber', 0, 0.5);
+    const floating = toDungeonDoc(cst).rooms[0].place[0];
+    expect(floating.mount).toBe('floor');
+    expect(floating.height).toBe(0.5);
+    expect(serializeDungeon(cst)).toContain('height: 0.5');
+    expect(serializeDungeon(cst)).not.toContain('mount:');
+
+    // Setting mount afterward does not disturb the independently-set
+    // height, and clearing mount does not clear height either --
+    // genuine independence, not just independent setters that still
+    // secretly interact.
+    setPlacementMount(cst, 'antechamber', 0, 'wall');
+    expect(toDungeonDoc(cst).rooms[0].place[0].height).toBe(0.5);
+    setPlacementMount(cst, 'antechamber', 0, 'floor');
+    expect(toDungeonDoc(cst).rooms[0].place[0].height).toBe(0.5);
+
+    setPlacementHeight(cst, 'antechamber', 0, null);
+    expect(toDungeonDoc(cst).rooms[0].place[0].height).toBeNull();
   });
 
   it('setPlacementRotationDegrees writes a rotate_degrees: key, clears on null AND on 0 (a 0° nudge and no nudge render identically)', () => {
@@ -432,7 +453,8 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
       setEnd(cst, [19, 25]);
       setLightingAmbient(cst, 0.8);
       setPlacementFacing(cst, 'antechamber', 0, 2);
-      setPlacementMount(cst, 'antechamber', 0, 'wall', 2.0);
+      setPlacementMount(cst, 'antechamber', 0, 'wall');
+      setPlacementHeight(cst, 'antechamber', 0, 2.0);
       setPlacementRotationDegrees(cst, 'antechamber', 0, 15);
       setPlacementTargeting(cst, 'antechamber', 0, 'lowest-health');
       setBossTargeting(cst, doc.rooms[2].id, 'closest');
@@ -445,6 +467,7 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
         'lighting',
         'facing (1 placement)',
         'wall-mount (1 placement)',
+        'height (1 placement)',
         'targeting (2 placements)',
         'fine-rotation experiment (1 placement)',
       ]);
@@ -566,11 +589,12 @@ connectors: []
       expect(doc.place).toEqual([]);
     });
 
-    it('setPlacementFacing/setPlacementMount/setPlacementTargeting all work on a top-level entry', () => {
+    it('setPlacementFacing/setPlacementMount/setPlacementHeight/setPlacementTargeting all work on a top-level entry', () => {
       const { cst } = parseDungeon(SHOWCASE_YAML);
       placeItem(cst, null, 'dnd5e:props:wall-banner', [1, 1]);
       setPlacementFacing(cst, null, 0, 2);
-      setPlacementMount(cst, null, 0, 'wall', 2.0);
+      setPlacementMount(cst, null, 0, 'wall');
+      setPlacementHeight(cst, null, 0, 2.0);
       setPlacementTargeting(cst, null, 0, 'closest');
 
       const doc = toDungeonDoc(cst);

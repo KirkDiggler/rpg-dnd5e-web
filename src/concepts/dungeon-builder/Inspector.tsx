@@ -5,26 +5,31 @@
  * an original concept constraint). Also the entrance-blocked warning, the single most
  * persuasive interaction in the standalone concept (see CONTRACT.md).
  *
- * Two target-dialect, proposed controls (Kirk's 2026-08-02 dialect adds —
- * TARGET-YAML.md's "z-axis" and "Monster targeting" sections), both badged:
- * a targeting dropdown for any monster placement (boss or general), and
- * a wall-mount height field for the one palette ref this round judged
- * cheap enough to wire up (`WALL_MOUNTABLE_REFS` — `dnd5e:props:
- * wall-banner`, the only ref in this palette whose own name says
- * "wall"). Neither reaches `PutDungeon` — `stripToV1Subset` drops both
- * before any real save, same as every other target-dialect field.
+ * Target-dialect, proposed controls (TARGET-YAML.md's "z-axis" and
+ * "Monster targeting" sections), all badged: a targeting dropdown for
+ * any monster placement (boss or general); a wall-mount checkbox for
+ * the one palette ref this round judged cheap enough to wire up
+ * (`WALL_MOUNTABLE_REFS` — `dnd5e:props:wall-banner`, the only ref in
+ * this palette whose own name says "wall"); and — DECOUPLED from mount
+ * (Kirk-batch, 2026-08-02: "height: decouples from mount... any
+ * placement may carry height (floating candles); mount:wall remains the
+ * wall-flush case") — a height field available for ANY non-monster
+ * placement, not gated to `WALL_MOUNTABLE_REFS`. None of these reach
+ * `PutDungeon` — `stripToV1Subset` drops them all before any real save,
+ * same as every other target-dialect field.
  */
 import { HEX_FACING_LABELS } from '@/components/hex-grid/authorGridHelpers';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { DungeonDoc, Mount } from './dungeonYaml';
 import type { PlacementSelection } from './types';
 
-/** Wall-mountable props this round wires the mount/height inspector UI
- * up for — deliberately small (see TARGET-YAML.md's z-axis section:
- * "the placement inspector's optional height field, when cheap to add
- * for a known wall-mountable ref, is the only UI this round ships").
- * `dnd5e:props:wall-banner` is the only palette ref whose own name says
- * "wall" — not a general "any prop can mount on a wall" affordance. */
+/** Wall-mountable props this round wires the `mount:` checkbox UI up
+ * for — deliberately small. `dnd5e:props:wall-banner` is the only
+ * palette ref whose own name says "wall" — not a general "any prop can
+ * mount on a wall" affordance. Does NOT gate the height field anymore
+ * (Kirk-batch, 2026-08-02 decoupling — see this file's own header doc
+ * comment): height is available for any non-monster placement,
+ * `mount`'s own gate stays this small on purpose. */
 const WALL_MOUNTABLE_REFS = new Set<string>(['dnd5e:props:wall-banner']);
 
 const TARGETING_OPTIONS = [
@@ -92,7 +97,11 @@ interface InspectorProps {
   selected: PlacementSelection | null;
   onSetFlags: (blocksMovement: boolean, blocksLos: boolean) => void;
   onDelete: () => void;
-  onSetMount: (mount: Mount, height: number | null) => void;
+  onSetMount: (mount: Mount) => void;
+  /** DECOUPLED from `onSetMount` (Kirk-batch, 2026-08-02 — see
+   * `setPlacementHeight`'s own doc comment): any non-monster placement
+   * can carry height, not just a `mount: wall` one. `null` clears it. */
+  onSetHeight: (height: number | null) => void;
   onSetTargeting: (targeting: string | null) => void;
   onSetFacing: (facing: number | null) => void;
   /** EXPERIMENT — see `ExperimentBadge`'s own doc comment. `null`/`0`
@@ -110,6 +119,7 @@ export function Inspector({
   onSetFlags,
   onDelete,
   onSetMount,
+  onSetHeight,
   onSetTargeting,
   onSetFacing,
   onSetRotationDegrees,
@@ -261,6 +271,69 @@ export function Inspector({
         <label htmlFor="db-chk-bl">blocks_los</label>
       </div>
 
+      {!isMonster && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              id="db-chk-height"
+              checked={height !== null}
+              onChange={(e) => onSetHeight(e.target.checked ? 0.5 : null)}
+            />
+            <label
+              htmlFor="db-chk-height"
+              style={{ display: 'flex', alignItems: 'center', fontSize: 11 }}
+            >
+              height (m)
+              <TargetDialectBadge />
+            </label>
+          </div>
+          {/* DECOUPLED from mount (Kirk-batch, 2026-08-02: "height:
+              decouples from mount... any placement may carry height
+              (floating candles); mount:wall remains the wall-flush
+              case") — available for any non-monster placement, not
+              gated on `isWallMountable`. A wall-mounted prop typically
+              still wants one (how far up the wall), but so does a
+              floor-standing floating decoration with
+              blocks_movement:false — this is the SAME field, meaning
+              "wall clearance" alongside mount:wall and "float height"
+              otherwise, set independently either way. */}
+          {height !== null && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                marginTop: 6,
+              }}
+            >
+              <input
+                id="db-height-value"
+                type="number"
+                step={0.1}
+                min={0}
+                value={height}
+                onChange={(e) => onSetHeight(Number(e.target.value) || 0)}
+                style={{
+                  width: 60,
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 4,
+                  padding: '2px 6px',
+                }}
+              />
+              {mount !== 'wall' && (
+                <span style={{ fontSize: 10, color: '#8a7a5a' }}>
+                  floats above the floor — pair with blocks_movement off to keep
+                  it passable
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {isMonster && (
         <div
           style={{
@@ -330,9 +403,7 @@ export function Inspector({
               type="checkbox"
               id="db-chk-mount"
               checked={mount === 'wall'}
-              onChange={(e) =>
-                onSetMount(e.target.checked ? 'wall' : 'floor', height ?? 2.0)
-              }
+              onChange={(e) => onSetMount(e.target.checked ? 'wall' : 'floor')}
             />
             <label
               htmlFor="db-chk-mount"
@@ -342,38 +413,6 @@ export function Inspector({
               <TargetDialectBadge />
             </label>
           </div>
-          {mount === 'wall' && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                marginTop: 6,
-              }}
-            >
-              <label htmlFor="db-height" style={{ fontSize: 11 }}>
-                height (m)
-              </label>
-              <input
-                id="db-height"
-                type="number"
-                step={0.1}
-                min={0}
-                value={height ?? 2.0}
-                onChange={(e) =>
-                  onSetMount('wall', Number(e.target.value) || 0)
-                }
-                style={{
-                  width: 60,
-                  background: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: 4,
-                  padding: '2px 6px',
-                }}
-              />
-            </div>
-          )}
           {mount === 'wall' && (
             <div style={{ marginTop: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
