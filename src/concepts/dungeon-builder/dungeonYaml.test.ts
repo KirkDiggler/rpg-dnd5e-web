@@ -872,6 +872,42 @@ describe('defaults: ref-keyed inherited fields (rpg-project#175, Kirk\'s ask ver
     expect(vault.boss?.targeting).toBeNull();
   });
 
+  it('"snap flush to nearest wall" (useBoardEditing.ts\'s handleSnapFlush, fine-rotation generalization round) writes an EXPLICIT facing that overrides a ref-level defaulted one, and an explicit rotate_degrees alongside it', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    // Give this ref an inherited facing default — same shape this whole
+    // describe block is about, just on the prop the fine-rotation round
+    // uses for its own floor-standing test case.
+    setRefDefault(cst, 'dnd5e:props:statue-reaper', 'facing', 2); // NE
+    let doc = toDungeonDoc(cst);
+    let room = doc.rooms.find((r) => r.id === 'shrine')!;
+    const statueIndex = room.place.findIndex(
+      (p) => p.ref === 'dnd5e:props:statue-reaper'
+    );
+    let resolved = resolvePlacement(doc, room.place[statueIndex]!);
+    expect(resolved.facing).toBe(2);
+    expect(resolved.inheritedFrom.facing).toBe(true);
+
+    // handleSnapFlush itself: two independent mutator calls against the
+    // SAME (roomId, index), the pre-validated (facing, rotationDegrees)
+    // pair `computeFlushRotation` would have produced — the "flush"
+    // answer here (SW) is deliberately different from the ref default
+    // (NE) so an accidental no-op wouldn't pass this assertion.
+    setPlacementFacing(cst, 'shrine', statueIndex, 4); // SW
+    setPlacementRotationDegrees(cst, 'shrine', statueIndex, 15);
+
+    doc = toDungeonDoc(cst);
+    room = doc.rooms.find((r) => r.id === 'shrine')!;
+    const statue = room.place[statueIndex]!;
+    resolved = resolvePlacement(doc, statue);
+    // The snap-flush facing is now EXPLICIT on this instance and wins
+    // over the ref default, exactly like every other explicit-vs-default
+    // case above — a default facing never blocks overriding it.
+    expect(statue.explicit.facing).toBe(true);
+    expect(resolved.facing).toBe(4);
+    expect(resolved.inheritedFrom.facing).toBe(false);
+    expect(statue.rotationDegrees).toBe(15);
+  });
+
   describe('stripToV1Subset: materialize-on-strip', () => {
     it('bakes an inherited blocks_movement: true onto EVERY placement of that ref that never set it explicitly', () => {
       const { cst } = parseDungeon(SHOWCASE_YAML);

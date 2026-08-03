@@ -461,13 +461,92 @@ Both halves are now settled:
   of delete-and-replace. See CONTRACT.md's "Wall-mount edge-selection
   rework" section for the full landing writeup and live verification.
 
-Nothing left open on this question as of this writing — both the
-rotation math and the edge-selection UX are resolved and shipped. A
-possible future refinement (not queued, not asked for): the `flip to
-other side` affordance is edit-mode only today (no compiled `FloorPlan`
-exists in creation mode to validate the far cell against) — extending it
-there would need a canvas-bounds-based validity check instead of a
-`FloorPlan`-based one.
+**Update, 2026-08-03 — "nothing left open" was true for wall-mounted
+props specifically, not for the fine-rotation field in general.** See
+"Fine rotation, generalized to floor-standing props" below for the gap
+this missed: `rotate_degrees` had been scoped to `mount === 'wall'`
+placements from the moment it was introduced, which silently meant a
+FLOOR-standing prop had zero fine-rotation control at all — the same
+interleave finding above applies to a floor prop sitting next to a wall
+just as much as to one mounted ON it, and nothing before this date had
+generalized the field to say so. A possible future refinement (not
+queued, not asked for): the `flip to other side` affordance is edit-mode
+only today (no compiled `FloorPlan` exists in creation mode to validate
+the far cell against) — extending it there would need a canvas-bounds-based
+validity check instead of a `FloorPlan`-based one.
+
+## Fine rotation, generalized to floor-standing props (2026-08-03)
+
+Kirk, reporting a regression after the wall-mount edge-selection rework
+above shipped: "we lost the ability to fine tune the rotate or more
+importantly to adjust it the 30 [degrees] so on some hexes it can be
+flush with the wall." Git archaeology (not guessed — walked every commit
+that touched `rotate_degrees`/`Inspector.tsx`'s rotation section) found
+**no code regression**: the fine-rotation slider was gated to
+`mount === 'wall'` from its very first commit (#683, "free-rotation
+prototype for wall-mounted props") and every subsequent PR that touched
+this area (#686's wall-mount edge-selection rework, #688's height
+decouple) deliberately preserved that scope rather than widening it —
+#688 even named the asymmetry explicitly in its own code comment
+("Rotation stays mount-gated, deliberately... height no longer is").
+So this was **over-narrowing, not data loss**: the control was built and
+gated as a wall-mount-only experiment from day one, and the underlying
+`rotationDegrees` field/mutator/strip handling in `dungeonYaml.ts` never
+actually checked `mount` at all — only the Inspector's render condition
+did. Kirk's report is the correct signal that the original scope was too
+narrow, not evidence of a bug.
+
+**Why floor props need this just as much as wall mounts do.** The same
+geometry fact drives both: a hex's 6 neighbor/facing directions
+(`facingToRotationY`'s angle set, `{0°,60°,...,300°}`) and its 6 edge
+orientations (`wallMountRotationY`'s angle set, `{30°,90°,...,330°}`) are
+two DIFFERENT sets, interleaved 30° apart — verified numerically, not
+assumed (`boardGeometry.test.ts`'s `facingToRotationY / wallMountRotationY`
+suite). A floor-standing prop's `facing` enum can therefore never land
+exactly edge-parallel (flush) against an adjacent wall by stepping alone,
+for exactly the same reason a wall-mounted prop's facing enum couldn't —
+`mount: wall` was never actually what made the enum insufficient; being
+NEXT TO or ON a wall is.
+
+**Resolved model**: `rotationDegrees` (`rotate_degrees:` in YAML) is now
+available on ANY non-monster placement, not gated on `mount`:
+
+- **`mount: wall`**: unchanged — offsets the coarse `wallMountRotationY`-
+  derived flush rotation within that edge's own plane, same as before.
+- **Floor-standing** (`mount` unset or `'floor'`): offsets the coarse
+  `facingToRotationY(facing)` base angle instead. Meaningless without a
+  `facing` set (there's no base angle to nudge) — the Inspector disables
+  the slider in that state with an honest hint, rather than letting it
+  silently no-op.
+- **Range stays ±30°**, unchanged — this was never an arbitrary choice
+  to begin with (half of one 60° facing step), and the interleave
+  geometry above means ±30° exactly covers the reachable gap for BOTH
+  branches: any wall-flush angle is reachable as some floor `facing` ±30°
+  gets no closer or further whether the placement is mounted on the wall
+  or standing next to it.
+- **Monsters are excluded, named honestly rather than silently omitted**:
+  `PreviewMonsterModel.tsx` (the 3D preview's monster renderer) has no
+  `rotationY` prop at all — a monster placement's `rotate_degrees` would
+  parse and strip correctly but render with zero visible effect. Same
+  `isMonster` gate `blocks_movement`/`blocks_los`/height already use.
+
+**"Snap flush to nearest wall"** — a new Inspector button, floor-standing
+placements only (a `mount: wall` placement is already flush by
+construction once on a real wall-bearing edge). Kirk's actual use case
+was never "give me a slider," it was "make this prop flush" — a bare
+slider makes the author find the right angle by feel/trigonometry, which
+is exactly the friction the "30 deg to be flat on the wall" report was
+about in the first place. The button computes the exact
+`(facing, rotationDegrees)` pair via `boardGeometry.ts`'s
+`computeFlushRotation` (round-trip-verified against `wallMountRotationY`'s
+real edge-flush angle in `boardGeometry.test.ts`, not just spot-checked)
+and sets both fields at once. Disabled with an honest tooltip when the
+cell has no adjacent wall to snap to.
+
+Verified live: see CONTRACT.md's "Fine rotation, generalized to
+floor-standing props" section for the browser walkthrough (a floor prop
+placed next to a wall, snapped flush via the button, screenshot
+evidence).
 
 **Update, 2026-08-02 — the second option now exists as a live, testable
 prototype, not just a described option.** `PlacementDoc.rotationDegrees`

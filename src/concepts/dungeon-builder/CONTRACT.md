@@ -2827,3 +2827,210 @@ Specimen pack bumped to v0.2 (`specimens/README.md`'s own changelog) —
 `kitchen-sink.yaml` now shows a decoupled floor-standing `height` (#688)
 and the new `defaults:` map exercising both outcomes above;
 `kitchen-sink.v1-subset.yaml`/`.dropped.json` regenerated to match.
+
+## Fine rotation, restored and generalized to floor-standing props (2026-08-03)
+
+Kirk's report, verbatim: placing in 3D and adjusting height works, but "we
+lost the ability to fine tune the rotate or more importantly to adjust it
+the 30 [degrees] so on some hexes it can be flush with the wall."
+
+### Regression archaeology verdict: over-narrowed by design from day one, not a code regression
+
+Walked every commit touching `rotate_degrees`/`Inspector.tsx`'s rotation
+section rather than guessing which PR broke it. **Finding: nothing broke.**
+The fine-rotation slider (`PlacementDoc.rotationDegrees`, "New arc: 3D
+editing, part 2 follow-up — free-rotation prototype" section above) was
+gated to `mount === 'wall'` placements from its very FIRST commit (#683)
+— "free-rotation prototype for wall-mounted props" is literally the PR
+title. Every subsequent PR that touched this area preserved that scope
+rather than widening it:
+
+- #686 (the wall-mount edge-selection rework, above) added the facing
+  hint/flip-to-other-side UI around the mount checkbox but never touched
+  the rotation-slider block itself (confirmed by diff: `git show c7ed801
+-- Inspector.tsx` shows zero lines removed/added in that section).
+- #688 (height decouples from mount, above) explicitly named the
+  asymmetry it was choosing NOT to fix, in its own code comment:
+  "Rotation stays mount-gated, deliberately... height no longer is."
+
+So this was **over-narrowing, not data loss**: `dungeonYaml.ts`'s
+`rotationDegrees` field, `parseRotationDegrees`, `setPlacementRotationDegrees`,
+and `stripToV1Subset`'s handling never once checked `mount` — only the
+Inspector's render condition (`isWallMountable && mount === 'wall'`, and
+even more narrowly, nested inside a checkbox block that only rendered for
+`WALL_MOUNTABLE_REFS` — i.e. `dnd5e:props:wall-banner` alone) restricted
+who could ever see the control. Kirk's report is the correct signal that
+this original scope was too narrow, not evidence of a regression to
+restore to some prior working state — there was no prior state where a
+floor prop had fine rotation.
+
+### Why floor props need this exactly as much as wall mounts do
+
+Same geometry fact, verified numerically (`boardGeometry.test.ts`'s new
+`facingToRotationY / wallMountRotationY` suite), not re-asserted from the
+30° finding alone: a hex's 6 neighbor/facing directions
+(`facingToRotationY`'s angle set, `{0°,60°,...,300°}`) and its 6 edge
+orientations (`wallMountRotationY`'s angle set, `{30°,90°,...,330°}`) are
+two DIFFERENT, interleaved sets, 30° apart. A floor-standing prop's
+`facing` enum can therefore never land exactly edge-parallel against an
+adjacent wall by stepping alone — the identical reason a wall-mounted
+prop's facing enum couldn't. `mount: wall` was never actually what made
+6-direction facing insufficient; being next to (or on) a wall is.
+
+### What shipped
+
+- **`boardGeometry.ts`** gains `facingToRotationY`/`wallMountRotationY`
+  (moved here from `preview3d/DungeonPreview3D.tsx`, which now imports
+  them rather than keeping private duplicates — one definition instead of
+  two, matching this file's "clean interfaces, not concept-only
+  scaffolding" operating bar), `nearestBearingFacing` (which of a cell's
+  wall-bearing edges is closest to a given facing, by circular distance),
+  and `computeFlushRotation` (the real work): given a cell's walls and an
+  optional current facing, returns the `(facing, rotationDegrees)` pair
+  that reconstructs the exact wall-flush angle for the nearest adjacent
+  wall — searching all 6 floor-facing candidates rather than assuming the
+  wall's own facing index works (it doesn't: a first draft assumed
+  `wallMountRotationY(f)` and `facingToRotationY(f)` for the SAME `f`
+  differ by the ±30° gap; a throwaway probe script proved that assumption
+  wrong — the real gap for matching indices is a constant 90° [the edge
+  is perpendicular to the radial line to its neighbor], and the actual
+  ±30°-reachable candidates are the wall-bearing facing's two NEIGHBORS in
+  the facing cycle. Caught before it shipped, not after — see
+  `boardGeometry.test.ts`'s round-trip test, which reconstructs the target
+  angle from the returned pair and asserts the diff is <0.01°, not just
+  that some plausible-looking numbers came out).
+- **`dungeonYaml.ts`**: `PlacementDoc.rotationDegrees`/
+  `setPlacementRotationDegrees`'s doc comments updated to describe the
+  generalization; zero functional change (neither ever checked `mount`).
+- **`preview3d/DungeonPreview3D.tsx`**: `buildOnePlacement`'s `rotationY`
+  formula now applies `rotationDegrees` on top of whichever coarse
+  rotation `facing` produces — `wallMountRotationY` for `mount: wall`,
+  `facingToRotationY` otherwise — instead of only the wall branch.
+  `facing === null` still means "no base to nudge" for either branch,
+  matching the Inspector's disabled-slider state (nothing to silently
+  no-op against).
+- **`Inspector.tsx`**: the fine-rotation slider moved OUT of the
+  `isWallMountable`-only checkbox block into its own section gated on
+  `!isMonster` (same gate `height` already uses), disabled when
+  `facing === null` with an honest hint instead of silently no-opping.
+  New **"snap flush to nearest wall"** button, floor-standing placements
+  only (`mount !== 'wall'` — a wall mount is already flush by
+  construction once on a real wall-bearing edge): computes the validated
+  `(facing, rotationDegrees)` pair via `computeFlushRotation` and, on
+  click, sets both fields in one action — Kirk's actual use case was
+  never "give me a slider," it was "make this flush," and a bare slider
+  makes the author find the angle by feel/trigonometry, exactly the
+  friction the original "30 deg to be flat on the wall" report was about.
+  Disabled with an honest tooltip when the cell has no adjacent wall.
+- **`useBoardEditing.ts`**: new `handleSnapFlush(target)` — two
+  independent mutator calls (`setPlacementFacing` then
+  `setPlacementRotationDegrees`) against the same `(roomId, index)`, safe
+  because neither moves the item (no stale-index risk the way
+  `handleFlipMountSide`'s cross-list move has to guard against).
+- **Monsters excluded, named honestly**: `PreviewMonsterModel.tsx` (the
+  3D preview's monster renderer) has no `rotationY` prop at all — checked
+  directly, not assumed. A monster placement's `rotate_degrees` would
+  parse/strip correctly but render with zero visible effect, so the
+  Inspector's new section stays gated on `!isMonster`, same boundary
+  `blocks_movement`/`blocks_los`/height already use.
+- **Range stays ±30°**, unchanged, for a real reason rather than habit:
+  the interleave geometry above means ±30° exactly covers the reachable
+  gap for both branches — any wall-flush angle is reachable as some floor
+  `facing` ± 30°, never more.
+
+### Tests
+
+`boardGeometry.test.ts` gains 13 new cases: `facingToRotationY`/
+`wallMountRotationY` (the 6-and-6 interleaved angle sets, scale
+invariance), `nearestBearingFacing` (circular-distance tie-breaking), and
+`computeFlushRotation` (null-safety with no adjacent wall, all 6
+wall-bearing directions always resolve within ±30°, a full round-trip
+reconstruction against `wallMountRotationY`'s real target angle for each,
+and current-facing bias when a cell has walls on more than one side).
+Full suite: 97 dungeon-builder tests passing (up from 84), typecheck and
+lint clean.
+
+### Verified live
+
+Built an isolated single-room test document (`connectors: []` is
+required even when empty — the parser reports "No connectors: list
+found" and leaves the board unchanged otherwise, caught by the live
+verification itself, not read in the source first) — one floor-standing
+`dnd5e:props:pillar` at `[5,3]` with a real wall from `[5,3]` to `[6,3]`
+(no `mount:` key at all). Selected it: Inspector showed `facing: —`, the
+fine-rotation slider at 0° and disabled with "pick a facing direction
+above to enable fine rotation," and "snap flush to nearest wall" already
+enabled (`computeFlushRotation` doesn't need a pre-existing facing).
+Clicked it: the YAML gained `facing: NW, rotate_degrees: 30` in one
+action — the EXACT pair `boardGeometry.test.ts`'s round-trip test
+predicts for a wall on this cell's NE edge — and the Inspector updated to
+show `facing: NW`, the slider now enabled at 30°, with the hint switched
+to "added on top of facing's coarse pick — the only way to sit a
+floor-standing prop edge-parallel (flush) against a wall." Compile badge
+correctly tracked `Uses: 1 wall, facing (1 placement), fine-rotation
+experiment (1 placement)` throughout. Evidence:
+`docs/evidence/dungeon-builder-floor-rotation-disabled-before-facing.png`,
+`docs/evidence/dungeon-builder-floor-rotation-snap-flush.png`.
+
+**Not captured: the 3D render itself.** This ephemeral job worktree has
+no `public/models/synty/` at all (unlike prior rounds' worktrees, which
+had it rsync'd from `~/game-dev/rpg-game-assets` — see this file's
+"Thumbnails" section above for that provenance) — attempting the 3D
+toggle throws `Could not load .../Dungeons_Texture_FloorTiles_01.png` and
+the R3F `<Canvas>` never mounts at all (`canvas` count 0 in the DOM),
+an environment gap, not a code defect. What's verified instead: `preview3d/
+DungeonPreview3D.tsx`'s `buildOnePlacement` now calls the exact same
+`wallMountRotationY`/`facingToRotationY` functions (moved to
+`boardGeometry.ts`, imported rather than reimplemented) that
+`boardGeometry.test.ts`'s round-trip test already proves reconstruct the
+real flush angle — the 3D render path is mathematically guaranteed
+consistent with the Inspector state confirmed live above, even though this
+worktree can't render the GLB to prove it visually. Whoever next has
+Synty assets synced in a dungeon-builder worktree can confirm the pixel
+result in under a minute by loading the same test YAML above and
+toggling to 3D.
+
+`ci-check` clean.
+
+### Reconciled with the `defaults:` resolver, same day
+
+This section and the `defaults:` one above it (this file's prior
+section) shipped on separate branches — #693 (fine rotation) and #691
+(`defaults:`) — that never coexisted in either PR's own history, so
+neither had a chance to prove the two compose. Reconciling #693 onto
+`dev` after #691 landed there surfaced the real seam: `buildOnePlacement`
+(`preview3d/DungeonPreview3D.tsx`) and the Inspector's fine-rotation gate
+both need the RESOLVED facing (`resolvePlacement`'s output), not the
+placement's own raw `facing`, for an inherited facing to compose with a
+fine-rotation nudge the same way an explicit one already did — `mount`
+stays a raw read either way, since it's deliberately not a defaultable
+field (`DungeonDoc.defaults`'s own doc comment). Composed, not merely
+merged: `buildOnePlacement`'s `rotationY` formula and `worldPosition`
+call now read `resolved.facing`/`resolved.height` (from `resolvePlacement`)
+while keeping the fine-rotation generalization's "apply `rotationDegrees`
+on top of BOTH the wall and floor-standing branches" shape from this
+section above; the Inspector's slider-disabled and snap-flush-target
+gates (`facing === null`) already resolved cleanly through git's own
+merge (both read the same `facing` local, itself now
+`resolved?.facing ?? null`) — confirmed by adding coverage rather than
+assumed. `buildOnePlacement` exported (previously private) so this could
+be asserted directly against the real render-path code, same "one shared
+definition, not a private duplicate" reasoning `facingToRotationY`/
+`wallMountRotationY` already used moving into `boardGeometry.ts`.
+
+New composition tests, none of which existed on either source branch:
+`preview3d/DungeonPreview3D.test.ts` (new file) — an inherited facing
+composes with an explicit `rotate_degrees` through both the floor-standing
+and `mount: wall` branches, asserted against the actual exported
+`buildOnePlacement`, not a hand-copied formula. `Inspector.test.tsx` (new
+file) — an inherited facing enables the fine-rotation slider exactly like
+an explicit one, and the no-facing-at-all case still disables it with the
+same honest hint. `dungeonYaml.test.ts`'s `defaults:` describe block gains
+one case: `handleSnapFlush`'s two-mutator write (`setPlacementFacing` +
+`setPlacementRotationDegrees`) produces an EXPLICIT facing that overrides
+a ref-level default, using a snap-flush answer deliberately different
+from the default so a silent no-op couldn't pass. 117 dungeon-builder
+tests passing (up from 112 — the 84-test shared base plus #693's 13 plus
+#691's 15, confirming no coverage was lost composing the two — plus 5
+new composition cases), `ci-check` clean (format/lint/typecheck/build/
+test).
