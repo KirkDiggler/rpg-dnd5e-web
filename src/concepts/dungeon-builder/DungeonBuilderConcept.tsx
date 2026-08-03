@@ -705,6 +705,7 @@ export function DungeonBuilderConcept() {
           onSetMount={edit.handleSetMount}
           onSetHeight={edit.handleSetHeight}
           onSetRotationDegrees={edit.handleSetRotationDegrees}
+          onSnapFlush={edit.handleSnapFlush}
           onSetTargeting={edit.handleSetTargeting}
           onSetFacing={edit.handleSetFacing}
           onFlipMountSide={edit.handleFlipMountSide}

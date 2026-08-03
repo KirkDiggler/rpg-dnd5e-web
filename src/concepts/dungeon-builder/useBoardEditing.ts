@@ -162,9 +162,12 @@ export function useBoardEditing(
   };
 
   // EXPERIMENT, not a target-dialect field (Inspector.tsx's own
-  // ExperimentBadge doc comment) — same boss-excluded gate as
-  // handleSetMount, since the control only ever shows for a
-  // mount: 'wall' place: entry, which a boss can never be.
+  // ExperimentBadge doc comment) — boss-excluded, same gate as
+  // handleSetMount/handleSetHeight (a boss is never wall-mounted and
+  // never carries a fine-rotation nudge either). Generalized
+  // (2026-08-03) to any non-monster place: entry, floor-standing
+  // included — this handler itself never checked `mount`, only the
+  // Inspector's render condition used to.
   const handleSetRotationDegrees = (rotationDegrees: number | null) => {
     if (!selectedPlacement || selectedPlacement.boss) return;
     setPlacementRotationDegrees(
@@ -172,6 +175,39 @@ export function useBoardEditing(
       selectedPlacement.roomId,
       selectedPlacement.index,
       rotationDegrees
+    );
+    syncFromCst(cst);
+  };
+
+  // "Snap flush to nearest wall" (fine-rotation generalization round,
+  // Kirk's 2026-08-03 ask: a fine-tune slider alone makes him do
+  // trigonometry by feel) — sets BOTH facing and rotationDegrees at once
+  // to the pre-validated pair the Inspector already computed via
+  // `boardGeometry.ts`'s `computeFlushRotation`. Two separate mutator
+  // calls rather than one combined one: `setPlacementFacing`/
+  // `setPlacementRotationDegrees` already exist as independent single-
+  // field mutators (matching this concept's general "each field has its
+  // own setter" shape — `setPlacementMount`/`setPlacementHeight` are the
+  // same pair, decoupled on purpose), and both act on the SAME
+  // (roomId, index) without moving the item, so calling them back to
+  // back against the same live `cst` is safe — no stale-index risk the
+  // way a cross-list move (`handleFlipMountSide`) has to guard against.
+  const handleSnapFlush = (target: {
+    facing: number;
+    rotationDegrees: number;
+  }) => {
+    if (!selectedPlacement || selectedPlacement.boss) return;
+    setPlacementFacing(
+      cst,
+      selectedPlacement.roomId,
+      selectedPlacement.index,
+      target.facing
+    );
+    setPlacementRotationDegrees(
+      cst,
+      selectedPlacement.roomId,
+      selectedPlacement.index,
+      target.rotationDegrees
     );
     syncFromCst(cst);
   };
@@ -250,6 +286,7 @@ export function useBoardEditing(
     handleSetMount,
     handleSetHeight,
     handleSetRotationDegrees,
+    handleSnapFlush,
     handleSetTargeting,
     handleSetFacing,
     handleFlipMountSide,

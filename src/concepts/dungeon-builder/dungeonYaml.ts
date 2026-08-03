@@ -123,21 +123,28 @@ export interface PlacementDoc {
    * `null` when unset — the common case, and every placement's vertical
    * position before this field existed at all. */
   height: number | null;
-  /** EXPERIMENT, not even a target-dialect proposal yet (Kirk's
-   * 2026-08-02 "3D editing" arc, part 2 follow-up) — a fine rotation
-   * ADJUSTMENT in degrees, ADDED on top of the coarse 6-direction
-   * `facing`-derived rotation for a `mount: 'wall'` placement, never a
-   * replacement for it (`facing` still picks which wall; this nudges the
-   * exact angle against that wall). Exists solely to let Kirk compare
-   * "6-direction facing alone" against "6-direction facing + a fine
-   * nudge" on the SAME object and decide, by feel, whether
-   * TARGET-YAML.md's open "is 6-direction hex facing too coarse for a
-   * wall-mounted prop" question needs a real field — this is the probe,
-   * not the answer. `null` when unset (every placement before this
-   * field existed, and every `mount: 'floor'` placement, which this
-   * concept's Inspector doesn't even show the control for). Not
-   * compiled server-side; stripped by `stripToV1Subset` before any real
-   * save, same as every other target-dialect field. */
+  /** EXPERIMENT, not even a target-dialect proposal yet — a fine rotation
+   * ADJUSTMENT in degrees (±30°), ADDED on top of the coarse 6-direction
+   * `facing`-derived rotation, never a replacement for `facing` itself.
+   * Originally scoped to `mount: 'wall'` placements only (Kirk's
+   * 2026-08-02 "3D editing" arc, part 2 follow-up, testing whether
+   * 6-direction facing alone is coarse enough for a wall-mounted prop —
+   * TARGET-YAML.md's now-resolved open question). GENERALIZED to any
+   * non-monster placement, floor-standing included (2026-08-03, Kirk:
+   * "we lost the ability to... adjust it the 30 [degrees] so on some
+   * hexes it can be flush with the wall") — the pointy-top interleave
+   * between neighbor/facing directions and edge orientations
+   * (`boardGeometry.ts`'s `computeFlushRotation` doc comment has the full
+   * geometry) means the 6-direction `facing` enum can never sit a
+   * FLOOR-standing prop edge-parallel against an adjacent wall either,
+   * not just a wall-mounted one — this field was never actually a
+   * wall-mount-specific concept, just built and gated as one first.
+   * Meaningless without a `facing` set (there's no base angle to nudge);
+   * the Inspector disables the control in that state rather than letting
+   * it silently no-op. `null` when unset (every placement before this
+   * field existed). Not compiled server-side; stripped by
+   * `stripToV1Subset` before any real save, same as every other
+   * target-dialect field. */
   rotationDegrees: number | null;
   /** target dialect, proposed — see TARGET-YAML.md's "Monster targeting" section. A
    * REFERENCE to a toolkit AI strategy key, e.g. `"lowest-health"` —
@@ -779,10 +786,11 @@ export function setPlacementHeight(
  * and what it does and doesn't mean. Independent of `setPlacementMount`
  * deliberately: clearing `mount` back to `'floor'` does NOT also clear
  * `rotate_degrees` — the fine-adjustment value is worth keeping around
- * if the author toggles wall-mount off and back on while comparing, and
- * the Inspector only ever shows this control when `mount === 'wall'`
- * anyway, so an orphaned value on a floor placement is inert, not
- * confusing. */
+ * if the author toggles wall-mount off and back on while comparing.
+ * Generalized (2026-08-03) to any non-monster placement — this mutator
+ * itself never checked `mount` in the first place; only the Inspector's
+ * render condition used to restrict the control to `mount === 'wall'`,
+ * which is what changed. */
 export function setPlacementRotationDegrees(
   cst: Document,
   roomId: string | null,

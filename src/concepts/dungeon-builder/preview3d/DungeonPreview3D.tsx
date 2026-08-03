@@ -62,7 +62,6 @@
  * "a walkable door," and is named honestly as the next fidelity step
  * rather than attempted here.
  */
-import { facingDirection } from '@/components/hex-grid/authorGridHelpers';
 import {
   type CubeCoord,
   cubeToWorld,
@@ -81,9 +80,11 @@ import { Canvas } from '@react-three/fiber';
 import { Suspense, useMemo } from 'react';
 import { DoubleSide, Shape } from 'three';
 import {
+  facingToRotationY,
   isCellOccupied,
   isEntranceBlocked,
   isSameSelection,
+  wallMountRotationY,
 } from '../boardGeometry';
 import type { DungeonDoc, PlacementDoc, WallDoc } from '../dungeonYaml';
 import { cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
@@ -181,21 +182,6 @@ function worldPosition(
   return [world.x, y, world.z];
 }
 
-/** A `facing:` index (0-5, HEX_FACING_LABELS order) to a Three.js Y
- * rotation (radians) — same `atan2(-dz, dx)` convention every other
- * facing-to-rotationY conversion in this codebase uses (hexMath.ts's
- * `hexEdgeBetween`, wallRuns.ts's envelope-corner rotation), so a
- * facing-rotated preview mesh orients the same way the real game's own
- * facing-aware renderers would. Floor-standing props only — a
- * `mount: wall` placement uses `wallMountRotationY` below instead, which
- * squares the model flush against its actual wall edge rather than just
- * pointing toward it. */
-function facingToRotationY(facing: number): number {
-  const dir = facingDirection(facing);
-  const world = cubeToWorld(dir, 1);
-  return Math.atan2(-world.z, world.x);
-}
-
 /** The edge geometry between two adjacent hex cells — position + rotation
  * both come from `hexMath.ts`'s `hexEdgeBetween`, the SAME function every
  * other edge-aligned Synty piece in the real game uses (envelope walls,
@@ -240,32 +226,6 @@ function wallBoxTransform(wall: WallDoc): {
   };
 }
 
-/** A wall-mounted prop's rotation: flush against the wall face it hangs
- * on, squared to that edge — the same `hexEdgeBetween` convention
- * `wallBoxTransform` above uses, not `facingToRotationY`'s "point toward
- * the wall" approximation (which orients the model's local +X straight
- * OUT through the wall, perpendicular to the face it's supposedly
- * mounted flush against — the actual bug behind Kirk's "banner renders
- * slightly angled" report). `facing` names which of the cell's 6 edges
- * the prop mounts on (TARGET-YAML.md's z-axis section); the neighbor
- * cell in that direction, fed through the same edge function every wall
- * uses, gives the correct flush-against-the-face rotation for free —
- * one convention, not two. */
-function wallMountRotationY(
-  absCol: number,
-  row: number,
-  facing: number
-): number {
-  const here = cubeAtColRow(absCol, row);
-  const dir = facingDirection(facing);
-  const there: CubeCoord = {
-    x: here.x + dir.x,
-    y: here.y + dir.y,
-    z: here.z + dir.z,
-  };
-  return hexEdgeBetween(here, there, HEX_SIZE).rotationY;
-}
-
 function buildWalls(walls: readonly WallDoc[]): PlacedWall[] {
   return walls.map((wall) => {
     const { position, rotationY } = wallBoxTransform(wall);
@@ -303,22 +263,25 @@ function buildOnePlacement(
   // ROTATION is still a wall-vs-floor question (flush-against-the-edge
   // vs. general facing), height no longer is.
   const position = worldPosition(absCol, row, p.height ?? 0);
+  // EXPERIMENT (see PlacementDoc.rotationDegrees's own doc comment) —
+  // `rotationDegrees` is a fine ADJUSTMENT added on top of whichever
+  // coarse rotation `facing` produces, never a replacement for it.
+  // Originally wall-mount-only; GENERALIZED (2026-08-03) to floor props
+  // too, since the same 6-direction-enum blind spot applies to both —
+  // `facing`'s 6 base angles and a wall edge's 6 flush angles are
+  // interleaved 30° apart regardless of whether the thing needing to sit
+  // flush is mounted ON the wall or standing on the floor beside it
+  // (`boardGeometry.ts`'s `computeFlushRotation` has the full geometry).
+  // `facing === null` still means "no base to nudge" for either branch —
+  // there's nothing for the fine adjustment to be relative to, so it's
+  // ignored rather than applied against an arbitrary zero.
   const rotationY =
     p.facing === null
       ? 0
-      : p.mount === 'wall'
-        ? // EXPERIMENT (see PlacementDoc.rotationDegrees's own doc
-          // comment) — `rotationDegrees` is a fine ADJUSTMENT added on
-          // top of the coarse 6-direction flush rotation, never a
-          // replacement for it. `facing` still picks which wall edge;
-          // this nudges the exact angle against that wall, the same
-          // shape as the open question it exists to let Kirk answer by
-          // feel: does the coarse pick get close enough that a small
-          // nudge covers the gap, or is a from-scratch free control
-          // needed instead?
-          wallMountRotationY(absCol, row, p.facing) +
-          ((p.rotationDegrees ?? 0) * Math.PI) / 180
-        : facingToRotationY(p.facing);
+      : (p.mount === 'wall'
+          ? wallMountRotationY(absCol, row, p.facing)
+          : facingToRotationY(p.facing)) +
+        ((p.rotationDegrees ?? 0) * Math.PI) / 180;
   if (p.isMonster) {
     const monsterRefId = p.ref.split(':').pop();
     return monsterRefId

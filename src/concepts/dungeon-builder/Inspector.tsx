@@ -17,10 +17,28 @@
  * placement, not gated to `WALL_MOUNTABLE_REFS`. None of these reach
  * `PutDungeon` — `stripToV1Subset` drops them all before any real save,
  * same as every other target-dialect field.
+ *
+ * The EXPERIMENT-badged "fine rotation" control (below the height field)
+ * follows the same DECOUPLED shape as height — GENERALIZED (2026-08-03,
+ * Kirk: "we lost the ability to... adjust it the 30 [degrees] so on some
+ * hexes it can be flush with the wall") from `mount === 'wall'`-only to
+ * any non-monster placement. A "snap flush to nearest wall" button sits
+ * next to it for floor-standing placements, computing the exact
+ * (facing, rotationDegrees) pair via `boardGeometry.ts`'s
+ * `computeFlushRotation` rather than asking the author to find it by
+ * feel — see that function's own doc comment for the geometry (the
+ * pointy-top interleave between neighbor/facing directions and edge
+ * orientations means the 6-direction facing enum alone can never reach a
+ * wall-flush angle). Monsters are excluded entirely, not just
+ * de-emphasized: `PreviewMonsterModel.tsx` has no `rotationY` prop at
+ * all, so a `rotate_degrees` on a monster placement would parse/strip
+ * fine but render with zero visible effect — same reasoning
+ * `blocks_movement`/`blocks_los` already use to gray out for monsters.
  */
 import { HEX_FACING_LABELS } from '@/components/hex-grid/authorGridHelpers';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
+  computeFlushRotation,
   isCellOccupied,
   neighborCell,
   roomAtColumn,
@@ -115,8 +133,18 @@ interface InspectorProps {
    * both mean "no fine adjustment," matching
    * `setPlacementRotationDegrees`'s own clear-on-zero convention (a 0°
    * nudge and no nudge render identically, so there is no reason to
-   * distinguish them in the document). */
+   * distinguish them in the document). GENERALIZED (2026-08-03) to any
+   * non-monster placement, not just `mount === 'wall'` — see this file's
+   * own header doc comment. */
   onSetRotationDegrees: (rotationDegrees: number | null) => void;
+  /** "Snap flush to nearest wall" (fine-rotation generalization round) —
+   * for a FLOOR-standing placement only (a `mount: wall` placement is
+   * already flush by construction once on a real wall-bearing edge, see
+   * the "stepping cycles this cell's N walls only" hint below), sets
+   * BOTH `facing` and `rotationDegrees` at once to the pre-validated
+   * pair `computeFlushRotation` computes. Optional so a caller that
+   * doesn't wire it (none exist today) simply never shows the button. */
+  onSnapFlush?: (target: { facing: number; rotationDegrees: number }) => void;
   /** Wall-mount edge-selection rework, part 2 (Kirk's 2026-08-02 "flush
    * with a wall on one side but not the other" finding) — move the
    * selected `mount: wall` placement to the wall's far cell, mirroring
@@ -144,6 +172,7 @@ export function Inspector({
   onSetTargeting,
   onSetFacing,
   onSetRotationDegrees,
+  onSnapFlush,
   onFlipMountSide,
 }: InspectorProps) {
   if (!selected) return null;
@@ -242,6 +271,16 @@ export function Inspector({
       newFacing: (facing + 3) % 6,
     };
   })();
+
+  // "Snap flush to nearest wall" (fine-rotation generalization round) —
+  // FLOOR-standing placements only (a `mount: wall` placement is already
+  // flush by construction, see the wall-bearing hint below); `null` when
+  // the cell has no adjacent wall to snap to, same "nothing to compute"
+  // shape `computeFlushRotation` itself returns.
+  const flushTarget =
+    mount === 'wall' || selected.boss
+      ? null
+      : computeFlushRotation(doc.walls, absCol, row, facing);
 
   return (
     <div
@@ -446,6 +485,89 @@ export function Inspector({
         </div>
       )}
 
+      {/* Fine rotation — DECOUPLED from mount, same shape as height above
+          (Kirk's 2026-08-03 generalization: "adjust it the 30 [degrees]
+          so on some hexes it can be flush with the wall"). Originally
+          nested inside the wall-mount-only checkbox block; moved to its
+          own section, gated only on `!isMonster`, once the same slider
+          became meaningful for floor-standing props too — see this
+          file's header doc comment for the geometry. */}
+      {!isMonster && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <label
+              htmlFor="db-rotation-degrees"
+              style={{ display: 'flex', alignItems: 'center' }}
+            >
+              fine rotation
+            </label>
+            <ExperimentBadge />
+          </div>
+          {/* ±30° — half of one 6-direction step either way, so this
+              fully covers the worst case a coarse facing pick can be off
+              by (the pointy-top interleave between neighbor/facing
+              directions and edge orientations — see
+              `computeFlushRotation`'s own doc comment). `facing` (above)
+              still picks the coarse direction; this nudges the exact
+              angle against it. */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginTop: 4,
+            }}
+          >
+            <input
+              id="db-rotation-degrees"
+              type="range"
+              min={-30}
+              max={30}
+              step={1}
+              value={rotationDegrees ?? 0}
+              disabled={facing === null}
+              onChange={(e) =>
+                onSetRotationDegrees(Number(e.target.value) || null)
+              }
+              style={{ flex: 1 }}
+            />
+            <span style={{ minWidth: 34, textAlign: 'right' }}>
+              {rotationDegrees ?? 0}°
+            </span>
+          </div>
+          <div style={{ fontSize: 10, color: '#8a7a5a', marginTop: 3 }}>
+            {facing === null
+              ? 'pick a facing direction above to enable fine rotation — there is no base angle to nudge yet'
+              : mount === 'wall'
+                ? "added on top of the wall-flush rotation — nudges the exact angle within this edge's plane"
+                : "added on top of facing's coarse pick — the only way to sit a floor-standing prop edge-parallel (flush) against a wall"}
+          </div>
+          {onSnapFlush && mount !== 'wall' && (
+            <button
+              onClick={() => flushTarget && onSnapFlush(flushTarget)}
+              disabled={!flushTarget}
+              title={
+                flushTarget
+                  ? 'set facing + fine rotation to sit flush against the nearest wall'
+                  : 'no wall adjacent to this cell to snap to'
+              }
+              style={{
+                marginTop: 6,
+                fontSize: 10,
+                background: 'transparent',
+                color: flushTarget ? '#8fe8e0' : '#5a4f42',
+                border: `1px solid ${flushTarget ? '#2a5a54' : '#3a332c'}`,
+                borderRadius: 3,
+                padding: '2px 8px',
+                cursor: flushTarget ? 'pointer' : 'not-allowed',
+              }}
+            >
+              snap flush to nearest wall
+            </button>
+          )}
+        </div>
+      )}
+
       {isMonster && (
         <div
           style={{
@@ -525,55 +647,6 @@ export function Inspector({
               <TargetDialectBadge />
             </label>
           </div>
-          {mount === 'wall' && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <label
-                  htmlFor="db-rotation-degrees"
-                  style={{ display: 'flex', alignItems: 'center' }}
-                >
-                  fine rotation
-                </label>
-                <ExperimentBadge />
-              </div>
-              {/* ±30° — half of one 6-direction step either way, so this
-                  fully covers the worst case a coarse facing pick can be
-                  off by. `facing` (above) still picks the wall; this
-                  nudges the exact angle against it. Kirk's own framing:
-                  "present BOTH granularities... so Kirk can feel them
-                  side by side on the same banner — that comparison IS
-                  the experiment." */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginTop: 4,
-                }}
-              >
-                <input
-                  id="db-rotation-degrees"
-                  type="range"
-                  min={-30}
-                  max={30}
-                  step={1}
-                  value={rotationDegrees ?? 0}
-                  onChange={(e) =>
-                    onSetRotationDegrees(Number(e.target.value) || null)
-                  }
-                  style={{ flex: 1 }}
-                />
-                <span style={{ minWidth: 34, textAlign: 'right' }}>
-                  {rotationDegrees ?? 0}°
-                </span>
-              </div>
-              <div style={{ fontSize: 10, color: '#8a7a5a', marginTop: 3 }}>
-                added on top of facing's coarse pick — testing whether
-                6-direction facing alone is enough, or wall-mounted props need
-                finer control (TARGET-YAML.md's open question)
-              </div>
-            </div>
-          )}
         </div>
       )}
 

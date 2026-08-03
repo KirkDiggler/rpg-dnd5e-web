@@ -4,6 +4,7 @@
  * from the component so it's unit-testable without React.
  */
 import { facingDirection } from '@/components/hex-grid/authorGridHelpers';
+import { cubeToWorld, hexEdgeBetween } from '@/components/hex-grid/hexMath';
 import type {
   FloorPlan,
   FloorPlanConnector,
@@ -233,4 +234,138 @@ export function stepWallFacing(
   const next =
     (((idx + delta) % bearing.length) + bearing.length) % bearing.length;
   return bearing[next]!;
+}
+
+/** A `facing:` index (0-5, HEX_FACING_LABELS order) to a Y rotation
+ * (radians) — same `atan2(-dz, dx)` convention every other facing-to-
+ * rotationY conversion in this codebase uses (`hexMath.ts`'s own
+ * `hexEdgeBetween`, `wallRuns.ts`'s envelope-corner rotation). Floor-
+ * standing props' base rotation; a `mount: wall` placement uses
+ * `wallMountRotationY` below instead — NOT interchangeable (see that
+ * function's own doc comment for why). Moved here from
+ * `preview3d/DungeonPreview3D.tsx` (fine-rotation generalization round)
+ * so the Inspector's flush-snap affordance and the 3D renderer share one
+ * definition instead of two. `hexSize` doesn't affect the resulting
+ * angle (`hexEdgeBetween`'s `rotationY` is a pure atan2 of a scaled
+ * vector, scale-invariant) so `1` is used rather than importing a
+ * rendering-specific size constant this pure-geometry module has no
+ * other reason to depend on. */
+export function facingToRotationY(facing: number): number {
+  const dir = facingDirection(facing);
+  const world = cubeToWorld(dir, 1);
+  return Math.atan2(-world.z, world.x);
+}
+
+/** A wall-mounted prop's rotation: flush against the wall face it hangs
+ * on, squared to the real edge between `(absCol, row)` and its neighbor
+ * in `facing`'s direction — the same `hexEdgeBetween` convention every
+ * edge-aligned piece in this codebase uses, NOT `facingToRotationY`'s
+ * "point toward the neighbor" approximation (which orients a model's
+ * local +X straight out through the wall, perpendicular to the face
+ * it's supposedly flush against). Moved here from
+ * `preview3d/DungeonPreview3D.tsx` for the same sharing reason
+ * `facingToRotationY` was. Also the base angle `computeFlushRotation`
+ * below solves against for a FLOOR prop's flush snap — the "which angle
+ * counts as flush" question has exactly one correct answer regardless of
+ * whether the thing asking is a wall mount or a floor prop standing next
+ * to the same wall. */
+export function wallMountRotationY(
+  absCol: number,
+  row: number,
+  facing: number
+): number {
+  const here = cubeAtColRow(absCol, row);
+  const dir = facingDirection(facing);
+  const there = { x: here.x + dir.x, y: here.y + dir.y, z: here.z + dir.z };
+  return hexEdgeBetween(here, there, 1).rotationY;
+}
+
+/** The entry in `bearing` (a cell's wall-bearing facings, from
+ * `wallBearingFacings`) closest to `current` by circular distance in
+ * 60°-step units — used by `computeFlushRotation` to pick which wall to
+ * snap to when a cell has more than one, biasing toward the direction
+ * the placement is already roughly facing rather than an arbitrary one.
+ * Falls back to the first bearing facing when `current` is `null`
+ * (nothing to be "nearest" to yet — same fallback shape
+ * `stepWallFacing` already uses). */
+export function nearestBearingFacing(
+  bearing: readonly number[],
+  current: number | null
+): number | null {
+  if (bearing.length === 0) return null;
+  if (current === null) return bearing[0]!;
+  let best = bearing[0]!;
+  let bestDist = Infinity;
+  for (const f of bearing) {
+    const raw = Math.abs(f - current) % 6;
+    const dist = Math.min(raw, 6 - raw);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = f;
+    }
+  }
+  return best;
+}
+
+/** Circular distance between two facing indices (0-5) in 60°-step
+ * units — 0..3. Shared by `computeFlushRotation`'s candidate scoring. */
+function facingCircularDistance(a: number, b: number): number {
+  const raw = Math.abs(a - b) % 6;
+  return Math.min(raw, 6 - raw);
+}
+
+/** The `(facing, rotationDegrees)` pair that sits a FLOOR-standing
+ * placement edge-parallel — flush — against the nearest wall on this
+ * cell. Kirk's actual ask behind the fine-rotation slider ("adjust it
+ * the 30 [degrees] so on some hexes it can be flush with the wall"):
+ * the 6-direction `facing` enum can never reach a wall-flush angle by
+ * stepping alone (the 2026-08-02 "30 deg to be flat on the wall"
+ * finding — the pointy-top interleave between neighbor/facing
+ * directions and edge orientations). Verified numerically, not assumed:
+ * `wallMountRotationY(absCol, row, wallFacing)` and
+ * `facingToRotationY(wallFacing)` for the SAME index differ by a fixed
+ * 90° (the edge is perpendicular to the radial line to the neighbor
+ * it's shared with) — picking the wall's OWN facing index as the floor
+ * prop's `facing` would need a 90° nudge, outside the slider's ±30°
+ * range entirely. The two 6-value angle sets (`facingToRotationY`'s
+ * `{0,60,...,300}` and `wallMountRotationY`'s `{30,90,...,330}`) are
+ * genuinely interleaved 30° apart, so the facing indices that CAN reach
+ * a given wall's flush angle within ±30° are its two NEIGHBORS in the
+ * facing cycle, one on each side — this searches all 6 for whichever
+ * lands within range (by construction, always exactly two, tied at
+ * ±30°) and prefers the one closer to `currentFacing` (minimal visual
+ * jump on the click), falling back to the lowest facing index
+ * deterministically when there's no current facing to bias toward.
+ * Returns `null` when the cell has no adjacent wall to snap to. */
+export function computeFlushRotation(
+  walls: readonly WallDoc[],
+  absCol: number,
+  row: number,
+  currentFacing: number | null
+): { facing: number; rotationDegrees: number } | null {
+  const bearing = wallBearingFacings(walls, absCol, row);
+  const wallFacing = nearestBearingFacing(bearing, currentFacing);
+  if (wallFacing === null) return null;
+  const target = wallMountRotationY(absCol, row, wallFacing);
+
+  let best: { facing: number; rotationDegrees: number } | null = null;
+  let bestScore = Infinity;
+  for (let facing = 0; facing < 6; facing++) {
+    const base = facingToRotationY(facing);
+    const rawDeg = ((target - base) * 180) / Math.PI;
+    // Normalize into (-180, 180] — hexEdgeBetween's atan2 and
+    // facingToRotationY's atan2 can each independently land on either
+    // side of the +-180 seam.
+    const normalizedDeg = ((((rawDeg + 180) % 360) + 360) % 360) - 180;
+    if (Math.abs(normalizedDeg) > 30.5) continue; // unreachable within the slider's range
+    const score =
+      currentFacing === null
+        ? 0
+        : facingCircularDistance(facing, currentFacing);
+    if (score < bestScore) {
+      bestScore = score;
+      best = { facing, rotationDegrees: Math.round(normalizedDeg) };
+    }
+  }
+  return best;
 }
