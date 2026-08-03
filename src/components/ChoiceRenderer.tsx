@@ -68,14 +68,16 @@ export function ChoiceRenderer({
           // Store equipment selections with both id and name: "cat0:id:name"
           const selections: string[] = [];
           if (bundleId) selections.push(bundleId);
-          categorySelections.forEach((equipment, index) => {
-            equipment.forEach((item) =>
-              // Store the authoritative selection ID and server-provided name.
-              selections.push(
-                `cat${index}:${item.selectionId}:${item.equipmentDetail?.name ?? item.selectionId}`
-              )
-            );
-          });
+          [...categorySelections.entries()]
+            .sort(([left], [right]) => left - right)
+            .forEach(([index, equipment]) => {
+              equipment.forEach((item) =>
+                // Store the authoritative selection ID and server-provided name.
+                selections.push(
+                  `cat${index}:${item.selectionId}:${item.equipmentDetail?.name ?? item.selectionId}`
+                )
+              );
+            });
           onSelectionChange(choice.id, selections);
         }}
       />

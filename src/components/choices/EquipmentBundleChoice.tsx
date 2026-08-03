@@ -100,12 +100,22 @@ function CategorySelector({
                 } --`}
                 options={options}
                 selectedId={selectedBySlot[slotIndex]}
+                // The toolkit validates uniqueness per category requirement,
+                // not across independent category choices.
+                disabledOptionIds={
+                  new Set(
+                    selectedBySlot.filter(
+                      (id, index): id is string =>
+                        index !== slotIndex && id !== null
+                    )
+                  )
+                }
                 onChange={(value) => handleSlotChange(slotIndex, value)}
               />
-              {selectedItem && (
+              {selectedItem?.equipmentDetail && (
                 <div style={{ marginTop: '6px' }}>
                   <EquipmentCard
-                    equipment={selectedItem.equipmentDetail!}
+                    equipment={selectedItem.equipmentDetail}
                     compact
                   />
                 </div>
@@ -116,6 +126,7 @@ function CategorySelector({
       </div>
       {hasDuplicates && (
         <div
+          role="alert"
           style={{
             marginTop: '8px',
             padding: '8px 12px',
@@ -126,7 +137,7 @@ function CategorySelector({
             color: 'var(--text-muted)',
           }}
         >
-          ⚠️ Same item selected multiple times (allowed for dual-wielding)
+          ⚠️ Select a different item in each slot before continuing.
         </div>
       )}
     </div>

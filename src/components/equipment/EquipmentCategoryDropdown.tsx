@@ -41,6 +41,8 @@ export interface EquipmentCategoryDropdownProps {
   options: EquipmentItem[];
   /** Currently selected option id (controlled), or null. */
   selectedId: string | null;
+  /** Options unavailable in this slot because a sibling selected them. */
+  disabledOptionIds?: ReadonlySet<string>;
   onChange: (id: string) => void;
   /** True while `options` is being fetched. */
   isLoading?: boolean;
@@ -57,6 +59,7 @@ export function EquipmentCategoryDropdown({
   placeholder = '-- Select item --',
   options,
   selectedId,
+  disabledOptionIds = new Set<string>(),
   onChange,
   isLoading = false,
   error = null,
@@ -79,7 +82,18 @@ export function EquipmentCategoryDropdown({
     [options, selectedId]
   );
 
-  const disabled = isLoading || !!error || options.length === 0;
+  const isOptionDisabled = useCallback(
+    (optionId: string) => disabledOptionIds.has(optionId),
+    [disabledOptionIds]
+  );
+  const enabledOptions = useMemo(
+    () => options.filter((option) => !isOptionDisabled(option.selectionId)),
+    [options, isOptionDisabled]
+  );
+  const disabled = isLoading || !!error || enabledOptions.length === 0;
+  const firstEnabledOptionId = enabledOptions[0]?.selectionId ?? null;
+  const lastEnabledOptionId =
+    enabledOptions[enabledOptions.length - 1]?.selectionId ?? null;
 
   // Keep the active (highlighted-while-open) option pointed at something
   // real whenever the option list changes out from under an open dropdown.
@@ -118,11 +132,17 @@ export function EquipmentCategoryDropdown({
 
   const moveActive = useCallback(
     (nextIndex: number) => {
-      if (options.length === 0) return;
-      const clamped = Math.max(0, Math.min(options.length - 1, nextIndex));
-      setActiveId(options[clamped].selectionId);
+      if (enabledOptions.length === 0) return;
+      const direction = nextIndex >= activeIndex ? 1 : -1;
+      let candidate = Math.max(0, Math.min(options.length - 1, nextIndex));
+      while (isOptionDisabled(options[candidate].selectionId)) {
+        const following = candidate + direction;
+        if (following < 0 || following >= options.length) return;
+        candidate = following;
+      }
+      setActiveId(options[candidate].selectionId);
     },
-    [options]
+    [activeIndex, enabledOptions.length, isOptionDisabled, options]
   );
 
   const commit = useCallback(
@@ -141,7 +161,11 @@ export function EquipmentCategoryDropdown({
           event.preventDefault();
           if (!open) {
             setOpen(true);
-            setActiveId(selectedId ?? options[0]?.selectionId ?? null);
+            setActiveId(
+              selectedId && !isOptionDisabled(selectedId)
+                ? selectedId
+                : firstEnabledOptionId
+            );
           } else {
             moveActive(activeIndex + 1);
           }
@@ -151,7 +175,9 @@ export function EquipmentCategoryDropdown({
           if (!open) {
             setOpen(true);
             setActiveId(
-              selectedId ?? options[options.length - 1]?.selectionId ?? null
+              selectedId && !isOptionDisabled(selectedId)
+                ? selectedId
+                : lastEnabledOptionId
             );
           } else {
             moveActive(activeIndex - 1);
@@ -174,7 +200,11 @@ export function EquipmentCategoryDropdown({
           event.preventDefault();
           if (!open) {
             setOpen(true);
-            setActiveId(selectedId ?? options[0]?.selectionId ?? null);
+            setActiveId(
+              selectedId && !isOptionDisabled(selectedId)
+                ? selectedId
+                : firstEnabledOptionId
+            );
           } else if (activeId) {
             commit(activeId);
           }
@@ -201,6 +231,9 @@ export function EquipmentCategoryDropdown({
       commit,
       selectedId,
       options,
+      isOptionDisabled,
+      firstEnabledOptionId,
+      lastEnabledOptionId,
       closeAndFocusTrigger,
     ]
   );
@@ -234,7 +267,13 @@ export function EquipmentCategoryDropdown({
         onClick={() => {
           if (disabled) return;
           setOpen((prev) => !prev);
-          if (!open) setActiveId(selectedId ?? options[0]?.selectionId ?? null);
+          if (!open) {
+            setActiveId(
+              selectedId && !isOptionDisabled(selectedId)
+                ? selectedId
+                : firstEnabledOptionId
+            );
+          }
         }}
         onKeyDown={handleTriggerKeyDown}
         style={{
@@ -341,6 +380,7 @@ export function EquipmentCategoryDropdown({
           {options.map((option) => {
             const isSelected = option.selectionId === selectedId;
             const isActive = option.selectionId === activeId;
+            const optionDisabled = isOptionDisabled(option.selectionId);
             return (
               <div
                 key={option.selectionId}
@@ -350,11 +390,17 @@ export function EquipmentCategoryDropdown({
                 role="option"
                 id={`${rootId}-option-${option.selectionId}`}
                 aria-selected={isSelected}
+                aria-disabled={optionDisabled || undefined}
                 data-testid={`${rootId}-option-${option.selectionId}`}
-                onMouseEnter={() => setActiveId(option.selectionId)}
-                onClick={() => commit(option.selectionId)}
+                onMouseEnter={() => {
+                  if (!optionDisabled) setActiveId(option.selectionId);
+                }}
+                onClick={() => {
+                  if (!optionDisabled) commit(option.selectionId);
+                }}
                 style={{
-                  cursor: 'pointer',
+                  cursor: optionDisabled ? 'not-allowed' : 'pointer',
+                  opacity: optionDisabled ? 0.5 : 1,
                   borderRadius: '6px',
                   outline: isActive
                     ? '2px solid var(--accent-primary)'
@@ -365,7 +411,11 @@ export function EquipmentCategoryDropdown({
                     : 'none',
                 }}
               >
-                <EquipmentCard equipment={option.equipmentDetail!} compact />
+                {option.equipmentDetail ? (
+                  <EquipmentCard equipment={option.equipmentDetail} compact />
+                ) : (
+                  <span>{option.selectionId}</span>
+                )}
               </div>
             );
           })}

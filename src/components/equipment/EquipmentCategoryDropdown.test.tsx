@@ -130,6 +130,25 @@ describe('EquipmentCategoryDropdown', () => {
     within(listbox).getByText('Light', { exact: false });
   });
 
+  it('renders an option without optional equipmentDetail without crashing', () => {
+    const onChange = vi.fn();
+    render(
+      <EquipmentCategoryDropdown
+        id="test-dropdown"
+        ariaLabel="Choose item"
+        options={[
+          create(EquipmentItemSchema, { selectionId: 'detail-pending' }),
+        ]}
+        selectedId={null}
+        onChange={onChange}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByTestId('test-dropdown-option-detail-pending'));
+    expect(onChange).toHaveBeenCalledWith('detail-pending');
+  });
+
   it('selects an option on click, reports it, and closes the popup', () => {
     const onChange = vi.fn();
     render(

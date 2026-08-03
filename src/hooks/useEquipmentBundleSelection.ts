@@ -80,11 +80,11 @@ export function useEquipmentBundleSelection(
         return null;
       }
 
-      // Flatten all category selections into a single array
-      const allSelectedItems: EquipmentItem[] = [];
-      categorySelections.forEach((items) => {
-        allSelectedItems.push(...items);
-      });
+      // The API assigns category meaning by index; Map insertion follows click
+      // order, so sort explicitly before flattening for stable serialization.
+      const allSelectedItems = [...categorySelections.entries()]
+        .sort(([left], [right]) => left - right)
+        .flatMap(([, items]) => items);
 
       // Convert to proto items
       const protoItems = allSelectedItems.map(createEquipmentSelectionItem);
@@ -128,7 +128,11 @@ export function useEquipmentBundleSelection(
     // Check each category choice has the required selections
     return bundle.categoryChoices.every((category, index) => {
       const selections = categorySelections.get(index) || [];
-      return selections.length >= category.choose;
+      const selectionIds = selections.map((selection) => selection.selectionId);
+      return (
+        selections.length >= category.choose &&
+        new Set(selectionIds).size === selectionIds.length
+      );
     });
   }, [getSelectedBundle, categorySelections]);
 
