@@ -16,20 +16,32 @@ describe('cellsEqual', () => {
   });
 });
 
-describe('cellsAdjacent', () => {
-  it('is true for orthogonal neighbors only', () => {
+describe("cellsAdjacent (HEX-TRUE, 2026-08-03 — see this module's own header comment for the 4-to-6-adjacency widening)", () => {
+  it('is true for the 4 old "orthogonal" neighbors — every one of them is still a real hex neighbor', () => {
     expect(cellsAdjacent([1, 1], [2, 1])).toBe(true);
     expect(cellsAdjacent([1, 1], [1, 2])).toBe(true);
     expect(cellsAdjacent([1, 1], [0, 1])).toBe(true);
     expect(cellsAdjacent([1, 1], [1, 0])).toBe(true);
   });
 
-  it('is false for diagonal neighbors', () => {
-    expect(cellsAdjacent([1, 1], [2, 2])).toBe(false);
+  it('is true for ONE of a square grid\'s two "diagonal" directions — a real hex neighbor square adjacency couldn\'t represent', () => {
+    // [1,1]-[2,2]: a genuine hex neighbor (verified numerically while
+    // building this unit — hex distance 1, not the "false" the old
+    // 4-neighbor-only rule gave it). This is exactly the kind of pair
+    // Kirk's finding named: a square grid only draws 4 of a hex's 6 real
+    // adjacencies, so a region that read as enclosed on squares could
+    // have an invisible open edge here in hex reality.
+    expect(cellsAdjacent([1, 1], [2, 2])).toBe(true);
+  });
+
+  it('is false for the OTHER "diagonal" direction — column parity means not every square-diagonal pair becomes a hex neighbor', () => {
+    // [1,1]-[0,0]: hex distance 2, still non-adjacent — the widening
+    // isn't "all diagonals now count," it's "exactly the diagonal that
+    // is a real hex neighbor now counts."
     expect(cellsAdjacent([1, 1], [0, 0])).toBe(false);
   });
 
-  it('is false for the same cell or a non-adjacent cell', () => {
+  it('is false for the same cell or a genuinely non-adjacent cell', () => {
     expect(cellsAdjacent([1, 1], [1, 1])).toBe(false);
     expect(cellsAdjacent([1, 1], [5, 5])).toBe(false);
   });
@@ -44,7 +56,7 @@ describe('cellsAreContiguous', () => {
     expect(cellsAreContiguous([[3, 3]])).toBe(true);
   });
 
-  it('is true for an orthogonally connected run, any authoring order', () => {
+  it('is true for a hex-connected run, any authoring order', () => {
     expect(
       cellsAreContiguous([
         [9, 4],
@@ -79,7 +91,7 @@ describe('cellsAreContiguous', () => {
 });
 
 describe('sharedBoundaryEdges', () => {
-  it('finds every orthogonal edge between two cell sets', () => {
+  it('finds every hex edge between two cell sets — including a genuinely NEW one 4-adjacency missed (HEX-TRUE, 2026-08-03)', () => {
     // A 2x1 region at col 0-1, row 0, next to a 2x1 region at col 0-1, row 1.
     const a: [number, number][] = [
       [0, 0],
@@ -90,11 +102,21 @@ describe('sharedBoundaryEdges', () => {
       [1, 1],
     ];
     const edges = sharedBoundaryEdges(a, b);
-    expect(edges).toHaveLength(2);
+    // The old 4-adjacency rule found exactly 2 edges here ([0,0]-[0,1],
+    // [1,0]-[1,1] — same-column, consecutive-row pairs). Real hex
+    // adjacency finds a THIRD: [1,0]-[0,1] is a genuine hex neighbor
+    // (verified numerically while building this unit) even though it
+    // reads as "diagonal" on the square grid these cells were originally
+    // authored against — one more candidate boundary edge
+    // `pickAttachmentEdge` now has to choose among, never fewer (6-
+    // adjacency is a strict superset, so a boundary that validated before
+    // still does).
+    expect(edges).toHaveLength(3);
     expect(edges).toEqual(
       expect.arrayContaining([
         { from: [0, 0], to: [0, 1] },
         { from: [1, 0], to: [1, 1] },
+        { from: [1, 0], to: [0, 1] },
       ])
     );
   });
@@ -105,7 +127,7 @@ describe('sharedBoundaryEdges', () => {
     expect(sharedBoundaryEdges(a, b)).toEqual([]);
   });
 
-  it('is empty for two regions that only touch diagonally', () => {
+  it('is empty for two cells that are hex-distance 2 apart, even though they read as "diagonal" neighbors on a square grid', () => {
     const a: [number, number][] = [[0, 0]];
     const b: [number, number][] = [[1, 1]];
     expect(sharedBoundaryEdges(a, b)).toEqual([]);

@@ -67,6 +67,32 @@ export function useRegionEditing(
     );
   };
 
+  /** IDEMPOTENT pending-cell membership setter — `included: true` adds
+   * only if absent, `false` removes only if present, a no-op otherwise.
+   * Exists alongside `togglePendingCell` for a genuinely different
+   * caller shape: a DRAG (`CreationBoard.tsx`'s region-brush pointer-move
+   * loop, 2026-08-03 — Kirk's ask, "building a region should have us draw
+   * the shape... right now we have to click every square") decides ONE
+   * add-vs-erase mode for the whole stroke up front (mirroring the
+   * wall-drawing stroke's own `addMode`, decided from the first edge
+   * touched) and then needs to apply that SAME mode to every cell the
+   * pointer passes over — a bare toggle would flip a cell back off the
+   * instant the drag re-enters one it already painted, or paint the WRONG
+   * direction for a cell that happened to already be a member before the
+   * drag started. A single click still reads as a toggle to the author
+   * (`CreationBoard.tsx` computes `included = !cellIn(pendingCells, cell)`
+   * for the drag's own first cell), so this doesn't change single-click
+   * behavior — it only makes the multi-cell case correct. */
+  const setPendingCellMembership = (cell: Cell, included: boolean) => {
+    setPendingCells((prev) => {
+      const has = cellIn(prev, cell);
+      if (included === has) return prev;
+      return included
+        ? [...prev, cell]
+        : prev.filter((c) => !(c[0] === cell[0] && c[1] === cell[1]));
+    });
+  };
+
   const clearPending = () => setPendingCells([]);
 
   /** Select an existing region for membership/metadata editing, or `null`
@@ -103,6 +129,32 @@ export function useRegionEditing(
         removeCellFromRegion(cst, doc, selectedRegionId, cell);
       } else {
         addCellToRegion(cst, doc, selectedRegionId, cell);
+      }
+      syncFromCst(cst);
+    } catch (err) {
+      reportError(err);
+    }
+  };
+
+  /** IDEMPOTENT sibling of `handleToggleCellOnSelected`, same reason
+   * `setPendingCellMembership` exists alongside `togglePendingCell` — the
+   * region-brush drag needs to apply ONE decided mode across every cell a
+   * stroke crosses, not re-toggle each one. A rejected `addCellToRegion`/
+   * `removeCellFromRegion` (contiguity/overlap) surfaces as a toast per
+   * cell, same as the single-click path — a drag that crosses into
+   * another region's territory rejects THAT cell and keeps going, rather
+   * than aborting the whole stroke. */
+  const setSelectedRegionCellMembership = (cell: Cell, included: boolean) => {
+    if (!selectedRegionId) return;
+    const region = doc.regions.find((r) => r.id === selectedRegionId);
+    if (!region) return;
+    const has = cellIn(region.cells, cell);
+    if (included === has) return;
+    try {
+      if (included) {
+        addCellToRegion(cst, doc, selectedRegionId, cell);
+      } else {
+        removeCellFromRegion(cst, doc, selectedRegionId, cell);
       }
       syncFromCst(cst);
     } catch (err) {
@@ -156,12 +208,14 @@ export function useRegionEditing(
   return {
     pendingCells,
     togglePendingCell,
+    setPendingCellMembership,
     clearPending,
     selectedRegionId,
     selectRegion,
     justCreatedId,
     handleCreate,
     handleToggleCellOnSelected,
+    setSelectedRegionCellMembership,
     handleRename,
     handleSetArchetype,
     handleDelete,

@@ -18,30 +18,53 @@
  * real hex geometry, just no longer treated as a legibility problem
  * worth a second mode to work around.
  *
- * `FLAT_COL_SPACING`/`FLAT_ROW_SPACING` below are UNRELATED to that
- * removed toggle, despite the similar naming — they're creation mode's
- * own rectangular-canvas spacing (`CreationBoard.tsx`/
- * `creationGeometry.ts`), a deliberately separate, still-live renderer
- * for a freeform drawing canvas that was never claiming hex adjacency in
- * the first place (see CONTRACT.md: "CreationBoard.tsx is still its own
- * renderer, not Board.tsx itself — two genuinely different geometries").
+ * **HEX-TRUE CREATION CANVAS (2026-08-03)**: creation mode's own
+ * rectangular-canvas spacing, `FLAT_COL_SPACING`/`FLAT_ROW_SPACING`, USED
+ * to live here — a deliberately separate square-grid renderer for a
+ * freeform drawing canvas that (per this file's own header comment,
+ * before this round) was "never claiming hex adjacency in the first
+ * place." That exemption is retired: Kirk, diagnosing the square canvas
+ * directly, "that new dungeon is squares... our walls as we lay them out
+ * cannot follow along the edge... any hex that is not 100% uncovered
+ * would not be traversable by the players" — a square grid only exposes
+ * 4 of a hex's 6 real adjacencies, so a region that reads as fully
+ * enclosed on squares can have two invisible open edges in hex reality,
+ * and "walls look like vertical blinds along the side edges" (disconnected
+ * parallel slats, where real hex edges share corners and chain into a
+ * continuous run). `creation/creationGeometry.ts` now builds its geometry
+ * from this file's own `cellCenter`/`cellCorners`/`edgeBetweenCells` —
+ * the SAME functions this hex-true edit board renders with — instead of
+ * a second, square coordinate system. One board geometry, not two.
  */
 import {
   cubeToWorld,
   hexEdgeBetween,
   hexCorners as realHexCorners,
+  worldToCube as realWorldToCube,
 } from '@/components/hex-grid/hexMath';
 import { cubeAtColRow, hexColumn, hexRow } from '@/hooks/wallRuns';
 
 /** Board-space hex radius. Smaller than the 3D game's world-unit
  * `HEX_SIZE` (which is 1.0 world unit) — this is a 2D SVG pixel radius,
  * a purely local rendering choice with no wire representation (see
- * CONTRACT.md's "cell-size/aspect for rendering" finding). */
+ * CONTRACT.md's "cell-size/aspect for rendering" finding). Shared by
+ * BOTH boards now (creation mode included) — one hex size, not two. */
 export const BOARD_HEX_SIZE = 24;
 
 export interface CellPos {
   x: number;
   y: number;
+}
+
+/** The inverse of `cellCenter`: the cube coordinate nearest a board-space
+ * point, at this file's own `BOARD_HEX_SIZE`. Exposed here (rather than
+ * making every caller import `hexMath.ts`'s `worldToCube` directly and
+ * juggle the `{x,z}`/`{x,y}` naming difference itself) so hit-testing
+ * code — `boardGeometry.ts`'s drag-drop resolution, `creationGeometry.ts`'s
+ * `nearestEdge`/`nearestCreationCell` — has one real inverse-transform
+ * entry point at the SAME size every renderer draws with. */
+export function worldToCube(point: CellPos) {
+  return realWorldToCube({ x: point.x, z: point.y }, BOARD_HEX_SIZE);
 }
 
 /** Same odd-q pointy-top math the real 3D floor renders with — edit
@@ -90,14 +113,6 @@ export function edgeBetweenCells(
     mid: { x: edge.mid.x, y: edge.mid.z },
   };
 }
-
-/** Creation mode's rectangular-canvas spacing — see this file's header
- * doc comment for why these live here despite the "FLAT" naming echo of
- * the removed edit-mode toggle. Spacing values unchanged from before the
- * removal (chosen to roughly match hex-true's average column/row pitch,
- * a purely cosmetic choice with no bearing on this decision). */
-export const FLAT_COL_SPACING = BOARD_HEX_SIZE * Math.sqrt(3);
-export const FLAT_ROW_SPACING = BOARD_HEX_SIZE * 1.5;
 
 // Re-exported so callers doing manual col/row bookkeeping (e.g. nearest-cell
 // hit testing during a drag) use the same real conversion, never a second

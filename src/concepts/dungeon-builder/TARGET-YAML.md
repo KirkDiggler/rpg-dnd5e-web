@@ -176,6 +176,15 @@ connectors:
 # (sum of room widths + gaps, by height) and this becomes redundant —
 # it exists only to give a blank document something to draw walls inside
 # of before any room has been declared.
+#
+# HEX-TRUE (2026-08-03): width/height are cell-count DIMENSIONS only —
+# unchanged by this note. What changed is the GEOMETRY every [col,row] in
+# this dialect resolves to when rendered: the creation canvas now uses the
+# SAME real hex math (hexLayout.ts's cellCenter/edgeBetweenCells) the
+# compiled edit-mode board renders with, not a second, square-grid
+# coordinate system. One coordinate space, one rendering, for both boards
+# — see CONTRACT.md's "hex-true creation canvas" ledger entry for the full
+# finding (false enclosure, disconnected wall segments) that drove this.
 canvas:
   width: 20
   height: 30
@@ -898,13 +907,22 @@ produce a region shape the eventual real #180 validator is already known
 to reject:
 
 - **Non-empty** — a region needs at least one cell.
-- **Orthogonally contiguous** — every cell must be reachable from every
-  other cell in the same region via 4-neighbor (not diagonal) adjacency
-  (`regionGeometry.ts`'s `cellsAreContiguous`, a plain BFS/flood-fill).
-  Diagonal-only adjacency doesn't count, matching `walls:`'s own
-  "orthogonally adjacent cells" requirement — there is no diagonal edge to
-  ever author a wall/door on between two cells that only touch at a
-  corner.
+- **Hex-contiguous** (updated 2026-08-03; was 4-neighbor-only) — every
+  cell must be reachable from every other cell in the same region via
+  REAL hex adjacency (`regionGeometry.ts`'s `cellsAreContiguous`, a plain
+  BFS/flood-fill over `cellsAdjacent`'s `hexDistance === 1` check), not
+  the 4-neighbor orthogonal check this concept used before the creation
+  board went hex-true. The old rule undercounted: a hex cell has 6 real
+  neighbors, and exactly 2 of a square grid's 4 "diagonal" directions
+  turn out to be genuine hex neighbors (which 2 depends on column
+  parity — verified numerically, see `regionGeometry.test.ts`). This is a
+  strictly WIDER relation — every cell set that validated as contiguous
+  under the old rule still does (4-adjacency was always a subset of real
+  hex adjacency), so no previously-authored valid region breaks; the
+  change only lets a previously-rejected (diagonal-only-touching) cell
+  set validate correctly now. `walls:`'s own "orthogonally adjacent
+  cells" phrasing (this file's annotated example, above) means the same
+  thing: hex-adjacent, not axis-aligned-only.
 - **Non-overlapping** — no cell may belong to more than one region at
   once (`cellsOverlapAnotherRegion`). Enforced on create AND on every
   membership edit (`addCellToRegion`), not just at creation time.
