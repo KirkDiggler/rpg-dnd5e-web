@@ -64,11 +64,11 @@
  */
 import { facingDirection } from '@/components/hex-grid/authorGridHelpers';
 import {
-  type CubeCoord,
   cubeToWorld,
   HEX_SIZE,
   hexCorners,
   hexEdgeBetween,
+  type CubeCoord,
 } from '@/components/hex-grid/hexMath';
 import { resolvePropVariant } from '@/components/hex-grid/propManifest';
 import { PropModel } from '@/components/hex-grid/PropModel';
@@ -85,7 +85,12 @@ import {
   isEntranceBlocked,
   isSameSelection,
 } from '../boardGeometry';
-import type { DungeonDoc, PlacementDoc, WallDoc } from '../dungeonYaml';
+import {
+  resolvePlacement,
+  type DungeonDoc,
+  type PlacementDoc,
+  type WallDoc,
+} from '../dungeonYaml';
 import { cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
 import { END_COLOR, START_COLOR } from '../markerStyle';
 import type { PaletteSelection, PlacementSelection } from '../types';
@@ -286,12 +291,21 @@ function buildWalls(walls: readonly WallDoc[]): PlacedWall[] {
  * back (`roomId: null` for a top-level entry — `types.ts`'s own
  * `PlacementSelection` doc comment). */
 function buildOnePlacement(
+  doc: DungeonDoc,
   p: PlacementDoc,
   absCol: number,
   row: number,
   sel: PlacementSelection,
   key: string
 ): { prop?: PlacedProp; monster?: PlacedMonster } {
+  // Resolved, not raw `p.height`/`p.facing` — a ref-level `defaults:`
+  // entry (target dialect, proposed) must render identically to an
+  // explicit field: a defaulted `height` still floats the candle, a
+  // defaulted `facing` still orients the prop. `resolvePlacement` is a
+  // no-op read (falls through to the placement's own explicit value)
+  // whenever `doc.defaults` has nothing for this ref, so this costs
+  // nothing for the overwhelmingly common case of no defaults at all.
+  const resolved = resolvePlacement(doc, p);
   // Target dialect, proposed (TARGET-YAML.md's "z-axis: mount +
   // height" section) — `height` is DECOUPLED from `mount` (Kirk-batch,
   // 2026-08-02: "height: decouples from mount... any placement may
@@ -302,9 +316,9 @@ function buildOnePlacement(
   // the decoupling exists for). Rotation stays mount-gated below —
   // ROTATION is still a wall-vs-floor question (flush-against-the-edge
   // vs. general facing), height no longer is.
-  const position = worldPosition(absCol, row, p.height ?? 0);
+  const position = worldPosition(absCol, row, resolved.height ?? 0);
   const rotationY =
-    p.facing === null
+    resolved.facing === null
       ? 0
       : p.mount === 'wall'
         ? // EXPERIMENT (see PlacementDoc.rotationDegrees's own doc
@@ -316,9 +330,9 @@ function buildOnePlacement(
           // feel: does the coarse pick get close enough that a small
           // nudge covers the gap, or is a from-scratch free control
           // needed instead?
-          wallMountRotationY(absCol, row, p.facing) +
+          wallMountRotationY(absCol, row, resolved.facing) +
           ((p.rotationDegrees ?? 0) * Math.PI) / 180
-        : facingToRotationY(p.facing);
+        : facingToRotationY(resolved.facing);
   if (p.isMonster) {
     const monsterRefId = p.ref.split(':').pop();
     return monsterRefId
@@ -342,6 +356,7 @@ function buildPlacements(
     room.place.forEach((p, index) => {
       const absCol = fpRoom.startColumn + p.at[0];
       const { prop, monster } = buildOnePlacement(
+        doc,
         p,
         absCol,
         p.at[1],
@@ -376,6 +391,7 @@ function buildPlacements(
   // pass (rpg-dnd5e-web#679).
   doc.place.forEach((p, index) => {
     const { prop, monster } = buildOnePlacement(
+      doc,
       p,
       p.at[0],
       p.at[1],

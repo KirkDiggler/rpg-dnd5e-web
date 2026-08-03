@@ -1,6 +1,6 @@
 # Dungeon Builder — specimen pack
 
-**Specimen pack version: v0.1** (2026-08-02). Posted in full on
+**Specimen pack version: v0.2** (2026-08-03). Posted in full on
 [rpg-project#175](https://github.com/KirkDiggler/rpg-project/issues/175)
 for the backend session implementing YAML processing.
 
@@ -16,6 +16,22 @@ addition. Never conflate the two numbers.
 
 ## Changelog
 
+- **v0.2** (2026-08-03) — `+ height on any placement (#688)`: the
+  top-level `candles` placement now carries an explicit `height: 0.4`
+  with NO `mount:` key at all — the decoupled floor-standing/floating
+  case #688 shipped, not just the pre-existing wall-mounted height
+  examples. `+ defaults: map (this PR)`: a `defaults:` block with two
+  shapes side by side — `dnd5e:props:tomb-open`'s `blocks_movement: true`
+  (a real v1-expressible field: the `entry` room's `tomb-open` instance
+  carries NO explicit `blocks_movement`/`blocks_los` at all, so it's
+  genuinely inheriting, and `kitchen-sink.v1-subset.yaml` shows the value
+  MATERIALIZED onto that instance on strip) and
+  `dnd5e:props:statue-reaper`'s `height: 1` (target-dialect-only, no v1
+  form regardless of inheritance — dropped on strip like any other,
+  counted in `dropped.json`'s `"defaults (...)"` entry, never
+  materialized). `kitchen-sink.v1-subset.dropped.json`'s `"defaults (2
+refs; blocks_movement/blocks_los materialized onto 1 placement from 1
+of them)"` entry names both outcomes explicitly.
 - **v0.1** (2026-08-02) — initial pack, built from what the builder
   emits as of this date. Does not yet include the height-decouples-
   from-mount or `defaults:` map work (Kirk-batch, queued) — those land
@@ -62,6 +78,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'vitest';
 import {
+  clearPlacementFlag,
   moveBoss,
   parseDungeon,
   placeItem,
@@ -77,6 +94,7 @@ import {
   setPlacementMount,
   setPlacementRotationDegrees,
   setPlacementTargeting,
+  setRefDefault,
   setStart,
   setWallEdge,
   stripToV1Subset,
@@ -125,6 +143,14 @@ connectors:
     placeItem(cst, 'entry', 'dnd5e:props:statue-reaper', [3, 1]);
     setPlacementFacing(cst, 'entry', 1, 2); // NW
 
+    // v0.2: a placement lacking blocks_movement/blocks_los entirely
+    // (cleared right back off after placeItem's own auto-stamp) --
+    // exercises clearPlacementFlag AND gives `defaults:` below a REAL
+    // instance to inherit blocks_movement onto, materialized on strip.
+    placeItem(cst, 'entry', 'dnd5e:props:tomb-open', [5, 1]);
+    clearPlacementFlag(cst, 'entry', 2, 'blocksMovement');
+    clearPlacementFlag(cst, 'entry', 2, 'blocksLos');
+
     placeItem(cst, 'hall', 'dnd5e:monsters:skeleton-captain', [5, 2]);
     setPlacementTargeting(cst, 'hall', 0, 'dnd5e:targeting:nearest');
 
@@ -148,11 +174,16 @@ connectors:
     setPlacementMount(cst, null, 0, 'wall');
     setPlacementHeight(cst, null, 0, 1.5);
     setPlacementRotationDegrees(cst, null, 0, -8);
+
     placeItem(cst, null, 'dnd5e:props:candles', [16, 3]);
     setPlacementFlags(cst, null, 1, {
       blocksMovement: false,
       blocksLos: false,
     });
+    // v0.2 (#688): height decoupled from mount -- a FLOOR-standing
+    // placement (no mount: key at all) carrying its own height, the
+    // "floating candle" case the decoupling exists for.
+    setPlacementHeight(cst, null, 1, 0.4);
 
     setConnectorLocked(cst, 0, { dc: 14, ability: 'dex' });
     // second connector stays unlocked (locked: null) -- proves elision.
@@ -160,6 +191,12 @@ connectors:
     setStart(cst, [1, 3]);
     setEnd(cst, [4, 5]);
     setLightingAmbient(cst, 0.35);
+
+    // v0.2: defaults: map (this PR). Two different shapes on purpose --
+    // see this file's changelog entry above for the full explanation of
+    // what each one demonstrates (materialize-on-strip vs plain drop).
+    setRefDefault(cst, 'dnd5e:props:tomb-open', 'blocksMovement', true);
+    setRefDefault(cst, 'dnd5e:props:statue-reaper', 'height', 1.0);
 
     const yaml = serializeDungeon(cst);
     writeFileSync(resolve(OUT_DIR, 'kitchen-sink.yaml'), yaml);

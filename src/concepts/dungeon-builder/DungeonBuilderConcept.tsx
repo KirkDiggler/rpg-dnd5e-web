@@ -701,6 +701,7 @@ export function DungeonBuilderConcept() {
           floorPlan={preview.floorPlan}
           selected={edit.selectedPlacement}
           onSetFlags={edit.handleSetFlags}
+          onClearFlag={edit.handleClearFlag}
           onDelete={edit.handleDelete}
           onSetMount={edit.handleSetMount}
           onSetHeight={edit.handleSetHeight}
