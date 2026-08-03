@@ -265,7 +265,7 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
     expect(screen.getByText(/Equipment selection complete/)).toBeTruthy();
   });
 
-  it('rehydrates indexed multi-category selections into their matching categories', () => {
+  it('serializes category indices in declaration order, not selection click order', () => {
     const multiCategoryChoice = create(ChoiceSchema, {
       id: 'multi-category-equipment',
       choiceType: ChoiceCategory.EQUIPMENT,
@@ -285,9 +285,7 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
                 create(EquipmentCategoryChoiceSchema, {
                   choose: 1,
                   label: 'Second weapon',
-                  // The toolkit scopes duplicate validation to each category
-                  // requirement, so this independent category may also offer Club.
-                  options: [CLUB],
+                  options: [DART],
                 }),
               ],
             }),
@@ -295,27 +293,37 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
         }),
       },
     });
+    const onSelectionChange = vi.fn();
 
     render(
       <ChoiceRenderer
         choice={multiCategoryChoice}
-        currentSelections={[
-          'bundle-a',
-          'cat0:club-selection:Club',
-          'cat1:club-selection:Club',
-        ]}
-        onSelectionChange={vi.fn()}
+        currentSelections={[]}
+        onSelectionChange={onSelectionChange}
       />
     );
+    fireEvent.click(screen.getByText('Two categories'));
 
-    // These separate category slots make a category-0 collapse observable:
-    // the old hydration showed no saved item in the second category.
-    expect(
-      screen.getByRole('combobox', { name: 'First weapon' }).textContent
-    ).toMatch(/Club/);
-    expect(
-      screen.getByRole('combobox', { name: 'Second weapon' }).textContent
-    ).toMatch(/Club/);
-    expect(screen.getByText(/Equipment selection complete/)).toBeTruthy();
+    // Select the second declared category first. Persisted values must still
+    // be category-ordered because the server reconstructs the same slices.
+    const second = screen.getByRole('combobox', { name: 'Second weapon' });
+    fireEvent.click(second);
+    fireEvent.click(
+      within(screen.getByRole('listbox')).getByTestId(
+        'equipment-category-1-slot-0-option-dart-selection'
+      )
+    );
+    const first = screen.getByRole('combobox', { name: 'First weapon' });
+    fireEvent.click(first);
+    fireEvent.click(
+      within(screen.getByRole('listbox')).getByTestId(
+        'equipment-category-0-slot-0-option-club-selection'
+      )
+    );
+
+    expect(onSelectionChange).toHaveBeenLastCalledWith(
+      'multi-category-equipment',
+      ['bundle-a', 'cat0:club-selection:Club', 'cat1:dart-selection:Dart']
+    );
   });
 });

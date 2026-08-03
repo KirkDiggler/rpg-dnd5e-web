@@ -40,6 +40,10 @@ import {
   getWeaponDisplay,
   getWeaponProficiencyCategoryDisplay,
 } from '../../utils/enumDisplay';
+import {
+  hasNoInvalidEquipmentChoices,
+  reconstructEquipmentChoice,
+} from '../../utils/equipmentChoiceSelections';
 import { AppearanceSelectionModal } from './AppearanceSelectionModal';
 import { BackgroundSelectionModal } from './BackgroundSelectionModal';
 import { ClassSelectionModal } from './ClassSelectionModal';
@@ -66,6 +70,11 @@ interface CharacterChoices {
 // Helper Functions
 function isClassInfo(info: ClassInfo | SubclassInfo | null): info is ClassInfo {
   return info != null && info.$typeName === 'dnd5e.api.v1alpha1.ClassInfo';
+}
+
+function classChoiceDefinitions(info: ClassInfo | SubclassInfo | null) {
+  if (!info) return [];
+  return isClassInfo(info) ? info.choices : info.additionalChoices;
 }
 
 function getLanguageDisplayName(languageEnum: Language): string {
@@ -200,32 +209,14 @@ export function InteractiveCharacterSheet({
         choice.category === ChoiceCategory.EQUIPMENT &&
         choice.selection?.case === 'equipment'
       ) {
-        // Restore equipment choice with bundleId from optionId
-        // Extract item IDs from the saved items - handle both string IDs and enum values
-        const itemIds: string[] = [];
-        choice.selection.value.items?.forEach((item) => {
-          if (
-            item.equipment?.case === 'otherEquipmentId' &&
-            item.equipment.value
-          ) {
-            // String ID case
-            itemIds.push(item.equipment.value);
-          } else if (
-            item.equipment?.case &&
-            item.equipment?.value !== undefined
-          ) {
-            // Enum case (weapon, armor, etc.) - convert enum number to string
-            itemIds.push(String(item.equipment.value));
-          }
-        });
-        choices.equipment?.push({
-          choiceId: choice.choiceId,
-          bundleId: choice.optionId || '',
-          categorySelections:
-            itemIds.length > 0
-              ? [{ categoryIndex: 0, equipmentIds: itemIds }]
-              : [],
-        });
+        const declaredChoice = classChoiceDefinitions(draft.classInfo).find(
+          (candidate) => candidate.id === choice.choiceId
+        );
+        if (declaredChoice) {
+          choices.equipment?.push(
+            reconstructEquipmentChoice(declaredChoice, choice)
+          );
+        }
       } else if (
         choice.category === ChoiceCategory.SKILLS &&
         choice.selection?.case === 'skills'
@@ -267,7 +258,7 @@ export function InteractiveCharacterSheet({
     });
 
     return choices;
-  }, [draft.classChoices]);
+  }, [draft.classChoices, draft.classInfo]);
 
   // Sync draft state with local character state
   useEffect(() => {
@@ -408,7 +399,19 @@ export function InteractiveCharacterSheet({
       scores.wisdom > 0 &&
       scores.charisma > 0;
 
-    return hasName && hasRace && hasClass && hasBackground && hasAbilityScores;
+    const hasNoInvalidEquipment = hasNoInvalidEquipmentChoices(
+      classChoiceDefinitions(draft.classInfo),
+      draft.classChoices
+    );
+
+    return (
+      hasName &&
+      hasRace &&
+      hasClass &&
+      hasBackground &&
+      hasAbilityScores &&
+      hasNoInvalidEquipment
+    );
   }, [draft]);
 
   // Handle finalize button click

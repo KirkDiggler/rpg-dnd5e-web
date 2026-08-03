@@ -17,6 +17,10 @@ let it rot.
   through the accessible rich dropdown/card. It no longer reconstructs category
   membership or calls `ListEquipmentByType`; ordered toolkit/API options and their
   selection IDs are preserved through selection and reopened-draft hydration.
+  Persisted flat selection items are reconstructed into the selected bundle's
+  declared category slices (order + `choose` counts); a same-category legacy
+  duplicate is surfaced for correction and cannot invoke finalization, while
+  the same selection ID remains valid in independently declared categories.
   Proto dependency: `rpg-api-protos#207` / `v0.1.118`; provider: `rpg-api#764`.
 
 - **Equipment live on the game screen (#571)** — the `/concepts` equipment
