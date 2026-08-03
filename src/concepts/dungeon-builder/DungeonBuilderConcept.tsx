@@ -559,7 +559,7 @@ export function DungeonBuilderConcept() {
 
   const modeBannerText =
     boardDim === '3d'
-      ? '3D preview — view only (spike). Orbit/zoom with the mouse; edit via the palette/YAML in 2D.'
+      ? '3D preview — click a prop/monster to select it (the same Inspector the 2D board uses opens, rotate there); orbit/zoom with the mouse. Placing/moving/deleting still needs the palette/YAML or the 2D board.'
       : edit.selectedPalette
         ? `Palette: ${edit.selectedPalette.ref.split(':').pop()} selected — click an empty legal cell to place it.`
         : edit.selectedPlacement
@@ -816,7 +816,15 @@ export function DungeonBuilderConcept() {
                   combat/fog. See CONTRACT.md's "3D preview spike" section.
                 </div>
                 <div style={{ flex: 1, minHeight: 0 }}>
-                  <DungeonPreview3D floorPlan={preview.floorPlan} doc={doc} />
+                  <DungeonPreview3D
+                    floorPlan={preview.floorPlan}
+                    doc={doc}
+                    selectedPlacement={edit.selectedPlacement}
+                    onSelect={(sel) => {
+                      clearOtherSelections('placement');
+                      edit.setSelectedPlacement(sel);
+                    }}
+                  />
                 </div>
               </>
             )}

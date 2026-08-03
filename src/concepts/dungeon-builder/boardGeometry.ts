@@ -10,6 +10,29 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { DungeonDoc } from './dungeonYaml';
 import { cellCenter, type CellPos } from './hexLayout';
+import type { PlacementSelection } from './types';
+
+/** Whether `current` (a board's live `selectedPlacement` state) IS `sel`
+ * (one specific marker's own identity) — the `roomId`/`index`/`boss`
+ * equality both `Board.tsx`'s 2D marker loops and
+ * `DungeonPreview3D.tsx`'s 3D ones need identically (Kirk's 2026-08-02
+ * "3D editing" arc, part 2 — click-select now exists in both views, so
+ * this check now has two real callers, not one; consolidated here rather
+ * than staying duplicated inline three times in `Board.tsx` alone).
+ * `roomId: null` is a real, distinct identity (a top-level placement),
+ * never a wildcard that matches anything — and a boss selection only
+ * ever matches another boss selection in the same room, never a
+ * non-boss placement at the same index. */
+export function isSameSelection(
+  current: PlacementSelection | null | undefined,
+  sel: PlacementSelection
+): boolean {
+  if (!current) return false;
+  if (current.boss || sel.boss) {
+    return !!current.boss && !!sel.boss && current.roomId === sel.roomId;
+  }
+  return current.roomId === sel.roomId && current.index === sel.index;
+}
 
 export function roomAtColumn(
   floorPlan: FloorPlan,

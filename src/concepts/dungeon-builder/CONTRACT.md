@@ -2163,3 +2163,93 @@ this pass missed something systematically.
 43/43 pre-existing tests + regression suite still passing, `ci-check`
 clean. Evidence:
 `docs/evidence/dungeon-builder-3d-audit-overview.png`.
+
+## New arc: 3D editing, part 2 — click-select + rotate
+
+First landing of "be able to rotate objects" / "being able to place
+objects in the 3d view would be really great if possible." Scoped this
+round to select + the 6-direction facing stepping; click-to-CREATE and
+drag-to-move in 3D are follow-ups, not this landing's gate (matching
+Kirk's own "click-place lands first; drag-move in 3D is the follow-up"
+framing for part 3).
+
+**The interaction, and why**: click a prop or monster in the 3D view —
+the SAME `PlacementSelection`/`onSelect` contract `Board.tsx` already
+uses opens the exact same Inspector overlay
+(`DungeonBuilderConcept.tsx` renders it once, outside either board, so
+neither view owns it) with its existing facing rotate control (↺/↻).
+Rotating from there mutates the shared CST the same way a 2D-board
+rotate always has (`setPlacementFacing`/`setBossFacing`), so the 3D
+model re-renders live, the YAML pane updates, and the compile badge
+picks up the new `facing:` field — nothing here needed a new mutation
+path. This is the "most natural" call named in the brief: reuse the
+already-shipped 2D rotation UI instead of building a parallel 3D-specific
+one, since the SAME Inspector opening from either view is a stronger,
+more consistent mental model than two different rotate affordances that
+happen to write the same field.
+
+**What shipped**:
+
+- `DungeonPreview3D` gains optional `selectedPlacement`/`onSelect` props
+  (optional so a hypothetical future caller that doesn't wire selection
+  degrades to view-only, unchanged from before this round).
+- `buildPlacements` now also carries each prop/monster's
+  `PlacementSelection` identity (`{roomId, index}` or `{roomId, boss:
+true}`), needed so a click can report back which one was hit.
+- **Also closed in the same pass**: top-level placements (`doc.place`,
+  `roomId: null`) were completely ABSENT from `buildPlacements` before
+  this round — confirmed via grep, zero references anywhere in the file.
+  Same gap class as the entrance/start markers the alignment-audit round
+  (part 1) just closed, and directly relevant here: you can't
+  select-and-rotate a top-level placement in 3D if it doesn't render at
+  all. Fixed by extracting a shared `buildOnePlacement` helper (position/
+  rotation math doesn't care which list a `PlacementDoc` came from) and
+  adding a second pass over `doc.place` with absolute coordinates —
+  mirrors `Board.tsx`'s own top-level render pass (`rpg-dnd5e-web#679`).
+- A click-to-select handler on each prop/monster's wrapping `<group>`
+  (`e.stopPropagation()` then `onSelect(sel)`), plus `<Canvas
+onPointerMissed={() => onSelect?.(null)}>` for click-empty-space-to-
+  deselect — the R3F-native equivalent of `Board.tsx`'s own `onClick={(e)
+=> { if (e.target === svgRef.current) onSelect(null); }}`.
+- A selection highlight: the SAME amber `#ffd76a` `Board.tsx` already
+  uses for a selected marker's stroke, here a `PointMarker` ring (reusing
+  the component the alignment-audit round's entrance/start markers
+  introduced) under the selected prop/monster, since this static preview
+  has no 2D-style stroke outline to recolor.
+
+**Consolidation, not just addition**: the `roomId`/`index`/`boss`
+equality check a selection ring needs was already duplicated INLINE
+three times in `Board.tsx` (one per marker-rendering loop). Rather than
+adding a fourth copy for the 3D view, pulled it into `boardGeometry.ts`
+as `isSameSelection` — a real shared module, not a per-file helper — and
+refactored all three `Board.tsx` call sites to use it too. Verified live
+that 2D selection is unaffected by the refactor (one genuine false-alarm
+during this check: an early regression script clicked stale
+pre-scroll coordinates and looked like a failure; recomputing the
+bounding box after `scrollIntoViewIfNeeded()`, same lesson this session
+already learned once this week, confirmed selection works exactly as
+before).
+
+**Test coverage, per the operating bar**: `isSameSelection` is exported
+and directly unit-tested (`boardGeometry.test.ts`, 8 cases — room-scoped
+identity, top-level identity, boss identity, and the cross-cases that
+must NOT match: top-level vs room-scoped at the same index, boss vs
+non-boss in the same room). Deliberately did NOT attempt a full
+`@react-three/test-renderer` scene test for the click-handler wiring
+itself: `PropModel.test.tsx`'s own mock shows what that requires (`
+useGLTF` mocked for every model `DungeonPreview3D` loads at once —
+`SyntyHexFloor`, `PropModel`, `PreviewMonsterModel`), for comparatively
+little marginal coverage over what the pure-logic test plus the live
+verification below already prove. A scope call, not a skipped test —
+named honestly rather than silently left uncovered.
+
+**Verified live**: an isolated single-statue test — clicked it, the
+Inspector opened showing the correct ref and absolute coordinates
+(`dnd5e:props:statue-reaper [1,1]`), clicked the rotate button, the
+Inspector's own facing value changed (`E` → `SE`) AND the 3D model
+visibly rotated to match, confirming the full round trip (click → select
+→ Inspector → mutate CST → re-render) works end to end. Evidence:
+`docs/evidence/dungeon-builder-3d-click-select-inspector.png`.
+
+`ci-check` clean, full suite passing (56 tests: the pre-existing 48 +
+8 new `isSameSelection` cases).
