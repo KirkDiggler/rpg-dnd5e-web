@@ -2051,3 +2051,115 @@ either alone:
 43/43 pre-existing tests + 5 new = 48/48 passing. `ci-check` clean.
 Evidence:
 `docs/evidence/dungeon-builder-toplevel-board-render-select.png`.
+
+## New arc: 3D editing (2026-08-02) — alignment audit
+
+Kirk's direction: keep "getting walls lined correctly," "be able to
+rotate objects," and "being able to place objects in the 3d view would
+be really great if possible" — a new standing arc, three parts (this
+section is part 1). Explicit instruction: verify against the live page
+rather than assuming `76f3a1b` closed everything. Followed
+`systematic-debugging`'s Phase 1/2 discipline throughout — root-cause and
+pattern-compare before concluding anything is or isn't broken, not just
+re-trust the earlier fix.
+
+**Method**: for each rendered element class, read its current
+position/rotation logic, compare it against the REAL game's own
+established convention where one exists (not this concept's own
+invention), then verify LIVE with an isolated test case — not
+showcase.yaml's cluttered content, which makes any single element hard
+to isolate and, as this round found firsthand, easy to misjudge from one
+camera angle.
+
+**Walls, doors**: `wallBoxTransform` calls `hexEdgeBetween` directly
+(the `76f3a1b` fix) — unchanged this round, re-verified live with a
+fresh isolated 5-segment wall run (4 solid + 1 door). Confirmed correct:
+one continuous, correctly-aligned line.
+
+**Mounted props**: `wallMountRotationY` also calls `hexEdgeBetween`
+(`76f3a1b`). Pattern-compared against the REAL game's own
+`computeWallAdjacentRotationY` (`syntyHexWallHelpers.ts`) — same function
+call, same inputs, confirmed exact match. Also checked whether the real
+game offsets a wall-mounted prop's POSITION toward the wall edge (a
+hypothesis this round almost acted on before checking): it does NOT —
+`HexGrid.tsx`'s `wallAdjacentRotations` only ever computes `rotationY`,
+never touches `entity.position`, so this concept's `worldPosition`
+(plain cell center, elevated in Y) already matches the established
+convention exactly. **A genuine near-miss, worth naming**: an isolated
+wall+banner test's FIRST screenshot (the 3D view's default camera angle)
+appeared to show them at clearly different angles — investigated with
+temporary console logging before touching any code, per
+`systematic-debugging`'s Iron Law, and found the computed `rotationY`
+values were bit-for-bit IDENTICAL for both. The visual mismatch was
+foreshortening: at that specific camera angle, the thin wall box
+happened to present edge-on while the banner GLB (a different mesh
+shape, not a symmetric box) happened to present more face-on. Confirmed
+by orbiting to three more angles — at every one of them, wall and banner
+tracked together (both edge-on, or both face-on, never one of each).
+**Lesson for this arc's own rotation/placement UI work**: a single
+default-camera screenshot is not sufficient evidence for "this looks
+wrong" in this preview; multi-angle verification is required before
+concluding an alignment bug exists. Evidence:
+`docs/evidence/dungeon-builder-3d-wall-mount-aligned-confirmed.png`.
+
+**Floor-standing props' facing** (`facingToRotationY`): no real-game
+equivalent exists to pattern-compare against (floor-prop facing is
+concept-original; slice #178 is filed, not started) — verified instead
+via internal-consistency: four `statue-reaper` instances at facing
+`E`/`W` (an opposite pair) and `NE`/`SW` (a second opposite pair),
+viewed top-down. Both pairs showed the statue's scythe blade pointing in
+clearly, cleanly opposite directions — confirms the rotation mechanism
+produces a coherent, evenly-spaced 6-direction wheel, not a scrambled or
+duplicated one. No fix needed.
+
+**Monsters**: position uses the exact same `worldPosition`/`absCol`
+helper every other placement class uses — confirmed correct by reading
+`buildPlacements` directly (no separate code path to diverge). Facing
+rotation is a genuine GAP, not a misalignment: `PreviewMonsterModel` has
+no `rotationY` prop at all today, so an authored `facing` on a monster
+placement is silently dropped in the 3D view (still respected
+everywhere else — Inspector, 2D board is facing-agnostic for markers
+anyway). Read `HexEntity.tsx`'s real character-rotation path
+(`ClassCharacterModel`'s `facingRotation` prop) for the reference
+convention before scoping this: real character/monster GLBs need a
+PER-RIG forward-axis correction constant (`POLYGON_DUNGEON_FORWARD_OFFSET`
+for the monster rig, `SYNTY_GLB_FORWARD_OFFSET` for the player rig) ADDED
+on top of the desired world-facing rotation, because the raw GLB's own
+forward axis isn't pre-aligned with local +X the way this concept's
+simpler `WallBox`/`PropModel` usage assumes. Wiring monster facing
+correctly needs that offset accounted for — deliberately NOT attempted
+in this audit pass; scoped into part 2 of this arc (rotation in 3D),
+which is adding rotation capability generally, not fixing an existing
+misalignment.
+
+**Entrance/start markers**: genuinely ABSENT from the 3D preview before
+this round — confirmed via a full read of `DungeonPreview3D.tsx`, zero
+references to `doc.start`/`doc.end`/`floorPlan.entrance` anywhere.
+Closed: new `PointMarker` component (a flat colored ring on the floor
+plane, since this static preview has no camera-facing label text the way
+the 2D SVG board does) for all three — `doc.start` (teal), `doc.end`
+(gold), `floorPlan.entrance` (teal/red, reusing `boardGeometry.ts`'s own
+`isEntranceBlocked` check rather than re-deriving it, so the 3D and 2D
+views can never silently disagree about whether the entrance reads as
+blocked). Verified live both states: a clear entrance rendered teal, and
+placing a `blocks_movement: true` prop on the entrance cell (the exact
+mechanism this file's own "entrance-blocked" UX-learning finding already
+established for the 2D board) correctly flipped it red. Evidence:
+`docs/evidence/dungeon-builder-3d-start-marker.png`,
+`docs/evidence/dungeon-builder-3d-entrance-blocked-marker.png`.
+
+**Bottom line for Kirk's "still aren't all lined correctly" report**:
+every element class this round could verify against an established
+convention (walls, doors, mounted props, floor props) checked out
+correct on live re-verification — no rotation math needed changing. The
+one confirmed, closed gap was a genuine absence (entrance/start markers
+never rendered at all), not a misalignment. The one deliberately-deferred
+gap (monster facing) is scoped into part 2, not silently dropped. If
+Kirk's live page still shows something looking wrong after this lands,
+that's new information this audit didn't reproduce with the isolated
+test cases above — worth a fresh, specific repro rather than assuming
+this pass missed something systematically.
+
+43/43 pre-existing tests + regression suite still passing, `ci-check`
+clean. Evidence:
+`docs/evidence/dungeon-builder-3d-audit-overview.png`.
