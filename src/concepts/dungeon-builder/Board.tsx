@@ -13,6 +13,7 @@ import {
   connectorAtColumn,
   isCellOccupied,
   isEntranceBlocked,
+  isSameSelection,
   nearestCell,
   roomAtColumn,
   totalColumns,
@@ -383,11 +384,7 @@ export function Board({
       const row = p.at[1];
       const center = cellCenter(absCol, row);
       const sel: PlacementSelection = { roomId: room.id, index };
-      const isSelected =
-        !!selectedPlacement &&
-        !selectedPlacement.boss &&
-        selectedPlacement.roomId === room.id &&
-        selectedPlacement.index === index;
+      const isSelected = isSameSelection(selectedPlacement, sel);
       markers.push(
         <g
           key={`place-${room.id}-${index}`}
@@ -422,10 +419,7 @@ export function Board({
       const row = room.boss.at[1];
       const center = cellCenter(absCol, row);
       const sel: PlacementSelection = { roomId: room.id, boss: true };
-      const isSelected =
-        !!selectedPlacement &&
-        !!selectedPlacement.boss &&
-        selectedPlacement.roomId === room.id;
+      const isSelected = isSameSelection(selectedPlacement, sel);
       markers.push(
         <g
           key={`boss-${room.id}`}
@@ -471,11 +465,7 @@ export function Board({
     trackCellExtent(p.at[0], p.at[1]);
     const center = cellCenter(p.at[0], p.at[1]);
     const sel: PlacementSelection = { roomId: null, index };
-    const isSelected =
-      !!selectedPlacement &&
-      !selectedPlacement.boss &&
-      selectedPlacement.roomId === null &&
-      selectedPlacement.index === index;
+    const isSelected = isSameSelection(selectedPlacement, sel);
     markers.push(
       <g
         key={`place-top-${index}`}

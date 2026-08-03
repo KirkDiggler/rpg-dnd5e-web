@@ -55,6 +55,10 @@ function parseHeight(raw: unknown): number | null {
   return typeof raw === 'number' ? raw : null;
 }
 
+function parseRotationDegrees(raw: unknown): number | null {
+  return typeof raw === 'number' ? raw : null;
+}
+
 function parseTargeting(raw: unknown): string | null {
   return typeof raw === 'string' ? raw : null;
 }
@@ -80,6 +84,7 @@ function parsePlacementList(raw: unknown, context: string): PlacementDoc[] {
       facing: parseFacing(p.facing),
       mount: parseMount(p.mount),
       height: parseHeight(p.height),
+      rotationDegrees: parseRotationDegrees(p.rotate_degrees),
       targeting: parseTargeting(p.targeting),
     };
   });
@@ -114,6 +119,22 @@ export interface PlacementDoc {
    * 'floor'` placement — a floor prop's vertical position is derived
    * from its own model, not authored). */
   height: number | null;
+  /** EXPERIMENT, not even a target-dialect proposal yet (Kirk's
+   * 2026-08-02 "3D editing" arc, part 2 follow-up) — a fine rotation
+   * ADJUSTMENT in degrees, ADDED on top of the coarse 6-direction
+   * `facing`-derived rotation for a `mount: 'wall'` placement, never a
+   * replacement for it (`facing` still picks which wall; this nudges the
+   * exact angle against that wall). Exists solely to let Kirk compare
+   * "6-direction facing alone" against "6-direction facing + a fine
+   * nudge" on the SAME object and decide, by feel, whether
+   * TARGET-YAML.md's open "is 6-direction hex facing too coarse for a
+   * wall-mounted prop" question needs a real field — this is the probe,
+   * not the answer. `null` when unset (every placement before this
+   * field existed, and every `mount: 'floor'` placement, which this
+   * concept's Inspector doesn't even show the control for). Not
+   * compiled server-side; stripped by `stripToV1Subset` before any real
+   * save, same as every other target-dialect field. */
+  rotationDegrees: number | null;
   /** target dialect, proposed — see TARGET-YAML.md's "Monster targeting" section. A
    * REFERENCE to a toolkit AI strategy key, e.g. `"lowest-health"` —
    * never behavior (Boundary Rule). Only meaningful when `isMonster`;
@@ -671,6 +692,31 @@ export function setPlacementMount(
   else item.set('height', height);
 }
 
+/** Set or clear a `place:` entry's `rotate_degrees:` — EXPERIMENT, see
+ * `PlacementDoc.rotationDegrees`'s own doc comment for why this exists
+ * and what it does and doesn't mean. Independent of `setPlacementMount`
+ * deliberately: clearing `mount` back to `'floor'` does NOT also clear
+ * `rotate_degrees` — the fine-adjustment value is worth keeping around
+ * if the author toggles wall-mount off and back on while comparing, and
+ * the Inspector only ever shows this control when `mount === 'wall'`
+ * anyway, so an orphaned value on a floor placement is inert, not
+ * confusing. */
+export function setPlacementRotationDegrees(
+  cst: Document,
+  roomId: string | null,
+  index: number,
+  rotationDegrees: number | null
+): void {
+  const place = placeSeq(cst, roomId);
+  const item = place.items[index];
+  if (!isMap(item)) return;
+  if (rotationDegrees === null || rotationDegrees === 0) {
+    item.delete('rotate_degrees');
+  } else {
+    item.set('rotate_degrees', rotationDegrees);
+  }
+}
+
 /** Set or clear a `place:` entry's `targeting:` — target dialect, proposed. Callers
  * should only invoke this for a monster ref (`isMonster`); nothing here
  * enforces that — same trust boundary `setPlacementFlags` already
@@ -1056,6 +1102,7 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
   let facingCount = 0;
   let mountCount = 0;
   let targetingCount = 0;
+  let rotationDegreesCount = 0;
   const stripPlacementFields = (item: YAMLMap) => {
     if (item.has('facing')) {
       item.delete('facing');
@@ -1071,6 +1118,16 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
     if (item.has('targeting')) {
       item.delete('targeting');
       targetingCount++;
+    }
+    // EXPERIMENT, not even a target-dialect proposal (see
+    // PlacementDoc.rotationDegrees's own doc comment) — counted and
+    // stripped separately from mount/height rather than folded into
+    // that count, so the "Uses:"/"Dropped:" summary can name it
+    // honestly as the fine-rotation probe it is, not as part of the
+    // real wall-mount proposal.
+    if (item.has('rotate_degrees')) {
+      item.delete('rotate_degrees');
+      rotationDegreesCount++;
     }
   };
   const rooms = cst.get('rooms');
@@ -1100,6 +1157,11 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
   if (targetingCount > 0) {
     dropped.push(
       `targeting (${targetingCount} placement${targetingCount === 1 ? '' : 's'})`
+    );
+  }
+  if (rotationDegreesCount > 0) {
+    dropped.push(
+      `fine-rotation experiment (${rotationDegreesCount} placement${rotationDegreesCount === 1 ? '' : 's'})`
     );
   }
 

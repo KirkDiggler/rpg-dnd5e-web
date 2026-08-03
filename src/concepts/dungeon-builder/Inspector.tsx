@@ -53,6 +53,32 @@ function TargetDialectBadge() {
   );
 }
 
+/** One step more provisional than `TargetDialectBadge` — not even a
+ * target-dialect PROPOSAL yet, a probe testing an open question
+ * (TARGET-YAML.md's "is 6-direction hex facing too coarse" section).
+ * Kirk's 2026-08-02 "3D editing" arc, part 2 follow-up: "this is how the
+ * open... question gets ANSWERED by feel instead of debated." Distinct
+ * color from the dialect badge so a reader never mistakes a probe for a
+ * real proposal, even at a glance. */
+function ExperimentBadge() {
+  return (
+    <span
+      title="experiment, not a dialect proposal — testing whether 6-direction facing is coarse enough that wall-mounted props need finer control. Not compiled server-side; see TARGET-YAML.md's open question."
+      style={{
+        fontSize: 9,
+        color: '#8fe8e0',
+        background: '#0f2a28',
+        border: '1px solid #2a5a54',
+        borderRadius: 3,
+        padding: '1px 5px',
+        marginLeft: 6,
+      }}
+    >
+      experiment
+    </span>
+  );
+}
+
 interface InspectorProps {
   doc: DungeonDoc;
   /** Absent for the "New Dungeon" creation board — there is no compiled
@@ -69,6 +95,12 @@ interface InspectorProps {
   onSetMount: (mount: Mount, height: number | null) => void;
   onSetTargeting: (targeting: string | null) => void;
   onSetFacing: (facing: number | null) => void;
+  /** EXPERIMENT — see `ExperimentBadge`'s own doc comment. `null`/`0`
+   * both mean "no fine adjustment," matching
+   * `setPlacementRotationDegrees`'s own clear-on-zero convention (a 0°
+   * nudge and no nudge render identically, so there is no reason to
+   * distinguish them in the document). */
+  onSetRotationDegrees: (rotationDegrees: number | null) => void;
 }
 
 export function Inspector({
@@ -80,6 +112,7 @@ export function Inspector({
   onSetMount,
   onSetTargeting,
   onSetFacing,
+  onSetRotationDegrees,
 }: InspectorProps) {
   if (!selected) return null;
   // Three shapes to resolve, not two: boss (always room-scoped — a real
@@ -117,6 +150,9 @@ export function Inspector({
   // aren't wall furniture); targeting/facing exist on both.
   const mount = selected.boss ? 'floor' : (placement?.mount ?? 'floor');
   const height = selected.boss ? null : (placement?.height ?? null);
+  const rotationDegrees = selected.boss
+    ? null
+    : (placement?.rotationDegrees ?? null);
   const targeting = selected.boss
     ? (boss?.targeting ?? null)
     : (placement?.targeting ?? null);
@@ -336,6 +372,55 @@ export function Inspector({
                   padding: '2px 6px',
                 }}
               />
+            </div>
+          )}
+          {mount === 'wall' && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <label
+                  htmlFor="db-rotation-degrees"
+                  style={{ display: 'flex', alignItems: 'center' }}
+                >
+                  fine rotation
+                </label>
+                <ExperimentBadge />
+              </div>
+              {/* ±30° — half of one 6-direction step either way, so this
+                  fully covers the worst case a coarse facing pick can be
+                  off by. `facing` (above) still picks the wall; this
+                  nudges the exact angle against it. Kirk's own framing:
+                  "present BOTH granularities... so Kirk can feel them
+                  side by side on the same banner — that comparison IS
+                  the experiment." */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginTop: 4,
+                }}
+              >
+                <input
+                  id="db-rotation-degrees"
+                  type="range"
+                  min={-30}
+                  max={30}
+                  step={1}
+                  value={rotationDegrees ?? 0}
+                  onChange={(e) =>
+                    onSetRotationDegrees(Number(e.target.value) || null)
+                  }
+                  style={{ flex: 1 }}
+                />
+                <span style={{ minWidth: 34, textAlign: 'right' }}>
+                  {rotationDegrees ?? 0}°
+                </span>
+              </div>
+              <div style={{ fontSize: 10, color: '#8a7a5a', marginTop: 3 }}>
+                added on top of facing's coarse pick — testing whether
+                6-direction facing alone is enough, or wall-mounted props need
+                finer control (TARGET-YAML.md's open question)
+              </div>
             </div>
           )}
         </div>

@@ -426,6 +426,22 @@ bug that surfaced it — deliberately NOT resolved here; the #176–#180
 slices should pick a side with the actual renderer requirements in hand,
 not a concept spike guessing ahead of them.
 
+**Update, 2026-08-02 — the second option now exists as a live, testable
+prototype, not just a described option.** `PlacementDoc.rotationDegrees`
+(`rotate_degrees:` in YAML) is an ADDITIVE fine adjustment, ±30°, layered
+on top of the coarse `facing`-derived flush rotation for `mount: wall`
+placements only — never a replacement for `facing`, and never proposed
+as a target-dialect field (see its own doc comment in `dungeonYaml.ts`
+and the `ExperimentBadge` in `Inspector.tsx`). Both controls — the
+existing 6-direction facing stepper and this new fine-rotation slider —
+are visible and independently settable on the Inspector at the same
+time, so the two granularities can be felt side by side on the same
+object rather than argued about in the abstract. This is the probe, not
+the answer: the question above is still open, and this only exists to
+let Kirk's own hands settle it. Whatever he finds should get recorded
+back into this section and into CONTRACT.md's ledger — pending as of
+this writing.
+
 ## Monster targeting
 
 `place:`/`boss:` entries for a monster ref may carry an optional

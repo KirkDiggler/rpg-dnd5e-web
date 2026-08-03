@@ -31,6 +31,7 @@ import {
   setPlacementFacing,
   setPlacementFlags,
   setPlacementMount,
+  setPlacementRotationDegrees,
   setPlacementTargeting,
   setStart,
   setWallEdge,
@@ -179,6 +180,21 @@ function useBoardEditing(
     syncFromCst(cst);
   };
 
+  // EXPERIMENT, not a target-dialect field (Inspector.tsx's own
+  // ExperimentBadge doc comment) — same boss-excluded gate as
+  // handleSetMount, since the control only ever shows for a
+  // mount: 'wall' place: entry, which a boss can never be.
+  const handleSetRotationDegrees = (rotationDegrees: number | null) => {
+    if (!selectedPlacement || selectedPlacement.boss) return;
+    setPlacementRotationDegrees(
+      cst,
+      selectedPlacement.roomId,
+      selectedPlacement.index,
+      rotationDegrees
+    );
+    syncFromCst(cst);
+  };
+
   const handleSetTargeting = (targeting: string | null) => {
     if (!selectedPlacement) return;
     if (selectedPlacement.boss) {
@@ -219,6 +235,7 @@ function useBoardEditing(
     handleDelete,
     handleSetFlags,
     handleSetMount,
+    handleSetRotationDegrees,
     handleSetTargeting,
     handleSetFacing,
   };
@@ -559,7 +576,7 @@ export function DungeonBuilderConcept() {
 
   const modeBannerText =
     boardDim === '3d'
-      ? '3D preview — view only (spike). Orbit/zoom with the mouse; edit via the palette/YAML in 2D.'
+      ? '3D preview — click a prop/monster to select it (the same Inspector the 2D board uses opens, rotate there); orbit/zoom with the mouse. Placing/moving/deleting still needs the palette/YAML or the 2D board.'
       : edit.selectedPalette
         ? `Palette: ${edit.selectedPalette.ref.split(':').pop()} selected — click an empty legal cell to place it.`
         : edit.selectedPlacement
@@ -816,7 +833,15 @@ export function DungeonBuilderConcept() {
                   combat/fog. See CONTRACT.md's "3D preview spike" section.
                 </div>
                 <div style={{ flex: 1, minHeight: 0 }}>
-                  <DungeonPreview3D floorPlan={preview.floorPlan} doc={doc} />
+                  <DungeonPreview3D
+                    floorPlan={preview.floorPlan}
+                    doc={doc}
+                    selectedPlacement={edit.selectedPlacement}
+                    onSelect={(sel) => {
+                      clearOtherSelections('placement');
+                      edit.setSelectedPlacement(sel);
+                    }}
+                  />
                 </div>
               </>
             )}
@@ -863,6 +888,7 @@ export function DungeonBuilderConcept() {
           onSetFlags={edit.handleSetFlags}
           onDelete={edit.handleDelete}
           onSetMount={edit.handleSetMount}
+          onSetRotationDegrees={edit.handleSetRotationDegrees}
           onSetTargeting={edit.handleSetTargeting}
           onSetFacing={edit.handleSetFacing}
         />

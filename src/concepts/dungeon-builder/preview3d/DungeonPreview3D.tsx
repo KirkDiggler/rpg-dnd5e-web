@@ -65,14 +65,26 @@ import { Bounds, OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { Suspense, useMemo } from 'react';
 import { DoubleSide } from 'three';
-import { isEntranceBlocked } from '../boardGeometry';
-import type { DungeonDoc, WallDoc } from '../dungeonYaml';
+import { isEntranceBlocked, isSameSelection } from '../boardGeometry';
+import type { DungeonDoc, PlacementDoc, WallDoc } from '../dungeonYaml';
 import { cubeAtColRow } from '../hexLayout';
+import type { PlacementSelection } from '../types';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
 
 interface DungeonPreview3DProps {
   floorPlan: FloorPlan;
   doc: DungeonDoc;
+  /** Kirk's 2026-08-02 "3D editing" arc, part 2 — the SAME
+   * `PlacementSelection`/`onSelect` contract `Board.tsx` already uses for
+   * the 2D board, so clicking a prop/monster/boss here opens the exact
+   * same Inspector overlay (`DungeonBuilderConcept.tsx` renders it once,
+   * outside either board) with its existing facing rotate control —
+   * rotation-in-3D lands by REUSING the already-shipped 2D rotation UI,
+   * not building a parallel one. Optional so a caller that doesn't wire
+   * selection (none exist today, but nothing structurally requires it)
+   * degrades to view-only, unchanged from before this prop existed. */
+  selectedPlacement?: PlacementSelection | null;
+  onSelect?: (sel: PlacementSelection | null) => void;
 }
 
 interface PlacedProp {
@@ -80,6 +92,7 @@ interface PlacedProp {
   position: [number, number, number];
   variantRef: string;
   rotationY: number;
+  sel: PlacementSelection;
 }
 
 interface PlacedWall {
@@ -93,6 +106,7 @@ interface PlacedMonster {
   key: string;
   position: [number, number, number];
   monsterRefId: string;
+  sel: PlacementSelection;
 }
 
 /** `holes` are target dialect, proposed (TARGET-YAML.md's Structural category, Kirk's
@@ -233,6 +247,56 @@ function buildWalls(walls: readonly WallDoc[]): PlacedWall[] {
   });
 }
 
+/** Shared by both placement loops below (room-scoped and top-level) — the
+ * position/rotation math doesn't care which list a `PlacementDoc` came
+ * from, only `absCol`/`row` (already resolved by the caller: room-local
+ * `at` + the room's `startColumn` for one, already-absolute `at` for the
+ * other) and the `PlacementSelection` identity a click needs to report
+ * back (`roomId: null` for a top-level entry — `types.ts`'s own
+ * `PlacementSelection` doc comment). */
+function buildOnePlacement(
+  p: PlacementDoc,
+  absCol: number,
+  row: number,
+  sel: PlacementSelection,
+  key: string
+): { prop?: PlacedProp; monster?: PlacedMonster } {
+  // Target dialect, proposed (TARGET-YAML.md's "z-axis: mount +
+  // height" section) — mount: 'wall' placements render at their
+  // authored height instead of the floor plane, rotated flush
+  // against the wall edge they hang on via `wallMountRotationY` (the
+  // same `hexEdgeBetween` convention `wallBoxTransform` uses, not a
+  // floor prop's `facingToRotationY`).
+  const position = worldPosition(
+    absCol,
+    row,
+    p.mount === 'wall' ? (p.height ?? 0) : 0
+  );
+  const rotationY =
+    p.facing === null
+      ? 0
+      : p.mount === 'wall'
+        ? // EXPERIMENT (see PlacementDoc.rotationDegrees's own doc
+          // comment) — `rotationDegrees` is a fine ADJUSTMENT added on
+          // top of the coarse 6-direction flush rotation, never a
+          // replacement for it. `facing` still picks which wall edge;
+          // this nudges the exact angle against that wall, the same
+          // shape as the open question it exists to let Kirk answer by
+          // feel: does the coarse pick get close enough that a small
+          // nudge covers the gap, or is a from-scratch free control
+          // needed instead?
+          wallMountRotationY(absCol, row, p.facing) +
+          ((p.rotationDegrees ?? 0) * Math.PI) / 180
+        : facingToRotationY(p.facing);
+  if (p.isMonster) {
+    const monsterRefId = p.ref.split(':').pop();
+    return monsterRefId
+      ? { monster: { key, position, monsterRefId, sel } }
+      : {};
+  }
+  return { prop: { key, position, variantRef: p.ref, rotationY, sel } };
+}
+
 function buildPlacements(
   floorPlan: FloorPlan,
   doc: DungeonDoc
@@ -244,33 +308,18 @@ function buildPlacements(
     const fpRoom = floorPlan.rooms.find((r) => r.id === room.id);
     if (!fpRoom) continue;
 
-    for (const p of room.place) {
+    room.place.forEach((p, index) => {
       const absCol = fpRoom.startColumn + p.at[0];
-      // Target dialect, proposed (TARGET-YAML.md's "z-axis: mount +
-      // height" section) — mount: 'wall' placements render at their
-      // authored height instead of the floor plane, rotated flush
-      // against the wall edge they hang on via `wallMountRotationY` (the
-      // same `hexEdgeBetween` convention `wallBoxTransform` uses, not a
-      // floor prop's `facingToRotationY`).
-      const position = worldPosition(
+      const { prop, monster } = buildOnePlacement(
+        p,
         absCol,
         p.at[1],
-        p.mount === 'wall' ? (p.height ?? 0) : 0
+        { roomId: room.id, index },
+        `${room.id}:${p.at[0]},${p.at[1]}:${p.ref}`
       );
-      const rotationY =
-        p.facing === null
-          ? 0
-          : p.mount === 'wall'
-            ? wallMountRotationY(absCol, p.at[1], p.facing)
-            : facingToRotationY(p.facing);
-      const key = `${room.id}:${p.at[0]},${p.at[1]}:${p.ref}`;
-      if (p.isMonster) {
-        const monsterRefId = p.ref.split(':').pop();
-        if (monsterRefId) monsters.push({ key, position, monsterRefId });
-      } else {
-        props.push({ key, position, variantRef: p.ref, rotationY });
-      }
-    }
+      if (prop) props.push(prop);
+      if (monster) monsters.push(monster);
+    });
 
     if (room.boss) {
       const absCol = fpRoom.startColumn + room.boss.at[0];
@@ -281,10 +330,30 @@ function buildPlacements(
           key: `${room.id}:boss`,
           position,
           monsterRefId,
+          sel: { roomId: room.id, boss: true },
         });
       }
     }
   }
+
+  // Top-level placements (`doc.place`, `roomId: null`) — genuinely
+  // absent from this preview before Kirk's 2026-08-02 "3D editing" arc
+  // (confirmed via full-file read: nothing referenced `doc.place`
+  // anywhere), same gap class as the entrance/start markers the
+  // alignment-audit round just closed. `at` is already absolute, no room
+  // `startColumn` to add — mirrors `Board.tsx`'s own top-level render
+  // pass (rpg-dnd5e-web#679).
+  doc.place.forEach((p, index) => {
+    const { prop, monster } = buildOnePlacement(
+      p,
+      p.at[0],
+      p.at[1],
+      { roomId: null, index },
+      `top:${p.at[0]},${p.at[1]}:${p.ref}`
+    );
+    if (prop) props.push(prop);
+    if (monster) monsters.push(monster);
+  });
 
   return { props, monsters };
 }
@@ -362,7 +431,21 @@ function PointMarker({
   );
 }
 
-export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
+/** Selection highlight — the SAME amber (`#ffd76a`) `Board.tsx` already
+ * uses for a selected marker's stroke, here a ring on the floor under
+ * the selected prop/monster (this static preview has no 2D-style stroke
+ * outline to recolor). Kirk's 2026-08-02 "3D editing" arc, part 2: click
+ * an object in 3D, see it's selected, then rotate it via the Inspector's
+ * existing facing control (opened the same way a 2D-board click already
+ * opens it — one Inspector, either view). */
+const SELECTED_COLOR = '#ffd76a';
+
+export function DungeonPreview3D({
+  floorPlan,
+  doc,
+  selectedPlacement,
+  onSelect,
+}: DungeonPreview3DProps) {
   const floorTiles = useMemo(
     () => buildFloorTiles(floorPlan, doc.holes),
     [floorPlan, doc.holes]
@@ -379,7 +462,10 @@ export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
 
   return (
     <div style={{ width: '100%', height: '100%', background: '#0c0a08' }}>
-      <Canvas camera={{ fov: 45, position: [10, 14, 10] }}>
+      <Canvas
+        camera={{ fov: 45, position: [10, 14, 10] }}
+        onPointerMissed={() => onSelect?.(null)}
+      >
         <ambientLight intensity={0.8} />
         <directionalLight position={[6, 10, 4]} intensity={1.0} />
         <directionalLight position={[-6, 4, -4]} intensity={0.35} />
@@ -392,22 +478,56 @@ export function DungeonPreview3D({ floorPlan, doc }: DungeonPreview3DProps) {
             {props.map((p) => {
               const variant = resolvePropVariant(p.variantRef);
               if (!variant) return null;
+              const selected = isSameSelection(selectedPlacement, p.sel);
               return (
-                <PropModel
+                <group
                   key={p.key}
-                  variant={variant}
-                  position={p.position}
-                  rotationY={p.rotationY}
-                />
+                  onClick={(e) => {
+                    if (!onSelect) return;
+                    e.stopPropagation();
+                    onSelect(p.sel);
+                  }}
+                >
+                  {selected && (
+                    <PointMarker
+                      worldX={p.position[0]}
+                      worldZ={p.position[2]}
+                      color={SELECTED_COLOR}
+                    />
+                  )}
+                  <PropModel
+                    variant={variant}
+                    position={p.position}
+                    rotationY={p.rotationY}
+                  />
+                </group>
               );
             })}
-            {monsters.map((m) => (
-              <PreviewMonsterModel
-                key={m.key}
-                monsterRefId={m.monsterRefId}
-                position={m.position}
-              />
-            ))}
+            {monsters.map((m) => {
+              const selected = isSameSelection(selectedPlacement, m.sel);
+              return (
+                <group
+                  key={m.key}
+                  onClick={(e) => {
+                    if (!onSelect) return;
+                    e.stopPropagation();
+                    onSelect(m.sel);
+                  }}
+                >
+                  {selected && (
+                    <PointMarker
+                      worldX={m.position[0]}
+                      worldZ={m.position[2]}
+                      color={SELECTED_COLOR}
+                    />
+                  )}
+                  <PreviewMonsterModel
+                    monsterRefId={m.monsterRefId}
+                    position={m.position}
+                  />
+                </group>
+              );
+            })}
             {doc.start &&
               (() => {
                 const w = worldPosition(doc.start[0], doc.start[1]);
