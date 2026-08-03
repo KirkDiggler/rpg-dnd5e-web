@@ -9,11 +9,11 @@
  */
 import { useEffect, useState } from 'react';
 import { CollapsibleSidePanel } from '../CollapsibleSidePanel';
-import type { BoardEditing } from '../DungeonBuilderConcept';
 import type { DungeonDoc, WallKind } from '../dungeonYaml';
 import { Inspector } from '../Inspector';
 import { Palette } from '../Palette';
 import type { BoardTool } from '../types';
+import type { BoardEditing } from '../useBoardEditing';
 import { CreationBoard } from './CreationBoard';
 import type { DemoActions } from './demoScript';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';

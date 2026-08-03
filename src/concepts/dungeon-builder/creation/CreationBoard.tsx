@@ -38,11 +38,11 @@ import {
 } from '@/components/hex-grid/authorGridHelpers';
 import { cubeToWorld } from '@/components/hex-grid/hexMath';
 import { useRef, useState, type ReactElement } from 'react';
-import type { BoardEditing } from '../DungeonBuilderConcept';
 import type { DungeonDoc, WallDoc, WallKind } from '../dungeonYaml';
 import { FLAT_COL_SPACING, FLAT_ROW_SPACING } from '../hexLayout';
 import { resolveMarkerStyle } from '../markerStyle';
 import type { BoardTool, PlacementSelection } from '../types';
+import type { BoardEditing } from '../useBoardEditing';
 import {
   creationCellCenter,
   hEdgeGeometry,
