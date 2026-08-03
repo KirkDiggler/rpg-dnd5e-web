@@ -457,10 +457,13 @@ export function HexEntity({
     // monster (monsterModels.ts). `isDead` (not `isDowned`, which is a
     // CHARACTER-only "unconscious" concept — see buildRenderableEntities)
     // is this family's "use the downed pose variant" signal: monsters die
-    // at 0 HP rather than going unconscious.
+    // at 0 HP rather than going unconscious. `entityId` (rpg-dnd5e-web#673)
+    // is this entity's own stable id — keys the deterministic style pick
+    // for a multi-candidate ref (today, only `zombie`); every render of the
+    // same entity passes the same id, so the picked style never flickers.
     const monsterModelUrl =
       type === 'monster'
-        ? resolveMonsterModelUrl(monsterRefId, monsterType, isDead)
+        ? resolveMonsterModelUrl(monsterRefId, monsterType, isDead, entityId)
         : undefined;
     // Mutually exclusive by `type` — never both defined for the same
     // entity, so combining them into one resolved url + one sticky-failure
