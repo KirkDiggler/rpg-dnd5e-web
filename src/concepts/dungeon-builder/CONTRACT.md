@@ -2568,3 +2568,144 @@ compiled server-side`. Evidence:
 
 `ci-check` clean, full suite passing (58 tests: the `setPlacementMount`
 test split into a decoupling-focused pair, net +1 over the prior count).
+
+## Cleanup sweep (graduation audit items), 2026-08-03
+
+One unit, one branch, one PR — a ranked list from a graduation audit run
+against an earlier tree. Every item was re-verified against `dev` at
+the time this sweep started (several PRs had landed since the audit
+ran) before being fixed; anything already resolved is named as such
+below rather than redone.
+
+**1. Round-trip test path** — `dungeonYaml.test.ts`'s real-fixture
+round-trip resolved `join(__dirname, '../../../../../dungeon-content/
+showcase.yaml')`, one `../` too many; the catch silently fell back to
+the embedded fixture, making the test a self-comparison. Fixed to 4
+levels up. **Real verdict, not papered over**: verified independently
+(this sweep's worktree isn't nested under `~/game-dev/` the way a
+normal checkout is, so the corrected relative path itself still falls
+back to the embedded fixture here — a second, standalone check read
+the real file directly by absolute path) that the round-trip against
+the actual `dungeon-content/showcase.yaml` on disk is byte-stable
+(modulo the already-documented flow-sequence-padding normalization) —
+**no drift**, the fixture and the source file agree. On a normal
+checkout (canonical location `~/game-dev/rpg-dnd5e-web/`), the fixed
+relative path resolves directly and this same real comparison runs as
+part of the suite.
+
+**2. Dead-scaffolding sweep** — removed: `creationTypes.ts`/
+`creationGeometry.ts`'s `EdgeKey`/`hEdgeKey`/`vEdgeKey` and the
+`EdgeGeometry.key` field (nothing read `.key`); `creationGeometry.ts`'s
+`allInternalEdges` (never called); `Palette.tsx`'s `showBoardTools`
+prop (both call sites relied on the default `true`, so its doc comment
+claiming creation mode passes `false` no longer matched reality —
+Structural/Markers already rendered in both modes; this just dropped
+the dead plumbing); `useSaveDungeon.ts`'s `reset` (never called);
+`paletteData.ts`'s `PaletteProp.footprintHexes`/`blocksLoS` (set, never
+read); `fixtures.ts`'s `MONSTER_PLACE_CHECK_VERIFIED` export dropped,
+its evidence comment kept; `dungeonYaml.ts`'s doc comment pointing at a
+nonexistent `useWalkItVariant.ts` retargeted to `YamlPane.tsx`'s real
+`honestyNote`; `Board.tsx`'s empty `handlePointerMove` placeholder.
+**Skipped, already fixed**: `hexLayout.ts`'s `hexColumn`/`hexRow`
+re-exports are NOT dead — `boardGeometry.ts` and `DungeonPreview3D.tsx`
+both genuinely import and use them through this module, real usage
+added by the wall-mount edge-selection rework after the audit ran.
+
+**3. `specimens/README.md`** — its regeneration script's two
+`setPlacementMount(cst, roomId, index, 'wall', height)` examples were
+the pre-decouple 5-arg signature. Updated to the current independent
+`setPlacementMount(...,'wall')` + `setPlacementHeight(...,height)`
+pair. Verified by actually running the corrected script as a
+throwaway test: it compiles against the real `dungeonYaml.ts`, and the
+regenerated `kitchen-sink.yaml` is byte-identical to the checked-in
+v0.1 specimen.
+
+**4. Shared prop-visual module** — `Board.tsx`'s `markerColor`/
+`shortLabel` and `CreationBoard.tsx`'s near-verbatim `markerColor`/
+`markerShort` (both doing the same `PALETTE_PROPS`/`ROLE_COLOR`/
+`MONSTER_COLOR`/`BOSS_COLOR` lookup) consolidated into
+`markerStyle.ts`'s `resolveMarkerStyle(ref, opts?)`. The 3D preview
+does not participate — it renders real GLB models
+(`PropModel`/`PreviewMonsterModel`), not colored SVG swatches, so there
+was no actual duplication there to remove.
+
+**5. Unify wall geometry** — edit-mode `Board.tsx` drew each wall as a
+dashed rect covering the WHOLE `from` cell regardless of which of its 6
+edges the wall was actually on; creation mode and the 3D preview both
+already drew the real shared edge. Added `hexLayout.ts`'s
+`edgeBetweenCells` (wrapping `hexMath.ts`'s `hexEdgeBetween`, the same
+primitive the 3D preview's `wallBoxTransform` uses) and switched
+`Board.tsx` to a real edge-aligned `<line>`. Separately, reconciled
+`dungeonYaml.ts`'s two wall lookups: `wallIndexAt` (edit mode, matched
+by `from` cell ONLY) vs `wallIndexAtEdge` (creation mode, exact
+`from`/`to` pair) — the from-only lookup meant edit mode's Wall tool
+could find and delete a creation-drawn wall on a _different_ edge that
+merely shared the same `from` cell. Removed `wallIndexAt`;
+`toggleWall`/`toggleWallKind` now both call `wallIndexAtEdge`. New
+regression test in `dungeonYaml.test.ts` pins this — confirmed it
+actually catches the bug by temporarily reverting to the old
+from-cell-only lookup and watching it fail (the other wall vanished
+instead of surviving untouched) before restoring the fix. Visually
+verified live: walls now render as short edge segments at the correct
+hex boundary, solid/door color distinction intact.
+
+**6. Extract `useBoardEditing`** — moved verbatim from
+`DungeonBuilderConcept.tsx` to its own `useBoardEditing.ts` (it was
+already a cleanly self-contained hook, just in the wrong file);
+`CreationBoard.tsx`/`CreationConcept.tsx` now import the `BoardEditing`
+type from there directly. Also fixed the two per-render
+`parseDungeon(...)` calls the same audit flagged (`initial`/
+`creationInitial`) — neither was wrapped in a `useState` lazy
+initializer, so the parse (and the adjacent `serializeDungeon` calls
+feeding the initial `yamlText` state, same shape of the same bug) ran
+on every render even though only the first render's result was ever
+used. Wrapped both in `useState(() => ...)`. Verified live: both edit
+and creation mode still load and placing a prop through the extracted
+hook still updates the board/YAML correctly.
+
+**7. Shared marker module** — `PlacementMarker.tsx` extracted the
+circle+label a placed prop/monster gets, byte-identical between
+`Board.tsx` and `CreationBoard.tsx` before this (confirmed by diffing
+the two JSX blocks directly — same radius, same selection-stroke
+logic, same text styling). Does not own the `<g>`/pointer-handler
+wrapper, which differs meaningfully per board. Also deduped the
+`doc.start`/`doc.end` marker COLOR constants
+(`markerStyle.ts`'s `START_COLOR`/`END_COLOR`, `#5fd1c9`/`#c9a227`),
+independently hardcoded identically in `Board.tsx`, `CreationBoard.tsx`,
+and the 3D preview's `PointMarker`. Deliberately did NOT unify the
+actual start/end circle+label JSX — `Board.tsx` (filled swatch,
+"ST"/"EN") and `CreationBoard.tsx` (outline ring, full "START"/"END"
+above it, different label colors) render them with genuinely different
+visual treatments today, and picking one is a design call for Kirk,
+not a mechanical dedup. The boss pin (`Board.tsx`-only, different
+size/font, no creation-mode analog) and the 3D preview's own marker (a
+Three.js `<ringGeometry>` mesh, different rendering technology) were
+left out of `PlacementMarker` for the same "nothing to actually
+consolidate" reason item 4 already established.
+
+**8. Move `ThumbHarness`** — moved `ThumbHarness.tsx` from
+`src/concepts/dungeon-builder/thumbs/` to `src/dev/` (alongside
+`DevPerfProbe.tsx`, the existing convention) so `App.tsx`'s dev-only
+gate no longer imports from a concept folder. The `thumbs/*.png`
+assets stayed put — `paletteData.ts`'s `import.meta.glob('./thumbs/
+*.png', ...)` is relative to `paletteData.ts`'s own location, which
+didn't move. Verified with a full production build: the glob still
+resolves all 13 baked thumbnails correctly post-move.
+
+**9. Missing tests** — `creationGeometry.test.ts` (new file):
+`nearestEdge` had zero coverage; added baseline cases plus the
+orientation-lock regression guard — a hand-derived straight horizontal
+drag where, WITHOUT `lockOrientation`, the resolved edge flips from
+horizontal to vertical partway across a single cell (the "crenellated
+comb" bug this file's own wall-interaction finding describes), and
+WITH the lock stays on the same edge throughout. `useSaveDungeon.test.ts`
+(new file): zero coverage on the Save & Play hook; mirrors
+`usePutDungeonPreview.test.ts`'s `vi.hoisted`/`vi.mock('@/api/client')`
+pattern, covering idle/saving/saved/invalid/error transitions,
+`savedKey` echoing the request key (not the response, which has none),
+and a fresh `save()` clearing a prior error before the new request
+settles.
+
+`ci-check` clean. Full suite: 84 dungeon-builder tests passing (up from
+69 before this sweep — 15 new: 8 `nearestEdge` + 7 `useSaveDungeon`),
+1772 repo-wide.
