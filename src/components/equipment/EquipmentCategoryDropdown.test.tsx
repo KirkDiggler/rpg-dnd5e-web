@@ -1,10 +1,13 @@
 /**
- * EquipmentCategoryDropdown tests (rpg-dnd5e-web#670). Test-only fixtures
- * below stand in for the live `Equipment[]` a production category slot
- * fetches via `useListEquipmentByType` — no proto fixture files ship
- * outside this test.
+ * EquipmentCategoryDropdown tests. Test-only fixtures model the enriched
+ * authoritative `EquipmentCategoryChoice.options` entries consumed by the
+ * production category slot.
  */
 import { create } from '@bufbuild/protobuf';
+import {
+  EquipmentItemSchema,
+  type EquipmentItem,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
   ArmorCategory,
   DamageType,
@@ -61,7 +64,11 @@ const LEATHER_ARMOR: Equipment = create(EquipmentSchema, {
   },
 });
 
-const OPTIONS = [CLUB, DAGGER];
+const item = (selectionId: string, equipmentDetail: Equipment): EquipmentItem =>
+  create(EquipmentItemSchema, { selectionId, quantity: 1, equipmentDetail });
+
+const OPTIONS = [item('club', CLUB), item('dagger', DAGGER)];
+const LEATHER_OPTION = item('leather', LEATHER_ARMOR);
 
 describe('EquipmentCategoryDropdown', () => {
   it('renders a compact closed trigger, not a full options list, before opening', () => {
@@ -111,7 +118,7 @@ describe('EquipmentCategoryDropdown', () => {
       <EquipmentCategoryDropdown
         id="test-dropdown"
         ariaLabel="Choose armor"
-        options={[LEATHER_ARMOR]}
+        options={[LEATHER_OPTION]}
         selectedId={null}
         onChange={vi.fn()}
       />

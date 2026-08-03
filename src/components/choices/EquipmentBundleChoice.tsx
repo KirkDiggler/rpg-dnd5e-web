@@ -1,15 +1,10 @@
 import type {
   Choice,
   EquipmentCategoryChoice,
+  EquipmentItem,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
-import {
-  EquipmentType,
-  WeaponCategory,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import type { Equipment } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/equipment_types_pb';
 import { Package } from 'lucide-react';
 import { useCallback, useState } from 'react';
-import { useListEquipmentByType } from '../../api/hooks';
 import { useEquipmentBundleSelection } from '../../hooks/useEquipmentBundleSelection';
 import { EquipmentCard } from '../equipment/EquipmentCard';
 import { EquipmentCategoryDropdown } from '../equipment/EquipmentCategoryDropdown';
@@ -18,7 +13,7 @@ interface EquipmentBundleChoiceProps {
   choice: Choice;
   onSelectionChange: (
     bundleId: string | null,
-    categorySelections: Map<number, Equipment[]>
+    categorySelections: Map<number, EquipmentItem[]>
   ) => void;
   initialBundleId?: string | null;
   initialItemIds?: string[];
@@ -33,74 +28,30 @@ function CategorySelector({
 }: {
   category: EquipmentCategoryChoice;
   categoryIndex: number;
-  onSelect: (categoryIndex: number, items: Equipment[]) => void;
-  currentSelections: Equipment[];
+  onSelect: (categoryIndex: number, items: EquipmentItem[]) => void;
+  currentSelections: EquipmentItem[];
 }) {
   const chooseCount = category.choose || 1;
+  const options = category.options;
 
-  // Track selections for each slot (when choose > 1)
+  // Track selections for each slot (when choose > 1).
   const [selectedBySlot, setSelectedBySlot] = useState<(string | null)[]>(() =>
     Array.from(
       { length: chooseCount },
-      (_, i) => currentSelections[i]?.id ?? null
+      (_, i) => currentSelections[i]?.selectionId ?? null
     )
   );
 
-  // Determine equipment types to fetch based on category
-  const equipmentTypes = useCallback((): EquipmentType[] => {
-    const types: EquipmentType[] = [];
-
-    if (category.weaponCategories && category.weaponCategories.length > 0) {
-      category.weaponCategories.forEach((cat) => {
-        if (cat === WeaponCategory.SIMPLE) {
-          types.push(EquipmentType.SIMPLE_MELEE_WEAPON);
-          types.push(EquipmentType.SIMPLE_RANGED_WEAPON);
-        } else if (cat === WeaponCategory.MARTIAL) {
-          types.push(EquipmentType.MARTIAL_MELEE_WEAPON);
-          types.push(EquipmentType.MARTIAL_RANGED_WEAPON);
-        }
-      });
-    }
-
-    if (category.armorCategories && category.armorCategories.length > 0) {
-      types.push(EquipmentType.LIGHT_ARMOR);
-      types.push(EquipmentType.MEDIUM_ARMOR);
-      types.push(EquipmentType.HEAVY_ARMOR);
-      types.push(EquipmentType.SHIELD);
-    }
-
-    if (category.toolCategories && category.toolCategories.length > 0) {
-      types.push(EquipmentType.TOOLS);
-    }
-
-    return types;
-  }, [category]);
-
-  // Fetch equipment - always enabled since we're not using expand/collapse
-  const types = equipmentTypes();
-  const primaryType = types[0] || EquipmentType.UNSPECIFIED;
-  const {
-    data: equipment,
-    loading: equipmentLoading,
-    error: equipmentError,
-    refetch: refetchEquipment,
-  } = useListEquipmentByType({
-    equipmentType: primaryType,
-    enabled: types.length > 0,
-  });
-
   const handleSlotChange = (slotIndex: number, value: string) => {
-    if (!equipment) return;
-
     const newSelectedBySlot = [...selectedBySlot];
     newSelectedBySlot[slotIndex] = value || null;
     setSelectedBySlot(newSelectedBySlot);
 
-    // Gather all selected items and report back
+    // Keep the API's selection IDs and ordered option objects intact.
     const selectedItems = newSelectedBySlot
       .filter((id): id is string => id !== null)
-      .map((id) => equipment.find((e) => e.id === id))
-      .filter((item): item is Equipment => item !== undefined);
+      .map((id) => options.find((option) => option.selectionId === id))
+      .filter((item): item is EquipmentItem => item !== undefined);
 
     onSelect(categoryIndex, selectedItems);
   };
@@ -129,7 +80,9 @@ function CategorySelector({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {Array.from({ length: chooseCount }, (_, slotIndex) => {
           const selectedItem = selectedBySlot[slotIndex]
-            ? equipment?.find((e) => e.id === selectedBySlot[slotIndex])
+            ? options.find(
+                (option) => option.selectionId === selectedBySlot[slotIndex]
+              )
             : undefined;
           const slotLabel =
             chooseCount > 1
@@ -144,16 +97,16 @@ function CategorySelector({
                 placeholder={`-- Select ${
                   chooseCount > 1 ? `item ${slotIndex + 1}` : 'item'
                 } --`}
-                options={equipment ?? []}
+                options={options}
                 selectedId={selectedBySlot[slotIndex]}
                 onChange={(value) => handleSlotChange(slotIndex, value)}
-                isLoading={equipmentLoading}
-                error={equipmentError}
-                onRetry={() => refetchEquipment()}
               />
               {selectedItem && (
                 <div style={{ marginTop: '6px' }}>
-                  <EquipmentCard equipment={selectedItem} compact />
+                  <EquipmentCard
+                    equipment={selectedItem.equipmentDetail!}
+                    compact
+                  />
                 </div>
               )}
             </div>
@@ -215,7 +168,7 @@ export function EquipmentBundleChoice({
 
   // Handle category item selection
   const handleCategorySelect = useCallback(
-    (categoryIndex: number, items: Equipment[]) => {
+    (categoryIndex: number, items: EquipmentItem[]) => {
       selectCategoryItems(categoryIndex, items);
       const updatedSelections = new Map(categorySelections);
       updatedSelections.set(categoryIndex, items);

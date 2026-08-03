@@ -61,8 +61,10 @@ export function ChoiceRenderer({
           if (bundleId) selections.push(bundleId);
           categorySelections.forEach((equipment, index) => {
             equipment.forEach((item) =>
-              // Store as "cat{index}:{id}:{name}" so we can extract name later
-              selections.push(`cat${index}:${item.id}:${item.name}`)
+              // Store the authoritative selection ID and server-provided name.
+              selections.push(
+                `cat${index}:${item.selectionId}:${item.equipmentDetail?.name ?? item.selectionId}`
+              )
             );
           });
           onSelectionChange(choice.id, selections);

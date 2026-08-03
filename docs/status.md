@@ -12,6 +12,13 @@ let it rot.
 
 ## Active work
 
+- **Authoritative character-creation category options (#690)** — the production
+  `EquipmentBundleChoice` now renders `EquipmentCategoryChoice.options` directly
+  through the accessible rich dropdown/card. It no longer reconstructs category
+  membership or calls `ListEquipmentByType`; ordered toolkit/API options and their
+  selection IDs are preserved through selection and reopened-draft hydration.
+  Proto dependency: `rpg-api-protos#207` / `v0.1.118`; provider: `rpg-api#764`.
+
 - **Equipment live on the game screen (#571)** — the `/concepts` equipment
   chip + popover bench (#531/#557) is wired to the real
   `dnd5e.api.v1alpha2.character.CharacterService.EquipItem`/`UnequipItem`

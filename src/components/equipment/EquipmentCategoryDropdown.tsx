@@ -9,12 +9,9 @@
  * duplicating its formatting.
  *
  * This is wired directly into the production category-choice path
- * (`EquipmentBundleChoice`'s `CategorySelector`) against the existing,
- * live `useListEquipmentByType` data — the same `Equipment[]` shape that
- * route has always fetched. It does not consume or require
- * `EquipmentCategoryChoice.options` (the toolkit/API-resolved shape is a
- * separate, deferred wave) and contains no class- or eligibility-specific
- * logic; the category's item list is whatever the caller passes in.
+ * (`EquipmentBundleChoice`'s `CategorySelector`) and renders the
+ * authoritative `EquipmentCategoryChoice.options` items exactly as the API
+ * supplies them. It has no eligibility or category reconstruction logic.
  *
  * Accessibility: implements the W3C ARIA APG "select-only" combobox
  * pattern (w3.org/WAI/ARIA/apg/patterns/combobox/examples/combobox-select-only/)
@@ -24,7 +21,7 @@
  * Escape, or selection, returning focus to the trigger.
  */
 
-import type { Equipment } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/equipment_types_pb';
+import type { EquipmentItem } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
   useCallback,
   useEffect,
@@ -40,8 +37,8 @@ export interface EquipmentCategoryDropdownProps {
   ariaLabel: string;
   /** Placeholder shown in the trigger when nothing is selected. */
   placeholder?: string;
-  /** Live equipment options for this category slot. */
-  options: Equipment[];
+  /** Authoritative, enriched category options for this slot. */
+  options: EquipmentItem[];
   /** Currently selected option id (controlled), or null. */
   selectedId: string | null;
   onChange: (id: string) => void;
@@ -78,7 +75,7 @@ export function EquipmentCategoryDropdown({
   const optionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const selectedItem = useMemo(
-    () => options.find((o) => o.id === selectedId) ?? null,
+    () => options.find((o) => o.selectionId === selectedId) ?? null,
     [options, selectedId]
   );
 
@@ -91,8 +88,8 @@ export function EquipmentCategoryDropdown({
       setActiveId(null);
       return;
     }
-    if (!options.some((o) => o.id === activeId)) {
-      setActiveId(selectedId ?? options[0].id);
+    if (!options.some((o) => o.selectionId === activeId)) {
+      setActiveId(selectedId ?? options[0].selectionId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options]);
@@ -115,7 +112,7 @@ export function EquipmentCategoryDropdown({
   }, [open]);
 
   const activeIndex = useMemo(
-    () => options.findIndex((o) => o.id === activeId),
+    () => options.findIndex((o) => o.selectionId === activeId),
     [options, activeId]
   );
 
@@ -123,7 +120,7 @@ export function EquipmentCategoryDropdown({
     (nextIndex: number) => {
       if (options.length === 0) return;
       const clamped = Math.max(0, Math.min(options.length - 1, nextIndex));
-      setActiveId(options[clamped].id);
+      setActiveId(options[clamped].selectionId);
     },
     [options]
   );
@@ -144,7 +141,7 @@ export function EquipmentCategoryDropdown({
           event.preventDefault();
           if (!open) {
             setOpen(true);
-            setActiveId(selectedId ?? options[0]?.id ?? null);
+            setActiveId(selectedId ?? options[0]?.selectionId ?? null);
           } else {
             moveActive(activeIndex + 1);
           }
@@ -152,8 +149,7 @@ export function EquipmentCategoryDropdown({
         case 'ArrowUp':
           event.preventDefault();
           if (!open) {
-            setOpen(true);
-            setActiveId(selectedId ?? options[0]?.id ?? null);
+            setActiveId(selectedId ?? options[0]?.selectionId ?? null);
           } else {
             moveActive(activeIndex - 1);
           }
@@ -175,7 +171,7 @@ export function EquipmentCategoryDropdown({
           event.preventDefault();
           if (!open) {
             setOpen(true);
-            setActiveId(selectedId ?? options[0]?.id ?? null);
+            setActiveId(selectedId ?? options[0]?.selectionId ?? null);
           } else if (activeId) {
             commit(activeId);
           }
@@ -235,7 +231,7 @@ export function EquipmentCategoryDropdown({
         onClick={() => {
           if (disabled) return;
           setOpen((prev) => !prev);
-          if (!open) setActiveId(selectedId ?? options[0]?.id ?? null);
+          if (!open) setActiveId(selectedId ?? options[0]?.selectionId ?? null);
         }}
         onKeyDown={handleTriggerKeyDown}
         style={{
@@ -268,7 +264,8 @@ export function EquipmentCategoryDropdown({
             : error
               ? 'Failed to load options'
               : selectedItem
-                ? selectedItem.name
+                ? (selectedItem.equipmentDetail?.name ??
+                  selectedItem.selectionId)
                 : options.length === 0
                   ? 'No options available'
                   : placeholder}
@@ -339,20 +336,20 @@ export function EquipmentCategoryDropdown({
           }}
         >
           {options.map((option) => {
-            const isSelected = option.id === selectedId;
-            const isActive = option.id === activeId;
+            const isSelected = option.selectionId === selectedId;
+            const isActive = option.selectionId === activeId;
             return (
               <div
-                key={option.id}
+                key={option.selectionId}
                 ref={(node) => {
-                  optionRefs.current[option.id] = node;
+                  optionRefs.current[option.selectionId] = node;
                 }}
                 role="option"
-                id={`${rootId}-option-${option.id}`}
+                id={`${rootId}-option-${option.selectionId}`}
                 aria-selected={isSelected}
-                data-testid={`${rootId}-option-${option.id}`}
-                onMouseEnter={() => setActiveId(option.id)}
-                onClick={() => commit(option.id)}
+                data-testid={`${rootId}-option-${option.selectionId}`}
+                onMouseEnter={() => setActiveId(option.selectionId)}
+                onClick={() => commit(option.selectionId)}
                 style={{
                   cursor: 'pointer',
                   borderRadius: '6px',
@@ -365,7 +362,7 @@ export function EquipmentCategoryDropdown({
                     : 'none',
                 }}
               >
-                <EquipmentCard equipment={option} compact />
+                <EquipmentCard equipment={option.equipmentDetail!} compact />
               </div>
             );
           })}

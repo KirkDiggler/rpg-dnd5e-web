@@ -3,6 +3,7 @@ import type {
   Choice,
   ChoiceData,
   EquipmentBundle,
+  EquipmentItem,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
   ChoiceCategory,
@@ -11,7 +12,6 @@ import {
   EquipmentSelectionItemSchema,
   EquipmentSelectionSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
-import type { Equipment } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/equipment_types_pb';
 import { useCallback, useState } from 'react';
 
 export function useEquipmentBundleSelection(
@@ -22,13 +22,12 @@ export function useEquipmentBundleSelection(
   const [selectedBundleId, setSelectedBundleId] = useState<string | null>(
     initialBundleId ?? null
   );
-  // Initialize category selections with initial items (all in category 0 for now)
+  // Initialize category selections with initial items (all in category 0 for now).
   const [categorySelections, setCategorySelections] = useState<
-    Map<number, Equipment[]>
+    Map<number, EquipmentItem[]>
   >(() => {
     if (initialItemIds && initialItemIds.length > 0) {
-      // Create Equipment-like objects with just the id (CategorySelector only needs .id)
-      const items = initialItemIds.map((id) => ({ id, name: id }) as Equipment);
+      const items = initialItemIds.map((selectionId) => ({ selectionId }));
       return new Map([[0, items]]);
     }
     return new Map();
@@ -42,7 +41,7 @@ export function useEquipmentBundleSelection(
 
   // When user selects items from a category
   const selectCategoryItems = useCallback(
-    (categoryIndex: number, items: Equipment[]) => {
+    (categoryIndex: number, items: EquipmentItem[]) => {
       setCategorySelections((prev) => {
         const updated = new Map(prev);
         updated.set(categoryIndex, items);
@@ -52,15 +51,15 @@ export function useEquipmentBundleSelection(
     []
   );
 
-  // Helper to create EquipmentSelectionItem from Equipment
-  const createEquipmentSelectionItem = (equipment: Equipment) => {
+  // Helper to create EquipmentSelectionItem from an authoritative option.
+  const createEquipmentSelectionItem = (equipment: EquipmentItem) => {
     // Since Weapon, Armor, etc. are enums (not message types),
     // we use otherEquipmentId for all equipment items
     // The backend knows what they are from the ID
     return create(EquipmentSelectionItemSchema, {
       equipment: {
         case: 'otherEquipmentId',
-        value: equipment.id,
+        value: equipment.selectionId,
       },
     });
   };
@@ -74,7 +73,7 @@ export function useEquipmentBundleSelection(
       }
 
       // Flatten all category selections into a single array
-      const allSelectedItems: Equipment[] = [];
+      const allSelectedItems: EquipmentItem[] = [];
       categorySelections.forEach((items) => {
         allSelectedItems.push(...items);
       });
