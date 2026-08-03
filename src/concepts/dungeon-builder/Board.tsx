@@ -35,9 +35,19 @@ interface BoardProps {
   selectedConnectorIndex: number | null;
   onPlace: (roomId: string, at: [number, number]) => void;
   onSelect: (sel: PlacementSelection | null) => void;
+  /** `roomId: null` on the destination commits a TOP-LEVEL placement move
+   * — see `types.ts`'s `PlacementSelection` doc comment. Board.tsx itself
+   * only ever calls this with `null` when the DRAGGED selection was
+   * already top-level (`dragging.roomId === null`): a top-level
+   * placement stays top-level wherever it's dropped, even visually
+   * inside a room's area — rooms are organizational, not existential
+   * (TARGET-YAML.md's "top-level placement" section), so landing near a
+   * room doesn't silently reparent it into that room's own `place:`
+   * list. Room-scoped placements are unaffected — dropping one still
+   * always resolves a real room id, same as before. */
   onMove: (
     sel: PlacementSelection,
-    roomId: string,
+    roomId: string | null,
     at: [number, number]
   ) => void;
   onReject: (message: string) => void;
@@ -447,6 +457,55 @@ export function Board({
     }
   }
 
+  // Top-level placements (`doc.place`, `roomId: null`) — TARGET-YAML.md's
+  // "top-level placement" section: rooms are organizational, not
+  // existential, so a placement doesn't have to belong to one. Same
+  // marker rendering as the room-scoped loop just above, with two
+  // differences: `at` is already absolute (no room `startColumn` to
+  // add), and it also feeds `trackCellExtent` (matching every other
+  // target-dialect construct below) so the viewBox grows to include one
+  // authored beyond the compiled FloorPlan's own bounds instead of
+  // silently clipping it — a top-level placement is explicitly allowed
+  // to sit anywhere, not just inside a declared room.
+  doc.place.forEach((p, index) => {
+    trackCellExtent(p.at[0], p.at[1]);
+    const center = cellCenter(p.at[0], p.at[1]);
+    const sel: PlacementSelection = { roomId: null, index };
+    const isSelected =
+      !!selectedPlacement &&
+      !selectedPlacement.boss &&
+      selectedPlacement.roomId === null &&
+      selectedPlacement.index === index;
+    markers.push(
+      <g
+        key={`place-top-${index}`}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          onSelect(sel);
+          setDragging(sel);
+        }}
+      >
+        <circle
+          cx={center.x}
+          cy={center.y}
+          r={BOARD_HEX_SIZE * 0.5}
+          fill={markerColor(p.ref, false)}
+          stroke={isSelected ? '#ffd76a' : '#000'}
+          strokeWidth={isSelected ? 2.5 : 1}
+        />
+        <text
+          x={center.x}
+          y={center.y + 3.5}
+          textAnchor="middle"
+          fill="#fff"
+          fontSize={9}
+        >
+          {shortLabel(p.ref, false)}
+        </text>
+      </g>
+    );
+  });
+
   // Room labels + entrance marker.
   const labels: ReactElement[] = floorPlan.rooms.map((r) => {
     const top = cellCenter(r.startColumn, 0);
@@ -524,6 +583,23 @@ export function Board({
       floorPlan
     );
     setDragging(null);
+    if (!dragging.boss && dragging.roomId === null) {
+      // A top-level placement stays top-level wherever it's dropped —
+      // even visually inside a room's area — rather than being
+      // reparented into whatever room's `place:` list the drop point
+      // happens to land in. See `BoardProps.onMove`'s own doc comment.
+      if (row === floorPlan.doorRow) {
+        onReject('Can’t drop on the reserved door row.');
+        return;
+      }
+      const exclude = { roomId: null, index: dragging.index };
+      if (isCellOccupied(floorPlan, doc, absCol, row, exclude)) {
+        onReject('Cell already occupied.');
+        return;
+      }
+      onMove(dragging, null, [absCol, row]);
+      return;
+    }
     if (!room) {
       onReject('Can only drop inside a room.');
       return;

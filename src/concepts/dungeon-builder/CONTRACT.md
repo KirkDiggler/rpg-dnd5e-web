@@ -1724,20 +1724,9 @@ run against the new routing).
 
 ### What did NOT ship this round — named, not silently dropped
 
-- **Edit mode's `Board.tsx` does not yet render top-level placements.**
-  The team lead's brief scoped this round to dungeonYaml.ts's mutators,
-  creation mode's re-pointing, `stripToV1Subset`, and the docs — it did
-  not ask for a new Board.tsx render pass, and adding one is a real,
-  separate chunk of work (an overlay pass matching the existing wall/
-  hole/start/end target-dialect-overlay visual language, absolute coordinates with
-  no room offset, plus wiring `onPlace`/`onSelect`/`onMove` for a
-  roomId-less marker). `isCellOccupied` already accounts for `doc.place`
-  defensively (see above), so nothing is UNSAFE about a hand-typed
-  top-level placement in edit mode's YAML pane today — it just isn't
-  visible on the board yet. Reachable only by hand-editing the YAML text
-  in edit mode (creation mode is where this construct is actually
-  authored through the UI this round) — named as the next natural
-  extension, not attempted here to keep this round to what was asked.
+- ~~Edit mode's `Board.tsx` does not yet render top-level placements.~~
+  **Shipped, 2026-08-02** — see "Top-level placements render/select on
+  the board," below.
 - **Walls still don't carve the canvas into real, separately-addressable
   rooms.** Unaffected by this round either way — a from-scratch canvas
   is still one undivided space; the "branching topology" evolution
@@ -1976,3 +1965,89 @@ retain" list item 5 (3D-mode editing requirement for the eventual real
 editor) and TARGET-YAML.md's open question on whether 6-direction hex
 facing is too coarse for wall-mounted props — both landed in the earlier
 terminology-sweep commit (800cacc), before this fix.
+
+## Top-level placements render/select on the board, 2026-08-02
+
+Closes a gap named honestly two rounds ago (see the retracted "What did
+NOT ship" entry above): edit mode's `Board.tsx` parsed and safely
+occupancy-checked `doc.place` (top-level, `roomId: null`) but never
+rendered or made it interactive — a hand-typed top-level placement was
+real and correct in the document, just invisible on the board. First
+piece of work under the new "concept incubates the real components"
+operating bar (this file's own section, above), so it's held to that
+bar: a real render-layer test, not just live verification.
+
+**What shipped**: `Board.tsx` gains a third marker-rendering pass, right
+after the existing room-scoped `place:`/`boss:` loop — same marker JSX,
+same `markerColor`/`shortLabel` helpers, the only differences being `at`
+is already absolute (no room `startColumn` to add) and the constructed
+`PlacementSelection` carries `roomId: null`. Also feeds
+`trackCellExtent`, matching every other target-dialect construct
+(walls/holes/start/end) — a top-level placement can be authored anywhere,
+not just inside a declared room, so the viewBox needs to grow for one
+same as it already does for an out-of-bounds wall.
+
+`BoardProps.onMove` widens from `roomId: string` to `roomId: string |
+null`. `handlePointerUp` gains an early branch for a top-level source
+selection (`!dragging.boss && dragging.roomId === null`): the placement
+stays top-level wherever it's dropped, even when the drop point visually
+lands inside a room's floor area — it does NOT get silently reparented
+into that room's own `place:` list. This is a deliberate reading of
+"rooms are organizational, not existential" (TARGET-YAML.md's top-level
+placement section): a top-level placement choosing to land near a room
+doesn't mean it's choosing to belong to it. The existing room-scoped drag
+path is completely unchanged — same code, same behavior, verified by a
+regression test (below) rather than assumed.
+
+**Deliberately still out of scope, named honestly**: clicking empty
+board space to CREATE a new top-level placement. The base grid loop only
+renders clickable cells within the compiled `FloorPlan`'s own
+room/connector columns — there's no defined clickable "dead space"
+beyond that to click into, and inventing one (how far should it extend?
+what does clicking it even mean before any room exists there?) is a
+real, separate design question TARGET-YAML.md's own linear-chain section
+doesn't answer either. A top-level placement is still only ever
+CREATED via hand-typed YAML or creation mode's own board; this round
+makes an existing one visible and interactive wherever it came from.
+`onPlace`'s own prop type stays `roomId: string` (unwidened) to keep
+that honest — Board.tsx genuinely never calls it with `null`.
+
+**Verified two ways, per the new bar** — live AND a committed test, not
+either alone:
+
+- Live: hand-typed a top-level `place:` entry into the YAML pane's
+  existing "Apply YAML → Board" flow, confirmed it renders as a marker,
+  clicking it opens the Inspector showing the correct absolute
+  coordinates, and dragging it to a new cell (including one visually
+  inside a room) updates its `at` while it stays in the top-level
+  `place:` list — confirmed by reading the full YAML text after the
+  drop, not just trusting the UI. One real bug surfaced and fixed during
+  this pass: an early drag test appeared to silently fail (`at` never
+  changed, no reject toast) — root-caused via temporary console logging
+  to a Playwright drag ending outside the SVG's own rendered bounds
+  (pointer capture isn't set anywhere in this component, so `pointerup`
+  needs to land ON the SVG element itself to reach `handlePointerUp` at
+  all) — a test-script coordinate bug, not a Board.tsx bug, confirmed by
+  a control test dragging an untouched, already-shipped room-scoped
+  marker with the exact same synthetic approach, which worked
+  immediately.
+- `Board.test.tsx` (new file — this concept's first render-layer test;
+  `dungeonYaml.test.ts` already covered the data layer): renders `Board`
+  directly against real fixture data (`fixtures.ts`'s
+  `SHOWCASE_FLOORPLAN`/`SHOWCASE_YAML`), not wired through
+  `DungeonBuilderConcept.tsx`'s composition root — asserts on `Board`'s
+  own props/callbacks so the test keeps meaning if `Board` is later
+  extracted into the real editor, per the operating bar's "tests that
+  survive extraction" line. Five cases: a top-level placement renders
+  alongside an existing room-scoped one of the same ref (disambiguating
+  two markers with the identical short-label, "AL", the same real
+  ambiguity the live verification above had to work around); clicking
+  one calls `onSelect` with `{ roomId: null, index: 0 }`; the correct
+  marker highlights when `selectedPlacement` targets a top-level entry;
+  a document with zero top-level placements renders none (the base case
+  stays untouched); and a REGRESSION case confirming a room-scoped
+  marker still selects with its real room id, unaffected by any of this.
+
+43/43 pre-existing tests + 5 new = 48/48 passing. `ci-check` clean.
+Evidence:
+`docs/evidence/dungeon-builder-toplevel-board-render-select.png`.
