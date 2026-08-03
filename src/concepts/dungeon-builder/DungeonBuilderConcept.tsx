@@ -1,10 +1,10 @@
 /**
  * DungeonBuilderConcept — composition root for the /concepts port of the
  * standalone dungeon-builder HTML concept (rpg-project#170 design gate).
- * Owns the CST/doc state board clicks and YAML edits both mutate, the
- * live-vs-fixtures data source (`usePutDungeonPreview`), and the
- * hex-true/flattened layout toggle. See CONTRACT.md for the full findings
- * writeup.
+ * Owns the CST/doc state board clicks and YAML edits both mutate, and the
+ * live-vs-fixtures data source (`usePutDungeonPreview`). See CONTRACT.md
+ * for the full findings writeup — including the now-removed
+ * hex-true/flattened layout toggle, explored and rejected 2026-08-02.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Document } from 'yaml';
@@ -45,7 +45,6 @@ import {
   type WallKind,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
-import type { LayoutMode } from './hexLayout';
 import { Inspector } from './Inspector';
 import { Palette } from './Palette';
 import { PALETTE_PROPS } from './paletteData';
@@ -251,7 +250,6 @@ export function DungeonBuilderConcept() {
   // Markers palette categories) — also mutually exclusive with everything
   // above, folded into the same clearOtherSelections below.
   const [selectedTool, setSelectedTool] = useState<BoardTool | null>(null);
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>('hex-true');
   const [boardDim, setBoardDim] = useState<'2d' | '3d'>('2d');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -721,34 +719,6 @@ export function DungeonBuilderConcept() {
               </button>
             ))}
           </div>
-          {boardDim === '2d' && (
-            <label
-              style={{
-                fontSize: 12,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              Layout:
-              <select
-                value={layoutMode}
-                onChange={(e) => setLayoutMode(e.target.value as LayoutMode)}
-                style={{
-                  background: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: 4,
-                  padding: '2px 6px',
-                }}
-              >
-                <option value="hex-true">
-                  hex-true (shears — real game math)
-                </option>
-                <option value="flattened">flattened (plain grid)</option>
-              </select>
-            </label>
-          )}
           <div
             style={{
               fontSize: 12.5,
@@ -804,16 +774,14 @@ export function DungeonBuilderConcept() {
                     color: '#8a7a5a',
                   }}
                 >
-                  Board renders the game's actual odd-q pointy-top hex math when
-                  "hex-true" is selected — the diagonal shear across the chain
-                  is a real property of that addressing, not a rendering bug.
-                  Toggle to "flattened" to compare. See CONTRACT.md.
+                  Board renders the game's actual odd-q pointy-top hex math —
+                  the diagonal shear across the chain is a real property of that
+                  addressing, not a rendering bug. See CONTRACT.md.
                 </div>
                 <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
                   <Board
                     floorPlan={preview.floorPlan}
                     doc={doc}
-                    layoutMode={layoutMode}
                     selectedPalette={edit.selectedPalette}
                     selectedPlacement={edit.selectedPlacement}
                     selectedConnectorIndex={selectedConnectorIndex}

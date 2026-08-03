@@ -341,13 +341,15 @@ not a new rectangular 4/8-way compass. Deliberate: the codebase already
 has exactly one facing convention (defined for the hex-true board,
 currently mechanically inert per that file's own doc comment) — inventing
 a second, incompatible one for board authoring would create a
-reconciliation problem the moment both became real at once. The genuine,
-unresolved tension this keeps: 6 directions spaced 60° apart is a
-hex-native division of the circle — it reads naturally on the hex-true
-board and slightly oddly on the flattened one (no direction points along
-either axis). Carried over unchanged from the creation flow's original
-finding — not re-litigated, just now living on real `place:`/`boss:`
-entries instead of a separate invented `Placement` type.
+reconciliation problem the moment both became real at once. 6 directions
+spaced 60° apart is a hex-native division of the circle, and reads
+naturally on the hex-true board — the tension this used to name against
+a flattened/rectangular comparison mode no longer applies: that mode was
+explored and rejected (Kirk, 2026-08-02: "I like hex. turning them into
+squares feels way off and not what it will actually look like" —
+CONTRACT.md's "Flattened layout mode: explored and rejected"), so
+hex-true is grounded as the only board this convention has to read
+naturally on.
 
 ## z-axis: `mount` + `height`
 
@@ -395,10 +397,10 @@ placement inspector's optional height field, when cheap to add for a
 known wall-mountable ref, is the only UI this round ships).
 
 **Open question, not decided here: is 6-direction hex facing too coarse
-for a wall-mounted prop?** The tension named just above ("6 directions
-spaced 60° apart... reads slightly oddly on the flattened board") gets
-sharper once `facing` is driving a mounted prop's actual on-wall
-rotation rather than a floor-standing model's general orientation — a
+for a wall-mounted prop?** 6 directions spaced 60° apart is a coarse
+division of the circle, and gets sharper as a limitation once `facing`
+is driving a mounted prop's actual on-wall rotation rather than a
+floor-standing model's general orientation — a
 banner or sconce genuinely needs to sit FLUSH and SQUARE against the
 wall face it's mounted on, and the wall itself sits at whatever angle
 the edge geometry gives it, not necessarily one of the 6 hex-facing

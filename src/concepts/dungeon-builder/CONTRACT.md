@@ -169,12 +169,27 @@ Both are now settled with real evidence:
   referenced in `fixtures.ts`. The standalone concept's "unverified"
   finding here is closed.
 
-## New finding from this port: `yaml` doesn't fully close the round-trip requirement
+## New finding from this port: `yaml` doesn't fully close comment preservation, and that's fine
+
+**Demoted from hard requirement to best-effort/incidental (Kirk,
+2026-08-02).** The original concept brief said to use the `yaml` npm
+package for comment-preserving round-trip, framed as a hard
+requirement. Kirk's settled call: the builder itself never authors
+comments — only a hand-editor typing directly into the YAML pane would
+ever introduce one, and hand-editors own the consequences of their own
+edits. Comment preservation stays exactly as good as it already is (the
+CST round-trip behavior below is UNCHANGED — it works, and ripping it
+out would be pure loss for zero gain), but it's no longer a gate on
+anything, and the group-comment-orphaning question the finding below
+raises is CLOSED AS MOOT, not solved — see its own closure note. No
+further investment in comment semantics is planned unless Kirk reopens
+this.
 
 The original concept brief says to use the `yaml` npm package for
 comment-preserving round-trip, implying it's a solved problem once you
 reach for the right library. Two things worth knowing before assuming
-that:
+that (kept for the record — see the demotion note just above for why
+neither is being chased further):
 
 1. **Byte-stability needs `{ lineWidth: 0 }`, and even then one residual
    diff remains.** Default stringify options reflow every flow-style
@@ -201,12 +216,24 @@ that:
    `deletePlacement on a comment-carrying item silently drops the
 comment too`) demonstrate both directions of the failure mode this
    causes: dragging that first pillar carries the heading away with it;
-   deleting it removes the heading even though 7 pillars remain. **This
-   is a real, load-bearing UX question for the approved delivery
-   slices, not solved by picking the recommended library** — a production implementation needs
-   an explicit decision (attach group comments to the room instead of the
-   first item? warn on delete/move of a comment-carrying item? accept the
-   loss?), not just "use `yaml`".
+   deleting it removes the heading even though 7 pillars remain. This
+   was originally framed as a real, load-bearing UX question for the
+   approved delivery slices, needing an explicit decision (attach group
+   comments to the room instead of the first item? warn on delete/move
+   of a comment-carrying item? accept the loss?), not just "use `yaml`".
+
+   **Closed as MOOT (Kirk, 2026-08-02), not solved.** The scenario this
+   describes only arises when a HAND-EDITOR has typed a group comment
+   into the YAML pane and then the BUILDER's own UI (drag/delete) acts
+   on the item it's attached to — the builder itself never authors a
+   comment in the first place, so it can orphan one but never has to
+   decide how to preserve one it wrote. Given comment preservation is
+   now explicitly best-effort/incidental (see this section's opening
+   note), that's an acceptable, honestly-recorded gap, not a defect
+   pending a decision. The analysis above (the two demonstrating tests,
+   the exact `commentBefore` attachment behavior) stays as accurate,
+   useful documentation of how the underlying library actually behaves —
+   only the "needs a decision" framing is retracted.
 
 ## Live verification
 
@@ -256,17 +283,27 @@ hex math (`hexTrueCellCenter`, reusing `hexMath.ts`/`wallRuns.ts` per
 the original concept brief) shears diagonally across a wide room
 chain: `hexRow(col,row) = row + floor(col/2)`, so at a fixed row,
 world-Z drifts roughly linearly with column. Verified analytically, not
-a porting bug. This port adds the `flattened` layout mode
-(`hexLayout.ts`'s `flatCellCenter` — plain Cartesian, no hex-parity
-correction) specifically so this can be compared in place, one FloorPlan,
-two renderings, via the board's own toggle — see the evidence
-screenshots. **The original concept brief's "reuse the odd-q/hex-position
-helpers... for hex-to-screen positioning" direction needs an explicit
-decision in the ordered slices**: embrace the sheared/authentic-hex look,
-or specify a different flattening for the 2D top-down authoring board.
-This should not be inherited silently from reusing production code written
-for a different rendering context (revealed 3D rooms, not a flat
-multi-room chain).
+a porting bug. **This finding is still real hex geometry** — only the
+"what should the 2D board do about it" question below has since been
+settled (see "Flattened layout mode: explored and rejected," next).
+
+### Flattened layout mode: explored and rejected (2026-08-02)
+
+This port originally added a `flattened` layout mode (`hexLayout.ts`'s
+now-removed `flatCellCenter` — plain Cartesian, no hex-parity
+correction) specifically so the shear finding above could be compared
+in place, one `FloorPlan`, two renderings, via a board toggle — see the
+(now historical) evidence screenshots this section used to point to.
+That was the right way to SURFACE the question; it was not itself the
+answer. Kirk, choosing between the two once the toggle made the
+comparison genuinely legible: **"I like hex. turning them into squares
+feels way off and not what it will actually look like."** Hex-true is
+now THE board — the toggle, `flatCellCenter`, and the `LayoutMode` type
+are removed entirely (`hexLayout.ts`/`Board.tsx`/`boardGeometry.ts`/
+`DungeonBuilderConcept.tsx`), not merely defaulted or hidden. The
+diagonal shear itself remains exactly as true and as documented as
+before — it's no longer being treated as a legibility problem a second
+rendering mode should work around.
 
 ## UX learnings
 
@@ -293,19 +330,27 @@ multi-room chain).
    Seeing the same door-row band go from a diagonal streak to a level bar
    side by side (well, toggle by toggle) makes the shear finding
    immediately legible to someone who hasn't read this file — a stronger
-   argument than the writeup alone.
+   argument than the writeup alone. **Superseded 2026-08-02**: the toggle
+   did its job (making the comparison legible enough for Kirk to decide),
+   then was removed — see "Flattened layout mode: explored and
+   rejected," above. Worth having built it temporarily; not worth
+   keeping once it had answered the question it existed to surface.
 
 ## What the approved design gate and ordered slices must retain
 
 1. **Make the flattened-vs-hex-true call explicit** given the shear
    finding, rather than inheriting it from the original concept brief.
+   **Done, 2026-08-02**: Kirk's call is hex-true, no flattened mode — see
+   "Flattened layout mode: explored and rejected," above.
 2. **Use a board contract fixture wider than 2 rooms.** The old 2-room
    smoke-test fixture cannot catch chain accumulation; the available
    3-room `showcase.yaml` fixture (see `fixtures.ts`) can.
-3. **Make a real comment-preservation decision, not just "use the yaml
-   package."** See this file's "yaml package doesn't fully close..."
-   finding above — group-comment orphaning on delete/move is real even
-   with the recommended library.
+3. ~~Make a real comment-preservation decision, not just "use the yaml
+   package."~~ **Closed as moot, 2026-08-02** — comment preservation is
+   best-effort/incidental (the builder never authors comments; only a
+   hand-editor's own edits can orphan one). See this file's "yaml
+   package doesn't fully close comment preservation, and that's fine"
+   section above for the full closure note. No decision needed.
 4. **Add real rolled-content fixture coverage.** `showcase.yaml` (and
    everything else checked) has zero `obstacles:` entries, so
    `RolledContentPanel`'s non-empty path is genuinely untested against
