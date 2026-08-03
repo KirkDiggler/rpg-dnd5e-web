@@ -21,6 +21,7 @@ import {
   DungeonParseError,
   moveBoss,
   movePlacement,
+  movePlacementAcrossLists,
   parseDungeon,
   placeItem,
   serializeDungeon,
@@ -121,34 +122,38 @@ function useBoardEditing(
       // not the destination `roomId` parameter (which stays nullable to
       // cover the non-boss, top-level case).
       moveBoss(cst, sel.roomId, at);
-    } else if (roomId === sel.roomId) {
+      syncFromCst(cst);
+      return;
+    }
+    if (roomId === sel.roomId) {
       movePlacement(cst, sel.roomId, sel.index, at);
-    } else {
-      // Cross-list move (room-scoped <-> top-level, or between two
-      // rooms): delete + re-place, since a placement's index is scoped
-      // to whichever list it's currently in (dungeonYaml.ts's own
-      // movePlacement only rewrites `at` within the SAME list).
-      const item = sel.roomId
-        ? doc.rooms.find((r) => r.id === sel.roomId)?.place[sel.index]
-        : doc.place[sel.index];
-      if (!item) return;
-      deletePlacement(cst, sel.roomId, sel.index);
-      placeItem(cst, roomId, item.ref, at);
+      syncFromCst(cst);
+      setSelectedPlacement({ roomId, index: sel.index });
+      return;
     }
+    // Cross-list move (room-scoped <-> top-level, or between two rooms):
+    // `movePlacementAcrossLists` preserves every field (facing/mount/
+    // height/rotate_degrees/targeting/blocks_*), not just ref+at — the
+    // naive delete+placeItem shape this used to be silently dropped all
+    // of those (2026-08-02 graduation audit finding). It also returns
+    // the item's real new index directly, rather than this caller
+    // re-deriving it from possibly-stale `doc` state via a
+    // `.find(...)!.place.length` that used to throw outright for a
+    // roomId: null destination (no room has id null to find).
+    const item = sel.roomId
+      ? doc.rooms.find((r) => r.id === sel.roomId)?.place[sel.index]
+      : doc.place[sel.index];
+    if (!item) return;
+    const newIndex = movePlacementAcrossLists(
+      cst,
+      sel.roomId,
+      sel.index,
+      roomId,
+      at,
+      item
+    );
     syncFromCst(cst);
-    if (!sel.boss) {
-      setSelectedPlacement({
-        roomId,
-        // See DungeonBuilderConcept's own git history for the
-        // off-by-one this fixed: a same-room move keeps sel.index
-        // (movePlacement only rewrites `at` in place); only a genuine
-        // cross-room append needs the pre-mutation destination length.
-        index:
-          roomId === sel.roomId
-            ? sel.index
-            : doc.rooms.find((r) => r.id === roomId)!.place.length,
-      });
-    }
+    setSelectedPlacement({ roomId, index: newIndex });
   };
 
   const handleDelete = () => {
@@ -240,6 +245,38 @@ function useBoardEditing(
     syncFromCst(cst);
   };
 
+  // Wall-mount edge-selection rework, part 2 (Inspector.tsx's own
+  // `onFlipMountSide` doc comment) — the Inspector already validated
+  // `target` against a real floor cell before ever calling this, so this
+  // handler's job is purely the mutation: a cross-list move (via
+  // `movePlacementAcrossLists`, which preserves every field) carrying
+  // the NEW mirrored facing instead of the old one. Boss-excluded, same
+  // gate every other placement-only handler here uses — a boss is never
+  // wall-mounted.
+  const handleFlipMountSide = (target: {
+    roomId: string;
+    at: [number, number];
+    newFacing: number;
+  }) => {
+    if (!selectedPlacement || selectedPlacement.boss) return;
+    const item = selectedPlacement.roomId
+      ? doc.rooms.find((r) => r.id === selectedPlacement.roomId)?.place[
+          selectedPlacement.index
+        ]
+      : doc.place[selectedPlacement.index];
+    if (!item) return;
+    const newIndex = movePlacementAcrossLists(
+      cst,
+      selectedPlacement.roomId,
+      selectedPlacement.index,
+      target.roomId,
+      target.at,
+      { ...item, facing: target.newFacing }
+    );
+    syncFromCst(cst);
+    setSelectedPlacement({ roomId: target.roomId, index: newIndex });
+  };
+
   return {
     selectedPalette,
     setSelectedPalette,
@@ -254,6 +291,7 @@ function useBoardEditing(
     handleSetRotationDegrees,
     handleSetTargeting,
     handleSetFacing,
+    handleFlipMountSide,
   };
 }
 
@@ -913,6 +951,7 @@ export function DungeonBuilderConcept() {
           onSetRotationDegrees={edit.handleSetRotationDegrees}
           onSetTargeting={edit.handleSetTargeting}
           onSetFacing={edit.handleSetFacing}
+          onFlipMountSide={edit.handleFlipMountSide}
         />
 
         {selectedConnectorIndex !== null && (
