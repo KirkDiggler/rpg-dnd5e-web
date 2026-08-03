@@ -436,11 +436,43 @@ and the `ExperimentBadge` in `Inspector.tsx`). Both controls — the
 existing 6-direction facing stepper and this new fine-rotation slider —
 are visible and independently settable on the Inspector at the same
 time, so the two granularities can be felt side by side on the same
-object rather than argued about in the abstract. This is the probe, not
-the answer: the question above is still open, and this only exists to
-let Kirk's own hands settle it. Whatever he finds should get recorded
-back into this section and into CONTRACT.md's ledger — pending as of
-this writing.
+object rather than argued about in the abstract.
+
+**Resolved, 2026-08-02, by Kirk's own hands in live play**: "fine tuning
+is cool for sure but the other direction is a 30 deg to be flat on the
+wall." The question above is now answered, not still open: a
+wall-mounted prop's flush rotation must be EDGE-DERIVED
+(`hexEdgeBetween`, what `wallMountRotationY` already computes), never
+`facing`'s 6-direction ENUM stepped directly (`facingToRotationY`) — the
+30° Kirk found is exactly the pointy-top interleave between neighbor/
+facing directions and edge orientations, which are never aligned by
+construction, so no amount of stepping the enum could ever land flush.
+The resolved model, going forward:
+
+- **Floor-standing props**: `facing` stays the 6-direction neighbor-
+  direction enum, unchanged — it was never the thing in question.
+- **Wall-mounted props**: orientation is EDGE-derived (this file's own
+  `wallMountRotationY`/`hexEdgeBetween` convention), with an optional
+  fine offset WITHIN that edge's plane for sub-30° adjustment — the
+  free-rotation prototype's additive `rotate_degrees` field, re-scoped
+  by this finding from "an independent granularity to compare" to "the
+  correct within-edge fine control," which is what it always
+  functionally was once the edge (not the enum) is the base rotation.
+  The 6-direction facing enum does not apply to how a mount orients
+  against its wall.
+
+**Still open, queued as the next round** (a distinct gap from the
+rotation-math question above, which this data point closes): WHICH edge
+a mount uses is currently implicit — Kirk, same session: "I can only
+line up 1 direction — flush with a wall on one side but not the other —
+oh that is which tile I put it on, but still." Queued: (1) restrict the
+`facing` stepping interaction, for `mount: wall` placements only, to
+cycle through the OWNING CELL's wall-bearing edges specifically (skip
+edges with no wall), making edge choice explicit and authorable with the
+existing field rather than implicit/nearest; (2) a "flip to other side"
+Inspector affordance — move the placement to the wall's far cell and
+mirror facing, one click instead of delete-and-replace, disabled with an
+honest tooltip when the far cell is out of bounds or not a floor cell.
 
 ## Monster targeting
 
