@@ -19,7 +19,12 @@ import {
   totalColumns,
 } from './boardGeometry';
 import type { DungeonDoc } from './dungeonYaml';
-import { BOARD_HEX_SIZE, cellCenter, cellCorners } from './hexLayout';
+import {
+  BOARD_HEX_SIZE,
+  cellCenter,
+  cellCorners,
+  edgeBetweenCells,
+} from './hexLayout';
 import { resolveMarkerStyle } from './markerStyle';
 import type { BoardTool, PaletteSelection, PlacementSelection } from './types';
 
@@ -237,7 +242,21 @@ export function Board({
   for (const wall of doc.walls) {
     trackCellExtent(wall.from[0], wall.from[1]);
     trackCellExtent(wall.to[0], wall.to[1]);
-    const center = cellCenter(wall.from[0], wall.from[1]);
+    // Real edge geometry (the actual shared hex edge between `from`/`to`),
+    // not a full-cell rect centered at `from` — the previous rendering
+    // drew a box covering the WHOLE `from` cell regardless of which of
+    // its 6 edges the wall was actually on, indistinguishable from a
+    // wall on any other edge of that same cell. Same `edgeBetweenCells`
+    // geometry the creation board (`CreationBoard.tsx`'s `wallGeometry`)
+    // and the 3D preview (`DungeonPreview3D.tsx`'s `edgeBetweenCells`)
+    // already draw walls with — one geometry convention across all three
+    // renderers now, not two correct ones and edit mode's own outlier.
+    const edge = edgeBetweenCells(
+      wall.from[0],
+      wall.from[1],
+      wall.to[0],
+      wall.to[1]
+    );
     const isDoor = wall.kind === 'door';
     // Same orange/cream distinction the creation board's own wall
     // rendering and the 3D preview's wall boxes already use for solid
@@ -245,31 +264,31 @@ export function Board({
     // difference here was hard to read at a glance (Kirk's own "make
     // sure drawn doors read as doors" ask), one visual language for
     // this construct across every view now, not three independently
-    // tuned ones. A door also gets a filled tint (a solid wall stays
-    // outline-only) and a small "D" label, matching this file's own
-    // start/end marker convention just below.
+    // tuned ones. Dashed/muted stays edit mode's own deliberate
+    // "PROPOSED, not compiled" language (this file's own header comment
+    // on this section) — creation mode draws walls solid, but its
+    // target-dialect status is signaled elsewhere (TARGET-YAML.md), not
+    // by line style, so the two aren't in conflict.
     structuralOverlay.push(
-      <rect
-        key={`wall-${wall.from[0]}-${wall.from[1]}`}
-        x={center.x - BOARD_HEX_SIZE * 0.55}
-        y={center.y - BOARD_HEX_SIZE * 0.55}
-        width={BOARD_HEX_SIZE * 1.1}
-        height={BOARD_HEX_SIZE * 1.1}
-        fill={isDoor ? '#ffb347' : 'none'}
-        fillOpacity={isDoor ? 0.2 : 1}
+      <line
+        key={`wall-${wall.from[0]}-${wall.from[1]}-${wall.to[0]}-${wall.to[1]}`}
+        x1={edge.a.x}
+        y1={edge.a.y}
+        x2={edge.b.x}
+        y2={edge.b.y}
         stroke={isDoor ? '#ffb347' : '#e8e2d8'}
-        strokeWidth={2}
+        strokeWidth={3}
         strokeDasharray={isDoor ? '2 2' : '5 3'}
-        rx={3}
+        strokeLinecap="round"
         pointerEvents="none"
       />
     );
     if (isDoor) {
       structuralOverlay.push(
         <text
-          key={`wall-${wall.from[0]}-${wall.from[1]}-label`}
-          x={center.x}
-          y={center.y + 3}
+          key={`wall-${wall.from[0]}-${wall.from[1]}-${wall.to[0]}-${wall.to[1]}-label`}
+          x={edge.mid.x}
+          y={edge.mid.y + 3}
           textAnchor="middle"
           fill="#ffb347"
           fontSize={8}
