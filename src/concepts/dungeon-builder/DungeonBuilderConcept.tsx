@@ -31,6 +31,7 @@ import {
   setPlacementFacing,
   setPlacementFlags,
   setPlacementMount,
+  setPlacementRotationDegrees,
   setPlacementTargeting,
   setStart,
   setWallEdge,
@@ -179,6 +180,21 @@ function useBoardEditing(
     syncFromCst(cst);
   };
 
+  // EXPERIMENT, not a target-dialect field (Inspector.tsx's own
+  // ExperimentBadge doc comment) — same boss-excluded gate as
+  // handleSetMount, since the control only ever shows for a
+  // mount: 'wall' place: entry, which a boss can never be.
+  const handleSetRotationDegrees = (rotationDegrees: number | null) => {
+    if (!selectedPlacement || selectedPlacement.boss) return;
+    setPlacementRotationDegrees(
+      cst,
+      selectedPlacement.roomId,
+      selectedPlacement.index,
+      rotationDegrees
+    );
+    syncFromCst(cst);
+  };
+
   const handleSetTargeting = (targeting: string | null) => {
     if (!selectedPlacement) return;
     if (selectedPlacement.boss) {
@@ -219,6 +235,7 @@ function useBoardEditing(
     handleDelete,
     handleSetFlags,
     handleSetMount,
+    handleSetRotationDegrees,
     handleSetTargeting,
     handleSetFacing,
   };
@@ -871,6 +888,7 @@ export function DungeonBuilderConcept() {
           onSetFlags={edit.handleSetFlags}
           onDelete={edit.handleDelete}
           onSetMount={edit.handleSetMount}
+          onSetRotationDegrees={edit.handleSetRotationDegrees}
           onSetTargeting={edit.handleSetTargeting}
           onSetFacing={edit.handleSetFacing}
         />
