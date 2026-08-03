@@ -13,7 +13,7 @@ import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { PlaytestHarness } from './components/playtest/PlaytestHarness';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
-import { ThumbHarness } from './concepts/dungeon-builder/thumbs/ThumbHarness';
+import { ThumbHarness } from './dev/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
 /**

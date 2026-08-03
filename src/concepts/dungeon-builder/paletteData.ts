@@ -54,7 +54,7 @@ export function categoryForProp(
 /**
  * Pre-baked palette thumbnails (rpg-dnd5e-web#667, Kirk's "rich entries
  * that SHOW the assets" ask). Baked via the throwaway `?thumbGlb=` R3F
- * harness (`src/concepts/dungeon-builder/thumbs/ThumbHarness.tsx`) +
+ * harness (`src/dev/ThumbHarness.tsx`) +
  * `game-dev/tools/browser/screenshot.mjs` — see that harness file's own
  * doc comment and CONTRACT.md's "Thumbnail provenance" section for the
  * exact bake process. Filename convention: `<ref's last segment>.png`
