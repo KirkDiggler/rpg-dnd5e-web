@@ -1,0 +1,14 @@
+{
+  "dropped": [
+    "2 walls",
+    "1 hole",
+    "start/end",
+    "lighting",
+    "2 top-level placements (mapped into rooms)",
+    "facing (4 placements)",
+    "wall-mount (2 placements)",
+    "targeting (2 placements)",
+    "fine-rotation experiment (2 placements)"
+  ],
+  "compilable": true
+}
