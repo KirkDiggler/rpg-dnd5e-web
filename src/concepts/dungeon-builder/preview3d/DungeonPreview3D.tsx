@@ -95,7 +95,7 @@
  * `doc.holes`, `doc.start`/`doc.end` are already doc-native fields with
  * zero `floorPlan` dependency, so they render unchanged in either mode.
  *
- * Two more doc-native overlays this same unit adds, both driven purely by
+ * Two more doc-native overlays that unit added, both driven purely by
  * `doc` (so they render in EITHER mode, not gated on `floorCells`): a
  * straight wall's (`doc.wallLines`) FOOTPRINT cells (Kirk's rule: "any hex
  * that is not 100% uncovered would not be traversable" — the cell still
@@ -106,9 +106,25 @@
  * region's centroid (the same `Billboard`+`Text` pattern
  * `AuthorGridOverlay.tsx` already uses for the real game's author-grid
  * labels — a proven-cheap primitive in this codebase, not a new one).
- * Full 3D geometry for a straight wall's own LINE (matching its
- * corner-anchored footprint/door-gap fidelity in 2D) is NOT attempted
- * this round — see CONTRACT.md's ledger entry for this unit.
+ *
+ * **Straight walls (`doc.wallLines`) now stand as real 3D geometry, not
+ * just a floor dim** (rpg-project#169 follow-up unit, 2026-08-04) — the
+ * "full 3D line geometry for wallLines" gap the creation-mode-3D-preview
+ * unit named and deliberately deferred. `buildWallLineSegments` walks
+ * each line's corner-anchored `from`/`to` (`creation/hexCorner.ts`'s
+ * `cornerPoint`, rescaled into this file's world space —
+ * `cornerWorldPos`'s own doc comment has the exact ratio) as ONE straight
+ * box (`WallBox`, now variable-length, not fixed at `HEX_SIZE`) spanning
+ * corner to corner — no per-cell pieces, matching Kirk's own mental model
+ * of a straight wall as a single run. A `doors:` entry splits that run at
+ * its own footprint clip interval (`clipSegmentToShrunkHex`, the SAME
+ * primitive `straightWallFootprint` already uses for the 2D/footprint-dim
+ * math — reused, not re-derived) into solid pieces flanking a `DoorGap`
+ * (now variable-width too) at the gap's own real extent — the identical
+ * amber jamb+lintel visual language edge-native `doc.walls` doors already
+ * use, one door language for both wall vocabularies. See this file's own
+ * `buildWallLineSegments` doc comment for the full geometry writeup and
+ * CONTRACT.md's ledger entry for this unit's live verification.
  */
 import {
   cubeToWorld,
@@ -135,7 +151,11 @@ import {
   wallMountRotationY,
 } from '../boardGeometry';
 import { DEFAULT_CANVAS } from '../creation/emptyCanvasDoc';
-import { straightWallsFootprintSet } from '../creation/straightWallGeometry';
+import { cornerPoint, type CornerRef } from '../creation/hexCorner';
+import {
+  clipSegmentToShrunkHex,
+  straightWallsFootprintSet,
+} from '../creation/straightWallGeometry';
 import {
   resolvePlacement,
   type DungeonDoc,
@@ -147,7 +167,7 @@ import {
   hasServerEdges,
   type ServerEdge,
 } from '../edgesAdapter';
-import { cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
+import { BOARD_HEX_SIZE, cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
 import { END_COLOR, regionArchetypeColor, START_COLOR } from '../markerStyle';
 import { regionCentroid } from '../regionGeometry';
 import type { PaletteSelection, PlacementSelection } from '../types';
@@ -661,6 +681,135 @@ export function buildWallLineFootprint(doc: DungeonDoc): Set<string> {
   return straightWallsFootprintSet(doc.wallLines, grid);
 }
 
+/** The uniform scale between this concept's 2D board-space corner math
+ * (`hexLayout.ts`'s `BOARD_HEX_SIZE`, `creation/hexCorner.ts`'s
+ * `cornerPoint`) and this file's own 3D world space (`hexMath.ts`'s
+ * `HEX_SIZE`). Both are the exact same `cubeToWorld`/`hexCorners`
+ * functions (`hexLayout.ts`'s own header doc comment: "Same odd-q
+ * pointy-top math the real 3D floor renders with"), each linear in its
+ * own `size` parameter with no additive offset —
+ * `cubeToWorld(cube, size) = size * SQRT_3 * (...)`/`size * 1.5 * cube.z`,
+ * and `hexCorners(center, size)` adds `size * cos/sin` to a center that's
+ * already scaled the same way. A board-space point therefore scales
+ * EXACTLY into world space by this one ratio; no re-derivation needed. */
+const BOARD_TO_WORLD_SCALE = HEX_SIZE / BOARD_HEX_SIZE;
+
+/** A `CornerRef`'s world-space `{x, z}` point — `cornerPoint` (board
+ * space) rescaled by `BOARD_TO_WORLD_SCALE`, not a second corner-
+ * resolution implementation. Reusing `cornerPoint` (rather than
+ * re-deriving via `hexCorners`/`cubeAtColRow` at `HEX_SIZE` directly)
+ * keeps corner-index normalization and cell/world math in exactly ONE
+ * place — any future fix to `cornerPoint` itself propagates to this 3D
+ * render path automatically instead of needing a parallel fix here. */
+function cornerWorldPos(ref: CornerRef): { x: number; z: number } {
+  const p = cornerPoint(ref);
+  return { x: p.x * BOARD_TO_WORLD_SCALE, z: p.y * BOARD_TO_WORLD_SCALE };
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/** One render-ready piece of a `wallLines:` entry — either a solid run or
+ * a door's own gap span. `position`/`rotationY` are ready to hand
+ * straight to `WallBox`/`DoorGap` unchanged; `length` doubles as
+ * `WallBox`'s box width and `DoorGap`'s gap `width`. */
+export interface WallLineSegment {
+  key: string;
+  kind: 'solid' | 'door';
+  position: [number, number, number];
+  rotationY: number;
+  length: number;
+}
+
+/**
+ * Render-ready pieces for every `doc.wallLines` entry — real 3D wall
+ * geometry, not just the footprint dim `buildWallLineFootprint` already
+ * builds (the two are siblings: this renders WHAT the wall looks like,
+ * that flags WHERE it blocks movement). One `wallLines:` entry becomes
+ * ONE straight box spanning corner to corner (`cornerWorldPos`) — never a
+ * piece per clipped cell, matching Kirk's own mental model of a straight
+ * wall as a single run, not a chain of edge segments — UNLESS it carries
+ * `doors:`, in which case the run splits at each door's own footprint
+ * clip interval into alternating solid/door pieces.
+ *
+ * **Door intervals are reused, not re-derived**: `clipSegmentToShrunkHex`
+ * is the exact primitive `straightWallFootprint` already calls per
+ * candidate cell to build the 2D/footprint-dim door exclusion — calling
+ * it directly here for just the door's own cell gives the identical
+ * `[t0, t1]` clip interval TARGET-YAML.md's "Doors" section describes,
+ * with no second footprint derivation. A door whose cell the line no
+ * longer genuinely clips (stranded by an endpoint drag — 2D flags this
+ * with a ⚠ marker, TARGET-YAML.md's "flag, never silently repair"
+ * discipline) simply produces no interval here, so the wall renders solid
+ * straight through it rather than guessing a gap — this component owns
+ * geometry, not the flag.
+ *
+ * **`t` is computed once, in board space, and reused for world space
+ * unchanged.** `clipSegmentToShrunkHex` takes board-space `CellPos`
+ * points (`cornerPoint`'s own output) because its epsilon
+ * (`FOOTPRINT_EPSILON`) is tuned relative to `BOARD_HEX_SIZE` — but the
+ * resulting `t` is a pure fraction along the SAME directed segment
+ * `cornerWorldPos`'s world points also lie on (both are the same line,
+ * uniformly rescaled by `BOARD_TO_WORLD_SCALE` — see that constant's own
+ * doc comment), so lerping the WORLD endpoints by a board-computed `t`
+ * lands exactly on the point `cornerWorldPos` would give that fraction of
+ * the way along the line. No world-space clip math needed.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildWallLineSegments(doc: DungeonDoc): WallLineSegment[] {
+  const segments: WallLineSegment[] = [];
+  doc.wallLines.forEach((line, lineIndex) => {
+    const aBoard = cornerPoint(line.from);
+    const bBoard = cornerPoint(line.to);
+    const aWorld = cornerWorldPos(line.from);
+    const bWorld = cornerWorldPos(line.to);
+    const dx = bWorld.x - aWorld.x;
+    const dz = bWorld.z - aWorld.z;
+    const totalLength = Math.hypot(dx, dz);
+    if (totalLength < 1e-9) return; // degenerate (from === to) — nothing to draw
+    const rotationY = Math.atan2(-dz, dx); // hexEdgeBetween's own atan2 convention
+
+    const doorTs = (line.doors ?? [])
+      .map((d) => clipSegmentToShrunkHex(aBoard, bBoard, d.cell[0], d.cell[1]))
+      .filter((interval): interval is [number, number] => interval !== null)
+      .sort((a, b) => a[0] - b[0]);
+
+    const pointAt = (t: number): [number, number] => [
+      lerp(aWorld.x, bWorld.x, t),
+      lerp(aWorld.z, bWorld.z, t),
+    ];
+    const pushPiece = (
+      kind: 'solid' | 'door',
+      t0: number,
+      t1: number,
+      idx: number
+    ) => {
+      // A door landing exactly at a segment's own endpoint leaves nothing
+      // before/after it to draw — an empty piece, not a zero-length box.
+      if (t1 - t0 < 1e-6) return;
+      const [x0, z0] = pointAt(t0);
+      const [x1, z1] = pointAt(t1);
+      segments.push({
+        key: `wallline-${lineIndex}-${kind}-${idx}`,
+        kind,
+        position: [(x0 + x1) / 2, WALL_HEIGHT / 2, (z0 + z1) / 2],
+        rotationY,
+        length: Math.hypot(x1 - x0, z1 - z0),
+      });
+    };
+
+    let cursor = 0;
+    doorTs.forEach(([t0, t1], idx) => {
+      pushPiece('solid', cursor, t0, idx);
+      pushPiece('door', t0, t1, idx);
+      cursor = t1;
+    });
+    pushPiece('solid', cursor, 1, doorTs.length);
+  });
+  return segments;
+}
+
 // Above SyntyHexFloorTile's own FLOOR_Y (0.2) so a downward ray from the
 // orbit camera always meets this layer before the visual floor texture —
 // see this file's header doc comment for why that ordering alone is
@@ -804,10 +953,24 @@ const WALL_SOLID_COLOR = '#e8e2d8';
 const WALL_DOOR_COLOR = '#ffb347';
 const WALL_THICKNESS = 0.12;
 
-function WallBox({ wall }: { wall: PlacedWall }) {
+/** `length` defaults to `HEX_SIZE` — a single edge-native `doc.walls`/
+ * server-truth wall piece is always exactly one hex-edge long. A straight
+ * `wallLines:` segment (`buildWallLineSegments`) is typically several
+ * hexes long and passes its own real `length` instead — same box, same
+ * material, genuinely variable length, so the two wall vocabularies read
+ * as one architecture rather than two renderers. */
+function WallBox({
+  position,
+  rotationY,
+  length = HEX_SIZE,
+}: {
+  position: [number, number, number];
+  rotationY: number;
+  length?: number;
+}) {
   return (
-    <mesh position={wall.position} rotation={[0, wall.rotationY, 0]}>
-      <boxGeometry args={[HEX_SIZE, WALL_HEIGHT, WALL_THICKNESS]} />
+    <mesh position={position} rotation={[0, rotationY, 0]}>
+      <boxGeometry args={[length, WALL_HEIGHT, WALL_THICKNESS]} />
       <meshStandardMaterial color={WALL_SOLID_COLOR} />
     </mesh>
   );
@@ -821,7 +984,6 @@ function WallBox({ wall }: { wall: PlacedWall }) {
 // this same construct answers on the floor side: "the gash becomes a real
 // doorway."
 const DOOR_JAMB_WIDTH = HEX_SIZE * 0.22;
-const DOOR_OPENING_WIDTH = HEX_SIZE - DOOR_JAMB_WIDTH * 2;
 const DOOR_OPENING_HEIGHT = WALL_HEIGHT * 0.8;
 const DOOR_LINTEL_HEIGHT = WALL_HEIGHT - DOOR_OPENING_HEIGHT;
 // Wide/tall enough to comfortably catch a click near the opening without
@@ -846,65 +1008,71 @@ function rotateLocalXOffset(
   };
 }
 
+/** `width` defaults to `HEX_SIZE` (an edge-native door's own fixed gap
+ * span) — a straight `wallLines:` door's gap (`buildWallLineSegments`)
+ * passes its own real interval width instead, since a corner-anchored
+ * line's clip interval through its door cell isn't necessarily a full hex
+ * width. Jamb width is clamped to `width / 2` so a genuinely narrow gap
+ * (a shallow clip near a cell's edge) still produces two jambs meeting in
+ * the middle rather than overlapping/inverting; the opening (and its
+ * lintel) shrinks to fill whatever's left, never negative. */
 function DoorGap({
-  wall,
+  position,
+  rotationY,
+  width = HEX_SIZE,
   onSelectDoor,
 }: {
-  wall: PlacedWall;
+  position: [number, number, number];
+  rotationY: number;
+  width?: number;
   onSelectDoor?: () => void;
 }) {
-  const jambOffset = HEX_SIZE / 2 - DOOR_JAMB_WIDTH / 2;
-  const left = rotateLocalXOffset(wall.rotationY, jambOffset);
-  const right = rotateLocalXOffset(wall.rotationY, -jambOffset);
+  const jambWidth = Math.min(DOOR_JAMB_WIDTH, width / 2);
+  const openingWidth = Math.max(width - jambWidth * 2, 0);
+  const jambOffset = width / 2 - jambWidth / 2;
+  const left = rotateLocalXOffset(rotationY, jambOffset);
+  const right = rotateLocalXOffset(rotationY, -jambOffset);
   return (
     <group>
       <mesh
-        position={[
-          wall.position[0] + left.dx,
-          wall.position[1],
-          wall.position[2] + left.dz,
-        ]}
-        rotation={[0, wall.rotationY, 0]}
+        position={[position[0] + left.dx, position[1], position[2] + left.dz]}
+        rotation={[0, rotationY, 0]}
       >
-        <boxGeometry args={[DOOR_JAMB_WIDTH, WALL_HEIGHT, WALL_THICKNESS]} />
+        <boxGeometry args={[jambWidth, WALL_HEIGHT, WALL_THICKNESS]} />
         <meshStandardMaterial color={WALL_DOOR_COLOR} />
       </mesh>
       <mesh
-        position={[
-          wall.position[0] + right.dx,
-          wall.position[1],
-          wall.position[2] + right.dz,
-        ]}
-        rotation={[0, wall.rotationY, 0]}
+        position={[position[0] + right.dx, position[1], position[2] + right.dz]}
+        rotation={[0, rotationY, 0]}
       >
-        <boxGeometry args={[DOOR_JAMB_WIDTH, WALL_HEIGHT, WALL_THICKNESS]} />
+        <boxGeometry args={[jambWidth, WALL_HEIGHT, WALL_THICKNESS]} />
         <meshStandardMaterial color={WALL_DOOR_COLOR} />
       </mesh>
-      <mesh
-        position={[
-          wall.position[0],
-          DOOR_OPENING_HEIGHT + DOOR_LINTEL_HEIGHT / 2,
-          wall.position[2],
-        ]}
-        rotation={[0, wall.rotationY, 0]}
-      >
-        <boxGeometry
-          args={[DOOR_OPENING_WIDTH, DOOR_LINTEL_HEIGHT, WALL_THICKNESS]}
-        />
-        <meshStandardMaterial color={WALL_DOOR_COLOR} />
-      </mesh>
+      {openingWidth > 0 && (
+        <mesh
+          position={[
+            position[0],
+            DOOR_OPENING_HEIGHT + DOOR_LINTEL_HEIGHT / 2,
+            position[2],
+          ]}
+          rotation={[0, rotationY, 0]}
+        >
+          <boxGeometry
+            args={[openingWidth, DOOR_LINTEL_HEIGHT, WALL_THICKNESS]}
+          />
+          <meshStandardMaterial color={WALL_DOOR_COLOR} />
+        </mesh>
+      )}
       {onSelectDoor && (
         <mesh
-          position={wall.position}
-          rotation={[0, wall.rotationY, 0]}
+          position={position}
+          rotation={[0, rotationY, 0]}
           onClick={(e) => {
             e.stopPropagation();
             onSelectDoor();
           }}
         >
-          <boxGeometry
-            args={[HEX_SIZE, WALL_HEIGHT, DOOR_CLICK_HIT_THICKNESS]}
-          />
+          <boxGeometry args={[width, WALL_HEIGHT, DOOR_CLICK_HIT_THICKNESS]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       )}
@@ -999,6 +1167,10 @@ export function DungeonPreview3D({
   // identically regardless of `floorPlan`/`floorCells`. See
   // `buildWallLineFootprint`'s own doc comment.
   const wallLineFootprint = useMemo(() => buildWallLineFootprint(doc), [doc]);
+  // The straight wall's own real geometry (this unit) — doc-native too,
+  // same reasoning as the footprint above. See `buildWallLineSegments`'s
+  // own doc comment.
+  const wallLineSegments = useMemo(() => buildWallLineSegments(doc), [doc]);
   // The generator-chosen entrance marker has no creation-mode analog at
   // all (CONTRACT.md's "Start/end: authored, in real tension with the
   // generator-chosen entrance" finding — a freeform canvas has no
@@ -1139,7 +1311,8 @@ export function DungeonPreview3D({
               w.isDoor ? (
                 <DoorGap
                   key={w.key}
-                  wall={w}
+                  position={w.position}
+                  rotationY={w.rotationY}
                   onSelectDoor={doorSelectHandler(
                     w,
                     floorPlan,
@@ -1147,7 +1320,28 @@ export function DungeonPreview3D({
                   )}
                 />
               ) : (
-                <WallBox key={w.key} wall={w} />
+                <WallBox
+                  key={w.key}
+                  position={w.position}
+                  rotationY={w.rotationY}
+                />
+              )
+            )}
+            {wallLineSegments.map((seg) =>
+              seg.kind === 'door' ? (
+                <DoorGap
+                  key={seg.key}
+                  position={seg.position}
+                  rotationY={seg.rotationY}
+                  width={seg.length}
+                />
+              ) : (
+                <WallBox
+                  key={seg.key}
+                  position={seg.position}
+                  rotationY={seg.rotationY}
+                  length={seg.length}
+                />
               )
             )}
             {props.map((p) => {

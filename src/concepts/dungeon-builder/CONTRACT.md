@@ -4547,3 +4547,117 @@ gone in the AFTER shot — replaced by solid floor, the door now standing
 on real ground instead of over a gap. No unexpected console errors
 (same established FIXTURES-MODE `AuthoringService` notes as every prior
 round).
+
+## Straight walls stand in 3D: segment boxes + door gaps (2026-08-04, rpg-project#169)
+
+Closes the "full 3D line geometry for `wallLines`" gap the creation-mode-3D-
+preview unit above named and deliberately deferred: a `doc.wallLines` entry
+was previously visible in 3D only as dimmed crimson footprint discs — the
+floor-side "where can't I walk" treatment, with nothing standing to explain
+WHY. It now also renders as real standing wall geometry, the 3D sibling of
+its corner-anchored, door-gapped fidelity in 2D.
+
+### What shipped
+
+`buildWallLineSegments` (`DungeonPreview3D.tsx`, new, exported for direct
+testing same as `buildFloorTiles`/`buildOnePlacement`): for each
+`doc.wallLines` entry, resolves `from`/`to` (`creation/hexCorner.ts`'s
+`CornerRef`s) to world-space points via `cornerWorldPos` — `cornerPoint`
+(board space, `BOARD_HEX_SIZE`) rescaled by `BOARD_TO_WORLD_SCALE`
+(`HEX_SIZE / BOARD_HEX_SIZE`), not a second corner-resolution
+implementation. **One line is one box** spanning corner to corner — never a
+piece per clipped cell — sized/positioned/rotated from the segment's own
+real geometry (length = endpoint distance, rotation = `atan2(-dz, dx)`, the
+same convention `hexEdgeBetween`/`edgeBetweenCells`/`wallBoxTransform`
+already use elsewhere in this file). A `doors:` entry splits that one box at
+its own door cell's real footprint clip interval —
+`clipSegmentToShrunkHex(aBoard, bBoard, cell...)`, the EXACT primitive
+`straightWallFootprint` already calls per candidate cell, called directly
+here for just the door's cell rather than re-derived. The resulting
+board-space `[t0, t1]` is reused UNCHANGED as a world-space lerp fraction
+between the world-space endpoints — valid because `cornerPoint`'s board
+space and this file's `hexMath.ts` world space are the exact same
+`cubeToWorld`/`hexCorners` functions, linear in their own `size` parameter
+with no additive offset, so a board-space `t` and a world-space `t` for the
+same directed segment are identical (verified via the cross-check test
+below, not just argued).
+
+**`WallBox`/`DoorGap` generalized, not duplicated.** Both previously assumed
+a fixed `HEX_SIZE`-wide edge-native piece (`wall: PlacedWall` prop). Both now
+take plain `position`/`rotationY` plus an optional `length`/`width`
+(defaulting to `HEX_SIZE`, so every existing edge-native call site is
+unchanged in behavior) — the SAME box/jamb/lintel/material family renders a
+one-hex-edge door wall and a several-hex straight-wall segment alike, so the
+two wall vocabularies read as one architecture rather than two renderers.
+`DoorGap`'s jamb width is clamped to `width / 2` so a narrow door interval
+(a shallow clip near a cell's edge) still produces two jambs meeting cleanly
+instead of overlapping; the now-unused fixed `DOOR_OPENING_WIDTH` constant
+was removed rather than left dead.
+
+**Corners need no special-case join code here either** (matching the 2D
+finding this file's own earlier "Corners: no special-case joining logic
+needed" section already established) — two `wallLines:` entries sharing a
+canonical corner resolve to the identical `cornerWorldPos` point by
+construction, so their boxes simply meet, verified live (see below), not
+just argued from the 2D case.
+
+### Tests
+
+6 new in `DungeonPreview3D.test.ts` (`buildWallLineSegments` describe
+block): a single-edge line (no doors) produces exactly one solid box, its
+length/position/rotation cross-checked against independently-computed
+`cornerPoint`-derived world geometry, not the render path's own internals;
+a door mid-line splits solid/door/solid in order, all three sharing the
+line's one rotation, with the door piece's own extent cross-checked against
+a fresh `clipSegmentToShrunkHex` call (the reuse-not-duplication proof); a
+door near one end produces a markedly asymmetric split with no
+misordering; two doors on one line produce solid/door/solid/door/solid;
+a door referencing a cell the line's geometry doesn't genuinely clip (the
+"wall ending at a corner shared with a cell does not clip that cell"
+boundary case) renders no gap — solid straight through, honestly, rather
+than guessing one; an empty `doc.wallLines` produces no segments. 17
+dungeon-builder-preview3d tests passing (up from 11), 307 dungeon-builder
+tests overall. `ci-check` clean (format/lint/typecheck/build/test).
+
+### Live verification
+
+Own dev server (`vite --port 5191`, never `:3001`), `VITE_API_HOST` pointed
+at a live envoy, driven via headless Chromium (`--use-angle=swiftshader
+--enable-unsafe-swiftshader` — the modern flag pair; the older
+`--use-gl=swiftshader` alone silently produced no WebGL context on this
+Chrome build, worth recording since the previous round's own note named a
+different flag). Authored `wallLines:` directly in the YAML pane (the
+textarea's React `onChange` only fires for a value set via the native
+`HTMLTextAreaElement` setter + a real `input` event — a plain CDP value-set
+left the controlled input's own state untouched, so a subsequent React
+re-render silently reverted the textarea to its prior content; a scripting
+gotcha worth naming for whoever automates this pane next) — one long wall
+with a door, plus a second corner-sharing pair, in EDIT mode's compiled
+board, and a third wall directly on a from-scratch canvas in CREATION
+mode's own 3D toggle.
+
+Screenshots confirm, both contexts: a straight wall standing at its real
+corner-to-corner extent (no hangover past either endpoint, matching Kirk's
+2D fix) alongside the existing pillared shrine room; the same wall's
+door carved as a genuine amber jamb-lintel gap, not a shortened box; two
+wallLines sharing a corner meeting with no visible seam, an L exactly as
+clean as the 2D case; the same scene's server-truth perimeter walls
+(edge-native, zigzag) and the new straight-wall boxes reading as one
+material/height family, not two renderers; and creation mode's own
+from-scratch canvas (no `FloorPlan` at all) rendering the identical
+wall+door geometry on its flat hex floor, confirming the component is
+genuinely mode-agnostic rather than edit-mode-only. No unexpected console
+errors (same established FIXTURES-MODE `AuthoringService` notes every prior
+round's live-verification section already carries).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **Click-to-select/edit a straight wall's own box in 3D.** Out of scope by
+  the unit's own brief (rendering only) — edit-mode's existing
+  click-to-place/select machinery for props/monsters is the natural thing
+  to graduate a straight-wall pick onto later, not a from-scratch build.
+- **A stranded door's own ⚠ flag rendered in 3D.** 2D already flags a door
+  whose cell a subsequent endpoint drag un-clips; this unit's 3D geometry
+  correctly stops rendering a gap there (verified, see Tests above) but
+  does not yet surface the warning glyph itself in the 3D view — a real,
+  narrow follow-up, not a silent gap.
