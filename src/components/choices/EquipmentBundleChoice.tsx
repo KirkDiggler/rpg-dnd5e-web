@@ -4,7 +4,7 @@ import type {
   EquipmentItem,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { Package } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useEquipmentBundleSelection } from '../../hooks/useEquipmentBundleSelection';
 import { EquipmentCard } from '../equipment/EquipmentCard';
 import { EquipmentCategoryDropdown } from '../equipment/EquipmentCategoryDropdown';
@@ -18,6 +18,12 @@ interface EquipmentBundleChoiceProps {
   initialBundleId?: string | null;
   /** Reopened selections, partitioned by their persisted category index. */
   initialCategoryItemIds?: ReadonlyMap<number, string[]>;
+  /**
+   * The persisted wire choice contained data that could not be assigned to
+   * this bundle's declared category slots. Render it as a correction state;
+   * it is cleared only after the player deliberately changes this choice.
+   */
+  hasInvalidPersistedSelection?: boolean;
 }
 
 // Component for selecting from a category - supports multiple selections when choose > 1
@@ -169,6 +175,7 @@ export function EquipmentBundleChoice({
   onSelectionChange,
   initialBundleId,
   initialCategoryItemIds,
+  hasInvalidPersistedSelection = false,
 }: EquipmentBundleChoiceProps) {
   const {
     selectedBundleId,
@@ -190,11 +197,28 @@ export function EquipmentBundleChoice({
       : [];
 
   const selectedBundle = getSelectedBundle();
+  const [
+    hasPlayerCorrectedPersistedSelection,
+    setHasPlayerCorrectedPersistedSelection,
+  ] = useState(false);
+
+  // A refreshed persisted draft can reveal invalid data after mount. Keep the
+  // correction visible until the player intentionally changes this choice.
+  useEffect(() => {
+    if (hasInvalidPersistedSelection) {
+      setHasPlayerCorrectedPersistedSelection(false);
+    }
+  }, [hasInvalidPersistedSelection]);
+
+  const requiresPersistedCorrection =
+    hasInvalidPersistedSelection && !hasPlayerCorrectedPersistedSelection;
+  const completionStatusId = useId();
 
   // Handle bundle selection
   const handleBundleSelect = useCallback(
     (bundleId: string) => {
       selectBundle(bundleId);
+      setHasPlayerCorrectedPersistedSelection(true);
       // Note: We only send the bundleId here, not the fixed items
       // The backend will look up bundle.items based on the bundleId
       onSelectionChange(bundleId, new Map());
@@ -206,6 +230,7 @@ export function EquipmentBundleChoice({
   const handleCategorySelect = useCallback(
     (categoryIndex: number, items: EquipmentItem[]) => {
       selectCategoryItems(categoryIndex, items);
+      setHasPlayerCorrectedPersistedSelection(true);
       const updatedSelections = new Map(categorySelections);
       updatedSelections.set(categoryIndex, items);
       onSelectionChange(selectedBundleId, updatedSelections);
@@ -219,7 +244,12 @@ export function EquipmentBundleChoice({
   );
 
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-4"
+      role="group"
+      aria-label={choice.description || 'Equipment selection'}
+      aria-describedby={selectedBundleId ? completionStatusId : undefined}
+    >
       <div className="flex items-start gap-2">
         <Package className="w-5 h-5 mt-0.5 text-amber-500" />
         <div className="flex-1">
@@ -353,15 +383,19 @@ export function EquipmentBundleChoice({
       {/* Completion status */}
       {selectedBundleId && (
         <div
+          id={completionStatusId}
+          role={requiresPersistedCorrection ? 'alert' : 'status'}
           className={`p-3 rounded-lg text-sm ${
-            isComplete()
+            !requiresPersistedCorrection && isComplete()
               ? 'bg-green-100 text-green-800'
               : 'bg-yellow-100 text-yellow-800'
           }`}
         >
-          {isComplete()
-            ? '✓ Equipment selection complete'
-            : 'Please complete all category selections'}
+          {requiresPersistedCorrection
+            ? 'Saved equipment selection needs correction. Choose a different equipment bundle or update a category selection before continuing.'
+            : isComplete()
+              ? '✓ Equipment selection complete'
+              : 'Please complete all category selections'}
         </div>
       )}
     </div>

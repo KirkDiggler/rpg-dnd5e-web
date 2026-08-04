@@ -1615,6 +1615,9 @@ export function ClassSelectionModal({
                                 <ChoiceRenderer
                                   choice={choice}
                                   currentSelections={equipmentSelections}
+                                  hasInvalidPersistedEquipmentSelection={
+                                    foundEquipment?.hasUnconsumedItems ?? false
+                                  }
                                   onSelectionChange={(
                                     _choiceId,
                                     selections

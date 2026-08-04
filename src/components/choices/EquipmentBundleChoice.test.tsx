@@ -251,6 +251,37 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
     ).toBeTruthy();
   });
 
+  it('announces a persisted equipment correction instead of completion for unconsumed wire data', () => {
+    render(
+      <EquipmentBundleChoice
+        choice={choice()}
+        initialBundleId="bundle-a"
+        initialCategoryItemIds={new Map([[0, ['dart-selection']]])}
+        onSelectionChange={vi.fn()}
+        hasInvalidPersistedSelection
+      />
+    );
+
+    expect(screen.queryByText(/Equipment selection complete/)).toBeNull();
+    const error = screen.getByRole('alert');
+    expect(error.textContent).toMatch(
+      /saved equipment selection needs correction/i
+    );
+    expect(
+      screen
+        .getByRole('group', { name: /choose your equipment/i })
+        .getAttribute('aria-describedby')
+    ).toBe(error.id);
+
+    // A deliberate reset clears the persisted correction state, but does not
+    // retain or silently submit the malformed saved data.
+    fireEvent.click(screen.getByText('A weapon'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('status').textContent).toMatch(
+      /Please complete all category selections/
+    );
+  });
+
   it('hydrates a reopened selection by authoritative selection ID', () => {
     render(
       <EquipmentBundleChoice
@@ -262,7 +293,9 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
     );
 
     expect(screen.getByRole('combobox').textContent).toMatch(/Dart/);
-    expect(screen.getByText(/Equipment selection complete/)).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toMatch(
+      /Equipment selection complete/
+    );
   });
 
   it('applies a persisted selection that resolves after this choice has already mounted, instead of staying stuck on stale initial state', () => {

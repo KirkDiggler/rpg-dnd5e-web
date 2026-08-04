@@ -26,9 +26,15 @@ let it rot.
   surfaced for correction and cannot invoke finalization, the same selection ID
   remains valid in independently declared categories, and persisted items left
   over after every declared slot has consumed its slice are treated as invalid
-  rather than silently finalized. The equipment controls re-sync if a reopened
-  draft's persisted selection resolves after the choice has already mounted.
-  Proto dependency: `rpg-api-protos#207` / `v0.1.118`; provider: `rpg-api#764`.
+  rather than silently finalized: the affected equipment control announces a
+  correction alert (not completion) until the player changes that choice.
+  The equipment controls re-sync if a reopened draft's persisted selection
+  resolves after the choice has already mounted. A raw `other_equipment_id`
+  remains an opaque server selection ID: the client deliberately does not
+  duplicate category eligibility rules to reject it locally, because API
+  finalization delegates authoritative eligibility/count/uniqueness validation
+  to the toolkit. Proto dependency: `rpg-api-protos#207` / `v0.1.118`;
+  provider: `rpg-api#764`.
 
 - **Equipment live on the game screen (#571)** — the `/concepts` equipment
   chip + popover bench (#531/#557) is wired to the real

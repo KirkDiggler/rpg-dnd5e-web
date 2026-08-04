@@ -18,6 +18,8 @@ interface ChoiceRendererProps {
   choice: Choice;
   onSelectionChange: (choiceId: string, selections: SelectionValue) => void; // Generic handler, will be Language[] | Skill[] | string[] based on choice type
   currentSelections: SelectionValue; // Will be Language[] | Skill[] | string[] etc based on choice type
+  /** Persisted equipment data could not be fully assigned to declared slots. */
+  hasInvalidPersistedEquipmentSelection?: boolean;
 }
 
 /**
@@ -28,6 +30,7 @@ export function ChoiceRenderer({
   choice,
   onSelectionChange,
   currentSelections,
+  hasInvalidPersistedEquipmentSelection = false,
 }: ChoiceRendererProps) {
   // Check if it's an equipment choice with bundles (the special case we handle properly)
   if (
@@ -63,6 +66,7 @@ export function ChoiceRenderer({
         choice={choice}
         initialBundleId={initialBundleId}
         initialCategoryItemIds={initialCategoryItemIds}
+        hasInvalidPersistedSelection={hasInvalidPersistedEquipmentSelection}
         onSelectionChange={(bundleId, categorySelections) => {
           // Convert EquipmentBundleChoice format back to standard format
           // Store equipment selections with both id and name: "cat0:id:name"
