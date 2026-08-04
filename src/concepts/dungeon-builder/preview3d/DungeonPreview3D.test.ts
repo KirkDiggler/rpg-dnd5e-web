@@ -27,6 +27,7 @@ import {
   toDungeonDoc,
 } from '../dungeonYaml';
 import { SHOWCASE_FLOORPLAN, SHOWCASE_YAML } from '../fixtures';
+import { cubeAtColRow } from '../hexLayout';
 import {
   buildFloorTiles,
   buildOnePlacement,
@@ -166,18 +167,60 @@ describe('buildFloorTiles — the floorCells alternate input path (creation mode
     expect(tiles.size).toBe(0);
   });
 
-  it('the floorPlan.rooms path (edit mode) is unchanged by this unit — same tile count as before, against the real showcase fixture', () => {
+  it('the floorPlan.rooms path (edit mode) still generates every non-door-row room cell, exactly as before this unit', () => {
     const tiles = buildFloorTiles(SHOWCASE_FLOORPLAN, []);
     // Every room's width * (height - 1 for the door row), summed —
     // cross-checked against the fixture's own room widths (6/14/8,
     // CONTRACT.md's "start_column chain accumulation" finding) rather
-    // than a hard-coded magic number.
-    const expected = SHOWCASE_FLOORPLAN.rooms.reduce(
+    // than a hard-coded magic number. Room-owned cells only — the
+    // connector-band cells the next test covers are additive, checked
+    // separately so this assertion stays a pure regression check on the
+    // untouched per-room loop.
+    const roomCellCount = SHOWCASE_FLOORPLAN.rooms.reduce(
       (sum, room) => sum + room.width * (SHOWCASE_FLOORPLAN.height - 1),
       0
     );
-    expect(tiles.size).toBe(expected);
+    expect(tiles.size).toBe(
+      roomCellCount + SHOWCASE_FLOORPLAN.connectors.length
+    );
     expect(tiles.size).toBeGreaterThan(0);
+  });
+
+  it('the connector band (2026-08-04 fix): a real floor tile exists at [connector.column, doorRow] for every connector — the door no longer stands over a chasm', () => {
+    const tiles = buildFloorTiles(SHOWCASE_FLOORPLAN, []);
+    expect(SHOWCASE_FLOORPLAN.connectors.length).toBeGreaterThan(0);
+    for (const connector of SHOWCASE_FLOORPLAN.connectors) {
+      const cube = cubeAtColRow(connector.column, SHOWCASE_FLOORPLAN.doorRow);
+      const key = `${cube.x},${cube.y},${cube.z}`;
+      const tile = tiles.get(key);
+      expect(tile).toBeDefined();
+      // A real room id (one of the two the connector bridges), not a
+      // synthetic sentinel — this cell genuinely belongs to the compiled
+      // dungeon, unlike a creation-mode canvas tile.
+      expect(tile!.roomId).toBe(connector.fromRoomId);
+    }
+    // The connector's own column is never inside either adjacent room's
+    // [startColumn, startColumn+width) range (the whole reason the room
+    // loop alone could never produce this tile) — confirmed directly
+    // against the real fixture, not just asserted as a design claim.
+    for (const connector of SHOWCASE_FLOORPLAN.connectors) {
+      for (const room of SHOWCASE_FLOORPLAN.rooms) {
+        const inRoom =
+          connector.column >= room.startColumn &&
+          connector.column < room.startColumn + room.width;
+        expect(inRoom).toBe(false);
+      }
+    }
+  });
+
+  it('a hole at exactly a connector cell still wins — the connector band respects doc.holes like every other tile', () => {
+    const connector = SHOWCASE_FLOORPLAN.connectors[0];
+    const tiles = buildFloorTiles(SHOWCASE_FLOORPLAN, [
+      [connector.column, SHOWCASE_FLOORPLAN.doorRow],
+    ]);
+    const cube = cubeAtColRow(connector.column, SHOWCASE_FLOORPLAN.doorRow);
+    const key = `${cube.x},${cube.y},${cube.z}`;
+    expect(tiles.has(key)).toBe(false);
   });
 
   it('floorCells takes priority when both floorCells and floorPlan are supplied', () => {

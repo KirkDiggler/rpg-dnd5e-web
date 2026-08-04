@@ -4203,9 +4203,9 @@ taking priority when both are supplied; `buildWallLineFootprint`: the
 empty-`wallLines` fast path, and an exact-match cross-check against
 `straightWallFootprint` for one drawn line, proving the 3D dim overlay
 and the 2D hatch overlay agree on the same cell set rather than each
-computing their own approximation). 265 dungeon-builder tests passing
-overall (up from 253). `ci-check` clean (format/lint/typecheck/build/
-test).
+computing their own approximation). See also the connector-band addendum
+below (2 more tests, same file) for the final count. `ci-check` clean
+(format/lint/typecheck/build/test).
 
 ### Follow-ups named, not built
 
@@ -4217,3 +4217,90 @@ test).
   today's footprint-dim treatment answers "where can't I walk," not "what
   does this wall look like as a wall" the way `doc.walls`'
   `WallBox`/`DoorGap` path already does for edge-native walls.
+
+### Addendum, same day: the connector-band chasm (edit-mode/compiled path)
+
+Kirk, from live 3D screenshots of the COMPILED path (edit mode, unrelated
+to creation mode's canvas — folded into this unit's PR since it's the
+same floor-derivation code, adjacent work, not a separate concept): the
+door jamb (`WallBox`/`DoorGap`, rendered from real `FloorPlan.edges` or
+the derived fallback either way) stood over a genuine floorless BLACK
+CHASM at every connector, not the intentional door-row void. Two
+different absences, easy to conflate, worth stating precisely:
+
+1. **The doorRow void WITHIN a room's own footprint is correct, not a
+   bug.** `buildFloorTiles`'s `if (row === floorPlan.doorRow) continue`
+   is the literal dungeonspec cell-legality rule (CONTRACT.md's own
+   long-standing "cell legality is a clean one-line derivation" finding:
+   `col ∈ [start_column, start_column+width) AND row != door_row`) —
+   doorRow genuinely isn't part of any room's walkable floor. Unchanged
+   by this fix, and shouldn't be.
+2. **`connector.column` — the single gap column BETWEEN two rooms — was
+   never visited by the room loop AT ALL, at any row.** `start_column`
+   chain accumulation (`next.startColumn = prev.startColumn +
+prev.width + 1`, CONTRACT.md's own confirmed finding) always leaves
+   exactly one such column, and it belongs to NEITHER adjacent room's
+   `[startColumn, startColumn+width)` range — verified directly against
+   `SHOWCASE_FLOORPLAN` (column 6 between antechamber `[0,6)` and shrine
+   `[7,21)`; column 21 between shrine and vault `[22,30)`, both new
+   tests assert this rather than just narrate it). The real door — a
+   genuine walkable opening, already rendered as one via
+   `WallBox`/`DoorGap` — was therefore standing over a floor tile that
+   was NEVER GENERATED, not merely excluded by the (correct) doorRow
+   rule.
+
+**Fix**: `buildFloorTiles`'s `floorPlan.rooms` branch gained a second
+pass over `floorPlan.connectors`, adding exactly one floor tile per
+connector at `[connector.column, floorPlan.doorRow]` — reusing the SAME
+column convention `boardGeometry.ts`'s `connectorAtColumn` (the 2D
+board's own door-row-click resolver) already keys off, not a new
+derivation. `roomId` on that synthetic tile is `connector.fromRoomId` — a
+real, existing room id (arbitrary between the two the connector bridges;
+nothing downstream reads a connector tile's roomId today), not a
+sentinel, since this cell genuinely belongs to the compiled dungeon the
+way a creation-mode canvas tile doesn't.
+
+**A real follow-on bug this surfaced and closed in the same pass**: once
+the connector cell has a floor tile, edit mode's existing 3D
+click-to-place machinery would happily generate a `FloorHitCell` there
+too — and `handleClickCell`'s room-local math (`cell.col -
+room.startColumn`) would silently produce an out-of-range column for
+whichever room `fromRoomId` names, since the connector's own column sits
+outside that room's width by construction. `Board.tsx`'s own 2D
+drag-drop already has the answer: it rejects any drop at `row ===
+floorPlan.doorRow` ("Can't drop on the reserved door row"). `handleClickCell`
+now carries the identical guard before it ever reaches the room lookup —
+the connector's floor tile is real and rendered, but not a legal
+placement target, matching 2D's own rule exactly rather than silently
+corrupting a placement's coordinates.
+
+**Tests.** 2 new in `DungeonPreview3D.test.ts`: a direct assertion that a
+real tile exists at `[connector.column, doorRow]` for every connector in
+the real `SHOWCASE_FLOORPLAN` fixture (keyed via the same
+`cubeAtColRow` the render path uses, not a hand-derived key), plus the
+"never inside either room's own range" claim verified against the same
+fixture rather than left as narration; and one confirming a hole exactly
+at a connector cell still wins (the connector pass respects `doc.holes`
+like every other tile). The existing `floorPlan.rooms` regression test
+was updated in place — its expected count now includes
+`+ floorPlan.connectors.length` — rather than silently drifting to a
+higher number. 267 dungeon-builder tests passing overall (up from 253
+pre-unit / 265 before this addendum). `ci-check` clean.
+
+**Live verification.** Same dev server, same `--use-gl=swiftshader`
+headless Chromium pattern this unit's own live-verification section
+above used. A direct BEFORE/AFTER pixel comparison, not just an
+after-the-fact look: the pre-fix `DungeonPreview3D.tsx` (this file's own
+prior committed state) was swapped in, screenshotted at the exact same
+default `Bounds`-fit camera framing (no manual orbit, so both shots are
+reproducibly identical except for the code change), then the fix was
+restored and the identical shot taken again. A pixel diff between the
+two (`PIL.ImageChops.difference`) localizes to a single small,
+tightly-bounded region exactly at the antechamber↔shrine connector —
+confirming the fix changes ONLY what it should and nothing else
+regressed. Cropped/marked side-by-side comparison: the void band's small
+intrusion right at the door jamb's base, present in the BEFORE shot, is
+gone in the AFTER shot — replaced by solid floor, the door now standing
+on real ground instead of over a gap. No unexpected console errors
+(same established FIXTURES-MODE `AuthoringService` notes as every prior
+round).

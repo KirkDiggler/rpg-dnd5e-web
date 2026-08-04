@@ -304,6 +304,41 @@ export function buildFloorTiles(
       }
     }
   }
+  // The connector band (Kirk's live-screenshot finding, 2026-08-04): the
+  // doorRow skip just above is correct dungeonspec legality (`col ∈
+  // [start_column, start_column+width) AND row != door_row` — CONTRACT.md's
+  // own "cell legality" finding) — doorRow genuinely isn't part of any
+  // ROOM's walkable footprint. But `connector.column` (CONTRACT.md's
+  // "connector door position as a cell must still be derived" finding) is
+  // the single GAP column BETWEEN two rooms — `start_column` chain
+  // accumulation always leaves exactly one such column
+  // (`next.startColumn = prev.startColumn + prev.width + 1`, verified
+  // against SHOWCASE_FLOORPLAN's own room/connector columns) — and that
+  // column belongs to NEITHER room's `[startColumn, startColumn+width)`
+  // range, so the room loop above never visits it at ANY row, door or not.
+  // The real door (a genuine walkable opening — `WallBox`/`DoorGap` above
+  // already render it as one, from server-truth edges or the derived
+  // fallback either way) was therefore standing over a floor tile that
+  // was NEVER GENERATED, not merely skipped — a true chasm, not the
+  // intentional door-row void. One tile per connector, at exactly
+  // `[connector.column, doorRow]` — the same cell `boardGeometry.ts`'s
+  // `connectorAtColumn` (the 2D board's own door-row-click resolver)
+  // already keys off, so this reuses the established column convention
+  // rather than re-deriving it. `roomId` picks the FROM room — arbitrary
+  // between the two real adjacent rooms (nothing downstream reads a
+  // connector tile's roomId today), but a real room id, not a synthetic
+  // sentinel, since this cell genuinely belongs to the compiled dungeon.
+  for (const connector of floorPlan.connectors) {
+    if (holeSet.has(`${connector.column},${floorPlan.doorRow}`)) continue;
+    const cube = cubeAtColRow(connector.column, floorPlan.doorRow);
+    const key = `${cube.x},${cube.y},${cube.z}`;
+    tiles.set(key, {
+      x: cube.x,
+      y: cube.y,
+      z: cube.z,
+      roomId: connector.fromRoomId,
+    });
+  }
   return tiles;
 }
 
@@ -999,6 +1034,20 @@ export function DungeonPreview3D({
       onReject?.(
         'Pick a palette item first, then click an empty cell to place it.'
       );
+      return;
+    }
+    // The connector-band fix above (`buildFloorTiles`) gives the door its
+    // own floor tile so it no longer stands over a void — but that tile
+    // is still the reserved door row, not a placeable room cell (same
+    // rule `Board.tsx`'s own 2D drag-drop already enforces: "Can't drop
+    // on the reserved door row," `row === floorPlan.doorRow`). Without
+    // this guard, a click here would fall through to the room-lookup
+    // below using the tile's `roomId` (deliberately one of the two real
+    // adjacent rooms, not a sentinel — see that tile's own doc comment)
+    // and compute a room-LOCAL column outside that room's own width,
+    // silently corrupting the placement.
+    if (cell.row === floorPlan.doorRow) {
+      onReject?.('Can’t place on the reserved door row.');
       return;
     }
     if (selectedPalette.kind === 'boss') {
