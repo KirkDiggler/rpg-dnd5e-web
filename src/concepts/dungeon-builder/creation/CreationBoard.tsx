@@ -73,6 +73,7 @@ import { PlacementMarker } from '../PlacementMarker';
 import { regionCentroid } from '../regionGeometry';
 import type { BoardTool, PlacementSelection } from '../types';
 import type { BoardEditing } from '../useBoardEditing';
+import { canvasPlacementRejectReason } from './canvasFloor';
 import {
   creationCellCenter,
   creationCellPolygon,
@@ -647,6 +648,26 @@ export function CreationBoard({
         onReject(
           'Boss stays room-scoped — this canvas has no rooms yet to hold one (see TARGET-YAML.md).'
         );
+        return;
+      }
+      // rpg-project#169's creation-3D-editing unit: this click used to
+      // reach `edit.handlePlace` unconditionally — no occupied/footprint/
+      // hole check at all, a real gap (a click could silently stack a
+      // second placement on an existing one, or place inside a straight
+      // wall's own footprint or a hole). `canvasPlacementRejectReason` is
+      // the SAME predicate the 3D click-to-place layer now consults
+      // (`DungeonPreview3D.tsx`), so the two views can never disagree
+      // about where a click is legal — see that function's own doc
+      // comment (`canvasFloor.ts`) for the exact three gates.
+      const footprint = straightWallsFootprintSet(doc.wallLines, grid);
+      const reject = canvasPlacementRejectReason(
+        doc,
+        cell[0],
+        cell[1],
+        footprint
+      );
+      if (reject) {
+        onReject(reject);
         return;
       }
       edit.handlePlace(null, cell);

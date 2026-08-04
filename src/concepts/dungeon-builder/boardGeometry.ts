@@ -77,35 +77,50 @@ export interface OccupiedCheck {
  * optionally excluding one specific placement (the one being dragged).
  * Checks room-scoped placements (room-local `at` + the room's compiled
  * `startColumn`) AND top-level placements (`doc.place`, already absolute
- * — no room offset to add). */
+ * — no room offset to add).
+ *
+ * `floorPlan` is OPTIONAL (rpg-project#169's creation-3D-editing unit) — a
+ * from-scratch creation-mode canvas has no compiled `FloorPlan` to resolve
+ * a room-scoped placement's `startColumn` against, but its `doc.rooms` is
+ * always `[]` (`creation/emptyCanvasDoc.ts`'s own "no room chain exists
+ * yet" doc comment), so the room-scoped loop is already a no-op there
+ * regardless — the `if (floorPlan)` guard just keeps this honestly typed
+ * for `FloorPlan | undefined` rather than asserting non-null, matching
+ * this file's neighbors (`buildPlacements` in `DungeonPreview3D.tsx`
+ * already does the identical thing for the same reason). The top-level
+ * `doc.place` loop below never depended on `floorPlan` in the first
+ * place — it's the one this optionality exists to keep working for a
+ * canvas's own top-level placements. */
 export function isCellOccupied(
-  floorPlan: FloorPlan,
+  floorPlan: FloorPlan | undefined,
   doc: DungeonDoc,
   absCol: number,
   row: number,
   exclude?: OccupiedCheck
 ): boolean {
-  for (const room of doc.rooms) {
-    const fpRoom = floorPlan.rooms.find((r) => r.id === room.id);
-    if (!fpRoom) continue;
-    if (room.boss) {
-      const bc = fpRoom.startColumn + room.boss.at[0];
-      const br = room.boss.at[1];
-      if (bc === absCol && br === row) {
-        if (
-          !(exclude && exclude.roomId === room.id && exclude.index === 'boss')
-        ) {
-          return true;
+  if (floorPlan) {
+    for (const room of doc.rooms) {
+      const fpRoom = floorPlan.rooms.find((r) => r.id === room.id);
+      if (!fpRoom) continue;
+      if (room.boss) {
+        const bc = fpRoom.startColumn + room.boss.at[0];
+        const br = room.boss.at[1];
+        if (bc === absCol && br === row) {
+          if (
+            !(exclude && exclude.roomId === room.id && exclude.index === 'boss')
+          ) {
+            return true;
+          }
         }
       }
-    }
-    for (let i = 0; i < room.place.length; i++) {
-      if (exclude && exclude.roomId === room.id && exclude.index === i)
-        continue;
-      const p = room.place[i];
-      const pc = fpRoom.startColumn + p.at[0];
-      const pr = p.at[1];
-      if (pc === absCol && pr === row) return true;
+      for (let i = 0; i < room.place.length; i++) {
+        if (exclude && exclude.roomId === room.id && exclude.index === i)
+          continue;
+        const p = room.place[i];
+        const pc = fpRoom.startColumn + p.at[0];
+        const pr = p.at[1];
+        if (pc === absCol && pr === row) return true;
+      }
     }
   }
   for (let i = 0; i < doc.place.length; i++) {
