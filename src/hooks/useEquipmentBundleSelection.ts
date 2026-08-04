@@ -13,7 +13,22 @@ import {
   EquipmentSelectionItemSchema,
   EquipmentSelectionSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+function hydrateCategorySelections(
+  initialCategoryItemIds?: ReadonlyMap<number, string[]>
+): Map<number, EquipmentItem[]> {
+  return new Map(
+    [...(initialCategoryItemIds ?? new Map<number, string[]>())].map(
+      ([categoryIndex, selectionIds]) => [
+        categoryIndex,
+        selectionIds.map((selectionId) =>
+          create(EquipmentItemSchema, { selectionId })
+        ),
+      ]
+    )
+  );
+}
 
 export function useEquipmentBundleSelection(
   choice: Choice,
@@ -27,22 +42,34 @@ export function useEquipmentBundleSelection(
   // partition rather than collapsing every restored item into category 0.
   const [categorySelections, setCategorySelections] = useState<
     Map<number, EquipmentItem[]>
-  >(
-    () =>
-      new Map(
-        [...(initialCategoryItemIds ?? new Map<number, string[]>())].map(
-          ([categoryIndex, selectionIds]) => [
-            categoryIndex,
-            selectionIds.map((selectionId) =>
-              create(EquipmentItemSchema, { selectionId })
-            ),
-          ]
-        )
-      )
-  );
+  >(() => hydrateCategorySelections(initialCategoryItemIds));
+
+  // A reopened draft's class definitions and its persisted choices load
+  // independently, so this modal can mount before the persisted selection
+  // resolves: `initialBundleId`/`initialCategoryItemIds` then change after
+  // mount, but `useState`'s lazy initializer above only ever runs once.
+  // Sync from the props here instead — once, and only while the player
+  // hasn't already made a selection of their own, so a late-arriving
+  // hydration can never clobber real interaction.
+  const appliedHydrationRef = useRef(false);
+  useEffect(() => {
+    if (appliedHydrationRef.current) return;
+    const hasHydratedBundle = Boolean(initialBundleId);
+    const hasHydratedCategories = Boolean(
+      initialCategoryItemIds && initialCategoryItemIds.size > 0
+    );
+    if (!hasHydratedBundle && !hasHydratedCategories) return;
+
+    appliedHydrationRef.current = true;
+    setSelectedBundleId((prev) => prev ?? initialBundleId ?? null);
+    setCategorySelections((prev) =>
+      prev.size > 0 ? prev : hydrateCategorySelections(initialCategoryItemIds)
+    );
+  }, [initialBundleId, initialCategoryItemIds]);
 
   // When user selects a bundle
   const selectBundle = useCallback((bundleId: string) => {
+    appliedHydrationRef.current = true;
     setSelectedBundleId(bundleId);
     setCategorySelections(new Map()); // Reset category selections when bundle changes
   }, []);
@@ -50,6 +77,7 @@ export function useEquipmentBundleSelection(
   // When user selects items from a category
   const selectCategoryItems = useCallback(
     (categoryIndex: number, items: EquipmentItem[]) => {
+      appliedHydrationRef.current = true;
       setCategorySelections((prev) => {
         const updated = new Map(prev);
         updated.set(categoryIndex, items);

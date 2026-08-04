@@ -4,7 +4,7 @@ import type {
   EquipmentItem,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { Package } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useEquipmentBundleSelection } from '../../hooks/useEquipmentBundleSelection';
 import { EquipmentCard } from '../equipment/EquipmentCard';
 import { EquipmentCategoryDropdown } from '../equipment/EquipmentCategoryDropdown';
@@ -43,7 +43,27 @@ function CategorySelector({
     )
   );
 
+  // `currentSelections` mirrors the parent hook's authoritative selection
+  // state, which can itself resolve after this selector's first mount (see
+  // `useEquipmentBundleSelection`'s own hydration effect). The lazy
+  // `useState` initializer above only ever runs once, so re-sync here the
+  // first time real persisted selections show up — but never once the
+  // player has started picking slots themselves.
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    if (currentSelections.length === 0) return;
+    hydratedRef.current = true;
+    setSelectedBySlot(
+      Array.from(
+        { length: chooseCount },
+        (_, i) => currentSelections[i]?.selectionId ?? null
+      )
+    );
+  }, [currentSelections, chooseCount]);
+
   const handleSlotChange = (slotIndex: number, value: string) => {
+    hydratedRef.current = true;
     const newSelectedBySlot = [...selectedBySlot];
     newSelectedBySlot[slotIndex] = value || null;
     setSelectedBySlot(newSelectedBySlot);

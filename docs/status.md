@@ -18,9 +18,16 @@ let it rot.
   membership or calls `ListEquipmentByType`; ordered toolkit/API options and their
   selection IDs are preserved through selection and reopened-draft hydration.
   Persisted flat selection items are reconstructed into the selected bundle's
-  declared category slices (order + `choose` counts); a same-category legacy
-  duplicate is surfaced for correction and cannot invoke finalization, while
-  the same selection ID remains valid in independently declared categories.
+  declared category slices (order + `choose` counts), offset past the bundle's
+  fixed items first (the toolkit's own build order); a toolkit-enumerated wire
+  item (weapon/armor/tool/pack/ammunition enum, not `other_equipment_id`) is
+  mapped back to its authoritative `selectionId` via that category's own
+  `options`, not re-derived client-side. A same-category legacy duplicate is
+  surfaced for correction and cannot invoke finalization, the same selection ID
+  remains valid in independently declared categories, and persisted items left
+  over after every declared slot has consumed its slice are treated as invalid
+  rather than silently finalized. The equipment controls re-sync if a reopened
+  draft's persisted selection resolves after the choice has already mounted.
   Proto dependency: `rpg-api-protos#207` / `v0.1.118`; provider: `rpg-api#764`.
 
 - **Equipment live on the game screen (#571)** — the `/concepts` equipment

@@ -11,10 +11,15 @@ import {
   ChoiceSchema,
   EquipmentBundleSchema,
   EquipmentCategoryChoiceSchema,
+  EquipmentItemSchema,
   EquipmentOptionsSchema,
   EquipmentSelectionItemSchema,
   EquipmentSelectionSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
+import {
+  Armor,
+  Weapon,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -84,7 +89,10 @@ function persistedDuplicateEquipmentChoice() {
 }
 
 function draftState(
-  finalizeDraft: CharacterDraftState['finalizeDraft']
+  finalizeDraft: CharacterDraftState['finalizeDraft'],
+  overrides: Partial<
+    Pick<CharacterDraftState, 'classInfo' | 'classChoices'>
+  > = {}
 ): CharacterDraftState {
   return {
     draftId: 'persisted-draft',
@@ -101,15 +109,19 @@ function draftState(
       },
     }),
     raceInfo: create(RaceInfoSchema, { name: 'Human' }),
-    classInfo: create(ClassInfoSchema, {
-      name: 'Fighter',
-      choices: [declaredEquipmentChoice],
-    }),
+    classInfo:
+      overrides.classInfo ??
+      create(ClassInfoSchema, {
+        name: 'Fighter',
+        choices: [declaredEquipmentChoice],
+      }),
     backgroundInfo: create(BackgroundInfoSchema, { name: 'Soldier' }),
     allProficiencies: new Set(),
     allLanguages: new Set(),
     raceChoices: [],
-    classChoices: [persistedDuplicateEquipmentChoice()],
+    classChoices: overrides.classChoices ?? [
+      persistedDuplicateEquipmentChoice(),
+    ],
     backgroundChoices: [],
     loading: false,
     saving: false,
@@ -138,6 +150,134 @@ describe('InteractiveCharacterSheet persisted equipment guard', () => {
     const finalizeDraft = vi.fn<() => Promise<string>>();
     render(
       <CharacterDraftContext.Provider value={draftState(finalizeDraft)}>
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    const finalize = screen.getByRole('button', { name: /begin adventure/i });
+    expect(finalize.getAttribute('disabled')).not.toBeNull();
+    fireEvent.click(finalize);
+    expect(finalizeDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('InteractiveCharacterSheet persisted mixed-bundle round trip (rpg-toolkit real wire shape)', () => {
+  // A fixed bundle item (shield) plus one enum-backed category selection
+  // (longsword) — the real toolkit build order and the real proto enums
+  // rpg-api attaches, not a test-only `otherEquipmentId` shortcut.
+  const mixedBundle = create(EquipmentBundleSchema, {
+    id: 'fighter-pack-a',
+    items: [
+      create(EquipmentItemSchema, {
+        selectionId: 'shield',
+        typeHint: { case: 'armor', value: Armor.SHIELD },
+      }),
+    ],
+    categoryChoices: [
+      create(EquipmentCategoryChoiceSchema, {
+        choose: 1,
+        options: [
+          create(EquipmentItemSchema, {
+            selectionId: 'longsword',
+            typeHint: { case: 'weapon', value: Weapon.LONGSWORD },
+          }),
+        ],
+      }),
+    ],
+  });
+
+  const declaredMixedChoice = create(ChoiceSchema, {
+    id: 'fighter-starting-equipment',
+    choiceType: ChoiceCategory.EQUIPMENT,
+    options: {
+      case: 'equipmentOptions',
+      value: create(EquipmentOptionsSchema, { bundles: [mixedBundle] }),
+    },
+  });
+
+  function persistedMixedChoice(withTrailingExtra: boolean) {
+    return create(ChoiceDataSchema, {
+      choiceId: 'fighter-starting-equipment',
+      optionId: 'fighter-pack-a',
+      category: ChoiceCategory.EQUIPMENT,
+      selection: {
+        case: 'equipment',
+        value: create(EquipmentSelectionSchema, {
+          items: [
+            create(EquipmentSelectionItemSchema, {
+              equipment: { case: 'armor', value: Armor.SHIELD },
+            }),
+            create(EquipmentSelectionItemSchema, {
+              equipment: { case: 'weapon', value: Weapon.LONGSWORD },
+            }),
+            ...(withTrailingExtra
+              ? [
+                  create(EquipmentSelectionItemSchema, {
+                    equipment: { case: 'weapon', value: Weapon.DAGGER },
+                  }),
+                ]
+              : []),
+          ],
+        }),
+      },
+    });
+  }
+
+  const classInfoWithMixedBundle = create(ClassInfoSchema, {
+    name: 'Fighter',
+    choices: [declaredMixedChoice],
+  });
+
+  it('allows finalization for a valid fixed-item + enum-backed category selection, offset and mapped correctly', () => {
+    const finalizeDraft = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValue('char-1');
+    render(
+      <CharacterDraftContext.Provider
+        value={draftState(finalizeDraft, {
+          classInfo: classInfoWithMixedBundle,
+          classChoices: [persistedMixedChoice(false)],
+        })}
+      >
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    const finalize = screen.getByRole('button', { name: /begin adventure/i });
+    expect(finalize.getAttribute('disabled')).toBeNull();
+    fireEvent.click(finalize);
+    expect(finalizeDraft).toHaveBeenCalled();
+  });
+
+  it('blocks finalization once a delayed hydration reveals an unconsumed trailing persisted item, without a remount', () => {
+    const finalizeDraft = vi.fn<() => Promise<string>>();
+    const { rerender } = render(
+      <CharacterDraftContext.Provider
+        value={draftState(finalizeDraft, {
+          classInfo: classInfoWithMixedBundle,
+          classChoices: [persistedMixedChoice(false)],
+        })}
+      >
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    expect(
+      screen
+        .getByRole('button', { name: /begin adventure/i })
+        .getAttribute('disabled')
+    ).toBeNull();
+
+    // The draft context refreshes after mount (e.g. the persisted draft
+    // finishes loading) and now carries a trailing item this reconstruction
+    // can't account for. Finalize must react and block immediately.
+    rerender(
+      <CharacterDraftContext.Provider
+        value={draftState(finalizeDraft, {
+          classInfo: classInfoWithMixedBundle,
+          classChoices: [persistedMixedChoice(true)],
+        })}
+      >
         <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
       </CharacterDraftContext.Provider>
     );

@@ -265,6 +265,69 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
     expect(screen.getByText(/Equipment selection complete/)).toBeTruthy();
   });
 
+  it('applies a persisted selection that resolves after this choice has already mounted, instead of staying stuck on stale initial state', () => {
+    const onSelectionChange = vi.fn();
+    const { rerender } = render(
+      <EquipmentBundleChoice
+        choice={choice()}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+
+    // Nothing hydrated yet: the class's declared options loaded, but the
+    // draft's persisted choice for it hasn't resolved. No bundle is
+    // selected, so no category dropdown exists at all.
+    expect(screen.queryByRole('combobox')).toBeNull();
+
+    // The persisted draft choice resolves after mount and the parent
+    // re-renders with it — React's lazy `useState` initializer inside
+    // `useEquipmentBundleSelection`/`CategorySelector` would otherwise never
+    // re-run for this already-mounted instance.
+    rerender(
+      <EquipmentBundleChoice
+        choice={choice()}
+        initialBundleId="bundle-a"
+        initialCategoryItemIds={new Map([[0, ['dart-selection']]])}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+
+    expect(screen.getByRole('combobox').textContent).toMatch(/Dart/);
+    expect(screen.getByText(/Equipment selection complete/)).toBeTruthy();
+  });
+
+  it('does not clobber a selection the player already made once a stale hydration prop shows up afterward', () => {
+    const onSelectionChange = vi.fn();
+    const { rerender } = render(
+      <EquipmentBundleChoice
+        choice={choice()}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+
+    fireEvent.click(screen.getByText('A weapon'));
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(
+      within(screen.getByRole('listbox')).getByTestId(
+        'equipment-category-0-slot-0-option-club-selection'
+      )
+    );
+    expect(screen.getByRole('combobox').textContent).toMatch(/Club/);
+
+    // A late hydration prop arriving after real interaction must not
+    // override the player's own choice.
+    rerender(
+      <EquipmentBundleChoice
+        choice={choice()}
+        initialBundleId="bundle-a"
+        initialCategoryItemIds={new Map([[0, ['dart-selection']]])}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+
+    expect(screen.getByRole('combobox').textContent).toMatch(/Club/);
+  });
+
   it('serializes category indices in declaration order, not selection click order', () => {
     const multiCategoryChoice = create(ChoiceSchema, {
       id: 'multi-category-equipment',
@@ -325,5 +388,45 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
       'multi-category-equipment',
       ['bundle-a', 'cat0:club-selection:Club', 'cat1:dart-selection:Dart']
     );
+  });
+
+  it('re-renders a hydrated selection through the ChoiceRenderer bridge and still reserializes it at the right declared category index', () => {
+    const onSelectionChange = vi.fn();
+
+    const { rerender } = render(
+      <ChoiceRenderer
+        choice={choice()}
+        currentSelections={[]}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+    // The persisted draft choice hasn't resolved yet: no bundle is selected.
+    expect(screen.queryByRole('combobox')).toBeNull();
+
+    // It resolves after mount — e.g. ClassSelectionModal's `existingChoices`
+    // prop updating once the draft's persisted choices load.
+    rerender(
+      <ChoiceRenderer
+        choice={choice()}
+        currentSelections={['bundle-a', 'cat0:dart-selection:Dart']}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+
+    expect(screen.getByRole('combobox').textContent).toMatch(/Dart/);
+    expect(screen.getByText(/Equipment selection complete/)).toBeTruthy();
+
+    // Changing the now-hydrated slot must still serialize at category 0 —
+    // not a shifted/fallback index introduced by the delayed hydration.
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(
+      within(screen.getByRole('listbox')).getByTestId(
+        'equipment-category-0-slot-0-option-club-selection'
+      )
+    );
+    expect(onSelectionChange).toHaveBeenLastCalledWith('monk-equipment', [
+      'bundle-a',
+      'cat0:club-selection:Club',
+    ]);
   });
 });
