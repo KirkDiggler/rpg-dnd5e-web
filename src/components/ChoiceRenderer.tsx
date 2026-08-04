@@ -18,6 +18,8 @@ interface ChoiceRendererProps {
   choice: Choice;
   onSelectionChange: (choiceId: string, selections: SelectionValue) => void; // Generic handler, will be Language[] | Skill[] | string[] based on choice type
   currentSelections: SelectionValue; // Will be Language[] | Skill[] | string[] etc based on choice type
+  /** Persisted equipment data could not be fully assigned to declared slots. */
+  hasInvalidPersistedEquipmentSelection?: boolean;
 }
 
 /**
@@ -28,6 +30,7 @@ export function ChoiceRenderer({
   choice,
   onSelectionChange,
   currentSelections,
+  hasInvalidPersistedEquipmentSelection = false,
 }: ChoiceRendererProps) {
   // Check if it's an equipment choice with bundles (the special case we handle properly)
   if (
@@ -40,31 +43,45 @@ export function ChoiceRenderer({
       Array.isArray(currentSelections) && currentSelections.length > 0
         ? currentSelections[0]
         : null;
-    // Extract item IDs from category selections (skip first element which is bundleId)
-    const initialItemIds =
-      Array.isArray(currentSelections) && currentSelections.length > 1
-        ? currentSelections.slice(1).map((sel: string) => {
-            // Format is "cat{index}:{id}:{name}" - extract the id
-            const parts = sel.split(':');
-            return parts.length >= 2 ? parts[1] : sel;
-          })
-        : undefined;
+    // Rehydrate each item into its persisted category. The legacy fallback
+    // keeps unprefixed selections in category 0, but indexed selections must
+    // never be collapsed there.
+    const initialCategoryItemIds = (() => {
+      if (!Array.isArray(currentSelections) || currentSelections.length <= 1) {
+        return undefined;
+      }
+      const byCategory = new Map<number, string[]>();
+      currentSelections.slice(1).forEach((selection: string) => {
+        const match = /^cat(\d+):([^:]+)(?::.*)?$/.exec(selection);
+        const categoryIndex = match ? Number(match[1]) : 0;
+        const selectionId = match ? match[2] : selection;
+        const itemIds = byCategory.get(categoryIndex) ?? [];
+        itemIds.push(selectionId);
+        byCategory.set(categoryIndex, itemIds);
+      });
+      return byCategory;
+    })();
     return (
       <EquipmentBundleChoice
         choice={choice}
         initialBundleId={initialBundleId}
-        initialItemIds={initialItemIds}
+        initialCategoryItemIds={initialCategoryItemIds}
+        hasInvalidPersistedSelection={hasInvalidPersistedEquipmentSelection}
         onSelectionChange={(bundleId, categorySelections) => {
           // Convert EquipmentBundleChoice format back to standard format
           // Store equipment selections with both id and name: "cat0:id:name"
           const selections: string[] = [];
           if (bundleId) selections.push(bundleId);
-          categorySelections.forEach((equipment, index) => {
-            equipment.forEach((item) =>
-              // Store as "cat{index}:{id}:{name}" so we can extract name later
-              selections.push(`cat${index}:${item.id}:${item.name}`)
-            );
-          });
+          [...categorySelections.entries()]
+            .sort(([left], [right]) => left - right)
+            .forEach(([index, equipment]) => {
+              equipment.forEach((item) =>
+                // Store the authoritative selection ID and server-provided name.
+                selections.push(
+                  `cat${index}:${item.selectionId}:${item.equipmentDetail?.name ?? item.selectionId}`
+                )
+              );
+            });
           onSelectionChange(choice.id, selections);
         }}
       />

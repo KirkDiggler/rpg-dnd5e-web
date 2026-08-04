@@ -1,15 +1,10 @@
 import type {
   Choice,
   EquipmentCategoryChoice,
+  EquipmentItem,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
-import {
-  EquipmentType,
-  WeaponCategory,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import type { Equipment } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/equipment_types_pb';
 import { Package } from 'lucide-react';
-import { useCallback, useState } from 'react';
-import { useListEquipmentByType } from '../../api/hooks';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useEquipmentBundleSelection } from '../../hooks/useEquipmentBundleSelection';
 import { EquipmentCard } from '../equipment/EquipmentCard';
 import { EquipmentCategoryDropdown } from '../equipment/EquipmentCategoryDropdown';
@@ -18,10 +13,17 @@ interface EquipmentBundleChoiceProps {
   choice: Choice;
   onSelectionChange: (
     bundleId: string | null,
-    categorySelections: Map<number, Equipment[]>
+    categorySelections: Map<number, EquipmentItem[]>
   ) => void;
   initialBundleId?: string | null;
-  initialItemIds?: string[];
+  /** Reopened selections, partitioned by their persisted category index. */
+  initialCategoryItemIds?: ReadonlyMap<number, string[]>;
+  /**
+   * The persisted wire choice contained data that could not be assigned to
+   * this bundle's declared category slots. Render it as a correction state;
+   * it is cleared only after the player deliberately changes this choice.
+   */
+  hasInvalidPersistedSelection?: boolean;
 }
 
 // Component for selecting from a category - supports multiple selections when choose > 1
@@ -33,74 +35,50 @@ function CategorySelector({
 }: {
   category: EquipmentCategoryChoice;
   categoryIndex: number;
-  onSelect: (categoryIndex: number, items: Equipment[]) => void;
-  currentSelections: Equipment[];
+  onSelect: (categoryIndex: number, items: EquipmentItem[]) => void;
+  currentSelections: EquipmentItem[];
 }) {
   const chooseCount = category.choose || 1;
+  const options = category.options;
 
-  // Track selections for each slot (when choose > 1)
+  // Track selections for each slot (when choose > 1).
   const [selectedBySlot, setSelectedBySlot] = useState<(string | null)[]>(() =>
     Array.from(
       { length: chooseCount },
-      (_, i) => currentSelections[i]?.id ?? null
+      (_, i) => currentSelections[i]?.selectionId ?? null
     )
   );
 
-  // Determine equipment types to fetch based on category
-  const equipmentTypes = useCallback((): EquipmentType[] => {
-    const types: EquipmentType[] = [];
-
-    if (category.weaponCategories && category.weaponCategories.length > 0) {
-      category.weaponCategories.forEach((cat) => {
-        if (cat === WeaponCategory.SIMPLE) {
-          types.push(EquipmentType.SIMPLE_MELEE_WEAPON);
-          types.push(EquipmentType.SIMPLE_RANGED_WEAPON);
-        } else if (cat === WeaponCategory.MARTIAL) {
-          types.push(EquipmentType.MARTIAL_MELEE_WEAPON);
-          types.push(EquipmentType.MARTIAL_RANGED_WEAPON);
-        }
-      });
-    }
-
-    if (category.armorCategories && category.armorCategories.length > 0) {
-      types.push(EquipmentType.LIGHT_ARMOR);
-      types.push(EquipmentType.MEDIUM_ARMOR);
-      types.push(EquipmentType.HEAVY_ARMOR);
-      types.push(EquipmentType.SHIELD);
-    }
-
-    if (category.toolCategories && category.toolCategories.length > 0) {
-      types.push(EquipmentType.TOOLS);
-    }
-
-    return types;
-  }, [category]);
-
-  // Fetch equipment - always enabled since we're not using expand/collapse
-  const types = equipmentTypes();
-  const primaryType = types[0] || EquipmentType.UNSPECIFIED;
-  const {
-    data: equipment,
-    loading: equipmentLoading,
-    error: equipmentError,
-    refetch: refetchEquipment,
-  } = useListEquipmentByType({
-    equipmentType: primaryType,
-    enabled: types.length > 0,
-  });
+  // `currentSelections` mirrors the parent hook's authoritative selection
+  // state, which can itself resolve after this selector's first mount (see
+  // `useEquipmentBundleSelection`'s own hydration effect). The lazy
+  // `useState` initializer above only ever runs once, so re-sync here the
+  // first time real persisted selections show up — but never once the
+  // player has started picking slots themselves.
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    if (currentSelections.length === 0) return;
+    hydratedRef.current = true;
+    setSelectedBySlot(
+      Array.from(
+        { length: chooseCount },
+        (_, i) => currentSelections[i]?.selectionId ?? null
+      )
+    );
+  }, [currentSelections, chooseCount]);
 
   const handleSlotChange = (slotIndex: number, value: string) => {
-    if (!equipment) return;
-
+    hydratedRef.current = true;
     const newSelectedBySlot = [...selectedBySlot];
     newSelectedBySlot[slotIndex] = value || null;
     setSelectedBySlot(newSelectedBySlot);
 
-    // Gather all selected items and report back
+    // Keep the API's selection IDs and ordered option objects intact.
     const selectedItems = newSelectedBySlot
       .filter((id): id is string => id !== null)
-      .map((id) => equipment.find((e) => e.id === id))
-      .filter((item): item is Equipment => item !== undefined);
+      .map((id) => options.find((option) => option.selectionId === id))
+      .filter((item): item is EquipmentItem => item !== undefined);
 
     onSelect(categoryIndex, selectedItems);
   };
@@ -129,7 +107,9 @@ function CategorySelector({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {Array.from({ length: chooseCount }, (_, slotIndex) => {
           const selectedItem = selectedBySlot[slotIndex]
-            ? equipment?.find((e) => e.id === selectedBySlot[slotIndex])
+            ? options.find(
+                (option) => option.selectionId === selectedBySlot[slotIndex]
+              )
             : undefined;
           const slotLabel =
             chooseCount > 1
@@ -144,16 +124,26 @@ function CategorySelector({
                 placeholder={`-- Select ${
                   chooseCount > 1 ? `item ${slotIndex + 1}` : 'item'
                 } --`}
-                options={equipment ?? []}
+                options={options}
                 selectedId={selectedBySlot[slotIndex]}
+                // The toolkit validates uniqueness per category requirement,
+                // not across independent category choices.
+                disabledOptionIds={
+                  new Set(
+                    selectedBySlot.filter(
+                      (id, index): id is string =>
+                        index !== slotIndex && id !== null
+                    )
+                  )
+                }
                 onChange={(value) => handleSlotChange(slotIndex, value)}
-                isLoading={equipmentLoading}
-                error={equipmentError}
-                onRetry={() => refetchEquipment()}
               />
-              {selectedItem && (
+              {selectedItem?.equipmentDetail && (
                 <div style={{ marginTop: '6px' }}>
-                  <EquipmentCard equipment={selectedItem} compact />
+                  <EquipmentCard
+                    equipment={selectedItem.equipmentDetail}
+                    compact
+                  />
                 </div>
               )}
             </div>
@@ -162,6 +152,7 @@ function CategorySelector({
       </div>
       {hasDuplicates && (
         <div
+          role="alert"
           style={{
             marginTop: '8px',
             padding: '8px 12px',
@@ -172,7 +163,7 @@ function CategorySelector({
             color: 'var(--text-muted)',
           }}
         >
-          ⚠️ Same item selected multiple times (allowed for dual-wielding)
+          ⚠️ Select a different item in each slot before continuing.
         </div>
       )}
     </div>
@@ -183,7 +174,8 @@ export function EquipmentBundleChoice({
   choice,
   onSelectionChange,
   initialBundleId,
-  initialItemIds,
+  initialCategoryItemIds,
+  hasInvalidPersistedSelection = false,
 }: EquipmentBundleChoiceProps) {
   const {
     selectedBundleId,
@@ -192,7 +184,11 @@ export function EquipmentBundleChoice({
     selectCategoryItems,
     getSelectedBundle,
     isComplete,
-  } = useEquipmentBundleSelection(choice, initialBundleId, initialItemIds);
+  } = useEquipmentBundleSelection(
+    choice,
+    initialBundleId,
+    initialCategoryItemIds
+  );
 
   // Extract bundles from choice
   const bundles =
@@ -201,11 +197,28 @@ export function EquipmentBundleChoice({
       : [];
 
   const selectedBundle = getSelectedBundle();
+  const [
+    hasPlayerCorrectedPersistedSelection,
+    setHasPlayerCorrectedPersistedSelection,
+  ] = useState(false);
+
+  // A refreshed persisted draft can reveal invalid data after mount. Keep the
+  // correction visible until the player intentionally changes this choice.
+  useEffect(() => {
+    if (hasInvalidPersistedSelection) {
+      setHasPlayerCorrectedPersistedSelection(false);
+    }
+  }, [hasInvalidPersistedSelection]);
+
+  const requiresPersistedCorrection =
+    hasInvalidPersistedSelection && !hasPlayerCorrectedPersistedSelection;
+  const completionStatusId = useId();
 
   // Handle bundle selection
   const handleBundleSelect = useCallback(
     (bundleId: string) => {
       selectBundle(bundleId);
+      setHasPlayerCorrectedPersistedSelection(true);
       // Note: We only send the bundleId here, not the fixed items
       // The backend will look up bundle.items based on the bundleId
       onSelectionChange(bundleId, new Map());
@@ -215,8 +228,9 @@ export function EquipmentBundleChoice({
 
   // Handle category item selection
   const handleCategorySelect = useCallback(
-    (categoryIndex: number, items: Equipment[]) => {
+    (categoryIndex: number, items: EquipmentItem[]) => {
       selectCategoryItems(categoryIndex, items);
+      setHasPlayerCorrectedPersistedSelection(true);
       const updatedSelections = new Map(categorySelections);
       updatedSelections.set(categoryIndex, items);
       onSelectionChange(selectedBundleId, updatedSelections);
@@ -230,7 +244,12 @@ export function EquipmentBundleChoice({
   );
 
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-4"
+      role="group"
+      aria-label={choice.description || 'Equipment selection'}
+      aria-describedby={selectedBundleId ? completionStatusId : undefined}
+    >
       <div className="flex items-start gap-2">
         <Package className="w-5 h-5 mt-0.5 text-amber-500" />
         <div className="flex-1">
@@ -364,15 +383,19 @@ export function EquipmentBundleChoice({
       {/* Completion status */}
       {selectedBundleId && (
         <div
+          id={completionStatusId}
+          role={requiresPersistedCorrection ? 'alert' : 'status'}
           className={`p-3 rounded-lg text-sm ${
-            isComplete()
+            !requiresPersistedCorrection && isComplete()
               ? 'bg-green-100 text-green-800'
               : 'bg-yellow-100 text-yellow-800'
           }`}
         >
-          {isComplete()
-            ? '✓ Equipment selection complete'
-            : 'Please complete all category selections'}
+          {requiresPersistedCorrection
+            ? 'Saved equipment selection needs correction. Choose a different equipment bundle or update a category selection before continuing.'
+            : isComplete()
+              ? '✓ Equipment selection complete'
+              : 'Please complete all category selections'}
         </div>
       )}
     </div>

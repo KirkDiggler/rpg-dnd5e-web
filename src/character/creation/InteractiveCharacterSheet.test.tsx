@@ -1,0 +1,290 @@
+import { create } from '@bufbuild/protobuf';
+import {
+  BackgroundInfoSchema,
+  CharacterDraftSchema,
+  ClassInfoSchema,
+  RaceInfoSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  ChoiceCategory,
+  ChoiceDataSchema,
+  ChoiceSchema,
+  EquipmentBundleSchema,
+  EquipmentCategoryChoiceSchema,
+  EquipmentItemSchema,
+  EquipmentOptionsSchema,
+  EquipmentSelectionItemSchema,
+  EquipmentSelectionSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
+import {
+  Armor,
+  Weapon,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import type { CharacterDraftState } from './CharacterDraftContextDef';
+import { CharacterDraftContext } from './CharacterDraftContextDef';
+import { InteractiveCharacterSheet } from './InteractiveCharacterSheet';
+
+vi.mock('@/components/ProgressTracker', () => ({
+  ProgressTracker: () => null,
+}));
+vi.mock('@/components/ui', () => ({
+  Button: ({ children }: { children: ReactNode }) => (
+    <button>{children}</button>
+  ),
+  useToast: () => ({ addToast: vi.fn() }),
+}));
+vi.mock('./AppearanceSelectionModal', () => ({
+  AppearanceSelectionModal: () => null,
+}));
+vi.mock('./BackgroundSelectionModal', () => ({
+  BackgroundSelectionModal: () => null,
+}));
+vi.mock('./ClassSelectionModal', () => ({ ClassSelectionModal: () => null }));
+vi.mock('./RaceSelectionModal', () => ({ RaceSelectionModal: () => null }));
+vi.mock('./SpellSelectionModal', () => ({ SpellSelectionModal: () => null }));
+vi.mock('./components/SpellInfoDisplay', () => ({
+  SpellInfoDisplay: () => null,
+}));
+vi.mock('./sections/AbilityScoresSection', () => ({
+  AbilityScoresSection: () => null,
+}));
+
+const declaredEquipmentChoice = create(ChoiceSchema, {
+  id: 'fighter-starting-equipment',
+  choiceType: ChoiceCategory.EQUIPMENT,
+  options: {
+    case: 'equipmentOptions',
+    value: create(EquipmentOptionsSchema, {
+      bundles: [
+        create(EquipmentBundleSchema, {
+          id: 'fighter-pack-a',
+          categoryChoices: [
+            create(EquipmentCategoryChoiceSchema, { choose: 2 }),
+          ],
+        }),
+      ],
+    }),
+  },
+});
+
+function persistedDuplicateEquipmentChoice() {
+  return create(ChoiceDataSchema, {
+    choiceId: 'fighter-starting-equipment',
+    optionId: 'fighter-pack-a',
+    category: ChoiceCategory.EQUIPMENT,
+    selection: {
+      case: 'equipment',
+      value: create(EquipmentSelectionSchema, {
+        items: ['longsword-selection', 'longsword-selection'].map((id) =>
+          create(EquipmentSelectionItemSchema, {
+            equipment: { case: 'otherEquipmentId', value: id },
+          })
+        ),
+      }),
+    },
+  });
+}
+
+function draftState(
+  finalizeDraft: CharacterDraftState['finalizeDraft'],
+  overrides: Partial<
+    Pick<CharacterDraftState, 'classInfo' | 'classChoices'>
+  > = {}
+): CharacterDraftState {
+  return {
+    draftId: 'persisted-draft',
+    draft: create(CharacterDraftSchema, {
+      id: 'persisted-draft',
+      name: 'Aria',
+      baseAbilityScores: {
+        strength: 15,
+        dexterity: 14,
+        constitution: 13,
+        intelligence: 12,
+        wisdom: 10,
+        charisma: 8,
+      },
+    }),
+    raceInfo: create(RaceInfoSchema, { name: 'Human' }),
+    classInfo:
+      overrides.classInfo ??
+      create(ClassInfoSchema, {
+        name: 'Fighter',
+        choices: [declaredEquipmentChoice],
+      }),
+    backgroundInfo: create(BackgroundInfoSchema, { name: 'Soldier' }),
+    allProficiencies: new Set(),
+    allLanguages: new Set(),
+    raceChoices: [],
+    classChoices: overrides.classChoices ?? [
+      persistedDuplicateEquipmentChoice(),
+    ],
+    backgroundChoices: [],
+    loading: false,
+    saving: false,
+    error: null,
+    createDraft: vi.fn(),
+    loadDraft: vi.fn(),
+    setRace: vi.fn(),
+    setClass: vi.fn(),
+    setBackground: vi.fn(),
+    setName: vi.fn(),
+    setAbilityScores: vi.fn(),
+    updateAppearance: vi.fn(),
+    finalizeDraft,
+    addRaceChoice: vi.fn(),
+    addClassChoice: vi.fn(),
+    addBackgroundChoice: vi.fn(),
+    getAvailableChoices: vi.fn(() => []),
+    hasProficiency: vi.fn(() => false),
+    hasLanguage: vi.fn(() => false),
+    reset: vi.fn(),
+  };
+}
+
+describe('InteractiveCharacterSheet persisted equipment guard', () => {
+  it('disables finalization and does not invoke FinalizeDraft for a same-category legacy duplicate', () => {
+    const finalizeDraft = vi.fn<() => Promise<string>>();
+    render(
+      <CharacterDraftContext.Provider value={draftState(finalizeDraft)}>
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    const finalize = screen.getByRole('button', { name: /begin adventure/i });
+    expect(finalize.getAttribute('disabled')).not.toBeNull();
+    fireEvent.click(finalize);
+    expect(finalizeDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('InteractiveCharacterSheet persisted mixed-bundle round trip (rpg-toolkit real wire shape)', () => {
+  // A fixed bundle item (shield) plus one enum-backed category selection
+  // (longsword) — the real toolkit build order and the real proto enums
+  // rpg-api attaches, not a test-only `otherEquipmentId` shortcut.
+  const mixedBundle = create(EquipmentBundleSchema, {
+    id: 'fighter-pack-a',
+    items: [
+      create(EquipmentItemSchema, {
+        selectionId: 'shield',
+        typeHint: { case: 'armor', value: Armor.SHIELD },
+      }),
+    ],
+    categoryChoices: [
+      create(EquipmentCategoryChoiceSchema, {
+        choose: 1,
+        options: [
+          create(EquipmentItemSchema, {
+            selectionId: 'longsword',
+            typeHint: { case: 'weapon', value: Weapon.LONGSWORD },
+          }),
+        ],
+      }),
+    ],
+  });
+
+  const declaredMixedChoice = create(ChoiceSchema, {
+    id: 'fighter-starting-equipment',
+    choiceType: ChoiceCategory.EQUIPMENT,
+    options: {
+      case: 'equipmentOptions',
+      value: create(EquipmentOptionsSchema, { bundles: [mixedBundle] }),
+    },
+  });
+
+  function persistedMixedChoice(withTrailingExtra: boolean) {
+    return create(ChoiceDataSchema, {
+      choiceId: 'fighter-starting-equipment',
+      optionId: 'fighter-pack-a',
+      category: ChoiceCategory.EQUIPMENT,
+      selection: {
+        case: 'equipment',
+        value: create(EquipmentSelectionSchema, {
+          items: [
+            create(EquipmentSelectionItemSchema, {
+              equipment: { case: 'armor', value: Armor.SHIELD },
+            }),
+            create(EquipmentSelectionItemSchema, {
+              equipment: { case: 'weapon', value: Weapon.LONGSWORD },
+            }),
+            ...(withTrailingExtra
+              ? [
+                  create(EquipmentSelectionItemSchema, {
+                    equipment: { case: 'weapon', value: Weapon.DAGGER },
+                  }),
+                ]
+              : []),
+          ],
+        }),
+      },
+    });
+  }
+
+  const classInfoWithMixedBundle = create(ClassInfoSchema, {
+    name: 'Fighter',
+    choices: [declaredMixedChoice],
+  });
+
+  it('allows finalization for a valid fixed-item + enum-backed category selection, offset and mapped correctly', () => {
+    const finalizeDraft = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValue('char-1');
+    render(
+      <CharacterDraftContext.Provider
+        value={draftState(finalizeDraft, {
+          classInfo: classInfoWithMixedBundle,
+          classChoices: [persistedMixedChoice(false)],
+        })}
+      >
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    const finalize = screen.getByRole('button', { name: /begin adventure/i });
+    expect(finalize.getAttribute('disabled')).toBeNull();
+    fireEvent.click(finalize);
+    expect(finalizeDraft).toHaveBeenCalled();
+  });
+
+  it('blocks finalization once a delayed hydration reveals an unconsumed trailing persisted item, without a remount', () => {
+    const finalizeDraft = vi.fn<() => Promise<string>>();
+    const { rerender } = render(
+      <CharacterDraftContext.Provider
+        value={draftState(finalizeDraft, {
+          classInfo: classInfoWithMixedBundle,
+          classChoices: [persistedMixedChoice(false)],
+        })}
+      >
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    expect(
+      screen
+        .getByRole('button', { name: /begin adventure/i })
+        .getAttribute('disabled')
+    ).toBeNull();
+
+    // The draft context refreshes after mount (e.g. the persisted draft
+    // finishes loading) and now carries a trailing item this reconstruction
+    // can't account for. Finalize must react and block immediately.
+    rerender(
+      <CharacterDraftContext.Provider
+        value={draftState(finalizeDraft, {
+          classInfo: classInfoWithMixedBundle,
+          classChoices: [persistedMixedChoice(true)],
+        })}
+      >
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    const finalize = screen.getByRole('button', { name: /begin adventure/i });
+    expect(finalize.getAttribute('disabled')).not.toBeNull();
+    fireEvent.click(finalize);
+    expect(finalizeDraft).not.toHaveBeenCalled();
+  });
+});

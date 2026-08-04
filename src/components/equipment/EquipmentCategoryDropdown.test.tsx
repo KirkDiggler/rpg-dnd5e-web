@@ -1,10 +1,13 @@
 /**
- * EquipmentCategoryDropdown tests (rpg-dnd5e-web#670). Test-only fixtures
- * below stand in for the live `Equipment[]` a production category slot
- * fetches via `useListEquipmentByType` — no proto fixture files ship
- * outside this test.
+ * EquipmentCategoryDropdown tests. Test-only fixtures model the enriched
+ * authoritative `EquipmentCategoryChoice.options` entries consumed by the
+ * production category slot.
  */
 import { create } from '@bufbuild/protobuf';
+import {
+  EquipmentItemSchema,
+  type EquipmentItem,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
   ArmorCategory,
   DamageType,
@@ -61,7 +64,11 @@ const LEATHER_ARMOR: Equipment = create(EquipmentSchema, {
   },
 });
 
-const OPTIONS = [CLUB, DAGGER];
+const item = (selectionId: string, equipmentDetail: Equipment): EquipmentItem =>
+  create(EquipmentItemSchema, { selectionId, quantity: 1, equipmentDetail });
+
+const OPTIONS = [item('club', CLUB), item('dagger', DAGGER)];
+const LEATHER_OPTION = item('leather', LEATHER_ARMOR);
 
 describe('EquipmentCategoryDropdown', () => {
   it('renders a compact closed trigger, not a full options list, before opening', () => {
@@ -111,7 +118,7 @@ describe('EquipmentCategoryDropdown', () => {
       <EquipmentCategoryDropdown
         id="test-dropdown"
         ariaLabel="Choose armor"
-        options={[LEATHER_ARMOR]}
+        options={[LEATHER_OPTION]}
         selectedId={null}
         onChange={vi.fn()}
       />
@@ -121,6 +128,25 @@ describe('EquipmentCategoryDropdown', () => {
     const listbox = screen.getByRole('listbox');
     within(listbox).getByText('AC 11 + Dex', { exact: false });
     within(listbox).getByText('Light', { exact: false });
+  });
+
+  it('renders an option without optional equipmentDetail without crashing', () => {
+    const onChange = vi.fn();
+    render(
+      <EquipmentCategoryDropdown
+        id="test-dropdown"
+        ariaLabel="Choose item"
+        options={[
+          create(EquipmentItemSchema, { selectionId: 'detail-pending' }),
+        ]}
+        selectedId={null}
+        onChange={onChange}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByTestId('test-dropdown-option-detail-pending'));
+    expect(onChange).toHaveBeenCalledWith('detail-pending');
   });
 
   it('selects an option on click, reports it, and closes the popup', () => {
@@ -154,6 +180,29 @@ describe('EquipmentCategoryDropdown', () => {
     );
 
     expect(screen.getByRole('combobox').textContent).toMatch(/Dagger/);
+  });
+
+  it('opens the listbox from a closed trigger on ArrowUp with its accessible name intact', () => {
+    render(
+      <EquipmentCategoryDropdown
+        id="test-dropdown"
+        ariaLabel="Choose item"
+        options={OPTIONS}
+        selectedId={null}
+        onChange={vi.fn()}
+      />
+    );
+
+    const trigger = screen.getByRole('combobox', { name: 'Choose item' });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowUp' });
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('listbox', { name: 'Choose item' })).toBeTruthy();
+    // APG select-only combobox behavior: ArrowUp opens at the last option.
+    expect(trigger.getAttribute('aria-activedescendant')).toBe(
+      'test-dropdown-option-dagger'
+    );
   });
 
   it('supports ArrowDown/Enter keyboard selection without a mouse', () => {
