@@ -482,6 +482,33 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
       expect(toDungeonDoc(cst).wallLines).toHaveLength(1);
     });
 
+    it('removeWallLineAt removes exactly the targeted line — its own doors go with it, a second line is untouched (rpg-project#169, delete-affordance follow-up)', () => {
+      // Kirk's own ask this test exists for: "gonna need a way to delete
+      // a wall... had a small section with no way to remove it" — the
+      // UI-reachability gap was in CreationBoard.tsx (a delete button was
+      // missing); this mutator itself already removed doors correctly by
+      // construction (`doors:` lives NESTED inside the wallLine's own CST
+      // node, so splicing the whole entry out can't leave one stranded) —
+      // asserted directly here rather than just trusted.
+      const C = canonicalCorner({ cell: [0, 3], corner: 0 });
+      const D = canonicalCorner({ cell: [10, 8], corner: 3 });
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, A, B);
+      addWallLine(cst, C, D);
+      toggleWallLineDoorAt(cst, 0, [5, 2]);
+      expect(toDungeonDoc(cst).wallLines[0].doors).toEqual([{ cell: [5, 2] }]);
+
+      removeWallLineAt(cst, 0);
+      const doc = toDungeonDoc(cst);
+      // The SECOND line (C, D) survives untouched, now at index 0 — a
+      // real "exactly the targeted line" check, not just "count went
+      // down by one."
+      expect(doc.wallLines).toEqual([{ from: C, to: D, doors: [] }]);
+      // Round-trips through the serialized YAML text too, not just the
+      // in-memory doc — no stranded `doors:` fragment left behind.
+      expect(serializeDungeon(cst)).not.toContain('doors:');
+    });
+
     it('setWallLineEndpoint overwrites one end in place, canonicalizing the new corner', () => {
       const { cst } = parseDungeon(SHOWCASE_YAML);
       addWallLine(cst, A, B);

@@ -125,10 +125,16 @@ interface CreationBoardProps {
    * corner-anchored (unlike `onToggleWallEdge`'s per-edge, cell-adjacent
    * painting). See `hexCorner.ts`/`straightWallGeometry.ts`. */
   onAddStraightWall: (from: CornerRef, to: CornerRef) => void;
-  /** The Delete-key affordance on a SELECTED straight wall (see this
-   * component's own selection-vs-endpoint-drag interaction model,
+  /** Removes a SELECTED straight wall (see this component's own
+   * selection-vs-endpoint-drag interaction model,
    * `selectedWallLineIndex`/`draggingEndpoint` below) — click no longer
-   * deletes on its own; it selects. */
+   * deletes on its own; it selects. Reachable two ways: the
+   * Delete/Backspace key (this component's own keydown effect) and the
+   * board's own small delete button rendered near the selected wall's
+   * midpoint (`straightWallDeleteButtonHit`/`straightWallDeleteButtonPoint`)
+   * — the keyboard path alone was undiscoverable (Kirk: "gonna need a
+   * way to delete a wall... had a small section with no way to remove
+   * it"), so this is now the primary, VISIBLE affordance. */
   onRemoveStraightWallAt: (index: number) => void;
   /** Endpoint-drag commit: fine-tune one end of an EXISTING straight wall
    * to a new corner, snapped corner-to-corner. */
@@ -234,6 +240,49 @@ function straightWallHandleHit(
   const dTo = Math.hypot(point.x - toPt.x, point.y - toPt.y);
   if (dFrom > maxDist && dTo > maxDist) return null;
   return dFrom <= dTo ? 'from' : 'to';
+}
+
+/** Where the SELECTED straight wall's own delete button renders — offset
+ * perpendicular from the line's midpoint by `OFFSET` board units, so the
+ * button sits clear of the drawn stroke/footprint hatch instead of on
+ * top of it. Shared between the render pass and `straightWallDeleteButtonHit`
+ * below so the two can never drift apart (the render/hit-test split every
+ * other overlay in this component already follows). */
+function straightWallDeleteButtonPoint(
+  from: CornerRef,
+  to: CornerRef
+): CellPos {
+  const fromPt = cornerPoint(from);
+  const toPt = cornerPoint(to);
+  const mid = { x: (fromPt.x + toPt.x) / 2, y: (fromPt.y + toPt.y) / 2 };
+  const dx = toPt.x - fromPt.x;
+  const dy = toPt.y - fromPt.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const OFFSET = 16;
+  return {
+    x: mid.x + (-dy / len) * OFFSET,
+    y: mid.y + (dx / len) * OFFSET,
+  };
+}
+
+/** Hit test for the SELECTED straight wall's own delete button (Kirk:
+ * "gonna need a way to delete a wall... had a small section with no way
+ * to remove it" — Delete/Backspace-on-selection already worked from the
+ * round above, this is the missing VISIBLE affordance). Uses the wall's
+ * own COMMITTED `from`/`to` — this button is only clickable while NOT
+ * mid-endpoint-drag (a handle hit is checked first in `handlePointerDown`
+ * and captures the gesture), so it never needs the live drag position
+ * `straightWallHandleHit`'s render counterpart accounts for. */
+function straightWallDeleteButtonHit(
+  doc: DungeonDoc,
+  lineIndex: number,
+  point: CellPos,
+  maxDist = 10
+): boolean {
+  const line = doc.wallLines[lineIndex];
+  if (!line) return false;
+  const btn = straightWallDeleteButtonPoint(line.from, line.to);
+  return Math.hypot(point.x - btn.x, point.y - btn.y) <= maxDist;
 }
 
 const CELL_SIZE = BOARD_HEX_SIZE - 1.5;
@@ -683,7 +732,11 @@ export function CreationBoard({
     if (tool === 'straightWall') {
       // A handle on the CURRENTLY SELECTED wall always wins over
       // redrawing/reselecting — it sits ON the line by construction, so
-      // this must be checked first, not as a fallback.
+      // this must be checked first, not as a fallback. The delete button
+      // is checked right after — it also sits near the selected line, so
+      // it must win over a redraw/reselect too, but never over a handle
+      // (the two are rendered offset from each other, so overlap is rare,
+      // but a handle grab is still the more specific/intentional gesture).
       if (selectedWallLineIndex !== null) {
         const handle = straightWallHandleHit(doc, selectedWallLineIndex, p);
         if (handle) {
@@ -694,6 +747,11 @@ export function CreationBoard({
             current: handle === 'from' ? line.from : line.to,
             snapped: false,
           });
+          return;
+        }
+        if (straightWallDeleteButtonHit(doc, selectedWallLineIndex, p)) {
+          onRemoveStraightWallAt(selectedWallLineIndex);
+          setSelectedWallLineIndex(null);
           return;
         }
       }
@@ -1076,6 +1134,55 @@ export function CreationBoard({
           />
         );
       }
+
+      // Delete button (Kirk: "gonna need a way to delete a wall... had a
+      // small section with no way to remove it" — Delete/Backspace on a
+      // selection already worked from the round above; nothing on the
+      // board ever told the author that, so this is the missing VISIBLE
+      // affordance, not new removal logic). Uses the wall's own
+      // COMMITTED `line.from`/`line.to` (matching `straightWallDeleteButtonHit`'s
+      // own hit-test exactly) rather than the live drag position — the
+      // button isn't clickable mid-endpoint-drag anyway (the pointer is
+      // already captured by that gesture), so it simply holds its last
+      // position until the drag ends and the wall re-renders. Doors on
+      // the wall are removed WITH it (`removeWallLineAt` splices the
+      // whole entry; `doors:` lives nested inside), called out in the
+      // caption rather than a hover tooltip — every other overlay in
+      // this component is `pointerEvents="none"`, so a native `<title>`
+      // would never actually fire.
+      const deleteBtn = straightWallDeleteButtonPoint(line.from, line.to);
+      const doorCount = line.doors.length;
+      straightWallHandleEls.push(
+        <g key="swall-delete-btn" pointerEvents="none">
+          <circle
+            cx={deleteBtn.x}
+            cy={deleteBtn.y}
+            r={9}
+            fill="#3a1c18"
+            stroke="#ff9a8a"
+            strokeWidth={2}
+          />
+          <text
+            x={deleteBtn.x}
+            y={deleteBtn.y + 4}
+            textAnchor="middle"
+            fontSize={12}
+            fontWeight={700}
+            fill="#ff9a8a"
+          >
+            ×
+          </text>
+          <text
+            x={deleteBtn.x}
+            y={deleteBtn.y + 22}
+            textAnchor="middle"
+            fontSize={9}
+            fill="#ff9a8a"
+          >
+            {`delete${doorCount > 0 ? ` (+${doorCount} door${doorCount === 1 ? '' : 's'})` : ''}`}
+          </text>
+        </g>
+      );
     }
   }
 
