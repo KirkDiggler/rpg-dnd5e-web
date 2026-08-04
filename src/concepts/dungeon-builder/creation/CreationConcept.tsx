@@ -17,6 +17,7 @@ import type { BoardEditing } from '../useBoardEditing';
 import { CreationBoard } from './CreationBoard';
 import type { DemoActions } from './demoScript';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
+import type { CornerRef } from './hexCorner';
 import { ProposedYamlPane } from './ProposedYamlPane';
 import { RegionPanel } from './RegionPanel';
 import { useDemoScript } from './useDemoScript';
@@ -36,13 +37,17 @@ interface CreationConceptProps {
     kind: WallKind,
     on: boolean
   ) => void;
-  onAddStraightWall: (
-    from: [number, number],
-    to: [number, number],
-    kind: WallKind
-  ) => void;
+  onAddStraightWall: (from: CornerRef, to: CornerRef) => void;
   onRemoveStraightWallAt: (index: number) => void;
-  onToggleStraightWallKindAt: (index: number) => void;
+  onSetStraightWallEndpoint: (
+    lineIndex: number,
+    which: 'from' | 'to',
+    corner: CornerRef
+  ) => void;
+  onToggleStraightWallDoorAt: (
+    lineIndex: number,
+    cell: [number, number]
+  ) => void;
   onToggleHole: (col: number, row: number) => void;
   onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
   onNewCanvas: (width: number, height: number) => void;
@@ -73,7 +78,8 @@ export function CreationConcept({
   onToggleWallEdge,
   onAddStraightWall,
   onRemoveStraightWallAt,
-  onToggleStraightWallKindAt,
+  onSetStraightWallEndpoint,
+  onToggleStraightWallDoorAt,
   onToggleHole,
   onSetPoint,
   onNewCanvas,
@@ -322,7 +328,8 @@ export function CreationConcept({
             onToggleWallEdge={onToggleWallEdge}
             onAddStraightWall={onAddStraightWall}
             onRemoveStraightWallAt={onRemoveStraightWallAt}
-            onToggleStraightWallKindAt={onToggleStraightWallKindAt}
+            onSetStraightWallEndpoint={onSetStraightWallEndpoint}
+            onToggleStraightWallDoorAt={onToggleStraightWallDoorAt}
             onToggleHole={onToggleHole}
             onSetPoint={onSetPoint}
             regionEdit={regionEdit}

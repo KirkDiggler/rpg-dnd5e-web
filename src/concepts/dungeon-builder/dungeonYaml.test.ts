@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { canonicalCorner } from './creation/hexCorner';
 import {
   addCellToRegion,
   addWallLine,
@@ -36,13 +37,14 @@ import {
   setRegionArchetype,
   setStart,
   setWallEdge,
+  setWallLineEndpoint,
   stripMonsterPlacements,
   stripToV1Subset,
   toDungeonDoc,
   toggleHole,
   toggleWall,
   toggleWallKind,
-  toggleWallLineKindAt,
+  toggleWallLineDoorAt,
   validateRegionCells,
   wallKindAtEdge,
 } from './dungeonYaml';
@@ -440,19 +442,31 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
     ]);
   });
 
-  describe('wallLines: straight walls (rpg-project#169, "straight walls with visible footprint" unit)', () => {
-    it('addWallLine appends a solid entry; removeWallLineAt removes it by index', () => {
+  describe('wallLines: corner-anchored straight walls (rpg-project#169, follow-up "corner-anchored straight walls + line doors" unit)', () => {
+    // Canonicalized up front: addWallLine/setWallLineEndpoint both
+    // canonicalize on write (see their own doc comments), so a fixture
+    // built from a NON-canonical corner ref would round-trip to a
+    // different (but physically identical) representation than it was
+    // authored with — see this describe block's own dedicated
+    // "canonicalizing a non-canonical input" tests for that behavior
+    // demonstrated directly.
+    const A = canonicalCorner({ cell: [4, 4], corner: 0 });
+    const B = canonicalCorner({ cell: [6, 1], corner: 3 });
+
+    it('addWallLine appends a corner-anchored, door-free entry; removeWallLineAt removes it by index', () => {
       const { cst } = parseDungeon(SHOWCASE_YAML);
-      addWallLine(cst, [4, 4], [6, 1]);
+      addWallLine(cst, A, B);
       let doc = toDungeonDoc(cst);
-      expect(doc.wallLines).toEqual([
-        { from: [4, 4], to: [6, 1], kind: 'solid' },
-      ]);
+      expect(doc.wallLines).toEqual([{ from: A, to: B, doors: [] }]);
       // Padded flow sequences again — this file's own known residual
       // round-trip gap (see its top-of-file doc comment), same as the
-      // `walls:` toggleWall test above.
+      // `walls:` toggleWall test above. `B` canonicalizes to a DIFFERENT
+      // owner cell than the [6,1] it was defined from (see this describe
+      // block's own note on `A`/`B` above) — the serialized text reflects
+      // that canonical form, not the literal cell the test constant was
+      // written against.
       expect(serializeDungeon(cst)).toContain(
-        'wallLines:\n  - { from: [ 4, 4 ], to: [ 6, 1 ], kind: solid }'
+        `wallLines:\n  - { from: { cell: [ ${A.cell[0]}, ${A.cell[1]} ], corner: ${A.corner} }, to: { cell: [ ${B.cell[0]}, ${B.cell[1]} ], corner: ${B.corner} } }`
       );
 
       removeWallLineAt(cst, 0);
@@ -460,52 +474,167 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
       expect(doc.wallLines).toEqual([]);
     });
 
-    it('addWallLine accepts an explicit door kind directly', () => {
-      const { cst } = parseDungeon(SHOWCASE_YAML);
-      addWallLine(cst, [0, 3], [10, 8], 'door');
-      expect(toDungeonDoc(cst).wallLines).toEqual([
-        { from: [0, 3], to: [10, 8], kind: 'door' },
-      ]);
-    });
-
-    it('toggleWallLineKindAt flips solid<->door by index, no-ops on an out-of-range index', () => {
-      const { cst } = parseDungeon(SHOWCASE_YAML);
-      addWallLine(cst, [4, 4], [6, 1]);
-      toggleWallLineKindAt(cst, 0);
-      expect(toDungeonDoc(cst).wallLines[0].kind).toBe('door');
-      toggleWallLineKindAt(cst, 0);
-      expect(toDungeonDoc(cst).wallLines[0].kind).toBe('solid');
-
-      // Out-of-range index is a no-op, not a throw — see the function's
-      // own doc comment (a stale index is a UI race, not a program error).
-      expect(() => toggleWallLineKindAt(cst, 5)).not.toThrow();
-      expect(toDungeonDoc(cst).wallLines).toHaveLength(1);
-    });
-
     it('removeWallLineAt is a no-op on an out-of-range index', () => {
       const { cst } = parseDungeon(SHOWCASE_YAML);
-      addWallLine(cst, [4, 4], [6, 1]);
+      addWallLine(cst, A, B);
       expect(() => removeWallLineAt(cst, 5)).not.toThrow();
       expect(() => removeWallLineAt(cst, -1)).not.toThrow();
       expect(toDungeonDoc(cst).wallLines).toHaveLength(1);
     });
 
-    it('multiple straight walls keep independent from/to/kind, round-tripped through YAML text', () => {
+    it('setWallLineEndpoint overwrites one end in place, canonicalizing the new corner', () => {
       const { cst } = parseDungeon(SHOWCASE_YAML);
-      addWallLine(cst, [4, 4], [6, 1], 'solid');
-      addWallLine(cst, [0, 3], [10, 8], 'door');
+      addWallLine(cst, A, B);
+      // (5,5)#1 is NOT its own canonical form (canonicalizes to (5,4)#5 —
+      // see hexCorner.test.ts) — setWallLineEndpoint must store the
+      // canonical form regardless of what the caller passed in.
+      setWallLineEndpoint(cst, 0, 'to', { cell: [5, 5], corner: 1 });
+      expect(toDungeonDoc(cst).wallLines[0]).toEqual({
+        from: A,
+        to: { cell: [5, 4], corner: 5 },
+        doors: [],
+      });
+      // The other end is untouched by an endpoint-drag commit.
+      expect(toDungeonDoc(cst).wallLines[0].from).toEqual(A);
+    });
+
+    it('setWallLineEndpoint is a no-op on an out-of-range index', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, A, B);
+      expect(() =>
+        setWallLineEndpoint(cst, 5, 'to', { cell: [0, 0], corner: 0 })
+      ).not.toThrow();
+      expect(toDungeonDoc(cst).wallLines[0]).toEqual({
+        from: A,
+        to: B,
+        doors: [],
+      });
+    });
+
+    it('toggleWallLineDoorAt adds a door at a cell, then removes it on a second call', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, A, B);
+      toggleWallLineDoorAt(cst, 0, [5, 2]);
+      expect(toDungeonDoc(cst).wallLines[0].doors).toEqual([{ cell: [5, 2] }]);
+
+      toggleWallLineDoorAt(cst, 0, [5, 2]);
+      expect(toDungeonDoc(cst).wallLines[0].doors).toEqual([]);
+      // An emptied doors: list is deleted, not left as doors: [] — see
+      // the function's own doc comment.
+      expect(serializeDungeon(cst)).not.toContain('doors:');
+    });
+
+    it('toggleWallLineDoorAt supports more than one door on the same line', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, A, B);
+      toggleWallLineDoorAt(cst, 0, [5, 2]);
+      toggleWallLineDoorAt(cst, 0, [4, 4]);
+      expect(toDungeonDoc(cst).wallLines[0].doors).toEqual(
+        expect.arrayContaining([{ cell: [5, 2] }, { cell: [4, 4] }])
+      );
+      expect(toDungeonDoc(cst).wallLines[0].doors).toHaveLength(2);
+    });
+
+    it('toggleWallLineDoorAt is a no-op on an out-of-range line index', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, A, B);
+      expect(() => toggleWallLineDoorAt(cst, 5, [5, 2])).not.toThrow();
+      expect(toDungeonDoc(cst).wallLines[0].doors).toEqual([]);
+    });
+
+    it('multiple straight walls keep independent from/to/doors, round-tripped through YAML text', () => {
+      // Canonicalized up front — see this describe block's own note on
+      // the `A`/`B` constants above for why a non-canonical literal
+      // wouldn't round-trip to itself.
+      const C = canonicalCorner({ cell: [0, 3], corner: 0 });
+      const D = canonicalCorner({ cell: [10, 8], corner: 3 });
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, A, B);
+      addWallLine(cst, C, D);
+      toggleWallLineDoorAt(cst, 1, [5, 5]);
       const reparsed = parseDungeon(serializeDungeon(cst));
       expect(reparsed.doc.wallLines).toEqual([
-        { from: [4, 4], to: [6, 1], kind: 'solid' },
-        { from: [0, 3], to: [10, 8], kind: 'door' },
+        { from: A, to: B, doors: [] },
+        { from: C, to: D, doors: [{ cell: [5, 5] }] },
       ]);
+    });
+
+    describe('migrating a PRE-corner-anchoring document (legacy [col,row] endpoints)', () => {
+      it('self-heals a bare-cell wallLines entry into a corner-anchored one on parse', () => {
+        const { doc } = parseDungeon(
+          `${SHOWCASE_YAML}\nwallLines:\n  - { from: [4, 4], to: [6, 1], kind: solid }\n`
+        );
+        expect(doc.wallLines).toHaveLength(1);
+        const line = doc.wallLines[0];
+        // Migrated endpoints resolve to one of (4,4)'s / (6,1)'s own real
+        // corners — not the cell centers the legacy shape used.
+        expect(line.from.cell).toEqual(
+          expect.arrayContaining([expect.any(Number), expect.any(Number)])
+        );
+        expect(typeof line.from.corner).toBe('number');
+        expect(typeof line.to.corner).toBe('number');
+        expect(line.doors).toEqual([]);
+      });
+
+      it('a legacy whole-line kind: door materializes into a single midpoint door', () => {
+        const { doc } = parseDungeon(
+          `${SHOWCASE_YAML}\nwallLines:\n  - { from: [2, 5], to: [10, 5], kind: door }\n`
+        );
+        expect(doc.wallLines).toHaveLength(1);
+        expect(doc.wallLines[0].doors).toHaveLength(1);
+      });
+
+      it('a bare re-serialize (no edits) keeps the migrated line’s ORIGINAL legacy text untouched', () => {
+        // Migration heals the in-memory `doc`, not the CST by itself —
+        // per this file's own CST-preservation discipline, content
+        // nothing has explicitly mutated is never silently rewritten.
+        // See parseWallLineEndpoint's own doc comment.
+        const { cst } = parseDungeon(
+          `${SHOWCASE_YAML}\nwallLines:\n  - { from: [4, 4], to: [6, 1], kind: solid }\n`
+        );
+        const text = serializeDungeon(cst);
+        expect(text).toContain(
+          'wallLines:\n  - { from: [ 4, 4 ], to: [ 6, 1 ], kind: solid }'
+        );
+      });
+
+      it('a mutator touching just ONE endpoint of a migrated line converges BOTH endpoints and drops kind:', () => {
+        // The interesting case: setWallLineEndpoint only asks to change
+        // 'from', but normalizeWallLineItem (called first, inside every
+        // mutator that touches an existing entry) migrates the WHOLE
+        // entry — 'to' converges too, and the now-meaningless legacy
+        // `kind:` key is dropped — rather than leaving a half-migrated
+        // entry (one corner-anchored endpoint, one still bare-[c,r], a
+        // dangling kind: key nothing reads anymore).
+        const { cst, doc } = parseDungeon(
+          `${SHOWCASE_YAML}\nwallLines:\n  - { from: [4, 4], to: [6, 1], kind: solid }\n`
+        );
+        // Commits the SAME endpoint an endpoint-drag would (using the
+        // already-migrated doc's own corner as the "new" value), to
+        // isolate this test to the shape-rewrite behavior rather than an
+        // actual position change.
+        setWallLineEndpoint(cst, 0, 'from', doc.wallLines[0].from);
+        const text = serializeDungeon(cst);
+        expect(text).toContain('cell: [');
+        expect(text).not.toContain('kind: solid');
+        expect(text).not.toMatch(/to: \[ 6, 1 \]/);
+        // The re-parsed doc's 'to' end still addresses the identical
+        // real-world corner it did before — only its representation
+        // shape changed (bare `[6,1]` -> `{cell,corner}`), not the
+        // geometry itself.
+        expect(toDungeonDoc(cst).wallLines[0].to).toEqual(doc.wallLines[0].to);
+      });
     });
 
     it('stripToV1Subset drops wallLines: entirely, reported separately from walls:', () => {
       const { cst } = parseDungeon(SHOWCASE_YAML);
       toggleWall(cst, 7, 0); // one edge wall
-      addWallLine(cst, [4, 4], [6, 1]); // one straight wall
-      addWallLine(cst, [0, 3], [10, 8], 'door'); // a second straight wall
+      addWallLine(cst, A, B); // one straight wall
+      addWallLine(
+        cst,
+        { cell: [0, 3], corner: 0 },
+        { cell: [10, 8], corner: 3 }
+      ); // a second straight wall
 
       const result = stripToV1Subset(serializeDungeon(cst));
       expect(result.dropped).toEqual(
@@ -523,7 +652,7 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
       // nothing else should produce exactly this one dropped entry — no
       // separate "N walls" (edge-wall) entry alongside it.
       const { cst } = parseDungeon(SHOWCASE_YAML);
-      addWallLine(cst, [4, 4], [6, 1]);
+      addWallLine(cst, A, B);
       const result = stripToV1Subset(serializeDungeon(cst));
       expect(result.dropped).toEqual(['1 straight wall']);
     });

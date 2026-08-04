@@ -3485,3 +3485,207 @@ new `dungeonYaml.test.ts` cases (`wallLines:` add/remove/toggle mutators,
 round-trip through real YAML text, `stripToV1Subset` dropping it
 separately from `walls:`). 196 dungeon-builder tests passing overall (up
 from 170). `ci-check` clean (format/lint/typecheck/build/test).
+
+## Corner-anchored straight walls + line doors (2026-08-03, rpg-project#169 follow-up unit)
+
+Kirk's live feedback on the straight-wall prototype above, verbatim: "I
+could not get the edges quite right. would be nice if I could fine tune
+the edges — oh I could edit the yaml directly, right. It always hangs
+over a little. Doors still follow the hex edges. It is really coming
+along." Two real gaps, both closed this round: (1) `wallLines:`
+endpoints were anchored at cell CENTERS, so every wall overshot its
+intended extent by up to half a hex at each end, by construction, with no
+finer lattice to fine-tune into even by hand-editing the YAML; (2)
+`kind: door` lived on the WHOLE line — a "door" wallLine was cosmetically
+re-colored amber but exactly as impassable as a "solid" one (the
+footprint math never read `kind` at all), so doors never got a real
+carved opening anywhere.
+
+### What shipped
+
+**Corner-anchored endpoints.** `wallLines[].from`/`.to` are now
+`CornerRef` (`creation/hexCorner.ts`, new module): `{cell: [c, r], corner:
+0..5}`, `corner` matching `hexCorners`' own `30° + 60°·i` convention. A
+hex vertex is shared by up to 3 cells, so `hexCorner.ts` also owns the
+dedup rule — **canonical = the owner with the lexicographically smallest
+`[col, row]`** — and the geometric-neighbor search (`cornerOwners`) that
+implements it, verified directly (not assumed) that every interior corner
+really does have exactly 3 owners. `nearestCorner` is the snap target for
+drawing/dragging; `migrateLegacyCenterEndpoint` is the parse-time
+migration for a PRE-corner-anchoring document (see "Migration," below).
+`straightWallGeometry.ts`'s own clip math (`clipSegmentToShrunkHex`/
+`isCellClipped`/`candidateCells`) needed ZERO changes — it already
+operated on raw world-space points; only the higher-level functions that
+resolved `from`/`to` via `cellCenter` now resolve them via `cornerPoint`.
+
+**Endpoint fine-tuning.** Selecting a straight wall (click its line) shows
+two draggable handle circles at its `from`/`to` corners; dragging one
+snaps corner-to-corner (`nearestCorner`) with the footprint/crossing
+overlay updating live during the drag, committed via a new
+`setWallLineEndpoint` mutator. Dropping a handle onto the line's own
+OTHER endpoint (collapsing it to zero length) is rejected with a toast,
+not silently clamped elsewhere. **A necessary UX trade-off**: click on an
+existing line now SELECTS (shows handles) instead of deleting — deleting
+a selected wall moved to the Delete/Backspace key
+(`CreationBoard.tsx`'s own keydown effect), mirroring the existing global
+delete gesture edit-mode placements already use. Click-to-select and
+click-to-delete are mutually exclusive interpretations of the same
+gesture, and fine-tuning is only reachable through selection.
+
+**Doors: a carved opening at a cell, not a property of the whole line.**
+New shape: `doors: [{cell: [c, r]}]` on each wallLine, zero or more,
+each referencing one of the line's own footprint cells. **Traversability
+semantic, exact**: a door's cell is excluded from THIS line's footprint
+entirely (`straightWallFootprint`'s new `doorCells` exclusion parameter)
+— as if the line never clipped it — and because `straightWallCrossedEdges`
+reads the SAME (now-excluded) footprint set, the door cell automatically
+participates in movement semantic (b)'s crossing-check as an ordinary
+clear cell too, no separate door-crossing mechanism needed. A door only
+reverses THIS line's own claim on that cell — something else can still
+block it independently. The Door tool, applied to a straight wall,
+resolves a click to the nearest real footprint cell along the line
+(`wallLineDoorCellAt`: project the click onto the line, find which cell's
+own `[t0,t1]` clip interval contains it) and toggles a door there
+(`toggleWallLineDoorAt`) — add if absent, remove if present. Rejected
+clicks (landing on a touch-only stretch, no real footprint cell) show a
+toast rather than silently no-opping — verified live, see below. A door
+stranded by a subsequent endpoint drag (its cell fell out of the raw
+footprint) renders a ⚠ marker instead of a hinge, flagged not silently
+dropped, same discipline this file's placement/start/end/region footprint
+checks already follow.
+
+**Alternative door shape considered and rejected**: `doors: [{at: t}]`, a
+continuous parametric position. A real compiler already walks the line's
+own clip intervals cell-by-cell to derive the footprint, so mapping `t`
+to "which cell" would reuse that machinery — but rejected anyway: a `t`
+value's meaning depends on the line's exact parameterization, so an
+endpoint fine-tune (the handle-drag feature, same round) could silently
+drift a stored `t` onto a DIFFERENT cell than the author meant. A `cell:`
+reference stays anchored to a real, named cell regardless of small
+endpoint adjustments, and is consistent with every other coordinate in
+this whole dialect already being `[col, row]` cell-space.
+
+**Migration.** A PRE-corner-anchoring `wallLines:` entry (bare `[c, r]`
+endpoints, the original unit's own shape) is picked up at PARSE time —
+`migrateLegacyCenterEndpoint` picks whichever of the cell's own 6 corners
+sits nearest the OTHER endpoint's resolved position, so the migrated line
+keeps pointing the direction it always drew. A legacy whole-line
+`kind: door` materializes into a single door at the cell nearest the
+line's own midpoint. **Heals the in-memory `doc` immediately; does NOT
+rewrite the underlying CST/YAML text by itself** — consistent with this
+file's own CST-preservation discipline, an untouched legacy entry's saved
+text stays legacy until a mutator actually touches it (a drag, a door
+toggle), at which point `normalizeWallLineItem` (new, called at the top
+of both `setWallLineEndpoint`/`toggleWallLineDoorAt`) converges the WHOLE
+entry — both endpoints, not just the one being edited — and drops the
+now-meaningless `kind:` key. Given how little `wallLines:` content
+existed anywhere at the time of this change, this self-healing break was
+judged cheaper and more honest than carrying two live representations
+through every downstream consumer indefinitely.
+
+**A real circular-import bug, hit and fixed, not theorized.** `hexCorner.ts`
+originally imported `boardGeometry.ts`'s own `neighborCell`; `dungeonYaml.ts`
+needs `hexCorner.ts` for parse-time migration; `boardGeometry.ts` imports
+`dungeonYaml.ts` for `resolvePlacement`/`DungeonDoc`. That's a genuine
+`dungeonYaml.ts -> hexCorner.ts -> boardGeometry.ts -> dungeonYaml.ts`
+cycle — crashed with "Cannot access '**vite_ssr_import_N**' before
+initialization" under Vite's ESM interop the moment `hexCorner.ts` was
+imported from `dungeonYaml.ts`, confirmed by actually running the test
+suite, not predicted. Fixed by duplicating `neighborCell` (6 lines, built
+from the same lower-level `hexLayout.ts` primitives) directly inside
+`hexCorner.ts` instead of importing it, keeping that module leaf-level —
+and by NOT importing `straightWallGeometry.ts` (same transitive cycle
+via `creationGeometry.ts` → `boardGeometry.ts`) into `dungeonYaml.ts` for
+the legacy door-migration path either; that path uses a simpler,
+self-contained "nearest cell to the line's own midpoint" computation
+instead of the Door tool's own exact footprint-cell resolution (fine for
+a rare, one-time legacy-migration fallback; the live Door tool itself
+stays exact).
+
+**A second real bug, caught by a failing test, not by inspection**:
+`toggleWallLineDoorAt`'s first draft compared a door node's `cell` field
+via `Array.isArray(c) && c[0] === cell[0] ...` — but `YAMLMap.get('cell')`
+returns a live `YAMLSeq`, not a plain array (same reason `wallIndexAtEdge`/
+`holeIndexAt` elsewhere in this file use `.get(0)`/`.get(1)`), so the
+comparison silently never matched and every "toggle" appended a duplicate
+door instead of ever removing one. Caught by
+`dungeonYaml.test.ts`'s own "adds a door, then removes it on a second
+call" test failing with two identical door entries instead of zero — fixed
+by matching the established `isSeq(c) && c.get(0) === ... && c.get(1) ===
+...` pattern instead.
+
+### Live verification
+
+Own dev server (`vite --port 5181`, never `:3001`), driven via a
+throwaway Playwright script (gitignored scratch pattern — this repo has
+no blanket scratch-script gitignore rule the prior straight-walls round's
+own script relied on, so the file was deleted after the run rather than
+left in place). Board-space coordinates computed with the same ported hex
+math as the original straight-walls unit's own script, converted to
+screen pixels via the SVG's `getScreenCTM()` forward transform — the
+exact inverse of `CreationBoard.tsx`'s own `toBoardPoint` — rather than a
+hand-rolled linear viewBox/rect ratio, after the naive version's clicks
+landed just outside the endpoint-handle's tight hit-test radius and
+silently fell through to "draw a new wall" instead of selecting one (a
+real bug in the VERIFICATION SCRIPT, caught by the wall count
+incrementing when it shouldn't have — not a product bug).
+
+- A multi-cell corner-anchored straight wall, drawn end to end, its
+  footprint hatch spanning exactly the cells its line clips — confirmed
+  live in both the rendered board and the live YAML pane
+  (`wallLines: [ { from: { cell: [...], corner: N }, to: {...} } ]`, no
+  `kind:` key).
+- A second wall drawn sharing the FIRST wall's own `to` corner exactly —
+  a clean, gapless L-join, Kirk's original red-lines picture, now at the
+  corner lattice.
+- A zoomed close-up on a wall's own endpoint showing it terminates
+  EXACTLY at a hex corner — no hangover into the neighboring hex, the
+  fix Kirk asked for, directly visible.
+- Selecting a wall shows a real teal endpoint handle; dragging it shows
+  the LIVE amber preview (updated footprint hatch included) while the
+  pointer is still down, and after release the wall's endpoint moved to
+  the new corner with the `wallLines:` COUNT unchanged (2, not 3) —
+  confirming this is a real in-place endpoint edit, not a fall-through to
+  drawing a new wall (the exact failure mode the verification script's
+  own coordinate-mapping bug, above, produced before it was fixed).
+- The Door tool: a click that doesn't land on a real footprint cell
+  produces the honest reject toast ("doors can only open a cell the
+  wall's own line actually blocks"), live, not just as a code path;
+  a click that does land on one carves a real door — the YAML pane shows
+  `doors: [ { cell: [...] } ]` on that line, and the rendered wall shows
+  a genuine GAP in the solid stroke with an amber hinge dot, the flanking
+  footprint cells still hatched, the door's own cell visibly NOT hatched.
+
+No unexpected console errors — the only ones present are the established
+FIXTURES-MODE `[unimplemented] unknown service
+...AuthoringService` (no local `rpg-api` running against this dev
+server), same as every prior round's live-verification note.
+
+### Tests
+
+16 new tests in `creation/hexCorner.test.ts` (every interior corner has
+exactly 3 owners, verified directly; canonicalization picks the smallest
+`[col,row]` — including the case where that ISN'T the cell you drew from;
+every owner of one vertex canonicalizes to the identical answer;
+canvas-boundary corners with fewer valid owners; `sameCorner` identity
+across differently-chosen owners; corner/L continuity at the lattice
+level; `nearestCorner` snapping, including off-canvas clamping; legacy
+migration picks the direction-correct corner and is itself already
+canonical). `creation/straightWallGeometry.test.ts` rewritten for corner
+refs: the two new boundary cases this round exists to prove correct (a
+segment that IS one cell's own true edge clips nothing; a segment ending
+at a corner shared with OTHER cells clips only the cell it actually
+threads through, not the ones merely touching that shared point) plus
+door-exclusion footprint/crossing tests (a door cell removed from the
+footprint, its own boundary crossings surfacing via the SAME (b)
+mechanism), `footprintCellAtParam`/`wallLineDoorCellAt`/`isValidDoorCell`
+coverage, and the corner-based `snapStraightEndpoint` axis lock — the
+prior round's low-level `clipSegmentToShrunkHex`/`isCellClipped` epsilon
+tests carry over unchanged (that math never needed to change). 15 new/
+rewritten cases in `dungeonYaml.test.ts`'s `wallLines:` describe block
+(`setWallLineEndpoint`/`toggleWallLineDoorAt` mutators including the
+duplicate-door bug fix above; canonicalization on write; legacy migration
+of both the endpoint shape and the whole-line `kind: door` shape; the
+CST-untouched-until-mutated migration behavior, both directions).
+221 dungeon-builder tests passing overall (up from 196). `ci-check`
+clean (format/lint/typecheck/build/test).

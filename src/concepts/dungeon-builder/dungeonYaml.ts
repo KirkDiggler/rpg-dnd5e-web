@@ -37,6 +37,19 @@ import {
   YAMLSeq,
 } from 'yaml';
 import {
+  canonicalCorner,
+  cornerPoint,
+  migrateLegacyCenterEndpoint,
+  type CornerRef,
+} from './creation/hexCorner';
+import {
+  cellCenter,
+  hexColumn,
+  hexRow,
+  worldToCube,
+  type CellPos,
+} from './hexLayout';
+import {
   cellsAreContiguous,
   cellsEqual,
   pickAttachmentEdge,
@@ -56,6 +69,118 @@ function facingLabel(facing: number): string {
 
 function parseMount(raw: unknown): Mount {
   return raw === 'wall' ? 'wall' : 'floor';
+}
+
+/** Resolves a `wallLines[].from`/`.to` raw value (either shape) to a
+ * board-space point, purely to give a legacy endpoint's migration a
+ * direction to point toward — see `parseWallLineEndpoint` below. */
+function resolveWallLineEndpointHintPoint(raw: unknown): CellPos {
+  if (Array.isArray(raw)) {
+    return cellCenter(raw[0] as number, raw[1] as number);
+  }
+  const obj = raw as Record<string, unknown>;
+  const cell = obj.cell as [number, number];
+  const corner = typeof obj.corner === 'number' ? obj.corner : 0;
+  return cornerPoint({ cell, corner });
+}
+
+/**
+ * Parses one `wallLines[].from`/`.to` endpoint. Accepts either shape:
+ *
+ * - **Current, corner-anchored**: `{ cell: [c, r], corner: 0..5 }` —
+ *   canonicalized on parse (`canonicalCorner`) so the same physical
+ *   corner always round-trips identically regardless of which of its
+ *   (up to 3) equally-valid owner cells the document happens to use.
+ * - **Legacy, PRE-corner-anchoring**: a bare `[c, r]` cell — the
+ *   original rpg-project#169 "straight walls with visible footprint"
+ *   unit's own shape, before Kirk's "it always hangs over a little"
+ *   feedback drove the corner-anchoring follow-up. Self-heals at the
+ *   `DungeonDoc` level: `migrateLegacyCenterEndpoint` picks whichever of
+ *   the cell's own 6 corners sits nearest the OTHER endpoint's resolved
+ *   position, so the migrated line keeps pointing the same direction it
+ *   always drew rather than snapping to an arbitrary corner — every
+ *   consumer of the PARSED doc (footprint/crossing math, rendering)
+ *   only ever sees the corner-anchored shape, immediately, regardless of
+ *   which shape the source YAML used.
+ *
+ *   **This heals the in-memory `doc`, not the underlying CST/YAML text
+ *   by itself.** Consistent with this file's own CST-preservation
+ *   discipline (content nothing has explicitly mutated is never silently
+ *   rewritten — see this file's top-of-file doc comment on comment
+ *   preservation), a legacy entry's CST node keeps its original bare-
+ *   `[c,r]` text until some MUTATOR actually touches that entry
+ *   (`setWallLineEndpoint`, `toggleWallLineDoorAt`) — at which point the
+ *   CST is rewritten to the corner-anchored shape as a side effect of
+ *   that write, same as any other mutator's own node replacement. A
+ *   migrated document that's loaded and re-saved with zero edits to its
+ *   `wallLines:` keeps its original (still valid, still correctly
+ *   interpreted) legacy text; one the author actually drags an endpoint
+ *   or adds a door on converges to the new shape. See TARGET-YAML.md's
+ *   "Straight walls: corner anchoring" section for the full writeup —
+ *   given how little `wallLines:` content existed anywhere at the time
+ *   of this change, this migration was judged cheaper and more honest
+ *   than carrying two live representations through every downstream
+ *   consumer indefinitely.
+ */
+function parseWallLineEndpoint(raw: unknown, otherRaw: unknown): CornerRef {
+  if (Array.isArray(raw)) {
+    const cell = [raw[0] as number, raw[1] as number] as [number, number];
+    const hint = resolveWallLineEndpointHintPoint(otherRaw);
+    return migrateLegacyCenterEndpoint(cell, hint);
+  }
+  const obj = raw as Record<string, unknown>;
+  const cell = obj.cell as [number, number];
+  const corner = typeof obj.corner === 'number' ? obj.corner : 0;
+  return canonicalCorner({ cell, corner });
+}
+
+/**
+ * Parses `wallLines[].doors:` — plus its own legacy migration: a
+ * PRE-doors-model whole-line `kind: door` (the original unit's shape,
+ * where an entire straight wall segment was cosmetically re-colored as
+ * "a door" with no real carved opening — Kirk's own diagnosis this unit
+ * exists to fix: "the gashes are walls... I cannot set a wall or a
+ * door") materializes into a single door at the cell nearest the line's
+ * own MIDPOINT — the closest a single-opening model can come to
+ * preserving "this line has a door" intent.
+ *
+ * Deliberately a simpler approximation than the real Door tool's own
+ * `straightWallGeometry.ts`-based cell resolution (which finds the exact
+ * footprint cell a parametric position falls inside, honoring the true
+ * Cyrus-Beck clip): that module transitively imports `boardGeometry.ts`,
+ * which imports THIS file (`resolvePlacement`/`DungeonDoc`) — reusing it
+ * here would create a `dungeonYaml.ts -> straightWallGeometry.ts ->
+ * boardGeometry.ts -> dungeonYaml.ts` import cycle, hit directly while
+ * building this (a "Cannot access ... before initialization" crash
+ * under Vite's ESM interop), not theorized. "Nearest cell to the line's
+ * literal midpoint" is a fine substitute for a one-time, rare legacy
+ * migration path — it isn't the live Door tool's own placement math,
+ * which stays exact. See TARGET-YAML.md's "Straight walls: doors"
+ * section.
+ */
+function parseWallLineDoors(
+  raw: unknown,
+  from: CornerRef,
+  to: CornerRef,
+  legacyKind: unknown
+): WallLineDoorDoc[] {
+  if (Array.isArray(raw)) {
+    const doors: WallLineDoorDoc[] = [];
+    for (const d of raw as Record<string, unknown>[]) {
+      if (Array.isArray(d.cell)) {
+        doors.push({ cell: [d.cell[0] as number, d.cell[1] as number] });
+      }
+    }
+    return doors;
+  }
+  if (legacyKind === 'door') {
+    const a = cornerPoint(from);
+    const b = cornerPoint(to);
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const cube = worldToCube(mid);
+    return [{ cell: [hexColumn(cube), hexRow(cube)] }];
+  }
+  return [];
 }
 
 function parseHeight(raw: unknown): number | null {
@@ -287,21 +412,50 @@ export interface WallDoc {
   kind: WallKind;
 }
 
-/** A STRAIGHT wall segment — `from`/`to` are the two endpoint cells the
- * author dragged between (nearest-cell snapped), and the wall's true
- * geometry is the straight WORLD-SPACE line between those cells'
- * centers, unlike `WallDoc` above whose `from`/`to` are always
- * hex-adjacent (one shared edge). `from`/`to` here are typically several
- * cells apart and the line clips through every hex it passes over — see
- * TARGET-YAML.md's "Straight walls" section for the full rationale
- * (`wallLines:` vs. overloading `walls:`) and `creation/
- * straightWallGeometry.ts` for the footprint/crossing math this implies.
- * target dialect, proposed — not compiled server-side; stripped by
- * `stripToV1Subset` like `walls:`. */
+/** A carved opening on a straight wall's own line, addressed by the
+ * FOOTPRINT CELL it opens rather than a parametric position — see
+ * TARGET-YAML.md's "Straight walls: doors" section for why a cell
+ * reference (not `{at: t}`) is the chosen shape: it stays meaningful
+ * across an endpoint drag that shifts the line's exact geometry, and a
+ * server compiler already has to derive the footprint cell-by-cell to
+ * project `wallLines:` onto canonical edges in the first place, so
+ * "which cell is a door" is a natural reuse of that same machinery, not
+ * new math. `cell` must be one of the OWNING line's own raw (door-blind)
+ * footprint cells to mean anything — see `straightWallGeometry.ts`'s
+ * `isValidDoorCell`. */
+export interface WallLineDoorDoc {
+  cell: [number, number];
+}
+
+/** A STRAIGHT wall segment — `from`/`to` are hex CORNERS (`CornerRef`,
+ * `creation/hexCorner.ts`), and the wall's true geometry is the straight
+ * WORLD-SPACE line between those two corner points, unlike `WallDoc`
+ * above whose `from`/`to` are always hex-adjacent CELLS (one shared
+ * edge). `from`/`to` here are typically several cells apart and the line
+ * clips through every hex it passes over — see TARGET-YAML.md's
+ * "Straight walls" section for the full rationale (`wallLines:` vs.
+ * overloading `walls:`) and `creation/straightWallGeometry.ts` for the
+ * footprint/crossing math this implies.
+ *
+ * **Corner-anchored, not cell-center-anchored** (this unit, following
+ * Kirk's live feedback: "it always hangs over a little" — a cell-center
+ * anchor overshoots by up to half a hex at each end, by construction).
+ * `parseDungeon` self-heals any PRE-corner-anchoring document (`from`/`to`
+ * as a bare `[col,row]` cell, the original shape) into this form on
+ * parse — see `parseWallLineEndpoint`'s own doc comment.
+ *
+ * No `kind` field — a straight wall is always solid MATERIAL; a specific
+ * point along it becomes passable only via `doors:`, never by
+ * reclassifying the WHOLE line (the pre-doors-model shape this unit
+ * retires: `kind: door` recolored an entire line without actually
+ * carving an opening in it — see TARGET-YAML.md's "Straight walls:
+ * doors" section for the full writeup, including this shape's own
+ * migration). target dialect, proposed — not compiled server-side;
+ * stripped by `stripToV1Subset` like `walls:`. */
 export interface WallLineDoc {
-  from: [number, number];
-  to: [number, number];
-  kind: WallKind;
+  from: CornerRef;
+  to: CornerRef;
+  doors: WallLineDoorDoc[];
 }
 
 /** target dialect, proposed — dungeon-wide lighting config. See TARGET-YAML.md. */
@@ -528,11 +682,15 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     : [];
 
   const wallLines: WallLineDoc[] = Array.isArray(raw.wallLines)
-    ? (raw.wallLines as Record<string, unknown>[]).map((w) => ({
-        from: w.from as [number, number],
-        to: w.to as [number, number],
-        kind: w.kind === 'door' ? 'door' : 'solid',
-      }))
+    ? (raw.wallLines as Record<string, unknown>[]).map((w) => {
+        const from = parseWallLineEndpoint(w.from, w.to);
+        const to = parseWallLineEndpoint(w.to, w.from);
+        return {
+          from,
+          to,
+          doors: parseWallLineDoors(w.doors, from, to, w.kind),
+        };
+      })
     : [];
 
   const holes: [number, number][] = Array.isArray(raw.holes)
@@ -1315,40 +1473,90 @@ export function setWallEdge(
   walls.items.push(createWallNode(cst, { from, to, kind }));
 }
 
-function createWallLineNode(cst: Document, line: WallLineDoc): YAMLMap {
+/** Builds a flow-style `{ cell: [c, r], corner: n }` node for one
+ * `wallLines[].from`/`.to` endpoint or `doors[].cell` reference. */
+function createCornerRefNode(cst: Document, ref: CornerRef): YAMLMap {
   const node = cst.createNode({
-    from: line.from,
-    to: line.to,
-    kind: line.kind,
+    cell: ref.cell,
+    corner: ref.corner,
   }) as YAMLMap;
   node.flow = true;
-  const fromNode = node.get('from', true);
-  if (isSeq(fromNode)) fromNode.flow = true;
-  const toNode = node.get('to', true);
-  if (isSeq(toNode)) toNode.flow = true;
+  const cellNode = node.get('cell', true);
+  if (isSeq(cellNode)) cellNode.flow = true;
   return node;
 }
 
-/** Straight-wall tool: append a new `wallLines:` entry — always `kind:
- * solid`; use `toggleWallLineKindAt` to flip an existing one to a door.
- * No add-vs-remove toggle at a single cell the way `toggleWall` has (a
- * straight wall's identity is its whole from→to span, not one edge), so
- * the creation board's own click-vs-drag distinction decides add
- * (`addWallLine`) vs. remove (`removeWallLineAt`) instead of this
- * function doing both. */
-export function addWallLine(
-  cst: Document,
-  from: [number, number],
-  to: [number, number],
-  kind: WallKind = 'solid'
-): void {
-  const lines = topSeq(cst, 'wallLines');
-  lines.items.push(createWallLineNode(cst, { from, to, kind }));
+function createWallLineNode(cst: Document, line: WallLineDoc): YAMLMap {
+  const node = cst.createNode({}) as YAMLMap;
+  node.flow = true;
+  node.set('from', createCornerRefNode(cst, line.from));
+  node.set('to', createCornerRefNode(cst, line.to));
+  if (line.doors.length > 0) {
+    const doorsSeq = new YAMLSeq(cst.schema);
+    doorsSeq.flow = true;
+    for (const door of line.doors) {
+      const doorNode = cst.createNode({ cell: door.cell }) as YAMLMap;
+      doorNode.flow = true;
+      const cellNode = doorNode.get('cell', true);
+      if (isSeq(cellNode)) cellNode.flow = true;
+      doorsSeq.items.push(doorNode);
+    }
+    node.set('doors', doorsSeq);
+  }
+  return node;
 }
 
-/** Remove a `wallLines:` entry by index — the creation board's "click an
- * existing straight wall (no drag) to delete it" affordance, mirroring
- * the edge Wall tool's own click-to-remove feel. No-ops on an
+/** Straight-wall tool: append a new `wallLines:` entry, corner-anchored,
+ * with no doors yet — use `toggleWallLineDoorAt` to carve one in after
+ * the fact. `from`/`to` are canonicalized before writing (defensively —
+ * a real drag-resolve path already returns canonical corners, but this
+ * keeps every `wallLines:` entry canonical regardless of caller), same
+ * discipline `setWallLineEndpoint` follows. No add-vs-remove toggle at a
+ * single cell the way `toggleWall` has (a straight wall's identity is
+ * its whole from→to span, not one edge), so the creation board's own
+ * click-vs-drag distinction decides add (`addWallLine`) vs. remove
+ * (`removeWallLineAt`) instead of this function doing both. */
+export function addWallLine(
+  cst: Document,
+  from: CornerRef,
+  to: CornerRef
+): void {
+  const lines = topSeq(cst, 'wallLines');
+  lines.items.push(
+    createWallLineNode(cst, {
+      from: canonicalCorner(from),
+      to: canonicalCorner(to),
+      doors: [],
+    })
+  );
+}
+
+/**
+ * Ensures a `wallLines:` CST entry's `from`/`to` are BOTH in the current
+ * corner-anchored shape (migrating either that's still the PRE-corner-
+ * anchoring legacy `[c,r]` form, same as `parseWallLineEndpoint`'s own
+ * migration) and drops any stale `kind:` key — the pre-doors-model field
+ * this unit retires. Called at the top of every mutator that touches an
+ * EXISTING wallLine entry (`setWallLineEndpoint`, `toggleWallLineDoorAt`)
+ * so a partial edit — e.g. dragging only ONE endpoint of a legacy entry
+ * — can never leave it half-migrated (one corner-anchored endpoint, one
+ * still-legacy endpoint, plus a now-meaningless dangling `kind:` key).
+ * The entry converges to the current shape as a whole, atomically with
+ * whatever edit touched it — a no-op (besides re-canonicalizing) on an
+ * entry that's already fully current.
+ */
+function normalizeWallLineItem(cst: Document, item: YAMLMap): void {
+  const raw = item.toJSON() as Record<string, unknown>;
+  const from = parseWallLineEndpoint(raw.from, raw.to);
+  const to = parseWallLineEndpoint(raw.to, raw.from);
+  item.set('from', createCornerRefNode(cst, from));
+  item.set('to', createCornerRefNode(cst, to));
+  item.delete('kind');
+}
+
+/** Remove a `wallLines:` entry by index — the creation board's Delete-key
+ * affordance on a SELECTED straight wall (see `CreationBoard.tsx`'s own
+ * selection-vs-endpoint-drag interaction model). No-ops on an
  * out-of-range index rather than throwing, since a stale index (the line
  * having already been removed by a concurrent interaction) is a UI race,
  * not a program error worth crashing over. */
@@ -1359,18 +1567,84 @@ export function removeWallLineAt(cst: Document, index: number): void {
   lines.items.splice(index, 1);
 }
 
-/** Door tool applied to a straight wall: flip an EXISTING `wallLines:`
- * entry's `kind` between `solid`/`door`, by index — same "toggle an
- * already-drawn wall's kind" shape `toggleWallKind` gives edge walls,
- * addressed by index (a straight wall has no natural `from`/`to`
- * edge-lookup identity the way an edge wall's exact adjacent-cell pair
- * does) rather than a coordinate pair. */
-export function toggleWallLineKindAt(cst: Document, index: number): void {
+/** Endpoint-drag commit: overwrite ONE end (`which`) of an EXISTING
+ * `wallLines:` entry with a new corner — the "draggable endpoint handle,
+ * snapped corner-to-corner" fine-tuning affordance TARGET-YAML.md's
+ * "Straight walls: corner anchoring" section describes. `corner` is
+ * canonicalized here defensively (every real drag-resolve path —
+ * `hexCorner.ts`'s `nearestCorner`, `straightWallGeometry.ts`'s
+ * `snapStraightEndpoint` — already returns canonical form, but this
+ * mutator doesn't trust that from an arbitrary caller). No-ops on an
+ * out-of-range index, same "stale index is a UI race" discipline every
+ * other index-addressed mutator here follows. Normalizes the WHOLE entry
+ * first (`normalizeWallLineItem`) — dragging one endpoint of a still-
+ * legacy line migrates both, not just the one being dragged. */
+export function setWallLineEndpoint(
+  cst: Document,
+  index: number,
+  which: 'from' | 'to',
+  corner: CornerRef
+): void {
   const lines = cst.get('wallLines');
   if (!isSeq(lines)) return;
   const item = lines.items[index];
   if (!isMap(item)) return;
-  item.set('kind', item.get('kind') === 'door' ? 'solid' : 'door');
+  normalizeWallLineItem(cst, item);
+  item.set(which, createCornerRefNode(cst, canonicalCorner(corner)));
+}
+
+/** The straight-wall Door tool applied to an EXISTING `wallLines:` entry:
+ * toggles a door AT `cell` — adds one if absent, removes it if present —
+ * the "click a point on the line to place/remove a door" symmetric
+ * affordance TARGET-YAML.md's "Straight walls: doors" section describes.
+ * `cell` is expected to already be validated against the line's own raw
+ * (door-blind) footprint by the caller (`straightWallGeometry.ts`'s
+ * `isValidDoorCell`) — this mutator itself is a plain toggle-by-value,
+ * no geometry. An emptied `doors:` list is deleted entirely rather than
+ * left as `doors: []`, matching this file's existing sparse-serialization
+ * discipline elsewhere (e.g. `defaults:`). Normalizes the WHOLE entry
+ * first (`normalizeWallLineItem`) — carving a door into a still-legacy
+ * line migrates its endpoints too, same as `setWallLineEndpoint`. */
+export function toggleWallLineDoorAt(
+  cst: Document,
+  lineIndex: number,
+  cell: [number, number]
+): void {
+  const lines = cst.get('wallLines');
+  if (!isSeq(lines)) return;
+  const item = lines.items[lineIndex];
+  if (!isMap(item)) return;
+  normalizeWallLineItem(cst, item);
+  const doorsNode = item.get('doors', true);
+  if (isSeq(doorsNode)) {
+    // `.get('cell')` returns a live `YAMLSeq`, not a plain array — see
+    // `wallIndexAtEdge`/`holeIndexAt`'s own `.get(0)`/`.get(1)` pattern
+    // above for why `Array.isArray` would silently never match here.
+    const idx = doorsNode.items.findIndex((d) => {
+      if (!isMap(d)) return false;
+      const c = d.get('cell');
+      return isSeq(c) && c.get(0) === cell[0] && c.get(1) === cell[1];
+    });
+    if (idx !== -1) {
+      doorsNode.items.splice(idx, 1);
+      if (doorsNode.items.length === 0) item.delete('doors');
+      return;
+    }
+    const doorNode = cst.createNode({ cell }) as YAMLMap;
+    doorNode.flow = true;
+    const cellNode = doorNode.get('cell', true);
+    if (isSeq(cellNode)) cellNode.flow = true;
+    doorsNode.items.push(doorNode);
+    return;
+  }
+  const doorsSeq = new YAMLSeq(cst.schema);
+  doorsSeq.flow = true;
+  const doorNode = cst.createNode({ cell }) as YAMLMap;
+  doorNode.flow = true;
+  const cellNode = doorNode.get('cell', true);
+  if (isSeq(cellNode)) cellNode.flow = true;
+  doorsSeq.items.push(doorNode);
+  item.set('doors', doorsSeq);
 }
 
 /** A hole's index in `holes:`, matched by its [col,row] pair. */
