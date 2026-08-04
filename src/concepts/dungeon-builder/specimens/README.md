@@ -17,8 +17,14 @@ addition. Never conflate the two numbers.
 
 ## Changelog
 
-- **v0.3** (2026-08-03) — `+ regions: construct (proposed, rpg-project#180)`:
-  `kitchen-sink.yaml` now declares two cell-authored semantic regions
+- **v0.3** (2026-08-03) — `erratum: canonical wall adjacency`:
+  the real Kitchen Sink mutator calls now emit `[7,1]`→`[8,1]` (solid)
+  and `[7,3]`→`[8,3]` (door), replacing the non-adjacent odd-q pairs
+  ending at `[8,0]` and `[8,2]`. This corrects generated specimen data
+  only: the specimen pack remains v0.3 and every document remains
+  `version: 1`.
+  `+ regions: construct (proposed, rpg-project#180)`: `kitchen-sink.yaml`
+  now declares two cell-authored semantic regions
   (`hall-inner`, `hall-annex`) inside the `hall` room's absolute column
   range, connected via `connectRegions` — the door edge it places shows up
   as a THIRD entry in `walls:` (`{ from: [10,3], to: [11,3], kind: door }`),
@@ -186,8 +192,8 @@ connectors:
     setPlacementMount(cst, 'hall', 1, 'wall');
     setPlacementHeight(cst, 'hall', 1, 2.0);
     setPlacementRotationDegrees(cst, 'hall', 1, 12);
-    setWallEdge(cst, [7, 1], [8, 0], 'solid', true);
-    setWallEdge(cst, [7, 3], [8, 2], 'door', true);
+    setWallEdge(cst, [7, 1], [8, 1], 'solid', true);
+    setWallEdge(cst, [7, 3], [8, 3], 'door', true);
 
     // v0.3 (rpg-project#180): two cell-authored semantic regions inside
     // "hall"'s absolute column range (hall's start_column = entry's width

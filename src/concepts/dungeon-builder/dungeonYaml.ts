@@ -37,6 +37,7 @@ import {
   YAMLSeq,
 } from 'yaml';
 import {
+  cellsAdjacent,
   cellsAreContiguous,
   cellsEqual,
   pickAttachmentEdge,
@@ -1287,13 +1288,26 @@ export function wallKindAtEdge(
   return isMap(item) ? ((item.get('kind') as WallKind) ?? 'solid') : null;
 }
 
-/** Set (add/update) or clear a wall on an arbitrary edge, with an
+/** Raised when a caller tries to create or update a `walls:` entry that
+ * does not identify one real shared hex edge. This is a model-side guard
+ * for generated edits, not a replacement for the server's validation of
+ * hand-authored YAML. */
+export class WallEdgeValidationError extends Error {}
+
+/** Set (add/update) or clear a wall on one real shared hex edge, with an
  * explicit on/off — the creation board's stroke-painting needs to force
  * a whole drag's worth of edges to the SAME state (decided by the first
  * edge touched), which a bare toggle-per-cell can't express. Setting
  * `on: true` for an edge that already has a wall updates its `kind`
  * in place (used by the door tool to flip solid↔door without going
- * through a separate lookup + toggleWallKind-style call). */
+ * through a separate lookup + toggleWallKind-style call).
+ *
+ * The adjacency guard applies only to `on: true`: an existing malformed
+ * hand-authored entry must still be removable with `on: false`, and its
+ * server-side semantic validation remains authoritative. `wallLines:`
+ * deliberately does not route through this mutator — its endpoints name
+ * a span, not a single edge, and are intentionally allowed to be
+ * non-adjacent. */
 export function setWallEdge(
   cst: Document,
   from: [number, number],
@@ -1305,6 +1319,11 @@ export function setWallEdge(
   if (!on) {
     if (idx !== -1) (cst.get('walls') as YAMLSeq).items.splice(idx, 1);
     return;
+  }
+  if (!cellsAdjacent(from, to)) {
+    throw new WallEdgeValidationError(
+      `Wall edge endpoints must be adjacent hex cells: [${from.join(',')}] -> [${to.join(',')}]`
+    );
   }
   if (idx !== -1) {
     const item = (cst.get('walls') as YAMLSeq).items[idx];
