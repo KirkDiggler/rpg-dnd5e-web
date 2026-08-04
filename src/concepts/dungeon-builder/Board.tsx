@@ -8,7 +8,7 @@
  * compute, the chain.
  */
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
-import { useRef, useState, type ReactElement } from 'react';
+import { useMemo, useRef, useState, type ReactElement } from 'react';
 import {
   connectorAtColumn,
   isCellOccupied,
@@ -19,6 +19,11 @@ import {
   totalColumns,
 } from './boardGeometry';
 import type { DungeonDoc } from './dungeonYaml';
+import {
+  connectorIndexForDoorId,
+  floorPlanEdgesToServerEdges,
+  hasServerEdges,
+} from './edgesAdapter';
 import {
   BOARD_HEX_SIZE,
   cellCenter,
@@ -99,6 +104,21 @@ export function Board({
 }: BoardProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState<PlacementSelection | null>(null);
+
+  // Server-truth wall/door edges (rpg-api-protos v0.1.118+, FloorPlan.edges)
+  // — when the live/recorded response carries them, they render AS the
+  // wall/door geometry below (real per-edge truth, including room
+  // perimeter walls the old column-fill never showed at all), and the
+  // coarse connector-gap-column fill two loops down is muted rather than
+  // drawn as a confident "this is a wall" block. Falls back to the old
+  // derived-from-door_row/connectors rendering — unchanged — whenever
+  // `edges` is empty (fixtures mode, or any response recorded/compiled
+  // before #767). See edgesAdapter.ts's own doc comment.
+  const serverEdges = useMemo(
+    () =>
+      hasServerEdges(floorPlan) ? floorPlanEdgesToServerEdges(floorPlan) : null,
+    [floorPlan]
+  );
 
   const cols = totalColumns(floorPlan);
   const cells: ReactElement[] = [];
@@ -183,6 +203,15 @@ export function Board({
         const connectorIndex = floorPlan.connectors.indexOf(connector);
         const isSelectedDoor =
           isDoorRow && selectedConnectorIndex === connectorIndex;
+        // Non-door-row cells in a connector's gap column: when real
+        // `serverEdges` exist, the actual wall line for this column is
+        // drawn precisely by the overlay pass below — this cell's own fill
+        // is muted to plain background instead of the confident solid-wall
+        // block, so the board doesn't show two competing "this is a wall"
+        // signals (a whole-cell fill AND a precise line) at once. The
+        // door-row cell keeps its distinct styling either way — it's still
+        // the real, always-correct click target for the connector door,
+        // server edges or not.
         cells.push(
           <polygon
             key={`cell-${col}-${row}`}
@@ -190,7 +219,9 @@ export function Board({
             className={
               isDoorRow
                 ? `db-cell-door${isSelectedDoor ? ' db-cell-door-selected' : ''}`
-                : 'db-cell-wall'
+                : serverEdges
+                  ? 'db-cell-empty'
+                  : 'db-cell-wall'
             }
             onClick={() => {
               // The REAL connector door always wins over any active tool
@@ -246,6 +277,63 @@ export function Board({
     );
   };
   const structuralOverlay: ReactElement[] = [];
+
+  // Server-truth wall/door edges (`serverEdges`, computed above) — solid,
+  // confident stroke, unlike `doc.walls`'s own dashed/muted "PROPOSED, not
+  // compiled" language just below: these ARE compiled, real
+  // dungeonspec-generated truth, not an authoring proposal. Painted BEFORE
+  // `doc.walls` (`structuralOverlay`'s array order is paint order) so an
+  // authored target-dialect wall drawn near/over a real one still reads on
+  // top — same layering rule this pass already follows for holes/regions/
+  // start/end below. A DOOR edge whose `doorId` resolves to a real
+  // connector (`connectorIndexForDoorId` — true for every generated
+  // connector door, see `edgesAdapter.ts`) is directly clickable to open
+  // the SAME `ConnectorInspector` the door-row cell already opens: Kirk's
+  // "I clicked where a wall visibly is and found nothing behind it" ask,
+  // now answered by the wall's own rendered geometry, not just the coarse
+  // cell underneath it. A SOLID edge (or a DOOR edge with no resolvable
+  // connector — not expected for real generated content, but handled
+  // rather than assumed away) is informational only, `pointerEvents:
+  // 'none'`, same as the rest of this overlay.
+  if (serverEdges) {
+    for (const edge of serverEdges) {
+      trackCellExtent(edge.from[0], edge.from[1]);
+      trackCellExtent(edge.to[0], edge.to[1]);
+      const line = edgeBetweenCells(
+        edge.from[0],
+        edge.from[1],
+        edge.to[0],
+        edge.to[1]
+      );
+      const isDoor = edge.kind === 'door';
+      const connectorIndex = isDoor
+        ? connectorIndexForDoorId(floorPlan, edge.doorId)
+        : null;
+      structuralOverlay.push(
+        <line
+          key={`server-edge-${edge.from[0]}-${edge.from[1]}-${edge.to[0]}-${edge.to[1]}`}
+          x1={line.a.x}
+          y1={line.a.y}
+          x2={line.b.x}
+          y2={line.b.y}
+          stroke={isDoor ? '#ffb347' : '#c9bfae'}
+          strokeWidth={isDoor ? 3.5 : 2.5}
+          strokeLinecap="round"
+          style={connectorIndex !== null ? { cursor: 'pointer' } : undefined}
+          pointerEvents={connectorIndex !== null ? 'stroke' : 'none'}
+          onClick={
+            connectorIndex !== null
+              ? (e) => {
+                  e.stopPropagation();
+                  onSelectConnector(connectorIndex);
+                }
+              : undefined
+          }
+        />
+      );
+    }
+  }
+
   for (const wall of doc.walls) {
     trackCellExtent(wall.from[0], wall.from[1]);
     trackCellExtent(wall.to[0], wall.to[1]);
@@ -643,35 +731,80 @@ export function Board({
   };
 
   return (
-    <svg
-      ref={svgRef}
-      viewBox={`${vx} ${vy} ${vw} ${vh}`}
-      width={Math.max(vw, 600)}
-      height={Math.max(vh, 420)}
-      onPointerUp={handlePointerUp}
-      onClick={(e) => {
-        if (e.target === svgRef.current) onSelect(null);
-      }}
-    >
-      <defs>
-        <pattern
-          id="db-doorrow-hatch"
-          patternUnits="userSpaceOnUse"
-          width={8}
-          height={8}
-          patternTransform="rotate(45)"
-        >
-          <rect width={8} height={8} fill="#2a1e10" />
-          <line x1={0} y1={0} x2={0} y2={8} stroke="#5a4020" strokeWidth={4} />
-        </pattern>
-      </defs>
-      <g>
-        {cells}
-        {structuralOverlay}
-        {labels}
-        {markers}
-        {entranceMarker}
-      </g>
-    </svg>
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      {/* Wall/door source indicator — Kirk's "make drift visible, not
+       * silent" ask. Distinguishes real generated edge geometry
+       * (`FloorPlan.edges`, rpg-api-protos v0.1.118+) from the
+       * door_row/connector-derived fallback this board used exclusively
+       * before #767 landed server-side, and still uses whenever a
+       * response carries no edges (fixtures mode, or a pre-#767
+       * recording). */}
+      <div
+        data-testid="db-wall-source-indicator"
+        style={{
+          position: 'absolute',
+          top: 4,
+          left: 4,
+          zIndex: 5,
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: 0.3,
+          padding: '3px 7px',
+          borderRadius: 4,
+          pointerEvents: 'none',
+          ...(serverEdges
+            ? {
+                color: '#100d0b',
+                background: '#c9bfae',
+              }
+            : {
+                color: '#e8e2d8',
+                background: 'rgba(90, 74, 58, 0.55)',
+                border: '1px dashed #8a7a5a',
+              }),
+        }}
+      >
+        {serverEdges
+          ? `WALLS: SERVER EDGES (${serverEdges.length})`
+          : 'WALLS: DERIVED (no edge geometry on the wire)'}
+      </div>
+      <svg
+        ref={svgRef}
+        viewBox={`${vx} ${vy} ${vw} ${vh}`}
+        width={Math.max(vw, 600)}
+        height={Math.max(vh, 420)}
+        onPointerUp={handlePointerUp}
+        onClick={(e) => {
+          if (e.target === svgRef.current) onSelect(null);
+        }}
+      >
+        <defs>
+          <pattern
+            id="db-doorrow-hatch"
+            patternUnits="userSpaceOnUse"
+            width={8}
+            height={8}
+            patternTransform="rotate(45)"
+          >
+            <rect width={8} height={8} fill="#2a1e10" />
+            <line
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={8}
+              stroke="#5a4020"
+              strokeWidth={4}
+            />
+          </pattern>
+        </defs>
+        <g>
+          {cells}
+          {structuralOverlay}
+          {labels}
+          {markers}
+          {entranceMarker}
+        </g>
+      </svg>
+    </div>
   );
 }

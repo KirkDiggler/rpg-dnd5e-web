@@ -54,13 +54,27 @@
  * gating) — reusing it would mean building the derivation step it exists
  * to avoid needing. `WallRunMesh`'s tiled-piece/corner-miter fidelity is
  * a deliberate non-goal for this first landing (see `WallBox` below).
- * Doors (`kind: 'door'`) render as a distinctly colored/shorter box, not
- * an opening — the door ROW concept in edit mode's compiled chain is a
- * different thing (a legality rule on a whole grid row) from a wall
- * segment's own `kind`, and this landing doesn't attempt to cut a real
- * gap in the box for a door frame — reads as "a marked door," not yet
- * "a walkable door," and is named honestly as the next fidelity step
- * rather than attempted here.
+ *
+ * **ALSO renders `FloorPlan.edges` (rpg-project#169's wire-edges unit,
+ * 2026-08-04, rpg-api-protos v0.1.118+)** — the same server-truth edges
+ * `Board.tsx`'s 2D overlay now draws, adapted through the SAME
+ * `edgesAdapter.ts` module (`floorPlanEdgesToServerEdges`) rather than a
+ * second parse of the proto shape. `hasServerEdges(floorPlan)` gates this:
+ * empty for fixtures mode or any pre-#767 recording, in which case this
+ * pane renders exactly as before (`doc.walls` only). **This closes the
+ * "marked door, not a walkable door" gap CONTRACT.md's "door-row void"
+ * findings name**: a DOOR edge (server-truth OR an authored
+ * `doc.walls` door — both go through the SAME `WallBox`/`DoorGap` branch
+ * now) renders as a genuine gap in the wall run — two solid jambs flanking
+ * an open, walkable span, with a thin lintel piece for door-frame
+ * styling — instead of the old shortened box that was exactly as
+ * impassable as a solid wall, just visually shorter. A server-truth door's
+ * `doorId` resolves back to its `FloorPlanConnector` (`edgesAdapter.ts`'s
+ * `connectorIndexForDoorId` — the SAME wire-level correlation the 2D board
+ * uses) and, when `onSelectConnector` is wired, an invisible click-catcher
+ * spanning the opening opens the real `ConnectorInspector` — the same
+ * Inspector a door-row cell already opens in 2D, now reachable by clicking
+ * the actual rendered doorway in 3D too.
  */
 import {
   cubeToWorld,
@@ -90,8 +104,13 @@ import {
   resolvePlacement,
   type DungeonDoc,
   type PlacementDoc,
-  type WallDoc,
 } from '../dungeonYaml';
+import {
+  connectorIndexForDoorId,
+  floorPlanEdgesToServerEdges,
+  hasServerEdges,
+  type ServerEdge,
+} from '../edgesAdapter';
 import { cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
 import { END_COLOR, START_COLOR } from '../markerStyle';
 import type { PaletteSelection, PlacementSelection } from '../types';
@@ -122,6 +141,16 @@ interface DungeonPreview3DProps {
   selectedPalette?: PaletteSelection | null;
   onPlace?: (roomId: string, at: [number, number]) => void;
   onReject?: (message: string) => void;
+  /** rpg-project#169's wire-edges unit — a server-truth DOOR edge's
+   * `doorId` resolves to a real `FloorPlanConnector` index
+   * (`edgesAdapter.ts`'s `connectorIndexForDoorId`); when wired, clicking
+   * the rendered doorway opens `ConnectorInspector` through it — the SAME
+   * `onSelectConnector` contract `Board.tsx`'s 2D door-row cell and
+   * server-edge line already use. Optional, same degrade-to-view-only
+   * pattern as every other interaction prop on this component: omitting
+   * it just means a rendered doorway isn't clickable, the gap geometry
+   * itself is unaffected either way. */
+  onSelectConnector?: (index: number) => void;
 }
 
 interface PlacedProp {
@@ -137,6 +166,11 @@ interface PlacedWall {
   position: [number, number, number];
   rotationY: number;
   isDoor: boolean;
+  /** Server-truth doors only (`ServerEdge.doorId`) — an authored
+   * `doc.walls` door has no connector to correlate to, so this stays
+   * `undefined` for those. See `DungeonPreview3DProps.onSelectConnector`'s
+   * own doc comment for what a defined value lets a click do. */
+  doorId?: string;
 }
 
 interface PlacedMonster {
@@ -215,7 +249,7 @@ function edgeBetweenCells(
   );
 }
 
-function wallBoxTransform(wall: WallDoc): {
+function wallBoxTransform(wall: ServerEdge): {
   position: [number, number, number];
   rotationY: number;
 } {
@@ -231,16 +265,44 @@ function wallBoxTransform(wall: WallDoc): {
   };
 }
 
-function buildWalls(walls: readonly WallDoc[]): PlacedWall[] {
+/** Builds render-ready wall pieces from either source — `doc.walls`
+ * (authored, `doorId` always absent) or the server-edges adapter's output
+ * (`ServerEdge[]`, `doorId` present on generated connector doors). One
+ * function for both, since both are the same `{from, to, kind}` shape —
+ * see `edgesAdapter.ts`'s own doc comment for why `ServerEdge` is a
+ * `WallDoc` superset rather than a parallel type. `keyPrefix` keeps the
+ * two sources' React keys from colliding when a document happens to
+ * author a wall on the exact same edge a server edge also covers. */
+function buildWalls(
+  walls: readonly ServerEdge[],
+  keyPrefix: string
+): PlacedWall[] {
   return walls.map((wall) => {
     const { position, rotationY } = wallBoxTransform(wall);
     return {
-      key: `${wall.from.join(',')}-${wall.to.join(',')}`,
+      key: `${keyPrefix}:${wall.from.join(',')}-${wall.to.join(',')}`,
       position,
       rotationY,
       isDoor: wall.kind === 'door',
+      doorId: wall.doorId,
     };
   });
+}
+
+/** `DoorGap`'s `onSelectDoor` for one `PlacedWall` — `undefined` unless
+ * ALL of: the caller wired `onSelectConnector` at all, this wall carries a
+ * `doorId` (server-truth only — an authored `doc.walls` door never does),
+ * and that `doorId` resolves to a real connector
+ * (`connectorIndexForDoorId`). Pulled out of the render loop so that loop
+ * stays a plain ternary instead of an inline IIFE. */
+function doorSelectHandler(
+  wall: PlacedWall,
+  floorPlan: FloorPlan,
+  onSelectConnector: ((index: number) => void) | undefined
+): (() => void) | undefined {
+  if (!onSelectConnector || !wall.doorId) return undefined;
+  const index = connectorIndexForDoorId(floorPlan, wall.doorId);
+  return index === null ? undefined : () => onSelectConnector(index);
 }
 
 /** Shared by both placement loops below (room-scoped and top-level) — the
@@ -492,30 +554,115 @@ function FloorHitCell({
 // the same distinction (Board.tsx/CreationBoard.tsx: '#e8e2d8' solid,
 // '#ffb347' door) — one visual language for "this is a drawn wall" across
 // both previews, same principle the hole rendering already established.
-// A door renders shorter (a marked threshold, not a walkable gap — see
-// this file's header doc comment for why a real opening isn't attempted
-// this round) so it reads as different from a solid run at a glance, not
-// just a different color at a distance.
 const WALL_SOLID_COLOR = '#e8e2d8';
 const WALL_DOOR_COLOR = '#ffb347';
 const WALL_THICKNESS = 0.12;
-const WALL_DOOR_HEIGHT_RATIO = 0.55;
 
 function WallBox({ wall }: { wall: PlacedWall }) {
-  const height = wall.isDoor
-    ? WALL_HEIGHT * WALL_DOOR_HEIGHT_RATIO
-    : WALL_HEIGHT;
-  const y = wall.isDoor ? (height - WALL_HEIGHT) / 2 : 0;
   return (
-    <mesh
-      position={[wall.position[0], wall.position[1] + y, wall.position[2]]}
-      rotation={[0, wall.rotationY, 0]}
-    >
-      <boxGeometry args={[HEX_SIZE, height, WALL_THICKNESS]} />
-      <meshStandardMaterial
-        color={wall.isDoor ? WALL_DOOR_COLOR : WALL_SOLID_COLOR}
-      />
+    <mesh position={wall.position} rotation={[0, wall.rotationY, 0]}>
+      <boxGeometry args={[HEX_SIZE, WALL_HEIGHT, WALL_THICKNESS]} />
+      <meshStandardMaterial color={WALL_SOLID_COLOR} />
     </mesh>
+  );
+}
+
+// A genuine gap, not a shortened box (the "marked door, not a walkable
+// door" limitation this file's header doc comment used to name as the
+// next fidelity step — closed by this unit). Two solid jambs flank an
+// OPEN, walkable span; a thin lintel piece reads as a door frame without
+// blocking the opening below it. Kirk's own framing for the door-row void
+// this same construct answers on the floor side: "the gash becomes a real
+// doorway."
+const DOOR_JAMB_WIDTH = HEX_SIZE * 0.22;
+const DOOR_OPENING_WIDTH = HEX_SIZE - DOOR_JAMB_WIDTH * 2;
+const DOOR_OPENING_HEIGHT = WALL_HEIGHT * 0.8;
+const DOOR_LINTEL_HEIGHT = WALL_HEIGHT - DOOR_OPENING_HEIGHT;
+// Wide/tall enough to comfortably catch a click near the opening without
+// competing with the floor hit-cell or an adjacent placement's own hit
+// area — invisible, `FloorHitCell`'s own "transparent but interactive"
+// pattern, not a new one.
+const DOOR_CLICK_HIT_THICKNESS = WALL_THICKNESS * 2.5;
+
+/** Local-space X offset (along the wall's OWN length, before rotation)
+ * rotated into a world-space `{dx, dz}` pair — Three.js's standard Y-axis
+ * rotation matrix (`x' = x·cos θ + z·sin θ`, `z' = -x·sin θ + z·cos θ`,
+ * evaluated at local `z = 0`). Used to place the two door jambs
+ * symmetrically about the wall's own midpoint without hand-deriving a new
+ * rotation per caller. */
+function rotateLocalXOffset(
+  rotationY: number,
+  localX: number
+): { dx: number; dz: number } {
+  return {
+    dx: localX * Math.cos(rotationY),
+    dz: -localX * Math.sin(rotationY),
+  };
+}
+
+function DoorGap({
+  wall,
+  onSelectDoor,
+}: {
+  wall: PlacedWall;
+  onSelectDoor?: () => void;
+}) {
+  const jambOffset = HEX_SIZE / 2 - DOOR_JAMB_WIDTH / 2;
+  const left = rotateLocalXOffset(wall.rotationY, jambOffset);
+  const right = rotateLocalXOffset(wall.rotationY, -jambOffset);
+  return (
+    <group>
+      <mesh
+        position={[
+          wall.position[0] + left.dx,
+          wall.position[1],
+          wall.position[2] + left.dz,
+        ]}
+        rotation={[0, wall.rotationY, 0]}
+      >
+        <boxGeometry args={[DOOR_JAMB_WIDTH, WALL_HEIGHT, WALL_THICKNESS]} />
+        <meshStandardMaterial color={WALL_DOOR_COLOR} />
+      </mesh>
+      <mesh
+        position={[
+          wall.position[0] + right.dx,
+          wall.position[1],
+          wall.position[2] + right.dz,
+        ]}
+        rotation={[0, wall.rotationY, 0]}
+      >
+        <boxGeometry args={[DOOR_JAMB_WIDTH, WALL_HEIGHT, WALL_THICKNESS]} />
+        <meshStandardMaterial color={WALL_DOOR_COLOR} />
+      </mesh>
+      <mesh
+        position={[
+          wall.position[0],
+          DOOR_OPENING_HEIGHT + DOOR_LINTEL_HEIGHT / 2,
+          wall.position[2],
+        ]}
+        rotation={[0, wall.rotationY, 0]}
+      >
+        <boxGeometry
+          args={[DOOR_OPENING_WIDTH, DOOR_LINTEL_HEIGHT, WALL_THICKNESS]}
+        />
+        <meshStandardMaterial color={WALL_DOOR_COLOR} />
+      </mesh>
+      {onSelectDoor && (
+        <mesh
+          position={wall.position}
+          rotation={[0, wall.rotationY, 0]}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelectDoor();
+          }}
+        >
+          <boxGeometry
+            args={[HEX_SIZE, WALL_HEIGHT, DOOR_CLICK_HIT_THICKNESS]}
+          />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
+    </group>
   );
 }
 
@@ -574,6 +721,7 @@ export function DungeonPreview3D({
   selectedPalette,
   onPlace,
   onReject,
+  onSelectConnector,
 }: DungeonPreview3DProps) {
   const floorTiles = useMemo(
     () => buildFloorTiles(floorPlan, doc.holes),
@@ -583,7 +731,22 @@ export function DungeonPreview3D({
     () => buildPlacements(floorPlan, doc),
     [floorPlan, doc]
   );
-  const walls = useMemo(() => buildWalls(doc.walls), [doc.walls]);
+  const authoredWalls = useMemo(
+    () => buildWalls(doc.walls, 'authored'),
+    [doc.walls]
+  );
+  // Server-truth wall/door edges (rpg-project#169's wire-edges unit) — see
+  // this file's own header doc comment. Empty whenever `floorPlan` carries
+  // no `edges` (fixtures mode, or any pre-#767 recording), in which case
+  // this preview renders exactly as it did before this unit: `doc.walls`
+  // only.
+  const serverWalls = useMemo(
+    () =>
+      hasServerEdges(floorPlan)
+        ? buildWalls(floorPlanEdgesToServerEdges(floorPlan), 'server')
+        : [],
+    [floorPlan]
+  );
   const entranceBlocked = useMemo(
     () => isEntranceBlocked(floorPlan, doc),
     [floorPlan, doc]
@@ -640,9 +803,21 @@ export function DungeonPreview3D({
                 onClickCell={handleClickCell}
               />
             ))}
-            {walls.map((w) => (
-              <WallBox key={w.key} wall={w} />
-            ))}
+            {[...serverWalls, ...authoredWalls].map((w) =>
+              w.isDoor ? (
+                <DoorGap
+                  key={w.key}
+                  wall={w}
+                  onSelectDoor={doorSelectHandler(
+                    w,
+                    floorPlan,
+                    onSelectConnector
+                  )}
+                />
+              ) : (
+                <WallBox key={w.key} wall={w} />
+              )
+            )}
             {props.map((p) => {
               const variant = resolvePropVariant(p.variantRef);
               if (!variant) return null;

@@ -20,7 +20,11 @@ import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Board } from './Board';
 import { parseDungeon } from './dungeonYaml';
-import { SHOWCASE_FLOORPLAN, SHOWCASE_YAML } from './fixtures';
+import {
+  S2_LOOP_FLOORPLAN,
+  SHOWCASE_FLOORPLAN,
+  SHOWCASE_YAML,
+} from './fixtures';
 
 /** showcase.yaml's shrine room already has one room-scoped altar
  * (`at: [11, 3]`) — appending a top-level one at a different, empty
@@ -145,5 +149,77 @@ describe('Board — selecting an existing room-scoped marker still works (regres
       roomId: 'shrine',
       index: expect.any(Number),
     });
+  });
+});
+
+describe('Board — wall/door source: real server edges vs the derived fallback (rpg-project#169 wire-edges unit)', () => {
+  it('shows the "server edges" badge and renders one <line> per recorded FloorPlan.edges entry when a response carries them (SHOWCASE_FLOORPLAN, re-recorded against v0.1.118)', () => {
+    const { doc } = parseDungeon(SHOWCASE_YAML);
+    const { getByTestId, container } = renderBoard(doc);
+
+    const badge = getByTestId('db-wall-source-indicator');
+    expect(badge.textContent).toContain('SERVER EDGES');
+    expect(badge.textContent).toContain('196');
+
+    // Solid server edges render as plain, non-interactive <line>s in
+    // '#c9bfae' — distinct from doc.walls's own dashed authoring overlay,
+    // which showcase.yaml doesn't use at all (no walls: key), so every
+    // matching line here can only have come from the server-edges pass.
+    const solidLines = Array.from(
+      container.querySelectorAll<SVGLineElement>('line')
+    ).filter((l) => l.getAttribute('stroke') === '#c9bfae');
+    expect(solidLines).toHaveLength(194);
+  });
+
+  it('falls back to the DERIVED badge and the old door_row/connector cell rendering for a FloorPlan with no edges (pre-#767 fixture)', () => {
+    const { doc } = parseDungeon(SHOWCASE_YAML);
+    const { getByTestId, container } = render(
+      <Board
+        floorPlan={S2_LOOP_FLOORPLAN}
+        doc={doc}
+        selectedPalette={null}
+        selectedPlacement={null}
+        selectedConnectorIndex={null}
+        onPlace={noop()}
+        onSelect={noop()}
+        onMove={noop()}
+        onReject={noop()}
+        onSelectConnector={noop()}
+        onWallGashClick={noop()}
+        selectedTool={null}
+        onToggleWall={noop()}
+        onToggleWallKind={noop()}
+        onToggleHole={noop()}
+        onSetPoint={noop()}
+      />
+    );
+
+    const badge = getByTestId('db-wall-source-indicator');
+    expect(badge.textContent).toContain('DERIVED');
+
+    // No server-edge <line>s at all — the connector's gap column still
+    // renders via the old cell-fill classes instead.
+    expect(container.querySelector('.db-cell-wall')).not.toBeNull();
+    expect(container.querySelectorAll('line[stroke="#c9bfae"]')).toHaveLength(
+      0
+    );
+  });
+
+  it('clicking a rendered DOOR edge whose door_id resolves to a connector opens ConnectorInspector via the same onSelectConnector callback the door-row cell already uses', () => {
+    const { doc } = parseDungeon(SHOWCASE_YAML);
+    const onSelectConnector = vi.fn();
+    const { container } = renderBoard(doc, { onSelectConnector });
+
+    const doorLines = Array.from(
+      container.querySelectorAll<SVGLineElement>('line')
+    ).filter((l) => l.getAttribute('stroke') === '#ffb347');
+    // Both showcase connectors are generated doors, so both DOOR edges
+    // resolve — 2 clickable door lines, matching floorPlan.connectors.length.
+    expect(doorLines).toHaveLength(2);
+
+    fireEvent.click(doorLines[0]);
+    expect(onSelectConnector).toHaveBeenCalledWith(expect.any(Number));
+    const calledIndex = onSelectConnector.mock.calls[0][0];
+    expect([0, 1]).toContain(calledIndex);
   });
 });

@@ -867,6 +867,21 @@ affordance. Four is no longer a coincidence pattern; it's the strongest
 version yet of the argument this file has been building for growing
 `FloorPlan` (or a sibling message) a real edge-native wall list.
 
+**Update, 2026-08-04 — the FIRST two of these four surfaces are now
+closed for real, response-side.** rpg-api#767 grew `FloorPlan` exactly
+the edge-native `edges` list this section argued for; the wire-edges
+rendering unit ("Wire-edges rendering unit," below, this file's most
+recent section) makes the 2D board's door-row cells and the 3D preview's
+void BOTH consume it. **Still open, unchanged by this unit**: the
+creation flow's proposed `walls:`/`wallLines:` schema is authoring — a
+from-scratch canvas has no compiled `FloorPlan` to receive edges FROM at
+all, so nothing about `FloorPlan.edges` touches it; that's rpg-project#179
+(canonical authored wall/door edges) plus toolkit#881/rpg-api#768, tracked
+separately. Four consumers named one real gap; two of the four needed a
+response field, and that field now exists and is wired — the other two
+need a request-side (authoring) contract, which is a different, still-
+open piece of work.
+
 ### What the schema actually allows for a connector — verified against the real dungeonspec Go source, not guessed
 
 Read directly from `rpg-toolkit/encounter/dungeonspec/spec.go` and
@@ -3856,3 +3871,129 @@ board entirely (before/after screenshots, not just the final YAML); a
 second wall drawn, selected, and removed via the Delete key confirms that
 path is still intact too. No unexpected console errors, same
 FIXTURES-MODE note as every other round.
+
+## Wire-edges rendering unit: 2D + 3D now draw `FloorPlan.edges` (2026-08-04, rpg-project#169)
+
+**The fourth-consumer-signal gap this file has named four times over —
+"`FloorPlan` carries no wall/door edge geometry on the wire" — is now
+closed on the response side.** rpg-api's #767 wave (merged) projects
+toolkit-canonical generated edges onto the compiled authoring `FloorPlan`:
+`repeated FloorPlanEdge edges = 6`, each `{from, to, kind, door_id}`
+(`FloorPlanCell` pairs, `FloorPlanEdgeKind` SOLID|DOOR), released in
+rpg-api-protos **v0.1.118** (bumped from v0.1.115 this unit). Both boards
+now render THAT truth when a response carries it, instead of the
+door_row/connector-derived approximations this file has documented since
+#667 — the WallGashExplainer's own former claim ("FloorPlan carries no
+wall/door edge geometry on the wire") is retired for a live response;
+fixtures mode and any pre-#767 recording still hit that path unchanged
+(a real, honest fallback, not a removed one).
+
+### One shared adapter, not two proto parses
+
+`edgesAdapter.ts` (new module) is the single place either renderer
+touches the wire shape: `floorPlanEdgesToServerEdges(floorPlan)` maps
+`FloorPlanEdge[]` to `ServerEdge[]` — `dungeonYaml.ts`'s existing
+`WallDoc` (`{from, to, kind}`, the SAME shape `doc.walls`'s own
+target-dialect authored walls already use) plus an optional `doorId`.
+Neither `Board.tsx` nor `DungeonPreview3D.tsx` imports
+`FloorPlanCell`/`FloorPlanEdgeKind` directly — this is a pure field-
+rename/enum-map, never a re-derivation: `FloorPlan.edges` is already the
+server's own canonical, deduplicated truth (one record per physical
+edge), so there's no orientation/dedup logic to reimplement client-side,
+unlike `doc.walls`'s own author-time mutators. `hasServerEdges(floorPlan)`
+(`edges.length > 0`) is the one gate both views check.
+
+### `door_id` correlates to `FloorPlanConnector` — verified against a real response, not assumed
+
+Confirmed directly (`fixtures.ts`'s re-recorded `SHOWCASE_FLOORPLAN`, not
+just the proto doc comment's promise): both DOOR edges' `doorId` match
+`SHOWCASE_FLOORPLAN.connectors[].doorId` byte-for-byte
+(`showcase-door-antechamber-shrine`, `showcase-door-shrine-vault`).
+`connectorIndexForDoorId(floorPlan, doorId)` resolves this to the same
+index `doc.connectors`/`ConnectorInspector` already key off, so a
+server-truth door is directly wired to the REAL `ConnectorInspector` —
+Kirk's "I clicked where a wall visibly is and found nothing behind it"
+ask, now answered by the wall's own rendered geometry in BOTH views, not
+just the coarse cell/gap-column underneath it.
+
+### 2D board (`Board.tsx`)
+
+A new server-edges overlay pass (`edgeBetweenCells`, the SAME geometry
+`doc.walls`'s own overlay already draws with) renders every recorded edge
+as a solid, confident line — `'#c9bfae'` for SOLID, `'#ffb347'` for DOOR
+— painted BEFORE `doc.walls`'s own dashed/muted "PROPOSED, not compiled"
+pass so an authored wall drawn over a real one still reads on top. The
+connector-gap-column cell fill (`db-cell-wall`, the old whole-column
+"this is a wall" block) is MUTED to plain background whenever real edges
+exist, rather than removed outright — the door-row cell itself (still the
+real, always-correct connector click target) is untouched either way.
+**Source indicator**: a small badge, top-left of the board —
+`WALLS: SERVER EDGES (196)` (cream) when real, `WALLS: DERIVED (no edge
+geometry on the wire)` (dashed amber) for the fallback — so drift between
+a stale-pinned client and a fresh server (or the reverse) is visible, not
+silent. A DOOR line whose `doorId` resolves is directly clickable
+(`pointerEvents: 'stroke'`) and calls the SAME `onSelectConnector` the
+door-row cell already used.
+
+### 3D preview (`DungeonPreview3D.tsx`) — the door gap is the headline
+
+**This closes the "marked door, not a walkable door" gap** the original
+3D spike named as its own next fidelity step (this file's earlier "3D
+preview: NOT a stop" section): `WallBox` now renders solid edges only
+(full height, no more per-door height-shortening hack); a new `DoorGap`
+component renders a DOOR edge (server-truth OR an authored `doc.walls`
+door — both go through the same branch now) as two solid amber jambs
+flanking a genuinely OPEN, walkable span, with a thin amber lintel piece
+reading as a door frame. Kirk's own framing for the door-row VOID finding
+elsewhere in this file: "the gash becomes a real doorway." Server-truth
+walls (`serverWalls`, gated on `hasServerEdges`) render alongside the
+existing `authoredWalls` (`doc.walls`) — additive, not a replacement,
+since 3D never had ANY server-truth wall rendering before this unit (the
+spike's own doc comment: "Deliberately NOT rendered: walls and doors").
+A server-truth door's jamb/lintel group also gets an invisible click-
+catcher spanning the opening (`onSelectConnector`, same wire-level
+`doorId` correlation as 2D) — same `ConnectorInspector`, reachable by
+clicking the actual rendered doorway in 3D now too.
+
+### Tests + fixture
+
+`SHOWCASE_FLOORPLAN.edges` (`fixtures.ts`) is a REAL recorded response,
+not synthesized: `grpcurl PutDungeon(validate_only)` against the live
+rpg-api-protos v0.1.118 server for showcase.yaml, unmodified — 196 edges
+(194 solid, 2 door), including exterior edges whose far endpoint sits
+outside the rendered bounds (negative column — `FloorPlanEdge`'s own doc
+comment: "one endpoint may be outside the rendered floor-plan bounds"),
+confirmed live, not just read in the contract text.
+`floorPlanCompile.test.ts`'s showcase case now excludes `edges` from its
+equality check with an explicit comment — `compileFloorPlanLocally` (the
+fixtures-mode fallback) never re-derives generated wall/door truth
+client-side, by design, so its own `edges` stays the proto default `[]`.
+
+12 new tests in `edgesAdapter.test.ts` (adapter correctness, doorId
+mapping, exterior-edge preservation, connector-index resolution — all
+against the real recorded fixture, not a hand-built one) + 3 new in
+`Board.test.tsx` (badge text + line count for both the real-edges and
+derived-fallback cases, and door-line-click → `onSelectConnector`
+wiring). 253 dungeon-builder tests passing overall (up from 238).
+`ci-check` clean (format/lint/typecheck/build/test).
+
+**Live verification.** Own dev server (free port, `VITE_API_HOST` pointed
+at the live envoy on `:8091`, `VITE_DEV_PLAYER_ID` set for the `Dev`
+auth scheme), driven via a throwaway Playwright script (this round's
+`public/models/synty/` was rsync'd from the existing `~/game-dev/
+rpg-game-assets` checkout the same way the palette-thumbnail round
+already documented, since a fresh worktree never has it — needed for the
+3D screenshot only, the 2D verification doesn't touch GLBs at all).
+Confirmed: the 2D board's badge reads `WALLS: SERVER EDGES (196)` against
+the live `showcase` response, with the room perimeter now visibly
+outlined (previously only the inter-room gap column read as "wall" at
+all — the perimeter was never drawn). Clicking the rendered
+antechamber↔shrine door line opened the real `ConnectorInspector`
+("Door: antechamber ↔ shrine") — the SAME panel the door-row cell already
+opens, now reachable from the wall's own geometry too. The 3D preview
+(Chromium + `--use-gl=swiftshader` for headless WebGL) shows the full
+room perimeter as solid gray wall boxes with two amber door
+jamb/lintel breaks at the real connector positions — a visible gap in the
+wall run, not a shortened box. No unexpected console errors past the
+existing FIXTURES-MODE-adjacent ones this file already documents (the
+probe's own deliberately-invalid payload, doubled by StrictMode).

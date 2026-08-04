@@ -13,7 +13,19 @@ import { compileFloorPlanLocally } from './floorPlanCompile';
 describe('compileFloorPlanLocally vs real recorded FloorPlan responses', () => {
   it('matches the real showcase.yaml response — a 3-room, non-uniform-width chain', () => {
     const { doc } = parseDungeon(SHOWCASE_YAML);
-    expect(compileFloorPlanLocally(doc)).toEqual(SHOWCASE_FLOORPLAN);
+    // `edges` excluded deliberately: SHOWCASE_FLOORPLAN's `edges` (196
+    // real recorded entries, rpg-project#169's wire-edges unit) is real
+    // generated wall/door truth dungeonspec computes server-side.
+    // `compileFloorPlanLocally` is this file's own doc comment's "grid
+    // math is server-authoritative" fixtures-mode fallback — it was never
+    // meant to (and doesn't) re-derive that generator step client-side, so
+    // its own `edges` stays the proto default `[]` by construction. See
+    // `edgesAdapter.test.ts` for the coverage that DOES assert on
+    // `SHOWCASE_FLOORPLAN.edges` itself.
+    expect(compileFloorPlanLocally(doc)).toEqual({
+      ...SHOWCASE_FLOORPLAN,
+      edges: [],
+    });
   });
 
   it("matches PR #750's real smoke-test response", () => {
