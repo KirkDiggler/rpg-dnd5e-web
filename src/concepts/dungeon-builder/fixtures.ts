@@ -15,10 +15,19 @@
  *     showcase-floorplan.json — this closes the standalone concept's own
  *     "unverified past 2 rooms" and "entrance cell is a guess" findings;
  *     see CONTRACT.md.
+ *
+ * `SHOWCASE_FLOORPLAN.edges` was re-captured 2026-08-04 against the live
+ * server on rpg-api-protos v0.1.118 (rpg-api#767's generated-edges wave —
+ * `repeated FloorPlanEdge edges = 6`) via `grpcurl` against the same
+ * showcase.yaml, unmodified — see that field's own doc comment for
+ * provenance. `SMOKE_TEST_FLOORPLAN`/`S2_LOOP_FLOORPLAN` predate this and
+ * carry no `edges` — they're still real v0.1.115-era responses, just from
+ * before the field existed; nothing about them needed re-recording.
  */
 import { create } from '@bufbuild/protobuf';
 import {
   type FloorPlan,
+  FloorPlanEdgeKind,
   FloorPlanSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 
@@ -115,6 +124,998 @@ export const SHOWCASE_FLOORPLAN: FloorPlan = create(FloorPlanSchema, {
   height: 8,
   doorRow: 4,
   entrance: { column: 0, row: 4 },
+  // 196 real edges (194 solid, 2 door) captured 2026-08-04 against the
+  // live rpg-api-protos v0.1.118 server via grpcurl PutDungeon(validate_only)
+  // for this exact showcase.yaml — see this file's own header doc comment.
+  // Includes exterior edges whose 'to' endpoint sits outside the rendered
+  // floor-plan bounds (negative column/row) — FloorPlanEdge's own doc
+  // comment: 'one endpoint may be outside the rendered floor-plan bounds'.
+  // Door doorId values match the connectors above exactly, confirming the
+  // wire-level correlation a door-click can use to open ConnectorInspector.
+  edges: [
+    {
+      from: { column: 0, row: 7 },
+      to: { column: -1, row: 7 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 7 },
+      to: { column: -1, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 7 },
+      to: { column: 0, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 6 },
+      to: { column: -1, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 6 },
+      to: { column: -1, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 5 },
+      to: { column: -1, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 5 },
+      to: { column: -1, row: 4 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 4 },
+      to: { column: -1, row: 4 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 4 },
+      to: { column: -1, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 3 },
+      to: { column: -1, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 3 },
+      to: { column: -1, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 2 },
+      to: { column: -1, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 2 },
+      to: { column: -1, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 1 },
+      to: { column: -1, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 1 },
+      to: { column: -1, row: 0 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 0 },
+      to: { column: -1, row: 0 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 0 },
+      to: { column: -1, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 0 },
+      to: { column: 0, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 0, row: 0 },
+      to: { column: 1, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 1, row: 7 },
+      to: { column: 0, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 1, row: 7 },
+      to: { column: 1, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 1, row: 7 },
+      to: { column: 2, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 1, row: 0 },
+      to: { column: 1, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 2, row: 7 },
+      to: { column: 2, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 2, row: 0 },
+      to: { column: 1, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 2, row: 0 },
+      to: { column: 2, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 2, row: 0 },
+      to: { column: 3, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 3, row: 7 },
+      to: { column: 2, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 3, row: 7 },
+      to: { column: 3, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 3, row: 7 },
+      to: { column: 4, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 3, row: 0 },
+      to: { column: 3, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 4, row: 7 },
+      to: { column: 4, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 4, row: 0 },
+      to: { column: 3, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 4, row: 0 },
+      to: { column: 4, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 4, row: 0 },
+      to: { column: 5, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 7 },
+      to: { column: 4, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 7 },
+      to: { column: 5, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 7 },
+      to: { column: 6, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 7 },
+      to: { column: 6, row: 7 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 6 },
+      to: { column: 6, row: 7 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 6 },
+      to: { column: 6, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 5 },
+      to: { column: 6, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 5 },
+      to: { column: 6, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 4 },
+      to: { column: 6, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 3 },
+      to: { column: 6, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 2 },
+      to: { column: 6, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 2 },
+      to: { column: 6, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 1 },
+      to: { column: 6, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 1 },
+      to: { column: 6, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 0 },
+      to: { column: 5, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 0 },
+      to: { column: 6, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 5, row: 0 },
+      to: { column: 6, row: 0 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 6, row: 4 },
+      to: { column: 7, row: 4 },
+      kind: FloorPlanEdgeKind.DOOR,
+      doorId: 'showcase-door-antechamber-shrine',
+    },
+    {
+      from: { column: 7, row: 7 },
+      to: { column: 6, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 7 },
+      to: { column: 6, row: 7 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 7 },
+      to: { column: 7, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 7 },
+      to: { column: 8, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 6 },
+      to: { column: 6, row: 7 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 6 },
+      to: { column: 6, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 5 },
+      to: { column: 6, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 5 },
+      to: { column: 6, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 4 },
+      to: { column: 6, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 3 },
+      to: { column: 6, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 2 },
+      to: { column: 6, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 2 },
+      to: { column: 6, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 1 },
+      to: { column: 6, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 1 },
+      to: { column: 6, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 0 },
+      to: { column: 6, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 0 },
+      to: { column: 6, row: 0 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 7, row: 0 },
+      to: { column: 7, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 8, row: 7 },
+      to: { column: 8, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 8, row: 0 },
+      to: { column: 7, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 8, row: 0 },
+      to: { column: 8, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 8, row: 0 },
+      to: { column: 9, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 9, row: 7 },
+      to: { column: 8, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 9, row: 7 },
+      to: { column: 9, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 9, row: 7 },
+      to: { column: 10, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 9, row: 0 },
+      to: { column: 9, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 10, row: 7 },
+      to: { column: 10, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 10, row: 0 },
+      to: { column: 9, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 10, row: 0 },
+      to: { column: 10, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 10, row: 0 },
+      to: { column: 11, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 11, row: 7 },
+      to: { column: 10, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 11, row: 7 },
+      to: { column: 11, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 11, row: 7 },
+      to: { column: 12, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 11, row: 0 },
+      to: { column: 11, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 12, row: 7 },
+      to: { column: 12, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 12, row: 0 },
+      to: { column: 11, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 12, row: 0 },
+      to: { column: 12, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 12, row: 0 },
+      to: { column: 13, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 13, row: 7 },
+      to: { column: 12, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 13, row: 7 },
+      to: { column: 13, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 13, row: 7 },
+      to: { column: 14, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 13, row: 0 },
+      to: { column: 13, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 14, row: 7 },
+      to: { column: 14, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 14, row: 0 },
+      to: { column: 13, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 14, row: 0 },
+      to: { column: 14, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 14, row: 0 },
+      to: { column: 15, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 15, row: 7 },
+      to: { column: 14, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 15, row: 7 },
+      to: { column: 15, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 15, row: 7 },
+      to: { column: 16, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 15, row: 0 },
+      to: { column: 15, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 16, row: 7 },
+      to: { column: 16, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 16, row: 0 },
+      to: { column: 15, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 16, row: 0 },
+      to: { column: 16, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 16, row: 0 },
+      to: { column: 17, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 17, row: 7 },
+      to: { column: 16, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 17, row: 7 },
+      to: { column: 17, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 17, row: 7 },
+      to: { column: 18, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 17, row: 0 },
+      to: { column: 17, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 18, row: 7 },
+      to: { column: 18, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 18, row: 0 },
+      to: { column: 17, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 18, row: 0 },
+      to: { column: 18, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 18, row: 0 },
+      to: { column: 19, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 19, row: 7 },
+      to: { column: 18, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 19, row: 7 },
+      to: { column: 19, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 19, row: 7 },
+      to: { column: 20, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 19, row: 0 },
+      to: { column: 19, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 7 },
+      to: { column: 20, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 7 },
+      to: { column: 21, row: 7 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 7 },
+      to: { column: 21, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 6 },
+      to: { column: 21, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 6 },
+      to: { column: 21, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 5 },
+      to: { column: 21, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 4 },
+      to: { column: 21, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 3 },
+      to: { column: 21, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 3 },
+      to: { column: 21, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 2 },
+      to: { column: 21, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 2 },
+      to: { column: 21, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 1 },
+      to: { column: 21, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 1 },
+      to: { column: 21, row: 0 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 0 },
+      to: { column: 19, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 0 },
+      to: { column: 20, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 0 },
+      to: { column: 21, row: 0 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 20, row: 0 },
+      to: { column: 21, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 21, row: 4 },
+      to: { column: 22, row: 5 },
+      kind: FloorPlanEdgeKind.DOOR,
+      doorId: 'showcase-door-shrine-vault',
+    },
+    {
+      from: { column: 22, row: 7 },
+      to: { column: 21, row: 7 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 7 },
+      to: { column: 21, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 7 },
+      to: { column: 22, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 6 },
+      to: { column: 21, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 6 },
+      to: { column: 21, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 5 },
+      to: { column: 21, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 4 },
+      to: { column: 21, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 3 },
+      to: { column: 21, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 3 },
+      to: { column: 21, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 2 },
+      to: { column: 21, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 2 },
+      to: { column: 21, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 1 },
+      to: { column: 21, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 1 },
+      to: { column: 21, row: 0 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 0 },
+      to: { column: 21, row: 0 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 0 },
+      to: { column: 21, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 0 },
+      to: { column: 22, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 22, row: 0 },
+      to: { column: 23, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 23, row: 7 },
+      to: { column: 22, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 23, row: 7 },
+      to: { column: 23, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 23, row: 7 },
+      to: { column: 24, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 23, row: 0 },
+      to: { column: 23, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 24, row: 7 },
+      to: { column: 24, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 24, row: 0 },
+      to: { column: 23, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 24, row: 0 },
+      to: { column: 24, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 24, row: 0 },
+      to: { column: 25, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 25, row: 7 },
+      to: { column: 24, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 25, row: 7 },
+      to: { column: 25, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 25, row: 7 },
+      to: { column: 26, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 25, row: 0 },
+      to: { column: 25, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 26, row: 7 },
+      to: { column: 26, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 26, row: 0 },
+      to: { column: 25, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 26, row: 0 },
+      to: { column: 26, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 26, row: 0 },
+      to: { column: 27, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 27, row: 7 },
+      to: { column: 26, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 27, row: 7 },
+      to: { column: 27, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 27, row: 7 },
+      to: { column: 28, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 27, row: 0 },
+      to: { column: 27, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 28, row: 7 },
+      to: { column: 28, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 28, row: 0 },
+      to: { column: 27, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 28, row: 0 },
+      to: { column: 28, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 28, row: 0 },
+      to: { column: 29, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 7 },
+      to: { column: 28, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 7 },
+      to: { column: 29, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 7 },
+      to: { column: 30, row: 8 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 7 },
+      to: { column: 30, row: 7 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 6 },
+      to: { column: 30, row: 7 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 6 },
+      to: { column: 30, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 5 },
+      to: { column: 30, row: 6 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 5 },
+      to: { column: 30, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 4 },
+      to: { column: 30, row: 5 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 4 },
+      to: { column: 30, row: 4 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 3 },
+      to: { column: 30, row: 4 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 3 },
+      to: { column: 30, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 2 },
+      to: { column: 30, row: 3 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 2 },
+      to: { column: 30, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 1 },
+      to: { column: 30, row: 2 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 1 },
+      to: { column: 30, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 0 },
+      to: { column: 29, row: -1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 0 },
+      to: { column: 30, row: 1 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+    {
+      from: { column: 29, row: 0 },
+      to: { column: 30, row: 0 },
+      kind: FloorPlanEdgeKind.SOLID,
+    },
+  ],
 });
 
 /** rpg-api PR #750's grpcurl smoke-test YAML — a synthetic 2-room

@@ -41,6 +41,7 @@ import {
   type LockedDoc,
   type WallKind,
 } from './dungeonYaml';
+import { hasServerEdges } from './edgesAdapter';
 import { SHOWCASE_YAML } from './fixtures';
 import { Inspector } from './Inspector';
 import { Palette } from './Palette';
@@ -790,7 +791,10 @@ export function DungeonBuilderConcept() {
         )}
 
         {wallGashExplainerOpen && (
-          <WallGashExplainer onClose={() => setWallGashExplainerOpen(false)} />
+          <WallGashExplainer
+            onClose={() => setWallGashExplainerOpen(false)}
+            serverEdgesActive={hasServerEdges(preview.floorPlan)}
+          />
         )}
 
         {toast && <ToastBanner message={toast} />}

@@ -11,12 +11,29 @@
  * now authorable in THIS view too, via the Structural palette category,
  * so the explainer points there instead of bouncing to a different tab.
  * See TARGET-YAML.md's "Structural palette category" section.
- */
+ *
+ * **Copy is now conditional on `serverEdgesActive`** (rpg-project#169's
+ * wire-edges unit, 2026-08-04) — the ORIGINAL "FloorPlan carries no
+ * wall/door edge geometry on the wire" claim stopped being universally
+ * true the moment rpg-api-protos v0.1.118 (rpg-api#767) shipped
+ * `FloorPlan.edges`. For a response that carries them, this cell's own
+ * REAL wall/door line is already drawn on top of it (`Board.tsx`'s
+ * server-edges overlay) — the explainer says so, instead of repeating a
+ * now-false blanket claim, while still pointing at Structural for
+ * AUTHORING an additional target-dialect wall (walls: is still not
+ * compiled server-side either way — only the "does the wire carry
+ * anything at all" half of the old copy was wrong). */
 interface WallGashExplainerProps {
   onClose: () => void;
+  /** Whether the `FloorPlan` this click landed on carries real
+   * `edges` — `edgesAdapter.ts`'s `hasServerEdges`. */
+  serverEdgesActive: boolean;
 }
 
-export function WallGashExplainer({ onClose }: WallGashExplainerProps) {
+export function WallGashExplainer({
+  onClose,
+  serverEdgesActive,
+}: WallGashExplainerProps) {
   return (
     <div
       role="dialog"
@@ -47,14 +64,26 @@ export function WallGashExplainer({ onClose }: WallGashExplainerProps) {
           lineHeight: 1.5,
         }}
       >
-        Walls here are normally DERIVED from room layout + connectors —{' '}
-        <code>FloorPlan</code> carries no wall/door edge geometry on the wire.
-        You CAN author one right here, though: open the{' '}
+        {serverEdgesActive ? (
+          <>
+            This response carries real generated wall/door geometry (
+            <code>FloorPlan.edges</code>) — the confident line drawn over this
+            cell already IS the compiled wall. Click the line itself (a door
+            line opens its connector) rather than this cell for the real thing.
+          </>
+        ) : (
+          <>
+            Walls here are normally DERIVED from room layout + connectors — this
+            response's <code>FloorPlan</code> carries no wall/door edge geometry
+            on the wire.
+          </>
+        )}{' '}
+        You CAN author your own here, though: open the{' '}
         <strong style={{ color: '#c9aeff' }}>Structural</strong> category in the
         palette and select <strong>Wall</strong> (or <strong>Door</strong>, to
         flip an existing one), then click this cell again. It's target dialect,
-        proposed — badged "not yet compiled server-side" until dungeonspec grows
-        real wall geometry. See TARGET-YAML.md.
+        proposed — badged "not yet compiled server-side" until dungeonspec
+        accepts authored wall geometry. See TARGET-YAML.md.
       </p>
       <button
         onClick={onClose}
