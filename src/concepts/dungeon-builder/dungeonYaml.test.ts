@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   addCellToRegion,
+  addWallLine,
   buildWalkItYaml,
   clearPlacementFlag,
   clearRefDefault,
@@ -17,6 +18,7 @@ import {
   placeItem,
   RegionValidationError,
   removeCellFromRegion,
+  removeWallLineAt,
   renameRegion,
   resolvePlacement,
   serializeDungeon,
@@ -40,6 +42,7 @@ import {
   toggleHole,
   toggleWall,
   toggleWallKind,
+  toggleWallLineKindAt,
   validateRegionCells,
   wallKindAtEdge,
 } from './dungeonYaml';
@@ -435,6 +438,95 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
     expect(toDungeonDoc(cst).walls).toEqual([
       { from: [7, 0], to: [8, 0], kind: 'solid' },
     ]);
+  });
+
+  describe('wallLines: straight walls (rpg-project#169, "straight walls with visible footprint" unit)', () => {
+    it('addWallLine appends a solid entry; removeWallLineAt removes it by index', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, [4, 4], [6, 1]);
+      let doc = toDungeonDoc(cst);
+      expect(doc.wallLines).toEqual([
+        { from: [4, 4], to: [6, 1], kind: 'solid' },
+      ]);
+      // Padded flow sequences again — this file's own known residual
+      // round-trip gap (see its top-of-file doc comment), same as the
+      // `walls:` toggleWall test above.
+      expect(serializeDungeon(cst)).toContain(
+        'wallLines:\n  - { from: [ 4, 4 ], to: [ 6, 1 ], kind: solid }'
+      );
+
+      removeWallLineAt(cst, 0);
+      doc = toDungeonDoc(cst);
+      expect(doc.wallLines).toEqual([]);
+    });
+
+    it('addWallLine accepts an explicit door kind directly', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, [0, 3], [10, 8], 'door');
+      expect(toDungeonDoc(cst).wallLines).toEqual([
+        { from: [0, 3], to: [10, 8], kind: 'door' },
+      ]);
+    });
+
+    it('toggleWallLineKindAt flips solid<->door by index, no-ops on an out-of-range index', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, [4, 4], [6, 1]);
+      toggleWallLineKindAt(cst, 0);
+      expect(toDungeonDoc(cst).wallLines[0].kind).toBe('door');
+      toggleWallLineKindAt(cst, 0);
+      expect(toDungeonDoc(cst).wallLines[0].kind).toBe('solid');
+
+      // Out-of-range index is a no-op, not a throw — see the function's
+      // own doc comment (a stale index is a UI race, not a program error).
+      expect(() => toggleWallLineKindAt(cst, 5)).not.toThrow();
+      expect(toDungeonDoc(cst).wallLines).toHaveLength(1);
+    });
+
+    it('removeWallLineAt is a no-op on an out-of-range index', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, [4, 4], [6, 1]);
+      expect(() => removeWallLineAt(cst, 5)).not.toThrow();
+      expect(() => removeWallLineAt(cst, -1)).not.toThrow();
+      expect(toDungeonDoc(cst).wallLines).toHaveLength(1);
+    });
+
+    it('multiple straight walls keep independent from/to/kind, round-tripped through YAML text', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, [4, 4], [6, 1], 'solid');
+      addWallLine(cst, [0, 3], [10, 8], 'door');
+      const reparsed = parseDungeon(serializeDungeon(cst));
+      expect(reparsed.doc.wallLines).toEqual([
+        { from: [4, 4], to: [6, 1], kind: 'solid' },
+        { from: [0, 3], to: [10, 8], kind: 'door' },
+      ]);
+    });
+
+    it('stripToV1Subset drops wallLines: entirely, reported separately from walls:', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      toggleWall(cst, 7, 0); // one edge wall
+      addWallLine(cst, [4, 4], [6, 1]); // one straight wall
+      addWallLine(cst, [0, 3], [10, 8], 'door'); // a second straight wall
+
+      const result = stripToV1Subset(serializeDungeon(cst));
+      expect(result.dropped).toEqual(
+        expect.arrayContaining(['1 wall', '2 straight walls'])
+      );
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.wallLines).toEqual([]);
+      // The real edge wall's own drop is untouched by this addition.
+      expect(stripped.walls).toEqual([]);
+    });
+
+    it('a document with only wallLines: (no edge walls) reports just the straight-wall count', () => {
+      // SHOWCASE_YAML is already confirmed pure-v1 (this describe block's
+      // sibling test above), so adding exactly one straight wall and
+      // nothing else should produce exactly this one dropped entry — no
+      // separate "N walls" (edge-wall) entry alongside it.
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      addWallLine(cst, [4, 4], [6, 1]);
+      const result = stripToV1Subset(serializeDungeon(cst));
+      expect(result.dropped).toEqual(['1 straight wall']);
+    });
   });
 
   it('toggleHole adds then removes a hole', () => {

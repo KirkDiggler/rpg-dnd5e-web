@@ -287,6 +287,23 @@ export interface WallDoc {
   kind: WallKind;
 }
 
+/** A STRAIGHT wall segment — `from`/`to` are the two endpoint cells the
+ * author dragged between (nearest-cell snapped), and the wall's true
+ * geometry is the straight WORLD-SPACE line between those cells'
+ * centers, unlike `WallDoc` above whose `from`/`to` are always
+ * hex-adjacent (one shared edge). `from`/`to` here are typically several
+ * cells apart and the line clips through every hex it passes over — see
+ * TARGET-YAML.md's "Straight walls" section for the full rationale
+ * (`wallLines:` vs. overloading `walls:`) and `creation/
+ * straightWallGeometry.ts` for the footprint/crossing math this implies.
+ * target dialect, proposed — not compiled server-side; stripped by
+ * `stripToV1Subset` like `walls:`. */
+export interface WallLineDoc {
+  from: [number, number];
+  to: [number, number];
+  kind: WallKind;
+}
+
 /** target dialect, proposed — dungeon-wide lighting config. See TARGET-YAML.md. */
 export interface LightingDoc {
   ambient: number;
@@ -335,6 +352,12 @@ export interface DungeonDoc {
   // drops every one before any live compile or Save & Play). ---
   canvas: CanvasDoc | null;
   walls: WallDoc[];
+  /** STRAIGHT wall segments — a sibling list to `walls:` above, not a
+   * variant within it (see `WallLineDoc`'s own doc comment for why they're
+   * kept separate). Empty in every document authored before this field
+   * existed and in any pure v1 document; not compiled server-side, dropped
+   * entirely by `stripToV1Subset`. */
+  wallLines: WallLineDoc[];
   /** Cell-native floor openings — absolute [col,row]. Kirk's 2026-08-02
    * Structural-category ask. See TARGET-YAML.md's "Structural palette
    * category" section for render/semantics. */
@@ -504,6 +527,14 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
       }))
     : [];
 
+  const wallLines: WallLineDoc[] = Array.isArray(raw.wallLines)
+    ? (raw.wallLines as Record<string, unknown>[]).map((w) => ({
+        from: w.from as [number, number],
+        to: w.to as [number, number],
+        kind: w.kind === 'door' ? 'door' : 'solid',
+      }))
+    : [];
+
   const holes: [number, number][] = Array.isArray(raw.holes)
     ? (raw.holes as [number, number][]).map(
         (h) => [h[0], h[1]] as [number, number]
@@ -589,6 +620,7 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     connectors,
     canvas,
     walls,
+    wallLines,
     holes,
     start,
     end,
@@ -1283,6 +1315,64 @@ export function setWallEdge(
   walls.items.push(createWallNode(cst, { from, to, kind }));
 }
 
+function createWallLineNode(cst: Document, line: WallLineDoc): YAMLMap {
+  const node = cst.createNode({
+    from: line.from,
+    to: line.to,
+    kind: line.kind,
+  }) as YAMLMap;
+  node.flow = true;
+  const fromNode = node.get('from', true);
+  if (isSeq(fromNode)) fromNode.flow = true;
+  const toNode = node.get('to', true);
+  if (isSeq(toNode)) toNode.flow = true;
+  return node;
+}
+
+/** Straight-wall tool: append a new `wallLines:` entry — always `kind:
+ * solid`; use `toggleWallLineKindAt` to flip an existing one to a door.
+ * No add-vs-remove toggle at a single cell the way `toggleWall` has (a
+ * straight wall's identity is its whole from→to span, not one edge), so
+ * the creation board's own click-vs-drag distinction decides add
+ * (`addWallLine`) vs. remove (`removeWallLineAt`) instead of this
+ * function doing both. */
+export function addWallLine(
+  cst: Document,
+  from: [number, number],
+  to: [number, number],
+  kind: WallKind = 'solid'
+): void {
+  const lines = topSeq(cst, 'wallLines');
+  lines.items.push(createWallLineNode(cst, { from, to, kind }));
+}
+
+/** Remove a `wallLines:` entry by index — the creation board's "click an
+ * existing straight wall (no drag) to delete it" affordance, mirroring
+ * the edge Wall tool's own click-to-remove feel. No-ops on an
+ * out-of-range index rather than throwing, since a stale index (the line
+ * having already been removed by a concurrent interaction) is a UI race,
+ * not a program error worth crashing over. */
+export function removeWallLineAt(cst: Document, index: number): void {
+  const lines = cst.get('wallLines');
+  if (!isSeq(lines)) return;
+  if (index < 0 || index >= lines.items.length) return;
+  lines.items.splice(index, 1);
+}
+
+/** Door tool applied to a straight wall: flip an EXISTING `wallLines:`
+ * entry's `kind` between `solid`/`door`, by index — same "toggle an
+ * already-drawn wall's kind" shape `toggleWallKind` gives edge walls,
+ * addressed by index (a straight wall has no natural `from`/`to`
+ * edge-lookup identity the way an edge wall's exact adjacent-cell pair
+ * does) rather than a coordinate pair. */
+export function toggleWallLineKindAt(cst: Document, index: number): void {
+  const lines = cst.get('wallLines');
+  if (!isSeq(lines)) return;
+  const item = lines.items[index];
+  if (!isMap(item)) return;
+  item.set('kind', item.get('kind') === 'door' ? 'solid' : 'door');
+}
+
 /** A hole's index in `holes:`, matched by its [col,row] pair. */
 function holeIndexAt(cst: Document, col: number, row: number): number {
   const holes = cst.get('holes');
@@ -1903,6 +1993,18 @@ export function stripToV1Subset(yamlText: string): V1SubsetResult {
     );
   }
   cst.delete('walls');
+
+  // Straight walls (this unit) — a sibling target-dialect-only construct
+  // to `walls:` above, dropped the same honest way, counted separately
+  // ("N straight walls", not folded into the edge-wall tally) since the
+  // two are genuinely different authoring constructs (see
+  // `WallLineDoc`'s own doc comment).
+  if (doc.wallLines.length > 0) {
+    dropped.push(
+      `${doc.wallLines.length} straight wall${doc.wallLines.length === 1 ? '' : 's'}`
+    );
+  }
+  cst.delete('wallLines');
 
   if (doc.holes.length > 0) {
     dropped.push(

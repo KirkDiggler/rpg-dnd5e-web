@@ -36,6 +36,13 @@ interface CreationConceptProps {
     kind: WallKind,
     on: boolean
   ) => void;
+  onAddStraightWall: (
+    from: [number, number],
+    to: [number, number],
+    kind: WallKind
+  ) => void;
+  onRemoveStraightWallAt: (index: number) => void;
+  onToggleStraightWallKindAt: (index: number) => void;
   onToggleHole: (col: number, row: number) => void;
   onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
   onNewCanvas: (width: number, height: number) => void;
@@ -64,6 +71,9 @@ export function CreationConcept({
   selectedTool,
   onSelectTool,
   onToggleWallEdge,
+  onAddStraightWall,
+  onRemoveStraightWallAt,
+  onToggleStraightWallKindAt,
   onToggleHole,
   onSetPoint,
   onNewCanvas,
@@ -294,6 +304,8 @@ export function CreationConcept({
             holeCount={doc.holes.length}
             showRegionTool
             regionCount={doc.regions.length}
+            showStraightWallTool
+            straightWallCount={doc.wallLines.length}
           />
         </CollapsibleSidePanel>
 
@@ -308,6 +320,9 @@ export function CreationConcept({
             }}
             onReject={toast}
             onToggleWallEdge={onToggleWallEdge}
+            onAddStraightWall={onAddStraightWall}
+            onRemoveStraightWallAt={onRemoveStraightWallAt}
+            onToggleStraightWallKindAt={onToggleStraightWallKindAt}
             onToggleHole={onToggleHole}
             onSetPoint={onSetPoint}
             regionEdit={regionEdit}

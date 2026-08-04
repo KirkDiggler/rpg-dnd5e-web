@@ -25,5 +25,16 @@ export type PlacementSelection =
  * room regions") is creation-mode-only this round — see
  * `creation/CreationBoard.tsx`'s region-painting handling and
  * `RegionPanel.tsx`; edit mode renders any authored `regions:` read-only,
- * with no tool to create/edit them there yet. */
-export type BoardTool = 'wall' | 'door' | 'hole' | 'start' | 'end' | 'region';
+ * with no tool to create/edit them there yet. `'straightWall'`
+ * (creation-mode-only, same as `'region'`) draws a `WallLineDoc` —
+ * a STRAIGHT segment with a footprint, distinct from `'wall'`'s
+ * edge-painted zigzag — see `creation/straightWallGeometry.ts` and
+ * TARGET-YAML.md's "Straight walls" section. */
+export type BoardTool =
+  | 'wall'
+  | 'straightWall'
+  | 'door'
+  | 'hole'
+  | 'start'
+  | 'end'
+  | 'region';

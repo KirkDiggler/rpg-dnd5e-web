@@ -41,6 +41,7 @@ canvas:
 rooms: []
 connectors: []
 walls: []
+wallLines: []
 holes: []
 start: null
 end: null

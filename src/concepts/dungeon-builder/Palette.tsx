@@ -47,6 +47,12 @@ interface PaletteProps {
    * create/edit them yet. */
   showRegionTool?: boolean;
   regionCount?: number;
+  /** Straight Wall tool (this unit) — creation-mode-only, same reasoning
+   * as `showRegionTool`: a from-scratch canvas is the natural home for
+   * freeform straight-line drawing; edit mode has no reader for
+   * `wallLines:` yet. */
+  showStraightWallTool?: boolean;
+  straightWallCount?: number;
 }
 
 const CATEGORY_LABELS: Record<PaletteCategory, string> = {
@@ -265,6 +271,8 @@ export function Palette({
   holeCount,
   showRegionTool = false,
   regionCount = 0,
+  showStraightWallTool = false,
+  straightWallCount = 0,
 }: PaletteProps) {
   const [openCategories, setOpenCategories] = useState<Set<PaletteCategory>>(
     new Set<PaletteCategory>(['obstacles-props'])
@@ -390,7 +398,7 @@ export function Palette({
 
       <CategorySection
         category="structural"
-        count={showRegionTool ? 4 : 3}
+        count={3 + (showRegionTool ? 1 : 0) + (showStraightWallTool ? 1 : 0)}
         open={openCategories.has('structural')}
         onToggle={() => toggle('structural')}
       >
@@ -403,6 +411,17 @@ export function Palette({
           onClick={() => toggleTool('wall')}
           notCompiled
         />
+        {showStraightWallTool && (
+          <Row
+            color="#c94f4f"
+            short="SW"
+            label="Straight Wall"
+            sub={`${straightWallCount}× drawn — drag for a straight segment with a footprint`}
+            isSelected={selectedTool === 'straightWall'}
+            onClick={() => toggleTool('straightWall')}
+            notCompiled
+          />
+        )}
         <Row
           color="#9b7fd6"
           short="D"

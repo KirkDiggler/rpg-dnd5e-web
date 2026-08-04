@@ -16,10 +16,12 @@ import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
 import { useRegionEditing } from './creation/useRegionEditing';
 import './DungeonBuilderConcept.css';
 import {
+  addWallLine,
   buildWalkItYaml,
   DungeonParseError,
   parseDungeon,
   placeItem,
+  removeWallLineAt,
   serializeDungeon,
   setConnectorLocked,
   setEnd,
@@ -31,6 +33,7 @@ import {
   toggleHole,
   toggleWall,
   toggleWallKind,
+  toggleWallLineKindAt,
   type DungeonDoc,
   type LockedDoc,
   type WallKind,
@@ -295,6 +298,25 @@ export function DungeonBuilderConcept() {
     syncFromCreationCst(creationCst);
   };
 
+  const handleCreationAddStraightWall = (
+    from: [number, number],
+    to: [number, number],
+    kind: WallKind
+  ) => {
+    addWallLine(creationCst, from, to, kind);
+    syncFromCreationCst(creationCst);
+  };
+
+  const handleCreationRemoveStraightWallAt = (index: number) => {
+    removeWallLineAt(creationCst, index);
+    syncFromCreationCst(creationCst);
+  };
+
+  const handleCreationToggleStraightWallKindAt = (index: number) => {
+    toggleWallLineKindAt(creationCst, index);
+    syncFromCreationCst(creationCst);
+  };
+
   const handleCreationToggleHole = (col: number, row: number) => {
     toggleHole(creationCst, col, row);
     syncFromCreationCst(creationCst);
@@ -469,6 +491,9 @@ export function DungeonBuilderConcept() {
           selectedTool={creationSelectedTool}
           onSelectTool={setCreationSelectedTool}
           onToggleWallEdge={handleCreationToggleWallEdge}
+          onAddStraightWall={handleCreationAddStraightWall}
+          onRemoveStraightWallAt={handleCreationRemoveStraightWallAt}
+          onToggleStraightWallKindAt={handleCreationToggleStraightWallKindAt}
           onToggleHole={handleCreationToggleHole}
           onSetPoint={handleCreationSetPoint}
           onNewCanvas={handleNewCanvas}
