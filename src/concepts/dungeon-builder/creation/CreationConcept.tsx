@@ -7,14 +7,18 @@
  * rows and the shared `Inspector` — no more bespoke Tools strip or
  * hand-rolled facing/delete panel duplicating what those already do.
  */
+import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { useEffect, useMemo, useState } from 'react';
+import type { ServerCapabilities } from '../capabilityProbe';
 import { CollapsibleSidePanel } from '../CollapsibleSidePanel';
-import type { DungeonDoc, WallKind } from '../dungeonYaml';
+import type { DungeonDoc, V1SubsetResult, WallKind } from '../dungeonYaml';
 import { Inspector } from '../Inspector';
 import { Palette } from '../Palette';
 import { DungeonPreview3D } from '../preview3d/DungeonPreview3D';
 import type { BoardTool } from '../types';
 import type { BoardEditing } from '../useBoardEditing';
+import type { ServerState } from '../usePutDungeonPreview';
+import type { SaveState } from '../useSaveDungeon';
 import { deriveCanvasFloorCells } from './canvasFloor';
 import { CreationBoard } from './CreationBoard';
 import type { DemoActions } from './demoScript';
@@ -78,6 +82,21 @@ interface CreationConceptProps {
   onTogglePalette: () => void;
   yamlCollapsed: boolean;
   onToggleYaml: () => void;
+  /** Capability-probed graduation (this unit) — same server-capabilities
+   * truth edit mode's `YamlPane` reads, threaded down to
+   * `ProposedYamlPane` so creation mode's Save & Play gates on the real
+   * server, not a permanently-disabled placeholder. See
+   * `ProposedYamlPane.tsx`'s own doc comment for why the button still
+   * reads disabled in practice today. */
+  serverState: ServerState;
+  capabilities: ServerCapabilities | null;
+  onRefreshCapabilities: () => void;
+  v1Subset: V1SubsetResult | null;
+  onSaveAndPlay: () => void;
+  saveState: SaveState;
+  savedKey: string | null;
+  saveFieldErrors: ValidationError[];
+  saveErrorMessage: string | null;
   /** 2D/3D board toggle — see `BoardDim`'s own doc comment above for why
    * this is owned by the parent rather than local `useState` here. */
   boardDim: BoardDim;
@@ -107,6 +126,15 @@ export function CreationConcept({
   onTogglePalette,
   yamlCollapsed,
   onToggleYaml,
+  serverState,
+  capabilities,
+  onRefreshCapabilities,
+  v1Subset,
+  onSaveAndPlay,
+  saveState,
+  savedKey,
+  saveFieldErrors,
+  saveErrorMessage,
   boardDim,
   onSetBoardDim,
 }: CreationConceptProps) {
@@ -453,6 +481,15 @@ export function CreationConcept({
             yamlText={yamlText}
             onChangeText={onChangeYamlText}
             parseError={yamlParseError}
+            serverState={serverState}
+            capabilities={capabilities}
+            onRefreshCapabilities={onRefreshCapabilities}
+            v1Subset={v1Subset}
+            onSaveAndPlay={onSaveAndPlay}
+            saveState={saveState}
+            savedKey={savedKey}
+            saveFieldErrors={saveFieldErrors}
+            saveErrorMessage={saveErrorMessage}
           />
         </CollapsibleSidePanel>
       </div>

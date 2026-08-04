@@ -3,7 +3,8 @@
     "defaults (2 refs; blocks_movement/blocks_los materialized onto 1 placement from 1 of them)",
     "3 walls",
     "2 regions",
-    "start/end",
+    "start",
+    "end",
     "lighting",
     "2 top-level placements (mapped into rooms)",
     "facing (4 placements)",
@@ -12,5 +13,7 @@
     "targeting (2 placements)",
     "fine-rotation experiment (2 placements)"
   ],
-  "compilable": true
+  "compiling": [],
+  "compilable": true,
+  "compilableBlockers": []
 }

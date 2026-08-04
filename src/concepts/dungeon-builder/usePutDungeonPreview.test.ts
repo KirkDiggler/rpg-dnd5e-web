@@ -12,6 +12,7 @@ vi.mock('@/api/client', () => ({
 }));
 
 // Import AFTER vi.mock so the mock is applied.
+import { capabilitySummary, DIALECT_FIELDS } from './capabilityProbe';
 import { parseDungeon } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
 import { usePutDungeonPreview } from './usePutDungeonPreview';
@@ -178,5 +179,103 @@ describe('usePutDungeonPreview — live mode per-edit preview', () => {
       timeout: 2000,
     });
     expect(result.current.fieldErrors).toEqual([]);
+  });
+});
+
+describe('usePutDungeonPreview — capability probe (capability-probed graduation unit)', () => {
+  it('capabilities stay null while probing/gate-off/unreachable — never populated outside live', async () => {
+    hoisted.putDungeonFn.mockRejectedValue(
+      new ConnectError('unknown service', Code.Unimplemented)
+    );
+    const { result } = renderHook(() =>
+      usePutDungeonPreview(doc, SHOWCASE_YAML)
+    );
+    await waitFor(() => expect(result.current.serverState).toBe('gate-off'));
+    expect(result.current.capabilities).toBeNull();
+  });
+
+  it('populates capabilities once serverState becomes live, reflecting every probe response', async () => {
+    hoisted.putDungeonFn.mockRejectedValueOnce(
+      new ConnectError('bad key', Code.InvalidArgument) // liveness probe
+    );
+    // Every subsequent call (the 17-field capability probe suite) hits
+    // this default — a blanket "accepts everything" server, the simplest
+    // case to assert against without keying off individual request keys.
+    hoisted.putDungeonFn.mockResolvedValue({
+      success: true,
+      fieldErrors: [],
+    } as unknown as PutDungeonResponse);
+
+    const { result } = renderHook(() =>
+      usePutDungeonPreview(doc, SHOWCASE_YAML)
+    );
+    await waitFor(() => expect(result.current.serverState).toBe('live'));
+    await waitFor(() => expect(result.current.capabilities).not.toBeNull());
+
+    expect(capabilitySummary(result.current.capabilities!)).toEqual({
+      accepted: DIALECT_FIELDS.length,
+      total: DIALECT_FIELDS.length,
+    });
+  });
+
+  it('resets capabilities to null the moment the server stops being live', async () => {
+    hoisted.putDungeonFn.mockRejectedValueOnce(
+      new ConnectError('bad key', Code.InvalidArgument) // liveness probe
+    );
+    hoisted.putDungeonFn.mockResolvedValue({
+      success: true,
+      fieldErrors: [],
+    } as unknown as PutDungeonResponse);
+
+    const { result } = renderHook(() =>
+      usePutDungeonPreview(doc, SHOWCASE_YAML)
+    );
+    await waitFor(() => expect(result.current.serverState).toBe('live'));
+    await waitFor(() => expect(result.current.capabilities).not.toBeNull());
+
+    // Force the next (retried) liveness probe to find the server gone —
+    // a fresh mockRejectedValueOnce takes priority over the blanket
+    // mockResolvedValue default queued above.
+    hoisted.putDungeonFn.mockRejectedValueOnce(
+      new ConnectError('failed to fetch', Code.Unavailable)
+    );
+    result.current.retryProbe();
+
+    await waitFor(() => expect(result.current.serverState).toBe('unreachable'));
+    expect(result.current.capabilities).toBeNull();
+  });
+
+  it('refreshCapabilities re-runs the full probe suite against the current live server', async () => {
+    hoisted.putDungeonFn.mockRejectedValueOnce(
+      new ConnectError('bad key', Code.InvalidArgument) // liveness probe
+    );
+    // First pass: the server accepts nothing.
+    hoisted.putDungeonFn.mockResolvedValue({
+      success: false,
+      fieldErrors: [{ field: '', message: 'field X not found' }],
+    } as unknown as PutDungeonResponse);
+
+    const { result } = renderHook(() =>
+      usePutDungeonPreview(doc, SHOWCASE_YAML)
+    );
+    await waitFor(() => expect(result.current.serverState).toBe('live'));
+    await waitFor(() =>
+      expect(capabilitySummary(result.current.capabilities!).accepted).toBe(0)
+    );
+
+    // Server now accepts everything — refresh should pick that up without
+    // any other state (serverState, doc, yamlText) changing.
+    hoisted.putDungeonFn.mockResolvedValue({
+      success: true,
+      fieldErrors: [],
+    } as unknown as PutDungeonResponse);
+    result.current.refreshCapabilities();
+
+    await waitFor(() =>
+      expect(capabilitySummary(result.current.capabilities!).accepted).toBe(
+        DIALECT_FIELDS.length
+      )
+    );
+    expect(result.current.serverState).toBe('live');
   });
 });

@@ -34,6 +34,20 @@
  * actually persist if clicked right now. A document that isn't even
  * shape-parseable yet (mid-edit) skips this tick silently — the YAML
  * pane's own parse-error path already owns surfacing that.
+ *
+ * **Capability-probed graduation (this unit, 2026-08-04)**: the strip
+ * above used to be a hardcoded snapshot of "what dungeonspec compiles" —
+ * it went stale the moment the server moved (Kirk's authoring branch
+ * started compiling authored `walls:` and bare `start:` for real while
+ * the client kept stripping both unconditionally). This hook now probes
+ * `ServerCapabilities` (`capabilityProbe.ts`) once per live connection —
+ * on the SAME transition that flips `serverState` to `'live'`, and again
+ * on `refreshCapabilities()` — and feeds the result into every
+ * `stripToV1Subset` call this hook makes, so the live per-edit preview
+ * reflects the true accepted subset, not a stale static one.
+ * `capabilities` resets to `null` the moment `serverState` leaves
+ * `'live'` (gate-off/unreachable) — a capability observed against one
+ * server is never carried into a fixtures-mode fallback.
  */
 import { authoringClient } from '@/api/client';
 import { create } from '@bufbuild/protobuf';
@@ -44,6 +58,10 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { useEffect, useRef, useState } from 'react';
+import {
+  probeAllCapabilities,
+  type ServerCapabilities,
+} from './capabilityProbe';
 import { stripToV1Subset, type DungeonDoc } from './dungeonYaml';
 import { SHOWCASE_FLOORPLAN } from './fixtures';
 import { compileFloorPlanLocally } from './floorPlanCompile';
@@ -68,6 +86,18 @@ export interface UsePutDungeonPreviewResult {
    * field_errors-shaped message. */
   requestError: string | null;
   retryProbe: () => void;
+  /** `null` until the capability probe suite completes against a live
+   * server — every caller that reads this (the "server capabilities"
+   * readout, `stripToV1Subset`, Save & Play gating) already treats `null`
+   * as "no capabilities," the same conservative-static fallback as
+   * before capability probing existed. Never populated outside
+   * `serverState === 'live'`. */
+  capabilities: ServerCapabilities | null;
+  /** Re-runs the full probe suite against the current live server —
+   * the capabilities readout's own refresh affordance, independent of
+   * `retryProbe` (which re-checks basic reachability, not per-field
+   * acceptance). */
+  refreshCapabilities: () => void;
 }
 
 const DEBOUNCE_MS = 500;
@@ -92,6 +122,10 @@ export function usePutDungeonPreview(
   const [fieldErrors, setFieldErrors] = useState<ValidationError[]>([]);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [probeNonce, setProbeNonce] = useState(0);
+  const [capabilities, setCapabilities] = useState<ServerCapabilities | null>(
+    null
+  );
+  const [capabilitiesNonce, setCapabilitiesNonce] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mount-time (and manual retry) probe.
@@ -119,6 +153,27 @@ export function usePutDungeonPreview(
     };
   }, [probeNonce]);
 
+  // Capability probe: runs once per live connection (this effect's own
+  // `serverState` dependency covers both the initial live transition and
+  // a `retryProbe`-driven recovery from unreachable/gate-off), and again
+  // on `refreshCapabilities()` (via `capabilitiesNonce`). Reset to `null`
+  // the instant the server stops being live — a capability observed
+  // against one server must never leak into a fixtures-mode fallback or
+  // a DIFFERENT server reached after a retry.
+  useEffect(() => {
+    if (serverState !== 'live') {
+      setCapabilities(null);
+      return;
+    }
+    let cancelled = false;
+    probeAllCapabilities().then((caps) => {
+      if (!cancelled) setCapabilities(caps);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [serverState, capabilitiesNonce]);
+
   // Live per-edit preview, debounced, only while the probe found the gate on.
   useEffect(() => {
     if (serverState !== 'live' || !doc) return;
@@ -128,7 +183,10 @@ export function usePutDungeonPreview(
         setRequestError(null);
         let subsetYaml: string;
         try {
-          subsetYaml = stripToV1Subset(yamlText).yaml;
+          subsetYaml = stripToV1Subset(
+            yamlText,
+            capabilities ?? undefined
+          ).yaml;
         } catch {
           // Not even shape-parseable yet (mid-edit) — nothing to preview
           // this tick. Not a request/field error; the YAML pane's own
@@ -172,7 +230,7 @@ export function usePutDungeonPreview(
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [serverState, doc, yamlText]);
+  }, [serverState, doc, yamlText, capabilities]);
 
   const fallbackFloorPlan = doc
     ? doc.key === 'showcase'
@@ -191,5 +249,7 @@ export function usePutDungeonPreview(
     fieldErrors: serverState === 'live' ? fieldErrors : [],
     requestError,
     retryProbe: () => setProbeNonce((n) => n + 1),
+    capabilities,
+    refreshCapabilities: () => setCapabilitiesNonce((n) => n + 1),
   };
 }

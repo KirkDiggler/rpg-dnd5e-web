@@ -3998,6 +3998,249 @@ wall run, not a shortened box. No unexpected console errors past the
 existing FIXTURES-MODE-adjacent ones this file already documents (the
 probe's own deliberately-invalid payload, doubled by StrictMode).
 
+## Capability-probed graduation: strip/badges/Save & Play stop guessing (2026-08-04, rpg-project#169)
+
+**The trigger, verbatim:** the wire-edges unit above closed the
+RESPONSE-side wall-geometry gap this file named four times over. Days
+later, the coordinating session verified LIVE against
+`rpg-api-dungeon-builder-763` that authored `walls:` — the AUTHORING side
+— now compiles too (`success: true`), while the client still stripped it
+unconditionally and creation mode's Save & Play stayed hard-disabled with
+a blanket "the server can't compile this yet" tooltip. The strip list,
+compile badges, and Save & Play gate had been reading a hardcoded,
+comment-level snapshot of "what dungeonspec compiles" since the concept's
+earliest days — a snapshot that cannot self-correct when the server moves
+out from under it. This unit replaces the snapshot with a live probe.
+
+### The mechanism: `capabilityProbe.ts`
+
+New module. On every live connection (`usePutDungeonPreview.ts`'s own
+mount-time liveness probe finding `serverState === 'live'`), the concept
+now sends one minimal `validate_only` document per target-dialect field —
+17 fields total, each isolated against an otherwise-known-good 3-room
+base (see below for why 3, not 2) — and records exactly what THIS server
+said about THIS field, today, in `ServerCapabilities`. Concurrent
+(`Promise.all`), never blocks the board, cached until the next live
+transition or an explicit `refreshCapabilities()`.
+
+**Real finding, not assumed: dungeonspec's own decode is whole-document
+and strict**, so a naive "send everything, see what fails" probe can only
+ever answer "at least one of these isn't accepted," never which — this is
+WHY the probe is per-field, verified by actually trying the combined
+approach first and reading the batched `"field X not found"` /
+`"field Y not found"` error list `canvas-full.yaml`'s probe produced.
+
+**A real, load-bearing finding from BUILDING the probe suite, documented
+nowhere in this file before now**: the very first minimal 2-room base
+doc, otherwise pure v1, was rejected outright —
+`"dungeon must have exactly one boss room, found 0"`. Two rooms alone
+(dungeonspec's known `minRooms = 2`) is not sufficient; the chain also
+needs EXACTLY ONE boss-archetype room with a declared `boss:`, a
+CHAIN-level constraint distinct from the boss-archetype-room-needs-a-boss
+rule this file already documented. `stripToV1Subset`'s
+`compilable`/`compilableBlockers` now check both.
+
+**Verified live, 2026-08-04, against `rpg-api-dungeon-builder-763` (envoy
+`localhost:8091`)** — the transcript `capabilityProbe.ts`'s own doc
+comment carries in full:
+
+| Field                                                                                                         | Result                                                                                                |
+| ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `walls:`                                                                                                      | **compiles**                                                                                          |
+| `start:`                                                                                                      | **compiles**                                                                                          |
+| `facing` (room-scoped floor prop only)                                                                        | **compiles**                                                                                          |
+| `holes:`, `end:`, `canvas:`, `lighting:`, `defaults:`, `regions:`, `height:`, `rotate_degrees:`, `targeting:` | decode-unknown (`"field X not found in type dungeonspec.Y"`)                                          |
+| `mount:` (any placement)                                                                                      | schema-known, rejected (`"unsupported capability: mounted placements are not supported"`)             |
+| `facing` (monster/boss/`mount:wall`)                                                                          | schema-known, rejected (`"unsupported capability: facing only supported on room-scoped floor props"`) |
+| top-level `place:`                                                                                            | schema-known, rejected (`"unsupported capability: top-level placement is not supported"`)             |
+
+3 of 17. Two rejection SHAPES, kept distinct rather than collapsed:
+decode-unknown (the Go struct has no field for this key at all) vs.
+schema-known-but-capability-gated (`"unsupported capability: ..."` — the
+field decodes, the constraint is deliberate and named). `wallLines:` is
+deliberately NEVER probed — client-side sugar
+(`straightWallGeometry.ts`), never sent to the real server in any form,
+per its own doc comment.
+
+### `stripToV1Subset` becomes capability-aware, not a rewrite
+
+`dungeonYaml.ts`'s `stripToV1Subset` gained an optional `capabilities`
+parameter and two new `V1SubsetResult` fields: `compiling` (the positive
+mirror of `dropped` — present AND accepted, kept verbatim) and
+`compilableBlockers` (human-readable reasons `compilable` is false, e.g.
+`"needs exactly one boss-archetype room with a declared boss (has
+none)"`, not one hardcoded message). Every existing strip DECISION now
+asks `accepted(field)` first; the mechanics (CST deletes, counting) are
+unchanged. `start`/`end` split into independent checks (verified live:
+one compiles, the other doesn't — the prior combined `"start/end"` entry
+could never have expressed that). `facing` dispatches through
+`facingCapabilityFor` — per-PLACEMENT, not per-document, since the real
+server itself distinguishes floor-prop/monster/boss/wall-mount facing.
+`defaults:`, when accepted, skips materialize-on-strip entirely (nothing
+to bake in — the server resolves inheritance itself). No `capabilities`
+argument (fixtures mode, or a probe not yet complete) reproduces the
+PRIOR static behavior exactly — verified by the existing 253-test suite
+passing unmodified bar one wording change (`'start/end'` → separate
+`'start'`/`'end'` entries, the direct consequence of the split above).
+
+`buildWalkItYaml` (Walk it) gained the same optional parameter — a real,
+pre-existing gap this unit fixed along the way: Walk it never called
+`stripToV1Subset` at ALL before this unit, so a document using any
+target-dialect field would have failed Walk it's own save outright,
+regardless of server capability. It now runs the capability-aware strip
+FIRST, monster-stripping on the result.
+
+### Badges and gating read the probe, nothing hardcoded
+
+`YamlPane.tsx` gained `CapabilitiesLine` (the "server capabilities:
+accepts N/M dialect fields" readout, with its own `refresh` affordance,
+beside the LIVE badge) and split `CompileBadgeStrip` into two halves — a
+teal "Compiles on this server: ..." confirming line and the original
+amber "Uses: ... not yet accepted" line — reading `compiling`/`dropped`
+directly, never a hardcoded field list. The Save & Play button was
+extracted into `SaveAndPlayButton` (exported) specifically so it could be
+reused verbatim, not re-implemented, by creation mode — see below. Its
+disabled tooltip now reads `v1CompilableBlockers` when non-compilable,
+naming the SPECIFIC real reason, instead of one hardcoded "declare at
+least 2 rooms" message that was already wrong the moment a boss-room
+requirement existed unstated.
+
+### Creation mode's Save & Play graduates from permanently-disabled to real
+
+`ProposedYamlPane.tsx` — previously a `disabled` button with a hardcoded
+`title`, no props to ever change it — now imports and reuses
+`SaveAndPlayButton`/`CompileBadgeStrip`/`CapabilitiesLine` from
+`YamlPane.tsx` directly (one gating implementation, not two that could
+drift) and gets a real `useSaveDungeon` instance
+(`DungeonBuilderConcept.tsx`'s new `creationSave`), wired through
+`CreationConcept.tsx`. **Reuses `preview.capabilities` from edit mode's
+existing `usePutDungeonPreview` instance** rather than probing twice —
+capabilities describe the SERVER, not which document is being viewed.
+
+**Why the button still reads disabled in practice, today, verified
+live**: creation mode has no "declare a room" UI at all
+(`emptyCanvasDoc.ts`'s `rooms: []` is the only shape it ever produces),
+and the real "at least 2 rooms, exactly one boss room" minimums are
+unconditional — so a from-scratch canvas is still genuinely unsavable.
+But the tooltip is now the REAL reason (`"needs at least 2 rooms (has
+0); needs exactly one boss-archetype room with a declared boss (has
+none)"`), not the retired blanket "proposed schema" claim — and an
+author who hand-types `rooms:` into this very pane (it's a real, editable
+CST) would see the button light up the moment the document becomes
+genuinely compilable, same as edit mode, no code change required.
+
+### Live verification — past the badges' own claim, same standard as every prior round
+
+Own dev server, free port (`5173`, never `3001`), `VITE_API_HOST` pointed
+at the live envoy (`:8091`), driven by a throwaway Playwright script
+(this file's own established pattern). Confirmed, in order:
+
+1. `● LIVE — PutDungeon reachable`, then `server capabilities: accepts
+3/17 dialect fields` — the exact live probe result above, rendered.
+2. Edited showcase.yaml's live YAML pane to add one `walls:` entry via
+   the real textarea + "Apply YAML → Board" (not a mocked test) — the
+   badge strip immediately showed `Compiles on this server: 1 wall`,
+   never the amber "not yet accepted" line.
+3. Clicked the real "Save & Play" button (enabled — `dialectDropped` was
+   EMPTY since the wall compiles, so the label correctly stayed "Save &
+   Play," not "Save the compilable subset," even though a target-dialect
+   field is present) against the SAME lab server — got
+   `Saved as "showcase".` — a real `PutDungeon(validate_only: false)`,
+   walls included, not a client-side claim.
+4. Switched to New Dungeon (creation mode) — `ProposedYamlPane` showed
+   the SAME live `server capabilities: accepts 3/17` line, the amber
+   `Uses: canvas — not yet accepted by this server` badge, and "Save the
+   compilable subset" correctly disabled with the tooltip:
+   `"Nothing compilable yet — needs at least 2 rooms (has 0); needs
+exactly one boss-archetype room with a declared boss (has none)"` —
+   the specific real reason this unit set out to deliver, not the
+   retired "proposed schema" placeholder.
+
+No unexpected console errors — only the two expected
+`[invalid_argument] key "" must match ...` entries from
+`usePutDungeonPreview`'s OWN deliberately-invalid liveness-probe payload
+(doubled by React StrictMode, same benign noise this file's every prior
+live-verification round documents).
+
+**Housekeeping**: step 3 above genuinely persisted an extra wall onto the
+SHARED `showcase` key on the lab container other in-flight units on this
+same wave also read from — restored it to the exact original
+`SHOWCASE_YAML` fixture content via a follow-up `PutDungeon(validate_only:
+false)` immediately after, verified `success: true`. The save-then-
+restore round trip is itself corroborating evidence the write path is
+real (a client-side-only claim couldn't have needed reverting).
+Screenshots: `docs/evidence/dungeon-builder-capability-probe-{edit-mode-badge,
+walls-compiling,walls-saved,creation-mode-specific-tooltip}.png`.
+
+### Tests
+
+`capabilityProbe.test.ts` (new, 6 tests) — probe/classify logic against a
+mocked `authoringClient.putDungeon`, keying responses off each probe's
+own distinct `capprobe-<field>` request key: blanket-accept, blanket-
+reject-with-verbatim-message, mixed per-field, a transport failure on one
+probe not taking down the suite, every probe declaring `validateOnly:
+true`. `dungeonYaml.test.ts` gained a
+`stripToV1Subset: capability-aware` describe block (13 tests) covering:
+an accepted field surviving verbatim vs. the no-capabilities conservative
+fallback, the independent start/end split, facing gated per PLACEMENT
+(a floor prop and a monster in the SAME document, only one keeps facing),
+wall-mount facing as its own independent capability, an accepted
+`defaults:` skipping materialize-on-strip, an accepted `topLevelPlace`
+staying un-mapped (with its own items still individually field-gated),
+canvas/holes/regions/lighting each compiling independently, and the new
+`compilableBlockers` correctness (room-count blocker, the newly-
+discovered boss-room blocker, both real fixtures with neither).
+`usePutDungeonPreview.test.ts` gained 4 tests: capabilities stay `null`
+outside live, populate once live (reflecting every probe response),
+reset to `null` the instant the server stops being live, and
+`refreshCapabilities()` re-running the suite. `YamlPane.test.tsx` (new) —
+the first render-layer test for `SaveAndPlayButton`/`CompileBadgeStrip`/
+`CapabilitiesLine`, 12 tests covering every gating state named in this
+unit's own brief: enabled+dropped-list, disabled+SPECIFIC blocker
+(asserting the old hardcoded "declare 2 rooms" text does NOT appear),
+the generic-fallback path when no blocker is supplied, mid-save, and the
+creation-mode label override. No jest-dom matchers (this repo's vitest
+config has none configured) — plain DOM properties throughout, matching
+`Board.test.tsx`'s own established convention. 287 dungeon-builder tests
+passing overall (up from 253), `ci-check` clean.
+
+### `TARGET-YAML.md` — status tracking rewritten around the probe, not hand-maintained
+
+The "Status tracking note (2026-08-03): two fields now compile on Kirk's
+branch, unreleased" section — a manually-transcribed snapshot of a
+backend-probe comment, with its own explicit "don't flip the badge based
+on this note alone" caveat — is retired. Replaced with a description of
+the MECHANISM (`capabilityProbe.ts`) and what it found on THIS unit's own
+2026-08-04 observation, framed explicitly as one observation of a live
+check, not a claim to keep in sync by hand going forward. The "place:/
+boss: facing" entry-type table is retained (still accurate) but
+re-pointed at the mechanized check. The v1-subset-strip table gained a
+second column contrasting the no-capabilities/with-capabilities
+behavior. `specimens/kitchen-sink.v1-subset.dropped.json` regenerated
+(no version bump — `kitchen-sink.yaml` itself is byte-identical; only
+`stripToV1Subset`'s report shape changed: `start`/`end` now separate
+entries, plus the new empty `compiling`/`compilableBlockers` fields) —
+`specimens/README.md`'s changelog documents why without a pack-version
+bump, since no new emittable construct was added.
+
+### What did NOT ship this round — named, not silently dropped
+
+- **Inspector.tsx's own `FacingConservativeBadge`/`TargetDialectBadge`
+  are NOT wired to `capabilityProbe.ts`.** Out of scope per this unit's
+  own brief (strip/save/badge/probe subsystem, not the Inspector) —
+  `dungeonYaml.ts`'s new `facingCapabilityFor` already encodes the
+  entry-type dispatch once; whoever picks this up next should read that
+  function first, not re-derive the split.
+- **No creation-mode "Walk it" button** — one was never asked for by
+  this unit's brief; creation mode's ONLY existing save action (Save &
+  Play) graduated. Adding Walk it to creation mode is a real scope
+  expansion, not a gap in this round.
+- **`/author` route promotion is explicitly the NEXT unit**, per this
+  unit's own brief — not attempted here.
+- **No `preview3d`/floor-derivation changes** — explicit scope boundary
+  from this unit's brief, respected; a parallel unit was in flight on
+  that surface concurrently.
+
 ## Creation-mode 3D preview unit: "can I go from new dungeon to 3D?" (2026-08-04, rpg-project#169)
 
 Kirk's ask, verbatim: "can I go from new dungeon to 3d?" — the 3D preview

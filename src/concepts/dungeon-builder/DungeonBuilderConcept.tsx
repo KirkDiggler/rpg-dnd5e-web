@@ -124,17 +124,26 @@ export function DungeonBuilderConcept() {
   // it without re-deriving it twice. `null` while yamlText is mid-edit
   // and not even shape-parseable yet — every consumer below treats that
   // the same as "nothing to report."
+  //
+  // `preview.capabilities` (capability-probed graduation, this unit) makes
+  // this capability-aware: a field the live server actually accepts is
+  // kept, not stripped — see `stripToV1Subset`'s own doc comment.
+  // `undefined` (fixtures mode, or the probe hasn't completed yet) falls
+  // back to the prior conservative-static behavior, same as always.
   const v1Subset = useMemo(() => {
     try {
-      return stripToV1Subset(yamlText);
+      return stripToV1Subset(yamlText, preview.capabilities ?? undefined);
     } catch {
       return null;
     }
-  }, [yamlText]);
+  }, [yamlText, preview.capabilities]);
 
   const handleWalkIt = () => {
     const walkKey = `${doc.key}-walk`;
-    walkSave.save(walkKey, buildWalkItYaml(yamlText, walkKey));
+    walkSave.save(
+      walkKey,
+      buildWalkItYaml(yamlText, walkKey, preview.capabilities ?? undefined)
+    );
   };
 
   // Clears every OTHER selection kind — called at the start of each of the
@@ -274,6 +283,30 @@ export function DungeonBuilderConcept() {
   const creationApplyDebounce = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+
+  // Creation mode's own Save & Play (capability-probed graduation, this
+  // unit) — previously permanently disabled (`ProposedYamlPane.tsx`'s own
+  // history). Reuses `preview.capabilities`: capabilities describe the
+  // SERVER, not which document is being viewed, so probing once (on the
+  // shared `usePutDungeonPreview` instance, keyed to edit mode's doc) is
+  // correct for creation mode's own strip too — no second probe needed.
+  const creationSave = useSaveDungeon();
+  const creationV1Subset = useMemo(() => {
+    try {
+      return stripToV1Subset(
+        creationYamlText,
+        preview.capabilities ?? undefined
+      );
+    } catch {
+      return null;
+    }
+  }, [creationYamlText, preview.capabilities]);
+  const handleCreationSaveAndPlay = () => {
+    creationSave.save(
+      creationDoc.key,
+      creationV1Subset?.yaml ?? creationYamlText
+    );
+  };
 
   const syncFromCreationCst = (nextCst: typeof creationCst) => {
     setCreationCst(nextCst);
@@ -542,6 +575,15 @@ export function DungeonBuilderConcept() {
           onTogglePalette={() => setCreatePaletteCollapsed((c) => !c)}
           yamlCollapsed={createYamlCollapsed}
           onToggleYaml={() => setCreateYamlCollapsed((c) => !c)}
+          serverState={preview.serverState}
+          capabilities={preview.capabilities}
+          onRefreshCapabilities={preview.refreshCapabilities}
+          v1Subset={creationV1Subset}
+          onSaveAndPlay={handleCreationSaveAndPlay}
+          saveState={creationSave.state}
+          savedKey={creationSave.savedKey}
+          saveFieldErrors={creationSave.fieldErrors}
+          saveErrorMessage={creationSave.errorMessage}
           boardDim={createBoardDim}
           onSetBoardDim={setCreateBoardDim}
         />
@@ -769,7 +811,11 @@ export function DungeonBuilderConcept() {
               walkFieldErrors={walkSave.fieldErrors}
               walkErrorMessage={walkSave.errorMessage}
               dialectDropped={v1Subset?.dropped ?? []}
+              dialectCompiling={v1Subset?.compiling ?? []}
               v1Compilable={v1Subset?.compilable ?? false}
+              v1CompilableBlockers={v1Subset?.compilableBlockers ?? []}
+              capabilities={preview.capabilities}
+              onRefreshCapabilities={preview.refreshCapabilities}
             />
           </CollapsibleSidePanel>
         </div>
