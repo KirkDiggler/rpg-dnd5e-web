@@ -82,6 +82,16 @@ A dungeon spec is ONE YAML file. Every field in it is either:
 There is no second file, no second pane style, no "proposed schema"
 ghetto. One board, one YAML pane, some of its fields chase-badged.
 
+**This two-bucket split is no longer static, as of 2026-08-04.** A few
+target-dialect fields (`walls:`, bare `start:`, and `facing:` on a
+room-scoped floor prop) have genuinely graduated into the first bucket on
+at least one real server — see "Status tracking: capability-probed, not
+hand-recorded," further down, for the mechanism (`capabilityProbe.ts`)
+that now checks this live instead of this section claiming it by hand.
+The framing above ("v1, real today" vs. "target-dialect-only, not yet
+compiled") still describes the MAJORITY of fields correctly; treat it as
+the default, and the later section as the live exception list.
+
 ## The full annotated example
 
 ```yaml
@@ -1503,80 +1513,128 @@ overlay + centroid label, same archetype coloring
 overlay, but with zero interaction: no tool exists there to create, edit,
 or delete a region this round.
 
-## `place:`/`boss:` facing — compile status now varies by entry type (2026-08-03)
+## `place:`/`boss:` facing — compile status varies by entry type
 
-**Update, 2026-08-03, from a real backend probe (rpg-project#175's
-"Backend feedback: exercising the new authoring API" comment) — this
-supersedes the blanket "not yet compiled" framing this section's own
-badge used to give `facing` uniformly.** Reflection + `validate_only`
-calls against Kirk's authoring branch show floor-prop `facing` genuinely
-COMPILES now — but only for one specific shape: a room-scoped, non-monster,
+**Superseded, 2026-08-04, by the capability-probed graduation unit —
+status here is no longer a manually-recorded snapshot.** The finding
+below was first recorded 2026-08-03 from a one-off backend probe
+(rpg-project#175's "Backend feedback: exercising the new authoring API"
+comment, read by a human, pasted into this file by hand) — that framing
+is retired. `src/concepts/dungeon-builder/capabilityProbe.ts` now
+MECHANIZES the same kind of check: on every live connection, the concept
+sends one minimal `validate_only` doc per entry-type shape and records
+what the CURRENTLY-CONNECTED server actually says, live, in the running
+app — not a claim transcribed from an issue comment at a point in time.
+The table below documents the mechanism and what it found the last time
+this file was updated (2026-08-04, against `rpg-api-dungeon-builder-763`)
+— for what the app's OWN "server capabilities" readout (beside the LIVE
+badge, `YamlPane.tsx`) says right now, run it; that number is the live
+truth, this table is one observation of it.
+
+Reflection + `validate_only` calls show floor-prop `facing` genuinely
+COMPILES — but only for one specific shape: a room-scoped, non-monster,
 non-`mount:wall` placement. Every other entry type still decodes (the
-field is now schema-known) and is then explicitly rejected, with an
+field is schema-known) and is then explicitly rejected, with an
 author-actionable message naming the constraint: `"facing only supported
 on room-scoped floor props"`.
 
-| Entry type                                                        | Compile status                                                                                                                                                                                                                  |
+| Entry type                                                        | Compile status (verified live, 2026-08-04)                                                                                                                                                                                      |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| room-scoped floor prop (`mount` unset/`floor`, not a monster ref) | **compiles** — real, on Kirk's branch                                                                                                                                                                                           |
+| room-scoped floor prop (`mount` unset/`floor`, not a monster ref) | **compiles** — `success: true`, confirmed live                                                                                                                                                                                  |
 | monster `place:` entry                                            | decodes, rejected ("floor props" only)                                                                                                                                                                                          |
 | `boss:` entry                                                     | decodes, rejected (same message)                                                                                                                                                                                                |
 | `mount: wall` placement (any ref)                                 | decodes, rejected (same message)                                                                                                                                                                                                |
 | top-level `place:` (any ref, any mount)                           | rejected for an INDEPENDENT reason first — top-level placement itself isn't supported yet ("place[0]: unsupported capability: top-level placement is not supported") — facing's own support never gets evaluated for this shape |
 
-The Inspector now renders TWO different badges on the same `facing`
+The Inspector still renders TWO different badges on the same `facing`
 control depending on which of these applies to the currently-selected
 placement (`Inspector.tsx`'s `FacingConservativeBadge` vs.
-`TargetDialectBadge`) — a monster, a boss, or a `mount: wall` selection
-shows the more conservative "not yet supported (this entry type)" badge
-with the real validator's own rejection message in its tooltip; a plain
-room-scoped floor prop keeps the ordinary "target dialect, proposed"
-badge, which is now honestly stale in the OPPOSITE direction (see the
-tracking note immediately below) rather than overstated.
+`TargetDialectBadge`) — this unit did not touch `Inspector.tsx` (out of
+scope; the strip/save/badge/probe subsystem was). Whoever picks up
+wiring the Inspector's own badges to `capabilityProbe.ts` next should
+read THAT module first, not re-derive the entry-type split from scratch —
+`facingCapabilityFor` in `dungeonYaml.ts` already encodes it once.
 
-## Status tracking note (2026-08-03): two fields now compile on Kirk's branch, unreleased
+## Status tracking: capability-probed, not hand-recorded (rewritten 2026-08-04)
 
-Per the same rpg-project#175 backend-probe comment: **`start:`** (a bare
-`start: [c,r]`) and **floor-prop `facing`** (the one entry-type shape
-named above) now genuinely compile against Kirk's authoring branch — `start:`
-directly overrides the generator-chosen `FloorPlan.entrance`, exactly the
-"feed straight through, no generator step" resolution this file's own
-"Start/end" section left as an open question. **This branch is
-unreleased** — the shared, gate-off `rpg-api` instance this concept's own
-live-verification arc otherwise talks to does not have it yet. Every
-badge in this concept (`TargetDialectBadge` on `start:`, the facing split
-above) stays exactly as it is — "target dialect, proposed" / the new
-conservative variant — until the branch actually merges/releases; this
-note exists purely so the NEXT session that touches either field knows
-real server support already exists upstream, rather than re-discovering
-it from scratch. Do not flip either badge to "compiles" based on this
-note alone — badge state should track what the shared server this
-concept's own live-preview probe actually reaches, not what exists on an
-unmerged branch.
+**This section used to track individual fields by hand** ("two fields
+now compile on Kirk's branch, unreleased" — the prior version of this
+section, preserved in git history) **— that model is retired.** The
+"which server, which branch, is it released yet" bookkeeping a
+hand-maintained note requires is exactly what `capabilityProbe.ts` now
+does automatically, every time the concept connects to a live server, for
+every target-dialect field at once — a note that goes stale the moment
+anyone merges anything is a worse tool than a probe that can't go stale
+because it re-asks the question on every connection.
 
-## The v1-subset strip — what actually reaches `PutDungeon`
+**What capability-probed graduation actually verified live, 2026-08-04**
+(against `rpg-api-dungeon-builder-763` / its envoy sidecar — see
+`capabilityProbe.ts`'s own doc comment for the full per-field transcript
+this table summarizes):
 
-This concept NEVER sends a target-dialect document to the real server. Before any
-live `validate_only` preview call or a real `Save & Play`, the current
-document is stripped down to exactly what v1 compiles
-(`dungeonYaml.ts`'s `stripToV1Subset`):
+| Field                                                                                                         | Status                                                                                                |
+| ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `walls:`                                                                                                      | **compiles** — real edges, `success: true` (rpg-api#769 / toolkit#881)                                |
+| `start:`                                                                                                      | **compiles** — overrides the generator-chosen `FloorPlan.entrance`                                    |
+| `facing` (room-scoped floor prop only)                                                                        | **compiles** — see the entry-type table above                                                         |
+| `holes:`, `end:`, `canvas:`, `lighting:`, `defaults:`, `regions:`, `height:`, `rotate_degrees:`, `targeting:` | decode-unknown — `"field X not found in type dungeonspec.Y"`                                          |
+| `mount:` (any placement)                                                                                      | schema-known, rejected — `"unsupported capability: mounted placements are not supported"`             |
+| `facing` (monster / boss / `mount:wall`)                                                                      | schema-known, rejected — `"unsupported capability: facing only supported on room-scoped floor props"` |
+| top-level `place:`                                                                                            | schema-known, rejected — `"unsupported capability: top-level placement is not supported"`             |
 
-| Field                                                            | v1 subset                                                                                                                                                                                          |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`                                                        | forced to `1` (never `2` — see the annotated example's own note)                                                                                                                                   |
-| `key`, `name`, `theme`, `height`                                 | kept as-is                                                                                                                                                                                         |
-| `rooms:`                                                         | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                                                                              |
-| `connectors:`                                                    | kept as-is, including `locked:`                                                                                                                                                                    |
-| top-level `place:`                                               | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above                                                           |
-| `canvas:`, `walls:`, `wallLines:`, `start:`, `end:`, `lighting:` | dropped entirely — `walls:`/`wallLines:` counted separately ("N walls" / "N straight walls"), see "Straight walls" above                                                                           |
-| `regions:`                                                       | dropped entirely — no v1 representation of any kind (dungeonspec only knows the declared `rooms:` chain); a region-attachment door edge (`walls:`) is stripped independently, see "regions:" above |
-| `defaults:`                                                      | dropped, but not silently — every placement INHERITING a `blocks_movement`/`blocks_los` value first gets it materialized as a literal key; see "`defaults:`" above                                 |
+A **real, load-bearing finding from building the probe suite, not
+previously documented anywhere in this file**: dungeonspec now rejects a
+room chain with zero boss-archetype rooms outright
+(`"dungeon must have exactly one boss room, found 0"`) — a stricter,
+CHAIN-level requirement than the boss-archetype-room-needs-a-boss
+constraint this file already documented elsewhere. `stripToV1Subset`'s
+`compilable`/`compilableBlockers` check for both `minRooms = 2` AND this
+requirement now — see "The v1-subset strip," immediately below.
 
-If, after stripping, `rooms:` has fewer than 2 entries (dungeonspec's own
-`minRooms = 2`), there IS no compilable subset — a from-scratch canvas
-with zero or one declared room can't be saved at all yet, honestly, until
-at least 2 rooms are declared. The UI says this plainly rather than
-attempting a doomed `PutDungeon` call.
+**Every badge in this concept now reads this probe's live result
+directly** — `YamlPane.tsx`'s compile-badge strip and Save & Play's
+enable/disable, and (as of this unit) creation mode's `ProposedYamlPane`
+too, all read `stripToV1Subset`'s `dropped`/`compiling`/`compilable`
+output, which is itself computed from whatever `capabilityProbe.ts`'s
+`probeAllCapabilities()` found on THIS connection. There is no more
+"badge state should track the shared server, not an unmerged branch"
+caveat to state by hand — the badges structurally can't drift from the
+connected server, because they ARE its answer, re-asked every time.
+
+## The v1-subset strip — what actually reaches `PutDungeon`, capability-aware
+
+This concept NEVER sends a target-dialect document to the real server
+verbatim. Before any live `validate_only` preview call or a real
+"Save & Play," the current document is stripped down to exactly what
+THIS server compiles (`dungeonYaml.ts`'s `stripToV1Subset`, now taking an
+optional `ServerCapabilities` — capability-probed graduation, this unit).
+A field the server accepts is kept, not dropped; a field it doesn't (or
+no `capabilities` at all — fixtures mode, or a probe still in flight) is
+dropped exactly as this table's "no capabilities" column describes, same
+as every version of this concept before capability probing existed:
+
+| Field                                                  | No capabilities (fixtures mode / probe in flight)                                                                                                                                                       | With capabilities (live, 2026-08-04 observation)                                                                                 |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                                              | forced to `1` (never `2`)                                                                                                                                                                               | same                                                                                                                             |
+| `key`, `name`, `theme`, `height`                       | kept as-is                                                                                                                                                                                              | same                                                                                                                             |
+| `rooms:`                                               | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                                                                                   | a room-scoped floor prop's `facing:` survives; monster/boss/`mount:wall` facing, `mount:`, `height:`, `targeting:` still dropped |
+| `connectors:`                                          | kept as-is, including `locked:`                                                                                                                                                                         | same                                                                                                                             |
+| top-level `place:`                                     | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above                                                                | still mapped/dropped — not yet accepted verbatim by any server this concept has reached                                          |
+| `walls:`                                               | dropped, counted ("N walls")                                                                                                                                                                            | **kept verbatim** — real edges, this concept's own headline finding (this unit)                                                  |
+| `start:`                                               | dropped, counted ("start")                                                                                                                                                                              | **kept verbatim** — overrides the compiled `FloorPlan.entrance`                                                                  |
+| `canvas:`, `wallLines:`, `holes:`, `end:`, `lighting:` | dropped entirely — `wallLines:` is NEVER probed (client-side sugar, see `capabilityProbe.ts`'s own doc comment) and always drops regardless of capabilities                                             | still dropped — none of these decode on this server today                                                                        |
+| `regions:`                                             | dropped entirely — no v1 representation of any kind (dungeonspec only knows the declared `rooms:` chain); a region-attachment door edge (`walls:`) is stripped/kept independently, see "regions:" above | still dropped                                                                                                                    |
+| `defaults:`                                            | dropped, but not silently — every placement INHERITING a `blocks_movement`/`blocks_los` value first gets it materialized as a literal key; see "`defaults:`" above                                      | still dropped/materialized — the whole block decode-unknown on this server today                                                 |
+
+If, after stripping, the result has fewer than 2 rooms, OR does not
+contain exactly one boss-archetype room with a declared `boss:`
+(dungeonspec's own `minRooms = 2` AND the "exactly one boss room"
+requirement this unit's probing discovered — see "Status tracking,"
+above), there IS no compilable subset — a from-scratch canvas with no
+declared rooms can't be saved at all yet, honestly, until both real
+minimums are met. `stripToV1Subset`'s `compilableBlockers` names WHICH of
+the two is missing; the UI's Save & Play tooltip shows it directly rather
+than one hardcoded message that may not be the actual reason.
 
 ## Compile badges
 

@@ -24,8 +24,23 @@
  * Save & Play becomes "Save the compilable subset" the moment any are —
  * both computed once in `DungeonBuilderConcept.tsx` (`stripToV1Subset`)
  * and passed down, so this component never re-derives the strip itself.
- */
+ *
+ * **Capability-probed graduation (this unit, 2026-08-04)**: the compile
+ * badges and Save & Play's enable/disable used to read a hardcoded
+ * snapshot of "what dungeonspec compiles" — stale the moment the server
+ * moved (Kirk's authoring branch started compiling authored `walls:` and
+ * bare `start:` for real). `dialectDropped`/`v1Compilable` are now
+ * TRUTH-DRIVEN: `capabilityProbe.ts` probes the real server once per live
+ * connection, `stripToV1Subset` reads the result, and everything below
+ * just renders whatever it's handed — no field name is hardcoded in this
+ * file. `dialectCompiling` is the new positive half of that same split:
+ * constructs present AND accepted, so the badge strip can say "compiles
+ * now" instead of silently omitting them. `capabilities`/
+ * `onRefreshCapabilities` drive the small "server capabilities" readout
+ * beside the LIVE badge — the same probe result, surfaced honestly rather
+ * than only acted on invisibly. */
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
+import { capabilitySummary, type ServerCapabilities } from './capabilityProbe';
 import type { ServerState } from './usePutDungeonPreview';
 import type { SaveState } from './useSaveDungeon';
 
@@ -49,14 +64,28 @@ interface YamlPaneProps {
   walkFieldErrors: ValidationError[];
   walkErrorMessage: string | null;
   /** What `stripToV1Subset` would drop from the CURRENT document — empty
-   * when it's already pure v1. Drives both the compile-badge summary and
-   * the Save & Play button's label/behavior. */
+   * when the server accepts everything present. Drives both the amber
+   * half of the compile-badge summary and the Save & Play button's
+   * label/behavior. */
   dialectDropped: string[];
-  /** False when fewer than 2 rooms remain after stripping — there is
-   * genuinely nothing compilable to save yet (dungeonspec's own
-   * minRooms=2), distinct from "some target-dialect fields would be
-   * dropped but the rest still saves fine". */
+  /** The positive mirror of `dialectDropped`: target-dialect constructs
+   * present AND accepted by the live server's own probed capabilities —
+   * kept in the saved subset, not dropped. Empty in fixtures mode or
+   * while the probe hasn't completed yet (same conservative fallback
+   * `stripToV1Subset` itself uses). */
+  dialectCompiling: string[];
+  /** False when the stripped result is genuinely unsavable — see
+   * `v1CompilableBlockers` for the SPECIFIC reason, rather than one
+   * blanket message. */
   v1Compilable: boolean;
+  /** Human-readable reasons `v1Compilable` is false ("needs at least 2
+   * rooms (has 1)", "needs exactly one boss-archetype room with a
+   * declared boss") — empty when `v1Compilable` is true. */
+  v1CompilableBlockers: string[];
+  /** `null` until the capability probe completes against a live server —
+   * drives the "server capabilities" readout beside the LIVE badge. */
+  capabilities: ServerCapabilities | null;
+  onRefreshCapabilities: () => void;
 }
 
 function ServerBadge({
@@ -117,34 +146,188 @@ function ServerBadge({
   );
 }
 
+/** The "server capabilities" readout beside the LIVE badge — the
+ * capability-probed graduation unit's own honesty surface: what did THIS
+ * server actually say yes to, today, not what this file assumes. Renders
+ * nothing outside live mode (nothing to probe) or before the probe
+ * completes at all (`capabilities === null` with `serverState === 'live'`
+ * reads as mid-probe, not "zero capabilities" — a blank readout, not a
+ * false "0/N"). Exported so `creation/ProposedYamlPane.tsx` can show the
+ * same honest readout rather than only edit mode. */
+export function CapabilitiesLine({
+  serverState,
+  capabilities,
+  onRefresh,
+}: {
+  serverState: ServerState;
+  capabilities: ServerCapabilities | null;
+  onRefresh: () => void;
+}) {
+  if (serverState !== 'live') return null;
+  if (!capabilities) {
+    return (
+      <span style={{ fontSize: 10.5, color: '#8a7a5a' }}>
+        probing server capabilities…
+      </span>
+    );
+  }
+  const { accepted, total } = capabilitySummary(capabilities);
+  return (
+    <span
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        fontSize: 10.5,
+        color: '#8a7a5a',
+      }}
+    >
+      server capabilities: accepts {accepted}/{total} dialect fields
+      <button
+        onClick={onRefresh}
+        title="Re-run the per-field capability probe against this server"
+        style={{
+          fontSize: 10,
+          background: 'none',
+          border: '1px solid var(--border-primary)',
+          color: '#8a7a5a',
+          borderRadius: 3,
+          padding: '0px 5px',
+          cursor: 'pointer',
+        }}
+      >
+        refresh
+      </button>
+    </span>
+  );
+}
+
 /** The compile-badge summary, TARGET-YAML.md's "Compile badges" section:
  * per-feature, not per-line (the `yaml` CST doesn't cheaply give real
  * line/column spans without more plumbing than this honesty is worth).
- * Renders nothing for a pure-v1 document — the badge only appears the
- * moment there's something real to say. */
-function CompileBadgeStrip({ dropped }: { dropped: string[] }) {
-  if (dropped.length === 0) return null;
+ * Renders nothing for a document using no target-dialect construct at
+ * all — the badge only appears the moment there's something real to say.
+ *
+ * Two halves, capability-probed graduation (this unit): `compiling`
+ * (present AND accepted by the live server — a confirming, teal-toned
+ * line) and `dropped` (present and NOT accepted — the original amber
+ * "not yet compiled" line). A field flips from one to the other
+ * automatically as `capabilities` changes; nothing here hardcodes which
+ * field belongs in which bucket. Exported so `creation/ProposedYamlPane.tsx`
+ * reuses the exact same badge rendering rather than a second copy. */
+export function CompileBadgeStrip({
+  dropped,
+  compiling,
+}: {
+  dropped: string[];
+  compiling: string[];
+}) {
+  if (dropped.length === 0 && compiling.length === 0) return null;
   return (
-    <div
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {compiling.length > 0 && (
+        <div
+          style={{
+            fontSize: 11,
+            color: '#8fe8b0',
+            background: '#132018',
+            border: '1px solid #2f5240',
+            borderRadius: 4,
+            padding: '5px 8px',
+            lineHeight: 1.4,
+          }}
+        >
+          Compiles on this server: {compiling.join(', ')}
+        </div>
+      )}
+      {dropped.length > 0 && (
+        <div
+          style={{
+            fontSize: 11,
+            color: '#c9aeff',
+            background: '#1c1526',
+            border: '1px solid #3a2f52',
+            borderRadius: 4,
+            padding: '5px 8px',
+            lineHeight: 1.4,
+          }}
+        >
+          Uses: {dropped.join(', ')} — not yet accepted by this server
+          (TARGET-YAML.md)
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The Save & Play button itself, capability-aware gating and all —
+ * exported so `creation/ProposedYamlPane.tsx` can grow the SAME real
+ * gating this unit gave edit mode's `YamlPane`, instead of duplicating
+ * the disabled-state logic or (worse) keeping its own hardcoded "proposed
+ * schema, can't compile" tooltip that a probed capability could make
+ * false. `labelWhenPure` lets a caller keep a mode-appropriate label for
+ * the fully-v1 case (both modes currently say "Save & Play"; kept as a
+ * parameter rather than hardcoded so a future caller isn't forced to
+ * match). */
+export function SaveAndPlayButton({
+  serverState,
+  saveState,
+  v1Compilable,
+  v1CompilableBlockers,
+  dialectDropped,
+  dialectCompiling,
+  onSaveAndPlay,
+  labelWhenPure = 'Save & Play',
+}: {
+  serverState: ServerState;
+  saveState: SaveState;
+  v1Compilable: boolean;
+  v1CompilableBlockers: string[];
+  dialectDropped: string[];
+  dialectCompiling: string[];
+  onSaveAndPlay: () => void;
+  labelWhenPure?: string;
+}) {
+  const hasDialectFields = dialectDropped.length > 0;
+  const canSave =
+    serverState === 'live' && saveState !== 'saving' && v1Compilable;
+  return (
+    <button
+      onClick={() => onSaveAndPlay()}
+      disabled={!canSave}
+      title={
+        serverState !== 'live'
+          ? 'Server unreachable or authoring disabled — nothing to save to.'
+          : !v1Compilable
+            ? `Nothing compilable yet — ${v1CompilableBlockers.join('; ') || 'declare at least 2 rooms (dungeonspec.Validate requires it).'}`
+            : hasDialectFields
+              ? `Saves the v1-expressible SUBSET (validate_only: false). Dropped: ${dialectDropped.join(', ')}.${dialectCompiling.length > 0 ? ` Compiles: ${dialectCompiling.join(', ')}.` : ''}`
+              : 'PutDungeon(validate_only: false) — persists this dungeon for real.'
+      }
       style={{
-        fontSize: 11,
-        color: '#c9aeff',
-        background: '#1c1526',
-        border: '1px solid #3a2f52',
+        background: canSave ? '#5fd1c9' : 'var(--bg-secondary)',
+        color: canSave ? '#14110f' : '#6a6255',
+        border: canSave ? 'none' : '1px solid var(--border-primary)',
         borderRadius: 4,
-        padding: '5px 8px',
-        lineHeight: 1.4,
+        padding: '5px 10px',
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: canSave ? 'pointer' : 'not-allowed',
       }}
     >
-      Uses: {dropped.join(', ')} — not yet compiled server-side (TARGET-YAML.md)
-    </div>
+      {saveState === 'saving'
+        ? 'Saving…'
+        : hasDialectFields
+          ? 'Save the compilable subset'
+          : labelWhenPure}
+    </button>
   );
 }
 
 /** Shared by both Save & Play and Walk it — `honestyNote`, when given, is
  * appended to the success message (Walk it's one real caveat: the boss
  * pin survives). */
-function SaveResultPanel({
+export function SaveResultPanel({
   saveState,
   savedKey,
   saveFieldErrors,
@@ -241,11 +424,13 @@ export function YamlPane({
   walkFieldErrors,
   walkErrorMessage,
   dialectDropped,
+  dialectCompiling,
   v1Compilable,
+  v1CompilableBlockers,
+  capabilities,
+  onRefreshCapabilities,
 }: YamlPaneProps) {
   const hasDialectFields = dialectDropped.length > 0;
-  const canSave =
-    serverState === 'live' && saveState !== 'saving' && v1Compilable;
   const canWalk = serverState === 'live' && walkState !== 'saving';
   return (
     <aside
@@ -292,37 +477,25 @@ export function YamlPane({
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <ServerBadge serverState={serverState} onRetryProbe={onRetryProbe} />
         </div>
-        <CompileBadgeStrip dropped={dialectDropped} />
+        <CapabilitiesLine
+          serverState={serverState}
+          capabilities={capabilities}
+          onRefresh={onRefreshCapabilities}
+        />
+        <CompileBadgeStrip
+          dropped={dialectDropped}
+          compiling={dialectCompiling}
+        />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button
-            onClick={() => onSaveAndPlay()}
-            disabled={!canSave}
-            title={
-              serverState !== 'live'
-                ? 'Server unreachable or authoring disabled — nothing to save to.'
-                : !v1Compilable
-                  ? 'Nothing compilable yet — declare at least 2 rooms (dungeonspec.Validate requires it).'
-                  : hasDialectFields
-                    ? `Saves the v1-expressible SUBSET (validate_only: false). Dropped: ${dialectDropped.join(', ')}.`
-                    : 'PutDungeon(validate_only: false) — persists this dungeon for real.'
-            }
-            style={{
-              background: canSave ? '#5fd1c9' : 'var(--bg-secondary)',
-              color: canSave ? '#14110f' : '#6a6255',
-              border: canSave ? 'none' : '1px solid var(--border-primary)',
-              borderRadius: 4,
-              padding: '5px 10px',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: canSave ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {saveState === 'saving'
-              ? 'Saving…'
-              : hasDialectFields
-                ? 'Save the compilable subset'
-                : 'Save & Play'}
-          </button>
+          <SaveAndPlayButton
+            serverState={serverState}
+            saveState={saveState}
+            v1Compilable={v1Compilable}
+            v1CompilableBlockers={v1CompilableBlockers}
+            dialectDropped={dialectDropped}
+            dialectCompiling={dialectCompiling}
+            onSaveAndPlay={onSaveAndPlay}
+          />
           <span style={{ fontSize: 11, color: '#8a7a5a' }}>
             {hasDialectFields
               ? 'saves the v1 subset — target-dialect fields dropped, see badge above'
@@ -433,7 +606,7 @@ export function YamlPane({
         saveErrorMessage={saveErrorMessage}
         honestyNote={
           hasDialectFields
-            ? `Saved the compilable subset — dropped: ${dialectDropped.join(', ')} (see TARGET-YAML.md).`
+            ? `Saved the compilable subset — dropped: ${dialectDropped.join(', ')}.${dialectCompiling.length > 0 ? ` Compiled for real: ${dialectCompiling.join(', ')}.` : ''} (see TARGET-YAML.md).`
             : undefined
         }
       />

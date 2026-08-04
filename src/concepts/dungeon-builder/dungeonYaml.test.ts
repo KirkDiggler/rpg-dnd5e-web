@@ -2,6 +2,11 @@ import { hexDistance } from '@/components/hex-grid/hexMath';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {
+  DIALECT_FIELDS,
+  type DialectField,
+  type ServerCapabilities,
+} from './capabilityProbe';
 import { canonicalCorner } from './creation/hexCorner';
 import {
   addCellToRegion,
@@ -983,7 +988,8 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
       expect(result.dropped).toEqual([
         '2 walls',
         '1 hole',
-        'start/end',
+        'start',
+        'end',
         'lighting',
         'facing (1 placement)',
         'wall-mount (1 placement)',
@@ -1086,6 +1092,239 @@ connectors: []
         '1 top-level placement (mapped into rooms)',
         '1 top-level placement outside any room',
       ]);
+    });
+  });
+
+  describe('stripToV1Subset: capability-aware (capability-probed graduation unit)', () => {
+    // Minimal helper: every DialectField the test doesn't explicitly list
+    // is left unaccepted, matching how a real `ServerCapabilities` reads
+    // for a server that hasn't graduated a field yet — never a silent
+    // "everything accepted" default.
+    function caps(accepted: DialectField[]): ServerCapabilities {
+      const all = Object.fromEntries(
+        DIALECT_FIELDS.map((f) => [f, { accepted: false }])
+      ) as ServerCapabilities;
+      for (const field of accepted) all[field] = { accepted: true };
+      return all;
+    }
+
+    it('keeps an accepted walls: verbatim instead of stripping it, and counts it as compiling', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      toggleWall(cst, 7, 0);
+      toggleWall(cst, 7, 4);
+
+      const result = stripToV1Subset(serializeDungeon(cst), caps(['walls']));
+
+      expect(result.dropped).toEqual([]);
+      expect(result.compiling).toEqual(['2 walls']);
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.walls).toHaveLength(2);
+    });
+
+    it('with no capabilities at all, falls back to the prior conservative-static strip (walls always dropped)', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      toggleWall(cst, 7, 0);
+
+      const result = stripToV1Subset(serializeDungeon(cst)); // no second arg
+
+      expect(result.dropped).toEqual(['1 wall']);
+      expect(result.compiling).toEqual([]);
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.walls).toEqual([]);
+    });
+
+    it('start and end are independent capabilities — one can compile while the other still drops', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      setStart(cst, [0, 4]);
+      setEnd(cst, [19, 25]);
+
+      const result = stripToV1Subset(
+        serializeDungeon(cst),
+        caps(['start']) // end NOT accepted
+      );
+
+      expect(result.dropped).toEqual(['end']);
+      expect(result.compiling).toEqual(['start']);
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.start).toEqual([0, 4]);
+      expect(stripped.end).toBeNull();
+    });
+
+    it('facing is gated PER ENTRY TYPE — a floor prop keeps facing while a monster/boss/wall-mount in the same doc still loses it', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      // antechamber's own place[0] (brazier) is a plain floor prop —
+      // real fixture data, not hand-crafted.
+      setPlacementFacing(cst, 'antechamber', 0, 2);
+      placeItem(cst, 'shrine', 'dnd5e:monsters:skeleton-captain', [3, 3]);
+      setPlacementFacing(cst, 'shrine', doc.rooms[1].place.length, 4);
+      setBossFacing(cst, doc.rooms[2].id, 1);
+
+      const result = stripToV1Subset(
+        serializeDungeon(cst),
+        caps(['facingFloorProp']) // monster/boss facing NOT accepted
+      );
+
+      expect(result.dropped).toContain('facing (2 placements)');
+      expect(result.compiling).toContain('facing (1 placement)');
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.rooms[0].place[0].facing).toBe(2);
+      const monster = stripped.rooms[1].place.find((p) => p.isMonster)!;
+      expect(monster.facing).toBeNull();
+      expect(stripped.rooms[2].boss?.facing).toBeNull();
+    });
+
+    it('wall-mount facing is its own DialectField, independent of a plain floor prop facing capability', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      setPlacementFacing(cst, 'antechamber', 0, 2);
+      setPlacementMount(cst, 'antechamber', 0, 'wall');
+
+      const acceptedFloorOnly = stripToV1Subset(
+        serializeDungeon(cst),
+        caps(['facingFloorProp'])
+      );
+      expect(acceptedFloorOnly.dropped).toContain('facing (1 placement)');
+
+      const acceptedWallMountToo = stripToV1Subset(
+        serializeDungeon(cst),
+        caps(['facingFloorProp', 'facingWallMount'])
+      );
+      expect(acceptedWallMountToo.compiling).toContain('facing (1 placement)');
+    });
+
+    it('an accepted defaults: block is kept verbatim — no materialize-on-strip when the server understands it directly', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      setRefDefault(cst, 'dnd5e:props:statue-reaper', 'blocksMovement', true);
+
+      const result = stripToV1Subset(serializeDungeon(cst), caps(['defaults']));
+
+      expect(result.dropped).toEqual([]);
+      expect(result.compiling).toEqual(['1 default ref']);
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.defaults).toEqual({
+        'dnd5e:props:statue-reaper': { blocksMovement: true },
+      });
+      // NOT materialized onto the instance — the server resolves
+      // inheritance itself now, so baking it in here would be redundant.
+      const statue = stripped.rooms
+        .find((r) => r.id === 'shrine')!
+        .place.find((p) => p.ref === 'dnd5e:props:statue-reaper')!;
+      expect(statue.explicit.blocksMovement).toBe(false);
+    });
+
+    it('an accepted topLevelPlace keeps the top-level place: list verbatim instead of mapping it into rooms', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      placeItem(cst, null, 'dnd5e:props:pillar', [10, 3]); // would map into shrine if NOT accepted
+
+      const result = stripToV1Subset(
+        serializeDungeon(cst),
+        caps(['topLevelPlace'])
+      );
+
+      expect(result.dropped).toEqual([]);
+      expect(result.compiling).toEqual(['1 top-level placement']);
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.place).toHaveLength(1);
+      expect(stripped.place[0]).toMatchObject({
+        ref: 'dnd5e:props:pillar',
+        at: [10, 3],
+      });
+      // shrine already legitimately has 8 pillar props of its own
+      // (showcase.yaml's real "colonnade" content) — check the SPECIFIC
+      // room-local coordinate the mapped-down conversion would have used
+      // (10 - shrine's startColumn 7 = 3), not just ref presence.
+      const shrine = stripped.rooms.find((r) => r.id === 'shrine')!;
+      expect(
+        shrine.place.some(
+          (p) =>
+            p.ref === 'dnd5e:props:pillar' && p.at[0] === 3 && p.at[1] === 3
+        )
+      ).toBe(false);
+    });
+
+    it('a kept top-level placement still gets its OWN facing/mount/height/targeting stripped per-field', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      placeItem(cst, null, 'dnd5e:props:pillar', [10, 3]);
+      setPlacementFacing(cst, null, 0, 3);
+      setPlacementHeight(cst, null, 0, 2.0);
+
+      const result = stripToV1Subset(
+        serializeDungeon(cst),
+        caps(['topLevelPlace']) // facing/height NOT accepted
+      );
+
+      const { doc: stripped } = parseDungeon(result.yaml);
+      expect(stripped.place[0].facing).toBeNull();
+      expect(stripped.place[0].height).toBeNull();
+      expect(result.dropped).toEqual(
+        expect.arrayContaining(['facing (1 placement)', 'height (1 placement)'])
+      );
+    });
+
+    it('canvas/holes/regions/lighting each compile independently when their own capability is accepted', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      toggleHole(cst, 3, 6);
+      setLightingAmbient(cst, 0.8);
+      createRegion(cst, doc, 'r1', 'chamber', [[1, 1]]);
+
+      const result = stripToV1Subset(
+        serializeDungeon(cst),
+        caps(['holes', 'lighting', 'regions'])
+      );
+
+      expect(result.dropped).toEqual([]);
+      expect(result.compiling).toEqual(
+        expect.arrayContaining(['1 hole', 'lighting', '1 region'])
+      );
+    });
+
+    it('compilableBlockers names the real, unconditional server minimums — independent of any dialect capability', () => {
+      const oneRoom = `
+version: 1
+key: bare
+name: "Bare"
+height: 8
+rooms:
+  - id: only
+    archetype: entrance
+    width: 6
+connectors: []
+`;
+      const result = stripToV1Subset(oneRoom, caps(['walls', 'start']));
+      expect(result.compilable).toBe(false);
+      expect(result.compilableBlockers).toEqual(
+        expect.arrayContaining(['needs at least 2 rooms (has 1)'])
+      );
+    });
+
+    it('a real, load-bearing finding this unit uncovered: 2+ rooms alone is not enough — the chain needs exactly one boss-archetype room with a declared boss', () => {
+      const twoNonBossRooms = `
+version: 1
+key: no-boss
+name: "No Boss"
+height: 8
+rooms:
+  - id: a
+    archetype: entrance
+    width: 6
+  - id: b
+    archetype: chamber
+    width: 6
+connectors:
+  - { from: a, to: b }
+`;
+      const result = stripToV1Subset(twoNonBossRooms);
+      expect(result.compilable).toBe(false);
+      expect(result.compilableBlockers).toEqual(
+        expect.arrayContaining([
+          'needs exactly one boss-archetype room with a declared boss (has none)',
+        ])
+      );
+    });
+
+    it('a real showcase-shaped document (2 rooms + 1 boss room, boss declared) is compilable with no blockers', () => {
+      const result = stripToV1Subset(SHOWCASE_YAML);
+      expect(result.compilable).toBe(true);
+      expect(result.compilableBlockers).toEqual([]);
     });
   });
 

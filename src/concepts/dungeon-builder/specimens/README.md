@@ -17,6 +17,18 @@ addition. Never conflate the two numbers.
 
 ## Changelog
 
+- **(2026-08-04, no version bump — `stripToV1Subset` reporting shape only,
+  not a new emittable construct)**: the "capability-probed graduation"
+  unit made `stripToV1Subset` capability-aware (`dungeonYaml.ts`) —
+  `kitchen-sink.v1-subset.dropped.json` regenerated to match its new
+  shape: the old combined `"start/end"` entry is now two independent
+  entries, `"start"` and `"end"` (the real server accepts one but not the
+  other — see `capabilityProbe.ts`), and the file gained `compiling`
+  (empty here — this regen calls `stripToV1Subset` with no capabilities,
+  same conservative-static call every prior version of this file used)
+  and `compilableBlockers` (empty — the doc is compilable) alongside the
+  existing `dropped`/`compilable`. `kitchen-sink.yaml` itself is
+  byte-identical; only the report format changed.
 - **v0.3** (2026-08-03) — `erratum: canonical wall adjacency`:
   the real Kitchen Sink mutator calls now emit `[7,1]`→`[8,1]` (solid)
   and `[7,3]`→`[8,3]` (door), replacing the non-adjacent odd-q pairs

@@ -36,6 +36,7 @@ import {
   YAMLMap,
   YAMLSeq,
 } from 'yaml';
+import type { DialectField, ServerCapabilities } from './capabilityProbe';
 import {
   canonicalCorner,
   cornerPoint,
@@ -1127,9 +1128,28 @@ export function stripMonsterPlacements(cst: Document): void {
  * CST, so building a walk variant never disturbs the board being edited.
  * `boss:` is left untouched (see `stripMonsterPlacements`'s doc comment)
  * — the walk variant is NOT monster-free, only place:-monster-free, and
- * the UI must say so rather than implying a true no-encounter walkthrough. */
-export function buildWalkItYaml(yamlText: string, walkKey: string): string {
-  const { cst } = parseDungeon(yamlText);
+ * the UI must say so rather than implying a true no-encounter walkthrough.
+ *
+ * **Capability-probed graduation (this unit, 2026-08-04).** Before this
+ * unit, Walk it sent `yamlText` STRAIGHT to `parseDungeon` — unlike Save &
+ * Play, it never ran `stripToV1Subset` at all, so a document using any
+ * target-dialect construct (walls, start, ...) would fail Walk it's own
+ * save outright the moment that construct was present, regardless of
+ * whether the server actually accepted it. `capabilities` (optional, same
+ * `ServerCapabilities` Save & Play's own strip reads) fixes this: the v1-
+ * expressible/capability-accepted subset is computed FIRST, monster
+ * stripping happens on THAT, so Walk it and Save & Play now agree on what
+ * "compilable" means, and an accepted field (Kirk's `walls:` survives
+ * both saves, not just one. `undefined` (fixtures mode, or a
+ * pre-capability-probe caller/test) falls back to the prior conservative-
+ * static strip, same as `stripToV1Subset` itself. */
+export function buildWalkItYaml(
+  yamlText: string,
+  walkKey: string,
+  capabilities?: ServerCapabilities
+): string {
+  const subsetYaml = stripToV1Subset(yamlText, capabilities).yaml;
+  const { cst } = parseDungeon(subsetYaml);
   stripMonsterPlacements(cst);
   cst.set('key', walkKey);
   return serializeDungeon(cst);
@@ -2230,261 +2250,463 @@ function materializeRefDefaults(
 
 export interface V1SubsetResult {
   /** The stripped, v1-only YAML text — always `version: 1`, never any
-   * target-dialect-only field. */
+   * target-dialect-only field the server doesn't currently accept (an
+   * ACCEPTED field, per `capabilities`, survives verbatim — see this
+   * function's own doc comment). */
   yaml: string;
   /** Human-readable list of what got dropped ("3 walls", "1 hole",
-   * "start/end", "facing (2 placements)", "lighting") — empty when the
-   * input was already pure v1. Drives the "Save the compilable subset"
-   * diff summary (TARGET-YAML.md). */
+   * "start", "facing (2 placements)", "lighting") — empty when the input
+   * uses no target-dialect construct the server currently rejects. Drives
+   * the "Save the compilable subset" diff summary (TARGET-YAML.md) and
+   * the amber half of the compile-badge strip. */
   dropped: string[];
-  /** False when fewer than 2 rooms remain after stripping — dungeonspec's
-   * own `minRooms = 2` (validate.go) makes the result genuinely
-   * unsavable, not merely unenriched. A from-scratch target-dialect
-   * canvas with 0-1 declared rooms has NO compilable subset yet. */
+  /** The mirror of `dropped`: target-dialect constructs present in the
+   * input that `capabilities` says THIS server currently accepts, and
+   * that therefore survived into `yaml` unstripped — "2 walls", "start".
+   * Always empty when `capabilities` is omitted (the conservative static
+   * fallback strips everything target-dialect, same as before this
+   * field existed) — never a guess. Drives the confirming half of the
+   * compile-badge strip, so a badge flips from "Dropped" to "Uses
+   * (compiles)" automatically the moment a server capability changes,
+   * with no static list to hand-edit. */
+  compiling: string[];
+  /** False when the stripped result is genuinely unsavable — dungeonspec's
+   * own real server-side minimums, not a target-dialect concern:
+   * `minRooms = 2` (validate.go), and (verified live, this unit,
+   * 2026-08-04 — not previously documented anywhere in this concept) the
+   * chain must contain EXACTLY ONE boss-archetype room with a declared
+   * `boss:` ("dungeon must have exactly one boss room, found 0" is a
+   * real, current rejection, not a guess). See `compilableBlockers` for
+   * which of these is the actual reason, when false. */
   compilable: boolean;
+  /** Human-readable reasons `compilable` is false ("needs at least 2
+   * rooms (has 1)", "needs exactly one boss-archetype room with a
+   * declared boss") — empty when `compilable` is true. Lets the Save &
+   * Play tooltip name the SPECIFIC blocking constraint instead of one
+   * hardcoded message that may not be the actual reason (a from-scratch
+   * canvas with 2 plain rooms and no boss room fails the real server for
+   * a different reason than "fewer than 2 rooms," and deserves a
+   * different tooltip). */
+  compilableBlockers: string[];
+}
+
+function pluralCount(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+/** Which `DialectField` governs a placement's own `facing:` — the real
+ * server distinguishes by entry type (verified live, this unit,
+ * 2026-08-04: a room-scoped, non-monster, non-`mount:wall` floor prop's
+ * facing compiles; every other shape decodes but is explicitly rejected,
+ * `"unsupported capability: facing only supported on room-scoped floor
+ * props"`), so a single blanket `facing` capability can't answer "is
+ * THIS placement's facing accepted" correctly for anything but the one
+ * shape that currently works. `BossDoc` entries never call this — they
+ * always use `facingBoss` directly (see `stripToV1Subset` below), since
+ * `BossDoc` carries no `isMonster`/`mount` to dispatch on. */
+function facingCapabilityFor(placement: {
+  isMonster: boolean;
+  mount: Mount;
+}): DialectField {
+  if (placement.isMonster) return 'facingMonster';
+  if (placement.mount === 'wall') return 'facingWallMount';
+  return 'facingFloorProp';
 }
 
 /** Strip a target-dialect document down to exactly what dungeonspec
- * compiles today (the v1-expressible subset) — TARGET-YAML.md's "The
- * v1-subset strip" table, in code. Parses a FRESH CST from `yamlText`
- * (never mutates a caller's live board CST), so this is safe to call on
- * every live-preview debounce tick and every Save & Play click without
- * disturbing what the author is editing.
+ * compiles TODAY, ON THIS SERVER — TARGET-YAML.md's "The v1-subset
+ * strip" table, generalized from a static snapshot to a live one.
+ * Parses a FRESH CST from `yamlText` (never mutates a caller's live board
+ * CST), so this is safe to call on every live-preview debounce tick and
+ * every Save & Play click without disturbing what the author is editing.
  *
- * `defaults:` (target dialect, proposed — see `DungeonDoc.defaults`'s own
- * doc comment) is the one dropped construct that isn't simply discarded:
- * `materializeRefDefaults` bakes every inherited `blocks_movement`/
- * `blocks_los` onto its placement FIRST, so the returned subset preserves
- * the authored behavior a default was standing in for. `targeting`/
- * `height`/`facing` defaults have no v1 representation regardless and are
- * lost the same way an explicit one would be — only counted via the
- * `defaults (...)` entry below, not double-counted in the per-field
- * facing/height/targeting tallies further down (those only ever count a
- * literal key actually present on the instance). */
-export function stripToV1Subset(yamlText: string): V1SubsetResult {
+ * `capabilities` (optional, `capabilityProbe.ts`'s `ServerCapabilities`)
+ * is the truth this function now checks before stripping ANY
+ * target-dialect field: present AND accepted → kept verbatim, counted in
+ * `compiling`; present and not accepted (or `capabilities` omitted
+ * entirely — fixtures mode, or a probe that hasn't completed yet) →
+ * stripped exactly as before this unit, counted in `dropped`. This is
+ * the ONLY behavior change from the prior static version: every stripping
+ * DECISION below now asks `accepted(field)` first; the actual strip
+ * mechanics (CST deletes, `dropped`/`compiling` bookkeeping) are
+ * unchanged.
+ *
+ * `defaults:` is the one construct that isn't a plain keep-or-strip
+ * toggle even when NOT accepted: `materializeRefDefaults` bakes every
+ * inherited `blocks_movement`/`blocks_los` onto its placement FIRST, so
+ * the returned subset preserves the authored behavior a default was
+ * standing in for. `targeting`/`height`/`facing` defaults have no v1
+ * representation regardless of inheritance and are lost the same way an
+ * explicit one would be — only counted via the `defaults (...)` entry,
+ * never double-counted in the per-field facing/height/targeting tallies
+ * further down (those only ever count a literal key actually present on
+ * the instance). If `defaults` IS accepted, none of this runs — the whole
+ * `defaults:` block is kept exactly as authored, materialization
+ * skipped entirely (nothing to bake onto anything; the server now
+ * resolves the inheritance itself). */
+export function stripToV1Subset(
+  yamlText: string,
+  capabilities?: ServerCapabilities
+): V1SubsetResult {
   const { cst, doc } = parseDungeon(yamlText);
   const dropped: string[] = [];
+  const compiling: string[] = [];
+  const accepted = (field: DialectField): boolean =>
+    capabilities?.[field]?.accepted === true;
 
   cst.set('version', 1);
-  cst.delete('canvas');
 
-  // Materialize-on-strip (see `materializeRefDefaults`'s own doc
-  // comment): bake every INHERITED blocks_movement/blocks_los onto its
-  // placement BEFORE defaults: is dropped below, so the compilable
-  // subset preserves the authored behavior a ref-level default was
-  // standing in for — a `blocks_movement: true` default silently
-  // vanishing on strip would be exactly the kind of gap CONTRACT.md's
-  // "entrance-blocked" UX learning exists to catch, just moved from the
-  // live board to the saved subset.
-  const { usedRefs: defaultRefsUsed, placementsMaterialized } =
-    materializeRefDefaults(cst, doc);
-  const defaultRefCount = Object.keys(doc.defaults).length;
-  if (defaultRefCount > 0) {
-    dropped.push(
-      placementsMaterialized > 0
-        ? `defaults (${defaultRefCount} ref${defaultRefCount === 1 ? '' : 's'}; blocks_movement/blocks_los materialized onto ${placementsMaterialized} placement${placementsMaterialized === 1 ? '' : 's'} from ${defaultRefsUsed.size} of them)`
-        : `defaults (${defaultRefCount} ref${defaultRefCount === 1 ? '' : 's'})`
-    );
+  if (doc.canvas) {
+    if (accepted('canvas')) {
+      compiling.push('canvas');
+    } else {
+      dropped.push('canvas');
+      cst.delete('canvas');
+    }
   }
-  cst.delete('defaults');
+
+  if (Object.keys(doc.defaults).length > 0 && accepted('defaults')) {
+    compiling.push(
+      pluralCount(Object.keys(doc.defaults).length, 'default ref')
+    );
+  } else {
+    // Materialize-on-strip (see `materializeRefDefaults`'s own doc
+    // comment): bake every INHERITED blocks_movement/blocks_los onto its
+    // placement BEFORE defaults: is dropped below, so the compilable
+    // subset preserves the authored behavior a ref-level default was
+    // standing in for — a `blocks_movement: true` default silently
+    // vanishing on strip would be exactly the kind of gap CONTRACT.md's
+    // "entrance-blocked" UX learning exists to catch, just moved from the
+    // live board to the saved subset.
+    const { usedRefs: defaultRefsUsed, placementsMaterialized } =
+      materializeRefDefaults(cst, doc);
+    const defaultRefCount = Object.keys(doc.defaults).length;
+    if (defaultRefCount > 0) {
+      dropped.push(
+        placementsMaterialized > 0
+          ? `defaults (${defaultRefCount} ref${defaultRefCount === 1 ? '' : 's'}; blocks_movement/blocks_los materialized onto ${placementsMaterialized} placement${placementsMaterialized === 1 ? '' : 's'} from ${defaultRefsUsed.size} of them)`
+          : `defaults (${defaultRefCount} ref${defaultRefCount === 1 ? '' : 's'})`
+      );
+    }
+    cst.delete('defaults');
+  }
 
   if (doc.walls.length > 0) {
-    dropped.push(
-      `${doc.walls.length} wall${doc.walls.length === 1 ? '' : 's'}`
-    );
+    if (accepted('walls')) {
+      compiling.push(pluralCount(doc.walls.length, 'wall'));
+    } else {
+      dropped.push(pluralCount(doc.walls.length, 'wall'));
+      cst.delete('walls');
+    }
   }
-  cst.delete('walls');
 
-  // Straight walls (this unit) — a sibling target-dialect-only construct
-  // to `walls:` above, dropped the same honest way, counted separately
-  // ("N straight walls", not folded into the edge-wall tally) since the
-  // two are genuinely different authoring constructs (see
-  // `WallLineDoc`'s own doc comment).
+  // Straight walls — a sibling target-dialect-only construct to `walls:`
+  // above, NOT probed (see capabilityProbe.ts's own doc comment: it's
+  // this concept's own client-side sugar, never sent to the real server
+  // in any form) — always dropped, counted separately from the edge-wall
+  // tally since the two are genuinely different authoring constructs
+  // (see `WallLineDoc`'s own doc comment).
   if (doc.wallLines.length > 0) {
-    dropped.push(
-      `${doc.wallLines.length} straight wall${doc.wallLines.length === 1 ? '' : 's'}`
-    );
+    dropped.push(pluralCount(doc.wallLines.length, 'straight wall'));
   }
   cst.delete('wallLines');
 
   if (doc.holes.length > 0) {
-    dropped.push(
-      `${doc.holes.length} hole${doc.holes.length === 1 ? '' : 's'}`
-    );
+    if (accepted('holes')) {
+      compiling.push(pluralCount(doc.holes.length, 'hole'));
+    } else {
+      dropped.push(pluralCount(doc.holes.length, 'hole'));
+      cst.delete('holes');
+    }
   }
-  cst.delete('holes');
 
-  // Cell-authored semantic regions (rpg-project#180) have no v1
-  // representation at all — dungeonspec only knows the declared `rooms:`
-  // chain. Dropped entirely, counted honestly like every other
-  // target-dialect construct here. A door edge a `connectRegions` call
-  // placed on a region's boundary is a SEPARATE `walls:` entry (see
-  // `connectRegions`'s own doc comment) and is stripped independently by
-  // the `walls:` handling above — deleting `regions:` here never touches it.
+  // Cell-authored semantic regions (rpg-project#180). A door edge a
+  // `connectRegions` call placed on a region's boundary is a SEPARATE
+  // `walls:` entry (see `connectRegions`'s own doc comment) and is
+  // handled independently by the `walls:` block above — this block never
+  // touches it either way.
   if (doc.regions.length > 0) {
-    dropped.push(
-      `${doc.regions.length} region${doc.regions.length === 1 ? '' : 's'}`
-    );
+    if (accepted('regions')) {
+      compiling.push(pluralCount(doc.regions.length, 'region'));
+    } else {
+      dropped.push(pluralCount(doc.regions.length, 'region'));
+      cst.delete('regions');
+    }
   }
-  cst.delete('regions');
 
-  if (doc.start || doc.end) dropped.push('start/end');
-  cst.delete('start');
-  cst.delete('end');
+  // start/end are INDEPENDENT capabilities, not one combined toggle —
+  // verified live, this unit, 2026-08-04: a bare `start: [c,r]` compiles
+  // today, `end:` does not (no schema representation of any kind, per
+  // this file's own `DungeonDoc.end` doc comment) — collapsing them into
+  // one "start/end" check (the prior behavior) would either wrongly keep
+  // `end:` or wrongly strip a compiling `start:`.
+  if (doc.start) {
+    if (accepted('start')) {
+      compiling.push('start');
+    } else {
+      dropped.push('start');
+      cst.delete('start');
+    }
+  }
+  if (doc.end) {
+    if (accepted('end')) {
+      compiling.push('end');
+    } else {
+      dropped.push('end');
+      cst.delete('end');
+    }
+  }
 
-  if (doc.lighting) dropped.push('lighting');
-  cst.delete('lighting');
+  if (doc.lighting) {
+    if (accepted('lighting')) {
+      compiling.push('lighting');
+    } else {
+      dropped.push('lighting');
+      cst.delete('lighting');
+    }
+  }
 
-  // Top-level place: (target dialect, proposed — TARGET-YAML.md's "top-level
-  // placement" section) has no v1 analog at all; dungeonspec only knows
-  // room-scoped place:. A top-level entry whose absolute column falls
-  // inside a declared room's own column range MAPS DOWN into that
-  // room's place: list (absolute -> room-local `at`) rather than being
-  // lost — v1's room-scoped place: is a real subset of what the entry
-  // meant, not a different claim. One outside every room's range has no
-  // v1 home and is dropped, counted honestly like every other
-  // target-dialect field here. Room bounds use the SAME startColumn accumulation rule
-  // floorPlanCompile.ts uses server-side (`next.startColumn =
-  // prev.startColumn + prev.width + 1`) — pure client math, only ever
-  // used here to decide "does this column fall in this room," never to
-  // author a gameplay position.
+  // Top-level place: (TARGET-YAML.md's "top-level placement" section) has
+  // no v1 analog at all when NOT accepted; dungeonspec only knows
+  // room-scoped place:. Not accepted (today's server): a top-level entry
+  // whose absolute column falls inside a declared room's own column range
+  // MAPS DOWN into that room's place: list (absolute -> room-local `at`)
+  // rather than being lost; one outside every room's range has no v1 home
+  // and is dropped. Room bounds use the SAME startColumn accumulation
+  // rule floorPlanCompile.ts uses server-side. Accepted: the whole
+  // top-level `place:` list is kept exactly as authored — no mapping, no
+  // room-scoping — and each of ITS items still gets the same per-field
+  // (facing/mount/height/targeting/rotate_degrees) stripping every
+  // room-scoped placement gets, via the pass below.
   let mappedPlacementCount = 0;
   let outOfRoomPlacementCount = 0;
+  const topLevelPlaceAccepted = accepted('topLevelPlace');
   const topPlace = cst.get('place');
-  if (isSeq(topPlace)) {
-    const roomBounds = doc.rooms.reduce<
-      { id: string; startColumn: number; width: number }[]
-    >((acc, r) => {
-      const prev = acc[acc.length - 1];
-      const startColumn = prev ? prev.startColumn + prev.width + 1 : 0;
-      acc.push({ id: r.id, startColumn, width: r.width });
-      return acc;
-    }, []);
-    for (const item of [...topPlace.items]) {
-      if (!isMap(item)) continue;
-      const atNode = item.get('at');
-      if (!isSeq(atNode)) continue;
-      const col = atNode.get(0) as number;
-      const row = atNode.get(1) as number;
-      const room = roomBounds.find(
-        (r) => col >= r.startColumn && col < r.startColumn + r.width
-      );
-      if (!room) {
-        outOfRoomPlacementCount++;
-        continue;
+  if (isSeq(topPlace) && topPlace.items.length > 0) {
+    if (topLevelPlaceAccepted) {
+      compiling.push(pluralCount(topPlace.items.length, 'top-level placement'));
+    } else {
+      const roomBounds = doc.rooms.reduce<
+        { id: string; startColumn: number; width: number }[]
+      >((acc, r) => {
+        const prev = acc[acc.length - 1];
+        const startColumn = prev ? prev.startColumn + prev.width + 1 : 0;
+        acc.push({ id: r.id, startColumn, width: r.width });
+        return acc;
+      }, []);
+      for (const item of [...topPlace.items]) {
+        if (!isMap(item)) continue;
+        const atNode = item.get('at');
+        if (!isSeq(atNode)) continue;
+        const col = atNode.get(0) as number;
+        const row = atNode.get(1) as number;
+        const room = roomBounds.find(
+          (r) => col >= r.startColumn && col < r.startColumn + r.width
+        );
+        if (!room) {
+          outOfRoomPlacementCount++;
+          continue;
+        }
+        const localAtNode = new YAMLSeq(cst.schema);
+        localAtNode.flow = true;
+        localAtNode.items = [col - room.startColumn, row];
+        item.set('at', localAtNode);
+        placeSeq(cst, room.id).items.push(item);
+        mappedPlacementCount++;
       }
-      const localAtNode = new YAMLSeq(cst.schema);
-      localAtNode.flow = true;
-      localAtNode.items = [col - room.startColumn, row];
-      item.set('at', localAtNode);
-      placeSeq(cst, room.id).items.push(item);
-      mappedPlacementCount++;
+      cst.delete('place');
+      if (mappedPlacementCount > 0) {
+        dropped.push(
+          `${mappedPlacementCount} top-level placement${mappedPlacementCount === 1 ? '' : 's'} (mapped into rooms)`
+        );
+      }
+      if (outOfRoomPlacementCount > 0) {
+        dropped.push(
+          `${outOfRoomPlacementCount} top-level placement${outOfRoomPlacementCount === 1 ? '' : 's'} outside any room`
+        );
+      }
     }
-  }
-  cst.delete('place');
-  // `dropped` drives BOTH the "Uses: ..." compile badge (what
-  // target-dialect content is currently present) and the post-save
-  // "Dropped: ..." honesty note (YamlPane.tsx) — the same array, doing
-  // double duty for every other target-dialect field, because for every
-  // other field "in use" and "genuinely lost" are the same set. Top-level
-  // placement is the first case where
-  // they diverge: a mapped one survives (relocated, not erased), an
-  // out-of-room one doesn't. Both still need to show up in "Uses:" (the
-  // construct IS present), so both get an entry — worded to stay honest
-  // in the "Dropped:" reading too ("mapped into rooms" is not "lost").
-  if (mappedPlacementCount > 0) {
-    dropped.push(
-      `${mappedPlacementCount} top-level placement${mappedPlacementCount === 1 ? '' : 's'} (mapped into rooms)`
-    );
-  }
-  if (outOfRoomPlacementCount > 0) {
-    dropped.push(
-      `${outOfRoomPlacementCount} top-level placement${outOfRoomPlacementCount === 1 ? '' : 's'} outside any room`
-    );
   }
 
-  let facingCount = 0;
-  let mountCount = 0;
-  let heightCount = 0;
-  let targetingCount = 0;
-  let rotationDegreesCount = 0;
-  const stripPlacementFields = (item: YAMLMap) => {
+  let facingDroppedCount = 0;
+  let facingCompilingCount = 0;
+  let mountDroppedCount = 0;
+  let mountCompilingCount = 0;
+  let heightDroppedCount = 0;
+  let heightCompilingCount = 0;
+  let targetingDroppedCount = 0;
+  let targetingCompilingCount = 0;
+  let rotationDroppedCount = 0;
+  let rotationCompilingCount = 0;
+
+  // Shared by every room-scoped place:/boss: entry AND (when
+  // topLevelPlaceAccepted) every kept top-level place: entry — one place
+  // this per-field stripping logic lives, rather than duplicated per
+  // caller. `facingCap` is resolved by the CALLER (facingCapabilityFor
+  // for a PlacementDoc, or the literal 'facingBoss' for a BossDoc) since
+  // only the caller knows which doc/index it's looking at.
+  const stripPlacementFields = (item: YAMLMap, facingCap: DialectField) => {
     if (item.has('facing')) {
-      item.delete('facing');
-      facingCount++;
+      if (accepted(facingCap)) {
+        facingCompilingCount++;
+      } else {
+        item.delete('facing');
+        facingDroppedCount++;
+      }
     }
-    // mount/height are DECOUPLED (Kirk-batch, 2026-08-02 — see
-    // setPlacementMount's/setPlacementHeight's own doc comments): a
-    // placement can carry either, both, or neither, so each is counted
-    // and stripped independently, matching rotate_degrees's own
-    // already-independent shape just below.
+    // mount/height are DECOUPLED (Kirk-batch, 2026-08-02): a placement
+    // can carry either, both, or neither, so each is counted and
+    // stripped independently, matching rotate_degrees's own already-
+    // independent shape below.
     if (item.has('mount')) {
-      item.delete('mount');
-      mountCount++;
+      if (accepted('mount')) {
+        mountCompilingCount++;
+      } else {
+        item.delete('mount');
+        mountDroppedCount++;
+      }
     }
     if (item.has('height')) {
-      item.delete('height');
-      heightCount++;
+      if (accepted('height')) {
+        heightCompilingCount++;
+      } else {
+        item.delete('height');
+        heightDroppedCount++;
+      }
     }
     if (item.has('targeting')) {
-      item.delete('targeting');
-      targetingCount++;
+      if (accepted('targeting')) {
+        targetingCompilingCount++;
+      } else {
+        item.delete('targeting');
+        targetingDroppedCount++;
+      }
     }
-    // EXPERIMENT, not even a target-dialect proposal (see
-    // PlacementDoc.rotationDegrees's own doc comment) — counted and
-    // stripped separately from mount/height rather than folded into
-    // that count, so the "Uses:"/"Dropped:" summary can name it
-    // honestly as the fine-rotation probe it is, not as part of the
-    // real wall-mount proposal.
+    // EXPERIMENT, not even a target-dialect proposal — never probed,
+    // never accepted; kept as its own always-strip counter so a future
+    // probe result can slot in the same `accepted('rotationDegrees')`
+    // shape as every other field without a second code path.
     if (item.has('rotate_degrees')) {
-      item.delete('rotate_degrees');
-      rotationDegreesCount++;
+      if (accepted('rotationDegrees')) {
+        rotationCompilingCount++;
+      } else {
+        item.delete('rotate_degrees');
+        rotationDroppedCount++;
+      }
     }
   };
+
   const rooms = cst.get('rooms');
   if (isSeq(rooms)) {
-    for (const room of rooms.items) {
-      if (!isMap(room)) continue;
+    rooms.items.forEach((room, ri) => {
+      if (!isMap(room)) return;
       const place = room.get('place', true);
-      if (isSeq(place)) {
-        for (const item of place.items) {
-          if (isMap(item)) stripPlacementFields(item);
-        }
+      const docPlacements = doc.rooms[ri]?.place;
+      if (isSeq(place) && docPlacements) {
+        place.items.forEach((item, pi) => {
+          if (!isMap(item)) return;
+          const placement = docPlacements[pi];
+          const facingCap = placement
+            ? facingCapabilityFor(placement)
+            : 'facingFloorProp';
+          stripPlacementFields(item, facingCap);
+        });
       }
       const boss = room.get('boss', true);
-      if (isMap(boss)) stripPlacementFields(boss);
+      if (isMap(boss)) stripPlacementFields(boss, 'facingBoss');
+    });
+  }
+  // Kept top-level placements (topLevelPlaceAccepted) never went through
+  // the rooms loop above — their own facing/mount/height/etc. still need
+  // stripping per-field, same as any room-scoped placement.
+  if (topLevelPlaceAccepted) {
+    const keptTopPlace = cst.get('place');
+    if (isSeq(keptTopPlace)) {
+      keptTopPlace.items.forEach((item, pi) => {
+        if (!isMap(item)) return;
+        const placement = doc.place[pi];
+        const facingCap = placement
+          ? facingCapabilityFor(placement)
+          : 'facingFloorProp';
+        stripPlacementFields(item, facingCap);
+      });
     }
   }
-  if (facingCount > 0) {
+
+  if (facingDroppedCount > 0) {
     dropped.push(
-      `facing (${facingCount} placement${facingCount === 1 ? '' : 's'})`
+      `facing (${facingDroppedCount} placement${facingDroppedCount === 1 ? '' : 's'})`
     );
   }
-  if (mountCount > 0) {
-    dropped.push(
-      `wall-mount (${mountCount} placement${mountCount === 1 ? '' : 's'})`
+  if (facingCompilingCount > 0) {
+    compiling.push(
+      `facing (${facingCompilingCount} placement${facingCompilingCount === 1 ? '' : 's'})`
     );
   }
-  if (heightCount > 0) {
+  if (mountDroppedCount > 0) {
     dropped.push(
-      `height (${heightCount} placement${heightCount === 1 ? '' : 's'})`
+      `wall-mount (${mountDroppedCount} placement${mountDroppedCount === 1 ? '' : 's'})`
     );
   }
-  if (targetingCount > 0) {
-    dropped.push(
-      `targeting (${targetingCount} placement${targetingCount === 1 ? '' : 's'})`
+  if (mountCompilingCount > 0) {
+    compiling.push(
+      `wall-mount (${mountCompilingCount} placement${mountCompilingCount === 1 ? '' : 's'})`
     );
   }
-  if (rotationDegreesCount > 0) {
+  if (heightDroppedCount > 0) {
     dropped.push(
-      `fine-rotation experiment (${rotationDegreesCount} placement${rotationDegreesCount === 1 ? '' : 's'})`
+      `height (${heightDroppedCount} placement${heightDroppedCount === 1 ? '' : 's'})`
+    );
+  }
+  if (heightCompilingCount > 0) {
+    compiling.push(
+      `height (${heightCompilingCount} placement${heightCompilingCount === 1 ? '' : 's'})`
+    );
+  }
+  if (targetingDroppedCount > 0) {
+    dropped.push(
+      `targeting (${targetingDroppedCount} placement${targetingDroppedCount === 1 ? '' : 's'})`
+    );
+  }
+  if (targetingCompilingCount > 0) {
+    compiling.push(
+      `targeting (${targetingCompilingCount} placement${targetingCompilingCount === 1 ? '' : 's'})`
+    );
+  }
+  if (rotationDroppedCount > 0) {
+    dropped.push(
+      `fine-rotation experiment (${rotationDroppedCount} placement${rotationDroppedCount === 1 ? '' : 's'})`
+    );
+  }
+  if (rotationCompilingCount > 0) {
+    compiling.push(
+      `fine-rotation experiment (${rotationCompilingCount} placement${rotationCompilingCount === 1 ? '' : 's'})`
     );
   }
 
   const strippedDoc = toDungeonDoc(cst);
+  const compilableBlockers: string[] = [];
+  if (strippedDoc.rooms.length < 2) {
+    compilableBlockers.push(
+      `needs at least 2 rooms (has ${strippedDoc.rooms.length})`
+    );
+  }
+  const bossRooms = strippedDoc.rooms.filter((r) => r.archetype === 'boss');
+  if (bossRooms.length !== 1 || !bossRooms[0]?.boss) {
+    compilableBlockers.push(
+      bossRooms.length === 0
+        ? 'needs exactly one boss-archetype room with a declared boss (has none)'
+        : bossRooms.length > 1
+          ? `needs exactly one boss-archetype room (has ${bossRooms.length})`
+          : 'the boss-archetype room needs a declared boss'
+    );
+  }
+
   return {
     yaml: serializeDungeon(cst),
     dropped,
-    compilable: strippedDoc.rooms.length >= 2,
+    compiling,
+    compilable: compilableBlockers.length === 0,
+    compilableBlockers,
   };
 }
