@@ -4902,3 +4902,204 @@ canvas sentinel). `ci-check` clean (format/lint/typecheck/build/test).
   under Live verification — code-reviewed and its sibling branch
   live-verified, not independently live-clicked, due to automation flakiness
   in the pre-existing accordion control, not this unit's own code.
+
+## Region tree unit: `RegionPanel` renders the derived scopes model, root row and all (2026-08-04, rpg-project#180)
+
+Platform settled a model refinement on #180 across four consumer-position
+comments the same day (issue comments `5183646492`, `5183689311`,
+`5183885326`, `5184744940` — "the runtime landing strip already exists"):
+**regions are scopes**. Four rules, in order of dependency:
+
+1. **Implicit root region.** Every cell belongs to exactly one region;
+   unpainted floor belongs to the implicit generic/root region — the model
+   is total, no "regionless" special case.
+2. **Nesting is strict containment ONLY**, resolved innermost-wins, like
+   lexical scopes. Venn/partial overlap remains forbidden.
+3. **The YAML stays flat — nesting is derived, never written.** A region is
+   inside another because its cells are a strict SUBSET of the outer
+   region's own declared `cells:` (the outer region's list literally
+   includes the inner one's cells). No `parent:` field, ever.
+4. **Containment forms chains.** Because overlap is allowed only by
+   containment, any two regions sharing a cell must be nested, hence
+   comparable — the parent of a region is its unique smallest strict
+   superset.
+
+This unit is the region panel's half of that model: render the SCOPES the
+document actually describes, not a flat list, with the implicit root as a
+real, honest row.
+
+### `regionTree.ts` — the derivation, kept pure and dialect-independent
+
+New `regionTree.ts`, sibling to `regionGeometry.ts` and following the SAME
+discipline that file's own header comment states: no dependency on
+`DungeonDoc`/`RegionDoc`, every function takes a plain `RegionLike[]`
+(`{id, name?, archetype, cells}`), so both boards and `dungeonYaml.ts` can
+import it without a cycle, and it's unit-testable without a CST document.
+
+- **`buildRegionTree(regions)`** — the containment forest. For every pair,
+  compares cell-set sizes against the shared-cell count to classify the
+  relationship as disjoint / strict-subset-either-way / overlap in one
+  formula (`relate`), rather than three separate subset checks. Parent =
+  the ancestor candidate with the SMALLEST cell count (tightest fit) —
+  verified by a test where a region has TWO valid ancestors of different
+  sizes (a tight inner chamber and a much bigger outer wing) and the tight
+  one wins, not the first one found. Depth 1 = a direct child of the
+  implicit root (root itself is depth 0 and uninstantiated — it has no
+  `RegionLike` to hold); a flat, un-nested document — everything the brush
+  can author today — puts every region at depth 1, which is the model's own
+  one-level forest, not a degraded case.
+- **`RegionOverlapWarning`** — two regions that share cells with NEITHER a
+  strict subset of the other (a true Venn overlap, or even two regions
+  painted onto the identical cell set — same-size-same-cells doesn't count
+  as containment either, since containment requires a genuine size
+  difference). Carries a capped cell sample (`OVERLAP_SAMPLE_CELLS = 6`)
+  plus the true count, for an author-facing "these don't nest" message.
+- **`flattenRegionTree(tree)`** — pre-order (parent-immediately-before-
+  children) flatten, the natural render order for an indented list.
+- **`rootCellCount(totalFloorCells, regions)`** — the implicit root's own
+  cell count: `totalFloorCells` minus every cell claimed by ANY region at
+  ANY depth (unions everything rather than just top-level regions, so it
+  stays correct even for a malformed/warned document where the "child
+  cells are always a literal subset of the parent's declared list"
+  invariant doesn't hold). **Floor-source-agnostic on purpose**: "the
+  floor" means something different for creation mode's canvas
+  (`creation/canvasFloor.ts`'s `deriveCanvasFloorCells` — the canvas
+  grid's bounds minus holes, what `RegionPanel.tsx` feeds it this round)
+  than for a compiled/edit-mode document (the server-generated
+  `FloorPlan`'s room geometry). Only creation mode has a regions panel to
+  show a root row in **this round** — edit mode's `Board.tsx` renders
+  authored regions read-only with no panel at all (unchanged) — so the
+  compiled-doc case has no consumer yet; the function doesn't hardcode
+  canvas assumptions so an edit-mode consumer can reuse it later without
+  this module needing to know about `FloorPlan`.
+- **`regionsByPaintOrder(regions)`** — biggest-cell-count-first sort, used
+  by BOTH boards' read-only/interactive region overlays (below), kept here
+  rather than duplicated because it's the same "regions are scopes" size
+  reasoning: a child's cell count is always less than its parent's.
+
+### `RegionPanel.tsx` — the tree, root row first
+
+The panel's "nothing pending/selected" branch (`CreationBoard.tsx`'s Region
+tool with no in-progress gesture) used to `doc.regions.map` a flat list, and
+returned `null` outright when `doc.regions.length === 0` ("nothing useful to
+list"). Now:
+
+- **Renders even at zero authored regions** — the root row alone, holding
+  the whole canvas floor. Picking up the Region tool now immediately shows
+  the total-coverage model before anything is painted, rather than only
+  becoming honest once a first region exists.
+- **Root row**: `(everything else)` + `rootCellCount(deriveCanvasFloorCells(doc), doc.regions)`,
+  dashed border, muted italic styling, `cursor: default` — informational
+  only this round, not selectable (nothing to edit on it yet; noted in the
+  row's own `title` tooltip as a future home for root-scope defaults).
+- **Real regions**: `flattenRegionTree(buildRegionTree(doc.regions))`,
+  indented `(depth - 1) * 14px` per row — a flat document (every region at
+  depth 1) renders with zero extra indent, unchanged from before; a nested
+  document indents each level under its parent. Click-to-select, the
+  editing hint, and the connect callout are untouched — same
+  `regionEdit`/`selectRegion` wiring as before, just fed the tree's flat
+  render order instead of `doc.regions` directly.
+- **Overlap warnings**: a red banner (same error palette this panel's own
+  id-validation messages already use — `#ff9a8a` on `#2a1512`) above the
+  list, one line per `RegionOverlapWarning`, naming both regions by
+  name-or-id, the cell count, a capped cell sample, and citing #180's
+  containment rule.
+
+### Board overlay ordering: authoring order was accidental, paint order now isn't
+
+`Board.tsx` (edit mode, read-only) and `CreationBoard.tsx` (creation mode,
+interactive) both iterated `doc.regions` in raw array/declaration order for
+their tinted-hex overlays — for a NESTED document, this only drew the inner
+region on top of the outer one if the author happened to declare outer
+before inner in the YAML. No nested document exists in the wild yet
+(shipped `validateRegionCells` is still flat non-overlap — see the dialect
+note below), but a hand-typed one pasted into the YAML pane shouldn't
+depend on declaration order to render sanely, and the brief asked this to
+be checked and fixed cheaply if it wasn't. Both loops now iterate
+`regionsByPaintOrder(doc.regions)` instead — biggest cell count first —
+so a nested region's tint always lands on top of its container's without
+either renderer needing to compute the actual containment forest just to
+get paint order right.
+
+**Proven, not assumed**: a direct DOM check (Playwright `evaluate`, not
+just a screenshot) against a doc authored with regions declared
+INNERMOST-FIRST — `reliquary` (1 cell, boss/red) before `vault` (3 cells)
+before `crypt` (6 cells, chamber/green), the reverse of "natural" order —
+confirms three overlapping polygons stack at the shared cell in DOM order
+`crypt (green) → vault (green) → reliquary (red)`, i.e. paint order tracks
+cell-count, not declaration order; the red boss region is topmost despite
+being declared first. Screenshot:
+`docs/evidence/dungeon-builder-region-tree-paint-order-proof.png`.
+
+### Dialect note: today's ceiling is a one-level forest, by construction
+
+The interactive brush still can't paint a nested region — `validateRegionCells`
+(`dungeonYaml.ts`) rejects ANY shared cell, containment included, unchanged
+by this unit (out of scope per the brief: "no nested-painting authoring, no
+validation-rule changes"). So every document the creation board itself can
+currently produce is a flat one-level forest — `buildRegionTree` handles
+arbitrary depth regardless, so it renders correctly the day validation
+allows painting a nested region, and renders a hand-edited YAML document
+(pasted into the YAML pane) that already nests today, since the PARSER
+doesn't enforce non-overlap, only the brush's mutators do.
+
+### Live verification
+
+Real dev server (`vite --port 5183` — never `:3001`), Playwright driving the
+actual hex-true board (own coordinate math replicated from
+`hooks/wallRuns.ts`'s `cubeAtColRow` + `hex-grid/hexMath.ts`'s `cubeToWorld`,
+since the board has no per-cell DOM click target — a single SVG-level
+pointer handler resolves clicks from world position, same reason
+`creationGeometry.ts`'s own header comment gives).
+
+1. **Region tool armed, zero regions painted** — root row alone,
+   `(everything else) 600` (the full 20×30 default canvas).
+   `docs/evidence/dungeon-builder-region-tree-root-only.png`.
+2. **One real region painted** (`north-alcove`, 4 cells) — root row updates
+   to `596`, region listed below at depth 1.
+   `docs/evidence/dungeon-builder-region-tree-flat-one-region.png`.
+3. **Hand-pasted nested chain** (crypt ⊃ vault ⊃ reliquary, 6/3/1 cells) —
+   root row `594` (600 − 6, unioned not double-subtracted), three rows
+   visibly step-indented one level deeper each.
+   `docs/evidence/dungeon-builder-region-tree-nested-chain.png`.
+4. **Hand-pasted Venn overlap** (`room-a`/`room-b`, 2 shared cells, neither
+   a subset) — red warning banner naming both regions + the 2 shared cells,
+   both regions listed as flat siblings (not nested — an invalid pair has
+   no containment relationship to place one under the other).
+   `docs/evidence/dungeon-builder-region-tree-venn-warning.png`.
+5. **Reverse-declaration-order paint-order proof** — above.
+
+No console errors beyond the two established FIXTURES-MODE `[unimplemented]
+unknown service ...AuthoringService` messages every prior round's
+live-verification section already carries.
+
+### Tests
+
+16 new in `regionTree.test.ts` (340 dungeon-builder tests overall, up from
+324): flat forest (every region depth 1, any authoring order, including
+single-region and zero-region edges); nested chain 3 deep; parent-is-
+smallest-superset-not-just-any-ancestor (the tight-vs-wide-outer-region
+case above); multi-child siblings under one parent; partial-overlap
+detection (a genuine Venn pair, two regions on identical cells, sample
+capping with a true count above the cap, disjoint regions producing no
+warning); `flattenRegionTree` pre-order ordering; `rootCellCount` (empty
+floor math, single-region subtraction, union-not-double-subtract for a
+nested pair, fully-covered-floor zero case). `ci-check` clean
+(format/lint/typecheck/build/test).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **Nested-region authoring via the brush.** Out of scope by the brief —
+  this unit is rendering + detection, not enabling nested painting.
+  `validateRegionCells` is untouched.
+- **Any validation-rule change.** The client-side flat non-overlap rule
+  stays exactly as strict as before; this unit only renders/derives from
+  whatever a document (brush-authored or hand-typed) already contains.
+- **Root-scope defaults.** The root row's own `title` names it as a future
+  home for defaults (audio/lighting/etc. per the "regions are scopes"
+  resolution-order comment) — nothing implements that yet; the row is
+  informational only.
+- **Edit-mode root row.** `Board.tsx` has no regions panel at all (unchanged
+  from before this unit) — `rootCellCount`'s floor-source-agnostic design
+  means it's ready to be fed a compiled `FloorPlan`'s cell set whenever
+  edit mode grows one, but nothing wires that up this round.
