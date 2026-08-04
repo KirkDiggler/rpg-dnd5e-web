@@ -62,7 +62,7 @@ import {
 import { cubeToWorld } from '@/components/hex-grid/hexMath';
 import { useRef, useState, type ReactElement } from 'react';
 import type { DungeonDoc, WallDoc, WallKind } from '../dungeonYaml';
-import { BOARD_HEX_SIZE, cellCenter } from '../hexLayout';
+import { BOARD_HEX_SIZE, cellCenter, type CellPos } from '../hexLayout';
 import {
   END_COLOR,
   regionArchetypeColor,
@@ -80,10 +80,19 @@ import {
   nearestCreationCell,
   nearestEdge,
   openBoundaryEdges,
+  pointToSegmentDistSq,
   wallGeometry,
   type EdgeGeometry,
 } from './creationGeometry';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
+import {
+  pickStraightAxis,
+  snapStraightEndpoint,
+  straightWallCrossedEdges,
+  straightWallFootprint,
+  straightWallsFootprintSet,
+  type StraightAxis,
+} from './straightWallGeometry';
 import type { RegionEditing } from './useRegionEditing';
 
 interface CreationBoardProps {
@@ -102,6 +111,23 @@ interface CreationBoardProps {
     kind: WallKind,
     on: boolean
   ) => void;
+  /** Straight Wall tool (this unit) — commits one new `wallLines:` entry
+   * per stroke, unlike `onToggleWallEdge`'s per-edge painting. See
+   * `straightWallGeometry.ts`. */
+  onAddStraightWall: (
+    from: [number, number],
+    to: [number, number],
+    kind: WallKind
+  ) => void;
+  /** Click (no drag) on an existing straight wall's line deletes it —
+   * the straight-wall tool's own "click to add/remove" affordance,
+   * mirroring the edge Wall tool's `wallCount`× drawn — click a wall
+   * cell to add/remove" language in `Palette.tsx`. */
+  onRemoveStraightWallAt: (index: number) => void;
+  /** Door tool, applied to a straight wall — flips `solid`/`door` by
+   * index, same "click an existing wall to flip solid ↔ door" gesture
+   * the edge Wall/Door pair already gives `doc.walls`. */
+  onToggleStraightWallKindAt: (index: number) => void;
   onToggleHole: (col: number, row: number) => void;
   onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
   /** Cell-authored semantic region editing (rpg-project#180) — only
@@ -142,6 +168,32 @@ function wallAtEdge(
   );
 }
 
+/** Index of the `doc.wallLines` entry nearest `point`, within `maxDist`
+ * board units, or `null` if none is close enough — the straight-wall
+ * tool's own click-to-delete hit test, and (with a tighter radius) the
+ * Door tool's "click an existing straight wall" test. Point-to-segment
+ * distance against the wall's own world-space line (`cellCenter(from)`
+ * to `cellCenter(to)`), same primitive `creationGeometry.ts`'s
+ * `nearestEdge` uses internally, exported from there for this purpose. */
+function straightWallLineIndexNear(
+  doc: DungeonDoc,
+  point: CellPos,
+  maxDist = 8
+): number | null {
+  let best: number | null = null;
+  let bestDistSq = maxDist * maxDist;
+  doc.wallLines.forEach((line, i) => {
+    const a = cellCenter(line.from[0], line.from[1]);
+    const b = cellCenter(line.to[0], line.to[1]);
+    const d = pointToSegmentDistSq(point, a, b);
+    if (d < bestDistSq) {
+      bestDistSq = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
 const CELL_SIZE = BOARD_HEX_SIZE - 1.5;
 
 export function CreationBoard({
@@ -151,6 +203,9 @@ export function CreationBoard({
   onSelectPlacement,
   onReject,
   onToggleWallEdge,
+  onAddStraightWall,
+  onRemoveStraightWallAt,
+  onToggleStraightWallKindAt,
   onToggleHole,
   onSetPoint,
   regionEdit,
@@ -181,6 +236,27 @@ export function CreationBoard({
   const [regionStroke, setRegionStroke] = useState<{
     mode: 'add' | 'erase';
     touched: Set<string>;
+  } | null>(null);
+  /** Straight Wall tool's own drag state (this unit) — genuinely
+   * different shape from `stroke` above: an edge-wall stroke paints a
+   * whole CHAIN of edges as it goes; a straight-wall stroke has exactly
+   * ONE `from`/`to` pair, committed once on pointer-up. `axis` mirrors
+   * `stroke.family`'s "undecided until the drag clears a threshold"
+   * shape, but with 2 screen-space choices (vertical/horizontal) instead
+   * of 3 hex edge families — see `straightWallGeometry.ts`'s
+   * `pickStraightAxis`. `deleteCandidate` is resolved on pointer-DOWN
+   * (which existing straight wall, if any, was clicked) but only acted
+   * on at pointer-UP, and only if the whole gesture turns out to have
+   * been a CLICK rather than a real drag (see `handlePointerUp`) — a
+   * drag starting on top of an existing line still draws a new one,
+   * consistent with every other tool's click-vs-drag split in this
+   * component. */
+  const [straightStroke, setStraightStroke] = useState<{
+    fromCell: [number, number];
+    toCell: [number, number];
+    axis: StraightAxis | null;
+    startPoint: CellPos;
+    deleteCandidate: number | null;
   } | null>(null);
 
   const grid = doc.canvas ?? DEFAULT_CANVAS;
@@ -321,6 +397,22 @@ export function CreationBoard({
       setRegionStroke({ mode, touched: new Set([cellKey]) });
       return;
     }
+    if (tool === 'straightWall') {
+      const cell = nearestCreationCell(p, grid);
+      // Resolved now (which existing straight wall, if any, sits under
+      // the click) but only ACTED on at pointer-up, and only if this
+      // whole gesture turns out to have been a click rather than a real
+      // drag — see `straightStroke`'s own doc comment.
+      const hit = straightWallLineIndexNear(doc, p);
+      setStraightStroke({
+        fromCell: cell,
+        toCell: cell,
+        axis: null,
+        startPoint: p,
+        deleteCandidate: hit,
+      });
+      return;
+    }
     const edge = nearestEdge(p, grid);
     if (!edge) return;
     if (tool === 'wall') {
@@ -328,6 +420,18 @@ export function CreationBoard({
       setStroke({ addMode: !existing, startPoint: p, family: null });
       applyEdgeAction(edge, !existing);
     } else if (tool === 'door') {
+      // A straight wall's own line rarely coincides with a hex edge (see
+      // straightWallGeometry.ts's own header comment), so a click meant
+      // to flip a STRAIGHT wall's kind needs its own hit test rather than
+      // falling through to the edge-wall lookup below, which would
+      // usually just find the nearest (unrelated) edge-wall candidate
+      // instead. Tight radius, checked first: a straight wall directly
+      // under the click always wins over an edge-wall toggle.
+      const lineHit = straightWallLineIndexNear(doc, p, 8);
+      if (lineHit !== null) {
+        onToggleStraightWallKindAt(lineHit);
+        return;
+      }
       applyEdgeAction(edge);
     }
   };
@@ -344,6 +448,23 @@ export function CreationBoard({
     if (dragPlacement) {
       const cell = nearestCreationCell(p, grid);
       edit.handleMove(dragPlacement, null, cell);
+      return;
+    }
+    if (tool === 'straightWall' && straightStroke) {
+      const dx = p.x - straightStroke.startPoint.x;
+      const dy = p.y - straightStroke.startPoint.y;
+      let axis = straightStroke.axis;
+      // Same "undecided until the drag clears a threshold, then locked
+      // for the rest of the stroke" shape the edge-wall tool's `family`
+      // uses just below — see `pickStraightAxis`'s own doc comment for
+      // why this is 2-way (vertical/horizontal), not 3-way.
+      if (axis === null && Math.hypot(dx, dy) >= DIRECTION_LOCK_THRESHOLD) {
+        axis = pickStraightAxis(dx, dy);
+      }
+      const toCell = axis
+        ? snapStraightEndpoint(straightStroke.fromCell, p, axis, grid)
+        : straightStroke.fromCell;
+      setStraightStroke({ ...straightStroke, axis, toCell });
       return;
     }
     if (tool === 'wall' || tool === 'door') {
@@ -402,6 +523,25 @@ export function CreationBoard({
     setStroke(null);
     setDragPlacement(null);
     setRegionStroke(null);
+    if (straightStroke) {
+      const moved =
+        straightStroke.toCell[0] !== straightStroke.fromCell[0] ||
+        straightStroke.toCell[1] !== straightStroke.fromCell[1];
+      if (moved) {
+        onAddStraightWall(
+          straightStroke.fromCell,
+          straightStroke.toCell,
+          'solid'
+        );
+      } else if (straightStroke.deleteCandidate !== null) {
+        // A CLICK (no real drag) landing on an existing straight wall
+        // deletes it — a drag that merely STARTS on top of one still
+        // draws a new segment (the `moved` branch above), consistent
+        // with every other tool's click-vs-drag split in this component.
+        onRemoveStraightWallAt(straightStroke.deleteCandidate);
+      }
+      setStraightStroke(null);
+    }
   };
 
   // --- base grid: one hex polygon per cell, replacing the square
@@ -477,6 +617,175 @@ export function CreationBoard({
     }
   }
 
+  // Straight walls (this unit) — genuinely different rendering job from
+  // wallEls above: each entry ALSO needs its FOOTPRINT (every hex its
+  // line clips, per Kirk's "any hex that is not 100% uncovered would not
+  // be traversable" rule) drawn as a hatched overlay — deliberately
+  // distinct from both the plain wall line itself and the region
+  // open-boundary red LINE (`creationGeometry.ts`'s `openBoundaryEdges`
+  // below), and its blocked EDGE crossings (movement semantics (b) —
+  // straightWallGeometry.ts's `straightWallCrossedEdges`) as a dashed
+  // highlight across the specific grazed edge. Rendered BEFORE the wall's
+  // own line so the line draws on top of its footprint, matching how
+  // `wallEls` layers its door hinge on top of its own line above.
+  const committedFootprint = straightWallsFootprintSet(doc.wallLines, grid);
+  const straightWallEls: ReactElement[] = [];
+  doc.wallLines.forEach((line, index) => {
+    const a = creationCellCenter(line.from[0], line.from[1]);
+    const b = creationCellCenter(line.to[0], line.to[1]);
+    const footprint = straightWallFootprint(line.from, line.to, grid);
+    for (const [col, row] of footprint) {
+      const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
+        .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+        .join(' ');
+      straightWallEls.push(
+        <polygon
+          key={`swall-${index}-fp-${col}-${row}`}
+          points={corners}
+          fill="url(#db-footprint-hatch)"
+          stroke="#c94f4f"
+          strokeWidth={1.5}
+          pointerEvents="none"
+        />
+      );
+    }
+    for (const edge of straightWallCrossedEdges(
+      line.from,
+      line.to,
+      grid,
+      footprint
+    )) {
+      straightWallEls.push(
+        <line
+          key={`swall-${index}-cross-${edge.cellA.join(',')}-${edge.cellB.join(',')}`}
+          x1={edge.a.x}
+          y1={edge.a.y}
+          x2={edge.b.x}
+          y2={edge.b.y}
+          stroke="#c94f4f"
+          strokeWidth={2.5}
+          strokeDasharray="2 2"
+          pointerEvents="none"
+        />
+      );
+    }
+    straightWallEls.push(
+      <line
+        key={`swall-${index}`}
+        x1={a.x}
+        y1={a.y}
+        x2={b.x}
+        y2={b.y}
+        stroke={line.kind === 'door' ? '#ffb347' : '#e8e2d8'}
+        strokeWidth={line.kind === 'door' ? 3 : 4}
+        strokeLinecap="round"
+      />
+    );
+    if (line.kind === 'door') {
+      straightWallEls.push(
+        <circle
+          key={`swall-${index}-hinge`}
+          cx={(a.x + b.x) / 2}
+          cy={(a.y + b.y) / 2}
+          r={3.5}
+          fill="#100d0b"
+          stroke="#ffb347"
+          strokeWidth={1.5}
+        />
+      );
+    }
+  });
+
+  // Live drag preview — same footprint/crossing treatment, amber and
+  // dashed to read as "not committed yet" (this component's existing
+  // provisional-content convention — see `pendingRegionEls` below).
+  const straightPreviewEls: ReactElement[] = [];
+  let previewFootprint: [number, number][] = [];
+  const strokeHasMoved =
+    !!straightStroke &&
+    (straightStroke.toCell[0] !== straightStroke.fromCell[0] ||
+      straightStroke.toCell[1] !== straightStroke.fromCell[1]);
+  if (tool === 'straightWall' && straightStroke && strokeHasMoved) {
+    previewFootprint = straightWallFootprint(
+      straightStroke.fromCell,
+      straightStroke.toCell,
+      grid
+    );
+    for (const [col, row] of previewFootprint) {
+      const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
+        .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+        .join(' ');
+      straightPreviewEls.push(
+        <polygon
+          key={`swall-preview-fp-${col}-${row}`}
+          points={corners}
+          fill="url(#db-footprint-hatch)"
+          stroke="#ffb347"
+          strokeWidth={1.5}
+          strokeDasharray="3 2"
+          pointerEvents="none"
+        />
+      );
+    }
+    for (const edge of straightWallCrossedEdges(
+      straightStroke.fromCell,
+      straightStroke.toCell,
+      grid,
+      previewFootprint
+    )) {
+      straightPreviewEls.push(
+        <line
+          key={`swall-preview-cross-${edge.cellA.join(',')}-${edge.cellB.join(',')}`}
+          x1={edge.a.x}
+          y1={edge.a.y}
+          x2={edge.b.x}
+          y2={edge.b.y}
+          stroke="#ffb347"
+          strokeWidth={2.5}
+          strokeDasharray="2 2"
+          pointerEvents="none"
+        />
+      );
+    }
+    const pa = creationCellCenter(
+      straightStroke.fromCell[0],
+      straightStroke.fromCell[1]
+    );
+    const pb = creationCellCenter(
+      straightStroke.toCell[0],
+      straightStroke.toCell[1]
+    );
+    straightPreviewEls.push(
+      <line
+        key="swall-preview-line"
+        x1={pa.x}
+        y1={pa.y}
+        x2={pb.x}
+        y2={pb.y}
+        stroke="#ffb347"
+        strokeWidth={3}
+        strokeDasharray="5 3"
+        strokeLinecap="round"
+        opacity={0.85}
+        pointerEvents="none"
+      />
+    );
+  }
+
+  // Union of every straight wall's footprint — committed AND the live
+  // preview, if one is in progress — what placements/start/end/region
+  // cells below are checked against so a newly-drawn footprint FLAGS
+  // anything it now covers instead of silently deleting or moving it.
+  // Live preview is included deliberately: an author dragging a wall
+  // over an existing monster should see the warning appear before even
+  // releasing the pointer, not just after.
+  const footprintKeys = new Set(committedFootprint);
+  for (const [col, row] of previewFootprint) {
+    footprintKeys.add(`${col},${row}`);
+  }
+  const inFootprint = (col: number, row: number) =>
+    footprintKeys.has(`${col},${row}`);
+
   // Same dark/dashed treatment Board.tsx (edit mode) uses for a target-
   // dialect hole — one visual language for "no floor here" across both
   // boards. Hex polygon now, not an axis-aligned rect.
@@ -525,6 +834,29 @@ export function CreationBoard({
           pointerEvents="none"
         />
       );
+      // A straight wall's footprint landing inside a region's own cells
+      // is FLAGGED, never auto-removed from the region — Kirk's rule
+      // makes the cell impassable, but membership is an authoring fact
+      // this tool has no business silently rewriting (same "flag, don't
+      // delete" discipline the placement/start/end checks below follow).
+      if (inFootprint(col, row)) {
+        const c = creationCellCenter(col, row);
+        regionEls.push(
+          <text
+            key={`region-${region.id}-${col}-${row}-fp-warn`}
+            x={c.x}
+            y={c.y + 3}
+            textAnchor="middle"
+            fill="#ff6a6a"
+            fontSize={11}
+            fontWeight={700}
+            pointerEvents="none"
+            style={{ paintOrder: 'stroke', stroke: '#100d0b', strokeWidth: 3 }}
+          >
+            ⚠
+          </text>
+        );
+      }
     }
     const centroid = regionCentroid(region.cells);
     const labelPos = creationCellCenter(centroid.col, centroid.row);
@@ -614,6 +946,14 @@ export function CreationBoard({
       edit.selectedPlacement.roomId === sel.roomId &&
       edit.selectedPlacement.index === sel.index;
     const angle = facing !== null ? FACING_ANGLES_DEG[facing] : null;
+    // A straight wall's footprint landing on an EXISTING placement is
+    // FLAGGED, never silently deleted or moved — reusing the same "⚠,
+    // hot color, unmissable" visual language `Board.tsx`'s
+    // "⚠ PARTY SPAWN (BLOCKED!)" warning uses for edit mode's compiled
+    // entrance-blocked check, adapted here since a generic placement
+    // marker (unlike the START/END circle below) has no text label of
+    // its own to prefix.
+    const blocked = inFootprint(at[0], at[1]);
     return (
       <g
         key={sel.boss ? 'boss' : `place-${sel.index}`}
@@ -639,6 +979,34 @@ export function CreationBoard({
               stroke="#000"
               strokeWidth={0.5}
             />
+          </g>
+        )}
+        {blocked && (
+          <g pointerEvents="none">
+            <circle
+              cx={center.x}
+              cy={center.y}
+              r={16}
+              fill="none"
+              stroke="#ff3b3b"
+              strokeWidth={2}
+              strokeDasharray="3 2"
+            />
+            <text
+              x={center.x}
+              y={center.y - 20}
+              textAnchor="middle"
+              fill="#ff6a6a"
+              fontSize={10}
+              fontWeight={700}
+              style={{
+                paintOrder: 'stroke',
+                stroke: '#100d0b',
+                strokeWidth: 3,
+              }}
+            >
+              ⚠ IN WALL FOOTPRINT
+            </text>
           </g>
         )}
       </g>
@@ -670,16 +1038,40 @@ export function CreationBoard({
       onPointerLeave={handlePointerUp}
       style={{
         cursor:
-          tool === 'wall' || tool === 'door' || tool === 'region'
+          tool === 'wall' ||
+          tool === 'straightWall' ||
+          tool === 'door' ||
+          tool === 'region'
             ? 'crosshair'
             : 'default',
       }}
     >
+      <defs>
+        {/* Straight-wall footprint hatch — deliberately distinct from
+            the region open-boundary overlay's plain solid red LINE
+            (`openBoundaryEdges` above): a crimson diagonal HATCH fill
+            reads as "this ground is gone," not just "this line is a
+            problem," matching the task's own ask for a visually
+            distinct treatment from the region worry overlay. */}
+        <pattern
+          id="db-footprint-hatch"
+          patternUnits="userSpaceOnUse"
+          width={7}
+          height={7}
+          patternTransform="rotate(45)"
+        >
+          <rect width={7} height={7} fill="#2a0e0e" fillOpacity={0.55} />
+          <line x1={0} y1={0} x2={0} y2={7} stroke="#c94f4f" strokeWidth={3} />
+        </pattern>
+      </defs>
+
       {cellEls}
 
       {regionEls}
       {pendingRegionEls}
       {wallEls}
+      {straightWallEls}
+      {straightPreviewEls}
       {holeEls}
 
       {hoverEdge && (tool === 'wall' || tool === 'door') && (
@@ -699,6 +1091,12 @@ export function CreationBoard({
       {doc.start &&
         (() => {
           const c = cellCenter(doc.start[0], doc.start[1]);
+          // Reuses Board.tsx's exact "⚠ ... (BLOCKED!)" visual language
+          // (edit mode's isEntranceBlocked check) — a straight wall's
+          // footprint landing on the start cell is the creation-mode
+          // analog of that same fact, so it gets the same treatment
+          // rather than a new one invented for this tool.
+          const blocked = inFootprint(doc.start[0], doc.start[1]);
           return (
             <g pointerEvents="none">
               <circle
@@ -706,7 +1104,7 @@ export function CreationBoard({
                 cy={c.y}
                 r={13}
                 fill="none"
-                stroke={START_COLOR}
+                stroke={blocked ? '#ff3b3b' : START_COLOR}
                 strokeWidth={2.5}
                 strokeDasharray="4 3"
               />
@@ -714,11 +1112,11 @@ export function CreationBoard({
                 x={c.x}
                 y={c.y - 18}
                 textAnchor="middle"
-                fill="#8fe8e0"
+                fill={blocked ? '#ff6a6a' : '#8fe8e0'}
                 fontSize={10}
                 fontWeight={700}
               >
-                START
+                {blocked ? '⚠ START (BLOCKED!)' : 'START'}
               </text>
             </g>
           );
@@ -726,6 +1124,7 @@ export function CreationBoard({
       {doc.end &&
         (() => {
           const c = cellCenter(doc.end[0], doc.end[1]);
+          const blocked = inFootprint(doc.end[0], doc.end[1]);
           return (
             <g pointerEvents="none">
               <circle
@@ -733,7 +1132,7 @@ export function CreationBoard({
                 cy={c.y}
                 r={13}
                 fill="none"
-                stroke={END_COLOR}
+                stroke={blocked ? '#ff3b3b' : END_COLOR}
                 strokeWidth={2.5}
                 strokeDasharray="4 3"
               />
@@ -741,11 +1140,11 @@ export function CreationBoard({
                 x={c.x}
                 y={c.y - 18}
                 textAnchor="middle"
-                fill="#ffd76a"
+                fill={blocked ? '#ff6a6a' : '#ffd76a'}
                 fontSize={10}
                 fontWeight={700}
               >
-                END
+                {blocked ? '⚠ END (BLOCKED!)' : 'END'}
               </text>
             </g>
           );

@@ -3378,3 +3378,110 @@ local `rpg-api` running — unrelated to this round's changes.
 adjacency/boundary tests were updated in place, not added to, to assert
 the new hex-true answers). `ci-check` clean
 (format/lint/typecheck/build/test).
+
+## Straight walls with visible footprint — prototype unit (2026-08-03, rpg-project#169)
+
+Kirk's design direction, prototyped as a comparison: the hex-true creation
+canvas above ships an edge-painted zigzag Wall tool, but Kirk drew straight
+red lines across a room and said the walls should be straight — and stated
+the rule directly: **"any hex that is not 100% uncovered would not be
+traversable"** — a straight wall has a FOOTPRINT, clipped cells are spent.
+The real game's own wall renderer (`wallRuns.ts`/`WallRunMesh`) already
+draws straight modular wall runs along room envelopes — the zigzag is this
+concept's own outlier, not the game's established look. Full design
+writeup: TARGET-YAML.md's "Straight walls" section (schema shape decided
+and why the alternative — a `style:` discriminator on `walls:` — was
+rejected; the footprint epsilon derived and justified; the shoulder-
+clipping/every-other-hex cases; movement semantics (a) and (b); the
+touch-adjacent-to-footprint finding for (b); corner continuity; the
+compiler-responsibility note).
+
+### What shipped
+
+A new Structural-category tool, **Straight Wall**, alongside the existing
+Wall tool (both survive — the comparison is the point). Drag locks to
+whichever of 2 screen axes (vertical/horizontal) the drag is closer to,
+then snaps the endpoint to the closest AVAILABLE hex cell approximating
+that axis (`creation/straightWallGeometry.ts`'s `pickStraightAxis`/
+`snapStraightEndpoint` — a 2-way analog of the zigzag tool's own 3-way
+`dragFamily`). A click (no real drag) on an existing straight wall deletes
+it; the Door tool, applied to a straight wall's line, flips `solid`↔`door`
+by index. New document field `wallLines: WallLineDoc[]` (a sibling to
+`walls:`, not a variant — see TARGET-YAML.md for why), with its own
+mutators (`addWallLine`/`removeWallLineAt`/`toggleWallLineKindAt`,
+`dungeonYaml.ts`) and its own `stripToV1Subset` drop/count, reported
+separately from `walls:`'s own count.
+
+Footprint + crossing math is real Cyrus-Beck half-plane clipping (6
+half-planes per hex, shrunk inward by `FOOTPRINT_EPSILON =
+BOARD_HEX_SIZE * 1e-3`), not a sampling heuristic — computed live while
+dragging (the preview) and rendered for every committed `wallLines:` entry.
+Footprint cells render with a new crimson diagonal-hatch `<pattern>`
+(`db-footprint-hatch`), deliberately distinct from the region open-boundary
+overlay's plain solid red LINE (`openBoundaryEdges`) — a hatch reads as
+"this ground is gone," a line reads as "this boundary has a problem," and
+the two ARE different facts. Blocked edge-crossings (movement semantic (b))
+render as a dashed highlight across the specific grazed edge.
+
+**Existing content in a new footprint is FLAGGED, never silently deleted or
+moved**: placements get an extra warning ring + "⚠ IN WALL FOOTPRINT" label
+(live during the drag, not just after release); start/end reuse this file's
+own "⚠ ... (BLOCKED!)" visual language verbatim (`Board.tsx`'s entrance-
+blocked convention); region cells inside a footprint get a small ⚠ overlay,
+with the region's own `cells:` membership left untouched (per the settled
+model: an inner wall never splits a semantic region).
+
+### Live verification
+
+Real dev server (`vite --port 5180`, never `:3001`), driven via a throwaway
+Playwright script (`game-dev/tools/browser/_job_swall_verify.mjs`,
+gitignored scratch pattern, same convention the region-authoring/hex-
+creation units above used) — computed real hex-true board-space coordinates
+(the SAME `cellCenter` formula `hexLayout.ts` uses, ported into the script)
+and read the SVG's own live `viewBox` to convert board-space points to
+on-screen pixels for `page.mouse` drags, rather than assuming a fixed
+pixel-per-cell spacing (the OLD square-grid `FLAT_COL_SPACING`/
+`FLAT_ROW_SPACING` constants the region-authoring unit's own script used —
+those no longer exist post-hex-true).
+
+- `docs/evidence/straight-walls-vertical-footprint.png` — a genuinely
+  vertical straight wall (`[4,4]` → `[6,1]`, verified analytically to share
+  the same world X) rendered as a clean white line through exactly 3
+  hatched hexes, with the immediately flanking hexes visibly UN-hatched —
+  the shoulder-clipping case, seen live, not just asserted in a unit test.
+- `docs/evidence/straight-walls-l-corner.png` — a second segment drawn from
+  the SAME endpoint cell (`[6,1]` → `[10,3]`) forms a clean L corner with no
+  gap and no special-case code, exactly Kirk's red-lines picture.
+- `docs/evidence/straight-walls-vs-zigzag-comparison.png` — the same L
+  corner alongside an edge-zigzag Wall-tool run drawn over a similar span:
+  the straight wall reads as one clean, unbroken run with a visible
+  footprint; the zigzag run (real `dragFamily`-locked edge-painting, still
+  topologically correct) visibly breaks into short, disconnected-looking
+  segments once the drag isn't aligned with one of the hex grid's 3 real
+  edge families — the live, visual version of the finding TARGET-YAML.md's
+  "why this needs a genuinely different shape" section makes analytically.
+
+Confirmed via the live YAML pane (not just the screenshots' own claim):
+`wallLines: [ { from: [4, 4], to: [6, 1], kind: solid }, { from: [6, 1],
+to: [10, 3], kind: solid } ]` and a real 8-segment `walls:` zigzag run
+alongside it, both present in the same document. The only console errors
+are the expected FIXTURES-MODE `[unimplemented] unknown service
+...AuthoringService` (this dev server has no local `rpg-api` running —
+unrelated to this unit, same as every other round's live-verification
+note above).
+
+### Tests
+
+19 new tests in `creation/straightWallGeometry.test.ts` (footprint
+clipping incl. the shoulder-clipping vertical case and the every-other-hex
+"same row index is not horizontal" case, contrasted directly against a
+genuinely world-horizontal line; the epsilon touch-vs-clip boundary,
+verified both sides of it; the movement-semantics (b) mechanism exercised
+directly since no natural cell-to-cell wall in this unit's own testing —
+3 hand-derived cases plus 400 randomly sampled pairs — ever produces a
+both-clear crossing, a real, verified finding, not an assumption; corner
+continuity; the footprint-set union; axis-pick; endpoint-snapping) plus 7
+new `dungeonYaml.test.ts` cases (`wallLines:` add/remove/toggle mutators,
+round-trip through real YAML text, `stripToV1Subset` dropping it
+separately from `walls:`). 196 dungeon-builder tests passing overall (up
+from 170). `ci-check` clean (format/lint/typecheck/build/test).

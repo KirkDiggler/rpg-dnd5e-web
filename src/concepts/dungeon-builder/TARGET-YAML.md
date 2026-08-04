@@ -218,6 +218,18 @@ walls:
   - { from: [7, 0], to: [7, 1], kind: solid }
   - { from: [7, 4], to: [7, 5], kind: door }
 
+# STRAIGHT walls — a separate sibling construct, NOT a variant of walls:
+# above. from/to here are typically several cells apart, not adjacent — the
+# wall is the straight WORLD-SPACE line between their centers, which clips
+# through every hex it passes over (a footprint, not just a boundary). See
+# this file's own "Straight walls" section, below, for the full rule
+# (Kirk's "any hex not 100% uncovered would not be traversable"), the
+# epsilon that makes touch-vs-clip precise, and why this needed a new list
+# rather than a style: discriminator on walls: above.
+wallLines:
+  - { from: [10, 5], to: [10, 12], kind: solid }
+  - { from: [3, 3], to: [8, 3], kind: door }
+
 # No `holes:` in the early dialect. Use an obstacle/prop for a collapsed
 # visual; a true no-floor cell waits for mechanics that require one.
 
@@ -261,6 +273,201 @@ defaults:
   'dnd5e:monsters:skeleton': { targeting: lowest-health }
   'dnd5e:props:candles': { blocks_movement: false, height: 1.2 }
 ```
+
+## Straight walls: `wallLines:` — a footprint-bearing alternative to `walls:`
+
+Target dialect, proposed — prototyped alongside the existing `walls:` edge-
+painting tool this round (rpg-project#169's "straight walls with visible
+footprint" unit), both survive in creation mode as the direct comparison
+Kirk asked for. Kirk's own diagnosis, verbatim, looking at the hex-true
+creation canvas's zigzag walls: "we talked about our walls being straight" —
+he drew straight red lines across a room envelope and stated the governing
+rule directly: **"any hex that is not 100% uncovered would not be
+traversable"** — a straight wall has a FOOTPRINT, not just a boundary.
+
+### Why this needs a genuinely different shape than `walls:`
+
+`walls:`'s `{from, to, kind}` is edge-native: `from`/`to` are always
+hex-ADJACENT cells, and the wall sits on the one shared edge between them —
+a chain of these, drawn one edge at a time, is how the existing zigzag Wall
+tool traces a boundary that hugs real hex edges.
+
+A straight wall is not that. Verified directly against this codebase's own
+hex math (`hexMath.ts`'s `hexCorners`, corners at `30° + 60°·i`): a
+pointy-top hex has exactly 3 edge-line orientations — 30°, 90° (vertical),
+and 150° from the board's horizontal axis. **There is no 0°/horizontal edge
+family at all.** So a straight wall drawn along board-space "horizontal" (one
+of the two axes Kirk asked to snap to) can never run along hex boundaries —
+it always cuts through hex interiors. Even "vertical" only coincides with
+real hex edges for specific endpoint pairs; in general it also clips through
+cell interiors ("shoulder-clipping" — see below). `from`/`to` on a straight
+wall are therefore typically SEVERAL cells apart, not adjacent, and the
+wall's true geometry is the straight WORLD-SPACE line between their centers
+— a structurally different claim than `walls:`'s "this exact shared edge."
+
+### Schema shape chosen, and the alternative rejected
+
+**Chosen: a separate sibling list, `wallLines: [{from: [c,r], to: [c,r],
+kind: solid|door}]`** — same field names as `walls:` for a familiar shape,
+but a DIFFERENT construct, not a variant of the same one.
+
+**Rejected: overloading `walls:` with a `style: edge|straight` discriminator**
+on the existing `WallDoc` shape. Weighed and rejected because `from`/`to`
+mean something incompatible depending on `style` (hex-adjacent-cell vs.
+arbitrary-cells-apart) — every existing `walls:` consumer (`wallAtEdge`,
+`openBoundaryEdges`, `connectRegions`'s shared-boundary search, the door
+tool's edge lookup) assumes adjacency and would need a style branch added to
+stay correct, for a prototype round where the zigzag tool's own code needed
+to keep working unchanged. A sibling list needed zero changes to any
+existing `walls:` consumer — `doc.wallLines` is simply empty on every
+document that doesn't use it, the same "additive, absent by default" shape
+every other target-dialect field in this file already follows.
+
+### Footprint rule and the epsilon that makes it precise
+
+**Kirk's rule, exactly**: every hex the wall's line genuinely passes through
+is BLOCKED (not just its crossed edge — the whole cell is impassable), UNLESS
+the line only touches a vertex or runs exactly along one of the hex's own
+edges (a touch, not a clip). "Genuinely passes through" needs a concrete
+boundary between a real clip and a floating-point-noise false positive —
+`creation/straightWallGeometry.ts`'s `FOOTPRINT_EPSILON` is
+`BOARD_HEX_SIZE * 1e-3` (~0.024 board units, under a fortieth of a percent of
+the hex's own radius): every one of a hex's 6 edges is shrunk inward by this
+much before testing for intersection (Cyrus-Beck half-plane clipping against
+the shrunk hexagon). A touch never survives that shrink; a genuine clip,
+however shallow, always does. This is several orders of magnitude larger
+than the floating-point noise `Math.cos`/`Math.sin` introduce computing hex
+corners (~1e-13 at this scale — verified, not assumed), so it can't be
+fooled by trig rounding, and small enough to be visually and physically
+meaningless at render/gameplay scale.
+
+Two concrete cases worth naming directly, both covered by
+`creation/straightWallGeometry.test.ts`:
+
+- **Shoulder-clipping (vertical).** A genuinely vertical line (constant
+  world X — e.g. `[4,4]` → `[6,1]`, verified analytically to share the same
+  world X) clips only the 3 cells whose CENTERS the line threads exactly
+  through, and merely GRAZES (touches, does not clip) the cells immediately
+  flanking them — their vertical edge sits exactly on the line. A vertical
+  wall does not clip "a whole column" in `[col,row]` terms — a `[col,row]`
+  column isn't vertical in world space at all (it's one of the 30°/150°
+  diagonal edge families); this is why the test fixture is two columns
+  apart with a compensating row offset, not a same-column pair.
+- **Every-other-hex (a "same row index" line is NOT horizontal).** Two
+  cells sharing a `row` index are NOT a horizontal line in world space —
+  `hexRow`'s own parity-correction formula (`z = row - trunc((col-(col&1))/2)`,
+  `wallRuns.ts`) means world-Y drifts substantially between them (the same
+  diagonal-shear fact CONTRACT.md already documents for compiled `FloorPlan`
+  rendering, showing up again here). Naively connecting two same-row cells
+  produces a footprint that clips exactly every OTHER column, skipping the
+  rest — confirmed directly, not assumed. A genuinely world-horizontal line
+  (two cells with the SAME cube `z`, hence the same world Y — e.g. `[0,3]`
+  → `[10,8]`) clips one cell per column with no skips, a structurally
+  different result from the naive "same row" attempt. Both are exercised
+  side by side in the test file specifically so this distinction is
+  provable, not asserted on faith.
+
+### Movement semantics
+
+Two distinct effects, both implemented:
+
+**(a) Every footprint cell is blocked entirely** — not traversable, full
+stop, regardless of which of its edges the line actually crossed.
+
+**(b) Every cell-to-cell edge the line crosses BETWEEN TWO CLEAR
+(non-footprint) cells is also blocked**, even though neither adjacent cell
+is itself footprint-blocked — a wall that only grazed their shared boundary
+still cuts off that specific step between them.
+`straightWallCrossedEdges` implements this: for every hex-adjacent pair of
+cells where NEITHER side is in the footprint, test whether the wall's line
+crosses their shared edge; a crossing (including a graze, via the same
+`FOOTPRINT_EPSILON` tolerance) blocks that edge.
+
+**Honestly-recorded finding**: for the CURRENT representation (`from`/`to`
+anchored to cell CENTERS), (b) is provably empty in every case this unit
+tested — 3 hand-derived geometric cases plus 400 randomly sampled cell pairs
+(`straightWallGeometry.test.ts`'s own search, done while building this unit)
+all produced zero both-clear crossings. This isn't a coincidence: a straight
+line's path through a hex tiling is continuous, and every point where it
+merely touches a boundary sits adjacent to a cell it's already clipping (the
+line can't graze a shared edge between two clear cells without having
+entered one of the two cells bordering that edge's own neighborhood first).
+The mechanism is still real and implemented, not dead code — it's exercised
+directly in the test file against a hand-placed segment collinear with one
+real hex edge (bypassing the cell-center anchoring), and it becomes load-
+bearing the moment a wall's endpoints are no longer forced to cell centers —
+e.g. a server-side compiler working from raw board/world coordinates instead
+of this prototype's `[col,row]`-only representation.
+
+### Corners: no special-case joining logic needed
+
+Kirk's red-lines picture showed clean L corners where two segments meet.
+This "just works" by construction: consecutive straight-wall segments that
+SHARE AN ENDPOINT CELL (draw one from A to the corner cell, a second from the
+corner cell to C) both resolve that shared cell to the exact same
+`cellCenter(...)` world point — the two lines touch exactly, with no gap and
+no special corner-detection code. `straightWallGeometry.test.ts`'s
+"corner/L continuity" test asserts this directly (both segments' own
+resolved endpoint at the shared cell are `toEqual` the same point) rather
+than trusting it by construction alone.
+
+### Interaction: axis snap, then closest-available approximation
+
+Drag locks to whichever of 2 screen-space axes (vertical/horizontal) the
+drag's own direction is closer to, past a small movement threshold (mirrors
+the existing zigzag Wall tool's family-lock UX, `pickStraightAxis` a 2-way
+analog of `dragFamily`'s 3-way pick). 60°/120° diagonal snapping was
+considered and skipped this round — cheap to add later (widen
+`pickStraightAxis`/`snapStraightEndpoint` to 4 target directions using the
+same scoring search) but not needed to prove the footprint mechanic, which
+is this unit's actual point.
+
+Because this is a discrete hex grid, an EXACT vertical/horizontal line
+generally isn't reachable between two integer cell centers at all (see
+above — no edge family is horizontal, and vertical only lines up exactly for
+specific from/to pairs). `snapStraightEndpoint` searches a small window of
+columns/rows around the pointer's own nearest cell and picks whichever
+candidate keeps the locked axis's OTHER world coordinate closest to the
+starting cell's own — the closest AVAILABLE approximation, not a
+mathematically exact one. The footprint is always computed honestly from
+whatever line actually results, never from a pretended-exact one.
+
+### Interactions with everything else on the board: flag, never silently delete or move
+
+Per this file's own discipline elsewhere (a mapped top-level placement, an
+inherited default) — a straight wall's footprint landing on existing
+content is FLAGGED, not silently deleted or relocated:
+
+- **Placements** (`doc.place`) inside a footprint render an extra warning
+  ring + "⚠ IN WALL FOOTPRINT" label, live, including while a wall is still
+  being dragged (not just after release) — the placement itself is
+  untouched.
+- **Start/End** reuse `Board.tsx`'s own "⚠ ... (BLOCKED!)" visual language
+  verbatim (the same convention edit mode's entrance-blocked check uses)
+  rather than inventing a new one.
+- **Region cells** (`doc.regions`) inside a footprint get a small ⚠ glyph
+  overlaid on the affected cell — the region's own `cells:` membership is
+  never rewritten by a wall mutator, per the settled model's own "an inner
+  wall never splits a semantic region" rule (this file's "regions:"
+  section).
+
+### Compiler responsibilities (server-authoritative, this is a preview)
+
+Per this file's own operating principle (client viz previews what a real
+compiler will own): a real implementation would derive footprint cells and
+blocked crossings SERVER-SIDE from the authored `wallLines:` list, the same
+way `walls:` compiling to canonical `HexRecord.edges` is already the
+documented plan for edge-native walls. This concept's client-side
+`straightWallGeometry.ts` is that computation done once, client-side, for
+live visual feedback — not a claim that the client is the source of truth.
+
+### `stripToV1Subset`
+
+`wallLines:` drops entirely, same treatment as `walls:` (no v1 analog at
+all), counted and reported SEPARATELY in the compile-badge/dropped summary
+("N straight walls", never folded into the edge-wall "N walls" count) —
+they're genuinely different constructs, and conflating their counts would
+misrepresent which tool an author actually used.
 
 ## Top-level placement: rooms are semantic, not placement containers
 
@@ -1099,16 +1306,16 @@ live `validate_only` preview call or a real `Save & Play`, the current
 document is stripped down to exactly what v1 compiles
 (`dungeonYaml.ts`'s `stripToV1Subset`):
 
-| Field                                              | v1 subset                                                                                                                                                                                          |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`                                          | forced to `1` (never `2` — see the annotated example's own note)                                                                                                                                   |
-| `key`, `name`, `theme`, `height`                   | kept as-is                                                                                                                                                                                         |
-| `rooms:`                                           | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                                                                              |
-| `connectors:`                                      | kept as-is, including `locked:`                                                                                                                                                                    |
-| top-level `place:`                                 | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above                                                           |
-| `canvas:`, `walls:`, `start:`, `end:`, `lighting:` | dropped entirely                                                                                                                                                                                   |
-| `regions:`                                         | dropped entirely — no v1 representation of any kind (dungeonspec only knows the declared `rooms:` chain); a region-attachment door edge (`walls:`) is stripped independently, see "regions:" above |
-| `defaults:`                                        | dropped, but not silently — every placement INHERITING a `blocks_movement`/`blocks_los` value first gets it materialized as a literal key; see "`defaults:`" above                                 |
+| Field                                                            | v1 subset                                                                                                                                                                                          |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                                                        | forced to `1` (never `2` — see the annotated example's own note)                                                                                                                                   |
+| `key`, `name`, `theme`, `height`                                 | kept as-is                                                                                                                                                                                         |
+| `rooms:`                                                         | kept, but every `place:`/`boss:` entry has its `facing:`/`mount:`/`height:`/`targeting:` keys dropped                                                                                              |
+| `connectors:`                                                    | kept as-is, including `locked:`                                                                                                                                                                    |
+| top-level `place:`                                               | mapped down into a containing room (absolute → room-local `at`) if one exists there, otherwise dropped — see "Top-level placement" above                                                           |
+| `canvas:`, `walls:`, `wallLines:`, `start:`, `end:`, `lighting:` | dropped entirely — `walls:`/`wallLines:` counted separately ("N walls" / "N straight walls"), see "Straight walls" above                                                                           |
+| `regions:`                                                       | dropped entirely — no v1 representation of any kind (dungeonspec only knows the declared `rooms:` chain); a region-attachment door edge (`walls:`) is stripped independently, see "regions:" above |
+| `defaults:`                                                      | dropped, but not silently — every placement INHERITING a `blocks_movement`/`blocks_los` value first gets it materialized as a literal key; see "`defaults:`" above                                 |
 
 If, after stripping, `rooms:` has fewer than 2 entries (dungeonspec's own
 `minRooms = 2`), there IS no compilable subset — a from-scratch canvas

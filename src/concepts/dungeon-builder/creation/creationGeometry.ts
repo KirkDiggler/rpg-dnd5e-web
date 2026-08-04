@@ -109,7 +109,15 @@ export function wallGeometry(
   return { cellA: from, cellB: to, a: edge.a, b: edge.b, mid: edge.mid };
 }
 
-function pointToSegmentDistSq(p: CellPos, a: CellPos, b: CellPos): number {
+/** Exported so other hit-testing code (the straight-wall tool's own
+ * click-to-delete / Door-tool hit test, `straightWallGeometry.ts`/
+ * `CreationBoard.tsx`) shares this exact distance function rather than a
+ * second hand-rolled one. */
+export function pointToSegmentDistSq(
+  p: CellPos,
+  a: CellPos,
+  b: CellPos
+): number {
   const abx = b.x - a.x;
   const aby = b.y - a.y;
   const apx = p.x - a.x;
