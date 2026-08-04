@@ -17,15 +17,23 @@
  */
 import { describe, expect, it } from 'vitest';
 import { facingToRotationY } from '../boardGeometry';
+import { straightWallFootprint } from '../creation/straightWallGeometry';
 import {
+  addWallLine,
   parseDungeon,
   setPlacementMount,
   setPlacementRotationDegrees,
   setRefDefault,
   toDungeonDoc,
 } from '../dungeonYaml';
-import { SHOWCASE_YAML } from '../fixtures';
-import { buildOnePlacement } from './DungeonPreview3D';
+import { SHOWCASE_FLOORPLAN, SHOWCASE_YAML } from '../fixtures';
+import { cubeAtColRow } from '../hexLayout';
+import {
+  buildFloorTiles,
+  buildOnePlacement,
+  buildWallLineFootprint,
+  CANVAS_ROOM_ID,
+} from './DungeonPreview3D';
 
 describe('buildOnePlacement — resolved facing × fine-rotation composition', () => {
   it('an INHERITED facing (defaults:, nothing explicit on the placement itself) still composes with an explicit rotate_degrees, exactly like an explicit facing would', () => {
@@ -116,5 +124,138 @@ describe('buildOnePlacement — resolved facing × fine-rotation composition', (
     // is boardGeometry.test.ts's job, not this file's.
     expect(prop!.rotationY).not.toBeUndefined();
     expect(Number.isFinite(prop!.rotationY)).toBe(true);
+  });
+});
+
+// rpg-project#169's creation-mode 3D preview unit (2026-08-04) — the
+// alternate `floorCells` input path this component's own header doc
+// comment describes. `buildFloorTiles`/`buildWallLineFootprint` are pure
+// math with no Canvas/GLB dependency (same reasoning `buildOnePlacement`'s
+// own doc comment above gives for being exported and tested directly).
+describe('buildFloorTiles — the floorCells alternate input path (creation mode)', () => {
+  it('builds one tile per supplied cell, tagged with the canvas room-id sentinel', () => {
+    const tiles = buildFloorTiles(
+      undefined,
+      [],
+      [
+        [0, 0],
+        [1, 0],
+        [2, 1],
+      ]
+    );
+    expect(tiles.size).toBe(3);
+    for (const tile of tiles.values()) {
+      expect(tile.roomId).toBe(CANVAS_ROOM_ID);
+    }
+  });
+
+  it('still excludes doc.holes cells, even on the floorCells path', () => {
+    const tiles = buildFloorTiles(
+      undefined,
+      [[1, 0]],
+      [
+        [0, 0],
+        [1, 0],
+        [2, 1],
+      ]
+    );
+    expect(tiles.size).toBe(2);
+  });
+
+  it('with no floorPlan and no floorCells, produces an honest empty map rather than throwing', () => {
+    const tiles = buildFloorTiles(undefined, []);
+    expect(tiles.size).toBe(0);
+  });
+
+  it('the floorPlan.rooms path (edit mode) still generates every non-door-row room cell, exactly as before this unit', () => {
+    const tiles = buildFloorTiles(SHOWCASE_FLOORPLAN, []);
+    // Every room's width * (height - 1 for the door row), summed —
+    // cross-checked against the fixture's own room widths (6/14/8,
+    // CONTRACT.md's "start_column chain accumulation" finding) rather
+    // than a hard-coded magic number. Room-owned cells only — the
+    // connector-band cells the next test covers are additive, checked
+    // separately so this assertion stays a pure regression check on the
+    // untouched per-room loop.
+    const roomCellCount = SHOWCASE_FLOORPLAN.rooms.reduce(
+      (sum, room) => sum + room.width * (SHOWCASE_FLOORPLAN.height - 1),
+      0
+    );
+    expect(tiles.size).toBe(
+      roomCellCount + SHOWCASE_FLOORPLAN.connectors.length
+    );
+    expect(tiles.size).toBeGreaterThan(0);
+  });
+
+  it('the connector band (2026-08-04 fix): a real floor tile exists at [connector.column, doorRow] for every connector — the door no longer stands over a chasm', () => {
+    const tiles = buildFloorTiles(SHOWCASE_FLOORPLAN, []);
+    expect(SHOWCASE_FLOORPLAN.connectors.length).toBeGreaterThan(0);
+    for (const connector of SHOWCASE_FLOORPLAN.connectors) {
+      const cube = cubeAtColRow(connector.column, SHOWCASE_FLOORPLAN.doorRow);
+      const key = `${cube.x},${cube.y},${cube.z}`;
+      const tile = tiles.get(key);
+      expect(tile).toBeDefined();
+      // A real room id (one of the two the connector bridges), not a
+      // synthetic sentinel — this cell genuinely belongs to the compiled
+      // dungeon, unlike a creation-mode canvas tile.
+      expect(tile!.roomId).toBe(connector.fromRoomId);
+    }
+    // The connector's own column is never inside either adjacent room's
+    // [startColumn, startColumn+width) range (the whole reason the room
+    // loop alone could never produce this tile) — confirmed directly
+    // against the real fixture, not just asserted as a design claim.
+    for (const connector of SHOWCASE_FLOORPLAN.connectors) {
+      for (const room of SHOWCASE_FLOORPLAN.rooms) {
+        const inRoom =
+          connector.column >= room.startColumn &&
+          connector.column < room.startColumn + room.width;
+        expect(inRoom).toBe(false);
+      }
+    }
+  });
+
+  it('a hole at exactly a connector cell still wins — the connector band respects doc.holes like every other tile', () => {
+    const connector = SHOWCASE_FLOORPLAN.connectors[0];
+    const tiles = buildFloorTiles(SHOWCASE_FLOORPLAN, [
+      [connector.column, SHOWCASE_FLOORPLAN.doorRow],
+    ]);
+    const cube = cubeAtColRow(connector.column, SHOWCASE_FLOORPLAN.doorRow);
+    const key = `${cube.x},${cube.y},${cube.z}`;
+    expect(tiles.has(key)).toBe(false);
+  });
+
+  it('floorCells takes priority when both floorCells and floorPlan are supplied', () => {
+    const tiles = buildFloorTiles(SHOWCASE_FLOORPLAN, [], [[0, 0]]);
+    expect(tiles.size).toBe(1);
+    expect([...tiles.values()][0].roomId).toBe(CANVAS_ROOM_ID);
+  });
+});
+
+describe('buildWallLineFootprint — doc-native, mode-agnostic', () => {
+  it('an empty doc.wallLines produces an empty set, cheaply (no grid scan)', () => {
+    const { doc } = parseDungeon(SHOWCASE_YAML);
+    expect(buildWallLineFootprint(doc).size).toBe(0);
+  });
+
+  it('matches straightWallFootprint (creation/straightWallGeometry.ts) exactly for one drawn line — reused geometry, not re-derived', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    const from = { cell: [4, 4] as [number, number], corner: 0 };
+    const to = { cell: [6, 1] as [number, number], corner: 3 };
+    addWallLine(cst, from, to);
+    const doc = toDungeonDoc(cst);
+    expect(doc.wallLines).toHaveLength(1);
+
+    const grid = doc.canvas ?? { width: 20, height: 30 };
+    const expectedFootprint = straightWallFootprint(
+      doc.wallLines[0].from,
+      doc.wallLines[0].to,
+      grid
+    );
+    expect(expectedFootprint.length).toBeGreaterThan(0);
+
+    const result = buildWallLineFootprint(doc);
+    expect(result.size).toBe(expectedFootprint.length);
+    for (const [col, row] of expectedFootprint) {
+      expect(result.has(`${col},${row}`)).toBe(true);
+    }
   });
 });

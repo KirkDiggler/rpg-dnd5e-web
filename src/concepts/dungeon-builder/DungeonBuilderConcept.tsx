@@ -100,6 +100,14 @@ export function DungeonBuilderConcept() {
   const [editYamlCollapsed, setEditYamlCollapsed] = useState(false);
   const [createPaletteCollapsed, setCreatePaletteCollapsed] = useState(false);
   const [createYamlCollapsed, setCreateYamlCollapsed] = useState(false);
+  // Creation mode's OWN 2D/3D toggle (rpg-project#169's creation-mode 3D
+  // preview unit) — a genuinely independent flag from edit mode's
+  // `boardDim` above, same "remembered per mode" reasoning the palette/
+  // YAML collapse pairs already follow: this component never unmounts
+  // across an edit<->create tab switch, `CreationConcept` does, so the
+  // toggle has to live here to survive leaving and returning to the
+  // 'create' tab.
+  const [createBoardDim, setCreateBoardDim] = useState<'2d' | '3d'>('2d');
 
   const preview = usePutDungeonPreview(doc, yamlText);
   const save = useSaveDungeon();
@@ -576,6 +584,8 @@ export function DungeonBuilderConcept() {
           savedKey={creationSave.savedKey}
           saveFieldErrors={creationSave.fieldErrors}
           saveErrorMessage={creationSave.errorMessage}
+          boardDim={createBoardDim}
+          onSetBoardDim={setCreateBoardDim}
         />
         {toast && <ToastBanner message={toast} />}
       </div>

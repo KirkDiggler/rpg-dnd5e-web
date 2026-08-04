@@ -8,16 +8,18 @@
  * hand-rolled facing/delete panel duplicating what those already do.
  */
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ServerCapabilities } from '../capabilityProbe';
 import { CollapsibleSidePanel } from '../CollapsibleSidePanel';
 import type { DungeonDoc, V1SubsetResult, WallKind } from '../dungeonYaml';
 import { Inspector } from '../Inspector';
 import { Palette } from '../Palette';
+import { DungeonPreview3D } from '../preview3d/DungeonPreview3D';
 import type { BoardTool } from '../types';
 import type { BoardEditing } from '../useBoardEditing';
 import type { ServerState } from '../usePutDungeonPreview';
 import type { SaveState } from '../useSaveDungeon';
+import { deriveCanvasFloorCells } from './canvasFloor';
 import { CreationBoard } from './CreationBoard';
 import type { DemoActions } from './demoScript';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
@@ -26,6 +28,17 @@ import { ProposedYamlPane } from './ProposedYamlPane';
 import { RegionPanel } from './RegionPanel';
 import { useDemoScript } from './useDemoScript';
 import type { RegionEditing } from './useRegionEditing';
+
+/** Same 2D/3D board-dimension toggle edit mode's own board header already
+ * has (`DungeonBuilderConcept.tsx`'s `boardDim`) — reused idiom, not a
+ * second one invented for this mode. Owned by the same never-unmounting
+ * parent (`DungeonBuilderConcept`) that already owns this mode's
+ * palette/YAML collapse flags, for the identical "remembered per mode"
+ * reason CONTRACT.md's "Collapsible side panels" section records: state
+ * kept in a component that unmounts (this one, whenever the edit/create
+ * tab flips away from 'create') resets on remount, so it has to live one
+ * level up to survive a tab switch. */
+export type BoardDim = '2d' | '3d';
 
 interface CreationConceptProps {
   doc: DungeonDoc;
@@ -84,6 +97,10 @@ interface CreationConceptProps {
   savedKey: string | null;
   saveFieldErrors: ValidationError[];
   saveErrorMessage: string | null;
+  /** 2D/3D board toggle — see `BoardDim`'s own doc comment above for why
+   * this is owned by the parent rather than local `useState` here. */
+  boardDim: BoardDim;
+  onSetBoardDim: (dim: BoardDim) => void;
 }
 
 export function CreationConcept({
@@ -118,6 +135,8 @@ export function CreationConcept({
   savedKey,
   saveFieldErrors,
   saveErrorMessage,
+  boardDim,
+  onSetBoardDim,
 }: CreationConceptProps) {
   const [dims, setDims] = useState(DEFAULT_CANVAS);
 
@@ -125,6 +144,19 @@ export function CreationConcept({
   // own first step resets to them anyway, so a live dims edit mid-script
   // doesn't need to retarget it.
   const demo = useDemoScript(demoActions, DEFAULT_CANVAS);
+
+  // Canvas floor derivation (rpg-project#169's creation-mode 3D preview
+  // unit) — the 3D preview's own floor semantic for a from-scratch
+  // canvas, since it has no compiled `FloorPlan` to render from at all
+  // (`creation/canvasFloor.ts`'s own doc comment has the full rationale).
+  // Computed here, not inside `DungeonPreview3D` itself, per that
+  // component's own "clean interfaces" doc comment — derived only when
+  // actually needed (`boardDim === '3d'`) since `deriveCanvasFloorCells`
+  // scans the whole canvas grid.
+  const floorCells = useMemo(
+    () => (boardDim === '3d' ? deriveCanvasFloorCells(doc) : []),
+    [boardDim, doc]
+  );
 
   useEffect(() => {
     if (demo.isPlaying) {
@@ -286,7 +318,55 @@ export function CreationConcept({
             </button>
           )}
         </div>
+        <div
+          role="group"
+          aria-label="2D or 3D board"
+          style={{
+            display: 'flex',
+            gap: 2,
+            border: '1px solid var(--border-primary)',
+            borderRadius: 5,
+            padding: 2,
+          }}
+        >
+          {(['2d', '3d'] as const).map((d) => (
+            <button
+              key={d}
+              onClick={() => onSetBoardDim(d)}
+              style={{
+                padding: '3px 10px',
+                fontSize: 11.5,
+                fontWeight: 600,
+                borderRadius: 3,
+                border: 'none',
+                cursor: 'pointer',
+                background: boardDim === d ? '#5fd1c9' : 'transparent',
+                color: boardDim === d ? '#14110f' : 'var(--text-primary)',
+              }}
+            >
+              {d.toUpperCase()}
+            </button>
+          ))}
+        </div>
       </header>
+
+      {boardDim === '3d' && (
+        <div
+          style={{
+            padding: '4px 16px',
+            fontSize: 11,
+            color: '#8a7a5a',
+            borderBottom: '1px solid var(--border-primary)',
+          }}
+        >
+          Canvas floor = every cell minus holes (no compiled floor plan exists
+          for a from-scratch canvas yet — see CONTRACT.md). Straight-wall
+          footprint cells render dimmed; region cells render tinted with a
+          floating label. Read-only this round — orbit/zoom only, no
+          picking/placing in 3D here yet; use the 2D board or the palette to
+          edit.
+        </div>
+      )}
 
       {demo.caption && (
         <div
@@ -343,25 +423,51 @@ export function CreationConcept({
           />
         </CollapsibleSidePanel>
 
-        <main style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 18 }}>
-          <CreationBoard
-            doc={doc}
-            edit={edit}
-            tool={edit.selectedPalette ? null : selectedTool}
-            onSelectPlacement={(sel) => {
-              clearOtherSelections('placement');
-              edit.setSelectedPlacement(sel);
-            }}
-            onReject={toast}
-            onToggleWallEdge={onToggleWallEdge}
-            onAddStraightWall={onAddStraightWall}
-            onRemoveStraightWallAt={onRemoveStraightWallAt}
-            onSetStraightWallEndpoint={onSetStraightWallEndpoint}
-            onToggleStraightWallDoorAt={onToggleStraightWallDoorAt}
-            onToggleHole={onToggleHole}
-            onSetPoint={onSetPoint}
-            regionEdit={regionEdit}
-          />
+        <main
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          {boardDim === '2d' ? (
+            <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
+              <CreationBoard
+                doc={doc}
+                edit={edit}
+                tool={edit.selectedPalette ? null : selectedTool}
+                onSelectPlacement={(sel) => {
+                  clearOtherSelections('placement');
+                  edit.setSelectedPlacement(sel);
+                }}
+                onReject={toast}
+                onToggleWallEdge={onToggleWallEdge}
+                onAddStraightWall={onAddStraightWall}
+                onRemoveStraightWallAt={onRemoveStraightWallAt}
+                onSetStraightWallEndpoint={onSetStraightWallEndpoint}
+                onToggleStraightWallDoorAt={onToggleStraightWallDoorAt}
+                onToggleHole={onToggleHole}
+                onSetPoint={onSetPoint}
+                regionEdit={regionEdit}
+              />
+            </div>
+          ) : (
+            // Read-only this round (this component's own header banner
+            // above says so too) — deliberately NOT wiring
+            // selectedPlacement/onSelect/selectedPalette/onPlace/
+            // onSelectConnector. `DungeonPreview3D` degrades to
+            // view-only when those are omitted (its own prop doc
+            // comments), so this is the whole wiring needed for an
+            // honest read-only preview, not a partial version of the
+            // interactive one. `floorPlan` stays unset — a canvas has
+            // none — so `floorCells` (this component's own derivation
+            // above) is the only floor input.
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <DungeonPreview3D floorCells={floorCells} doc={doc} />
+            </div>
+          )}
         </main>
 
         <CollapsibleSidePanel
