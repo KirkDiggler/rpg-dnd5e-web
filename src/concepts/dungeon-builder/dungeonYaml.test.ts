@@ -500,18 +500,25 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
       expect(toDungeonDoc(cst).walls).toEqual([]);
     });
 
-    it('lets the model remove legacy hand-authored non-adjacent walls for server validation to repair', () => {
+    it('parses legacy hand-authored non-adjacent walls losslessly and still lets the model remove them', () => {
       const { cst } = parseDungeon(
         `${SHOWCASE_YAML}\nwalls:\n  - { from: [7, 1], to: [8, 0], kind: solid }\n`
       );
       expect(hexDistanceBetween([7, 1], [8, 0])).toBe(2);
+      // Parsing does not reject or repair a malformed edge — it round-trips
+      // exactly as authored. Nothing downstream currently re-checks it
+      // either: `walls:` is target-dialect-only, so `stripToV1Subset`
+      // drops this entry before any real preview/Save & Play call, and the
+      // released PutDungeon API neither accepts nor validates it today.
+      // Direct, strict server-side validation of authored edges becomes
+      // authoritative only once rpg-toolkit#881 and rpg-api#768 land.
       expect(toDungeonDoc(cst).walls).toEqual([
         { from: [7, 1], to: [8, 0], kind: 'solid' },
       ]);
 
-      // Parsing leaves semantic validation to the server, but a caller can
-      // still clear a legacy malformed entry without being trapped by the
-      // model-side add/update guard.
+      // A caller can still clear a legacy malformed entry without being
+      // trapped by the model-side add/update guard (which only applies to
+      // `on: true`).
       expect(() =>
         setWallEdge(cst, [7, 1], [8, 0], 'solid', false)
       ).not.toThrow();

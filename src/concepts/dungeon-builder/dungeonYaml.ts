@@ -1290,8 +1290,14 @@ export function wallKindAtEdge(
 
 /** Raised when a caller tries to create or update a `walls:` entry that
  * does not identify one real shared hex edge. This is a model-side guard
- * for generated edits, not a replacement for the server's validation of
- * hand-authored YAML. */
+ * for generated edits. It is NOT today backed by any server-side check:
+ * `walls:` is target-dialect-only and `stripToV1Subset` drops it before
+ * every real preview/Save & Play call, and the released PutDungeon API
+ * neither accepts nor validates it. Parsing itself stays lossless — a
+ * malformed hand-authored edge round-trips through the CST unchanged —
+ * so this guard is the only check a caller gets until rpg-toolkit#881
+ * and rpg-api#768 land and direct, strict server-side validation of
+ * authored edges becomes authoritative. */
 export class WallEdgeValidationError extends Error {}
 
 /** Set (add/update) or clear a wall on one real shared hex edge, with an
@@ -1303,8 +1309,10 @@ export class WallEdgeValidationError extends Error {}
  * through a separate lookup + toggleWallKind-style call).
  *
  * The adjacency guard applies only to `on: true`: an existing malformed
- * hand-authored entry must still be removable with `on: false`, and its
- * server-side semantic validation remains authoritative. `wallLines:`
+ * hand-authored entry must still be removable with `on: false` — parsing
+ * preserves it losslessly rather than rejecting it on load, and today
+ * nothing downstream of this model checks it either (see
+ * `WallEdgeValidationError`'s own doc comment for why). `wallLines:`
  * deliberately does not route through this mutator — its endpoints name
  * a span, not a single edge, and are intentionally allowed to be
  * non-adjacent. */
