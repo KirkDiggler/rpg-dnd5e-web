@@ -13,6 +13,7 @@ import { ConnectorInspector } from './ConnectorInspector';
 import { CreationConcept } from './creation/CreationConcept';
 import type { DemoActions } from './creation/demoScript';
 import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
+import type { CornerRef } from './creation/hexCorner';
 import { useRegionEditing } from './creation/useRegionEditing';
 import './DungeonBuilderConcept.css';
 import {
@@ -28,12 +29,13 @@ import {
   setPlacementFacing,
   setStart,
   setWallEdge,
+  setWallLineEndpoint,
   stripToV1Subset,
   toDungeonDoc,
   toggleHole,
   toggleWall,
   toggleWallKind,
-  toggleWallLineKindAt,
+  toggleWallLineDoorAt,
   type DungeonDoc,
   type LockedDoc,
   type WallKind,
@@ -298,12 +300,8 @@ export function DungeonBuilderConcept() {
     syncFromCreationCst(creationCst);
   };
 
-  const handleCreationAddStraightWall = (
-    from: [number, number],
-    to: [number, number],
-    kind: WallKind
-  ) => {
-    addWallLine(creationCst, from, to, kind);
+  const handleCreationAddStraightWall = (from: CornerRef, to: CornerRef) => {
+    addWallLine(creationCst, from, to);
     syncFromCreationCst(creationCst);
   };
 
@@ -312,8 +310,20 @@ export function DungeonBuilderConcept() {
     syncFromCreationCst(creationCst);
   };
 
-  const handleCreationToggleStraightWallKindAt = (index: number) => {
-    toggleWallLineKindAt(creationCst, index);
+  const handleCreationSetStraightWallEndpoint = (
+    lineIndex: number,
+    which: 'from' | 'to',
+    corner: CornerRef
+  ) => {
+    setWallLineEndpoint(creationCst, lineIndex, which, corner);
+    syncFromCreationCst(creationCst);
+  };
+
+  const handleCreationToggleStraightWallDoorAt = (
+    lineIndex: number,
+    cell: [number, number]
+  ) => {
+    toggleWallLineDoorAt(creationCst, lineIndex, cell);
     syncFromCreationCst(creationCst);
   };
 
@@ -493,7 +503,8 @@ export function DungeonBuilderConcept() {
           onToggleWallEdge={handleCreationToggleWallEdge}
           onAddStraightWall={handleCreationAddStraightWall}
           onRemoveStraightWallAt={handleCreationRemoveStraightWallAt}
-          onToggleStraightWallKindAt={handleCreationToggleStraightWallKindAt}
+          onSetStraightWallEndpoint={handleCreationSetStraightWallEndpoint}
+          onToggleStraightWallDoorAt={handleCreationToggleStraightWallDoorAt}
           onToggleHole={handleCreationToggleHole}
           onSetPoint={handleCreationSetPoint}
           onNewCanvas={handleNewCanvas}

@@ -1,11 +1,13 @@
 /**
  * straightWallGeometry — footprint + crossing math for STRAIGHT wall
  * segments (rpg-project#169 dungeon-builder initiative, "straight walls
- * with visible footprint" unit). Kept separate from `creationGeometry.ts`
- * because it answers a genuinely different question: not "which hex EDGE
- * is nearest a point" (the zigzag edge-wall tool's job) but "which hex
- * CELLS does an arbitrary straight WORLD-SPACE line clip through, and
- * which cell-to-cell EDGES does it cross without clipping either side."
+ * with visible footprint" unit; corner-anchored since the follow-up
+ * "corner-anchored straight walls + line doors" unit). Kept separate from
+ * `creationGeometry.ts` because it answers a genuinely different
+ * question: not "which hex EDGE is nearest a point" (the zigzag edge-wall
+ * tool's job) but "which hex CELLS does an arbitrary straight WORLD-SPACE
+ * line clip through, and which cell-to-cell EDGES does it cross without
+ * clipping either side."
  *
  * Kirk's rule, verbatim (CONTRACT.md's "Hex-true creation canvas"
  * section — this module exists to implement it precisely): "any hex that
@@ -35,6 +37,19 @@
  * CENTERS instead clips every hex in that column full-width (the
  * "shoulder-clipping" case), because a hex's own two vertical edges sit
  * at ±(half the flat-to-flat width) from its center, not AT the center.
+ *
+ * **Corner anchoring (this unit).** `from`/`to` are now `CornerRef`s
+ * (`hexCorner.ts`) — hex CORNERS, not cell centers. Kirk's live
+ * feedback: "it always hangs over a little" — a cell-center-anchored
+ * wall overshoots its intended extent by up to half a hex at each end,
+ * by construction, and there was no finer lattice to fine-tune into. All
+ * of this module's actual clipping math (`hexHalfPlanes`,
+ * `clipSegmentToShrunkHex`, `isCellClipped`, `candidateCells`) already
+ * operated on raw world-space `CellPos` points and needed ZERO changes —
+ * only the higher-level functions that used to resolve `from`/`to` via
+ * `cellCenter` now resolve them via `cornerPoint` instead. See
+ * `hexCorner.ts`'s own header comment for the corner-lattice addressing
+ * and dedup rule this implies.
  */
 import { neighborCell } from '../boardGeometry';
 import {
@@ -46,12 +61,14 @@ import {
   worldToCube,
   type CellPos,
 } from '../hexLayout';
-import {
-  canonicalHexEdge,
-  nearestCreationCell,
-  type EdgeGeometry,
-} from './creationGeometry';
+import { canonicalHexEdge, type EdgeGeometry } from './creationGeometry';
 import type { CreationGrid } from './creationTypes';
+import {
+  canonicalCorner,
+  cornerPoint,
+  nearestCorner,
+  type CornerRef,
+} from './hexCorner';
 
 /**
  * How far (in board units) a half-plane is shrunk inward before testing
@@ -221,23 +238,33 @@ function inBoundsGrid(col: number, row: number, grid: CreationGrid): boolean {
 }
 
 /**
- * Every hex cell a straight wall from endpoint cell `from` to endpoint
- * cell `to` genuinely clips — the wall's own footprint, in Kirk's sense:
- * "any hex that is not 100% uncovered would not be traversable." The
- * line is the straight WORLD-SPACE segment between the two endpoint
- * cells' centers (`cellCenter`), not a chain of hex edges — see this
- * module's own header comment for why that line generally does NOT
- * follow hex boundaries.
+ * Every hex cell a straight wall from corner `from` to corner `to`
+ * genuinely clips — the wall's own footprint, in Kirk's sense: "any hex
+ * that is not 100% uncovered would not be traversable." The line is the
+ * straight WORLD-SPACE segment between the two endpoint CORNERS
+ * (`cornerPoint`), not a chain of hex edges and not a cell-center-to-
+ * cell-center segment either (see this module's own header comment for
+ * the corner-anchoring change, and its top-of-file comment for why the
+ * line generally does NOT follow hex boundaries regardless).
+ *
+ * `doorCells` (a wallLine's own `doors: [{cell}]` entries — see
+ * `dungeonYaml.ts`'s `WallLineDoc`) are excluded from the result: a door
+ * punches its cell out of THIS wall's footprint entirely, as if the line
+ * never clipped it — see TARGET-YAML.md's "Straight walls: doors" section
+ * for the exact traversability semantic this gives a compiler.
  */
 export function straightWallFootprint(
-  from: [number, number],
-  to: [number, number],
-  grid: CreationGrid
+  from: CornerRef,
+  to: CornerRef,
+  grid: CreationGrid,
+  doorCells: readonly [number, number][] = []
 ): [number, number][] {
-  const a = cellCenter(from[0], from[1]);
-  const b = cellCenter(to[0], to[1]);
+  const a = cornerPoint(from);
+  const b = cornerPoint(to);
+  const doorSet = new Set(doorCells.map(([c, r]) => `${c},${r}`));
   const result: [number, number][] = [];
   for (const [col, row] of candidateCells(a, b, grid)) {
+    if (doorSet.has(`${col},${row}`)) continue;
     if (isCellClipped(a, b, col, row)) result.push([col, row]);
   }
   return result;
@@ -285,16 +312,27 @@ function segmentsIntersect(
  * blocked is deliberately omitted — it's already subsumed by that cell
  * being wholly impassable, so surfacing it separately would just be
  * noise on top of a fact the footprint already covers.
+ *
+ * `doorCells`, when `footprint` isn't already resolved by the caller, is
+ * forwarded to `straightWallFootprint` so a door cell is treated as
+ * "clear" here too — its own boundary crossings then fall out of the
+ * SAME (b) mechanism as any other clear cell, no separate door-crossing
+ * logic needed. If the caller already resolved `footprint` itself
+ * (e.g. `CreationBoard.tsx`'s render pass, which computes the footprint
+ * once and reuses it for both the hatch overlay and this call),
+ * `doorCells` is unused — pass a footprint that's already door-excluded.
  */
 export function straightWallCrossedEdges(
-  from: [number, number],
-  to: [number, number],
+  from: CornerRef,
+  to: CornerRef,
   grid: CreationGrid,
-  footprint?: readonly [number, number][]
+  footprint?: readonly [number, number][],
+  doorCells: readonly [number, number][] = []
 ): EdgeGeometry[] {
-  const a = cellCenter(from[0], from[1]);
-  const b = cellCenter(to[0], to[1]);
-  const resolvedFootprint = footprint ?? straightWallFootprint(from, to, grid);
+  const a = cornerPoint(from);
+  const b = cornerPoint(to);
+  const resolvedFootprint =
+    footprint ?? straightWallFootprint(from, to, grid, doorCells);
   const footprintSet = new Set(resolvedFootprint.map(([c, r]) => `${c},${r}`));
   const candidates = candidateCells(a, b, grid);
   const seen = new Set<string>();
@@ -315,17 +353,28 @@ export function straightWallCrossedEdges(
   return crossed;
 }
 
-/** The union of every drawn straight wall's own footprint, as a
- * `"col,row"`-keyed Set — what `CreationBoard.tsx` checks placements/
- * start/end/region cells against to flag (never silently delete/move)
- * anything a newly-drawn footprint now covers. */
+/** The union of every drawn straight wall's own footprint (door cells
+ * already excluded, per-line), as a `"col,row"`-keyed Set — what
+ * `CreationBoard.tsx` checks placements/start/end/region cells against to
+ * flag (never silently delete/move) anything a newly-drawn footprint now
+ * covers. */
 export function straightWallsFootprintSet(
-  lines: readonly { from: [number, number]; to: [number, number] }[],
+  lines: readonly {
+    from: CornerRef;
+    to: CornerRef;
+    doors?: readonly { cell: [number, number] }[];
+  }[],
   grid: CreationGrid
 ): Set<string> {
   const set = new Set<string>();
   for (const line of lines) {
-    for (const [c, r] of straightWallFootprint(line.from, line.to, grid)) {
+    const doorCells = (line.doors ?? []).map((d) => d.cell);
+    for (const [c, r] of straightWallFootprint(
+      line.from,
+      line.to,
+      grid,
+      doorCells
+    )) {
       set.add(`${c},${r}`);
     }
   }
@@ -336,76 +385,215 @@ export function cellKey(col: number, row: number): string {
   return `${col},${row}`;
 }
 
-export type StraightAxis = 'vertical' | 'horizontal';
-
-/**
- * Which screen axis a drag most likely intends — a 2-way analog of
- * `creationGeometry.ts`'s `dragFamily` (which picks among the hex grid's
- * 3 EDGE families for the zigzag Wall tool). A straight wall's two
- * "natural axes" are literal SCREEN/board-space axes, not hex edge
- * families — see this module's own header comment for why board-space
- * "horizontal" has no hex-edge analog at all (that absence is exactly
- * why a horizontal straight wall clips hexes instead of running along
- * their boundaries — it's the whole reason this tool exists). 60°/120°
- * diagonal snapping was considered and skipped this round: cheap to add
- * later (a 4-way `pickStraightAxis` instead of this 2-way one, using the
- * same score-based `snapStraightEndpoint` search below with 4 target
- * directions instead of 2) but not needed to prove the footprint
- * mechanic, which is this unit's actual point.
- */
-export function pickStraightAxis(dx: number, dy: number): StraightAxis {
-  return Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical';
+/** Standard point-onto-segment projection, clamped to `[0,1]` — the
+ * straight-wall Door tool's own "where along this line did the author
+ * click" step, shared with `pointToSegmentDistSq`'s distance math in
+ * `creationGeometry.ts` (same clamp shape) but returning the parameter
+ * itself rather than a distance. */
+export function projectPointToLineParam(
+  a: CellPos,
+  b: CellPos,
+  p: CellPos
+): number {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const len2 = abx * abx + aby * aby;
+  if (len2 === 0) return 0;
+  const t = ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2;
+  return Math.max(0, Math.min(1, t));
 }
 
 /**
- * The best "to" cell for continuing a straight wall from `fromCell`
- * toward `pointer`, locked to `axis`. This is a DISCRETE hex grid, so an
- * exactly vertical or horizontal line generally isn't reachable between
- * two integer cell centers at all (see this module's own header comment:
- * no edge family is horizontal, and "vertical" only lines up exactly for
- * specific from/to combinations) — this searches a small window of
- * columns/rows around the pointer's own nearest cell and picks whichever
- * candidate keeps the OTHER world-space coordinate closest to
- * `fromCell`'s own (vertical mode holds worldX as steady as the grid
- * allows; horizontal mode holds worldY steady), tie-broken toward
- * whichever candidate is nearest the pointer along the free axis. The
- * result is the closest AVAILABLE approximation, not a mathematically
- * exact one — `straightWallFootprint` above computes the footprint from
- * whatever line actually results, honestly, rather than pretending the
- * snap was exact.
+ * Which footprint cell (if any) a parametric position `t` along the
+ * wall's own `from`->`to` line falls inside — the exact mapping a real
+ * server compiler owns for a `doors: [{cell}]` entry's placement: walk
+ * every candidate cell's own clip interval (`clipSegmentToShrunkHex`,
+ * the SAME primitive `straightWallFootprint` uses) and return the one
+ * whose `[t0,t1]` contains `t`. `null` when `t` falls in an un-clipped
+ * (touch-only) stretch of the line, or outside every candidate — the
+ * caller (the Door tool's click handler) treats that as "no door placed,
+ * nothing there to carve an opening into."
+ */
+export function footprintCellAtParam(
+  from: CornerRef,
+  to: CornerRef,
+  grid: CreationGrid,
+  t: number
+): [number, number] | null {
+  const a = cornerPoint(from);
+  const b = cornerPoint(to);
+  for (const [col, row] of candidateCells(a, b, grid)) {
+    const interval = clipSegmentToShrunkHex(a, b, col, row);
+    if (interval && t >= interval[0] - 1e-9 && t <= interval[1] + 1e-9) {
+      return [col, row];
+    }
+  }
+  return null;
+}
+
+/** The straight-wall Door tool's own hit-resolution: a click at board
+ * point `point` on wallLine `from`->`to` resolves to the ONE footprint
+ * cell it landed on (projected onto the line, then mapped through
+ * `footprintCellAtParam`), or `null` if the click didn't land on any real
+ * footprint cell (an un-covered "touch" stretch of the line, or a miss).
+ */
+export function wallLineDoorCellAt(
+  from: CornerRef,
+  to: CornerRef,
+  grid: CreationGrid,
+  point: CellPos
+): [number, number] | null {
+  const a = cornerPoint(from);
+  const b = cornerPoint(to);
+  const t = projectPointToLineParam(a, b, point);
+  return footprintCellAtParam(from, to, grid, t);
+}
+
+/** Whether `cell` is one of this wall line's own RAW (door-blind)
+ * footprint cells — what a door entry must reference to mean anything.
+ * `CreationBoard.tsx` uses this to flag (not silently drop, per this
+ * file's own discipline) a door left stranded by an endpoint drag that
+ * shrank the footprint out from under it. */
+export function isValidDoorCell(
+  from: CornerRef,
+  to: CornerRef,
+  grid: CreationGrid,
+  cell: [number, number]
+): boolean {
+  return straightWallFootprint(from, to, grid).some(
+    ([c, r]) => c === cell[0] && r === cell[1]
+  );
+}
+
+/**
+ * The hex grid's own 3 real edge-line orientations (degrees from the
+ * horizontal board axis, mod 180 — a line's ORIENTATION has no direction,
+ * so 30° and 210° are the same family). Pointy-top hex corners at
+ * 30°+60°·i give edges at exactly these 3 angles (see this module's own
+ * header comment) — these are the "natural families" a straight wall
+ * snaps to by default (Kirk: "vertical... plus the hex edge families").
+ * Superseding this module's former unconditional 2-way vertical/
+ * horizontal lock (every drag forced onto one of only 2 axes, one of
+ * which — horizontal, 0° — matches no real hex edge at all and so always
+ * clipped through hex interiors by construction): the fix for Kirk's
+ * "my line was angled ever so slightly" is a tolerance-gated snap to a
+ * REAL edge family, not a wider forced choice.
+ */
+export const WALL_ANGLE_FAMILIES_DEG = [30, 90, 150] as const;
+export type WallAxisFamily = (typeof WALL_ANGLE_FAMILIES_DEG)[number];
+
+/**
+ * How close (in degrees) a drag/endpoint-adjustment must be to one of
+ * `WALL_ANGLE_FAMILIES_DEG` before it snaps — Kirk's own suggested range
+ * ("~5-8°"), picked at the middle. Wide enough to correct a near-miss
+ * without a steady hand; narrow enough that a drag genuinely AIMED
+ * somewhere else (a deliberate free diagonal) isn't dragged onto a family
+ * it was never actually close to.
+ */
+export const WALL_ANGLE_SNAP_TOLERANCE_DEG = 6;
+
+function normalizeAngleDeg(deg: number): number {
+  const mod = deg % 180;
+  return mod < 0 ? mod + 180 : mod;
+}
+
+/** Circular distance between two line ORIENTATIONS (mod 180). */
+function angleFamilyDistance(a: number, b: number): number {
+  const diff = Math.abs(normalizeAngleDeg(a) - normalizeAngleDeg(b));
+  return Math.min(diff, 180 - diff);
+}
+
+/**
+ * Which of the 3 real hex-edge angle families (if any) a drag vector is
+ * close enough to snap to. Returns `null` when the raw direction isn't
+ * within `toleranceDeg` of any family — the caller then falls back to an
+ * unconstrained nearest-corner snap (a deliberate free angle), never
+ * forcing a family the drag wasn't actually close to. A zero-length
+ * vector has no defined angle and also returns `null`.
+ */
+export function nearestWallAngleFamily(
+  dx: number,
+  dy: number,
+  toleranceDeg: number = WALL_ANGLE_SNAP_TOLERANCE_DEG
+): WallAxisFamily | null {
+  if (dx === 0 && dy === 0) return null;
+  const angle = normalizeAngleDeg((Math.atan2(dy, dx) * 180) / Math.PI);
+  let best: WallAxisFamily = WALL_ANGLE_FAMILIES_DEG[0];
+  let bestDist = Infinity;
+  for (const family of WALL_ANGLE_FAMILIES_DEG) {
+    const dist = angleFamilyDistance(angle, family);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = family;
+    }
+  }
+  return bestDist <= toleranceDeg ? best : null;
+}
+
+/**
+ * The best "to" CORNER for continuing/fine-tuning a straight wall from
+ * `fromCorner` toward `pointer`. `axis`, when non-`null`, locks the
+ * result to whichever of `WALL_ANGLE_FAMILIES_DEG` the caller already
+ * decided (via `nearestWallAngleFamily`) — `null` means a free angle (the
+ * modifier-key bypass, or a drag too far from every family to snap),
+ * which falls straight through to `nearestCorner`'s plain nearest-point
+ * search with no direction constraint at all.
+ *
+ * This is a DISCRETE hex grid, so an exactly-`axis`-degree line generally
+ * isn't reachable between two lattice corners at all (see this module's
+ * own header comment: no edge family is horizontal, and even a real
+ * family only lines up exactly for specific from/to combinations) — the
+ * locked-axis branch searches a small window of cells around the
+ * pointer's own nearest corner (checking all 6 of each candidate cell's
+ * own corners, not just cell centers) and picks whichever candidate
+ * corner's direction from `fromCorner` deviates LEAST from `axis`,
+ * tie-broken toward whichever candidate is nearest the pointer itself.
+ * The result is the closest AVAILABLE approximation, not a
+ * mathematically exact one — `straightWallFootprint` above computes the
+ * footprint from whatever line actually results, honestly, rather than
+ * pretending the snap was exact.
  */
 export function snapStraightEndpoint(
-  fromCell: [number, number],
+  fromCorner: CornerRef,
   pointer: CellPos,
-  axis: StraightAxis,
+  axis: WallAxisFamily | null,
   grid: CreationGrid
-): [number, number] {
-  const fromCenter = cellCenter(fromCell[0], fromCell[1]);
-  const [pCol, pRow] = nearestCreationCell(pointer, grid);
+): CornerRef {
+  if (axis === null) return nearestCorner(pointer, grid);
+  const fromPoint = cornerPoint(fromCorner);
+  const near = nearestCorner(pointer, grid);
+  const [pCol, pRow] = near.cell;
   const WINDOW = 3;
-  let best: [number, number] = [pCol, pRow];
+  let best: CornerRef = near;
   let bestScore = Infinity;
   for (let dCol = -WINDOW; dCol <= WINDOW; dCol++) {
     for (let dRow = -WINDOW; dRow <= WINDOW; dRow++) {
       const col = pCol + dCol;
       const row = pRow + dRow;
       if (!inBoundsGrid(col, row, grid)) continue;
-      const center = cellCenter(col, row);
-      const alignDelta =
-        axis === 'vertical'
-          ? Math.abs(center.x - fromCenter.x)
-          : Math.abs(center.y - fromCenter.y);
-      const nearPointer =
-        axis === 'vertical' ? Math.abs(row - pRow) : Math.abs(col - pCol);
-      // Alignment to the locked axis dominates; nearness to the pointer
-      // along the free axis is only a tiebreak among near-equally-aligned
-      // candidates.
-      const score = alignDelta * 1000 + nearPointer;
-      if (score < bestScore) {
-        bestScore = score;
-        best = [col, row];
+      const corners = cellCorners(cellCenter(col, row), BOARD_HEX_SIZE);
+      for (let corner = 0; corner < 6; corner++) {
+        const point = { x: corners[corner][0], y: corners[corner][1] };
+        if (point.x === fromPoint.x && point.y === fromPoint.y) continue;
+        const candAngle = normalizeAngleDeg(
+          (Math.atan2(point.y - fromPoint.y, point.x - fromPoint.x) * 180) /
+            Math.PI
+        );
+        const alignDelta = angleFamilyDistance(candAngle, axis);
+        const nearPointer = Math.hypot(
+          point.x - pointer.x,
+          point.y - pointer.y
+        );
+        // Alignment to the locked axis dominates; nearness to the
+        // pointer is only a tiebreak among near-equally-aligned
+        // candidates.
+        const score = alignDelta * 1000 + nearPointer;
+        if (score < bestScore) {
+          bestScore = score;
+          best = { cell: [col, row], corner };
+        }
       }
     }
   }
-  return best;
+  return canonicalCorner(best);
 }
