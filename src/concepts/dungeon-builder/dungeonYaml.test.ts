@@ -1,3 +1,4 @@
+import { hexDistance } from '@/components/hex-grid/hexMath';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -46,9 +47,11 @@ import {
   toggleWallKind,
   toggleWallLineDoorAt,
   validateRegionCells,
+  WallEdgeValidationError,
   wallKindAtEdge,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
+import { cubeAtColRow } from './hexLayout';
 
 describe('parseDungeon', () => {
   it('parses showcase.yaml into the expected room chain', () => {
@@ -380,6 +383,149 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
     expect(doc.rooms[0].place[0].rotationDegrees).toBeNull();
     expect(doc.rooms[0].place[0].targeting).toBeNull();
     expect(doc.rooms[2].boss?.targeting).toBeNull();
+  });
+
+  describe('edge-native wall adjacency', () => {
+    const hexDistanceBetween = (
+      from: [number, number],
+      to: [number, number]
+    ): number =>
+      hexDistance(cubeAtColRow(from[0], from[1]), cubeAtColRow(to[0], to[1]));
+
+    const originalInvalidKitchenSinkEdges: ReadonlyArray<{
+      label: string;
+      from: [number, number];
+      to: [number, number];
+    }> = [
+      {
+        label: 'odd-column solid edge',
+        from: [7, 1],
+        to: [8, 0],
+      },
+      {
+        label: 'odd-column door edge',
+        from: [7, 3],
+        to: [8, 2],
+      },
+    ];
+
+    it.each(originalInvalidKitchenSinkEdges)(
+      'rejects the original non-adjacent Kitchen Sink $label',
+      ({ from, to }) => {
+        // Use the real odd-q conversion rather than inferring adjacency
+        // from row/column deltas: both historical pairs are distance 2.
+        expect(hexDistanceBetween(from, to)).toBe(2);
+        const { cst } = parseDungeon(SHOWCASE_YAML);
+
+        expect(() => setWallEdge(cst, from, to, 'solid', true)).toThrow(
+          WallEdgeValidationError
+        );
+        expect(toDungeonDoc(cst).walls).toEqual([]);
+      }
+    );
+
+    const validEdges: ReadonlyArray<{
+      label: string;
+      from: [number, number];
+      to: [number, number];
+      kind: 'solid' | 'door';
+    }> = [
+      // Kitchen Sink: odd-column origin to its real even-column neighbor.
+      {
+        label: 'corrected odd-column Kitchen Sink solid edge',
+        from: [7, 1],
+        to: [8, 1],
+        kind: 'solid',
+      },
+      {
+        label: 'corrected odd-column Kitchen Sink door edge',
+        from: [7, 3],
+        to: [8, 3],
+        kind: 'door',
+      },
+      // Blank-canvas specimen: exercise the even-column parity and the
+      // other valid real-hex edge directions its real mutator emits.
+      {
+        label: 'canvas diagonal edge from an even column',
+        from: [4, 4],
+        to: [5, 3],
+        kind: 'solid',
+      },
+      {
+        label: 'canvas same-column edge',
+        from: [4, 4],
+        to: [4, 5],
+        kind: 'solid',
+      },
+      {
+        label: 'canvas diagonal door edge from an odd column',
+        from: [5, 3],
+        to: [6, 4],
+        kind: 'door',
+      },
+    ];
+
+    it.each(validEdges)(
+      'accepts each real hex $label',
+      ({ from, to, kind }) => {
+        expect(hexDistanceBetween(from, to)).toBe(1);
+        const { cst } = parseDungeon(SHOWCASE_YAML);
+
+        setWallEdge(cst, from, to, kind, true);
+        expect(toDungeonDoc(cst).walls).toEqual([{ from, to, kind }]);
+      }
+    );
+
+    it('keeps the generated Kitchen Sink YAML on real shared edges', () => {
+      const { doc } = parseDungeon(
+        readFileSync(join(__dirname, 'specimens', 'kitchen-sink.yaml'), 'utf8')
+      );
+      expect(doc.walls.slice(0, 2)).toEqual([
+        { from: [7, 1], to: [8, 1], kind: 'solid' },
+        { from: [7, 3], to: [8, 3], kind: 'door' },
+      ]);
+      for (const wall of doc.walls) {
+        expect(hexDistanceBetween(wall.from, wall.to)).toBe(1);
+      }
+    });
+
+    it('keeps valid setWallEdge add, kind-update, and removal semantics', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      const from: [number, number] = [7, 1];
+      const to: [number, number] = [8, 1];
+
+      setWallEdge(cst, from, to, 'solid', true);
+      setWallEdge(cst, from, to, 'door', true);
+      expect(toDungeonDoc(cst).walls).toEqual([{ from, to, kind: 'door' }]);
+
+      setWallEdge(cst, from, to, 'solid', false);
+      expect(toDungeonDoc(cst).walls).toEqual([]);
+    });
+
+    it('parses legacy hand-authored non-adjacent walls losslessly and still lets the model remove them', () => {
+      const { cst } = parseDungeon(
+        `${SHOWCASE_YAML}\nwalls:\n  - { from: [7, 1], to: [8, 0], kind: solid }\n`
+      );
+      expect(hexDistanceBetween([7, 1], [8, 0])).toBe(2);
+      // Parsing does not reject or repair a malformed edge — it round-trips
+      // exactly as authored. Nothing downstream currently re-checks it
+      // either: `walls:` is target-dialect-only, so `stripToV1Subset`
+      // drops this entry before any real preview/Save & Play call, and the
+      // released PutDungeon API neither accepts nor validates it today.
+      // Direct, strict server-side validation of authored edges becomes
+      // authoritative only once rpg-toolkit#881 and rpg-api#768 land.
+      expect(toDungeonDoc(cst).walls).toEqual([
+        { from: [7, 1], to: [8, 0], kind: 'solid' },
+      ]);
+
+      // A caller can still clear a legacy malformed entry without being
+      // trapped by the model-side add/update guard (which only applies to
+      // `on: true`).
+      expect(() =>
+        setWallEdge(cst, [7, 1], [8, 0], 'solid', false)
+      ).not.toThrow();
+      expect(toDungeonDoc(cst).walls).toEqual([]);
+    });
   });
 
   it('toggleWall adds a solid wall, then removes it on a second toggle', () => {
@@ -1569,6 +1715,9 @@ regions:
       // represent at all. Sorted by (row, col) of `to`, the middle of 3
       // (pickAttachmentEdge's own floor(n/2) rule) is now the new edge.
       expect(result.edge).toEqual({ from: [1, 1], to: [2, 2] });
+      // The connector's odd-column -> even-column diagonal is a real
+      // shared hex edge under the same cube conversion setWallEdge uses.
+      expect(hexDistance(cubeAtColRow(1, 1), cubeAtColRow(2, 2))).toBe(1);
 
       const finalDoc = toDungeonDoc(cst);
       expect(finalDoc.walls).toHaveLength(1);

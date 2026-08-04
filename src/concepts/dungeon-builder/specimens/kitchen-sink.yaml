@@ -27,8 +27,8 @@ connectors:
   - { from: entry, to: hall, locked: { dc: 14, ability: dex } }
   - { from: hall, to: sanctum }
 walls:
-  - { from: [ 7, 1 ], to: [ 8, 0 ], kind: solid }
-  - { from: [ 7, 3 ], to: [ 8, 2 ], kind: door }
+  - { from: [ 7, 1 ], to: [ 8, 1 ], kind: solid }
+  - { from: [ 7, 3 ], to: [ 8, 3 ], kind: door }
   - { from: [ 10, 3 ], to: [ 11, 3 ], kind: door }
 regions:
   - id: hall-inner

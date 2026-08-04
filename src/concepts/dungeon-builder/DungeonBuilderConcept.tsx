@@ -36,6 +36,7 @@ import {
   toggleWall,
   toggleWallKind,
   toggleWallLineDoorAt,
+  WallEdgeValidationError,
   type DungeonDoc,
   type LockedDoc,
   type WallKind,
@@ -296,7 +297,24 @@ export function DungeonBuilderConcept() {
     kind: WallKind,
     on: boolean
   ) => {
-    setWallEdge(creationCst, from, to, kind, on);
+    // The creation board only ever passes real detected hex edges, so
+    // this should never actually reject today — but `setWallEdge` throws
+    // on any future edge-detection/geometry bug that hands it a
+    // non-adjacent pair, and an uncaught throw here would crash the
+    // whole concept rather than just this one stroke. Surface it through
+    // the same toast seam `handleToggleWallKind` above uses for its own
+    // "can't do that" case, and leave the board's cst/doc untouched
+    // (same as that case) rather than syncing a no-op.
+    try {
+      setWallEdge(creationCst, from, to, kind, on);
+    } catch (err) {
+      flashToast(
+        err instanceof WallEdgeValidationError
+          ? err.message
+          : 'Could not update that wall edge.'
+      );
+      return;
+    }
     syncFromCreationCst(creationCst);
   };
 
