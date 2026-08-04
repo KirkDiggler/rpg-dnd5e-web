@@ -362,9 +362,10 @@ export function CreationConcept({
           Canvas floor = every cell minus holes (no compiled floor plan exists
           for a from-scratch canvas yet — see CONTRACT.md). Straight-wall
           footprint cells render dimmed; region cells render tinted with a
-          floating label. Read-only this round — orbit/zoom only, no
-          picking/placing in 3D here yet; use the 2D board or the palette to
-          edit.
+          floating label.{' '}
+          {edit.selectedPalette
+            ? `Palette: ${edit.selectedPalette.ref.split(':').pop()} selected — click an empty floor hex to place it (highlighted teal); orbit/zoom with the mouse.`
+            : 'Click a placed prop/monster to select it (opens the Inspector — rotate/delete there), or pick a palette item to place one here too. Region/wall/hole/start/end tools stay 2D-only this round — switch to the 2D board for those.'}
         </div>
       )}
 
@@ -454,18 +455,39 @@ export function CreationConcept({
               />
             </div>
           ) : (
-            // Read-only this round (this component's own header banner
-            // above says so too) — deliberately NOT wiring
-            // selectedPlacement/onSelect/selectedPalette/onPlace/
-            // onSelectConnector. `DungeonPreview3D` degrades to
-            // view-only when those are omitted (its own prop doc
-            // comments), so this is the whole wiring needed for an
-            // honest read-only preview, not a partial version of the
-            // interactive one. `floorPlan` stays unset — a canvas has
-            // none — so `floorCells` (this component's own derivation
-            // above) is the only floor input.
+            // Creation-mode 3D editing parity (rpg-project#169's
+            // creation-3D-editing unit) — graduates edit-mode's existing
+            // 3D click-to-place/select/rotate machinery onto the canvas,
+            // closing the "read-only this round" follow-up the
+            // creation-mode-3D-preview unit named. Wiring mirrors
+            // `DungeonBuilderConcept.tsx`'s own edit-mode call site
+            // exactly (`selectedPlacement`/`onSelect`/`selectedPalette`/
+            // `onPlace`/`onReject`), plus `selectedTool` so a 2D-only
+            // tool (region/wall/hole/start/end) armed while the author
+            // clicks in 3D gets an honest "switch to 2D" message instead
+            // of the generic "pick a palette item" one.
+            // `floorPlan` stays unset — a canvas has none — so
+            // `floorCells` (this component's own derivation above) is
+            // the only floor input; `onPlace`'s `roomId` argument is
+            // always `null` on this path (`DungeonPreview3D.tsx`'s own
+            // `handleClickCell` doc comment) — the same top-level shape
+            // `CreationBoard.tsx`'s 2D brush already produces via
+            // `edit.handlePlace(null, cell)`. Region/wall 3D editing
+            // itself stays out of scope this round — see CONTRACT.md.
             <div style={{ flex: 1, minHeight: 0 }}>
-              <DungeonPreview3D floorCells={floorCells} doc={doc} />
+              <DungeonPreview3D
+                floorCells={floorCells}
+                doc={doc}
+                selectedPlacement={edit.selectedPlacement}
+                onSelect={(sel) => {
+                  clearOtherSelections('placement');
+                  edit.setSelectedPlacement(sel);
+                }}
+                selectedPalette={edit.selectedPalette}
+                onPlace={edit.handlePlace}
+                onReject={toast}
+                selectedTool={selectedTool}
+              />
             </div>
           )}
         </main>

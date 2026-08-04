@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeFlushRotation,
   facingToRotationY,
+  isCellOccupied,
   isSameSelection,
   nearestBearingFacing,
   neighborCell,
@@ -9,7 +10,13 @@ import {
   wallBearingFacings,
   wallMountRotationY,
 } from './boardGeometry';
-import type { WallDoc } from './dungeonYaml';
+import { emptyCanvasYaml } from './creation/emptyCanvasDoc';
+import {
+  parseDungeon,
+  placeItem,
+  toDungeonDoc,
+  type WallDoc,
+} from './dungeonYaml';
 import type { PlacementSelection } from './types';
 
 const roomA0: PlacementSelection = { roomId: 'room-a', index: 0 };
@@ -254,5 +261,51 @@ describe('computeFlushRotation (Kirk\'s 2026-08-03 fine-rotation generalization:
     const walls = wallOnFacing(2);
     const result = computeFlushRotation(walls, ABS_COL, ROW, null);
     expect(result).toEqual(computeFlushRotation(walls, ABS_COL, ROW, null));
+  });
+});
+
+// `floorPlan` went from required to optional (rpg-project#169's
+// creation-3D-editing unit) — a from-scratch creation-mode canvas has no
+// compiled FloorPlan, so `creation/canvasFloor.ts`'s
+// `canvasPlacementRejectReason` calls this with `undefined`. No prior test
+// coverage existed for this function at all before this unit.
+describe('isCellOccupied — floorPlan: undefined (creation-mode canvas, rpg-project#169)', () => {
+  // A real parsed canvas doc (`parseDungeon(emptyCanvasYaml(...))`), not a
+  // hand-typed `DungeonDoc` literal — matches the fixture pattern
+  // `canvasFloor.test.ts` and `DungeonPreview3D.test.ts` already use.
+  const docWithTopLevelPlacement = () => {
+    const { cst } = parseDungeon(emptyCanvasYaml(20, 30));
+    placeItem(cst, null, 'dnd5e:props:pillar', [3, 3]);
+    return toDungeonDoc(cst);
+  };
+
+  it('reports a top-level placement’s own cell as occupied with no floorPlan at all', () => {
+    const doc = docWithTopLevelPlacement();
+    expect(isCellOccupied(undefined, doc, 3, 3)).toBe(true);
+  });
+
+  it('leaves every other cell unoccupied', () => {
+    const doc = docWithTopLevelPlacement();
+    expect(isCellOccupied(undefined, doc, 3, 4)).toBe(false);
+    expect(isCellOccupied(undefined, doc, 4, 3)).toBe(false);
+  });
+
+  it('an empty canvas (doc.rooms === [], doc.place === []) reports nothing occupied — no crash from the skipped room loop', () => {
+    const doc = toDungeonDoc(parseDungeon(emptyCanvasYaml(20, 30)).cst);
+    expect(doc.rooms).toEqual([]);
+    expect(isCellOccupied(undefined, doc, 0, 0)).toBe(false);
+  });
+
+  it('`exclude` still lets the placement being moved/re-checked exempt its own top-level index', () => {
+    const doc = docWithTopLevelPlacement();
+    expect(
+      isCellOccupied(undefined, doc, 3, 3, { roomId: null, index: 0 })
+    ).toBe(false);
+    // A DIFFERENT index at the same cell would still be a real collision
+    // — exclude is index-specific, not a blanket "top-level never
+    // collides" escape hatch.
+    expect(
+      isCellOccupied(undefined, doc, 3, 3, { roomId: null, index: 1 })
+    ).toBe(true);
   });
 });

@@ -150,6 +150,7 @@ import {
   isSameSelection,
   wallMountRotationY,
 } from '../boardGeometry';
+import { canvasPlacementRejectReason } from '../creation/canvasFloor';
 import { DEFAULT_CANVAS } from '../creation/emptyCanvasDoc';
 import { cornerPoint, type CornerRef } from '../creation/hexCorner';
 import {
@@ -170,7 +171,7 @@ import {
 import { BOARD_HEX_SIZE, cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
 import { END_COLOR, regionArchetypeColor, START_COLOR } from '../markerStyle';
 import { regionCentroid } from '../regionGeometry';
-import type { PaletteSelection, PlacementSelection } from '../types';
+import type { BoardTool, PaletteSelection, PlacementSelection } from '../types';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
 
 /** A canvas-native floor tile has no owning room ("no room chain exists
@@ -223,13 +224,19 @@ interface DungeonPreview3DProps {
   /** Kirk's 2026-08-02 "3D editing" arc, part 3 — click-to-place. The
    * SAME `PaletteSelection`/`onPlace` contract `Board.tsx` already uses:
    * a palette item selected + a floor hex clicked places it via the
-   * identical `handlePlace` mutator, room-scoped only (Board.tsx's own
-   * click-to-place never produces a top-level placement either). All
-   * three optional together — omitting them (no caller does today, but
-   * nothing structurally requires wiring this) degrades to the
-   * select-and-rotate-only behavior part 2 shipped, unchanged. */
+   * identical `handlePlace` mutator. Room-scoped when `floorPlan` is
+   * present (Board.tsx's own click-to-place never produces a top-level
+   * placement either) — but when `floorPlan` is ABSENT (creation mode's
+   * canvas, rpg-project#169's creation-3D-editing unit), a legal click
+   * calls `onPlace(null, [col, row])` instead: the exact top-level shape
+   * `CreationBoard.tsx`'s own 2D brush already produces via
+   * `edit.handlePlace(null, cell)`. `roomId` is therefore `string | null`,
+   * not just `string` — see `handleClickCell`'s own doc comment for the
+   * full floorPlan-present-vs-absent branch. All three optional
+   * together — omitting them degrades to the select-and-rotate-only
+   * behavior part 2 shipped, unchanged. */
   selectedPalette?: PaletteSelection | null;
-  onPlace?: (roomId: string, at: [number, number]) => void;
+  onPlace?: (roomId: string | null, at: [number, number]) => void;
   onReject?: (message: string) => void;
   /** rpg-project#169's wire-edges unit — a server-truth DOOR edge's
    * `doorId` resolves to a real `FloorPlanConnector` index
@@ -241,6 +248,18 @@ interface DungeonPreview3DProps {
    * it just means a rendered doorway isn't clickable, the gap geometry
    * itself is unaffected either way. */
   onSelectConnector?: (index: number) => void;
+  /** Which 2D-only `BoardTool` (if any) is currently armed — region/wall/
+   * hole/start/end editing stays 2D-only this round
+   * (rpg-project#169's creation-3D-editing unit; see CONTRACT.md).
+   * Purely informational: this component never acts on a tool itself
+   * (there is no 3D geometry-editing surface here), it only uses this to
+   * give an honest reject message — "switch to 2D" — instead of the
+   * generic "pick a palette item first" when a tool (not a palette item)
+   * is the reason nothing is armed for a click. Optional; omitting it
+   * (edit mode's own call site does, since edit mode's tools aren't
+   * creation-canvas-scoped the same way) just falls back to the
+   * pre-existing generic message. */
+  selectedTool?: BoardTool | null;
 }
 
 interface PlacedProp {
@@ -608,7 +627,7 @@ function buildPlacements(
   return { props, monsters };
 }
 
-interface PlaceableCell {
+export interface PlaceableCell {
   key: string;
   col: number;
   row: number;
@@ -616,20 +635,47 @@ interface PlaceableCell {
   worldX: number;
   worldZ: number;
   occupied: boolean;
+  /** Creation-mode only (`floorPlan` absent) — WHY this cell isn't a
+   * legal placement target (`creation/canvasFloor.ts`'s
+   * `canvasPlacementRejectReason`), for `handleClickCell`'s reject toast.
+   * `undefined` for every edit-mode cell (that branch stays SILENT on
+   * `occupied`, matching `Board.tsx`'s own click-to-place precedent
+   * exactly — see `handleClickCell`'s own doc comment) and for any
+   * legally-placeable creation-mode cell. */
+  rejectReason?: string;
 }
 
-/** Click-to-place targets (Kirk's "3D editing" arc, part 3) — one entry
- * per floor tile `buildFloorTiles` already generated, resolved back to
- * (col, row) via `hexColumn`/`hexRow` — the exact inverse of
+/** Click-to-place targets (Kirk's "3D editing" arc, part 3; extended to
+ * creation mode by rpg-project#169's creation-3D-editing unit) — one
+ * entry per floor tile `buildFloorTiles` already generated, resolved back
+ * to (col, row) via `hexColumn`/`hexRow` — the exact inverse of
  * `cubeAtColRow`, so this never re-derives placement math independently
- * of the rest of the concept. Every floor tile already belongs to a real
- * room (`buildFloorTiles` only ever iterates `floorPlan.rooms`), so
- * `roomId` here is always non-null — matches `Board.tsx`'s own click-to-
- * place, which is room-scoped only. */
-function buildPlaceableCells(
-  floorPlan: FloorPlan,
+ * of the rest of the concept.
+ *
+ * `floorPlan` is now OPTIONAL, matching this file's own established
+ * "alternate input path" shape (`buildFloorTiles`'s own doc comment):
+ * every edit-mode floor tile already belongs to a real room
+ * (`buildFloorTiles` only ever iterates `floorPlan.rooms` on that path),
+ * so `roomId` there is a real room id, unchanged; every creation-mode
+ * floor tile carries the `CANVAS_ROOM_ID` sentinel instead (`floorCells`
+ * path) — this function doesn't need to special-case that, it's just
+ * along for the ride in `PlaceableCell.roomId`, unused by the
+ * creation-mode branch of `handleClickCell` below (which places
+ * top-level, `roomId: null`, not room-scoped).
+ *
+ * `occupied`/`rejectReason` are computed differently per mode: edit mode
+ * keeps its original single `isCellOccupied` check (silent on the
+ * click side, see `handleClickCell`); creation mode runs the full shared
+ * `canvasPlacementRejectReason` (footprint AND occupied, with a real
+ * message) since that's the SAME predicate the 2D brush
+ * (`CreationBoard.tsx`) now consults — the two views must never disagree
+ * about where a click is legal. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildPlaceableCells(
+  floorPlan: FloorPlan | undefined,
   doc: DungeonDoc,
-  floorTiles: Map<string, AbsoluteFloorTile>
+  floorTiles: Map<string, AbsoluteFloorTile>,
+  wallLineFootprint: ReadonlySet<string>
 ): PlaceableCell[] {
   const cells: PlaceableCell[] = [];
   for (const tile of floorTiles.values()) {
@@ -637,6 +683,10 @@ function buildPlaceableCells(
     const col = hexColumn(cube);
     const row = hexRow(cube);
     const world = cubeToWorld(cube, HEX_SIZE);
+    const rejectReason = floorPlan
+      ? undefined
+      : (canvasPlacementRejectReason(doc, col, row, wallLineFootprint) ??
+        undefined);
     cells.push({
       key: `${tile.x},${tile.y},${tile.z}`,
       col,
@@ -644,7 +694,10 @@ function buildPlaceableCells(
       roomId: tile.roomId,
       worldX: world.x,
       worldZ: world.z,
-      occupied: isCellOccupied(floorPlan, doc, col, row),
+      occupied: floorPlan
+        ? isCellOccupied(floorPlan, doc, col, row)
+        : rejectReason !== undefined,
+      rejectReason,
     });
   }
   return cells;
@@ -1137,6 +1190,7 @@ export function DungeonPreview3D({
   onPlace,
   onReject,
   onSelectConnector,
+  selectedTool,
 }: DungeonPreview3DProps) {
   const floorTiles = useMemo(
     () => buildFloorTiles(floorPlan, doc.holes, floorCells),
@@ -1181,31 +1235,59 @@ export function DungeonPreview3D({
     () => (floorPlan ? isEntranceBlocked(floorPlan, doc) : false),
     [floorPlan, doc]
   );
-  // Click-to-place (Kirk's "3D editing" arc, part 3) has no creation-mode
-  // analog THIS ROUND either — deliberately out of scope for the
-  // creation-mode 3D preview unit (a follow-up, not a gap: edit-mode's
-  // click-to-place machinery can graduate later). An empty `floorPlan`
-  // check alone is enough to disable it honestly: no `floorPlan` means no
-  // placeable cells, which means no `FloorHitCell`s mount at all, so the
-  // whole interaction surface is simply absent rather than half-wired.
+  // Click-to-place (Kirk's "3D editing" arc, part 3) now covers creation
+  // mode too (rpg-project#169's creation-3D-editing unit) — `floorPlan`
+  // presence still decides WHICH legality rule applies (room-scoped vs.
+  // top-level canvas), but `placeableCells` is no longer gated to "empty
+  // without floorPlan": `floorTiles` already carries the right cell set
+  // for either mode (`buildFloorTiles`'s own doc comment), and
+  // `buildPlaceableCells` now branches internally per-cell instead of the
+  // caller branching on the whole set.
   const placeableCells = useMemo(
-    () => (floorPlan ? buildPlaceableCells(floorPlan, doc, floorTiles) : []),
-    [floorPlan, doc, floorTiles]
+    () => buildPlaceableCells(floorPlan, doc, floorTiles, wallLineFootprint),
+    [floorPlan, doc, floorTiles, wallLineFootprint]
   );
   const hitShape = useMemo(() => buildHexHitShape(), []);
 
-  // Mirrors Board.tsx's own click-to-place cell handler almost exactly
-  // (same messages, same boss/occupied rules) — see this file's header
-  // doc comment for why click-to-place is room-scoped only. `floorPlan`
-  // is guaranteed non-null here in practice (`placeableCells` above is
-  // empty without it, so no `FloorHitCell` exists to call this) — the
-  // explicit guard just keeps this honestly typed.
+  // Mirrors Board.tsx's own click-to-place cell handler for the edit-mode
+  // (floorPlan present) branch — same messages, same boss/occupied rules,
+  // still silent on `occupied` there (no toast, matching Board.tsx's own
+  // click-to-place precedent exactly — `if (occupied) return;`).
+  //
+  // The `!floorPlan` branch (creation mode's from-scratch canvas, this
+  // unit) is a genuinely different placement shape: TOP-LEVEL
+  // (`roomId: null`, absolute `[col, row]`, no room to resolve a
+  // room-local column against) — the exact shape `CreationBoard.tsx`'s
+  // own 2D brush already produces via `edit.handlePlace(null, cell)`.
+  // Legality is `cell.rejectReason` (already resolved by
+  // `buildPlaceableCells` via the SAME `canvasPlacementRejectReason` the
+  // 2D brush now consults), not a fresh room/door-row lookup — there is
+  // no room chain or door row on a canvas to check against.
   const handleClickCell = (cell: PlaceableCell) => {
-    if (!floorPlan) return;
     if (!selectedPalette || !onPlace) {
       onReject?.(
-        'Pick a palette item first, then click an empty cell to place it.'
+        selectedTool
+          ? 'That tool is 2D-only for now — switch to the 2D board to use it, or pick a palette item to place something here.'
+          : 'Pick a palette item first, then click an empty cell to place it.'
       );
+      return;
+    }
+    if (!floorPlan) {
+      // Boss stays room-scoped even in the target dialect (dungeonspec's
+      // validateBossCardinality needs an owning archetype:boss room) — a
+      // from-scratch canvas has zero rooms, same guard
+      // `CreationBoard.tsx`'s own 2D click handler makes.
+      if (selectedPalette.kind === 'boss') {
+        onReject?.(
+          'Boss stays room-scoped — this canvas has no rooms yet to hold one (see TARGET-YAML.md).'
+        );
+        return;
+      }
+      if (cell.rejectReason) {
+        onReject?.(cell.rejectReason);
+        return;
+      }
+      onPlace(null, [cell.col, cell.row]);
       return;
     }
     // The connector-band fix above (`buildFloorTiles`) gives the door its

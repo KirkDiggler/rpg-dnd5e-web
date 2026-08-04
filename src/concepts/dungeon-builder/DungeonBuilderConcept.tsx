@@ -499,27 +499,48 @@ export function DungeonBuilderConcept() {
           ? 'Selected a placed piece — drag to move, Delete key to remove, toggle flags in the inspector.'
           : 'Nothing selected — pick a palette item, or click a placed piece.';
 
+  // rpg-project#169's creation-3D-editing unit found this listener was
+  // edit-mode ONLY — it read/acted on `edit.selectedPlacement` alone, so
+  // Delete/Backspace never removed a creation-mode placement in EITHER
+  // view (2D or 3D); only the Inspector's own delete button worked there
+  // (`CreationConcept.tsx`'s `onDelete={edit.handleDelete}`, where that
+  // `edit` prop is `creationEdit`, a separate `useBoardEditing` instance —
+  // see this component's own doc comment on `creationEdit` for why). A
+  // real, pre-existing gap, not 3D-specific — fixed at the root by
+  // picking whichever mode's `useBoardEditing` instance is actually live
+  // (`mode`, this component's own tab state) rather than hardcoding
+  // edit's. `edit`/`creationEdit` both persist across a tab switch
+  // (neither unmounts), so gating on `mode` — not just "whichever has a
+  // selection" — avoids a stale selection in the INACTIVE mode ever
+  // hijacking the key.
   useEffect(() => {
+    const activeEdit = mode === 'create' ? creationEdit : edit;
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
       if (
         (e.key === 'Delete' || e.key === 'Backspace') &&
-        edit.selectedPlacement
+        activeEdit.selectedPlacement
       ) {
         e.preventDefault();
-        if (edit.selectedPlacement.boss) {
+        if (activeEdit.selectedPlacement.boss) {
           flashToast(
             'Boss required — can’t delete (dungeonspec: "boss room must declare boss"). Drag it instead.'
           );
         } else {
-          edit.handleDelete();
+          activeEdit.handleDelete();
         }
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edit.selectedPlacement, cst]);
+  }, [
+    mode,
+    edit.selectedPlacement,
+    creationEdit.selectedPlacement,
+    cst,
+    creationCst,
+  ]);
 
   const modeTabs = (
     <div style={{ display: 'flex', gap: 6, padding: '10px 16px 0' }}>

@@ -4661,3 +4661,244 @@ round's live-verification section already carries).
   correctly stops rendering a gap there (verified, see Tests above) but
   does not yet surface the warning glyph itself in the 3D view — a real,
   narrow follow-up, not a silent gap.
+
+## Creation-mode 3D editing: place/select/rotate/delete graduate onto the canvas (2026-08-04, rpg-project#169)
+
+Closes the "Read-only this round" follow-up the creation-mode-3D-preview unit
+named: Kirk's own words framing the ask — "I cannot place in 3D but if I had a
+statue selected in 2D I can rotate it and see it in 3D." Edit mode's existing
+3D click-to-place/select machinery (Kirk's "3D editing" arc, parts 2 and 3,
+above) graduates onto creation mode's from-scratch canvas — exactly the
+"graduate, don't rebuild" framing this file's own operating bar names as the
+right shape for exactly this situation.
+
+### A real, pre-existing bug found before any 3D work: 2D creation's own click-to-place never checked legality
+
+Read `CreationBoard.tsx`'s `handlePointerDown` before touching anything: its
+`edit.selectedPalette` branch called `edit.handlePlace(null, cell)` straight
+off `nearestCreationCell`, with **no occupied check, no straight-wall-
+footprint check, and no hole check at all** — only the boss-room guard. A
+click could silently stack a second placement on an existing one, place
+inside a `wallLines:` footprint, or place directly on a hole. This predates
+this unit entirely (creation mode's click-to-place has worked this way since
+the CST-unification round) and would have stayed invisible forever, since
+nothing ever exercised the reject path to notice its absence. Verified by
+reading the code, not inferred: `useBoardEditing.ts`'s `handlePlace` and
+`dungeonYaml.ts`'s `placeItem` mutator both do zero validation of their own —
+every existing legality check in this concept (edit mode's `Board.tsx`
+`isCellOccupied` gate, the door-row reject) lives at the INTERACTION layer,
+not the mutator, and creation mode's interaction layer simply never grew one.
+
+**Fixed at the root, not just prepped for 3D** — the brief's own framing
+("build ONE shared predicate both the 2D brush and 3D click consult if they
+don't already share one") anticipated exactly this. New
+`canvasPlacementRejectReason(doc, col, row, wallLineFootprint)`
+(`creation/canvasFloor.ts`, sibling to `deriveCanvasFloorCells`) is the single
+source both now consult:
+
+1. **Real canvas floor** — in bounds, not a hole (the identical test
+   `deriveCanvasFloorCells` applies).
+2. **Not a straight-wall (`doc.wallLines`) footprint cell** — Kirk's rule
+   ("any hex that is not 100% uncovered would not be traversable") makes a
+   footprint cell BLOCKED, not floorless; the floor tile still renders
+   (dimmed, per the creation-mode-3D-preview unit's own overlay), it just
+   isn't a legal placement target. `wallLineFootprint` is caller-supplied
+   (`straightWallsFootprintSet`, the exact primitive the 2D hatch/3D dim
+   overlays already call) so a caller checking many cells computes it once,
+   not once per cell.
+3. **Not already occupied** — `boardGeometry.ts`'s `isCellOccupied`, now
+   accepting `floorPlan: FloorPlan | undefined` (a from-scratch canvas has
+   none — its room-scoped loop is a no-op for `doc.rooms === []` regardless,
+   the top-level `doc.place` loop this needs never depended on `floorPlan` in
+   the first place).
+
+`CreationBoard.tsx`'s click handler now calls this before `edit.handlePlace`,
+surfacing a reject through the same `onReject` toast seam every other tool in
+that component already uses. This is a genuine behavior change to the
+EXISTING 2D board, named honestly rather than silently bundled — matching
+this file's own precedent for a real bug found mid-unit (the connector-band
+chasm, the `movePlacementAcrossLists` field-loss fix, both above).
+
+### `DungeonPreview3D.tsx`: the same predicate, wired into the existing click-to-place machinery
+
+`buildPlaceableCells` (previously gated `floorPlan ? buildPlaceableCells(...)
+: []` at the call site, so creation mode's `placeableCells` was always empty)
+now takes `floorPlan: FloorPlan | undefined` and an explicit
+`wallLineFootprint` param, and is called unconditionally — `floorTiles`
+already unifies both mode's cell sets (`buildFloorTiles`'s own doc comment),
+so the gate was never structurally necessary once `isCellOccupied` could take
+an absent `floorPlan`. Each `PlaceableCell` gains an optional `rejectReason`:
+`undefined` for every edit-mode cell (that branch stays exactly as it was —
+silent on `occupied`, matching `Board.tsx`'s own click-to-place precedent,
+`if (occupied) return;`, no toast) and for any legally-placeable creation-mode
+cell; populated via `canvasPlacementRejectReason` for a blocked creation-mode
+one. `occupied` (drives the hit-cell's red/teal tint) is `true` whenever
+`rejectReason` is set, so the visual and the click decision can never
+disagree with each other.
+
+`handleClickCell` branches on `floorPlan` presence, the same idiom this file
+already uses everywhere else (`buildFloorTiles`, `buildPlacements`,
+`entranceBlocked`): the `floorPlan`-present branch is UNCHANGED (room lookup,
+door-row reject, room-scoped `onPlace(cell.roomId, [localCol, row])`); the
+new `!floorPlan` branch places TOP-LEVEL — `onPlace(null, [cell.col,
+cell.row])`, the exact shape `CreationBoard.tsx`'s own 2D brush already
+produces via `edit.handlePlace(null, cell)`. `onPlace`'s prop type widened
+from `(roomId: string, at) => void` to `(roomId: string | null, at) => void`
+to allow this — a pure widening, `edit.handlePlace` already accepted
+`string | null`, so edit mode's own call site needed no change.
+
+**Select/rotate/delete needed no new code at all** — this is the "graduate,
+don't rebuild" claim made concrete. `DungeonPreview3D`'s existing prop-click
+handler (`onClick={(e) => { e.stopPropagation(); onSelect(p.sel); }}`) never
+checked `floorPlan`; wiring `selectedPlacement`/`onSelect` into creation
+mode's call site (below) was the entire change needed for select. Rotate is
+the Inspector's own pre-existing facing control (`Inspector.tsx`, unchanged),
+reachable because `CreationConcept.tsx` already renders one `<Inspector>`
+outside either board (edit mode's own precedent, "one Inspector, either
+view"). Delete is the global Delete/Backspace keydown listener — see its own
+real bug, next.
+
+### A second real, pre-existing bug: the global Delete key was edit-mode only
+
+`DungeonBuilderConcept.tsx`'s keydown listener read/acted on `edit.selectedPlacement`
+alone (`edit` = the EDIT-mode `useBoardEditing` instance) — `creationEdit`
+(creation mode's own, separate instance, `useBoardEditing` called a second
+time against its own cst/doc) was never consulted. Delete/Backspace has
+therefore never removed a creation-mode placement, in EITHER view, since the
+CST-unification round — only the Inspector's own "Delete (or press Delete
+key)" button worked there (`CreationConcept.tsx`'s `onDelete={edit.handleDelete}`,
+where that `edit` prop IS `creationEdit`). Found while verifying the brief's
+own "should already be view-agnostic — verify" claim for Delete-key parity —
+it wasn't, and not for a 3D-specific reason.
+
+**Fixed at the root**: the listener now picks `mode === 'create' ? creationEdit
+: edit` as its active handle before checking `selectedPlacement`. Gating on
+`mode` (not "whichever has a selection") matters because neither `edit` nor
+`creationEdit` unmounts across a tab switch (`DungeonBuilderConcept`'s own
+"remembered per mode" precedent for `boardDim`/`createBoardDim` above) — a
+stale selection left in the INACTIVE mode must never hijack the key.
+
+### Region/wall/hole/start/end tools: 2D-only, an honest reject instead of a misleading one
+
+A new optional `selectedTool?: BoardTool | null` prop on `DungeonPreview3D`
+— purely informational, this component never acts on a tool itself (there is
+no 3D geometry-editing surface here this round). `handleClickCell`'s
+no-palette-selected branch reads it: a tool armed (region/wall/hole/etc., all
+2D-only this round) gets "That tool is 2D-only for now — switch to the 2D
+board to use it, or pick a palette item to place something here" instead of
+the generic "pick a palette item first" — which would otherwise read as a
+non-sequitur to an author who very much has SOMETHING selected, just not a
+placeable item. Edit mode's own call site doesn't pass this prop (its tools
+aren't creation-canvas-scoped the same way), so edit mode's message is
+unchanged.
+
+### Live verification
+
+Own dev server (`vite --port 5199`, never `:3001`), own throwaway Playwright
+Chromium (`--use-angle=swiftshader --enable-unsafe-swiftshader`, matching the
+straight-walls-in-3D unit's own established flag pair) rather than the shared
+chrome-devtools MCP browser at `127.0.0.1:9222` (memory: that one is Kirk's,
+collides across concurrent agents) — a fresh worktree's `public/models/synty/`
+is gitignored and absent by default; symlinked from the main checkout for the
+run, removed before committing (never part of the diff).
+
+A real end-to-end loop on a 3×3 New Dungeon canvas, driven by genuine mouse
+events at real screen coordinates (not a fiber-walk shortcut — this
+component's hit-cells are real DOM/canvas pointer targets, same as the
+existing click-to-place units' own live-verification precedent):
+
+- **Place**: palette "pillar" selected, 3D floor hex clicked — `place:`
+  gained `{ ref: "dnd5e:props:pillar", at: [0, 1], blocks_movement: false,
+blocks_los: false }`, a real top-level entry, and the pillar rendered
+  standing on the canvas. Evidence:
+  `docs/evidence/dungeon-builder-creation-3d-place-via-click.png`.
+- **Occupied-cell reject**: palette re-armed, the SAME cell clicked again —
+  toast "That cell already holds a placement.", `place:` unchanged (no
+  duplicate). Evidence:
+  `docs/evidence/dungeon-builder-creation-3d-occupied-reject-toast.png`.
+- **Select**: clicking the placed pillar's own mesh (not the floor beneath
+  it) opened the Inspector showing `dnd5e:props:pillar [0,1]` with its
+  facing/rotate/height/delete controls. Evidence:
+  `docs/evidence/dungeon-builder-creation-3d-select-opens-inspector.png`.
+- **Rotate**: two clicks on the Inspector's ↻ control while watching the
+  live 3D view — `place:` gained `facing: NW`, the pillar visibly reoriented
+  in the same screenshot. Evidence:
+  `docs/evidence/dungeon-builder-creation-3d-rotate-via-inspector.png`.
+- **Delete**: Delete key with the pillar selected — `place: []`, the pillar
+  gone from the 3D view. Evidence:
+  `docs/evidence/dungeon-builder-creation-3d-delete-via-key.png`.
+- **Banner text**: confirmed live, not just in the diff — the `boardDim ===
+'3d'` header banner no longer says "Read-only this round"; it now reads
+  the interactive copy (palette-armed vs. not) matching edit mode's own
+  banner language. Evidence:
+  `docs/evidence/dungeon-builder-creation-3d-empty-interactive-banner.png`.
+
+A real, worth-naming automation finding along the way: the empty-scene
+screen-space center of the R3F `<canvas>` element is NOT where a click lands
+on the rendered floor — `Bounds fit clip margin={1.25}` frames the CONTENT,
+not the canvas rectangle, and the side panels give the canvas asymmetric
+width, so the content's visual center sits well off the raw bounding box's
+midpoint (empirically ~30%/50% of the box for this 3×3 canvas at this
+viewport, grid-search-located, not guessed). A STANDING prop's own clickable
+mesh additionally sits well above the floor plane it stands on (~75px higher
+on screen at this camera framing for a `pillar`) — clicking the cell center
+hits the floor hit-cell underneath it, not the prop, which is exactly the
+z-ordering this file's own header doc comment describes (`HIT_CELL_Y` above
+`FLOOR_Y` so a placement click always wins over the floor — but the PROP's
+own mesh, taller still, only wins over BOTH if the ray actually intersects
+its geometry, not just its cell). Worth recording for whoever next automates
+a click against this specific 3D view.
+
+**Not independently live-clicked**: the `selectedTool`-armed reject message
+(previous section). The 2D Palette's accordion-toggle click proved
+flaky under this specific Playwright automation (`page.mouse.click` on the
+category header sometimes toggled it open, sometimes not, across otherwise
+identical runs) — an automation quirk in the PRE-EXISTING accordion, not
+something this unit touched. Confidence instead comes from: direct code
+review (a one-line ternary sibling to the branch that WAS live-verified —
+the plain "pick a palette item first" toast fired correctly and repeatedly
+in every run above whenever no tool was armed either) and `ci-check`
+(format/lint/typecheck/build/test all clean). Named honestly as a real,
+narrow gap in this round's live evidence, not silently claimed as covered.
+
+No unexpected console errors beyond the two established FIXTURES-MODE
+`[unimplemented] unknown service ...AuthoringService` messages every prior
+round's live-verification section already carries.
+
+### Tests
+
+17 new (324 dungeon-builder tests overall, up from 307): 7 in
+`creation/canvasFloor.test.ts` (`canvasPlacementRejectReason` — an ordinary
+legal cell, out-of-bounds, a hole, a straight-wall footprint cell via the
+same single-cell fixture `straightWallGeometry.test.ts` itself uses, an
+occupied top-level placement, gate-ordering, and a real `addWallLine` +
+`straightWallsFootprintSet` integration case rather than a hand-built footprint
+Set only); 4 in `boardGeometry.test.ts` (`isCellOccupied` had ZERO prior
+coverage — a top-level placement's own cell, every other cell staying clear,
+an empty canvas not crashing the now-skipped room loop, and `exclude`
+correctly index-scoped); 6 in `preview3d/DungeonPreview3D.test.ts`
+(`buildPlaceableCells`'s new creation-mode branch: one cell per floor tile,
+an occupied cell carrying `occupied`+`rejectReason`, a footprint cell doing
+the same with a DISTINCT reason, an ordinary cell carrying neither, every
+cell tagged `CANVAS_ROOM_ID`; plus one edit-mode regression-guard test
+pinning `rejectReason` always `undefined` there and `roomId` never the
+canvas sentinel). `ci-check` clean (format/lint/typecheck/build/test).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **Drag-move in 3D.** Deferred, and for a reason worth stating precisely:
+  this is not a creation-mode gap, it's an EDIT-mode gap this unit had
+  nothing to graduate from. CONTRACT.md's own "New arc: 3D editing, part 3"
+  section (above) already named this: "drag-move in 3D stays the explicit
+  follow-up... The 2D board remains the only way to drag-move a placement
+  today, in either view's mode banner" — still true, unchanged by this unit.
+  Click-select + the 2D board's own drag-move is today's answer in BOTH
+  modes, not a creation-mode shortfall.
+- **Region/wall/hole/start/end 3D editing.** Out of scope by this unit's own
+  brief — placements only. A tool-armed 3D click gives the honest "switch to
+  2D" reject (above) rather than silently no-oping or misleadingly claiming
+  "pick a palette item."
+- **The `selectedTool`-armed reject message's own live click**, named above
+  under Live verification — code-reviewed and its sibling branch
+  live-verified, not independently live-clicked, due to automation flakiness
+  in the pre-existing accordion control, not this unit's own code.

@@ -19,6 +19,8 @@ import { HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { describe, expect, it } from 'vitest';
 import { facingToRotationY } from '../boardGeometry';
+import { deriveCanvasFloorCells } from '../creation/canvasFloor';
+import { emptyCanvasYaml } from '../creation/emptyCanvasDoc';
 import { cornerPoint, type CornerRef } from '../creation/hexCorner';
 import {
   clipSegmentToShrunkHex,
@@ -27,6 +29,7 @@ import {
 import {
   addWallLine,
   parseDungeon,
+  placeItem,
   setPlacementMount,
   setPlacementRotationDegrees,
   setRefDefault,
@@ -38,6 +41,7 @@ import { BOARD_HEX_SIZE, cubeAtColRow } from '../hexLayout';
 import {
   buildFloorTiles,
   buildOnePlacement,
+  buildPlaceableCells,
   buildWallLineFootprint,
   buildWallLineSegments,
   CANVAS_ROOM_ID,
@@ -436,5 +440,84 @@ describe('buildWallLineSegments — real 3D geometry for doc.wallLines', () => {
   it('an empty doc.wallLines produces no segments, cheaply', () => {
     const { doc } = parseDungeon(SHOWCASE_YAML);
     expect(buildWallLineSegments(doc)).toEqual([]);
+  });
+});
+
+// rpg-project#169's creation-3D-editing unit — graduates click-to-place
+// onto creation mode's canvas. `buildPlaceableCells` now branches per-cell
+// on `floorPlan` presence instead of the caller gating the whole array to
+// `[]` without one; these tests cover the NEW creation-mode branch
+// (`floorPlan: undefined`) and pin the existing edit-mode branch's
+// behavior as an explicit regression guard.
+describe('buildPlaceableCells — creation mode (floorPlan: undefined, rpg-project#169)', () => {
+  function creationSetup() {
+    const { cst } = parseDungeon(emptyCanvasYaml(6, 6));
+    // Occupied cell.
+    placeItem(cst, null, 'dnd5e:props:pillar', [2, 2]);
+    // Footprint-blocked cell: the same single-cell fixture
+    // straightWallGeometry.test.ts/canvasFloor.test.ts both use.
+    addWallLine(cst, { cell: [4, 4], corner: 2 }, { cell: [4, 4], corner: 5 });
+    const doc = toDungeonDoc(cst);
+    const floorCells = deriveCanvasFloorCells(doc);
+    const floorTiles = buildFloorTiles(undefined, doc.holes, floorCells);
+    const wallLineFootprint = buildWallLineFootprint(doc);
+    const cells = buildPlaceableCells(
+      undefined,
+      doc,
+      floorTiles,
+      wallLineFootprint
+    );
+    const at = (col: number, row: number) =>
+      cells.find((c) => c.col === col && c.row === row);
+    return { doc, cells, at };
+  }
+
+  it('one PlaceableCell per canvas floor cell (no room-loop gate to skip them)', () => {
+    const { cells } = creationSetup();
+    expect(cells).toHaveLength(6 * 6);
+  });
+
+  it('an occupied cell is occupied + carries a rejectReason', () => {
+    const { at } = creationSetup();
+    const cell = at(2, 2);
+    expect(cell?.occupied).toBe(true);
+    expect(cell?.rejectReason).toBeTruthy();
+  });
+
+  it('a straight-wall-footprint cell is occupied + carries a rejectReason, distinct from an ordinary occupied one', () => {
+    const { at } = creationSetup();
+    const cell = at(4, 4);
+    expect(cell?.occupied).toBe(true);
+    expect(cell?.rejectReason).toBeTruthy();
+    expect(cell?.rejectReason).not.toBe(at(2, 2)?.rejectReason);
+  });
+
+  it('an ordinary empty cell is not occupied and carries no rejectReason', () => {
+    const { at } = creationSetup();
+    const cell = at(0, 0);
+    expect(cell?.occupied).toBe(false);
+    expect(cell?.rejectReason).toBeUndefined();
+  });
+
+  it('every creation-mode cell carries the CANVAS_ROOM_ID sentinel roomId', () => {
+    const { cells } = creationSetup();
+    for (const cell of cells) expect(cell.roomId).toBe(CANVAS_ROOM_ID);
+  });
+});
+
+describe('buildPlaceableCells — edit mode (floorPlan present) stays unchanged', () => {
+  it('occupied is still the plain isCellOccupied result, and rejectReason is always undefined', () => {
+    const { doc } = parseDungeon(SHOWCASE_YAML);
+    const floorTiles = buildFloorTiles(SHOWCASE_FLOORPLAN, doc.holes);
+    const cells = buildPlaceableCells(
+      SHOWCASE_FLOORPLAN,
+      doc,
+      floorTiles,
+      new Set()
+    );
+    expect(cells.length).toBeGreaterThan(0);
+    for (const cell of cells) expect(cell.rejectReason).toBeUndefined();
+    // Real room ids, never the creation-mode sentinel.
+    for (const cell of cells) expect(cell.roomId).not.toBe(CANVAS_ROOM_ID);
   });
 });
