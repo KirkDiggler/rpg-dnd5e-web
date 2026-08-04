@@ -465,51 +465,101 @@ export function isValidDoorCell(
   );
 }
 
-export type StraightAxis = 'vertical' | 'horizontal';
+/**
+ * The hex grid's own 3 real edge-line orientations (degrees from the
+ * horizontal board axis, mod 180 — a line's ORIENTATION has no direction,
+ * so 30° and 210° are the same family). Pointy-top hex corners at
+ * 30°+60°·i give edges at exactly these 3 angles (see this module's own
+ * header comment) — these are the "natural families" a straight wall
+ * snaps to by default (Kirk: "vertical... plus the hex edge families").
+ * Superseding this module's former unconditional 2-way vertical/
+ * horizontal lock (every drag forced onto one of only 2 axes, one of
+ * which — horizontal, 0° — matches no real hex edge at all and so always
+ * clipped through hex interiors by construction): the fix for Kirk's
+ * "my line was angled ever so slightly" is a tolerance-gated snap to a
+ * REAL edge family, not a wider forced choice.
+ */
+export const WALL_ANGLE_FAMILIES_DEG = [30, 90, 150] as const;
+export type WallAxisFamily = (typeof WALL_ANGLE_FAMILIES_DEG)[number];
 
 /**
- * Which screen axis a drag most likely intends — a 2-way analog of
- * `creationGeometry.ts`'s `dragFamily` (which picks among the hex grid's
- * 3 EDGE families for the zigzag Wall tool). A straight wall's two
- * "natural axes" are literal SCREEN/board-space axes, not hex edge
- * families — see this module's own header comment for why board-space
- * "horizontal" has no hex-edge analog at all (that absence is exactly
- * why a horizontal straight wall clips hexes instead of running along
- * their boundaries — it's the whole reason this tool exists). 60°/120°
- * diagonal snapping was considered and skipped this round: cheap to add
- * later (a 4-way `pickStraightAxis` instead of this 2-way one, using the
- * same score-based `snapStraightEndpoint` search below with 4 target
- * directions instead of 2) but not needed to prove the footprint
- * mechanic, which is this unit's actual point.
+ * How close (in degrees) a drag/endpoint-adjustment must be to one of
+ * `WALL_ANGLE_FAMILIES_DEG` before it snaps — Kirk's own suggested range
+ * ("~5-8°"), picked at the middle. Wide enough to correct a near-miss
+ * without a steady hand; narrow enough that a drag genuinely AIMED
+ * somewhere else (a deliberate free diagonal) isn't dragged onto a family
+ * it was never actually close to.
  */
-export function pickStraightAxis(dx: number, dy: number): StraightAxis {
-  return Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical';
+export const WALL_ANGLE_SNAP_TOLERANCE_DEG = 6;
+
+function normalizeAngleDeg(deg: number): number {
+  const mod = deg % 180;
+  return mod < 0 ? mod + 180 : mod;
+}
+
+/** Circular distance between two line ORIENTATIONS (mod 180). */
+function angleFamilyDistance(a: number, b: number): number {
+  const diff = Math.abs(normalizeAngleDeg(a) - normalizeAngleDeg(b));
+  return Math.min(diff, 180 - diff);
 }
 
 /**
- * The best "to" CORNER for continuing a straight wall from `fromCorner`
- * toward `pointer`, locked to `axis`. This is a DISCRETE hex grid, so an
- * exactly vertical or horizontal line generally isn't reachable between
- * two lattice corners at all (see this module's own header comment: no
- * edge family is horizontal, and "vertical" only lines up exactly for
- * specific from/to combinations) — this searches a small window of cells
- * around the pointer's own nearest corner (checking all 6 of each
- * candidate cell's own corners, not just cell centers, now that the
- * anchor lattice is corners) and picks whichever candidate corner keeps
- * the OTHER world-space coordinate closest to `fromCorner`'s own
- * (vertical mode holds worldX as steady as the lattice allows; horizontal
- * mode holds worldY steady), tie-broken toward whichever candidate is
- * nearest the pointer itself. The result is the closest AVAILABLE
- * approximation, not a mathematically exact one — `straightWallFootprint`
- * above computes the footprint from whatever line actually results,
- * honestly, rather than pretending the snap was exact.
+ * Which of the 3 real hex-edge angle families (if any) a drag vector is
+ * close enough to snap to. Returns `null` when the raw direction isn't
+ * within `toleranceDeg` of any family — the caller then falls back to an
+ * unconstrained nearest-corner snap (a deliberate free angle), never
+ * forcing a family the drag wasn't actually close to. A zero-length
+ * vector has no defined angle and also returns `null`.
+ */
+export function nearestWallAngleFamily(
+  dx: number,
+  dy: number,
+  toleranceDeg: number = WALL_ANGLE_SNAP_TOLERANCE_DEG
+): WallAxisFamily | null {
+  if (dx === 0 && dy === 0) return null;
+  const angle = normalizeAngleDeg((Math.atan2(dy, dx) * 180) / Math.PI);
+  let best: WallAxisFamily = WALL_ANGLE_FAMILIES_DEG[0];
+  let bestDist = Infinity;
+  for (const family of WALL_ANGLE_FAMILIES_DEG) {
+    const dist = angleFamilyDistance(angle, family);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = family;
+    }
+  }
+  return bestDist <= toleranceDeg ? best : null;
+}
+
+/**
+ * The best "to" CORNER for continuing/fine-tuning a straight wall from
+ * `fromCorner` toward `pointer`. `axis`, when non-`null`, locks the
+ * result to whichever of `WALL_ANGLE_FAMILIES_DEG` the caller already
+ * decided (via `nearestWallAngleFamily`) — `null` means a free angle (the
+ * modifier-key bypass, or a drag too far from every family to snap),
+ * which falls straight through to `nearestCorner`'s plain nearest-point
+ * search with no direction constraint at all.
+ *
+ * This is a DISCRETE hex grid, so an exactly-`axis`-degree line generally
+ * isn't reachable between two lattice corners at all (see this module's
+ * own header comment: no edge family is horizontal, and even a real
+ * family only lines up exactly for specific from/to combinations) — the
+ * locked-axis branch searches a small window of cells around the
+ * pointer's own nearest corner (checking all 6 of each candidate cell's
+ * own corners, not just cell centers) and picks whichever candidate
+ * corner's direction from `fromCorner` deviates LEAST from `axis`,
+ * tie-broken toward whichever candidate is nearest the pointer itself.
+ * The result is the closest AVAILABLE approximation, not a
+ * mathematically exact one — `straightWallFootprint` above computes the
+ * footprint from whatever line actually results, honestly, rather than
+ * pretending the snap was exact.
  */
 export function snapStraightEndpoint(
   fromCorner: CornerRef,
   pointer: CellPos,
-  axis: StraightAxis,
+  axis: WallAxisFamily | null,
   grid: CreationGrid
 ): CornerRef {
+  if (axis === null) return nearestCorner(pointer, grid);
   const fromPoint = cornerPoint(fromCorner);
   const near = nearestCorner(pointer, grid);
   const [pCol, pRow] = near.cell;
@@ -524,10 +574,12 @@ export function snapStraightEndpoint(
       const corners = cellCorners(cellCenter(col, row), BOARD_HEX_SIZE);
       for (let corner = 0; corner < 6; corner++) {
         const point = { x: corners[corner][0], y: corners[corner][1] };
-        const alignDelta =
-          axis === 'vertical'
-            ? Math.abs(point.x - fromPoint.x)
-            : Math.abs(point.y - fromPoint.y);
+        if (point.x === fromPoint.x && point.y === fromPoint.y) continue;
+        const candAngle = normalizeAngleDeg(
+          (Math.atan2(point.y - fromPoint.y, point.x - fromPoint.x) * 180) /
+            Math.PI
+        );
+        const alignDelta = angleFamilyDistance(candAngle, axis);
         const nearPointer = Math.hypot(
           point.x - pointer.x,
           point.y - pointer.y

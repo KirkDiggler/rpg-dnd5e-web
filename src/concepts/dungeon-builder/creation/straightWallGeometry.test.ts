@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { BOARD_HEX_SIZE, cellCenter } from '../hexLayout';
-import { cornerPoint, type CornerRef } from './hexCorner';
+import { cornerPoint, nearestCorner, type CornerRef } from './hexCorner';
 import {
   clipSegmentToShrunkHex,
   footprintCellAtParam,
   isCellClipped,
   isValidDoorCell,
-  pickStraightAxis,
+  nearestWallAngleFamily,
   projectPointToLineParam,
   snapStraightEndpoint,
   straightWallCrossedEdges,
   straightWallFootprint,
   straightWallsFootprintSet,
+  WALL_ANGLE_SNAP_TOLERANCE_DEG,
   wallLineDoorCellAt,
 } from './straightWallGeometry';
 
@@ -202,17 +203,65 @@ describe('corner/L continuity — two lines sharing a corner still touch with no
   });
 });
 
-describe('pickStraightAxis', () => {
-  it('picks horizontal when the drag is wider than tall', () => {
-    expect(pickStraightAxis(30, 5)).toBe('horizontal');
+/** A unit vector (scaled by `mag`) pointed `deg` degrees from the
+ * horizontal axis — the same `atan2`/degrees convention
+ * `nearestWallAngleFamily`/`snapStraightEndpoint` use internally, so a
+ * test can assert against an exact angle rather than a hand-picked
+ * dx/dy pair. */
+function vectorAtAngle(deg: number, mag = 100): [number, number] {
+  const rad = (deg * Math.PI) / 180;
+  return [Math.cos(rad) * mag, Math.sin(rad) * mag];
+}
+
+describe('nearestWallAngleFamily — the 3 real hex-edge orientations', () => {
+  // Kirk's live feedback that prompted this: "aaahhh my line was angled
+  // ever so slightly" — an unintentionally off-axis wall clipped a halo
+  // of cells at their points. The fix: snap to a REAL hex-edge family
+  // (30°/90°/150°, see straightWallGeometry.ts's own header comment) when
+  // the raw drag is close to one, and stay free otherwise — never force
+  // a family the drag wasn't actually aimed at.
+
+  it('picks 90° (vertical) for a drag pointed straight up or down', () => {
+    expect(nearestWallAngleFamily(0, -50)).toBe(90);
+    expect(nearestWallAngleFamily(0, 50)).toBe(90);
   });
-  it('picks vertical when the drag is taller than wide', () => {
-    expect(pickStraightAxis(5, 30)).toBe('vertical');
+
+  it('picks 30°/150° for a drag along either diagonal hex-edge family', () => {
+    const [dx30, dy30] = vectorAtAngle(30);
+    expect(nearestWallAngleFamily(dx30, dy30)).toBe(30);
+    const [dx150, dy150] = vectorAtAngle(150);
+    expect(nearestWallAngleFamily(dx150, dy150)).toBe(150);
+  });
+
+  it('is direction-agnostic — the reverse of a family vector still matches the same family', () => {
+    const [dx, dy] = vectorAtAngle(30);
+    expect(nearestWallAngleFamily(-dx, -dy)).toBe(30);
+  });
+
+  it('snaps just inside the tolerance boundary', () => {
+    const [dx, dy] = vectorAtAngle(90 + WALL_ANGLE_SNAP_TOLERANCE_DEG - 0.1);
+    expect(nearestWallAngleFamily(dx, dy)).toBe(90);
+  });
+
+  it('does not snap just outside the tolerance boundary', () => {
+    const [dx, dy] = vectorAtAngle(90 + WALL_ANGLE_SNAP_TOLERANCE_DEG + 0.1);
+    expect(nearestWallAngleFamily(dx, dy)).toBeNull();
+  });
+
+  it('a horizontal drag — equidistant from 30° and 150°, both ~30° away — stays free', () => {
+    // This is the module's own former "horizontal" axis, no longer a
+    // default snap target (see this module's header comment for why 0°
+    // matches no real hex edge at all).
+    expect(nearestWallAngleFamily(50, 0)).toBeNull();
+  });
+
+  it('a zero-length vector has no defined angle and stays free', () => {
+    expect(nearestWallAngleFamily(0, 0)).toBeNull();
   });
 });
 
 describe('snapStraightEndpoint — corner-lattice axis lock', () => {
-  it('holds worldX steady in vertical mode, snapping to a real corner', () => {
+  it('holds worldX steady in vertical (90°) mode, snapping to a real corner', () => {
     const fromCorner: CornerRef = { cell: [4, 4], corner: 0 };
     const fromPoint = cornerPoint(fromCorner);
     // A pointer well above and just off to the side — vertical lock
@@ -221,18 +270,31 @@ describe('snapStraightEndpoint — corner-lattice axis lock', () => {
     // center module's coarser search, which could only match at
     // specific from/to cell pairs).
     const pointer = { x: fromPoint.x + 2, y: fromPoint.y - 80 };
-    const snapped = snapStraightEndpoint(fromCorner, pointer, 'vertical', GRID);
+    const snapped = snapStraightEndpoint(fromCorner, pointer, 90, GRID);
     expect(cornerPoint(snapped).x).toBeCloseTo(fromPoint.x, 6);
   });
 
   it('stays within the grid bounds', () => {
     const fromCorner: CornerRef = { cell: [0, 0], corner: 0 };
     const pointer = { x: -500, y: -500 };
-    const snapped = snapStraightEndpoint(fromCorner, pointer, 'vertical', GRID);
+    const snapped = snapStraightEndpoint(fromCorner, pointer, 90, GRID);
     expect(snapped.cell[0]).toBeGreaterThanOrEqual(0);
     expect(snapped.cell[1]).toBeGreaterThanOrEqual(0);
     expect(snapped.cell[0]).toBeLessThan(GRID.width);
     expect(snapped.cell[1]).toBeLessThan(GRID.height);
+  });
+
+  it('a null axis (the modifier-key free-angle bypass) is the literal nearest corner, unconstrained', () => {
+    const fromCorner: CornerRef = { cell: [4, 4], corner: 0 };
+    const fromPoint = cornerPoint(fromCorner);
+    // Well off any of the 3 families relative to fromPoint — a locked
+    // snap here would pull sideways toward the nearest family; axis=null
+    // (what CreationBoard.tsx passes while the free-angle modifier is
+    // held) must not do that.
+    const pointer = { x: fromPoint.x + 40, y: fromPoint.y - 5 };
+    expect(snapStraightEndpoint(fromCorner, pointer, null, GRID)).toEqual(
+      nearestCorner(pointer, GRID)
+    );
   });
 });
 

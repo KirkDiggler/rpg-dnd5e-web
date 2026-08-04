@@ -3689,3 +3689,120 @@ of both the endpoint shape and the whole-line `kind: door` shape; the
 CST-untouched-until-mutated migration behavior, both directions).
 221 dungeon-builder tests passing overall (up from 196). `ci-check`
 clean (format/lint/typecheck/build/test).
+
+### Polish addendum: angle snapping + region-edit discoverability (same day, on this branch)
+
+Two more items of Kirk's live feedback on the round above, closed without
+a new ledger section.
+
+**Angle snapping.** Kirk: "aaahhh my line was angled ever so slightly" —
+an unintentionally off-axis wall clipped a halo of cells at their points.
+The straight-wall draw used to force EVERY drag onto one of only 2 axes
+(`pickStraightAxis`'s old vertical/horizontal split, no tolerance, no
+bypass) — and the endpoint-drag fine-tuning from the round above had NO
+axis awareness at all (`nearestCorner`, literally the closest lattice
+point), which is almost certainly the actual source of the "angled ever
+so slightly" line: a fine-tune drag snapping to the nearest corner rather
+than the nearest ON-AXIS corner. Replaced both with one shared mechanism
+(`straightWallGeometry.ts`'s `nearestWallAngleFamily`/
+`WALL_ANGLE_FAMILIES_DEG`): the 3 REAL hex-edge orientations (30°/90°/150°
+— not the old horizontal axis, which never matched a real edge at all,
+see this file's own header comment) become the default snap targets, but
+only within `WALL_ANGLE_SNAP_TOLERANCE_DEG` (6°, the middle of Kirk's own
+"~5-8°" range) of the raw drag direction — outside that, the draw stays a
+genuinely free angle (falls through to plain `nearestCorner`) rather than
+being forced onto a family it was never aimed at. Holding **Alt** bypasses
+snapping entirely for the whole drag (checked live via `e.altKey` on every
+pointer-move, not just decided once — releasing Alt mid-drag lets a real
+family lock in from wherever the drag is aimed at that point); Alt, not
+Shift, because Shift is already the region tool's own eraser modifier.
+Applied to BOTH the initial draw (`straightStroke`'s new `lockedFamily`/
+`snapped` fields, decided once past the existing direction-lock threshold,
+same shape as the zigzag tool's own `family`) and the endpoint-drag
+fine-tune (`draggingEndpoint`'s own `snapped` field, recomputed fresh
+every move since the line's OTHER endpoint is already fixed and gives a
+stable reference immediately, unlike a brand-new stroke's noisy first
+few pixels). Snapped state is subtly visible per Kirk's own ask: a locked
+preview renders solid and full-opacity bright amber
+(`straightWallLineElements`'s new `snapped` parameter); an unsnapped one
+keeps the tool's original dashed, dimmer amber — no visual regression to
+the free-angle case, only an ADDED treatment for the locked one.
+
+**A real test-script trap, worth recording**: the live-verification
+script's first attempt at proving this (`game-dev/tools/browser/
+_job_wallpolish_verify.mjs`) used "same column, different row" as its
+"obviously vertical" test pair — WRONG on this coordinate system, where
+`hexRow`'s parity correction means worldX drifts with row even at a fixed
+column (verified by directly computing both cells' `cellCenter`). The
+actual verified-vertical pairs are `(col+2,row-3)`-style deltas (derived
+algebraically from `hexRow`'s own formula, and empirically the SAME pair
+CONTRACT.md's own "straight walls" round above used:
+`[4,4]`→`[6,1]`). A second trap on top of that: a small nudge (10-32 board
+units) off a genuinely vertical pair sometimes committed to the exact same
+corner regardless of whether snapping was engaged, because the corner
+LATTICE itself is coarser than the nudge in that direction — an
+inconclusive test, not a bug. Fixed by using a longer (3-step chained) span and
+a deliberately large (120-unit) nudge for the free-angle case specifically
+— large enough to force the nearest-corner search off the vertical corner
+regardless, cleanly isolating "Alt genuinely bypasses" from "the lattice
+just wasn't fine enough to move." A third, unrelated trap in the SAME
+script: clicking near column 15 at this viewport size lands past the
+board SVG's own visible edge, on the sibling YAML textarea instead
+(`document.elementFromPoint` confirmed it directly) — region-cell clicks
+in the verification script were kept at columns ≤2 after that.
+
+**Region-edit discoverability.** Kirk: "is there a way to add the region
+after we create it?" The capability already existed (Region tool + click
+an existing region selects it; paint adds, Shift-drag removes) but was
+never surfaced, AND — the likely actual root cause — creating the FIRST
+region ever authored (no earlier region to offer a "connect" callout for)
+left `RegionPanel.tsx` rendering `null` outright: `justCreatedId` stayed
+set (only cleared by selecting/deleting/connecting), the callout's own
+`if (created && prev)` had no `prev` and no `else`, and the old
+"nothing pending/selected" branch's `!justCreatedId` guard skipped its own
+render too — a genuine dead end, not just an undiscoverable feature.
+Fixed by precomputing `showConnectCallout` (true only when a real `prev`
+exists) and gating BOTH branches on it instead of on `justCreatedId`
+directly, so the "nothing pending, nothing selected, nothing to connect"
+case now falls through to a NEW compact region list (name/archetype/cell
+count, click-to-select) instead of rendering nothing — the "region list"
+the callout's own copy, dating back to the original region-authoring
+unit ("Use the region list to connect any two regions manually once more
+exist"), already promised but never actually shipped. When a region IS selected, the status hint text
+now matches Kirk's own wording closely: "editing `<name>` — paint to add,
+⇧ drag to remove, Esc to deselect (`N` cells)." Esc actually deselecting
+was missing entirely — added as a keydown effect mirroring the existing
+Delete/Backspace-on-selected-wall pattern (same TEXTAREA/INPUT-target
+guard), also clearing an in-progress pending paint when nothing is
+selected yet.
+
+**Tests.** 6 net new in `straightWallGeometry.test.ts`: `pickStraightAxis`'s
+old 2-case describe block replaced by `nearestWallAngleFamily` (7 cases —
+each of the 3 families, direction-agnosticism, the tolerance boundary on
+both sides, the former "horizontal" axis now correctly staying free, a
+zero-length vector); `snapStraightEndpoint`'s existing 2 cases updated for
+the numeric `WallAxisFamily` type plus 1 new case for the `axis: null`
+free-angle path matching `nearestCorner` exactly. 227 dungeon-builder
+tests passing overall (up from 221). `ci-check` clean (format/lint/
+typecheck/build/test) — a first pass caught a `npm run format` diff on
+both touched files (pure Prettier line-wrap, no semantic change).
+
+**Live verification.** Own dev server (`vite --port 5182`, never `:3001`),
+driven via `game-dev/tools/browser/_job_wallpolish_verify.mjs` (kept, per
+this repo's `/tools/browser/_job_*.mjs` gitignore convention — unlike
+rpg-dnd5e-web's own scripts, this one didn't need deleting after the run).
+A near-miss drag (~4° off a verified-vertical `[2,9]`→`[8,0]`-style span)
+committed to an EXACTLY vertical wallLine (`from`/`to` corner points'
+world X matching to floating-point precision) with a solid bright preview
+mid-drag; the same drag with Alt held and a much larger (120-unit) nudge
+committed to a visibly different, non-vertical endpoint (world X differing
+by ~104 board units) with a dashed dimmer preview mid-drag — both
+screenshotted mid-gesture, not just asserted from the final YAML. For
+regions: painting a first-ever region then deselecting showed the NEW
+compact list (`region list shows created region: true`), clicking the
+list entry showed the exact hint text ("editing Hint Check Vault — paint
+to add, ⇧ drag to remove, Esc to deselect (4 cells)."), and Esc correctly
+returned to the list. No unexpected console errors — only the established
+FIXTURES-MODE `[unimplemented] unknown service ...AuthoringService` (no
+local `rpg-api` running against this dev server), same as every prior
+round's live-verification note.

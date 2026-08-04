@@ -95,13 +95,13 @@ import {
 import {
   clipSegmentToShrunkHex,
   isValidDoorCell,
-  pickStraightAxis,
+  nearestWallAngleFamily,
   snapStraightEndpoint,
   straightWallCrossedEdges,
   straightWallFootprint,
   straightWallsFootprintSet,
   wallLineDoorCellAt,
-  type StraightAxis,
+  type WallAxisFamily,
 } from './straightWallGeometry';
 import type { RegionEditing } from './useRegionEditing';
 
@@ -256,6 +256,13 @@ const CELL_SIZE = BOARD_HEX_SIZE - 1.5;
  * drawn always passes an empty `doors` list (it has none of its own
  * yet), and `provisional` swaps the amber/dashed "not committed"
  * treatment this component uses everywhere else for in-progress content.
+ *
+ * `snapped` (only meaningful while `provisional`) is whether the CURRENT
+ * `to`/endpoint-drag position is actually locked to one of
+ * `straightWallGeometry.ts`'s 3 hex-edge angle families, vs. a free
+ * angle — Kirk's ask, "snapped state should be subtly visible": a locked
+ * preview reads solid and bright; a free one keeps the original dashed,
+ * dimmer amber this tool always had.
  */
 function straightWallLineElements(
   keyPrefix: string,
@@ -263,14 +270,15 @@ function straightWallLineElements(
   to: CornerRef,
   doors: readonly { cell: [number, number] }[],
   grid: CreationGrid,
-  provisional: boolean
+  provisional: boolean,
+  snapped: boolean = false
 ): ReactElement[] {
   const els: ReactElement[] = [];
   const a = cornerPoint(from);
   const b = cornerPoint(to);
   const doorCells = doors.map((d) => d.cell);
   const footprintColor = provisional ? '#ffb347' : '#c94f4f';
-  const lineColor = provisional ? '#ffb347' : '#e8e2d8';
+  const lineColor = !provisional ? '#e8e2d8' : snapped ? '#fff3c4' : '#ffb347';
   const footprint = straightWallFootprint(from, to, grid, doorCells);
 
   for (const [col, row] of footprint) {
@@ -338,9 +346,9 @@ function straightWallLineElements(
         y2={p1.y}
         stroke={lineColor}
         strokeWidth={provisional ? 3 : 4}
-        strokeDasharray={provisional ? '5 3' : undefined}
+        strokeDasharray={provisional && !snapped ? '5 3' : undefined}
         strokeLinecap="round"
-        opacity={provisional ? 0.85 : 1}
+        opacity={provisional ? (snapped ? 1 : 0.85) : 1}
       />
     );
   });
@@ -435,23 +443,34 @@ export function CreationBoard({
   /** Straight Wall tool's own drag state — genuinely different shape
    * from `stroke` above: an edge-wall stroke paints a whole CHAIN of
    * edges as it goes; a straight-wall stroke has exactly ONE `from`/`to`
-   * CORNER pair, committed once on pointer-up. `axis` mirrors
-   * `stroke.family`'s "undecided until the drag clears a threshold"
-   * shape, but with 2 screen-space choices (vertical/horizontal) instead
-   * of 3 hex edge families — see `straightWallGeometry.ts`'s
-   * `pickStraightAxis`. `clickTarget` is resolved on pointer-DOWN (which
-   * existing straight wall, if any, was clicked) but only acted on at
-   * pointer-UP, and only if the whole gesture turns out to have been a
-   * CLICK rather than a real drag (see `handlePointerUp`) — a drag
-   * starting on top of an existing line still draws a new one,
-   * consistent with every other tool's click-vs-drag split in this
-   * component. A click on an existing line now SELECTS it (shows
-   * endpoint handles) rather than deleting it — delete moved to the
-   * Delete/Backspace key on a selection, see the keydown effect below. */
+   * CORNER pair, committed once on pointer-up. `lockedFamily` mirrors
+   * `stroke.family`'s "undecided until the drag clears a threshold, then
+   * held for the rest of the stroke" shape — see
+   * `straightWallGeometry.ts`'s `nearestWallAngleFamily` for the 3 real
+   * hex-edge families it locks to, tolerance-gated (Kirk's fix for "my
+   * line was angled ever so slightly"). It persists through a transient
+   * Alt-held "free angle" override (`handlePointerMove` reads `e.altKey`
+   * live, every move — Shift is already the region tool's own eraser
+   * modifier, so this tool uses Alt instead) rather than being discarded
+   * by it: releasing Alt mid-drag restores whatever family was already
+   * locked in, rather than re-deciding from scratch. `snapped` is a pure
+   * render hint — whether the CURRENT `toCorner` actually came from a
+   * family snap (accounting for that live Alt override), driving the
+   * "brighter when locked" preview treatment. `clickTarget` is resolved
+   * on pointer-DOWN (which existing straight wall, if any, was clicked)
+   * but only acted on at pointer-UP, and only if the whole gesture turns
+   * out to have been a CLICK rather than a real drag (see
+   * `handlePointerUp`) — a drag starting on top of an existing line
+   * still draws a new one, consistent with every other tool's
+   * click-vs-drag split in this component. A click on an existing line
+   * now SELECTS it (shows endpoint handles) rather than deleting it —
+   * delete moved to the Delete/Backspace key on a selection, see the
+   * keydown effect below. */
   const [straightStroke, setStraightStroke] = useState<{
     fromCorner: CornerRef;
     toCorner: CornerRef;
-    axis: StraightAxis | null;
+    lockedFamily: WallAxisFamily | null;
+    snapped: boolean;
     startPoint: CellPos;
     clickTarget: number | null;
   } | null>(null);
@@ -465,14 +484,19 @@ export function CreationBoard({
     number | null
   >(null);
   /** An endpoint HANDLE drag in progress — `current` is the live,
-   * corner-snapped position tracking the pointer, committed via
-   * `onSetStraightWallEndpoint` on pointer-up (unless it would collapse
-   * the line onto its own other endpoint, which is rejected instead —
-   * see `handlePointerUp`). */
+   * angle-family-snapped position tracking the pointer (same 3-family/
+   * Alt-bypass rule the initial draw uses, recomputed fresh every move
+   * since the OTHER end of the line is already fixed — no "undecided,
+   * noisy short vector" phase to protect against the way a brand-new
+   * stroke has), committed via `onSetStraightWallEndpoint` on pointer-up
+   * (unless it would collapse the line onto its own other endpoint,
+   * which is rejected instead — see `handlePointerUp`). `snapped` is the
+   * same render hint `straightStroke` carries. */
   const [draggingEndpoint, setDraggingEndpoint] = useState<{
     lineIndex: number;
     which: 'from' | 'to';
     current: CornerRef;
+    snapped: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -493,6 +517,30 @@ export function CreationBoard({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [tool, selectedWallLineIndex, onRemoveStraightWallAt]);
+
+  /** Esc deselects a region being edited (`RegionPanel.tsx`'s own status
+   * hint now advertises this — "Esc to deselect" — Kirk's discoverability
+   * ask, "is there a way to add the region after we create it?"). Also
+   * clears an in-progress NEW-region paint session when nothing is
+   * selected yet, the same "back out of what I'm doing" meaning Esc
+   * carries in the rest of this component. Mirrors the Delete/Backspace
+   * effect above: same TEXTAREA/INPUT-target guard so Esc while editing a
+   * region's name/id field doesn't unexpectedly blow away the selection. */
+  useEffect(() => {
+    if (tool !== 'region') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const targetTag = (e.target as HTMLElement)?.tagName;
+      if (targetTag === 'TEXTAREA' || targetTag === 'INPUT') return;
+      if (e.key !== 'Escape') return;
+      if (regionEdit.selectedRegionId) {
+        regionEdit.selectRegion(null);
+      } else if (regionEdit.pendingCells.length > 0) {
+        regionEdit.clearPending();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [tool, regionEdit]);
 
   const grid = doc.canvas ?? DEFAULT_CANVAS;
 
@@ -644,6 +692,7 @@ export function CreationBoard({
             lineIndex: selectedWallLineIndex,
             which: handle,
             current: handle === 'from' ? line.from : line.to,
+            snapped: false,
           });
           return;
         }
@@ -658,7 +707,8 @@ export function CreationBoard({
       setStraightStroke({
         fromCorner: corner,
         toCorner: corner,
-        axis: null,
+        lockedFamily: null,
+        snapped: false,
         startPoint: p,
         clickTarget: hit,
       });
@@ -713,27 +763,69 @@ export function CreationBoard({
       return;
     }
     if (draggingEndpoint) {
+      // The line's OTHER (fixed) endpoint anchors the angle-family check
+      // — always well-defined from the very first move, unlike a
+      // brand-new stroke's own `startPoint`, so this recomputes live on
+      // every move rather than locking once (see `draggingEndpoint`'s
+      // own doc comment). `e.altKey` is the free-angle bypass — Shift is
+      // already the region tool's own eraser modifier (see this
+      // component's region-tool pointer-down branch), so this tool uses
+      // Alt instead.
+      const line = doc.wallLines[draggingEndpoint.lineIndex];
+      const otherEnd =
+        draggingEndpoint.which === 'from' ? line?.to : line?.from;
+      let axis: WallAxisFamily | null = null;
+      if (otherEnd && !e.altKey) {
+        const otherPoint = cornerPoint(otherEnd);
+        axis = nearestWallAngleFamily(p.x - otherPoint.x, p.y - otherPoint.y);
+      }
+      const current =
+        otherEnd && axis
+          ? snapStraightEndpoint(otherEnd, p, axis, grid)
+          : nearestCorner(p, grid);
       setDraggingEndpoint({
         ...draggingEndpoint,
-        current: nearestCorner(p, grid),
+        current,
+        snapped: axis !== null,
       });
       return;
     }
     if (tool === 'straightWall' && straightStroke) {
       const dx = p.x - straightStroke.startPoint.x;
       const dy = p.y - straightStroke.startPoint.y;
-      let axis = straightStroke.axis;
-      // Same "undecided until the drag clears a threshold, then locked
-      // for the rest of the stroke" shape the edge-wall tool's `family`
-      // uses just below — see `pickStraightAxis`'s own doc comment for
-      // why this is 2-way (vertical/horizontal), not 3-way.
-      if (axis === null && Math.hypot(dx, dy) >= DIRECTION_LOCK_THRESHOLD) {
-        axis = pickStraightAxis(dx, dy);
+      const pastThreshold = Math.hypot(dx, dy) >= DIRECTION_LOCK_THRESHOLD;
+      let lockedFamily = straightStroke.lockedFamily;
+      // "Undecided until the drag clears a threshold, then locked for
+      // the rest of the stroke" — same shape the edge-wall tool's
+      // `family` uses just below, generalized from a forced 2-way pick
+      // to a tolerance-gated 3-family one that can also lock to "free"
+      // (`nearestWallAngleFamily` returning `null`, e.g. a drag aimed
+      // well off every family — see that function's own doc comment).
+      // Held-Alt at the moment of the lock decision skips it entirely,
+      // leaving `lockedFamily` re-triable on the NEXT move — releasing
+      // Alt mid-drag lets a real family lock in from wherever the drag
+      // is aimed at that point, rather than committing to "free"
+      // permanently just because Alt happened to be down at first.
+      if (lockedFamily === null && pastThreshold && !e.altKey) {
+        lockedFamily = nearestWallAngleFamily(dx, dy);
       }
-      const toCorner = axis
-        ? snapStraightEndpoint(straightStroke.fromCorner, p, axis, grid)
-        : straightStroke.fromCorner;
-      setStraightStroke({ ...straightStroke, axis, toCorner });
+      const effectiveAxis = e.altKey ? null : lockedFamily;
+      const toCorner = !pastThreshold
+        ? straightStroke.fromCorner
+        : effectiveAxis
+          ? snapStraightEndpoint(
+              straightStroke.fromCorner,
+              p,
+              effectiveAxis,
+              grid
+            )
+          : nearestCorner(p, grid);
+      setStraightStroke({
+        ...straightStroke,
+        lockedFamily,
+        toCorner,
+        snapped: pastThreshold && effectiveAxis !== null,
+      });
       return;
     }
     if (tool === 'wall' || tool === 'door') {
@@ -944,7 +1036,8 @@ export function CreationBoard({
         to,
         line.doors,
         grid,
-        !!dragging
+        !!dragging,
+        dragging?.snapped ?? false
       )
     );
   });
@@ -1000,7 +1093,8 @@ export function CreationBoard({
           straightStroke.toCorner,
           [],
           grid,
-          true
+          true,
+          straightStroke.snapped
         )
       : [];
   const previewFootprint: [number, number][] =
