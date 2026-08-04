@@ -219,16 +219,25 @@ walls:
   - { from: [7, 4], to: [7, 5], kind: door }
 
 # STRAIGHT walls — a separate sibling construct, NOT a variant of walls:
-# above. from/to here are typically several cells apart, not adjacent — the
-# wall is the straight WORLD-SPACE line between their centers, which clips
-# through every hex it passes over (a footprint, not just a boundary). See
-# this file's own "Straight walls" section, below, for the full rule
-# (Kirk's "any hex not 100% uncovered would not be traversable"), the
-# epsilon that makes touch-vs-clip precise, and why this needed a new list
-# rather than a style: discriminator on walls: above.
+# above. from/to are hex CORNERS (not cells — see this file's own
+# "Straight walls" section for why corner anchoring replaced the original
+# cell-center anchoring, Kirk's "it always hangs over a little" finding),
+# typically several corners apart — the wall is the straight WORLD-SPACE
+# line between them, which clips through every hex it passes over (a
+# footprint, not just a boundary). A door is a CARVED OPENING at a
+# specific footprint cell along the line (doors:), not a property of the
+# whole line — see this file's own "Straight walls" section, below, for
+# the full footprint rule (Kirk's "any hex not 100% uncovered would not be
+# traversable"), the corner-lattice addressing/dedup convention, the door
+# traversability semantic, and why this needed a new list rather than a
+# style: discriminator on walls: above.
 wallLines:
-  - { from: [10, 5], to: [10, 12], kind: solid }
-  - { from: [3, 3], to: [8, 3], kind: door }
+  - { from: { cell: [10, 5], corner: 0 }, to: { cell: [10, 12], corner: 3 } }
+  - {
+      from: { cell: [3, 3], corner: 1 },
+      to: { cell: [8, 3], corner: 4 },
+      doors: [{ cell: [5, 3] }],
+    }
 
 # No `holes:` in the early dialect. Use an obstacle/prop for a collapsed
 # visual; a true no-floor cell waits for mechanics that require one.
@@ -307,9 +316,12 @@ wall's true geometry is the straight WORLD-SPACE line between their centers
 
 ### Schema shape chosen, and the alternative rejected
 
-**Chosen: a separate sibling list, `wallLines: [{from: [c,r], to: [c,r],
-kind: solid|door}]`** — same field names as `walls:` for a familiar shape,
-but a DIFFERENT construct, not a variant of the same one.
+**Chosen: a separate sibling list, `wallLines: [{from: CornerRef, to:
+CornerRef, doors: [{cell:[c,r]}]}]`** — same "sibling list, not a variant of
+`walls:`" shape as originally chosen, now with corner-anchored endpoints and
+a real doors model (both this section's own subsections below cover the
+"why", each following a follow-up round after Kirk played with the first
+prototype).
 
 **Rejected: overloading `walls:` with a `style: edge|straight` discriminator**
 on the existing `WallDoc` shape. Weighed and rejected because `from`/`to`
@@ -322,6 +334,82 @@ to keep working unchanged. A sibling list needed zero changes to any
 existing `walls:` consumer — `doc.wallLines` is simply empty on every
 document that doesn't use it, the same "additive, absent by default" shape
 every other target-dialect field in this file already follows.
+
+### Corner anchoring — endpoints are hex CORNERS, not cell centers (follow-up round)
+
+Kirk, playing with the first prototype: "I could not get the edges quite
+right. would be nice if I could fine tune the edges — oh I could edit the
+yaml directly, right. It always hangs over a little." Two related, but
+distinct, complaints:
+
+1. **The hangover** — a wall drawn cell-center-to-cell-center OVERSHOOTS its
+   intended extent by up to half a hex at EACH end, always, by construction.
+   A cell center is never where a real room boundary actually sits; it's the
+   MIDDLE of a hex, which is at best a rough approximation of where an
+   author meant a wall to stop.
+2. **No fine-tuning path** — even editing the YAML directly (Kirk's own
+   proposed workaround) couldn't fix it: the only addressable points were
+   cell centers, one per hex. There was no finer lattice to move an endpoint
+   INTO. Precision was capped at "which hex," never "where in/around that
+   hex."
+
+**The fix**: `from`/`to` are hex CORNERS — the finest lattice this grid
+actually has, and the one a real wall run's own boundary geometry already
+lives on (`hexEdgeBetween`'s edges are corner-to-corner). A corner is where
+a hex wall belongs; a cell center never was.
+
+```yaml
+wallLines:
+  - { from: { cell: [10, 5], corner: 0 }, to: { cell: [10, 12], corner: 3 } }
+```
+
+**Corner-ref shape**: `{cell: [c, r], corner: 0..5}` — `corner` matches
+`hexCorners`' own `30° + 60°·i` indexing (`hexMath.ts`), the SAME convention
+every other hex-corner consumer in this codebase already uses; no new
+convention invented. The alternative considered — a dedicated corner-lattice
+coordinate system with one intrinsic address per vertex — was rejected as
+more mathematically demanding to justify and implement for the actual gain:
+`{cell, corner}` plus a canonicalization rule (below) gets the same "one
+address per real point" property with far less new machinery, and is
+directly testable against the existing per-cell hex math this concept
+already has.
+
+**Dedup convention — canonicalization.** A hex vertex is shared by exactly 3
+cells in the tiling's interior (1 or 2 at a canvas boundary — verified
+directly, not assumed: `hexCorner.test.ts`'s `cornerOwners` cases). So the
+same real point has up to 3 equally valid `{cell, corner}` spellings. Two
+authors drawing toward the same corner from different sides — or the same
+corner shared by two DIFFERENT wallLines forming an L-join — need to agree
+on ONE spelling for equality/hit-testing to work without a geometry
+comparison every time. **The rule: canonical = the owner with the
+lexicographically smallest `[col, row]`**, candidates restricted to
+`col >= 0 && row >= 0` (an off-canvas geometric co-owner is real math but not
+a cell any author could have drawn from, so it can never BE the canonical
+address). Every `wallLines:` mutator canonicalizes on write
+(`addWallLine`/`setWallLineEndpoint` in `dungeonYaml.ts`) — a document never
+carries a corner reference in a non-canonical form once anything has
+written to it.
+
+**Migration — a deliberate, honest, self-healing break, not a permanently
+dual-supported format.** A PRE-corner-anchoring `wallLines:` entry (`from`/
+`to` as a bare `[c, r]` cell — the shape the very first prototype round
+shipped) is picked up at PARSE time: `migrateLegacyCenterEndpoint` chooses
+whichever of that cell's own 6 corners sits nearest the OTHER endpoint's
+resolved position, so the migrated line keeps pointing the direction it
+always drew rather than snapping to an arbitrary corner. This heals the
+in-memory `doc` immediately — every consumer (footprint/crossing math,
+rendering) only ever sees the corner-anchored shape, regardless of source.
+**It does NOT rewrite the underlying CST/YAML text by itself** — consistent
+with this concept's own CST-preservation discipline (untouched content is
+never silently rewritten), a legacy line's saved text stays legacy until
+some mutator actually touches that entry (dragging an endpoint, adding a
+door), at which point it converges to the corner-anchored shape as a side
+effect of that write. Given how little real `wallLines:` content existed
+anywhere at the time of this change, this was judged cheaper and more
+honest than carrying two live representations through every downstream
+consumer indefinitely — the same "break in place while consumers are few"
+trigger CLAUDE.md's proto-versioning section names, applied to this
+concept's own client-only document shape rather than a real wire proto.
 
 ### Footprint rule and the epsilon that makes it precise
 
@@ -340,6 +428,16 @@ than the floating-point noise `Math.cos`/`Math.sin` introduce computing hex
 corners (~1e-13 at this scale — verified, not assumed), so it can't be
 fooled by trig rounding, and small enough to be visually and physically
 meaningless at render/gameplay scale.
+
+**Still true after corner anchoring, unchanged.** The clip math below
+(`clipSegmentToShrunkHex`/`isCellClipped`/`candidateCells`) operates on raw
+world-space points, not on cell/corner addressing — corner anchoring only
+changed HOW `from`/`to` resolve to those points (`cornerPoint` instead of
+`cellCenter`), not the clipping itself. The two cases below were originally
+demonstrated with cell-center fixtures; the underlying epsilon/touch-vs-clip
+behavior they illustrate is exactly as true for corner-anchored endpoints —
+see this section's own "corner anchoring" boundary case, below, for what's
+GENUINELY new once endpoints stopped being forced to cell centers.
 
 Two concrete cases worth naming directly, both covered by
 `creation/straightWallGeometry.test.ts`:
@@ -366,6 +464,23 @@ Two concrete cases worth naming directly, both covered by
   different result from the naive "same row" attempt. Both are exercised
   side by side in the test file specifically so this distinction is
   provable, not asserted on faith.
+- **A wall ENDING at a corner shared with a cell does not clip that
+  cell** — the boundary case corner anchoring specifically makes possible
+  (a cell-center-anchored endpoint was ALWAYS deep inside its own cell,
+  hence always clipped; a corner-anchored one can legitimately terminate
+  at a point three cells share, clipping zero, one, or two of them
+  depending on approach direction). Verified with the shortest possible
+  non-trivial case: a segment from one corner of a hex to its
+  DIAMETRICALLY OPPOSITE corner (corners 2 and 5 are 180° apart) is a full
+  diameter of that ONE hex — it clips that cell dead-center but never
+  enters either of the OTHER two cells that also own its terminal corner,
+  even though the line visibly "ends at" a point they touch too. The
+  simplest case of all — a segment that IS one cell's own true edge
+  (corner `i` to corner `i+1`) — clips nothing at all, the purest form of
+  "ending at a shared corner blocks nothing." Both cases are exercised
+  directly in `straightWallGeometry.test.ts`'s own "corner-anchored
+  endpoint boundary cases" describe block, not just asserted from the
+  general epsilon rule above.
 
 ### Movement semantics
 
@@ -394,24 +509,32 @@ line can't graze a shared edge between two clear cells without having
 entered one of the two cells bordering that edge's own neighborhood first).
 The mechanism is still real and implemented, not dead code — it's exercised
 directly in the test file against a hand-placed segment collinear with one
-real hex edge (bypassing the cell-center anchoring), and it becomes load-
-bearing the moment a wall's endpoints are no longer forced to cell centers —
-e.g. a server-side compiler working from raw board/world coordinates instead
-of this prototype's `[col,row]`-only representation.
+real hex edge. **Update, corner-anchoring round**: this prediction — "load-
+bearing the moment a wall's endpoints are no longer forced to cell
+centers" — has now come true for real, not just as a forward-looking note.
+Corner-anchored endpoints CAN produce a genuine both-clear-cells crossing
+that the original cell-center-anchored representation never could (see this
+section's own "a wall ending at a corner shared with a cell does not clip
+that cell" boundary case, above) — mechanism (b) is exercised by real,
+reachable `wallLines:` geometry now, not only by a hand-constructed edge
+segment bypassing the normal endpoint representation.
 
 ### Corners: no special-case joining logic needed
 
 Kirk's red-lines picture showed clean L corners where two segments meet.
-This "just works" by construction: consecutive straight-wall segments that
-SHARE AN ENDPOINT CELL (draw one from A to the corner cell, a second from the
-corner cell to C) both resolve that shared cell to the exact same
-`cellCenter(...)` world point — the two lines touch exactly, with no gap and
-no special corner-detection code. `straightWallGeometry.test.ts`'s
-"corner/L continuity" test asserts this directly (both segments' own
-resolved endpoint at the shared cell are `toEqual` the same point) rather
+This "just works" by construction, now at the finer corner lattice:
+consecutive straight-wall segments that SHARE AN ENDPOINT CORNER (draw one
+from A to the corner, a second from that same corner to C) resolve to the
+exact same `cornerPoint(...)` world point — the two lines touch exactly,
+with no gap and no special corner-detection code, EVEN when the two
+segments address that corner via DIFFERENT (but canonically equivalent)
+owner cells (`hexCorner.ts`'s `sameCorner`/`canonicalCorner` — see this
+file's own "corner anchoring" section above for the dedup rule).
+`straightWallGeometry.test.ts`'s "corner/L continuity" test and
+`hexCorner.test.ts`'s own dedicated coverage assert this directly rather
 than trusting it by construction alone.
 
-### Interaction: axis snap, then closest-available approximation
+### Interaction: axis snap, then closest-available corner
 
 Drag locks to whichever of 2 screen-space axes (vertical/horizontal) the
 drag's own direction is closer to, past a small movement threshold (mirrors
@@ -423,14 +546,131 @@ same scoring search) but not needed to prove the footprint mechanic, which
 is this unit's actual point.
 
 Because this is a discrete hex grid, an EXACT vertical/horizontal line
-generally isn't reachable between two integer cell centers at all (see
-above — no edge family is horizontal, and vertical only lines up exactly for
+generally isn't reachable between two lattice corners at all (see above —
+no edge family is horizontal, and vertical only lines up exactly for
 specific from/to pairs). `snapStraightEndpoint` searches a small window of
-columns/rows around the pointer's own nearest cell and picks whichever
-candidate keeps the locked axis's OTHER world coordinate closest to the
-starting cell's own — the closest AVAILABLE approximation, not a
+cells around the pointer's own nearest corner — checking all 6 of each
+candidate cell's own corners, not just cell centers — and picks whichever
+candidate corner keeps the locked axis's OTHER world coordinate closest to
+the starting corner's own — the closest AVAILABLE approximation, not a
 mathematically exact one. The footprint is always computed honestly from
 whatever line actually results, never from a pretended-exact one.
+
+### Endpoint fine-tuning: draggable handles, corner-to-corner snapped
+
+The second half of Kirk's "it always hangs over" feedback — corner
+anchoring fixes the coarseness of the anchor lattice, but an author still
+needs a way to move an already-drawn wall's endpoint onto a DIFFERENT
+corner without deleting and redrawing the whole line. Selecting a straight
+wall (click its line — no longer deletes, see below) shows two small
+draggable handle circles at its `from`/`to` corners; dragging one snaps it,
+corner-to-corner, to the nearest lattice point under the pointer
+(`nearestCorner`), with the footprint/crossing overlay updating live during
+the drag. Dropping a handle onto the line's OTHER endpoint (collapsing it to
+a single point) is rejected, not silently clamped elsewhere — the author
+sees why nothing moved rather than the handle jumping somewhere unrequested.
+The YAML pane remains the exact-edit path underneath all of this — corner
+coordinates are meaningfully hand-editable now, not just drag-adjustable.
+
+**A necessary UX trade-off, named explicitly**: the original prototype's
+click-on-an-existing-line-to-delete-it gesture is retired — a click now
+SELECTS (shows the handles) instead. Deleting a selected straight wall moved
+to the Delete/Backspace key, mirroring the existing global delete gesture
+this concept's edit-mode placements already use
+(`DungeonBuilderConcept.tsx`'s own keydown handler) rather than inventing a
+new convention. This was necessary, not incidental: click-to-select and
+click-to-delete are mutually exclusive interpretations of the same gesture,
+and endpoint fine-tuning is only reachable through selection.
+
+### Doors: a carved OPENING at a specific cell, not a property of the whole line
+
+The original prototype's `kind: solid | door` lived on the WHOLE line — Kirk,
+directly: "I cannot set a wall or a door — just realized the gashes are
+walls," and separately, after seeing a `kind: door` line rendered: doors were
+"still visually/semantically hex-edge creatures" — a whole long wall segment
+re-colored amber, with no real opening carved anywhere along it (the
+footprint math never read `kind` at all; a "door" wallLine was exactly as
+impassable as a "solid" one). An entire multi-cell wall being "a door" never
+made physical sense in the first place — a door is a point-sized opening IN
+a wall, not a wall that IS a door.
+
+**Chosen shape: `doors: [{cell: [c, r]}]`** — a list on each `wallLines:`
+entry, each referencing ONE footprint cell the line otherwise blocks. Zero
+or more per line (a list, not a single optional field) so a wider opening —
+double doors spanning 2 cells — is just two entries, no special case.
+
+**Alternative considered and rejected: `doors: [{at: t}]`**, a continuous
+parametric position (0..1) along the line. Weighed seriously — a server
+compiler already has to walk the line's own `[t0,t1]` clip intervals
+cell-by-cell to derive the footprint in the first place
+(`clipSegmentToShrunkHex`), so mapping a `t` to "which cell" would be a
+direct reuse of that same machinery, not new complexity. Rejected anyway for
+two reasons that outweighed that convenience:
+
+- **Editing robustness.** A `t` value's meaning depends on exactly how the
+  line is parameterized end-to-end. The moment an author fine-tunes an
+  endpoint (the handle-drag feature above), the line's geometry changes and
+  a stored `t` could silently drift to point at a DIFFERENT cell than the
+  one the author actually meant — a real, if narrow, class of "the edit
+  moved something the author didn't touch" bug. A `cell:` reference stays
+  anchored to a real, named cell regardless of small endpoint adjustments;
+  if the edit shrinks the footprint enough that the door's cell falls out of
+  it entirely, that's a detectable, FLAGGABLE state (see below), not a
+  silent repositioning.
+- **Author-UX and consistency.** Every other coordinate in this whole
+  dialect (`place.at`, `start`, `end`, `walls:`, wallLine `from`/`to`
+  themselves) is `[col, row]` cell-space. A `t`-parameterized door would be
+  the one construct in the file an author can't reason about by looking at
+  cell coordinates — clicking a point on the rendered line and resolving it
+  to the nearest real cell (`wallLineDoorCellAt`) is both simpler to
+  implement AND simpler for a hand-editor typing directly into the YAML
+  pane to understand and adjust.
+
+**Exact traversability semantic, precisely, for whoever compiles this**: a
+door's `cell` is excluded from ITS OWN wallLine's footprint entirely — as if
+that line's clip never touched it. Mechanically: `straightWallFootprint`
+takes an optional `doorCells` exclusion set; a door cell is removed from the
+raw clipped result. Because `straightWallCrossedEdges`'s own "skip a crossing
+if either side is footprint-blocked" rule (movement semantic (b), above)
+reads the SAME footprint set, a door cell excluded from the footprint
+automatically participates in the (b) crossing-check as an ordinary CLEAR
+cell too — its boundary crossings toward neighboring cells become subject to
+the normal both-clear-cells test, no separate "door crossing" mechanism
+needed. **The whole semantic is "this cell acts as though the wall line
+never clipped it at all," nothing more, and nothing less** — a door only
+reverses THIS line's own claim on that cell; something else (another
+wallLine, an edge wall, an obstacle prop) can still legitimately block it
+independently.
+
+**A door must reference one of the line's own RAW (door-blind) footprint
+cells to mean anything** — `isValidDoorCell` is the exact check. A door left
+STRANDED by a subsequent endpoint drag (the footprint shrank out from under
+it) is FLAGGED with a ⚠ marker at that cell, not silently dropped — same
+"flag, never silently delete or move" discipline this section's own
+"Interactions with everything else" subsection already follows for
+placements/start/end/regions.
+
+**Rendering**: the solid line stroke is simply not drawn across a door's own
+clip interval (a visible gap), with a small amber hinge-dot marker at the
+opening's midpoint — the same hinge-dot visual language the edge Wall/Door
+pair's own per-edge door already uses, now placed mid-line instead of at an
+edge's own midpoint. The Door tool, with a straight wall's line clicked,
+resolves the click to the nearest real footprint cell along the line
+(`wallLineDoorCellAt`: project the click onto the line, then find which
+cell's own `[t0,t1]` clip interval contains that point) and toggles a door
+there — add if absent, remove if present, the same symmetric affordance the
+edge Wall/Door pair already gives `doc.walls`.
+
+**A genuine, honestly-recorded gap, not silently ignored**: this round's
+door model is scoped to footprint CELLS only. Corner anchoring is exactly
+the change that makes movement semantic (b) reachable in isolation — a wall
+segment that merely GRAZES a shared edge between two clear cells without
+clipping either one (see "Honestly-recorded finding," above, now updated) —
+and `doors:` has no address for THAT case: an opening on a purely-grazed
+EDGE with no clipped cell to reference. Scoped out deliberately this round
+(the common, expected case — an author punching a cell-wide opening in a
+wall — is what `doors:` covers), named here so whoever picks this up next
+doesn't rediscover the gap from scratch.
 
 ### Interactions with everything else on the board: flag, never silently delete or move
 
@@ -450,6 +690,11 @@ content is FLAGGED, not silently deleted or relocated:
   never rewritten by a wall mutator, per the settled model's own "an inner
   wall never splits a semantic region" rule (this file's "regions:"
   section).
+- **A door stranded by an endpoint drag** (its `cell` no longer part of the
+  line's own raw footprint) gets its own ⚠ marker at that cell — see the
+  "Doors" subsection above. The `doors:` entry itself is left untouched,
+  same principle as every other case here: flag, don't silently repair or
+  delete.
 
 ### Compiler responsibilities (server-authoritative, this is a preview)
 
@@ -460,6 +705,11 @@ way `walls:` compiling to canonical `HexRecord.edges` is already the
 documented plan for edge-native walls. This concept's client-side
 `straightWallGeometry.ts` is that computation done once, client-side, for
 live visual feedback — not a claim that the client is the source of truth.
+This now includes the door-exclusion step (`doorCells` parameters on
+`straightWallFootprint`/`straightWallCrossedEdges`) and the corner-lattice
+resolution (`hexCorner.ts`'s `cornerPoint`) a real compiler would need too —
+see the "Doors" and "Corner anchoring" subsections above for the exact
+semantics/addressing a server-side implementation should match.
 
 ### `stripToV1Subset`
 
@@ -467,7 +717,12 @@ live visual feedback — not a claim that the client is the source of truth.
 all), counted and reported SEPARATELY in the compile-badge/dropped summary
 ("N straight walls", never folded into the edge-wall "N walls" count) —
 they're genuinely different constructs, and conflating their counts would
-misrepresent which tool an author actually used.
+misrepresent which tool an author actually used. A line's own `doors:`
+entries are nested data on a construct that already has no v1 analog at
+all — they drop along with their parent line, with no separate count of
+their own (counting "doors" as a sibling tally to "straight walls" would
+misrepresent them as an independent authoring action, when they only ever
+exist attached to a wallLine that's already being dropped).
 
 ## Top-level placement: rooms are semantic, not placement containers
 

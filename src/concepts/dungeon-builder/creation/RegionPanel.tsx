@@ -107,6 +107,26 @@ export function RegionPanel({ doc, regionEdit }: RegionPanelProps) {
     ? (doc.regions.find((r) => r.id === selectedRegionId) ?? null)
     : null;
 
+  // A "just created" region only gets a "connect to the previous region"
+  // callout when there genuinely IS a previous region to offer (idx > 0).
+  // The FIRST region anyone ever authors (idx === 0) has none — and this
+  // used to leave the panel rendering nothing at all once painting
+  // finished: no callout (nothing to connect to), no list (`justCreatedId`
+  // was still set, so the list branch below's old `!justCreatedId` guard
+  // skipped it too), no path back to the region just created. That dead
+  // end is very likely the actual shape of Kirk's "is there a way to add
+  // the region after we create it?" — precomputing this here lets the
+  // list branch's own condition fall through to it naturally instead of
+  // silently doing nothing.
+  const justCreatedIdx = justCreatedId
+    ? doc.regions.findIndex((r) => r.id === justCreatedId)
+    : -1;
+  const justCreatedRegion =
+    justCreatedIdx >= 0 ? doc.regions[justCreatedIdx] : null;
+  const connectCandidate =
+    justCreatedIdx > 0 ? doc.regions[justCreatedIdx - 1] : null;
+  const showConnectCallout = !!(justCreatedRegion && connectCandidate);
+
   const [draftId, setDraftId] = useState(() => suggestRegionId(doc));
   const [draftName, setDraftName] = useState('');
   const [draftArchetype, setDraftArchetype] = useState('chamber');
@@ -133,8 +153,54 @@ export function RegionPanel({ doc, regionEdit }: RegionPanelProps) {
     setRenameDraft(editingRegion?.name ?? '');
   }, [editingRegion?.id, editingRegion?.name]);
 
-  if (pendingCells.length === 0 && !editingRegion && !justCreatedId)
-    return null;
+  // --- Nothing pending/selected/just-created: the Region tool is active
+  // but there's nothing to say about the CURRENT gesture. Kirk's own ask
+  // ("is there a way to add the region after we create it?") is exactly
+  // this state — the capability (click an existing region on the board
+  // to select it for editing) already existed but was undiscoverable,
+  // since this panel used to render nothing at all here. A compact list
+  // of every existing region, click-to-select, fixes that without
+  // requiring the author to already know to click precisely on the
+  // board. Truly empty (no regions drawn yet either) still renders
+  // nothing — there's nothing useful to list. ---
+  if (pendingCells.length === 0 && !editingRegion && !showConnectCallout) {
+    if (doc.regions.length === 0) return null;
+    return (
+      <div role="dialog" aria-label="Regions" style={panelStyle}>
+        <h4 style={{ margin: '0 0 6px', fontSize: 13, color: '#3a9b6a' }}>
+          Regions <TargetDialectBadge />
+        </h4>
+        <div style={{ fontSize: 11, color: '#8a7a5a', marginBottom: 6 }}>
+          Click a region to edit it, or paint new board cells to start another.
+        </div>
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {doc.regions.map((r) => (
+            <li key={r.id} style={{ marginBottom: 4 }}>
+              <button
+                onClick={() => selectRegion(r.id)}
+                style={{
+                  ...buttonStyle,
+                  width: '100%',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  background: 'transparent',
+                  color: '#e8e2d8',
+                  border: '1px solid var(--border-primary)',
+                  fontWeight: 400,
+                }}
+              >
+                <span>{r.name ?? r.id}</span>
+                <span style={{ color: '#8a7a5a' }}>
+                  {r.archetype} · {r.cells.length}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
 
   // --- Create mode: painting a brand-new region ---
   if (pendingCells.length > 0) {
@@ -228,52 +294,49 @@ export function RegionPanel({ doc, regionEdit }: RegionPanelProps) {
     );
   }
 
-  // --- Just created: offer to connect to the previously-created region ---
-  if (justCreatedId) {
-    const idx = doc.regions.findIndex((r) => r.id === justCreatedId);
-    const created = doc.regions[idx];
-    const prev = idx > 0 ? doc.regions[idx - 1] : null;
-    if (created && prev) {
-      const edges = sharedBoundaryEdges(created.cells, prev.cells);
-      const adjacent = edges.length > 0;
-      return (
-        <div role="dialog" aria-label="Connect region" style={panelStyle}>
-          <h4 style={{ margin: '0 0 6px', fontSize: 13, color: '#3a9b6a' }}>
-            Created "{created.name ?? created.id}"
-          </h4>
-          <p style={{ fontSize: 11, color: '#a89e90', lineHeight: 1.4 }}>
-            {adjacent
-              ? `Attach to "${prev.name ?? prev.id}"? Places a door edge on the shared boundary (${edges.length} candidate edge${edges.length === 1 ? '' : 's'}, midpoint chosen).`
-              : `"${prev.name ?? prev.id}" doesn't share a boundary with this region — nothing to connect automatically. Use the region list to connect any two regions manually once more exist.`}
-          </p>
-          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-            {adjacent && (
-              <button
-                style={{
-                  ...buttonStyle,
-                  background: '#3a9b6a',
-                  color: '#0d160f',
-                }}
-                onClick={() => handleConnect(created.id, prev.id)}
-              >
-                Connect
-              </button>
-            )}
+  // --- Just created, WITH a previous region to offer: connect callout ---
+  if (showConnectCallout && justCreatedRegion && connectCandidate) {
+    const created = justCreatedRegion;
+    const prev = connectCandidate;
+    const edges = sharedBoundaryEdges(created.cells, prev.cells);
+    const adjacent = edges.length > 0;
+    return (
+      <div role="dialog" aria-label="Connect region" style={panelStyle}>
+        <h4 style={{ margin: '0 0 6px', fontSize: 13, color: '#3a9b6a' }}>
+          Created "{created.name ?? created.id}"
+        </h4>
+        <p style={{ fontSize: 11, color: '#a89e90', lineHeight: 1.4 }}>
+          {adjacent
+            ? `Attach to "${prev.name ?? prev.id}"? Places a door edge on the shared boundary (${edges.length} candidate edge${edges.length === 1 ? '' : 's'}, midpoint chosen).`
+            : `"${prev.name ?? prev.id}" doesn't share a boundary with this region — nothing to connect automatically. Use the region list to connect any two regions manually once more exist.`}
+        </p>
+        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+          {adjacent && (
             <button
               style={{
                 ...buttonStyle,
-                background: 'transparent',
-                color: '#8a7a5a',
-                border: '1px solid var(--border-primary)',
+                background: '#3a9b6a',
+                color: '#0d160f',
               }}
-              onClick={() => selectRegion(null)}
+              onClick={() => handleConnect(created.id, prev.id)}
             >
-              Skip
+              Connect
             </button>
-          </div>
+          )}
+          <button
+            style={{
+              ...buttonStyle,
+              background: 'transparent',
+              color: '#8a7a5a',
+              border: '1px solid var(--border-primary)',
+            }}
+            onClick={() => selectRegion(null)}
+          >
+            Skip
+          </button>
         </div>
-      );
-    }
+      </div>
+    );
   }
 
   // --- Edit mode: an existing region is selected ---
@@ -284,10 +347,15 @@ export function RegionPanel({ doc, regionEdit }: RegionPanelProps) {
         <h4 style={{ margin: '0 0 6px', fontSize: 13, color: '#3a9b6a' }}>
           Region: {editingRegion.id} <TargetDialectBadge />
         </h4>
+        {/* Kirk's own wording, closely matched — the discoverability gap
+            this addendum exists to close ("is there a way to add the
+            region after we create it?"): paint adds, ⇧-drag removes
+            (CreationBoard.tsx's region-tool pointer handlers), Esc
+            deselects (the keydown effect below). */}
         <div style={{ fontSize: 11, color: '#8a7a5a', marginBottom: 6 }}>
-          {editingRegion.cells.length} cell
-          {editingRegion.cells.length === 1 ? '' : 's'} — click a board cell to
-          add/remove it from this region.
+          editing {editingRegion.name ?? editingRegion.id} — paint to add, ⇧
+          drag to remove, Esc to deselect ({editingRegion.cells.length} cell
+          {editingRegion.cells.length === 1 ? '' : 's'}).
         </div>
         <div style={fieldRowStyle}>
           <span style={{ width: 56 }}>name</span>

@@ -60,7 +60,7 @@ import {
   HEX_FACING_LABELS,
 } from '@/components/hex-grid/authorGridHelpers';
 import { cubeToWorld } from '@/components/hex-grid/hexMath';
-import { useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { DungeonDoc, WallDoc, WallKind } from '../dungeonYaml';
 import { BOARD_HEX_SIZE, cellCenter, type CellPos } from '../hexLayout';
 import {
@@ -84,14 +84,24 @@ import {
   wallGeometry,
   type EdgeGeometry,
 } from './creationGeometry';
+import type { CreationGrid } from './creationTypes';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
 import {
-  pickStraightAxis,
+  cornerPoint,
+  nearestCorner,
+  sameCorner,
+  type CornerRef,
+} from './hexCorner';
+import {
+  clipSegmentToShrunkHex,
+  isValidDoorCell,
+  nearestWallAngleFamily,
   snapStraightEndpoint,
   straightWallCrossedEdges,
   straightWallFootprint,
   straightWallsFootprintSet,
-  type StraightAxis,
+  wallLineDoorCellAt,
+  type WallAxisFamily,
 } from './straightWallGeometry';
 import type { RegionEditing } from './useRegionEditing';
 
@@ -111,23 +121,31 @@ interface CreationBoardProps {
     kind: WallKind,
     on: boolean
   ) => void;
-  /** Straight Wall tool (this unit) — commits one new `wallLines:` entry
-   * per stroke, unlike `onToggleWallEdge`'s per-edge painting. See
-   * `straightWallGeometry.ts`. */
-  onAddStraightWall: (
-    from: [number, number],
-    to: [number, number],
-    kind: WallKind
-  ) => void;
-  /** Click (no drag) on an existing straight wall's line deletes it —
-   * the straight-wall tool's own "click to add/remove" affordance,
-   * mirroring the edge Wall tool's `wallCount`× drawn — click a wall
-   * cell to add/remove" language in `Palette.tsx`. */
+  /** Straight Wall tool: commits one new `wallLines:` entry per stroke,
+   * corner-anchored (unlike `onToggleWallEdge`'s per-edge, cell-adjacent
+   * painting). See `hexCorner.ts`/`straightWallGeometry.ts`. */
+  onAddStraightWall: (from: CornerRef, to: CornerRef) => void;
+  /** The Delete-key affordance on a SELECTED straight wall (see this
+   * component's own selection-vs-endpoint-drag interaction model,
+   * `selectedWallLineIndex`/`draggingEndpoint` below) — click no longer
+   * deletes on its own; it selects. */
   onRemoveStraightWallAt: (index: number) => void;
-  /** Door tool, applied to a straight wall — flips `solid`/`door` by
-   * index, same "click an existing wall to flip solid ↔ door" gesture
-   * the edge Wall/Door pair already gives `doc.walls`. */
-  onToggleStraightWallKindAt: (index: number) => void;
+  /** Endpoint-drag commit: fine-tune one end of an EXISTING straight wall
+   * to a new corner, snapped corner-to-corner. */
+  onSetStraightWallEndpoint: (
+    lineIndex: number,
+    which: 'from' | 'to',
+    corner: CornerRef
+  ) => void;
+  /** Door tool, applied to a straight wall — toggles a door AT the
+   * clicked footprint cell (add if absent, remove if present), same
+   * "click an existing wall to flip its state" gesture the edge Wall/
+   * Door pair already gives `doc.walls`, now cell-addressed instead of
+   * line-wide. See TARGET-YAML.md's "Straight walls: doors" section. */
+  onToggleStraightWallDoorAt: (
+    lineIndex: number,
+    cell: [number, number]
+  ) => void;
   onToggleHole: (col: number, row: number) => void;
   onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
   /** Cell-authored semantic region editing (rpg-project#180) — only
@@ -170,10 +188,10 @@ function wallAtEdge(
 
 /** Index of the `doc.wallLines` entry nearest `point`, within `maxDist`
  * board units, or `null` if none is close enough — the straight-wall
- * tool's own click-to-delete hit test, and (with a tighter radius) the
+ * tool's own click-to-SELECT hit test, and (with a tighter radius) the
  * Door tool's "click an existing straight wall" test. Point-to-segment
- * distance against the wall's own world-space line (`cellCenter(from)`
- * to `cellCenter(to)`), same primitive `creationGeometry.ts`'s
+ * distance against the wall's own world-space line (`cornerPoint(from)`
+ * to `cornerPoint(to)`), same primitive `creationGeometry.ts`'s
  * `nearestEdge` uses internally, exported from there for this purpose. */
 function straightWallLineIndexNear(
   doc: DungeonDoc,
@@ -183,8 +201,8 @@ function straightWallLineIndexNear(
   let best: number | null = null;
   let bestDistSq = maxDist * maxDist;
   doc.wallLines.forEach((line, i) => {
-    const a = cellCenter(line.from[0], line.from[1]);
-    const b = cellCenter(line.to[0], line.to[1]);
+    const a = cornerPoint(line.from);
+    const b = cornerPoint(line.to);
     const d = pointToSegmentDistSq(point, a, b);
     if (d < bestDistSq) {
       bestDistSq = d;
@@ -194,7 +212,191 @@ function straightWallLineIndexNear(
   return best;
 }
 
+/** Which endpoint HANDLE (if any) of the SELECTED straight wall `point`
+ * landed on — a tighter, dedicated hit test distinct from
+ * `straightWallLineIndexNear`'s whole-line distance, since a handle is a
+ * small target at a specific corner, not "closest to the line anywhere
+ * along its length." Checked before line-select/new-draw resolution on
+ * pointer-down so grabbing a handle always wins over redrawing/
+ * reselecting when the two targets overlap (a handle sits ON the line by
+ * construction). */
+function straightWallHandleHit(
+  doc: DungeonDoc,
+  lineIndex: number,
+  point: CellPos,
+  maxDist = 10
+): 'from' | 'to' | null {
+  const line = doc.wallLines[lineIndex];
+  if (!line) return null;
+  const fromPt = cornerPoint(line.from);
+  const toPt = cornerPoint(line.to);
+  const dFrom = Math.hypot(point.x - fromPt.x, point.y - fromPt.y);
+  const dTo = Math.hypot(point.x - toPt.x, point.y - toPt.y);
+  if (dFrom > maxDist && dTo > maxDist) return null;
+  return dFrom <= dTo ? 'from' : 'to';
+}
+
 const CELL_SIZE = BOARD_HEX_SIZE - 1.5;
+
+/**
+ * Every visual element for ONE straight wall's own line — footprint
+ * hatch, blocked-crossing dashes (movement semantics (a)/(b), see
+ * `straightWallGeometry.ts`'s own doc comments), and the line itself,
+ * carved into segments around any `doors:` openings (a gap where the
+ * solid stroke simply isn't drawn, plus a small hinge marker at each
+ * opening's own midpoint — TARGET-YAML.md's "Straight walls: doors"
+ * section for the exact traversability semantic this renders). A door
+ * whose cell has fallen OUT of the line's own raw footprint (e.g. an
+ * endpoint drag shrank it) renders a ⚠ warning instead of a hinge —
+ * flagged, never silently dropped, same discipline this file's other
+ * footprint-interaction checks already follow.
+ *
+ * Shared between the committed `wallLines:` render pass and the live
+ * "drawing a brand-new wall" stroke preview — a wall being actively
+ * drawn always passes an empty `doors` list (it has none of its own
+ * yet), and `provisional` swaps the amber/dashed "not committed"
+ * treatment this component uses everywhere else for in-progress content.
+ *
+ * `snapped` (only meaningful while `provisional`) is whether the CURRENT
+ * `to`/endpoint-drag position is actually locked to one of
+ * `straightWallGeometry.ts`'s 3 hex-edge angle families, vs. a free
+ * angle — Kirk's ask, "snapped state should be subtly visible": a locked
+ * preview reads solid and bright; a free one keeps the original dashed,
+ * dimmer amber this tool always had.
+ */
+function straightWallLineElements(
+  keyPrefix: string,
+  from: CornerRef,
+  to: CornerRef,
+  doors: readonly { cell: [number, number] }[],
+  grid: CreationGrid,
+  provisional: boolean,
+  snapped: boolean = false
+): ReactElement[] {
+  const els: ReactElement[] = [];
+  const a = cornerPoint(from);
+  const b = cornerPoint(to);
+  const doorCells = doors.map((d) => d.cell);
+  const footprintColor = provisional ? '#ffb347' : '#c94f4f';
+  const lineColor = !provisional ? '#e8e2d8' : snapped ? '#fff3c4' : '#ffb347';
+  const footprint = straightWallFootprint(from, to, grid, doorCells);
+
+  for (const [col, row] of footprint) {
+    const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
+      .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+      .join(' ');
+    els.push(
+      <polygon
+        key={`${keyPrefix}-fp-${col}-${row}`}
+        points={corners}
+        fill="url(#db-footprint-hatch)"
+        stroke={footprintColor}
+        strokeWidth={1.5}
+        strokeDasharray={provisional ? '3 2' : undefined}
+        pointerEvents="none"
+      />
+    );
+  }
+
+  for (const edge of straightWallCrossedEdges(from, to, grid, footprint)) {
+    els.push(
+      <line
+        key={`${keyPrefix}-cross-${edge.cellA.join(',')}-${edge.cellB.join(',')}`}
+        x1={edge.a.x}
+        y1={edge.a.y}
+        x2={edge.b.x}
+        y2={edge.b.y}
+        stroke={footprintColor}
+        strokeWidth={2.5}
+        strokeDasharray="2 2"
+        pointerEvents="none"
+      />
+    );
+  }
+
+  const lerp = (t: number) => ({
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+  });
+  // The geometric [t0,t1] interval the line spans through each door's
+  // cell — unshrunk (epsilon 0), since this is a visual gap, not the
+  // footprint-membership test (`straightWallFootprint` above already
+  // handles that with the real epsilon). Carves the solid stroke into
+  // the complementary segments around every door.
+  const doorIntervals = doorCells
+    .map((cell) => clipSegmentToShrunkHex(a, b, cell[0], cell[1], 0))
+    .filter((iv): iv is [number, number] => iv !== null)
+    .sort((x, y) => x[0] - y[0]);
+  let cursor = 0;
+  const segments: [number, number][] = [];
+  for (const [t0, t1] of doorIntervals) {
+    if (t0 > cursor) segments.push([cursor, t0]);
+    cursor = Math.max(cursor, t1);
+  }
+  if (cursor < 1) segments.push([cursor, 1]);
+  segments.forEach(([t0, t1], i) => {
+    const p0 = lerp(t0);
+    const p1 = lerp(t1);
+    els.push(
+      <line
+        key={`${keyPrefix}-seg-${i}`}
+        x1={p0.x}
+        y1={p0.y}
+        x2={p1.x}
+        y2={p1.y}
+        stroke={lineColor}
+        strokeWidth={provisional ? 3 : 4}
+        strokeDasharray={provisional && !snapped ? '5 3' : undefined}
+        strokeLinecap="round"
+        opacity={provisional ? (snapped ? 1 : 0.85) : 1}
+      />
+    );
+  });
+
+  // A hinge marker at each real door's own opening midpoint — same
+  // amber-dot visual language the edge Wall/Door pair's own door hinge
+  // already uses. A door whose cell no longer clips (stranded by an
+  // endpoint drag) gets a ⚠ instead, per this function's own doc
+  // comment.
+  doorCells.forEach((cell, i) => {
+    const valid = isValidDoorCell(from, to, grid, cell);
+    const interval = clipSegmentToShrunkHex(a, b, cell[0], cell[1], 0);
+    if (!valid || !interval) {
+      const c = creationCellCenter(cell[0], cell[1]);
+      els.push(
+        <text
+          key={`${keyPrefix}-door-${i}-stranded`}
+          x={c.x}
+          y={c.y + 3}
+          textAnchor="middle"
+          fill="#ff6a6a"
+          fontSize={11}
+          fontWeight={700}
+          pointerEvents="none"
+          style={{ paintOrder: 'stroke', stroke: '#100d0b', strokeWidth: 3 }}
+        >
+          ⚠
+        </text>
+      );
+      return;
+    }
+    const mid = lerp((interval[0] + interval[1]) / 2);
+    els.push(
+      <circle
+        key={`${keyPrefix}-door-${i}-hinge`}
+        cx={mid.x}
+        cy={mid.y}
+        r={3.5}
+        fill="#100d0b"
+        stroke="#ffb347"
+        strokeWidth={1.5}
+        pointerEvents="none"
+      />
+    );
+  });
+
+  return els;
+}
 
 export function CreationBoard({
   doc,
@@ -205,7 +407,8 @@ export function CreationBoard({
   onToggleWallEdge,
   onAddStraightWall,
   onRemoveStraightWallAt,
-  onToggleStraightWallKindAt,
+  onSetStraightWallEndpoint,
+  onToggleStraightWallDoorAt,
   onToggleHole,
   onSetPoint,
   regionEdit,
@@ -237,27 +440,107 @@ export function CreationBoard({
     mode: 'add' | 'erase';
     touched: Set<string>;
   } | null>(null);
-  /** Straight Wall tool's own drag state (this unit) — genuinely
-   * different shape from `stroke` above: an edge-wall stroke paints a
-   * whole CHAIN of edges as it goes; a straight-wall stroke has exactly
-   * ONE `from`/`to` pair, committed once on pointer-up. `axis` mirrors
-   * `stroke.family`'s "undecided until the drag clears a threshold"
-   * shape, but with 2 screen-space choices (vertical/horizontal) instead
-   * of 3 hex edge families — see `straightWallGeometry.ts`'s
-   * `pickStraightAxis`. `deleteCandidate` is resolved on pointer-DOWN
-   * (which existing straight wall, if any, was clicked) but only acted
-   * on at pointer-UP, and only if the whole gesture turns out to have
-   * been a CLICK rather than a real drag (see `handlePointerUp`) — a
-   * drag starting on top of an existing line still draws a new one,
-   * consistent with every other tool's click-vs-drag split in this
-   * component. */
+  /** Straight Wall tool's own drag state — genuinely different shape
+   * from `stroke` above: an edge-wall stroke paints a whole CHAIN of
+   * edges as it goes; a straight-wall stroke has exactly ONE `from`/`to`
+   * CORNER pair, committed once on pointer-up. `lockedFamily` mirrors
+   * `stroke.family`'s "undecided until the drag clears a threshold, then
+   * held for the rest of the stroke" shape — see
+   * `straightWallGeometry.ts`'s `nearestWallAngleFamily` for the 3 real
+   * hex-edge families it locks to, tolerance-gated (Kirk's fix for "my
+   * line was angled ever so slightly"). It persists through a transient
+   * Alt-held "free angle" override (`handlePointerMove` reads `e.altKey`
+   * live, every move — Shift is already the region tool's own eraser
+   * modifier, so this tool uses Alt instead) rather than being discarded
+   * by it: releasing Alt mid-drag restores whatever family was already
+   * locked in, rather than re-deciding from scratch. `snapped` is a pure
+   * render hint — whether the CURRENT `toCorner` actually came from a
+   * family snap (accounting for that live Alt override), driving the
+   * "brighter when locked" preview treatment. `clickTarget` is resolved
+   * on pointer-DOWN (which existing straight wall, if any, was clicked)
+   * but only acted on at pointer-UP, and only if the whole gesture turns
+   * out to have been a CLICK rather than a real drag (see
+   * `handlePointerUp`) — a drag starting on top of an existing line
+   * still draws a new one, consistent with every other tool's
+   * click-vs-drag split in this component. A click on an existing line
+   * now SELECTS it (shows endpoint handles) rather than deleting it —
+   * delete moved to the Delete/Backspace key on a selection, see the
+   * keydown effect below. */
   const [straightStroke, setStraightStroke] = useState<{
-    fromCell: [number, number];
-    toCell: [number, number];
-    axis: StraightAxis | null;
+    fromCorner: CornerRef;
+    toCorner: CornerRef;
+    lockedFamily: WallAxisFamily | null;
+    snapped: boolean;
     startPoint: CellPos;
-    deleteCandidate: number | null;
+    clickTarget: number | null;
   } | null>(null);
+  /** Which `doc.wallLines` entry is selected — shows draggable endpoint
+   * handles (fine-tuning by hand, corner-to-corner snapped) and becomes
+   * the target of the Delete/Backspace key. Only meaningful while
+   * `tool === 'straightWall'`; reset whenever the tool changes (see the
+   * effect below) so a stale selection can't linger into an unrelated
+   * tool's interactions. */
+  const [selectedWallLineIndex, setSelectedWallLineIndex] = useState<
+    number | null
+  >(null);
+  /** An endpoint HANDLE drag in progress — `current` is the live,
+   * angle-family-snapped position tracking the pointer (same 3-family/
+   * Alt-bypass rule the initial draw uses, recomputed fresh every move
+   * since the OTHER end of the line is already fixed — no "undecided,
+   * noisy short vector" phase to protect against the way a brand-new
+   * stroke has), committed via `onSetStraightWallEndpoint` on pointer-up
+   * (unless it would collapse the line onto its own other endpoint,
+   * which is rejected instead — see `handlePointerUp`). `snapped` is the
+   * same render hint `straightStroke` carries. */
+  const [draggingEndpoint, setDraggingEndpoint] = useState<{
+    lineIndex: number;
+    which: 'from' | 'to';
+    current: CornerRef;
+    snapped: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    setSelectedWallLineIndex(null);
+    setDraggingEndpoint(null);
+  }, [tool]);
+
+  useEffect(() => {
+    if (tool !== 'straightWall' || selectedWallLineIndex === null) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        onRemoveStraightWallAt(selectedWallLineIndex);
+        setSelectedWallLineIndex(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [tool, selectedWallLineIndex, onRemoveStraightWallAt]);
+
+  /** Esc deselects a region being edited (`RegionPanel.tsx`'s own status
+   * hint now advertises this — "Esc to deselect" — Kirk's discoverability
+   * ask, "is there a way to add the region after we create it?"). Also
+   * clears an in-progress NEW-region paint session when nothing is
+   * selected yet, the same "back out of what I'm doing" meaning Esc
+   * carries in the rest of this component. Mirrors the Delete/Backspace
+   * effect above: same TEXTAREA/INPUT-target guard so Esc while editing a
+   * region's name/id field doesn't unexpectedly blow away the selection. */
+  useEffect(() => {
+    if (tool !== 'region') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const targetTag = (e.target as HTMLElement)?.tagName;
+      if (targetTag === 'TEXTAREA' || targetTag === 'INPUT') return;
+      if (e.key !== 'Escape') return;
+      if (regionEdit.selectedRegionId) {
+        regionEdit.selectRegion(null);
+      } else if (regionEdit.pendingCells.length > 0) {
+        regionEdit.clearPending();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [tool, regionEdit]);
 
   const grid = doc.canvas ?? DEFAULT_CANVAS;
 
@@ -398,41 +681,70 @@ export function CreationBoard({
       return;
     }
     if (tool === 'straightWall') {
-      const cell = nearestCreationCell(p, grid);
+      // A handle on the CURRENTLY SELECTED wall always wins over
+      // redrawing/reselecting — it sits ON the line by construction, so
+      // this must be checked first, not as a fallback.
+      if (selectedWallLineIndex !== null) {
+        const handle = straightWallHandleHit(doc, selectedWallLineIndex, p);
+        if (handle) {
+          const line = doc.wallLines[selectedWallLineIndex];
+          setDraggingEndpoint({
+            lineIndex: selectedWallLineIndex,
+            which: handle,
+            current: handle === 'from' ? line.from : line.to,
+            snapped: false,
+          });
+          return;
+        }
+      }
+      const corner = nearestCorner(p, grid);
       // Resolved now (which existing straight wall, if any, sits under
       // the click) but only ACTED on at pointer-up, and only if this
       // whole gesture turns out to have been a click rather than a real
-      // drag — see `straightStroke`'s own doc comment.
+      // drag — see `straightStroke`'s own doc comment. A click SELECTS
+      // (shows endpoint handles); it no longer deletes.
       const hit = straightWallLineIndexNear(doc, p);
       setStraightStroke({
-        fromCell: cell,
-        toCell: cell,
-        axis: null,
+        fromCorner: corner,
+        toCorner: corner,
+        lockedFamily: null,
+        snapped: false,
         startPoint: p,
-        deleteCandidate: hit,
+        clickTarget: hit,
       });
       return;
     }
     const edge = nearestEdge(p, grid);
+    if (tool === 'door') {
+      // A straight wall's own line rarely coincides with a hex edge (see
+      // straightWallGeometry.ts's own header comment), so a click meant
+      // to carve/remove a door on a STRAIGHT wall needs its own hit test
+      // rather than falling through to the edge-wall lookup below, which
+      // would usually just find the nearest (unrelated) edge-wall
+      // candidate instead. Tight radius, checked first: a straight wall
+      // directly under the click always wins over an edge-wall toggle.
+      const lineHit = straightWallLineIndexNear(doc, p, 8);
+      if (lineHit !== null) {
+        const line = doc.wallLines[lineHit];
+        const cell = wallLineDoorCellAt(line.from, line.to, grid, p);
+        if (cell) {
+          onToggleStraightWallDoorAt(lineHit, cell);
+        } else {
+          onReject(
+            'That spot on the wall doesn’t clip a cell — doors can only open a cell the wall’s own line actually blocks.'
+          );
+        }
+        return;
+      }
+      if (!edge) return;
+      applyEdgeAction(edge);
+      return;
+    }
     if (!edge) return;
     if (tool === 'wall') {
       const existing = wallAtEdge(doc, edge.cellA, edge.cellB);
       setStroke({ addMode: !existing, startPoint: p, family: null });
       applyEdgeAction(edge, !existing);
-    } else if (tool === 'door') {
-      // A straight wall's own line rarely coincides with a hex edge (see
-      // straightWallGeometry.ts's own header comment), so a click meant
-      // to flip a STRAIGHT wall's kind needs its own hit test rather than
-      // falling through to the edge-wall lookup below, which would
-      // usually just find the nearest (unrelated) edge-wall candidate
-      // instead. Tight radius, checked first: a straight wall directly
-      // under the click always wins over an edge-wall toggle.
-      const lineHit = straightWallLineIndexNear(doc, p, 8);
-      if (lineHit !== null) {
-        onToggleStraightWallKindAt(lineHit);
-        return;
-      }
-      applyEdgeAction(edge);
     }
   };
 
@@ -450,21 +762,70 @@ export function CreationBoard({
       edit.handleMove(dragPlacement, null, cell);
       return;
     }
+    if (draggingEndpoint) {
+      // The line's OTHER (fixed) endpoint anchors the angle-family check
+      // — always well-defined from the very first move, unlike a
+      // brand-new stroke's own `startPoint`, so this recomputes live on
+      // every move rather than locking once (see `draggingEndpoint`'s
+      // own doc comment). `e.altKey` is the free-angle bypass — Shift is
+      // already the region tool's own eraser modifier (see this
+      // component's region-tool pointer-down branch), so this tool uses
+      // Alt instead.
+      const line = doc.wallLines[draggingEndpoint.lineIndex];
+      const otherEnd =
+        draggingEndpoint.which === 'from' ? line?.to : line?.from;
+      let axis: WallAxisFamily | null = null;
+      if (otherEnd && !e.altKey) {
+        const otherPoint = cornerPoint(otherEnd);
+        axis = nearestWallAngleFamily(p.x - otherPoint.x, p.y - otherPoint.y);
+      }
+      const current =
+        otherEnd && axis
+          ? snapStraightEndpoint(otherEnd, p, axis, grid)
+          : nearestCorner(p, grid);
+      setDraggingEndpoint({
+        ...draggingEndpoint,
+        current,
+        snapped: axis !== null,
+      });
+      return;
+    }
     if (tool === 'straightWall' && straightStroke) {
       const dx = p.x - straightStroke.startPoint.x;
       const dy = p.y - straightStroke.startPoint.y;
-      let axis = straightStroke.axis;
-      // Same "undecided until the drag clears a threshold, then locked
-      // for the rest of the stroke" shape the edge-wall tool's `family`
-      // uses just below — see `pickStraightAxis`'s own doc comment for
-      // why this is 2-way (vertical/horizontal), not 3-way.
-      if (axis === null && Math.hypot(dx, dy) >= DIRECTION_LOCK_THRESHOLD) {
-        axis = pickStraightAxis(dx, dy);
+      const pastThreshold = Math.hypot(dx, dy) >= DIRECTION_LOCK_THRESHOLD;
+      let lockedFamily = straightStroke.lockedFamily;
+      // "Undecided until the drag clears a threshold, then locked for
+      // the rest of the stroke" — same shape the edge-wall tool's
+      // `family` uses just below, generalized from a forced 2-way pick
+      // to a tolerance-gated 3-family one that can also lock to "free"
+      // (`nearestWallAngleFamily` returning `null`, e.g. a drag aimed
+      // well off every family — see that function's own doc comment).
+      // Held-Alt at the moment of the lock decision skips it entirely,
+      // leaving `lockedFamily` re-triable on the NEXT move — releasing
+      // Alt mid-drag lets a real family lock in from wherever the drag
+      // is aimed at that point, rather than committing to "free"
+      // permanently just because Alt happened to be down at first.
+      if (lockedFamily === null && pastThreshold && !e.altKey) {
+        lockedFamily = nearestWallAngleFamily(dx, dy);
       }
-      const toCell = axis
-        ? snapStraightEndpoint(straightStroke.fromCell, p, axis, grid)
-        : straightStroke.fromCell;
-      setStraightStroke({ ...straightStroke, axis, toCell });
+      const effectiveAxis = e.altKey ? null : lockedFamily;
+      const toCorner = !pastThreshold
+        ? straightStroke.fromCorner
+        : effectiveAxis
+          ? snapStraightEndpoint(
+              straightStroke.fromCorner,
+              p,
+              effectiveAxis,
+              grid
+            )
+          : nearestCorner(p, grid);
+      setStraightStroke({
+        ...straightStroke,
+        lockedFamily,
+        toCorner,
+        snapped: pastThreshold && effectiveAxis !== null,
+      });
       return;
     }
     if (tool === 'wall' || tool === 'door') {
@@ -523,22 +884,51 @@ export function CreationBoard({
     setStroke(null);
     setDragPlacement(null);
     setRegionStroke(null);
-    if (straightStroke) {
-      const moved =
-        straightStroke.toCell[0] !== straightStroke.fromCell[0] ||
-        straightStroke.toCell[1] !== straightStroke.fromCell[1];
-      if (moved) {
-        onAddStraightWall(
-          straightStroke.fromCell,
-          straightStroke.toCell,
-          'solid'
+    if (draggingEndpoint) {
+      const line = doc.wallLines[draggingEndpoint.lineIndex];
+      const otherEnd =
+        draggingEndpoint.which === 'from' ? line?.to : line?.from;
+      if (line && otherEnd && sameCorner(draggingEndpoint.current, otherEnd)) {
+        // Dragging an endpoint onto its own line's other end would
+        // collapse it to a single point — rejected, not silently
+        // clamped to "closest different corner," so the author sees why
+        // nothing moved rather than the handle jumping somewhere
+        // unrequested.
+        onReject('A straight wall’s two ends can’t land on the same corner.');
+      } else {
+        onSetStraightWallEndpoint(
+          draggingEndpoint.lineIndex,
+          draggingEndpoint.which,
+          draggingEndpoint.current
         );
-      } else if (straightStroke.deleteCandidate !== null) {
+      }
+      setDraggingEndpoint(null);
+      return;
+    }
+    if (straightStroke) {
+      const moved = !sameCorner(
+        straightStroke.fromCorner,
+        straightStroke.toCorner
+      );
+      if (moved) {
+        onAddStraightWall(straightStroke.fromCorner, straightStroke.toCorner);
+        setSelectedWallLineIndex(null);
+      } else if (straightStroke.clickTarget !== null) {
         // A CLICK (no real drag) landing on an existing straight wall
-        // deletes it — a drag that merely STARTS on top of one still
-        // draws a new segment (the `moved` branch above), consistent
-        // with every other tool's click-vs-drag split in this component.
-        onRemoveStraightWallAt(straightStroke.deleteCandidate);
+        // SELECTS it (shows endpoint handles) — clicking the SAME
+        // already-selected wall again deselects it; a drag that merely
+        // STARTS on top of one still draws a new segment (the `moved`
+        // branch above), consistent with every other tool's
+        // click-vs-drag split in this component. Deleting a selected
+        // wall is now the Delete/Backspace key, not a click — see the
+        // keydown effect above.
+        setSelectedWallLineIndex((current) =>
+          current === straightStroke.clickTarget
+            ? null
+            : straightStroke.clickTarget
+        );
+      } else {
+        setSelectedWallLineIndex(null);
       }
       setStraightStroke(null);
     }
@@ -617,168 +1007,131 @@ export function CreationBoard({
     }
   }
 
-  // Straight walls (this unit) — genuinely different rendering job from
-  // wallEls above: each entry ALSO needs its FOOTPRINT (every hex its
-  // line clips, per Kirk's "any hex that is not 100% uncovered would not
-  // be traversable" rule) drawn as a hatched overlay — deliberately
-  // distinct from both the plain wall line itself and the region
-  // open-boundary red LINE (`creationGeometry.ts`'s `openBoundaryEdges`
-  // below), and its blocked EDGE crossings (movement semantics (b) —
-  // straightWallGeometry.ts's `straightWallCrossedEdges`) as a dashed
-  // highlight across the specific grazed edge. Rendered BEFORE the wall's
-  // own line so the line draws on top of its footprint, matching how
-  // `wallEls` layers its door hinge on top of its own line above.
-  const committedFootprint = straightWallsFootprintSet(doc.wallLines, grid);
+  // Straight walls — genuinely different rendering job from wallEls
+  // above: each entry ALSO needs its FOOTPRINT (every hex its line
+  // clips, per Kirk's "any hex that is not 100% uncovered would not be
+  // traversable" rule) drawn as a hatched overlay, its blocked EDGE
+  // crossings, and now (this unit) its own `doors:` openings carved as
+  // real gaps — see `straightWallLineElements`'s own doc comment for the
+  // full rendering job, shared with the live "drawing a new wall"
+  // preview below.
+  //
+  // A line whose endpoint is CURRENTLY being drag-adjusted
+  // (`draggingEndpoint`) renders its LIVE (not-yet-committed) position —
+  // amber/provisional, same as any other in-progress content — instead
+  // of its last-committed one, so the drag itself gives real-time
+  // footprint feedback.
   const straightWallEls: ReactElement[] = [];
   doc.wallLines.forEach((line, index) => {
-    const a = creationCellCenter(line.from[0], line.from[1]);
-    const b = creationCellCenter(line.to[0], line.to[1]);
-    const footprint = straightWallFootprint(line.from, line.to, grid);
-    for (const [col, row] of footprint) {
-      const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
-        .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
-        .join(' ');
-      straightWallEls.push(
-        <polygon
-          key={`swall-${index}-fp-${col}-${row}`}
-          points={corners}
-          fill="url(#db-footprint-hatch)"
-          stroke="#c94f4f"
-          strokeWidth={1.5}
-          pointerEvents="none"
-        />
-      );
-    }
-    for (const edge of straightWallCrossedEdges(
-      line.from,
-      line.to,
-      grid,
-      footprint
-    )) {
-      straightWallEls.push(
-        <line
-          key={`swall-${index}-cross-${edge.cellA.join(',')}-${edge.cellB.join(',')}`}
-          x1={edge.a.x}
-          y1={edge.a.y}
-          x2={edge.b.x}
-          y2={edge.b.y}
-          stroke="#c94f4f"
-          strokeWidth={2.5}
-          strokeDasharray="2 2"
-          pointerEvents="none"
-        />
-      );
-    }
+    const dragging =
+      draggingEndpoint && draggingEndpoint.lineIndex === index
+        ? draggingEndpoint
+        : null;
+    const from = dragging?.which === 'from' ? dragging.current : line.from;
+    const to = dragging?.which === 'to' ? dragging.current : line.to;
     straightWallEls.push(
-      <line
-        key={`swall-${index}`}
-        x1={a.x}
-        y1={a.y}
-        x2={b.x}
-        y2={b.y}
-        stroke={line.kind === 'door' ? '#ffb347' : '#e8e2d8'}
-        strokeWidth={line.kind === 'door' ? 3 : 4}
-        strokeLinecap="round"
-      />
+      ...straightWallLineElements(
+        `swall-${index}`,
+        from,
+        to,
+        line.doors,
+        grid,
+        !!dragging,
+        dragging?.snapped ?? false
+      )
     );
-    if (line.kind === 'door') {
-      straightWallEls.push(
-        <circle
-          key={`swall-${index}-hinge`}
-          cx={(a.x + b.x) / 2}
-          cy={(a.y + b.y) / 2}
-          r={3.5}
-          fill="#100d0b"
-          stroke="#ffb347"
-          strokeWidth={1.5}
-        />
-      );
-    }
   });
 
-  // Live drag preview — same footprint/crossing treatment, amber and
-  // dashed to read as "not committed yet" (this component's existing
-  // provisional-content convention — see `pendingRegionEls` below).
-  const straightPreviewEls: ReactElement[] = [];
-  let previewFootprint: [number, number][] = [];
-  const strokeHasMoved =
-    !!straightStroke &&
-    (straightStroke.toCell[0] !== straightStroke.fromCell[0] ||
-      straightStroke.toCell[1] !== straightStroke.fromCell[1]);
-  if (tool === 'straightWall' && straightStroke && strokeHasMoved) {
-    previewFootprint = straightWallFootprint(
-      straightStroke.fromCell,
-      straightStroke.toCell,
-      grid
-    );
-    for (const [col, row] of previewFootprint) {
-      const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
-        .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
-        .join(' ');
-      straightPreviewEls.push(
-        <polygon
-          key={`swall-preview-fp-${col}-${row}`}
-          points={corners}
-          fill="url(#db-footprint-hatch)"
-          stroke="#ffb347"
-          strokeWidth={1.5}
-          strokeDasharray="3 2"
-          pointerEvents="none"
-        />
-      );
+  // Endpoint HANDLES for the SELECTED straight wall — draggable,
+  // corner-to-corner-snapped fine-tuning (Kirk: "it always hangs over a
+  // little" — this is the fix). Purely visual: the actual hit-test lives
+  // in `handlePointerDown`'s own `straightWallHandleHit` call, coordinate
+  // math against the same points these circles render at, matching how
+  // every other overlay in this component works (`pointerEvents="none"`
+  // throughout, hit-testing done once at the SVG root).
+  const straightWallHandleEls: ReactElement[] = [];
+  if (tool === 'straightWall' && selectedWallLineIndex !== null) {
+    const line = doc.wallLines[selectedWallLineIndex];
+    if (line) {
+      const dragging =
+        draggingEndpoint && draggingEndpoint.lineIndex === selectedWallLineIndex
+          ? draggingEndpoint
+          : null;
+      const handlePoints: [string, CornerRef][] = [
+        ['from', dragging?.which === 'from' ? dragging.current : line.from],
+        ['to', dragging?.which === 'to' ? dragging.current : line.to],
+      ];
+      for (const [label, corner] of handlePoints) {
+        const p = cornerPoint(corner);
+        straightWallHandleEls.push(
+          <circle
+            key={`swall-handle-${label}`}
+            cx={p.x}
+            cy={p.y}
+            r={6}
+            fill="#14110f"
+            stroke="#5fd1c9"
+            strokeWidth={2.5}
+            pointerEvents="none"
+          />
+        );
+      }
     }
-    for (const edge of straightWallCrossedEdges(
-      straightStroke.fromCell,
-      straightStroke.toCell,
-      grid,
-      previewFootprint
-    )) {
-      straightPreviewEls.push(
-        <line
-          key={`swall-preview-cross-${edge.cellA.join(',')}-${edge.cellB.join(',')}`}
-          x1={edge.a.x}
-          y1={edge.a.y}
-          x2={edge.b.x}
-          y2={edge.b.y}
-          stroke="#ffb347"
-          strokeWidth={2.5}
-          strokeDasharray="2 2"
-          pointerEvents="none"
-        />
-      );
-    }
-    const pa = creationCellCenter(
-      straightStroke.fromCell[0],
-      straightStroke.fromCell[1]
-    );
-    const pb = creationCellCenter(
-      straightStroke.toCell[0],
-      straightStroke.toCell[1]
-    );
-    straightPreviewEls.push(
-      <line
-        key="swall-preview-line"
-        x1={pa.x}
-        y1={pa.y}
-        x2={pb.x}
-        y2={pb.y}
-        stroke="#ffb347"
-        strokeWidth={3}
-        strokeDasharray="5 3"
-        strokeLinecap="round"
-        opacity={0.85}
-        pointerEvents="none"
-      />
-    );
   }
 
-  // Union of every straight wall's footprint — committed AND the live
-  // preview, if one is in progress — what placements/start/end/region
-  // cells below are checked against so a newly-drawn footprint FLAGS
-  // anything it now covers instead of silently deleting or moving it.
-  // Live preview is included deliberately: an author dragging a wall
-  // over an existing monster should see the warning appear before even
-  // releasing the pointer, not just after.
+  // Live drag preview for a brand-NEW wall being drawn (not an endpoint
+  // drag on an existing one, handled above) — same rendering job, amber/
+  // provisional, no doors of its own yet.
+  const strokeHasMoved =
+    !!straightStroke &&
+    !sameCorner(straightStroke.fromCorner, straightStroke.toCorner);
+  const straightPreviewEls: ReactElement[] =
+    tool === 'straightWall' && straightStroke && strokeHasMoved
+      ? straightWallLineElements(
+          'swall-preview',
+          straightStroke.fromCorner,
+          straightStroke.toCorner,
+          [],
+          grid,
+          true,
+          straightStroke.snapped
+        )
+      : [];
+  const previewFootprint: [number, number][] =
+    tool === 'straightWall' && straightStroke && strokeHasMoved
+      ? straightWallFootprint(
+          straightStroke.fromCorner,
+          straightStroke.toCorner,
+          grid
+        )
+      : [];
+
+  // Union of every straight wall's footprint — committed (using each
+  // line's LIVE position if its endpoint is currently being drag-
+  // adjusted, not its last-committed one, so the flag system stays
+  // consistent with what the hatch overlay above is already showing)
+  // AND the live new-wall-draw preview, if one is in progress — what
+  // placements/start/end/region cells below are checked against so a
+  // newly-drawn footprint FLAGS anything it now covers instead of
+  // silently deleting or moving it. Live preview is included
+  // deliberately: an author dragging a wall over an existing monster
+  // should see the warning appear before even releasing the pointer, not
+  // just after.
+  const committedFootprint = straightWallsFootprintSet(
+    doc.wallLines.map((line, index) => {
+      const dragging =
+        draggingEndpoint && draggingEndpoint.lineIndex === index
+          ? draggingEndpoint
+          : null;
+      if (!dragging) return line;
+      return {
+        from: dragging.which === 'from' ? dragging.current : line.from,
+        to: dragging.which === 'to' ? dragging.current : line.to,
+        doors: line.doors,
+      };
+    }),
+    grid
+  );
   const footprintKeys = new Set(committedFootprint);
   for (const [col, row] of previewFootprint) {
     footprintKeys.add(`${col},${row}`);
@@ -1072,6 +1425,7 @@ export function CreationBoard({
       {wallEls}
       {straightWallEls}
       {straightPreviewEls}
+      {straightWallHandleEls}
       {holeEls}
 
       {hoverEdge && (tool === 'wall' || tool === 'door') && (
