@@ -3997,3 +3997,223 @@ jamb/lintel breaks at the real connector positions — a visible gap in the
 wall run, not a shortened box. No unexpected console errors past the
 existing FIXTURES-MODE-adjacent ones this file already documents (the
 probe's own deliberately-invalid payload, doubled by StrictMode).
+
+## Creation-mode 3D preview unit: "can I go from new dungeon to 3D?" (2026-08-04, rpg-project#169)
+
+Kirk's ask, verbatim: "can I go from new dungeon to 3d?" — the 3D preview
+spike above was edit-mode-only from the start (its own header doc
+comment: "it needs a real compiled floor plan to exist [...] creation
+mode's proposed schema has no `FloorPlan` at all"). This unit gives
+creation mode the same 2D/3D toggle, without inventing a second compiled
+response to feed it.
+
+### The floor problem, and the settled semantic
+
+A from-scratch canvas genuinely has nothing to derive a floor from — no
+`FloorPlan`, no server round-trip at all. New module,
+`creation/canvasFloor.ts`'s `deriveCanvasFloorCells(doc)`: every
+`[col,row]` cell inside `doc.canvas`'s bounds (falling back to
+`DEFAULT_CANVAS`, matching `CreationBoard.tsx`'s own fallback), minus
+`doc.holes`. Recorded as a real dialect note, not left as an
+implementation detail — TARGET-YAML.md's `canvas:` section now says so
+explicitly, including the one deliberate non-obvious call: a
+`walls:`/`wallLines:` footprint cell is **blocked, not floorless** (Kirk's
+own rule — "any hex that is not 100% uncovered would not be
+traversable"), so it still gets a floor tile, just a flagged one — the
+exact same "flag, don't silently remove" discipline the 2D board's own
+footprint/region-overlap checks already follow.
+
+### `DungeonPreview3D`: an alternate input path, not a fork
+
+The brief's own instruction was reuse, not a copy: `DungeonPreview3D.tsx`
+grew a `floorCells?: readonly [number, number][]` prop alongside the
+existing `floorPlan?: FloorPlan` (now optional, was required).
+`buildFloorTiles` picks whichever is supplied — `floorCells` wins if both
+somehow are, though the two real callers today never combine them (edit
+mode passes `floorPlan` only; creation mode passes `floorCells` only).
+Every `floorPlan`-only feature degrades to "doesn't render" rather than
+throwing when it's absent, verified one at a time rather than assumed:
+
+- **Server-truth wall/door edges** (`hasServerEdges`/
+  `floorPlanEdgesToServerEdges`) — gated on `floorPlan` being present;
+  empty otherwise, same as the existing fixtures-mode fallback.
+- **The generator-chosen entrance marker** — has no creation-mode analog
+  at all (this file's own long-standing "Start/end: authored, in real
+  tension with the generator-chosen entrance" finding: a freeform canvas
+  has no generator to choose FOR the author) — simply doesn't render
+  without `floorPlan`, which is the CORRECT behavior, not a gap.
+- **Room-scoped `place:`/`boss:`** — the loop that resolves them via
+  `floorPlan.rooms.find(...)` is skipped entirely without `floorPlan`;
+  in practice this was ALREADY a no-op in creation mode even before this
+  unit, since a from-scratch canvas's `doc.rooms` is always `[]`
+  (`creation/emptyCanvasDoc.ts`) — the guard just keeps the function
+  honestly typed for `FloorPlan | undefined` rather than asserting
+  non-null.
+- **Click-to-place** — deliberately NOT wired for creation-mode 3D this
+  round (see "Read-only this round," below); `placeableCells` is empty
+  without `floorPlan`, so no `FloorHitCell` mounts at all — the whole
+  interaction surface is absent, not half-built.
+
+Everything doc-native — `doc.walls`, `doc.holes`, `doc.place` (top-level),
+`doc.start`/`doc.end` — needed ZERO changes; these already had no
+`floorPlan` dependency and were verified live to "just work" once
+`floorCells` supplied a floor to render them against (see "Live
+verification," below).
+
+### Two doc-native overlays, new to 3D, driven purely by `doc` (render in EITHER mode)
+
+- **Straight-wall (`doc.wallLines`) footprint, dimmed rather than
+  omitted** — the 3D sibling of the 2D board's crimson footprint hatch.
+  `buildWallLineFootprint(doc)` reuses `creation/straightWallGeometry.ts`'s
+  own `straightWallsFootprintSet` (the SAME function `CreationBoard.tsx`'s
+  2D overlay calls) rather than re-deriving the clip math a second time —
+  a flat semi-transparent crimson disc per footprint cell, cheap by
+  construction (skipped entirely when `doc.wallLines` is empty).
+- **Region (`doc.regions`) membership tint + floating label** — a
+  translucent `regionArchetypeColor`-tinted disc per member cell (same
+  archetype color the 2D board's read-only overlay already uses) plus a
+  `Billboard`+`Text` label at the region's centroid — the SAME
+  `Billboard`/`Text` primitive `AuthorGridOverlay.tsx` already uses for
+  the real game's author-grid labels, not a new one. "If cheap" from the
+  brief turned out cheap: both overlays are the identical flat-hex-mesh
+  shape `FloorHitCell`'s own click-hit layer already uses, just a
+  different Y offset/color/opacity, no new geometry primitive.
+
+**Deliberately NOT attempted this round**: full 3D geometry for a
+straight wall's own LINE (matching its corner-anchored, door-gapped
+fidelity in 2D — jambs, lintel, a real walkable opening). The brief's own
+scope was the floor treatment ("render their floor but visually distinct
+if cheap"), not a second wall-box renderer; `doc.walls` (the OTHER,
+edge-native wall representation) already renders in 3D via the existing
+`WallBox`/`DoorGap` path with zero changes needed, so creation mode is
+not wall-blind in 3D — only `wallLines:`'s own straight-line geometry
+stays 2D-only. Named here as a real follow-up, not silently deferred.
+
+### The toggle: same idiom, independent state, reused per-mode discipline
+
+Creation mode's header grows the identical `role="group" aria-label="2D
+or 3D board"` control edit mode's own header already has — not a second
+one invented for this mode. State ownership follows the EXACT precedent
+this file's "Collapsible side panels" section already set for the
+palette/YAML collapse pairs: owned by `DungeonBuilderConcept` (never
+unmounts across an edit↔create tab switch) as its own independent
+`createBoardDim` flag, not shared with edit mode's `boardDim` and not
+local `useState` inside `CreationConcept` (which DOES unmount whenever
+`mode` leaves `'create'`, so local state there would reset on every tab
+return). `CreationConcept`'s own `<main>` now mirrors edit mode's
+exact 2D/3D branch structure (an outer `overflow: hidden` flex column,
+an inner `overflow: auto` div for the SVG board vs. a padding-free
+`minHeight: 0` div for the R3F canvas) rather than inventing a second
+layout shape.
+
+### Read-only this round, by omission not by a new flag
+
+The creation-mode `<DungeonPreview3D>` call site passes only
+`floorCells`/`doc` — `selectedPlacement`/`onSelect`/`selectedPalette`/
+`onPlace`/`onReject`/`onSelectConnector` are all left unwired. Every one
+of those props was already optional, independently degrading to
+view-only per its own doc comment (written for exactly this kind of
+caller) — so "read-only" needed no new prop, no `readOnly` flag, just
+omission. Click-to-place in 3D graduating from edit mode to creation mode
+is named as a real follow-up (the brief's own framing), not attempted
+here.
+
+### Live verification
+
+Real dev server (`vite --port 5190`, never `:3001`), driven via a
+throwaway Playwright script (gitignored scratch pattern, deleted after
+the run — this repo has no blanket scratch-script gitignore rule, same
+situation the corner-anchored-walls unit's own script hit). `public/
+models/synty` rsync'd from the existing `~/game-dev/rpg-game-assets`
+checkout (same provenance the palette-thumbnail round documented) since a
+fresh worktree never has it.
+
+Built a real "New Dungeon" document by driving the ACTUAL app, not by
+hand-authoring a fixture: clicked "Play the pitch" for a zigzag `doc.walls`
+run with a door, start/end, a monster, and a facing-rotated reaper statue
+"for free" (the same real mutators a manual click calls); painted a
+3-cell region and created it via the Region tool + panel; drew a
+corner-anchored `wallLines:` straight wall via the Straight Wall tool and
+carved a door in it via the Door tool; placed a `candles` prop and set an
+explicit `height: 1.4` via the Inspector. Confirmed via the live proposed-
+YAML pane, not just the screenshots' own claim — the resulting document
+genuinely carries all of it:
+
+```yaml
+wallLines:
+  [
+    {
+      from: { cell: [0, 4], corner: 4 },
+      to: { cell: [0, 9], corner: 4 },
+      doors: [{ cell: [0, 7] }],
+    },
+  ]
+place: [..., { ref: 'dnd5e:props:candles', at: [4, 10], height: 1.4 }]
+regions:
+  - id: region-1
+    archetype: chamber
+    cells: [[2, 2], [2, 3], [3, 3]]
+```
+
+Two real scripting bugs, caught by the resulting screenshots, not
+assumed correct: (1) `document.querySelector('svg')` grabbed a small 15×15
+UI icon `<svg>` (there are several on this page) instead of the
+`CreationBoard` canvas — every computed coordinate was garbage until
+fixed to `document.querySelector('svg > polygon').closest('svg')`. (2) A
+naive `getByText('Door', {exact:false}).first()` matched the page's own
+demo-script CAPTION text ("...start/end → door → monster...") instead of
+the Door tool's palette row, since `.first()` picks DOM order and the
+caption sits above the Palette — fixed by scoping every palette
+interaction to `getByRole('button', {name: /.../})` instead of a bare
+text search. A third, geometry-specific finding: the straight wall's Door
+tool needs a click ON the wall's own rendered corner-to-corner LINE
+(`straightWallLineIndexNear`'s hit radius is a tight 8 board units), not
+near a cell CENTER — resolved by reading the wall's own rendered `<line>`
+midpoint straight out of the DOM (the longest solid-stroke line on the
+board — a single edge-wall segment is always exactly one hex-edge long,
+genuinely shorter than a multi-row straight-wall span) rather than
+re-deriving corner-anchor geometry externally.
+
+Screenshots confirm, at native resolution and cropped/upscaled for
+close-in detail: the full canvas floor rendering as real hex tiles across
+the whole 20×30 grid (not just wherever a room chain would have been);
+the demo's own zigzag `doc.walls` run with a genuine amber jamb/lintel
+door GAP (not a shortened box) next to the skeleton-captain and
+facing-rotated reaper statue; the straight wall's footprint rendering as
+5 dimmed crimson cells with a visible GAP exactly where the carved door
+cell sits; a 3-cell green-tinted region with a floating "region-1" label
+readable above it; and the `candles` prop rendering visibly elevated
+above the floor plane at its placed cell. No unexpected console errors —
+only the two established FIXTURES-MODE `[unimplemented] unknown service
+...AuthoringService` errors (edit mode's own preview probe runs
+regardless of which tab is active; unrelated to this unit, same note
+every prior round's live-verification section already carries).
+
+### Tests
+
+12 new: 5 in `creation/canvasFloor.test.ts` (bounds enumeration, holes
+exclusion, an out-of-bounds hole being a harmless no-op, the
+`DEFAULT_CANVAS` fallback, an all-holes canvas producing an empty floor
+honestly rather than erroring) + 7 in `preview3d/DungeonPreview3D.test.ts`
+(`buildFloorTiles`'s `floorCells` path: one tile per cell tagged with the
+new `CANVAS_ROOM_ID` sentinel, holes still excluded on that path, an
+honest empty map with neither input, the `floorPlan.rooms` path
+unchanged against the real `SHOWCASE_FLOORPLAN` fixture, `floorCells`
+taking priority when both are supplied; `buildWallLineFootprint`: the
+empty-`wallLines` fast path, and an exact-match cross-check against
+`straightWallFootprint` for one drawn line, proving the 3D dim overlay
+and the 2D hatch overlay agree on the same cell set rather than each
+computing their own approximation). 265 dungeon-builder tests passing
+overall (up from 253). `ci-check` clean (format/lint/typecheck/build/
+test).
+
+### Follow-ups named, not built
+
+- **3D editing (click-to-place/select/rotate) for creation mode** —
+  deliberately out of scope this round (see "Read-only this round,"
+  above); edit mode's existing 3D click-to-place/select/rotate machinery
+  is the natural thing to graduate over, not a from-scratch build.
+- **Full 3D geometry for `wallLines:`'s own straight-line shape** —
+  today's footprint-dim treatment answers "where can't I walk," not "what
+  does this wall look like as a wall" the way `doc.walls`'
+  `WallBox`/`DoorGap` path already does for edge-native walls.

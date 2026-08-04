@@ -189,6 +189,21 @@ canvas:
   width: 20
   height: 30
 
+# Canvas floor semantic (rpg-project#169's creation-mode 3D preview unit,
+# 2026-08-04): a from-scratch canvas has no compiled FloorPlan, so there is
+# no server-derived floor-cell set to render — the 3D preview needed one
+# anyway and settled it: the floor is EVERY [col,row] cell inside
+# canvas.width x canvas.height, minus holes:. Deliberately NOT also
+# subtracting a walls:/wallLines: footprint cell — Kirk's rule ("any hex
+# that is not 100% uncovered would not be traversable") makes a footprint
+# cell BLOCKED, not floorless; the tile still renders, dimmed/flagged, the
+# same "flag, don't silently remove" discipline this file's other
+# footprint-interaction notes already follow. See
+# `creation/canvasFloor.ts`'s own doc comment for the implementation and
+# `preview3d/DungeonPreview3D.tsx` for how it consumes this list (a new
+# `floorCells` prop, alongside the existing `floorPlan`-driven path edit
+# mode still uses — the two are alternate inputs, not a mode flag).
+
 # TOP-LEVEL place:/boss: — same shape as a room's own place: (ref, at,
 # facing, mount/height, targeting, blocks_*), room-scoping made OPTIONAL
 # rather than required. See "Top-level placement" below for the full

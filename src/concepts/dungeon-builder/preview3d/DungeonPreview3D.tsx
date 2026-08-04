@@ -75,6 +75,40 @@
  * spanning the opening opens the real `ConnectorInspector` — the same
  * Inspector a door-row cell already opens in 2D, now reachable by clicking
  * the actual rendered doorway in 3D too.
+ *
+ * **ALSO accepts a canvas-derived floor as an alternate input path
+ * (rpg-project#169's creation-mode 3D preview unit, 2026-08-04)** —
+ * creation mode's from-scratch canvas has no compiled `FloorPlan` at all
+ * (this file's own header paragraph above), so `floorPlan` is now
+ * OPTIONAL and a sibling `floorCells` prop (a plain `[col,row][]` list,
+ * `creation/canvasFloor.ts`'s `deriveCanvasFloorCells`) can supply the
+ * floor tile set instead. This component deliberately does NOT import
+ * `deriveCanvasFloorCells` itself or otherwise know which mode is calling
+ * it — the caller derives the list and hands it over as data, matching
+ * CONTRACT.md's operating-bar principle ("a component should not
+ * deep-couple into this concept's own state shape any more than
+ * necessary to do its one job"). Every `floorPlan`-only feature
+ * (server-truth edges, the entrance marker, room-scoped placements,
+ * click-to-place) has no creation-mode analog and simply doesn't render
+ * when `floorPlan` is absent — see each function's own guard below, not a
+ * parallel code path. `doc.place` (top-level placements), `doc.walls`,
+ * `doc.holes`, `doc.start`/`doc.end` are already doc-native fields with
+ * zero `floorPlan` dependency, so they render unchanged in either mode.
+ *
+ * Two more doc-native overlays this same unit adds, both driven purely by
+ * `doc` (so they render in EITHER mode, not gated on `floorCells`): a
+ * straight wall's (`doc.wallLines`) FOOTPRINT cells (Kirk's rule: "any hex
+ * that is not 100% uncovered would not be traversable" — the cell still
+ * has a floor tile, just visually flagged as blocked, the 3D sibling of
+ * the 2D board's crimson footprint hatch) render dimmed/darkened rather
+ * than omitted; and `doc.regions` member cells get a subtle
+ * archetype-tinted overlay plus a floating `Billboard`/`Text` label at the
+ * region's centroid (the same `Billboard`+`Text` pattern
+ * `AuthorGridOverlay.tsx` already uses for the real game's author-grid
+ * labels — a proven-cheap primitive in this codebase, not a new one).
+ * Full 3D geometry for a straight wall's own LINE (matching its
+ * corner-anchored footprint/door-gap fidelity in 2D) is NOT attempted
+ * this round — see CONTRACT.md's ledger entry for this unit.
  */
 import {
   cubeToWorld,
@@ -89,7 +123,7 @@ import { SyntyHexFloor } from '@/components/hex-grid/SyntyHexFloor';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
-import { Bounds, OrbitControls } from '@react-three/drei';
+import { Billboard, Bounds, OrbitControls, Text } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { Suspense, useMemo } from 'react';
 import { DoubleSide, Shape } from 'three';
@@ -100,6 +134,8 @@ import {
   isSameSelection,
   wallMountRotationY,
 } from '../boardGeometry';
+import { DEFAULT_CANVAS } from '../creation/emptyCanvasDoc';
+import { straightWallsFootprintSet } from '../creation/straightWallGeometry';
 import {
   resolvePlacement,
   type DungeonDoc,
@@ -112,12 +148,46 @@ import {
   type ServerEdge,
 } from '../edgesAdapter';
 import { cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
-import { END_COLOR, START_COLOR } from '../markerStyle';
+import { END_COLOR, regionArchetypeColor, START_COLOR } from '../markerStyle';
+import { regionCentroid } from '../regionGeometry';
 import type { PaletteSelection, PlacementSelection } from '../types';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
 
+/** A canvas-native floor tile has no owning room ("no room chain exists
+ * yet" — `creation/emptyCanvasDoc.ts`'s own doc comment) — a plain,
+ * honest sentinel rather than an empty string or a fabricated id, since
+ * `AbsoluteFloorTile.roomId` is non-optional. Nothing currently reads
+ * this value for canvas-derived tiles (click-to-place, the only consumer,
+ * is gated off entirely whenever `floorPlan` is absent — see
+ * `buildPlaceableCells`'s call site below), so its exact value is inert
+ * today; kept as a real constant rather than an inline literal so a
+ * future consumer has one place to special-case it, if it ever needs to. */
+export const CANVAS_ROOM_ID = 'canvas';
+
 interface DungeonPreview3DProps {
-  floorPlan: FloorPlan;
+  /** Compiled room-chain floor plan — edit mode's own input, unchanged.
+   * Now OPTIONAL: omit it (or pass `undefined`) when supplying
+   * `floorCells` instead, since a from-scratch creation-mode canvas has
+   * no compiled `FloorPlan` to render from at all. Every feature that
+   * only makes sense against a real compiled response (server-truth
+   * wall/door edges, the generator-chosen entrance marker, room-scoped
+   * `place:`/`boss:`, click-to-place) degrades to "doesn't render"
+   * rather than throwing when this is absent — see this file's own
+   * header doc comment for the full list and CONTRACT.md's ledger entry
+   * for this unit. */
+  floorPlan?: FloorPlan;
+  /** Canvas-derived floor cell list — creation mode's alternate input
+   * path (`creation/canvasFloor.ts`'s `deriveCanvasFloorCells`, computed
+   * by the CALLER, not this component — see this file's header doc
+   * comment for why). When supplied, floor tiles are built directly from
+   * this list instead of `floorPlan.rooms` — takes priority if BOTH are
+   * somehow supplied, though the two callers this component has today
+   * (edit mode: `floorPlan` only; creation mode: `floorCells` only) never
+   * combine them. `floorPlan`, if also present, is still consulted for
+   * its own floorPlan-only features (server-truth edges, the entrance
+   * marker) regardless of which floor-tile path won — see
+   * `buildFloorTiles`'s own doc comment. */
+  floorCells?: readonly [number, number][];
   doc: DungeonDoc;
   /** Kirk's 2026-08-02 "3D editing" arc, part 2 — the SAME
    * `PlacementSelection`/`onSelect` contract `Board.tsx` already uses for
@@ -187,12 +257,38 @@ interface PlacedMonster {
  * Kirk's own ask specified: "3D preview = simply omit the floor hex" —
  * nearly free given `SyntyHexFloor` only ever renders whatever's in the
  * tile map handed to it. */
-function buildFloorTiles(
-  floorPlan: FloorPlan,
-  holes: readonly [number, number][]
+/** Two independent floor-tile sources, picked by which the caller
+ * supplied — see `DungeonPreview3DProps.floorCells`'s own doc comment for
+ * priority when both are somehow given. `floorCells` (creation mode) is
+ * ALREADY the exact cell list to render (its own deriver,
+ * `deriveCanvasFloorCells`, has no door-row concept — a canvas has no
+ * generator, so there's nothing to skip there); `floorPlan.rooms` (edit
+ * mode) still applies the door-row skip, unchanged. `holes` is applied to
+ * BOTH paths, since `doc.holes` is a doc-native field with no
+ * `floorPlan`/mode dependency either way. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildFloorTiles(
+  floorPlan: FloorPlan | undefined,
+  holes: readonly [number, number][],
+  floorCells?: readonly [number, number][]
 ): Map<string, AbsoluteFloorTile> {
   const holeSet = new Set(holes.map(([c, r]) => `${c},${r}`));
   const tiles = new Map<string, AbsoluteFloorTile>();
+  if (floorCells) {
+    for (const [col, row] of floorCells) {
+      if (holeSet.has(`${col},${row}`)) continue;
+      const cube = cubeAtColRow(col, row);
+      const key = `${cube.x},${cube.y},${cube.z}`;
+      tiles.set(key, {
+        x: cube.x,
+        y: cube.y,
+        z: cube.z,
+        roomId: CANVAS_ROOM_ID,
+      });
+    }
+    return tiles;
+  }
+  if (!floorPlan) return tiles;
   for (const room of floorPlan.rooms) {
     for (
       let col = room.startColumn;
@@ -297,10 +393,16 @@ function buildWalls(
  * stays a plain ternary instead of an inline IIFE. */
 function doorSelectHandler(
   wall: PlacedWall,
-  floorPlan: FloorPlan,
+  floorPlan: FloorPlan | undefined,
   onSelectConnector: ((index: number) => void) | undefined
 ): (() => void) | undefined {
-  if (!onSelectConnector || !wall.doorId) return undefined;
+  // A `doorId` only exists on a SERVER-truth door (`ServerEdge`, see
+  // `PlacedWall.doorId`'s own doc comment) — creation mode has no
+  // `floorPlan` and its `doc.walls`/`doc.wallLines` doors never carry one
+  // either, so this already returns `undefined` for every creation-mode
+  // wall via the `!wall.doorId` check alone; the explicit `!floorPlan`
+  // guard just keeps this honestly typed rather than asserting non-null.
+  if (!onSelectConnector || !wall.doorId || !floorPlan) return undefined;
   const index = connectorIndexForDoorId(floorPlan, wall.doorId);
   return index === null ? undefined : () => onSelectConnector(index);
 }
@@ -380,41 +482,50 @@ export function buildOnePlacement(
 }
 
 function buildPlacements(
-  floorPlan: FloorPlan,
+  floorPlan: FloorPlan | undefined,
   doc: DungeonDoc
 ): { props: PlacedProp[]; monsters: PlacedMonster[] } {
   const props: PlacedProp[] = [];
   const monsters: PlacedMonster[] = [];
 
-  for (const room of doc.rooms) {
-    const fpRoom = floorPlan.rooms.find((r) => r.id === room.id);
-    if (!fpRoom) continue;
+  // Room-scoped `place:`/`boss:` need a compiled room's own `startColumn`
+  // to resolve an absolute cell — genuinely nothing to do without
+  // `floorPlan`. Not a special case in practice: a creation-mode canvas's
+  // `doc.rooms` is always `[]` (`creation/emptyCanvasDoc.ts` — "no room
+  // chain exists yet"), so this loop is already a no-op there regardless;
+  // the explicit `if` just keeps this function honestly typed for
+  // `floorPlan: FloorPlan | undefined` rather than asserting non-null.
+  if (floorPlan) {
+    for (const room of doc.rooms) {
+      const fpRoom = floorPlan.rooms.find((r) => r.id === room.id);
+      if (!fpRoom) continue;
 
-    room.place.forEach((p, index) => {
-      const absCol = fpRoom.startColumn + p.at[0];
-      const { prop, monster } = buildOnePlacement(
-        doc,
-        p,
-        absCol,
-        p.at[1],
-        { roomId: room.id, index },
-        `${room.id}:${p.at[0]},${p.at[1]}:${p.ref}`
-      );
-      if (prop) props.push(prop);
-      if (monster) monsters.push(monster);
-    });
+      room.place.forEach((p, index) => {
+        const absCol = fpRoom.startColumn + p.at[0];
+        const { prop, monster } = buildOnePlacement(
+          doc,
+          p,
+          absCol,
+          p.at[1],
+          { roomId: room.id, index },
+          `${room.id}:${p.at[0]},${p.at[1]}:${p.ref}`
+        );
+        if (prop) props.push(prop);
+        if (monster) monsters.push(monster);
+      });
 
-    if (room.boss) {
-      const absCol = fpRoom.startColumn + room.boss.at[0];
-      const position = worldPosition(absCol, room.boss.at[1]);
-      const monsterRefId = room.boss.ref.split(':').pop();
-      if (monsterRefId) {
-        monsters.push({
-          key: `${room.id}:boss`,
-          position,
-          monsterRefId,
-          sel: { roomId: room.id, boss: true },
-        });
+      if (room.boss) {
+        const absCol = fpRoom.startColumn + room.boss.at[0];
+        const position = worldPosition(absCol, room.boss.at[1]);
+        const monsterRefId = room.boss.ref.split(':').pop();
+        if (monsterRefId) {
+          monsters.push({
+            key: `${room.id}:boss`,
+            position,
+            monsterRefId,
+            sel: { roomId: room.id, boss: true },
+          });
+        }
       }
     }
   }
@@ -501,14 +612,114 @@ function buildHexHitShape(): Shape {
   return shape;
 }
 
+/** Every `[col, row]` cell a straight wall (`doc.wallLines`) footprint
+ * currently claims, union across every drawn line, door cells already
+ * excluded per-line — the exact same `straightWallsFootprintSet` the 2D
+ * board's own hatch/warning overlays already use (`CreationBoard.tsx`),
+ * reused rather than re-derived. Cheap by construction, and skipped
+ * entirely for the (overwhelmingly common) `doc.wallLines.length === 0`
+ * case rather than paying for an empty grid scan. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildWallLineFootprint(doc: DungeonDoc): Set<string> {
+  if (doc.wallLines.length === 0) return new Set();
+  const grid = doc.canvas ?? DEFAULT_CANVAS;
+  return straightWallsFootprintSet(doc.wallLines, grid);
+}
+
 // Above SyntyHexFloorTile's own FLOOR_Y (0.2) so a downward ray from the
 // orbit camera always meets this layer before the visual floor texture —
 // see this file's header doc comment for why that ordering alone is
 // enough to let a placed prop's own click handler win, with no manual
-// raycasting.
+// raycasting. `REGION_TINT_Y`/`FOOTPRINT_DIM_Y` sit BELOW that
+// (`HIT_CELL_Y` below), same reasoning: both are meant to read as floor
+// decoration, not to shadow the hit-cell layer's own raycast priority —
+// and `FOOTPRINT_DIM_Y` sits above `REGION_TINT_Y` so a footprint that
+// lands inside a region (flagged, never auto-removed from the region —
+// the same "flag, don't silently rewrite" discipline `CreationBoard.tsx`
+// already follows) shows the blocked treatment on top, not hidden under
+// the region tint.
 const HIT_CELL_Y = 0.22;
 const HIT_CLEAR_COLOR = '#5fd1c9';
 const HIT_OCCUPIED_COLOR = '#ff5a3a';
+
+// The 3D sibling of the 2D board's crimson footprint hatch
+// (`CreationBoard.tsx`'s `db-footprint-hatch` pattern) — Kirk's rule ("any
+// hex that is not 100% uncovered would not be traversable") makes this a
+// BLOCKED overlay on an otherwise-real floor tile, not an omitted tile
+// the way a hole is (see `creation/canvasFloor.ts`'s own doc comment for
+// that distinction spelled out). Same crimson family as the 2D hatch's
+// own stroke color (`#c94f4f`), translucent rather than a hatch pattern —
+// a flat semi-transparent disc is the cheap 3D-legible equivalent; a true
+// hatched TEXTURE was judged not worth the extra material/UV work for a
+// first landing.
+const FOOTPRINT_DIM_Y = 0.21;
+const FOOTPRINT_DIM_COLOR = '#c94f4f';
+const FOOTPRINT_DIM_OPACITY = 0.55;
+
+function FootprintDimCell({
+  worldX,
+  worldZ,
+  shape,
+}: {
+  worldX: number;
+  worldZ: number;
+  shape: Shape;
+}) {
+  return (
+    <mesh
+      position={[worldX, FOOTPRINT_DIM_Y, worldZ]}
+      rotation={[-Math.PI / 2, 0, 0]}
+    >
+      <shapeGeometry args={[shape]} />
+      <meshBasicMaterial
+        color={FOOTPRINT_DIM_COLOR}
+        transparent
+        opacity={FOOTPRINT_DIM_OPACITY}
+        depthWrite={false}
+        side={DoubleSide}
+      />
+    </mesh>
+  );
+}
+
+// Region membership tint — the 3D sibling of the 2D board's own
+// archetype-tinted region overlay (`CreationBoard.tsx`'s `regionEls`,
+// `regionArchetypeColor`). Deliberately subtler than the footprint dim
+// above (lower opacity, no border) — a region is informational, not a
+// warning.
+const REGION_TINT_Y = 0.205;
+const REGION_TINT_OPACITY = 0.3;
+const REGION_LABEL_HEIGHT = 0.6; // above head height, same as AuthorGridOverlay's ROOM_ID_HEIGHT
+const REGION_LABEL_FONT_SIZE = 0.34;
+const REGION_LABEL_OUTLINE_COLOR = '#100d0b';
+
+function RegionTintCell({
+  worldX,
+  worldZ,
+  shape,
+  color,
+}: {
+  worldX: number;
+  worldZ: number;
+  shape: Shape;
+  color: string;
+}) {
+  return (
+    <mesh
+      position={[worldX, REGION_TINT_Y, worldZ]}
+      rotation={[-Math.PI / 2, 0, 0]}
+    >
+      <shapeGeometry args={[shape]} />
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={REGION_TINT_OPACITY}
+        depthWrite={false}
+        side={DoubleSide}
+      />
+    </mesh>
+  );
+}
 
 /** Always mounted and always clickable — even with nothing selected, so
  * clicking a floor cell gives the same "pick a palette item first" honesty
@@ -715,6 +926,7 @@ const SELECTED_COLOR = '#ffd76a';
 
 export function DungeonPreview3D({
   floorPlan,
+  floorCells,
   doc,
   selectedPlacement,
   onSelect,
@@ -724,8 +936,8 @@ export function DungeonPreview3D({
   onSelectConnector,
 }: DungeonPreview3DProps) {
   const floorTiles = useMemo(
-    () => buildFloorTiles(floorPlan, doc.holes),
-    [floorPlan, doc.holes]
+    () => buildFloorTiles(floorPlan, doc.holes, floorCells),
+    [floorPlan, doc.holes, floorCells]
   );
   const { props, monsters } = useMemo(
     () => buildPlacements(floorPlan, doc),
@@ -736,31 +948,53 @@ export function DungeonPreview3D({
     [doc.walls]
   );
   // Server-truth wall/door edges (rpg-project#169's wire-edges unit) — see
-  // this file's own header doc comment. Empty whenever `floorPlan` carries
-  // no `edges` (fixtures mode, or any pre-#767 recording), in which case
-  // this preview renders exactly as it did before this unit: `doc.walls`
-  // only.
+  // this file's own header doc comment. Empty whenever `floorPlan` is
+  // absent (creation mode — no compiled response exists at all) or
+  // carries no `edges` (fixtures mode, or any pre-#767 recording), in
+  // which case this preview renders exactly as it did before this unit:
+  // `doc.walls` only.
   const serverWalls = useMemo(
     () =>
-      hasServerEdges(floorPlan)
+      floorPlan && hasServerEdges(floorPlan)
         ? buildWalls(floorPlanEdgesToServerEdges(floorPlan), 'server')
         : [],
     [floorPlan]
   );
+  // A straight wall's (`doc.wallLines`) footprint — doc-native, renders
+  // identically regardless of `floorPlan`/`floorCells`. See
+  // `buildWallLineFootprint`'s own doc comment.
+  const wallLineFootprint = useMemo(() => buildWallLineFootprint(doc), [doc]);
+  // The generator-chosen entrance marker has no creation-mode analog at
+  // all (CONTRACT.md's "Start/end: authored, in real tension with the
+  // generator-chosen entrance" finding — a freeform canvas has no
+  // generator to choose FOR the author) — `false`, not computed, whenever
+  // `floorPlan` is absent, matching the entrance marker itself simply not
+  // rendering below.
   const entranceBlocked = useMemo(
-    () => isEntranceBlocked(floorPlan, doc),
+    () => (floorPlan ? isEntranceBlocked(floorPlan, doc) : false),
     [floorPlan, doc]
   );
+  // Click-to-place (Kirk's "3D editing" arc, part 3) has no creation-mode
+  // analog THIS ROUND either — deliberately out of scope for the
+  // creation-mode 3D preview unit (a follow-up, not a gap: edit-mode's
+  // click-to-place machinery can graduate later). An empty `floorPlan`
+  // check alone is enough to disable it honestly: no `floorPlan` means no
+  // placeable cells, which means no `FloorHitCell`s mount at all, so the
+  // whole interaction surface is simply absent rather than half-wired.
   const placeableCells = useMemo(
-    () => buildPlaceableCells(floorPlan, doc, floorTiles),
+    () => (floorPlan ? buildPlaceableCells(floorPlan, doc, floorTiles) : []),
     [floorPlan, doc, floorTiles]
   );
   const hitShape = useMemo(() => buildHexHitShape(), []);
 
   // Mirrors Board.tsx's own click-to-place cell handler almost exactly
   // (same messages, same boss/occupied rules) — see this file's header
-  // doc comment for why click-to-place is room-scoped only.
+  // doc comment for why click-to-place is room-scoped only. `floorPlan`
+  // is guaranteed non-null here in practice (`placeableCells` above is
+  // empty without it, so no `FloorHitCell` exists to call this) — the
+  // explicit guard just keeps this honestly typed.
   const handleClickCell = (cell: PlaceableCell) => {
+    if (!floorPlan) return;
     if (!selectedPalette || !onPlace) {
       onReject?.(
         'Pick a palette item first, then click an empty cell to place it.'
@@ -794,6 +1028,55 @@ export function DungeonPreview3D({
         <Suspense fallback={null}>
           <Bounds fit clip margin={1.25}>
             <SyntyHexFloor floorTiles={floorTiles} hexSize={HEX_SIZE} />
+            {doc.regions.map((region) => {
+              const color = regionArchetypeColor(region.archetype);
+              const centroid = regionCentroid(region.cells);
+              const labelPos = worldPosition(
+                centroid.col,
+                centroid.row,
+                REGION_LABEL_HEIGHT
+              );
+              return (
+                <group key={`region-${region.id}`}>
+                  {region.cells.map(([col, row]) => {
+                    const [wx, , wz] = worldPosition(col, row);
+                    return (
+                      <RegionTintCell
+                        key={`region-${region.id}-${col}-${row}`}
+                        worldX={wx}
+                        worldZ={wz}
+                        shape={hitShape}
+                        color={color}
+                      />
+                    );
+                  })}
+                  <Billboard position={labelPos}>
+                    <Text
+                      fontSize={REGION_LABEL_FONT_SIZE}
+                      color={color}
+                      anchorX="center"
+                      anchorY="middle"
+                      outlineWidth={0.016}
+                      outlineColor={REGION_LABEL_OUTLINE_COLOR}
+                    >
+                      {region.name ?? region.id}
+                    </Text>
+                  </Billboard>
+                </group>
+              );
+            })}
+            {[...wallLineFootprint].map((key) => {
+              const [col, row] = key.split(',').map(Number);
+              const [wx, , wz] = worldPosition(col, row);
+              return (
+                <FootprintDimCell
+                  key={`wallline-fp-${key}`}
+                  worldX={wx}
+                  worldZ={wz}
+                  shape={hitShape}
+                />
+              );
+            })}
             {placeableCells.map((cell) => (
               <FloorHitCell
                 key={cell.key}
@@ -889,12 +1172,11 @@ export function DungeonPreview3D({
                   <PointMarker worldX={w[0]} worldZ={w[2]} color={END_COLOR} />
                 );
               })()}
-            {floorPlan.entrance &&
+            {floorPlan?.entrance &&
               (() => {
-                const w = worldPosition(
-                  floorPlan.entrance.column,
-                  floorPlan.entrance.row
-                );
+                const entrance = floorPlan.entrance;
+                if (!entrance) return null;
+                const w = worldPosition(entrance.column, entrance.row);
                 return (
                   <PointMarker
                     worldX={w[0]}
