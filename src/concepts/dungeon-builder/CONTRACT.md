@@ -3806,3 +3806,53 @@ returned to the list. No unexpected console errors — only the established
 FIXTURES-MODE `[unimplemented] unknown service ...AuthoringService` (no
 local `rpg-api` running against this dev server), same as every prior
 round's live-verification note.
+
+**Straight-wall deletion (same-day third item).** Kirk: "gonna need a way
+to delete a wall — I dragged it again and had a small section with no way
+to remove it." The removal MUTATOR already existed
+(`dungeonYaml.ts`'s `removeWallLineAt`) and was already wired to a
+Delete/Backspace keydown effect on a selected wall (the round above) —
+what was genuinely missing was any VISIBLE affordance telling the author
+either of those existed. Added a small red "×" delete button, rendered
+offset perpendicular from the selected wall's own midpoint by 16 board
+units (`CreationBoard.tsx`'s new `straightWallDeleteButtonPoint`/
+`straightWallDeleteButtonHit`, the same render/hit-test split every other
+board overlay here already follows) so it clears the drawn stroke/
+footprint hatch instead of sitting on top of it. A caption under the
+button reads "delete" — or "delete (+N door(s))" when the wall has any,
+since `removeWallLineAt` splices the whole `wallLines:` entry (doors
+nested inside), so they're removed too, not orphaned. Clicking it calls
+the SAME `onRemoveStraightWallAt` the keyboard path already used; no new
+removal logic, only the missing UI path to it. Checked in
+`handlePointerDown` right after the endpoint-handle hit (a handle grab
+still wins if the two ever overlap) and before the redraw/reselect
+fallback.
+
+**Tests.** 1 new in `dungeonYaml.test.ts`: `removeWallLineAt` removes
+EXACTLY the targeted line (a second line survives untouched, verified by
+value not just by count) and its own door goes with it, round-tripped
+through the serialized YAML text (no stranded `doors:` fragment). 228
+dungeon-builder tests passing overall (up from 227). `ci-check` clean —
+again caught (and fixed) a pure-Prettier format diff on the touched file,
+no semantic change.
+
+**Live verification.** Own dev server (`vite --port 5183`), driven via
+`game-dev/tools/browser/_job_walldelete_verify.mjs` (kept). Same trap as
+the angle-snapping script above, hit again here and worth restating since
+it's a general one: click targets computed from the RAW cell centers a
+drag started/ended at are wrong for anything that needs the wall's own
+ACTUAL `from`/`to` — those are corner-anchored and snap to the nearest
+LATTICE CORNER, often offset from a cell's own center by up to a full hex
+radius. Fixed by reading the real committed `from`/`to` back out of the
+live YAML pane after each mutation and computing every subsequent click
+(select, delete-button) from THOSE, not the original nominal drag
+targets — the delete-button click silently landed on nothing until this
+was fixed. Confirmed: a selected wall (with a rejected off-footprint door
+click still visible as a live toast, incidentally re-confirming that
+existing reject-toast behavior too) shows both teal endpoint handles and
+the new delete button with its "delete" caption; clicking the button
+takes `wallLines:` from 1 entry to `[]` and the footprint hatch off the
+board entirely (before/after screenshots, not just the final YAML); a
+second wall drawn, selected, and removed via the Delete key confirms that
+path is still intact too. No unexpected console errors, same
+FIXTURES-MODE note as every other round.
