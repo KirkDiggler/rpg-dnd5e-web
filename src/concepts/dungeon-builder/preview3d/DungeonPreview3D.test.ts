@@ -15,9 +15,15 @@
  * ref-keyed inheritance resolver) — the two features never coexisted in
  * either PR's own branch, so neither has a test proving they compose.
  */
+import { HEX_SIZE } from '@/components/hex-grid/hexMath';
+import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { describe, expect, it } from 'vitest';
 import { facingToRotationY } from '../boardGeometry';
-import { straightWallFootprint } from '../creation/straightWallGeometry';
+import { cornerPoint, type CornerRef } from '../creation/hexCorner';
+import {
+  clipSegmentToShrunkHex,
+  straightWallFootprint,
+} from '../creation/straightWallGeometry';
 import {
   addWallLine,
   parseDungeon,
@@ -25,15 +31,29 @@ import {
   setPlacementRotationDegrees,
   setRefDefault,
   toDungeonDoc,
+  toggleWallLineDoorAt,
 } from '../dungeonYaml';
 import { SHOWCASE_FLOORPLAN, SHOWCASE_YAML } from '../fixtures';
-import { cubeAtColRow } from '../hexLayout';
+import { BOARD_HEX_SIZE, cubeAtColRow } from '../hexLayout';
 import {
   buildFloorTiles,
   buildOnePlacement,
   buildWallLineFootprint,
+  buildWallLineSegments,
   CANVAS_ROOM_ID,
 } from './DungeonPreview3D';
+
+// Same board-space -> world-space ratio `DungeonPreview3D.tsx`'s own
+// `BOARD_TO_WORLD_SCALE` uses — recomputed independently here (not
+// imported) so these tests cross-check the render path's geometry against
+// a value derived fresh from first principles, not the same constant the
+// code under test already trusts.
+const WORLD_SCALE = HEX_SIZE / BOARD_HEX_SIZE;
+
+function worldOf(ref: CornerRef): { x: number; z: number } {
+  const p = cornerPoint(ref);
+  return { x: p.x * WORLD_SCALE, z: p.y * WORLD_SCALE };
+}
 
 describe('buildOnePlacement — resolved facing × fine-rotation composition', () => {
   it('an INHERITED facing (defaults:, nothing explicit on the placement itself) still composes with an explicit rotate_degrees, exactly like an explicit facing would', () => {
@@ -257,5 +277,164 @@ describe('buildWallLineFootprint — doc-native, mode-agnostic', () => {
     for (const [col, row] of expectedFootprint) {
       expect(result.has(`${col},${row}`)).toBe(true);
     }
+  });
+});
+
+// rpg-project#169's "straight walls stand in 3D" unit — the follow-up
+// this file's own header doc comment names as deliberately deferred by
+// the creation-mode-3D-preview unit above ("Full 3D geometry for a
+// straight wall's own LINE... is NOT attempted this round"). Same
+// no-Canvas testing discipline as `buildOnePlacement`/`buildFloorTiles`
+// above: `buildWallLineSegments` is pure math (no R3F/Canvas dependency),
+// so its output is asserted directly.
+describe('buildWallLineSegments — real 3D geometry for doc.wallLines', () => {
+  it('a single-edge line (no doors) becomes exactly one solid box, positioned/rotated/sized from its own corner-to-corner world geometry', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    const from: CornerRef = { cell: [5, 5], corner: 0 };
+    const to: CornerRef = { cell: [5, 5], corner: 1 };
+    addWallLine(cst, from, to);
+    const doc = toDungeonDoc(cst);
+
+    const segments = buildWallLineSegments(doc);
+    expect(segments).toHaveLength(1);
+    const [seg] = segments;
+    expect(seg.kind).toBe('solid');
+
+    // Independently derived expected geometry (fresh `cornerPoint` calls
+    // rescaled by `WORLD_SCALE`, not the render path's own internals) —
+    // proves the segment's box actually spans corner to corner rather
+    // than, say, a fixed HEX_SIZE box dropped at the midpoint.
+    const a = worldOf(from);
+    const b = worldOf(to);
+    const expectedLength = Math.hypot(b.x - a.x, b.z - a.z);
+    const expectedRotation = Math.atan2(-(b.z - a.z), b.x - a.x);
+    expect(seg.length).toBeCloseTo(expectedLength, 6);
+    expect(seg.position[0]).toBeCloseTo((a.x + b.x) / 2, 6);
+    expect(seg.position[2]).toBeCloseTo((a.z + b.z) / 2, 6);
+    expect(seg.rotationY).toBeCloseTo(expectedRotation, 6);
+    // Above the floor plane, at wall-box height — same Y every edge-native
+    // WallBox piece renders at, so the two wall vocabularies share one
+    // architecture (this file's own header doc comment).
+    expect(seg.position[1]).toBeCloseTo(WALL_HEIGHT / 2, 6);
+  });
+
+  it('a door mid-line splits one line into solid, door, solid — in that order, all sharing the line’s own rotation', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    // Same fixture straightWallGeometry.test.ts's own "door exclusion"
+    // describe block uses: footprint [[4,5],[6,5],[8,5]], door at the
+    // MIDDLE cell.
+    const from: CornerRef = { cell: [2, 5], corner: 0 };
+    const to: CornerRef = { cell: [10, 5], corner: 3 };
+    addWallLine(cst, from, to);
+    toggleWallLineDoorAt(cst, 0, [6, 5]);
+    const doc = toDungeonDoc(cst);
+    expect(doc.wallLines[0].doors).toEqual([{ cell: [6, 5] }]);
+
+    const segments = buildWallLineSegments(doc);
+    expect(segments.map((s) => s.kind)).toEqual(['solid', 'door', 'solid']);
+    // One straight line has ONE direction — every piece of it shares the
+    // exact same rotation, whether solid or door.
+    const rotations = segments.map((s) => s.rotationY);
+    expect(rotations[1]).toBeCloseTo(rotations[0], 10);
+    expect(rotations[2]).toBeCloseTo(rotations[0], 10);
+    for (const seg of segments) {
+      expect(seg.length).toBeGreaterThan(0);
+    }
+
+    // Reuse, not re-derivation: the door piece's own extent matches
+    // `clipSegmentToShrunkHex`'s real `[t0,t1]` for that cell — the SAME
+    // primitive `straightWallFootprint` already uses — lerped over
+    // independently-computed world corner points, not the render path's
+    // own internal `t`.
+    const a = cornerPoint(from);
+    const b = cornerPoint(to);
+    const interval = clipSegmentToShrunkHex(a, b, 6, 5);
+    expect(interval).not.toBeNull();
+    const [t0, t1] = interval!;
+    const aWorld = worldOf(from);
+    const bWorld = worldOf(to);
+    const lerpPoint = (t: number) => ({
+      x: aWorld.x + (bWorld.x - aWorld.x) * t,
+      z: aWorld.z + (bWorld.z - aWorld.z) * t,
+    });
+    const p0 = lerpPoint(t0);
+    const p1 = lerpPoint(t1);
+    const doorSeg = segments[1];
+    expect(doorSeg.position[0]).toBeCloseTo((p0.x + p1.x) / 2, 6);
+    expect(doorSeg.position[2]).toBeCloseTo((p0.z + p1.z) / 2, 6);
+    expect(doorSeg.length).toBeCloseTo(Math.hypot(p1.x - p0.x, p1.z - p0.z), 6);
+  });
+
+  it('a door near one end of the line produces an asymmetric split — a short leading piece, a long trailing one — with no crash or misordering', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    const from: CornerRef = { cell: [2, 5], corner: 0 };
+    const to: CornerRef = { cell: [10, 5], corner: 3 };
+    addWallLine(cst, from, to);
+    // The FIRST footprint cell along the line, not the middle one.
+    toggleWallLineDoorAt(cst, 0, [4, 5]);
+    const doc = toDungeonDoc(cst);
+
+    const segments = buildWallLineSegments(doc);
+    expect(segments.map((s) => s.kind)).toEqual(['solid', 'door', 'solid']);
+    const [leading, , trailing] = segments;
+    // The leading solid sliver (before the near-the-start door) is
+    // markedly shorter than the trailing one (which now covers the
+    // fixture's other two footprint cells' worth of line) — the split
+    // is asymmetric, not silently defaulting to some even partition.
+    expect(leading.length).toBeLessThan(trailing.length);
+  });
+
+  it('two doors on the same line produce solid/door/solid/door/solid, five pieces in line order', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    const from: CornerRef = { cell: [2, 5], corner: 0 };
+    const to: CornerRef = { cell: [10, 5], corner: 3 };
+    addWallLine(cst, from, to);
+    // The two OUTER footprint cells; [6,5] (the middle one) stays solid.
+    toggleWallLineDoorAt(cst, 0, [4, 5]);
+    toggleWallLineDoorAt(cst, 0, [8, 5]);
+    const doc = toDungeonDoc(cst);
+    expect(doc.wallLines[0].doors).toHaveLength(2);
+
+    const segments = buildWallLineSegments(doc);
+    expect(segments.map((s) => s.kind)).toEqual([
+      'solid',
+      'door',
+      'solid',
+      'door',
+      'solid',
+    ]);
+    // Every piece shares the line's one direction.
+    const rotations = segments.map((s) => s.rotationY);
+    for (const r of rotations) expect(r).toBeCloseTo(rotations[0], 10);
+  });
+
+  it('a door left stranded by geometry that no longer clips its cell renders no gap — the wall stays solid straight through, honestly, rather than guessing one', () => {
+    const { cst } = parseDungeon(SHOWCASE_YAML);
+    // corner-to-corner, exactly one cell's own edge — clips NOTHING
+    // (straightWallGeometry.test.ts's own boundary case), so [5,5] is
+    // never a valid door cell for this particular line.
+    const from: CornerRef = { cell: [5, 5], corner: 0 };
+    const to: CornerRef = { cell: [5, 5], corner: 1 };
+    addWallLine(cst, from, to);
+    const doc = toDungeonDoc(cst);
+    // Write a door directly onto the parsed doc's own wallLine (bypassing
+    // isValidDoorCell, the same way a stranded door — flagged, not
+    // deleted, per TARGET-YAML.md — can exist in a real document after an
+    // endpoint drag shrinks the footprint out from under it).
+    const strandedDoc = {
+      ...doc,
+      wallLines: [
+        { ...doc.wallLines[0], doors: [{ cell: [5, 5] as [number, number] }] },
+      ],
+    };
+
+    const segments = buildWallLineSegments(strandedDoc);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe('solid');
+  });
+
+  it('an empty doc.wallLines produces no segments, cheaply', () => {
+    const { doc } = parseDungeon(SHOWCASE_YAML);
+    expect(buildWallLineSegments(doc)).toEqual([]);
   });
 });
