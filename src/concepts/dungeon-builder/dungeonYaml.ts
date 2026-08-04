@@ -276,7 +276,7 @@ export interface RegionDoc {
 
 export type WallKind = 'solid' | 'door';
 
-/** Edge-native: `from`/`to` are orthogonally-adjacent absolute [col,row]
+/** Edge-native: `from`/`to` are hex-adjacent absolute [col,row]
  * cells, the wall sits on the shared edge between them. target dialect, proposed —
  * see TARGET-YAML.md's annotated example for the full rationale (mirrors
  * the real `EncounterService.Space.walls` wire type). Not compiled
@@ -1411,7 +1411,7 @@ export function validateRegionCells(
     seen.add(key);
   }
   if (!cellsAreContiguous(cells)) {
-    return 'cells must be orthogonally contiguous (rpg-project#180)';
+    return 'cells must be hex-contiguous (rpg-project#180)';
   }
   if (cellsOverlapAnotherRegion(doc, cells, excludeRegionId)) {
     return 'one or more cells already belong to another region';

@@ -4,14 +4,34 @@
  * from `dungeonYaml.ts`'s CST layer, the same split `boardGeometry.ts`/
  * `creationGeometry.ts` already use for every other pure-math concern in
  * this concept: unit-testable without a CST document, and reusable by
- * both the creation board (rectangular canvas) and the edit-mode hex
- * board's read-only overlay, since a region's membership is expressed in
- * the same abstract absolute [col,row] cell space regardless of which
- * board renders it. Deliberately has NO dependency on `DungeonDoc`/
- * `RegionDoc` (dungeonYaml.ts) — every function here takes plain cell
- * arrays, so dungeonYaml.ts can import this module without creating a
- * cycle.
+ * both the creation board (now hex-true, see `creationGeometry.ts`) and
+ * the edit-mode hex board's read-only overlay, since a region's
+ * membership is expressed in the same abstract absolute [col,row] cell
+ * space regardless of which board renders it. Deliberately has NO
+ * dependency on `DungeonDoc`/`RegionDoc` (dungeonYaml.ts) — every
+ * function here takes plain cell arrays, so dungeonYaml.ts can import
+ * this module without creating a cycle.
+ *
+ * **HEX-TRUE (2026-08-03)**: `cellsAdjacent` used to be plain 4-neighbor
+ * orthogonal adjacency (`|dcol|+|drow| === 1`), inherited from the
+ * creation board's own now-retired square-canvas geometry. It's now REAL
+ * hex adjacency (`hexDistance === 1` on the same `cubeAtColRow`/
+ * `hexDistance` math every other renderer in this codebase uses) — a hex
+ * cell has 6 neighbors, not 4, and which two of a square's 4 "diagonal"
+ * neighbors are real hex neighbors depends on column parity (verified
+ * numerically while building this: `[1,1]`-`[2,2]` is a real hex
+ * neighbor, `[1,1]`-`[0,0]` isn't, despite both reading as "diagonal" on
+ * a square grid). This is a strictly WIDER relation than the old one —
+ * every pair that was 4-adjacent is still hex-adjacent (verified: a
+ * same-row ±1-col or same-col ±1-row step is always exactly hex-distance
+ * 1, regardless of parity), so no region that validated as contiguous
+ * under the old rule stops validating; hex adjacency can only make a
+ * previously-rejected (diagonal-only, disconnected) cell set newly
+ * valid, never invalidate an existing one. See this module's own test
+ * file for the concrete before/after case.
  */
+import { hexDistance } from '@/components/hex-grid/hexMath';
+import { cubeAtColRow } from './hexLayout';
 
 export type Cell = [number, number];
 
@@ -23,19 +43,15 @@ export function cellsEqual(a: Cell, b: Cell): boolean {
   return a[0] === b[0] && a[1] === b[1];
 }
 
-/** Orthogonal (4-neighbor) adjacency — the same adjacency `walls:`'s own
- * "from/to must be orthogonally adjacent cells" rule assumes
- * (TARGET-YAML.md's annotated example), and the one `cellsAreContiguous`/
- * `sharedBoundaryEdges` below both build on. Diagonal neighbors don't
- * count: there is no orthogonal wall/door edge to author between two
- * cells that only touch at a corner. */
+/** Real hex adjacency (distance exactly 1 in cube coordinates) — the
+ * relation `cellsAreContiguous`/`sharedBoundaryEdges` below both build
+ * on. See this file's own header comment for the 4-neighbor-to-hex
+ * widening this represents. */
 export function cellsAdjacent(a: Cell, b: Cell): boolean {
-  const dc = Math.abs(a[0] - b[0]);
-  const dr = Math.abs(a[1] - b[1]);
-  return (dc === 1 && dr === 0) || (dc === 0 && dr === 1);
+  return hexDistance(cubeAtColRow(a[0], a[1]), cubeAtColRow(b[0], b[1])) === 1;
 }
 
-/** BFS connectivity over a cell list's own orthogonal adjacency —
+/** BFS connectivity over a cell list's own hex adjacency —
  * rpg-project#180's own acceptance criterion: "Overlapping, disconnected,
  * empty, and invalid cell sets fail with author-facing validation
  * errors." A single cell is trivially contiguous; an empty list is
@@ -64,11 +80,11 @@ export function cellsAreContiguous(cells: readonly Cell[]): boolean {
 export interface RegionEdge {
   /** The cell on the first region's side. */
   from: Cell;
-  /** The cell on the second region's side, orthogonally adjacent to `from`. */
+  /** The cell on the second region's side, hex-adjacent to `from`. */
   to: Cell;
 }
 
-/** Every orthogonal edge with one cell in `cellsA` and the other in
+/** Every hex edge with one cell in `cellsA` and the other in
  * `cellsB` — the candidate set for "attach these two regions with a door"
  * (TARGET-YAML.md's "region attachment" section). Deliberately does not
  * consult `walls:` at all: per the settled early-authoring model

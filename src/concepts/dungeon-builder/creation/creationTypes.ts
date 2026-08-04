@@ -20,11 +20,12 @@ export interface CreationGrid {
   height: number;
 }
 
-/** Internal edge between two orthogonally adjacent cells: the edge BELOW
- * cell (c,r) (shared with (c,r+1)) is horizontal; the edge RIGHT of cell
- * (c,r) (shared with (c+1,r)) is vertical. The canvas perimeter is an
- * always-on boundary, not a member of this set — only internal edges are
- * toggleable, matching "carve the space into rooms" (you start inside a
- * bounded room and cut it up, you don't have to draw the outer walls).
- * Geometry-only — the actual authored wall lives in `doc.walls`
- * (`WallDoc[]`, dungeonYaml.ts), addressed by `from`/`to` cells directly. */
+/** An internal edge is the shared boundary between two hex-adjacent cells
+ * — HEX-TRUE since 2026-08-03 (`creationGeometry.ts`'s own header
+ * comment), so a cell has up to 6 of these, not the 4 (h/v) a square grid
+ * would have. The canvas perimeter is an always-on boundary, not a member
+ * of this set — only internal edges are toggleable, matching "carve the
+ * space into rooms" (you start inside a bounded region and cut it up, you
+ * don't have to draw the outer walls). Geometry-only — the actual
+ * authored wall lives in `doc.walls` (`WallDoc[]`, dungeonYaml.ts),
+ * addressed by `from`/`to` cells directly. */

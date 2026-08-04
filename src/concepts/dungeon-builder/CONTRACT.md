@@ -3189,3 +3189,192 @@ every mutator, `connectRegions`, comment-safety, and `stripToV1Subset`;
 17 in the new `regionGeometry.test.ts` covering the pure adjacency/
 contiguity/boundary-edge/centroid math directly). `ci-check` clean
 (format/lint/typecheck/build/test).
+
+## Hex-true creation canvas: kill the square-grid renderer (2026-08-03)
+
+Kirk, diagnosing the "New Dungeon" canvas directly: "that new dungeon is
+squares... our walls as we lay them out cannot follow along the edge...
+any hex that is not 100% uncovered would not be traversable by the
+players" — sharpened: a square grid draws only 4 of a hex's 6 real
+adjacencies, so a region that reads as fully enclosed on squares can have
+two INVISIBLE open edges in hex reality (players walk through the
+diagonals — false enclosure); and "walls look like vertical blinds along
+the side edges" — a square wall run between two rows is a set of
+disconnected parallel slats, where real hex edges share corners and chain
+into one continuous run. Edit mode went hex-true back in the
+flattened-vs-hex-true round ("Flattened layout mode: explored and
+rejected," above); creation mode's own square renderer survived that
+round as "genuinely separate, never claiming hex adjacency" — that
+exemption ends here.
+
+### What changed, mechanically
+
+`creation/creationGeometry.ts` is rebuilt on the SAME hex primitives
+`hexLayout.ts`/`boardGeometry.ts` already give edit mode
+(`cellCenter`/`cellCorners`/`edgeBetweenCells`/`worldToCube`/
+`neighborCell`) — one coordinate space for both boards now, not two.
+`FLAT_COL_SPACING`/`FLAT_ROW_SPACING` (square-grid pitch constants) are
+deleted from `hexLayout.ts` entirely, along with every `hEdgeGeometry`/
+`vEdgeGeometry` axis-aligned edge function. `CreationBoard.tsx` renders
+real hex polygons (`creationCellPolygon`) for the base grid, holes, and
+region overlays, and real edge segments (`edgeBetweenCells` via
+`wallGeometry`) for walls — replacing the old tiled-`<rect>` background
+pattern and axis-aligned wall `<line>`s. The canvas dimension semantics
+(a `{width,height}` grid of `[col,row]` cells, 20×30 by default) are
+UNCHANGED — only the geometry each cell resolves to is different.
+
+### The wall-drawing crenellated-comb bug does NOT reappear in hex — verified numerically, not assumed
+
+The square board's own bug (this file's "wall-drawing interaction"
+finding, way above): a per-pixel dx-vs-dy comparison flipped which of 2
+candidate edges was "nearest" at a point with no relationship to a real
+edge boundary, producing disconnected teeth instead of a straight wall.
+The obvious question for hex — does picking among a cell's 6 real edges
+have the same instability? — was checked directly (a small standalone
+script sampling points along a straight world-space line and calling the
+new `nearestEdge` at each one, before writing any test): every transition
+between distinct edges shared a real corner, with NO lock at all. This
+isn't a coincidence — a hex cell's 6 "nearest to this edge" regions tile
+the cell with shared boundaries exactly at the corners, unlike the
+square's 4-quadrant dx/dy split, which had a seam unrelated to any real
+edge. `creationGeometry.test.ts`'s own describe block ("hex-true fix for
+the square predecessor's crenellated-comb bug") re-proves this as a real
+vitest test, not just a one-off script. The drag-orientation lock
+(`dragFamily`, generalized from 2 axes to hex's 3 parallel-edge families)
+survives in the interaction, but for a WEAKER reason than before: not to
+prevent disconnection (nothing can produce a gap), but to hold one
+deliberate family choice for a long stroke so it can't drift onto an
+unrelated third family mid-drag.
+
+**Visual proof, not just geometry math**: `demoScript.ts`'s own divider
+wall used to be hand-transcribed as one `[col,14]-[col,15]` segment per
+column (`DIVIDER_COLS`) — a pattern that drew a straight, connected line
+under the OLD square geometry. Run through the new hex math as-is, it
+does NOT connect (consecutive segments land ~20px apart — a real gap,
+confirmed numerically). Rather than hand-picking new coordinates (which
+would just be a second, unverified guess), `creationGeometry.ts` grew
+`traceEdgeRun` — samples a straight world-space line through the SAME
+`nearestEdge` a live drag calls — and `demoScript.ts` now derives its
+wall run FROM that function. "Play the pitch," driven live in a real
+browser, produces a continuous zigzag wall with the door sitting cleanly
+in the middle of the run — screenshot evidence below.
+
+### Region brush: click-per-cell became drag-to-paint
+
+Kirk's ask, verbatim: "building a region should have us draw the shape.
+right now we have to click every square." The region tool's pointer
+handling used to fire exactly once per click
+(`useRegionEditing.ts`'s `togglePendingCell`/`handleToggleCellOnSelected`,
+both plain toggles). Drag-paint needed a DIFFERENT primitive, not just a
+pointer-move loop calling the same toggle repeatedly: a toggle re-applied
+to a cell the drag revisits (normal for a slow real mouse-move, which
+fires many events per cell) would flip it back off mid-stroke, and a
+toggle's direction depends on the CELL's own pre-drag state, not the
+stroke's — inconsistent the moment a drag crosses a mix of already-member
+and non-member cells. Fixed by adding idempotent siblings,
+`setPendingCellMembership`/`setSelectedRegionCellMembership` (`included:
+boolean`, only mutates if it would actually change something), with the
+add-vs-erase MODE decided once, from the drag's first cell (Shift forces
+erase regardless of that cell's own state — the "a modifier... removes"
+affordance), then held for the whole stroke via a per-drag `touched`
+dedup set in `CreationBoard.tsx`. Live-verified: one continuous
+pointer-down+drag+up gesture painted a real 9-cell pending region ("9
+cells selected" in the panel) — screenshot evidence below.
+
+### Enclosure honesty: an OPEN-boundary overlay, Kirk's false-enclosure worry made visible
+
+New `creationGeometry.ts` function, `openBoundaryEdges(cells, walls)`:
+for every member cell's up-to-6 real hex edges, skip the ones bordering
+ANOTHER member of the same region (internal, membership-only, never
+"open" regardless of walls), then flag whichever of the remaining
+boundary edges has no matching `walls:` entry. Cheap by construction (at
+most 6 neighbor checks per member cell, a flat `walls` scan per candidate
+edge — same budget `sharedBoundaryEdges` already spends). `CreationBoard.tsx`
+renders the result as a hot red/orange line overlay for EVERY region on
+the board, not just the selected one — an author scanning the whole
+canvas should see at a glance which regions are actually sealed, not have
+to select each one in turn. Four new `creationGeometry.test.ts` cases
+cover: an isolated cell's all-6-open baseline, one wall closing exactly
+one edge, all 6 walls fully sealing a cell (zero open edges), and — the
+one that most directly answers Kirk's worry — the shared internal edge
+between two same-region members is NEVER open, wall or no wall, because
+it was never a boundary edge to begin with.
+
+### The 4-vs-6 adjacency finding: `regionGeometry.ts`'s `cellsAdjacent` was under-counting
+
+`regionGeometry.ts`'s `cellsAdjacent` used to be a plain 4-neighbor
+orthogonal check (`|dcol|+|drow| === 1`), inherited from the square
+canvas #694 built regions against. Real hex adjacency
+(`hexDistance(cubeAtColRow(a), cubeAtColRow(b)) === 1`) is a STRICTLY
+WIDER relation: every same-row-±1-col or same-col-±1-row pair is still
+hex-adjacent (verified algebraically — the parity-correction term in
+`cubeAtColRow` cancels identically for both cases), so nothing that
+validated as contiguous under the old rule stops validating. What
+changes is that a hex cell has 6 neighbors, not 4 — exactly 2 of a square
+grid's 4 "diagonal" directions turn out to be genuine hex neighbors
+(which 2 depends on column parity; verified numerically: `[1,1]`-`[2,2]`
+is hex-distance 1 — a real neighbor — while `[1,1]`-`[0,0]` stays
+hex-distance 2, even though both read identically as "diagonal" on the
+square grid). Concretely, on a real fixture:
+`connectRegions` between two 2-cell regions (`dungeonYaml.test.ts`'s own
+test) used to find exactly 2 candidate shared-boundary edges under
+4-adjacency; the SAME two regions have 3 under real hex adjacency (a
+genuinely new `[1,1]-[2,2]` edge neither region's own square-grid
+authoring anticipated) — which shifts `pickAttachmentEdge`'s
+midpoint-of-N pick from `{from:[2,1],to:[2,2]}` to `{from:[1,1],to:[2,2]}`.
+Fixed the one test that hard-coded the old 2-edge answer; every other
+region test (contiguity, overlap, the 6-cell block, the two-disconnected-
+islands case) needed no change, since 6-adjacency is additive, never
+subtractive, relative to what #694 already validated. `TARGET-YAML.md`'s
+"Invariants" section under `regions:` now says "hex-contiguous," not
+"orthogonally contiguous," with the same finding recorded there.
+
+### Live verification
+
+Real browser, real dev server (`npm run dev -- --port 5175`, this
+concept's own `/concepts?concept=dungeon-builder` route,
+`New Dungeon` tab), driven via throwaway Playwright scripts
+(`game-dev/tools/browser/_unit_hexcreate_*.mjs`, gitignored scratch
+pattern, not this repo — same convention the region-authoring unit
+above used). Screenshots:
+
+1. The blank "New Dungeon" canvas rendering as real hexagons, not
+   squares — the core visual claim this whole round makes.
+2. "Play the pitch" run to completion: a continuous zigzag divider wall
+   with a door at its midpoint, a monster and a facing-rotated reaper
+   statue, START/END markers — all at their real hex positions. The SVG's
+   own viewBox for a 20-column canvas is ~1321×1490 board units (the
+   canvas GENUINELY shears diagonally across 20 columns, same
+   already-accepted finding this file's "the floor plan shears
+   diagonally" section describes for edit mode's compiled boards, now
+   also visible on creation mode's wider canvas) — confirmed by
+   inspecting the live DOM (11 wall `<line>`s, 5 marker `<circle>`s, all
+   genuinely present) before scrolling the container to frame a close-up
+   of the wall run itself.
+3. A single pointer-down+drag+up gesture over the Region tool painting a
+   real 9-cell pending region — no per-cell clicking.
+4. A freshly-created, unwalled region rendered with its ENTIRE boundary
+   traced in the new open-edge red highlight — the false-enclosure
+   affordance, directly answering Kirk's worry.
+5. A second region created elsewhere on the canvas, correctly and
+   HONESTLY reported as not sharing a boundary with the first ("region-1"
+   doesn't share a boundary with this region — nothing to connect
+   automatically") — the connect-flow's rejection path, re-verified
+   under real hex adjacency. The POSITIVE connect-success path (a door
+   correctly placed on the pickAttachmentEdge midpoint) is not
+   separately screenshotted this round — it's the exact case
+   `dungeonYaml.test.ts`'s `connectRegions` test already covers post-fix,
+   including the specific 4-vs-6-adjacency edge-count change above.
+
+The two expected `PutDungeon`/authoring-service console errors
+(`[unimplemented] unknown service ...AuthoringService`) are this
+concept's normal FIXTURES-MODE behavior against a dev server with no
+local `rpg-api` running — unrelated to this round's changes.
+
+170 dungeon-builder tests passing (up from 162 — 8 new: 6 in
+`creation/creationGeometry.test.ts`'s `nearestEdge`/`traceEdgeRun`/
+`nearestCreationCell`/`dragFamily` coverage of the new hex math, plus a
+4-case `openBoundaryEdges` block; `regionGeometry.test.ts`'s existing
+adjacency/boundary tests were updated in place, not added to, to assert
+the new hex-true answers). `ci-check` clean
+(format/lint/typecheck/build/test).

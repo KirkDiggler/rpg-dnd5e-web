@@ -1312,15 +1312,20 @@ regions:
 
       const result = connectRegions(cst, doc3, 'north', 'south');
       expect(result.edge).not.toBeNull();
-      // Two candidate edges ([1,1]-[1,2] and [2,1]-[2,2]) sorted by
-      // (row, col) of `to` — the midpoint of 2 picks the SECOND
-      // (index 1) per pickAttachmentEdge's own floor(n/2) rule.
-      expect(result.edge).toEqual({ from: [2, 1], to: [2, 2] });
+      // HEX-TRUE (2026-08-03): real hex adjacency finds THREE candidate
+      // edges here, not the two a square-grid 4-adjacency check would —
+      // [1,1]-[1,2] and [2,1]-[2,2] (same-column, row+1, real under
+      // either rule) PLUS [1,1]-[2,2], a genuine hex neighbor
+      // (regionGeometry.ts's own `cellsAdjacent` — verified numerically
+      // while building this unit) that a square grid has no way to
+      // represent at all. Sorted by (row, col) of `to`, the middle of 3
+      // (pickAttachmentEdge's own floor(n/2) rule) is now the new edge.
+      expect(result.edge).toEqual({ from: [1, 1], to: [2, 2] });
 
       const finalDoc = toDungeonDoc(cst);
       expect(finalDoc.walls).toHaveLength(1);
       expect(finalDoc.walls[0]).toEqual({
-        from: [2, 1],
+        from: [1, 1],
         to: [2, 2],
         kind: 'door',
       });

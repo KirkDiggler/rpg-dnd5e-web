@@ -11,8 +11,28 @@
  * "20x30 room -> 2d top down board -> draw the walls in place -> start
  * here, end there -> add door here, monster there, reaper statue there
  * facing this way -> load up and play."
+ *
+ * **HEX-TRUE (2026-08-03)**: the divider wall used to be hand-transcribed
+ * as one `[col,DIVIDER_ROW]`-`[col,DIVIDER_ROW+1]` segment per column in
+ * `DIVIDER_COLS` — a pattern that drew a straight, fully-connected line
+ * under the old square-grid geometry. Under real hex geometry it does
+ * NOT connect (verified numerically while building this unit: consecutive
+ * segments in that pattern land ~20px apart, a genuine gap, not a
+ * continuous run) — a square-grid assumption baked into hand-picked
+ * coordinates, exactly the kind of thing this round's brief called out.
+ * The fix is to stop hand-picking coordinates at all: `traceEdgeRun`
+ * (`creationGeometry.ts`) samples a straight world-space line through the
+ * SAME `nearestEdge` a live drag calls, so the wall run this script draws
+ * is provably whatever the interactive tool would draw for the same
+ * gesture, not a second, independently-maintained approximation of it.
  */
 import type { WallKind } from '../dungeonYaml';
+import {
+  creationCellCenter,
+  traceEdgeRun,
+  wallGeometry,
+} from './creationGeometry';
+import type { CreationGrid } from './creationTypes';
 
 export interface DemoActions {
   resetGrid: (width: number, height: number) => void;
@@ -41,13 +61,13 @@ export interface DemoStep {
 }
 
 const DIVIDER_ROW = 14;
-const DIVIDER_COLS = [5, 6, 7, 8, 9, 10, 11, 12];
+const SPAN_COL_START = 5;
+const SPAN_COL_END = 12;
+// Kept for the caption/reference sense of "roughly in the middle" — no
+// longer used to hand-derive a wall coordinate (see `traceEdgeRun` below).
 const DOOR_COL = 8;
 
-export function buildDemoScript(grid: {
-  width: number;
-  height: number;
-}): DemoStep[] {
+export function buildDemoScript(grid: CreationGrid): DemoStep[] {
   const steps: DemoStep[] = [];
 
   steps.push({
@@ -56,34 +76,51 @@ export function buildDemoScript(grid: {
     run: (actions) => actions.resetGrid(grid.width, grid.height),
   });
 
+  // The REAL connected hex wall run a straight drag from (SPAN_COL_START,
+  // DIVIDER_ROW) to (SPAN_COL_END, DIVIDER_ROW) would draw — traced
+  // through the same `nearestEdge` a live drag calls (see this file's own
+  // header comment for why hand-picking coordinates broke under hex).
+  // `boundaryY` anchors the trace to the actual world-space boundary
+  // between row DIVIDER_ROW and DIVIDER_ROW+1 near the span's middle —
+  // `wallGeometry` is pure geometry (it doesn't check `doc.walls`), so
+  // this works whether or not that specific edge ends up drawn.
+  const boundaryY = wallGeometry(
+    [DOOR_COL, DIVIDER_ROW],
+    [DOOR_COL, DIVIDER_ROW + 1]
+  ).mid.y;
+  const spanStart = creationCellCenter(SPAN_COL_START, DIVIDER_ROW);
+  const spanEnd = creationCellCenter(SPAN_COL_END, DIVIDER_ROW);
+  const dividerRun = traceEdgeRun(
+    { x: spanStart.x, y: boundaryY },
+    { x: spanEnd.x, y: boundaryY },
+    grid
+  );
+
   // "Draw the walls in place" — one segment at a time, so it visibly
   // draws rather than snapping in all at once.
-  DIVIDER_COLS.forEach((col, i) => {
+  dividerRun.forEach((edge, i) => {
     steps.push({
       caption: 'Draw the walls in place — carving the room in two.',
-      holdMs: 90,
+      holdMs: i === dividerRun.length - 1 ? 500 : 90,
       run: (actions) =>
-        actions.toggleWallEdge(
-          [col, DIVIDER_ROW],
-          [col, DIVIDER_ROW + 1],
-          'solid',
-          true
-        ),
+        actions.toggleWallEdge(edge.cellA, edge.cellB, 'solid', true),
     });
-    if (i === DIVIDER_COLS.length - 1) steps[steps.length - 1].holdMs = 500;
   });
 
-  steps.push({
-    caption: 'A door between the two halves.',
-    holdMs: 900,
-    run: (actions) =>
-      actions.toggleWallEdge(
-        [DOOR_COL, DIVIDER_ROW],
-        [DOOR_COL, DIVIDER_ROW + 1],
-        'door',
-        true
-      ),
-  });
+  // A door roughly in the middle of the traced run — same "pick the
+  // midpoint" discipline `regionGeometry.ts`'s `pickAttachmentEdge` uses
+  // for a region-attachment door, rather than assuming a specific column
+  // is on the run (the traced sequence's exact cells depend on real hex
+  // geometry, not a hand-picked coordinate).
+  const doorEdge = dividerRun[Math.floor(dividerRun.length / 2)];
+  if (doorEdge) {
+    steps.push({
+      caption: 'A door between the two halves.',
+      holdMs: 900,
+      run: (actions) =>
+        actions.toggleWallEdge(doorEdge.cellA, doorEdge.cellB, 'door', true),
+    });
+  }
 
   steps.push({
     caption: 'Start here —',
@@ -127,4 +164,4 @@ export function buildDemoScript(grid: {
   return steps;
 }
 
-export { DIVIDER_COLS, DIVIDER_ROW, DOOR_COL };
+export { DIVIDER_ROW, DOOR_COL, SPAN_COL_END, SPAN_COL_START };

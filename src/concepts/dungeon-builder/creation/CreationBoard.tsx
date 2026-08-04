@@ -10,10 +10,28 @@
  * with zero rooms needs to fake — see TARGET-YAML.md's "top-level
  * placement" section; an earlier round briefly tried a synthetic
  * `archetype: canvas` bridge room instead, rejected, see CONTRACT.md).
- * Still its own specialized renderer, not `Board.tsx` itself — a
- * rectangular free canvas and a compiled hex room-chain are genuinely
- * different geometries, and one component branching between both would
- * likely be worse than two focused renderers sharing one data model.
+ * Still its own specialized renderer, not `Board.tsx` itself — creation
+ * mode's own tools (edge-painting walls with a live stroke, the Region
+ * paint brush, start/end/hole markers) are genuinely different
+ * interactions from the compiled edit board's click-to-place/drag-to-move
+ * — but the underlying CELL GEOMETRY is now identical (see
+ * "HEX-TRUE" below), not a second coordinate system.
+ *
+ * **HEX-TRUE (2026-08-03)**: this board used to render a plain rectangular
+ * grid (`FLAT_COL_SPACING`/`FLAT_ROW_SPACING`, axis-aligned cells/edges).
+ * Kirk, diagnosing it directly: "that new dungeon is squares... our walls
+ * as we lay them out cannot follow along the edge... any hex that is not
+ * 100% uncovered would not be traversable by the players" — a square grid
+ * only exposes 4 of a hex's 6 real adjacencies, so a region that reads as
+ * fully enclosed on squares can have two invisible open edges in hex
+ * reality (players walk through the diagonals — false enclosure); and
+ * "walls look like vertical blinds along the side edges" — disconnected
+ * parallel slats where real hex edges share corners and chain into a
+ * continuous run. This board now renders every cell/edge/marker through
+ * `creationGeometry.ts`'s hex functions, which build on the SAME
+ * `hexLayout.ts` math the compiled edit-mode `Board.tsx` renders with —
+ * one coordinate space, not two. The canvas dimension semantics (a
+ * `{width,height}` grid of `[col,row]` cells) are unchanged.
  *
  * Client-side only in the sense that matters — no server call happens
  * here (design.md defers wall/shape authoring to P4+; there is no real
@@ -30,7 +48,12 @@
  * literally described ("draw the walls") and the shape that maps onto
  * the real wire type without translation. Click-drag paints a stroke of
  * same-state edges (first edge touched decides add-vs-erase for the
- * whole stroke), same interaction grammar as any paint tool.
+ * whole stroke), same interaction grammar as any paint tool. See
+ * `creationGeometry.ts`'s `nearestEdge` doc comment for why the hex
+ * version of this drag no longer needs an orientation lock to stay
+ * CONNECTED (unlike the square predecessor's crenellated-comb bug) — the
+ * lock (`dragFamily`) survives here only to hold one deliberate "which of
+ * the 3 parallel-edge families" choice for the whole stroke.
  */
 import {
   facingDirection,
@@ -39,7 +62,7 @@ import {
 import { cubeToWorld } from '@/components/hex-grid/hexMath';
 import { useRef, useState, type ReactElement } from 'react';
 import type { DungeonDoc, WallDoc, WallKind } from '../dungeonYaml';
-import { FLAT_COL_SPACING, FLAT_ROW_SPACING } from '../hexLayout';
+import { BOARD_HEX_SIZE, cellCenter } from '../hexLayout';
 import {
   END_COLOR,
   regionArchetypeColor,
@@ -52,10 +75,12 @@ import type { BoardTool, PlacementSelection } from '../types';
 import type { BoardEditing } from '../useBoardEditing';
 import {
   creationCellCenter,
-  hEdgeGeometry,
+  creationCellPolygon,
+  dragFamily,
   nearestCreationCell,
   nearestEdge,
-  vEdgeGeometry,
+  openBoundaryEdges,
+  wallGeometry,
   type EdgeGeometry,
 } from './creationGeometry';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
@@ -87,15 +112,12 @@ interface CreationBoardProps {
 }
 
 // Same 6-direction convention authorGridHelpers.ts already defines for
-// hex grids (HEX_FACING_LABELS, order E,NE,NW,W,SW,SE) — reused directly
-// rather than inventing a rectangular-grid compass (a finding in its own
-// right: creation mode's rectangular canvas doesn't map 1:1 onto 6 hex
-// directions, but reusing the one real convention in the codebase beats
-// inventing a second, incompatible one — see CONTRACT.md). The screen
-// angle for each direction is computed through the SAME cubeToWorld math
-// hex-true mode uses (a unit step in that direction, projected to 2D
-// screen space), not a hand-typed table, so it stays provably consistent
-// even though this canvas has no cube coordinates of its own.
+// hex grids (HEX_FACING_LABELS, order E,NE,NW,W,SW,SE) — the facing arrow
+// convention was never square-canvas-specific in the first place (it
+// already used real hex angles even when the canvas underneath it was
+// still flat squares — TARGET-YAML.md's "reused the existing 6-direction
+// convention, not a rectangular compass" finding), so it's unchanged by
+// the hex-true rendering round.
 const FACING_ANGLES_DEG = HEX_FACING_LABELS.map((_, i) => {
   const dir = facingDirection(i);
   const world = cubeToWorld(dir, 1);
@@ -120,16 +142,7 @@ function wallAtEdge(
   );
 }
 
-/** A wall's line geometry from its stored `from`/`to` — detects
- * horizontal vs. vertical from the coordinate delta rather than trusting
- * a separately-stored orientation, since `WallDoc` (the real, shared
- * shape) doesn't carry one; `hEdgeGeometry`/`vEdgeGeometry` both key off
- * the SAME (col, row) `from` anchor `setWallEdge` was called with. */
-function wallGeometry(wall: WallDoc): EdgeGeometry {
-  const [fc, fr] = wall.from;
-  const [tc] = wall.to;
-  return tc === fc ? hEdgeGeometry(fc, fr) : vEdgeGeometry(fc, fr);
-}
+const CELL_SIZE = BOARD_HEX_SIZE - 1.5;
 
 export function CreationBoard({
   doc,
@@ -147,19 +160,30 @@ export function CreationBoard({
   const [stroke, setStroke] = useState<{
     addMode: boolean;
     startPoint: { x: number; y: number };
-    /** null until the drag has moved far enough to tell direction —
-     * see handlePointerMove's own comment for why this can't just be the
-     * first touched edge's orientation. */
-    orientation: 'h' | 'v' | null;
+    /** `null` until the drag has moved far enough to tell direction — see
+     * `handlePointerMove`'s own comment. One of the 3 parallel-edge
+     * families (`creationGeometry.ts`'s `dragFamily`), not an 'h'/'v'
+     * pair — a hex cell has 3 edge orientations, not 2. */
+    family: 0 | 1 | 2 | null;
   } | null>(null);
   const [dragPlacement, setDragPlacement] = useState<PlacementSelection | null>(
     null
   );
+  /** Region-brush drag state (Kirk's ask: "building a region should have
+   * us draw the shape. right now we have to click every square") — `mode`
+   * is decided ONCE, from the FIRST cell's own membership (or a Shift
+   * override, the "modifier... removes" eraser), then held for the whole
+   * stroke, mirroring the wall stroke's own `addMode`. `touched` is a
+   * per-stroke, once-per-cell dedup set — without it, a slow drag firing
+   * many pointer-move events over the SAME cell would call the mutator
+   * repeatedly for no reason (each call is already idempotent against
+   * `mode`, so this is a perf/no-op guard, not a correctness one). */
+  const [regionStroke, setRegionStroke] = useState<{
+    mode: 'add' | 'erase';
+    touched: Set<string>;
+  } | null>(null);
 
   const grid = doc.canvas ?? DEFAULT_CANVAS;
-  const width = grid.width * FLAT_COL_SPACING;
-  const height = grid.height * FLAT_ROW_SPACING;
-  const pad = FLAT_COL_SPACING;
 
   const toBoardPoint = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -238,12 +262,29 @@ export function CreationBoard({
     }
     if (tool === 'region') {
       const cell = nearestCreationCell(p, grid);
+      const cellKey = `${cell[0]},${cell[1]}`;
       if (regionEdit.selectedRegionId) {
-        // Editing an existing region's membership — every click toggles
-        // this cell in/out of THAT region, regardless of whether it
-        // belongs to some other region already (addCellToRegion's own
-        // overlap validation catches that case and surfaces a toast).
-        regionEdit.handleToggleCellOnSelected(cell);
+        // Editing an existing region's membership. Mode for the WHOLE
+        // drag is decided here, from this first cell — Shift forces
+        // erase (the "modifier... removes" affordance) regardless of
+        // this cell's own state; otherwise erase iff this cell is
+        // already a member, matching the pre-drag-brush single-click
+        // toggle feel. `addCellToRegion`'s own overlap validation still
+        // catches a cell that belongs to another region (surfaces a
+        // toast), same as before.
+        const region = doc.regions.find(
+          (r) => r.id === regionEdit.selectedRegionId
+        );
+        const isMember =
+          region?.cells.some((c) => c[0] === cell[0] && c[1] === cell[1]) ??
+          false;
+        const mode: 'add' | 'erase' = e.shiftKey
+          ? 'erase'
+          : isMember
+            ? 'erase'
+            : 'add';
+        regionEdit.setSelectedRegionCellMembership(cell, mode === 'add');
+        setRegionStroke({ mode, touched: new Set([cellKey]) });
         return;
       }
       // No region selected yet: a click on an EXISTING region's cell
@@ -252,8 +293,12 @@ export function CreationBoard({
       // this cell into the region I'm painting," even if it happens to
       // land on another region's territory, since createRegion's own
       // overlap check is what should catch that, not a silent
-      // reinterpretation of the click). Otherwise, toggle the cell into
-      // the pending (not-yet-created) region.
+      // reinterpretation of the click). A SELECT click never starts a
+      // paint stroke — it's a discrete action, not a drag gesture; the
+      // author drags to paint on a SEPARATE gesture after selecting.
+      // Otherwise, this is the first cell of a pending-region paint
+      // stroke — same add-vs-erase mode decision as the selected-region
+      // branch above.
       const hit =
         regionEdit.pendingCells.length === 0
           ? doc.regions.find((r) =>
@@ -262,16 +307,25 @@ export function CreationBoard({
           : undefined;
       if (hit) {
         regionEdit.selectRegion(hit.id);
-      } else {
-        regionEdit.togglePendingCell(cell);
+        return;
       }
+      const isPending = regionEdit.pendingCells.some(
+        (c) => c[0] === cell[0] && c[1] === cell[1]
+      );
+      const mode: 'add' | 'erase' = e.shiftKey
+        ? 'erase'
+        : isPending
+          ? 'erase'
+          : 'add';
+      regionEdit.setPendingCellMembership(cell, mode === 'add');
+      setRegionStroke({ mode, touched: new Set([cellKey]) });
       return;
     }
     const edge = nearestEdge(p, grid);
     if (!edge) return;
     if (tool === 'wall') {
       const existing = wallAtEdge(doc, edge.cellA, edge.cellB);
-      setStroke({ addMode: !existing, startPoint: p, orientation: null });
+      setStroke({ addMode: !existing, startPoint: p, family: null });
       applyEdgeAction(edge, !existing);
     } else if (tool === 'door') {
       applyEdgeAction(edge);
@@ -280,8 +334,10 @@ export function CreationBoard({
 
   // A quarter cell of movement before committing to a direction — small
   // enough to feel immediate, large enough not to fire on hand-tremor.
-  const DIRECTION_LOCK_THRESHOLD =
-    Math.min(FLAT_COL_SPACING, FLAT_ROW_SPACING) * 0.25;
+  // Board-space, not tied to any one axis (hex has 3 edge families, not
+  // 2), so this compares against the hex radius directly rather than a
+  // per-axis spacing constant the square predecessor had.
+  const DIRECTION_LOCK_THRESHOLD = BOARD_HEX_SIZE * 0.5;
 
   const handlePointerMove: React.PointerEventHandler<SVGSVGElement> = (e) => {
     const p = toBoardPoint(e.clientX, e.clientY);
@@ -292,25 +348,26 @@ export function CreationBoard({
     }
     if (tool === 'wall' || tool === 'door') {
       if (stroke && tool === 'wall') {
-        let orientation = stroke.orientation;
-        if (orientation === null) {
-          // A horizontal drag draws a horizontal wall (consecutive 'h'
-          // edges share endpoints and connect end-to-end into one
-          // straight line); a vertical drag draws a vertical one — this
-          // is the OPPOSITE of "whichever edge the pointer happens to be
-          // closest to right now" (that's a function of exactly where
-          // inside a cell the cursor sits, not of which way the user is
-          // dragging, and using it produced a crenellated comb instead
-          // of a straight wall — see CONTRACT.md's wall-interaction
-          // finding for the concrete before/after).
+        let family = stroke.family;
+        if (family === null) {
+          // A drag along one of the 3 hex edge families draws a wall in
+          // that family (dragFamily picks whichever family's own edge
+          // LINE is most nearly parallel to the drag vector — tracing a
+          // wall means dragging roughly along it). Locked once per
+          // stroke so a long drag can't wander onto an unrelated third
+          // family mid-way — see creationGeometry.ts's `nearestEdge` doc
+          // comment for why this is a stabilizer, not (like the square
+          // predecessor's h/v lock) a correctness fix: a hex cell's 6
+          // nearest-edge regions already tile with no gap, so a plain
+          // unlocked pick can't produce the old crenellated-comb bug.
           const dx = p.x - stroke.startPoint.x;
           const dy = p.y - stroke.startPoint.y;
           if (Math.hypot(dx, dy) >= DIRECTION_LOCK_THRESHOLD) {
-            orientation = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
-            setStroke({ ...stroke, orientation });
+            family = dragFamily(dx, dy);
+            setStroke({ ...stroke, family });
           }
         }
-        const edge = nearestEdge(p, grid, orientation ?? undefined);
+        const edge = nearestEdge(p, grid, family ?? undefined);
         setHoverEdge(edge);
         if (edge)
           onToggleWallEdge(edge.cellA, edge.cellB, 'solid', stroke.addMode);
@@ -321,16 +378,78 @@ export function CreationBoard({
     } else {
       setHoverEdge(null);
     }
+    if (tool === 'region' && regionStroke) {
+      const cell = nearestCreationCell(p, grid);
+      const key = `${cell[0]},${cell[1]}`;
+      if (!regionStroke.touched.has(key)) {
+        regionStroke.touched.add(key);
+        if (regionEdit.selectedRegionId) {
+          regionEdit.setSelectedRegionCellMembership(
+            cell,
+            regionStroke.mode === 'add'
+          );
+        } else {
+          regionEdit.setPendingCellMembership(
+            cell,
+            regionStroke.mode === 'add'
+          );
+        }
+      }
+    }
   };
 
   const handlePointerUp: React.PointerEventHandler<SVGSVGElement> = () => {
     setStroke(null);
     setDragPlacement(null);
+    setRegionStroke(null);
   };
+
+  // --- base grid: one hex polygon per cell, replacing the square
+  // predecessor's tiled-rect pattern background. Also the extent-tracking
+  // pass the viewBox below is computed from — a hex canvas' true bounding
+  // box isn't a clean `width*height` rectangle the way a square grid's
+  // was (see hexLayout.ts's own "the floor plan shears diagonally"
+  // finding, CONTRACT.md), so it's derived from real corner positions
+  // like Board.tsx's compiled-board viewBox already does, not recomputed
+  // by a second, parallel formula.
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity;
+  const trackExtent = (x: number, y: number) => {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  };
+  const trackCellExtent = (col: number, row: number) => {
+    creationCellPolygon(col, row).forEach(([x, y]) => trackExtent(x, y));
+  };
+
+  const cellEls: ReactElement[] = [];
+  for (let col = 0; col < grid.width; col++) {
+    for (let row = 0; row < grid.height; row++) {
+      const corners = creationCellPolygon(col, row);
+      corners.forEach(([x, y]) => trackExtent(x, y));
+      const points = corners
+        .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+        .join(' ');
+      cellEls.push(
+        <polygon
+          key={`cell-${col}-${row}`}
+          points={points}
+          fill="#1a1512"
+          stroke="#2a2521"
+          strokeWidth={1}
+          pointerEvents="none"
+        />
+      );
+    }
+  }
 
   const wallEls: ReactElement[] = [];
   for (const wall of doc.walls) {
-    const edge = wallGeometry(wall);
+    const edge = wallGeometry(wall.from, wall.to);
     wallEls.push(
       <line
         key={`${wall.from.join(',')}-${wall.to.join(',')}`}
@@ -360,17 +479,15 @@ export function CreationBoard({
 
   // Same dark/dashed treatment Board.tsx (edit mode) uses for a target-
   // dialect hole — one visual language for "no floor here" across both
-  // boards.
+  // boards. Hex polygon now, not an axis-aligned rect.
   const holeEls: ReactElement[] = doc.holes.map(([col, row]) => {
-    const center = creationCellCenter(col, row);
-    const half = { x: FLAT_COL_SPACING * 0.42, y: FLAT_ROW_SPACING * 0.42 };
+    const corners = creationCellPolygon(col, row, CELL_SIZE * 0.75)
+      .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+      .join(' ');
     return (
-      <rect
+      <polygon
         key={`hole-${col}-${row}`}
-        x={center.x - half.x}
-        y={center.y - half.y}
-        width={half.x * 2}
-        height={half.y * 2}
+        points={corners}
         fill="#050403"
         stroke="#2a1a33"
         strokeWidth={1.5}
@@ -380,10 +497,10 @@ export function CreationBoard({
     );
   });
 
-  // Cell-authored semantic regions (rpg-project#180) — a tinted rect per
-  // member cell (archetype-colored via `regionArchetypeColor`, the SAME
-  // color the edit-mode hex board's read-only overlay uses) plus one
-  // label at the region's centroid. `pointerEvents="none"` throughout:
+  // Cell-authored semantic regions (rpg-project#180) — a tinted hex
+  // polygon per member cell (archetype-colored via `regionArchetypeColor`,
+  // the SAME color the edit-mode hex board's read-only overlay uses) plus
+  // one label at the region's centroid. `pointerEvents="none"` throughout:
   // the board's own `handlePointerDown` already resolves "was an existing
   // region clicked" via `nearestCreationCell` + a `doc.regions` scan, so
   // these elements are purely visual, not a second independent hit-test
@@ -393,15 +510,13 @@ export function CreationBoard({
     const color = regionArchetypeColor(region.archetype);
     const selected = regionEdit.selectedRegionId === region.id;
     for (const [col, row] of region.cells) {
-      const center = creationCellCenter(col, row);
-      const half = { x: FLAT_COL_SPACING * 0.46, y: FLAT_ROW_SPACING * 0.46 };
+      const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
+        .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+        .join(' ');
       regionEls.push(
-        <rect
+        <polygon
           key={`region-${region.id}-${col}-${row}`}
-          x={center.x - half.x}
-          y={center.y - half.y}
-          width={half.x * 2}
-          height={half.y * 2}
+          points={corners}
           fill={color}
           fillOpacity={selected ? 0.32 : 0.18}
           stroke={color}
@@ -428,23 +543,46 @@ export function CreationBoard({
         {region.name ?? region.id}
       </text>
     );
+
+    // OPEN boundary edges — Kirk's false-enclosure worry made visible
+    // (creationGeometry.ts's `openBoundaryEdges` doc comment has the full
+    // rationale). Drawn for EVERY region, not just the selected one — an
+    // author scanning the whole board should be able to see at a glance
+    // which regions are actually sealed, not have to select each one in
+    // turn to find out. A hot, unmissable red/orange, deliberately louder
+    // than the region's own archetype-colored fill (this file's "loud
+    // beats subtle" precedent, CONTRACT.md) — a gap in a boundary is a
+    // correctness fact, not a decoration.
+    for (const edge of openBoundaryEdges(region.cells, doc.walls)) {
+      regionEls.push(
+        <line
+          key={`region-${region.id}-open-${edge.cellA.join(',')}-${edge.cellB.join(',')}`}
+          x1={edge.a.x}
+          y1={edge.a.y}
+          x2={edge.b.x}
+          y2={edge.b.y}
+          stroke="#ff5a3a"
+          strokeWidth={3}
+          strokeLinecap="round"
+          pointerEvents="none"
+        />
+      );
+    }
   }
 
   // The in-progress, not-yet-created region's own pending cells — same
-  // rect treatment, dashed amber to read as "not committed yet" (matching
-  // this file's own hover-edge/wall-drawing amber-for-provisional
-  // convention elsewhere in this component).
+  // hex-polygon treatment, dashed amber to read as "not committed yet"
+  // (matching this file's own hover-edge/wall-drawing amber-for-
+  // provisional convention elsewhere in this component).
   const pendingRegionEls: ReactElement[] = regionEdit.pendingCells.map(
     ([col, row]) => {
-      const center = creationCellCenter(col, row);
-      const half = { x: FLAT_COL_SPACING * 0.46, y: FLAT_ROW_SPACING * 0.46 };
+      const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
+        .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+        .join(' ');
       return (
-        <rect
+        <polygon
           key={`region-pending-${col}-${row}`}
-          x={center.x - half.x}
-          y={center.y - half.y}
-          width={half.x * 2}
-          height={half.y * 2}
+          points={corners}
           fill="#ffb347"
           fillOpacity={0.28}
           stroke="#ffb347"
@@ -462,10 +600,7 @@ export function CreationBoard({
     facing: number | null,
     sel: PlacementSelection
   ) => {
-    const center = {
-      x: at[0] * FLAT_COL_SPACING,
-      y: at[1] * FLAT_ROW_SPACING,
-    };
+    const center = creationCellCenter(at[0], at[1]);
     const style = resolveMarkerStyle(ref);
     // roomId comparison matters here even though every creation-mode
     // placement shares roomId: null today — matches Board.tsx's own
@@ -514,12 +649,21 @@ export function CreationBoard({
     renderPlacement(p.ref, p.at, p.facing, { roomId: null, index })
   );
 
+  if (doc.start) trackCellExtent(doc.start[0], doc.start[1]);
+  if (doc.end) trackCellExtent(doc.end[0], doc.end[1]);
+
+  const pad = BOARD_HEX_SIZE * 1.6;
+  const vx = minX - pad;
+  const vy = minY - pad;
+  const vw = maxX - minX + pad * 2;
+  const vh = maxY - minY + pad * 2;
+
   return (
     <svg
       ref={svgRef}
-      viewBox={`${-pad} ${-pad} ${width + pad * 2} ${height + pad * 2}`}
-      width={Math.max(width + pad * 2, 600)}
-      height={Math.max(height + pad * 2, 420)}
+      viewBox={`${vx} ${vy} ${vw} ${vh}`}
+      width={Math.max(vw, 600)}
+      height={Math.max(vh, 420)}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -531,43 +675,7 @@ export function CreationBoard({
             : 'default',
       }}
     >
-      <defs>
-        <pattern
-          id="creation-grid"
-          width={FLAT_COL_SPACING}
-          height={FLAT_ROW_SPACING}
-          patternUnits="userSpaceOnUse"
-        >
-          <rect
-            width={FLAT_COL_SPACING}
-            height={FLAT_ROW_SPACING}
-            fill="#1a1512"
-          />
-          <path
-            d={`M ${FLAT_COL_SPACING} 0 L 0 0 0 ${FLAT_ROW_SPACING}`}
-            fill="none"
-            stroke="#2a2521"
-            strokeWidth={1}
-          />
-        </pattern>
-      </defs>
-
-      <rect
-        x={-FLAT_COL_SPACING / 2}
-        y={-FLAT_ROW_SPACING / 2}
-        width={width}
-        height={height}
-        fill="url(#creation-grid)"
-      />
-      <rect
-        x={-FLAT_COL_SPACING / 2}
-        y={-FLAT_ROW_SPACING / 2}
-        width={width}
-        height={height}
-        fill="none"
-        stroke="#c9a227"
-        strokeWidth={3}
-      />
+      {cellEls}
 
       {regionEls}
       {pendingRegionEls}
@@ -588,52 +696,60 @@ export function CreationBoard({
         />
       )}
 
-      {doc.start && (
-        <g pointerEvents="none">
-          <circle
-            cx={doc.start[0] * FLAT_COL_SPACING}
-            cy={doc.start[1] * FLAT_ROW_SPACING}
-            r={13}
-            fill="none"
-            stroke={START_COLOR}
-            strokeWidth={2.5}
-            strokeDasharray="4 3"
-          />
-          <text
-            x={doc.start[0] * FLAT_COL_SPACING}
-            y={doc.start[1] * FLAT_ROW_SPACING - 18}
-            textAnchor="middle"
-            fill="#8fe8e0"
-            fontSize={10}
-            fontWeight={700}
-          >
-            START
-          </text>
-        </g>
-      )}
-      {doc.end && (
-        <g pointerEvents="none">
-          <circle
-            cx={doc.end[0] * FLAT_COL_SPACING}
-            cy={doc.end[1] * FLAT_ROW_SPACING}
-            r={13}
-            fill="none"
-            stroke={END_COLOR}
-            strokeWidth={2.5}
-            strokeDasharray="4 3"
-          />
-          <text
-            x={doc.end[0] * FLAT_COL_SPACING}
-            y={doc.end[1] * FLAT_ROW_SPACING - 18}
-            textAnchor="middle"
-            fill="#ffd76a"
-            fontSize={10}
-            fontWeight={700}
-          >
-            END
-          </text>
-        </g>
-      )}
+      {doc.start &&
+        (() => {
+          const c = cellCenter(doc.start[0], doc.start[1]);
+          return (
+            <g pointerEvents="none">
+              <circle
+                cx={c.x}
+                cy={c.y}
+                r={13}
+                fill="none"
+                stroke={START_COLOR}
+                strokeWidth={2.5}
+                strokeDasharray="4 3"
+              />
+              <text
+                x={c.x}
+                y={c.y - 18}
+                textAnchor="middle"
+                fill="#8fe8e0"
+                fontSize={10}
+                fontWeight={700}
+              >
+                START
+              </text>
+            </g>
+          );
+        })()}
+      {doc.end &&
+        (() => {
+          const c = cellCenter(doc.end[0], doc.end[1]);
+          return (
+            <g pointerEvents="none">
+              <circle
+                cx={c.x}
+                cy={c.y}
+                r={13}
+                fill="none"
+                stroke={END_COLOR}
+                strokeWidth={2.5}
+                strokeDasharray="4 3"
+              />
+              <text
+                x={c.x}
+                y={c.y - 18}
+                textAnchor="middle"
+                fill="#ffd76a"
+                fontSize={10}
+                fontWeight={700}
+              >
+                END
+              </text>
+            </g>
+          );
+        })()}
 
       {placementEls}
     </svg>
