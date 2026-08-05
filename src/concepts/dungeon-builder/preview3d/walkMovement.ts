@@ -1,0 +1,323 @@
+/**
+ * walkMovement — pure movement-legality for the author-walkthrough's Walk
+ * mode (rpg-project#169, Kirk's day-one ask: "a 3d view from the player
+ * perspective that has the lighting loaded"). Answers exactly one
+ * question, in world space: given a proposed step, where does the camera
+ * actually end up, honoring the SAME document truth every other view in
+ * this concept already renders?
+ *
+ * **Reuses the existing legality/footprint/crossing modules, does not
+ * reimplement geometry** (this unit's own scope note): a straight wall's
+ * FOOTPRINT and CROSSED-EDGE math come straight from
+ * `creation/straightWallGeometry.ts` (`straightWallFootprint`,
+ * `straightWallCrossedEdges`) — the exact functions the 2D board's own
+ * hatch/warning overlays and `canvasFloor.ts`'s placement-legality gate
+ * already call, not a parallel derivation. The floor-cell set this module
+ * walks (`cells: PlaceableCell[]`) is `DungeonPreview3D.tsx`'s own
+ * `buildPlaceableCells` output — the SAME per-cell col/row/world-position
+ * list click-to-place already resolves against, so "which cell is the
+ * camera standing in" and "which cell would a click place into" can never
+ * disagree.
+ *
+ * **Blocking rule, matched to Kirk's own rule for a drawn straight wall**
+ * ("any hex that is not 100% uncovered would not be traversable") and
+ * generalized to every source of impassability this document can author:
+ * a cell is walkable floor MINUS three things — a straight-wall
+ * (`wallLines:`) footprint cell, a `place:`/room-`place:` entry whose
+ * `resolvePlacement(...).blocksMovement` resolves true (the SAME
+ * inherited-default-aware resolver `isEntranceBlocked` already reads, so
+ * a `defaults:`-inherited block is honored here exactly like an explicit
+ * one), and a room's `boss:` cell (a monster standing there is always an
+ * obstacle — `BossDoc` carries no `blocks_movement` field to resolve, so
+ * this is a flat rule, not a resolved one). Separately, EDGE-crossing
+ * between two individually-walkable cells is blocked by an edge-native
+ * `walls:` (or server-truth `FloorPlan.edges`) entry whose `kind ===
+ * 'solid'` — a `kind: 'door'` edge is deliberately NOT added to the
+ * blocked-edge set, so a door is simply passable, matching this file's
+ * neighbor `DungeonPreview3D.tsx`'s own `DoorGap` rendering (a genuine
+ * open span, not a shortened solid box). A `wallLines:` door is already
+ * handled one layer down: its cell is excluded from the OWNING line's own
+ * footprint (`WallLineDoorDoc`'s own doc comment — "as if the line never
+ * clipped it"), so it never enters `blockedCells`, and its own boundary
+ * crossings fall out of `straightWallCrossedEdges`'s ordinary
+ * both-clear-cells rule with no separate door-crossing code needed here
+ * either.
+ */
+import { HEX_SIZE } from '@/components/hex-grid/hexMath';
+import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { DEFAULT_CANVAS } from '../creation/emptyCanvasDoc';
+import {
+  cellKey,
+  straightWallCrossedEdges,
+  straightWallFootprint,
+} from '../creation/straightWallGeometry';
+import {
+  resolvePlacement,
+  type DungeonDoc,
+  type PlacementDoc,
+} from '../dungeonYaml';
+import { floorPlanEdgesToServerEdges, hasServerEdges } from '../edgesAdapter';
+import type { PlaceableCell } from './DungeonPreview3D';
+
+/** A cell-pair key with no notion of direction — `edgeKey(a,b) ===
+ * edgeKey(b,a)` always, by sorting the two `[col,row]` pairs
+ * lexicographically before joining them. Deliberately independent of
+ * `creationGeometry.ts`'s own `canonicalHexEdge` (a facing-derived
+ * convention) — this module ingests edges from THREE different sources
+ * (`doc.walls`, server-truth `FloorPlan.edges`, and
+ * `straightWallCrossedEdges`'s own `EdgeGeometry.cellA/cellB`, itself
+ * already canonical under a DIFFERENT rule), so a single self-contained
+ * key format that only needs the two endpoints — not which cell a caller
+ * happened to start from, nor which of the three sources produced it —
+ * is simpler than reconciling three conventions into one. */
+function edgeKey(
+  colA: number,
+  rowA: number,
+  colB: number,
+  rowB: number
+): string {
+  const a = cellKey(colA, rowA);
+  const b = cellKey(colB, rowB);
+  return a <= b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+export interface WalkContext {
+  cellList: readonly PlaceableCell[];
+  cellsByKey: ReadonlyMap<string, PlaceableCell>;
+  blockedCells: ReadonlySet<string>;
+  blockedEdges: ReadonlySet<string>;
+}
+
+/** Build the walk-time legality index once per render (memoized by the
+ * caller, same as every other derived structure `DungeonPreview3D.tsx`
+ * already computes) — everything below is a plain lookup against this,
+ * no re-derivation per frame. */
+export function buildWalkContext(
+  floorPlan: FloorPlan | undefined,
+  doc: DungeonDoc,
+  cells: readonly PlaceableCell[],
+  wallLineFootprint: ReadonlySet<string>
+): WalkContext {
+  const cellsByKey = new Map<string, PlaceableCell>();
+  for (const c of cells) cellsByKey.set(cellKey(c.col, c.row), c);
+
+  const blockedCells = new Set<string>(wallLineFootprint);
+  const addIfBlocking = (p: PlacementDoc, absCol: number, row: number) => {
+    if (resolvePlacement(doc, p).blocksMovement) {
+      blockedCells.add(cellKey(absCol, row));
+    }
+  };
+  if (floorPlan) {
+    for (const room of doc.rooms) {
+      const fpRoom = floorPlan.rooms.find((r) => r.id === room.id);
+      if (!fpRoom) continue;
+      for (const p of room.place) {
+        addIfBlocking(p, fpRoom.startColumn + p.at[0], p.at[1]);
+      }
+      if (room.boss) {
+        blockedCells.add(
+          cellKey(fpRoom.startColumn + room.boss.at[0], room.boss.at[1])
+        );
+      }
+    }
+  }
+  for (const p of doc.place) addIfBlocking(p, p.at[0], p.at[1]);
+
+  const blockedEdges = new Set<string>();
+  for (const w of doc.walls) {
+    if (w.kind === 'solid') {
+      blockedEdges.add(edgeKey(w.from[0], w.from[1], w.to[0], w.to[1]));
+    }
+  }
+  if (floorPlan && hasServerEdges(floorPlan)) {
+    for (const e of floorPlanEdgesToServerEdges(floorPlan)) {
+      if (e.kind === 'solid') {
+        blockedEdges.add(edgeKey(e.from[0], e.from[1], e.to[0], e.to[1]));
+      }
+    }
+  }
+  const grid = doc.canvas ?? DEFAULT_CANVAS;
+  for (const line of doc.wallLines) {
+    const doorCells = line.doors.map((d) => d.cell);
+    const footprint = straightWallFootprint(
+      line.from,
+      line.to,
+      grid,
+      doorCells
+    );
+    for (const edge of straightWallCrossedEdges(
+      line.from,
+      line.to,
+      grid,
+      footprint
+    )) {
+      blockedEdges.add(
+        edgeKey(edge.cellA[0], edge.cellA[1], edge.cellB[0], edge.cellB[1])
+      );
+    }
+  }
+
+  return { cellList: cells, cellsByKey, blockedCells, blockedEdges };
+}
+
+/** Whether `(col, row)` is real floor AND not blocked — the single
+ * per-cell legality check every function below composes from. */
+export function canStandAt(
+  ctx: WalkContext,
+  col: number,
+  row: number
+): boolean {
+  const key = cellKey(col, row);
+  return ctx.cellsByKey.has(key) && !ctx.blockedCells.has(key);
+}
+
+/** Nearest cell (standable or not — callers that need "which cell would
+ * this land in" use this, then apply their own legality check) to a
+ * world-space point, by squared XZ distance. Brute-force over `cellList`,
+ * the same "simpler and cheaper to verify than a closed-form inverse"
+ * reasoning `boardGeometry.ts`'s own `nearestCell` already uses — this
+ * one is cheaper still, since it only ever scans the real floor-cell list
+ * `buildPlaceableCells` already produced, not a full bounding rectangle. */
+export function nearestCell(
+  ctx: WalkContext,
+  worldX: number,
+  worldZ: number
+): PlaceableCell | null {
+  let best: PlaceableCell | null = null;
+  let bestDistSq = Infinity;
+  for (const c of ctx.cellList) {
+    const d = (c.worldX - worldX) ** 2 + (c.worldZ - worldZ) ** 2;
+    if (d < bestDistSq) {
+      bestDistSq = d;
+      best = c;
+    }
+  }
+  return best;
+}
+
+function nearestStandableCell(
+  ctx: WalkContext,
+  worldX: number,
+  worldZ: number
+): PlaceableCell | null {
+  let best: PlaceableCell | null = null;
+  let bestDistSq = Infinity;
+  for (const c of ctx.cellList) {
+    if (!canStandAt(ctx, c.col, c.row)) continue;
+    const d = (c.worldX - worldX) ** 2 + (c.worldZ - worldZ) ** 2;
+    if (d < bestDistSq) {
+      bestDistSq = d;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/** The mean world position across every real floor cell — NOT
+ * `doc.canvas`'s nominal bounds center (`canvasFloor.ts`'s own "every
+ * cell inside canvas bounds, minus holes" semantic means the drawn floor
+ * can be a small, off-center subset of a much larger declared canvas).
+ * `null` for an empty floor. Shared by `resolveWalkStart`'s own fallback
+ * below and `WalkCamera.tsx`'s default look-at target — "roughly toward
+ * the middle of the dungeon" is the same useful direction for both. */
+export function floorCentroid(
+  ctx: WalkContext
+): { worldX: number; worldZ: number } | null {
+  if (ctx.cellList.length === 0) return null;
+  let sumX = 0;
+  let sumZ = 0;
+  for (const c of ctx.cellList) {
+    sumX += c.worldX;
+    sumZ += c.worldZ;
+  }
+  return {
+    worldX: sumX / ctx.cellList.length,
+    worldZ: sumZ / ctx.cellList.length,
+  };
+}
+
+/** Where Walk mode starts: the doc's own `start:` marker when it resolves
+ * to a real, standable cell; else the standable cell nearest the floor's
+ * own centroid (`floorCentroid`, above); else the first standable cell
+ * found at all (an exotic fully-surrounded `start:` with no better
+ * fallback); else `null` (no floor to walk on — the caller's own honest
+ * degrade, not this module's). */
+export function resolveWalkStart(
+  ctx: WalkContext,
+  doc: Pick<DungeonDoc, 'start'>
+): PlaceableCell | null {
+  if (doc.start) {
+    const [col, row] = doc.start;
+    if (canStandAt(ctx, col, row)) {
+      const cell = ctx.cellsByKey.get(cellKey(col, row));
+      if (cell) return cell;
+    }
+  }
+  const centroid = floorCentroid(ctx);
+  if (!centroid) return null;
+  const nearest = nearestStandableCell(ctx, centroid.worldX, centroid.worldZ);
+  if (nearest) return nearest;
+  return ctx.cellList.find((c) => canStandAt(ctx, c.col, c.row)) ?? null;
+}
+
+/** How far a target point may sit from the nearest real floor cell and
+ * still be considered "standing in" that cell, for `resolveWalkStep`'s
+ * own collision check — `nearestCell` itself always returns SOMETHING
+ * (the closest cell in the list, however far), which is correct for a
+ * query like "which real cell is closest to this centroid"
+ * (`resolveWalkStart`) but wrong for per-frame collision: without a
+ * cutoff, an abnormally large single-frame delta (a dropped frame, a
+ * runaway input) would silently snap the camera onto whatever real floor
+ * cell happens to be globally nearest, potentially straight through
+ * solid geometry in between, rather than correctly reading as "this step
+ * doesn't land on any floor at all." `HEX_SIZE * 2` is generous against
+ * real adjacent-hex spacing (~1.73 world units center-to-center at
+ * `HEX_SIZE = 1`) — comfortably larger than any single frame's real
+ * movement at `WalkCamera.tsx`'s own walk speed, so it never rejects a
+ * genuine step, only a wildly out-of-range one. */
+const MAX_STEP_CONTAINMENT_DISTANCE = HEX_SIZE * 2;
+
+/** One frame's worth of proposed movement, resolved against the walk
+ * context — "simple grid-constrained motion... slide-along or stop at
+ * blocks" (this unit's own scope): tries the full diagonal step first,
+ * then each axis independently (the slide-along-a-wall feel), and
+ * finally gives up and holds position — never a physics engine, never
+ * anything more than three legality checks against cells already
+ * resolved above. `x`/`z` and `dx`/`dz` are all world-space units; `y`
+ * (eye height) is the caller's own fixed constant, untouched here. */
+export function resolveWalkStep(
+  ctx: WalkContext,
+  x: number,
+  z: number,
+  dx: number,
+  dz: number
+): { x: number; z: number } {
+  const canMove = (ndx: number, ndz: number): boolean => {
+    if (ndx === 0 && ndz === 0) return false;
+    const targetX = x + ndx;
+    const targetZ = z + ndz;
+    const toCell = nearestCell(ctx, targetX, targetZ);
+    if (!toCell) return false;
+    const distSq =
+      (toCell.worldX - targetX) ** 2 + (toCell.worldZ - targetZ) ** 2;
+    if (distSq > MAX_STEP_CONTAINMENT_DISTANCE ** 2) return false;
+    if (!canStandAt(ctx, toCell.col, toCell.row)) return false;
+    const fromCell = nearestCell(ctx, x, z);
+    if (
+      fromCell &&
+      (fromCell.col !== toCell.col || fromCell.row !== toCell.row) &&
+      ctx.blockedEdges.has(
+        edgeKey(fromCell.col, fromCell.row, toCell.col, toCell.row)
+      )
+    ) {
+      return false;
+    }
+    return true;
+  };
+  if (canMove(dx, dz)) return { x: x + dx, z: z + dz };
+  if (canMove(dx, 0)) return { x: x + dx, z };
+  if (canMove(0, dz)) return { x, z: z + dz };
+  return { x, z };
+}
+
+export { edgeKey };
