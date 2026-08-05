@@ -22,10 +22,25 @@
  *
  * See TARGET-YAML.md's "canvas:" section for this semantic recorded
  * as a dialect note, not just left as an implementation detail here.
+ *
+ * **v0.3 wire consumption (this unit, 2026-08-05)**: `deriveCanvasFloorCells`
+ * above is now the FALLBACK, not the only source — `resolveCanvasFloor`
+ * below prefers a live `FloorPlan.floor_cells` (rpg-api-protos v0.1.120,
+ * spec.md §4.5.9) the moment a real response carries one. See
+ * `resolveCanvasFloor`'s own doc comment for the rollout discipline (spec
+ * §1 group (c) is not shipped server-side yet, so this path is dormant
+ * against every live server today — verified by the
+ * rpg-api-protos#214 conformance review's finding A4).
  */
+import type {
+  FloorPlan,
+  FloorPlanCell,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { isCellOccupied } from '../boardGeometry';
 import type { DungeonDoc } from '../dungeonYaml';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
+
+export type Cell = [number, number];
 
 /** Every `[col, row]` cell inside `doc.canvas`'s bounds (or
  * `DEFAULT_CANVAS` when the document carries none, matching
@@ -45,6 +60,84 @@ export function deriveCanvasFloorCells(
     }
   }
   return cells;
+}
+
+/** Ascending lexicographic `(column, row)` — the wire's own declared
+ * order for both `FloorPlan.floor_cells` and `FloorPlanRegion.cells`
+ * (rpg-api-protos v0.1.120's own field comments: "producers emit cells in
+ * ascending lexicographic (column, row) order"). `deriveCanvasFloorCells`
+ * above happens to already produce this order today (its column-major
+ * outer loop with an increasing-row inner loop IS ascending lexicographic
+ * whenever there are no holes to filter out — the hole filter only ever
+ * removes entries, never reorders the survivors), but its own doc comment
+ * explicitly does NOT promise that ("not spatially meaningful") — so any
+ * caller that needs to compare a wire cell list against a derived one
+ * (rpg-api-protos#214 conformance review, finding A5) normalizes BOTH
+ * sides through this function first rather than relying on the
+ * coincidence. Used both by `resolveCanvasFloor` below (so its returned
+ * cell list has one canonical order regardless of which source produced
+ * it) and by this concept's tests. */
+export function sortCellsLexicographic(cells: readonly Cell[]): Cell[] {
+  return [...cells].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+}
+
+function floorPlanCellToTuple(cell: FloorPlanCell): Cell {
+  return [cell.column, cell.row];
+}
+
+export type CanvasFloorSource = 'server' | 'derived';
+
+export interface ResolvedCanvasFloor {
+  /** Ascending-lexicographic-normalized (see `sortCellsLexicographic`),
+   * regardless of source. */
+  cells: Cell[];
+  source: CanvasFloorSource;
+}
+
+/**
+ * Chooses the creation canvas's floor cell set: the wire's own
+ * `FloorPlan.floor_cells` (rpg-api-protos v0.1.120, spec.md §4.5.9) when a
+ * live response carries a non-empty one, `deriveCanvasFloorCells` (this
+ * file, client-derived from `doc.canvas` bounds minus `doc.holes`)
+ * otherwise.
+ *
+ * **Rollout discipline (rpg-api-protos#214 conformance review, finding
+ * A4)**: canvas mode (spec.md §1 group (c), rpg-project#192) is not
+ * shipped server-side yet, and the client's own live capability probe
+ * records `canvas` as decode-unknown as of 2026-08-04
+ * (`capabilityProbe.ts`) — so an empty `floor_cells` from a REAL server
+ * today means "the producer hasn't shipped this," never "the document
+ * declares an empty floor." Gating on non-empty rather than on
+ * `floorPlan !== null` is exactly what keeps this fallback-safe: a live
+ * server that's reachable and answering, but pre-Wave-0, produces a
+ * `FloorPlan` with `floorCells: []` (the field's zero value, same as an
+ * unset repeated field), which this function treats identically to no
+ * `floorPlan` at all — never an empty rendered floor.
+ *
+ * Does not itself validate `floorPlan.width`/`floorPlan.height` against
+ * `doc.canvas` — `floor_cells` is a complete, self-describing absolute
+ * cell list per its own field comment ("clients MUST render this list,
+ * not infer floor from width and height"), so this function needs nothing
+ * else from the response to be correct. (`FloorPlan.height`'s canvas-mode
+ * meaning is independently ambiguous on the wire today — conformance
+ * review finding A1 — one more reason not to lean on it here.)
+ */
+export function resolveCanvasFloor(
+  doc: Pick<DungeonDoc, 'canvas' | 'holes'>,
+  floorPlan: FloorPlan | null
+): ResolvedCanvasFloor {
+  if (floorPlan && floorPlan.floorCells.length > 0) {
+    return {
+      cells: sortCellsLexicographic(
+        floorPlan.floorCells.map(floorPlanCellToTuple)
+      ),
+      source: 'server',
+    };
+  }
+  return {
+    cells: sortCellsLexicographic(deriveCanvasFloorCells(doc)),
+    source: 'derived',
+  };
 }
 
 /**

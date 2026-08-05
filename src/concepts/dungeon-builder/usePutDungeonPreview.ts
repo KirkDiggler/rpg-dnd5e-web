@@ -48,6 +48,24 @@
  * `capabilities` resets to `null` the moment `serverState` leaves
  * `'live'` (gate-off/unreachable) — a capability observed against one
  * server is never carried into a fixtures-mode fallback.
+ *
+ * **v0.3 wire consumption (this unit, 2026-08-05)**: this file also
+ * exports `useCreationFloorPlanPreview`, a second, narrower hook for
+ * creation mode's OWN document — creation mode never called `PutDungeon`
+ * at all before this unit (its floor came exclusively from
+ * `creation/canvasFloor.ts`'s client-side `deriveCanvasFloorCells`). It
+ * deliberately does NOT re-run the mount-time reachability probe or the
+ * capability-probe suite above — `serverState`/`capabilities` describe
+ * the SERVER, not which document is being edited, so a second instance
+ * probing independently would double real network traffic (including the
+ * 17-request capability suite) for no new information, every time this
+ * component renders, regardless of which mode tab is even active (React's
+ * rules of hooks mean both hook calls run unconditionally in
+ * `DungeonBuilderConcept.tsx`). Callers pass the ALREADY-established
+ * `serverState`/`capabilities` from this hook's own instance instead. Both
+ * hooks share the same request-building/response-classification logic
+ * (`compileLive` below) so the two paths can't silently drift from each
+ * other.
  */
 import { authoringClient } from '@/api/client';
 import { create } from '@bufbuild/protobuf';
@@ -111,6 +129,60 @@ function classifyFailure(err: unknown): 'gate-off' | 'unreachable' | 'other' {
   // A non-ConnectError throw (network layer never got a structured gRPC
   // response at all) is exactly the "can't reach the server" case too.
   return 'unreachable';
+}
+
+/** One live `validate_only` `PutDungeon` call, shaped and classified —
+ * the exact request-building/response-handling `usePutDungeonPreview`'s
+ * own per-edit effect used to inline, factored out so
+ * `useCreationFloorPlanPreview` (below) can run the identical request for
+ * a SECOND document without a second copy of this logic to drift out of
+ * sync with this one. Never throws. */
+type LiveCompileResult =
+  | { kind: 'unparseable' }
+  | { kind: 'success'; floorPlan: FloorPlan | null }
+  | { kind: 'field-errors'; fieldErrors: ValidationError[] }
+  | { kind: 'unreachable' }
+  | { kind: 'request-error'; message: string };
+
+async function compileLive(
+  doc: DungeonDoc,
+  yamlText: string,
+  capabilities: ServerCapabilities | null
+): Promise<LiveCompileResult> {
+  let subsetYaml: string;
+  try {
+    subsetYaml = stripToV1Subset(yamlText, capabilities ?? undefined).yaml;
+  } catch {
+    // Not even shape-parseable yet (mid-edit) — nothing to preview this
+    // tick. Not a request/field error; the YAML pane's own parse-error
+    // path (DungeonBuilderConcept's applyText) already owns surfacing
+    // this.
+    return { kind: 'unparseable' };
+  }
+  try {
+    const response = await authoringClient.putDungeon(
+      create(PutDungeonRequestSchema, {
+        key: doc.key,
+        yaml: subsetYaml,
+        validateOnly: true,
+      })
+    );
+    if (response.success) {
+      return { kind: 'success', floorPlan: response.floorPlan ?? null };
+    }
+    return { kind: 'field-errors', fieldErrors: response.fieldErrors };
+  } catch (err) {
+    const kind = classifyFailure(err);
+    if (kind === 'unreachable') return { kind: 'unreachable' };
+    // InvalidArgument (key/yaml mismatch, charset) reaching here means the
+    // editor itself constructed a malformed request — a programming
+    // error, never author feedback.
+    return {
+      kind: 'request-error',
+      message:
+        err instanceof ConnectError ? err.message : 'PutDungeon request failed',
+    };
+  }
 }
 
 export function usePutDungeonPreview(
@@ -181,49 +253,25 @@ export function usePutDungeonPreview(
     debounceRef.current = setTimeout(() => {
       (async () => {
         setRequestError(null);
-        let subsetYaml: string;
-        try {
-          subsetYaml = stripToV1Subset(
-            yamlText,
-            capabilities ?? undefined
-          ).yaml;
-        } catch {
-          // Not even shape-parseable yet (mid-edit) — nothing to preview
-          // this tick. Not a request/field error; the YAML pane's own
-          // parse-error path (DungeonBuilderConcept's applyText) already
-          // owns surfacing this.
-          return;
-        }
-        try {
-          const response = await authoringClient.putDungeon(
-            create(PutDungeonRequestSchema, {
-              key: doc.key,
-              yaml: subsetYaml,
-              validateOnly: true,
-            })
-          );
-          if (response.success) {
-            setLiveFloorPlan(response.floorPlan ?? null);
+        const result = await compileLive(doc, yamlText, capabilities);
+        switch (result.kind) {
+          case 'unparseable':
+            return;
+          case 'success':
+            setLiveFloorPlan(result.floorPlan);
             setFieldErrors([]);
-          } else {
-            setFieldErrors(response.fieldErrors);
+            return;
+          case 'field-errors':
+            setFieldErrors(result.fieldErrors);
             // Keep the last good floor plan on screen rather than blanking
             // the board on every keystroke of an in-progress edit.
-          }
-        } catch (err) {
-          const kind = classifyFailure(err);
-          if (kind === 'unreachable') {
+            return;
+          case 'unreachable':
             setServerState('unreachable');
             return;
-          }
-          // InvalidArgument (key/yaml mismatch, charset) reaching here
-          // means the editor itself constructed a malformed request — a
-          // programming error, never author feedback.
-          setRequestError(
-            err instanceof ConnectError
-              ? err.message
-              : 'PutDungeon request failed'
-          );
+          case 'request-error':
+            setRequestError(result.message);
+            return;
         }
       })();
     }, DEBOUNCE_MS);
@@ -252,4 +300,80 @@ export function usePutDungeonPreview(
     capabilities,
     refreshCapabilities: () => setCapabilitiesNonce((n) => n + 1),
   };
+}
+
+/**
+ * useCreationFloorPlanPreview — the creation-mode ("New Dungeon") canvas
+ * document's own live `PutDungeon(validate_only)` preview (v0.3 wire
+ * consumption unit, 2026-08-05). Creation mode never sent its document to
+ * the server at all before this unit — its floor came exclusively from
+ * `creation/canvasFloor.ts`'s client-side `deriveCanvasFloorCells`, and
+ * its regions panel (`creation/RegionPanel.tsx`) from client-derived
+ * containment alone. This hook is what makes a real `FloorPlan.floor_cells`
+ * / `FloorPlan.regions` response reachable for that document, so the
+ * consumers of THIS hook's `floorPlan` (`creation/canvasFloor.ts`'s
+ * `resolveCanvasFloor`, `RegionPanel.tsx`'s wire-vs-derived region tree
+ * comparison) have something real to render from once the server ships
+ * Wave 0/1 (rpg-project#169/#192/#180) — today it stays effectively
+ * dormant, since a live server's `floor_cells`/`regions` are both empty
+ * (decode-unknown fields, per the rpg-api-protos#214 conformance review's
+ * finding A4) and every consumer already falls back to its client-derived
+ * source on empty.
+ *
+ * Deliberately takes `serverState`/`capabilities` as PARAMETERS rather
+ * than probing for them itself — see this file's own header comment for
+ * why a second independent probe would double real network traffic for no
+ * new information. A transport failure on THIS document's own live call
+ * does NOT flip the shared `serverState` (unlike
+ * `usePutDungeonPreview`'s own per-edit effect, which owns that state) —
+ * the edit-mode instance's mount-time probe is the one canonical
+ * reachability signal; this hook just quietly keeps its last-good
+ * `floorPlan` (or `null` if it never had one) until the shared state
+ * itself recovers or the next debounced tick succeeds.
+ *
+ * Never fabricates a local compiled `FloorPlan` the way
+ * `usePutDungeonPreview`'s own `fallbackFloorPlan` does —
+ * `compileFloorPlanLocally` only knows the room-chain shape (rooms/
+ * connectors/entrance) and produces nothing useful for a canvas-mode
+ * document (empty `rooms`, no `floorCells`/`regions` at all), so callers
+ * would get the same "nothing from the wire" signal either way; returning
+ * `null` outright is the more honest of the two equally-empty options.
+ */
+export function useCreationFloorPlanPreview(
+  doc: DungeonDoc | null,
+  yamlText: string,
+  serverState: ServerState,
+  capabilities: ServerCapabilities | null
+): { floorPlan: FloorPlan | null } {
+  const [liveFloorPlan, setLiveFloorPlan] = useState<FloorPlan | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (serverState !== 'live' || !doc) {
+      // Leaving live mode (or having no document yet) invalidates any
+      // previously-fetched response — same "never leak a capability/
+      // response observed against one server into a different state"
+      // discipline `capabilities` itself follows above.
+      setLiveFloorPlan(null);
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      compileLive(doc, yamlText, capabilities).then((result) => {
+        if (result.kind === 'success') setLiveFloorPlan(result.floorPlan);
+        // 'unparseable' (mid-edit)/'field-errors'/'unreachable'/
+        // 'request-error': keep the last-good floor plan on screen,
+        // matching `usePutDungeonPreview`'s own field-errors discipline —
+        // this hook has no field_errors surface of its own (creation
+        // mode's own validation feedback is out of this unit's scope),
+        // so every non-success outcome is treated the same way here:
+        // don't blank a plan that was already rendering.
+      });
+    }, DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [serverState, doc, yamlText, capabilities]);
+
+  return { floorPlan: liveFloorPlan };
 }
