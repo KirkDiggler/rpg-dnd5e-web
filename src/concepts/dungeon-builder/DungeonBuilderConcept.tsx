@@ -50,7 +50,10 @@ import { DungeonPreview3D } from './preview3d/DungeonPreview3D';
 import { RolledContentPanel } from './RolledContentPanel';
 import type { BoardTool } from './types';
 import { useBoardEditing } from './useBoardEditing';
-import { usePutDungeonPreview } from './usePutDungeonPreview';
+import {
+  useCreationFloorPlanPreview,
+  usePutDungeonPreview,
+} from './usePutDungeonPreview';
 import { useSaveDungeon } from './useSaveDungeon';
 import { WallGashExplainer } from './WallGashExplainer';
 import { YamlPane } from './YamlPane';
@@ -282,6 +285,24 @@ export function DungeonBuilderConcept() {
   );
   const creationApplyDebounce = useRef<ReturnType<typeof setTimeout> | null>(
     null
+  );
+
+  // Creation mode's own live FloorPlan preview (v0.3 wire consumption
+  // unit, 2026-08-05) — same "reuse the shared serverState/capabilities,
+  // don't re-probe" reasoning `creationV1Subset` below already documents
+  // for `preview.capabilities`; see `useCreationFloorPlanPreview`'s own
+  // doc comment for why this is a SECOND hook rather than a second call to
+  // `usePutDungeonPreview` itself. Feeds `creation/canvasFloor.ts`'s
+  // `resolveCanvasFloor` and the region tree's wire-vs-derived comparison
+  // — both dormant against every live server today (no shipped producer
+  // carries `floor_cells`/`regions` yet), so this is plumbing for the day
+  // Wave 0/1 lands, not a behavior change against any server reachable
+  // right now.
+  const creationFloorPreview = useCreationFloorPlanPreview(
+    creationDoc,
+    creationYamlText,
+    preview.serverState,
+    preview.capabilities
   );
 
   // Creation mode's own Save & Play (capability-probed graduation, this
@@ -599,6 +620,7 @@ export function DungeonBuilderConcept() {
           serverState={preview.serverState}
           capabilities={preview.capabilities}
           onRefreshCapabilities={preview.refreshCapabilities}
+          liveFloorPlan={creationFloorPreview.floorPlan}
           v1Subset={creationV1Subset}
           onSaveAndPlay={handleCreationSaveAndPlay}
           saveState={creationSave.state}

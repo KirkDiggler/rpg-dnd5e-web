@@ -209,6 +209,17 @@ interface DungeonPreview3DProps {
    * marker) regardless of which floor-tile path won — see
    * `buildFloorTiles`'s own doc comment. */
   floorCells?: readonly [number, number][];
+  /** Which source produced `floorCells` — `creation/canvasFloor.ts`'s
+   * `resolveCanvasFloor` (v0.3 wire consumption unit, 2026-08-05). Purely
+   * a badge/label input, same "caller derives, this component just
+   * renders" discipline `floorCells` itself follows (see this prop's own
+   * doc comment) — this component does not itself decide server-vs-derived,
+   * only displays what the caller already decided. Omitted (or
+   * `undefined`) when `floorCells` itself is absent (edit mode,
+   * `floorPlan`-only) — there is no creation-canvas floor SOURCE to badge
+   * in that case, matching `Board.tsx`'s own edit-mode wall/door
+   * indicator, which this badge mirrors for creation mode's floor. */
+  floorSource?: 'server' | 'derived';
   doc: DungeonDoc;
   /** Kirk's 2026-08-02 "3D editing" arc, part 2 — the SAME
    * `PlacementSelection`/`onSelect` contract `Board.tsx` already uses for
@@ -1183,6 +1194,7 @@ const SELECTED_COLOR = '#ffd76a';
 export function DungeonPreview3D({
   floorPlan,
   floorCells,
+  floorSource,
   doc,
   selectedPlacement,
   onSelect,
@@ -1320,7 +1332,56 @@ export function DungeonPreview3D({
   };
 
   return (
-    <div style={{ width: '100%', height: '100%', background: '#0c0a08' }}>
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        background: '#0c0a08',
+      }}
+    >
+      {/* Canvas floor source indicator (v0.3 wire consumption unit,
+       * 2026-08-05) — same "make drift visible, not silent" idiom as
+       * `Board.tsx`'s wall/door source indicator (`db-wall-source-indicator`):
+       * distinguishes a real `FloorPlan.floor_cells` response
+       * (rpg-api-protos v0.1.120+) from `creation/canvasFloor.ts`'s
+       * client-derived fallback this preview used exclusively before this
+       * unit, and still uses whenever a response carries no floor_cells
+       * (every live server today — rollout gap A4, not a contract defect).
+       * Only rendered when `floorSource` is supplied at all — edit mode's
+       * `floorPlan`-only call site has no creation-canvas floor SOURCE to
+       * badge. */}
+      {floorSource && (
+        <div
+          data-testid="db-floor-source-indicator"
+          style={{
+            position: 'absolute',
+            top: 4,
+            left: 4,
+            zIndex: 5,
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: 0.3,
+            padding: '3px 7px',
+            borderRadius: 4,
+            pointerEvents: 'none',
+            ...(floorSource === 'server'
+              ? {
+                  color: '#100d0b',
+                  background: '#c9bfae',
+                }
+              : {
+                  color: '#e8e2d8',
+                  background: 'rgba(90, 74, 58, 0.55)',
+                  border: '1px dashed #8a7a5a',
+                }),
+          }}
+        >
+          {floorSource === 'server'
+            ? `FLOOR: SERVER (${floorCells?.length ?? 0} cells)`
+            : 'FLOOR: DERIVED'}
+        </div>
+      )}
       <Canvas
         camera={{ fov: 45, position: [10, 14, 10] }}
         onPointerMissed={() => onSelect?.(null)}
