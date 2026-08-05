@@ -29,14 +29,6 @@ connectors:
 walls:
   - { from: [ 7, 1 ], to: [ 8, 1 ], kind: solid }
   - { from: [ 7, 3 ], to: [ 8, 3 ], kind: door }
-  - { from: [ 10, 3 ], to: [ 11, 3 ], kind: door }
-regions:
-  - id: hall-inner
-    archetype: chamber
-    cells: [ [ 9, 2 ], [ 9, 3 ], [ 10, 2 ], [ 10, 3 ] ]
-  - id: hall-annex
-    archetype: chamber
-    cells: [ [ 11, 2 ], [ 11, 3 ] ]
 place:
   - { ref: "dnd5e:props:wall-banner", at: [ 15, 3 ], blocks_movement: false, blocks_los: false, facing: E, mount: wall, height: 1.5, rotate_degrees: -8 }
   - { ref: "dnd5e:props:candles", at: [ 16, 3 ], blocks_movement: false, blocks_los: false, height: 0.4 }
