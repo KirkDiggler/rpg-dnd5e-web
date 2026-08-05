@@ -38,6 +38,7 @@ import {
 } from './markerStyle';
 import { PlacementMarker } from './PlacementMarker';
 import { regionCentroid } from './regionGeometry';
+import { regionsByPaintOrder } from './regionTree';
 import type { BoardTool, PaletteSelection, PlacementSelection } from './types';
 
 interface BoardProps {
@@ -422,7 +423,10 @@ export function Board({
   // handlers, `pointerEvents="none"` throughout, same as the wall/hole
   // overlay above. Same `regionArchetypeColor` the interactive creation
   // board uses, so a region reads as the same archetype in both boards.
-  for (const region of doc.regions) {
+  // Painted biggest-first (`regionsByPaintOrder` above) so a nested
+  // region's overlay draws on top of its container's, "innermost
+  // visible" — see that function's own doc comment.
+  for (const region of regionsByPaintOrder(doc.regions)) {
     const color = regionArchetypeColor(region.archetype);
     for (const [col, row] of region.cells) {
       trackCellExtent(col, row);

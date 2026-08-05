@@ -11,6 +11,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DungeonDoc } from '../dungeonYaml';
 import { sharedBoundaryEdges } from '../regionGeometry';
+import {
+  buildRegionTree,
+  flattenRegionTree,
+  rootCellCount,
+} from '../regionTree';
+import { deriveCanvasFloorCells } from './canvasFloor';
 import type { RegionEditing } from './useRegionEditing';
 
 const ARCHETYPE_OPTIONS = ['entrance', 'chamber', 'corridor', 'boss'];
@@ -161,10 +167,25 @@ export function RegionPanel({ doc, regionEdit }: RegionPanelProps) {
   // since this panel used to render nothing at all here. A compact list
   // of every existing region, click-to-select, fixes that without
   // requiring the author to already know to click precisely on the
-  // board. Truly empty (no regions drawn yet either) still renders
-  // nothing — there's nothing useful to list. ---
+  // board.
+  //
+  // Renders the SCOPES MODEL (rpg-project#180's four consumer-position
+  // comments, 2026-08-04), not a flat list: the implicit root region
+  // ("(everything else)" — every canvas floor cell not claimed by an
+  // authored region) as a real, always-present row, then every authored
+  // region indented under its derived parent (smallest strict superset by
+  // cell-subset check — `regionTree.ts`). A flat, un-nested document
+  // (everything the brush can author today) puts every region directly
+  // under the root at depth 1 — this is NOT a degraded case, it's the
+  // model's own one-level forest. Shown even with zero authored regions
+  // (root alone, holding the whole floor) so picking up the Region tool
+  // immediately shows the total-coverage model before anything is
+  // painted, rather than only becoming honest once a first region exists. ---
   if (pendingCells.length === 0 && !editingRegion && !showConnectCallout) {
-    if (doc.regions.length === 0) return null;
+    const floorCells = deriveCanvasFloorCells(doc);
+    const tree = buildRegionTree(doc.regions);
+    const rootCount = rootCellCount(floorCells, doc.regions);
+    const rows = flattenRegionTree(tree);
     return (
       <div role="dialog" aria-label="Regions" style={panelStyle}>
         <h4 style={{ margin: '0 0 6px', fontSize: 13, color: '#3a9b6a' }}>
@@ -173,14 +194,68 @@ export function RegionPanel({ doc, regionEdit }: RegionPanelProps) {
         <div style={{ fontSize: 11, color: '#8a7a5a', marginBottom: 6 }}>
           Click a region to edit it, or paint new board cells to start another.
         </div>
+        {tree.overlaps.length > 0 && (
+          <div
+            style={{
+              fontSize: 10,
+              color: '#ff9a8a',
+              background: '#2a1512',
+              border: '1px solid #5a2a20',
+              borderRadius: 4,
+              padding: '5px 8px',
+              marginBottom: 8,
+              lineHeight: 1.4,
+            }}
+          >
+            {tree.overlaps.map((o) => {
+              const a = doc.regions.find((r) => r.id === o.regionAId);
+              const b = doc.regions.find((r) => r.id === o.regionBId);
+              const sample = o.cells.map(([c, r]) => `[${c},${r}]`).join(', ');
+              const more = o.cellCount > o.cells.length;
+              return (
+                <div key={`${o.regionAId}-${o.regionBId}`}>
+                  ⚠ "{a?.name ?? o.regionAId}" and "{b?.name ?? o.regionBId}"
+                  overlap without either containing the other ({o.cellCount}{' '}
+                  cell{o.cellCount === 1 ? '' : 's'}: {sample}
+                  {more ? ', …' : ''}) — nesting requires strict containment
+                  (rpg-project#180).
+                </div>
+              );
+            })}
+          </div>
+        )}
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-          {doc.regions.map((r) => (
+          <li style={{ marginBottom: 4 }}>
+            <div
+              title="Unpainted floor — every cell not claimed by an authored region belongs to the implicit root region (rpg-project#180). Informational only this round; a future home for root-scope defaults."
+              style={{
+                ...buttonStyle,
+                width: '100%',
+                boxSizing: 'border-box',
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 8,
+                background: 'transparent',
+                color: '#8a7a5a',
+                border: '1px dashed var(--border-primary)',
+                fontWeight: 400,
+                fontStyle: 'italic',
+                cursor: 'default',
+              }}
+            >
+              <span>(everything else)</span>
+              <span>{rootCount}</span>
+            </div>
+          </li>
+          {rows.map(({ region: r, depth }) => (
             <li key={r.id} style={{ marginBottom: 4 }}>
               <button
                 onClick={() => selectRegion(r.id)}
                 style={{
                   ...buttonStyle,
-                  width: '100%',
+                  width: `calc(100% - ${(depth - 1) * 14}px)`,
+                  marginLeft: (depth - 1) * 14,
+                  boxSizing: 'border-box',
                   display: 'flex',
                   justifyContent: 'space-between',
                   gap: 8,
