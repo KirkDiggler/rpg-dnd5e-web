@@ -71,6 +71,7 @@ import {
 } from '../markerStyle';
 import { PlacementMarker } from '../PlacementMarker';
 import { regionCentroid } from '../regionGeometry';
+import { regionsByPaintOrder } from '../regionTree';
 import type { BoardTool, PlacementSelection } from '../types';
 import type { BoardEditing } from '../useBoardEditing';
 import { canvasPlacementRejectReason } from './canvasFloor';
@@ -1294,9 +1295,11 @@ export function CreationBoard({
   // the board's own `handlePointerDown` already resolves "was an existing
   // region clicked" via `nearestCreationCell` + a `doc.regions` scan, so
   // these elements are purely visual, not a second independent hit-test
-  // surface.
+  // surface. Painted biggest-first (`regionsByPaintOrder`, shared with
+  // `Board.tsx`'s read-only overlay) so a nested region's overlay draws
+  // on top of its container's, "innermost visible."
   const regionEls: ReactElement[] = [];
-  for (const region of doc.regions) {
+  for (const region of regionsByPaintOrder(doc.regions)) {
     const color = regionArchetypeColor(region.archetype);
     const selected = regionEdit.selectedRegionId === region.id;
     for (const [col, row] of region.cells) {
