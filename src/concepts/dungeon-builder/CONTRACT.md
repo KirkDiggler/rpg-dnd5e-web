@@ -4902,3 +4902,94 @@ canvas sentinel). `ci-check` clean (format/lint/typecheck/build/test).
   under Live verification — code-reviewed and its sibling branch
   live-verified, not independently live-clicked, due to automation flakiness
   in the pre-existing accordion control, not this unit's own code.
+
+## Specimen pack v0.4: regenerated at the ratified spec cut (2026-08-05)
+
+The executable half of the contract catching up to the ratified whole.
+`rpg-project`'s `ideas/dungeon-builder/spec/v0.3/spec.md` ratified
+2026-08-05 (all six pre-ratification OPEN points resolved — see that
+spec's own `README.md` Ratification record); this unit regenerates
+`specimens/` at that exact cut, via the real serializer, per the
+documented `_regen.test.ts` throwaway-script process
+(`specimens/README.md`'s "Regenerating for the next version bump").
+Full changelog is in `specimens/README.md`'s v0.4 entry — this section
+records the two structural changes and the byte-level finding, not a
+duplicate of the diff.
+
+**`rooms:`+`regions:` is now a ratified MUST-reject (spec §4.10.3.8,
+ruling 4).** `kitchen-sink.yaml` (a `rooms:`-chain doc) carried exactly
+this illegal combination as of pack v0.3 — two cell-authored regions
+(`hall-inner`/`hall-annex`) declared alongside a non-empty `rooms:`
+chain, added by the "Region-authoring unit" entry above with no
+cross-validation between the two constructs (this concept's own
+client-side validator still doesn't enforce the combination —
+`TARGET-YAML.md`'s regions "Open questions" section names this
+explicitly and remains accurate; this pack now avoids the combination by
+construction, in the generated specimen, not by a new client-side
+check). Fixed by removing the region calls from the kitchen-sink block
+of the regen script and regenerating: `kitchen-sink.yaml` now declares
+no `regions:` key. It never declared `canvas:` either (ruling 3, spec
+§4.5 point 2) — verified by inspection, not assumed.
+
+**Canvas + `regions:` is not a rejected combination — it's the
+ratified-legal home the demo moved to.** `canvas.yaml` (`rooms: []`)
+gained the identical two-region + `connectRegions` demonstration,
+relocated rather than reinvented (ids renamed `hall-inner`/`hall-annex`
+→ `canvas-inner`/`canvas-annex` only because no `hall` room exists in
+canvas mode; cell sets unchanged). `canvas.yaml`'s pre-existing top-level
+altar `facing: W` is a second, independent ratification outcome landing
+in the same file: ruling 6 settled canvas-mode top-level `facing:` as
+accepted (spec §4.6 point 3 / §4.9.2), retiring the genuinely open
+question `specimens/README.md`'s own Reconciliation-item framing
+(mirroring the spec `README.md`'s item 8) had left unresolved before
+this ratification.
+
+**A real finding, surfaced by regeneration rather than introduced by
+it**: relocating the two-region demo with identical cells did NOT
+reproduce the identical attachment-door edge. Old:
+`{from:[10,3],to:[11,3]}`. New: `{from:[10,3],to:[11,2]}`. Root cause,
+confirmed directly against `regionGeometry.ts`'s current
+`sharedBoundaryEdges`/`pickAttachmentEdge`: the region-authoring
+prototype (`d75487f`, 2026-08-03) generated the original demo under a
+4-neighbor `cellsAdjacent`, which finds only 2 shared-boundary edges
+between `hall-inner`/`hall-annex` (both same-row pairs) — `hex-true
+creation canvas` (`8793905`, same day) widened `cellsAdjacent` to real
+6-neighbor hex adjacency, which for this specific cell pair adds a THIRD
+(diagonal) shared edge; `pickAttachmentEdge`'s deterministic
+middle-of-sorted-list rule picks a different edge once the candidate
+list has 3 entries instead of 2. The later "canonical wall adjacency"
+regen pass (`ce67065`, 2026-08-04) fixed the kitchen-sink document's two
+_hand-drawn_ walls for exactly this same hex-true widening but never
+re-ran the region/`connectRegions` block, so the door byte went stale
+until this round refreshed it. Not a regression in this unit — a latent
+staleness this regeneration was the first full pass to surface.
+
+**Verification.**
+
+- All four specimen files (`kitchen-sink.yaml`, `kitchen-sink.v1-subset.yaml`,
+  `canvas.yaml`, `exploration/holes.yaml`) round-trip byte-stable through
+  `parseDungeon` → `serializeDungeon` (a dedicated throwaway
+  `_roundtrip.test.ts`, run and deleted, same discipline as the regen
+  script itself).
+- No test in this concept reads the `specimens/` directory as a fixture
+  (confirmed by search — zero references), so the byte changes above
+  required no test-reference fixes. Full `src/concepts/dungeon-builder`
+  suite: 324 tests, 16 files, unchanged and passing.
+- `exploration/holes.yaml`'s content is unchanged; regenerating it
+  through the current serializer normalized its `holes:` list-item
+  bracket spacing (`[10, 4]` → `[ 10, 4 ]`) to match the rest of the
+  pack's flow-map style, which then failed this repo's own
+  `format:check` — prettier's YAML formatter treats a bare top-level
+  `- [a, b]` list item differently from the same shape nested inside a
+  flow map. `prettier --write` reverted that one entry; no other
+  specimen file needed it.
+- A second incidental, content-neutral finding: `canvas.yaml` gained a
+  `wallLines: []` line. It had not been regenerated since pack v0.2
+  (2026-08-03); `emptyCanvasYaml` (`creation/emptyCanvasDoc.ts`) gained a
+  `wallLines:` key in `37584af` ("straight walls with visible footprint
+  (prototype)"), also 2026-08-03 but after v0.2's `canvas.yaml` was
+  generated — so the empty key was simply never picked up until this
+  full regeneration. No straight walls are authored in this specimen,
+  so this is a byte-shape change only, not a content change.
+- `ci-check` clean (format/lint/typecheck/build/test) after the prettier
+  pass.
