@@ -8,14 +8,12 @@
  * "regions:" section) — edit mode renders any authored regions read-only
  * (`Board.tsx`), with no panel of its own yet.
  */
+import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useEffect, useRef, useState } from 'react';
 import type { DungeonDoc } from '../dungeonYaml';
 import { sharedBoundaryEdges } from '../regionGeometry';
-import {
-  buildRegionTree,
-  flattenRegionTree,
-  rootCellCount,
-} from '../regionTree';
+import { flattenRegionTree, rootCellCount } from '../regionTree';
+import { resolveRegionTree } from '../regionTreeWire';
 import { deriveCanvasFloorCells } from './canvasFloor';
 import type { RegionEditing } from './useRegionEditing';
 
@@ -36,6 +34,46 @@ function TargetDialectBadge() {
       }}
     >
       dialect
+    </span>
+  );
+}
+
+/** Region-tree source indicator (v0.3 wire consumption unit, 2026-08-05)
+ * — same "make drift visible, not silent" idiom as `Board.tsx`'s wall/
+ * door source badge (`db-wall-source-indicator`) and
+ * `preview3d/DungeonPreview3D.tsx`'s floor source badge
+ * (`db-floor-source-indicator`): distinguishes a real
+ * `FloorPlan.regions`/`parent_id` response from `regionTree.ts`'s
+ * client-derived containment fallback, which this panel used exclusively
+ * before this unit and still uses whenever a response carries no
+ * `regions` (every live server today — rollout gap A4, not a contract
+ * defect). */
+function RegionTreeSourceBadge({ source }: { source: 'server' | 'derived' }) {
+  return (
+    <span
+      data-testid="db-region-tree-source-indicator"
+      title={
+        source === 'server'
+          ? 'containment forest built from FloorPlanRegion.parent_id (rpg-api-protos v0.1.120+)'
+          : 'containment forest inferred client-side (regionTree.ts) — no live FloorPlan.regions carried yet'
+      }
+      style={{
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: 0.3,
+        borderRadius: 3,
+        padding: '1px 5px',
+        marginLeft: 6,
+        ...(source === 'server'
+          ? { color: '#100d0b', background: '#c9bfae' }
+          : {
+              color: '#e8e2d8',
+              background: 'rgba(90, 74, 58, 0.55)',
+              border: '1px dashed #8a7a5a',
+            }),
+      }}
+    >
+      {source === 'server' ? 'REGIONS: SERVER' : 'REGIONS: DERIVED'}
     </span>
   );
 }
@@ -93,9 +131,21 @@ const buttonStyle: React.CSSProperties = {
 interface RegionPanelProps {
   doc: DungeonDoc;
   regionEdit: RegionEditing;
+  /** The creation document's own live `PutDungeon(validate_only)` response
+   * (v0.3 wire consumption unit, 2026-08-05 —
+   * `usePutDungeonPreview.ts`'s `useCreationFloorPlanPreview`). `null` in
+   * fixtures mode, mid-debounce, or while a live server hasn't shipped
+   * `regions` yet (every server today). See `regionTreeWire.ts`'s
+   * `resolveRegionTree` for how this panel's tree flips to server truth
+   * once populated. */
+  liveFloorPlan: FloorPlan | null;
 }
 
-export function RegionPanel({ doc, regionEdit }: RegionPanelProps) {
+export function RegionPanel({
+  doc,
+  regionEdit,
+  liveFloorPlan,
+}: RegionPanelProps) {
   const {
     pendingCells,
     clearPending,
@@ -183,17 +233,61 @@ export function RegionPanel({ doc, regionEdit }: RegionPanelProps) {
   // painted, rather than only becoming honest once a first region exists. ---
   if (pendingCells.length === 0 && !editingRegion && !showConnectCallout) {
     const floorCells = deriveCanvasFloorCells(doc);
-    const tree = buildRegionTree(doc.regions);
+    const resolved = resolveRegionTree(doc.regions, liveFloorPlan);
+    const { tree, source, mismatches, dangling } = resolved;
     const rootCount = rootCellCount(floorCells, doc.regions);
     const rows = flattenRegionTree(tree);
     return (
       <div role="dialog" aria-label="Regions" style={panelStyle}>
         <h4 style={{ margin: '0 0 6px', fontSize: 13, color: '#3a9b6a' }}>
           Regions <TargetDialectBadge />
+          <RegionTreeSourceBadge source={source} />
         </h4>
         <div style={{ fontSize: 11, color: '#8a7a5a', marginBottom: 6 }}>
           Click a region to edit it, or paint new board cells to start another.
         </div>
+        {(mismatches.length > 0 || dangling.length > 0) && (
+          <div
+            data-testid="db-region-tree-drift-warning"
+            style={{
+              fontSize: 10,
+              color: '#ff9a8a',
+              background: '#2a1512',
+              border: '1px solid #5a2a20',
+              borderRadius: 4,
+              padding: '5px 8px',
+              marginBottom: 8,
+              lineHeight: 1.4,
+            }}
+          >
+            {mismatches.map((m) => {
+              const region = doc.regions.find((r) => r.id === m.regionId);
+              const label = (id: string | undefined) => {
+                if (id === undefined) return 'root';
+                const r = doc.regions.find((r) => r.id === id);
+                return `"${r?.name ?? id}"`;
+              };
+              return (
+                <div key={`mismatch-${m.regionId}`}>
+                  ⚠ "{region?.name ?? m.regionId}": server says parent{' '}
+                  {label(m.wireParentId)}, client derivation says parent{' '}
+                  {label(m.derivedParentId)} — server/client containment
+                  disagreement.
+                </div>
+              );
+            })}
+            {dangling.map((d) => {
+              const region = doc.regions.find((r) => r.id === d.regionId);
+              return (
+                <div key={`dangling-${d.regionId}`}>
+                  ⚠ "{region?.name ?? d.regionId}": server-declared parent "
+                  {d.danglingParentId}" is not a region on this response —
+                  treated as root.
+                </div>
+              );
+            })}
+          </div>
+        )}
         {tree.overlaps.length > 0 && (
           <div
             style={{
