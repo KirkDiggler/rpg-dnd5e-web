@@ -1,8 +1,7 @@
 {
   "dropped": [
     "defaults (2 refs; blocks_movement/blocks_los materialized onto 1 placement from 1 of them)",
-    "3 walls",
-    "2 regions",
+    "2 walls",
     "start",
     "end",
     "lighting",
@@ -13,7 +12,5 @@
     "targeting (2 placements)",
     "fine-rotation experiment (2 placements)"
   ],
-  "compiling": [],
-  "compilable": true,
-  "compilableBlockers": []
+  "compilable": true
 }
