@@ -5,7 +5,9 @@
  * - Q/E to rotate (Y-axis only)
  * - Mouse wheel to zoom
  * - Right-click drag to rotate
- * - Fixed tilt angle (no tilting up/down)
+ * - Tilt is never under direct player control: it is either a fixed angle
+ *   (the default, unchanged) or a function of zoom via the `curve` option
+ *   (`?pitchCurve=1`, see cameraDials.ts). There is deliberately no free-look.
  */
 
 import { useFrame, useThree } from '@react-three/fiber';
@@ -27,6 +29,26 @@ interface CameraControlsOptions {
   maxZoom?: number;
   /** When set, camera lerps target to this position. Cleared on manual pan. */
   focusTarget?: THREE.Vector3 | null;
+  /**
+   * Zoom-coupled pitch (`?pitchCurve=1`, see cameraDials.ts). When set, the
+   * polar angle interpolates between `polarFar` at the zoomed-OUT extreme and
+   * `polarNear` at the zoomed-IN extreme instead of staying at the single
+   * fixed `polarAngle` — the camera goes near top-down for planning and
+   * flattens out as you lean in, which is the Gloomhaven behaviour.
+   *
+   * `undefined`/`null` keeps `polarAngle` fixed: the untouched default path.
+   */
+  curve?: { polarFar: number; polarNear: number } | null;
+  /**
+   * Drive a PerspectiveCamera by dollying `distance` instead of driving an
+   * OrthographicCamera's `zoom` (`?camera=persp`). Orthographic stays the
+   * default — the tactical read depends on hexes being the same size across
+   * the whole screen.
+   */
+  perspective?: boolean;
+  /** Perspective dolly range in world units (ignored when orthographic). */
+  minDistance?: number;
+  maxDistance?: number;
 }
 
 export function useCameraControls({
@@ -37,6 +59,10 @@ export function useCameraControls({
   minZoom = 20,
   maxZoom = 200,
   focusTarget,
+  curve = null,
+  perspective = false,
+  minDistance = 5,
+  maxDistance = 100,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
 
@@ -76,19 +102,46 @@ export function useCameraControls({
     }
   }, [focusTarget]);
 
+  /**
+   * How far "zoomed in" we currently are, normalised to 0 (furthest out) → 1
+   * (closest in), so one pitch curve can serve both projections. Read out of
+   * whichever quantity actually drives zoom for this camera — ortho `zoom`
+   * grows as you close in, perspective `distance` shrinks — rather than being
+   * stored separately, so it can never drift from what's on screen.
+   */
+  const zoomT = useCallback((): number => {
+    if (perspective) {
+      const span = maxDistance - minDistance;
+      if (span <= 0) return 0;
+      return THREE.MathUtils.clamp(
+        (maxDistance - distance.current) / span,
+        0,
+        1
+      );
+    }
+    const span = maxZoom - minZoom;
+    if (span <= 0 || !(camera instanceof THREE.OrthographicCamera)) return 0;
+    return THREE.MathUtils.clamp((camera.zoom - minZoom) / span, 0, 1);
+  }, [perspective, maxDistance, minDistance, maxZoom, minZoom, camera]);
+
+  /** Polar angle for the current zoom — constant unless a curve is supplied. */
+  const currentPolar = useCallback((): number => {
+    if (!curve) return polarAngle;
+    return THREE.MathUtils.lerp(curve.polarFar, curve.polarNear, zoomT());
+  }, [curve, polarAngle, zoomT]);
+
   // Update camera position based on spherical coordinates
   const updateCamera = useCallback(() => {
+    const polar = currentPolar();
     const x =
-      target.x +
-      distance.current * Math.sin(polarAngle) * Math.cos(azimuth.current);
-    const y = target.y + distance.current * Math.cos(polarAngle);
+      target.x + distance.current * Math.sin(polar) * Math.cos(azimuth.current);
+    const y = target.y + distance.current * Math.cos(polar);
     const z =
-      target.z +
-      distance.current * Math.sin(polarAngle) * Math.sin(azimuth.current);
+      target.z + distance.current * Math.sin(polar) * Math.sin(azimuth.current);
 
     camera.position.set(x, y, z);
     camera.lookAt(target);
-  }, [target, polarAngle, camera]);
+  }, [target, currentPolar, camera]);
 
   // Handle keyboard events
   useEffect(() => {
@@ -163,12 +216,17 @@ export function useCameraControls({
           Math.min(maxZoom, camera.zoom - e.deltaY * 0.1)
         );
         camera.updateProjectionMatrix();
+        // Ortho zoom normally leaves the camera's POSITION alone — but with a
+        // pitch curve the polar angle is a function of zoom, so the rig has to
+        // be re-placed on every wheel tick. Skipped entirely when no curve is
+        // active, keeping the default path's work identical to before.
+        if (curve) updateCamera();
         invalidate(); // Request re-render for on-demand frameloop
       } else {
         // For perspective camera, adjust distance
         distance.current = Math.max(
-          5,
-          Math.min(100, distance.current + e.deltaY * 0.05)
+          minDistance,
+          Math.min(maxDistance, distance.current + e.deltaY * 0.05)
         );
         updateCamera();
         invalidate(); // Request re-render for on-demand frameloop
@@ -202,6 +260,9 @@ export function useCameraControls({
     polarAngle,
     updateCamera,
     invalidate,
+    curve,
+    minDistance,
+    maxDistance,
   ]);
 
   // Update each frame based on key state
