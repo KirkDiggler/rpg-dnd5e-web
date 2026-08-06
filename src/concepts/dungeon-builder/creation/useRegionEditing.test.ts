@@ -149,6 +149,37 @@ describe('useRegionEditing — pending (not-yet-created) region paint', () => {
     expect(view.result.current.conflictFlash).toBeNull();
   });
 
+  it('an ERASE-mode stroke only counts ACTUAL removals in `painted` — dragging back over already-absent cells is a true no-op, not a phantom paint (Copilot review, PR #714)', () => {
+    const { view, flashToast, commitRegion } = setup();
+    // Seed two pending cells first, then commit a region elsewhere so
+    // this SAME stroke can also exercise an overlap skip — a pure erase
+    // stroke never skips anything (erasing can't collide), so `painted`
+    // would otherwise never surface in an observable toast at all; mixing
+    // in one skip is what makes the erase count directly assertable.
+    act(() => {
+      view.result.current.setPendingCellMembership([0, 0], true);
+      view.result.current.setPendingCellMembership([1, 0], true);
+    });
+    commitRegion('owner', 'chamber', [[9, 9]]);
+
+    act(() => {
+      view.result.current.beginStroke();
+      view.result.current.setPendingCellMembership([0, 0], false); // real removal
+      view.result.current.setPendingCellMembership([5, 5], false); // absent — no-op
+      view.result.current.setPendingCellMembership([1, 0], false); // real removal
+      view.result.current.setPendingCellMembership([5, 5], false); // absent again — still a no-op
+      view.result.current.setPendingCellMembership([9, 9], true); // owned by 'owner' — skipped
+      view.result.current.endStroke();
+    });
+
+    expect(view.result.current.pendingCells).toEqual([]);
+    // painted=2 (the two REAL removals only) — not 4 for every erase call
+    // this stroke made, and not 5 counting the skip too.
+    expect(flashToast).toHaveBeenCalledWith(
+      "painted 2, skipped 1 cell owned by 'owner'"
+    );
+  });
+
   it("Kirk's exact scenario: painting a second region up to a wall band the first region already claims skips the band, keeps the rest, and names the first region", () => {
     const { view, flashToast, commitRegion, getDoc } = setup();
     // Region A ("entrance") swept up a straight wall's footprint band —

@@ -59,6 +59,7 @@ import {
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
 import { cubeAtColRow } from './hexLayout';
+import { OVERLAP_SAMPLE_CELLS } from './regionTree';
 
 describe('parseDungeon', () => {
   it('parses showcase.yaml into the expected room chain', () => {
@@ -1889,7 +1890,7 @@ regions:
       const doc2 = toDungeonDoc(cst);
       const overlap = findRegionCellOverlap(doc2, owned);
       expect(overlap?.cellCount).toBe(9);
-      expect(overlap?.cells).toHaveLength(6); // OVERLAP_SAMPLE_CELLS
+      expect(overlap?.cells).toHaveLength(OVERLAP_SAMPLE_CELLS);
     });
 
     it('only reports the FIRST region a candidate set collides with, when it touches more than one', () => {

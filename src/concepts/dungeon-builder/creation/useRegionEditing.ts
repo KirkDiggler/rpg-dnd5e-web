@@ -48,7 +48,7 @@
  *    the SAME state so a Create-button collision gets the identical
  *    evidence a brush-stroke skip does.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Document } from 'yaml';
 import {
   addCellToRegion,
@@ -98,6 +98,26 @@ export function useRegionEditing(
   flashToast: (message: string) => void
 ) {
   const [pendingCells, setPendingCells] = useState<Cell[]>([]);
+  /** Mirrors `pendingCells`, updated SYNCHRONOUSLY and manually on every
+   * write (never via a `useState` updater callback) — the authoritative
+   * "current membership" source for `setPendingCellMembership`'s own
+   * decision-making (Copilot review, PR #714). React does not guarantee
+   * a `setState(prev => ...)` updater runs synchronously the moment the
+   * setter is called — under batching it can be deferred, which broke an
+   * earlier attempt at this fix that tried to read a closure variable
+   * assigned INSIDE the updater immediately after calling `setPendingCells`
+   * (verified broken by this file's own tests: `painted` undercounted
+   * every time more than one mutation landed in the same `act()`/batch).
+   * A plain ref sidesteps the whole question — every mutator below reads
+   * and writes `pendingCellsRef.current` directly and synchronously, then
+   * mirrors the result into React state via `commitPendingCells` purely
+   * for rendering; the ref is the source of truth for the NEXT mutator
+   * call to reason about, drag or no drag, batch or no batch. */
+  const pendingCellsRef = useRef<Cell[]>([]);
+  const commitPendingCells = (next: Cell[]) => {
+    pendingCellsRef.current = next;
+    setPendingCells(next);
+  };
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   /** The id `createRegion` just successfully created — drives
    * `RegionPanel.tsx`'s "Connect to '<previous region>'?" callout. Cleared
@@ -111,6 +131,18 @@ export function useRegionEditing(
   const [conflictFlash, setConflictFlashState] =
     useState<RegionConflictFlash | null>(null);
   const conflictFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clears any pending auto-clear timer on unmount (Copilot review, PR
+  // #714) — without this, a timer started right before the owning
+  // component unmounts would still fire `setConflictFlashState` on a
+  // gone component, and would keep running regardless.
+  useEffect(() => {
+    return () => {
+      if (conflictFlashTimer.current) {
+        clearTimeout(conflictFlashTimer.current);
+        conflictFlashTimer.current = null;
+      }
+    };
+  }, []);
   /** Sets `conflictFlash` and (re)starts its auto-clear timer — same
    * 3200ms window `DungeonBuilderConcept.tsx`'s `flashToast` uses for the
    * paired toast, so the highlight and the message it explains fade
@@ -213,7 +245,8 @@ export function useRegionEditing(
    * eventual shape) and is NOT deferred — see `setPendingCellMembership`
    * below, the caller every real interaction actually uses. */
   const togglePendingCell = (cell: Cell) => {
-    setPendingCells((prev) =>
+    const prev = pendingCellsRef.current;
+    commitPendingCells(
       cellIn(prev, cell)
         ? prev.filter((c) => !(c[0] === cell[0] && c[1] === cell[1]))
         : [...prev, cell]
@@ -244,26 +277,47 @@ export function useRegionEditing(
    * region up against a wall a first-class-legal band NOT collide
    * invisibly (see this file's own header comment). A rejected cell is
    * recorded into the active stroke's tally (`recordOverlapSkip`), never
-   * added. */
+   * added.
+   *
+   * **Membership is decided against `pendingCellsRef`, never the
+   * render-closure `pendingCells` state variable** (Copilot review, PR
+   * #714) — a drag fires many of these calls in quick succession, and
+   * reading `pendingCells` (or trying to smuggle the outcome out of a
+   * `useState` updater callback via a closed-over variable — a first
+   * attempt at this fix that this file's own tests caught as broken:
+   * `setState` updaters are not guaranteed to run synchronously the
+   * instant the setter is called, so code reading that variable
+   * immediately after could observe stale `false`/`null` even though the
+   * update landed correctly) risks a stale snapshot under React's
+   * batching. `pendingCellsRef.current` is written manually and
+   * synchronously by `commitPendingCells` on every mutation, so it is
+   * ALWAYS the true current membership, independent of when React
+   * chooses to re-render or flush a batch. An absent cell's erase is a
+   * genuine no-op (ref left untouched, nothing counted), matching
+   * `painted`'s own contract: it counts cells actually applied, not
+   * cells merely touched. */
   const setPendingCellMembership = (cell: Cell, included: boolean) => {
+    const prev = pendingCellsRef.current;
     if (!included) {
-      setPendingCells((prev) =>
+      const has = cellIn(prev, cell);
+      if (!has) return; // already absent — true no-op, nothing to commit or count
+      commitPendingCells(
         prev.filter((c) => !(c[0] === cell[0] && c[1] === cell[1]))
       );
       if (strokeStatsRef.current) strokeStatsRef.current.painted++;
       return;
     }
-    if (cellIn(pendingCells, cell)) return;
+    if (cellIn(prev, cell)) return; // already present — true no-op
     const overlap = findRegionCellOverlap(doc, [cell]);
     if (overlap) {
       recordOverlapSkip(cell, overlap);
       return;
     }
-    setPendingCells((prev) => [...prev, cell]);
+    commitPendingCells([...prev, cell]);
     if (strokeStatsRef.current) strokeStatsRef.current.painted++;
   };
 
-  const clearPending = () => setPendingCells([]);
+  const clearPending = () => commitPendingCells([]);
 
   /** Select an existing region for membership/metadata editing, or `null`
    * to deselect. Always clears any in-progress NEW-region paint session —
@@ -272,15 +326,15 @@ export function useRegionEditing(
    * this concept. */
   const selectRegion = (regionId: string | null) => {
     setSelectedRegionId(regionId);
-    setPendingCells([]);
+    commitPendingCells([]);
     setJustCreatedId(null);
   };
 
   const handleCreate = (id: string, archetype: string, name?: string) => {
     try {
-      createRegion(cst, doc, id, archetype, pendingCells, name);
+      createRegion(cst, doc, id, archetype, pendingCellsRef.current, name);
       syncFromCst(cst);
-      setPendingCells([]);
+      commitPendingCells([]);
       setJustCreatedId(id);
     } catch (err) {
       reportError(err);
@@ -292,7 +346,7 @@ export function useRegionEditing(
       // rejection here, so the SAME evidence still surfaces: re-derive
       // which cells collide with which region and flash them, exactly
       // like a brush-stroke skip would.
-      const overlap = findRegionCellOverlap(doc, pendingCells);
+      const overlap = findRegionCellOverlap(doc, pendingCellsRef.current);
       if (overlap) {
         flashConflict(overlap.cells, overlap.ownerId, overlap.ownerName);
       }

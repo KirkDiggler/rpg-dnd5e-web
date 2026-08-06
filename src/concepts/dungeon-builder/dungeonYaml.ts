@@ -1798,7 +1798,24 @@ export class RegionValidationError extends Error {}
  * whole-pending-set check at Create time) either passes a single cell or
  * a pending set that, by construction, never straddles two owners in a
  * way worth reporting simultaneously — see this function's own callers
- * for why. `null` when `cells` doesn't collide with anything. */
+ * for why. `null` when `cells` doesn't collide with anything.
+ *
+ * **Single-cell fast path** (Copilot review, PR #714): the region brush's
+ * own per-cell paint check — the hot path, called once per cell touched
+ * during a drag, many times a second — always passes exactly one cell.
+ * Building a `Set` of an entire region's cells just to test ONE
+ * membership is allocation churn for no benefit at that shape, so
+ * `cells.length === 1` scans `region.cells` directly with `.some()`
+ * instead — no Set, no array allocation, short-circuits on the first
+ * hit. Deliberately NOT a precomputed whole-doc ownership index: this
+ * concept's regions top out at a handful-to-dozens of cells each
+ * (CONTRACT.md), so a per-call linear scan is already cheap; an index
+ * would trade a real allocation cost for a bookkeeping cost (keeping it
+ * in sync with every region mutation) to solve a problem that doesn't
+ * exist yet at this scale. The multi-cell path (`createRegion`'s
+ * whole-pending-set check at Create time) keeps the `Set`-based approach
+ * below — there, the candidate set can be large enough that a Set
+ * actually pays for itself. */
 export function findRegionCellOverlap(
   doc: DungeonDoc,
   cells: readonly Cell[],
@@ -1809,6 +1826,21 @@ export function findRegionCellOverlap(
   cells: Cell[];
   cellCount: number;
 } | null {
+  if (cells.length === 1) {
+    const [only] = cells;
+    for (const region of doc.regions) {
+      if (region.id === excludeRegionId) continue;
+      if (region.cells.some((c) => c[0] === only[0] && c[1] === only[1])) {
+        return {
+          ownerId: region.id,
+          ownerName: region.name,
+          cells: [only],
+          cellCount: 1,
+        };
+      }
+    }
+    return null;
+  }
   for (const region of doc.regions) {
     if (region.id === excludeRegionId) continue;
     const owned = new Set(region.cells.map((c) => `${c[0]},${c[1]}`));
