@@ -320,6 +320,16 @@ describe('buildWallLineSegments — real 3D geometry for doc.wallLines', () => {
     // WallBox piece renders at, so the two wall vocabularies share one
     // architecture (this file's own header doc comment).
     expect(seg.position[1]).toBeCloseTo(WALL_HEIGHT / 2, 6);
+
+    // real-wall-assets unit (rpg-project#169): `start`/`end` are the SAME
+    // two endpoints `position`/`length`/`rotationY` already imply — proves
+    // `RealWallPieces.tsx`'s `tileWallSegment({start, end}, ...)` call
+    // spans the identical corner-to-corner extent, not a lossy
+    // reconstruction from the trig fields.
+    expect(seg.start.x).toBeCloseTo(a.x, 6);
+    expect(seg.start.z).toBeCloseTo(a.z, 6);
+    expect(seg.end.x).toBeCloseTo(b.x, 6);
+    expect(seg.end.z).toBeCloseTo(b.z, 6);
   });
 
   it('a door mid-line splits one line into solid, door, solid — in that order, all sharing the line’s own rotation', () => {

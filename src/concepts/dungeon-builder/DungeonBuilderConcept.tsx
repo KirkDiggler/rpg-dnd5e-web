@@ -803,9 +803,10 @@ export function DungeonBuilderConcept() {
                     color: '#8a7a5a',
                   }}
                 >
-                  Spike: floor + props + monsters + drawn walls/doors (crude
-                  boxes — not the real game's tiled/mitered wall pieces) — no
-                  combat/fog. See CONTRACT.md's "3D preview spike" section.
+                  Floor + props + monsters + real Synty wall/door pieces
+                  (piece-per-edge, tiled straight runs, cutaway in Orbit/Play) —
+                  no combat/fog. See CONTRACT.md's "real wall/door assets"
+                  section.
                 </div>
                 <div style={{ flex: 1, minHeight: 0 }}>
                   <DungeonPreview3D

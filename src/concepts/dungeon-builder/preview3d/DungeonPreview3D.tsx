@@ -132,12 +132,16 @@ import {
   hexCorners,
   hexEdgeBetween,
   type CubeCoord,
+  type WorldPos,
 } from '@/components/hex-grid/hexMath';
 import { resolvePropVariant } from '@/components/hex-grid/propManifest';
 import { PropModel } from '@/components/hex-grid/PropModel';
 import { SyntyHexFloor } from '@/components/hex-grid/SyntyHexFloor';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
-import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
+import {
+  CUTAWAY_STUB_WALL_HEIGHT,
+  WALL_HEIGHT,
+} from '@/rendering/calibrationConstants';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { Billboard, Bounds, OrbitControls, Text } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
@@ -174,6 +178,13 @@ import { regionCentroid } from '../regionGeometry';
 import type { BoardTool, PaletteSelection, PlacementSelection } from '../types';
 import { PlayCamera } from './PlayCamera';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
+import {
+  CameraWardTracker,
+  RealEdgeDoorPiece,
+  RealEdgeWallPiece,
+  RealWallLineDoorPiece,
+  RealWallLineRun,
+} from './RealWallPieces';
 import { WalkCamera } from './WalkCamera';
 import {
   capWalkLights,
@@ -188,6 +199,11 @@ import {
   floorCentroid,
   resolveWalkStart,
 } from './walkMovement';
+import {
+  facingCutawayHeight,
+  resolveDoorLocked,
+  resolveWallPieceFacing,
+} from './wallPieceHelpers';
 
 /** A canvas-native floor tile has no owning room ("no room chain exists
  * yet" — `creation/emptyCanvasDoc.ts`'s own doc comment) — a plain,
@@ -306,6 +322,17 @@ interface PlacedWall {
    * `undefined` for those. See `DungeonPreview3DProps.onSelectConnector`'s
    * own doc comment for what a defined value lets a click do. */
   doorId?: string;
+  /** The edge's own `a` corner (`hexEdgeBetween`'s `HexEdge.a`) — real-wall-
+   * assets unit (rpg-project#169): a real per-edge Synty piece is placed at
+   * this corner with `rotationY`, matching `SyntyHexWall.tsx`'s own
+   * per-edge convention (`position={edge.a}`), NOT `position` (this box's
+   * own thickness-centered midpoint) — `wallVariantScale`'s squeeze-to-one-
+   * edge scale assumes the piece's local origin anchors one END of the
+   * edge, not its center. Carried through here (rather than recomputed
+   * from `wall.from`/`wall.to` a second time) so `RealWallPieces.tsx` never
+   * re-derives `hexEdgeBetween` independently of this file's own
+   * `edgeBetweenCells`. */
+  edgeA: WorldPos;
 }
 
 interface PlacedMonster {
@@ -448,6 +475,7 @@ function edgeBetweenCells(
 function wallBoxTransform(wall: ServerEdge): {
   position: [number, number, number];
   rotationY: number;
+  edgeA: WorldPos;
 } {
   const edge = edgeBetweenCells(
     wall.from[0],
@@ -458,6 +486,7 @@ function wallBoxTransform(wall: ServerEdge): {
   return {
     position: [edge.mid.x, WALL_HEIGHT / 2, edge.mid.z],
     rotationY: edge.rotationY,
+    edgeA: edge.a,
   };
 }
 
@@ -474,13 +503,14 @@ function buildWalls(
   keyPrefix: string
 ): PlacedWall[] {
   return walls.map((wall) => {
-    const { position, rotationY } = wallBoxTransform(wall);
+    const { position, rotationY, edgeA } = wallBoxTransform(wall);
     return {
       key: `${keyPrefix}:${wall.from.join(',')}-${wall.to.join(',')}`,
       position,
       rotationY,
       isDoor: wall.kind === 'door',
       doorId: wall.doorId,
+      edgeA,
     };
   });
 }
@@ -792,13 +822,22 @@ function lerp(a: number, b: number, t: number): number {
 /** One render-ready piece of a `wallLines:` entry — either a solid run or
  * a door's own gap span. `position`/`rotationY` are ready to hand
  * straight to `WallBox`/`DoorGap` unchanged; `length` doubles as
- * `WallBox`'s box width and `DoorGap`'s gap `width`. */
+ * `WallBox`'s box width and `DoorGap`'s gap `width`. `start`/`end` (real-
+ * wall-assets unit, rpg-project#169) are the SAME two world points
+ * `position ± length/2` along `rotationY` already implies, carried through
+ * directly (not reconstructed from the trig) so `RealWallPieces.tsx` can
+ * hand a 'solid' piece straight to `wallRunMeshHelpers.tileWallSegment`
+ * (which wants a `{start, end}` pair, matching `WallRunMesh.tsx`'s own
+ * `WallRunSegment` shape) without a lossy round trip through
+ * position/rotationY/length first. */
 export interface WallLineSegment {
   key: string;
   kind: 'solid' | 'door';
   position: [number, number, number];
   rotationY: number;
   length: number;
+  start: WorldPos;
+  end: WorldPos;
 }
 
 /**
@@ -875,6 +914,8 @@ export function buildWallLineSegments(doc: DungeonDoc): WallLineSegment[] {
         position: [(x0 + x1) / 2, WALL_HEIGHT / 2, (z0 + z1) / 2],
         rotationY,
         length: Math.hypot(x1 - x0, z1 - z0),
+        start: { x: x0, z: z0 },
+        end: { x: x1, z: z1 },
       });
     };
 
@@ -1022,142 +1063,11 @@ function FloorHitCell({
   );
 }
 
-// Crude box-per-edge placeholder (this file's own doc comment) — NOT the
-// real game's tiled/mitered `WallRunMesh`. Solid vs. door reuses the
-// EXACT colors the 2D board's own target-dialect structural overlay already uses for
-// the same distinction (Board.tsx/CreationBoard.tsx: '#e8e2d8' solid,
-// '#ffb347' door) — one visual language for "this is a drawn wall" across
-// both previews, same principle the hole rendering already established.
-const WALL_SOLID_COLOR = '#e8e2d8';
-const WALL_DOOR_COLOR = '#ffb347';
-const WALL_THICKNESS = 0.12;
-
-/** `length` defaults to `HEX_SIZE` — a single edge-native `doc.walls`/
- * server-truth wall piece is always exactly one hex-edge long. A straight
- * `wallLines:` segment (`buildWallLineSegments`) is typically several
- * hexes long and passes its own real `length` instead — same box, same
- * material, genuinely variable length, so the two wall vocabularies read
- * as one architecture rather than two renderers. */
-function WallBox({
-  position,
-  rotationY,
-  length = HEX_SIZE,
-}: {
-  position: [number, number, number];
-  rotationY: number;
-  length?: number;
-}) {
-  return (
-    <mesh position={position} rotation={[0, rotationY, 0]}>
-      <boxGeometry args={[length, WALL_HEIGHT, WALL_THICKNESS]} />
-      <meshStandardMaterial color={WALL_SOLID_COLOR} />
-    </mesh>
-  );
-}
-
-// A genuine gap, not a shortened box (the "marked door, not a walkable
-// door" limitation this file's header doc comment used to name as the
-// next fidelity step — closed by this unit). Two solid jambs flank an
-// OPEN, walkable span; a thin lintel piece reads as a door frame without
-// blocking the opening below it. Kirk's own framing for the door-row void
-// this same construct answers on the floor side: "the gash becomes a real
-// doorway."
-const DOOR_JAMB_WIDTH = HEX_SIZE * 0.22;
-const DOOR_OPENING_HEIGHT = WALL_HEIGHT * 0.8;
-const DOOR_LINTEL_HEIGHT = WALL_HEIGHT - DOOR_OPENING_HEIGHT;
-// Wide/tall enough to comfortably catch a click near the opening without
-// competing with the floor hit-cell or an adjacent placement's own hit
-// area — invisible, `FloorHitCell`'s own "transparent but interactive"
-// pattern, not a new one.
-const DOOR_CLICK_HIT_THICKNESS = WALL_THICKNESS * 2.5;
-
-/** Local-space X offset (along the wall's OWN length, before rotation)
- * rotated into a world-space `{dx, dz}` pair — Three.js's standard Y-axis
- * rotation matrix (`x' = x·cos θ + z·sin θ`, `z' = -x·sin θ + z·cos θ`,
- * evaluated at local `z = 0`). Used to place the two door jambs
- * symmetrically about the wall's own midpoint without hand-deriving a new
- * rotation per caller. */
-function rotateLocalXOffset(
-  rotationY: number,
-  localX: number
-): { dx: number; dz: number } {
-  return {
-    dx: localX * Math.cos(rotationY),
-    dz: -localX * Math.sin(rotationY),
-  };
-}
-
-/** `width` defaults to `HEX_SIZE` (an edge-native door's own fixed gap
- * span) — a straight `wallLines:` door's gap (`buildWallLineSegments`)
- * passes its own real interval width instead, since a corner-anchored
- * line's clip interval through its door cell isn't necessarily a full hex
- * width. Jamb width is clamped to `width / 2` so a genuinely narrow gap
- * (a shallow clip near a cell's edge) still produces two jambs meeting in
- * the middle rather than overlapping/inverting; the opening (and its
- * lintel) shrinks to fill whatever's left, never negative. */
-function DoorGap({
-  position,
-  rotationY,
-  width = HEX_SIZE,
-  onSelectDoor,
-}: {
-  position: [number, number, number];
-  rotationY: number;
-  width?: number;
-  onSelectDoor?: () => void;
-}) {
-  const jambWidth = Math.min(DOOR_JAMB_WIDTH, width / 2);
-  const openingWidth = Math.max(width - jambWidth * 2, 0);
-  const jambOffset = width / 2 - jambWidth / 2;
-  const left = rotateLocalXOffset(rotationY, jambOffset);
-  const right = rotateLocalXOffset(rotationY, -jambOffset);
-  return (
-    <group>
-      <mesh
-        position={[position[0] + left.dx, position[1], position[2] + left.dz]}
-        rotation={[0, rotationY, 0]}
-      >
-        <boxGeometry args={[jambWidth, WALL_HEIGHT, WALL_THICKNESS]} />
-        <meshStandardMaterial color={WALL_DOOR_COLOR} />
-      </mesh>
-      <mesh
-        position={[position[0] + right.dx, position[1], position[2] + right.dz]}
-        rotation={[0, rotationY, 0]}
-      >
-        <boxGeometry args={[jambWidth, WALL_HEIGHT, WALL_THICKNESS]} />
-        <meshStandardMaterial color={WALL_DOOR_COLOR} />
-      </mesh>
-      {openingWidth > 0 && (
-        <mesh
-          position={[
-            position[0],
-            DOOR_OPENING_HEIGHT + DOOR_LINTEL_HEIGHT / 2,
-            position[2],
-          ]}
-          rotation={[0, rotationY, 0]}
-        >
-          <boxGeometry
-            args={[openingWidth, DOOR_LINTEL_HEIGHT, WALL_THICKNESS]}
-          />
-          <meshStandardMaterial color={WALL_DOOR_COLOR} />
-        </mesh>
-      )}
-      {onSelectDoor && (
-        <mesh
-          position={position}
-          rotation={[0, rotationY, 0]}
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelectDoor();
-          }}
-        >
-          <boxGeometry args={[width, WALL_HEIGHT, DOOR_CLICK_HIT_THICKNESS]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
-      )}
-    </group>
-  );
-}
+// Placeholder box-per-edge wall/door pieces (`placeholderWallPieces.tsx`,
+// moved out this unit — rpg-project#169's real-wall-assets unit) now serve
+// as the explicit FALLBACK tier: `RealWallPieces.tsx` renders real Synty
+// GLB pieces and falls back to these, per-instance, only when a GLB fails
+// to load — see that file's own doc comment.
 
 /** Start/end/entrance markers — genuinely ABSENT from this preview before
  * Kirk's 2026-08-02 "3D editing" arc's alignment audit named them as a
@@ -1316,6 +1226,35 @@ export function DungeonPreview3D({
   const isWalking = cameraMode === 'walk';
   const isPlaying = cameraMode === 'play';
   const isWalkingOrPlaying = isWalking || isPlaying;
+
+  // Cutaway (real-wall-assets unit, rpg-project#169): "Orbit/Play views
+  // can't see into rooms" once walls stand at real height — Walk mode
+  // stays OFF (you're inside; full walls, per this unit's own scope).
+  // `cameraWard` is the LIVE "which way is the camera, from the dungeon's
+  // own center" vector `CameraWardTracker` (mounted inside the Canvas
+  // below) feeds via a throttled `onChange` — see `wallPieceHelpers.ts`'s
+  // own header doc comment for why a fixed direction (the game's own
+  // `CAMERA_WARD_XZ`) doesn't apply to this preview's free Orbit/Play
+  // cameras. `null` until the tracker's first frame — every piece renders
+  // TALL until then, matching `facingCutawayHeight`'s own "no ward yet
+  // defaults tall" fallback.
+  const cutawayEnabled = !isWalking;
+  const [cameraWard, setCameraWard] = useState<WorldPos | null>(null);
+  const wardReference = useMemo(() => {
+    const centroid = floorCentroid(walkContext);
+    return centroid
+      ? { x: centroid.worldX, z: centroid.worldZ }
+      : { x: 0, z: 0 };
+  }, [walkContext]);
+  // "Can a player actually stand here and look at this wall?" — the
+  // per-piece facing resolver's own `isOpenCell` predicate (see
+  // `resolveWallPieceFacing`'s doc comment). Edge-native walls: real floor
+  // tile membership. `wallLines:` runs: real floor tile membership MINUS
+  // the run's own footprint (a footprint cell has a floor tile but isn't
+  // traversable — `buildWallLineFootprint`'s own doc comment).
+  const isOpenFloorCell = (key: string) => floorTiles.has(key);
+  const isOpenWallLineCell = (key: string) =>
+    floorTiles.has(key) && !wallLineFootprint.has(key);
 
   // Single entry point for every mode transition — both Walk and Play
   // need the SAME "release an engaged pointer lock before leaving Walk"
@@ -1597,43 +1536,100 @@ export function DungeonPreview3D({
                   onClickCell={handleClickCell}
                 />
               ))}
-              {[...serverWalls, ...authoredWalls].map((w) =>
-                w.isDoor ? (
-                  <DoorGap
+              {[...serverWalls, ...authoredWalls].map((w) => {
+                const edgeMid: WorldPos = {
+                  x: w.position[0],
+                  z: w.position[2],
+                };
+                const facing = resolveWallPieceFacing(
+                  edgeMid.x,
+                  edgeMid.z,
+                  w.rotationY,
+                  isOpenFloorCell
+                );
+                const wallHeight = facingCutawayHeight(
+                  facing,
+                  cameraWard,
+                  cutawayEnabled,
+                  WALL_HEIGHT,
+                  CUTAWAY_STUB_WALL_HEIGHT
+                );
+                if (w.isDoor) {
+                  const connectorIndex = floorPlan
+                    ? connectorIndexForDoorId(floorPlan, w.doorId)
+                    : null;
+                  const locked = resolveDoorLocked(
+                    doc.connectors,
+                    connectorIndex
+                  );
+                  return (
+                    <RealEdgeDoorPiece
+                      key={w.key}
+                      edgeMid={edgeMid}
+                      edgeA={w.edgeA}
+                      rotationY={w.rotationY}
+                      facing={facing}
+                      wallHeight={wallHeight}
+                      locked={locked}
+                      onSelectDoor={doorSelectHandler(
+                        w,
+                        floorPlan,
+                        effectiveOnSelectConnector
+                      )}
+                    />
+                  );
+                }
+                return (
+                  <RealEdgeWallPiece
                     key={w.key}
-                    position={w.position}
+                    edgeKey={w.key}
+                    edgeA={w.edgeA}
                     rotationY={w.rotationY}
-                    onSelectDoor={doorSelectHandler(
-                      w,
-                      floorPlan,
-                      effectiveOnSelectConnector
-                    )}
+                    facing={facing}
+                    wallHeight={wallHeight}
                   />
-                ) : (
-                  <WallBox
-                    key={w.key}
-                    position={w.position}
-                    rotationY={w.rotationY}
-                  />
-                )
-              )}
-              {wallLineSegments.map((seg) =>
-                seg.kind === 'door' ? (
-                  <DoorGap
+                );
+              })}
+              {wallLineSegments.map((seg) => {
+                const facing = resolveWallPieceFacing(
+                  seg.position[0],
+                  seg.position[2],
+                  seg.rotationY,
+                  isOpenWallLineCell
+                );
+                const wallHeight = facingCutawayHeight(
+                  facing,
+                  cameraWard,
+                  cutawayEnabled,
+                  WALL_HEIGHT,
+                  CUTAWAY_STUB_WALL_HEIGHT
+                );
+                if (seg.kind === 'door') {
+                  return (
+                    <RealWallLineDoorPiece
+                      key={seg.key}
+                      segKey={seg.key}
+                      position={{ x: seg.position[0], z: seg.position[2] }}
+                      rotationY={seg.rotationY}
+                      length={seg.length}
+                      facing={facing}
+                      wallHeight={wallHeight}
+                    />
+                  );
+                }
+                return (
+                  <RealWallLineRun
                     key={seg.key}
-                    position={seg.position}
-                    rotationY={seg.rotationY}
-                    width={seg.length}
-                  />
-                ) : (
-                  <WallBox
-                    key={seg.key}
-                    position={seg.position}
+                    segKey={seg.key}
+                    start={seg.start}
+                    end={seg.end}
                     rotationY={seg.rotationY}
                     length={seg.length}
+                    facing={facing}
+                    wallHeight={wallHeight}
                   />
-                )
-              )}
+                );
+              })}
               {props.map((p) => {
                 const variant = resolvePropVariant(p.variantRef);
                 if (!variant) return null;
@@ -1728,6 +1724,19 @@ export function DungeonPreview3D({
                 })()}
             </Bounds>
           </Suspense>
+          {/* Live camera-ward tracker for cutaway (real-wall-assets unit) —
+              always mounted, regardless of camera mode: cheap (throttled
+              per-frame dot product, `wallPieceHelpers.facingCutawayHeight`
+              already no-ops the RESULT while Walk is active via
+              `cutawayEnabled`), and avoids racing a mount/unmount against
+              camera-mode switches the way a conditionally-mounted tracker
+              would (this file's own "stale camera reference" bug, fixed
+              in the Play/Walk transition above, is exactly the class of
+              defect that class of conditional mounting invites). */}
+          <CameraWardTracker
+            reference={wardReference}
+            onChange={setCameraWard}
+          />
           {isWalking && walkStart ? (
             <WalkCamera
               ctx={walkContext}
