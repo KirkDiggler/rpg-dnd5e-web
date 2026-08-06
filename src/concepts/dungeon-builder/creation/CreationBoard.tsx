@@ -699,9 +699,12 @@ export function CreationBoard({
         // erase (the "modifier... removes" affordance) regardless of
         // this cell's own state; otherwise erase iff this cell is
         // already a member, matching the pre-drag-brush single-click
-        // toggle feel. `addCellToRegion`'s own overlap validation still
-        // catches a cell that belongs to another region (surfaces a
-        // toast), same as before.
+        // toggle feel. `beginStroke` opens this gesture's paint/skip
+        // tally BEFORE the first cell's own mutator call so that cell is
+        // counted too — `setSelectedRegionCellMembership` now pre-checks
+        // overlap per cell and accumulates a rejected one into the tally
+        // instead of flooding an immediate toast (region-brush honesty
+        // round — see `useRegionEditing.ts`'s own header comment).
         const region = doc.regions.find(
           (r) => r.id === regionEdit.selectedRegionId
         );
@@ -713,6 +716,7 @@ export function CreationBoard({
           : isMember
             ? 'erase'
             : 'add';
+        regionEdit.beginStroke();
         regionEdit.setSelectedRegionCellMembership(cell, mode === 'add');
         setRegionStroke({ mode, touched: new Set([cellKey]) });
         return;
@@ -747,6 +751,7 @@ export function CreationBoard({
         : isPending
           ? 'erase'
           : 'add';
+      regionEdit.beginStroke();
       regionEdit.setPendingCellMembership(cell, mode === 'add');
       setRegionStroke({ mode, touched: new Set([cellKey]) });
       return;
@@ -964,6 +969,11 @@ export function CreationBoard({
     setStroke(null);
     setDragPlacement(null);
     setRegionStroke(null);
+    // Flushes the region brush's own paint/skip tally (region-brush
+    // honesty round) — a no-op when no region-tool stroke was active this
+    // gesture (every OTHER tool's pointer-up passes through this same
+    // shared handler, and `endStroke` itself guards on that).
+    regionEdit.endStroke();
     if (draggingEndpoint) {
       const line = doc.wallLines[draggingEndpoint.lineIndex];
       const otherEnd =
@@ -1299,6 +1309,22 @@ export function CreationBoard({
   // `Board.tsx`'s read-only overlay) so a nested region's overlay draws
   // on top of its container's, "innermost visible."
   const regionEls: ReactElement[] = [];
+  // A region's claim over a straight wall's FOOTPRINT band, rendered
+  // SEPARATELY from `regionEls` and painted much later in this
+  // component's own SVG child order (after `straightWallEls`, see the
+  // return below) — region-brush honesty round, 2026-08-06. Kirk, live
+  // authoring: "the shared hexes look like the unplayable piece the wall
+  // goes through" — his first region's brush swept up a wall's footprint
+  // cells, and the crimson hatch (drawn LATER than `regionEls` in the old
+  // paint order, so it visually sat ON TOP) buried both the region's own
+  // tint AND this file's existing "⚠" warning underneath it, making a
+  // real membership fact unreadable. The fix is paint order, not new
+  // data: same `inFootprint` cells, same region color, just drawn AFTER
+  // the hatch instead of before it, at a stronger opacity so the claim is
+  // unmistakable rather than a second faint layer under a loud one. Doors
+  // NOT footprint cells are unaffected — this list is empty whenever
+  // `inFootprint` never fires for a region's own cells.
+  const regionFootprintClaimEls: ReactElement[] = [];
   for (const region of regionsByPaintOrder(doc.regions)) {
     const color = regionArchetypeColor(region.archetype);
     const selected = regionEdit.selectedRegionId === region.id;
@@ -1323,9 +1349,21 @@ export function CreationBoard({
       // makes the cell impassable, but membership is an authoring fact
       // this tool has no business silently rewriting (same "flag, don't
       // delete" discipline the placement/start/end checks below follow).
+      // Do NOT make footprint cells unpaintable — they're legal region
+      // members (semantic vs physical, settled) — this is visibility
+      // only, never a membership restriction.
       if (inFootprint(col, row)) {
         const c = creationCellCenter(col, row);
-        regionEls.push(
+        regionFootprintClaimEls.push(
+          <polygon
+            key={`region-${region.id}-${col}-${row}-fp-claim`}
+            points={corners}
+            fill={color}
+            fillOpacity={0.55}
+            stroke={color}
+            strokeWidth={2}
+            pointerEvents="none"
+          />,
           <text
             key={`region-${region.id}-${col}-${row}-fp-warn`}
             x={c.x}
@@ -1409,6 +1447,45 @@ export function CreationBoard({
       );
     }
   );
+
+  // The board's own evidence for the most recent rejected/partial region
+  // paint or create (region-brush honesty round, 2026-08-06) — Kirk: "it
+  // says 'one or more cells already belong to another region'... with NO
+  // indication which cells." `regionEdit.conflictFlash` names WHICH
+  // cells and whose (the toast, flashed by the same caller, names the
+  // owning region); this renders those cells with a pulsing white
+  // outline — deliberately distinct from every other overlay this file
+  // draws (a region's own colored tint, the footprint hatch's crimson
+  // diagonal, the open-boundary line's solid red) so "look here, THIS is
+  // what collided" can't be confused with an existing steady-state
+  // warning. Rendered LAST (see the return below) so it always wins the
+  // paint order regardless of what else is under it. SVG-native
+  // `<animate>`, not a CSS keyframe — this file has no stylesheet of its
+  // own to add one to, and this is the only element that needs to pulse.
+  const conflictFlashEls: ReactElement[] = (
+    regionEdit.conflictFlash?.cells ?? []
+  ).map(([col, row]) => {
+    const corners = creationCellPolygon(col, row, CELL_SIZE * 0.98)
+      .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+      .join(' ');
+    return (
+      <polygon
+        key={`region-conflict-${col}-${row}`}
+        points={corners}
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth={3}
+        pointerEvents="none"
+      >
+        <animate
+          attributeName="stroke-opacity"
+          values="1;0.15;1"
+          dur="0.9s"
+          repeatCount="indefinite"
+        />
+      </polygon>
+    );
+  });
 
   const renderPlacement = (
     ref: string,
@@ -1558,6 +1635,11 @@ export function CreationBoard({
       {straightPreviewEls}
       {straightWallHandleEls}
       {holeEls}
+      {/* Drawn AFTER the straight-wall footprint hatch above so a
+          region's claim over a footprint/band cell tints OVER the hatch
+          instead of sitting invisibly under it — see this array's own
+          doc comment. */}
+      {regionFootprintClaimEls}
 
       {hoverEdge && (tool === 'wall' || tool === 'door') && (
         <line
@@ -1636,6 +1718,7 @@ export function CreationBoard({
         })()}
 
       {placementEls}
+      {conflictFlashEls}
     </svg>
   );
 }

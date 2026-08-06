@@ -19,19 +19,25 @@
  * `stripToV1Subset` result computed in `DungeonBuilderConcept.tsx` — one
  * gating implementation, not two that could drift.
  *
- * **Why the button still reads disabled in practice, today**: creation
- * mode has no "declare a room" UI (`emptyCanvasDoc.ts`'s own doc comment
- * — `rooms: []` is the only shape this mode's board ever produces) and
- * dungeonspec's real `minRooms = 2` + "exactly one boss-archetype room"
- * requirements are unconditional, independent of which target-dialect
- * fields the server accepts (see `stripToV1Subset`'s own
- * `compilableBlockers`). So a from-scratch canvas is STILL genuinely
- * unsavable today — but the button now says so with the SPECIFIC real
- * reason ("needs at least 2 rooms (has 0)") instead of the old blanket
- * "proposed schema" claim, and an author who hand-types `rooms:`
- * declarations into this very pane (it's a real, editable CST — see
- * this doc comment's own opening) would see the button light up the
- * moment the document actually becomes compilable, same as edit mode.
+ * **Why the button still reads disabled in practice, today**: this is
+ * still a from-scratch CANVAS document (`doc.canvas` — `emptyCanvasDoc.ts`'s
+ * own doc comment: "a from-scratch canvas has nothing... no fictional
+ * room standing in for one"), and no server has shipped platform Wave 0
+ * (rpg-project#192) yet — `canvas:` itself isn't accepted. `stripToV1Subset`'s
+ * `compilableBlockers` says exactly that ("from-scratch canvas documents
+ * aren't accepted by this server yet (platform Wave 0 — rpg-project#192)")
+ * rather than dungeonspec's chain-mode `minRooms = 2`/"exactly one
+ * boss-archetype room" rules — region-brush honesty round, 2026-08-06:
+ * those rules are real, but they're validate.go's real minimums for a
+ * `rooms:` CHAIN, a shape a canvas document doesn't have and can't be
+ * made to have by adding a boss room (Kirk hit exactly this live: added
+ * a boss region trying to satisfy "needs a boss," which could never
+ * unblock a canvas doc since the server rejects `canvas:` before
+ * validation ever reaches boss cardinality). An author who hand-types a
+ * real `rooms:`/`connectors:` chain into this very pane instead of using
+ * `canvas:` (it's a real, editable CST — see this doc comment's own
+ * opening) is no longer canvas-mode and gets the chain-mode blockers
+ * back, same as edit mode.
  */
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import type { ServerCapabilities } from '../capabilityProbe';
