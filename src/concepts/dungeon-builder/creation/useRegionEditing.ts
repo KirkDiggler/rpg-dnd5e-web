@@ -13,14 +13,50 @@
  * there is no edit-mode equivalent of this hook yet; edit mode renders any
  * authored `regions:` read-only (`Board.tsx`), it just doesn't offer a way
  * to create/edit them.
+ *
+ * **Region-brush honesty round (2026-08-06)**: Kirk, live authoring —
+ * (a) an overlap rejection named neither the colliding cells nor the
+ * region that owned them; (b) his own diagnosis of why: his first
+ * region's brush swept up a straight wall's FOOTPRINT cells (they read as
+ * "the wall," not "claimed floor"), so painting a SECOND region up to the
+ * same wall from the other side collided on that band, and the generic
+ * message sent him hunting blind. Two changes here:
+ *
+ * 1. **`setPendingCellMembership`/`setSelectedRegionCellMembership` now
+ *    pre-check overlap PER CELL** (`findRegionCellOverlap`, one cell at a
+ *    time — cheap, and the only shape a brush stroke ever asks) instead of
+ *    silently accepting anything into `pendingCells` and only discovering
+ *    the collision at a whole-set `handleCreate` call (genuinely
+ *    all-or-nothing before this round — see git history). A colliding
+ *    cell is never added; it's recorded into the ACTIVE stroke's
+ *    accumulator (`beginStroke`/`endStroke` below) instead of flashing an
+ *    immediate per-cell toast, so a drag crossing 4 owned cells doesn't
+ *    flood 4 toasts (each replacing the last — `DungeonBuilderConcept.tsx`'s
+ *    `flashToast` is a single-slot, no queue) and lose all but the final
+ *    one. Non-overlap rejections (contiguity, disconnect-on-erase,
+ *    last-cell-removal) are unaffected — still immediate, unchanged; they
+ *    aren't the flood-prone case this round targets.
+ * 2. **`beginStroke`/`endStroke` bracket one paint gesture** (a single
+ *    click is just a 1-cell stroke — `CreationBoard.tsx` brackets both the
+ *    same way) and flush ONE honest summary at the end: "painted 12,
+ *    skipped 4 owned by 'entrance'". Silent when nothing was skipped —
+ *    matches this concept's existing "no toast on a clean success"
+ *    convention (wall/hole painting shows none either). `conflictFlash`
+ *    is the visual half — the exact skipped/rejected cells, for
+ *    `CreationBoard.tsx`'s own flash-highlight overlay — shared with
+ *    `handleCreate`'s own all-or-nothing rejection path below, which sets
+ *    the SAME state so a Create-button collision gets the identical
+ *    evidence a brush-stroke skip does.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Document } from 'yaml';
 import {
   addCellToRegion,
   connectRegions,
   createRegion,
   deleteRegion,
+  findRegionCellOverlap,
+  pluralCount,
   RegionValidationError,
   removeCellFromRegion,
   renameRegion,
@@ -28,9 +64,31 @@ import {
   type DungeonDoc,
 } from '../dungeonYaml';
 import type { Cell } from '../regionGeometry';
+import { OVERLAP_SAMPLE_CELLS } from '../regionTree';
 
 function cellIn(cells: readonly Cell[], cell: Cell): boolean {
   return cells.some((c) => c[0] === cell[0] && c[1] === cell[1]);
+}
+
+/** The evidence a rejected paint/create action surfaces on the board —
+ * `CreationBoard.tsx` flash-highlights exactly `cells`, the toast (already
+ * flashed by whoever set this) names `ownerName ?? ownerId` separately. */
+export interface RegionConflictFlash {
+  cells: Cell[];
+  ownerId: string;
+  ownerName?: string;
+}
+
+/** One in-progress brush stroke's tally — `painted` counts cells actually
+ * applied (add OR erase, whichever this stroke's mode is), `skippedByOwner`
+ * buckets add-mode overlap skips by the region that already owns them
+ * (almost always one bucket; a stroke that grazes two different regions'
+ * territory gets two). Erase-mode strokes never populate `skippedByOwner`
+ * — removing a cell can't collide with anything — so `endStroke` is a
+ * silent no-op for them, same as a fully clean add stroke. */
+interface StrokeStats {
+  painted: number;
+  skippedByOwner: Map<string, { name?: string; count: number; cells: Cell[] }>;
 }
 
 export function useRegionEditing(
@@ -46,6 +104,97 @@ export function useRegionEditing(
    * by selecting/deleting/connecting, so it never lingers past the moment
    * it's relevant. */
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
+  /** The board's own flash-highlight evidence for the MOST RECENT
+   * rejected/partial paint or create — see this file's own header comment
+   * ("Region-brush honesty round"). `null` when nothing is currently
+   * flashing. */
+  const [conflictFlash, setConflictFlashState] =
+    useState<RegionConflictFlash | null>(null);
+  const conflictFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Sets `conflictFlash` and (re)starts its auto-clear timer — same
+   * 3200ms window `DungeonBuilderConcept.tsx`'s `flashToast` uses for the
+   * paired toast, so the highlight and the message it explains fade
+   * together. */
+  const flashConflict = (
+    cells: Cell[],
+    ownerId: string,
+    ownerName?: string
+  ) => {
+    setConflictFlashState({ cells, ownerId, ownerName });
+    if (conflictFlashTimer.current) clearTimeout(conflictFlashTimer.current);
+    conflictFlashTimer.current = setTimeout(
+      () => setConflictFlashState(null),
+      3200
+    );
+  };
+  /** The currently in-progress brush stroke's tally, or `null` between
+   * strokes — a `useRef`, not `useState`: it's written many times per
+   * stroke (every cell the drag crosses) and read only once, at
+   * `endStroke`, so it never needs to drive a render itself. */
+  const strokeStatsRef = useRef<StrokeStats | null>(null);
+
+  /** Starts accumulating a new brush stroke's paint/skip tally —
+   * `CreationBoard.tsx` calls this once, right before the FIRST cell's
+   * own mutator call, for every region-tool paint gesture (a plain click
+   * is just a 1-cell stroke, bracketed the same way). */
+  const beginStroke = () => {
+    strokeStatsRef.current = { painted: 0, skippedByOwner: new Map() };
+  };
+
+  /** Records one cell the active stroke couldn't paint because another
+   * region already owns it. Falls back to an immediate single-cell toast
+   * when called OUTSIDE an active stroke (defensive — every real caller
+   * today always brackets with `beginStroke`/`endStroke`, but a future
+   * direct caller still gets a truthful message instead of a silently
+   * swallowed skip). */
+  const recordOverlapSkip = (
+    cell: Cell,
+    overlap: { ownerId: string; ownerName?: string }
+  ) => {
+    const stats = strokeStatsRef.current;
+    if (!stats) {
+      const label = overlap.ownerName ?? overlap.ownerId;
+      flashToast(`cell [${cell[0]},${cell[1]}] already belongs to '${label}'`);
+      flashConflict([cell], overlap.ownerId, overlap.ownerName);
+      return;
+    }
+    const entry = stats.skippedByOwner.get(overlap.ownerId) ?? {
+      name: overlap.ownerName,
+      count: 0,
+      cells: [] as Cell[],
+    };
+    entry.count++;
+    if (entry.cells.length < OVERLAP_SAMPLE_CELLS) entry.cells.push(cell);
+    stats.skippedByOwner.set(overlap.ownerId, entry);
+  };
+
+  /** Ends the active brush stroke and, if anything was skipped, flushes
+   * ONE honest summary — "painted 12, skipped 4 owned by 'entrance'" —
+   * instead of the per-cell toast flood a naive "call flashToast on every
+   * rejection" loop would produce (`DungeonBuilderConcept.tsx`'s
+   * `flashToast` is single-slot; only the LAST of many rapid calls would
+   * ever have been visible). Silent when the stroke painted cleanly — no
+   * `skippedByOwner` entries — matching this concept's "no toast on a
+   * clean success" convention elsewhere (wall/hole painting shows none
+   * either). Safe to call with no active stroke (every tool's
+   * `handlePointerUp` in `CreationBoard.tsx` is shared, so this fires on
+   * every pointer-up regardless of which tool was active). */
+  const endStroke = () => {
+    const stats = strokeStatsRef.current;
+    strokeStatsRef.current = null;
+    if (!stats || stats.skippedByOwner.size === 0) return;
+    const parts: string[] = [];
+    const flashCells: Cell[] = [];
+    let firstOwner: { ownerId: string; ownerName?: string } | null = null;
+    for (const [ownerId, entry] of stats.skippedByOwner) {
+      const label = entry.name ?? ownerId;
+      parts.push(`${pluralCount(entry.count, 'cell')} owned by '${label}'`);
+      flashCells.push(...entry.cells);
+      if (!firstOwner) firstOwner = { ownerId, ownerName: entry.name };
+    }
+    flashToast(`painted ${stats.painted}, skipped ${parts.join('; ')}`);
+    flashConflict(flashCells, firstOwner!.ownerId, firstOwner!.ownerName);
+  };
 
   const reportError = (err: unknown) => {
     flashToast(
@@ -55,10 +204,14 @@ export function useRegionEditing(
 
   /** Toggle a cell in the NOT-YET-CREATED region's pending set — the
    * Region tool's paint interaction before a region exists at all.
-   * Deliberately does not validate contiguity/overlap on every click
-   * (that would make painting a shape one cell at a time impossible the
-   * moment two disconnected starting clicks land) — validation runs once,
-   * at `handleCreate`, via `dungeonYaml.ts`'s own `createRegion`. */
+   * Deliberately does not validate contiguity on every click (that would
+   * make painting a shape one cell at a time impossible the moment two
+   * disconnected starting clicks land) — contiguity validation runs once,
+   * at `handleCreate`, via `dungeonYaml.ts`'s own `createRegion`. Overlap
+   * is a separate concern from contiguity (a single cell either belongs
+   * to an existing region or it doesn't, independent of the pending set's
+   * eventual shape) and is NOT deferred — see `setPendingCellMembership`
+   * below, the caller every real interaction actually uses. */
   const togglePendingCell = (cell: Cell) => {
     setPendingCells((prev) =>
       cellIn(prev, cell)
@@ -82,15 +235,32 @@ export function useRegionEditing(
    * drag started. A single click still reads as a toggle to the author
    * (`CreationBoard.tsx` computes `included = !cellIn(pendingCells, cell)`
    * for the drag's own first cell), so this doesn't change single-click
-   * behavior — it only makes the multi-cell case correct. */
+   * behavior — it only makes the multi-cell case correct.
+   *
+   * **Region-brush honesty round**: an ADD that collides with an existing
+   * region's cell is now rejected PER CELL, right here, instead of
+   * silently entering `pendingCells` and only surfacing at a later
+   * whole-set `handleCreate` call — this is what makes painting a second
+   * region up against a wall a first-class-legal band NOT collide
+   * invisibly (see this file's own header comment). A rejected cell is
+   * recorded into the active stroke's tally (`recordOverlapSkip`), never
+   * added. */
   const setPendingCellMembership = (cell: Cell, included: boolean) => {
-    setPendingCells((prev) => {
-      const has = cellIn(prev, cell);
-      if (included === has) return prev;
-      return included
-        ? [...prev, cell]
-        : prev.filter((c) => !(c[0] === cell[0] && c[1] === cell[1]));
-    });
+    if (!included) {
+      setPendingCells((prev) =>
+        prev.filter((c) => !(c[0] === cell[0] && c[1] === cell[1]))
+      );
+      if (strokeStatsRef.current) strokeStatsRef.current.painted++;
+      return;
+    }
+    if (cellIn(pendingCells, cell)) return;
+    const overlap = findRegionCellOverlap(doc, [cell]);
+    if (overlap) {
+      recordOverlapSkip(cell, overlap);
+      return;
+    }
+    setPendingCells((prev) => [...prev, cell]);
+    if (strokeStatsRef.current) strokeStatsRef.current.painted++;
   };
 
   const clearPending = () => setPendingCells([]);
@@ -114,6 +284,18 @@ export function useRegionEditing(
       setJustCreatedId(id);
     } catch (err) {
       reportError(err);
+      // The per-cell overlap pre-check in `setPendingCellMembership` means
+      // `pendingCells` should never itself contain an owned cell by the
+      // time Create is clicked — but a hand-edited YAML pane change to
+      // `regions:` between painting and clicking Create (or a future
+      // caller that bypasses the brush) could still produce this
+      // rejection here, so the SAME evidence still surfaces: re-derive
+      // which cells collide with which region and flash them, exactly
+      // like a brush-stroke skip would.
+      const overlap = findRegionCellOverlap(doc, pendingCells);
+      if (overlap) {
+        flashConflict(overlap.cells, overlap.ownerId, overlap.ownerName);
+      }
     }
   };
 
@@ -139,17 +321,31 @@ export function useRegionEditing(
   /** IDEMPOTENT sibling of `handleToggleCellOnSelected`, same reason
    * `setPendingCellMembership` exists alongside `togglePendingCell` — the
    * region-brush drag needs to apply ONE decided mode across every cell a
-   * stroke crosses, not re-toggle each one. A rejected `addCellToRegion`/
-   * `removeCellFromRegion` (contiguity/overlap) surfaces as a toast per
-   * cell, same as the single-click path — a drag that crosses into
-   * another region's territory rejects THAT cell and keeps going, rather
-   * than aborting the whole stroke. */
+   * stroke crosses, not re-toggle each one.
+   *
+   * **Region-brush honesty round**: an ADD overlap is now pre-checked
+   * (`findRegionCellOverlap`) and recorded into the active stroke's tally
+   * (`recordOverlapSkip`) WITHOUT even attempting `addCellToRegion` — same
+   * "skip silently into the summary, don't flood a toast" treatment
+   * `setPendingCellMembership` gives the not-yet-created-region path.
+   * Every OTHER rejection (contiguity on add; disconnect/last-cell on
+   * erase) still goes through `addCellToRegion`/`removeCellFromRegion`
+   * and still surfaces as an IMMEDIATE toast, unchanged from before this
+   * round — those aren't the flood-prone "many already-owned cells in one
+   * stroke" case this round targets. */
   const setSelectedRegionCellMembership = (cell: Cell, included: boolean) => {
     if (!selectedRegionId) return;
     const region = doc.regions.find((r) => r.id === selectedRegionId);
     if (!region) return;
     const has = cellIn(region.cells, cell);
     if (included === has) return;
+    if (included) {
+      const overlap = findRegionCellOverlap(doc, [cell], selectedRegionId);
+      if (overlap) {
+        recordOverlapSkip(cell, overlap);
+        return;
+      }
+    }
     try {
       if (included) {
         addCellToRegion(cst, doc, selectedRegionId, cell);
@@ -157,6 +353,7 @@ export function useRegionEditing(
         removeCellFromRegion(cst, doc, selectedRegionId, cell);
       }
       syncFromCst(cst);
+      if (strokeStatsRef.current) strokeStatsRef.current.painted++;
     } catch (err) {
       reportError(err);
     }
@@ -220,6 +417,16 @@ export function useRegionEditing(
     handleSetArchetype,
     handleDelete,
     handleConnect,
+    /** Board-side evidence for the most recent rejected/partial paint or
+     * create — `CreationBoard.tsx` renders `conflictFlash.cells` as a
+     * flash-highlight overlay. See this file's own header comment. */
+    conflictFlash,
+    /** Brackets one paint gesture (drag OR a plain click, which is just a
+     * 1-cell stroke) — `CreationBoard.tsx` calls `beginStroke` right
+     * before the FIRST cell's own mutator call and `endStroke` from its
+     * shared `handlePointerUp`. */
+    beginStroke,
+    endStroke,
   };
 }
 

@@ -58,6 +58,7 @@ import {
   sharedBoundaryEdges,
   type Cell,
 } from './regionGeometry';
+import { OVERLAP_SAMPLE_CELLS } from './regionTree';
 
 function parseFacing(raw: unknown): number | null {
   if (typeof raw !== 'string') return null;
@@ -1782,21 +1783,61 @@ export function setLightingAmbient(
 
 export class RegionValidationError extends Error {}
 
+/** The evidence a plain "already belongs to another region" rejection
+ * lacked — Kirk, live authoring (region-brush honesty round, 2026-08-06):
+ * "it says 'one or more cells already belong to another region'... with
+ * NO indication which cells or whose." Finds the FIRST existing region
+ * (other than `excludeRegionId`) that owns any of `cells`, and returns
+ * exactly which of `cells` collide with it — capped to
+ * `OVERLAP_SAMPLE_CELLS`, the same "representative handful, not a full
+ * accounting" convention `regionTree.ts`'s own `RegionOverlapWarning`
+ * uses for the sibling case (two EXISTING regions overlapping in a
+ * hand-pasted document, rather than a CANDIDATE cell set colliding with
+ * one). Only the first colliding region is reported: every caller today
+ * (the region-brush's own per-cell paint check, and `createRegion`'s
+ * whole-pending-set check at Create time) either passes a single cell or
+ * a pending set that, by construction, never straddles two owners in a
+ * way worth reporting simultaneously — see this function's own callers
+ * for why. `null` when `cells` doesn't collide with anything. */
+export function findRegionCellOverlap(
+  doc: DungeonDoc,
+  cells: readonly Cell[],
+  excludeRegionId?: string
+): {
+  ownerId: string;
+  ownerName?: string;
+  cells: Cell[];
+  cellCount: number;
+} | null {
+  for (const region of doc.regions) {
+    if (region.id === excludeRegionId) continue;
+    const owned = new Set(region.cells.map((c) => `${c[0]},${c[1]}`));
+    const hits = cells.filter((c) => owned.has(`${c[0]},${c[1]}`));
+    if (hits.length > 0) {
+      return {
+        ownerId: region.id,
+        ownerName: region.name,
+        cells: hits.slice(0, OVERLAP_SAMPLE_CELLS),
+        cellCount: hits.length,
+      };
+    }
+  }
+  return null;
+}
+
 /** Whether `cells` shares any member with an EXISTING region OTHER than
  * `excludeRegionId` (the region currently being edited, if any) —
  * rpg-project#180's own "Overlapping... cell sets fail" acceptance
- * criterion. */
+ * criterion. A thin boolean wrapper over `findRegionCellOverlap` — kept
+ * as its own export since most callers (`validateRegionCells` below)
+ * only ever needed the yes/no answer before this unit gave the overlap
+ * itself a shape worth returning. */
 export function cellsOverlapAnotherRegion(
   doc: DungeonDoc,
   cells: readonly Cell[],
   excludeRegionId?: string
 ): boolean {
-  const claimed = new Set<string>();
-  for (const region of doc.regions) {
-    if (region.id === excludeRegionId) continue;
-    for (const c of region.cells) claimed.add(`${c[0]},${c[1]}`);
-  }
-  return cells.some((c) => claimed.has(`${c[0]},${c[1]}`));
+  return findRegionCellOverlap(doc, cells, excludeRegionId) !== null;
 }
 
 /** Validate a candidate cell set for `createRegion`/membership edits —
@@ -1824,8 +1865,16 @@ export function validateRegionCells(
   if (!cellsAreContiguous(cells)) {
     return 'cells must be hex-contiguous (rpg-project#180)';
   }
-  if (cellsOverlapAnotherRegion(doc, cells, excludeRegionId)) {
-    return 'one or more cells already belong to another region';
+  const overlap = findRegionCellOverlap(doc, cells, excludeRegionId);
+  if (overlap) {
+    const label = overlap.ownerName ?? overlap.ownerId;
+    // Named region + exact count — the evidence the old generic message
+    // lacked (this function's own doc comment on `findRegionCellOverlap`
+    // above has the full "why"). `cellCount` (the TRUE count) drives the
+    // number, not `overlap.cells.length` (the capped sample) — a stroke
+    // that collides on 9 cells should say "9", not silently cap the
+    // reported count to 6 just because the cell LIST itself is capped.
+    return `${pluralCount(overlap.cellCount, 'cell')} already belong${overlap.cellCount === 1 ? 's' : ''} to '${label}'`;
   }
   return null;
 }
@@ -2290,7 +2339,11 @@ export interface V1SubsetResult {
   compilableBlockers: string[];
 }
 
-function pluralCount(n: number, noun: string): string {
+/** Exported so `useRegionEditing.ts`'s brush-stroke skip summary (region-
+ * brush honesty round, 2026-08-06 — "painted 12, skipped 4 owned by
+ * 'entrance'") uses the SAME pluralization this file's own compile-badge
+ * strip does, instead of a second hand-rolled copy. */
+export function pluralCount(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
@@ -2686,20 +2739,50 @@ export function stripToV1Subset(
 
   const strippedDoc = toDungeonDoc(cst);
   const compilableBlockers: string[] = [];
-  if (strippedDoc.rooms.length < 2) {
-    compilableBlockers.push(
-      `needs at least 2 rooms (has ${strippedDoc.rooms.length})`
-    );
-  }
-  const bossRooms = strippedDoc.rooms.filter((r) => r.archetype === 'boss');
-  if (bossRooms.length !== 1 || !bossRooms[0]?.boss) {
-    compilableBlockers.push(
-      bossRooms.length === 0
-        ? 'needs exactly one boss-archetype room with a declared boss (has none)'
-        : bossRooms.length > 1
-          ? `needs exactly one boss-archetype room (has ${bossRooms.length})`
-          : 'the boss-archetype room needs a declared boss'
-    );
+  // `doc` (the ORIGINAL parse, before this function's own `cst.delete`
+  // calls above) — not `strippedDoc` — is what says whether this is a
+  // from-scratch canvas document: when `canvas` isn't accepted, the block
+  // above already deleted `canvas:` from `cst`, so `strippedDoc.canvas`
+  // would read `null` here regardless, losing exactly the signal this
+  // branch needs. A canvas document has no `rooms:`/`boss:` chain AT ALL
+  // (TARGET-YAML.md's "top-level placement" section — `emptyCanvasDoc.ts`:
+  // "a from-scratch canvas has nothing... no fictional room standing in
+  // for one"), so the room-count/boss-archetype checks below are
+  // chain-mode's own real server minimums (validate.go) reinterpreted
+  // against a document shape they were never written for. Kirk hit this
+  // live (region-brush honesty round, 2026-08-06): added a whole boss
+  // region trying to satisfy "needs exactly one boss-archetype room" on a
+  // canvas doc — which can never unblock it, since the server rejects
+  // `canvas:` itself before validation ever reaches boss cardinality. The
+  // only HONEST blocker for a canvas doc today is that fact, driven by
+  // the live probe (`accepted('canvas')`), not a hardcoded guess: the
+  // moment `canvas` graduates to accepted, this blocker disappears and
+  // nothing invented takes its place — whatever the server's real canvas
+  // validation turns out to require will surface through the actual save
+  // attempt's own error path once it exists, not a client-side prediction
+  // of rules nobody has written yet.
+  if (doc.canvas) {
+    if (!accepted('canvas')) {
+      compilableBlockers.push(
+        "from-scratch canvas documents aren't accepted by this server yet (platform Wave 0 — rpg-project#192)"
+      );
+    }
+  } else {
+    if (strippedDoc.rooms.length < 2) {
+      compilableBlockers.push(
+        `needs at least 2 rooms (has ${strippedDoc.rooms.length})`
+      );
+    }
+    const bossRooms = strippedDoc.rooms.filter((r) => r.archetype === 'boss');
+    if (bossRooms.length !== 1 || !bossRooms[0]?.boss) {
+      compilableBlockers.push(
+        bossRooms.length === 0
+          ? 'needs exactly one boss-archetype room with a declared boss (has none)'
+          : bossRooms.length > 1
+            ? `needs exactly one boss-archetype room (has ${bossRooms.length})`
+            : 'the boss-archetype room needs a declared boss'
+      );
+    }
   }
 
   return {
