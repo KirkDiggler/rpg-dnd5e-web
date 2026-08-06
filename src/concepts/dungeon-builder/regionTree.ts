@@ -103,7 +103,12 @@ export interface RegionTree<T extends RegionLike = RegionLike> {
   overlaps: RegionOverlapWarning[];
 }
 
-const OVERLAP_SAMPLE_CELLS = 6;
+/** Exported so `dungeonYaml.ts`'s own overlap-evidence helper
+ * (`findRegionCellOverlap`, region-brush honesty round, 2026-08-06) caps
+ * its sample the same way — one "representative handful" convention for
+ * every region-overlap surface in this concept, not two independently
+ * chosen numbers. */
+export const OVERLAP_SAMPLE_CELLS = 6;
 
 /** How two regions' cell sets relate, given their sizes and shared-cell
  * count — the one comparison every pairwise check in this module reduces

@@ -6091,6 +6091,194 @@ check, which passed).
   unlocked-looking, honestly (there is no lock state to read, not a dropped
   feature).
 
+## Region-brush honesty round: overlap evidence, skip-not-reject, probe-aware canvas blocker (2026-08-06, rpg-project#180)
+
+Three fixes for live authoring friction Kirk hit painting two regions across
+a straight wall, plus a Save & Play tooltip that misled him into a dead end.
+
+**Kirk's own diagnosis, verbatim** — (a) "it says 'one or more cells already
+belong to another region'" with no indication which cells or whose; (b)
+"the shared hexes look like the unplayable piece the wall goes through" —
+his first region's brush swept up a straight wall's FOOTPRINT cells
+(rpg-project#169's own footprint hatch reads as "wall," not "claimed
+floor"), so painting a second region up to the same wall from the other
+side collided on that band and the generic message sent him hunting blind;
+(c) he then added a whole boss REGION trying to satisfy the Save & Play
+blocker "needs exactly one boss-archetype room" on a from-scratch canvas
+doc — which can never unblock it (the server rejects `canvas:` entirely
+until platform Wave 0 — rpg-project#192), so the message sent him chasing a
+ghost.
+
+### 1. Overlap rejection now names its evidence
+
+`dungeonYaml.ts`'s new `findRegionCellOverlap(doc, cells, excludeRegionId?)`
+returns which of `cells` collide and which EXISTING region owns them
+(`{ownerId, ownerName?, cells, cellCount}`), capped at the same
+`OVERLAP_SAMPLE_CELLS = 6` the region-tree unit's own `RegionOverlapWarning`
+already established as this concept's "representative handful" convention
+for an overlap cell list — now exported from `regionTree.ts` and imported
+here rather than a second copy of the same number.
+`validateRegionCells`'s overlap branch uses it to produce a concrete
+message — `"3 cells already belong to 'entrance'"` — replacing the old
+`"one or more cells already belong to another region"`.
+`cellsOverlapAnotherRegion` is now a thin boolean wrapper over the same
+function, not a second implementation.
+
+### 2. The brush paints what it can and reports what it skips
+
+Before this round, the two paint paths behaved differently and both were
+wrong in their own way:
+
+- **Painting a NOT-YET-CREATED region** (`pendingCells`,
+  `setPendingCellMembership`) did ZERO overlap validation during the brush
+  — cells silently entered `pendingCells` even if another region already
+  owned them — and only failed, ALL AT ONCE, when the Create button was
+  clicked (`createRegion`'s own whole-set `validateRegionCells` call). This
+  was the genuinely all-or-nothing case: one rejection for the entire
+  candidate set, no partial credit, no indication which of many painted
+  cells were the problem.
+- **Editing an EXISTING selected region** (`setSelectedRegionCellMembership`)
+  already skipped a rejected cell and kept going (per-cell
+  `addCellToRegion` calls), but flashed an IMMEDIATE toast per rejected
+  cell — `DungeonBuilderConcept.tsx`'s `flashToast` is a single-slot,
+  3200ms-decay banner, not a queue, so a drag crossing several owned cells
+  just flickered through several rapid replacements and only the LAST
+  message was ever actually readable.
+
+Both are now unified: `useRegionEditing.ts` gained a per-stroke accumulator
+(`beginStroke`/`endStroke`, bracketing one paint gesture — a plain click is
+just a 1-cell stroke) and both mutators pre-check
+`findRegionCellOverlap(doc, [cell], ...)` before touching state. A
+collision is recorded into the active stroke's tally
+(`recordOverlapSkip`), not applied and not immediately toasted;
+`endStroke` flushes ONE summary — `"painted 12, skipped 4 cells owned by
+'entrance'"` — grouped by owner when a stroke grazes more than one
+region's territory, and silent when nothing was skipped (matching this
+concept's existing "no toast on a clean success" convention). Non-overlap
+rejections (contiguity on add; disconnect/last-cell on erase) are
+UNCHANGED — still immediate per-cell toasts, since those aren't the
+flood-prone case this round targets and are rare single-shot events, not
+worth folding into the summary. `CreationBoard.tsx`'s region-tool pointer
+handlers call `beginStroke()` right before the first cell's own mutator
+call and `endStroke()` from the shared `handlePointerUp`.
+
+`conflictFlash` (`{cells, ownerId, ownerName?}`, cleared on the same
+3200ms timer as its paired toast) is the visual half — the exact
+cells the stroke skipped, or (via `handleCreate`'s own catch, a
+defense-in-depth path for a hand-edited YAML collision) the exact cells a
+whole-set Create rejection collided on. `CreationBoard.tsx` renders it as
+a pulsing white-outline polygon (`<animate>` on `stroke-opacity`,
+0.9s cycle) drawn LAST in the SVG child order so it always wins paint
+order regardless of what's underneath — deliberately distinct from every
+other overlay this file draws (a region's own colored tint, the footprint
+hatch's crimson diagonal, the open-boundary line's solid red).
+
+**Footprint membership, made unmistakable.** Kirk's (b) diagnosis was a
+real render-order bug: the straight-wall footprint hatch
+(`straightWallEls`, crimson diagonal pattern) painted AFTER `regionEls` in
+the old SVG child order, so it visually sat ON TOP of a region's own tint
+AND the pre-existing "⚠ footprint" warning text, burying both — a real
+membership fact read as invisible. Fixed by splitting that per-footprint-
+cell rendering into its own `regionFootprintClaimEls` array (same
+`inFootprint` check, same region color, stronger 0.55 fill opacity vs the
+base 0.18/0.32) and drawing it AFTER `straightWallEls`/`straightPreviewEls`
+instead of interleaved with the base region tint — the claim now tints
+OVER the hatch. Footprint cells remain fully paintable region members
+throughout (semantic vs. physical footprint is settled prior art — see
+rpg-project#169's own footprint unit) — this is a visibility fix, never a
+membership restriction.
+
+### 3. Probe-aware canvas save blocker
+
+`stripToV1Subset`'s `compilableBlockers` computation used to run
+dungeonspec's real chain-mode minimums (`minRooms = 2`, "exactly one
+boss-archetype room with a declared boss") UNCONDITIONALLY — including
+against a from-scratch CANVAS document, which has no `rooms:`/`boss:`
+chain at all (`emptyCanvasDoc.ts`: "a from-scratch canvas has nothing...
+no fictional room standing in for one"). A canvas doc's `strippedDoc.rooms`
+is always `[]`, so it ALWAYS failed both chain checks, and the tooltip
+told the author to fix a boss room — Kirk did exactly that, live, and it
+could never have worked: the server rejects `canvas:` itself, before
+validation ever reaches boss cardinality.
+
+Now gated on the ORIGINAL parsed `doc.canvas` (captured before this
+function's own `cst.delete('canvas')` erases the signal for the
+not-accepted case): a canvas document reports exactly one blocker,
+written against the live probe result — `accepted('canvas')` — not
+hardcoded: `"from-scratch canvas documents aren't accepted by this server
+yet (platform Wave 0 — rpg-project#192)"` when not accepted, and an EMPTY
+blocker list when it is (no invented guess at canvas's own future
+validation rules takes the old message's place — a real save attempt will
+surface whatever the server's real canvas validation turns out to
+require, once #192 ships and it's knowable). A real room-chain document
+(`!doc.canvas`) is completely unaffected — same `minRooms`/boss checks as
+before. `YamlPane.tsx`'s `SaveAndPlayButton` needed no changes at all —
+it already renders whatever `compilableBlockers` it's given verbatim;
+only the computation changed. `creation/ProposedYamlPane.tsx`'s own doc
+comment (previously describing the exact stale "needs 2 rooms" behavior
+this fix replaces) is updated to match.
+
+### Tests
+
+14 new: `dungeonYaml.test.ts` — 6 for `findRegionCellOverlap` (null on no
+collision, single-cell shape with owner name, `ownerName` vs `ownerId`
+fallback, `excludeRegionId` self-check, `OVERLAP_SAMPLE_CELLS` capping vs.
+the true `cellCount`, first-region-wins on a multi-region collision) plus
+4 for the canvas-mode `compilableBlockers` gate (not-accepted, accepted,
+no-capabilities/fixtures-mode, and a real room-chain doc proving the
+chain rules are untouched); 1 existing test's expectation updated to the
+new evidence-bearing message. `creation/useRegionEditing.test.ts` (new
+file) — 10 tests: pending-region skip-not-silently-accept, the defensive
+immediate-toast fallback outside an active stroke, a whole stroke's
+paint/skip split with the single summary toast, a clean stroke's silence,
+Kirk's own two-regions-across-a-wall-band scenario end to end (including
+that Create now succeeds first try since the band cells were never in
+`pendingCells`), the selected-region-edit path's same skip/accumulate
+behavior with non-overlap rejections staying immediate, and
+`handleCreate`'s defense-in-depth conflict-flash path. Full
+`src/concepts/dungeon-builder` suite: 460 tests, `tsc -b --noEmit` and
+`eslint` both clean.
+
+### Live verification
+
+Fresh worktree, own dev server (`public/models/synty/` rsync'd from a
+sibling worktree — a fresh worktree never has it). Reproduced Kirk's own
+scenario via a real Playwright script (native pointer events on the SVG,
+board-space→screen-space via the SAME `getScreenCTM()` transform
+`CreationBoard.tsx`'s own `toBoardPoint` uses, so click math can't drift
+from the app's real coordinate space): drew a `wallLines:` entry via the
+YAML pane, painted "Entrance Hall" straddling its real footprint band
+(verified empirically — the footprint clips to the corner-anchored line's
+actual geometry, not the nominal `cell:` coordinate the line is addressed
+from), created it, then brushed "Hallway" from the far side straight
+across into the shared band.
+
+- `docs/evidence/region-brush-honesty-footprint-tint.png` — Entrance Hall
+  alone, its 3 footprint-band cells rendering a visibly stronger tint
+  layered OVER the crimson hatch (plus the "⚠" marker), unmistakably
+  distinct from the wall's own un-owned footprint cells continuing past
+  the region's edge.
+- `docs/evidence/region-brush-honesty-collision-flash.png` — the collision
+  moment: Hallway's 8 legal pending cells (amber), Entrance Hall's 3
+  skipped footprint cells carrying BOTH the footprint-claim tint and the
+  pulsing white conflictFlash outline at once.
+- `docs/evidence/region-brush-honesty-skip-toast-fullpage.png` — full page,
+  toast banner reading `painted 8, skipped 4 cells owned by 'Entrance
+Hall'`.
+- `docs/evidence/region-brush-honesty-final-state.png` — both regions
+  committed, YAML pane confirming Entrance Hall's and Hallway's real cell
+  lists (the shared band cells appear in `entrance`'s list only).
+
+**What this round did NOT live-verify**: the canvas-mode Wave 0/#192
+tooltip specifically — no rpg-api/envoy container was running in this
+session (`serverState` stayed `unreachable`, confirmed showing the OTHER,
+also-correct branch of the same tooltip: "Server unreachable or authoring
+disabled — nothing to save to."). Covered instead by the 4 dedicated
+`stripToV1Subset` canvas-blocker tests above plus `YamlPane.test.tsx`'s
+existing (unmodified, still-passing) tests proving `SaveAndPlayButton`
+renders whatever `v1CompilableBlockers` it's handed verbatim — the exact
+seam this fix's computation feeds.
+
 ## Mode-correct capability probe: canvas fields stopped lying about themselves (2026-08-06, rpg-project#169)
 
 **The bug, found the day platform Wave 0 shipped.** rpg-project#192 merged to
