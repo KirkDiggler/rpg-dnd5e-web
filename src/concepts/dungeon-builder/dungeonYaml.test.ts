@@ -1749,12 +1749,16 @@ regions:
         [2, 1],
       ]);
       const doc2 = toDungeonDoc(cst);
+      // Region-brush honesty round: the message now names the exact
+      // collision (count + owning region), not a generic "another
+      // region" — Kirk's own ask, "with NO indication which cells or
+      // whose."
       expect(
         validateRegionCells(doc2, [
           [2, 1],
           [3, 1],
         ])
-      ).toMatch(/already belong to another region/);
+      ).toBe("1 cell already belongs to 'r1'");
       // Excluding r1's own id lets r1's proposed new cell set (which still
       // legitimately reuses its own current cells) validate cleanly.
       expect(
