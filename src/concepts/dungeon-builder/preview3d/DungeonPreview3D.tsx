@@ -141,7 +141,7 @@ import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { Billboard, Bounds, OrbitControls, Text } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import { Suspense, useMemo } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { DoubleSide, Shape } from 'three';
 import {
   facingToRotationY,
@@ -172,7 +172,22 @@ import { BOARD_HEX_SIZE, cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
 import { END_COLOR, regionArchetypeColor, START_COLOR } from '../markerStyle';
 import { regionCentroid } from '../regionGeometry';
 import type { BoardTool, PaletteSelection, PlacementSelection } from '../types';
+import { PlayCamera } from './PlayCamera';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
+import { WalkCamera } from './WalkCamera';
+import {
+  capWalkLights,
+  deriveWalkLights,
+  resolveAmbientIntensity,
+  resolveDirectionalScale,
+  WALK_LIGHT_BUDGET,
+  WALK_LIGHT_DECAY,
+} from './walkLighting';
+import {
+  buildWalkContext,
+  floorCentroid,
+  resolveWalkStart,
+} from './walkMovement';
 
 /** A canvas-native floor tile has no owning room ("no room chain exists
  * yet" — `creation/emptyCanvasDoc.ts`'s own doc comment) — a plain,
@@ -1261,6 +1276,105 @@ export function DungeonPreview3D({
   );
   const hitShape = useMemo(() => buildHexHitShape(), []);
 
+  // --- Walk / Play modes (rpg-project#169's author-walkthrough unit) ---
+  // 'orbit' (existing, unchanged default) vs. 'walk' (literal
+  // player-perspective — see WalkCamera.tsx's own header doc comment) vs.
+  // 'play' (rpg-project#169 FOLLOW-UP unit — Kirk played Walk live: "walk
+  // is pretty literal. that is not the view we have when playing. really
+  // cool though" — Play drives the SAME walked position through the real
+  // game's own tactical camera rig instead; see PlayCamera.tsx's own
+  // header doc comment for the full citation of every constant/formula).
+  // Both Walk and Play are view-only. Local to this component, not lifted
+  // to either caller: neither `DungeonBuilderConcept.tsx`'s edit-mode
+  // call site nor `CreationConcept.tsx`'s creation-mode one needs to know
+  // which camera is currently driving — "one component" per this unit's
+  // own scope.
+  const [cameraMode, setCameraMode] = useState<'orbit' | 'walk' | 'play'>(
+    'orbit'
+  );
+  const [walkLocked, setWalkLocked] = useState(false);
+  // The player's own nearest cell, updated only on a CELL CHANGE (not
+  // every frame — WalkCamera.tsx's own `onCellChange` doc comment) —
+  // drives light-cap recentering below without a per-frame re-render.
+  // Shared by both Walk and Play — whichever is active is the only one
+  // calling `setPlayerCell` at a time.
+  const [playerCell, setPlayerCell] = useState<PlaceableCell | null>(null);
+
+  const walkContext = useMemo(
+    () => buildWalkContext(floorPlan, doc, placeableCells, wallLineFootprint),
+    [floorPlan, doc, placeableCells, wallLineFootprint]
+  );
+  const walkStart = useMemo(
+    () => resolveWalkStart(walkContext, doc),
+    [walkContext, doc]
+  );
+  const walkLookToward = useMemo(
+    () => floorCentroid(walkContext) ?? walkStart,
+    [walkContext, walkStart]
+  );
+
+  const isWalking = cameraMode === 'walk';
+  const isPlaying = cameraMode === 'play';
+  const isWalkingOrPlaying = isWalking || isPlaying;
+
+  // Single entry point for every mode transition — both Walk and Play
+  // need the SAME "release an engaged pointer lock before leaving Walk"
+  // guard (only Walk ever engages one, but the guard has to run whenever
+  // Walk is the mode being LEFT, regardless of which mode is next) and
+  // the SAME "no floor, honest reject" gate before entering either.
+  const handleSelectCameraMode = (mode: 'orbit' | 'walk' | 'play') => {
+    if (mode === cameraMode) return;
+    if (isWalking) {
+      // `PointerLockControls.disconnect()` (WalkCamera's own unmount
+      // cleanup) only removes ITS event listeners — it never calls
+      // `document.exitPointerLock()` (verified live: leaving Walk mode
+      // via this button while still locked left the browser's pointer
+      // genuinely captured, breaking every click on the page afterward,
+      // including ones with no relation to this component at all). Exit
+      // explicitly here so leaving Walk mode always returns the page to
+      // an ordinary, unlocked mouse regardless of whether the player had
+      // engaged mouse-look at all.
+      if (document.pointerLockElement) document.exitPointerLock();
+    }
+    if ((mode === 'walk' || mode === 'play') && !walkStart) {
+      onReject?.('No floor to walk on yet.');
+      return;
+    }
+    setCameraMode(mode);
+  };
+
+  // Lighting (Kirk's day-one ask, same unit: "has the lighting loaded")
+  // — applies in ALL THREE camera modes, not gated to Walk/Play only:
+  // it's a real improvement to the existing Orbit preview too, and
+  // keeping one lighting path (rather than a per-mode special case) is
+  // simpler.
+  const rawWalkLights = useMemo(() => deriveWalkLights(props), [props]);
+  const walkLights = useMemo(
+    () =>
+      capWalkLights(
+        rawWalkLights,
+        WALK_LIGHT_BUDGET,
+        playerCell ? [playerCell.worldX, playerCell.worldZ] : undefined
+      ),
+    [rawWalkLights, playerCell]
+  );
+  const ambientIntensity = resolveAmbientIntensity(doc);
+  const directionalScale = resolveDirectionalScale(doc);
+
+  // View-only while walking OR playing (this unit's own scope: "no
+  // editing while walking," extended to Play — it's the same
+  // fidelity-check idea, not an editing surface either) — every
+  // interaction prop degrades to inert rather than this component
+  // growing a parallel render tree per mode. Selection/placement/
+  // connector clicks and the empty-space deselect all no-op; the
+  // underlying hit-cells/props/doors stay mounted (cheap, no visual
+  // difference) so switching modes needs no remount.
+  const effectiveOnSelect = isWalkingOrPlaying ? undefined : onSelect;
+  const effectiveOnPlace = isWalkingOrPlaying ? undefined : onPlace;
+  const effectiveOnSelectConnector = isWalkingOrPlaying
+    ? undefined
+    : onSelectConnector;
+
   // Mirrors Board.tsx's own click-to-place cell handler for the edit-mode
   // (floorPlan present) branch — same messages, same boss/occupied rules,
   // still silent on `occupied` there (no toast, matching Board.tsx's own
@@ -1276,7 +1390,8 @@ export function DungeonPreview3D({
   // 2D brush now consults), not a fresh room/door-row lookup — there is
   // no room chain or door row on a canvas to check against.
   const handleClickCell = (cell: PlaceableCell) => {
-    if (!selectedPalette || !onPlace) {
+    if (isWalkingOrPlaying) return; // view-only — see this component's own "Walk / Play modes" section above
+    if (!selectedPalette || !effectiveOnPlace) {
       onReject?.(
         selectedTool
           ? 'That tool is 2D-only for now — switch to the 2D board to use it, or pick a palette item to place something here.'
@@ -1284,6 +1399,7 @@ export function DungeonPreview3D({
       );
       return;
     }
+    const onPlace = effectiveOnPlace;
     if (!floorPlan) {
       // Boss stays room-scoped even in the target dialect (dungeonspec's
       // validateBossCardinality needs an owning archetype:boss room) — a
@@ -1350,7 +1466,11 @@ export function DungeonPreview3D({
        * (every live server today — rollout gap A4, not a contract defect).
        * Only rendered when `floorSource` is supplied at all — edit mode's
        * `floorPlan`-only call site has no creation-canvas floor SOURCE to
-       * badge. */}
+       * badge. Deliberately a sibling of `.dg-walk-viewport` below (both
+       * absolutely positioned against THIS div, the nearest positioned
+       * ancestor either way), not gated on `cameraMode` — the badge is
+       * meaningful in Orbit, Play, and Walk alike, since all three render
+       * the SAME resolved `floorCells`. */}
       {floorSource && (
         <div
           data-testid="db-floor-source-indicator"
@@ -1382,203 +1502,344 @@ export function DungeonPreview3D({
             : 'FLOOR: DERIVED'}
         </div>
       )}
-      <Canvas
-        camera={{ fov: 45, position: [10, 14, 10] }}
-        onPointerMissed={() => onSelect?.(null)}
+      {/* The Canvas-covering element `WalkCamera`'s `PointerLockControls`
+          treats as "click here to engage mouse-look" (its own `selector`
+          prop below). Deliberately does NOT wrap the mode-toggle button
+          further down — that button is a SIBLING of this div, not a
+          descendant, specifically so clicking it (to LEAVE Walk mode)
+          never also bubbles into this element's own click-to-lock
+          listener and re-engages pointer lock in the same tick. */}
+      <div
+        className="dg-walk-viewport"
+        style={{ width: '100%', height: '100%' }}
       >
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[6, 10, 4]} intensity={1.0} />
-        <directionalLight position={[-6, 4, -4]} intensity={0.35} />
-        <Suspense fallback={null}>
-          <Bounds fit clip margin={1.25}>
-            <SyntyHexFloor floorTiles={floorTiles} hexSize={HEX_SIZE} />
-            {doc.regions.map((region) => {
-              const color = regionArchetypeColor(region.archetype);
-              const centroid = regionCentroid(region.cells);
-              const labelPos = worldPosition(
-                centroid.col,
-                centroid.row,
-                REGION_LABEL_HEIGHT
-              );
-              return (
-                <group key={`region-${region.id}`}>
-                  {region.cells.map(([col, row]) => {
-                    const [wx, , wz] = worldPosition(col, row);
-                    return (
-                      <RegionTintCell
-                        key={`region-${region.id}-${col}-${row}`}
-                        worldX={wx}
-                        worldZ={wz}
-                        shape={hitShape}
+        <Canvas
+          camera={{ fov: 45, position: [10, 14, 10] }}
+          onPointerMissed={() => effectiveOnSelect?.(null)}
+        >
+          <ambientLight intensity={ambientIntensity} />
+          <directionalLight
+            position={[6, 10, 4]}
+            intensity={1.0 * directionalScale}
+          />
+          <directionalLight
+            position={[-6, 4, -4]}
+            intensity={0.35 * directionalScale}
+          />
+          {walkLights.map((light) => (
+            <pointLight
+              key={light.key}
+              position={light.position}
+              color={light.color}
+              intensity={light.intensity}
+              distance={light.distance}
+              decay={WALK_LIGHT_DECAY}
+            />
+          ))}
+          <Suspense fallback={null}>
+            <Bounds fit clip margin={1.25}>
+              <SyntyHexFloor floorTiles={floorTiles} hexSize={HEX_SIZE} />
+              {doc.regions.map((region) => {
+                const color = regionArchetypeColor(region.archetype);
+                const centroid = regionCentroid(region.cells);
+                const labelPos = worldPosition(
+                  centroid.col,
+                  centroid.row,
+                  REGION_LABEL_HEIGHT
+                );
+                return (
+                  <group key={`region-${region.id}`}>
+                    {region.cells.map(([col, row]) => {
+                      const [wx, , wz] = worldPosition(col, row);
+                      return (
+                        <RegionTintCell
+                          key={`region-${region.id}-${col}-${row}`}
+                          worldX={wx}
+                          worldZ={wz}
+                          shape={hitShape}
+                          color={color}
+                        />
+                      );
+                    })}
+                    <Billboard position={labelPos}>
+                      <Text
+                        fontSize={REGION_LABEL_FONT_SIZE}
                         color={color}
-                      />
-                    );
-                  })}
-                  <Billboard position={labelPos}>
-                    <Text
-                      fontSize={REGION_LABEL_FONT_SIZE}
-                      color={color}
-                      anchorX="center"
-                      anchorY="middle"
-                      outlineWidth={0.016}
-                      outlineColor={REGION_LABEL_OUTLINE_COLOR}
-                    >
-                      {region.name ?? region.id}
-                    </Text>
-                  </Billboard>
-                </group>
-              );
-            })}
-            {[...wallLineFootprint].map((key) => {
-              const [col, row] = key.split(',').map(Number);
-              const [wx, , wz] = worldPosition(col, row);
-              return (
-                <FootprintDimCell
-                  key={`wallline-fp-${key}`}
-                  worldX={wx}
-                  worldZ={wz}
+                        anchorX="center"
+                        anchorY="middle"
+                        outlineWidth={0.016}
+                        outlineColor={REGION_LABEL_OUTLINE_COLOR}
+                      >
+                        {region.name ?? region.id}
+                      </Text>
+                    </Billboard>
+                  </group>
+                );
+              })}
+              {[...wallLineFootprint].map((key) => {
+                const [col, row] = key.split(',').map(Number);
+                const [wx, , wz] = worldPosition(col, row);
+                return (
+                  <FootprintDimCell
+                    key={`wallline-fp-${key}`}
+                    worldX={wx}
+                    worldZ={wz}
+                    shape={hitShape}
+                  />
+                );
+              })}
+              {placeableCells.map((cell) => (
+                <FloorHitCell
+                  key={cell.key}
+                  cell={cell}
                   shape={hitShape}
+                  placing={!isWalkingOrPlaying && !!selectedPalette}
+                  onClickCell={handleClickCell}
                 />
-              );
-            })}
-            {placeableCells.map((cell) => (
-              <FloorHitCell
-                key={cell.key}
-                cell={cell}
-                shape={hitShape}
-                placing={!!selectedPalette}
-                onClickCell={handleClickCell}
-              />
-            ))}
-            {[...serverWalls, ...authoredWalls].map((w) =>
-              w.isDoor ? (
-                <DoorGap
-                  key={w.key}
-                  position={w.position}
-                  rotationY={w.rotationY}
-                  onSelectDoor={doorSelectHandler(
-                    w,
-                    floorPlan,
-                    onSelectConnector
-                  )}
-                />
-              ) : (
-                <WallBox
-                  key={w.key}
-                  position={w.position}
-                  rotationY={w.rotationY}
-                />
-              )
-            )}
-            {wallLineSegments.map((seg) =>
-              seg.kind === 'door' ? (
-                <DoorGap
-                  key={seg.key}
-                  position={seg.position}
-                  rotationY={seg.rotationY}
-                  width={seg.length}
-                />
-              ) : (
-                <WallBox
-                  key={seg.key}
-                  position={seg.position}
-                  rotationY={seg.rotationY}
-                  length={seg.length}
-                />
-              )
-            )}
-            {props.map((p) => {
-              const variant = resolvePropVariant(p.variantRef);
-              if (!variant) return null;
-              const selected = isSameSelection(selectedPlacement, p.sel);
-              return (
-                <group
-                  key={p.key}
-                  onClick={(e) => {
-                    if (!onSelect) return;
-                    e.stopPropagation();
-                    onSelect(p.sel);
-                  }}
-                >
-                  {selected && (
-                    <PointMarker
-                      worldX={p.position[0]}
-                      worldZ={p.position[2]}
-                      color={SELECTED_COLOR}
+              ))}
+              {[...serverWalls, ...authoredWalls].map((w) =>
+                w.isDoor ? (
+                  <DoorGap
+                    key={w.key}
+                    position={w.position}
+                    rotationY={w.rotationY}
+                    onSelectDoor={doorSelectHandler(
+                      w,
+                      floorPlan,
+                      effectiveOnSelectConnector
+                    )}
+                  />
+                ) : (
+                  <WallBox
+                    key={w.key}
+                    position={w.position}
+                    rotationY={w.rotationY}
+                  />
+                )
+              )}
+              {wallLineSegments.map((seg) =>
+                seg.kind === 'door' ? (
+                  <DoorGap
+                    key={seg.key}
+                    position={seg.position}
+                    rotationY={seg.rotationY}
+                    width={seg.length}
+                  />
+                ) : (
+                  <WallBox
+                    key={seg.key}
+                    position={seg.position}
+                    rotationY={seg.rotationY}
+                    length={seg.length}
+                  />
+                )
+              )}
+              {props.map((p) => {
+                const variant = resolvePropVariant(p.variantRef);
+                if (!variant) return null;
+                const selected = isSameSelection(selectedPlacement, p.sel);
+                return (
+                  <group
+                    key={p.key}
+                    onClick={(e) => {
+                      if (!effectiveOnSelect) return;
+                      e.stopPropagation();
+                      effectiveOnSelect(p.sel);
+                    }}
+                  >
+                    {selected && (
+                      <PointMarker
+                        worldX={p.position[0]}
+                        worldZ={p.position[2]}
+                        color={SELECTED_COLOR}
+                      />
+                    )}
+                    <PropModel
+                      variant={variant}
+                      position={p.position}
+                      rotationY={p.rotationY}
                     />
-                  )}
-                  <PropModel
-                    variant={variant}
-                    position={p.position}
-                    rotationY={p.rotationY}
-                  />
-                </group>
-              );
-            })}
-            {monsters.map((m) => {
-              const selected = isSameSelection(selectedPlacement, m.sel);
-              return (
-                <group
-                  key={m.key}
-                  onClick={(e) => {
-                    if (!onSelect) return;
-                    e.stopPropagation();
-                    onSelect(m.sel);
-                  }}
-                >
-                  {selected && (
-                    <PointMarker
-                      worldX={m.position[0]}
-                      worldZ={m.position[2]}
-                      color={SELECTED_COLOR}
+                  </group>
+                );
+              })}
+              {monsters.map((m) => {
+                const selected = isSameSelection(selectedPlacement, m.sel);
+                return (
+                  <group
+                    key={m.key}
+                    onClick={(e) => {
+                      if (!effectiveOnSelect) return;
+                      e.stopPropagation();
+                      effectiveOnSelect(m.sel);
+                    }}
+                  >
+                    {selected && (
+                      <PointMarker
+                        worldX={m.position[0]}
+                        worldZ={m.position[2]}
+                        color={SELECTED_COLOR}
+                      />
+                    )}
+                    <PreviewMonsterModel
+                      monsterRefId={m.monsterRefId}
+                      position={m.position}
                     />
-                  )}
-                  <PreviewMonsterModel
-                    monsterRefId={m.monsterRefId}
-                    position={m.position}
-                  />
-                </group>
-              );
-            })}
-            {doc.start &&
-              (() => {
-                const w = worldPosition(doc.start[0], doc.start[1]);
-                return (
-                  <PointMarker
-                    worldX={w[0]}
-                    worldZ={w[2]}
-                    color={START_COLOR}
-                  />
+                  </group>
                 );
-              })()}
-            {doc.end &&
-              (() => {
-                const w = worldPosition(doc.end[0], doc.end[1]);
-                return (
-                  <PointMarker worldX={w[0]} worldZ={w[2]} color={END_COLOR} />
-                );
-              })()}
-            {floorPlan?.entrance &&
-              (() => {
-                const entrance = floorPlan.entrance;
-                if (!entrance) return null;
-                const w = worldPosition(entrance.column, entrance.row);
-                return (
-                  <PointMarker
-                    worldX={w[0]}
-                    worldZ={w[2]}
-                    color={
-                      entranceBlocked
-                        ? ENTRANCE_BLOCKED_COLOR
-                        : ENTRANCE_CLEAR_COLOR
-                    }
-                  />
-                );
-              })()}
-          </Bounds>
-        </Suspense>
-        <OrbitControls makeDefault />
-      </Canvas>
+              })}
+              {doc.start &&
+                (() => {
+                  const w = worldPosition(doc.start[0], doc.start[1]);
+                  return (
+                    <PointMarker
+                      worldX={w[0]}
+                      worldZ={w[2]}
+                      color={START_COLOR}
+                    />
+                  );
+                })()}
+              {doc.end &&
+                (() => {
+                  const w = worldPosition(doc.end[0], doc.end[1]);
+                  return (
+                    <PointMarker
+                      worldX={w[0]}
+                      worldZ={w[2]}
+                      color={END_COLOR}
+                    />
+                  );
+                })()}
+              {floorPlan?.entrance &&
+                (() => {
+                  const entrance = floorPlan.entrance;
+                  if (!entrance) return null;
+                  const w = worldPosition(entrance.column, entrance.row);
+                  return (
+                    <PointMarker
+                      worldX={w[0]}
+                      worldZ={w[2]}
+                      color={
+                        entranceBlocked
+                          ? ENTRANCE_BLOCKED_COLOR
+                          : ENTRANCE_CLEAR_COLOR
+                      }
+                    />
+                  );
+                })()}
+            </Bounds>
+          </Suspense>
+          {isWalking && walkStart ? (
+            <WalkCamera
+              ctx={walkContext}
+              start={walkStart}
+              lookToward={walkLookToward ?? walkStart}
+              domSelector=".dg-walk-viewport"
+              onLockedChange={setWalkLocked}
+              onCellChange={setPlayerCell}
+            />
+          ) : isPlaying && walkStart ? (
+            <PlayCamera
+              ctx={walkContext}
+              start={walkStart}
+              onCellChange={setPlayerCell}
+            />
+          ) : (
+            <OrbitControls makeDefault />
+          )}
+        </Canvas>
+        {isWalking && !walkLocked && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              background: 'rgba(12,10,8,0.6)',
+              color: '#e8e2d8',
+              fontSize: 13,
+              cursor: 'pointer',
+              pointerEvents: 'none', // the click itself is caught by dg-walk-viewport's own PointerLockControls listener, not this overlay
+            }}
+          >
+            Click to look around — WASD to move, mouse to look, Esc to release
+            the mouse.
+          </div>
+        )}
+        {isPlaying && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 8,
+              left: 8,
+              padding: '4px 8px',
+              background: 'rgba(12,10,8,0.6)',
+              color: '#8a7a5a',
+              fontSize: 11,
+              borderRadius: 4,
+              pointerEvents: 'none',
+            }}
+          >
+            WASD to move · Q/E or right-drag to rotate · scroll to zoom — the
+            game's own tactical camera.
+          </div>
+        )}
+      </div>
+      {/* Orbit / Play / Walk — Play ordered right after Orbit
+          (deliberately, not alphabetically): it needs no click-to-lock
+          step at all, so it's the lowest-friction way off Orbit — "the
+          fidelity-check mode he actually needs" (Kirk, on Play vs. the
+          literal Walk mode). */}
+      <div
+        role="group"
+        aria-label="Camera mode"
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          display: 'flex',
+          gap: 2,
+          border: '1px solid var(--border-primary)',
+          borderRadius: 5,
+          padding: 2,
+          background: '#14110f',
+        }}
+      >
+        {(
+          [
+            { mode: 'orbit' as const, label: 'Orbit' },
+            { mode: 'play' as const, label: 'Play' },
+            { mode: 'walk' as const, label: 'Walk' },
+          ] as const
+        ).map(({ mode, label }) => (
+          <button
+            key={mode}
+            onClick={() => handleSelectCameraMode(mode)}
+            title={
+              mode === 'orbit'
+                ? 'Orbit camera — edit/select/place'
+                : !walkStart
+                  ? 'No floor to walk on yet'
+                  : mode === 'play'
+                    ? "The game's own tactical camera, following WASD movement (view-only)"
+                    : 'Player-perspective eye-level camera, WASD + mouse-look (view-only)'
+            }
+            style={{
+              padding: '3px 10px',
+              fontSize: 11.5,
+              fontWeight: 600,
+              borderRadius: 3,
+              border: 'none',
+              cursor: 'pointer',
+              background: cameraMode === mode ? '#5fd1c9' : 'transparent',
+              color: cameraMode === mode ? '#14110f' : '#e8e2d8',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -290,6 +290,17 @@ end: [19, 25]
 # (?wallHeight=/?wallCutaway=1/?floorPools=1 — calibrationConstants.ts,
 # EncounterMap.tsx) — this promotes that same direction from a runtime
 # query param to an AUTHORED, per-dungeon setting.
+#
+# STATUS (2026-08-05, rpg-project#169's author-walkthrough unit):
+# renders-in-concept, not-yet-compiled. `ambient` now genuinely drives
+# `DungeonPreview3D.tsx`'s scene lighting client-side (both Orbit and the
+# new Walk camera) — a low value darkens the room and the floor's own
+# placed light-family props (brazier/candles/glowing-orb) light real
+# `<pointLight>` pools, matching the game's own mood-lighting palette.
+# Still dropped entirely by `stripToV1Subset` — no server compiles this
+# field, unchanged. See CONTRACT.md's "Author walkthrough" ledger entry
+# for the full render writeup (`preview3d/walkLighting.ts`); `sources:`
+# below remains exactly as unimplemented as it was before this unit.
 lighting:
   ambient: 0.8 # 0..1, dungeon-wide multiplier. The only knob today.
   # sources:      # P4+: per-source config, once this exists at all.

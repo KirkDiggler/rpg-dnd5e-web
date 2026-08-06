@@ -5195,6 +5195,532 @@ staleness this regeneration was the first full pass to surface.
 - `ci-check` clean (format/lint/typecheck/build/test) after the prettier
   pass.
 
+## Author walkthrough: a player-perspective Walk camera + real lighting (2026-08-05, rpg-project#169)
+
+Kirk's day-one ask, verbatim: "really I want a 3d view from the player perspective
+that has the lighting loaded." Entirely client-side — no server, no proto,
+no new schema field for the camera itself (`lighting: {ambient}` already
+existed as a target-dialect field before this unit; it simply had no
+render consumer until now). One component change (`DungeonPreview3D.tsx`
+gains a camera-mode toggle), two new pure modules
+(`preview3d/walkMovement.ts`, `preview3d/walkLighting.ts`), one new R3F
+component (`preview3d/WalkCamera.tsx`) — works in BOTH 3D contexts
+(edit-mode compiled `FloorPlan`, creation-mode canvas), since walk mode
+lives entirely inside the one shared `DungeonPreview3D`, gated on
+internal state, not a prop either caller has to thread through.
+
+### What shipped
+
+**Camera toggle**: a `Walk`/`Exit Walk` button (same visual language as
+the existing 2D/3D toggle) overlays the 3D pane. Orbit (`<OrbitControls
+makeDefault>`) is unchanged and stays the default; Walk swaps in
+`WalkCamera.tsx`, which delegates mouse-look + pointer lock whole to
+drei's `PointerLockControls` (itself a thin wrapper over three-stdlib's
+own well-tested implementation — not reimplemented) and drives WASD
+movement itself via `useFrame`, reading the controls' own current facing
+vector (`getDirection`) each frame. `Esc` releasing the pointer is the
+BROWSER's native pointer-lock behavior; this component never installs
+its own Escape listener, so it can't race the pre-existing region-tool
+Escape-deselect handler in `creation/CreationBoard.tsx` (that handler is
+scoped to `tool === 'region'` and lives in a completely different DOM
+subtree from the 3D pane regardless — named as a real, if narrow,
+interaction this unit was asked to "mind," not something requiring code
+changes once traced).
+
+**Movement legality — reuses, does not reimplement, geometry**
+(`walkMovement.ts`). `buildWalkContext` builds one lookup index per
+render from data `DungeonPreview3D.tsx` already computes
+(`placeableCells`, `wallLineFootprint`) plus a few new sources it
+delegates to existing modules:
+
+- A straight wall's (`wallLines:`) footprint cell is impassable —
+  `creation/straightWallGeometry.ts`'s `straightWallFootprint`, the SAME
+  function the 2D hatch overlay and `canvasFloor.ts`'s placement-legality
+  gate already call.
+- A `place:`/room-`place:` entry whose `resolvePlacement(doc,
+p).blocksMovement` resolves true blocks its cell — the SAME
+  inherited-default-aware resolver `isEntranceBlocked` already reads, so
+  a `defaults:`-inherited block is honored here exactly like an explicit
+  one. A room's `boss:` cell is always blocked (a monster stands there;
+  `BossDoc` has no `blocks_movement` field to resolve, so this is a flat
+  rule).
+- An edge-native `walls:` entry (or, in edit mode, server-truth
+  `FloorPlan.edges` via the existing `edgesAdapter.ts`) with `kind ===
+'solid'` blocks CROSSING between two individually-walkable cells; `kind
+=== 'door'` does not — doors pass, matching `DoorGap`'s own rendering
+  (a genuine open span). A `wallLines:` door is handled one layer down: its
+  cell is excluded from the owning line's own footprint (already the
+  documented door traversability semantic — see this file's "Straight
+  walls: doors" entry), so it never enters `blockedCells`, and its
+  crossings fall out of `straightWallCrossedEdges`'s ordinary
+  both-clear-cells rule with no separate code needed here.
+
+`resolveWalkStep` resolves one frame's proposed world-space movement:
+tries the full diagonal step, then each axis independently (a
+slide-along-a-wall feel), then holds position — "simple grid-constrained
+motion," per the unit's own scope, never a physics engine. A
+`MAX_STEP_CONTAINMENT_DISTANCE` (`HEX_SIZE * 2`) cutoff on the
+nearest-cell lookup keeps an abnormally large single-frame delta from
+silently snapping through solid geometry onto whatever real floor cell
+happens to be globally nearest — caught by this unit's own test suite,
+not assumed safe. `resolveWalkStart` picks the doc's `start:` marker when
+it resolves to a real, standable cell, else the standable cell nearest
+the floor's own centroid, else the first standable cell found, else
+`null` (no floor to walk on — the toggle button rejects with an honest
+toast instead of entering a broken Walk mode).
+
+**Lighting — applies in BOTH camera modes, not gated to Walk only**
+(`walkLighting.ts`): a real improvement to the existing Orbit preview
+too, not a Walk-only special case, so one lighting path serves both.
+
+- Each placed prop whose ref matches the palette's Lighting category
+  (`brazier`/`candles`/`glowing-orb`) emits a `<pointLight>` at its own
+  already-resolved render position (whatever `buildOnePlacement` computed,
+  height included — "at its position (+height if set)," literally, no
+  separate flame-height offset invented on top).
+- Color/intensity/distance are a LOCAL COPY of the real game's own
+  `MOOD_LIGHT_SPEC_BY_PROP_REF` entries for these exact three refs
+  (`src/components/playtest/playtestMapHelpers.ts`, Kirk's original
+  POLYGON Dark Fortress reference), read as of this date, not
+  re-derived — brazier `#ff9d52`/2.8/5.5, candles `#3ddc84`/2/4.5,
+  glowing-orb `#3d84dc`/2/4.5, `decay: 2` matching `HexGrid.tsx`'s own
+  `<pointLight>` convention exactly. A COPY, not an import:
+  `playtestMapHelpers.ts` is game-route-coupled (its functions take
+  `RenderableEntity`/proto `Wall` shapes this concept doesn't have), and
+  this concept's own dialect-runs-ahead discipline
+  (TARGET-YAML.md) keeps its rendering self-contained.
+- `doc.lighting.ambient` (the pre-existing target-dialect field) now
+  drives the scene's `<ambientLight>` intensity DIRECTLY (not a secondary
+  multiplier on top of a baseline) — absent/omitted falls back to `0.8`,
+  the preview's own pre-existing hardcoded value, so a document authored
+  before this unit renders byte-identical. The two `<directionalLight>`
+  fixtures scale PROPORTIONALLY to `ambient / 0.8` — without this, a
+  `lighting: {ambient: 0.1}` document would still read nearly as bright
+  under the fixed 1.0-intensity key light, defeating "a dark room with low
+  ambient" as a renderable target; a document with no `lighting:` (or an
+  explicit `ambient: 0.8`, the annotated example's own value) scales by
+  exactly 1, byte-identical to every render before this unit.
+- Light cap: `WALK_LIGHT_BUDGET = 12` (mirrors the game's own
+  `MOOD_LIGHT_BUDGET` headroom reasoning, scaled to this concept's own
+  much smaller authoring surface), `capWalkLights` keeps the nearest-N to
+  a reference position — the player's own nearest cell in Walk mode
+  (updated only on a CELL CHANGE via `WalkCamera`'s `onCellChange`, not
+  every frame, to avoid a per-frame React re-render), a plain positional
+  slice in Orbit mode (no single camera position to center on) or before
+  Walk mode has resolved a player cell yet.
+
+**View-only, by construction**: every interaction prop
+(`onSelect`/`onPlace`/`onSelectConnector`, the empty-space
+`onPointerMissed` deselect) is wrapped to a no-op while `cameraMode ===
+'walk'` — the underlying hit-cells/props/doors stay mounted (cheap, no
+visual difference), so toggling back to Orbit needs no remount.
+
+### A real bug, found live, not by inspection
+
+`PointerLockControls.disconnect()` (three-stdlib's own implementation,
+called from `WalkCamera`'s unmount cleanup) only removes ITS OWN event
+listeners — it never calls `document.exitPointerLock()`. Clicking "Exit
+Walk" while still actively locked left the browser's pointer genuinely
+captured even after the component switched back to Orbit — verified live
+via Playwright: every subsequent click on the page, including ones with
+no relation to this component at all (a different tab's own button),
+started intermittently failing to land. Fixed at the toggle handler
+itself: `handleToggleCameraMode` now calls `document.exitPointerLock()`
+explicitly whenever `document.pointerLockElement` is set, before
+switching modes — unconditional and idempotent, so it costs nothing when
+the player had already released the pointer via Escape first.
+
+A second, related finding from the same live pass: with no camera reset
+at all, leaving Walk mode handed `<OrbitControls>` the camera wherever
+the player last stood — mid-corridor, at eye height, often facing a wall
+or open darkness — not the original `<Bounds fit clip>`-computed
+bird's-eye framing. Fixed in `WalkCamera.tsx`'s own mount effect: it
+captures the camera's pose the MOMENT Walk mode is entered (always
+Orbit's own already-fit framing, since Walk is only ever entered from
+Orbit) and restores it on unmount, rather than leaving the camera wherever
+WASD left it or resetting to an arbitrary hardcoded position.
+
+### Live verification
+
+Real dev server (`vite --port 5190`), `public/models/synty` rsync'd from
+a sibling worktree (same provenance precedent every prior 3D-preview
+round in this file documents). A throwaway Playwright script (gitignored
+scratch pattern, deleted after the run) drove the ACTUAL app in both 3D
+contexts:
+
+- **Edit mode** (`showcase.yaml`, its two real antechamber braziers,
+  `blocks_movement: true`): switched to the 3D board — the new lighting
+  already visibly changes Orbit's default render (warm brazier pools now
+  read against the floor, where before this unit there was flat ambient
+  light only). Added `lighting: {ambient: 0.08}` via the YAML pane's own
+  Apply flow — the room reads genuinely dark, brazier pools falling off
+  into shadow, exactly the "dark room with low ambient" target. Clicked
+  Walk, clicked the viewport to engage pointer lock (`document.
+pointerLockElement` confirmed `DIV` — genuinely locked, not just a
+  UI-state flag), held `W` for ~1.8s: the view moved from the entry room
+  into a corridor between two walls, one wall lit by a nearby brazier's
+  warm falloff, the other dark — the literal target screenshot ("Kirk
+  standing in a corridor watching brazier pools fall off into darkness").
+  Released the pointer programmatically (`document.exitPointerLock()`,
+  confirmed `pointerLockElement` back to `null`) — the "Click to look
+  around" prompt correctly reappeared. Clicked "Exit Walk" — camera
+  correctly restored to the original bird's-eye Orbit framing (the fix
+  above; before it, this screenshot was solid black).
+- **Creation mode** ("New Dungeon" → "▶ Play the pitch" demo script, a
+  freeform canvas doc with `walls:`, `start:`/`end:`, a monster
+  placement, no compiled `FloorPlan` at all): switched its own 3D board to
+  Walk, engaged pointer lock, moved with `W` — toggle/lock/movement all
+  fire with no console errors beyond the two pre-existing FIXTURES-MODE
+  `[unimplemented] AuthoringService` errors every prior round's own
+  live-verification section already notes (edit mode's preview probe
+  running regardless of active tab, unrelated to this unit). Confirms
+  "one component, both contexts" structurally, not just by code reading.
+
+### Tests
+
+34 new tests, `preview3d/walkMovement.test.ts` (21) +
+`preview3d/walkLighting.test.ts` (13) — full
+`src/concepts/dungeon-builder` suite: 358 tests, 18 files, all passing.
+`walkMovement.test.ts` is deliberately two-layered: `resolveWalkStep`/
+`canStandAt` against hand-built `WalkContext` fixtures (proves the
+step-resolution algorithm — stop / axis-separated slide / fully blocked
+— without depending on real hex geometry), and `buildWalkContext` against
+REAL parsed documents (`emptyCanvasYaml`, and `SHOWCASE_YAML`+
+`SHOWCASE_FLOORPLAN` for the room-scoped/boss/server-truth-edge cases —
+the antechamber's own `blocks_movement: true`/`false` braziers, the
+vault's `boss:` cell, and a non-zero `blockedEdges` count against a
+fixture that authors zero `doc.walls`/`wallLines` of its own, proving
+server-truth `FloorPlan.edges` genuinely contribute) — proves the
+WIRING, trusting the underlying geometry (`straightWallFootprint`/
+`straightWallCrossedEdges`/`resolvePlacement`/`floorPlanEdgesToServerEdges`)
+already proven correct by ITS OWN test suites elsewhere in this concept,
+not re-derived here. `walkLighting.test.ts` covers light derivation
+(known ref keys only, exact color/intensity/distance per spec), the cap
+(no-op under budget, positional slice without a reference, nearest-N
+with original order preserved, non-mutating), and the ambient/directional
+default-is-a-no-op + proportional-darkening math.
+
+### What did NOT ship this round — named, not silently dropped
+
+- No vertical movement (jumping/crouching) — `camera.position.y` is
+  pinned to `WALK_EYE_HEIGHT` always, per this unit's own scope
+  ("Simple grid-constrained motion is fine").
+- No editing while walking, no combat, no server calls — the toggle
+  returns to Orbit+edit for all of that, unchanged.
+- Region/wall/hole/start/end 2D-only tools stay exactly as 2D-only as the
+  creation-mode-3D-editing unit already left them; Walk mode doesn't
+  touch that boundary.
+- Mouse-look sensitivity/FOV are drei/three-stdlib's own defaults
+  (`pointerSpeed = 1`) — untouched, no dial exposed this round.
+- The per-source `lighting.sources:` config TARGET-YAML.md's own
+  annotated example already comments out as "P4+" is still exactly that —
+  this unit implements the ambient knob plus prop-derived lights, not a
+  hand-authored per-light override.
+
+## Author walkthrough follow-up: a third "Play" camera mode, the game's own tactical rig (2026-08-05, rpg-project#169)
+
+Kirk played the Walk mode from the unit above live and gave a real, specific
+verdict: "walk is pretty literal. that is not the view we have when playing.
+really cool though." The literal first-person eye doesn't match the game's
+actual play camera (the elevated tactical view the Discord activity uses).
+This unit adds a THIRD camera mode, **Play**, on the same branch/PR — Walk
+survives unchanged ("really cool though"), Orbit survives unchanged, and Play
+becomes the low-friction default path off Orbit.
+
+### What shipped
+
+**The camera-mode toggle is now a 3-way segmented control** (Orbit / Play /
+Walk, in that order — Play deliberately placed immediately next to Orbit:
+unlike Walk, Play needs no click-to-engage-pointer-lock step at all, so it's
+the lowest-friction way off Orbit, honoring "the fidelity-check mode he
+actually needs"). `handleSelectCameraMode` replaces the old boolean toggle
+handler — one entry point for all six possible transitions, still releasing
+an engaged pointer lock whenever WALK is the mode being LEFT (regardless of
+which mode is next), still gating both Walk and Play behind the same
+"real floor to walk on" check.
+
+**Play reuses Walk's own WASD+legality movement WHOLESALE, not
+re-implemented.** This was made literally true, not just claimed, by
+extracting the shared pieces out of `WalkCamera.tsx` into `walkMovement.ts`
+(`resolveMoveVector` — the raw-input-to-world-delta math, `KEY_TO_AXIS`) and
+a new `useWasdKeys.ts` hook (the WASD/arrow keydown/keyup/blur listener,
+shared verbatim by both camera components). `WalkCamera.tsx` itself was
+refactored to call these instead of its own private copies — a regression
+guard as much as a Play enabler: if the two components ever drift, it will
+be because someone edited the ONE shared function, not because two parallel
+implementations quietly diverged.
+
+**The camera itself is the real game's own tactical rig — every constant
+and formula cited, not re-derived**, read directly from
+`src/components/hex-grid/HexGrid.tsx` and its one caller of
+`src/components/hex-grid/useCameraControls.ts`:
+
+- **Orthographic projection** (`zoom: 80, near: 0.1, far: 1000`) —
+  `HexGrid.tsx`'s own `<Canvas orthographic camera={{...}}>` ("Lower
+  isometric angle similar to Stolen Realm," that file's own comment). This
+  is a genuinely different projection than Orbit/Walk's existing perspective
+  camera, not a repositioning of it — drei's `<OrthographicCamera
+makeDefault>` swaps in a second, independent camera object while Play is
+  active, restoring the previous default on unmount (the same `set({camera:
+...})`/cleanup pattern `PointerLockControls` itself already uses for
+  `makeDefault`, verified by reading both source files, not assumed to
+  match).
+- **Spherical camera-from-target math** — `useCameraControls.ts`'s own
+  `updateCamera`: `x = target.x + distance·sin(polarAngle)·cos(azimuth)`,
+  `y = target.y + distance·cos(polarAngle)`, `z = target.z +
+distance·sin(polarAngle)·sin(azimuth)`, `camera.lookAt(target)`.
+  `polarAngle: Math.PI / 3.5` (`HexGrid.tsx`'s own call-site "slightly
+  lower tactical angle" than the hook's own `PI/4` default), `azimuth`
+  starting at `Math.PI / 4` and `distance` starting at `20` (the hook's own
+  internal defaults — `HexGrid.tsx` never overrides either).
+- **Follow-lerp**: `factor = 1 - Math.pow(0.001, delta)` exponential
+  smoothing of the orbit target toward the player's own walked position —
+  the hook's own real `focusTarget` damping, here following the WASD-driven
+  walk position every frame instead of a multiplayer entity's server-driven
+  one.
+- **Q/E rotates azimuth**, **scroll wheel adjusts `camera.zoom`** (clamped
+  to `[30, 150]`, `HexGrid.tsx`'s own call-site values — the hook's
+  ORTHOGRAPHIC-camera wheel branch, since this rig genuinely is
+  orthographic), **right-click-drag also rotates azimuth** — all three
+  reattached against this component's own state (see below for why the hook
+  itself isn't reused directly).
+
+**The pure rig math lives in a new, independently-tested module,
+`playCameraRig.ts`** (no Three.js/R3F import) — `PlayCamera.tsx` is the thin
+glue that calls it each frame and applies the result to a real
+`THREE.OrthographicCamera`, the same "pure derivation, component just maps
+it to JSX" split this concept's other 3D modules already use.
+
+**The one deliberate departure from the cited rig, and why it has to be
+one**: `useCameraControls` itself is NOT reused directly — it binds W/A/S/D
+to PAN the camera's target, which would conflict with this authoring tool's
+own WASD-drives-the-WALKING-POSITION scheme. The real game never has this
+conflict because it doesn't use WASD for player movement at all
+(click-to-move pathing); this concept has no such system, so WASD is the
+only movement input available and is spent on walking, not panning. The
+orbit `target` is therefore driven by the player's own walked position every
+frame (through the identical follow-lerp), not by keyboard panning — "camera
+forward" for WASD purposes is derived from the rig's own current azimuth
+(the direction the tactical camera faces horizontally) rather than a
+first-person quaternion, the only sense in which "forward" can mean anything
+for a fixed-angle orbit rig; Q/E rotation therefore also rotates what
+forward means for WASD, the standard third-person/tactical-camera
+convention.
+
+**Lighting stays unconditional across all three modes** — no change needed
+here; the previous unit's `<ambientLight>`/`<directionalLight>`/point-light
+rendering already lived outside any per-mode branch.
+
+### A real bug, found live: a stale camera reference across a DIRECT Play→Walk transition
+
+Switching straight from Play to Walk (no Orbit stop in between) rendered a
+solid black canvas. Root cause, confirmed by reading React's own effect
+ordering, not guessed: `WalkCamera.tsx` used to destructure `const {camera}
+= useThree()` at RENDER time and use that closure both in its one-time mount
+`useEffect` and every `useFrame` tick. `PlayCamera`'s own
+`<OrthographicCamera makeDefault>` swaps `state.camera` to itself via a
+`useLayoutEffect`, and restores the PREVIOUS default via that same effect's
+cleanup on unmount. Because layout effects (all of them, across the whole
+commit) run before ANY passive effect in the same commit, but a component's
+own RENDER happens before its layout effects even fire, `WalkCamera`'s
+render-time `camera` snapshot could still be pointing at Play's own (about
+to be torn down) orthographic camera object — so `WalkCamera` was
+positioning and driving a camera nobody was actually rendering with anymore,
+while the REAL restored default camera sat untouched whereever it happened
+to be.
+
+**Fixed** by never trusting a render-time camera snapshot again in this
+file: the mount effect now reads `useThree(state => state.get)` (the SAME
+Zustand-style escape hatch drei's own `Bounds` component uses internally)
+and calls `get().camera` INSIDE the effect body — guaranteed fresh, since
+effects only run after every layout effect in the same commit has already
+settled `state.camera`. The per-frame `useFrame` callback was changed to
+read `state.camera` from its own guaranteed-fresh first argument instead of
+a closed-over variable, for the identical reason. Verified live: without
+this fix, Play → Walk (no Orbit stop) was a solid black canvas; with it, the
+same transition correctly shows the first-person corridor.
+
+### Live verification
+
+Real dev server (`vite --port 5190`), the SAME throwaway-Playwright-script
+discipline every prior 3D-preview round in this file uses (gitignored,
+deleted after the run) — this round specifically exercised every mode
+TRANSITION, not just each mode in isolation, since the one real bug found
+lived exactly in a transition edge case a per-mode-only test pass would have
+missed entirely:
+
+- Orbit → Play: initial framing is a genuine isometric/orthographic tactical
+  view (parallel projection, no perspective convergence — visibly distinct
+  from Walk's own perspective camera) matching HexGrid's own "Stolen
+  Realm"-style look.
+- Held `W` in Play: camera followed the walked position smoothly (the
+  follow-lerp reads as a real camera-chase, not a snap) into a corridor,
+  brazier light pools visible exactly as they are in every other mode.
+- `E` held: the whole tactical view visibly rotated around the player's
+  position — confirms Q/E rotate.
+- Scroll wheel: confirmed zoom-in, framing tightened correctly, clamped
+  range intact.
+- Play → Walk DIRECTLY (the bug's own repro path, re-run after the fix):
+  correctly shows the first-person corridor, not a black canvas.
+- Walk → Orbit (via the toggle, still mid-walk/locked): pointer lock
+  correctly released, camera correctly restored to the original bird's-eye
+  `<Bounds fit clip>` framing (the PRIOR unit's own fix, re-confirmed intact
+  after this round's refactor).
+- No console errors beyond the two pre-existing FIXTURES-MODE
+  `[unimplemented] AuthoringService` errors every prior round's own
+  live-verification section already notes.
+
+### Tests
+
+New: `preview3d/playCameraRig.test.ts` (pure camera-rig math — constants
+pinned against the cited real-game values so a future edit to either
+`HexGrid.tsx` or `useCameraControls.ts` surfaces as a failing test here
+too, not a silent drift; `sphericalCameraPosition`'s boundary cases —
+level/overhead/zero-distance and the real rig's own angle combination;
+`followLerp`'s convergence + framerate-independence; `azimuthForwardRight`'s
+unit-length/perpendicularity invariant; `clampZoomStep`/`dragRotateStep`'s
+sign and clamp behavior) plus `walkMovement.test.ts`'s new `resolveMoveVector`
+coverage (single-key/diagonal-normalization/opposite-key-cancellation/
+arrow-key-equivalence — the newly-extracted shared function both camera
+modes now call). Movement-reuse itself needed no new tests beyond this —
+`resolveWalkStep`'s own collision suite from the prior unit already covers
+it, and Play calls the exact same function. Full `dungeon-builder` suite:
+386 tests, 19 files, all passing (up from 358/18 — this unit's own net new:
+28 tests, 2 new files). Full repo suite: 2105 tests, 126 files, all passing.
+`ci-check` clean.
+
+### What did NOT ship this round — named, not silently dropped
+
+- No zoom-range/rotate-speed dial exposed to the author — every value is
+  the game's own fixed default, matching "match the game, don't invent."
+- Play mode does not persist camera state (azimuth/distance) across a
+  mode switch — re-entering Play always restarts at the rig's own default
+  azimuth/distance, the same "fresh per entry" behavior Walk's own eye-level
+  reset already has.
+- No `frameloop="demand"` — the real game's `<Canvas orthographic
+frameloop="demand">` on-demand rendering was NOT adopted; this preview's
+  `<Canvas>` stays continuous (unchanged from every earlier unit), matching
+  Orbit/Walk's own existing behavior rather than introducing a third
+  rendering discipline for one camera mode alone.
+
+## Regression fix: walls/doors "not loading" in Walk mode — two real bugs found, neither one a Play-mode regression (2026-08-06, rpg-project#169)
+
+Kirk's live report on the deployed Play-camera commit: "the wall assets and
+door assets are not loading." Investigated by reproducing his own flow
+(reload a saved dungeon YAML with `walls:`/`wallLines:`/`regions:` into
+creation mode, check 2D + all three 3D camera modes; also edit mode's
+compiled server-edge view) against a real dev server, not by reading code
+alone.
+
+### What did NOT reproduce
+
+Walls and doors render correctly in Orbit (both edit mode's server-truth
+`FloorPlan.edges` and creation mode's `doc.walls`/`doc.wallLines`, confirmed
+at native zoom AND zoomed in close on the actual geometry — edge-native
+solid boxes, amber door gaps with jamb+lintel, straight-wall segments with
+their own carved door gap, region tinting, all present) and in Walk mode's
+own INITIAL view before any movement. "Walls generically fail to render" is
+not what's happening.
+
+### What DID reproduce, and the two real root causes
+
+Walking forward in Walk mode for more than ~1.2 seconds reliably went solid
+black. Two genuinely separate bugs compounded, found by direct instrumentation
+(a temporary `window.__walkDebug` global dumping `camera.position`/`near`/
+`far`/`quaternion` every frame during the repro, removed before this commit)
+rather than guessed from screenshots:
+
+**Bug 1 — Walk mode's shared camera inherited Orbit's near-plane, sized for
+viewing the WHOLE dungeon from far away.** `DungeonPreview3D.tsx`'s `<Bounds
+fit clip>` sets the default camera's `near`/`far` ONCE, on mount
+(`Bounds.clip()`: `near = fittedDistance / 100`) — at this dungeon's scale
+that produced `near ≈ 0.77`. Fine for a bird's-eye Orbit view; badly wrong
+once the SAME camera drops to `WALK_EYE_HEIGHT` and gets close to anything —
+a wall a step away, even a nearby pillar, sits well within 0.77 units and
+gets clipped away entirely. `PlayCamera.tsx` never hit this (it creates its
+own separate camera with an explicit small `near: 0.1`, matching the real
+game's own value) — only `WalkCamera.tsx`, which reuses the shared default
+camera, needed to claim its own near/far. Fixed: `WalkCamera`'s mount effect
+now sets `near: 0.05, far: 1000` on entry and restores whatever the camera
+had on exit (the exact same capture/restore shape the prior unit's own
+camera-pose fix already established for position/quaternion).
+
+**Bug 2 — perimeter walls never actually blocked movement at all,
+independent of Bug 1.** With Bug 1 fixed, the black screen PERSISTED —
+direct position logging showed the player walking continuously, crossing
+multiple real cell boundaries, for the full 3 seconds, never once stopping.
+Root cause: `resolveWalkStep`'s original crossing check asked "does the
+TARGET point's nearest REAL cell differ from the source's, and is that pair
+in `blockedEdges`" — but a PERIMETER wall's far side was never a real,
+tracked floor tile in the first place (`FloorPlanEdge`'s own doc comment:
+"one endpoint may be outside the rendered floor-plan bounds" — confirmed
+directly against `SHOWCASE_FLOORPLAN.edges`, e.g. `{from: [0,7], to: [-1,
+7]}`). `nearestCell` can only ever return a REAL tracked cell, so it could
+never resolve a target point TO that nonexistent neighbor — the "did the
+nearest cell change" test simply never fired for any perimeter wall, and a
+walking player passed straight through every one of them into unmapped
+void, which then correctly rendered as nothing (a genuine collision gap,
+not a rendering-tree regression). Fixed at the root: `resolveWalkStep` now
+asks a geometrically different question — "does the CURRENT cell (always
+real; the player is standing in it) have a blocked edge in roughly the
+direction being moved" — using `boardGeometry.ts`'s own `neighborCell`
+(pure cube-coordinate math, needs no real tile on the far side) and
+`facingToRotationY` (the same world-angle-per-facing convention every other
+edge-aligned piece in this codebase already uses) to find the nearest of
+the 6 hex directions to the movement vector. This strictly subsumes the old
+interior-wall behavior (an interior wall's computed neighbor IS the real
+adjacent cell, so the identical `edgeKey` lookup still matches) while now
+also correctly blocking perimeter walls — and, as a welcome side effect,
+stops the player the MOMENT they try to move toward a blocked edge from
+anywhere in their current cell, rather than letting them approach flush
+against the unbuffered cell-Voronoi boundary first (a real, if secondary,
+finding along the way: that boundary sits close enough to a wall's own thin
+rendered box, `WallBox`'s `WALL_THICKNESS = 0.12`, to read as uncomfortably
+tight even where the crossing check DID fire correctly).
+
+An earlier attempt at Bug 2 (a `WALL_CLEARANCE` look-ahead buffer added to
+the OLD target-based check) is not in this commit — live-verified as
+ineffective (it still inherited the same "no real neighbor cell" blind
+spot for perimeter walls) and replaced outright by the directional check
+above, which is both simpler and strictly more correct.
+
+### Neither bug is a Play-mode regression
+
+Bug 1 and Bug 2 both reproduce identically on `a8307ea` (the walking
+camera's very first commit, before any Play-mode work existed) — confirmed
+directly by checking out that commit into a separate worktree and running
+the identical repro. Team-lead's original framing ("the Play-camera commit
+is the prime suspect") was a reasonable hypothesis given the timing, but
+the evidence doesn't support it: both bugs predate Play mode and are fixed
+here regardless, on the same branch, since they're real defects either way.
+
+### Live verification
+
+Real dev server, direct `window` instrumentation during the repro (added
+temporarily, removed before commit — the debug data itself, not screenshots
+alone, is what actually found Bug 1's `near: 0.77` and Bug 2's "never stops
+moving" pattern). Post-fix: the identical walk-into-a-wall repro now shows
+the player correctly stopping flush against the wall's own rendered face
+(not black) at the same timestamp that used to go solid black, and stays
+stopped for the remainder of the hold — re-run in a full rapid screenshot
+sequence (every 300ms across 3 seconds) confirming no regression at any
+point along the approach.
+
+### Tests
+
+3 new tests directly exercising the fix (`walkMovement.test.ts`'s
+`directional edge blocking` describe block): a blocked edge stops movement
+the moment it's attempted from anywhere in the current cell — built with a
+SINGLE tracked real cell and a blocked edge toward a coordinate that was
+NEVER added to `cellsByKey`, the exact perimeter-wall shape that broke the
+old check; the identical direction is walkable once the edge isn't blocked;
+a perpendicular, unrelated direction from the same cell is unaffected.
+These use real hex adjacency math (`cubeAtColRow`/`cubeToWorld`/
+`facingToRotationY`), not the rest of the file's simplified same-row
+fixtures, since the fix itself depends on that geometry. Full
+`dungeon-builder` suite: 389 tests, 19 files, all passing (up from 386/19).
+`ci-check` clean.
+
 ## v0.3 wire consumption unit: canvas floor + region tree, dormant until the server ships (2026-08-05, rpg-project#169)
 
 **Response-side consumption only**, per the ratified `ideas/dungeon-builder/spec/v0.3/spec.md`
