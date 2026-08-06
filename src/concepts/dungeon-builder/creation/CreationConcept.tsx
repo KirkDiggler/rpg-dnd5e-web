@@ -7,6 +7,7 @@
  * rows and the shared `Inspector` — no more bespoke Tools strip or
  * hand-rolled facing/delete panel duplicating what those already do.
  */
+import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { useEffect, useMemo, useState } from 'react';
 import type { ServerCapabilities } from '../capabilityProbe';
@@ -19,7 +20,7 @@ import type { BoardTool } from '../types';
 import type { BoardEditing } from '../useBoardEditing';
 import type { ServerState } from '../usePutDungeonPreview';
 import type { SaveState } from '../useSaveDungeon';
-import { deriveCanvasFloorCells } from './canvasFloor';
+import { resolveCanvasFloor } from './canvasFloor';
 import { CreationBoard } from './CreationBoard';
 import type { DemoActions } from './demoScript';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
@@ -91,6 +92,15 @@ interface CreationConceptProps {
   serverState: ServerState;
   capabilities: ServerCapabilities | null;
   onRefreshCapabilities: () => void;
+  /** The creation document's own live `PutDungeon(validate_only)` response
+   * (v0.3 wire consumption unit, 2026-08-05 — `usePutDungeonPreview.ts`'s
+   * `useCreationFloorPlanPreview`). `null` in fixtures mode, mid-debounce,
+   * or while a live server hasn't shipped `floor_cells`/`regions` yet
+   * (every server today — dormant by design, see that hook's own doc
+   * comment). Threaded down to `resolveCanvasFloor`/the region tree so
+   * this concept flips to server truth automatically the day the platform
+   * ships Wave 0/1, with zero further client changes. */
+  liveFloorPlan: FloorPlan | null;
   v1Subset: V1SubsetResult | null;
   onSaveAndPlay: () => void;
   saveState: SaveState;
@@ -129,6 +139,7 @@ export function CreationConcept({
   serverState,
   capabilities,
   onRefreshCapabilities,
+  liveFloorPlan,
   v1Subset,
   onSaveAndPlay,
   saveState,
@@ -145,18 +156,27 @@ export function CreationConcept({
   // doesn't need to retarget it.
   const demo = useDemoScript(demoActions, DEFAULT_CANVAS);
 
-  // Canvas floor derivation (rpg-project#169's creation-mode 3D preview
-  // unit) — the 3D preview's own floor semantic for a from-scratch
+  // Canvas floor resolution (rpg-project#169's creation-mode 3D preview
+  // unit; wire-consumption-aware since the v0.3 wire consumption unit,
+  // 2026-08-05) — the 3D preview's own floor semantic for a from-scratch
   // canvas, since it has no compiled `FloorPlan` to render from at all
   // (`creation/canvasFloor.ts`'s own doc comment has the full rationale).
   // Computed here, not inside `DungeonPreview3D` itself, per that
   // component's own "clean interfaces" doc comment — derived only when
-  // actually needed (`boardDim === '3d'`) since `deriveCanvasFloorCells`
-  // scans the whole canvas grid.
-  const floorCells = useMemo(
-    () => (boardDim === '3d' ? deriveCanvasFloorCells(doc) : []),
-    [boardDim, doc]
+  // actually needed (`boardDim === '3d'`) since both `resolveCanvasFloor`
+  // paths scan the whole canvas grid or the whole wire cell list.
+  // `resolveCanvasFloor` prefers `liveFloorPlan.floorCells` the moment a
+  // live response carries a non-empty one, falling back to
+  // `deriveCanvasFloorCells` otherwise (dormant against every server
+  // today — see `liveFloorPlan`'s own doc comment).
+  const resolvedFloor = useMemo(
+    () =>
+      boardDim === '3d'
+        ? resolveCanvasFloor(doc, liveFloorPlan)
+        : { cells: [], source: 'derived' as const },
+    [boardDim, doc, liveFloorPlan]
   );
+  const floorCells = resolvedFloor.cells;
 
   useEffect(() => {
     if (demo.isPlaying) {
@@ -477,6 +497,7 @@ export function CreationConcept({
             <div style={{ flex: 1, minHeight: 0 }}>
               <DungeonPreview3D
                 floorCells={floorCells}
+                floorSource={resolvedFloor.source}
                 doc={doc}
                 selectedPlacement={edit.selectedPlacement}
                 onSelect={(sel) => {
@@ -536,7 +557,11 @@ export function CreationConcept({
           Region is the live tool, matching every other tool-scoped panel
           in this concept. */}
       {selectedTool === 'region' && (
-        <RegionPanel doc={doc} regionEdit={regionEdit} />
+        <RegionPanel
+          doc={doc}
+          regionEdit={regionEdit}
+          liveFloorPlan={liveFloorPlan}
+        />
       )}
     </div>
   );

@@ -1471,6 +1471,62 @@ recorded here rather than silently decided, same discipline
   region's cells changes movement/line-of-sight only; the region's own
   `cells:` membership is untouched by any wall mutator.
 
+### Regions are scopes (2026-08-04 model refinement, rpg-project#180) — landed as read-only tree rendering this round
+
+Platform settled a refinement of the model above across four
+consumer-position comments on #180 the same day (issue comments
+`5183646492`, `5183689311`, `5183885326`, `5184744940`). This supersedes
+parts of "Open questions" above — recorded here as a dated refinement, not
+by silently rewriting what was previously true-as-written:
+
+1. **An implicit root region replaces "regionless."** Refines the prior
+   "Must regions fully tile?" answer above: rather than unclaimed floor
+   having no region, EVERY cell belongs to exactly one region — unpainted
+   floor belongs to the implicit generic/root region. The model is now
+   total, no "regionless" special case in any future semantic. Runtime
+   behavior is unchanged (unclaimed cells still fall back to space-level
+   defaults) — only the framing is: "the root region's defaults," not
+   "no region at all." The "sparse, disjoint regions are allowed" claim
+   above is still true for AUTHORED regions specifically — they need not
+   tile the space — it's just that the gaps between them now have a name.
+2. **Regions may nest, by strict containment ONLY, resolved
+   innermost-wins** — like lexical scopes. This refines "Non-overlapping"
+   above: overlap remains forbidden EXCEPT strict containment (Venn/partial
+   overlap stays invalid either way). A cell's semantics resolve through
+   the innermost containing region; names compose ("the Vault, in the
+   Crypt"). The shipped flat model (every region a direct child of the
+   implicit root) is exactly one level of this — nesting extends it
+   without breaking any existing document.
+3. **Nesting is DERIVED from cell-subset relationships, never written** —
+   no `parent:` field, ever. A region is inside another because its cells
+   are a strict SUBSET of the outer region's own declared `cells:` (the
+   outer region's list literally includes the inner one's). Because
+   overlap is allowed only by containment, any two regions sharing a cell
+   must be nested, hence comparable — the parent of a region is its unique
+   smallest strict superset (none exists means the implicit root).
+4. **Authored region ids compile to the runtime's existing zone ids** — no
+   new runtime concept. `encounter/data.go`'s `SpaceData.Regions`
+   (`ID`/`Hexes`/`Archetype`, the same `entrance|chamber|corridor|boss`
+   vocabulary `RoomDoc.archetype` already uses) and the perception layer's
+   per-hex `ZoneID` stamp already exist server-side; #180 is authors
+   painting more of them, including nested ones, onto the same structure
+   that already drives fog, spawn seeding, and door naming today.
+
+**Landed this round (region-tree unit, rpg-project#180)**: `RegionPanel.tsx`
+renders this model truthfully — the derived containment forest
+(`regionTree.ts`'s `buildRegionTree`, parent = smallest strict superset by
+cell-subset check) with the implicit root as a real row (`(everything
+else)`, cell count = canvas floor cells minus every claimed cell at any
+depth), children indented under parents, and a partial-overlap warning for
+any Venn pair a hand-edited document might contain. **Not landed**: nested
+authoring via the brush (`validateRegionCells` is unchanged — still flat
+non-overlap, so the interactive tool can only ever produce a one-level
+forest); the compiler-side derivation (still platform's call, per every one
+of the four comments above); root-scope defaults (the root row is
+informational only — a noted future home, nothing implements it). See
+CONTRACT.md's "Region tree unit" section for the full implementation
+writeup, tests, and live-verification evidence.
+
 ### Region attachment vs. chain `connectors:` — deliberately distinct constructs
 
 "Attach to the next region" (Kirk's ask) is implemented as placing a DOOR
@@ -1626,6 +1682,37 @@ output, which is itself computed from whatever `capabilityProbe.ts`'s
 "badge state should track the shared server, not an unmerged branch"
 caveat to state by hand — the badges structurally can't drift from the
 connected server, because they ARE its answer, re-asked every time.
+
+## Response-side wire consumption: canvas floor + region tree (2026-08-05, dormant)
+
+The capability table above is the SEND side (what the request can carry
+without being stripped). This is the RESPONSE side: once a live server
+answers with `FloorPlan.floor_cells`/`FloorPlan.regions`
+(`FloorPlanRegion.parent_id`) — rpg-api-protos **v0.1.120**, spec.md
+§4.5.9/§4.10.4 — this concept renders FROM the wire instead of its own
+client-derived approximations:
+
+- `creation/canvasFloor.ts`'s `resolveCanvasFloor(doc, floorPlan)` prefers
+  `floorPlan.floorCells` over `deriveCanvasFloorCells` the moment it's
+  non-empty; `DungeonPreview3D`'s `FLOOR: SERVER (N)` / `FLOOR: DERIVED`
+  badge shows which one won.
+- `regionTreeWire.ts`'s `resolveRegionTree(regions, floorPlan)` prefers
+  `floorPlan.regions`/`parent_id` over `regionTree.ts`'s cell-subset
+  inference the moment it's non-empty, cross-checking the two and
+  surfacing a named warning on disagreement (or a dangling `parent_id`);
+  `RegionPanel`'s `REGIONS: SERVER` / `REGIONS: DERIVED` badge mirrors the
+  floor badge.
+
+**Ready, currently dormant.** Canvas mode (spec.md §1 group (c),
+rpg-project#192) and regions (group (d), rpg-project#180/Wave 1) are both
+not started server-side — every live server today answers with empty
+`floor_cells`/`regions` (decode-unknown fields as of the 2026-08-04
+capability probe, same table above), which both consumers treat
+identically to no response at all, never as "the document declares
+zero." The client-side plumbing exists and is tested against constructed
+fixtures now so the flip to server truth needs zero further client
+changes the day Wave 0/1 lands — see CONTRACT.md's "v0.3 wire consumption
+unit" ledger entry for the full writeup and live-verification notes.
 
 ## The v1-subset strip — what actually reaches `PutDungeon`, capability-aware
 

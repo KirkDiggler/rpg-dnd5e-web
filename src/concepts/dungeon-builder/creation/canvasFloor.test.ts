@@ -1,3 +1,8 @@
+import { create } from '@bufbuild/protobuf';
+import {
+  FloorPlanSchema,
+  type FloorPlan,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
 import {
   addWallLine,
@@ -9,6 +14,8 @@ import {
 import {
   canvasPlacementRejectReason,
   deriveCanvasFloorCells,
+  resolveCanvasFloor,
+  sortCellsLexicographic,
 } from './canvasFloor';
 import { emptyCanvasYaml } from './emptyCanvasDoc';
 import { straightWallsFootprintSet } from './straightWallGeometry';
@@ -65,6 +72,116 @@ describe('deriveCanvasFloorCells', () => {
       holes: [[0, 0]],
     });
     expect(cells).toEqual([]);
+  });
+});
+
+describe('sortCellsLexicographic', () => {
+  it('sorts ascending by column, then row', () => {
+    const sorted = sortCellsLexicographic([
+      [2, 0],
+      [0, 1],
+      [0, 0],
+      [1, 5],
+    ]);
+    expect(sorted).toEqual([
+      [0, 0],
+      [0, 1],
+      [1, 5],
+      [2, 0],
+    ]);
+  });
+
+  it('does not mutate its input', () => {
+    const input: [number, number][] = [
+      [1, 1],
+      [0, 0],
+    ];
+    sortCellsLexicographic(input);
+    expect(input).toEqual([
+      [1, 1],
+      [0, 0],
+    ]);
+  });
+});
+
+// v0.3 wire consumption unit (2026-08-05) — resolveCanvasFloor prefers a
+// live FloorPlan.floor_cells (rpg-api-protos v0.1.120) over the
+// client-derived fallback. No live server carries this field yet (the
+// rpg-api-protos#214 conformance review's finding A4 — canvas mode is
+// spec.md §1 group (c), not started server-side): every FloorPlan fixture
+// below is hand-constructed to exercise the shape the wire will carry
+// once Wave 0 ships, not a real recorded response. Marked SYNTHETIC per
+// this concept's existing fixtures.ts convention.
+describe('resolveCanvasFloor — v0.3 wire consumption (SYNTHETIC fixtures, no live server carries these fields yet)', () => {
+  const doc = {
+    canvas: { width: 3, height: 2 },
+    holes: [] as [number, number][],
+  };
+
+  function floorPlanWithCells(cells: [number, number][]): FloorPlan {
+    return create(FloorPlanSchema, {
+      rooms: [],
+      connectors: [],
+      height: 0,
+      doorRow: 0,
+      floorCells: cells.map(([column, row]) => ({ column, row })),
+      regions: [],
+    });
+  }
+
+  it('null floorPlan falls back to derived, labeled "derived"', () => {
+    const result = resolveCanvasFloor(doc, null);
+    expect(result.source).toBe('derived');
+    expect(result.cells).toEqual(
+      sortCellsLexicographic(deriveCanvasFloorCells(doc))
+    );
+  });
+
+  it('a live response with EMPTY floor_cells falls back to derived — rollout gap (A4), not "declares none"', () => {
+    const result = resolveCanvasFloor(doc, floorPlanWithCells([]));
+    expect(result.source).toBe('derived');
+    expect(result.cells).toEqual(
+      sortCellsLexicographic(deriveCanvasFloorCells(doc))
+    );
+  });
+
+  it('a live response with non-empty floor_cells renders from the wire, sort-normalized', () => {
+    // Deliberately authoring-order (not sorted) on the wire fixture, to
+    // prove resolveCanvasFloor normalizes rather than trusting response
+    // order verbatim.
+    const wireCells: [number, number][] = [
+      [2, 1],
+      [0, 0],
+      [1, 0],
+    ];
+    const result = resolveCanvasFloor(doc, floorPlanWithCells(wireCells));
+    expect(result.source).toBe('server');
+    expect(result.cells).toEqual(sortCellsLexicographic(wireCells));
+  });
+
+  it('server cells win even when they disagree with the derived set (e.g. a hole the server does not know about)', () => {
+    const docWithHole = {
+      canvas: { width: 3, height: 2 },
+      holes: [[1, 0]] as [number, number][],
+    };
+    // v0.3's canvas structural floor has no hole concept server-side
+    // (`holes:` is explicitly ABOVE v0.3, spec.md §2) — a real future
+    // server response would legitimately include [1,0] even though the
+    // client's own doc punches a hole there. Wire wins.
+    const wireCells: [number, number][] = [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+    ];
+    const result = resolveCanvasFloor(
+      docWithHole,
+      floorPlanWithCells(wireCells)
+    );
+    expect(result.source).toBe('server');
+    expect(result.cells.some(([c, r]) => c === 1 && r === 0)).toBe(true);
   });
 });
 
