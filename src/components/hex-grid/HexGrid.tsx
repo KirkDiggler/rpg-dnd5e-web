@@ -40,6 +40,7 @@ import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
+import { readCameraDials } from './cameraDials';
 import { FrontierGroundHint } from './FrontierGroundHint';
 import { HexEntity } from './HexEntity';
 import {
@@ -603,6 +604,11 @@ function Scene({
     return new THREE.Vector3(worldPos.x, 0, worldPos.z);
   }, [myPosX, myPosY, myPosZ]);
 
+  // Camera-feel dials (`?camera=persp`, `?pitchCurve=1`, ...) — read once,
+  // all-off by default, so with no query params this call is exactly the
+  // fixed-angle orthographic rig it has always been. See cameraDials.ts.
+  const cameraDials = useMemo(() => readCameraDials(), []);
+
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
     target: stableTarget,
@@ -610,8 +616,12 @@ function Scene({
     panSpeed: 0.3,
     rotateSpeed: 0.02,
     minZoom: 30,
-    maxZoom: 150,
+    maxZoom: cameraDials.zoomMax ?? 150,
     focusTarget,
+    curve: cameraDials.curve,
+    perspective: cameraDials.perspective,
+    minDistance: cameraDials.minDistance,
+    maxDistance: cameraDials.maxDistance,
   });
 
   // Build entity map for interaction hook (excludes dead entities so they
@@ -1066,6 +1076,13 @@ export function HexGrid(props: HexGridProps) {
   const [isContextLost, setIsContextLost] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Camera-feel dials again out here: Scene reads them for the CONTROLS, but
+  // the projection itself is a `<Canvas>` prop and Scene lives inside it.
+  // Both call the same read-once parser rather than sharing state, so there
+  // is nothing to keep in sync. Default (no query params) is unchanged:
+  // orthographic, zoom 80.
+  const canvasDials = useMemo(() => readCameraDials(), []);
+
   // Handle WebGL context loss/restore for GPU protection
   const handleCanvasCreated = useCallback(
     ({ gl }: { gl: THREE.WebGLRenderer }) => {
@@ -1160,7 +1177,12 @@ export function HexGrid(props: HexGridProps) {
         </div>
       ) : (
         <Canvas
-          orthographic
+          // Projection is fixed at mount — R3F does not swap camera type on a
+          // prop change — so the dial rides a `key` to force a clean remount.
+          // The dials are read once from the URL, so this key is stable and
+          // nothing remounts in practice.
+          key={canvasDials.perspective ? 'persp' : 'ortho'}
+          orthographic={!canvasDials.perspective}
           frameloop="demand"
           onCreated={handleCanvasCreated}
           camera={{
@@ -1170,9 +1192,14 @@ export function HexGrid(props: HexGridProps) {
             // facing against CAMERA_WARD_XZ, derived from this same value)
             // can never drift out of sync with the actual camera.
             position: CAMERA_OFFSET,
-            zoom: 80,
             near: 0.1,
             far: 1000,
+            // `zoom` drives an orthographic camera, `fov` a perspective one.
+            // Both are spelled here because useCameraControls immediately
+            // takes over placement either way; only the projection differs.
+            ...(canvasDials.perspective
+              ? { fov: canvasDials.fovDeg }
+              : { zoom: 80 }),
           }}
           style={{ width: '100%', height: '100%' }}
         >
