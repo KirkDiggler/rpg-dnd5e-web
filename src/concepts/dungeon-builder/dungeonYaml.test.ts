@@ -7,6 +7,7 @@ import {
   type DialectField,
   type ServerCapabilities,
 } from './capabilityProbe';
+import { emptyCanvasYaml } from './creation/emptyCanvasDoc';
 import { canonicalCorner } from './creation/hexCorner';
 import {
   addCellToRegion,
@@ -19,6 +20,7 @@ import {
   deletePlacement,
   deleteRegion,
   DungeonParseError,
+  findRegionCellOverlap,
   movePlacement,
   movePlacementAcrossLists,
   parseDungeon,
@@ -1326,6 +1328,59 @@ connectors:
       expect(result.compilable).toBe(true);
       expect(result.compilableBlockers).toEqual([]);
     });
+
+    describe('canvas-mode compilableBlockers (region-brush honesty round, 2026-08-06)', () => {
+      // Kirk, live authoring: added a boss region trying to satisfy "needs
+      // exactly one boss-archetype room" on a from-scratch canvas doc —
+      // which can never unblock it, since the server rejects `canvas:`
+      // itself before validation ever reaches boss cardinality. These
+      // prove the blocker names THAT fact instead of the chain-mode
+      // room/boss rules once a document is canvas-mode.
+      it('a canvas doc with canvas NOT accepted reports the real Wave 0/#192 blocker, not the room/boss chain rules', () => {
+        const result = stripToV1Subset(
+          emptyCanvasYaml(20, 20),
+          caps([]) // canvas not accepted — every server today
+        );
+        expect(result.compilable).toBe(false);
+        expect(result.compilableBlockers).toEqual([
+          "from-scratch canvas documents aren't accepted by this server yet (platform Wave 0 — rpg-project#192)",
+        ]);
+      });
+
+      it('the same canvas doc reports NO blockers once canvas IS accepted — no invented chain-rule guess takes its place', () => {
+        const result = stripToV1Subset(
+          emptyCanvasYaml(20, 20),
+          caps(['canvas'])
+        );
+        expect(result.compilableBlockers).toEqual([]);
+        expect(result.compilable).toBe(true);
+      });
+
+      it('with no capabilities at all (fixtures mode / probe not yet complete), a canvas doc still reports the Wave 0 blocker, not room/boss', () => {
+        const result = stripToV1Subset(emptyCanvasYaml(20, 20));
+        expect(result.compilableBlockers).toEqual([
+          "from-scratch canvas documents aren't accepted by this server yet (platform Wave 0 — rpg-project#192)",
+        ]);
+      });
+
+      it('a real ROOM-chain document is unaffected — still reports the chain-mode blockers, canvas or not', () => {
+        const oneRoom = `
+version: 1
+key: bare
+name: "Bare"
+height: 8
+rooms:
+  - id: only
+    archetype: entrance
+    width: 6
+connectors: []
+`;
+        const result = stripToV1Subset(oneRoom, caps(['canvas']));
+        expect(result.compilableBlockers).toEqual(
+          expect.arrayContaining(['needs at least 2 rooms (has 1)'])
+        );
+      });
+    });
   });
 
   describe('generalized placement mutators (roomId: null = top-level)', () => {
@@ -1772,6 +1827,82 @@ regions:
           'r1'
         )
       ).toBeNull();
+    });
+  });
+
+  describe('findRegionCellOverlap (region-brush honesty round, 2026-08-06)', () => {
+    it('returns null when the candidate cells collide with nothing', () => {
+      const { doc } = parseDungeon(SHOWCASE_YAML);
+      expect(findRegionCellOverlap(doc, [[5, 5]])).toBeNull();
+    });
+
+    it('names the owning region and the exact colliding cells for a single-cell check — the brush per-cell shape', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'entrance', 'entrance', [
+        [0, 0],
+        [1, 0],
+      ]);
+      const doc2 = toDungeonDoc(cst);
+      const overlap = findRegionCellOverlap(doc2, [[1, 0]]);
+      expect(overlap).toEqual({
+        ownerId: 'entrance',
+        ownerName: undefined,
+        cells: [[1, 0]],
+        cellCount: 1,
+      });
+    });
+
+    it('reports the region NAME when one is set, not just the id', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [[3, 3]], 'The Vault');
+      const doc2 = toDungeonDoc(cst);
+      const overlap = findRegionCellOverlap(doc2, [[3, 3]]);
+      expect(overlap?.ownerName).toBe('The Vault');
+    });
+
+    it('excludeRegionId lets a region check its own proposed cell set without self-colliding', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'r1', 'chamber', [
+        [1, 1],
+        [2, 1],
+      ]);
+      const doc2 = toDungeonDoc(cst);
+      expect(
+        findRegionCellOverlap(
+          doc2,
+          [
+            [1, 1],
+            [2, 1],
+          ],
+          'r1'
+        )
+      ).toBeNull();
+    });
+
+    it('caps the reported cell sample at OVERLAP_SAMPLE_CELLS but keeps the TRUE count uncapped', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      const owned: [number, number][] = Array.from({ length: 9 }, (_, i) => [
+        i,
+        0,
+      ]);
+      createRegion(cst, doc, 'wide', 'chamber', owned);
+      const doc2 = toDungeonDoc(cst);
+      const overlap = findRegionCellOverlap(doc2, owned);
+      expect(overlap?.cellCount).toBe(9);
+      expect(overlap?.cells).toHaveLength(6); // OVERLAP_SAMPLE_CELLS
+    });
+
+    it('only reports the FIRST region a candidate set collides with, when it touches more than one', () => {
+      const { cst, doc } = parseDungeon(SHOWCASE_YAML);
+      createRegion(cst, doc, 'first', 'chamber', [[0, 0]]);
+      const afterFirst = toDungeonDoc(cst);
+      createRegion(cst, afterFirst, 'second', 'chamber', [[5, 5]]);
+      const doc2 = toDungeonDoc(cst);
+      const overlap = findRegionCellOverlap(doc2, [
+        [0, 0],
+        [5, 5],
+      ]);
+      expect(overlap?.ownerId).toBe('first');
     });
   });
 
