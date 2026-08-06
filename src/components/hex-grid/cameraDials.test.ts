@@ -13,10 +13,30 @@ import {
 const rad = (d: number) => (d * Math.PI) / 180;
 
 describe('parseCameraDials', () => {
-  it('with no query params leaves projection and pitch alone — orthographic, single fixed angle', () => {
+  it('curves the pitch with NO query params — this is the battle map camera now', () => {
+    // Promoted from `?pitchCurve=1` after Kirk walked it live ("ok. i like
+    // this angle a lot"). A camera nobody sees without a query param is not
+    // a camera.
     const dials = parseCameraDials('');
-    expect(dials.perspective).toBe(false);
-    expect(dials.curve).toBeNull();
+    expect(dials.curve).not.toBeNull();
+    expect(dials.curve?.polarFar).toBeCloseTo(rad(DEFAULT_PITCH_FAR_DEG));
+    expect(dials.curve?.polarNear).toBeCloseTo(rad(DEFAULT_PITCH_NEAR_DEG));
+  });
+
+  it('leaves PROJECTION alone by default — ortho vs perspective is still open', () => {
+    expect(parseCameraDials('').perspective).toBe(false);
+    expect(parseCameraDials('?pitchCurve=0').perspective).toBe(false);
+  });
+
+  it('?pitchCurve=0 is the escape hatch back to the old single fixed angle', () => {
+    expect(parseCameraDials('?pitchCurve=0').curve).toBeNull();
+  });
+
+  it('an explicit angle beats a stale ?pitchCurve=0 rather than being swallowed by it', () => {
+    // A bookmarked opt-out must not silently discard an angle you just typed.
+    const dials = parseCameraDials('?pitchCurve=0&pitchNear=70');
+    expect(dials.curve).not.toBeNull();
+    expect(dials.curve?.polarNear).toBeCloseTo(rad(70));
   });
 
   it('ships a zoom range that fits a 6-hex move without losing the room in black', () => {
@@ -71,14 +91,16 @@ describe('parseCameraDials', () => {
     expect(nearOnly.curve?.polarFar).toBeCloseTo(rad(DEFAULT_PITCH_FAR_DEG));
   });
 
-  it('?camera=persp is independent of the pitch curve — either alone is a legible experiment', () => {
+  it('?camera=persp is independent of the pitch curve — each is its own decision', () => {
+    // Perspective composes ON TOP of the shipped curve; turning the curve
+    // off must not drag the projection with it, or vice versa.
     const perspOnly = parseCameraDials('?camera=persp');
     expect(perspOnly.perspective).toBe(true);
-    expect(perspOnly.curve).toBeNull();
+    expect(perspOnly.curve).not.toBeNull();
 
-    const curveOnly = parseCameraDials('?pitchCurve=1');
-    expect(curveOnly.perspective).toBe(false);
-    expect(curveOnly.curve).not.toBeNull();
+    const perspNoCurve = parseCameraDials('?camera=persp&pitchCurve=0');
+    expect(perspNoCurve.perspective).toBe(true);
+    expect(perspNoCurve.curve).toBeNull();
   });
 
   it('reports fov in degrees, matching what <Canvas camera={{ fov }}> consumes', () => {
@@ -103,7 +125,9 @@ describe('parseCameraDials', () => {
 
   it('ignores non-numeric and empty values instead of poisoning the camera with NaN', () => {
     const dials = parseCameraDials('?pitchFar=&fov=abc&zoomMax=');
-    expect(dials.curve).toBeNull();
+    // A blank angle falls back to the shipped default rather than to NaN —
+    // one empty query param must never tilt the camera to an undefined pitch.
+    expect(dials.curve?.polarFar).toBeCloseTo(rad(DEFAULT_PITCH_FAR_DEG));
     expect(dials.fovDeg).toBe(DEFAULT_PERSP_FOV_DEG);
     expect(dials.zoomMax).toBe(DEFAULT_ZOOM_MAX);
     expect(dials.minDistance).toBe(DEFAULT_MIN_DISTANCE);

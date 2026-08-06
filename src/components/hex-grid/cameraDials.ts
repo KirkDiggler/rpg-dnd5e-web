@@ -1,15 +1,19 @@
 /**
- * Camera-feel dials for the hex-grid battle map — the live-judgment surface
- * for the "flatten the camera when you zoom in" work (Gloomhaven's board
- * camera, which Kirk called out from play).
+ * The hex-grid battle map's camera: it flattens as you zoom in and stands up
+ * as you pull out (Gloomhaven's board camera, which Kirk called out from
+ * play), plus the dials for tuning that live.
  *
- * Same "read the query string once, default off" convention as
- * `?syntyDungeon=` / `?wallCutaway=` / `?wallHeight=` (EncounterMap.tsx), but
- * parsed HERE rather than in EncounterMap so the concepts surfaces that mount
- * `<HexGrid>` directly (`?concept=fog-of-war`) get the same dials without
- * threading props through every caller. Camera feel is exactly the thing
- * that's pointless to argue about in review and has to be driven — every
- * surface that renders the grid should be able to show it.
+ * The curve is ON by default — this is the camera now, not an experiment.
+ * `?pitchCurve=0` restores the old fixed angle; `?camera=persp` remains
+ * opt-in, because orthographic-vs-perspective is a separate open question.
+ *
+ * Same "read the query string once" convention as `?syntyDungeon=` /
+ * `?wallCutaway=` / `?wallHeight=` (EncounterMap.tsx), but parsed HERE rather
+ * than in EncounterMap so the concepts surfaces that mount `<HexGrid>`
+ * directly (`?concept=fog-of-war`) get the same camera and the same dials
+ * without threading props through every caller. Camera feel is exactly the
+ * thing that's pointless to argue about in review and has to be driven —
+ * every surface that renders the grid should show the same one.
  *
  * WHY THESE DEFAULTS. Measured off Gloomhaven reference shots:
  *  - zoomed out, their camera is near TOP-DOWN (~30° from vertical)
@@ -105,8 +109,9 @@ export interface CameraDials {
   minDistance: number;
   maxDistance: number;
   /**
-   * Zoom-coupled pitch. `null` keeps the single fixed angle the grid has
-   * always used — the untouched default path.
+   * Zoom-coupled pitch — ON by default, since this is the battle map's
+   * camera now rather than an experiment. `null` (only via `?pitchCurve=0`)
+   * restores the single fixed angle the grid used before this feature.
    */
   curve: { polarFar: number; polarNear: number } | null;
   /** Orthographic zoom range and starting point. */
@@ -127,23 +132,30 @@ function num(params: URLSearchParams, key: string): number | null {
  * Pure parser over a query string — the whole point of splitting this out of
  * HexGrid is that the dial resolution is testable without a Canvas.
  *
- * `?camera=persp` and `?pitchCurve=1` are independent: either alone is a
- * legible experiment, and both together is the full proposal. Each implies
- * usable defaults on its own, deliberately — the `?wallCutaway=1` papercut
- * (a flag that composed into something barely distinguishable from off) is
- * the failure mode being avoided here.
+ * The pitch curve is ON with no query params at all. It shipped behind
+ * `?pitchCurve=1` while it was being judged live; Kirk's verdict walking it
+ * ("ok. i like this angle a lot") is what promoted it, so the flag inverted
+ * rather than lingering as a permanently-off experiment nobody would see.
+ * `?pitchCurve=0` is the escape hatch back to the old fixed angle.
+ *
+ * `?camera=persp` is deliberately NOT promoted with it — orthographic vs
+ * perspective is a separate, still-open call, and it stays opt-in until it
+ * gets the same live judgment the curve just had.
  */
 export function parseCameraDials(search: string): CameraDials {
   const params = new URLSearchParams(search);
 
   const perspective = params.get('camera') === 'persp';
 
-  // An explicit endpoint override implies the curve, so you can dial one end
-  // without also remembering `?pitchCurve=1`.
   const pitchFarDeg = num(params, 'pitchFar');
   const pitchNearDeg = num(params, 'pitchNear');
+  // Only an explicit `0` turns the curve off. An endpoint override still
+  // implies ON, so `?pitchFar=20` alone tunes one end without also having to
+  // remember to re-enable the thing you are tuning — and it beats `=0`, so a
+  // stale `?pitchCurve=0` in a bookmarked URL cannot silently swallow a
+  // deliberate angle you just typed.
   const curveOn =
-    params.get('pitchCurve') === '1' ||
+    params.get('pitchCurve') !== '0' ||
     pitchFarDeg !== null ||
     pitchNearDeg !== null;
 
