@@ -1672,6 +1672,37 @@ output, which is itself computed from whatever `capabilityProbe.ts`'s
 caveat to state by hand — the badges structurally can't drift from the
 connected server, because they ARE its answer, re-asked every time.
 
+## Response-side wire consumption: canvas floor + region tree (2026-08-05, dormant)
+
+The capability table above is the SEND side (what the request can carry
+without being stripped). This is the RESPONSE side: once a live server
+answers with `FloorPlan.floor_cells`/`FloorPlan.regions`
+(`FloorPlanRegion.parent_id`) — rpg-api-protos **v0.1.120**, spec.md
+§4.5.9/§4.10.4 — this concept renders FROM the wire instead of its own
+client-derived approximations:
+
+- `creation/canvasFloor.ts`'s `resolveCanvasFloor(doc, floorPlan)` prefers
+  `floorPlan.floorCells` over `deriveCanvasFloorCells` the moment it's
+  non-empty; `DungeonPreview3D`'s `FLOOR: SERVER (N)` / `FLOOR: DERIVED`
+  badge shows which one won.
+- `regionTreeWire.ts`'s `resolveRegionTree(regions, floorPlan)` prefers
+  `floorPlan.regions`/`parent_id` over `regionTree.ts`'s cell-subset
+  inference the moment it's non-empty, cross-checking the two and
+  surfacing a named warning on disagreement (or a dangling `parent_id`);
+  `RegionPanel`'s `REGIONS: SERVER` / `REGIONS: DERIVED` badge mirrors the
+  floor badge.
+
+**Ready, currently dormant.** Canvas mode (spec.md §1 group (c),
+rpg-project#192) and regions (group (d), rpg-project#180/Wave 1) are both
+not started server-side — every live server today answers with empty
+`floor_cells`/`regions` (decode-unknown fields as of the 2026-08-04
+capability probe, same table above), which both consumers treat
+identically to no response at all, never as "the document declares
+zero." The client-side plumbing exists and is tested against constructed
+fixtures now so the flip to server truth needs zero further client
+changes the day Wave 0/1 lands — see CONTRACT.md's "v0.3 wire consumption
+unit" ledger entry for the full writeup and live-verification notes.
+
 ## The v1-subset strip — what actually reaches `PutDungeon`, capability-aware
 
 This concept NEVER sends a target-dialect document to the real server

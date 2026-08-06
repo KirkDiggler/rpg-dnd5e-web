@@ -5194,3 +5194,146 @@ staleness this regeneration was the first full pass to surface.
   so this is a byte-shape change only, not a content change.
 - `ci-check` clean (format/lint/typecheck/build/test) after the prettier
   pass.
+
+## v0.3 wire consumption unit: canvas floor + region tree, dormant until the server ships (2026-08-05, rpg-project#169)
+
+**Response-side consumption only**, per the ratified `ideas/dungeon-builder/spec/v0.3/spec.md`
+and the rpg-api-protos#214 conformance review this unit was scoped from.
+Bumps the protos pin **v0.1.118 → v0.1.120** (`FloorPlanRegion`,
+`FloorPlan.floor_cells`/`regions` — verified present in the generated TS
+after a forced reinstall; the first plain `npm install` silently resolved
+the WRONG commit for the same tag, the exact stale-proto trap this repo's
+convention warns about — `rm -rf node_modules/@kirkdiggler/rpg-api-protos
+&& npm install ...#v0.1.120 --force` fixed it). Two consumption paths,
+same shape: prefer the wire the moment a live response carries a
+non-empty field, fall back to the existing client-derived source
+otherwise, badge which one won.
+
+### Creation mode gets a live `PutDungeon` call for the first time
+
+Before this unit, creation mode ("New Dungeon") never called
+`PutDungeon` at all — its floor came exclusively from
+`creation/canvasFloor.ts`'s `deriveCanvasFloorCells`, and its regions
+panel from `regionTree.ts`'s client-derived containment alone (edit
+mode's `usePutDungeonPreview` instance only ever compiled EDIT mode's
+own document). `usePutDungeonPreview.ts` gains
+`useCreationFloorPlanPreview(doc, yamlText, serverState, capabilities)`
+— a SECOND hook for the creation document, deliberately taking
+`serverState`/`capabilities` as parameters rather than probing for them
+itself: those describe the SERVER, not which document is being edited,
+and both hooks run unconditionally every render (React's rules of
+hooks), so a second independent probe would double real network traffic
+(including the 17-request capability suite) for no new information.
+Both hooks now share one `compileLive(doc, yamlText, capabilities)`
+helper (extracted from `usePutDungeonPreview`'s own per-edit effect,
+behavior-preserving — its existing 12 tests pass unchanged) so the two
+request paths can't silently drift from each other.
+
+### Canvas floor (`creation/canvasFloor.ts`)
+
+`resolveCanvasFloor(doc, floorPlan)` prefers `floorPlan.floorCells` the
+moment a response carries a non-empty list, sort-normalized to ascending
+`(column, row)` — the wire's own declared order, confirmed against the
+generated field comment — via a new `sortCellsLexicographic` (conformance
+review finding A5: `deriveCanvasFloorCells`'s own doc comment explicitly
+does NOT promise its column-major order, even though it happens to
+coincide with the wire's order today when no holes are punched).
+`deriveCanvasFloorCells` becomes the labeled fallback. Wired into
+`CreationConcept.tsx`'s existing `floorCells` memo (previously
+unconditional `deriveCanvasFloorCells`) and threaded to
+`DungeonPreview3D` alongside a new `floorSource` prop.
+
+**Indicator**: `DungeonPreview3D` gets a `db-floor-source-indicator`
+badge, top-left of the 3D viewport — `FLOOR: SERVER (N cells)` (cream) /
+`FLOOR: DERIVED` (dashed amber), the exact visual idiom
+`Board.tsx`'s `db-wall-source-indicator` already established for
+server-vs-derived walls. No RTL render test for this badge — this file's
+existing testing discipline never renders `DungeonPreview3D` itself
+(react-three-fiber `<Canvas>`, not jsdom-renderable), only its exported
+pure helpers; live verification (below) is what actually proves the
+badge renders.
+
+### Region tree (new `regionTreeWire.ts`)
+
+Builds on the region-tree unit's `regionTree.ts` (merged from
+`unit/region-tree` — coordinated with that unit rather than reinventing
+`buildRegionTree`/`flattenRegionTree`, the Fog-of-War "three versions of
+one thing" trap this repo's CLAUDE.md names explicitly). Kept as a
+SEPARATE module rather than adding a `FloorPlan`-typed function to
+`regionTree.ts` itself — that file's own header comment documents itself
+as deliberately dependency-free (no `DungeonDoc`/`RegionDoc`, let alone a
+wire proto type), reusable by both boards without pulling in this
+concept's network layer.
+
+`resolveRegionTree(regions, floorPlan)` prefers `FloorPlanRegion.parent_id`
+the moment a response carries a non-empty `regions` list — building the
+SAME `RegionTree` shape directly from parent pointers rather than
+re-inferring containment from cell sets, since the wire's `parent_id` IS
+already the toolkit's own derived answer (its field comment: "Toolkit-derived
+direct declared parent ID"). `regionTree.ts`'s `buildRegionTree` becomes
+BOTH the fallback (empty/absent `floorPlan.regions`) AND the verification
+baseline: whenever the wire is present, every region's wire-declared
+parent is compared against what `buildRegionTree` would derive for the
+SAME cell sets, and a disagreement renders a named, visible warning
+(`db-region-tree-drift-warning`) rather than silently preferring one
+side — conformance review findings A2/A3's "the derivation rule isn't in
+the proto, an implementer can drift" made concrete as an actual drift
+detector. A dangling `parent_id` (resolves to no region on the same
+response — A2) is treated as root for tree-building (graceful, no crash)
+but still surfaces its own named warning, distinct from a parent
+disagreement. `RegionPanel.tsx` gets the matching
+`db-region-tree-source-indicator` badge (`REGIONS: SERVER` /
+`REGIONS: DERIVED`), same idiom as the floor badge above.
+
+### Rollout discipline (conformance review finding A4)
+
+Both consumption paths gate on **non-empty**, not on "a response
+exists" — a live, reachable server that simply hasn't shipped Wave 0/1
+yet (every server today; the client's own capability probe records
+`canvas`/`regions` as decode-unknown as of 2026-08-04) answers with an
+empty `floorCells`/`regions`, which both `resolveCanvasFloor` and
+`resolveRegionTree` treat identically to no `floorPlan` at all — never
+rendering an empty floor or an empty region tree because the producer
+hasn't shipped, exactly the trap A4 named.
+
+### Tests
+
+18 new/extended in `canvasFloor.test.ts` (`sortCellsLexicographic` +
+`resolveCanvasFloor`'s derived/server/empty-rollout-gap/sort-normalization/
+hole-disagreement cases), 9 in `regionTreeWire.test.ts` (derived fallback,
+empty-regions rollout gap, agreeing nested case, sibling case, BOTH
+mismatch directions, dangling parent, id-set drift is silently skipped
+not falsely flagged, a 3-deep nesting chain), 5 in a new
+`RegionPanel.test.tsx` (the badge/warnings actually RENDER, not just that
+the underlying logic is correct — DERIVED on null/empty, SERVER on
+agreement, the mismatch warning naming both regions, the dangling-parent
+warning still rendering the region as a root row). Every `FloorPlan`
+fixture in all three files is hand-constructed and marked SYNTHETIC —
+no live server carries these fields yet, so a "real recorded response"
+fixture (this file's usual `fixtures.ts` discipline) isn't possible for
+this unit. `usePutDungeonPreview.test.ts`'s existing 12 tests pass
+unchanged (the `compileLive` extraction is behavior-preserving). Full
+`src/concepts/dungeon-builder` suite: 360 tests, 19 files, `tsc --noEmit`
+clean.
+
+### Live verification
+
+Own dev server (fresh worktree; `public/models/synty/` rsync'd from a
+sibling worktree the same way the wire-edges unit's own ledger entry
+documents — a fresh worktree never has it, and its absence crashed the
+ENTIRE React root on first 3D-mode render with no console.error, only a
+`pageerror` about a missing texture — confirmed as an asset-sync gap, not
+a code bug, by reproducing the SAME crash-free render against a sibling
+worktree with assets present). Default `.env` (`VITE_API_HOST=
+http://localhost:8080`) reached a real, reachable rpg-api instance
+without the authoring gate's `AuthoringService` registered
+(`Unimplemented` → `serverState: 'gate-off'`) — this is, honestly, the
+ONLY live-testable state today, since no shipped server carries
+`floor_cells`/`regions`: confirmed the 3D preview's badge reads
+`FLOOR: DERIVED` and the Region panel's badge reads `REGIONS: DERIVED`,
+both against a real reachable server, with the floor/region tree
+rendering exactly as before this unit (no regression, no crash, no
+empty-floor flash). The `server`/mismatch/dangling-parent paths are
+proven by `regionTreeWire.test.ts`/`RegionPanel.test.tsx`'s constructed
+fixtures, not live — there is nothing server-side to drive them against
+yet.

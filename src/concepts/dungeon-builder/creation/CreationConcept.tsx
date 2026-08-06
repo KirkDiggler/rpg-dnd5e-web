@@ -557,7 +557,11 @@ export function CreationConcept({
           Region is the live tool, matching every other tool-scoped panel
           in this concept. */}
       {selectedTool === 'region' && (
-        <RegionPanel doc={doc} regionEdit={regionEdit} />
+        <RegionPanel
+          doc={doc}
+          regionEdit={regionEdit}
+          liveFloorPlan={liveFloorPlan}
+        />
       )}
     </div>
   );
