@@ -172,6 +172,7 @@ import { BOARD_HEX_SIZE, cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
 import { END_COLOR, regionArchetypeColor, START_COLOR } from '../markerStyle';
 import { regionCentroid } from '../regionGeometry';
 import type { BoardTool, PaletteSelection, PlacementSelection } from '../types';
+import { PlayCamera } from './PlayCamera';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
 import { WalkCamera } from './WalkCamera';
 import {
@@ -1263,18 +1264,28 @@ export function DungeonPreview3D({
   );
   const hitShape = useMemo(() => buildHexHitShape(), []);
 
-  // --- Walk mode (rpg-project#169's author-walkthrough unit) ---
-  // 'orbit' (existing, unchanged default) vs. 'walk' (player-perspective,
-  // view-only — see WalkCamera.tsx's own header doc comment). Local to
-  // this component, not lifted to either caller: neither
-  // `DungeonBuilderConcept.tsx`'s edit-mode call site nor
-  // `CreationConcept.tsx`'s creation-mode one needs to know which camera
-  // is currently driving — "one component" per this unit's own scope.
-  const [cameraMode, setCameraMode] = useState<'orbit' | 'walk'>('orbit');
+  // --- Walk / Play modes (rpg-project#169's author-walkthrough unit) ---
+  // 'orbit' (existing, unchanged default) vs. 'walk' (literal
+  // player-perspective — see WalkCamera.tsx's own header doc comment) vs.
+  // 'play' (rpg-project#169 FOLLOW-UP unit — Kirk played Walk live: "walk
+  // is pretty literal. that is not the view we have when playing. really
+  // cool though" — Play drives the SAME walked position through the real
+  // game's own tactical camera rig instead; see PlayCamera.tsx's own
+  // header doc comment for the full citation of every constant/formula).
+  // Both Walk and Play are view-only. Local to this component, not lifted
+  // to either caller: neither `DungeonBuilderConcept.tsx`'s edit-mode
+  // call site nor `CreationConcept.tsx`'s creation-mode one needs to know
+  // which camera is currently driving — "one component" per this unit's
+  // own scope.
+  const [cameraMode, setCameraMode] = useState<'orbit' | 'walk' | 'play'>(
+    'orbit'
+  );
   const [walkLocked, setWalkLocked] = useState(false);
   // The player's own nearest cell, updated only on a CELL CHANGE (not
   // every frame — WalkCamera.tsx's own `onCellChange` doc comment) —
   // drives light-cap recentering below without a per-frame re-render.
+  // Shared by both Walk and Play — whichever is active is the only one
+  // calling `setPlayerCell` at a time.
   const [playerCell, setPlayerCell] = useState<PlaceableCell | null>(null);
 
   const walkContext = useMemo(
@@ -1291,8 +1302,16 @@ export function DungeonPreview3D({
   );
 
   const isWalking = cameraMode === 'walk';
+  const isPlaying = cameraMode === 'play';
+  const isWalkingOrPlaying = isWalking || isPlaying;
 
-  const handleToggleCameraMode = () => {
+  // Single entry point for every mode transition — both Walk and Play
+  // need the SAME "release an engaged pointer lock before leaving Walk"
+  // guard (only Walk ever engages one, but the guard has to run whenever
+  // Walk is the mode being LEFT, regardless of which mode is next) and
+  // the SAME "no floor, honest reject" gate before entering either.
+  const handleSelectCameraMode = (mode: 'orbit' | 'walk' | 'play') => {
+    if (mode === cameraMode) return;
     if (isWalking) {
       // `PointerLockControls.disconnect()` (WalkCamera's own unmount
       // cleanup) only removes ITS event listeners — it never calls
@@ -1304,20 +1323,19 @@ export function DungeonPreview3D({
       // an ordinary, unlocked mouse regardless of whether the player had
       // engaged mouse-look at all.
       if (document.pointerLockElement) document.exitPointerLock();
-      setCameraMode('orbit');
-      return;
     }
-    if (!walkStart) {
+    if ((mode === 'walk' || mode === 'play') && !walkStart) {
       onReject?.('No floor to walk on yet.');
       return;
     }
-    setCameraMode('walk');
+    setCameraMode(mode);
   };
 
   // Lighting (Kirk's day-one ask, same unit: "has the lighting loaded")
-  // — applies in BOTH camera modes, not gated to Walk only: it's a real
-  // improvement to the existing Orbit preview too, and keeping one
-  // lighting path (rather than a walk-only special case) is simpler.
+  // — applies in ALL THREE camera modes, not gated to Walk/Play only:
+  // it's a real improvement to the existing Orbit preview too, and
+  // keeping one lighting path (rather than a per-mode special case) is
+  // simpler.
   const rawWalkLights = useMemo(() => deriveWalkLights(props), [props]);
   const walkLights = useMemo(
     () =>
@@ -1331,15 +1349,19 @@ export function DungeonPreview3D({
   const ambientIntensity = resolveAmbientIntensity(doc);
   const directionalScale = resolveDirectionalScale(doc);
 
-  // View-only while walking (this unit's own scope: "no editing while
-  // walking") — every interaction prop degrades to inert rather than
-  // this component growing a parallel walk-mode render tree. Selection/
-  // placement/connector clicks and the empty-space deselect all no-op;
-  // the underlying hit-cells/props/doors stay mounted (cheap, no visual
-  // difference) so toggling back to Orbit needs no remount.
-  const effectiveOnSelect = isWalking ? undefined : onSelect;
-  const effectiveOnPlace = isWalking ? undefined : onPlace;
-  const effectiveOnSelectConnector = isWalking ? undefined : onSelectConnector;
+  // View-only while walking OR playing (this unit's own scope: "no
+  // editing while walking," extended to Play — it's the same
+  // fidelity-check idea, not an editing surface either) — every
+  // interaction prop degrades to inert rather than this component
+  // growing a parallel render tree per mode. Selection/placement/
+  // connector clicks and the empty-space deselect all no-op; the
+  // underlying hit-cells/props/doors stay mounted (cheap, no visual
+  // difference) so switching modes needs no remount.
+  const effectiveOnSelect = isWalkingOrPlaying ? undefined : onSelect;
+  const effectiveOnPlace = isWalkingOrPlaying ? undefined : onPlace;
+  const effectiveOnSelectConnector = isWalkingOrPlaying
+    ? undefined
+    : onSelectConnector;
 
   // Mirrors Board.tsx's own click-to-place cell handler for the edit-mode
   // (floorPlan present) branch — same messages, same boss/occupied rules,
@@ -1356,7 +1378,7 @@ export function DungeonPreview3D({
   // 2D brush now consults), not a fresh room/door-row lookup — there is
   // no room chain or door row on a canvas to check against.
   const handleClickCell = (cell: PlaceableCell) => {
-    if (isWalking) return; // view-only — see this component's own "Walk mode" section above
+    if (isWalkingOrPlaying) return; // view-only — see this component's own "Walk / Play modes" section above
     if (!selectedPalette || !effectiveOnPlace) {
       onReject?.(
         selectedTool
@@ -1513,7 +1535,7 @@ export function DungeonPreview3D({
                   key={cell.key}
                   cell={cell}
                   shape={hitShape}
-                  placing={!isWalking && !!selectedPalette}
+                  placing={!isWalkingOrPlaying && !!selectedPalette}
                   onClickCell={handleClickCell}
                 />
               ))}
@@ -1657,6 +1679,12 @@ export function DungeonPreview3D({
               onLockedChange={setWalkLocked}
               onCellChange={setPlayerCell}
             />
+          ) : isPlaying && walkStart ? (
+            <PlayCamera
+              ctx={walkContext}
+              start={walkStart}
+              onCellChange={setPlayerCell}
+            />
           ) : (
             <OrbitControls makeDefault />
           )}
@@ -1681,32 +1709,79 @@ export function DungeonPreview3D({
             the mouse.
           </div>
         )}
+        {isPlaying && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 8,
+              left: 8,
+              padding: '4px 8px',
+              background: 'rgba(12,10,8,0.6)',
+              color: '#8a7a5a',
+              fontSize: 11,
+              borderRadius: 4,
+              pointerEvents: 'none',
+            }}
+          >
+            WASD to move · Q/E or right-drag to rotate · scroll to zoom — the
+            game's own tactical camera.
+          </div>
+        )}
       </div>
-      <button
-        onClick={handleToggleCameraMode}
-        title={
-          isWalking
-            ? 'Return to the orbit camera and resume editing'
-            : walkStart
-              ? 'Walk the dungeon at player eye height (view-only)'
-              : 'No floor to walk on yet'
-        }
+      {/* Orbit / Play / Walk — Play ordered right after Orbit
+          (deliberately, not alphabetically): it needs no click-to-lock
+          step at all, so it's the lowest-friction way off Orbit — "the
+          fidelity-check mode he actually needs" (Kirk, on Play vs. the
+          literal Walk mode). */}
+      <div
+        role="group"
+        aria-label="Camera mode"
         style={{
           position: 'absolute',
           top: 8,
           right: 8,
-          padding: '4px 10px',
-          fontSize: 11.5,
-          fontWeight: 600,
-          borderRadius: 5,
+          display: 'flex',
+          gap: 2,
           border: '1px solid var(--border-primary)',
-          cursor: 'pointer',
-          background: isWalking ? '#5fd1c9' : 'transparent',
-          color: isWalking ? '#14110f' : '#e8e2d8',
+          borderRadius: 5,
+          padding: 2,
+          background: '#14110f',
         }}
       >
-        {isWalking ? 'Exit Walk' : 'Walk'}
-      </button>
+        {(
+          [
+            { mode: 'orbit' as const, label: 'Orbit' },
+            { mode: 'play' as const, label: 'Play' },
+            { mode: 'walk' as const, label: 'Walk' },
+          ] as const
+        ).map(({ mode, label }) => (
+          <button
+            key={mode}
+            onClick={() => handleSelectCameraMode(mode)}
+            title={
+              mode === 'orbit'
+                ? 'Orbit camera — edit/select/place'
+                : !walkStart
+                  ? 'No floor to walk on yet'
+                  : mode === 'play'
+                    ? "The game's own tactical camera, following WASD movement (view-only)"
+                    : 'Player-perspective eye-level camera, WASD + mouse-look (view-only)'
+            }
+            style={{
+              padding: '3px 10px',
+              fontSize: 11.5,
+              fontWeight: 600,
+              borderRadius: 3,
+              border: 'none',
+              cursor: 'pointer',
+              background: cameraMode === mode ? '#5fd1c9' : 'transparent',
+              color: cameraMode === mode ? '#14110f' : '#e8e2d8',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

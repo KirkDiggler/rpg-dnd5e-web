@@ -30,7 +30,13 @@ import { useEffect, useRef } from 'react';
 import { Euler, Vector3 } from 'three';
 import type { PointerLockControls as PointerLockControlsImpl } from 'three-stdlib';
 import type { PlaceableCell } from './DungeonPreview3D';
-import { nearestCell, resolveWalkStep, type WalkContext } from './walkMovement';
+import { useWasdKeys } from './useWasdKeys';
+import {
+  nearestCell,
+  resolveMoveVector,
+  resolveWalkStep,
+  type WalkContext,
+} from './walkMovement';
 
 /** Player eye height, world units — derived from `WALL_HEIGHT` (2.4
  * world units; `calibrationConstants.ts`'s own doc comment: Synty packs,
@@ -42,21 +48,9 @@ export const WALK_EYE_HEIGHT = WALL_HEIGHT * 0.7;
 /** World units/second — a brisk walking pace. Not tuned against any
  * real-world figure beyond "covers a hex-ish distance in comfortably
  * under a second," which is what reads as WALKING (not sprinting, not
- * crawling) in live verification. */
-const WALK_SPEED = 3;
-
-type MoveAxis = 'forward' | 'back' | 'left' | 'right';
-
-const KEY_TO_AXIS: Record<string, MoveAxis> = {
-  KeyW: 'forward',
-  ArrowUp: 'forward',
-  KeyS: 'back',
-  ArrowDown: 'back',
-  KeyA: 'left',
-  ArrowLeft: 'left',
-  KeyD: 'right',
-  ArrowRight: 'right',
-};
+ * crawling) in live verification. Shared with `PlayCamera.tsx` — the
+ * SAME pace either way, only the camera differs. */
+export const WALK_SPEED = 3;
 
 export interface WalkCameraProps {
   ctx: WalkContext;
@@ -86,9 +80,25 @@ export function WalkCamera({
   onLockedChange,
   onCellChange,
 }: WalkCameraProps) {
-  const { camera } = useThree();
+  // `get()` (R3F's own Zustand-style escape hatch — the SAME one drei's
+  // `Bounds` itself uses) rather than destructuring `camera` at render
+  // time. Real, found-live reason: switching cameras DIRECTLY from Play
+  // mode (whose `<OrthographicCamera makeDefault>` swaps `state.camera`
+  // to itself, then restores the PREVIOUS default via a LAYOUT-effect
+  // cleanup on unmount) straight into Walk skips ever passing through
+  // Orbit — React runs Play's layout-effect cleanup and mounts this
+  // component in the SAME commit, but this component's own render
+  // happens BEFORE that cleanup fires, so a plain `const {camera} =
+  // useThree()` captured at render time could still point at Play's own
+  // (about to be disposed) orthographic camera instead of the real
+  // default. `get().camera`, called from INSIDE the effect body (which
+  // only runs in the passive-effects phase, strictly after every layout
+  // effect in the same commit has already settled `state.camera`), reads
+  // the correct, final camera instead. Confirmed live: without this fix,
+  // Play -> Walk (no Orbit stop between) rendered a solid black canvas.
+  const getThree = useThree((s) => s.get);
   const controlsRef = useRef<PointerLockControlsImpl | null>(null);
-  const pressedKeys = useRef(new Set<string>());
+  const pressedKeys = useWasdKeys();
   const lastCellKey = useRef<string | null>(null);
   const forward = useRef(new Vector3());
   const right = useRef(new Vector3());
@@ -99,13 +109,14 @@ export function WalkCamera({
   // changes underneath them, which it legitimately can if this is
   // creation mode's own live-edited canvas). The cleanup restores
   // whatever pose the camera had the MOMENT Walk mode was entered
-  // (always Orbit's own `<Bounds fit clip>`-computed framing, since Walk
-  // mode is only ever entered from Orbit) — live-verified finding: with
-  // no reset at all, leaving Walk mode handed `<OrbitControls>` the
-  // camera wherever the player last stood (mid-corridor, at eye height,
-  // often facing a wall or open darkness), not the original bird's-eye
-  // framing — a real UX papercut, not a hypothetical one.
+  // (Orbit's own `<Bounds fit clip>`-computed framing, whenever Walk is
+  // entered from Orbit) — live-verified finding: with no reset at all,
+  // leaving Walk mode handed `<OrbitControls>` the camera wherever the
+  // player last stood (mid-corridor, at eye height, often facing a wall
+  // or open darkness), not the original bird's-eye framing — a real UX
+  // papercut, not a hypothetical one.
   useEffect(() => {
+    const camera = getThree().camera;
     const restorePosition = camera.position.clone();
     const restoreQuaternion = camera.quaternion.clone();
 
@@ -125,45 +136,13 @@ export function WalkCamera({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const keys = pressedKeys.current;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
-      if (KEY_TO_AXIS[e.code]) keys.add(e.code);
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      keys.delete(e.code);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      keys.clear();
-    };
-  }, []);
-
-  useFrame((_state, delta) => {
+  useFrame((state, delta) => {
     if (!controlsRef.current?.isLocked) return;
-    let f = 0;
-    let r = 0;
-    for (const code of pressedKeys.current) {
-      switch (KEY_TO_AXIS[code]) {
-        case 'forward':
-          f += 1;
-          break;
-        case 'back':
-          f -= 1;
-          break;
-        case 'right':
-          r += 1;
-          break;
-        case 'left':
-          r -= 1;
-          break;
-      }
-    }
-    if (f === 0 && r === 0) return;
+    // `state.camera` — R3F's OWN live current-frame camera, never a
+    // render-time closure — same staleness reasoning as the mount
+    // effect's `get().camera` above, just via useFrame's own guaranteed-
+    // fresh parameter instead.
+    const camera = state.camera;
 
     controlsRef.current.getDirection(forward.current);
     forward.current.y = 0;
@@ -174,12 +153,14 @@ export function WalkCamera({
     // conventional "right" for a camera looking down -Z).
     right.current.set(-forward.current.z, 0, forward.current.x);
 
-    // Normalize the (f, r) input vector so a diagonal (W+D) press moves
-    // at the same speed as a single key, not faster.
-    const inputLen = Math.hypot(f, r) || 1;
-    const step = (WALK_SPEED * delta) / inputLen;
-    const dx = (forward.current.x * f + right.current.x * r) * step;
-    const dz = (forward.current.z * f + right.current.z * r) * step;
+    const { dx, dz } = resolveMoveVector(
+      pressedKeys.current,
+      forward.current,
+      right.current,
+      WALK_SPEED,
+      delta
+    );
+    if (dx === 0 && dz === 0) return;
 
     const { x, z } = resolveWalkStep(
       ctx,

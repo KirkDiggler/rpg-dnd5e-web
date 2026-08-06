@@ -40,6 +40,7 @@ import {
   canStandAt,
   edgeKey,
   nearestCell,
+  resolveMoveVector,
   resolveWalkStart,
   resolveWalkStep,
   type WalkContext,
@@ -328,5 +329,124 @@ describe('resolveWalkStart', () => {
       blockedEdges: new Set(),
     };
     expect(resolveWalkStart(ctx, { start: null })).toBeNull();
+  });
+});
+
+// resolveMoveVector — shared by BOTH walking camera modes (WalkCamera's
+// first-person facing, PlayCamera's azimuth-derived facing); each
+// component supplies its own forward/right, this function does the rest
+// identically either way.
+describe('resolveMoveVector', () => {
+  const FORWARD_NEG_Z = { x: 0, z: -1 };
+  const RIGHT_POS_X = { x: 1, z: 0 };
+
+  it('no keys pressed produces zero movement', () => {
+    const { dx, dz } = resolveMoveVector(
+      new Set(),
+      FORWARD_NEG_Z,
+      RIGHT_POS_X,
+      3,
+      1
+    );
+    expect(dx).toBe(0);
+    expect(dz).toBe(0);
+  });
+
+  it('W alone moves the full speed*delta along forward', () => {
+    const { dx, dz } = resolveMoveVector(
+      new Set(['KeyW']),
+      FORWARD_NEG_Z,
+      RIGHT_POS_X,
+      3,
+      0.5
+    );
+    expect(dx).toBeCloseTo(0);
+    expect(dz).toBeCloseTo(-1.5); // 3 * 0.5, along -Z
+  });
+
+  it('S alone moves backward (negated forward)', () => {
+    const { dx, dz } = resolveMoveVector(
+      new Set(['KeyS']),
+      FORWARD_NEG_Z,
+      RIGHT_POS_X,
+      3,
+      0.5
+    );
+    expect(dx).toBeCloseTo(0);
+    expect(dz).toBeCloseTo(1.5);
+  });
+
+  it('D alone strafes along right', () => {
+    const { dx, dz } = resolveMoveVector(
+      new Set(['KeyD']),
+      FORWARD_NEG_Z,
+      RIGHT_POS_X,
+      3,
+      0.5
+    );
+    expect(dx).toBeCloseTo(1.5);
+    expect(dz).toBeCloseTo(0);
+  });
+
+  it('W+D (diagonal) is normalized — same magnitude as a single key, not faster', () => {
+    const single = resolveMoveVector(
+      new Set(['KeyW']),
+      FORWARD_NEG_Z,
+      RIGHT_POS_X,
+      3,
+      0.5
+    );
+    const singleMag = Math.hypot(single.dx, single.dz);
+    const diagonal = resolveMoveVector(
+      new Set(['KeyW', 'KeyD']),
+      FORWARD_NEG_Z,
+      RIGHT_POS_X,
+      3,
+      0.5
+    );
+    const diagonalMag = Math.hypot(diagonal.dx, diagonal.dz);
+    expect(diagonalMag).toBeCloseTo(singleMag);
+  });
+
+  it('opposite keys (W+S) cancel to zero', () => {
+    const { dx, dz } = resolveMoveVector(
+      new Set(['KeyW', 'KeyS']),
+      FORWARD_NEG_Z,
+      RIGHT_POS_X,
+      3,
+      0.5
+    );
+    expect(dx).toBeCloseTo(0);
+    expect(dz).toBeCloseTo(0);
+  });
+
+  it('arrow keys are equivalent to WASD', () => {
+    const wasd = resolveMoveVector(
+      new Set(['KeyW']),
+      FORWARD_NEG_Z,
+      RIGHT_POS_X,
+      3,
+      0.5
+    );
+    const arrows = resolveMoveVector(
+      new Set(['ArrowUp']),
+      FORWARD_NEG_Z,
+      RIGHT_POS_X,
+      3,
+      0.5
+    );
+    expect(arrows).toEqual(wasd);
+  });
+
+  it('an unrelated key code is ignored', () => {
+    const { dx, dz } = resolveMoveVector(
+      new Set(['KeyQ']),
+      FORWARD_NEG_Z,
+      RIGHT_POS_X,
+      3,
+      0.5
+    );
+    expect(dx).toBe(0);
+    expect(dz).toBe(0);
   });
 });

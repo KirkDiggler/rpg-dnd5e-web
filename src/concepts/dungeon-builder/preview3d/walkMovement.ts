@@ -321,3 +321,73 @@ export function resolveWalkStep(
 }
 
 export { edgeKey };
+
+// --- Shared WASD input, reused by BOTH camera modes that walk
+// (`WalkCamera.tsx`'s first-person mode, `PlayCamera.tsx`'s tactical
+// mode) — rpg-project#169 follow-up unit (Kirk, live: "walk is pretty
+// literal. that is not the view we have when playing... really cool
+// though" — Play reuses this exact movement, only the CAMERA rig
+// differs). Kept here, not per-component, so "movement identical to
+// Walk" is a real, enforced-by-sharing fact, not a claim two separate
+// implementations happen to agree with today. ---
+
+export type MoveAxis = 'forward' | 'back' | 'left' | 'right';
+
+/** Keyboard-code -> movement axis, shared by every walking camera mode.
+ * Arrow keys included alongside WASD for the same reason any other
+ * movement-key convention would: no reason to support one and not the
+ * other once either is being handled at all. */
+export const KEY_TO_AXIS: Record<string, MoveAxis> = {
+  KeyW: 'forward',
+  ArrowUp: 'forward',
+  KeyS: 'back',
+  ArrowDown: 'back',
+  KeyA: 'left',
+  ArrowLeft: 'left',
+  KeyD: 'right',
+  ArrowRight: 'right',
+};
+
+/**
+ * The raw world-space (dx, dz) a frame's held keys produce, given the
+ * caller's own notion of "forward"/"right" (a first-person camera's own
+ * facing for `WalkCamera`; the tactical rig's azimuth-derived heading for
+ * `PlayCamera` — see that component's own doc comment for why the two
+ * necessarily differ even though the KEYS and the resulting MOVEMENT
+ * resolution — `resolveWalkStep`, below — are identical). Pure: takes the
+ * already-read key set, not a live listener. Diagonal input (e.g. W+D) is
+ * normalized so it doesn't move faster than a single key.
+ */
+export function resolveMoveVector(
+  pressedKeys: ReadonlySet<string>,
+  forward: { x: number; z: number },
+  right: { x: number; z: number },
+  speed: number,
+  delta: number
+): { dx: number; dz: number } {
+  let f = 0;
+  let r = 0;
+  for (const code of pressedKeys) {
+    switch (KEY_TO_AXIS[code]) {
+      case 'forward':
+        f += 1;
+        break;
+      case 'back':
+        f -= 1;
+        break;
+      case 'right':
+        r += 1;
+        break;
+      case 'left':
+        r -= 1;
+        break;
+    }
+  }
+  if (f === 0 && r === 0) return { dx: 0, dz: 0 };
+  const inputLen = Math.hypot(f, r) || 1;
+  const step = (speed * delta) / inputLen;
+  return {
+    dx: (forward.x * f + right.x * r) * step,
+    dz: (forward.z * f + right.z * r) * step,
+  };
+}

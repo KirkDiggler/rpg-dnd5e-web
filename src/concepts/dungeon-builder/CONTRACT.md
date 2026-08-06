@@ -5215,3 +5215,189 @@ default-is-a-no-op + proportional-darkening math.
   annotated example already comments out as "P4+" is still exactly that —
   this unit implements the ambient knob plus prop-derived lights, not a
   hand-authored per-light override.
+
+## Author walkthrough follow-up: a third "Play" camera mode, the game's own tactical rig (2026-08-05, rpg-project#169)
+
+Kirk played the Walk mode from the unit above live and gave a real, specific
+verdict: "walk is pretty literal. that is not the view we have when playing.
+really cool though." The literal first-person eye doesn't match the game's
+actual play camera (the elevated tactical view the Discord activity uses).
+This unit adds a THIRD camera mode, **Play**, on the same branch/PR — Walk
+survives unchanged ("really cool though"), Orbit survives unchanged, and Play
+becomes the low-friction default path off Orbit.
+
+### What shipped
+
+**The camera-mode toggle is now a 3-way segmented control** (Orbit / Play /
+Walk, in that order — Play deliberately placed immediately next to Orbit:
+unlike Walk, Play needs no click-to-engage-pointer-lock step at all, so it's
+the lowest-friction way off Orbit, honoring "the fidelity-check mode he
+actually needs"). `handleSelectCameraMode` replaces the old boolean toggle
+handler — one entry point for all six possible transitions, still releasing
+an engaged pointer lock whenever WALK is the mode being LEFT (regardless of
+which mode is next), still gating both Walk and Play behind the same
+"real floor to walk on" check.
+
+**Play reuses Walk's own WASD+legality movement WHOLESALE, not
+re-implemented.** This was made literally true, not just claimed, by
+extracting the shared pieces out of `WalkCamera.tsx` into `walkMovement.ts`
+(`resolveMoveVector` — the raw-input-to-world-delta math, `KEY_TO_AXIS`) and
+a new `useWasdKeys.ts` hook (the WASD/arrow keydown/keyup/blur listener,
+shared verbatim by both camera components). `WalkCamera.tsx` itself was
+refactored to call these instead of its own private copies — a regression
+guard as much as a Play enabler: if the two components ever drift, it will
+be because someone edited the ONE shared function, not because two parallel
+implementations quietly diverged.
+
+**The camera itself is the real game's own tactical rig — every constant
+and formula cited, not re-derived**, read directly from
+`src/components/hex-grid/HexGrid.tsx` and its one caller of
+`src/components/hex-grid/useCameraControls.ts`:
+
+- **Orthographic projection** (`zoom: 80, near: 0.1, far: 1000`) —
+  `HexGrid.tsx`'s own `<Canvas orthographic camera={{...}}>` ("Lower
+  isometric angle similar to Stolen Realm," that file's own comment). This
+  is a genuinely different projection than Orbit/Walk's existing perspective
+  camera, not a repositioning of it — drei's `<OrthographicCamera
+makeDefault>` swaps in a second, independent camera object while Play is
+  active, restoring the previous default on unmount (the same `set({camera:
+...})`/cleanup pattern `PointerLockControls` itself already uses for
+  `makeDefault`, verified by reading both source files, not assumed to
+  match).
+- **Spherical camera-from-target math** — `useCameraControls.ts`'s own
+  `updateCamera`: `x = target.x + distance·sin(polarAngle)·cos(azimuth)`,
+  `y = target.y + distance·cos(polarAngle)`, `z = target.z +
+distance·sin(polarAngle)·sin(azimuth)`, `camera.lookAt(target)`.
+  `polarAngle: Math.PI / 3.5` (`HexGrid.tsx`'s own call-site "slightly
+  lower tactical angle" than the hook's own `PI/4` default), `azimuth`
+  starting at `Math.PI / 4` and `distance` starting at `20` (the hook's own
+  internal defaults — `HexGrid.tsx` never overrides either).
+- **Follow-lerp**: `factor = 1 - Math.pow(0.001, delta)` exponential
+  smoothing of the orbit target toward the player's own walked position —
+  the hook's own real `focusTarget` damping, here following the WASD-driven
+  walk position every frame instead of a multiplayer entity's server-driven
+  one.
+- **Q/E rotates azimuth**, **scroll wheel adjusts `camera.zoom`** (clamped
+  to `[30, 150]`, `HexGrid.tsx`'s own call-site values — the hook's
+  ORTHOGRAPHIC-camera wheel branch, since this rig genuinely is
+  orthographic), **right-click-drag also rotates azimuth** — all three
+  reattached against this component's own state (see below for why the hook
+  itself isn't reused directly).
+
+**The pure rig math lives in a new, independently-tested module,
+`playCameraRig.ts`** (no Three.js/R3F import) — `PlayCamera.tsx` is the thin
+glue that calls it each frame and applies the result to a real
+`THREE.OrthographicCamera`, the same "pure derivation, component just maps
+it to JSX" split this concept's other 3D modules already use.
+
+**The one deliberate departure from the cited rig, and why it has to be
+one**: `useCameraControls` itself is NOT reused directly — it binds W/A/S/D
+to PAN the camera's target, which would conflict with this authoring tool's
+own WASD-drives-the-WALKING-POSITION scheme. The real game never has this
+conflict because it doesn't use WASD for player movement at all
+(click-to-move pathing); this concept has no such system, so WASD is the
+only movement input available and is spent on walking, not panning. The
+orbit `target` is therefore driven by the player's own walked position every
+frame (through the identical follow-lerp), not by keyboard panning — "camera
+forward" for WASD purposes is derived from the rig's own current azimuth
+(the direction the tactical camera faces horizontally) rather than a
+first-person quaternion, the only sense in which "forward" can mean anything
+for a fixed-angle orbit rig; Q/E rotation therefore also rotates what
+forward means for WASD, the standard third-person/tactical-camera
+convention.
+
+**Lighting stays unconditional across all three modes** — no change needed
+here; the previous unit's `<ambientLight>`/`<directionalLight>`/point-light
+rendering already lived outside any per-mode branch.
+
+### A real bug, found live: a stale camera reference across a DIRECT Play→Walk transition
+
+Switching straight from Play to Walk (no Orbit stop in between) rendered a
+solid black canvas. Root cause, confirmed by reading React's own effect
+ordering, not guessed: `WalkCamera.tsx` used to destructure `const {camera}
+= useThree()` at RENDER time and use that closure both in its one-time mount
+`useEffect` and every `useFrame` tick. `PlayCamera`'s own
+`<OrthographicCamera makeDefault>` swaps `state.camera` to itself via a
+`useLayoutEffect`, and restores the PREVIOUS default via that same effect's
+cleanup on unmount. Because layout effects (all of them, across the whole
+commit) run before ANY passive effect in the same commit, but a component's
+own RENDER happens before its layout effects even fire, `WalkCamera`'s
+render-time `camera` snapshot could still be pointing at Play's own (about
+to be torn down) orthographic camera object — so `WalkCamera` was
+positioning and driving a camera nobody was actually rendering with anymore,
+while the REAL restored default camera sat untouched whereever it happened
+to be.
+
+**Fixed** by never trusting a render-time camera snapshot again in this
+file: the mount effect now reads `useThree(state => state.get)` (the SAME
+Zustand-style escape hatch drei's own `Bounds` component uses internally)
+and calls `get().camera` INSIDE the effect body — guaranteed fresh, since
+effects only run after every layout effect in the same commit has already
+settled `state.camera`. The per-frame `useFrame` callback was changed to
+read `state.camera` from its own guaranteed-fresh first argument instead of
+a closed-over variable, for the identical reason. Verified live: without
+this fix, Play → Walk (no Orbit stop) was a solid black canvas; with it, the
+same transition correctly shows the first-person corridor.
+
+### Live verification
+
+Real dev server (`vite --port 5190`), the SAME throwaway-Playwright-script
+discipline every prior 3D-preview round in this file uses (gitignored,
+deleted after the run) — this round specifically exercised every mode
+TRANSITION, not just each mode in isolation, since the one real bug found
+lived exactly in a transition edge case a per-mode-only test pass would have
+missed entirely:
+
+- Orbit → Play: initial framing is a genuine isometric/orthographic tactical
+  view (parallel projection, no perspective convergence — visibly distinct
+  from Walk's own perspective camera) matching HexGrid's own "Stolen
+  Realm"-style look.
+- Held `W` in Play: camera followed the walked position smoothly (the
+  follow-lerp reads as a real camera-chase, not a snap) into a corridor,
+  brazier light pools visible exactly as they are in every other mode.
+- `E` held: the whole tactical view visibly rotated around the player's
+  position — confirms Q/E rotate.
+- Scroll wheel: confirmed zoom-in, framing tightened correctly, clamped
+  range intact.
+- Play → Walk DIRECTLY (the bug's own repro path, re-run after the fix):
+  correctly shows the first-person corridor, not a black canvas.
+- Walk → Orbit (via the toggle, still mid-walk/locked): pointer lock
+  correctly released, camera correctly restored to the original bird's-eye
+  `<Bounds fit clip>` framing (the PRIOR unit's own fix, re-confirmed intact
+  after this round's refactor).
+- No console errors beyond the two pre-existing FIXTURES-MODE
+  `[unimplemented] AuthoringService` errors every prior round's own
+  live-verification section already notes.
+
+### Tests
+
+New: `preview3d/playCameraRig.test.ts` (pure camera-rig math — constants
+pinned against the cited real-game values so a future edit to either
+`HexGrid.tsx` or `useCameraControls.ts` surfaces as a failing test here
+too, not a silent drift; `sphericalCameraPosition`'s boundary cases —
+level/overhead/zero-distance and the real rig's own angle combination;
+`followLerp`'s convergence + framerate-independence; `azimuthForwardRight`'s
+unit-length/perpendicularity invariant; `clampZoomStep`/`dragRotateStep`'s
+sign and clamp behavior) plus `walkMovement.test.ts`'s new `resolveMoveVector`
+coverage (single-key/diagonal-normalization/opposite-key-cancellation/
+arrow-key-equivalence — the newly-extracted shared function both camera
+modes now call). Movement-reuse itself needed no new tests beyond this —
+`resolveWalkStep`'s own collision suite from the prior unit already covers
+it, and Play calls the exact same function. Full `dungeon-builder` suite:
+386 tests, 19 files, all passing (up from 358/18 — this unit's own net new:
+28 tests, 2 new files). Full repo suite: 2105 tests, 126 files, all passing.
+`ci-check` clean.
+
+### What did NOT ship this round — named, not silently dropped
+
+- No zoom-range/rotate-speed dial exposed to the author — every value is
+  the game's own fixed default, matching "match the game, don't invent."
+- Play mode does not persist camera state (azimuth/distance) across a
+  mode switch — re-entering Play always restarts at the rig's own default
+  azimuth/distance, the same "fresh per entry" behavior Walk's own eye-level
+  reset already has.
+- No `frameloop="demand"` — the real game's `<Canvas orthographic
+frameloop="demand">` on-demand rendering was NOT adopted; this preview's
+  `<Canvas>` stays continuous (unchanged from every earlier unit), matching
+  Orbit/Walk's own existing behavior rather than introducing a third
+  rendering discipline for one camera mode alone.
