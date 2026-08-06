@@ -5,28 +5,47 @@ import {
   DEFAULT_PERSP_FOV_DEG,
   DEFAULT_PITCH_FAR_DEG,
   DEFAULT_PITCH_NEAR_DEG,
+  DEFAULT_ZOOM_MAX,
+  DEFAULT_ZOOM_MIN,
   parseCameraDials,
 } from './cameraDials';
 
 const rad = (d: number) => (d * Math.PI) / 180;
 
 describe('parseCameraDials', () => {
-  it('with no query params is entirely off — the grid keeps its fixed-angle orthographic rig', () => {
+  it('with no query params leaves projection and pitch alone — orthographic, single fixed angle', () => {
     const dials = parseCameraDials('');
     expect(dials.perspective).toBe(false);
     expect(dials.curve).toBeNull();
-    expect(dials.zoomMax).toBeNull();
+  });
+
+  it('ships a zoom range that fits a 6-hex move without losing the room in black', () => {
+    const dials = parseCameraDials('');
+    expect(dials.zoomMin).toBe(DEFAULT_ZOOM_MIN);
+    expect(dials.zoomMax).toBe(DEFAULT_ZOOM_MAX);
+    // Adjacent hex centres are sqrt(3) apart at HEX_SIZE=1, so a 6-hex move
+    // is a ~20.8-world-unit disc. Orthographic world-width is canvasPx/zoom,
+    // so the zoomed-OUT floor has to keep at least that much on a normal
+    // canvas — otherwise you cannot see where you are allowed to walk.
+    const sixHexMoveWidth = 12 * Math.sqrt(3);
+    expect(1600 / dials.zoomMin).toBeGreaterThan(sixHexMoveWidth);
+  });
+
+  it('starts partway up the range, so the landing view is neither extreme of the curve', () => {
+    const dials = parseCameraDials('');
+    expect(dials.zoomStart).toBeGreaterThan(dials.zoomMin);
+    expect(dials.zoomStart).toBeLessThan(dials.zoomMax);
   });
 
   it('?pitchCurve=1 alone yields a curve wide enough to actually see', () => {
     // The ?wallCutaway=1 papercut: a flag whose defaults composed into
-    // something barely distinguishable from off. A 25-degree swing is not
-    // subtle, which is the point.
+    // something barely distinguishable from off. Kirk drove the first
+    // 32->57 pass and asked for more, so the swing is now >30 degrees.
     const { curve } = parseCameraDials('?pitchCurve=1');
     expect(curve).not.toBeNull();
     expect(curve?.polarFar).toBeCloseTo(rad(DEFAULT_PITCH_FAR_DEG));
     expect(curve?.polarNear).toBeCloseTo(rad(DEFAULT_PITCH_NEAR_DEG));
-    expect(DEFAULT_PITCH_NEAR_DEG - DEFAULT_PITCH_FAR_DEG).toBeGreaterThan(20);
+    expect(DEFAULT_PITCH_NEAR_DEG - DEFAULT_PITCH_FAR_DEG).toBeGreaterThan(30);
   });
 
   it('flattens as you zoom IN: the near (zoomed-in) angle is further from vertical than the far one', () => {
@@ -71,18 +90,22 @@ describe('parseCameraDials', () => {
     expect(DEFAULT_PERSP_FOV_DEG).toBeLessThan(30);
   });
 
-  it('carries dolly range and zoom ceiling overrides', () => {
-    const dials = parseCameraDials('?minDist=3&maxDist=64&zoomMax=260');
+  it('carries dolly range and zoom overrides', () => {
+    const dials = parseCameraDials(
+      '?minDist=3&maxDist=64&zoomMin=20&zoomMax=300&zoomStart=90'
+    );
     expect(dials.minDistance).toBe(3);
     expect(dials.maxDistance).toBe(64);
-    expect(dials.zoomMax).toBe(260);
+    expect(dials.zoomMin).toBe(20);
+    expect(dials.zoomMax).toBe(300);
+    expect(dials.zoomStart).toBe(90);
   });
 
   it('ignores non-numeric and empty values instead of poisoning the camera with NaN', () => {
     const dials = parseCameraDials('?pitchFar=&fov=abc&zoomMax=');
     expect(dials.curve).toBeNull();
     expect(dials.fovDeg).toBe(DEFAULT_PERSP_FOV_DEG);
-    expect(dials.zoomMax).toBeNull();
+    expect(dials.zoomMax).toBe(DEFAULT_ZOOM_MAX);
     expect(dials.minDistance).toBe(DEFAULT_MIN_DISTANCE);
     expect(dials.maxDistance).toBe(DEFAULT_MAX_DISTANCE);
   });

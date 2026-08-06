@@ -615,8 +615,8 @@ function Scene({
     polarAngle: Math.PI / 3.5, // ~51 degrees from vertical - slightly lower tactical angle
     panSpeed: 0.3,
     rotateSpeed: 0.02,
-    minZoom: 30,
-    maxZoom: cameraDials.zoomMax ?? 150,
+    minZoom: cameraDials.zoomMin,
+    maxZoom: cameraDials.zoomMax,
     focusTarget,
     curve: cameraDials.curve,
     perspective: cameraDials.perspective,
@@ -1199,7 +1199,7 @@ export function HexGrid(props: HexGridProps) {
             // takes over placement either way; only the projection differs.
             ...(canvasDials.perspective
               ? { fov: canvasDials.fovDeg }
-              : { zoom: 80 }),
+              : { zoom: canvasDials.zoomStart }),
           }}
           style={{ width: '100%', height: '100%' }}
         >

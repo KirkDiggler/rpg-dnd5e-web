@@ -34,16 +34,19 @@ const deg = (d: number): number => (d * Math.PI) / 180;
  * top-down: this is the planning view, where a full 6-hex move and the room's
  * true shape need to read without wall occlusion eating the far side.
  */
-export const DEFAULT_PITCH_FAR_DEG = 32;
+export const DEFAULT_PITCH_FAR_DEG = 28;
 
 /**
  * Polar angle (degrees from vertical) at the zoomed-IN extreme — the
- * "up close and personal" end. ~57° matches the reference close-up and is
- * only modestly flatter than today's fixed 51.4°, so wall occlusion grows
- * from ~1.7 to ~2.1 hexes: noticeable, not disqualifying. Deliberately NOT
- * the 70°+ that would make `?wallCutaway=1` a hard prerequisite.
+ * "up close and personal" end. 62° is past the ~57° measured off the
+ * reference: Kirk drove the 32→57 version and asked for more swing.
+ *
+ * Wall occlusion is the thing this trades against — 2.4 * tan(62°) hides
+ * ~3.4 world units, ~2.6 hexes, against ~1.7 at today's fixed 51.4°. Still
+ * deliberately short of the 70°+ that hides ~3.8 hexes and would make
+ * `?wallCutaway=1` a hard prerequisite rather than an opt-in experiment.
  */
-export const DEFAULT_PITCH_NEAR_DEG = 57;
+export const DEFAULT_PITCH_NEAR_DEG = 62;
 
 /**
  * Vertical FOV for `?camera=persp`. Narrow on purpose: at the zoomed-out end
@@ -55,9 +58,39 @@ export const DEFAULT_PITCH_NEAR_DEG = 57;
  */
 export const DEFAULT_PERSP_FOV_DEG = 24;
 
-/** Perspective dolly range, world units from the orbit target. */
+/**
+ * Perspective dolly range, world units from the orbit target. The far end is
+ * 28 rather than 40 for the same reason the ortho floor moved up to
+ * DEFAULT_ZOOM_MIN — pulled all the way back, the room shrank into the middle
+ * of a lot of black.
+ */
 export const DEFAULT_MIN_DISTANCE = 6;
-export const DEFAULT_MAX_DISTANCE = 40;
+export const DEFAULT_MAX_DISTANCE = 28;
+
+/**
+ * Orthographic zoom floor — how far OUT you may go. Was 30, which showed
+ * ~31 hexes across a 1600px canvas: far more board than a 6-hex move needs
+ * (a ~20.8-world-unit disc, ~12 hexes) and the dungeon read as a small
+ * object in a black frame. 50 still frames ~18 hexes, so a full move plus
+ * margin fits, without the room getting lost.
+ */
+export const DEFAULT_ZOOM_MIN = 50;
+
+/**
+ * Orthographic zoom ceiling — how far IN you may go. The stock 150 topped
+ * out around 6 hexes across, short of the reference close-up's ~4; 220 gets
+ * there. Raised as a DEFAULT (not just a dial) so `?pitchCurve=1` on its own
+ * reaches the close end the curve exists to serve.
+ */
+export const DEFAULT_ZOOM_MAX = 220;
+
+/**
+ * Starting orthographic zoom. Sits partway up the [MIN, MAX] range so the
+ * landing view is moderately close and moderately steep rather than pinned
+ * at either extreme of the pitch curve — at 110 the curve resolves to ~40°
+ * from vertical, between the 28° planning angle and the 62° close angle.
+ */
+export const DEFAULT_ZOOM_START = 110;
 
 export interface CameraDials {
   /** Perspective projection instead of the default orthographic. */
@@ -76,12 +109,10 @@ export interface CameraDials {
    * always used — the untouched default path.
    */
   curve: { polarFar: number; polarNear: number } | null;
-  /**
-   * Orthographic max zoom override. The stock 150 tops out around 6 hexes
-   * across; the reference close-up frames roughly 4, so getting there needs
-   * ~230-260. Left alone by default.
-   */
-  zoomMax: number | null;
+  /** Orthographic zoom range and starting point. */
+  zoomMin: number;
+  zoomMax: number;
+  zoomStart: number;
 }
 
 /** Finite-number query param, or null when absent/garbage. */
@@ -127,7 +158,9 @@ export function parseCameraDials(search: string): CameraDials {
           polarNear: deg(pitchNearDeg ?? DEFAULT_PITCH_NEAR_DEG),
         }
       : null,
-    zoomMax: num(params, 'zoomMax'),
+    zoomMin: num(params, 'zoomMin') ?? DEFAULT_ZOOM_MIN,
+    zoomMax: num(params, 'zoomMax') ?? DEFAULT_ZOOM_MAX,
+    zoomStart: num(params, 'zoomStart') ?? DEFAULT_ZOOM_START,
   };
 }
 
