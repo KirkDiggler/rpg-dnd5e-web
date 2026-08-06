@@ -5863,3 +5863,230 @@ empty-floor flash). The `server`/mismatch/dangling-parent paths are
 proven by `regionTreeWire.test.ts`/`RegionPanel.test.tsx`'s constructed
 fixtures, not live — there is nothing server-side to drive them against
 yet.
+
+## Real wall + door assets: the game's own Synty pieces replace the box/gap placeholders (2026-08-06, rpg-project#169)
+
+Kirk's verdict driving this unit, seen through the new Play camera: "walls are
+there they are just plain white. the door is there but it is a yellow
+placeholder looking thing... not the assets we typically load." Every rendered
+wall segment and door — edge-native (`doc.walls`/server-truth `FloorPlan.edges`)
+and straight `wallLines:` runs alike — now mounts the game's real Synty GLB
+pieces instead of `WallBox`/`DoorGap`'s procedural boxes, in BOTH edit mode
+(compiled `FloorPlan`) and creation mode (from-scratch canvas, `doc.walls`
+only — verified, see below).
+
+### What shipped
+
+**Two new files split the same way `WallRunMesh.tsx`/`SyntyHexWall.tsx`
+already split from their own pure-helper siblings**:
+
+- `preview3d/wallPieceHelpers.ts` — pure, no Three.js/R3F import:
+  `resolveWallPieceFacing` (which way should an asymmetric piece's detailed
+  face point — this concept has no `EnvelopeRun.facing`/room-envelope concept
+  to borrow, so it probes both perpendicular directions from a piece's own
+  midpoint against a caller-supplied `isOpenCell` predicate — real floor tile
+  membership for edge-native walls, floor tiles MINUS the run's own footprint
+  for `wallLines:` runs — and faces toward whichever side is actually
+  walkable; both/neither open falls back to the un-corrected direction, same
+  "no provably optimal choice" shape `ConnectorRun.facing`'s own doc comment
+  already accepts), `facingCutawayHeight` (cutaway classification against a
+  LIVE camera-ward vector rather than the game's fixed `CAMERA_WARD_XZ` — this
+  preview's Orbit/Play cameras are free to move, so a static direction doesn't
+  apply; the dot-product rule itself is the game's own `effectiveWallHeight`
+  logic, algebraically flipped since this file's facing convention points the
+  opposite way — see that function's own doc comment for the substitution
+  proof), `resolveDoorLocked` (a server-truth door's `doc.connectors[].locked`,
+  via the SAME `connectorIndexForDoorId` correlation `onSelectConnector`
+  already uses).
+- `preview3d/RealWallPieces.tsx` — the JSX: `RealEdgeWallPiece`/
+  `RealEdgeDoorPiece` (one hex-edge, matching `SyntyHexWall`'s own per-edge
+  convention — position at the edge's own `a` corner, not its midpoint, since
+  `wallVariantScale`'s squeeze-to-one-edge scale assumes an end-anchored
+  local origin) and `RealWallLineRun`/`RealWallLineDoorPiece` (a `wallLines:`
+  run, tiled via the game's own `tileWallSegment` — `WallRunMesh`'s modular
+  convention, reused directly, not re-derived) plus `CameraWardTracker` (the
+  live camera-ward feed for cutaway, throttled to a ~5.7° dot-product gate so
+  an Orbit drag doesn't re-render every wall's cutaway classification every
+  frame — the same "update only on a meaningful change" discipline
+  `WalkCamera`'s own `onCellChange`/`playerCell` already established in this
+  file).
+- `preview3d/placeholderWallPieces.tsx` — `WallBox`/`DoorGap` moved out of
+  `DungeonPreview3D.tsx` unchanged (plus a new optional `wallHeight` param,
+  defaulting to `WALL_HEIGHT` so every pre-existing call site is
+  byte-identical) so `RealWallPieces.tsx` can import them as its own
+  ErrorBoundary fallback without a `DungeonPreview3D.tsx` <-> `RealWallPieces.tsx`
+  import cycle.
+- `DungeonPreview3D.tsx` itself: `PlacedWall` gained `edgeA: WorldPos` (the
+  edge's own `a` corner, from `wallBoxTransform`'s existing `edgeBetweenCells`
+  call — already computed, previously discarded) and `WallLineSegment` gained
+  `start`/`end: WorldPos` (the same two endpoints `position`/`length`/
+  `rotationY` already imply, carried through directly rather than
+  reconstructed via trig) — both additive, both proven non-breaking by the
+  full existing test suite passing unchanged. The two render loops
+  (`[...serverWalls, ...authoredWalls].map`, `wallLineSegments.map`) now
+  resolve each piece's facing + cutaway height inline and hand off to the
+  `RealWallPieces.tsx` components instead of `WallBox`/`DoorGap` directly.
+
+### Piece provenance — which GLBs, which game files the conventions came from
+
+Every asset/formula is a direct import from the real game's own wall-rendering
+modules, not a copy or a re-derivation, per this concept's own operating-bar
+principle ("reuse the real game renderers directly"):
+
+| Piece                                                         | File(s)                                                              | Source of the scale/rotation formula                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Edge-native wall (variety)                                    | `SM_Env_Wall_Half_01.glb` / `_Broken_Edge_01.glb` / `_Alcove_01.glb` | `syntyHexWallHelpers.ts`'s `WALL_VARIANTS`/`selectWallVariant`/`wallVariantScale` — the SAME per-edge deterministic pick `SyntyHexWall.tsx`'s boundary-edge branch uses                                                                                                                          |
+| `wallLines:` run (tiled, "plain" only)                        | `SM_Env_Wall_Half_01.glb`                                            | `wallRunMeshHelpers.ts`'s `tileWallSegment`, `WallRunMesh.tsx`'s own `RUN_WALL_VARIANT`/`NOMINAL_PIECE_WIDTH=1.0`/`RUN_WALL_PIVOT_RATIO`/`RUN_WALL_TILE_OVERLAP_MARGIN=0.08` constants (copied — those four are private, un-exported consts; the underlying `WALL_VARIANTS[0]` data IS imported) |
+| Door frame                                                    | `SM_Env_Door_Frame_01.glb`                                           | `syntyHexWallHelpers.ts`'s `DOOR_FRAME_FILE`/`doorFrameScale`                                                                                                                                                                                                                                    |
+| Door leaf (closed pose only — no open/close state this round) | `SM_Env_Door_01.glb`                                                 | `syntyHexWallHelpers.ts`'s `DOOR_LEAF_FILE`/`doorLeafScale`                                                                                                                                                                                                                                      |
+| Locked-door tint                                              | —                                                                    | `SyntyHexWall.tsx`'s `LOCKED_DOOR_TINT` value, COPIED not imported (it's a private, un-exported const there) — same "dialect-runs-ahead, stay self-contained" precedent `walkLighting.ts` already set in this file for the mood-light color specs                                                |
+| Loading/cloning/tinting/baking                                | —                                                                    | `GlbInstance` (`@/components/hex-grid/GlbInstance`), used directly, unmodified — the exact primitive `SyntyHexWall`/`WallRunMesh` both already use                                                                                                                                               |
+| Front/back facing correction                                  | —                                                                    | `wallRunMeshHelpers.ts`'s `facingCorrectedRotationY`, used directly                                                                                                                                                                                                                              |
+
+**Corner/end fittings (`classifyWallVertices`/`wallEndEdgeKeys`,
+`FITTINGS`/`SM_Env_Wall_Quarter_01.glb`) are OUT of scope this round** — both
+are built around the game's own `Wall[]`/cube-coordinate blocked-cell model;
+adapting them to this concept's two genuinely different wall shapes
+(edge-native col/row pairs, and corner-anchored world-space `wallLines:` runs,
+neither a `Wall[]`) is real, separable work. Two pieces meeting at a corner
+place independently today — no visible defect versus the box placeholder,
+possibly a small seam on a real GLB corner. Named as a real follow-up, not a
+silent gap.
+
+### Cutaway — Orbit/Play stub near-camera walls, Walk never does
+
+`facingCutawayHeight` gates on `cameraMode !== 'walk'` (`cutawayEnabled` in
+`DungeonPreview3D.tsx`) — Orbit and Play both get cutaway (a wall piece whose
+walkable-side facing points AWAY from the live camera-ward vector renders at
+`CUTAWAY_STUB_WALL_HEIGHT` instead of `WALL_HEIGHT`, matching the game's own
+`effectiveWallHeight` dot-product rule, substituted for this concept's
+opposite-sign facing convention — see that function's own doc comment for the
+algebra), Walk stays full-height always (`cutawayEnabled = false` there, per
+this unit's own brief: "you're inside; full walls"). The stub height is a real
+non-uniform GLB scale (`wallVariantScale(variant, CUTAWAY_STUB_WALL_HEIGHT,
+...)`), not a visual trick — the same "scale = height / rawHeight" formula the
+game's own `wallHeight`/`doorHeights` dial already uses, so a stubbed real
+piece squashes the same way a stubbed game wall does.
+
+**No per-frame re-render**: `CameraWardTracker` only calls back when the
+live camera-ward vector swings past a ~5.7° dot-product threshold (matching
+`WalkCamera`'s own `onCellChange`-not-every-frame discipline) — an Orbit drag
+does not thrash every wall piece's cutaway classification on every animation
+frame.
+
+### Fallback honesty — verified live, not just argued
+
+Every real piece (`RealEdgeWallPiece`/`RealEdgeDoorPiece`/`RealWallLineRun`/
+`RealWallLineDoorPiece`) is wrapped in its own `GlbFallbackBoundary` —
+`ErrorBoundary` (`@/components/ui/Feedback/ErrorBoundary`, the SAME component
+`HexGrid.tsx` already wraps `SyntyHexWall`/`WallRunMesh` in) whose fallback is
+the EXACT `WallBox`/`DoorGap` geometry that piece rendered as before this
+unit. Verified by routing every wall/door GLB request to a real 404
+(Playwright's `page.route`) against the live showcase dungeon: the whole
+perimeter fell back cleanly to the flat placeholder boxes — no crash, no
+blank canvas, no invisible wall — with exactly 4 deduped console warnings
+(one per distinct failed FILE — the 3 wall variants + the door frame; a door
+LEAF failure never separately logged because the frame's own boundary already
+wraps both GLBs in one group, see below) rather than one per failed instance
+(196 edges' worth). The dedup is `RealWallPieces.tsx`'s own
+`warnGlbFallbackOnce`; React's `ErrorBoundary` component itself still logs its
+own `console.error` once per catch (per-instance, not deduped — that's the
+shared component's existing behavior, unchanged by this unit) — a real, named
+tradeoff of per-wall (not per-scene) fallback granularity, not silently
+smoothed over.
+
+### Live verification
+
+Own dev server (`vite --port 5195`), `public/models/synty/` rsync'd from a
+sibling worktree (this file's own established provenance precedent),
+Chromium headless with `--use-angle=swiftshader --enable-unsafe-swiftshader`.
+
+- **Edit mode, showcase.yaml (server-truth `FloorPlan.edges`, 196
+  edges/2 doors)**: switched to 3D — Orbit's default framing already shows
+  the full room perimeter as real stone/brick wall panels (screenshot), not
+  flat white boxes; zoomed in close — visible per-edge variety (plain/broken/
+  alcove textures distinguishable at a glance), pillars, and the antechamber's
+  own braziers lit against the wall texture. Play mode: the game's own
+  tactical rig, same real walls, WASD-follow confirmed working (unchanged
+  from the prior unit — this round only changed what the walls/doors ARE
+  made of, not camera behavior). Walk mode: first-person corridor,
+  full-height real brick walls filling the frame, brazier warm light falling
+  across the texture — the literal "money shot" (a real-walled, lit
+  corridor), confirmed at both the initial spawn point and after ~1.2s of
+  forward movement (a visibly different wall face in frame, proving genuine
+  movement, not a frozen shot).
+- **Door pieces — confirmed via network request, not just a screenshot**:
+  headless Chromium's own request log shows `SM_Env_Door_Frame_01.glb` AND
+  `SM_Env_Door_01.glb` both fetched successfully during the edit-mode
+  session (alongside all 3 wall variants) — definitive proof the real door
+  piece mounted and loaded, even though this round's screenshot hunting
+  (multiple zoom/pan/rotate attempts around the antechamber↔shrine
+  connector) never isolated a single frame with the door piece unambiguously
+  in view at a scale a human could confirm by eye alone — named honestly as
+  this round's one incomplete piece of VISUAL (as opposed to load-confirmed)
+  evidence, not silently claimed.
+- **Fallback**: see "Fallback honesty" above — live-verified with real
+  simulated 404s, not just code-read.
+- **Creation mode (canvas doc, no `FloorPlan`, "▶ Play the pitch" demo
+  script — `doc.walls` only, no `wallLines:` in this particular scripted
+  demo)**: the demo's own drawn walls render as real Synty pieces in 3D
+  Orbit, confirming the edge-native path is genuinely mode-agnostic (no
+  `floorPlan` needed) rather than edit-mode-only — matches every prior
+  3D-preview round's own "confirms the component is genuinely mode-agnostic"
+  standard.
+- No unexpected console errors in any successful (non-404-simulated) run,
+  beyond the two pre-existing FIXTURES-MODE `[unimplemented] AuthoringService`
+  errors every prior round's own live-verification section already notes.
+
+**What this round's live pass did NOT independently exercise**: a `wallLines:`
+straight run + its own door in either mode (the demo script used for creation-
+mode verification authors `doc.walls` only, not `wallLines:`) — `RealWallLineRun`/
+`RealWallLineDoorPiece`'s own geometry (tiling, facing, door placement) is
+proven by `wallPieceHelpers.test.ts`/`DungeonPreview3D.test.ts`'s
+`buildWallLineSegments`/`start`/`end` tests instead, not a live screenshot this
+round. A real follow-up, not a silent gap.
+
+### Performance — piece counts, instancing
+
+`GlbInstance`'s own baked-geometry cache (keyed by `file|sx|sy|sz`) already
+gives per-edge walls near-maximal sharing for free: every "plain" edge-native
+piece uses the SAME calibrated scale (`wallVariantScale` always squeezes to
+exactly one hex edge, regardless of which specific edge), so all ~150+ plain
+edges in the showcase dungeon share ONE baked geometry entry per variant (3
+total: plain/broken/alcove) — no new instancing work needed, this falls out
+of reusing `GlbInstance` as-is. The showcase dungeon (196 edges, 2 doors)
+renders 196 wall/door GLB mounts plus 2×2 door frame/leaf mounts — the same
+order of magnitude as the box/gap placeholders it replaces (one mesh group
+per edge either way), not a multiplier.
+
+### Tests
+
+22 new: `wallPieceHelpers.test.ts` (18 — `resolveWallPieceFacing` against a
+REAL `hexEdgeBetween`-derived edge, not a synthetic point, cross-checking the
+facing direction via dot product against each side's true world-space center;
+`facingCutawayHeight`'s disabled/null/toward/away/boundary cases;
+`resolveDoorLocked`'s null-index/unlocked/locked/out-of-range cases) + 4 in
+`DungeonPreview3D.test.ts` (the existing single-edge `wallLines:` test
+extended to assert `start`/`end` match the same independently-derived corner
+points `position`/`length` already do). Full `src/concepts/dungeon-builder`
+suite: 425 tests passing (up from 403). `ci-check`-equivalent clean
+(`npm run typecheck`, `npm run lint`, `npx vitest run` all clean — `npm run
+build` not re-run separately this round beyond `tsc -b`'s own project-wide
+check, which passed).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **Corner/end fittings** — see "Piece provenance" above.
+- **Door open/closed animation state** — always closed pose, matching this
+  unit's own scope ("the game's door asset mounted in the gap (closed
+  pose)"); the real game's `DOOR_OPEN_ROTATION_OFFSET` swing exists and is
+  reusable later if this concept ever needs an open-door state.
+- **A live screenshot of a `wallLines:` door or a door piece in isolated
+  close-up** — see "Live verification" above; covered by unit tests and a
+  network-load confirmation instead this round.
+- **Locked-door tint for `wallLines:` doors** — `WallLineDoorDoc` has no
+  `locked:` field in the current schema (only `doc.connectors[].locked`,
+  the room-chain shape), so `resolveDoorLocked` only ever applies to
+  edge-native server-truth doors; a `wallLines:` door always renders
+  unlocked-looking, honestly (there is no lock state to read, not a dropped
+  feature).
