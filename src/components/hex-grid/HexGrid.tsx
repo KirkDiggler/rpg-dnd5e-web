@@ -76,7 +76,7 @@ import { shouldShowMovementBorder, useMovementRange } from './useMovementRange';
 import { WallFadeContext } from './wallFadeContext';
 import { WallRunMesh } from './WallRunMesh';
 import { readWallSeeThrough } from './wallSeeThrough';
-import { WallSeeThrough } from './WallSeeThrough';
+import { WALLS_ROOT_FLAG, WallSeeThrough } from './WallSeeThrough';
 
 export interface HexGridEntity {
   entityId: string;
@@ -976,31 +976,40 @@ function Scene({
           gating (isPlayerTurn/isProcessing/etc.) on whether the click is
           "allowed": the web sends intent, the server decides. */}
       {/* See-through walls (`?wallSee=1`): the provider marks everything
-          below as fadeable (GlbInstance clones + alphaHashes its materials
-          and tags the meshes), and the driver decides each frame which of
-          those pieces are actually standing between the camera and a mini.
+          below as fadeable (GlbInstance clones its materials so it can own
+          their opacity, and tags the meshes), and the driver decides each
+          frame which whole walls are between the camera and the action.
           Value `false` — the default — leaves every piece byte-identical to
           before this existed. Scoped to the Synty path: the ShadedHexWall
           fallback is procedural voxel geometry, not GlbInstance pieces, so
           it has nothing to tag. */}
       {wallSee.enabled && (
-        <WallSeeThrough points={wallSeePoints} dials={wallSee} />
+        <WallSeeThrough
+          points={wallSeePoints}
+          target={stableTarget}
+          dials={wallSee}
+        />
       )}
       {syntyDungeon ? (
         <ErrorBoundary fallback={shadedWalls}>
+          {/* The wall renderers' own per-run / per-cell groups become direct
+              children of this one, which is what lets WallSeeThrough resolve
+              "which WALL does this piece belong to" structurally instead of
+              every wall component having to hand out ids. */}
           <WallFadeContext.Provider value={wallSee.enabled}>
-            <SyntyHexWall
-              walls={legacySyntyWalls ?? walls}
-              hexSize={HEX_SIZE}
-              onDoorClick={onDoorClick}
-              themeWallHexKeys={themeWallHexKeys}
-              spaceTheme={spaceTheme}
-              rememberedWallHexKeys={rememberedWallHexKeys}
-              doorPlaneOverrides={doorPlaneOverrides}
-              wallHeight={wallHeight}
-              doorHeights={doorHeights}
-            />
-            {/* Dungeon-walls redesign (rpg-project#133): straight envelope/
+            <group userData={{ [WALLS_ROOT_FLAG]: true }}>
+              <SyntyHexWall
+                walls={legacySyntyWalls ?? walls}
+                hexSize={HEX_SIZE}
+                onDoorClick={onDoorClick}
+                themeWallHexKeys={themeWallHexKeys}
+                spaceTheme={spaceTheme}
+                rememberedWallHexKeys={rememberedWallHexKeys}
+                doorPlaneOverrides={doorPlaneOverrides}
+                wallHeight={wallHeight}
+                doorHeights={doorHeights}
+              />
+              {/* Dungeon-walls redesign (rpg-project#133): straight envelope/
               connector runs, replacing the boundary-edge geometry
               legacySyntyWalls' positive-category filter just excluded
               from SyntyHexWall above. Real Synty modular pieces (W3) —
@@ -1008,18 +1017,19 @@ function Scene({
               connector-fallback restyle — replace W2's placeholder boxes.
               Scoped to the Synty path only — the ShadedHexWall fallback
               below is untouched by this design. */}
-            <WallRunMesh
-              envelopeRuns={envelopeRuns}
-              envelopeCorners={envelopeCorners}
-              connectorRuns={connectorRuns}
-              fallbackSegments={connectorFallbackSegments}
-              spaceTheme={spaceTheme}
-              rememberedEnvelopeRegionIds={rememberedRunIds.envelopeRegionIds}
-              rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}
-              wallHeight={wallHeight}
-              wallCutaway={wallCutaway}
-              playerPosition={playerPosition}
-            />
+              <WallRunMesh
+                envelopeRuns={envelopeRuns}
+                envelopeCorners={envelopeCorners}
+                connectorRuns={connectorRuns}
+                fallbackSegments={connectorFallbackSegments}
+                spaceTheme={spaceTheme}
+                rememberedEnvelopeRegionIds={rememberedRunIds.envelopeRegionIds}
+                rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}
+                wallHeight={wallHeight}
+                wallCutaway={wallCutaway}
+                playerPosition={playerPosition}
+              />
+            </group>
           </WallFadeContext.Provider>
         </ErrorBoundary>
       ) : (

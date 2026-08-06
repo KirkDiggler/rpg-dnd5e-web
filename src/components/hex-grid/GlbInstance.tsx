@@ -311,13 +311,14 @@ export function GlbInstance({
         : [replacements];
       if (wallFadeable) {
         for (const m of replacementArray) {
-          // Stochastic (dithered) transparency — see wallSeeThrough.ts's own
-          // doc comment for why this beats `transparent: true` here. Set on
-          // the FRESH clone BEFORE it is assigned to the mesh so three
-          // compiles the USE_ALPHAHASH program variant on first use, rather
-          // than needing a `needsUpdate` recompile mid-fade.
-          m.alphaHash = true;
+          // Start fully opaque and in the OPAQUE pass — `WallSeeThrough`
+          // flips `transparent` on only while a wall is actually faded, so a
+          // scene with nothing faded pays no sorting cost and looks exactly
+          // like one with the dial off. `depthWrite` is deliberately left at
+          // its default (on): see wallSeeThrough.ts for why that is what
+          // keeps a blended wall from double-darkening against itself.
           m.opacity = 1;
+          m.transparent = false;
         }
         mesh.userData[WALL_FADEABLE_FLAG] = true;
         tagged.push(mesh);

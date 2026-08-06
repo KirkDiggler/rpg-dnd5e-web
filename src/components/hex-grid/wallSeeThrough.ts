@@ -1,6 +1,6 @@
 /**
- * See-through walls — dials and pure math for "fade what is actually in the
- * way" (`?wallSee=1`), the successor to `?wallCutaway=1`'s height swap.
+ * See-through walls — dials and pure math for `?wallSee=1`, the successor to
+ * `?wallCutaway=1`'s height swap.
  *
  * WHY THIS EXISTS. `?wallCutaway=1` answers wall occlusion by making the
  * near wall STOP EXISTING: `effectiveWallHeight` swaps it to a 0.3 stub.
@@ -12,76 +12,88 @@
  * adopted to buy.
  *
  * Two DIFFERENT problems were being answered by one mechanism:
- *   1. a wall must stop OCCLUDING the minis behind it, and
+ *   1. a wall must stop OCCLUDING what is behind it, and
  *   2. a wall should keep EXISTING — silhouette, height, top edge, mass.
  * Fading answers (1) without giving up (2).
  *
- * WHY OCCLUSION IS MEASURED, NOT CLASSIFIED. Cutaway decides "is this wall
- * in front?" by dotting each run's outward `facing` against
- * `CAMERA_WARD_XZ` — a MODULE CONSTANT baked from the Canvas's authored
- * `CAMERA_OFFSET` ([8, 10, 8], azimuth 45deg). Nothing recomputes it when
- * the player orbits with Q/E, so after a rotation cutaway stubs whichever
- * walls faced the camera AT STARTUP while a full-height wall stands between
- * you and the room (reproduced live: orbit ~180deg with `?wallCutaway=1`).
- * Q/E rotation made a once-safe assumption wrong.
+ * WHY THE CAMERA IS READ LIVE. Cutaway decides "is this wall in front?" by
+ * dotting each run's outward `facing` against `CAMERA_WARD_XZ` — a MODULE
+ * CONSTANT baked from the Canvas's authored `CAMERA_OFFSET` ([8, 10, 8],
+ * azimuth 45deg). Nothing recomputes it when the player orbits with Q/E, so
+ * after a rotation cutaway stubs whichever walls faced the camera AT STARTUP
+ * while a full-height wall stands between you and the room (reproduced live:
+ * orbit ~180deg with `?wallCutaway=1`). Q/E rotation made a once-safe
+ * assumption wrong. Nothing here is precomputed from the authored camera —
+ * every decision is re-derived each frame from the real one, so it cannot
+ * drift out of sync no matter how the player moves.
  *
- * This module does not fix that dot product — it removes the need for one.
- * A ray cast from the live camera toward each mini reports what is ACTUALLY
- * blocking it, so "in front" is re-derived every frame from the real camera
- * and cannot drift out of sync with it. It is also strictly more surgical:
- * the room keeps its walls everywhere except where someone would be hidden,
- * rather than losing a whole side.
+ * WHY ALPHA RATHER THAN DITHER. The first cut of this used
+ * `material.alphaHash` — stochastic transparency, which stays in the opaque
+ * pass and therefore needs no sorting and never double-darkens where the
+ * tiled runs overlap (`envelopeGeometryForRegion`'s `cornerExtension`
+ * deliberately pushes perpendicular runs past their intersection so they
+ * self-cover the joint). Correct, and cheap, but Kirk's verdict driving it
+ * was decisive: the stipple "looks like sand on the glass". Real alpha
+ * blending it is.
  *
- * WHY DITHER RATHER THAN ALPHA BLENDING. Wall runs are TILED from many
- * separate GLB pieces that deliberately OVERLAP — `envelopeGeometryForRegion`'s
- * `cornerExtension` pushes perpendicular runs past their intersection so they
- * self-cover the joint (the modular-kit "overlap-miter" cheat; see
- * WallRunMesh's own doc comment). Stacked blended surfaces sort by object
- * centroid, so overlapping tiles would pop as the camera moves and would
- * double-darken where they overlap. `material.alphaHash` (three >= r150;
- * we are on 0.181) is stochastic/dithered transparency: it stays in the
- * OPAQUE pass, needs no sorting, and never double-darkens. The stipple also
- * reads as a deliberate effect rather than a rendering glitch.
+ * The sorting hazards that motivated alphaHash are handled rather than
+ * wished away, and are mostly defused by fading a WHOLE wall at once:
+ *  - Back faces are already culled (`MeshStandardMaterial` defaults to
+ *    `FrontSide`), so a single wall box contributes exactly one blended
+ *    layer, not two.
+ *  - `depthWrite` stays ON. Transparent objects render back-to-front, so the
+ *    nearer piece draws last and blends over the farther one instead of
+ *    both compositing into a double-dark patch.
+ *  - Every piece of one wall shares a single opacity, so there is no seam
+ *    between neighbouring tiles of the same run to sort wrong.
+ * The residual artifact is the overlap-miter corner itself, where two runs
+ * genuinely occupy the same space and will composite twice — a small, fixed
+ * region at each room corner. Watch it there; nowhere else.
  */
-
-/** Opacity a fully-occluding wall piece settles at. Low enough to read the
- * floor and a mini through it, high enough that the wall's own brick relief
- * still registers as architecture rather than a ghost. */
-export const DEFAULT_WALL_SEE_OPACITY = 0.18;
 
 /**
- * Falloff radius (world units) around a blocked point. Pieces AT the blocked
- * point go to `DEFAULT_WALL_SEE_OPACITY`, pieces this far away stay fully
- * solid, and everything between rides a smoothstep — so the effect is a soft
- * hole rather than a hard-edged missing panel.
+ * How a wall earns its fade.
  *
- * Sized against the tiling, not picked for looks: a hex is 1.0 and adjacent
- * centres are sqrt(3) ~ 1.73 apart, so this spans roughly three hexes of wall
- * either side of the blocked spot — wide enough that a mini standing at a
- * tile seam is not half-hidden by the neighbouring tile that the ray happened
- * to miss, narrow enough that the rest of the run stays solid.
+ * `'near'` — any wall on the camera's side of the orbit target goes
+ * translucent, always, whether or not anything is behind it right now. This
+ * is the classic isometric read and it is the DEFAULT because the
+ * alternative was invisible in practice: `'block'` correctly did nothing
+ * almost all the time, since a mini standing mid-room is not behind
+ * anything, and Kirk's report driving this change was simply "I cannot see
+ * through the walls".
  *
- * Measured live rather than reasoned to: distance is taken to each piece's
- * CENTRE, not to its nearest surface, so a wide tile whose near edge is right
- * beside the blocked spot still counts as far away and stays solid. That
- * makes the hole on screen noticeably tighter (and slightly more ragged at
- * its rim) than the radius alone suggests. 3.5 left the character visible
- * only through a narrow window; 5 clears them properly while the rest of the
- * run stays plainly solid.
+ * `'block'` — only walls a mini is ACTUALLY hidden behind. Strictly better
+ * information-wise (the room keeps its walls until they are in the way), and
+ * kept as a dial precisely because it is the more surgical behaviour, but it
+ * is far less legible as a constant visual language.
  */
-export const DEFAULT_WALL_SEE_RADIUS = 5;
+export type WallSeeMode = 'near' | 'block';
 
-/** Exponential approach rate (per second) toward each piece's target
- * opacity. Fades rather than pops when you move behind a wall; fast enough
- * (~1/8s to close most of the gap) that it never feels laggy. */
+export const DEFAULT_WALL_SEE_MODE: WallSeeMode = 'near';
+
+/**
+ * Opacity a faded wall settles at. Low enough to read the floor and a mini
+ * through it, high enough that the wall's own brick relief still registers
+ * as architecture rather than a ghost — it is still a wall, that being the
+ * entire point of fading rather than deleting.
+ */
+export const DEFAULT_WALL_SEE_OPACITY = 0.25;
+
+/**
+ * Exponential approach rate (per second) toward each wall's target opacity.
+ * Fades rather than pops as you orbit a wall from the far side to the near
+ * side; fast enough (~1/8s to close most of the gap) that it never feels
+ * laggy.
+ */
 export const DEFAULT_WALL_SEE_RATE = 12;
 
 /**
- * Height (world units) above a mini's hex that the occlusion ray aims at.
- * NOT the floor: a ray at y=0 grazes the ground plane and reports a wall as
- * blocking only once it already covers the mini's feet. Characters stand
- * ~1.5 units tall (SYNTY_SCALE's calibration note), so 1.1 is upper-chest —
- * the part you actually need to see to know who is standing there.
+ * `'block'` mode only: height (world units) above a mini's hex that the
+ * occlusion ray aims at. NOT the floor — a ray at y=0 grazes the ground
+ * plane and reports a wall as blocking only once it already covers the
+ * mini's feet. Characters stand ~1.5 units tall (SYNTY_SCALE's calibration
+ * note), so 1.1 is upper-chest: the part you actually need to see to know
+ * who is standing there.
  */
 export const DEFAULT_WALL_SEE_EYE_HEIGHT = 1.1;
 
@@ -89,8 +101,8 @@ export interface WallSeeThroughDials {
   /** Off by default — same "default off, opt in by query param" convention
    * as `?syntyDungeon=` / `?wallCutaway=` / `?pitchCurve=`. */
   enabled: boolean;
+  mode: WallSeeMode;
   minOpacity: number;
-  radius: number;
   rate: number;
   eyeHeight: number;
 }
@@ -116,22 +128,24 @@ function num(params: URLSearchParams, key: string): number | null {
 export function parseWallSeeThrough(search: string): WallSeeThroughDials {
   const params = new URLSearchParams(search);
 
+  const rawMode = params.get('wallSeeMode');
+  const mode: WallSeeMode | null =
+    rawMode === 'near' || rawMode === 'block' ? rawMode : null;
   const minOpacity = num(params, 'wallSeeOpacity');
-  const radius = num(params, 'wallSeeRadius');
   const rate = num(params, 'wallSeeRate');
   const eyeHeight = num(params, 'wallSeeEye');
 
   const enabled =
     params.get('wallSee') === '1' ||
+    mode !== null ||
     minOpacity !== null ||
-    radius !== null ||
     rate !== null ||
     eyeHeight !== null;
 
   return {
     enabled,
+    mode: mode ?? DEFAULT_WALL_SEE_MODE,
     minOpacity: minOpacity ?? DEFAULT_WALL_SEE_OPACITY,
-    radius: radius ?? DEFAULT_WALL_SEE_RADIUS,
     rate: rate ?? DEFAULT_WALL_SEE_RATE,
     eyeHeight: eyeHeight ?? DEFAULT_WALL_SEE_EYE_HEIGHT,
   };
@@ -144,23 +158,26 @@ export function readWallSeeThrough(): WallSeeThroughDials {
 }
 
 /**
- * Target opacity for a wall piece whose centre sits `distance` world units
- * from the nearest point a mini is actually blocked at.
+ * `'near'` mode's whole test: is a wall sitting between the camera and what
+ * the camera is looking at?
  *
- * Smoothstep rather than linear so the edge of the hole has no visible
- * crease — a linear ramp leaves a first-derivative discontinuity exactly at
- * `radius`, which reads as a hard circle on a large flat brick surface.
+ * Both arguments are depths along the camera's own view axis — the camera's
+ * forward vector dotted with (point - cameraPosition). A wall in FRONT of
+ * the orbit target has the smaller depth. Comparing along the view axis
+ * rather than by straight-line distance is what makes this correct for an
+ * orthographic camera, where every ray is parallel and "distance to the
+ * camera" is not the same thing as "how far into the picture".
+ *
+ * `margin` pushes the cut slightly PAST the target so the wall a mini is
+ * standing directly against does not flicker between faded and solid as they
+ * move a fraction of a hex.
  */
-export function fadeOpacityForDistance(
-  distance: number,
-  radius: number,
-  minOpacity: number
-): number {
-  if (!(radius > 0)) return distance <= 0 ? minOpacity : 1;
-  if (distance >= radius) return 1;
-  const t = Math.min(1, Math.max(0, distance / radius));
-  const smooth = t * t * (3 - 2 * t);
-  return minOpacity + (1 - minOpacity) * smooth;
+export function isInFrontOfTarget(
+  wallDepth: number,
+  targetDepth: number,
+  margin: number
+): boolean {
+  return wallDepth < targetDepth + margin;
 }
 
 /**
