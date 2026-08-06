@@ -6090,3 +6090,151 @@ check, which passed).
   edge-native server-truth doors; a `wallLines:` door always renders
   unlocked-looking, honestly (there is no lock state to read, not a dropped
   feature).
+
+## Mode-correct capability probe: canvas fields stopped lying about themselves (2026-08-06, rpg-project#169)
+
+**The bug, found the day platform Wave 0 shipped.** rpg-project#192 merged to
+rpg-api `dev` this morning (commit `5424d2ff`, "consume canvas floor plan
+provider (#771)") — a real server now compiles `canvas: {width,height}`,
+`rooms: []` documents. The client's own capability probe (this unit's subject,
+`capabilityProbe.ts`) never noticed: the builder UI kept reading `server
+capabilities: accepts 3/17 dialect fields`, unchanged, against a server that
+had just grown a whole new floor-source mode. Root cause, confirmed by direct
+`grpcurl` against the Wave-0 envoy (`localhost:8092`,
+`authorization: Dev <anything>`): `buildProbeDoc` appended EVERY
+target-dialect field — including `canvas` itself — onto `probeBase()`, a
+room-chain document (non-empty `rooms:`). Spec v0.3 §4.5.1-2
+(`ideas/dungeon-builder/spec/v0.3/spec.md`) makes room-chain and canvas
+mutually exclusive floor-source modes; combining them is explicitly rejected:
+
+```
+$ grpcurl ... canvas:{width:20,height:10} appended to the room-chain base
+{"fieldErrors":[{"message":"canvas mode rooms must be an explicit empty sequence (rooms: [])"}]}
+```
+
+That message reads exactly like "field unsupported" — the old probe's
+`classify()` correctly recorded it as `accepted: false`, but the REASON was
+never "canvas doesn't compile," it was "this document declares two floor
+sources at once." No amount of the server shipping canvas support could ever
+have flipped this bit; the probe was structurally incapable of ever finding
+out. The same structural bug applied, pending, to `regions` (§4.10.3.8 forces
+`rooms: []` the moment `regions:` is declared — canvas-only by construction,
+even though Wave 1/#180 hasn't shipped it yet) and `topLevelPlace` (§4.6.1:
+"MUST be accepted in canvas mode and MUST remain rejected in room-chain
+mode" — probing it on the room-chain base can, by the spec's own text, never
+succeed).
+
+### The fix: `buildProbeDoc` picks a base per field's own legal mode
+
+New `canvasProbeBase(key)` — the minimal canvas-mode document (`canvas:`
+present, `rooms: []`, `name:` set since the server rejects an empty name
+regardless of mode; no `connectors:`/boss content, since canvas mode skips
+that whole validation cluster per §4.5.3). A new `CANVAS_FAMILY_FIELDS` set
+(`canvas`, `topLevelPlace`, `regions`) routes exactly those three fields onto
+this base; every other field keeps the existing room-chain `probeBase()`
+unchanged. `buildProbeDoc`'s own doc comment now carries a field-by-field
+table naming the spec section each base choice is grounded in. The module's
+header comment gained a third rejection-shape callout (mode-combo rejection,
+distinct from decode-unknown and schema-known-capability-gated) and the old
+hardcoded "decode-unknown applies today to X, Y, Z" prose — which had already
+gone stale once (`canvas` was decode-unknown 2026-08-04, schema-known-accepted
+2026-08-06) — is rewritten to describe the MECHANISM instead of a snapshot
+list, pointing at `probeAllCapabilities`'s own transcript for the current
+split.
+
+### Live-verified, 2026-08-06, against the Wave-0 server (`rpg-api:dev-wave0`, `localhost:8092`)
+
+Direct `grpcurl` against every field's real probe document, both before and
+after the fix, confirms the transcript now baked into
+`probeAllCapabilities`'s own doc comment: **5 of 17 accepted**, up from 3/17,
+with every previously-accepted/rejected field's status unchanged (the fix is
+additive, not a regression):
+
+- `canvas` — accepted (`success: true`, 200-cell `FloorPlan` for the 20×10
+  probe canvas) — NEW.
+- `topLevelPlace` — accepted on the canvas-mode base — NEW. Confirmed STILL
+  rejected on the room-chain base
+  (`"place[0]: unsupported capability: top-level placement is not
+supported"`) — the mode-scoping is real, not a probe artifact.
+- `regions` — still honestly rejected, decode-unknown
+  (`"field regions not found in type dungeonspec.DungeonSpec"`), same message
+  on both bases — Wave 1/#180 hasn't shipped server-side. Now future-proofed:
+  the moment it does, this flips to accepted instead of reading as a
+  mode-combo rejection forever.
+- `walls`, `start`, `facingFloorProp` — accepted, unchanged.
+- `holes`, `end`, `lighting`, `defaults`, `height` (placement z-axis),
+  `rotationDegrees`, `targeting` — decode-unknown, unchanged.
+- `mount`, `facingMonster`, `facingBoss`, `facingWallMount` — schema-known,
+  rejected, unchanged in KIND but not in exact wording: the live message now
+  carries a field-path prefix the 2026-08-04 transcript didn't record (e.g.
+  `"rooms[0].place[0].mount: unsupported capability: mounted placements are
+not supported"`), and the facing constraint text itself changed from
+  "room-scoped floor props" to "floor props" — consistent with facing now
+  also being legitimately accepted on a canvas-mode TOP-LEVEL floor prop per
+  §4.9.2. Not re-derived — threaded verbatim either way, this module's own
+  rule.
+
+**In the actual running UI**, not just `grpcurl`: a throwaway Playwright
+script (this file's own established pattern) drove the real concept page
+(own dev server, port 3033, `VITE_API_HOST` pointed at `localhost:8092`,
+never touching the shared port-3001/port-3021 dev servers other in-flight
+units were using) through the file swap needed for an honest before/after —
+`git show origin/dev:.../capabilityProbe.ts` temporarily in place of the
+fixed file, screenshot, restore the fix, screenshot again:
+
+- Before (pre-fix code, live Wave-0 server): `server capabilities: accepts
+3/17 dialect fields`.
+- After (this unit's fix, same live server): `server capabilities: accepts
+5/17 dialect fields`.
+
+No unexpected console errors either side — only the two expected
+`[invalid_argument] key "" must match ...` entries from
+`usePutDungeonPreview`'s own deliberately-invalid liveness probe, the same
+benign noise every prior live-verification round in this file documents.
+
+### End-to-end save — proven server-side, UI gate not yet lifted (PR #714 still open)
+
+Creation mode's ("New Dungeon") own Save & Play button is STILL disabled
+against the live Wave-0 server, correctly, for a reason outside this unit's
+scope: `stripToV1Subset`'s `compilableBlockers` unconditionally requires "at
+least 2 rooms" / "exactly one boss-archetype room," checks that don't apply
+to a canvas-mode document at all (§4.5.3 skips them entirely) but which
+`ProposedYamlPane`'s gating doesn't yet know to skip. `unit/brush-ux` (PR
+#714, open as of this writing) is the in-flight unit that makes this gating
+canvas-mode-aware ("YamlPane/stripToV1Subset canvas-tooltip logic is
+probe-aware," per that unit's own brief) — out of scope here, not silently
+dropped. Confirmed live: creation mode's capabilities line already correctly
+reads 5/17 (this unit's fix applies everywhere `capabilityProbe.ts` is used,
+including creation mode's shared `usePutDungeonPreview.capabilities`
+instance), but the Save & Play button stays disabled with the pre-existing
+room-count tooltip regardless.
+
+Proven instead directly against the server: a real (`validate_only: false`)
+`PutDungeon` of a from-scratch canvas document (`canvas: {width:20,height:10}`,
+`rooms: []`, one top-level `place:` entry) returned `success: true`, then
+`dnd5e.api.lobby.v1alpha1.LobbyService/ListDungeons` on the same server
+listed it back (`{"key": "capprobe-e2e-canvas-save", "name": "E2E Canvas Save
+Probe"}`) — the real write path this unit's fix makes discoverable is
+provably real, past any client-side claim. **Housekeeping**: no delete RPC
+exists on this service surface (`AuthoringService` has only `PutDungeon`;
+`LobbyService` has no dungeon-delete either), so this probe entry is left on
+the shared Wave-0 lab server, named with this concept's existing `capprobe-*`
+convention for identifiability — same category of leftover this file's
+capability-probe unit entry above already documents for the `showcase` key,
+minus the ability to revert it.
+
+### Tests
+
+9 new in `capabilityProbe.test.ts` (24 total, up from 15): mode-selection
+tests asserting the real request YAML shape per field family (canvas-family
+fields get `canvas:`/`rooms: []`, chain-family fields get non-empty `rooms:`,
+and — the direct regression test for the bug — no probe request EVER
+combines non-empty `rooms:` with `canvas:`), classify tests threading the
+captured live messages verbatim (`canvas` accepted, `topLevelPlace` accepted
+on the canvas base, `regions` still honestly decode-unknown, `mount`'s
+field-path-prefixed message, `facingBoss`'s updated wording), and one
+end-to-end server-simulator test asserting `capabilitySummary` lands on
+exactly 5/17 with the mode-combo/decode-unknown/accept rules modeled — this
+last one is the test that would have failed (reporting 3/17) against the
+pre-fix `buildProbeDoc`. Full `src/concepts/dungeon-builder` suite: 449 tests
+passing (up from 440), `tsc --noEmit` clean.

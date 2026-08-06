@@ -35,27 +35,42 @@
  * which. Isolating one field per request is the only way to get an
  * honest per-field map.
  *
- * **Two distinct rejection shapes, both real, verified live (2026-08-04)
- * — this module keeps them, doesn't collapse them:**
+ * **Two distinct rejection shapes, both real — this module keeps them,
+ * doesn't collapse them:**
  *
  * 1. **Decode-unknown** — `"field X not found in type dungeonspec.Y"`.
- *    The server's Go struct has no field for this key at all yet. Applies
- *    today to `holes`, `end`, `canvas`, `lighting`, `defaults`,
- *    `regions`, `height`, `rotate_degrees`, `targeting`.
+ *    The server's Go struct has no field for this key at all yet. This is
+ *    a moving target BY DESIGN — it's the "hasn't shipped yet" bucket, so
+ *    which fields land here shrinks every time a platform wave ships.
+ *    Read `probeAllCapabilities`'s own doc comment for the CURRENT
+ *    observed split, not this paragraph — a hardcoded field list here
+ *    would silently rot the moment the next wave lands, which is exactly
+ *    the bug this module exists to prevent one layer up (the strip
+ *    list/badges/gating snapshot problem described above).
  * 2. **Schema-known, capability-gated** —
  *    `"unsupported capability: <constraint>"`. The field DECODES (the Go
  *    struct has it) but is explicitly, deliberately rejected for this
- *    specific usage, with a message naming the real constraint. Applies
- *    today to `mount` (any placement — "mounted placements are not
- *    supported"), `facing` on a monster/boss/`mount:wall` entry ("facing
- *    only supported on room-scoped floor props" — but facing on a plain
- *    room-scoped floor prop is ACCEPTED, see below), and top-level
- *    `place:` ("top-level placement is not supported").
+ *    specific usage, with a message naming the real constraint.
  *
  * Either way the raw server message is threaded through to
  * `CapabilityResult.message` verbatim — never paraphrased — so a UI
  * tooltip built from it stays exactly as honest as the server's own
  * answer, not this module's guess at wording.
+ *
+ * **A third thing that looks like a rejection shape but isn't one: an
+ * illegal mode COMBO.** Spec v0.3 (`ideas/dungeon-builder/spec/v0.3/spec.md`
+ * §4.5.1-2) splits every document into exactly one of two floor-source
+ * modes — room-chain (`rooms:` non-empty) or canvas (`canvas:` present,
+ * `rooms: []`) — and rejects a document declaring both
+ * (`"canvas mode rooms must be an explicit empty sequence (rooms: [])"`).
+ * A field that's only ever legal in ONE mode (`canvas`, `topLevelPlace`
+ * §4.6.1, `regions` — forced canvas-only by §4.10.3.8's rooms/regions
+ * exclusion) can never be probed by appending it to the OTHER mode's base
+ * document: the response is always this combo rejection, which reads
+ * exactly like "field unsupported" but means something entirely
+ * different and would never clear no matter how many platform waves ship.
+ * `buildProbeDoc` below picks the base per field's own legal mode for
+ * exactly this reason — see its field/base/spec-section table.
  *
  * **`wallLines:` is deliberately NOT probed.** It's this concept's own
  * client-side sugar (`straightWallGeometry.ts` compiles a corner-anchored
@@ -210,13 +225,88 @@ connectors:
 `;
 }
 
-/** One extra snippet per `DialectField`, appended to `probeBase` (or, for
- * boss-facing, spliced into the boss entry — see the switch below). Each
- * exercises exactly the ONE field it's named for; every coordinate/ref is
- * one already verified live against Kirk's authoring branch while
- * building this probe suite (2026-08-04). */
+/**
+ * Canvas-mode counterpart to `probeBase`: the minimal known-good
+ * canvas-mode document — `canvas:` present, `rooms: []` (spec v0.3
+ * §4.5.1). Every canvas-family field (`CANVAS_FAMILY_FIELDS` below)
+ * inherits this instead of `probeBase`'s room-chain document, because
+ * v0.3 makes the two floor-source modes mutually exclusive (§4.5.2):
+ * appending a canvas-family field to a `rooms:`-non-empty document isn't
+ * probing that field at all, it's probing the illegal mode combo, and
+ * the server's combo rejection
+ * (`"canvas mode rooms must be an explicit empty sequence (rooms: [])"`)
+ * reads exactly like "field unsupported" for every field layered on top,
+ * forever — this was the actual bug (rpg-project#192 Wave 0 shipped
+ * 2026-08-06; see this file's own header comment).
+ *
+ * `name:` is set because the server rejects an empty `name:` regardless
+ * of mode (§4.1's `name` row). Document-level `height:` is intentionally
+ * omitted: §4.1 states it's unvalidated and unused in canvas mode
+ * (`canvas.height` is authoritative), and a missing value decodes to `0`
+ * with no effect on canvas geometry. No `connectors:`/boss content either
+ * — canvas mode skips the whole room-chain/boss validation cluster
+ * outright (§4.5.3).
+ *
+ * Live-verified, 2026-08-06, against the Wave-0 server (`localhost:8092`,
+ * `rpg-api:dev-wave0`): this exact base alone (the `canvas` probe, below)
+ * returns `success: true` with a 200-cell `FloorPlan.floorCells`
+ * (20×10) — see `probeAllCapabilities`'s own doc comment for the full
+ * transcript this base was verified against.
+ */
+function canvasProbeBase(key: string): string {
+  return `version: 1
+key: ${key}
+name: Capability Probe
+canvas: { width: 20, height: 10 }
+rooms: []
+`;
+}
+
+/** Fields whose only legal document mode is canvas mode (§4.5.1) — see
+ * `canvasProbeBase`'s doc comment for why probing them on the room-chain
+ * base can never produce an honest answer. */
+const CANVAS_FAMILY_FIELDS: ReadonlySet<DialectField> = new Set([
+  'canvas',
+  'topLevelPlace',
+  'regions',
+]);
+
+/**
+ * One extra snippet per `DialectField`, appended to the field's own
+ * legal-mode base (or, for boss-facing, spliced into the boss entry —
+ * see the switch below). Each exercises exactly the ONE field it's named
+ * for.
+ *
+ * **Base selection, field by field — the spec section each is grounded
+ * in:**
+ *
+ * | Field              | Base    | Spec section                                          |
+ * |---------------------|---------|--------------------------------------------------------|
+ * | `walls`              | chain   | §4.7 (mode-independent; canvas-floor variant untested)  |
+ * | `start`               | chain   | §4.8 (resolves against either mode's floor; untested on canvas is fine — same acceptance path) |
+ * | `end`                 | chain   | §2 (unfiled — decode-unknown regardless of mode)        |
+ * | `holes`               | chain   | §2 (deferred — decode-unknown regardless of mode)       |
+ * | `canvas`              | canvas  | §4.5 (the base itself IS the field under test)          |
+ * | `lighting`             | chain   | §2 (rpg-project#190 — decode-unknown regardless of mode) |
+ * | `defaults`             | chain   | §2 (unfiled — decode-unknown regardless of mode)        |
+ * | `regions`              | canvas  | §4.10.3.8 (rooms/regions combo forbidden — canvas-only in practice) |
+ * | `mount`                | chain   | §2 (rpg-project#188 — capability gate, mode-independent) |
+ * | `height` (placement)   | chain   | §2 (rpg-project#188, z-axis — mode-independent)          |
+ * | `rotationDegrees`      | chain   | §2 (experiment only — mode-independent)                 |
+ * | `targeting`            | chain   | §2 (rpg-project#191 — mode-independent)                 |
+ * | `topLevelPlace`        | canvas  | §4.6.1 ("MUST be accepted in canvas mode and MUST remain rejected in room-chain mode") |
+ * | `facingFloorProp`      | chain   | §4.9.2 (accepted room-scoped OR canvas top-level — room-scoped variant is representative) |
+ * | `facingMonster`        | chain   | §4.9.3 (field-path rejection, mode-independent)          |
+ * | `facingBoss`           | chain   | §4.9.3 + §4.6.2 (`boss:` is room-scoped only — no canvas-mode equivalent exists to probe) |
+ * | `facingWallMount`      | chain   | §4.9.3 (field-path rejection, mode-independent)          |
+ *
+ * Every coordinate/ref not otherwise noted is one already verified live
+ * against a real server while building this probe suite.
+ */
 function buildProbeDoc(field: DialectField, key: string): string {
-  const base = probeBase(key);
+  const base = CANVAS_FAMILY_FIELDS.has(field)
+    ? canvasProbeBase(key)
+    : probeBase(key);
   switch (field) {
     case 'walls':
       return (
@@ -238,7 +328,9 @@ function buildProbeDoc(field: DialectField, key: string): string {
     case 'end':
       return base + `end: [1, 2]\n`;
     case 'canvas':
-      return base + `canvas: { width: 20, height: 10 }\n`;
+      // `base` (canvasProbeBase) already IS `canvas: {...}` + `rooms: []`
+      // — that combination is the field under test, nothing to append.
+      return base;
     case 'lighting':
       return (
         base +
@@ -352,24 +444,51 @@ function classify(response: PutDungeonResponse): CapabilityResult {
  * `ServerCapabilities` never has to special-case "probe request itself
  * failed" separately from "server said no."
  *
- * **Live-verified, 2026-08-04**, against `rpg-api-dungeon-builder-763` /
- * its envoy sidecar (`localhost:8091`) — the transcript this module's own
- * field-by-field logic is built from, not a guess:
+ * **Live-verified, 2026-08-06**, against the Wave-0 server
+ * (`rpg-api:dev-wave0`, `localhost:8092`, rpg-project#192 merged to
+ * rpg-api `dev` the same day) — the transcript this module's field/base
+ * mapping (`buildProbeDoc`'s table) is built from, not a guess. **5 of 17
+ * accepted**, up from the pre-Wave-0 3/17 (2026-08-04 transcript,
+ * superseded below) — the `canvas`/`topLevelPlace` gain is Wave 0 itself
+ * arriving; every prior accepted/rejected field's status is unchanged,
+ * confirming this unit's fix is additive, not a regression:
  *
- * - `walls` — **accepted** (`success: true`).
- * - `start` — **accepted** (`success: true`).
- * - `facingFloorProp` — **accepted** (`success: true`) — a room-scoped,
- *   non-monster, non-`mount:wall` `place:` entry's `facing:` compiles.
- * - `holes`, `end`, `canvas`, `lighting`, `defaults`, `regions`,
- *   `height`, `rotationDegrees`, `targeting` — decode-unknown
- *   (`"field X not found in type dungeonspec.Y"`).
- * - `mount` — schema-known, rejected (`"unsupported capability: mounted
- *   placements are not supported"`).
+ * - `walls`, `start`, `facingFloorProp` — **accepted** (`success: true`),
+ *   unchanged from 2026-08-04.
+ * - `canvas` — **accepted** (`success: true`, 200-cell `FloorPlan` for a
+ *   20×10 canvas) — probed on `canvasProbeBase` alone. NEW this unit;
+ *   previously misread as rejected because the old probe appended
+ *   `canvas:` to the room-chain base, which the server correctly rejects
+ *   as an illegal mode combo, not as "canvas unsupported" (see this
+ *   file's header comment).
+ * - `topLevelPlace` — **accepted** (`success: true`) on `canvasProbeBase`.
+ *   NEW this unit, same root cause as `canvas` above. Confirmed still
+ *   rejected on the room-chain base per spec §4.6.1
+ *   (`"place[0]: unsupported capability: top-level placement is not
+ *   supported"`) — the mode-scoping is real, not a probe artifact.
+ * - `regions` — still honestly rejected: decode-unknown
+ *   (`"field regions not found in type dungeonspec.DungeonSpec"`), same
+ *   message on both `canvasProbeBase` and the room-chain base, since
+ *   Wave 1 (rpg-project#180) hasn't shipped server-side yet. Now probed
+ *   on `canvasProbeBase` (§4.10.3.8 forces canvas-only) so that the
+ *   moment Wave 1 ships, this flips to accepted instead of forever
+ *   reading as the mode-combo rejection.
+ * - `holes`, `end`, `lighting`, `defaults`, `height` (placement z-axis),
+ *   `rotationDegrees`, `targeting` — decode-unknown
+ *   (`"field X not found in type dungeonspec.Y"`), unchanged.
+ * - `mount` — schema-known, rejected. Message now carries a field-path
+ *   prefix the 2026-08-04 transcript didn't record:
+ *   `"rooms[0].place[0].mount: unsupported capability: mounted
+ *   placements are not supported"`.
  * - `facingMonster`, `facingBoss`, `facingWallMount` — schema-known,
- *   rejected (`"unsupported capability: facing only supported on
- *   room-scoped floor props"`).
- * - `topLevelPlace` — schema-known, rejected (`"unsupported capability:
- *   top-level placement is not supported"`).
+ *   rejected, each with its own field-path prefix (e.g.
+ *   `"rooms[2].boss.facing: unsupported capability: facing only
+ *   supported on floor props"`). Wording note: the constraint text itself
+ *   changed from "room-scoped floor props" (2026-08-04) to "floor props"
+ *   — consistent with facing now also being legitimately accepted on a
+ *   canvas-mode TOP-LEVEL (not room-scoped) floor prop per spec §4.9.2.
+ *   Not re-derived here — threaded verbatim from the server either way,
+ *   per this module's own rule.
  */
 export async function probeAllCapabilities(): Promise<ServerCapabilities> {
   const entries = await Promise.all(
