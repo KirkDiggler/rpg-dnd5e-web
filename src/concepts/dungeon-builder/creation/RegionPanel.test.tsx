@@ -54,6 +54,9 @@ function stubRegionEdit(): RegionEditing {
     handleSetArchetype: vi.fn(),
     handleDelete: vi.fn(),
     handleConnect: vi.fn(),
+    conflictFlash: null,
+    beginStroke: vi.fn(),
+    endStroke: vi.fn(),
   };
 }
 
