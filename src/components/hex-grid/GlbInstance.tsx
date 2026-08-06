@@ -31,11 +31,20 @@
  */
 
 import { useGLTF } from '@react-three/drei';
-import { useEffect, useMemo } from 'react';
+import { useContext, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { WorldPos } from './hexMath';
 import { cloneCryptMaterials } from './sceneKnowledge';
 import { ENV_GLB_FILES_TO_PRELOAD } from './syntyHexWallHelpers';
+import { WallFadeContext } from './wallFadeContext';
+
+/**
+ * Marker `GlbInstance` stamps on every mesh it renders while
+ * `WallFadeContext` is on — the handle `WallSeeThrough`'s per-frame driver
+ * uses to find fadeable wall meshes by scene traversal, without either
+ * component needing a ref into the other's tree.
+ */
+export const WALL_FADEABLE_FLAG = 'wallFadeable';
 
 export const ENV_BASE = '/models/synty/env/';
 
@@ -197,6 +206,14 @@ export function GlbInstance({
 }: GlbInstanceProps) {
   const { scene } = useGLTF(ENV_BASE + file);
 
+  // Walls opt in to fading via context (see wallFadeContext.ts). Beyond
+  // enabling `alphaHash`, this forces the material-cloning branch below to
+  // run even with no tint and no `remembered` — a fadeable piece must OWN
+  // its materials, because `useGLTF` caches them per URL and writing
+  // `opacity` onto a shared material would fade every other copy of the same
+  // GLB in the scene along with it.
+  const wallFadeable = useContext(WallFadeContext);
+
   // Normalize to per-axis numbers up front so useMemo below can depend on
   // plain numbers (stable across renders) rather than the `scale` prop's
   // array identity, which callers rarely memoize (a fresh `[a, b, c]`
@@ -262,30 +279,49 @@ export function GlbInstance({
   // prop change (remembered/tint flips as game state changes) never
   // leaves a mesh referencing an already-disposed material mid-transition.
   useEffect(() => {
-    if (!tint && !remembered) {
+    if (!tint && !remembered && !wallFadeable) {
       originalMaterials.forEach((mat, mesh) => {
         mesh.material = mat;
       });
       return () => {};
     }
     const created: THREE.Material[] = [];
+    const tagged: THREE.Mesh[] = [];
     originalMaterials.forEach((mat, mesh) => {
       const wasArray = Array.isArray(mat);
       const replacements = remembered
         ? cloneCryptMaterials(mat)
         : (Array.isArray(mat) ? mat : [mat]).map((m) => {
-            const tintedMat = m.clone();
+            const clonedMat = m.clone();
+            // `tint` is optional now that `wallFadeable` can be the sole
+            // reason this branch runs — a fadeable, untinted piece clones
+            // purely to OWN its material (see below) and must keep the
+            // pack's original color.
             if (
-              'color' in tintedMat &&
-              tintedMat.color instanceof THREE.Color
+              tint &&
+              'color' in clonedMat &&
+              clonedMat.color instanceof THREE.Color
             ) {
-              tintedMat.color = tintedMat.color.clone().multiply(tint!);
+              clonedMat.color = clonedMat.color.clone().multiply(tint);
             }
-            return tintedMat;
+            return clonedMat;
           });
       const replacementArray = Array.isArray(replacements)
         ? replacements
         : [replacements];
+      if (wallFadeable) {
+        for (const m of replacementArray) {
+          // Stochastic (dithered) transparency — see wallSeeThrough.ts's own
+          // doc comment for why this beats `transparent: true` here. Set on
+          // the FRESH clone BEFORE it is assigned to the mesh so three
+          // compiles the USE_ALPHAHASH program variant on first use, rather
+          // than needing a `needsUpdate` recompile mid-fade.
+          m.alphaHash = true;
+          m.opacity = 1;
+        }
+        mesh.userData[WALL_FADEABLE_FLAG] = true;
+        tagged.push(mesh);
+      }
       created.push(...replacementArray);
       mesh.material = wasArray ? replacementArray : replacementArray[0]!;
     });
@@ -293,9 +329,16 @@ export function GlbInstance({
       originalMaterials.forEach((mat, mesh) => {
         mesh.material = mat;
       });
+      // Untag BEFORE disposing: the see-through driver finds its meshes by
+      // scene traversal, and a mesh left tagged after its owned materials
+      // were disposed would have the driver writing `opacity` onto a
+      // disposed material.
+      for (const mesh of tagged) {
+        delete mesh.userData[WALL_FADEABLE_FLAG];
+      }
       created.forEach((mat) => mat.dispose());
     };
-  }, [originalMaterials, remembered, tint]);
+  }, [originalMaterials, remembered, tint, wallFadeable]);
 
   return (
     <primitive
