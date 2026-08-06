@@ -73,7 +73,10 @@ import { TurnOrderOverlay } from './TurnOrderOverlay';
 import { useCameraControls } from './useCameraControls';
 import { useHexInteraction } from './useHexInteraction';
 import { shouldShowMovementBorder, useMovementRange } from './useMovementRange';
+import { WallFadeContext } from './wallFadeContext';
 import { WallRunMesh } from './WallRunMesh';
+import { readWallSeeThrough } from './wallSeeThrough';
+import { WallSeeThrough } from './WallSeeThrough';
 
 export interface HexGridEntity {
   entityId: string;
@@ -609,6 +612,23 @@ function Scene({
   // fixed-angle orthographic rig it has always been. See cameraDials.ts.
   const cameraDials = useMemo(() => readCameraDials(), []);
 
+  // See-through walls (`?wallSee=1`) — read once, off by default. See
+  // wallSeeThrough.ts for why this exists alongside `?wallCutaway=1`.
+  const wallSee = useMemo(() => readWallSeeThrough(), []);
+
+  // The minis a wall must not hide. Obstacles/props are deliberately NOT in
+  // this list: a barrel or a pillar being behind a wall is scenery, not
+  // information the player is owed, and including them would dissolve most
+  // of a room's walls for no tactical gain. Dead entities are excluded for
+  // the same reason (and match `entitiesMap`'s own isDead gate below).
+  const wallSeePoints = useMemo(
+    () =>
+      visibleEntities
+        .filter((entity) => entity.type !== 'obstacle' && !entity.isDead)
+        .map((entity) => cubeToWorld(entity.position, HEX_SIZE)),
+    [visibleEntities]
+  );
+
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
     target: stableTarget,
@@ -955,20 +975,32 @@ function Scene({
           onDoorClick fires with the door's Wall.id — no client-side
           gating (isPlayerTurn/isProcessing/etc.) on whether the click is
           "allowed": the web sends intent, the server decides. */}
+      {/* See-through walls (`?wallSee=1`): the provider marks everything
+          below as fadeable (GlbInstance clones + alphaHashes its materials
+          and tags the meshes), and the driver decides each frame which of
+          those pieces are actually standing between the camera and a mini.
+          Value `false` — the default — leaves every piece byte-identical to
+          before this existed. Scoped to the Synty path: the ShadedHexWall
+          fallback is procedural voxel geometry, not GlbInstance pieces, so
+          it has nothing to tag. */}
+      {wallSee.enabled && (
+        <WallSeeThrough points={wallSeePoints} dials={wallSee} />
+      )}
       {syntyDungeon ? (
         <ErrorBoundary fallback={shadedWalls}>
-          <SyntyHexWall
-            walls={legacySyntyWalls ?? walls}
-            hexSize={HEX_SIZE}
-            onDoorClick={onDoorClick}
-            themeWallHexKeys={themeWallHexKeys}
-            spaceTheme={spaceTheme}
-            rememberedWallHexKeys={rememberedWallHexKeys}
-            doorPlaneOverrides={doorPlaneOverrides}
-            wallHeight={wallHeight}
-            doorHeights={doorHeights}
-          />
-          {/* Dungeon-walls redesign (rpg-project#133): straight envelope/
+          <WallFadeContext.Provider value={wallSee.enabled}>
+            <SyntyHexWall
+              walls={legacySyntyWalls ?? walls}
+              hexSize={HEX_SIZE}
+              onDoorClick={onDoorClick}
+              themeWallHexKeys={themeWallHexKeys}
+              spaceTheme={spaceTheme}
+              rememberedWallHexKeys={rememberedWallHexKeys}
+              doorPlaneOverrides={doorPlaneOverrides}
+              wallHeight={wallHeight}
+              doorHeights={doorHeights}
+            />
+            {/* Dungeon-walls redesign (rpg-project#133): straight envelope/
               connector runs, replacing the boundary-edge geometry
               legacySyntyWalls' positive-category filter just excluded
               from SyntyHexWall above. Real Synty modular pieces (W3) —
@@ -976,18 +1008,19 @@ function Scene({
               connector-fallback restyle — replace W2's placeholder boxes.
               Scoped to the Synty path only — the ShadedHexWall fallback
               below is untouched by this design. */}
-          <WallRunMesh
-            envelopeRuns={envelopeRuns}
-            envelopeCorners={envelopeCorners}
-            connectorRuns={connectorRuns}
-            fallbackSegments={connectorFallbackSegments}
-            spaceTheme={spaceTheme}
-            rememberedEnvelopeRegionIds={rememberedRunIds.envelopeRegionIds}
-            rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}
-            wallHeight={wallHeight}
-            wallCutaway={wallCutaway}
-            playerPosition={playerPosition}
-          />
+            <WallRunMesh
+              envelopeRuns={envelopeRuns}
+              envelopeCorners={envelopeCorners}
+              connectorRuns={connectorRuns}
+              fallbackSegments={connectorFallbackSegments}
+              spaceTheme={spaceTheme}
+              rememberedEnvelopeRegionIds={rememberedRunIds.envelopeRegionIds}
+              rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}
+              wallHeight={wallHeight}
+              wallCutaway={wallCutaway}
+              playerPosition={playerPosition}
+            />
+          </WallFadeContext.Provider>
         </ErrorBoundary>
       ) : (
         shadedWalls
