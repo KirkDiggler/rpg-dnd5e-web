@@ -5401,3 +5401,121 @@ frameloop="demand">` on-demand rendering was NOT adopted; this preview's
   `<Canvas>` stays continuous (unchanged from every earlier unit), matching
   Orbit/Walk's own existing behavior rather than introducing a third
   rendering discipline for one camera mode alone.
+
+## Regression fix: walls/doors "not loading" in Walk mode — two real bugs found, neither one a Play-mode regression (2026-08-06, rpg-project#169)
+
+Kirk's live report on the deployed Play-camera commit: "the wall assets and
+door assets are not loading." Investigated by reproducing his own flow
+(reload a saved dungeon YAML with `walls:`/`wallLines:`/`regions:` into
+creation mode, check 2D + all three 3D camera modes; also edit mode's
+compiled server-edge view) against a real dev server, not by reading code
+alone.
+
+### What did NOT reproduce
+
+Walls and doors render correctly in Orbit (both edit mode's server-truth
+`FloorPlan.edges` and creation mode's `doc.walls`/`doc.wallLines`, confirmed
+at native zoom AND zoomed in close on the actual geometry — edge-native
+solid boxes, amber door gaps with jamb+lintel, straight-wall segments with
+their own carved door gap, region tinting, all present) and in Walk mode's
+own INITIAL view before any movement. "Walls generically fail to render" is
+not what's happening.
+
+### What DID reproduce, and the two real root causes
+
+Walking forward in Walk mode for more than ~1.2 seconds reliably went solid
+black. Two genuinely separate bugs compounded, found by direct instrumentation
+(a temporary `window.__walkDebug` global dumping `camera.position`/`near`/
+`far`/`quaternion` every frame during the repro, removed before this commit)
+rather than guessed from screenshots:
+
+**Bug 1 — Walk mode's shared camera inherited Orbit's near-plane, sized for
+viewing the WHOLE dungeon from far away.** `DungeonPreview3D.tsx`'s `<Bounds
+fit clip>` sets the default camera's `near`/`far` ONCE, on mount
+(`Bounds.clip()`: `near = fittedDistance / 100`) — at this dungeon's scale
+that produced `near ≈ 0.77`. Fine for a bird's-eye Orbit view; badly wrong
+once the SAME camera drops to `WALK_EYE_HEIGHT` and gets close to anything —
+a wall a step away, even a nearby pillar, sits well within 0.77 units and
+gets clipped away entirely. `PlayCamera.tsx` never hit this (it creates its
+own separate camera with an explicit small `near: 0.1`, matching the real
+game's own value) — only `WalkCamera.tsx`, which reuses the shared default
+camera, needed to claim its own near/far. Fixed: `WalkCamera`'s mount effect
+now sets `near: 0.05, far: 1000` on entry and restores whatever the camera
+had on exit (the exact same capture/restore shape the prior unit's own
+camera-pose fix already established for position/quaternion).
+
+**Bug 2 — perimeter walls never actually blocked movement at all,
+independent of Bug 1.** With Bug 1 fixed, the black screen PERSISTED —
+direct position logging showed the player walking continuously, crossing
+multiple real cell boundaries, for the full 3 seconds, never once stopping.
+Root cause: `resolveWalkStep`'s original crossing check asked "does the
+TARGET point's nearest REAL cell differ from the source's, and is that pair
+in `blockedEdges`" — but a PERIMETER wall's far side was never a real,
+tracked floor tile in the first place (`FloorPlanEdge`'s own doc comment:
+"one endpoint may be outside the rendered floor-plan bounds" — confirmed
+directly against `SHOWCASE_FLOORPLAN.edges`, e.g. `{from: [0,7], to: [-1,
+7]}`). `nearestCell` can only ever return a REAL tracked cell, so it could
+never resolve a target point TO that nonexistent neighbor — the "did the
+nearest cell change" test simply never fired for any perimeter wall, and a
+walking player passed straight through every one of them into unmapped
+void, which then correctly rendered as nothing (a genuine collision gap,
+not a rendering-tree regression). Fixed at the root: `resolveWalkStep` now
+asks a geometrically different question — "does the CURRENT cell (always
+real; the player is standing in it) have a blocked edge in roughly the
+direction being moved" — using `boardGeometry.ts`'s own `neighborCell`
+(pure cube-coordinate math, needs no real tile on the far side) and
+`facingToRotationY` (the same world-angle-per-facing convention every other
+edge-aligned piece in this codebase already uses) to find the nearest of
+the 6 hex directions to the movement vector. This strictly subsumes the old
+interior-wall behavior (an interior wall's computed neighbor IS the real
+adjacent cell, so the identical `edgeKey` lookup still matches) while now
+also correctly blocking perimeter walls — and, as a welcome side effect,
+stops the player the MOMENT they try to move toward a blocked edge from
+anywhere in their current cell, rather than letting them approach flush
+against the unbuffered cell-Voronoi boundary first (a real, if secondary,
+finding along the way: that boundary sits close enough to a wall's own thin
+rendered box, `WallBox`'s `WALL_THICKNESS = 0.12`, to read as uncomfortably
+tight even where the crossing check DID fire correctly).
+
+An earlier attempt at Bug 2 (a `WALL_CLEARANCE` look-ahead buffer added to
+the OLD target-based check) is not in this commit — live-verified as
+ineffective (it still inherited the same "no real neighbor cell" blind
+spot for perimeter walls) and replaced outright by the directional check
+above, which is both simpler and strictly more correct.
+
+### Neither bug is a Play-mode regression
+
+Bug 1 and Bug 2 both reproduce identically on `a8307ea` (the walking
+camera's very first commit, before any Play-mode work existed) — confirmed
+directly by checking out that commit into a separate worktree and running
+the identical repro. Team-lead's original framing ("the Play-camera commit
+is the prime suspect") was a reasonable hypothesis given the timing, but
+the evidence doesn't support it: both bugs predate Play mode and are fixed
+here regardless, on the same branch, since they're real defects either way.
+
+### Live verification
+
+Real dev server, direct `window` instrumentation during the repro (added
+temporarily, removed before commit — the debug data itself, not screenshots
+alone, is what actually found Bug 1's `near: 0.77` and Bug 2's "never stops
+moving" pattern). Post-fix: the identical walk-into-a-wall repro now shows
+the player correctly stopping flush against the wall's own rendered face
+(not black) at the same timestamp that used to go solid black, and stays
+stopped for the remainder of the hold — re-run in a full rapid screenshot
+sequence (every 300ms across 3 seconds) confirming no regression at any
+point along the approach.
+
+### Tests
+
+3 new tests directly exercising the fix (`walkMovement.test.ts`'s
+`directional edge blocking` describe block): a blocked edge stops movement
+the moment it's attempted from anywhere in the current cell — built with a
+SINGLE tracked real cell and a blocked edge toward a coordinate that was
+NEVER added to `cellsByKey`, the exact perimeter-wall shape that broke the
+old check; the identical direction is walkable once the edge isn't blocked;
+a perpendicular, unrelated direction from the same cell is unaffected.
+These use real hex adjacency math (`cubeAtColRow`/`cubeToWorld`/
+`facingToRotationY`), not the rest of the file's simplified same-row
+fixtures, since the fix itself depends on that geometry. Full
+`dungeon-builder` suite: 389 tests, 19 files, all passing (up from 386/19).
+`ci-check` clean.

@@ -18,7 +18,9 @@
  *    does not re-derive that math, only that this module actually calls
  *    it and reacts to its output.
  */
+import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { describe, expect, it } from 'vitest';
+import { facingToRotationY } from '../boardGeometry';
 import { emptyCanvasYaml } from '../creation/emptyCanvasDoc';
 import {
   addWallLine,
@@ -29,6 +31,7 @@ import {
   toDungeonDoc,
 } from '../dungeonYaml';
 import { SHOWCASE_FLOORPLAN, SHOWCASE_YAML } from '../fixtures';
+import { cubeAtColRow } from '../hexLayout';
 import {
   buildFloorTiles,
   buildPlaceableCells,
@@ -142,6 +145,121 @@ describe('resolveWalkStep — pure step resolution against a hand-built context'
     // well beyond MAX_STEP_CONTAINMENT_DISTANCE from the one real cell.
     const result = resolveWalkStep(ctx, 0, 0, 5, 5);
     expect(result).toEqual({ x: 0, z: 0 });
+  });
+
+  // rpg-project#169 regression fix — live-verified finding: the
+  // ORIGINAL crossing check ("does the TARGET point's nearest cell
+  // differ from the source, and is that pair blocked") silently never
+  // fires for a PERIMETER wall, because `FloorPlan.edges`' own boundary
+  // edges have a far side that was never a real, tracked floor tile
+  // (`FloorPlanEdge`'s own doc comment: "one endpoint may be outside the
+  // rendered floor-plan bounds" — confirmed directly against
+  // `SHOWCASE_FLOORPLAN.edges`, e.g. `{from:[0,7], to:[-1,7]}`) —
+  // `nearestCell` can never resolve a target point TO a nonexistent
+  // neighbor, so the "did the nearest cell change" test never trips, and
+  // a walking player passed straight through every perimeter wall in the
+  // dungeon into unmapped void (which then correctly rendered as
+  // nothing — a real collision gap, not a rendering bug, and reproduced
+  // identically on the walking camera's very first commit, before any
+  // Play-mode work existed). `resolveWalkStep` now asks a different
+  // question — "does the CURRENT cell (definitely real; the player is
+  // standing in it) have a blocked edge in roughly the direction being
+  // moved" — which needs no real cell on the far side to work at all.
+  // This fixture uses REAL adjacent-hex spacing/coordinates (matching
+  // `hexMath.ts`'s own `HEX_SIZE = 1` geometry via `cubeAtColRow`, not
+  // the other tests' simplified same-row 1-unit spacing) since the fix
+  // itself depends on real hex adjacency math (`boardGeometry.ts`'s
+  // `neighborCell`/`facingToRotationY`).
+  describe('directional edge blocking — the actual fix (perimeter walls, not just interior ones)', () => {
+    function realCell(col: number, row: number): PlaceableCell {
+      const cube = cubeAtColRow(col, row);
+      const world = cubeToWorld(cube, HEX_SIZE);
+      return {
+        key: `${col},${row}`,
+        col,
+        row,
+        roomId: 'r',
+        worldX: world.x,
+        worldZ: world.z,
+        occupied: false,
+      };
+    }
+
+    it('a blocked edge stops movement the moment it is attempted, from anywhere in the current cell — not just once flush against the boundary', () => {
+      // Only ONE real cell tracked — (1,0)'s own neighbor across this
+      // edge is never in cellsByKey at all, exactly the perimeter-wall
+      // shape that broke the old nearestCell-based check.
+      const cells = [realCell(0, 0)];
+      const ctx: WalkContext = {
+        cellList: cells,
+        cellsByKey: new Map([['0,0', cells[0]!]]),
+        blockedCells: new Set(),
+        blockedEdges: new Set([edgeKey(0, 0, 1, 0)]),
+      };
+      const start = cells[0]!;
+      // Move toward the blocked neighbor's own direction — resolved the
+      // same way the real component does (facing 0's own world angle).
+      const dir = facingToRotationY(0);
+      const dx = Math.cos(dir) * 0.1;
+      const dz = -Math.sin(dir) * 0.1;
+      let { x, z } = { x: start.worldX, z: start.worldZ };
+      const origin = { x, z };
+      for (let i = 0; i < 20; i++) {
+        ({ x, z } = resolveWalkStep(ctx, x, z, dx, dz));
+      }
+      // The old (removed) approach would have let the player walk
+      // straight through — 20 steps of 0.1 would reach 2.0 units away.
+      // The fix rejects every one of these 20 attempts outright, since
+      // they all point toward the SAME blocked direction from the SAME
+      // starting cell.
+      expect(x).toBeCloseTo(origin.x);
+      expect(z).toBeCloseTo(origin.z);
+    });
+
+    it('the identical direction is walkable once the edge is NOT in blockedEdges', () => {
+      const cells = [realCell(0, 0), realCell(1, 0)];
+      const ctx: WalkContext = {
+        cellList: cells,
+        cellsByKey: new Map(cells.map((c) => [`${c.col},${c.row}`, c])),
+        blockedCells: new Set(),
+        blockedEdges: new Set(), // open
+      };
+      const dir = facingToRotationY(0);
+      const dx = Math.cos(dir) * 0.1;
+      const dz = -Math.sin(dir) * 0.1;
+      let { x, z } = { x: cells[0]!.worldX, z: cells[0]!.worldZ };
+      const origin = { x, z };
+      for (let i = 0; i < 5; i++) {
+        ({ x, z } = resolveWalkStep(ctx, x, z, dx, dz));
+      }
+      const traveled = Math.hypot(x - origin.x, z - origin.z);
+      expect(traveled).toBeCloseTo(0.5, 5); // 5 unobstructed 0.1 steps
+    });
+
+    it('a perpendicular (non-blocked) direction from the same cell is unaffected by the blocked edge', () => {
+      const cells = [realCell(0, 0), realCell(0, 1)];
+      const ctx: WalkContext = {
+        cellList: cells,
+        cellsByKey: new Map(cells.map((c) => [`${c.col},${c.row}`, c])),
+        blockedCells: new Set(),
+        // Block the direction toward a DIFFERENT, unrelated neighbor —
+        // (2,0), never placed as a real cell either (perimeter-shaped),
+        // and never the direction actually walked in this test.
+        blockedEdges: new Set([edgeKey(0, 0, 2, 0)]),
+      };
+      const target = cells[1]!; // (0,1) — genuinely open
+      const dx0 = target.worldX - cells[0]!.worldX;
+      const dz0 = target.worldZ - cells[0]!.worldZ;
+      const len = Math.hypot(dx0, dz0);
+      const dx = (dx0 / len) * 0.1;
+      const dz = (dz0 / len) * 0.1;
+      let { x, z } = { x: cells[0]!.worldX, z: cells[0]!.worldZ };
+      for (let i = 0; i < 5; i++) {
+        ({ x, z } = resolveWalkStep(ctx, x, z, dx, dz));
+      }
+      const traveled = Math.hypot(x - cells[0]!.worldX, z - cells[0]!.worldZ);
+      expect(traveled).toBeCloseTo(0.5, 5);
+    });
   });
 });
 

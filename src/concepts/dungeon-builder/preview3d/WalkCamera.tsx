@@ -27,7 +27,7 @@ import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { PointerLockControls } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { Euler, Vector3 } from 'three';
+import { Euler, PerspectiveCamera, Vector3 } from 'three';
 import type { PointerLockControls as PointerLockControlsImpl } from 'three-stdlib';
 import type { PlaceableCell } from './DungeonPreview3D';
 import { useWasdKeys } from './useWasdKeys';
@@ -51,6 +51,32 @@ export const WALK_EYE_HEIGHT = WALL_HEIGHT * 0.7;
  * crawling) in live verification. Shared with `PlayCamera.tsx` — the
  * SAME pace either way, only the camera differs. */
 export const WALK_SPEED = 3;
+
+/** Walk mode's own near/far clipping planes — rpg-project#169 regression
+ * fix. `DungeonPreview3D.tsx`'s `<Bounds fit clip>` sets the SHARED
+ * default camera's `near`/`far` ONCE, sized for the wide bird's-eye Orbit
+ * view (drei's own `Bounds.clip()`: `near = fittedDistance / 100`) — at
+ * this dungeon's scale that fitted distance is large enough to produce a
+ * `near` around 0.7-0.8 world units. Fine for viewing an entire dungeon
+ * from far away; badly wrong for a first-person camera walking at human
+ * eye height, where a wall one step away, or even a nearby pillar, sits
+ * well WITHIN that near distance and gets clipped away entirely — found
+ * live, not assumed: Kirk's own "walls/doors not loading" report
+ * reproduced as a solid black screen after walking a short distance, and
+ * a direct `camera.near`/`camera.far` dump during that exact repro read
+ * `near: 0.77` — confirmed the culprit, not a collision or rendering-tree
+ * regression (movement itself was working correctly the whole time).
+ * `PlayCamera.tsx` never hits this because it creates its OWN camera with
+ * an explicit small `near` (matching the real game's own `0.1`); Walk
+ * reuses the shared default camera, so it has to claim its own
+ * appropriate near/far the same way, and hand them back on exit. `0.05`
+ * is comfortably smaller than any real geometry at this scale (a wall's
+ * own thickness, `WallBox`'s `WALL_THICKNESS = 0.12`, is still more than
+ * double it) without being so small it invites z-fighting; `far: 1000`
+ * matches `PlayCamera.tsx`'s own value for consistency and is generous
+ * at this dungeon's scale. */
+const WALK_NEAR = 0.05;
+const WALK_FAR = 1000;
 
 export interface WalkCameraProps {
   ctx: WalkContext;
@@ -119,6 +145,16 @@ export function WalkCamera({
     const camera = getThree().camera;
     const restorePosition = camera.position.clone();
     const restoreQuaternion = camera.quaternion.clone();
+    // Only a PerspectiveCamera actually carries near/far (the base
+    // THREE.Camera type this hook is statically typed against doesn't) —
+    // true at runtime for every caller of this component today (Orbit's
+    // own default camera, the only one Walk is ever handed, per
+    // `DungeonPreview3D.tsx`'s Canvas setup). Guarded rather than
+    // asserted so a future non-perspective default camera degrades to
+    // "don't touch near/far" instead of throwing.
+    const isPerspective = camera instanceof PerspectiveCamera;
+    const restoreNear = isPerspective ? camera.near : undefined;
+    const restoreFar = isPerspective ? camera.far : undefined;
 
     camera.position.set(start.worldX, WALK_EYE_HEIGHT, start.worldZ);
     const yaw = Math.atan2(
@@ -126,12 +162,30 @@ export function WalkCamera({
       lookToward.worldX - start.worldX
     );
     camera.quaternion.setFromEuler(new Euler(0, yaw, 0, 'YXZ'));
+    if (isPerspective) {
+      // See WALK_NEAR/WALK_FAR's own doc comment — the shared default
+      // camera's near/far were sized for Orbit's wide bird's-eye view
+      // (`Bounds.clip()`), which clips away nearby geometry entirely once
+      // the camera drops to walking eye height.
+      camera.near = WALK_NEAR;
+      camera.far = WALK_FAR;
+      camera.updateProjectionMatrix();
+    }
     lastCellKey.current = `${start.col},${start.row}`;
     onCellChange(start);
 
     return () => {
       camera.position.copy(restorePosition);
       camera.quaternion.copy(restoreQuaternion);
+      if (
+        isPerspective &&
+        restoreNear !== undefined &&
+        restoreFar !== undefined
+      ) {
+        camera.near = restoreNear;
+        camera.far = restoreFar;
+        camera.updateProjectionMatrix();
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

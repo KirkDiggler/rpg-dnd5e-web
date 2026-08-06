@@ -45,6 +45,7 @@
  */
 import { HEX_SIZE } from '@/components/hex-grid/hexMath';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { facingToRotationY, neighborCell } from '../boardGeometry';
 import { DEFAULT_CANVAS } from '../creation/emptyCanvasDoc';
 import {
   cellKey,
@@ -277,6 +278,67 @@ export function resolveWalkStart(
  * genuine step, only a wildly out-of-range one. */
 const MAX_STEP_CONTAINMENT_DISTANCE = HEX_SIZE * 2;
 
+/**
+ * Whether moving in world-space direction `(ndx, ndz)` from `fromCell`
+ * would cross one of `fromCell`'s own blocked edges — rpg-project#169
+ * regression fix. Deliberately does NOT ask "which cell does the TARGET
+ * point belong to, and is THAT pair blocked" (the earlier approach,
+ * `nearestCell`-based): found live that this silently failed for any
+ * PERIMETER wall, because a `FloorPlan.edges` boundary edge's own far
+ * side is a col/row that was never a real, tracked floor tile
+ * (`FloorPlanEdge`'s own doc comment: "one endpoint may be outside the
+ * rendered floor-plan bounds" — verified directly against
+ * `SHOWCASE_FLOORPLAN.edges`, e.g. `{from:[0,7], to:[-1,7]}`) — so
+ * `nearestCell` could never resolve a target point TO that nonexistent
+ * neighbor, the "did the nearest cell change" crossing test never
+ * fired, and the player walked straight through every perimeter wall in
+ * the dungeon into unmapped void (which then correctly rendered as
+ * nothing — not a rendering bug, a genuine collision gap).
+ *
+ * This version asks a geometrically different, correct question
+ * instead: "does `fromCell` — a cell that's DEFINITELY real, since the
+ * player is standing in it — have a blocked edge in roughly the
+ * direction I'm trying to move," using `boardGeometry.ts`'s own
+ * `neighborCell` (pure cube-coordinate math — it computes where a
+ * neighbor WOULD be regardless of whether that coordinate is a tracked
+ * floor tile) and `facingToRotationY` (the same world-angle-per-facing
+ * convention every other edge-aligned piece in this codebase uses) to
+ * find the nearest of the 6 hex directions to the movement vector. This
+ * strictly subsumes the old interior-wall behavior (an interior wall's
+ * computed neighbor IS the real adjacent cell, so the same `edgeKey`
+ * lookup still matches) while now ALSO correctly blocking perimeter
+ * walls, and — as a welcome side effect — stops the player from ANY
+ * point inside their current cell the moment they try to move toward a
+ * blocked edge, rather than letting them approach all the way to the
+ * unbuffered cell-Voronoi boundary first (itself close enough to a
+ * wall's own thin rendered geometry, `WallBox`'s `WALL_THICKNESS =
+ * 0.12`, to read as uncomfortably flush against it).
+ */
+function directionCrossesBlockedEdge(
+  blockedEdges: ReadonlySet<string>,
+  fromCol: number,
+  fromRow: number,
+  ndx: number,
+  ndz: number
+): boolean {
+  if (ndx === 0 && ndz === 0) return false;
+  const angle = Math.atan2(-ndz, ndx);
+  let bestFacing = 0;
+  let bestDist = Infinity;
+  for (let facing = 0; facing < 6; facing++) {
+    const raw = Math.abs(angle - facingToRotationY(facing)) % (2 * Math.PI);
+    const dist = Math.min(raw, 2 * Math.PI - raw);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestFacing = facing;
+    }
+  }
+  const neighbor = neighborCell(fromCol, fromRow, bestFacing);
+  return blockedEdges.has(
+    edgeKey(fromCol, fromRow, neighbor.col, neighbor.row)
+  );
+}
+
 /** One frame's worth of proposed movement, resolved against the walk
  * context — "simple grid-constrained motion... slide-along or stop at
  * blocks" (this unit's own scope): tries the full diagonal step first,
@@ -294,6 +356,19 @@ export function resolveWalkStep(
 ): { x: number; z: number } {
   const canMove = (ndx: number, ndz: number): boolean => {
     if (ndx === 0 && ndz === 0) return false;
+    const fromCell = nearestCell(ctx, x, z);
+    if (
+      fromCell &&
+      directionCrossesBlockedEdge(
+        ctx.blockedEdges,
+        fromCell.col,
+        fromCell.row,
+        ndx,
+        ndz
+      )
+    ) {
+      return false;
+    }
     const targetX = x + ndx;
     const targetZ = z + ndz;
     const toCell = nearestCell(ctx, targetX, targetZ);
@@ -302,16 +377,6 @@ export function resolveWalkStep(
       (toCell.worldX - targetX) ** 2 + (toCell.worldZ - targetZ) ** 2;
     if (distSq > MAX_STEP_CONTAINMENT_DISTANCE ** 2) return false;
     if (!canStandAt(ctx, toCell.col, toCell.row)) return false;
-    const fromCell = nearestCell(ctx, x, z);
-    if (
-      fromCell &&
-      (fromCell.col !== toCell.col || fromCell.row !== toCell.row) &&
-      ctx.blockedEdges.has(
-        edgeKey(fromCell.col, fromCell.row, toCell.col, toCell.row)
-      )
-    ) {
-      return false;
-    }
     return true;
   };
   if (canMove(dx, dz)) return { x: x + dx, z: z + dz };
