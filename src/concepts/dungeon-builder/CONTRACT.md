@@ -6380,36 +6380,69 @@ No unexpected console errors either side — only the two expected
 `usePutDungeonPreview`'s own deliberately-invalid liveness probe, the same
 benign noise every prior live-verification round in this file documents.
 
-### End-to-end save — proven server-side, UI gate not yet lifted (PR #714 still open)
+### End-to-end save — provably real, after a merge-time composition fix
 
-Creation mode's ("New Dungeon") own Save & Play button is STILL disabled
-against the live Wave-0 server, correctly, for a reason outside this unit's
-scope: `stripToV1Subset`'s `compilableBlockers` unconditionally requires "at
-least 2 rooms" / "exactly one boss-archetype room," checks that don't apply
-to a canvas-mode document at all (§4.5.3 skips them entirely) but which
-`ProposedYamlPane`'s gating doesn't yet know to skip. `unit/brush-ux` (PR
-#714, open as of this writing) is the in-flight unit that makes this gating
-canvas-mode-aware ("YamlPane/stripToV1Subset canvas-tooltip logic is
-probe-aware," per that unit's own brief) — out of scope here, not silently
-dropped. Confirmed live: creation mode's capabilities line already correctly
-reads 5/17 (this unit's fix applies everywhere `capabilityProbe.ts` is used,
-including creation mode's shared `usePutDungeonPreview.capabilities`
-instance), but the Save & Play button stays disabled with the pre-existing
-room-count tooltip regardless.
+As first written (pre-merge), this section reported the Save & Play button
+STILL disabled — correct at the time, since `unit/brush-ux` (PR #714, the
+region-brush-honesty round above) hadn't merged yet and this unit's own
+capability fix alone doesn't touch `ProposedYamlPane`'s gating. Once #714
+merged into `dev` and this branch merged it in turn, the two units'
+independently-designed halves turned out to compose exactly as intended:
+#714's `compilableBlockers` gates a canvas document on `accepted('canvas')`
+(§ above, "Probe-aware canvas save blocker"); this unit's fix is what makes
+`accepted('canvas')` finally true. **Confirmed live, same merged tree,
+same Wave-0 server**: creation mode's Save & Play button — for
+`emptyCanvasDoc.ts`'s totally-unedited, from-scratch "New Dungeon" doc —
+flips from disabled to a real teal enabled button reading `PutDungeon
+(validate_only: false) — persists this dungeon for real`, the FIRST time
+this composition has ever been testable (canvas acceptance and
+canvas-aware gating never coexisted in one running tree before this
+merge).
 
-Proven instead directly against the server: a real (`validate_only: false`)
-`PutDungeon` of a from-scratch canvas document (`canvas: {width:20,height:10}`,
-`rooms: []`, one top-level `place:` entry) returned `success: true`, then
-`dnd5e.api.lobby.v1alpha1.LobbyService/ListDungeons` on the same server
-listed it back (`{"key": "capprobe-e2e-canvas-save", "name": "E2E Canvas Save
-Probe"}`) — the real write path this unit's fix makes discoverable is
-provably real, past any client-side claim. **Housekeeping**: no delete RPC
-exists on this service surface (`AuthoringService` has only `PutDungeon`;
-`LobbyService` has no dungeon-delete either), so this probe entry is left on
-the shared Wave-0 lab server, named with this concept's existing `capprobe-*`
-convention for identifiability — same category of leftover this file's
-capability-probe unit entry above already documents for the `showcase` key,
-minus the ability to revert it.
+**Clicking it, the first attempt, surfaced a THIRD thing** — not this
+unit's bug, not #714's, a latent gap in the original 2026-08-04
+capability-probed-graduation unit's `stripToV1Subset`, invisible until
+now because the real-save path for a from-scratch canvas doc had never
+been reachable before: `holes`/`end` are decode-UNKNOWN fields (the Go
+struct has no field for either key at all), so the server's strict
+`KnownFields(true)` decode rejects their mere PRESENCE regardless of
+value — but `stripToV1Subset` only called `cst.delete('holes')`/
+`cst.delete('end')` when `doc.holes.length > 0`/`doc.end` was truthy.
+`emptyCanvasDoc.ts`'s scaffolding default ships `holes: []` and
+`end: null` — present, but empty — so both survived stripping untouched
+and the real save failed: `"decode dungeon spec: ... field holes not
+found ... field end not found in type dungeonspec.DungeonSpec"`. Fixed by
+decoupling deletion from reporting — delete unconditionally whenever
+`!accepted(field)`, only push to `dropped`/`compiling` when there's
+actual content to name — matching the pattern the same function's
+`wallLines`/`defaults` blocks already used (`cst.delete` unconditionally
+in their own else-branch). Per this repo's own "integration keeps
+revealing things the provider must do — that is the method working"
+principle (root CLAUDE.md, "How a wave is shaped"), fixed on this branch
+rather than spun into a fourth PR: discovered BY this merge's own
+integration test, real UI code neither this unit nor #714 was asked to
+touch, three lines changed, zero test regressions (128/128
+`dungeonYaml.test.ts` unchanged).
+
+**After the fix, same click, same doc**: `success: true`, and the UI's
+own banner — read directly from the DOM, not inferred — `Saved as
+"untitled-creation". Open http://localhost:3001/ and pick
+"untitled-creation" in the dungeon dropdown to play it.` Verified past
+the UI's own claim: `dnd5e.api.lobby.v1alpha1.LobbyService/ListDungeons`
+on the same Wave-0 server (note: `ListDungeons` lives on `LobbyService`,
+not `AuthoringService`) lists `{"key": "untitled-creation", "name":
+"Untitled Dungeon"}` back. This is the first real, unedited,
+click-Save-and-it-persists round trip for a from-scratch canvas dungeon,
+through the actual UI, against a real server.
+
+**Housekeeping**: no delete RPC exists on this service surface
+(`AuthoringService` has only `PutDungeon`; `LobbyService` has no
+dungeon-delete either), so two probe entries are left on the shared
+Wave-0 lab server — `capprobe-e2e-canvas-save` (this unit's own earlier
+grpcurl-only proof, pre-merge) and `untitled-creation` (this section's
+UI round trip) — both named identifiably, same category of leftover this
+file's capability-probe unit entry above already documents for the
+`showcase` key, minus the ability to revert it.
 
 ### Tests
 

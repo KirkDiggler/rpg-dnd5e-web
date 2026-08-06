@@ -1280,6 +1280,36 @@ connectors: []
       );
     });
 
+    it('present-but-EMPTY holes:/end: are still stripped when not accepted — a decode-unknown field is rejected on mere presence, not on content (regression: emptyCanvasDoc.ts ships holes: [] / end: null, which survived stripping untouched before this fix and broke every real from-scratch canvas save)', () => {
+      const canvasDocWithEmptyPlaceholders = `
+version: 1
+key: untitled-creation
+name: "Untitled Dungeon"
+canvas:
+  width: 20
+  height: 30
+rooms: []
+connectors: []
+walls: []
+holes: []
+start: null
+end: null
+place: []
+`;
+      const result = stripToV1Subset(
+        canvasDocWithEmptyPlaceholders,
+        caps(['canvas']) // holes/end NOT accepted — real server state today
+      );
+
+      // Neither key survives to the wire — a strict decode-unknown check
+      // rejects the KEY'S presence regardless of its (empty) value.
+      expect(result.yaml).not.toMatch(/^holes:/m);
+      expect(result.yaml).not.toMatch(/^end:/m);
+      // Empty content never gets reported — nothing meaningful to name.
+      expect(result.dropped).toEqual([]);
+      expect(result.compiling).toEqual(['canvas']);
+    });
+
     it('compilableBlockers names the real, unconditional server minimums — independent of any dialect capability', () => {
       const oneRoom = `
 version: 1

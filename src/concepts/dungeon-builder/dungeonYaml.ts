@@ -2496,13 +2496,26 @@ export function stripToV1Subset(
   }
   cst.delete('wallLines');
 
-  if (doc.holes.length > 0) {
-    if (accepted('holes')) {
+  // Delete unconditionally when not accepted — NOT gated on
+  // `doc.holes.length > 0` (unlike the reporting below). `holes:` is
+  // decode-UNKNOWN (unlike e.g. `place:`/`walls:`, which decode fine
+  // empty or not): the server's strict `KnownFields(true)` decode rejects
+  // the KEY'S MERE PRESENCE regardless of its value, so a present-but-
+  // EMPTY `holes: []` (as `emptyCanvasDoc.ts`'s scaffolding default
+  // ships) still fails decode if left in. First surfaced live,
+  // 2026-08-06, composing this unit with the region-brush-honesty round's
+  // canvas-blocker gate (rpg-project#180) — the first time a from-scratch
+  // canvas document's real (non-`validate_only`) save became reachable at
+  // all, since `canvas` itself only just started passing `accepted()`.
+  if (accepted('holes')) {
+    if (doc.holes.length > 0) {
       compiling.push(pluralCount(doc.holes.length, 'hole'));
-    } else {
-      dropped.push(pluralCount(doc.holes.length, 'hole'));
-      cst.delete('holes');
     }
+  } else {
+    if (doc.holes.length > 0) {
+      dropped.push(pluralCount(doc.holes.length, 'hole'));
+    }
+    cst.delete('holes');
   }
 
   // Cell-authored semantic regions (rpg-project#180). A door edge a
@@ -2533,13 +2546,14 @@ export function stripToV1Subset(
       cst.delete('start');
     }
   }
-  if (doc.end) {
-    if (accepted('end')) {
-      compiling.push('end');
-    } else {
-      dropped.push('end');
-      cst.delete('end');
-    }
+  // Same "delete unconditionally when not accepted" reasoning as `holes`
+  // above — `end:` is likewise decode-unknown, and `emptyCanvasDoc.ts`
+  // ships a present-but-`null` `end: null` placeholder.
+  if (accepted('end')) {
+    if (doc.end) compiling.push('end');
+  } else {
+    if (doc.end) dropped.push('end');
+    cst.delete('end');
   }
 
   if (doc.lighting) {
