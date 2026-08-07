@@ -162,6 +162,14 @@ vi.mock('./EncounterMap', () => ({
       >
         finish goblin move
       </button>
+      <button
+        data-testid="stub-finish-goblin-move-2"
+        onClick={() =>
+          props.onEntityMovementPresentationComplete?.('goblin-1', 2)
+        }
+      >
+        finish goblin move 2
+      </button>
     </div>
   ),
 }));
@@ -1834,6 +1842,81 @@ describe('EncounterView combat pacing', () => {
     expect(screen.getByTestId('combat-presentation')).toBeTruthy();
   });
 
+  it('accepts the production moveSeq after a presentation flush instead of restarting a local generation', () => {
+    hoisted.captureStreamCallbacks = true;
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    const callbacks = hoisted.streamCallbacks;
+    if (!callbacks) throw new Error('stream callbacks not captured');
+
+    act(() => {
+      callbacks.onSnapshotDelivered?.(
+        {
+          encounter: {
+            space: {
+              entities: [{ id: 'goblin-1', type: EntityType.MONSTER }],
+              hexes: [
+                {
+                  position: { x: 0, y: 0, z: 0 },
+                  contents: [{ entityId: 'goblin-1' }],
+                },
+              ],
+            },
+          },
+        } as never,
+        {} as never
+      );
+      callbacks.onEntityMoved?.(
+        {
+          entityId: 'goblin-1',
+          actualPath: [{ x: 1, y: -1, z: 0 }],
+        } as never,
+        {} as never
+      );
+    });
+    fireEvent.click(screen.getByTestId('stub-finish-goblin-move'));
+    act(() => {
+      callbacks.onModeChanged?.(
+        {
+          from: EncounterMode.TURN_BASED,
+          to: EncounterMode.FREE_ROAM,
+        } as never,
+        {} as never
+      );
+      callbacks.onEntityMoved?.(
+        {
+          entityId: 'goblin-1',
+          actualPath: [{ x: 2, y: -2, z: 0 }],
+        } as never,
+        {} as never
+      );
+      callbacks.onAttackResolved?.(
+        {
+          attackerEntityId: 'goblin-1',
+          targetEntityId: 'char-alice',
+          hit: false,
+          critical: false,
+          attackRoll: 7,
+          attackBonus: 4,
+          targetAc: 14,
+        } as never,
+        {} as never
+      );
+    });
+
+    expect(screen.queryByTestId('combat-presentation')).toBeNull();
+    fireEvent.click(screen.getByTestId('stub-finish-goblin-move'));
+    expect(screen.queryByTestId('combat-presentation')).toBeNull();
+    fireEvent.click(screen.getByTestId('stub-finish-goblin-move-2'));
+    expect(screen.getByTestId('combat-presentation')).toBeTruthy();
+  });
+
   it('keeps an already-known removed monster as a tombstone through lethal impact, then releases current removal behavior', () => {
     hoisted.captureStreamCallbacks = true;
     render(
@@ -1981,8 +2064,8 @@ describe('EncounterView combat pacing', () => {
       );
       callbacks.onAttackResolved?.(
         {
-          attackerEntityId: 'char-alice',
-          targetEntityId: 'goblin-1',
+          attackerEntityId: 'goblin-1',
+          targetEntityId: 'char-alice',
           attackRoll: 14,
           attackBonus: 5,
           targetAc: 16,
@@ -2012,7 +2095,6 @@ describe('EncounterView combat pacing', () => {
     expect(screen.queryByTestId('beat-damage')).toBeNull();
 
     act(() => vi.advanceTimersByTime(300));
-    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
     expect(screen.queryByTestId('beat-damage')).toBeNull();
     act(() => vi.advanceTimersByTime(2000 + 1600));
     expect(
@@ -2023,6 +2105,174 @@ describe('EncounterView combat pacing', () => {
     expect(screen.getByTestId('combat-log-entry-attack-0')).toBeTruthy();
     expect(screen.getByTestId('combat-log-entry-damage-1')).toBeTruthy();
   });
+
+  it('releases delayed correlated damage and terminal envelopes when they arrive after the result beat without double-releasing the lifecycle', () => {
+    hoisted.captureStreamCallbacks = true;
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    const callbacks = hoisted.streamCallbacks;
+    if (!callbacks) throw new Error('stream callbacks not captured');
+    const metadata = {
+      sequence: 2n,
+      timestamp: undefined,
+      correlationId: 'corr-delayed',
+    } as EncounterEventMetadata;
+    act(() => {
+      callbacks.onSnapshotDelivered?.(
+        {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'char-alice',
+                  type: EntityType.CHARACTER,
+                  hp: { current: 20, max: 20, temp: 0 },
+                },
+              ],
+              hexes: [
+                {
+                  position: { x: 0, y: 0, z: 0 },
+                  contents: [{ entityId: 'char-alice' }],
+                },
+              ],
+            },
+          },
+        } as never,
+        {} as never
+      );
+      callbacks.onAttackResolved?.(
+        {
+          attackerEntityId: 'goblin-1',
+          targetEntityId: 'char-alice',
+          hit: true,
+          critical: false,
+          attackRoll: 17,
+          attackBonus: 4,
+          targetAc: 14,
+        } as never,
+        metadata
+      );
+    });
+    act(() => vi.advanceTimersByTime(300));
+    act(() => vi.advanceTimersByTime(2000));
+    act(() => vi.advanceTimersByTime(1600));
+    expect(screen.getByTestId('combat-log-entry-attack-0')).toBeTruthy();
+
+    act(() => {
+      callbacks.onEntityDamaged?.(
+        {
+          entityId: 'char-alice',
+          sourceEntityId: 'goblin-1',
+          amount: 20,
+          damageBreakdown: [],
+          hpAfter: { current: 0, max: 20, temp: 0 },
+        } as never,
+        metadata
+      );
+      callbacks.onEntityDied?.(
+        { entityId: 'char-alice', killerEntityId: 'goblin-1' } as never,
+        metadata
+      );
+      callbacks.onEntityRemoved?.(
+        { entityId: 'char-alice', reason: 'dead' } as never,
+        metadata
+      );
+    });
+
+    expect(screen.getByTestId('combat-log-entry-damage-1')).toBeTruthy();
+    expect(screen.getByTestId('combat-log-entry-died-2')).toBeTruthy();
+    expect(screen.getByTestId('combat-log-entry-removed-3')).toBeTruthy();
+    expect(screen.getByTitle('HP 0/20')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(900 + 300));
+    expect(screen.queryByTestId('combat-presentation')).toBeNull();
+  });
+
+  it.each(['', 'corr-reused'])(
+    'uses entity identity when correlation %j cannot distinguish queued attacks',
+    (correlationId) => {
+      hoisted.captureStreamCallbacks = true;
+      render(
+        <EncounterView
+          encounterId="enc-1"
+          characterId="char-alice"
+          playerId="alice"
+          onBack={() => {}}
+        />
+      );
+      const callbacks = hoisted.streamCallbacks;
+      if (!callbacks) throw new Error('stream callbacks not captured');
+      const emptyMetadata = {
+        sequence: 1n,
+        timestamp: undefined,
+        correlationId,
+      } as EncounterEventMetadata;
+      act(() => {
+        callbacks.onAttackResolved?.(
+          {
+            attackerEntityId: 'char-alice',
+            targetEntityId: 'goblin-1',
+            hit: true,
+            critical: false,
+            attackRoll: 16,
+          } as never,
+          emptyMetadata
+        );
+        callbacks.onAttackResolved?.(
+          {
+            attackerEntityId: 'char-alice',
+            targetEntityId: 'goblin-2',
+            hit: true,
+            critical: false,
+            attackRoll: 18,
+          } as never,
+          emptyMetadata
+        );
+        // Reverse outcome arrival makes correlation-only first-unfilled matching
+        // attach goblin-2's damage to goblin-1's theater.
+        callbacks.onEntityDamaged?.(
+          {
+            entityId: 'goblin-2',
+            sourceEntityId: 'char-alice',
+            amount: 8,
+            damageBreakdown: [],
+            hpAfter: { current: 2, max: 10, temp: 0 },
+          } as never,
+          emptyMetadata
+        );
+        callbacks.onEntityDamaged?.(
+          {
+            entityId: 'goblin-1',
+            sourceEntityId: 'char-alice',
+            amount: 3,
+            damageBreakdown: [],
+            hpAfter: { current: 7, max: 10, temp: 0 },
+          } as never,
+          emptyMetadata
+        );
+      });
+      act(() => vi.advanceTimersByTime(300));
+      fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+      act(() => vi.advanceTimersByTime(2000 + 1600));
+      expect(screen.getByTestId('beat-damage').textContent).toContain(
+        '3 damage'
+      );
+      act(() => vi.advanceTimersByTime(900));
+      act(() => vi.advanceTimersByTime(300));
+      act(() => vi.advanceTimersByTime(300));
+      fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+      act(() => vi.advanceTimersByTime(2000));
+      act(() => vi.advanceTimersByTime(1600));
+      expect(screen.getByTestId('beat-damage').textContent).toContain(
+        '8 damage'
+      );
+    }
+  );
 
   it.each([
     ['snapshotDelivered', {}],

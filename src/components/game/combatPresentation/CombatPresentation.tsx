@@ -3,7 +3,7 @@ import type {
   EntityDamaged,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { useReducedMotion } from 'framer-motion';
-import { useEffect, useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { DiceTray, type DiceTrayPhase } from '../../ui/dice/DiceTray';
 import { BeatStage } from './BeatStage';
 import { verdictLabel, type BeatSequence } from './beatStageTypes';
@@ -79,7 +79,11 @@ export function CombatPresentation({
     undefined
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Layout phase is deliberate: consumers release visible HP/log/tombstone
+    // state before the browser can paint the Impact/Verdict frame. A passive
+    // effect would allow one spoiler frame where the theater and surrounding
+    // outcome surfaces disagree.
     // A new item first renders with the previous sequencer beat. Wait for its
     // sequence reset before allowing that item to complete.
     if (previousItemRef.current !== item) {

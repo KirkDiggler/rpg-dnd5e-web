@@ -188,6 +188,31 @@ interface PresentationStoryOutcome {
   removed?: EntityRemoved;
 }
 
+type PresentationOutcomeKind = keyof PresentationStoryOutcome;
+
+/** Correlation narrows a story when present; target/source identity is always
+ * required, so empty or reused correlations can never cross-wire actors. */
+function findPresentationStory(
+  queue: PresentationStoryItem[],
+  outcomes: ReadonlyMap<number, PresentationStoryOutcome>,
+  correlationId: string,
+  targetEntityId: string,
+  kind: PresentationOutcomeKind,
+  sourceEntityId?: string
+): PresentationStoryItem | undefined {
+  return queue.find((item) => {
+    if (
+      item.correlationId !== correlationId &&
+      (item.correlationId !== '' || correlationId !== '')
+    )
+      return false;
+    if (item.attack.targetEntityId !== targetEntityId) return false;
+    if (sourceEntityId && item.attack.attackerEntityId !== sourceEntityId)
+      return false;
+    return outcomes.get(item.id)?.[kind] === undefined;
+  });
+}
+
 export function EncounterView({
   encounterId,
   characterId,
@@ -529,10 +554,13 @@ export function EncounterView({
     onEntityMoved: (e) => {
       const last = e.actualPath[e.actualPath.length - 1];
       if (last) {
-        movementGenerationRef.current.set(
-          e.entityId,
-          (movementGenerationRef.current.get(e.entityId) ?? 0) + 1
-        );
+        const existing = canonicalEntitiesRef.current.get(e.entityId);
+        // This is the same per-entity sequence mergeEntityPosition will store.
+        // Derive from canonical presentation data, not a flushable local count:
+        // mode/snapshot cancellation clears story bookkeeping but does not
+        // necessarily clear the reducer's existing moveSeq.
+        const nextMoveSeq = (existing?.moveSeq ?? 0) + 1;
+        movementGenerationRef.current.set(e.entityId, nextMoveSeq);
         // rpg-dnd5e-web#542: pass the WHOLE actualPath (not just its last
         // element) so HexEntity can step through the real hex-by-hex route
         // instead of teleporting straight to the destination. actualPath is
@@ -545,14 +573,13 @@ export function EncounterView({
           position,
           movePath
         );
-        const existing = canonicalEntitiesRef.current.get(e.entityId);
         if (existing) {
           const nextEntities = new Map(canonicalEntitiesRef.current);
           nextEntities.set(e.entityId, {
             ...existing,
             position,
             movePath,
-            moveSeq: movementGenerationRef.current.get(e.entityId),
+            moveSeq: nextMoveSeq,
           });
           canonicalEntitiesRef.current = nextEntities;
         }
@@ -681,10 +708,13 @@ export function EncounterView({
       ]);
     },
     onEntityDamaged: (e, metadata) => {
-      const stagedAttack = presentationQueueRef.current.find(
-        (item) =>
-          item.correlationId === metadata.correlationId &&
-          !presentationOutcomesRef.current.get(item.id)?.damage
+      const stagedAttack = findPresentationStory(
+        presentationQueueRef.current,
+        presentationOutcomesRef.current,
+        metadata.correlationId,
+        e.entityId,
+        'damage',
+        e.sourceEntityId
       );
       if (!stagedAttack) {
         if (e.hpAfter) {
@@ -722,13 +752,31 @@ export function EncounterView({
         ...outcome,
         damage: e,
       }));
+      // If the semantic result beat already fired, this authoritative
+      // envelope joins the already-open result surface immediately. The
+      // lifecycle callback remains exactly-once; only this newly arrived
+      // payload is released.
+      if (releasedPresentationIdsRef.current.has(stagedAttack.id)) {
+        combatLog.recordEntityDamaged(e);
+        if (e.hpAfter) {
+          const next = new Map(heldVisibleHPRef.current);
+          next.set(e.entityId, {
+            current: e.hpAfter.current,
+            max: e.hpAfter.max,
+          });
+          heldVisibleHPRef.current = next;
+          setHeldVisibleHP(next);
+        }
+      }
     },
     onEntityDied: (e, metadata) => {
       encounterState.applyEntityDied(e);
-      const stagedAttack = presentationQueueRef.current.find(
-        (item) =>
-          item.correlationId === metadata.correlationId &&
-          !presentationOutcomesRef.current.get(item.id)?.died
+      const stagedAttack = findPresentationStory(
+        presentationQueueRef.current,
+        presentationOutcomesRef.current,
+        metadata.correlationId,
+        e.entityId,
+        'died'
       );
       if (!stagedAttack) {
         combatLog.recordEntityDied(e);
@@ -738,12 +786,17 @@ export function EncounterView({
         ...outcome,
         died: e,
       }));
+      if (releasedPresentationIdsRef.current.has(stagedAttack.id)) {
+        combatLog.recordEntityDied(e);
+      }
     },
     onEntityRemoved: (e, metadata) => {
-      const stagedAttack = presentationQueueRef.current.find(
-        (item) =>
-          item.correlationId === metadata.correlationId &&
-          !presentationOutcomesRef.current.get(item.id)?.removed
+      const stagedAttack = findPresentationStory(
+        presentationQueueRef.current,
+        presentationOutcomesRef.current,
+        metadata.correlationId,
+        e.entityId,
+        'removed'
       );
       const knownEntity = canonicalEntitiesRef.current.get(e.entityId);
       if (stagedAttack && knownEntity) {
@@ -765,6 +818,9 @@ export function EncounterView({
         ...outcome,
         removed: e,
       }));
+      if (releasedPresentationIdsRef.current.has(stagedAttack.id)) {
+        combatLog.recordEntityRemoved(e);
+      }
     },
     onEncounterEnded: (e) => {
       encounterState.applyEncounterEnded(e);

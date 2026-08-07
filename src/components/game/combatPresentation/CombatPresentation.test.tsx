@@ -1,6 +1,7 @@
 import type { EntityDamaged } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useReducedMotion } from 'framer-motion';
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -47,6 +48,15 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('CombatPresentation', () => {
+  it('uses a layout-phase lifecycle release so outcome state commits before the Impact/Verdict paint', () => {
+    const source = readFileSync(
+      'src/components/game/combatPresentation/CombatPresentation.tsx',
+      'utf8'
+    );
+    expect(source).toContain('useLayoutEffect');
+    expect(source).toMatch(/useLayoutEffect\(\(\) => \{[\s\S]*onResultRelease/);
+  });
+
   it('keeps the authoritative roll out of initial static markup', () => {
     const markup = renderToStaticMarkup(
       <CombatPresentation item={item()} onComplete={() => {}} />
