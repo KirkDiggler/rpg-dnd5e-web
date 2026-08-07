@@ -200,13 +200,15 @@ export function EncounterMap({
   }, [entities, myEntityId]);
 
   // Dungeon-walls redesign (rpg-project#133 design.md/plan.md's W2 slice):
-  // reconstruct each room's hex membership from the wire's per-hex zoneId
-  // (regions have no width/offset field on the wire at all — see
-  // wallRuns.ts's doc comment), derive each door's own cell from the walls
-  // list, and compute the straight envelope/connector runs those feed.
-  // Also builds the positive-category-filtered legacy wall list
-  // (doors + interior pattern walls only) and the per-door rotation
-  // overrides HexGrid/SyntyHexWall consume below.
+  // reconstruct each ZONE's hex membership from the wire's per-hex zoneId
+  // (zones have no width/offset field on the wire at all — see
+  // wallRuns.ts's doc comment). For a chain dungeon a zone IS a room; for a
+  // canvas dungeon a zone is a semantic-only scope with no wall truth
+  // behind it (spec §4.10.2.4) — this grouping alone does NOT mean "these
+  // hexes are enclosed by walls." Feeds the `?authorGrid=1` coordinate
+  // overlay unconditionally (labeling is honest for either dungeon kind);
+  // feeds envelope/connector wall-run computation only when gated by real
+  // wall truth below (`hasWallTruth`) — see that gate's own comment.
   const regions = useMemo(
     () => regionInputsFromHexes(revealedHexes.values()),
     [revealedHexes]
@@ -226,9 +228,36 @@ export function EncounterMap({
     () => connectorDoorInputsFromWalls(wallList),
     [wallList]
   );
+  // Wall truth gate (game-walls-truth fix, zones are not rooms):
+  // `computeWallRuns` has no notion of "openness" at all (wallRuns.ts's own
+  // doc comment on envelopeGeometryForRegion) — it synthesizes a full
+  // envelope purely from a region's bounding box, unconditionally. That's
+  // only a legitimate stand-in for a room's real walls when the server has
+  // actually emitted wall data for this space: a chain dungeon's rooms ARE
+  // its zones, and the toolkit's generator emits perimeter/connector Wall
+  // entries for every one of them, unconditionally, from the first
+  // snapshot (this file's own wallRunAdapters.wireGridBounds doc comment).
+  // A canvas dungeon's `regions:` are semantic-only zones — fog/reveal/
+  // naming scopes, spec §4.10.2.4: "region boundaries are semantic-only,
+  // MUST NOT compile to edges" — with zero server-side wall truth behind
+  // them. Feeding their bounding boxes into computeWallRuns synthesized
+  // full envelope walls around painted regions that don't exist server-side:
+  // the real bug on the `untitled-creation` dungeon (walls: [], 3 painted
+  // regions) — fictional walls in the actual game route that the server's
+  // own movement model never enforced. `wallList.length > 0` is the right
+  // signal rather than anything zone-shaped: the wall list is unconditional
+  // and whole-dungeon from wave 1, so an empty list means no wall truth
+  // exists ANYWHERE in this encounter, not merely "not revealed yet" — zero
+  // false negatives for a real walled (chain) dungeon, which always has a
+  // non-empty walls list by construction.
+  const hasWallTruth = wallList.length > 0;
   const wallRunsResult = useMemo(
-    () => computeWallRuns({ regions, doors: connectorDoors }),
-    [regions, connectorDoors]
+    () =>
+      computeWallRuns({
+        regions: hasWallTruth ? regions : [],
+        doors: connectorDoors,
+      }),
+    [regions, connectorDoors, hasWallTruth]
   );
   const legacySyntyWalls = useMemo(
     () =>
