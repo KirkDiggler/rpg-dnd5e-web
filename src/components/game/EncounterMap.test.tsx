@@ -20,6 +20,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cubeAtColRow } from '../../hooks/wallRuns';
 import type { HexGridProps } from '../hex-grid';
 
 const hoisted = vi.hoisted(() => ({
@@ -48,6 +49,33 @@ function revealedHex(x: number, y: number, z: number, zoneId = ''): HexRecord {
   return create(HexRecordSchema, {
     position: create(PositionSchema, { x, y, z }),
     zoneId,
+  });
+}
+
+/** A small 2-column x 2-row zone's worth of revealed hexes, tagged with
+ * `zoneId` — geometrically identical whether that zone represents a real
+ * chain-generated room or a canvas dungeon's purely semantic painted
+ * region (the wire can't tell the two apart from hex membership alone;
+ * that's exactly the bug this file's "wall truth" describe block covers). */
+function zoneHexes(zoneId: string): HexRecord[] {
+  return [
+    cubeAtColRow(0, 0),
+    cubeAtColRow(1, 0),
+    cubeAtColRow(0, 1),
+    cubeAtColRow(1, 1),
+  ].map((c) => revealedHex(c.x, c.y, c.z, zoneId));
+}
+
+/** A non-door SOLID wall entry — the shape a real chain dungeon's
+ * perimeter/connector walls take on the wire (WallKind.SOLID = 1),
+ * standing in for "the server actually emitted wall data for this
+ * space" regardless of this particular entry's own position. */
+function solidWall(id: string): Wall {
+  return create(WallSchema, {
+    from: create(PositionSchema, { x: 0, y: 0, z: 0 }),
+    to: create(PositionSchema, { x: 0, y: 0, z: 0 }),
+    kind: WallKind.SOLID,
+    id,
   });
 }
 
@@ -211,5 +239,62 @@ describe('EncounterMap look-lab lighting experiment dials (?floorPools=1/?litSur
     const props = hoisted.lastHexGridProps.current!;
     expect(props.floorPoolLights).toBeUndefined();
     expect(props.litSurfaces).toBe(false);
+  });
+});
+
+describe('EncounterMap wall truth gate (game walls from truth — zones are not rooms)', () => {
+  it('a zone with ZERO server wall data renders NO envelope/connector walls — canvas regions are semantic-only, not rooms (the untitled-creation bug: walls: [], 3 painted regions, fictional envelope walls in the real game route)', () => {
+    render(
+      <EncounterMap
+        {...baseProps()}
+        revealedHexes={
+          new Map(
+            zoneHexes('region-1').map((h) => [
+              `${h.position!.x},${h.position!.y},${h.position!.z}`,
+              h,
+            ])
+          )
+        }
+        walls={new Map()}
+      />
+    );
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.envelopeRuns).toEqual([]);
+    expect(props.envelopeCorners).toEqual([]);
+    expect(props.connectorRuns).toEqual([]);
+  });
+
+  it('a zone WITH real server wall data (chain dungeons) still produces envelope walls — regression guard, this fix must not strip real room walls', () => {
+    render(
+      <EncounterMap
+        {...baseProps()}
+        revealedHexes={
+          new Map(
+            zoneHexes('room-a').map((h) => [
+              `${h.position!.x},${h.position!.y},${h.position!.z}`,
+              h,
+            ])
+          )
+        }
+        walls={new Map([['wall-1', solidWall('wall-1')]])}
+      />
+    );
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.envelopeRuns!.length).toBe(4); // left/right/top/bottom
+    expect(props.envelopeCorners!.length).toBe(4);
+  });
+
+  it('an entirely empty encounter (no zones, no walls) still renders with no envelope walls, not a crash', () => {
+    render(
+      <EncounterMap
+        {...baseProps()}
+        revealedHexes={new Map()}
+        walls={new Map()}
+      />
+    );
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.envelopeRuns).toEqual([]);
+    expect(props.envelopeCorners).toEqual([]);
+    expect(props.connectorRuns).toEqual([]);
   });
 });
