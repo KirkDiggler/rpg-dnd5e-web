@@ -233,41 +233,6 @@ export function dragFamily(dx: number, dy: number): 0 | 1 | 2 {
 }
 
 /**
- * Traces the connected sequence of hex edges a straight world-space drag
- * from `from` to `to` would draw — samples points along the segment and
- * calls `nearestEdge` at each one, deduping consecutive repeats. Used by
- * `demoScript.ts` to derive a REAL, connected wall run programmatically
- * (via this same function a live drag uses) rather than hand-transcribing
- * `[col,row]` pairs that a hex-true board might not actually connect —
- * see this module's own `nearestEdge` doc comment for why a plain
- * (unlocked) nearest-edge trace is already gap-free for a straight line.
- */
-export function traceEdgeRun(
-  from: CellPos,
-  to: CellPos,
-  grid: CreationGrid,
-  samples = 400
-): EdgeGeometry[] {
-  const run: EdgeGeometry[] = [];
-  let prevKey: string | null = null;
-  for (let i = 0; i <= samples; i++) {
-    const t = i / samples;
-    const p = {
-      x: from.x + (to.x - from.x) * t,
-      y: from.y + (to.y - from.y) * t,
-    };
-    const edge = nearestEdge(p, grid);
-    if (!edge) continue;
-    const key = `${edge.cellA.join(',')}-${edge.cellB.join(',')}`;
-    if (key !== prevKey) {
-      run.push(edge);
-      prevKey = key;
-    }
-  }
-  return run;
-}
-
-/**
  * Every OPEN (wall-free) boundary edge of a region's own cell set —
  * Kirk's "false enclosure" worry, made directly visible instead of left
  * for the author to notice by accident: "any hex that is not 100%

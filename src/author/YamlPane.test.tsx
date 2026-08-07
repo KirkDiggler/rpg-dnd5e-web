@@ -220,5 +220,35 @@ describe('CapabilitiesLine — the "server capabilities" readout', () => {
     expect(container.textContent).toContain(
       `server capabilities: accepts 2/${DIALECT_FIELDS.length} dialect fields`
     );
+    expect(container.textContent).not.toContain('fully supported');
+  });
+
+  it('appends "v0.3 cut: fully supported" ONLY when the live probe accepted every dialect field (Kirk look-feedback, rpg-project#194) — derived from the probe, never hardcoded', () => {
+    const { container } = render(
+      <CapabilitiesLine
+        serverState="live"
+        capabilities={allCapabilities([...DIALECT_FIELDS])}
+        onRefresh={vi.fn()}
+      />
+    );
+    expect(container.textContent).toContain(
+      `server capabilities: accepts ${DIALECT_FIELDS.length}/${DIALECT_FIELDS.length} dialect fields`
+    );
+    expect(container.textContent).toContain('v0.3 cut: fully supported');
+  });
+
+  it('un-claims "fully supported" the moment even ONE field is rejected — an older/rolled-back server', () => {
+    const allButOne = DIALECT_FIELDS.slice(0, -1);
+    const { container } = render(
+      <CapabilitiesLine
+        serverState="live"
+        capabilities={allCapabilities(allButOne)}
+        onRefresh={vi.fn()}
+      />
+    );
+    expect(container.textContent).toContain(
+      `server capabilities: accepts ${allButOne.length}/${DIALECT_FIELDS.length} dialect fields`
+    );
+    expect(container.textContent).not.toContain('fully supported');
   });
 });

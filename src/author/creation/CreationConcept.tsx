@@ -1,15 +1,19 @@
 /**
- * CreationConcept — the "New Dungeon" flow's composition root: dimension
- * form, board, palette, Inspector, proposed-YAML pane. No server calls
- * (design.md defers wall/shape authoring to P4+ — see CONTRACT.md), but
- * since the CST unification it authors onto the SAME `DungeonDoc`/CST
- * edit mode does, via the shared `Palette`'s Structural/Markers tool
- * rows and the shared `Inspector` — no more bespoke Tools strip or
- * hand-rolled facing/delete panel duplicating what those already do.
+ * CreationConcept — the "New Dungeon" flow's composition root, and (since
+ * the "Edit: The Shrine Hall" tab's retirement, 2026-08-07, rpg-project#194)
+ * the Dungeon Builder's ONLY composition root: dimension form, board,
+ * palette, Inspector, YAML pane. Authors onto the SAME `DungeonDoc`/CST
+ * the (now-retired) edit mode used, via the shared `Palette`'s Structural/
+ * Markers tool rows and the shared `Inspector` — no bespoke Tools strip or
+ * hand-rolled facing/delete panel duplicating what those already do. Real
+ * server calls (capability-probed Save & Play, live floor-plan preview)
+ * since the capability-probed-graduation and v0.3-wire-consumption units —
+ * "no server calls" was true only in this concept's earliest, P4-deferred
+ * form; see CONTRACT.md for the history.
  */
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ServerCapabilities } from '../capabilityProbe';
 import { CollapsibleSidePanel } from '../CollapsibleSidePanel';
 import type { DungeonDoc, V1SubsetResult, WallKind } from '../dungeonYaml';
@@ -23,12 +27,10 @@ import type { ServerState } from '../usePutDungeonPreview';
 import type { SaveState } from '../useSaveDungeon';
 import { resolveCanvasFloor } from './canvasFloor';
 import { CreationBoard } from './CreationBoard';
-import type { DemoActions } from './demoScript';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
 import type { CornerRef } from './hexCorner';
 import { ProposedYamlPane } from './ProposedYamlPane';
 import { RegionPanel } from './RegionPanel';
-import { useDemoScript } from './useDemoScript';
 import type { RegionEditing } from './useRegionEditing';
 
 /** Same 2D/3D board-dimension toggle edit mode's own board header already
@@ -70,16 +72,14 @@ interface CreationConceptProps {
   onToggleHole: (col: number, row: number) => void;
   onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
   onNewCanvas: (width: number, height: number) => void;
-  demoActions: DemoActions;
   toast: (message: string) => void;
   /** Cell-authored semantic region editing (rpg-project#180) —
    * creation-mode-only this round. See `useRegionEditing.ts`. */
   regionEdit: RegionEditing;
-  /** Collapse state for the left Palette and the right proposed-schema
-   * pane — owned by the parent (`DungeonBuilderConcept`) so it's
-   * remembered across an edit<->create tab switch instead of resetting
-   * every time this component mounts. See `CollapsibleSidePanel.tsx`'s
-   * doc comment. */
+  /** Collapse state for the left Palette and the right YAML pane —
+   * owned by the parent (`DungeonBuilderConcept`) so it survives a
+   * `CreationConcept` remount (e.g. an /author <-> Concepts Lab
+   * navigation). See `CollapsibleSidePanel.tsx`'s doc comment. */
   paletteCollapsed: boolean;
   onTogglePalette: () => void;
   yamlCollapsed: boolean;
@@ -137,7 +137,6 @@ export function CreationConcept({
   onToggleHole,
   onSetPoint,
   onNewCanvas,
-  demoActions,
   toast,
   regionEdit,
   paletteCollapsed,
@@ -163,11 +162,6 @@ export function CreationConcept({
 }: CreationConceptProps) {
   const [dims, setDims] = useState(DEFAULT_CANVAS);
 
-  // buildDemoScript is pinned to the dimensions at mount — the script's
-  // own first step resets to them anyway, so a live dims edit mid-script
-  // doesn't need to retarget it.
-  const demo = useDemoScript(demoActions, DEFAULT_CANVAS);
-
   // Canvas floor resolution (rpg-project#169's creation-mode 3D preview
   // unit; wire-consumption-aware since the v0.3 wire consumption unit,
   // 2026-08-05) — the 3D preview's own floor semantic for a from-scratch
@@ -189,14 +183,6 @@ export function CreationConcept({
     [boardDim, doc, liveFloorPlan]
   );
   const floorCells = resolvedFloor.cells;
-
-  useEffect(() => {
-    if (demo.isPlaying) {
-      clearOtherSelections('tool');
-      onSelectTool(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demo.isPlaying]);
 
   const usageCounts: Record<string, number> = {};
   for (const p of doc.place) usageCounts[p.ref] = (usageCounts[p.ref] ?? 0) + 1;
@@ -309,46 +295,6 @@ export function CreationConcept({
           >
             New Canvas
           </button>
-          <button
-            onClick={() => (demo.isPlaying ? demo.pause() : demo.play())}
-            style={{
-              background: demo.isPlaying ? '#3a2f18' : '#5fd1c9',
-              color: demo.isPlaying ? '#ffd76a' : '#14110f',
-              border: demo.isPlaying ? '1px solid #c9a227' : 'none',
-              borderRadius: 4,
-              padding: '4px 10px',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            {demo.isPlaying
-              ? '⏸ Pause'
-              : demo.isDone
-                ? '▶ Replay the pitch'
-                : demo.stepIndex > 0
-                  ? '▶ Resume the pitch'
-                  : '▶ Play the pitch'}
-          </button>
-          {(demo.stepIndex > 0 || demo.isDone) && (
-            <button
-              onClick={() => {
-                demo.restart();
-                onNewCanvas(dims.width, dims.height);
-              }}
-              style={{
-                background: 'transparent',
-                color: 'var(--text-secondary, #8a7a5a)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 4,
-                padding: '4px 8px',
-                fontSize: 11,
-                cursor: 'pointer',
-              }}
-            >
-              ↺ restart
-            </button>
-          )}
         </div>
         <div
           role="group"
@@ -398,32 +344,6 @@ export function CreationConcept({
           {edit.selectedPalette
             ? `Palette: ${edit.selectedPalette.ref.split(':').pop()} selected — click an empty floor hex to place it (highlighted teal); orbit/zoom with the mouse.`
             : 'Click a placed prop/monster to select it (opens the Inspector — rotate/delete there), or pick a palette item to place one here too. Region/wall/hole/start/end tools stay 2D-only this round — switch to the 2D board for those.'}
-        </div>
-      )}
-
-      {demo.caption && (
-        <div
-          style={{
-            padding: '8px 16px',
-            background: '#18261f',
-            borderBottom: '1px solid #3a5a45',
-            color: '#8fe8b0',
-            fontSize: 13,
-            fontStyle: 'italic',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <span>“{demo.caption}”</span>
-          <span style={{ fontSize: 10, color: '#5a8a6a', marginLeft: 'auto' }}>
-            step {Math.min(demo.stepIndex + 1, demo.stepCount)}/{demo.stepCount}
-            {demo.isDone
-              ? ' — done, take over any time'
-              : !demo.isPlaying
-                ? ' — paused, take over any time'
-                : ''}
-          </span>
         </div>
       )}
 
@@ -528,7 +448,7 @@ export function CreationConcept({
         <CollapsibleSidePanel
           side="right"
           width={420}
-          label="Proposed Schema"
+          label="YAML"
           collapsed={yamlCollapsed}
           onToggle={onToggleYaml}
         >

@@ -7256,4 +7256,111 @@ build/tests).
   state across a component boundary is plumbing/architecture, not
   surface removal; out of scope for this ask.
 
+## Kirk look-feedback, continued: concept-era surfaces retired — pitch demo + "PROPOSED SCHEMA" framing (2026-08-07, rpg-project#194)
+
+Two more on-branch adjustments in the same round as the Shrine-tab
+retirement above, both concept-era surfaces this is "no longer" — Kirk's
+own framing for each.
+
+### "Play the pitch" retired
+
+Verbatim: "play the pitch is also not needed. this is no longer the
+concept pitch." Deleted `creation/demoScript.ts` and
+`creation/useDemoScript.ts` outright (no test files existed for either),
+the `creationDemoActions` wrapper object in `DungeonBuilderConcept.tsx`
+that fed them, and the button/caption-banner/restart-button JSX in
+`CreationConcept.tsx`.
+
+**Scope discipline, same as the tab removal**: the REAL mutators the demo
+drove (`placeItem`/`setStart`/`setEnd`/`setPlacementFacing`/
+`setWallEdge`, all `dungeonYaml.ts`) are exactly what a manual click
+already calls via `useBoardEditing` — completely untouched, still
+imported, still used by the real interactive handlers. One demo-only
+piece lived inside the otherwise-shared `creation/creationGeometry.ts`:
+`traceEdgeRun`, whose own doc comment named its one purpose explicitly
+("Used by `demoScript.ts` to derive a REAL, connected wall run
+programmatically... rather than hand-transcribing coordinates"). Deleted
+it too, plus its own `describe` block in `creationGeometry.test.ts` (2
+tests) — confirmed first, by grep, that `nearestEdge`/`dragFamily` (the
+primitives a REAL interactive drag actually calls, and that
+`traceEdgeRun` itself called) are independently used by
+`CreationBoard.tsx` and stay untouched.
+
+### "PROPOSED SCHEMA" framing retired — the v0.3 cut is live
+
+Kirk: "proposed schema section. I am being told the backend fully
+supports v0.3" — verified server-side the same day (dev-tip `rpg-api`
+361242c / Wave 1 #774 on the shared verification server: accepts +
+projects `regions:`; `canvas`/`topLevelPlace`/`walls`/`start`/facing were
+already accepted beforehand).
+
+- Removed `creation/ProposedYamlPane.tsx`'s "PROPOSED SCHEMA — MOST OF
+  THIS DUNGEONSPEC CANNOT EXPRESS YET" banner entirely (it was concept-
+  era hazard signaling, not honest-probe-driven content — nothing
+  replaces it; the surrounding `CollapsibleSidePanel` already carries a
+  plain `label="YAML"`, so there's no header left to duplicate it).
+- Converted the pane's dashed-violet hazard chrome (`2px dashed
+#9b7fd6` borders, the violet banner background) to the same plain
+  `1px solid var(--border-primary)` framing the (now-retired) edit-mode
+  `YamlPane` used — this pane is the Dungeon Builder's ONLY YAML pane
+  now, with no sibling "real" pane left to visually distinguish itself
+  from.
+- Fixed the textarea's `aria-label`: `"Proposed schema (mostly
+invented, not real dungeonspec)"` → `"Dungeon YAML"` — a known fossil
+  the team lead's own Playwright automation had already tripped on.
+- `ProposedYamlPane.tsx`'s own top doc comment rewritten for accuracy —
+  it previously asserted (present tense) that the pane's schema was
+  invented ahead of any server support; that framing is now history, not
+  current fact, and is recorded as such.
+- Left the component/file NAME (`ProposedYamlPane`) as-is — renaming it
+  is a bigger, unrequested move than the copy/styling fix this round
+  actually asked for; noted in the file's own doc comment so a future
+  reader isn't left wondering why the name doesn't match the framing
+  anymore.
+
+**Swept the rest of the module** for the same class of stale present-
+tense claim (`grep -rniE "proposed schema|cannot express|not yet
+accepted|mostly invented|not real dungeonspec"`): the two other hits were
+`YamlPane.tsx`'s `CompileBadgeStrip` ("Uses: ... — not yet accepted by
+this server", genuinely dynamic, only renders for fields the LIVE probe
+actually rejected THIS session — stays, it's already honest) and
+`capabilityProbe.ts`'s own header doc comment (past-tense HISTORY
+explaining what this module's own 2026-08-04 unit fixed — stays, per
+this file's own "don't rewrite history" rule). Nothing else needed
+touching.
+
+**Optional item, shipped**: `CapabilitiesLine` (`YamlPane.tsx`) now
+appends "· v0.3 cut: fully supported" the moment `capabilitySummary`
+reports every dialect field accepted (`accepted === total`) — derived
+from the SAME live probe result the badges beside it already read, never
+a hardcoded claim, and self-corrects to nothing the instant a server
+accepts fewer than all of them (an older deploy, a rolled-back server).
+Verified live against the Wave-1 server this addendum's server-side
+change actually shipped on: reads "accepts 6/17 dialect fields" with NO
+"fully supported" suffix — correct, honest behavior, not a bug (Wave 1
+added `regions:` on top of Wave 0's `canvas`/`topLevelPlace`, still well
+short of all 17; several fields remain decode-unknown regardless of
+mode — `holes`/`end`/`lighting`/`defaults`/height/`rotationDegrees`/
+`targeting`, per `capabilityProbe.ts`'s own transcript).
+
+### Live verification
+
+Both mounts re-screenshotted after all three of this round's changes:
+no "Play the pitch"/pause/resume/restart button anywhere in the header;
+the right panel reads plain "YAML" with solid borders, no violet dashed
+hazard framing, no "PROPOSED SCHEMA" text anywhere on screen;
+`/author` (live, Wave-1 server) shows "server capabilities: accepts
+6/17 dialect fields" with no "fully supported" suffix, exactly as
+predicted before looking.
+
+### Tests
+
+139 files / 2294 tests — net unchanged from the prior round's own
+139/2294, but not because nothing moved: `traceEdgeRun`'s 2 deleted
+tests are exactly offset by 2 new `CapabilitiesLine` tests
+(`YamlPane.test.tsx`, now 14) covering the "fully supported" line
+appearing at 17/17 and correctly absent at 16/17 — the "un-claims
+itself" half of the honesty guarantee, not just the happy path.
+`ci-check` clean.
+
 — asset-pipeline agent, on behalf of KirkDiggler

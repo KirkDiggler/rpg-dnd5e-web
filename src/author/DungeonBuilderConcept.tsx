@@ -22,10 +22,22 @@
  * zero other consumers; `Inspector`/`Palette`/`DraftRestoredBanner`/
  * `useSaveDungeon`/`useDraftAutosave`/`hasServerEdges` kept — genuinely
  * shared with creation mode).
+ *
+ * **Same round, addendum: "Play the pitch" retired.** Kirk, verbatim:
+ * "play the pitch is also not needed. this is no longer the concept
+ * pitch." `creation/demoScript.ts`/`creation/useDemoScript.ts` (the
+ * scripted-playback machinery) and the `creationDemoActions` wrapper
+ * that fed them are deleted — the REAL mutators the demo drove
+ * (`placeItem`/`setStart`/`setEnd`/`setPlacementFacing`/
+ * `setWallEdge`/etc., `dungeonYaml.ts`) obviously stay, since they're
+ * exactly what a manual click already calls via `useBoardEditing`/the
+ * handlers below. `creationGeometry.ts`'s `traceEdgeRun` also removed —
+ * it existed solely to let the demo script derive a connected wall run
+ * for a SCRIPTED straight drag; `nearestEdge`/`dragFamily` (which a real
+ * interactive drag actually calls) are untouched.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CreationConcept } from './creation/CreationConcept';
-import type { DemoActions } from './creation/demoScript';
 import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
 import type { CornerRef } from './creation/hexCorner';
 import { useRegionEditing } from './creation/useRegionEditing';
@@ -40,11 +52,9 @@ import {
   addWallLine,
   DungeonParseError,
   parseDungeon,
-  placeItem,
   removeWallLineAt,
   serializeDungeon,
   setEnd,
-  setPlacementFacing,
   setStart,
   setWallEdge,
   setWallLineEndpoint,
@@ -418,37 +428,6 @@ export function DungeonBuilderConcept({
     setCreateDraftBannerDismissed(true);
   };
 
-  // "Play the pitch" (Kirk's own demo script) drives these same mutators
-  // a manual click would — see demoScript.ts's own doc comment. Rebuilt
-  // fresh each render so every method reads the CURRENT creationCst/
-  // creationDoc, not a stale closure from whenever the demo started;
-  // useDemoScript.ts keeps its own ref to the latest object so this
-  // doesn't churn the demo's timer identity.
-  const creationDemoActions: DemoActions = {
-    resetGrid: handleNewCanvas,
-    toggleWallEdge: handleCreationToggleWallEdge,
-    setStart: (at) => {
-      setStart(creationCst, at);
-      syncFromCreationCst(creationCst);
-    },
-    setEnd: (at) => {
-      setEnd(creationCst, at);
-      syncFromCreationCst(creationCst);
-    },
-    place: (ref, at) => {
-      placeItem(creationCst, null, ref, at);
-      syncFromCreationCst(creationCst);
-    },
-    rotateLastFacing: (delta) => {
-      const lastIndex = creationDoc.place.length - 1;
-      if (lastIndex < 0) return;
-      const current = creationDoc.place[lastIndex].facing ?? 0;
-      const next = (((current + delta) % 6) + 6) % 6;
-      setPlacementFacing(creationCst, null, lastIndex, next);
-      syncFromCreationCst(creationCst);
-    },
-  };
-
   // Delete/Backspace removes the selected placement — creation mode's
   // own board-level keyboard shortcut (rpg-project#169's creation-3D-
   // editing unit; previously gated on which of two modes' selection was
@@ -500,7 +479,6 @@ export function DungeonBuilderConcept({
         onToggleHole={handleCreationToggleHole}
         onSetPoint={handleCreationSetPoint}
         onNewCanvas={handleNewCanvas}
-        demoActions={creationDemoActions}
         toast={flashToast}
         regionEdit={regionEdit}
         paletteCollapsed={createPaletteCollapsed}

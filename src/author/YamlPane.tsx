@@ -68,6 +68,14 @@ export function CapabilitiesLine({
     );
   }
   const { accepted, total } = capabilitySummary(capabilities);
+  // Kirk look-feedback addendum (2026-08-07, rpg-project#194): "I am
+  // being told the backend fully supports v0.3." Derived from the SAME
+  // live probe result every field/badge above already reads, never a
+  // hardcoded claim — the moment a server accepts fewer than all
+  // DIALECT_FIELDS (an older deploy, a rolled-back server), this line
+  // un-claims itself automatically, exactly as honest as the badges
+  // beside it.
+  const fullySupported = total > 0 && accepted === total;
   return (
     <span
       style={{
@@ -79,6 +87,7 @@ export function CapabilitiesLine({
       }}
     >
       server capabilities: accepts {accepted}/{total} dialect fields
+      {fullySupported && ' · v0.3 cut: fully supported'}
       <button
         onClick={onRefresh}
         title="Re-run the per-field capability probe against this server"
