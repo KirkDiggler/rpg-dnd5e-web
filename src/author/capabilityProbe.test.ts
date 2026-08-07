@@ -15,6 +15,10 @@ import {
   capabilitySummary,
   DIALECT_FIELDS,
   probeAllCapabilities,
+  V03_CUT_FIELDS,
+  v03CutFullySupported,
+  type DialectField,
+  type ServerCapabilities,
 } from './capabilityProbe';
 
 beforeEach(() => {
@@ -24,6 +28,63 @@ beforeEach(() => {
 describe('DIALECT_FIELDS', () => {
   it('has no duplicate entries', () => {
     expect(new Set(DIALECT_FIELDS).size).toBe(DIALECT_FIELDS.length);
+  });
+});
+
+function capsFrom(accepted: readonly DialectField[]): ServerCapabilities {
+  return Object.fromEntries(
+    DIALECT_FIELDS.map((f) => [f, { accepted: accepted.includes(f) }])
+  ) as ServerCapabilities;
+}
+
+describe('V03_CUT_FIELDS — the ratified v0.3 level cut (spec.md §1 groups b/c/d)', () => {
+  it('is exactly the 6 fields spec.md §1 groups (b)/(c)/(d) name — walls/start/facingFloorProp (b), canvas/topLevelPlace (c, Wave 0), regions (d, Wave 1)', () => {
+    expect([...V03_CUT_FIELDS].sort()).toEqual(
+      [
+        'walls',
+        'start',
+        'facingFloorProp',
+        'canvas',
+        'topLevelPlace',
+        'regions',
+      ].sort()
+    );
+  });
+
+  it('is a strict subset of DIALECT_FIELDS — every cut field is a real probed field', () => {
+    for (const field of V03_CUT_FIELDS) {
+      expect(DIALECT_FIELDS).toContain(field);
+    }
+  });
+
+  it('excludes facingMonster/facingBoss/facingWallMount — spec §4.9.3 REQUIRES these rejected, not merely "not yet accepted"', () => {
+    expect(V03_CUT_FIELDS.has('facingMonster')).toBe(false);
+    expect(V03_CUT_FIELDS.has('facingBoss')).toBe(false);
+    expect(V03_CUT_FIELDS.has('facingWallMount')).toBe(false);
+  });
+});
+
+describe('v03CutFullySupported', () => {
+  it("is true against TODAY's real Wave-1 verification-server state: exactly the 6 cut fields accepted, all 11 others rejected", () => {
+    expect(v03CutFullySupported(capsFrom([...V03_CUT_FIELDS]))).toBe(true);
+  });
+
+  it('is false the moment even one cut field is rejected', () => {
+    const [, ...missingOne] = [...V03_CUT_FIELDS];
+    expect(v03CutFullySupported(capsFrom(missingOne))).toBe(false);
+  });
+
+  it('is true at 17/17 — accepting every field trivially includes every cut field', () => {
+    expect(v03CutFullySupported(capsFrom(DIALECT_FIELDS))).toBe(true);
+  });
+
+  it('is false when only non-cut (draft-tier/rejection-mandated) fields are accepted', () => {
+    const nonCut = DIALECT_FIELDS.filter((f) => !V03_CUT_FIELDS.has(f));
+    expect(v03CutFullySupported(capsFrom(nonCut))).toBe(false);
+  });
+
+  it('is false against an empty/all-rejected server', () => {
+    expect(v03CutFullySupported(capsFrom([]))).toBe(false);
   });
 });
 

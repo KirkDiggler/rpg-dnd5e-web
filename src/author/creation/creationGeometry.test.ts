@@ -6,7 +6,6 @@ import {
   nearestCreationCell,
   nearestEdge,
   openBoundaryEdges,
-  traceEdgeRun,
 } from './creationGeometry';
 import type { CreationGrid } from './creationTypes';
 
@@ -115,34 +114,6 @@ describe('nearestEdge', () => {
       // the connectivity assertion above never ran).
       expect(sawMultipleEdges).toBe(true);
     });
-  });
-});
-
-describe('traceEdgeRun', () => {
-  it('produces a fully connected sequence of edges for a straight world-space drag', () => {
-    const boundaryY = canonicalHexEdge(8, 14, 5).mid.y;
-    const run = traceEdgeRun(
-      { x: cellCenter(5, 14).x, y: boundaryY },
-      { x: cellCenter(12, 14).x, y: boundaryY },
-      grid
-    );
-    expect(run.length).toBeGreaterThan(1);
-    for (let i = 1; i < run.length; i++) {
-      const prev = run[i - 1];
-      const cur = run[i];
-      const shared =
-        dist(prev.a, cur.a) < 0.5 ||
-        dist(prev.a, cur.b) < 0.5 ||
-        dist(prev.b, cur.a) < 0.5 ||
-        dist(prev.b, cur.b) < 0.5;
-      expect(shared).toBe(true);
-    }
-  });
-
-  it('is empty for a degenerate (zero-length) drag entirely off-grid', () => {
-    expect(
-      traceEdgeRun({ x: -9999, y: -9999 }, { x: -9999, y: -9999 }, grid)
-    ).toEqual([]);
   });
 });
 

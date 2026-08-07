@@ -1,21 +1,22 @@
 /**
  * YamlPane.test.tsx — render-layer coverage for the capability-probed
  * graduation unit's gating pieces (`SaveAndPlayButton`, `CompileBadgeStrip`,
- * `CapabilitiesLine`), all exported from `YamlPane.tsx` so
- * `creation/ProposedYamlPane.tsx` can reuse the exact same components
- * rather than a second copy — see that file's own doc comment. Tests
- * these directly against their own props (`dungeonYaml.test.ts` already
- * covers where `dropped`/`compiling`/`v1CompilableBlockers` come from —
- * `stripToV1Subset`), not wired through the full `DungeonBuilderConcept`
- * composition root, per this concept's "tests that survive extraction"
- * bar (CONTRACT.md). No jest-dom matchers — this repo's vitest config
- * has no such setup (`vite.config.ts`'s `test` block), so assertions use
- * plain DOM properties, matching `Board.test.tsx`'s own convention.
+ * `CapabilitiesLine`), all exported from `YamlPane.tsx` (now a shared
+ * sub-component library, the edit-mode `YamlPane` component itself
+ * retired 2026-08-07 — see `YamlPane.tsx`'s own doc comment) so
+ * `creation/ProposedYamlPane.tsx` reuses the exact same components rather
+ * than a second copy. Tests these directly against their own props
+ * (`dungeonYaml.test.ts` already covers where `dropped`/`compiling`/
+ * `v1CompilableBlockers` come from — `stripToV1Subset`), not wired
+ * through a composition root, per this concept's "tests that survive
+ * extraction" bar (CONTRACT.md). No jest-dom matchers — this repo's
+ * vitest config has no such setup (`vite.config.ts`'s `test` block), so
+ * assertions use plain DOM properties.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { DialectField, ServerCapabilities } from './capabilityProbe';
-import { DIALECT_FIELDS } from './capabilityProbe';
+import { DIALECT_FIELDS, V03_CUT_FIELDS } from './capabilityProbe';
 import {
   CapabilitiesLine,
   CompileBadgeStrip,
@@ -219,5 +220,62 @@ describe('CapabilitiesLine — the "server capabilities" readout', () => {
     expect(container.textContent).toContain(
       `server capabilities: accepts 2/${DIALECT_FIELDS.length} dialect fields`
     );
+    expect(container.textContent).not.toContain('fully supported');
+  });
+
+  it('appends "v0.3 cut: fully supported" once every RATIFIED v0.3-cut field is accepted — TODAY\'S real state against the Wave-1 verification server (Kirk look-feedback, rpg-project#194), even though 11 of 17 fields (draft-tier or spec-mandated rejections) stay rejected', () => {
+    const cutFields = [...V03_CUT_FIELDS];
+    const { container } = render(
+      <CapabilitiesLine
+        serverState="live"
+        capabilities={allCapabilities(cutFields)}
+        onRefresh={vi.fn()}
+      />
+    );
+    expect(container.textContent).toContain(
+      `server capabilities: accepts ${cutFields.length}/${DIALECT_FIELDS.length} dialect fields`
+    );
+    expect(container.textContent).toContain('v0.3 cut: fully supported');
+  });
+
+  it('un-claims "fully supported" the moment even ONE v0.3-cut field is rejected — an older/rolled-back server, not just any field', () => {
+    const [, ...cutFieldsMinusOne] = [...V03_CUT_FIELDS];
+    const { container } = render(
+      <CapabilitiesLine
+        serverState="live"
+        capabilities={allCapabilities(cutFieldsMinusOne)}
+        onRefresh={vi.fn()}
+      />
+    );
+    expect(container.textContent).toContain(
+      `server capabilities: accepts ${cutFieldsMinusOne.length}/${DIALECT_FIELDS.length} dialect fields`
+    );
+    expect(container.textContent).not.toContain('fully supported');
+  });
+
+  it('still shows "fully supported" at 17/17 — accepting every field trivially includes every cut field', () => {
+    const { container } = render(
+      <CapabilitiesLine
+        serverState="live"
+        capabilities={allCapabilities([...DIALECT_FIELDS])}
+        onRefresh={vi.fn()}
+      />
+    );
+    expect(container.textContent).toContain(
+      `server capabilities: accepts ${DIALECT_FIELDS.length}/${DIALECT_FIELDS.length} dialect fields`
+    );
+    expect(container.textContent).toContain('v0.3 cut: fully supported');
+  });
+
+  it('does NOT claim "fully supported" from draft-tier fields alone — accepting all the NON-cut fields is not the v0.3 cut', () => {
+    const nonCutFields = DIALECT_FIELDS.filter((f) => !V03_CUT_FIELDS.has(f));
+    const { container } = render(
+      <CapabilitiesLine
+        serverState="live"
+        capabilities={allCapabilities(nonCutFields)}
+        onRefresh={vi.fn()}
+      />
+    );
+    expect(container.textContent).not.toContain('fully supported');
   });
 });

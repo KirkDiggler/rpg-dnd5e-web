@@ -6,16 +6,17 @@
  * .glb`), auto-frames it with drei's `Bounds`, and fills the viewport with
  * zero app chrome — same dev-deep-link shape as PlaytestHarness's
  * `?encounterId=` gate in App.tsx, gated the same way (development mode
- * only). Lives in `src/dev/` (not `src/concepts/dungeon-builder/`, where
- * it started) so `App.tsx`'s dev-only gate doesn't import from a concept
- * folder — graduation audit item; this component has no dependency on
- * anything dungeon-builder-specific, it just happens to be the tool that
- * baked that concept's palette thumbnails.
+ * only). Lives in `src/dev/` (not `src/author/`, where the dungeon
+ * builder itself lives — nor `src/concepts/dungeon-builder/`, where that
+ * builder started) so `App.tsx`'s dev-only gate doesn't import from a
+ * concept/feature folder — graduation audit item; this component has no
+ * dependency on anything dungeon-builder-specific, it just happens to be
+ * the tool that baked that builder's palette thumbnails.
  *
  * Baking process: point `game-dev/tools/browser/screenshot.mjs` at
  * `http://localhost:PORT/?thumbGlb=<path>` with a small square viewport
  * (128x128) and save straight into
- * `src/concepts/dungeon-builder/thumbs/*.png` — no cropping/resizing
+ * `src/author/thumbs/*.png` — no cropping/resizing
  * needed since the canvas already fills the viewport. See paletteData.ts's
  * `thumbForRef` doc comment for the filename convention
  * (`<ref's last segment>.png`) and CONTRACT.md's "Thumbnail provenance"

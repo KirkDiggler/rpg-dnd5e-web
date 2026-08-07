@@ -6855,4 +6855,592 @@ ci-check` clean (format/lint/typecheck/build/tests all pass).
   Monsters and Obstacles-&-Props/Lighting vocabulary; the tool-based
   Structural/Markers rows aren't manifest-driven and had nothing to sync.
 
+## Graduation: the builder moves out of `/concepts` and becomes a real place (2026-08-07, rpg-project#194)
+
+Kirk's direction: "I think we should move it out of concepts. I think we
+have the proper builder and maybe a dev one that is hooked to fixture
+data. the dungeon builder concept grew out of its concept roots." This is
+that move — the outer-shell graduation the "Operating bar" section above
+(2026-08-02) was already written for: "wiring, not rewriting." The module
+itself is untouched; only where it's mounted and how it decides
+live-vs-fixtures changed.
+
+### What shipped
+
+- **The whole directory moved**, `git mv src/concepts/dungeon-builder
+src/author` — one `git mv`, history preserved on every file (`git log
+--follow` still walks through the rename). Every file, including
+  `thumbs/`, `specimens/`, this file, stayed together; nothing forked.
+- **Two mounts, one component tree** — `DungeonBuilderConcept` (unchanged
+  name/shape, per "graduation is wiring not rewriting") now renders at:
+  - **`/author`** (new `AuthorView.tsx`), a real `AppView` in `App.tsx`,
+    reached from a **"Dungeon Builder" button on Home** — real chrome,
+    not the dev-tools cluster, not `isDevelopment`-gated.
+    `usePutDungeonPreview` gets no `forceFixtures`, so this mount behaves
+    exactly as the concept always did: live-probe, fall back to fixtures
+    only if the server says otherwise.
+  - **Concepts Lab's "Dungeon Builder" tab** (`ConceptsView.tsx`), now a
+    thin wrapper: `<DungeonBuilderConcept forceFixtures />`. A new
+    `forceFixtures` prop threads straight through to
+    `usePutDungeonPreview`, which — when set — skips its mount-time probe
+    entirely and pins `serverState` at `'gate-off'`, the SAME fixtures
+    fallback path the concept already had for a real gated-off server,
+    just entered unconditionally. Verified live (this unit): with
+    `VITE_API_HOST` pointed at a fully live, reachable `rpg-api`, the
+    Concepts Lab tab still shows "● FIXTURES MODE — authoring disabled on
+    this server" and made **zero** `PutDungeon` network requests over a
+    6s window (Playwright request-listener capture, matched on the real
+    RPC path `.AuthoringService/PutDungeon` — the SAME live server's
+    `/author` mount made 23 over the same window from probe + capability
+    suite + live edits, confirmed as a control). The dev sandbox is
+    provably, not just nominally, server-independent.
+- **`DungeonBuilderHomeButton.tsx` + `useAuthoringGate.ts`** — Home's own
+  gate, separate from `usePutDungeonPreview`'s (that one only exists once
+  a user is already inside the builder; Home needs an answer before the
+  builder component tree is even mounted). Same probe shape: an
+  empty-key `PutDungeon(validate_only)`, classified `Unimplemented` ->
+  hidden, transport failure -> disabled + retry, otherwise -> live.
+  Cached per session (module-level) for the two terminal outcomes so
+  repeat Home visits don't re-probe a settled server; deliberately NOT
+  cached for the transient `unreachable` outcome.
+
+### A real bug, found building this unit's own gate proof, not by inspection
+
+Proving the `unreachable` state against an actually-dead server (not a
+hand-mocked `Code.Unavailable`) surfaced a genuine, previously-shipped
+bug: connect-web's `ConnectError.from()` defaults an unmapped thrown
+error to **`Code.Unknown`** (`connect-error.js`: `static from(reason,
+code = Code.Unknown)`), not `Code.Unavailable`. A real connection
+failure (verified live: pointing the client at a port nothing listens on
+produced `ConnectError` with `code: 2` — Unknown — every time, never 14)
+never reaches `Code.Unavailable` at all. Both `useAuthoringGate.ts`'s own
+classifier and `usePutDungeonPreview.ts`'s pre-existing `classifyFailure`
+(shipped well before this unit) only checked for `Code.Unavailable`,
+so an unreachable server fell through to the `'other'`/`'live'` branch —
+the OPPOSITE of the intended, tested-only-against-mocks behavior. Fixed
+in both places: `Code.Unavailable` OR `Code.Unknown` now both classify as
+unreachable. `Code.Unavailable` is kept (a real server-side "temporarily
+unavailable" trailer would still legitimately carry it) but is no longer
+relied on alone. This means `/author`'s own live board, not just this
+unit's new Home button, now correctly detects a server going down
+mid-session instead of quietly reporting itself as still live.
+
+### Gate states, proven against real servers, not asserted
+
+All three `useAuthoringGate` outcomes exercised against real `rpg-api`
+containers, not mocks, per Kirk's own evidence bar:
+
+1. **Live** — Home button enabled against the running Wave-0 dev server
+   (`rpg-api:dev-wave0`, `localhost:8092`, `RPG_AUTHORING_ENABLED=1`).
+   Clicked through to `/author`; the SAME "● LIVE — PutDungeon
+   reachable" / "server capabilities: accepts 5/17 dialect fields"
+   readout the concept has always shown. Clicked **Save & Play** for
+   real — confirmed server-side via `grpcurl ...
+dnd5e.api.lobby.v1alpha1.LobbyService/ListDungeons` (the "showcase"
+   key that comes back is the same one `DungeonBuilderConcept`'s own
+   seed always saves as).
+2. **Gate-off (hidden)** — spun a sibling container,
+   `rpg-api-authoring-off` (same `rpg-api:dev-wave0` image, same
+   network, **no** `RPG_AUTHORING_ENABLED`), plus a temp envoy on 8093
+   copied from the Wave-0 grpc-web config with its cluster address
+   repointed. `grpcurl list` on it confirms
+   `dnd5e.api.authoring.v1alpha1.AuthoringService` isn't even in the
+   server's reflection list without the flag — `PutDungeon` there
+   returns `Unimplemented` / "unknown service", matched by the gate. The
+   Home button rendered nothing at all.
+3. **Unreachable (disabled + retry)** — stopped the temp envoy;
+   pointed the client at the now-dead port. Button rendered disabled,
+   "Dungeon Builder — authoring server unreachable", with a separate
+   clickable "retry" affordance next to it (mirrors `YamlPane.tsx`'s
+   existing `ServerBadge` unreachable treatment, same discipline).
+
+All temp containers (`rpg-api-authoring-off`, `rpg-envoy-authoring-off`)
+stopped after verification; Kirk's own `rpg-api-wave0-dev` /
+`rpg-envoy-wave0-dev` and every other pre-existing container untouched
+throughout (`docker ps` before/after diffed to confirm).
+
+### A stale-path bug the move itself would have introduced, caught before merge
+
+`.prettierignore` carried a hardcoded `src/concepts/dungeon-builder/
+specimens/*.{yaml,json}` exclusion (the byte-exact specimen pack —
+Prettier's YAML formatter would silently diverge these from the real
+serializer's output otherwise, per `specimens/README.md`). Left
+unfixed, the move would have made `format:check` start reformatting
+those files, drifting them from what's posted verbatim on
+rpg-project#175. Repointed to `src/author/specimens/`. Same light-touch
+pass fixed two FORWARD-looking doc paths (`specimens/README.md`'s
+regen-script instructions, `TARGET-YAML.md`'s live-mechanism pointer) —
+historical, dated entries elsewhere in this file and in
+`specimens/README.md`'s own changelog were deliberately left reading
+`src/concepts/dungeon-builder`, per this file's own "don't rewrite
+history" convention (Operating bar section, above): those sentences
+describe what was true at the time they were written, not the module's
+current address.
+
+### Tests
+
+`useAuthoringGate.test.ts` (new, 8 tests): all four probe classifications
+including the `Code.Unknown` regression, plus the three per-session
+caching behaviors (live cached, gate-off cached, unreachable NOT cached
+and re-probes). `usePutDungeonPreview.test.ts` gained the same
+`Code.Unknown` regression test. Full repo suite: 139 files / 2297 tests,
+`ci-check` clean (format/lint/typecheck/build/tests) — both before AND
+after the `Code.Unknown` fix (the fix only touches the previously-untested
+real-transport-failure path; nothing regressed).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **No `?author` (or similar) dev deep link** — unlike `?concept=<id>`,
+  reaching `/author` always goes through Home's gated button; this
+  wasn't asked for and the gate itself is the point (a deep link would
+  bypass proving it).
+- **No attempt to reduce `CONTRACT.md`/`TARGET-YAML.md`'s own size** —
+  this file crossed 6900 lines this unit; still the right single ledger
+  per this repo's established pattern (`combat-pacing`, `fog-of-war`),
+  not this unit's problem to solve.
+- **`Code.Unknown` fix scoped to connectivity classification only** — no
+  broader audit of every other `ConnectError` code-handling site in this
+  module for the same class of gap; this unit's own gate-proof is what
+  surfaced this one, not a systematic sweep.
+
+## Rider: placed monsters ignored their authored cell in the 3D preview — a plain `.clone(true)` on a skinned GLB (2026-08-07)
+
+Found live by Kirk, root-caused and handed to this unit as a scoped rider
+(same graduation branch, its own commit): a monster placed via the
+palette in `New Dungeon`'s 3D preview rendered away from its own
+authored `at:` cell — reading, at a glance, as "stuck at the canvas
+origin."
+
+### Root cause
+
+`preview3d/PreviewMonsterModel.tsx`'s `LoadedMonsterModel` cloned the
+`useGLTF`-cached scene with a plain `scene.clone(true)`, copied from
+`PropModel.tsx`'s pattern — but `PropModel.tsx`'s own doc comment is
+explicit that a plain clone is correct ONLY because props are static,
+non-skinned meshes. Monster GLBs are skinned/rigged. Reading three.js's
+own source (`node_modules/three/src/objects/SkinnedMesh.js`, `copy()`)
+confirms the exact defect:
+
+```js
+this.skeleton = source.skeleton;
+```
+
+A shallow reference, not a clone — every `SkinnedMesh` produced by
+`Object3D.clone(true)` keeps pointing at the SAME `Skeleton` (and
+therefore the SAME, original, never-repositioned bones) as the scene it
+was cloned from. The same class of bug `ClassCharacterModel.tsx`
+documents from rpg-dnd5e-web#510 — there the whole model failed to
+render at all; here it rendered, but the bone actually driving its GPU
+skinning was never part of the clone's own tree and never moved with it.
+
+### Fixed the same way #510 was
+
+`SkeletonUtils.clone()` (`three/addons/utils/SkeletonUtils.js`) in place
+of `Object3D.clone(true)` — it rebuilds a new `Skeleton` from the
+CLONED bones and rebinds the mesh to it. Correct for a static/unskinned
+mesh too (`ClassCharacterModel.tsx`'s own doc comment), so this one
+clone call is now right for every monster GLB.
+
+### Ground-truthed directly in the running app, not just argued
+
+A first screenshot-based before/after comparison (creation mode, two
+zombies placed at well-separated cells, orbit camera) showed no visible
+difference — misleading, not a false alarm: the clone's own top-level
+position (the `<primitive position=...>` prop) was ALREADY correct in
+both the broken and fixed builds, so a typical isometric screenshot at
+normal zoom doesn't show the defect. The actual bug is narrower and
+lives entirely in the skinning-driving bone.
+
+Proved it precisely by patching `Object3D.prototype.updateMatrixWorld`
+inside the live running app (Playwright, dynamically importing the
+app's own already-loaded `three` module instance via Vite's dep-optimizer
+metadata, so the patch applies to the real prototype the app's own
+renderer uses) and reading each placed zombie's actual skeleton bone
+world position after every frame update:
+
+- **Pre-fix**: two zombies placed at distinct cells (world positions
+  `(8.660254037844386, 0, -3)` and `(12.12435565298214, 0, 0)`) both had
+  their skinning-driving bone frozen at the IDENTICAL, shared position
+  `(0, 0.876275961339755, ~0)` — completely ignoring each instance's own
+  placement.
+- **Post-fix**: each zombie's driving bone now correctly tracks its own
+  instance — `(8.660254037844386, 0.657…, -2.9999998…)` and
+  `(12.12435565298214, 0.657…, ~0)` — the `X`/`Z` components match each
+  placement's own world position to full floating-point precision.
+
+This is the real, load-bearing proof — a live before/after capture of
+the actual defect and its correction, not an inference from pixels.
+
+### Tests
+
+`PreviewMonsterModel.skinnedClone.test.ts` (new, 3 tests): a real,
+unmocked Three.js fixture (genuinely rigged — `THREE.SkinnedMesh` /
+`THREE.Skeleton` / `THREE.Bone`, hand-built rather than GLTF-file-loaded
+since the bug is generic Object3D/SkinnedMesh clone semantics, not
+anything GLTF-format-specific) run through the REAL `SkeletonUtils.clone`
+export. `PreviewMonsterModel.test.tsx`'s existing mocked-`useGLTF`
+coverage (a plain `THREE.Group`/`THREE.Mesh`, no skeleton) is
+structurally BLIND to this class of bug — `Object3D.clone(true)` and
+`SkeletonUtils.clone()` behave identically for an unskinned scene, so no
+assertion built on that mock could ever have distinguished the broken
+clone from the fixed one. Full suite: 140 files / 2302 tests, `ci-check`
+clean.
+
+### What did NOT ship this round — named, not silently dropped
+
+- **No permanent E2E/Playwright regression test** — the live
+  ground-truth capture (`Object3D.prototype.updateMatrixWorld` patching)
+  that actually proved this fix is throwaway verification tooling, not
+  committed; the permanent regression coverage is the real-fixture
+  Vitest test, one level down from the full running app but exercising
+  the identical, real, unmocked clone mechanism.
+- **No audit of other GLTF-clone call sites** for the same
+  `Object3D.clone(true)`-on-a-skinned-mesh mistake — this fix is scoped
+  to `PreviewMonsterModel.tsx`, the one Kirk hit live.
+
+## Kirk look-feedback: the "Edit: The Shrine Hall" example-editing tab retired — predates straight walls (2026-08-07, rpg-project#194)
+
+Kirk, verbatim: "our dungeon builder does not need the example edit
+shrine tab. that was before straight walls." The builder had two tabs
+since the CST unification (this file's earlier "unifying New Dungeon
+onto the shared CST" section): "Edit: The Shrine Hall" (a fixed example
+room-chain document, wall PAINTING only — this predates the straight-
+wall-drawing/edge-native authoring the canvas builder gained later) and
+"New Dungeon" (the from-scratch canvas builder, the one that's grown
+every feature since: straight walls, regions, 3D editing, drafts,
+capability-probed Save & Play). With the example gone, "New Dungeon" is
+the ONLY surface — and with one surface, the tab chrome goes too.
+
+### Scope discipline: surface removal, not plumbing removal
+
+`dungeonYaml.ts`'s chain/room machinery (parsing, `stripToV1Subset`,
+room-scoped `place:`, `buildWalkItYaml`/`stripMonsterPlacements`) is
+completely untouched — a room-chain document is still v1-real dialect
+(spec v0.3 §4.2–4.4), Load .yaml still ingests one without crashing (see
+"Live verification" below), and the compilation/projection pipeline
+still emits room-chain output where a document calls for it. Only the
+UI surface for HAND-EDITING the example chain document is gone.
+
+### What was deleted outright (zero other consumers, confirmed by grep before removing each one)
+
+- **`Board.tsx`** (814 lines) + **`Board.test.tsx`** (225 lines) — the
+  edit-mode 2D board component. `CreationBoard.tsx` is a separate,
+  canvas-native component; nothing else imported `Board.tsx`.
+- **`ConnectorInspector.tsx`** (188 lines) — the connector-door editing
+  popup. Room-chain-connector-specific; creation mode has no connectors
+  (canvas docs are `rooms: []`) and never imported it.
+- **`WallGashExplainer.tsx`** (104 lines) — an explanatory popup for the
+  chain board's auto-generated wall gaps; edit-board-specific, no other
+  consumer.
+- **The `YamlPane` component + `ServerBadge` + `YamlPaneProps`** inside
+  `YamlPane.tsx` — but NOT the file itself: `YamlPane.tsx` also exports
+  `CapabilitiesLine`/`CompileBadgeStrip`/`SaveAndPlayButton`/
+  `DownloadYamlButton`/`LoadYamlButton`/`SpecCompatBanner`/
+  `SaveResultPanel`, ALL genuinely reused by `creation/ProposedYamlPane.tsx`
+  (confirmed by reading its import list before touching anything — a
+  first attempt to delete the whole file broke `tsc -b` immediately,
+  caught before it ever reached a commit). Trimmed the file to just the
+  shared exports; `YamlPane.test.tsx` already only tested those (never
+  the `YamlPane` component itself), so it needed zero changes — 12/12
+  tests still pass unmodified.
+- **"Walk it" as a feature** — its button lived only in the now-deleted
+  `YamlPane` component; `creation/ProposedYamlPane.tsx` never had an
+  equivalent. `buildWalkItYaml`/`stripMonsterPlacements`
+  (`dungeonYaml.ts`) stay — chain/room machinery, own test coverage,
+  explicitly in scope to keep — but there is currently no UI path left
+  that calls them. Named here rather than silently lost.
+
+### What was kept, and why (shared with creation mode)
+
+`Inspector`/`Palette`/`DraftRestoredBanner`/`DungeonPreview3D` (creation
+mode's own call site already omits the edit-only `floorPlan` prop or
+`onSelectConnector` callback — both genuinely optional, zero changes
+needed), `useSaveDungeon`/`useDraftAutosave`/`useBoardEditing` (generic,
+mode-parametrized hooks — `DungeonBuilderConcept.tsx` now calls each
+once, for creation mode only), `hasServerEdges`/`edgesAdapter.ts`
+(`DungeonPreview3D.tsx`'s own wall-gash rendering reads it regardless of
+mode), `boardGeometry.ts`/`PlacementMarker.tsx`/`markerStyle.ts` (used by
+BOTH the now-deleted `Board.tsx` and `CreationBoard.tsx`/
+`DungeonPreview3D.tsx` — confirmed shared before either survived), and
+`fixtures.ts`'s `SHOWCASE_YAML`/`SHOWCASE_FLOORPLAN` (generic test fixture
+data, consumed by ~10 unrelated unit test files having nothing to do with
+the edit tab).
+
+`usePutDungeonPreview(doc, yamlText, forceFixtures)` — the hook itself is
+untouched, but `DungeonBuilderConcept.tsx`'s call site now passes
+`usePutDungeonPreview(null, '', forceFixtures)`: there is no edit-mode
+document left to feed its per-edit live-preview effect, so that effect
+now permanently no-ops (its own `if (serverState !== 'live' || !doc)
+return;` guard already handles a `null` doc), leaving only the mount-time
+reachability probe and capability suite live — exactly what
+`useCreationFloorPlanPreview` already expected this hook to be (a shared,
+document-independent probe instance; see that hook's own doc comment on
+why a SECOND independent probe would double real network traffic).
+
+### The `draftStorage.ts` 'edit' key — left harmless, not cleaned up
+
+`DraftMode = 'edit' | 'create'` and every `draftStorage.ts`/
+`useDraftAutosave.ts` function stayed exactly as-is (generic,
+mode-parametrized, still has its own passing unit tests using `'edit'` as
+one of two arbitrary valid mode values — zero coupling to the deleted
+UI). Nothing calls `loadDraft('edit')`/`saveDraft('edit', ...)`/
+`discardDraft('edit')` anymore (confirmed by grep), so the 'edit' slot
+is orphaned going forward — including, for real users, any ALREADY-saved
+edit-mode draft sitting in their browser's `localStorage`, which nothing
+will ever read or clear again. Decision: leave it. Proactively clearing
+a real user's stored data for a feature removal they didn't ask about is
+a bigger intervention than the removal itself; worst case is a few
+harmless orphaned bytes, not a bug.
+
+### Live verification
+
+Both mounts screenshotted straight into the canvas builder, no tab bar
+at all:
+
+- **`/author`** (live mode, Wave-0 dev server): Home → Dungeon Builder →
+  lands directly on "New Dungeon", "server capabilities: accepts 6/17
+  dialect fields" confirming the live probe still works with no
+  edit-mode document driving it.
+- **Concepts Lab's "Dungeon Builder" tab** (fixtures-forced): same
+  direct landing, "Save the compilable subset" correctly greyed with the
+  fixtures-mode badge — unaffected by the removal.
+
+**Load .yaml of a room-chain document — proven, not asserted.** Loaded
+`showcase.yaml`'s real chain content (3 rooms, connectors, 26 `place:`
+entries) via the file input on the surviving canvas builder. Observed,
+not assumed:
+
+- Parses cleanly — zero page errors, no parse-error banner, the YAML
+  pane shows the full loaded chain text verbatim.
+- The 2D and 3D board BOTH render an empty, default-sized (20×30) canvas
+  floor — `creation/canvasFloor.ts`'s `deriveCanvasFloorCells` does
+  `doc.canvas ?? DEFAULT_CANVAS`, and a chain document has no `canvas:`
+  field, so it falls back to the default bounds and never reads
+  `doc.rooms` at all. The chain's OWN placements (inside `rooms[].place`)
+  don't appear on the canvas either — that field isn't what the canvas
+  UI reads (`doc.place`, top-level, is empty for a chain doc). A
+  graceful, honest degrade: nothing crashes, nothing pretends to show
+  content it can't.
+- The YAML pane's own capability badges correctly read the loaded
+  document as canvas-incompatible ("Uses: canvas — not yet accepted by
+  this server" / Save & Play stays on the disabled "compilable subset"
+  path) — the existing spec-compat machinery, untouched, does exactly
+  its documented job on a document shape it wasn't originally aimed at.
+
+### Tests
+
+139 files / 2294 tests (down from 140/2302 — `Board.test.tsx`'s removal
+accounts for the full delta; every other file passed unmodified,
+including `YamlPane.test.tsx`, `draftStorage.test.ts`, and
+`useDraftAutosave.test.ts`). `ci-check` clean (format/lint/typecheck/
+build/tests).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **No sweep of historical "matches/mirrors `Board.tsx`" doc-comment
+  references** across `boardGeometry.ts`, `PlacementMarker.tsx`,
+  `markerStyle.ts`, `creationGeometry.ts`, `useRegionEditing.ts`,
+  `RegionPanel.tsx`, `DungeonPreview3D.tsx` (30+ occurrences) — these
+  describe design LINEAGE/precedent ("this behavior mirrors what
+  Board.tsx already established"), still true and still useful context,
+  not active/forward-looking pointers. Same "don't rewrite history"
+  convention this file's own Operating Bar section already applies to
+  superseded terminology. Fixed only the handful describing CURRENT,
+  active behavior inaccurately (`edgesAdapter.ts`'s own doc comment,
+  `Palette.tsx`'s connector-door paragraph).
+- **No relocation of `createPaletteCollapsed`/`createYamlCollapsed`/
+  `createBoardDim`** from `DungeonBuilderConcept.tsx` into
+  `CreationConcept.tsx` itself, even though the "survives an edit↔create
+  tab switch" reason they originally lived one level up no longer
+  applies (there's no sibling mode to switch away from anymore) — moving
+  state across a component boundary is plumbing/architecture, not
+  surface removal; out of scope for this ask.
+
+## Kirk look-feedback, continued: concept-era surfaces retired — pitch demo + "PROPOSED SCHEMA" framing (2026-08-07, rpg-project#194)
+
+Two more on-branch adjustments in the same round as the Shrine-tab
+retirement above, both concept-era surfaces this is "no longer" — Kirk's
+own framing for each.
+
+### "Play the pitch" retired
+
+Verbatim: "play the pitch is also not needed. this is no longer the
+concept pitch." Deleted `creation/demoScript.ts` and
+`creation/useDemoScript.ts` outright (no test files existed for either),
+the `creationDemoActions` wrapper object in `DungeonBuilderConcept.tsx`
+that fed them, and the button/caption-banner/restart-button JSX in
+`CreationConcept.tsx`.
+
+**Scope discipline, same as the tab removal**: the REAL mutators the demo
+drove (`placeItem`/`setStart`/`setEnd`/`setPlacementFacing`/
+`setWallEdge`, all `dungeonYaml.ts`) are exactly what a manual click
+already calls via `useBoardEditing` — completely untouched, still
+imported, still used by the real interactive handlers. One demo-only
+piece lived inside the otherwise-shared `creation/creationGeometry.ts`:
+`traceEdgeRun`, whose own doc comment named its one purpose explicitly
+("Used by `demoScript.ts` to derive a REAL, connected wall run
+programmatically... rather than hand-transcribing coordinates"). Deleted
+it too, plus its own `describe` block in `creationGeometry.test.ts` (2
+tests) — confirmed first, by grep, that `nearestEdge`/`dragFamily` (the
+primitives a REAL interactive drag actually calls, and that
+`traceEdgeRun` itself called) are independently used by
+`CreationBoard.tsx` and stay untouched.
+
+### "PROPOSED SCHEMA" framing retired — the v0.3 cut is live
+
+Kirk: "proposed schema section. I am being told the backend fully
+supports v0.3" — verified server-side the same day (dev-tip `rpg-api`
+361242c / Wave 1 #774 on the shared verification server: accepts +
+projects `regions:`; `canvas`/`topLevelPlace`/`walls`/`start`/facing were
+already accepted beforehand).
+
+- Removed `creation/ProposedYamlPane.tsx`'s "PROPOSED SCHEMA — MOST OF
+  THIS DUNGEONSPEC CANNOT EXPRESS YET" banner entirely (it was concept-
+  era hazard signaling, not honest-probe-driven content — nothing
+  replaces it; the surrounding `CollapsibleSidePanel` already carries a
+  plain `label="YAML"`, so there's no header left to duplicate it).
+- Converted the pane's dashed-violet hazard chrome (`2px dashed
+#9b7fd6` borders, the violet banner background) to the same plain
+  `1px solid var(--border-primary)` framing the (now-retired) edit-mode
+  `YamlPane` used — this pane is the Dungeon Builder's ONLY YAML pane
+  now, with no sibling "real" pane left to visually distinguish itself
+  from.
+- Fixed the textarea's `aria-label`: `"Proposed schema (mostly
+invented, not real dungeonspec)"` → `"Dungeon YAML"` — a known fossil
+  the team lead's own Playwright automation had already tripped on.
+- `ProposedYamlPane.tsx`'s own top doc comment rewritten for accuracy —
+  it previously asserted (present tense) that the pane's schema was
+  invented ahead of any server support; that framing is now history, not
+  current fact, and is recorded as such.
+- Left the component/file NAME (`ProposedYamlPane`) as-is — renaming it
+  is a bigger, unrequested move than the copy/styling fix this round
+  actually asked for; noted in the file's own doc comment so a future
+  reader isn't left wondering why the name doesn't match the framing
+  anymore.
+
+**Swept the rest of the module** for the same class of stale present-
+tense claim (`grep -rniE "proposed schema|cannot express|not yet
+accepted|mostly invented|not real dungeonspec"`): the two other hits were
+`YamlPane.tsx`'s `CompileBadgeStrip` ("Uses: ... — not yet accepted by
+this server", genuinely dynamic, only renders for fields the LIVE probe
+actually rejected THIS session — stays, it's already honest) and
+`capabilityProbe.ts`'s own header doc comment (past-tense HISTORY
+explaining what this module's own 2026-08-04 unit fixed — stays, per
+this file's own "don't rewrite history" rule). Nothing else needed
+touching.
+
+**Optional item, shipped**: `CapabilitiesLine` (`YamlPane.tsx`) now
+appends "· v0.3 cut: fully supported" the moment `capabilitySummary`
+reports every dialect field accepted (`accepted === total`) — derived
+from the SAME live probe result the badges beside it already read, never
+a hardcoded claim, and self-corrects to nothing the instant a server
+accepts fewer than all of them (an older deploy, a rolled-back server).
+Verified live against the Wave-1 server this addendum's server-side
+change actually shipped on: reads "accepts 6/17 dialect fields" with NO
+"fully supported" suffix — correct, honest behavior, not a bug (Wave 1
+added `regions:` on top of Wave 0's `canvas`/`topLevelPlace`, still well
+short of all 17; several fields remain decode-unknown regardless of
+mode — `holes`/`end`/`lighting`/`defaults`/height/`rotationDegrees`/
+`targeting`, per `capabilityProbe.ts`'s own transcript).
+
+### Live verification
+
+Both mounts re-screenshotted after all three of this round's changes:
+no "Play the pitch"/pause/resume/restart button anywhere in the header;
+the right panel reads plain "YAML" with solid borders, no violet dashed
+hazard framing, no "PROPOSED SCHEMA" text anywhere on screen;
+`/author` (live, Wave-1 server) shows "server capabilities: accepts
+6/17 dialect fields" with no "fully supported" suffix, exactly as
+predicted before looking.
+
+### Tests
+
+139 files / 2294 tests — net unchanged from the prior round's own
+139/2294, but not because nothing moved: `traceEdgeRun`'s 2 deleted
+tests are exactly offset by 2 new `CapabilitiesLine` tests
+(`YamlPane.test.tsx`, now 14) covering the "fully supported" line
+appearing at 17/17 and correctly absent at 16/17 — the "un-claims
+itself" half of the honesty guarantee, not just the happy path.
+`ci-check` clean.
+
+## Correction: "v0.3 cut: fully supported" was gated on the wrong subset (2026-08-07, rpg-project#194)
+
+The line above shipped gated on `accepted === total` (all 17 probed
+`DialectField`s) — wrong. The v0.3 CUT is a specific 6-field subset of
+those 17 (spec.md §1 groups b/c/d), not "everything the probe knows
+about." Against today's real Wave-1 verification server (6/17 accepted,
+exactly the cut, the other 11 correctly still rejected), the old gate
+stayed silent — inverting the line's whole purpose: Kirk was told the
+backend fully supports v0.3, and this line exists to confirm that from
+LIVE PROBE TRUTH, not to wait for constructs that were never part of
+v0.3 in the first place.
+
+### The correct set, verified against the ratified spec directly
+
+Read `ideas/dungeon-builder/spec/v0.3/spec.md` §1 (rpg-project,
+**RATIFIED 2026-08-05**) directly rather than trusting either the quick
+verbal enumeration or `specCompat.ts`'s document-level reasoning alone.
+§1's table groups (b) already-compiling, (c) Wave 0 (#192), (d) Wave 1
+(#180) map onto exactly 6 of the 17 probed `DialectField`s:
+
+| Spec §1 group         | Constructs                                           | `DialectField`s                     |
+| --------------------- | ---------------------------------------------------- | ----------------------------------- |
+| (b) already-compiling | `walls:`, `start:`, room-scoped floor-prop `facing:` | `walls`, `start`, `facingFloorProp` |
+| (c) Wave 0 (#192)     | `canvas:`, top-level `place:` (canvas mode)          | `canvas`, `topLevelPlace`           |
+| (d) Wave 1 (#180)     | `regions:`                                           | `regions`                           |
+
+New `V03_CUT_FIELDS` (`capabilityProbe.ts`) is exactly this 6-field set,
+declared fresh rather than imported from `specCompat.ts` — the two
+modules classify genuinely different things (a DOCUMENT's own construct
+USAGE vs. what a SERVER accepts) and forcing one shape to serve both
+would be an artificial coupling, not a real reuse; the constant's own
+doc comment cites the spec table directly instead. New
+`v03CutFullySupported(caps)` returns true only when every `V03_CUT_FIELDS`
+member is individually accepted.
+
+**The subtle part, worth recording precisely**: the remaining 11 fields
+split into two DIFFERENT kinds of "not in the cut," not one — spec §2's
+explicit "ABOVE v0.3" table (`holes`/`end`/`lighting`/`defaults`/`mount`/
+`height`/`rotationDegrees`/`targeting`, 8 fields) is genuinely draft-tier,
+not-yet-ratified. But `facingMonster`/`facingBoss`/`facingWallMount` (3
+fields) are NOT in that table at all — reading spec §4.9.3 directly:
+"a monster `place:` entry, a `boss:` entry, or a `mount: wall` placement
+with `facing:` set MUST be rejected... not a decode failure and not a
+silent drop." A fully spec-COMPLIANT v0.3 server must answer
+`accepted: false` for these three FOREVER, by design — they're not
+"not shipped yet," they're "must never be accepted." Including them in
+the required set would have made "fully supported" an impossible bar no
+server, however compliant, could ever clear. `specCompat.ts`'s own
+`inferSpecCut` independently reaches the same practical conclusion from
+the document-classification side (`facing` itself is excluded from its
+above-v0.3 reasons list, "it's a v0.3 construct... on every entry type" —
+consistent once you separate "is facing a v0.3 construct" from "is
+facing ACCEPTED on this entry type," which §4.9.2's own text does:
+"Acceptance is scoped to non-monster, `mount: floor`... placements").
+6 (cut) + 8 (§2 draft) + 3 (§4.9.3 mandated-rejection) = 17, the full
+`DIALECT_FIELDS` set — every field accounted for on one side or the
+other, no ambiguity left.
+
+### Tests
+
+New `capabilityProbe.test.ts` coverage (8 tests): `V03_CUT_FIELDS` is
+exactly the spec-derived 6-field set and a strict subset of
+`DIALECT_FIELDS`; `v03CutFullySupported` true at exactly-the-cut-accepted
+(today's real state), false the moment one cut field drops, true at
+17/17, false from non-cut fields alone, false against an all-rejected
+server. `YamlPane.test.tsx`'s two capability-line tests corrected to the
+same semantics, plus two more (16 total): "fully supported" at 17/17
+(boundary case) and absent when only non-cut fields are accepted (rules
+out "any 6 fields" satisfying the claim). Full suite: 139 files / 2304
+tests, `ci-check` clean.
+
+### Live re-verification
+
+`/author` against the SAME Wave-1 verification server (`:8092`, dev-tip
+`rpg-api` 361242c / #774) now reads exactly: **"server capabilities:
+accepts 6/17 dialect fields · v0.3 cut: fully supported"** — the precise
+string the correction was written to produce, screenshotted, not just
+asserted. Concepts Lab's fixtures mount re-confirmed unaffected (no
+capabilities line at all outside live mode, unchanged).
+
 — asset-pipeline agent, on behalf of KirkDiggler

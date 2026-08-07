@@ -5,10 +5,11 @@
  * kind}` shape `dungeonYaml.ts`'s `WallDoc` (target-dialect authored
  * `doc.walls`) already uses — one internal edge shape, one geometry helper
  * per view (`hexLayout.ts`'s `edgeBetweenCells` for the 2D board,
- * `preview3d/DungeonPreview3D.tsx`'s own for the 3D preview), for BOTH
- * `Board.tsx` and `DungeonPreview3D.tsx` to consume. Neither renderer
- * parses the proto shape (`FloorPlanCell`/`FloorPlanEdgeKind`) directly —
- * this module is the one place that does.
+ * `preview3d/DungeonPreview3D.tsx`'s own for the 3D preview), for
+ * `DungeonPreview3D.tsx` to consume (originally also `Board.tsx`'s 2D
+ * board, retired 2026-08-07 with the edit-mode tab — rpg-project#194).
+ * The renderer never parses the proto shape (`FloorPlanCell`/
+ * `FloorPlanEdgeKind`) directly — this module is the one place that does.
  *
  * This is a pure field-rename/enum-map, never a compilation step:
  * `FloorPlan.edges` is already the server's own canonical, deduplicated
@@ -70,15 +71,16 @@ export function floorPlanEdgesToServerEdges(
 
 /** Resolve a DOOR edge's `doorId` back to its owning connector's index in
  * `floorPlan.connectors` — the SAME index `doc.connectors`/
- * `ConnectorInspector`/`Board.tsx`'s existing `onSelectConnector` contract
- * already keys off, so a click on a rendered server-truth door edge can
- * open the real `ConnectorInspector` through the exact same prop both
- * views already wire, no new selection channel needed. `null` when
- * `doorId` doesn't match any connector — shouldn't happen for a real
- * generated connector door per `FloorPlanEdge`'s own contract, but a
- * future non-connector door (TARGET-YAML.md's proposed inner-wall doors,
- * rpg-project#179) would fall through here rather than crash or open the
- * wrong inspector. */
+ * `DungeonPreview3D.tsx`'s `onSelectConnector` prop key off. Originally
+ * wired a rendered server-truth door edge click to open `ConnectorInspector`
+ * (edit mode's own connector-editing popup); that popup retired with the
+ * edit tab (2026-08-07, rpg-project#194) and `onSelectConnector` currently
+ * has no caller, but this resolution itself is generic — still correct
+ * for a future consumer of the same index. `null` when `doorId` doesn't
+ * match any connector — shouldn't happen for a real generated connector
+ * door per `FloorPlanEdge`'s own contract, but a future non-connector
+ * door (TARGET-YAML.md's proposed inner-wall doors, rpg-project#179)
+ * would fall through here rather than crash. */
 export function connectorIndexForDoorId(
   floorPlan: FloorPlan,
   doorId: string | undefined

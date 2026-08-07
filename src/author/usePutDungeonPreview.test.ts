@@ -70,6 +70,24 @@ describe('usePutDungeonPreview — mount-time probe semantics', () => {
     await waitFor(() => expect(result.current.serverState).toBe('unreachable'));
   });
 
+  it('Unknown -> unreachable (real bug fix, graduation unit rpg-project#194)', async () => {
+    // connect-web wraps a genuine connection failure as
+    // ConnectError(Code.Unknown) — ConnectError.from()'s own default —
+    // never Code.Unavailable, verified live against an actually-
+    // unreachable rpg-api. Before this fix, Unknown fell through to
+    // 'other' -> LIVE, the opposite of what an unreachable server should
+    // report.
+    hoisted.putDungeonFn.mockRejectedValue(
+      new ConnectError('Failed to fetch', Code.Unknown)
+    );
+
+    const { result } = renderHook(() =>
+      usePutDungeonPreview(doc, SHOWCASE_YAML)
+    );
+
+    await waitFor(() => expect(result.current.serverState).toBe('unreachable'));
+  });
+
   it("InvalidArgument (the probe's own expected outcome) -> live mode", async () => {
     hoisted.putDungeonFn.mockRejectedValue(
       new ConnectError('key must match [a-z0-9-]+', Code.InvalidArgument)

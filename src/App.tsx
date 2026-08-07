@@ -4,6 +4,8 @@ import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
 import { useMyActiveLobby } from './api/useMyActiveLobby';
 import './App.css';
+import { AuthorView } from './author/AuthorView';
+import { DungeonBuilderHomeButton } from './author/DungeonBuilderHomeButton';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
@@ -31,7 +33,8 @@ type AppView =
   | 'character-creation'
   | 'character-sheet'
   | 'lobby'
-  | 'concepts';
+  | 'concepts'
+  | 'author';
 
 function AppContent() {
   // Stable gate: dev mode + encounterId URL param → render PlaytestHarness.
@@ -166,6 +169,10 @@ function AppContent() {
     setCurrentView('concepts');
   };
 
+  const handleOpenAuthor = () => {
+    setCurrentView('author');
+  };
+
   // Carousel selection handler
   const handleCarouselSelect = (id: string, type: 'character' | 'draft') => {
     setSelectedId(id);
@@ -290,6 +297,8 @@ function AppContent() {
           />
         ) : currentView === 'concepts' ? (
           <ConceptsView onBack={handleBackToHome} />
+        ) : currentView === 'author' ? (
+          <AuthorView onBack={handleBackToHome} />
         ) : currentView === 'home' && myActiveLobby.loading ? (
           // Resume-after-refresh (#444): hold Home's content one beat while
           // GetMyActiveLobby resolves, so a resumable session (routed via
@@ -316,6 +325,7 @@ function AppContent() {
             onContinueDraft={handleResumeDraft}
             onDelete={handleDeleteCharacter}
             onDeleteDraft={handleDeleteDraft}
+            onOpenAuthor={handleOpenAuthor}
           />
         ) : currentView === 'character-sheet' && currentCharacterId ? (
           <CharacterSheet
@@ -385,6 +395,7 @@ interface HomeViewProps {
   onContinueDraft: (draftId: string) => void;
   onDelete: (characterId: string) => void;
   onDeleteDraft: (draftId: string) => void;
+  onOpenAuthor: () => void;
 }
 
 function HomeView({
@@ -399,6 +410,7 @@ function HomeView({
   onContinueDraft,
   onDelete,
   onDeleteDraft,
+  onOpenAuthor,
 }: HomeViewProps) {
   // Fetch characters and drafts to find selected item data
   const { data: characters } = useListCharacters({ playerId, sessionId });
@@ -416,6 +428,13 @@ function HomeView({
 
   return (
     <div className="space-y-8">
+      {/* Home menu — real chrome, not dev-gated (rpg-project#194). Button
+          is self-gating (useAuthoringGate): hidden when authoring is off
+          server-side, disabled-with-retry when the server's unreachable. */}
+      <div className="flex justify-center">
+        <DungeonBuilderHomeButton onOpen={onOpenAuthor} />
+      </div>
+
       {/* Character Carousel */}
       <CharacterCarousel
         playerId={playerId}

@@ -239,8 +239,8 @@ There is no permanently-committed generator script in this repo (a
 `.test.ts` file here would auto-run on every `vitest run`/`ci-check`,
 writing to disk as a side effect on every CI pass — not what a
 version-bumped-only-when-the-builder-changes pack wants). Instead: copy
-the script below into a throwaway `src/concepts/dungeon-builder/_regen.test.ts`,
-run `npx vitest run src/concepts/dungeon-builder/_regen.test.ts`, delete
+the script below into a throwaway `src/author/_regen.test.ts`,
+run `npx vitest run src/author/_regen.test.ts`, delete
 the throwaway file, and diff the regenerated output against what's here
 — update the changelog above with what changed.
 
