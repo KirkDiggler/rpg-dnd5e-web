@@ -7444,3 +7444,181 @@ asserted. Concepts Lab's fixtures mount re-confirmed unaffected (no
 capabilities line at all outside live mode, unchanged).
 
 — asset-pipeline agent, on behalf of KirkDiggler
+
+## Drawn walls become real: wallLines->edges projection + props on footprint cells (2026-08-07, rpg-project#169)
+
+Two halves, one meaning — "walls that are real, and things that live against
+them." Half A: `stripToV1Subset` now projects a `wallLines:` entry's
+footprint + crossed-edge geometry into wire-real `walls:` entries at send
+time, so a drawn straight wall exists in the real game (rendered AND
+enforced), not just previewed client-side. Half B: `canvasPlacementRejectReason`
+splits PLACEABLE (props — real floor is enough) from STANDABLE (monsters/
+boss — must not be footprint) so a prop can rest on a straight wall's
+footprint (Kirk's exact ask: a bookcase against the wall).
+
+### A real import cycle, found and fixed at its root
+
+Wiring the projection into `dungeonYaml.ts`'s `stripToV1Subset` needed a
+direct call into `straightWallGeometry.ts`'s `straightWallFootprint`/
+`straightWallCrossedEdges` — the SAME functions `preview3d/walkMovement.ts`
+already calls client-side. That import doesn't work as a plain top-level
+import: `straightWallGeometry.ts` (and, transitively, `creationGeometry.ts`)
+imported `neighborCell` from `boardGeometry.ts`, which itself imports
+`resolvePlacement`/`DungeonDoc` from `dungeonYaml.ts` — a real, crashing
+cycle (`dungeonYaml.ts -> straightWallGeometry.ts -> boardGeometry.ts ->
+dungeonYaml.ts`), the exact class of bug `hexCorner.ts`'s own header comment
+already documents hitting once before ("Cannot access ... before
+initialization" under Vite's ESM interop).
+
+Fix: `hexCorner.ts` already carried its own leaf-level duplicate of
+`neighborCell` (built for the identical reason, when `parseWallLineEndpoint`
+needed to call into corner math from `dungeonYaml.ts` without the same
+cycle). Exported it, and redirected both `straightWallGeometry.ts`'s and
+`creationGeometry.ts`'s own `neighborCell` imports to that copy instead of
+`boardGeometry.ts`'s — severing the cycle at its root rather than adding a
+THIRD duplicate. `boardGeometry.ts`'s own `neighborCell` (and its other
+consumers — `walkMovement.ts`, `DungeonPreview3D.tsx`) are untouched; this
+only moved which leaf copy two already-leaf-adjacent modules call.
+`npx tsc -b --noEmit` clean, all 3 affected test files (56 tests) green
+before writing a single line of new projection code.
+
+### The projection, precisely
+
+`creation/straightWallGeometry.ts` gained `projectWallLineToEdges(line,
+grid)`: for every footprint cell (door cells already excluded), seal all 6
+real neighbor edges — `kind: 'door'` toward a `doors:` cell, `'solid'`
+otherwise, `rimEdgeCount++` toward a neighbor off the canvas grid entirely
+(no cell to pair with). Unions with `straightWallCrossedEdges`'s existing
+between-two-clear-cells grazing crossings (always `'solid'` — a door only
+reverses ITS OWNING line's own footprint claim, never mechanism (b)'s
+independent test; verified directly, not assumed, with a genuinely vertical
+wallLine whose door cell has BOTH a `door`-kind flanking edge AND an
+independent `solid` grazing edge to a different neighbor at once).
+
+`stripToV1Subset` (`dungeonYaml.ts`) calls this per wallLine when
+`accepted('walls')`, merges the union across every line (a door beats a
+solid found from a different direction/line), then merges against
+`doc.walls`'s own explicit entries by an order-independent cell-pair key —
+explicit always wins on a conflict, never duplicated. Reported in
+`compiling`, not `dropped`, worded from the real projection result: "N
+straight walls (projects to M wall edges; K rim edges... could not be
+expressed)". `walls:` not accepted: unchanged prior behavior (wallLines
+drops entirely). The `wallLines:` KEY itself always strips regardless
+(dungeonspec has no such field) — this is a projection at send time, never
+a mutation of the live document; the caller's own `cst` is untouched.
+
+**Doors: `kind: door`, not a bare gap.** The real game's per-edge wall
+renderer (`syntyHexWallHelpers.ts`) only draws geometry where a `Wall`
+entry exists — an omitted edge renders as nothing, indistinguishable from a
+bug. `kind: door` gives the opening a real frame through the same rendering
+path every other door already uses. Full reasoning in TARGET-YAML.md's
+"Straight walls: stripToV1Subset" section.
+
+### Live-verified against the real server, not just unit-tested
+
+Built the actual send-time YAML by calling the real, unmodified
+`stripToV1Subset` (not a hand-typed approximation) on a canvas doc with one
+vertical wallLine (footprint `[6,4]`..`[6,9]`), a door at `[6,6]`, and a
+`dnd5e:props:bookcase` placed at `[6,5]` — a footprint cell, Half B's exact
+target. `PutDungeon` (non-`validate_only`) against the live Wave-1 server
+(`:8092`): `success: true`, zero `field_errors`, `floor_plan.floor_cells`:
+400 (20×20 canvas), `floor_plan.edges`: **exactly 31**, matching the
+projection's own count. Two `FLOOR_PLAN_EDGE_KIND_DOOR` entries at
+`[6,5]`<->`[6,6]` and `[6,6]`<->`[6,7]`, each carrying a real `doorId` — the
+server compiles the projected door edges as real doors, not decoration.
+Both the wall-footprint cell `[6,5]` and the door cell `[6,6]` confirmed
+real floor (`floor_cells` membership) — the "both endpoints are canvas
+floor cells" premise this unit's own brief named, verified, not assumed.
+
+**A real encounter, started on this exact saved dungeon** (`CreateLobby` ->
+`SetReady` -> `StartEncounter`, dungeon key `wallproj-verify`) — enforcement
+transcript, via `MoveEntity`/`GetEncounter`, cube coordinates:
+
+- Walked the player from the start hex toward the wall along a real
+  hex-adjacent path. The move landed exactly at `(6,-6,0)` [col 6, row 3] —
+  one hex short of `(6,-7,1)` [col 6, row 4], the first footprint cell —
+  even though the requested path continued past it. **The server itself
+  truncated the move at the wall boundary**, never erroring outright.
+- A second, explicit single-step `MoveEntity` from `(6,-6,0)` to
+  `(6,-7,1)` — directly across the projected `solid` edge — left the
+  entity's position UNCHANGED (re-confirmed via `GetEncounter`'s own
+  `contents` field). **Rejected in effect, verified by resulting position,
+  not just by absence of an error.**
+- Routed around via column 7 (confirmed clear of any projected edge) to
+  approach the door cell `[6,6]` from its open side, then attempted to
+  step through into `[6,5]`: **the move stopped exactly at the door cell**,
+  unchanged position. The live `GetEncounter` snapshot showed why —
+  `WALL_KIND_DOOR_CLOSED`, a real `Wall.id`
+  (`wallproj-verify-authored-door-6--9-3--6--8-2`). A genuine, honest
+  finding: **the real game's authored door starts CLOSED and blocks
+  movement until interacted with** — a real gameplay mechanic
+  `preview3d/walkMovement.ts`'s own client-side author-preview simplifies
+  away (it treats `kind: door` as always-passable, correct for its own
+  scope — a walkthrough preview with no interact affordance — but not the
+  live game's actual rule). Not a defect in this unit's projection; the
+  door compiled and rendered exactly as authored.
+- Called `Interact(encounterId, doorId, 'open')` on that same `Wall.id`.
+  Re-issued the identical single-step `MoveEntity` from the door cell into
+  `[6,5]`: **succeeded** — `GetEncounter` confirmed the entity now
+  occupies `(6,-8,2)` [col 6, row 5], the SAME hex as `canvas-prop-0` (the
+  authored bookcase) — Half B confirmed live: the prop and the player
+  genuinely share a footprint cell, exactly as authored.
+
+**Screenshot, real GameView** (`?playerId=pr692-monk-1785858891464`,
+auto-resumed, FREE_ROAM mode, character "PR692 Gate Two" HP 7/10 — the
+exact identity `CreateLobby` bound): a long straight (non-hex-zigzag) wall
+run, and a detailed bookcase model (visible shelved book spines) standing
+directly against it, floor tiles rendered beneath both. Matches Kirk's
+"bookcase against the wall" ask exactly, confirmed visually in the actual
+game route, not the author's own preview.
+
+LoS: not separately captured this round — the enforcement + rendering
+evidence above was judged sufficient and the remaining verification budget
+went to the MoveEntity transcript instead; observed-not-proven, named here
+per this file's own "flag, don't silently claim" discipline rather than
+left unmentioned.
+
+### Half B — the placement-legality split
+
+`canvasFloor.ts`'s `canvasPlacementRejectReason` gained a `requiresStandable`
+boolean: `false` skips the footprint gate entirely (a prop only needs real
+floor — every other gate, off-canvas/hole/occupied, still applies), `true`
+keeps the pre-existing hard reject. Both `CreationBoard.tsx` (2D) and
+`DungeonPreview3D.tsx` (3D `handleClickCell`) now pass
+`selectedPalette.kind !== 'prop'` — the 3D path does a FRESH check rather
+than trusting `buildPlaceableCells`'s own precomputed (necessarily
+standable-based, ref-agnostic) hover state, so a prop placement isn't
+wrongly rejected by a table built for the majority (monster) case.
+`start`/`end` deliberately left untouched: they never routed through this
+predicate at all (only a retroactive "⚠ BLOCKED!" flag exists for them
+today), so there was nothing to relax — and a start point genuinely does
+need standable ground, same as a monster. The 2D board's own retroactive
+"⚠ IN WALL FOOTPRINT" warning ring (`CreationBoard.tsx`'s `renderPlacement`)
+got the same split — scoped to `dnd5e:monsters:*` refs only, so a
+legitimately-placed prop on a footprint cell renders normally, no
+false-alarm warning, matching "keep the footprint visual unchanged; placed
+props render normally" from this unit's own brief.
+
+### Tests
+
+`straightWallGeometry.test.ts`: 6 new tests for `projectWallLineToEdges` —
+an isolated footprint cell seals all 6 real neighbors (solid, no doors);
+every real neighbor direction is either a sealed edge or a counted rim edge
+(never silently dropped, invariant: edges.length + rimEdgeCount === 6 for
+an isolated cell); a door cell's flanking footprint-neighbor edges are
+`door`; an independent mechanism-(b) grazing edge on that SAME door cell
+stays `solid` (the two mechanisms don't interfere); dedup across mechanisms
+produces no duplicate cell pairs. `dungeonYaml.test.ts`: 6 new tests under
+"wallLines -> walls: projection" — projects when accepted, counted in
+compiling; the live document is untouched (a projection, not a
+conversion); explicit `walls:` wins on a kind conflict, no duplicate;
+`doors:` projects as `kind: door`; rim edges counted honestly in the badge
+message; not accepted still drops both, unchanged prior behavior.
+`canvasFloor.test.ts`: 5 new tests under "requiresStandable: false (props)"
+— a footprint cell is legal for a prop, still rejected for anything
+requiring standable ground, holes/occupied gates stay unconditional either
+way, a real authored wallLine's footprint permits a prop via the full
+`straightWallsFootprintSet` integration path. Full suite: 139 files / 2320
+tests, `ci-check` clean (format/lint/typecheck/build/test all green).
+
+— asset-pipeline agent, on behalf of KirkDiggler

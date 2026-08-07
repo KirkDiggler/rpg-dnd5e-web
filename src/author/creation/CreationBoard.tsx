@@ -1521,7 +1521,18 @@ export function CreationBoard({
     // entrance-blocked check, adapted here since a generic placement
     // marker (unlike the START/END circle below) has no text label of
     // its own to prefix.
-    const blocked = inFootprint(at[0], at[1]);
+    //
+    // PLACEABLE vs. STANDABLE (rpg-project#169's "props on footprint
+    // cells" unit): a footprint cell is no longer an error condition for
+    // a PROP — it's the intended target (Kirk's exact ask, a bookcase
+    // against a drawn wall) — so a prop on one renders normally, no
+    // warning. A monster still can't stand there, so the warning stays
+    // for it. Matches `canvasPlacementRejectReason`'s own
+    // `requiresStandable` split at PLACEMENT time — this is the same
+    // rule applied retroactively, to a wall drawn AFTER the placement
+    // already existed.
+    const blocked =
+      inFootprint(at[0], at[1]) && ref.startsWith('dnd5e:monsters:');
     return (
       <g
         key={sel.boss ? 'boss' : `place-${sel.index}`}
