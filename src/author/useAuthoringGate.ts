@@ -84,7 +84,21 @@ export async function probeAuthoringGate(): Promise<AuthoringGateState> {
   } catch (err) {
     if (err instanceof ConnectError) {
       if (err.code === Code.Unimplemented) return 'gate-off';
-      if (err.code === Code.Unavailable) return 'unreachable';
+      // A real connection failure (refused/DNS/etc.) doesn't reach the
+      // server at all, so there's no trailer to carry a real gRPC status
+      // — connect-web's ConnectError.from() wraps it with its OWN default,
+      // Code.Unknown (verified live, this unit, 2026-08-07: a genuinely
+      // unreachable rpg-api produced `code: 2` — Unknown — never
+      // `Code.Unavailable`). Code.Unavailable is kept too since a real
+      // server-side "temporarily unavailable" trailer would carry it
+      // legitimately, but it is NOT what an actually-down server produces
+      // through this transport, contrary to what this file (and
+      // usePutDungeonPreview.ts's own classifyFailure, fixed alongside
+      // this) previously assumed and had never verified against a real
+      // dead server.
+      if (err.code === Code.Unavailable || err.code === Code.Unknown) {
+        return 'unreachable';
+      }
       return 'live'; // the probe's own expected InvalidArgument, etc.
     }
     // A non-ConnectError throw (network layer never got a structured gRPC

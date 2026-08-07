@@ -6855,4 +6855,152 @@ ci-check` clean (format/lint/typecheck/build/tests all pass).
   Monsters and Obstacles-&-Props/Lighting vocabulary; the tool-based
   Structural/Markers rows aren't manifest-driven and had nothing to sync.
 
+## Graduation: the builder moves out of `/concepts` and becomes a real place (2026-08-07, rpg-project#194)
+
+Kirk's direction: "I think we should move it out of concepts. I think we
+have the proper builder and maybe a dev one that is hooked to fixture
+data. the dungeon builder concept grew out of its concept roots." This is
+that move — the outer-shell graduation the "Operating bar" section above
+(2026-08-02) was already written for: "wiring, not rewriting." The module
+itself is untouched; only where it's mounted and how it decides
+live-vs-fixtures changed.
+
+### What shipped
+
+- **The whole directory moved**, `git mv src/concepts/dungeon-builder
+src/author` — one `git mv`, history preserved on every file (`git log
+--follow` still walks through the rename). Every file, including
+  `thumbs/`, `specimens/`, this file, stayed together; nothing forked.
+- **Two mounts, one component tree** — `DungeonBuilderConcept` (unchanged
+  name/shape, per "graduation is wiring not rewriting") now renders at:
+  - **`/author`** (new `AuthorView.tsx`), a real `AppView` in `App.tsx`,
+    reached from a **"Dungeon Builder" button on Home** — real chrome,
+    not the dev-tools cluster, not `isDevelopment`-gated.
+    `usePutDungeonPreview` gets no `forceFixtures`, so this mount behaves
+    exactly as the concept always did: live-probe, fall back to fixtures
+    only if the server says otherwise.
+  - **Concepts Lab's "Dungeon Builder" tab** (`ConceptsView.tsx`), now a
+    thin wrapper: `<DungeonBuilderConcept forceFixtures />`. A new
+    `forceFixtures` prop threads straight through to
+    `usePutDungeonPreview`, which — when set — skips its mount-time probe
+    entirely and pins `serverState` at `'gate-off'`, the SAME fixtures
+    fallback path the concept already had for a real gated-off server,
+    just entered unconditionally. Verified live (this unit): with
+    `VITE_API_HOST` pointed at a fully live, reachable `rpg-api`, the
+    Concepts Lab tab still shows "● FIXTURES MODE — authoring disabled on
+    this server" and made **zero** `PutDungeon` network requests over a
+    6s window (Playwright request-listener capture, matched on the real
+    RPC path `.AuthoringService/PutDungeon` — the SAME live server's
+    `/author` mount made 23 over the same window from probe + capability
+    suite + live edits, confirmed as a control). The dev sandbox is
+    provably, not just nominally, server-independent.
+- **`DungeonBuilderHomeButton.tsx` + `useAuthoringGate.ts`** — Home's own
+  gate, separate from `usePutDungeonPreview`'s (that one only exists once
+  a user is already inside the builder; Home needs an answer before the
+  builder component tree is even mounted). Same probe shape: an
+  empty-key `PutDungeon(validate_only)`, classified `Unimplemented` ->
+  hidden, transport failure -> disabled + retry, otherwise -> live.
+  Cached per session (module-level) for the two terminal outcomes so
+  repeat Home visits don't re-probe a settled server; deliberately NOT
+  cached for the transient `unreachable` outcome.
+
+### A real bug, found building this unit's own gate proof, not by inspection
+
+Proving the `unreachable` state against an actually-dead server (not a
+hand-mocked `Code.Unavailable`) surfaced a genuine, previously-shipped
+bug: connect-web's `ConnectError.from()` defaults an unmapped thrown
+error to **`Code.Unknown`** (`connect-error.js`: `static from(reason,
+code = Code.Unknown)`), not `Code.Unavailable`. A real connection
+failure (verified live: pointing the client at a port nothing listens on
+produced `ConnectError` with `code: 2` — Unknown — every time, never 14)
+never reaches `Code.Unavailable` at all. Both `useAuthoringGate.ts`'s own
+classifier and `usePutDungeonPreview.ts`'s pre-existing `classifyFailure`
+(shipped well before this unit) only checked for `Code.Unavailable`,
+so an unreachable server fell through to the `'other'`/`'live'` branch —
+the OPPOSITE of the intended, tested-only-against-mocks behavior. Fixed
+in both places: `Code.Unavailable` OR `Code.Unknown` now both classify as
+unreachable. `Code.Unavailable` is kept (a real server-side "temporarily
+unavailable" trailer would still legitimately carry it) but is no longer
+relied on alone. This means `/author`'s own live board, not just this
+unit's new Home button, now correctly detects a server going down
+mid-session instead of quietly reporting itself as still live.
+
+### Gate states, proven against real servers, not asserted
+
+All three `useAuthoringGate` outcomes exercised against real `rpg-api`
+containers, not mocks, per Kirk's own evidence bar:
+
+1. **Live** — Home button enabled against the running Wave-0 dev server
+   (`rpg-api:dev-wave0`, `localhost:8092`, `RPG_AUTHORING_ENABLED=1`).
+   Clicked through to `/author`; the SAME "● LIVE — PutDungeon
+   reachable" / "server capabilities: accepts 5/17 dialect fields"
+   readout the concept has always shown. Clicked **Save & Play** for
+   real — confirmed server-side via `grpcurl ...
+dnd5e.api.lobby.v1alpha1.LobbyService/ListDungeons` (the "showcase"
+   key that comes back is the same one `DungeonBuilderConcept`'s own
+   seed always saves as).
+2. **Gate-off (hidden)** — spun a sibling container,
+   `rpg-api-authoring-off` (same `rpg-api:dev-wave0` image, same
+   network, **no** `RPG_AUTHORING_ENABLED`), plus a temp envoy on 8093
+   copied from the Wave-0 grpc-web config with its cluster address
+   repointed. `grpcurl list` on it confirms
+   `dnd5e.api.authoring.v1alpha1.AuthoringService` isn't even in the
+   server's reflection list without the flag — `PutDungeon` there
+   returns `Unimplemented` / "unknown service", matched by the gate. The
+   Home button rendered nothing at all.
+3. **Unreachable (disabled + retry)** — stopped the temp envoy;
+   pointed the client at the now-dead port. Button rendered disabled,
+   "Dungeon Builder — authoring server unreachable", with a separate
+   clickable "retry" affordance next to it (mirrors `YamlPane.tsx`'s
+   existing `ServerBadge` unreachable treatment, same discipline).
+
+All temp containers (`rpg-api-authoring-off`, `rpg-envoy-authoring-off`)
+stopped after verification; Kirk's own `rpg-api-wave0-dev` /
+`rpg-envoy-wave0-dev` and every other pre-existing container untouched
+throughout (`docker ps` before/after diffed to confirm).
+
+### A stale-path bug the move itself would have introduced, caught before merge
+
+`.prettierignore` carried a hardcoded `src/concepts/dungeon-builder/
+specimens/*.{yaml,json}` exclusion (the byte-exact specimen pack —
+Prettier's YAML formatter would silently diverge these from the real
+serializer's output otherwise, per `specimens/README.md`). Left
+unfixed, the move would have made `format:check` start reformatting
+those files, drifting them from what's posted verbatim on
+rpg-project#175. Repointed to `src/author/specimens/`. Same light-touch
+pass fixed two FORWARD-looking doc paths (`specimens/README.md`'s
+regen-script instructions, `TARGET-YAML.md`'s live-mechanism pointer) —
+historical, dated entries elsewhere in this file and in
+`specimens/README.md`'s own changelog were deliberately left reading
+`src/concepts/dungeon-builder`, per this file's own "don't rewrite
+history" convention (Operating bar section, above): those sentences
+describe what was true at the time they were written, not the module's
+current address.
+
+### Tests
+
+`useAuthoringGate.test.ts` (new, 8 tests): all four probe classifications
+including the `Code.Unknown` regression, plus the three per-session
+caching behaviors (live cached, gate-off cached, unreachable NOT cached
+and re-probes). `usePutDungeonPreview.test.ts` gained the same
+`Code.Unknown` regression test. Full repo suite: 139 files / 2297 tests,
+`ci-check` clean (format/lint/typecheck/build/tests) — both before AND
+after the `Code.Unknown` fix (the fix only touches the previously-untested
+real-transport-failure path; nothing regressed).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **No `?author` (or similar) dev deep link** — unlike `?concept=<id>`,
+  reaching `/author` always goes through Home's gated button; this
+  wasn't asked for and the gate itself is the point (a deep link would
+  bypass proving it).
+- **No attempt to reduce `CONTRACT.md`/`TARGET-YAML.md`'s own size** —
+  this file crossed 6900 lines this unit; still the right single ledger
+  per this repo's established pattern (`combat-pacing`, `fog-of-war`),
+  not this unit's problem to solve.
+- **`Code.Unknown` fix scoped to connectivity classification only** — no
+  broader audit of every other `ConnectError` code-handling site in this
+  module for the same class of gap; this unit's own gate-proof is what
+  surfaced this one, not a systematic sweep.
+
 — asset-pipeline agent, on behalf of KirkDiggler

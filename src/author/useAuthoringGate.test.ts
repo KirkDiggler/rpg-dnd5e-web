@@ -53,6 +53,25 @@ describe('useAuthoringGate — probe classification', () => {
     await waitFor(() => expect(result.current.state).toBe('unreachable'));
   });
 
+  it('Unknown -> unreachable (real bug fix, this unit, rpg-project#194)', async () => {
+    // Live-verified against an actually-unreachable rpg-api (this unit's
+    // own gate-proof step): connect-web wraps a genuine connection
+    // failure as ConnectError(Code.Unknown) — ConnectError.from()'s own
+    // default — never Code.Unavailable. Before this fix, Unknown fell
+    // through to 'live', the opposite of what an unreachable server
+    // should report — the SAME latent bug existed in
+    // usePutDungeonPreview.ts's own classifyFailure (fixed alongside
+    // this).
+    hoisted.putDungeonFn.mockRejectedValue(
+      new ConnectError('Failed to fetch', Code.Unknown)
+    );
+    const { useAuthoringGate } = await import('./useAuthoringGate');
+
+    const { result } = renderHook(() => useAuthoringGate());
+
+    await waitFor(() => expect(result.current.state).toBe('unreachable'));
+  });
+
   it("InvalidArgument (the probe's own expected outcome) -> live", async () => {
     hoisted.putDungeonFn.mockRejectedValue(
       new ConnectError('key must match [a-z0-9-]+', Code.InvalidArgument)

@@ -128,7 +128,23 @@ const DEBOUNCE_MS = 500;
 function classifyFailure(err: unknown): 'gate-off' | 'unreachable' | 'other' {
   if (err instanceof ConnectError) {
     if (err.code === Code.Unimplemented) return 'gate-off';
-    if (err.code === Code.Unavailable) return 'unreachable';
+    // Real bug fix (graduation unit, rpg-project#194, 2026-08-07): a
+    // genuine connection failure (refused/DNS/etc.) never reaches the
+    // server, so there's no trailer to carry a real gRPC status —
+    // connect-web's `ConnectError.from()` wraps it with ITS OWN default,
+    // `Code.Unknown`, not `Code.Unavailable`. Live-verified against an
+    // actually-unreachable rpg-api (this unit's Home-button gate proof,
+    // `useAuthoringGate.ts`, hit this exact path first: `code: 2` —
+    // Unknown — never 14/Unavailable). Before this fix, an unreachable
+    // server fell through to `'other'` below and was reported as LIVE —
+    // this hook's own mount-time probe had never actually been exercised
+    // against a real dead server, only against a hand-mocked
+    // `Code.Unavailable` (which a legitimate server-side "temporarily
+    // unavailable" trailer would still carry — kept for that case, just
+    // not relied on alone anymore).
+    if (err.code === Code.Unavailable || err.code === Code.Unknown) {
+      return 'unreachable';
+    }
     return 'other';
   }
   // A non-ConnectError throw (network layer never got a structured gRPC
