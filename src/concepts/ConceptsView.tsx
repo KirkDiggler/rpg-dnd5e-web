@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
+import { DungeonBuilderConcept } from '../author/DungeonBuilderConcept';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
-import { DungeonBuilderConcept } from './dungeon-builder/DungeonBuilderConcept';
 import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
 import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
@@ -113,7 +113,15 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'combat-pacing' && <CombatPacingConcept />}
         {activePage === 'just-roll' && <JustRollConcept />}
         {activePage === 'fog-of-war' && <FogOfWarConcept />}
-        {activePage === 'dungeon-builder' && <DungeonBuilderConcept />}
+        {/* Graduated (rpg-project#194): the real builder now lives at the
+            `/author` AppView (`src/author/AuthorView.tsx`), LIVE mode. This
+            tab is the dev sandbox — same component tree, `forceFixtures`
+            so it never calls PutDungeon and never depends on a running
+            server, per Kirk's ask ("a dev one that is hooked to fixture
+            data"). */}
+        {activePage === 'dungeon-builder' && (
+          <DungeonBuilderConcept forceFixtures />
+        )}
       </motion.div>
     </div>
   );

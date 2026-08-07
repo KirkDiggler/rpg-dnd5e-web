@@ -1602,7 +1602,7 @@ status here is no longer a manually-recorded snapshot.** The finding
 below was first recorded 2026-08-03 from a one-off backend probe
 (rpg-project#175's "Backend feedback: exercising the new authoring API"
 comment, read by a human, pasted into this file by hand) — that framing
-is retired. `src/concepts/dungeon-builder/capabilityProbe.ts` now
+is retired. `src/author/capabilityProbe.ts` now
 MECHANIZES the same kind of check: on every live connection, the concept
 sends one minimal `validate_only` doc per entry-type shape and records
 what the CURRENTLY-CONNECTED server actually says, live, in the running

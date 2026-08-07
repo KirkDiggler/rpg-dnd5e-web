@@ -76,7 +76,18 @@ const canonicalizeYaml = (yamlText: string): string =>
 
 type BuilderMode = 'edit' | 'create';
 
-export function DungeonBuilderConcept() {
+export interface DungeonBuilderConceptProps {
+  /** Graduation unit (rpg-project#194): forces `usePutDungeonPreview` into
+   * fixtures mode unconditionally — see that hook's own doc comment. The
+   * Concepts Lab dev sandbox mount (`ConceptsView.tsx`) sets this; the
+   * real `/author` mount (`AuthorView.tsx`) leaves it unset and gets
+   * today's normal live-probing behavior, unchanged. */
+  forceFixtures?: boolean;
+}
+
+export function DungeonBuilderConcept({
+  forceFixtures = false,
+}: DungeonBuilderConceptProps = {}) {
   const [mode, setMode] = useState<BuilderMode>('edit');
   // Lazy initializers (graduation audit item) — parseDungeon/
   // serializeDungeon both do real parsing/stringification work, and a
@@ -172,7 +183,7 @@ export function DungeonBuilderConcept() {
   // 'create' tab.
   const [createBoardDim, setCreateBoardDim] = useState<'2d' | '3d'>('2d');
 
-  const preview = usePutDungeonPreview(doc, yamlText);
+  const preview = usePutDungeonPreview(doc, yamlText, forceFixtures);
   const save = useSaveDungeon();
   // Separate instance from `save` above — "Walk it" is an independent
   // save action (its own key, its own idle/saving/saved/invalid/error

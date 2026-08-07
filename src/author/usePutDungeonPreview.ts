@@ -49,6 +49,11 @@
  * `'live'` (gate-off/unreachable) — a capability observed against one
  * server is never carried into a fixtures-mode fallback.
  *
+ * **Graduation (rpg-project#194, 2026-08-07)**: this hook now takes an
+ * optional `forceFixtures` param — see its own doc comment on
+ * `usePutDungeonPreview` below. Nothing about the live-probing path
+ * itself changed; the flag only adds a way to skip it.
+ *
  * **v0.3 wire consumption (this unit, 2026-08-05)**: this file also
  * exports `useCreationFloorPlanPreview`, a second, narrower hook for
  * creation mode's OWN document — creation mode never called `PutDungeon`
@@ -187,9 +192,20 @@ async function compileLive(
 
 export function usePutDungeonPreview(
   doc: DungeonDoc | null,
-  yamlText: string
+  yamlText: string,
+  /** Graduation unit (rpg-project#194): when true, skips the mount-time
+   * probe entirely and pins `serverState` at `'gate-off'` — the existing,
+   * fully-built FIXTURES-MODE fallback path — without ever calling
+   * `PutDungeon`. Used by the Concepts Lab dev sandbox mount
+   * (`ConceptsView.tsx`) so it never depends on/talks to any server,
+   * regardless of whether one happens to be reachable. The real `/author`
+   * mount (`AuthorView.tsx`) omits this and gets today's normal
+   * live-probing behavior unchanged. */
+  forceFixtures = false
 ): UsePutDungeonPreviewResult {
-  const [serverState, setServerState] = useState<ServerState>('probing');
+  const [serverState, setServerState] = useState<ServerState>(
+    forceFixtures ? 'gate-off' : 'probing'
+  );
   const [liveFloorPlan, setLiveFloorPlan] = useState<FloorPlan | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ValidationError[]>([]);
   const [requestError, setRequestError] = useState<string | null>(null);
@@ -200,8 +216,13 @@ export function usePutDungeonPreview(
   const [capabilitiesNonce, setCapabilitiesNonce] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Mount-time (and manual retry) probe.
+  // Mount-time (and manual retry) probe — never runs at all when
+  // `forceFixtures` is set (see this function's own param doc comment).
   useEffect(() => {
+    if (forceFixtures) {
+      setServerState('gate-off');
+      return;
+    }
     let cancelled = false;
     setServerState('probing');
     (async () => {
@@ -223,7 +244,7 @@ export function usePutDungeonPreview(
     return () => {
       cancelled = true;
     };
-  }, [probeNonce]);
+  }, [probeNonce, forceFixtures]);
 
   // Capability probe: runs once per live connection (this effect's own
   // `serverState` dependency covers both the initial live transition and
