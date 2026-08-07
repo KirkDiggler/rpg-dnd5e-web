@@ -76,6 +76,74 @@ describe('deriveWalkLights', () => {
   });
 });
 
+describe('deriveWalkLights — 2026-08-07 Lighting category expansion (candle-stand/lantern/torch-ornate/rune-marker/rune-pillar)', () => {
+  it("produces a light for every one of the 5 newly-added lighting refs, matching the game's own MOOD_LIGHT_SPEC_BY_PROP_REF values", () => {
+    const props: LightableProp[] = [
+      prop('a', 'dnd5e:props:candle-stand', [0, 0, 0]),
+      prop('b', 'dnd5e:props:lantern', [0, 0, 0]),
+      prop('c', 'dnd5e:props:torch-ornate', [0, 0, 0]),
+      prop('d', 'dnd5e:props:rune-marker', [0, 0, 0]),
+      prop('e', 'dnd5e:props:rune-pillar', [0, 0, 0]),
+    ];
+    const [candleStand, lantern, torchOrnate, runeMarker, runePillar] =
+      deriveWalkLights(props);
+    expect(candleStand).toMatchObject({
+      color: '#ff9d52',
+      intensity: 1.4,
+      distance: 3.2,
+    });
+    expect(lantern).toMatchObject({
+      color: '#ff9d52',
+      intensity: 1.3,
+      distance: 3,
+    });
+    expect(torchOrnate).toMatchObject({
+      color: '#ff9d52',
+      intensity: 1.6,
+      distance: 3.6,
+    });
+    expect(runeMarker).toMatchObject({
+      color: '#3d84dc',
+      intensity: 0.7,
+      distance: 2.2,
+    });
+    expect(runePillar).toMatchObject({
+      color: '#3d84dc',
+      intensity: 0.9,
+      distance: 2.6,
+    });
+  });
+
+  it('a Lighting-category prop not yet wired here would be silently inert — this test is the guard: every paletteData.ts LIGHTING_PROP_KEYS entry must produce a light', () => {
+    // Local mirror of paletteData.ts's LIGHTING_PROP_KEYS (importing it
+    // directly would pull in propManifest.ts/monsterModels.ts's proto
+    // dependency into this pure-derivation test file) — the exact 8 keys,
+    // kept in sync by hand same as walkLighting.ts's own LIGHT_SPEC_BY_PROP_REF.
+    const lightingKeys = [
+      'brazier',
+      'candles',
+      'glowing-orb',
+      'candle-stand',
+      'lantern',
+      'torch-ornate',
+      'rune-marker',
+      'rune-pillar',
+    ];
+    const props = lightingKeys.map((key, i) =>
+      prop(`k${i}`, `dnd5e:props:${key}`, [0, 0, 0])
+    );
+    expect(deriveWalkLights(props)).toHaveLength(lightingKeys.length);
+  });
+
+  it('torch (plain) and stone-lantern stay non-light-emitting, matching paletteData.ts categorizing them as obstacles-props', () => {
+    const props: LightableProp[] = [
+      prop('a', 'dnd5e:props:torch', [0, 0, 0]),
+      prop('b', 'dnd5e:props:stone-lantern', [0, 0, 0]),
+    ];
+    expect(deriveWalkLights(props)).toEqual([]);
+  });
+});
+
 function light(key: string, x: number, z: number): WalkPointLight {
   return { key, position: [x, 0, z], color: '#fff', intensity: 1, distance: 1 };
 }

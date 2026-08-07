@@ -17,13 +17,19 @@
  * the real, v1 connector door (position derived, `locked:` the only
  * authorable field) is edited via `ConnectorInspector`, reached by
  * clicking the board's own door cell directly, not through the palette.
+ *
+ * Monsters section (2026-08-07 "palette content sync" unit): data-driven
+ * off `paletteData.ts`'s `PALETTE_MONSTERS` rather than one hardcoded
+ * skeleton-captain row — see that array's own doc comment for the
+ * ref-AND-GLB inclusion test and why `zombie` (two promoted looks) still
+ * gets exactly one palette row.
  */
 import { useState } from 'react';
 import {
   BOSS_COLOR,
   categoryForProp,
   MONSTER_COLOR,
-  MONSTER_REF,
+  PALETTE_MONSTERS,
   PALETTE_PROPS,
   ROLE_COLOR,
   thumbForRef,
@@ -297,7 +303,7 @@ export function Palette({
   const lightingProps = PALETTE_PROPS.filter(
     (p) => categoryForProp(p.ref) === 'lighting'
   );
-  const monsterThumb = thumbForRef(MONSTER_REF);
+  const bossableMonsters = PALETTE_MONSTERS.filter((m) => m.bossable);
 
   return (
     <aside
@@ -312,40 +318,42 @@ export function Palette({
 
       <CategorySection
         category="monsters"
-        count={2}
+        count={PALETTE_MONSTERS.length + bossableMonsters.length}
         open={openCategories.has('monsters')}
         onToggle={() => toggle('monsters')}
       >
-        <Row
-          thumb={monsterThumb}
-          color={MONSTER_COLOR}
-          short="Sc"
-          label="skeleton-captain"
-          sub="flags forced off — dungeonspec rejects blocks_* on monster place: entries"
-          isSelected={isSel('monster', MONSTER_REF)}
-          onClick={() =>
-            onSelect(
-              isSel('monster', MONSTER_REF)
-                ? null
-                : { kind: 'monster', ref: MONSTER_REF }
-            )
-          }
-        />
-        <Row
-          thumb={monsterThumb}
-          color={BOSS_COLOR}
-          short="BOSS"
-          label="skeleton-captain (boss pin)"
-          sub="boss.at — real schema, boss-room only"
-          isSelected={isSel('boss', MONSTER_REF)}
-          onClick={() =>
-            onSelect(
-              isSel('boss', MONSTER_REF)
-                ? null
-                : { kind: 'boss', ref: MONSTER_REF }
-            )
-          }
-        />
+        {PALETTE_MONSTERS.map((m) => (
+          <Row
+            key={m.ref}
+            thumb={thumbForRef(m.ref)}
+            color={MONSTER_COLOR}
+            short={m.short}
+            label={m.label}
+            sub={m.sub}
+            isSelected={isSel('monster', m.ref)}
+            onClick={() =>
+              onSelect(
+                isSel('monster', m.ref) ? null : { kind: 'monster', ref: m.ref }
+              )
+            }
+          />
+        ))}
+        {bossableMonsters.map((m) => (
+          <Row
+            key={`${m.ref}-boss`}
+            thumb={thumbForRef(m.ref)}
+            color={BOSS_COLOR}
+            short="BOSS"
+            label={`${m.label} (boss pin)`}
+            sub="boss.at — real schema, boss-room only"
+            isSelected={isSel('boss', m.ref)}
+            onClick={() =>
+              onSelect(
+                isSel('boss', m.ref) ? null : { kind: 'boss', ref: m.ref }
+              )
+            }
+          />
+        ))}
       </CategorySection>
 
       <CategorySection
