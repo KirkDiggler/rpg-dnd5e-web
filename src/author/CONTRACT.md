@@ -7003,4 +7003,99 @@ real-transport-failure path; nothing regressed).
   module for the same class of gap; this unit's own gate-proof is what
   surfaced this one, not a systematic sweep.
 
+## Rider: placed monsters ignored their authored cell in the 3D preview — a plain `.clone(true)` on a skinned GLB (2026-08-07)
+
+Found live by Kirk, root-caused and handed to this unit as a scoped rider
+(same graduation branch, its own commit): a monster placed via the
+palette in `New Dungeon`'s 3D preview rendered away from its own
+authored `at:` cell — reading, at a glance, as "stuck at the canvas
+origin."
+
+### Root cause
+
+`preview3d/PreviewMonsterModel.tsx`'s `LoadedMonsterModel` cloned the
+`useGLTF`-cached scene with a plain `scene.clone(true)`, copied from
+`PropModel.tsx`'s pattern — but `PropModel.tsx`'s own doc comment is
+explicit that a plain clone is correct ONLY because props are static,
+non-skinned meshes. Monster GLBs are skinned/rigged. Reading three.js's
+own source (`node_modules/three/src/objects/SkinnedMesh.js`, `copy()`)
+confirms the exact defect:
+
+```js
+this.skeleton = source.skeleton;
+```
+
+A shallow reference, not a clone — every `SkinnedMesh` produced by
+`Object3D.clone(true)` keeps pointing at the SAME `Skeleton` (and
+therefore the SAME, original, never-repositioned bones) as the scene it
+was cloned from. The same class of bug `ClassCharacterModel.tsx`
+documents from rpg-dnd5e-web#510 — there the whole model failed to
+render at all; here it rendered, but the bone actually driving its GPU
+skinning was never part of the clone's own tree and never moved with it.
+
+### Fixed the same way #510 was
+
+`SkeletonUtils.clone()` (`three/addons/utils/SkeletonUtils.js`) in place
+of `Object3D.clone(true)` — it rebuilds a new `Skeleton` from the
+CLONED bones and rebinds the mesh to it. Correct for a static/unskinned
+mesh too (`ClassCharacterModel.tsx`'s own doc comment), so this one
+clone call is now right for every monster GLB.
+
+### Ground-truthed directly in the running app, not just argued
+
+A first screenshot-based before/after comparison (creation mode, two
+zombies placed at well-separated cells, orbit camera) showed no visible
+difference — misleading, not a false alarm: the clone's own top-level
+position (the `<primitive position=...>` prop) was ALREADY correct in
+both the broken and fixed builds, so a typical isometric screenshot at
+normal zoom doesn't show the defect. The actual bug is narrower and
+lives entirely in the skinning-driving bone.
+
+Proved it precisely by patching `Object3D.prototype.updateMatrixWorld`
+inside the live running app (Playwright, dynamically importing the
+app's own already-loaded `three` module instance via Vite's dep-optimizer
+metadata, so the patch applies to the real prototype the app's own
+renderer uses) and reading each placed zombie's actual skeleton bone
+world position after every frame update:
+
+- **Pre-fix**: two zombies placed at distinct cells (world positions
+  `(8.660254037844386, 0, -3)` and `(12.12435565298214, 0, 0)`) both had
+  their skinning-driving bone frozen at the IDENTICAL, shared position
+  `(0, 0.876275961339755, ~0)` — completely ignoring each instance's own
+  placement.
+- **Post-fix**: each zombie's driving bone now correctly tracks its own
+  instance — `(8.660254037844386, 0.657…, -2.9999998…)` and
+  `(12.12435565298214, 0.657…, ~0)` — the `X`/`Z` components match each
+  placement's own world position to full floating-point precision.
+
+This is the real, load-bearing proof — a live before/after capture of
+the actual defect and its correction, not an inference from pixels.
+
+### Tests
+
+`PreviewMonsterModel.skinnedClone.test.ts` (new, 3 tests): a real,
+unmocked Three.js fixture (genuinely rigged — `THREE.SkinnedMesh` /
+`THREE.Skeleton` / `THREE.Bone`, hand-built rather than GLTF-file-loaded
+since the bug is generic Object3D/SkinnedMesh clone semantics, not
+anything GLTF-format-specific) run through the REAL `SkeletonUtils.clone`
+export. `PreviewMonsterModel.test.tsx`'s existing mocked-`useGLTF`
+coverage (a plain `THREE.Group`/`THREE.Mesh`, no skeleton) is
+structurally BLIND to this class of bug — `Object3D.clone(true)` and
+`SkeletonUtils.clone()` behave identically for an unskinned scene, so no
+assertion built on that mock could ever have distinguished the broken
+clone from the fixed one. Full suite: 140 files / 2302 tests, `ci-check`
+clean.
+
+### What did NOT ship this round — named, not silently dropped
+
+- **No permanent E2E/Playwright regression test** — the live
+  ground-truth capture (`Object3D.prototype.updateMatrixWorld` patching)
+  that actually proved this fix is throwaway verification tooling, not
+  committed; the permanent regression coverage is the real-fixture
+  Vitest test, one level down from the full running app but exercising
+  the identical, real, unmocked clone mechanism.
+- **No audit of other GLTF-clone call sites** for the same
+  `Object3D.clone(true)`-on-a-skinned-mesh mistake — this fix is scoped
+  to `PreviewMonsterModel.tsx`, the one Kirk hit live.
+
 — asset-pipeline agent, on behalf of KirkDiggler
