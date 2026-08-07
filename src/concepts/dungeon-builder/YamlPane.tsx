@@ -112,6 +112,11 @@ interface YamlPaneProps {
    * the Apply button and debounced typing already use. See
    * `LoadYamlButton`'s own doc comment. */
   onLoadFile: (text: string) => void;
+  /** A real file-read failure (not a YAML parse error — see
+   * `LoadYamlButton`'s own doc comment) — wired by the parent to the same
+   * `parseError`/`creationParseError` state a bad paste-and-Apply already
+   * surfaces through. */
+  onLoadFileError: (message: string) => void;
   /** The load-time spec-compatibility report (`specCompat.ts`) — see
    * `SpecCompatBanner`'s own doc comment. */
   specCompat: SpecCompatReport;
@@ -393,7 +398,20 @@ export function DownloadYamlButton({
  * button-triggered file picker. Resets its own value after each pick so
  * selecting the SAME file twice in a row still fires `onChange` (browsers
  * dedupe on unchanged `<input>` value otherwise). */
-export function LoadYamlButton({ onLoad }: { onLoad: (text: string) => void }) {
+export function LoadYamlButton({
+  onLoad,
+  onLoadError,
+}: {
+  onLoad: (text: string) => void;
+  /** Called when `File.text()` itself rejects (a real read failure — file
+   * became inaccessible, permission revoked mid-pick, etc., NOT a YAML
+   * parse error, which `onLoad`'s own `applyText`/`applyCreationText`
+   * already catches and reports through `parseError`). Wired by the
+   * parent to the SAME `parseError`/`creationParseError` state a bad
+   * paste-and-Apply already surfaces through — one error affordance, not
+   * a second, silent-except-for-the-console one. */
+  onLoadError: (message: string) => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -423,7 +441,16 @@ export function LoadYamlButton({ onLoad }: { onLoad: (text: string) => void }) {
           const file = e.target.files?.[0];
           e.target.value = '';
           if (!file) return;
-          void file.text().then(onLoad);
+          void file
+            .text()
+            .then(onLoad)
+            .catch((err: unknown) => {
+              onLoadError(
+                err instanceof Error
+                  ? `Could not read file: ${err.message}`
+                  : 'Could not read the selected file.'
+              );
+            });
         }}
       />
     </>
@@ -433,15 +460,18 @@ export function LoadYamlButton({ onLoad }: { onLoad: (text: string) => void }) {
 /** The load-time spec-compatibility report (`specCompat.ts`, local-drafts
  * unit) — Kirk's ask: "we could have 0.4 able to load in the concept page
  * and want to run the v0.3 version of it if possible. maybe we can check
- * compatibility." Two lines, each independently honest: the declared-vs-
- * inferred spec CUT (a document-structure fact, nothing to do with any
- * live server), and — reusing `stripToV1Subset`'s own `dropped` list
- * verbatim, never recomputed — what the CONNECTED server would actually
- * drop from this document today (a live-capability fact). Renders nothing
- * when there is truly nothing to say: no `spec:` declared, the document
- * is 0.3-clean, and the server would drop nothing — the same "only appear
+ * compatibility." Renders ONLY the declared-vs-inferred spec CUT (a
+ * document-structure fact, nothing to do with any live server) — the
+ * OTHER half of that compatibility question, what the CONNECTED server
+ * would actually drop from this document today, is `report.serverWouldDrop`
+ * (reusing `stripToV1Subset`'s own `dropped` list verbatim, never
+ * recomputed) and is already rendered by the pre-existing
+ * `CompileBadgeStrip` right above this component in both `YamlPane`/
+ * `ProposedYamlPane` — this component doesn't re-render that half, just
+ * sits next to it. Renders nothing when there is truly nothing to say: no
+ * `spec:` declared and the document is 0.3-clean — the same "only appear
  * when there's something real to report" discipline `CompileBadgeStrip`
- * already follows. */
+ * itself follows. */
 export function SpecCompatBanner({ report }: { report: SpecCompatReport }) {
   const { declaredSpec, inferredCut, inferredReasons, specMismatch } = report;
   const hasSpecLine =
@@ -581,6 +611,7 @@ export function YamlPane({
   onRefreshCapabilities,
   downloadFilename,
   onLoadFile,
+  onLoadFileError,
   specCompat,
 }: YamlPaneProps) {
   const hasDialectFields = dialectDropped.length > 0;
@@ -629,7 +660,7 @@ export function YamlPane({
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <DownloadYamlButton yamlText={yamlText} filename={downloadFilename} />
-          <LoadYamlButton onLoad={onLoadFile} />
+          <LoadYamlButton onLoad={onLoadFile} onLoadError={onLoadFileError} />
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <ServerBadge serverState={serverState} onRetryProbe={onRetryProbe} />

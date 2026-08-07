@@ -1,28 +1,42 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { downloadYamlFile } from './fileIO';
 
-// jsdom implements neither `URL.createObjectURL`/`revokeObjectURL` nor a
-// real navigating `HTMLAnchorElement.prototype.click` — stub both so this
-// test exercises the real DOM orchestration (anchor href/download/click,
-// object-URL create+revoke) without needing an actual browser.
+// jsdom implements neither `URL.createObjectURL`/`revokeObjectURL` (the
+// property doesn't exist at all — `vi.spyOn` can't wrap something that
+// isn't there) nor a real navigating `HTMLAnchorElement.prototype.click`
+// (a real function jsdom DOES define, just one that logs "not
+// implemented" for anchor navigation — `vi.spyOn` works fine on it).
 describe('downloadYamlFile', () => {
   let createObjectURL: ReturnType<typeof vi.fn>;
   let revokeObjectURL: ReturnType<typeof vi.fn>;
   let clickSpy: ReturnType<typeof vi.fn>;
+  // `vi.restoreAllMocks()` only reverts `vi.spyOn`-based mocks — it has
+  // no idea these two were ever assigned, since jsdom never defined them
+  // as spyable properties in the first place (Copilot review, PR #717:
+  // a raw `URL.createObjectURL = ...` assignment leaks across the whole
+  // suite otherwise). Captured and restored by hand instead.
+  let originalCreateObjectURL: typeof URL.createObjectURL | undefined;
+  let originalRevokeObjectURL: typeof URL.revokeObjectURL | undefined;
 
   beforeEach(() => {
+    originalCreateObjectURL = URL.createObjectURL;
+    originalRevokeObjectURL = URL.revokeObjectURL;
     createObjectURL = vi.fn(() => 'blob:mock-url');
     revokeObjectURL = vi.fn();
     URL.createObjectURL =
       createObjectURL as unknown as typeof URL.createObjectURL;
     URL.revokeObjectURL =
       revokeObjectURL as unknown as typeof URL.revokeObjectURL;
-    clickSpy = vi.fn();
-    HTMLAnchorElement.prototype.click =
-      clickSpy as unknown as typeof HTMLAnchorElement.prototype.click;
+    // A real `vi.spyOn` — jsdom DOES define this one, so `restoreAllMocks`
+    // below correctly puts the original back (unlike the two above).
+    clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
   });
 
   afterEach(() => {
+    URL.createObjectURL = originalCreateObjectURL as typeof URL.createObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL as typeof URL.revokeObjectURL;
     vi.restoreAllMocks();
   });
 
@@ -57,5 +71,17 @@ describe('downloadYamlFile', () => {
     });
     expect(() => downloadYamlFile('dungeon.yaml', 'version: 1\n')).toThrow();
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+  });
+});
+
+describe('downloadYamlFile global cleanup (Copilot review, PR #717)', () => {
+  it('does not leak URL.createObjectURL/revokeObjectURL stubs into a later test file/suite', () => {
+    // The describe block above always restores in its own afterEach —
+    // this is the regression test: if that restore were missing/broken,
+    // these would still be the `vi.fn()` stubs from the last test above.
+    // `vi.isMockFunction` handles `undefined` (jsdom's real, un-stubbed
+    // state) without throwing, unlike probing `.mock` directly.
+    expect(vi.isMockFunction(URL.createObjectURL)).toBe(false);
+    expect(vi.isMockFunction(URL.revokeObjectURL)).toBe(false);
   });
 });

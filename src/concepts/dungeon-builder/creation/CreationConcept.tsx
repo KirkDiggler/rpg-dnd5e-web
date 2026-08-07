@@ -117,6 +117,7 @@ interface CreationConceptProps {
    * matching edit-mode props. */
   yamlDownloadFilename: string;
   onLoadYamlFile: (text: string) => void;
+  onLoadYamlFileError: (message: string) => void;
   specCompat: SpecCompatReport;
 }
 
@@ -157,6 +158,7 @@ export function CreationConcept({
   onSetBoardDim,
   yamlDownloadFilename,
   onLoadYamlFile,
+  onLoadYamlFileError,
   specCompat,
 }: CreationConceptProps) {
   const [dims, setDims] = useState(DEFAULT_CANVAS);
@@ -545,6 +547,7 @@ export function CreationConcept({
             saveErrorMessage={saveErrorMessage}
             downloadFilename={yamlDownloadFilename}
             onLoadFile={onLoadYamlFile}
+            onLoadFileError={onLoadYamlFileError}
             specCompat={specCompat}
           />
         </CollapsibleSidePanel>

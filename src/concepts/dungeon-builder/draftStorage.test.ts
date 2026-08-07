@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { discardDraft, loadDraft, saveDraft } from './draftStorage';
+import {
+  discardDraft,
+  draftDiffersFromFreshSeed,
+  loadDraft,
+  saveDraft,
+} from './draftStorage';
 
 describe('draftStorage', () => {
   beforeEach(() => {
@@ -83,6 +88,48 @@ describe('draftStorage', () => {
         throw new Error('storage unavailable');
       });
       expect(() => discardDraft('edit')).not.toThrow();
+    });
+  });
+
+  describe('draftDiffersFromFreshSeed (honesty guard, Copilot review PR #717)', () => {
+    // An identity canonicalizer is enough to test THIS function's own
+    // comparison/normalization logic in isolation — the real
+    // `dungeonYaml.ts` parse+serialize round trip is exercised instead by
+    // `DungeonBuilderConcept.tsx`'s own live-verified call site (see
+    // CONTRACT.md).
+    const identity = (s: string) => s;
+
+    it('identical text is NOT meaningfully different', () => {
+      expect(draftDiffersFromFreshSeed('same', 'same', identity)).toBe(false);
+    });
+
+    it('different text IS meaningfully different', () => {
+      expect(draftDiffersFromFreshSeed('edited', 'fresh-seed', identity)).toBe(
+        true
+      );
+    });
+
+    it('normalizes flow-sequence bracket padding before comparing — the pre-existing yaml package quirk does not count as a real difference', () => {
+      const padded = 'wallLines: [ { from: [ 2, 2 ] } ]';
+      const unpadded = 'wallLines: [{ from: [2, 2] }]';
+      expect(draftDiffersFromFreshSeed(padded, unpadded, identity)).toBe(false);
+    });
+
+    it('falls back to true (meaningful) when canonicalize throws for either input — the safe failure direction', () => {
+      const throwing = () => {
+        throw new Error('parse failure');
+      };
+      expect(draftDiffersFromFreshSeed('a', 'b', throwing)).toBe(true);
+    });
+
+    it('calls canonicalize on both the draft and the fresh seed, not just one', () => {
+      const seen: string[] = [];
+      const canonicalize = (s: string) => {
+        seen.push(s);
+        return s;
+      };
+      draftDiffersFromFreshSeed('draft-text', 'seed-text', canonicalize);
+      expect(seen).toEqual(['draft-text', 'seed-text']);
     });
   });
 });

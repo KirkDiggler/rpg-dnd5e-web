@@ -6581,3 +6581,61 @@ the seed template's honest-by-construction `spec: "0.3"`,
 Full `src/concepts/dungeon-builder` suite: 514 tests passing, `npm run
 ci-check` (format + lint + typecheck + build + full repo test suite, 2247
 tests) clean.
+
+### Copilot review round: a real bug, not a nit (PR #717)
+
+One of Copilot's four comments was load-bearing, not cosmetic: the edit/create
+autosave `useEffect`s fired on `yamlText`'s FIRST change too — the one React
+runs right after initial mount — so the pristine default seed itself got
+autosaved 500ms after every fresh load. A refresh would then ALWAYS show
+"Draft restored" for content nobody had touched, and `handleDiscardEditDraft`/
+`handleDiscardCreateDraft`'s own `setYamlText` reset triggered the exact same
+effect again, silently re-autosaving the fresh seed and undoing the discard
+the very next tick.
+
+**Fixed with two independent layers**, per the review's own suggestion:
+
+1. **Skip the mount tick and the tick immediately after an explicit discard.**
+   Extracted the (previously duplicated, once per mode) inline effect into
+   `useDraftAutosave.ts` — a small hook owning a `skipNextRef` that starts
+   `true` (skips the mount tick) and exposes `skipNextTick()` for a discard
+   handler to arm again right before its own `setYamlText` reset. Extracting
+   it also fixed the untestability problem: the original inline effects
+   couldn't be unit-tested without mounting the whole 900+ line composition
+   root (never done anywhere in this concept); the hook can be driven
+   directly with `renderHook` + fake timers.
+2. **Belt-and-suspenders on the restore side.** `draftStorage.ts`'s new
+   `draftDiffersFromFreshSeed(draftText, freshSeedText, canonicalize)` — both
+   texts canonicalized through the SAME `dungeonYaml.ts` parse+serialize round
+   trip before comparing (which washes out the `yaml` package's own
+   pre-existing flow-padding quirk symmetrically on both sides), plus an
+   explicit bracket-padding normalization pass as a second, independent
+   safety net. A stored "draft" indistinguishable from the mode's own fresh
+   seed is never restored or announced, regardless of how it got saved —
+   independent of fix 1 holding, not reliant on it alone.
+
+The other three comments were real but smaller: `LoadYamlButton`'s
+`file.text().then(onLoad)` had no rejection handler (added `.catch`, wired
+through a new `onLoadFileError` prop straight to the same `parseError`/
+`creationParseError` state a bad paste-and-Apply already surfaces through —
+one error affordance, not a second silent one); `SpecCompatBanner`'s doc
+comment claimed it rendered `serverWouldDrop` when only `CompileBadgeStrip`
+does (comment corrected to describe actual behavior); `fileIO.test.ts`
+mutated `URL.createObjectURL`/`revokeObjectURL` directly, which
+`vi.restoreAllMocks()` can't revert since jsdom never defines those
+properties as spyable — captured the originals and restored them by hand in
+`afterEach`, plus a regression test asserting no leak.
+
+**Live-verified again, same Wave-0 server, same throwaway-script pattern**:
+pristine mount → real refresh → no banner (both modes); a real hand-edit →
+refresh → banner correctly appears; Discard → refresh → no banner, confirmed
+stays gone across a SECOND refresh too (not just a one-tick fluke).
+Screenshots: `local-drafts-fix-banner-after-real-edit.png`,
+`local-drafts-fix-no-banner-after-discard.png`.
+
+11 new tests (5 in `useDraftAutosave.test.ts` — mount-skip, real-edit
+autosave, discard-tick-skip, skip-consumed-then-resumes, edit/create
+independence; 5 in `draftStorage.test.ts` for `draftDiffersFromFreshSeed`; 1
+regression test in `fileIO.test.ts`). Full `src/concepts/dungeon-builder`
+suite: 525 tests passing. Full repo `npm run ci-check` and `vitest run`
+(2258 tests) clean.

@@ -69,10 +69,11 @@ interface ProposedYamlPaneProps {
   saveFieldErrors: ValidationError[];
   saveErrorMessage: string | null;
   /** Local drafts + versioned save/load (this unit) — see
-   * `YamlPane.tsx`'s own doc comment on these three props; same shape,
-   * reused directly rather than re-specified. */
+   * `YamlPane.tsx`'s own doc comment on these props; same shape, reused
+   * directly rather than re-specified. */
   downloadFilename: string;
   onLoadFile: (text: string) => void;
+  onLoadFileError: (message: string) => void;
   specCompat: SpecCompatReport;
 }
 
@@ -91,6 +92,7 @@ export function ProposedYamlPane({
   saveErrorMessage,
   downloadFilename,
   onLoadFile,
+  onLoadFileError,
   specCompat,
 }: ProposedYamlPaneProps) {
   const dropped = v1Subset?.dropped ?? [];
@@ -134,7 +136,7 @@ export function ProposedYamlPane({
       >
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <DownloadYamlButton yamlText={yamlText} filename={downloadFilename} />
-          <LoadYamlButton onLoad={onLoadFile} />
+          <LoadYamlButton onLoad={onLoadFile} onLoadError={onLoadFileError} />
         </div>
         <CapabilitiesLine
           serverState={serverState}
