@@ -1,25 +1,32 @@
 /**
  * walkLighting — derives R3F point-light configs from placed light-family
- * props (`paletteData.ts`'s Lighting category: brazier/candles/
- * glowing-orb) plus the doc's own `lighting: {ambient}` dialect knob
- * (TARGET-YAML.md), for the author-walkthrough's Walk mode (rpg-project
- * #169, Kirk's day-one ask: "a 3d view from the player perspective that
- * has the lighting loaded"). Pure — no Three.js/R3F import — the same
- * "pure derivation, component just maps it to JSX" shape this file's
- * neighbor `DungeonPreview3D.tsx` already uses throughout (`buildWalls`,
- * `buildPlacements`, etc.).
+ * props (`paletteData.ts`'s Lighting category — 8 keys as of 2026-08-07:
+ * brazier/candles/glowing-orb/candle-stand/lantern/torch-ornate/
+ * rune-marker/rune-pillar) plus the doc's own `lighting: {ambient}`
+ * dialect knob (TARGET-YAML.md), for the author-walkthrough's Walk mode
+ * (rpg-project #169, Kirk's day-one ask: "a 3d view from the player
+ * perspective that has the lighting loaded"). Pure — no Three.js/R3F
+ * import — the same "pure derivation, component just maps it to JSX"
+ * shape this file's neighbor `DungeonPreview3D.tsx` already uses
+ * throughout (`buildWalls`, `buildPlacements`, etc.).
  *
  * **Color/intensity/distance provenance — game-derived, not guessed.**
- * The three specs below are a LOCAL COPY of the real game's own
- * `MOOD_LIGHT_SPEC_BY_PROP_REF` entries for these exact three refs
+ * The specs below are a LOCAL COPY of the real game's own
+ * `MOOD_LIGHT_SPEC_BY_PROP_REF` entries for these exact refs
  * (`src/components/playtest/playtestMapHelpers.ts`, Kirk's original
  * POLYGON Dark Fortress reference — "near-dark ambient with sickly green
  * pools of light around light-source props, warm orange around
- * braziers/torches"), read as of 2026-08-05, not re-derived from first
- * principles — so this concept's lighting reads like the game's own mood
- * lighting instead of an independently-guessed palette. Deliberately a
- * COPY, not an import: `playtestMapHelpers.ts` is game-route-coupled (its
- * own functions take `RenderableEntity`/proto `Wall` shapes this concept
+ * braziers/torches"), not re-derived from first principles — so this
+ * concept's lighting reads like the game's own mood lighting instead of
+ * an independently-guessed palette. Originally 3 entries (2026-08-05,
+ * matching that round's 3-key Lighting category); expanded to all 8 the
+ * game itself classifies as light sources (2026-08-07 "palette content
+ * sync" unit) so every prop the palette's own Lighting category now
+ * offers actually casts a light here — a Lighting-category prop with no
+ * matching entry below would sit in that category but stay visually inert
+ * in Walk mode, the exact gap this expansion closes. Deliberately a COPY,
+ * not an import: `playtestMapHelpers.ts` is game-route-coupled (its own
+ * functions take `RenderableEntity`/proto `Wall` shapes this concept
  * doesn't have and never will — TARGET-YAML.md's whole "dialect runs
  * ahead" discipline keeps this concept's own rendering self-contained
  * rather than reaching into game rendering code for values that happen to
@@ -65,13 +72,18 @@ const WARM_LIGHT_COLOR = '#ff9d52';
 const RUNE_BLUE_COLOR = '#3d84dc';
 
 /** propRef (last `:`-separated segment, matching `paletteData.ts`'s
- * `LIGHTING_PROP_KEYS` membership) -> light spec. Exactly the three keys
- * this concept's own Lighting palette category offers — a prop ref this
+ * `LIGHTING_PROP_KEYS` membership) -> light spec. Exactly the 8 keys this
+ * concept's own Lighting palette category offers — a prop ref this
  * concept can't even place never needs an entry here. */
 const LIGHT_SPEC_BY_PROP_REF: Record<string, LightSpec> = {
   candles: { color: '#3ddc84', intensity: 2, distance: 4.5 },
   'glowing-orb': { color: RUNE_BLUE_COLOR, intensity: 2, distance: 4.5 },
   brazier: { color: WARM_LIGHT_COLOR, intensity: 2.8, distance: 5.5 },
+  'rune-marker': { color: RUNE_BLUE_COLOR, intensity: 0.7, distance: 2.2 },
+  'rune-pillar': { color: RUNE_BLUE_COLOR, intensity: 0.9, distance: 2.6 },
+  'candle-stand': { color: WARM_LIGHT_COLOR, intensity: 1.4, distance: 3.2 },
+  lantern: { color: WARM_LIGHT_COLOR, intensity: 1.3, distance: 3 },
+  'torch-ornate': { color: WARM_LIGHT_COLOR, intensity: 1.6, distance: 3.6 },
 };
 
 /** Every `<pointLight>` renders at `decay={2}` — `HexGrid.tsx`'s own

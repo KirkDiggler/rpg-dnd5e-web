@@ -1,15 +1,22 @@
 /**
- * paletteData — the palette's prop vocabulary, sourced from the REAL
- * `propManifest.ts` (`PROP_KEYS`), not a hand-rolled color/icon table.
- * The standalone HTML concept had to invent per-key colors because it had
- * no module system to import the real manifest; this port fixes that —
- * `role` below comes straight from the shared source of truth
+ * paletteData — the palette's prop AND monster vocabulary, sourced from the
+ * REAL `propManifest.ts` (`PROP_KEYS`) and `monsterModels.ts`
+ * (`resolveMonsterModelUrl`), not a hand-rolled color/icon table. The
+ * standalone HTML concept had to invent per-key colors because it had no
+ * module system to import the real manifest; this port fixes that — `role`
+ * below comes straight from the shared source of truth
  * `src/components/hex-grid/PropModel.tsx` also reads.
  *
- * Filtered to exactly the keys showcase.yaml's own `place:`/`boss:`
- * entries reference (task requirement: no invented refs) — see
- * `SHOWCASE_PROP_KEYS` below for the exact list.
+ * Prop scope (2026-08-07 "palette content sync" unit, superseding the
+ * original `SHOWCASE_PROP_KEYS` restriction below): every key
+ * `propManifest.ts` defines, not just the 12 keys one showcase dungeon
+ * happened to use. Kirk's ask this round was explicit — "we have 2 zombies
+ * and more props to use, I would like to get them added as options in our
+ * builder" — i.e. the FULL authorable vocabulary (ref exists AND resolves
+ * to a real, synced GLB), not one showcase's actual usage. See
+ * `ALL_PROP_KEYS` below.
  */
+import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
 import { PROP_KEYS, type PropRole } from '@/components/hex-grid/propManifest';
 
 export interface PaletteProp {
@@ -38,11 +45,30 @@ export type PaletteCategory =
  * ask ("Lighting = light-emitting props (brazier, candles, glowing-orb)")
  * — a hand-picked subset of PALETTE_PROPS, not derivable from `role`
  * (brazier/candles/glowing-orb are all `role: 'decor'`, same as
- * non-light-emitting decor like books or banners). */
+ * non-light-emitting decor like books or banners).
+ *
+ * Expanded 2026-08-07 from 3 to 8 keys to match the game's OWN
+ * light-source classification exactly — `MOOD_LIGHT_SPEC_BY_PROP_REF`
+ * (`src/components/playtest/playtestMapHelpers.ts`), the authoritative,
+ * game-derived answer to "which props actually cast mood light," not a
+ * guess from prop names. Every one of these 8 keys is now also in
+ * `walkLighting.ts`'s own `LIGHT_SPEC_BY_PROP_REF` copy — a key added
+ * here without a matching entry there would sit in the Lighting category
+ * but stay visually inert (no point light) in the author-walkthrough's
+ * Walk mode, same trap this expansion is closing for candle-stand/
+ * lantern/torch-ornate/rune-marker/rune-pillar. Note `torch` (plain
+ * TorchStick) and `stone-lantern` are DELIBERATELY excluded — the game's
+ * own table doesn't classify either as a light source either, so this
+ * palette doesn't invent one. */
 const LIGHTING_PROP_KEYS = new Set<string>([
   'dnd5e:props:brazier',
   'dnd5e:props:candles',
   'dnd5e:props:glowing-orb',
+  'dnd5e:props:candle-stand',
+  'dnd5e:props:lantern',
+  'dnd5e:props:torch-ornate',
+  'dnd5e:props:rune-marker',
+  'dnd5e:props:rune-pillar',
 ]);
 
 export function categoryForProp(
@@ -85,20 +111,16 @@ export const ROLE_COLOR: Record<PropRole, string> = {
   decor: '#b8922a',
 };
 
-const SHOWCASE_PROP_KEYS = [
-  'dnd5e:props:pillar',
-  'dnd5e:props:brazier',
-  'dnd5e:props:bone-pile',
-  'dnd5e:props:statue-reaper',
-  'dnd5e:props:statue-knight-hooded',
-  'dnd5e:props:wall-banner',
-  'dnd5e:props:altar',
-  'dnd5e:props:glowing-orb',
-  'dnd5e:props:candles',
-  'dnd5e:props:tomb-open',
-  'dnd5e:props:chains',
-  'dnd5e:props:skeleton-remains',
-] as const;
+/** Every key `propManifest.ts`'s `PROP_KEYS` defines — `Object.keys` rather
+ * than a hand-listed array so a newly-synced manifest key appears in the
+ * palette automatically, with no second place to remember to update. Safe
+ * because the ref-AND-GLB test is already enforced once, upstream, by
+ * `propManifest.ts`'s own `EXPECTED_PROP_KEYS` guard test (every key it
+ * lists is verified to resolve to a loadable `.glb`) — this file doesn't
+ * re-check that, it just trusts the manifest it imports. Verified by hand
+ * for this unit too: all 90 `file:` references across all 44 current keys
+ * resolve under `public/models/synty/`. */
+const ALL_PROP_KEYS = Object.keys(PROP_KEYS);
 
 function shortLabel(key: string): string {
   const name = key.split(':').pop() ?? key;
@@ -107,24 +129,104 @@ function shortLabel(key: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-/** The palette's prop list — one entry per key showcase.yaml references,
- * pulling `role` from the first variant `propManifest` lists for that key
- * (same "first available" convention `resolvePropVariant` itself uses). A
- * key that's somehow missing from `PROP_KEYS` is dropped rather than
- * crashing the board — the concept should degrade, not blank-page, if the
- * manifest and showcase.yaml ever drift. */
-export const PALETTE_PROPS: PaletteProp[] = SHOWCASE_PROP_KEYS.flatMap(
-  (ref) => {
-    const variant = PROP_KEYS[ref]?.[0];
-    if (!variant) return [];
-    return [{ ref, short: shortLabel(ref), role: variant.role }];
-  }
-);
+/** The palette's prop list — one entry per key `propManifest.ts` defines
+ * (see `ALL_PROP_KEYS`), pulling `role` from the first variant
+ * `propManifest` lists for that key (same "first available" convention
+ * `resolvePropVariant` itself uses). A key that's somehow missing from
+ * `PROP_KEYS` is dropped rather than crashing the board — the concept
+ * should degrade, not blank-page, if the manifest and this list ever
+ * drift (structurally impossible today since `ALL_PROP_KEYS` is derived
+ * FROM `PROP_KEYS`, but kept as defensive flatMap rather than a direct
+ * map for the same reason the original showcase-scoped version had it). */
+export const PALETTE_PROPS: PaletteProp[] = ALL_PROP_KEYS.flatMap((ref) => {
+  const variant = PROP_KEYS[ref]?.[0];
+  if (!variant) return [];
+  return [{ ref, short: shortLabel(ref), role: variant.role }];
+});
 
-/** showcase.yaml's only monster ref, placeable both as the boss pin
- * (`boss:`, the one field-level exception) and via a general `place:`
- * entry — the latter verified real against `monster-place-check.json`,
- * see `fixtures.ts`. */
-export const MONSTER_REF = 'dnd5e:monsters:skeleton-captain';
 export const MONSTER_COLOR = '#a02020';
 export const BOSS_COLOR = '#7a1414';
+
+export interface PaletteMonster {
+  /** Full dungeonspec ref, e.g. `dnd5e:monsters:zombie`. */
+  ref: string;
+  /** The bare rpg-toolkit ref id `monsterModels.ts` keys
+   * `MONSTER_REF_MODELS`/`resolveMonsterModelUrl` by — `ref` with its
+   * `dnd5e:monsters:` prefix stripped, same convention
+   * `PreviewMonsterModel.tsx` documents. */
+  refId: string;
+  short: string;
+  label: string;
+  sub: string;
+  /** This ref may also be placed as a room's `boss:` pin. dungeonspec
+   * itself doesn't gate `boss:` to a specific ref value — it only requires
+   * exactly one boss per boss-archetype room (`dungeonYaml.ts`'s
+   * `isMonster` check is ref-PREFIX-general: `p.ref.startsWith(
+   * 'dnd5e:monsters:')`, true for any monster). Scoped to
+   * skeleton-captain only THIS round: it's the one ref whose rules
+   * identity is boss-shaped (rpg-project#110 Slice 3 / rpg-toolkit#816 —
+   * "NOT a wight, NOT a juvenile variant of a bigger monster," the boss's
+   * OWN identity), and showcase.yaml's existing boss room already uses
+   * it. Offering skeleton/zombie as boss options too is a real,
+   * independent design question (should a boss room be able to feature a
+   * mook-tier ref?) this task's brief didn't ask to answer — narrower,
+   * honest scope beats inventing that UX unasked. */
+  bossable?: boolean;
+}
+
+/**
+ * The palette's monster vocabulary — every rpg-toolkit monster ref that
+ * passes the ref-AND-GLB test: `monsterModels.ts`'s `MONSTER_REF_MODELS`
+ * maps it to a promoted GLB (verified below via `resolveMonsterModelUrl`,
+ * not asserted), same discipline `ALL_PROP_KEYS` applies on the prop side.
+ * `rulebooks/dnd5e/refs/monsters.go`'s Undead set is Skeleton/Zombie/
+ * SkeletonArcher/SkeletonCaptain/Ghoul — five real toolkit refs — but
+ * `MONSTER_REF_MODELS` only maps three of them to art:
+ *
+ * - `ghoul` / `skeleton-archer`: real toolkit refs, but NEITHER has a
+ *   promoted GLB (`monsterModels.ts`'s own doc comment). Excluded — ref
+ *   without GLB fails the test the same way a GLB without a ref would.
+ * - `ghost` / `specter` / `tormented-soul`: promoted GLBs exist
+ *   (`Character_Ghost_01/02`, `Character_Tormented_Soul`), but NO
+ *   rpg-toolkit ref exists for any of them yet. Excluded for the mirror
+ *   reason — GLB without a ref is equally unauthorable; the palette can't
+ *   place a reference that doesn't exist.
+ *
+ * `zombie` gets ONE palette entry despite `MONSTER_REF_MODELS.zombie`
+ * holding TWO candidate GLBs (`zombie-mutant.glb`/hulking,
+ * `zombie-peasant-female.glb`/gaunt) — the author places the REF, not the
+ * look; which look a given placed zombie renders is a per-entity
+ * client-side pick (`pickStableCandidateIndex`), not an authoring choice,
+ * exactly as `monsterModels.ts`'s own doc comment establishes for the
+ * game's real combat route. See this concept's CONTRACT.md "palette
+ * content sync" entry for the thumbnail treatment this implies (one
+ * representative look, disclosed in `sub`, not a fabricated split image).
+ */
+export const PALETTE_MONSTERS: PaletteMonster[] = (
+  [
+    {
+      ref: 'dnd5e:monsters:skeleton',
+      refId: 'skeleton',
+      short: 'Sk',
+      label: 'skeleton',
+      sub: 'flags forced off — dungeonspec rejects blocks_* on monster place: entries',
+    },
+    {
+      ref: 'dnd5e:monsters:skeleton-captain',
+      refId: 'skeleton-captain',
+      short: 'Sc',
+      label: 'skeleton-captain',
+      sub: 'flags forced off — dungeonspec rejects blocks_* on monster place: entries',
+      bossable: true,
+    },
+    {
+      ref: 'dnd5e:monsters:zombie',
+      refId: 'zombie',
+      short: 'Zo',
+      label: 'zombie',
+      sub: 'flags forced off, same as every monster place: entry · renders as one of 2 promoted looks (hulking/gaunt), picked per-entity — rpg-dnd5e-web#673',
+    },
+  ] satisfies PaletteMonster[]
+).filter(
+  (m) => resolveMonsterModelUrl(m.refId, undefined, false) !== undefined
+);

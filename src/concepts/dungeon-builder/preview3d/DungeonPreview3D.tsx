@@ -1679,6 +1679,7 @@ export function DungeonPreview3D({
                     <PreviewMonsterModel
                       monsterRefId={m.monsterRefId}
                       position={m.position}
+                      entityId={m.key}
                     />
                   </group>
                 );

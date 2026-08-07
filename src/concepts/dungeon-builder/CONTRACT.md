@@ -6639,3 +6639,220 @@ independence; 5 in `draftStorage.test.ts` for `draftDiffersFromFreshSeed`; 1
 regression test in `fileIO.test.ts`). Full `src/concepts/dungeon-builder`
 suite: 525 tests passing. Full repo `npm run ci-check` and `vitest run`
 (2258 tests) clean.
+
+## Palette content sync: the full manifest vocabulary, two zombies, and a real preview bug (2026-08-07)
+
+Kirk's ask, verbatim: "we have 2 zombies and more props to use. I would like
+to get them added as options in our builder." The palette's prop list had
+been scoped to exactly the 12 keys `showcase.yaml` happened to use (this
+file's earlier "Palette taxonomy" entry, `SHOWCASE_PROP_KEYS`) — a
+deliberate restriction from that round's own task brief ("no invented
+refs"), not a capacity limit. This unit lifts that restriction: the palette
+now offers the FULL authorable vocabulary — every `propManifest.ts` key and
+every `monsterModels.ts` ref with a promoted GLB — not just one showcase
+dungeon's actual usage.
+
+### The inclusion test: ref exists AND resolves to a real, synced GLB
+
+Applied uniformly to both props and monsters, never asserted without
+checking:
+
+- **Props**: `paletteData.ts`'s `PALETTE_PROPS` now derives from
+  `Object.keys(PROP_KEYS)` (`ALL_PROP_KEYS`) instead of a hand-listed
+  12-entry array — 44 keys total, up from 12. Verified by hand that all 90
+  `file:` references across all 44 keys resolve under
+  `public/models/synty/` before relying on it (propManifest.ts's own
+  `EXPECTED_PROP_KEYS` guard test already enforces this upstream; this unit
+  doesn't re-check it, it trusts the manifest).
+- **Monsters**: `PALETTE_MONSTERS` (new) includes every rpg-toolkit monster
+  ref `monsterModels.ts`'s `MONSTER_REF_MODELS` maps to a promoted GLB —
+  `skeleton`, `skeleton-captain` (already offered), `zombie` — filtered
+  through `resolveMonsterModelUrl(refId, undefined, false) !== undefined`
+  at module load, not hand-asserted. Two exclusion classes, both real
+  toolkit/asset gaps, not oversights:
+  - `ghoul` / `skeleton-archer`: real `rulebooks/dnd5e/refs/monsters.go`
+    refs, but neither has a promoted GLB.
+  - `ghost` / `specter` / `tormented-soul`: promoted GLBs exist
+    (`Character_Ghost_01/02`, `Character_Tormented_Soul`), but no
+    rpg-toolkit ref exists for any of them yet.
+
+  Both classes fail the SAME test from opposite sides — ref without GLB,
+  GLB without ref — so one filter expression handles both; see
+  `paletteData.ts`'s `PALETTE_MONSTERS` doc comment.
+
+### Zombie: one palette entry, one representative thumbnail, honest disclosure
+
+`zombie` maps to TWO promoted looks (`zombie-mutant.glb`/hulking,
+`zombie-peasant-female.glb`/gaunt, rpg-dnd5e-web#673) picked per-ENTITY, not
+per-authoring-decision — `monsterModels.ts`'s own doc comment establishes
+this for the real combat route, and the palette follows the same rule:
+**the author places the ref, not the look.** Gets exactly one palette row.
+
+Thumbnail decision: a single representative bake (zombie-mutant.glb,
+candidate index 0 / the "hulking" style — same convention
+`resolvePropVariant`'s "first available" already uses for multi-variant
+props), not a fabricated split/dual image. The established `ThumbHarness`
+pipeline bakes ONE glb per PNG; building a genuine side-by-side composite
+would mean new tooling outside that pipeline for a cosmetic nicety. The
+row's `sub` text discloses the two-look behavior in words instead ("renders
+as one of 2 promoted looks (hulking/gaunt), picked per-entity —
+rpg-dnd5e-web#673"), so nothing about the thumbnail's honesty depends on
+which single look got baked. Verified both looks render distinctly and
+correctly by baking the second candidate too (`zombie-peasant-female.glb`,
+not committed to `thumbs/`, comparison only) — visibly a different figure
+(slender, apron/dress) from the first (hunched, armored) — confirming the
+"2 genuinely distinct looks" claim isn't just asserted.
+
+### Lighting category: expanded from 3 to 8 keys, matching the game's own classification
+
+`LIGHTING_PROP_KEYS` (`paletteData.ts`) grew from
+`{brazier, candles, glowing-orb}` to all 8 keys the game's OWN
+`MOOD_LIGHT_SPEC_BY_PROP_REF` (`playtestMapHelpers.ts`) classifies as light
+sources: + `candle-stand`, `lantern`, `torch-ornate`, `rune-marker`,
+`rune-pillar`. Game-derived, not name-guessed — notably `torch` (plain
+TorchStick) and `stone-lantern` stay OUT of Lighting despite their names,
+because the game's own table doesn't classify either as a light source.
+
+This mattered beyond just which accordion a row sits in: `walkLighting.ts`'s
+`LIGHT_SPEC_BY_PROP_REF` (the author-walkthrough's Walk-mode point-light
+derivation, this file's own earlier entry) only had matching entries for
+the original 3 keys. Left alone, the 5 newly-Lighting-categorized props
+would sit in the Lighting accordion but stay visually INERT in Walk mode —
+placed, categorized as a light source, casting no light. Closed by copying
+the game's own spec values for the other 5 keys into
+`LIGHT_SPEC_BY_PROP_REF` too (same "local copy, not an import" discipline
+that section's doc comment already established, for the same
+game-route-decoupling reason).
+
+### A real bug, found live: the 3D preview never varied a zombie's look
+
+Verifying the new `zombie` palette entry end-to-end (2D board → 3D preview,
+per this task's own brief) surfaced a genuine bug, not a new gap:
+`PreviewMonsterModel.tsx` called `resolveMonsterModelUrl(monsterRefId,
+undefined, false)` with NO 4th argument, so `pickStableCandidateIndex` always
+saw `entityId === undefined` and fell back to candidate 0 for every
+multi-candidate ref. Every zombie placed in a dungeon previewed as the SAME
+look (zombie-mutant/hulking) regardless of which entity it actually was —
+harmless before this unit (no multi-candidate ref was ever placeable through
+the palette), live the moment `zombie` became one.
+
+Fixed in the builder's own preview resolver, NOT in the game's
+`monsterModels.ts` (per this task's own brief — the resolver itself was
+already correct; the bug was a caller that dropped a parameter):
+`PreviewMonsterModel` now takes an optional `entityId` prop and forwards it
+straight through; `DungeonPreview3D.tsx` passes each placement's own stable
+`key` (`buildOnePlacement`'s `PlacedMonster.key`, already unique per
+placement — room+coords+ref, or `top:`-prefixed for top-level, or
+`<room>:boss` for a boss pin). Single-candidate refs (skeleton,
+skeleton-captain) are provably unaffected either way —
+`pickStableCandidateIndex`'s `count <= 1` short-circuit never reads
+`entityId` for them.
+
+### Thumbnails: 34 newly baked, same established pipeline
+
+Same `ThumbHarness` (`?thumbGlb=`) + `game-dev/tools/browser/screenshot.mjs`
+process this file's earlier "Thumbnail provenance" entry documents — own dev
+server (port 5199, never touching the shared 3001/live-view instance),
+128×128, no cropping. 32 new prop thumbnails (every `PROP_KEYS` key minus
+the original 12) + 2 new monster thumbnails (`skeleton`, `zombie`;
+`skeleton-captain` was already baked) = 34, all clean on the first pass —
+zero console errors, matching the "colored-placeholder fallback wasn't
+needed" outcome the earlier bake also reported. `thumbForRef` resolution for
+every `PALETTE_PROPS`/`PALETTE_MONSTERS` entry is now a guard test
+(`paletteData.test.ts`), not just an observation.
+
+### Live-verified, 2026-08-07, against the Wave-0 server (`rpg-api:dev-wave0`, `localhost:8092`)
+
+Own dev server (port 5199), `.env.local` (gitignored, not committed)
+pointing `VITE_API_HOST` at `localhost:8092` in place of the default `:8080`
+instance (which doesn't implement `AuthoringService` at all — confirmed via
+the `[unimplemented] unknown service` error every screenshot against the
+default host showed before this override).
+
+- **2D board placement**: a throwaway Playwright script edited the loaded
+  `showcase.yaml` in the real YAML pane (5 zombies, 2 skeletons, a `barrel`,
+  a `rune-marker`) and clicked "Apply YAML → Board" — all render as real
+  board markers, `usageCounts` updates (`barrel: 1× used`), no parse errors.
+- **3D preview**: switched to the 3D tab — floor/walls/props/the new
+  monsters all render, zero new console errors (only the two benign
+  `[unimplemented]`/`[invalid_argument] key ""` liveness-probe entries every
+  prior live-verification round in this file already documents). Precise
+  camera framing on the small placed figures proved fiddly to drive
+  headlessly (default OrbitControls dollies along a FIXED target set once by
+  `Bounds fit`, not toward the cursor, so wheel-zoom alone can't reach an
+  arbitrary point without a matching pan first) — several screenshots
+  confirm clean rendering of the surrounding scene (walls, the new `barrel`,
+  `glowing-orb`) at various zoom levels; not worth over-investing in a
+  cosmetic close-up when the actual look-selection correctness is proven
+  more rigorously below.
+- **The real bug above, and its fix, proven at the COMPONENT level, not just
+  eyeballed**: `PreviewMonsterModel.test.tsx` (new) mirrors
+  `HexEntityZombieSelection.test.tsx`'s established pattern exactly (stub
+  `@react-three/drei`'s `useGLTF`, run the REAL `resolveMonsterModelUrl`
+  unmocked) — two `PreviewMonsterModel`s with different `entityId`s resolve
+  the two DIFFERENT promoted zombie GLBs in one render; the same `entityId`
+  resolves the same GLB across separate renders (deterministic, not
+  flickering); an absent `entityId` still degrades to candidate 0 (no
+  crash); a single-candidate ref (`skeleton-captain`) is unaffected by
+  `entityId` either way. This is stronger evidence than a screenshot would
+  be — it asserts on which URL the mocked loader was actually called with,
+  not on what a human eye can distinguish in a small 3D figure.
+- **Save & Play, verified past the UI's own success banner (again)**: real
+  `PutDungeon(validate_only: false)` against the live server. First attempt
+  correctly REJECTED — `dungeonspec.Validate` returned "room "antechamber":
+  place "dnd5e:props:barrel" at [3 4] is on the reserved row (height/2=4)",
+  a genuine, pre-existing schema rule my own throwaway verification YAML
+  happened to hit (row 4 is antechamber's door row), not a defect in this
+  unit's changes. Moved the test placements off that row and retried: real
+  success, "Saved as "palette-content-sync-verify"." Independently confirmed
+  via `grpcurl` (not just trusting the banner) —
+  `LobbyService.ListDungeons` lists `palette-content-sync-verify` among the
+  real server's persisted dungeons. The clean validate-then-save round trip
+  itself proves the server accepts `dnd5e:monsters:zombie`,
+  `dnd5e:monsters:skeleton`, `dnd5e:props:barrel`, and
+  `dnd5e:props:rune-marker` as legitimate placeable refs — an unknown ref
+  would have failed `dungeonspec.Validate` the same way the reserved-row
+  placement did.
+
+### Tests
+
+`paletteData.test.ts` (new, 24 tests): `PALETTE_PROPS` full-vocabulary
+count/role/no-dup checks; `categoryForProp` correctness for all 8 Lighting
+keys plus the `torch`/`stone-lantern` negative cases; `PALETTE_MONSTERS`
+inclusion (skeleton/skeleton-captain/zombie) and BOTH exclusion classes
+(ghoul/skeleton-archer, ghost/specter/tormented-soul), the
+ref-AND-GLB-verified-not-asserted test, zombie's single-entry invariant,
+the bossable-scoped-to-skeleton-captain-only invariant; thumbnail-coverage
+guards for every prop and monster entry. `walkLighting.test.ts` (+3 tests):
+the 5 new light specs match the game's own values exactly, a guard that
+every `LIGHTING_PROP_KEYS` member produces a light (the exact gap this unit
+closed), and the `torch`/`stone-lantern` non-light-emitting negative case.
+`PreviewMonsterModel.test.tsx` (new, 4 tests): the entityId-threading fix,
+component-level, described above. Full `src/concepts/dungeon-builder` suite
+and full repo `vitest run` (2289 tests, 138 files) both clean; `npm run
+ci-check` clean (format/lint/typecheck/build/tests all pass).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **No dual/split zombie thumbnail** — a single representative bake plus
+  honest `sub`-text disclosure instead; see "Zombie" section above for the
+  reasoning.
+- **Skeleton and zombie are NOT offered as boss-pin options** — `bossable`
+  stays scoped to `skeleton-captain` only. Dungeonspec's schema would allow
+  it (boss cardinality is ref-agnostic), but "should a boss room feature a
+  mook-tier ref" is a real, independent design question this task's brief
+  didn't ask to answer.
+- **No pixel-perfect 3D-preview close-up screenshot of two zombie looks
+  side by side** — attempted at length (several camera-framing scripts);
+  the underlying OrbitControls target-vs-cursor behavior made it
+  impractical to drive headlessly without disproportionate extra tooling.
+  Substituted with (a) individually-rendered, visually-distinct thumbnails
+  of both candidate GLBs and (b) a component-level test that asserts on the
+  actual resolved URLs rather than on pixels — strictly stronger evidence
+  for the specific claim ("two different entities resolve two different,
+  correct looks") than a screenshot would have been.
+- **Structural/Markers categories untouched** — this unit's scope was the
+  Monsters and Obstacles-&-Props/Lighting vocabulary; the tool-based
+  Structural/Markers rows aren't manifest-driven and had nothing to sync.
+
+— asset-pipeline agent, on behalf of KirkDiggler
