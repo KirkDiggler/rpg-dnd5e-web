@@ -114,8 +114,11 @@ exact completed `moveSeq` through `HexEntity` → `HexGrid` → `EncounterMap`, 
 an attack waits only for its own actor's current in-flight movement and ignores
 stale completions. `CombatPresentation` exposes `onResultRelease(id)` plus its
 existing `onComplete(id)`; it remains unaware of Three.js, the combat log, HP,
-or terminal rendering. Snapshot replacement, encounter end, and leaving
-turn-based mode flush the held projection instead of replaying it.
+or terminal rendering. Snapshot replacement and leaving turn-based mode
+cancel the held projection. Encounter end is different: when it belongs to one
+unambiguous already-terminal attack story, that story drains through its result
+beat (including tombstone and terminal log) before cleanup; an encounter end
+with no staged terminal story still flushes immediately.
 
 ## Related references
 

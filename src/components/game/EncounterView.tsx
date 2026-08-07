@@ -37,6 +37,7 @@
 import { create } from '@bufbuild/protobuf';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import type {
+  EncounterEnded,
   EntityDamaged,
   EntityDied,
   EntityRemoved,
@@ -186,6 +187,7 @@ interface PresentationStoryOutcome {
   damage?: EntityDamaged;
   died?: EntityDied;
   removed?: EntityRemoved;
+  encounterEnded?: EncounterEnded;
 }
 
 type PresentationOutcomeKind = keyof PresentationStoryOutcome;
@@ -211,6 +213,28 @@ function findPresentationStory(
       return false;
     return outcomes.get(item.id)?.[kind] === undefined;
   });
+}
+
+function findTerminalPresentationStory(
+  queue: PresentationStoryItem[],
+  outcomes: ReadonlyMap<number, PresentationStoryOutcome>,
+  correlationId: string
+): PresentationStoryItem | undefined {
+  const terminal = queue.filter((item) => {
+    const outcome = outcomes.get(item.id);
+    return (
+      outcome?.encounterEnded === undefined &&
+      (outcome?.removed !== undefined || outcome?.died !== undefined)
+    );
+  });
+  const correlated = correlationId
+    ? terminal.filter((item) => item.correlationId === correlationId)
+    : [];
+  if (correlated.length === 1) return correlated[0];
+  // EncounterEnded is encounter-global and may carry no attack correlation.
+  // A single already-terminal story is unambiguous; multiple candidates fail
+  // closed rather than guessing which attack ended the encounter.
+  return terminal.length === 1 ? terminal[0] : undefined;
 }
 
 export function EncounterView({
@@ -317,6 +341,8 @@ export function EncounterView({
     }
     if (outcome.died) combatLog.recordEntityDied(outcome.died);
     if (outcome.removed) combatLog.recordEntityRemoved(outcome.removed);
+    if (outcome.encounterEnded)
+      combatLog.recordEncounterEnded(outcome.encounterEnded);
   };
 
   const completePresentation = (id: number) => {
@@ -822,12 +848,29 @@ export function EncounterView({
         combatLog.recordEntityRemoved(e);
       }
     },
-    onEncounterEnded: (e) => {
+    onEncounterEnded: (e, metadata) => {
       encounterState.applyEncounterEnded(e);
-      combatLog.recordEncounterEnded(e);
-      // rpg-dnd5e-web#544: an ended encounter has no turns to be armed in.
+      // rpg-dnd5e-web#544: canonical encounter end disables actions now, but
+      // a terminal attack story already on stage must drain rather than be
+      // cancelled like an explicit snapshot/view transition.
       setArmedState(null);
-      flushPresentation();
+      const terminalStory = findTerminalPresentationStory(
+        presentationQueueRef.current,
+        presentationOutcomesRef.current,
+        metadata.correlationId
+      );
+      if (!terminalStory) {
+        combatLog.recordEncounterEnded(e);
+        flushPresentation();
+        return;
+      }
+      updatePresentationOutcome(terminalStory.id, (outcome) => ({
+        ...outcome,
+        encounterEnded: e,
+      }));
+      if (releasedPresentationIdsRef.current.has(terminalStory.id)) {
+        combatLog.recordEncounterEnded(e);
+      }
     },
     // Death-save arc (rpg-toolkit#742, wave KirkDiggler/rpg-project#75):
     // PlaytestHarness has logged these since that wave landed; EncounterView
@@ -860,6 +903,13 @@ export function EncounterView({
   const myEquipment = encounterState.state.characterEquipment.get(entityId);
   const myStatuses = encounterState.state.entityStatuses.get(entityId) ?? [];
   const encounterEnded = encounterState.state.encounterStatus === 'ended';
+  const terminalResultHeld = Boolean(
+    encounterEnded &&
+    activePresentation &&
+    activePresentationOutcome?.encounterEnded &&
+    !releasedPresentationIdsRef.current.has(activePresentation.id)
+  );
+  const showEncounterEnded = encounterEnded && !terminalResultHeld;
   const isMyTurn =
     encounterState.state.mode === EncounterMode.TURN_BASED &&
     encounterState.state.activeEntityId === entityId;
@@ -1170,7 +1220,7 @@ export function EncounterView({
         </button>
       </div>
 
-      {encounterEnded && (
+      {showEncounterEnded && (
         <div
           data-testid="encounter-ended-banner"
           className="rounded-lg px-4 py-3 font-bold"
@@ -1400,7 +1450,7 @@ export function EncounterView({
         economy={economy}
         actions={availableActions}
         mode={encounterState.state.mode}
-        encounterEnded={encounterEnded}
+        encounterEnded={showEncounterEnded}
         isMyTurn={isMyTurn}
         // Spectator strip (#458): whose turn it is, resolved the same way
         // the dock resolves the local player's own name.

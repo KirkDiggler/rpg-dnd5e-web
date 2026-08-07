@@ -2106,6 +2106,120 @@ describe('EncounterView combat pacing', () => {
     expect(screen.getByTestId('combat-log-entry-damage-1')).toBeTruthy();
   });
 
+  it('drains a final-enemy terminal burst through its result beat instead of flushing on EncounterEnded', () => {
+    hoisted.captureStreamCallbacks = true;
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    const callbacks = hoisted.streamCallbacks;
+    if (!callbacks) throw new Error('stream callbacks not captured');
+    const metadata = {
+      sequence: 10n,
+      timestamp: undefined,
+      correlationId: 'corr-final-enemy',
+    } as EncounterEventMetadata;
+    act(() => {
+      callbacks.onSnapshotDelivered?.(
+        {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'goblin-1',
+                  type: EntityType.MONSTER,
+                  hp: { current: 4, max: 4, temp: 0 },
+                },
+              ],
+              hexes: [
+                {
+                  position: { x: 1, y: -1, z: 0 },
+                  contents: [{ entityId: 'goblin-1' }],
+                },
+              ],
+            },
+          },
+        } as never,
+        {} as never
+      );
+      callbacks.onAttackResolved?.(
+        {
+          attackerEntityId: 'char-alice',
+          targetEntityId: 'goblin-1',
+          hit: true,
+          critical: false,
+          attackRoll: 19,
+        } as never,
+        metadata
+      );
+      callbacks.onEntityDamaged?.(
+        {
+          entityId: 'goblin-1',
+          sourceEntityId: 'char-alice',
+          amount: 4,
+          damageBreakdown: [],
+          hpAfter: { current: 0, max: 4, temp: 0 },
+        } as never,
+        metadata
+      );
+      callbacks.onEntityDied?.(
+        { entityId: 'goblin-1', killerEntityId: 'char-alice' } as never,
+        metadata
+      );
+      callbacks.onEntityRemoved?.(
+        { entityId: 'goblin-1', reason: 'dead' } as never,
+        metadata
+      );
+      callbacks.onEncounterEnded?.(
+        { reason: 'all hostiles defeated' } as never,
+        { ...metadata, correlationId: '' }
+      );
+    });
+
+    expect(screen.getByTestId('combat-presentation')).toBeTruthy();
+    expect(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-entity-positions')
+    ).toContain('goblin-1');
+    expect(screen.queryByTestId('encounter-ended-banner')).toBeNull();
+    expect(screen.queryByText('Encounter ended')).toBeNull();
+    expect(screen.queryByTestId('combat-log-entry-attack-0')).toBeNull();
+    expect(
+      screen.queryByTestId('combat-log-entry-encounterEnded-4')
+    ).toBeNull();
+
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    act(() => vi.advanceTimersByTime(2000 + 1600));
+    expect(screen.getByTestId('combat-log-entry-attack-0')).toBeTruthy();
+    expect(screen.getByTestId('combat-log-entry-damage-1')).toBeTruthy();
+    expect(screen.getByTestId('combat-log-entry-died-2')).toBeTruthy();
+    expect(screen.getByTestId('combat-log-entry-removed-3')).toBeTruthy();
+    expect(
+      screen.getByTestId('combat-log-entry-encounterEnded-4')
+    ).toBeTruthy();
+    expect(screen.getByTestId('encounter-ended-banner')).toBeTruthy();
+    expect(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-entity-positions')
+    ).toContain('goblin-1');
+
+    act(() => vi.advanceTimersByTime(900));
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.queryByTestId('combat-presentation')).toBeNull();
+    expect(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-entity-positions')
+    ).not.toContain('goblin-1');
+  });
+
   it('releases delayed correlated damage and terminal envelopes when they arrive after the result beat without double-releasing the lifecycle', () => {
     hoisted.captureStreamCallbacks = true;
     render(
