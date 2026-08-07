@@ -1821,6 +1821,91 @@ section for the live verification and the one named follow-up (growing
 makes distant content _reachable_, not yet _discoverable_ — no minimap
 or auto-scroll).
 
+## `spec:` — the authoring-dialect spec-cut marker (local-drafts unit)
+
+Kirk's ask, verbatim: "we could have 0.4 able to load in the concept page
+and want to run the v0.3 version of it if possible. maybe we can check
+compatibility." That's two separate needs — a way for a document to SAY
+which spec cut it was authored against, and a way for the builder to
+check that claim against both the document's own structure and whatever
+server it's currently talking to — and `spec:` plus `specCompat.ts`
+(this unit) are the answer to both.
+
+**Two independent version axes — do not conflate them:**
+
+|                     | `version:`                                                             | `spec:`                                                                                                             |
+| ------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| What it names       | The YAML SCHEMA line dungeonspec's own decoder checks                  | Which ratified SPEC CUT (`ideas/dungeon-builder/spec/v0.3/spec.md`) the document's constructs were authored against |
+| Who enforces it     | The real server — `dungeonspec.Validate` hard-rejects anything but `1` | Nobody server-side, ever — pure client-side authoring metadata                                                      |
+| Bump trigger        | An incompatible room/topology change (none has ever happened)          | A new ratified spec level shipping (v0.4, whenever that's real)                                                     |
+| Sent to the server? | Yes, forced to `1` unconditionally (`stripToV1Subset`)                 | Never — deleted unconditionally, same field-presence-alone-is-rejected lesson as `holes:`/`end:`                    |
+
+Growing the target dialect (adding `walls:`, `canvas:`, `regions:`, …)
+has never bumped `version:` and still doesn't — see "Settled early
+model" above. `spec:` is the field that actually answers "how far past
+v1 does this document reach," which `version:` was never designed to
+answer at all.
+
+**Value scheme.** `spec:` is a STRING (`spec: "0.3"`, not a bare
+`spec: 0.3`) — a bare YAML float would round-trip `0.30`/`0.3` ambiguity
+for no reason, and a string leaves room for a non-numeric or suffixed
+value later without a shape change. Two values exist today:
+
+- `"0.3"` — the document uses only constructs in the ratified v0.3 level
+  cut (spec.md §1's four groups: (a) the already-v1 chain, (b) already-
+  compiling `walls:`/`start:`/room-scoped `facing:`, (c) Wave 0 `canvas:`/
+  top-level `place:`, (d) Wave 1 `regions:`). Note groups (c)/(d) count as
+  `"0.3"` even though no server compiles them yet — "not started
+  server-side" and "not part of v0.3" are different facts; the spec
+  itself ratifies the CONSTRUCT, delivery is a separate, later question
+  `capabilityProbe.ts`/`stripToV1Subset` already answer honestly.
+- `"draft"` — the document uses at least one construct spec.md §2
+  explicitly places ABOVE v0.3 (`wallLines:`, `defaults:`, `holes:`,
+  `end:`, `lighting:`, or a placement's `mount: wall`/`height:`/
+  `rotate_degrees:`/`targeting:`). No numbered value exists for "how far
+  above" — `"draft"` is the honest label until whichever construct is
+  itself ratified into a numbered cut, at which point that value (e.g.
+  `"0.4"`) becomes a new valid `spec:` value alongside `"0.3"`, same
+  shape, no migration needed on this field.
+
+**Who writes it.** "New Dungeon" stamps `spec: "0.3"` directly into its
+seed template (`emptyCanvasDoc.ts`) — honest by construction, since the
+only things a fresh canvas populates (`canvas:`, top-level `place:`) are
+both in the v0.3 cut. Nothing else in the builder auto-stamps or
+auto-corrects the field on every edit — the same "don't silently rewrite
+content nothing has explicitly mutated" discipline this file already
+applies to comment preservation. A hand-editor can declare (or change)
+`spec:` directly in the YAML pane like any other field; the load-time
+check below is what keeps that declaration honest without needing the
+builder to police it on every keystroke.
+
+**The load-time check (`specCompat.ts`).** On every load (file, paste,
+board edit — it's a live-derived value, not a one-shot event, same
+"badges can't drift because they ARE the answer, re-asked every time"
+principle `capabilityProbe.ts` already established), two independent
+questions get answered, neither reimplementing the other:
+
+1. **Does the declared `spec:` value match what the document's own
+   constructs actually require?** — `inferSpecCut(doc)`, pure and
+   offline, nothing to do with any server. Flags ONLY the dishonest
+   direction: declaring `"0.3"` while using a draft-only construct.
+   Declaring `"draft"` for an actually-clean document is conservative,
+   not dishonest, and is deliberately not flagged.
+2. **What would the CURRENTLY CONNECTED server actually drop from this
+   document today?** — read verbatim from `stripToV1Subset`'s own
+   `dropped` list (`capabilityProbe.ts`'s live probe), never recomputed.
+   This is the existing compile-badge machinery (`CompileBadgeStrip`),
+   unchanged by this unit — `specCompat.ts`'s `buildSpecCompatReport`
+   just reads its output rather than re-deriving it.
+
+A document can be spec-clean (`"0.3"`, nothing flagged) and still have
+real server drops today (any from-scratch canvas doc, until platform
+Wave 0 ships) — the two questions are genuinely independent axes, not
+the same fact asked twice. `YamlPane.tsx`'s `SpecCompatBanner` renders
+axis 1; the pre-existing `CompileBadgeStrip` right above it renders axis
+2 — see CONTRACT.md's "local drafts + versioned save/load" ledger entry
+for the live-verified screenshot of both together.
+
 ## What this file is not
 
 Not a request. Not Kirk-approved as a server-side commitment. Not a

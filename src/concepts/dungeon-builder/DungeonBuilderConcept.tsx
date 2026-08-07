@@ -15,6 +15,12 @@ import type { DemoActions } from './creation/demoScript';
 import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
 import type { CornerRef } from './creation/hexCorner';
 import { useRegionEditing } from './creation/useRegionEditing';
+import { DraftRestoredBanner } from './DraftRestoredBanner';
+import {
+  discardDraft,
+  draftDiffersFromFreshSeed,
+  loadDraft,
+} from './draftStorage';
 import './DungeonBuilderConcept.css';
 import {
   addWallLine,
@@ -48,8 +54,10 @@ import { Palette } from './Palette';
 import { PALETTE_PROPS } from './paletteData';
 import { DungeonPreview3D } from './preview3d/DungeonPreview3D';
 import { RolledContentPanel } from './RolledContentPanel';
+import { buildSpecCompatReport } from './specCompat';
 import type { BoardTool } from './types';
 import { useBoardEditing } from './useBoardEditing';
+import { useDraftAutosave } from './useDraftAutosave';
 import {
   useCreationFloorPlanPreview,
   usePutDungeonPreview,
@@ -60,6 +68,12 @@ import { YamlPane } from './YamlPane';
 
 const APPLY_DEBOUNCE_MS = 700;
 
+/** `draftDiffersFromFreshSeed`'s canonicalize function — the real
+ * parse+serialize round trip, module-level since it needs nothing from
+ * component state. */
+const canonicalizeYaml = (yamlText: string): string =>
+  serializeDungeon(parseDungeon(yamlText).cst);
+
 type BuilderMode = 'edit' | 'create';
 
 export function DungeonBuilderConcept() {
@@ -68,7 +82,53 @@ export function DungeonBuilderConcept() {
   // serializeDungeon both do real parsing/stringification work, and a
   // bare `useState(parseDungeon(...))` evaluates that argument on EVERY
   // render (React only USES it on the first), not just once on mount.
-  const [initial] = useState(() => parseDungeon(SHOWCASE_YAML));
+  //
+  // Local drafts (this unit): before falling back to SHOWCASE_YAML, check
+  // for a locally-saved edit-mode draft (`draftStorage.ts`) and restore it
+  // instead — the author never loses a board to a refresh/crash. A
+  // corrupt/unparseable draft is discarded rather than left to keep
+  // failing on every future mount (`editRestoredDraftAt` stays null in
+  // that case, so `DraftRestoredBanner` never appears for content that
+  // was never actually loaded).
+  //
+  // Honesty guard (Copilot review, PR #717): a stored draft that's
+  // canonically indistinguishable from the fresh SHOWCASE_YAML seed is
+  // NOT a real authored draft — announcing it as one would be dishonest.
+  // This can only happen from a stale localStorage entry today (the
+  // autosave effect below now skips its own mount/discard ticks), but
+  // this check is independent belt-and-suspenders, not reliant on that
+  // fix alone.
+  const [{ parsed: initial, restoredAt: editRestoredDraftAt }] = useState(
+    () => {
+      const draft = loadDraft('edit');
+      if (draft) {
+        if (
+          draftDiffersFromFreshSeed(
+            draft.yamlText,
+            SHOWCASE_YAML,
+            canonicalizeYaml
+          )
+        ) {
+          try {
+            return {
+              parsed: parseDungeon(draft.yamlText),
+              restoredAt: draft.savedAt,
+            };
+          } catch {
+            discardDraft('edit');
+          }
+        } else {
+          discardDraft('edit');
+        }
+      }
+      return {
+        parsed: parseDungeon(SHOWCASE_YAML),
+        restoredAt: null as number | null,
+      };
+    }
+  );
+  const [editDraftBannerDismissed, setEditDraftBannerDismissed] =
+    useState(false);
   const [cst, setCst] = useState(initial.cst);
   const [doc, setDoc] = useState<DungeonDoc>(initial.doc);
   const [yamlText, setYamlText] = useState(() => serializeDungeon(initial.cst));
@@ -140,6 +200,16 @@ export function DungeonBuilderConcept() {
       return null;
     }
   }, [yamlText, preview.capabilities]);
+
+  // Local drafts + versioned save/load (this unit) — the load-time
+  // spec-compatibility report. Reads `v1Subset.dropped` verbatim (see
+  // `specCompat.ts`'s own doc comment); recomputed only when `doc`/
+  // `v1Subset` actually change, same memoization discipline `v1Subset`
+  // itself already follows.
+  const specCompat = useMemo(
+    () => buildSpecCompatReport(doc, v1Subset),
+    [doc, v1Subset]
+  );
 
   const handleWalkIt = () => {
     const walkKey = `${doc.key}-walk`;
@@ -231,6 +301,28 @@ export function DungeonBuilderConcept() {
     );
   };
 
+  // Load .yaml (this unit) — feeds the file's text straight into the SAME
+  // parse/Apply pipeline `applyText`/`handleChangeText` already use
+  // (`applyText(text)` directly, not via the debounce) so a malformed
+  // file surfaces exactly like a bad paste-and-Apply does. Also updates
+  // `yamlText` immediately so the pane reflects the loaded file even if
+  // `applyText` throws.
+  const handleLoadYamlFile = (text: string) => {
+    setYamlText(text);
+    applyText(text);
+  };
+
+  // A real file-READ failure (not a YAML parse error — `applyText` above
+  // already owns that via `parseError`) — `LoadYamlButton`'s own doc
+  // comment (Copilot review, PR #717). Reuses the SAME `parseError` state/
+  // banner rather than a second, silent-except-for-the-console failure
+  // mode.
+  const handleLoadYamlFileError = (message: string) => {
+    setParseError(message);
+  };
+
+  const downloadFilename = `${doc.key || 'dungeon'}.yaml`;
+
   useEffect(
     () => () => {
       if (applyDebounce.current) clearTimeout(applyDebounce.current);
@@ -238,6 +330,26 @@ export function DungeonBuilderConcept() {
     },
     []
   );
+
+  // Local drafts (this unit): debounced autosave of the edit-mode working
+  // text — watches `yamlText`, which board-driven mutations (syncFromCst)
+  // and direct typing (handleChangeText) both already keep current, so
+  // this one hook call covers both edit paths without a second write
+  // site. See `useDraftAutosave.ts`'s own doc comment for the mount/
+  // discard-tick skip logic it owns (Copilot review, PR #717).
+  const editAutosave = useDraftAutosave('edit', yamlText);
+
+  const handleDiscardEditDraft = () => {
+    discardDraft('edit');
+    editAutosave.skipNextTick();
+    const fresh = parseDungeon(SHOWCASE_YAML);
+    setCst(fresh.cst);
+    setDoc(fresh.doc);
+    setYamlText(serializeDungeon(fresh.cst));
+    setParseError(null);
+    edit.setSelectedPlacement(null);
+    setEditDraftBannerDismissed(true);
+  };
 
   // After any board-driven CST mutation: re-derive doc, re-serialize text.
   const syncFromCst = (nextCst: typeof cst) => {
@@ -267,10 +379,46 @@ export function DungeonBuilderConcept() {
   // placement selection is independent of edit mode's (same "remembered
   // per mode" precedent the collapse-state pairs above already set). See
   // CONTRACT.md's "unifying New Dungeon onto the shared CST" section.
-  // Same lazy-initializer fix as `initial` above.
-  const [creationInitial] = useState(() =>
-    parseDungeon(emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height))
-  );
+  // Same lazy-initializer fix as `initial` above — and the same local-
+  // drafts restore-or-seed check, keyed to the 'create' mode slot so it
+  // never collides with edit mode's own draft (`draftStorage.ts`'s own
+  // doc comment on why the two modes are independent keys). Same honesty
+  // guard too (Copilot review, PR #717) — a stored draft indistinguishable
+  // from the fresh "New Dungeon" seed is not a real authored draft.
+  const [{ parsed: creationInitial, restoredAt: createRestoredDraftAt }] =
+    useState(() => {
+      const freshCreationSeed = emptyCanvasYaml(
+        DEFAULT_CANVAS.width,
+        DEFAULT_CANVAS.height
+      );
+      const draft = loadDraft('create');
+      if (draft) {
+        if (
+          draftDiffersFromFreshSeed(
+            draft.yamlText,
+            freshCreationSeed,
+            canonicalizeYaml
+          )
+        ) {
+          try {
+            return {
+              parsed: parseDungeon(draft.yamlText),
+              restoredAt: draft.savedAt,
+            };
+          } catch {
+            discardDraft('create');
+          }
+        } else {
+          discardDraft('create');
+        }
+      }
+      return {
+        parsed: parseDungeon(freshCreationSeed),
+        restoredAt: null as number | null,
+      };
+    });
+  const [createDraftBannerDismissed, setCreateDraftBannerDismissed] =
+    useState(false);
   const [creationCst, setCreationCst] = useState(creationInitial.cst);
   const [creationDoc, setCreationDoc] = useState<DungeonDoc>(
     creationInitial.doc
@@ -328,6 +476,15 @@ export function DungeonBuilderConcept() {
       creationV1Subset?.yaml ?? creationYamlText
     );
   };
+
+  // Local drafts + versioned save/load (this unit) — creation mode's own
+  // spec-compat report, same reasoning as edit mode's `specCompat` above.
+  const creationSpecCompat = useMemo(
+    () => buildSpecCompatReport(creationDoc, creationV1Subset),
+    [creationDoc, creationV1Subset]
+  );
+
+  const creationDownloadFilename = `${creationDoc.key || 'dungeon'}.yaml`;
 
   const syncFromCreationCst = (nextCst: typeof creationCst) => {
     setCreationCst(nextCst);
@@ -461,6 +618,19 @@ export function DungeonBuilderConcept() {
     );
   };
 
+  // Load .yaml (this unit) — creation mode's own version of edit mode's
+  // handleLoadYamlFile, same reasoning: feeds the EXISTING parse/Apply
+  // pipeline directly rather than forking it.
+  const handleLoadCreationYamlFile = (text: string) => {
+    setCreationYamlText(text);
+    applyCreationText(text);
+  };
+
+  // Creation mode's own version of `handleLoadYamlFileError` above.
+  const handleLoadCreationYamlFileError = (message: string) => {
+    setCreationParseError(message);
+  };
+
   useEffect(
     () => () => {
       if (creationApplyDebounce.current)
@@ -468,6 +638,24 @@ export function DungeonBuilderConcept() {
     },
     []
   );
+
+  // Local drafts (this unit) — creation mode's own autosave, same
+  // reasoning as edit mode's above, keyed to the 'create' slot.
+  const createAutosave = useDraftAutosave('create', creationYamlText);
+
+  const handleDiscardCreateDraft = () => {
+    discardDraft('create');
+    createAutosave.skipNextTick();
+    const fresh = parseDungeon(
+      emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height)
+    );
+    setCreationCst(fresh.cst);
+    setCreationDoc(fresh.doc);
+    setCreationYamlText(serializeDungeon(fresh.cst));
+    setCreationParseError(null);
+    creationEdit.setSelectedPlacement(null);
+    setCreateDraftBannerDismissed(true);
+  };
 
   // "Play the pitch" (Kirk's own demo script) drives these same mutators
   // a manual click would — see demoScript.ts's own doc comment. Rebuilt
@@ -594,6 +782,13 @@ export function DungeonBuilderConcept() {
     return (
       <div>
         {modeTabs}
+        {createRestoredDraftAt !== null && !createDraftBannerDismissed && (
+          <DraftRestoredBanner
+            savedAt={createRestoredDraftAt}
+            onDismiss={() => setCreateDraftBannerDismissed(true)}
+            onDiscard={handleDiscardCreateDraft}
+          />
+        )}
         <CreationConcept
           doc={creationDoc}
           yamlText={creationYamlText}
@@ -629,6 +824,10 @@ export function DungeonBuilderConcept() {
           saveErrorMessage={creationSave.errorMessage}
           boardDim={createBoardDim}
           onSetBoardDim={setCreateBoardDim}
+          yamlDownloadFilename={creationDownloadFilename}
+          onLoadYamlFile={handleLoadCreationYamlFile}
+          onLoadYamlFileError={handleLoadCreationYamlFileError}
+          specCompat={creationSpecCompat}
         />
         {toast && <ToastBanner message={toast} />}
       </div>
@@ -647,6 +846,13 @@ export function DungeonBuilderConcept() {
   return (
     <div>
       {modeTabs}
+      {editRestoredDraftAt !== null && !editDraftBannerDismissed && (
+        <DraftRestoredBanner
+          savedAt={editRestoredDraftAt}
+          onDismiss={() => setEditDraftBannerDismissed(true)}
+          onDiscard={handleDiscardEditDraft}
+        />
+      )}
       <div
         style={{
           display: 'flex',
@@ -860,6 +1066,10 @@ export function DungeonBuilderConcept() {
               v1CompilableBlockers={v1Subset?.compilableBlockers ?? []}
               capabilities={preview.capabilities}
               onRefreshCapabilities={preview.refreshCapabilities}
+              downloadFilename={downloadFilename}
+              onLoadFile={handleLoadYamlFile}
+              onLoadFileError={handleLoadYamlFileError}
+              specCompat={specCompat}
             />
           </CollapsibleSidePanel>
         </div>
