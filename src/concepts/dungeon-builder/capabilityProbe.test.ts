@@ -126,3 +126,218 @@ describe('probeAllCapabilities', () => {
     }
   });
 });
+
+// The fields whose only legal document mode is canvas mode (spec v0.3
+// §4.5.1/§4.6.1/§4.10.3.8) — mirrors capabilityProbe.ts's own private
+// CANVAS_FAMILY_FIELDS, kept here as a literal (not exported) so this
+// test suite verifies the OBSERVABLE request shape, not an implementation
+// detail.
+const CANVAS_FAMILY = ['canvas', 'topLevelPlace', 'regions'] as const;
+
+function callFor(field: string) {
+  const key = `capprobe-${field.toLowerCase()}`;
+  const call = hoisted.putDungeonFn.mock.calls.find(
+    (call: unknown[]) => (call[0] as PutDungeonRequest).key === key
+  );
+  if (!call) throw new Error(`no putDungeon call recorded for ${key}`);
+  return call[0] as PutDungeonRequest;
+}
+
+describe('buildProbeDoc mode selection — the bug this unit fixes', () => {
+  beforeEach(() => {
+    hoisted.putDungeonFn.mockResolvedValue({ success: true, fieldErrors: [] });
+  });
+
+  it('sends canvas-family fields (canvas, topLevelPlace, regions) on a canvas-mode base: canvas: present, rooms: [] — never a non-empty room chain', async () => {
+    await probeAllCapabilities();
+
+    for (const field of CANVAS_FAMILY) {
+      const { yaml } = callFor(field);
+      expect(yaml).toMatch(/^canvas: \{/m);
+      expect(yaml).toMatch(/^rooms: \[\]/m);
+      expect(yaml).not.toMatch(/- id: entry/);
+      expect(yaml).not.toMatch(/^connectors:/m);
+    }
+  });
+
+  it('sends every other field on the room-chain base: non-empty rooms:, no top-level canvas:', async () => {
+    await probeAllCapabilities();
+
+    const chainFields = DIALECT_FIELDS.filter(
+      (f) => !(CANVAS_FAMILY as readonly string[]).includes(f)
+    );
+    expect(chainFields.length).toBe(
+      DIALECT_FIELDS.length - CANVAS_FAMILY.length
+    );
+
+    for (const field of chainFields) {
+      const { yaml } = callFor(field);
+      expect(yaml).toMatch(/- id: entry/);
+      expect(yaml).not.toMatch(/^canvas: \{/m);
+    }
+  });
+
+  it('never sends a document combining non-empty rooms: with canvas: — the illegal mode combo the old probe used to send', async () => {
+    await probeAllCapabilities();
+
+    for (const call of hoisted.putDungeonFn.mock.calls) {
+      const { yaml } = call[0] as PutDungeonRequest;
+      const hasNonEmptyRooms = /- id: entry/.test(yaml);
+      const hasCanvas = /^canvas: \{/m.test(yaml);
+      expect(hasNonEmptyRooms && hasCanvas).toBe(false);
+    }
+  });
+});
+
+describe('classify against captured Wave-0 server messages (live-verified 2026-08-06, localhost:8092)', () => {
+  it('canvas: accepted, no message — matches the live 200-cell FloorPlan response', async () => {
+    hoisted.putDungeonFn.mockImplementation(async (req: PutDungeonRequest) => {
+      if (req.key === 'capprobe-canvas') {
+        return { success: true, fieldErrors: [] };
+      }
+      return {
+        success: false,
+        fieldErrors: [{ field: '', message: 'irrelevant' }],
+      };
+    });
+
+    const caps = await probeAllCapabilities();
+    expect(caps.canvas).toEqual({ accepted: true });
+  });
+
+  it('topLevelPlace: accepted on the canvas-mode base — matches the live response', async () => {
+    hoisted.putDungeonFn.mockImplementation(async (req: PutDungeonRequest) => {
+      if (req.key === 'capprobe-toplevelplace') {
+        return { success: true, fieldErrors: [] };
+      }
+      return {
+        success: false,
+        fieldErrors: [{ field: '', message: 'irrelevant' }],
+      };
+    });
+
+    const caps = await probeAllCapabilities();
+    expect(caps.topLevelPlace).toEqual({ accepted: true });
+  });
+
+  it('regions: still honestly rejected — decode-unknown, verbatim, since Wave 1 (rpg-project#180) has not shipped', async () => {
+    const message =
+      'decode dungeon spec: yaml: unmarshal errors:\n  line 6: field regions not found in type dungeonspec.DungeonSpec';
+    hoisted.putDungeonFn.mockImplementation(async (req: PutDungeonRequest) => {
+      if (req.key === 'capprobe-regions') {
+        return { success: false, fieldErrors: [{ field: '', message }] };
+      }
+      return { success: true, fieldErrors: [] };
+    });
+
+    const caps = await probeAllCapabilities();
+    expect(caps.regions).toEqual({ accepted: false, message });
+  });
+
+  it('mount: schema-known rejection threads the field-path-prefixed message verbatim (the live message now includes a path prefix the 2026-08-04 transcript did not record)', async () => {
+    const message =
+      'rooms[0].place[0].mount: unsupported capability: mounted placements are not supported';
+    hoisted.putDungeonFn.mockImplementation(async (req: PutDungeonRequest) => {
+      if (req.key === 'capprobe-mount') {
+        return { success: false, fieldErrors: [{ field: '', message }] };
+      }
+      return { success: true, fieldErrors: [] };
+    });
+
+    const caps = await probeAllCapabilities();
+    expect(caps.mount).toEqual({ accepted: false, message });
+  });
+
+  it('facingBoss: schema-known rejection wording updated to "floor props" (was "room-scoped floor props") — threaded verbatim either way', async () => {
+    const message =
+      'rooms[2].boss.facing: unsupported capability: facing only supported on floor props';
+    hoisted.putDungeonFn.mockImplementation(async (req: PutDungeonRequest) => {
+      if (req.key === 'capprobe-facingboss') {
+        return { success: false, fieldErrors: [{ field: '', message }] };
+      }
+      return { success: true, fieldErrors: [] };
+    });
+
+    const caps = await probeAllCapabilities();
+    expect(caps.facingBoss).toEqual({ accepted: false, message });
+  });
+
+  it('end-to-end: a server simulator matching the real Wave-0 combo/decode/accept rules yields 5/17 accepted, with regions honestly still rejected', async () => {
+    // Simplified but faithful simulator of the real Wave-0 server's
+    // relevant decisions (verified live, 2026-08-06): reject the
+    // rooms+canvas combo; accept a mode-correct canvas base and
+    // top-level place on it; still decode-unknown regions (Wave 1 not
+    // shipped); accept the three chain fields already known to compile;
+    // decode-unknown everything else. This is the regression test for
+    // the bug itself — under the OLD (pre-fix) buildProbeDoc, canvas and
+    // topLevelPlace would both hit the combo-rejection branch below and
+    // this test would see 3/17, not 5/17.
+    hoisted.putDungeonFn.mockImplementation(async (req: PutDungeonRequest) => {
+      const { yaml, key } = req;
+      const hasNonEmptyRooms = /- id: entry/.test(yaml);
+      const hasCanvas = /^canvas: \{/m.test(yaml);
+
+      if (hasNonEmptyRooms && hasCanvas) {
+        return {
+          success: false,
+          fieldErrors: [
+            {
+              field: '',
+              message:
+                'canvas mode rooms must be an explicit empty sequence (rooms: [])',
+            },
+          ],
+        };
+      }
+      if (hasCanvas) {
+        if (/^regions:/m.test(yaml)) {
+          return {
+            success: false,
+            fieldErrors: [
+              {
+                field: '',
+                message:
+                  'decode dungeon spec: yaml: unmarshal errors:\n  line 6: field regions not found in type dungeonspec.DungeonSpec',
+              },
+            ],
+          };
+        }
+        return { success: true, fieldErrors: [] }; // bare canvas base, or canvas + place
+      }
+      if (
+        [
+          'capprobe-walls',
+          'capprobe-start',
+          'capprobe-facingfloorprop',
+        ].includes(key)
+      ) {
+        return { success: true, fieldErrors: [] };
+      }
+      return {
+        success: false,
+        fieldErrors: [
+          {
+            field: '',
+            message: `field ${key} not found in type dungeonspec.DungeonSpec`,
+          },
+        ],
+      };
+    });
+
+    const caps = await probeAllCapabilities();
+
+    expect(caps.canvas.accepted).toBe(true);
+    expect(caps.topLevelPlace.accepted).toBe(true);
+    expect(caps.regions.accepted).toBe(false);
+    expect(caps.regions.message).toContain(
+      'field regions not found in type dungeonspec.DungeonSpec'
+    );
+    expect(caps.walls.accepted).toBe(true);
+    expect(caps.start.accepted).toBe(true);
+    expect(caps.facingFloorProp.accepted).toBe(true);
+    expect(capabilitySummary(caps)).toEqual({
+      accepted: 5,
+      total: DIALECT_FIELDS.length,
+    });
+  });
+});
