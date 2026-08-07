@@ -115,11 +115,11 @@ an attack waits only for its own actor's current in-flight movement and ignores
 stale completions. `CombatPresentation` exposes `onResultRelease(id)` plus its
 existing `onComplete(id)`; it remains unaware of Three.js, the combat log, HP,
 or terminal rendering. Snapshot replacement and leaving turn-based mode
-cancel the held projection. Encounter end is different: when it belongs to one
-unambiguous already-terminal attack story, that story drains through its own
-result beat even when queued behind an earlier attack (holding banner, dock,
-tombstone, and terminal log together) before cleanup; an encounter end with no
-staged terminal story still flushes immediately. Empty/reused correlations are
+cancel the held projection. Encounter end is different: it follows the most
+recent terminal story in observed FIFO stream order, and all queued stories
+drain through their own result beats (holding banner, dock, tombstones, and
+terminal log together) before cleanup; an encounter end with no staged terminal
+story still flushes immediately. Empty/reused correlations are
 fail-safe: outcome association always requires actor/target identity, and
 same-target terminal events follow observed stream causality (the most recent
 matching damage, then explicit death for removal), never inferred HP rules.

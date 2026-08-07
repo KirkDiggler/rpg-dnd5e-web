@@ -245,11 +245,12 @@ function findTerminalPresentationStory(
   const correlated = correlationId
     ? terminal.filter((item) => item.correlationId === correlationId)
     : [];
-  if (correlated.length === 1) return correlated[0];
+  if (correlated.length > 0) return correlated[correlated.length - 1];
   // EncounterEnded is encounter-global and may carry no attack correlation.
-  // A single already-terminal story is unambiguous; multiple candidates fail
-  // closed rather than guessing which attack ended the encounter.
-  return terminal.length === 1 ? terminal[0] : undefined;
+  // It follows the most recent terminal story in observed FIFO stream order:
+  // the final Died/Removed immediately preceding the encounter-global end.
+  // This associates events only; it does not infer which attack was lethal.
+  return terminal[terminal.length - 1];
 }
 
 export function EncounterView({

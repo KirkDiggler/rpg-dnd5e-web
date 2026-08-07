@@ -2634,6 +2634,136 @@ describe('EncounterView combat pacing', () => {
     ).not.toContain('goblin-2');
   });
 
+  it.each(['', 'corr-reused-terminal'])(
+    'drains two queued terminal stories FIFO before encounter end for correlation %j',
+    (correlationId) => {
+      hoisted.captureStreamCallbacks = true;
+      render(
+        <EncounterView
+          encounterId="enc-1"
+          characterId="char-alice"
+          playerId="alice"
+          onBack={() => {}}
+        />
+      );
+      const callbacks = hoisted.streamCallbacks;
+      if (!callbacks) throw new Error('stream callbacks not captured');
+      const metadata = {
+        sequence: 1n,
+        timestamp: undefined,
+        correlationId,
+      } as EncounterEventMetadata;
+      act(() => {
+        callbacks.onSnapshotDelivered?.(
+          {
+            encounter: {
+              space: {
+                entities: [
+                  {
+                    id: 'goblin-1',
+                    type: EntityType.MONSTER,
+                    hp: { current: 3, max: 3, temp: 0 },
+                  },
+                  {
+                    id: 'goblin-2',
+                    type: EntityType.MONSTER,
+                    hp: { current: 4, max: 4, temp: 0 },
+                  },
+                ],
+                hexes: [
+                  {
+                    position: { x: 1, y: -1, z: 0 },
+                    contents: [{ entityId: 'goblin-1' }],
+                  },
+                  {
+                    position: { x: 2, y: -2, z: 0 },
+                    contents: [{ entityId: 'goblin-2' }],
+                  },
+                ],
+              },
+            },
+          } as never,
+          metadata
+        );
+        for (const [targetEntityId, amount] of [
+          ['goblin-1', 3],
+          ['goblin-2', 4],
+        ] as const) {
+          callbacks.onAttackResolved?.(
+            {
+              attackerEntityId: 'char-alice',
+              targetEntityId,
+              hit: true,
+              critical: false,
+              attackRoll: 18,
+            } as never,
+            metadata
+          );
+          callbacks.onEntityDamaged?.(
+            {
+              entityId: targetEntityId,
+              sourceEntityId: 'char-alice',
+              amount,
+              damageBreakdown: [],
+              hpAfter: { current: 0, max: amount, temp: 0 },
+            } as never,
+            metadata
+          );
+          callbacks.onEntityDied?.(
+            { entityId: targetEntityId, killerEntityId: 'char-alice' } as never,
+            metadata
+          );
+          callbacks.onEntityRemoved?.(
+            { entityId: targetEntityId, reason: 'dead' } as never,
+            metadata
+          );
+        }
+        callbacks.onEncounterEnded?.(
+          { reason: 'all hostiles defeated' } as never,
+          metadata
+        );
+      });
+
+      expect(screen.getByTestId('combat-presentation')).toBeTruthy();
+      expect(screen.queryByText(/Encounter ended/)).toBeNull();
+      const map = screen.getByTestId('encounter-map-stub');
+      expect(map.getAttribute('data-entity-positions')).toContain('goblin-1');
+      expect(map.getAttribute('data-entity-positions')).toContain('goblin-2');
+
+      act(() => vi.advanceTimersByTime(300));
+      fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+      act(() => vi.advanceTimersByTime(2000 + 1600));
+      expect(screen.getByTestId('beat-damage').textContent).toContain(
+        '3 damage'
+      );
+      expect(screen.queryByText(/Encounter ended/)).toBeNull();
+      act(() => vi.advanceTimersByTime(900));
+      act(() => vi.advanceTimersByTime(300));
+      expect(map.getAttribute('data-entity-positions')).not.toContain(
+        'goblin-1'
+      );
+      expect(map.getAttribute('data-entity-positions')).toContain('goblin-2');
+
+      act(() => vi.advanceTimersByTime(300));
+      fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+      act(() => vi.advanceTimersByTime(2000));
+      act(() => vi.advanceTimersByTime(1600));
+      expect(screen.getByTestId('beat-damage').textContent).toContain(
+        '4 damage'
+      );
+      expect(screen.getByTestId('encounter-ended-banner')).toBeTruthy();
+      expect(
+        screen.getByTestId('combat-log-entry-encounterEnded-8')
+      ).toBeTruthy();
+      expect(map.getAttribute('data-entity-positions')).toContain('goblin-2');
+      act(() => vi.advanceTimersByTime(900));
+      act(() => vi.advanceTimersByTime(300));
+      expect(map.getAttribute('data-entity-positions')).not.toContain(
+        'goblin-2'
+      );
+    }
+  );
+
   it.each([
     ['snapshotDelivered', {}],
     [
