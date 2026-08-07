@@ -202,17 +202,32 @@ function findPresentationStory(
   kind: PresentationOutcomeKind,
   sourceEntityId?: string
 ): PresentationStoryItem | undefined {
-  return queue.find((item) => {
-    if (
-      item.correlationId !== correlationId &&
-      (item.correlationId !== '' || correlationId !== '')
-    )
+  const candidates = queue.filter((item) => {
+    // A non-empty envelope correlation is authoritative and must match.
+    // Empty correlations fall back to the identity + stream-order rules
+    // below; they must not erase a correlated attack's story.
+    if (correlationId !== '' && item.correlationId !== correlationId)
       return false;
     if (item.attack.targetEntityId !== targetEntityId) return false;
     if (sourceEntityId && item.attack.attackerEntityId !== sourceEntityId)
       return false;
     return outcomes.get(item.id)?.[kind] === undefined;
   });
+  if (kind === 'damage') return candidates[0];
+  if (kind === 'removed') {
+    const withDeath = candidates.filter(
+      (item) => outcomes.get(item.id)?.died !== undefined
+    );
+    if (withDeath.length > 0) return withDeath[withDeath.length - 1];
+  }
+  // Died follows the most recent matching damage in observed stream order;
+  // Removed prefers that explicit Died story above, then the same damage
+  // evidence. This is event association only — no HP/lethality inference.
+  const withDamage = candidates.filter(
+    (item) => outcomes.get(item.id)?.damage !== undefined
+  );
+  if (withDamage.length > 0) return withDamage[withDamage.length - 1];
+  return candidates[candidates.length - 1];
 }
 
 function findTerminalPresentationStory(
@@ -905,9 +920,11 @@ export function EncounterView({
   const encounterEnded = encounterState.state.encounterStatus === 'ended';
   const terminalResultHeld = Boolean(
     encounterEnded &&
-    activePresentation &&
-    activePresentationOutcome?.encounterEnded &&
-    !releasedPresentationIdsRef.current.has(activePresentation.id)
+    presentationQueue.some(
+      (item) =>
+        presentationOutcomes.get(item.id)?.encounterEnded !== undefined &&
+        !releasedPresentationIdsRef.current.has(item.id)
+    )
   );
   const showEncounterEnded = encounterEnded && !terminalResultHeld;
   const isMyTurn =
