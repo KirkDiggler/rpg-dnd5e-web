@@ -27,11 +27,21 @@
  * version." Additive target-dialect capabilities stay on `version: 1`; a
  * real version bump is reserved for an incompatible room/topology change,
  * which this from-scratch canvas is not.
+ *
+ * `spec: "0.3"` (local-drafts unit) is stamped here, not injected by a
+ * runtime mutator, because it's honest BY CONSTRUCTION: every field this
+ * template writes (`canvas:`, top-level `place:`) is in the ratified
+ * v0.3 level cut (spec.md §1 group c) and nothing else is populated, so
+ * "New Dungeon" starting life declaring `0.3` needs no inference — see
+ * `specCompat.ts`'s `inferSpecCut` for what happens the moment an author
+ * adds a draft-only construct (the declared value stops matching the
+ * inferred one, and the compat report says so).
  */
 export const DEFAULT_CANVAS = { width: 20, height: 30 };
 
 export function emptyCanvasYaml(width: number, height: number): string {
   return `version: 1
+spec: "0.3"
 key: untitled-creation
 name: "Untitled Dungeon"
 height: 1 # unused placeholder — no compiled room chain exists yet; canvas.height below is what the board actually reads

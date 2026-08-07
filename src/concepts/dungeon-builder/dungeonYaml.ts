@@ -498,6 +498,23 @@ export type DefaultsDoc = Record<string, RefDefaultsDoc>;
 
 export interface DungeonDoc {
   version: number;
+  /** Authoring-dialect spec-cut marker — local-drafts unit, Kirk's ask:
+   * "we could have 0.4 able to load in the concept page and want to run
+   * the v0.3 version of it if possible. maybe we can check
+   * compatibility." A DIFFERENT axis from `version` above: `version` is
+   * the YAML SCHEMA line (additive forever, never bumped by target-dialect
+   * growth — see this file's own doc comment on `version`'s handling in
+   * `stripToV1Subset`); `spec` names which ratified SPEC CUT
+   * (`ideas/dungeon-builder/spec/v0.3/spec.md`) the document's constructs
+   * were authored against — `'0.3'` today, `'draft'` for anything using a
+   * construct spec.md §2 places above it. `null` when undeclared (not an
+   * error — `specCompat.ts`'s `inferSpecCut` derives the honest minimum
+   * from structure alone; TARGET-YAML.md's "spec: version marker" section
+   * has the full value-scheme writeup). Purely client-side authoring
+   * metadata, same tier as `wallLines:` — never sent to the real server in
+   * any form; `stripToV1Subset` deletes the key unconditionally, same
+   * "key presence alone is rejected" lesson as `holes:`/`end:`. */
+  spec: string | null;
   key: string;
   name: string;
   theme?: string;
@@ -773,6 +790,7 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
 
   return {
     version: (raw.version as number) ?? 1,
+    spec: typeof raw.spec === 'string' ? raw.spec : null,
     key: raw.key as string,
     name: raw.name as string,
     theme: raw.theme as string | undefined,
@@ -1775,6 +1793,19 @@ export function setLightingAmbient(
   cst.set('lighting', node);
 }
 
+/** Authoring-dialect spec-cut marker — local-drafts unit. See
+ * `DungeonDoc.spec`'s own doc comment for the full two-axis distinction
+ * from `version:`. `null` removes the key entirely — an undeclared
+ * document is not an error, `specCompat.ts`'s `inferSpecCut` derives the
+ * honest minimum from structure alone regardless. */
+export function setSpecVersion(cst: Document, spec: string | null): void {
+  if (spec === null) {
+    cst.delete('spec');
+    return;
+  }
+  cst.set('spec', spec);
+}
+
 // ============================================================
 // regions: — cell-authored semantic room regions, target dialect,
 // proposed (rpg-project#180). See RegionDoc's own doc comment and
@@ -2440,6 +2471,15 @@ export function stripToV1Subset(
     capabilities?.[field]?.accepted === true;
 
   cst.set('version', 1);
+
+  // spec: is pure client-side authoring metadata (local-drafts unit) —
+  // never a server construct in any form, so unlike every field below it
+  // is never counted in dropped/compiling (same treatment as version:
+  // itself, which also never appears in either list). Deleted
+  // UNCONDITIONALLY, not gated on a truthy value — same "key presence
+  // alone gets rejected by a strict decode-unknown check" lesson as
+  // holes:/end: above (see their own comments, a few lines down).
+  cst.delete('spec');
 
   if (doc.canvas) {
     if (accepted('canvas')) {

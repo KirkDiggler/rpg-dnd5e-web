@@ -16,6 +16,7 @@ import type { DungeonDoc, V1SubsetResult, WallKind } from '../dungeonYaml';
 import { Inspector } from '../Inspector';
 import { Palette } from '../Palette';
 import { DungeonPreview3D } from '../preview3d/DungeonPreview3D';
+import type { SpecCompatReport } from '../specCompat';
 import type { BoardTool } from '../types';
 import type { BoardEditing } from '../useBoardEditing';
 import type { ServerState } from '../usePutDungeonPreview';
@@ -111,6 +112,12 @@ interface CreationConceptProps {
    * this is owned by the parent rather than local `useState` here. */
   boardDim: BoardDim;
   onSetBoardDim: (dim: BoardDim) => void;
+  /** Local drafts + versioned save/load (this unit) — threaded straight
+   * to `ProposedYamlPane`. See `YamlPane.tsx`'s own doc comment on the
+   * matching edit-mode props. */
+  yamlDownloadFilename: string;
+  onLoadYamlFile: (text: string) => void;
+  specCompat: SpecCompatReport;
 }
 
 export function CreationConcept({
@@ -148,6 +155,9 @@ export function CreationConcept({
   saveErrorMessage,
   boardDim,
   onSetBoardDim,
+  yamlDownloadFilename,
+  onLoadYamlFile,
+  specCompat,
 }: CreationConceptProps) {
   const [dims, setDims] = useState(DEFAULT_CANVAS);
 
@@ -533,6 +543,9 @@ export function CreationConcept({
             savedKey={savedKey}
             saveFieldErrors={saveFieldErrors}
             saveErrorMessage={saveErrorMessage}
+            downloadFilename={yamlDownloadFilename}
+            onLoadFile={onLoadYamlFile}
+            specCompat={specCompat}
           />
         </CollapsibleSidePanel>
       </div>

@@ -6459,3 +6459,125 @@ exactly 5/17 with the mode-combo/decode-unknown/accept rules modeled — this
 last one is the test that would have failed (reporting 3/17) against the
 pre-fix `buildProbeDoc`. Full `src/concepts/dungeon-builder` suite: 449 tests
 passing (up from 440), `tsc --noEmit` clean.
+
+## Local drafts + versioned full-fidelity save/load (2026-08-06)
+
+Kirk's two rulings, verbatim: saved artifacts are ALWAYS full dialect —
+"compatibility stripping should happen at load time not save"; files target a
+spec version — "we could have 0.4 able to load in the concept page and want to
+run the v0.3 version of it if possible. maybe we can check compatibility."
+
+**What shipped, four pieces:**
+
+1. **Refresh-proof local drafts** (`draftStorage.ts`) — the working document's
+   full-dialect YAML TEXT (the CST source `YamlPane`/`ProposedYamlPane` show,
+   never a stripped projection) autosaves to `localStorage`, debounced 500ms,
+   keyed per mode (`edit`/`create` — the same "remembered per mode" precedent
+   the palette/YAML collapse-state pairs already set, so switching tabs never
+   collides one mode's draft with the other's). Restored on mount via each
+   mode's lazy `useState` initializer (`DungeonBuilderConcept.tsx`'s
+   `initial`/`creationInitial`) — a corrupt/unparseable stored draft is
+   discarded rather than kept re-offering broken content. `DraftRestoredBanner`
+   (new component, rendered above the board, not inside the YAML pane — a
+   board-level fact) shows "Draft restored from `<timestamp>` (local,
+   unsaved)" with two independent actions: dismiss (keep editing, hide the
+   banner) and Discard draft (throw it away, reload the mode's default seed).
+   Best-effort throughout — `localStorage` failures (quota, private
+   browsing) are swallowed, never crash authoring.
+2. **Download .yaml** (`fileIO.ts`'s `downloadYamlFile`, `YamlPane.tsx`'s
+   `DownloadYamlButton`) — the standard Blob + object-URL + synthetic-click
+   pattern, always the CURRENT, complete, unstripped `yamlText`. No server
+   involvement, no transformation — this is the concrete enforcement point for
+   Kirk's "stripping happens at load, not save" ruling; `stripToV1Subset`
+   remains exactly where it already lived (the transient send-time projection
+   Save & Play uses), untouched by this unit.
+3. **Load .yaml** (`YamlPane.tsx`'s `LoadYamlButton`) — a hidden file input
+   behind a styled button; reads the file via `File.text()` and feeds it
+   straight into the SAME `applyText`/`applyCreationText` parse pipeline the
+   Apply button and debounced typing already use (`handleLoadYamlFile`/
+   `handleLoadCreationYamlFile` in `DungeonBuilderConcept.tsx` — no forked
+   pipeline). A malformed file surfaces exactly like a bad paste-and-Apply:
+   the same parse-error banner, same place.
+4. **`spec:` version marker + load-time compat check** (`dungeonYaml.ts`'s
+   new `DungeonDoc.spec` field, `specCompat.ts`, `YamlPane.tsx`'s
+   `SpecCompatBanner`) — see TARGET-YAML.md's new "`spec:` — the
+   authoring-dialect spec-cut marker" section for the full value-scheme
+   writeup (`"0.3"` / `"draft"`, and why it's a genuinely different axis from
+   `version:`). Two independent checks, neither reimplementing the other:
+   `inferSpecCut(doc)` derives the minimum spec cut a document's own
+   constructs require, offline, from spec.md §1/§2's construct table;
+   `buildSpecCompatReport` combines that with `stripToV1Subset`'s own
+   `dropped` list VERBATIM (never recomputed) for what the currently
+   connected server would drop today. `stripToV1Subset` deletes `spec:`
+   UNCONDITIONALLY before any real request — same "key presence alone is
+   rejected by the server's strict decode" lesson as `holes:`/`end:`
+   (`spec:` is never counted in `dropped`/`compiling` either, same treatment
+   as `version:` itself — pure client metadata, not a dialect capability).
+   "New Dungeon"'s seed (`emptyCanvasDoc.ts`) stamps `spec: "0.3"` directly
+   into its template — honest by construction, since a fresh canvas only
+   populates v0.3-ratified constructs.
+
+### Live-verified, 2026-08-06, against the Wave-0 server (`rpg-api:dev-wave0`, `localhost:8092`)
+
+A throwaway Playwright script (this file's own established pattern — own dev
+server, port 3041, `VITE_API_HOST` pointed at `localhost:8092`, never touching
+the shared port-3001 view or any other in-flight unit's port) drove the real
+concept page through the full acceptance loop:
+
+1. Switched to New Dungeon (creation mode). Hand-edited the YAML pane to add a
+   `wallLines:` entry — a draft-only construct — on top of the seed's declared
+   `spec: "0.3"`, creating a genuine, intentional mismatch. Apply succeeded
+   (no parse error).
+2. **`SpecCompatBanner` correctly flagged it, live**: `⚠ spec: "0.3" declared,
+but this document uses draft-only constructs: 1 straight wall — needs
+"draft", not "0.3".` — screenshot at the PR. The pre-existing
+   `CompileBadgeStrip` right above it, unchanged, independently showed `Uses:
+1 straight wall — not yet accepted by this server` alongside `Compiles on
+this server: canvas` (5/17 capabilities live today) — both halves of the
+   compat report visible together, neither one faked.
+3. **Refresh-proof autosave, real browser reload**: `page.reload()`, switched
+   back to New Dungeon — `DraftRestoredBanner` reads "Draft restored from
+   8/6/2026, 10:50:42 PM (local, unsaved)" with the wall geometry intact on
+   the board. Restored text matched the pre-reload text exactly modulo the
+   PRE-EXISTING, already-documented `yaml` package flow-sequence
+   bracket-padding quirk (this file's own top-of-file doc comment on
+   `dungeonYaml.ts`: `[ 1, 1 ]` vs `[1, 1]`) — confirmed by normalizing
+   whitespace inside brackets before comparing; genuinely a pre-existing gap
+   surfacing on a new code path (draft-restore reparses+reserializes on
+   mount, same as every board click's `syncFromCst` already does), not a
+   regression this unit introduces.
+4. **Download .yaml**: the downloaded file byte-matched the pane text exactly
+   — full `spec: "0.3"` and the hand-typed `wallLines:` entry both present,
+   confirming nothing strips on save.
+5. **Discard draft**: board reset to the fresh "New Dungeon" seed — no
+   `wallLines:`, `spec: "0.3"` still present (from the seed template itself).
+6. **Load the downloaded file back in**: loaded text byte-matched the
+   downloaded file exactly (no reparse/reserialize happens on Load until the
+   debounced Apply fires, and Apply never touches the raw text state) — a
+   real, verified round trip. The compat report (both mismatch banner and
+   compile badges) reappeared immediately, unprompted, reading the reloaded
+   document live.
+
+No unexpected console errors either side — only the same benign
+`[invalid_argument] key "" must match ...` noise from
+`usePutDungeonPreview`'s own deliberately-invalid liveness probe every prior
+live-verification round in this file documents.
+
+### Tests
+
+42 new: 11 in `draftStorage.test.ts` (round-trip, per-mode independence,
+overwrite, corrupt/malformed-JSON handling, `localStorage` failure
+best-effort), 5 in `fileIO.test.ts` (Blob content/type, anchor
+href/download/click, object-URL revoke including on a thrown click, no
+leaked DOM node), 20 in `specCompat.test.ts` (every spec.md §1/§2 construct
+individually — `walls:`/`start:`/`canvas:`/`regions:`/top-level `place:`
+correctly do NOT require draft, `wallLines:`/`holes:`/`end:`/`lighting:`/
+`defaults:`/per-placement `mount: wall`/`height`/`rotate_degrees`/`targeting`
+all correctly DO, `facing` correctly does NOT regardless of entry type,
+`buildSpecCompatReport`'s mismatch/conservative/verbatim-passthrough cases),
+6 in `dungeonYaml.test.ts` (parse, `setSpecVersion` round-trip and removal,
+the seed template's honest-by-construction `spec: "0.3"`,
+`stripToV1Subset`'s unconditional delete both when set and when absent).
+Full `src/concepts/dungeon-builder` suite: 514 tests passing, `npm run
+ci-check` (format + lint + typecheck + build + full repo test suite, 2247
+tests) clean.

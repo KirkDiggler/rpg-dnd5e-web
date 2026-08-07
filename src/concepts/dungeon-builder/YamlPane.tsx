@@ -38,9 +38,26 @@
  * now" instead of silently omitting them. `capabilities`/
  * `onRefreshCapabilities` drive the small "server capabilities" readout
  * beside the LIVE badge — the same probe result, surfaced honestly rather
- * than only acted on invisibly. */
+ * than only acted on invisibly.
+ *
+ * **Local drafts + versioned save/load (this unit)**: `DownloadYamlButton`/
+ * `LoadYamlButton`/`SpecCompatBanner` below are the three new pieces,
+ * exported the same way `CompileBadgeStrip`/`SaveAndPlayButton` already
+ * are so `creation/ProposedYamlPane.tsx` reuses them instead of growing a
+ * second copy. Download/Load never touch the server or `stripToV1Subset`
+ * — Kirk's ruling, verbatim: "compatibility stripping should happen at
+ * load time not save," so a downloaded/loaded file is always the complete
+ * authoring dialect (`fileIO.ts`'s own doc comment has the full
+ * reasoning). `SpecCompatBanner` renders the other half of "load time":
+ * `specCompat.ts`'s spec-cut inference/mismatch, computed by the parent
+ * and handed down as one plain-data prop — this component still never
+ * imports `DungeonDoc` itself, same "don't deep-couple" bar CONTRACT.md's
+ * Operating Bar section sets. */
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
+import { useRef } from 'react';
 import { capabilitySummary, type ServerCapabilities } from './capabilityProbe';
+import { downloadYamlFile } from './fileIO';
+import type { SpecCompatReport } from './specCompat';
 import type { ServerState } from './usePutDungeonPreview';
 import type { SaveState } from './useSaveDungeon';
 
@@ -86,6 +103,18 @@ interface YamlPaneProps {
    * drives the "server capabilities" readout beside the LIVE badge. */
   capabilities: ServerCapabilities | null;
   onRefreshCapabilities: () => void;
+  /** Filename the Download button writes — computed by the parent
+   * (`${doc.key || 'dungeon'}.yaml`) so this component still never needs
+   * `doc` itself. */
+  downloadFilename: string;
+  /** Wired by the parent straight to `applyText` (edit mode) /
+   * `applyCreationText` (creation mode) — the SAME parse/Apply pipeline
+   * the Apply button and debounced typing already use. See
+   * `LoadYamlButton`'s own doc comment. */
+  onLoadFile: (text: string) => void;
+  /** The load-time spec-compatibility report (`specCompat.ts`) — see
+   * `SpecCompatBanner`'s own doc comment. */
+  specCompat: SpecCompatReport;
 }
 
 function ServerBadge({
@@ -324,6 +353,127 @@ export function SaveAndPlayButton({
   );
 }
 
+/** Downloads the CURRENT, full-fidelity dialect YAML text — never
+ * stripped, no server round trip (`fileIO.ts`'s `downloadYamlFile`). See
+ * this file's own doc comment for Kirk's "stripping happens at load, not
+ * save" ruling this button exists to satisfy. */
+export function DownloadYamlButton({
+  yamlText,
+  filename,
+}: {
+  yamlText: string;
+  filename: string;
+}) {
+  return (
+    <button
+      onClick={() => downloadYamlFile(filename, yamlText)}
+      title="Download the complete authoring-dialect YAML — never stripped, no server round trip."
+      style={{
+        background: 'transparent',
+        color: '#8a7a5a',
+        border: '1px solid var(--border-primary)',
+        borderRadius: 4,
+        padding: '5px 10px',
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: 'pointer',
+      }}
+    >
+      Download .yaml
+    </button>
+  );
+}
+
+/** Loads a `.yaml` file from disk into the SAME parse/Apply path the
+ * Apply button and debounced typing already use (`onLoad`, wired by the
+ * parent to `applyText`/`applyCreationText` directly — see
+ * `DungeonBuilderConcept.tsx`'s `handleLoadYamlFile`) — no separate
+ * pipeline, so a parse error surfaces exactly like Apply's already does.
+ * A hidden file input behind a styled button, the standard pattern for a
+ * button-triggered file picker. Resets its own value after each pick so
+ * selecting the SAME file twice in a row still fires `onChange` (browsers
+ * dedupe on unchanged `<input>` value otherwise). */
+export function LoadYamlButton({ onLoad }: { onLoad: (text: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <button
+        onClick={() => inputRef.current?.click()}
+        title="Load a .yaml file — replaces the current document, same as pasting + Apply."
+        style={{
+          background: 'transparent',
+          color: '#8a7a5a',
+          border: '1px solid var(--border-primary)',
+          borderRadius: 4,
+          padding: '5px 10px',
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        Load .yaml
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".yaml,.yml,text/yaml"
+        aria-label="Load dungeon YAML file"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (!file) return;
+          void file.text().then(onLoad);
+        }}
+      />
+    </>
+  );
+}
+
+/** The load-time spec-compatibility report (`specCompat.ts`, local-drafts
+ * unit) — Kirk's ask: "we could have 0.4 able to load in the concept page
+ * and want to run the v0.3 version of it if possible. maybe we can check
+ * compatibility." Two lines, each independently honest: the declared-vs-
+ * inferred spec CUT (a document-structure fact, nothing to do with any
+ * live server), and — reusing `stripToV1Subset`'s own `dropped` list
+ * verbatim, never recomputed — what the CONNECTED server would actually
+ * drop from this document today (a live-capability fact). Renders nothing
+ * when there is truly nothing to say: no `spec:` declared, the document
+ * is 0.3-clean, and the server would drop nothing — the same "only appear
+ * when there's something real to report" discipline `CompileBadgeStrip`
+ * already follows. */
+export function SpecCompatBanner({ report }: { report: SpecCompatReport }) {
+  const { declaredSpec, inferredCut, inferredReasons, specMismatch } = report;
+  const hasSpecLine =
+    declaredSpec !== null || inferredCut === 'draft' || specMismatch;
+  if (!hasSpecLine) return null;
+
+  const specLine = specMismatch
+    ? `spec: "${declaredSpec}" declared, but this document uses draft-only constructs: ${inferredReasons.join(', ')} — needs "draft", not "0.3".`
+    : declaredSpec !== null
+      ? `spec: "${declaredSpec}" — ${inferredCut === declaredSpec ? 'matches' : 'declared conservatively; inferred'} ${inferredCut === declaredSpec ? 'what this document actually uses.' : `"${inferredCut}" would also be accurate.`}`
+      : inferredCut === 'draft'
+        ? `No spec: declared — this document requires "draft" (uses: ${inferredReasons.join(', ')}).`
+        : `No spec: declared — inferred "0.3" (only ratified constructs used).`;
+
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        color: specMismatch ? '#ff9a8a' : '#8fc9e8',
+        background: specMismatch ? '#2a1512' : '#101f26',
+        border: `1px solid ${specMismatch ? '#5a2a20' : '#2a4a5a'}`,
+        borderRadius: 4,
+        padding: '5px 8px',
+        lineHeight: 1.4,
+      }}
+    >
+      {specMismatch ? '⚠ ' : ''}
+      {specLine}
+    </div>
+  );
+}
+
 /** Shared by both Save & Play and Walk it — `honestyNote`, when given, is
  * appended to the success message (Walk it's one real caveat: the boss
  * pin survives). */
@@ -429,6 +579,9 @@ export function YamlPane({
   v1CompilableBlockers,
   capabilities,
   onRefreshCapabilities,
+  downloadFilename,
+  onLoadFile,
+  specCompat,
 }: YamlPaneProps) {
   const hasDialectFields = dialectDropped.length > 0;
   const canWalk = serverState === 'live' && walkState !== 'saving';
@@ -475,6 +628,10 @@ export function YamlPane({
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <DownloadYamlButton yamlText={yamlText} filename={downloadFilename} />
+          <LoadYamlButton onLoad={onLoadFile} />
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <ServerBadge serverState={serverState} onRetryProbe={onRetryProbe} />
         </div>
         <CapabilitiesLine
@@ -486,6 +643,7 @@ export function YamlPane({
           dropped={dialectDropped}
           compiling={dialectCompiling}
         />
+        <SpecCompatBanner report={specCompat} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SaveAndPlayButton
             serverState={serverState}

@@ -42,13 +42,17 @@
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import type { ServerCapabilities } from '../capabilityProbe';
 import type { V1SubsetResult } from '../dungeonYaml';
+import type { SpecCompatReport } from '../specCompat';
 import type { ServerState } from '../usePutDungeonPreview';
 import type { SaveState } from '../useSaveDungeon';
 import {
   CapabilitiesLine,
   CompileBadgeStrip,
+  DownloadYamlButton,
+  LoadYamlButton,
   SaveAndPlayButton,
   SaveResultPanel,
+  SpecCompatBanner,
 } from '../YamlPane';
 
 interface ProposedYamlPaneProps {
@@ -64,6 +68,12 @@ interface ProposedYamlPaneProps {
   savedKey: string | null;
   saveFieldErrors: ValidationError[];
   saveErrorMessage: string | null;
+  /** Local drafts + versioned save/load (this unit) — see
+   * `YamlPane.tsx`'s own doc comment on these three props; same shape,
+   * reused directly rather than re-specified. */
+  downloadFilename: string;
+  onLoadFile: (text: string) => void;
+  specCompat: SpecCompatReport;
 }
 
 export function ProposedYamlPane({
@@ -79,6 +89,9 @@ export function ProposedYamlPane({
   savedKey,
   saveFieldErrors,
   saveErrorMessage,
+  downloadFilename,
+  onLoadFile,
+  specCompat,
 }: ProposedYamlPaneProps) {
   const dropped = v1Subset?.dropped ?? [];
   const compiling = v1Subset?.compiling ?? [];
@@ -119,12 +132,17 @@ export function ProposedYamlPane({
           gap: 4,
         }}
       >
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <DownloadYamlButton yamlText={yamlText} filename={downloadFilename} />
+          <LoadYamlButton onLoad={onLoadFile} />
+        </div>
         <CapabilitiesLine
           serverState={serverState}
           capabilities={capabilities}
           onRefresh={onRefreshCapabilities}
         />
         <CompileBadgeStrip dropped={dropped} compiling={compiling} />
+        <SpecCompatBanner report={specCompat} />
         <SaveAndPlayButton
           serverState={serverState}
           saveState={saveState}

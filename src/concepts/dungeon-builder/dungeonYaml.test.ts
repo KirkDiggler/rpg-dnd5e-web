@@ -43,6 +43,7 @@ import {
   setPlacementTargeting,
   setRefDefault,
   setRegionArchetype,
+  setSpecVersion,
   setStart,
   setWallEdge,
   setWallLineEndpoint,
@@ -960,6 +961,61 @@ describe('target-dialect fields (TARGET-YAML.md, rpg-dnd5e-web#667)', () => {
 
     setPlacementTargeting(cst, 'antechamber', 0, null);
     expect(toDungeonDoc(cst).rooms[0].place[0].targeting).toBeNull();
+  });
+
+  describe('spec: version marker (local-drafts unit)', () => {
+    it('parses a declared spec: value', () => {
+      const yaml = `version: 1
+spec: "0.3"
+key: foo
+name: "Foo"
+height: 8
+rooms: []
+connectors: []
+`;
+      expect(parseDungeon(yaml).doc.spec).toBe('0.3');
+    });
+
+    it('is null when undeclared — not an error', () => {
+      const { doc } = parseDungeon(SHOWCASE_YAML);
+      expect(doc.spec).toBeNull();
+    });
+
+    it('setSpecVersion writes the key, round-tripping through serialize/parse', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      setSpecVersion(cst, '0.3');
+      const { doc } = parseDungeon(serializeDungeon(cst));
+      expect(doc.spec).toBe('0.3');
+    });
+
+    it('setSpecVersion(cst, null) removes a previously-set key', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      setSpecVersion(cst, '0.3');
+      setSpecVersion(cst, null);
+      const { doc } = parseDungeon(serializeDungeon(cst));
+      expect(doc.spec).toBeNull();
+    });
+
+    it("New Dungeon's seed template declares spec: 0.3 — honest by construction (only canvas:/top-level place: populated)", () => {
+      const { doc } = parseDungeon(emptyCanvasYaml(20, 30));
+      expect(doc.spec).toBe('0.3');
+    });
+
+    it('stripToV1Subset deletes spec: unconditionally — pure client metadata, never sent to the real server', () => {
+      const { cst } = parseDungeon(SHOWCASE_YAML);
+      setSpecVersion(cst, '0.3');
+      const result = stripToV1Subset(serializeDungeon(cst));
+      expect(result.yaml).not.toMatch(/^spec:/m);
+      // Never counted in dropped/compiling — same treatment as version:
+      // itself (see stripToV1Subset's own comment on this field).
+      expect(result.dropped).toEqual([]);
+      expect(result.compiling).toEqual([]);
+    });
+
+    it('stripToV1Subset deletes an undeclared spec: the same way — nothing to delete is a no-op, not an error', () => {
+      const result = stripToV1Subset(SHOWCASE_YAML);
+      expect(result.yaml).not.toMatch(/^spec:/m);
+    });
   });
 
   describe('stripToV1Subset', () => {
