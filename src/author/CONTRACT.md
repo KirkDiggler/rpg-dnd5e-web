@@ -7098,4 +7098,162 @@ clean.
   `Object3D.clone(true)`-on-a-skinned-mesh mistake — this fix is scoped
   to `PreviewMonsterModel.tsx`, the one Kirk hit live.
 
+## Kirk look-feedback: the "Edit: The Shrine Hall" example-editing tab retired — predates straight walls (2026-08-07, rpg-project#194)
+
+Kirk, verbatim: "our dungeon builder does not need the example edit
+shrine tab. that was before straight walls." The builder had two tabs
+since the CST unification (this file's earlier "unifying New Dungeon
+onto the shared CST" section): "Edit: The Shrine Hall" (a fixed example
+room-chain document, wall PAINTING only — this predates the straight-
+wall-drawing/edge-native authoring the canvas builder gained later) and
+"New Dungeon" (the from-scratch canvas builder, the one that's grown
+every feature since: straight walls, regions, 3D editing, drafts,
+capability-probed Save & Play). With the example gone, "New Dungeon" is
+the ONLY surface — and with one surface, the tab chrome goes too.
+
+### Scope discipline: surface removal, not plumbing removal
+
+`dungeonYaml.ts`'s chain/room machinery (parsing, `stripToV1Subset`,
+room-scoped `place:`, `buildWalkItYaml`/`stripMonsterPlacements`) is
+completely untouched — a room-chain document is still v1-real dialect
+(spec v0.3 §4.2–4.4), Load .yaml still ingests one without crashing (see
+"Live verification" below), and the compilation/projection pipeline
+still emits room-chain output where a document calls for it. Only the
+UI surface for HAND-EDITING the example chain document is gone.
+
+### What was deleted outright (zero other consumers, confirmed by grep before removing each one)
+
+- **`Board.tsx`** (814 lines) + **`Board.test.tsx`** (225 lines) — the
+  edit-mode 2D board component. `CreationBoard.tsx` is a separate,
+  canvas-native component; nothing else imported `Board.tsx`.
+- **`ConnectorInspector.tsx`** (188 lines) — the connector-door editing
+  popup. Room-chain-connector-specific; creation mode has no connectors
+  (canvas docs are `rooms: []`) and never imported it.
+- **`WallGashExplainer.tsx`** (104 lines) — an explanatory popup for the
+  chain board's auto-generated wall gaps; edit-board-specific, no other
+  consumer.
+- **The `YamlPane` component + `ServerBadge` + `YamlPaneProps`** inside
+  `YamlPane.tsx` — but NOT the file itself: `YamlPane.tsx` also exports
+  `CapabilitiesLine`/`CompileBadgeStrip`/`SaveAndPlayButton`/
+  `DownloadYamlButton`/`LoadYamlButton`/`SpecCompatBanner`/
+  `SaveResultPanel`, ALL genuinely reused by `creation/ProposedYamlPane.tsx`
+  (confirmed by reading its import list before touching anything — a
+  first attempt to delete the whole file broke `tsc -b` immediately,
+  caught before it ever reached a commit). Trimmed the file to just the
+  shared exports; `YamlPane.test.tsx` already only tested those (never
+  the `YamlPane` component itself), so it needed zero changes — 12/12
+  tests still pass unmodified.
+- **"Walk it" as a feature** — its button lived only in the now-deleted
+  `YamlPane` component; `creation/ProposedYamlPane.tsx` never had an
+  equivalent. `buildWalkItYaml`/`stripMonsterPlacements`
+  (`dungeonYaml.ts`) stay — chain/room machinery, own test coverage,
+  explicitly in scope to keep — but there is currently no UI path left
+  that calls them. Named here rather than silently lost.
+
+### What was kept, and why (shared with creation mode)
+
+`Inspector`/`Palette`/`DraftRestoredBanner`/`DungeonPreview3D` (creation
+mode's own call site already omits the edit-only `floorPlan` prop or
+`onSelectConnector` callback — both genuinely optional, zero changes
+needed), `useSaveDungeon`/`useDraftAutosave`/`useBoardEditing` (generic,
+mode-parametrized hooks — `DungeonBuilderConcept.tsx` now calls each
+once, for creation mode only), `hasServerEdges`/`edgesAdapter.ts`
+(`DungeonPreview3D.tsx`'s own wall-gash rendering reads it regardless of
+mode), `boardGeometry.ts`/`PlacementMarker.tsx`/`markerStyle.ts` (used by
+BOTH the now-deleted `Board.tsx` and `CreationBoard.tsx`/
+`DungeonPreview3D.tsx` — confirmed shared before either survived), and
+`fixtures.ts`'s `SHOWCASE_YAML`/`SHOWCASE_FLOORPLAN` (generic test fixture
+data, consumed by ~10 unrelated unit test files having nothing to do with
+the edit tab).
+
+`usePutDungeonPreview(doc, yamlText, forceFixtures)` — the hook itself is
+untouched, but `DungeonBuilderConcept.tsx`'s call site now passes
+`usePutDungeonPreview(null, '', forceFixtures)`: there is no edit-mode
+document left to feed its per-edit live-preview effect, so that effect
+now permanently no-ops (its own `if (serverState !== 'live' || !doc)
+return;` guard already handles a `null` doc), leaving only the mount-time
+reachability probe and capability suite live — exactly what
+`useCreationFloorPlanPreview` already expected this hook to be (a shared,
+document-independent probe instance; see that hook's own doc comment on
+why a SECOND independent probe would double real network traffic).
+
+### The `draftStorage.ts` 'edit' key — left harmless, not cleaned up
+
+`DraftMode = 'edit' | 'create'` and every `draftStorage.ts`/
+`useDraftAutosave.ts` function stayed exactly as-is (generic,
+mode-parametrized, still has its own passing unit tests using `'edit'` as
+one of two arbitrary valid mode values — zero coupling to the deleted
+UI). Nothing calls `loadDraft('edit')`/`saveDraft('edit', ...)`/
+`discardDraft('edit')` anymore (confirmed by grep), so the 'edit' slot
+is orphaned going forward — including, for real users, any ALREADY-saved
+edit-mode draft sitting in their browser's `localStorage`, which nothing
+will ever read or clear again. Decision: leave it. Proactively clearing
+a real user's stored data for a feature removal they didn't ask about is
+a bigger intervention than the removal itself; worst case is a few
+harmless orphaned bytes, not a bug.
+
+### Live verification
+
+Both mounts screenshotted straight into the canvas builder, no tab bar
+at all:
+
+- **`/author`** (live mode, Wave-0 dev server): Home → Dungeon Builder →
+  lands directly on "New Dungeon", "server capabilities: accepts 6/17
+  dialect fields" confirming the live probe still works with no
+  edit-mode document driving it.
+- **Concepts Lab's "Dungeon Builder" tab** (fixtures-forced): same
+  direct landing, "Save the compilable subset" correctly greyed with the
+  fixtures-mode badge — unaffected by the removal.
+
+**Load .yaml of a room-chain document — proven, not asserted.** Loaded
+`showcase.yaml`'s real chain content (3 rooms, connectors, 26 `place:`
+entries) via the file input on the surviving canvas builder. Observed,
+not assumed:
+
+- Parses cleanly — zero page errors, no parse-error banner, the YAML
+  pane shows the full loaded chain text verbatim.
+- The 2D and 3D board BOTH render an empty, default-sized (20×30) canvas
+  floor — `creation/canvasFloor.ts`'s `deriveCanvasFloorCells` does
+  `doc.canvas ?? DEFAULT_CANVAS`, and a chain document has no `canvas:`
+  field, so it falls back to the default bounds and never reads
+  `doc.rooms` at all. The chain's OWN placements (inside `rooms[].place`)
+  don't appear on the canvas either — that field isn't what the canvas
+  UI reads (`doc.place`, top-level, is empty for a chain doc). A
+  graceful, honest degrade: nothing crashes, nothing pretends to show
+  content it can't.
+- The YAML pane's own capability badges correctly read the loaded
+  document as canvas-incompatible ("Uses: canvas — not yet accepted by
+  this server" / Save & Play stays on the disabled "compilable subset"
+  path) — the existing spec-compat machinery, untouched, does exactly
+  its documented job on a document shape it wasn't originally aimed at.
+
+### Tests
+
+139 files / 2294 tests (down from 140/2302 — `Board.test.tsx`'s removal
+accounts for the full delta; every other file passed unmodified,
+including `YamlPane.test.tsx`, `draftStorage.test.ts`, and
+`useDraftAutosave.test.ts`). `ci-check` clean (format/lint/typecheck/
+build/tests).
+
+### What did NOT ship this round — named, not silently dropped
+
+- **No sweep of historical "matches/mirrors `Board.tsx`" doc-comment
+  references** across `boardGeometry.ts`, `PlacementMarker.tsx`,
+  `markerStyle.ts`, `creationGeometry.ts`, `useRegionEditing.ts`,
+  `RegionPanel.tsx`, `DungeonPreview3D.tsx` (30+ occurrences) — these
+  describe design LINEAGE/precedent ("this behavior mirrors what
+  Board.tsx already established"), still true and still useful context,
+  not active/forward-looking pointers. Same "don't rewrite history"
+  convention this file's own Operating Bar section already applies to
+  superseded terminology. Fixed only the handful describing CURRENT,
+  active behavior inaccurately (`edgesAdapter.ts`'s own doc comment,
+  `Palette.tsx`'s connector-door paragraph).
+- **No relocation of `createPaletteCollapsed`/`createYamlCollapsed`/
+  `createBoardDim`** from `DungeonBuilderConcept.tsx` into
+  `CreationConcept.tsx` itself, even though the "survives an edit↔create
+  tab switch" reason they originally lived one level up no longer
+  applies (there's no sibling mode to switch away from anymore) — moving
+  state across a component boundary is plumbing/architecture, not
+  surface removal; out of scope for this ask.
+
 — asset-pipeline agent, on behalf of KirkDiggler

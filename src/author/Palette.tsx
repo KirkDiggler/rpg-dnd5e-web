@@ -15,8 +15,10 @@
  * proposed — not yet compiled server-side, see TARGET-YAML.md. Markers' Door entry
  * moved OUT to Structural (Kirk: "they were Markers-adjacent before") —
  * the real, v1 connector door (position derived, `locked:` the only
- * authorable field) is edited via `ConnectorInspector`, reached by
- * clicking the board's own door cell directly, not through the palette.
+ * authorable field) was edited via `ConnectorInspector`, reached by
+ * clicking the board's own door cell directly, not through the palette;
+ * that editing surface retired with the edit-mode tab (2026-08-07,
+ * rpg-project#194) along with the room-chain board it lived on.
  *
  * Monsters section (2026-08-07 "palette content sync" unit): data-driven
  * off `paletteData.ts`'s `PALETTE_MONSTERS` rather than one hardcoded

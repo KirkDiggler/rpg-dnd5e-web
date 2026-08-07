@@ -1,58 +1,38 @@
 /**
- * YamlPane — live YAML text beside the board, two-way with it. Board
- * edits update this text immediately (via the parent's CST mutations);
- * text edits here re-parse (debounced + an explicit Apply button) back
- * into the board's doc model. Also carries the FIXTURES MODE / can't-
- * reach-server badges — the concept's probe semantics made visible —
- * "Save & Play" (`useSaveDungeon.ts`, Kirk's 2026-08-01 ask), and "Walk it
- * (no monsters)" (Kirk's 2026-08-02 ask): a second, independent save of a
- * `<key>-walk` variant with monster `place:` entries stripped. Both
- * actions share the SAME `useSaveDungeon` hook shape (two separate
- * instances, one per action, in `DungeonBuilderConcept.tsx`) and the same
- * `SaveResultPanel` rendering, distinguished only by an `honestyNote` for
- * Walk it's one real caveat: `boss:` is NOT stripped (dungeonspec requires
- * exactly one boss per boss-archetype room — `stripMonsterPlacements`'s
- * own doc comment in `dungeonYaml.ts`), so the walk variant still has its
- * boss standing there. The UI says so rather than implying a true
- * no-encounter walkthrough that doesn't exist yet.
+ * YamlPane — a set of small, presentational, doc-agnostic pieces shared
+ * by the YAML-pane surface: server/capability badges, the compile-badge
+ * strip, Save & Play, Download/Load YAML, and the spec-compat banner.
+ * None of these import `DungeonDoc` themselves (CONTRACT.md's Operating
+ * Bar "don't deep-couple" rule) — every prop here is plain data handed
+ * down by whichever composition root mounts them.
  *
- * Kirk's 2026-08-02 reframe adds `dialectDropped`/`v1Compilable`: the document
- * may now use target-dialect-only constructs (walls/holes/start/end/
- * lighting/facing — TARGET-YAML.md). The compile-badge strip below the
- * server badge names exactly which ones are present and not yet compiled
- * server-side, and
- * Save & Play becomes "Save the compilable subset" the moment any are —
- * both computed once in `DungeonBuilderConcept.tsx` (`stripToV1Subset`)
- * and passed down, so this component never re-derives the strip itself.
+ * **Kirk look-feedback (2026-08-07, rpg-project#194): the edit-mode
+ * `YamlPane` component itself (and its "Walk it" action) retired along
+ * with the "Edit: The Shrine Hall" tab** — this file kept only the
+ * sub-components `creation/ProposedYamlPane.tsx` (the surviving, sole
+ * YAML pane) already reused: `CapabilitiesLine`, `CompileBadgeStrip`,
+ * `SaveAndPlayButton`, `DownloadYamlButton`, `LoadYamlButton`,
+ * `SpecCompatBanner`, `SaveResultPanel`. See CONTRACT.md's ledger entry
+ * for the full removal.
  *
- * **Capability-probed graduation (this unit, 2026-08-04)**: the compile
- * badges and Save & Play's enable/disable used to read a hardcoded
- * snapshot of "what dungeonspec compiles" — stale the moment the server
- * moved (Kirk's authoring branch started compiling authored `walls:` and
- * bare `start:` for real). `dialectDropped`/`v1Compilable` are now
- * TRUTH-DRIVEN: `capabilityProbe.ts` probes the real server once per live
- * connection, `stripToV1Subset` reads the result, and everything below
- * just renders whatever it's handed — no field name is hardcoded in this
- * file. `dialectCompiling` is the new positive half of that same split:
- * constructs present AND accepted, so the badge strip can say "compiles
- * now" instead of silently omitting them. `capabilities`/
- * `onRefreshCapabilities` drive the small "server capabilities" readout
- * beside the LIVE badge — the same probe result, surfaced honestly rather
- * than only acted on invisibly.
+ * **Capability-probed graduation (2026-08-04)**: the compile badges and
+ * Save & Play's enable/disable are TRUTH-DRIVEN — `capabilityProbe.ts`
+ * probes the real server once per live connection, `stripToV1Subset`
+ * reads the result, and every component below just renders whatever it's
+ * handed — no field name is hardcoded in this file. `dialectCompiling` is
+ * the positive half of that split: constructs present AND accepted, so
+ * the badge strip can say "compiles now" instead of silently omitting
+ * them. `capabilities`/`onRefreshCapabilities` drive the small "server
+ * capabilities" readout beside the LIVE badge.
  *
- * **Local drafts + versioned save/load (this unit)**: `DownloadYamlButton`/
- * `LoadYamlButton`/`SpecCompatBanner` below are the three new pieces,
- * exported the same way `CompileBadgeStrip`/`SaveAndPlayButton` already
- * are so `creation/ProposedYamlPane.tsx` reuses them instead of growing a
- * second copy. Download/Load never touch the server or `stripToV1Subset`
- * — Kirk's ruling, verbatim: "compatibility stripping should happen at
- * load time not save," so a downloaded/loaded file is always the complete
- * authoring dialect (`fileIO.ts`'s own doc comment has the full
- * reasoning). `SpecCompatBanner` renders the other half of "load time":
+ * **Local drafts + versioned save/load**: `DownloadYamlButton`/
+ * `LoadYamlButton` never touch the server or `stripToV1Subset` — Kirk's
+ * ruling, verbatim: "compatibility stripping should happen at load time
+ * not save," so a downloaded/loaded file is always the complete authoring
+ * dialect (`fileIO.ts`'s own doc comment has the full reasoning).
+ * `SpecCompatBanner` renders the other half of "load time":
  * `specCompat.ts`'s spec-cut inference/mismatch, computed by the parent
- * and handed down as one plain-data prop — this component still never
- * imports `DungeonDoc` itself, same "don't deep-couple" bar CONTRACT.md's
- * Operating Bar section sets. */
+ * and handed down as one plain-data prop. */
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { useRef } from 'react';
 import { capabilitySummary, type ServerCapabilities } from './capabilityProbe';
@@ -61,125 +41,6 @@ import type { SpecCompatReport } from './specCompat';
 import type { ServerState } from './usePutDungeonPreview';
 import type { SaveState } from './useSaveDungeon';
 
-interface YamlPaneProps {
-  yamlText: string;
-  onChangeText: (text: string) => void;
-  onApply: () => void;
-  parseError: string | null;
-  serverState: ServerState;
-  requestError: string | null;
-  fieldErrors: ValidationError[];
-  onRetryProbe: () => void;
-  onSaveAndPlay: () => void;
-  saveState: SaveState;
-  savedKey: string | null;
-  saveFieldErrors: ValidationError[];
-  saveErrorMessage: string | null;
-  onWalkIt: () => void;
-  walkState: SaveState;
-  walkSavedKey: string | null;
-  walkFieldErrors: ValidationError[];
-  walkErrorMessage: string | null;
-  /** What `stripToV1Subset` would drop from the CURRENT document — empty
-   * when the server accepts everything present. Drives both the amber
-   * half of the compile-badge summary and the Save & Play button's
-   * label/behavior. */
-  dialectDropped: string[];
-  /** The positive mirror of `dialectDropped`: target-dialect constructs
-   * present AND accepted by the live server's own probed capabilities —
-   * kept in the saved subset, not dropped. Empty in fixtures mode or
-   * while the probe hasn't completed yet (same conservative fallback
-   * `stripToV1Subset` itself uses). */
-  dialectCompiling: string[];
-  /** False when the stripped result is genuinely unsavable — see
-   * `v1CompilableBlockers` for the SPECIFIC reason, rather than one
-   * blanket message. */
-  v1Compilable: boolean;
-  /** Human-readable reasons `v1Compilable` is false ("needs at least 2
-   * rooms (has 1)", "needs exactly one boss-archetype room with a
-   * declared boss") — empty when `v1Compilable` is true. */
-  v1CompilableBlockers: string[];
-  /** `null` until the capability probe completes against a live server —
-   * drives the "server capabilities" readout beside the LIVE badge. */
-  capabilities: ServerCapabilities | null;
-  onRefreshCapabilities: () => void;
-  /** Filename the Download button writes — computed by the parent
-   * (`${doc.key || 'dungeon'}.yaml`) so this component still never needs
-   * `doc` itself. */
-  downloadFilename: string;
-  /** Wired by the parent straight to `applyText` (edit mode) /
-   * `applyCreationText` (creation mode) — the SAME parse/Apply pipeline
-   * the Apply button and debounced typing already use. See
-   * `LoadYamlButton`'s own doc comment. */
-  onLoadFile: (text: string) => void;
-  /** A real file-read failure (not a YAML parse error — see
-   * `LoadYamlButton`'s own doc comment) — wired by the parent to the same
-   * `parseError`/`creationParseError` state a bad paste-and-Apply already
-   * surfaces through. */
-  onLoadFileError: (message: string) => void;
-  /** The load-time spec-compatibility report (`specCompat.ts`) — see
-   * `SpecCompatBanner`'s own doc comment. */
-  specCompat: SpecCompatReport;
-}
-
-function ServerBadge({
-  serverState,
-  onRetryProbe,
-}: {
-  serverState: ServerState;
-  onRetryProbe: () => void;
-}) {
-  if (serverState === 'probing') {
-    return (
-      <span style={{ fontSize: 11, color: '#8a7a5a' }}>probing server…</span>
-    );
-  }
-  if (serverState === 'live') {
-    return (
-      <span style={{ fontSize: 11, color: '#5fd1c9' }}>
-        ● LIVE — PutDungeon reachable
-      </span>
-    );
-  }
-  if (serverState === 'gate-off') {
-    return (
-      <span
-        style={{ fontSize: 11, color: '#ffb347' }}
-        title="RPG_AUTHORING_ENABLED is not set on the server"
-      >
-        ● FIXTURES MODE — authoring disabled on this server
-      </span>
-    );
-  }
-  return (
-    <span
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        fontSize: 11,
-        color: '#ff9a8a',
-      }}
-    >
-      ● FIXTURES MODE — can’t reach the server
-      <button
-        onClick={onRetryProbe}
-        style={{
-          fontSize: 10,
-          background: 'none',
-          border: '1px solid #5a2a20',
-          color: '#ff9a8a',
-          borderRadius: 3,
-          padding: '1px 6px',
-          cursor: 'pointer',
-        }}
-      >
-        retry
-      </button>
-    </span>
-  );
-}
-
 /** The "server capabilities" readout beside the LIVE badge — the
  * capability-probed graduation unit's own honesty surface: what did THIS
  * server actually say yes to, today, not what this file assumes. Renders
@@ -187,7 +48,8 @@ function ServerBadge({
  * completes at all (`capabilities === null` with `serverState === 'live'`
  * reads as mid-probe, not "zero capabilities" — a blank readout, not a
  * false "0/N"). Exported so `creation/ProposedYamlPane.tsx` can show the
- * same honest readout rather than only edit mode. */
+ * same honest readout — the sole consumer since the edit-mode tab's own
+ * retirement (2026-08-07, rpg-project#194). */
 export function CapabilitiesLine({
   serverState,
   capabilities,
@@ -295,14 +157,13 @@ export function CompileBadgeStrip({
 }
 
 /** The Save & Play button itself, capability-aware gating and all —
- * exported so `creation/ProposedYamlPane.tsx` can grow the SAME real
- * gating this unit gave edit mode's `YamlPane`, instead of duplicating
- * the disabled-state logic or (worse) keeping its own hardcoded "proposed
+ * exported so `creation/ProposedYamlPane.tsx` gets the SAME real gating
+ * the now-retired edit-mode `YamlPane` had, instead of duplicating the
+ * disabled-state logic or (worse) keeping its own hardcoded "proposed
  * schema, can't compile" tooltip that a probed capability could make
- * false. `labelWhenPure` lets a caller keep a mode-appropriate label for
- * the fully-v1 case (both modes currently say "Save & Play"; kept as a
- * parameter rather than hardcoded so a future caller isn't forced to
- * match). */
+ * false. `labelWhenPure` lets a caller keep its own label for the fully-v1
+ * case (kept as a parameter rather than hardcoded so a future caller
+ * isn't forced to match). */
 export function SaveAndPlayButton({
   serverState,
   saveState,
@@ -582,230 +443,4 @@ export function SaveResultPanel({
     );
   }
   return null;
-}
-
-export function YamlPane({
-  yamlText,
-  onChangeText,
-  onApply,
-  parseError,
-  serverState,
-  requestError,
-  fieldErrors,
-  onRetryProbe,
-  onSaveAndPlay,
-  saveState,
-  savedKey,
-  saveFieldErrors,
-  saveErrorMessage,
-  onWalkIt,
-  walkState,
-  walkSavedKey,
-  walkFieldErrors,
-  walkErrorMessage,
-  dialectDropped,
-  dialectCompiling,
-  v1Compilable,
-  v1CompilableBlockers,
-  capabilities,
-  onRefreshCapabilities,
-  downloadFilename,
-  onLoadFile,
-  onLoadFileError,
-  specCompat,
-}: YamlPaneProps) {
-  const hasDialectFields = dialectDropped.length > 0;
-  const canWalk = serverState === 'live' && walkState !== 'saving';
-  return (
-    <aside
-      style={{
-        width: 420,
-        flex: '0 0 420px',
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 0,
-        borderLeft: '1px solid var(--border-primary)',
-      }}
-    >
-      <div
-        style={{
-          padding: '8px 10px',
-          borderBottom: '1px solid var(--border-primary)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-        }}
-      >
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button
-            onClick={onApply}
-            style={{
-              background: '#c9a227',
-              color: '#14110f',
-              border: 'none',
-              borderRadius: 4,
-              padding: '5px 10px',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            Apply YAML → Board
-          </button>
-          <span
-            style={{ fontSize: 11, color: parseError ? '#ff9a8a' : '#8a7a5a' }}
-          >
-            {parseError ? 'parse error — board unchanged' : 'in sync'}
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <DownloadYamlButton yamlText={yamlText} filename={downloadFilename} />
-          <LoadYamlButton onLoad={onLoadFile} onLoadError={onLoadFileError} />
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <ServerBadge serverState={serverState} onRetryProbe={onRetryProbe} />
-        </div>
-        <CapabilitiesLine
-          serverState={serverState}
-          capabilities={capabilities}
-          onRefresh={onRefreshCapabilities}
-        />
-        <CompileBadgeStrip
-          dropped={dialectDropped}
-          compiling={dialectCompiling}
-        />
-        <SpecCompatBanner report={specCompat} />
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <SaveAndPlayButton
-            serverState={serverState}
-            saveState={saveState}
-            v1Compilable={v1Compilable}
-            v1CompilableBlockers={v1CompilableBlockers}
-            dialectDropped={dialectDropped}
-            dialectCompiling={dialectCompiling}
-            onSaveAndPlay={onSaveAndPlay}
-          />
-          <span style={{ fontSize: 11, color: '#8a7a5a' }}>
-            {hasDialectFields
-              ? 'saves the v1 subset — target-dialect fields dropped, see badge above'
-              : 'persists for real — plays in the lobby dungeon picker'}
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button
-            onClick={() => onWalkIt()}
-            disabled={!canWalk}
-            title={
-              serverState !== 'live'
-                ? 'Server unreachable or authoring disabled — nothing to save to.'
-                : 'Saves a "<key>-walk" variant with monster place: entries stripped. The boss pin stays — dungeonspec requires a boss in a boss-archetype room, so this is not a true no-encounter walkthrough yet.'
-            }
-            style={{
-              background: canWalk ? 'transparent' : 'var(--bg-secondary)',
-              color: canWalk ? '#c9a227' : '#6a6255',
-              border: canWalk
-                ? '1px solid #c9a227'
-                : '1px solid var(--border-primary)',
-              borderRadius: 4,
-              padding: '5px 10px',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: canWalk ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {walkState === 'saving' ? 'Saving…' : 'Walk it (no monsters)'}
-          </button>
-          <span style={{ fontSize: 11, color: '#8a7a5a' }}>
-            saves "&lt;key&gt;-walk" — boss stays (see tooltip)
-          </span>
-        </div>
-      </div>
-
-      <textarea
-        aria-label="Dungeon YAML"
-        spellCheck={false}
-        value={yamlText}
-        onChange={(e) => onChangeText(e.target.value)}
-        style={{
-          flex: 1,
-          minHeight: 0,
-          resize: 'none',
-          border: 'none',
-          outline: 'none',
-          background: '#100d0b',
-          color: '#d9e6d0',
-          fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
-          fontSize: 12,
-          lineHeight: 1.5,
-          padding: '10px 12px',
-          whiteSpace: 'pre',
-        }}
-      />
-
-      {parseError && (
-        <div
-          style={{
-            background: '#2a1512',
-            borderTop: '1px solid #5a2a20',
-            color: '#ff9a8a',
-            fontSize: 11.5,
-            padding: '8px 12px',
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {parseError}
-        </div>
-      )}
-
-      {fieldErrors.length > 0 && (
-        <div
-          style={{
-            background: '#2a1512',
-            borderTop: '1px solid #5a2a20',
-            color: '#ff9a8a',
-            fontSize: 11.5,
-            padding: '8px 12px',
-          }}
-        >
-          <strong>field_errors (live, from PutDungeon):</strong>
-          {fieldErrors.map((e, i) => (
-            <div key={i}>{e.message}</div>
-          ))}
-        </div>
-      )}
-
-      {requestError && (
-        <div
-          style={{
-            background: '#2a1512',
-            borderTop: '1px solid #5a2a20',
-            color: '#ff9a8a',
-            fontSize: 11.5,
-            padding: '8px 12px',
-          }}
-        >
-          Request error (programming error, not author feedback): {requestError}
-        </div>
-      )}
-
-      <SaveResultPanel
-        saveState={saveState}
-        savedKey={savedKey}
-        saveFieldErrors={saveFieldErrors}
-        saveErrorMessage={saveErrorMessage}
-        honestyNote={
-          hasDialectFields
-            ? `Saved the compilable subset — dropped: ${dialectDropped.join(', ')}.${dialectCompiling.length > 0 ? ` Compiled for real: ${dialectCompiling.join(', ')}.` : ''} (see TARGET-YAML.md).`
-            : undefined
-        }
-      />
-      <SaveResultPanel
-        saveState={walkState}
-        savedKey={walkSavedKey}
-        saveFieldErrors={walkFieldErrors}
-        saveErrorMessage={walkErrorMessage}
-        honestyNote="Boss remains — real free-roam mode needs server support (see CONTRACT.md)."
-      />
-    </aside>
-  );
 }

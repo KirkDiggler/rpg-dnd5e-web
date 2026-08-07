@@ -1,16 +1,17 @@
 /**
  * YamlPane.test.tsx — render-layer coverage for the capability-probed
  * graduation unit's gating pieces (`SaveAndPlayButton`, `CompileBadgeStrip`,
- * `CapabilitiesLine`), all exported from `YamlPane.tsx` so
- * `creation/ProposedYamlPane.tsx` can reuse the exact same components
- * rather than a second copy — see that file's own doc comment. Tests
- * these directly against their own props (`dungeonYaml.test.ts` already
- * covers where `dropped`/`compiling`/`v1CompilableBlockers` come from —
- * `stripToV1Subset`), not wired through the full `DungeonBuilderConcept`
- * composition root, per this concept's "tests that survive extraction"
- * bar (CONTRACT.md). No jest-dom matchers — this repo's vitest config
- * has no such setup (`vite.config.ts`'s `test` block), so assertions use
- * plain DOM properties, matching `Board.test.tsx`'s own convention.
+ * `CapabilitiesLine`), all exported from `YamlPane.tsx` (now a shared
+ * sub-component library, the edit-mode `YamlPane` component itself
+ * retired 2026-08-07 — see `YamlPane.tsx`'s own doc comment) so
+ * `creation/ProposedYamlPane.tsx` reuses the exact same components rather
+ * than a second copy. Tests these directly against their own props
+ * (`dungeonYaml.test.ts` already covers where `dropped`/`compiling`/
+ * `v1CompilableBlockers` come from — `stripToV1Subset`), not wired
+ * through a composition root, per this concept's "tests that survive
+ * extraction" bar (CONTRACT.md). No jest-dom matchers — this repo's
+ * vitest config has no such setup (`vite.config.ts`'s `test` block), so
+ * assertions use plain DOM properties.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
