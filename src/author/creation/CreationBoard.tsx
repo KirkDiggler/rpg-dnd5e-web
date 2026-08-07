@@ -660,12 +660,19 @@ export function CreationBoard({
       // (`DungeonPreview3D.tsx`), so the two views can never disagree
       // about where a click is legal — see that function's own doc
       // comment (`canvasFloor.ts`) for the exact three gates.
+      //
+      // PLACEABLE vs. STANDABLE (rpg-project#169's "props on footprint
+      // cells" unit): a prop only needs real floor, not standable floor —
+      // Kirk's exact ask, a bookcase resting against a drawn wall. Only
+      // `'prop'` relaxes the footprint gate; `'monster'` still requires
+      // standable ground (`'boss'` never reaches here, rejected above).
       const footprint = straightWallsFootprintSet(doc.wallLines, grid);
       const reject = canvasPlacementRejectReason(
         doc,
         cell[0],
         cell[1],
-        footprint
+        footprint,
+        edit.selectedPalette.kind !== 'prop'
       );
       if (reject) {
         onReject(reject);

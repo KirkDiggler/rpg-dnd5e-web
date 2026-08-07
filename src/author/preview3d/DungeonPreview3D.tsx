@@ -739,9 +739,19 @@ export function buildPlaceableCells(
     const col = hexColumn(cube);
     const row = hexRow(cube);
     const world = cubeToWorld(cube, HEX_SIZE);
+    // Generic, ref-agnostic precompute — drives hover/occupied display for
+    // every cell regardless of what's currently selected in the palette,
+    // so it uses the STANDABLE-required gate (matches monster/boss, the
+    // majority case). `handleClickCell` below re-checks with the actual
+    // selection's own requirement at click time rather than trusting this
+    // — a `'prop'` selection needs the relaxed (footprint-permitting)
+    // check `canvasPlacementRejectReason`'s `requiresStandable: false`
+    // gives it (rpg-project#169's "props on footprint cells" unit), which
+    // this per-cell table can't express without being recomputed on every
+    // palette change.
     const rejectReason = floorPlan
       ? undefined
-      : (canvasPlacementRejectReason(doc, col, row, wallLineFootprint) ??
+      : (canvasPlacementRejectReason(doc, col, row, wallLineFootprint, true) ??
         undefined);
     cells.push({
       key: `${tile.x},${tile.y},${tile.z}`,
@@ -1350,8 +1360,27 @@ export function DungeonPreview3D({
         );
         return;
       }
-      if (cell.rejectReason) {
-        onReject?.(cell.rejectReason);
+      // `cell.rejectReason` (`buildPlaceableCells`) is precomputed
+      // STANDABLE-required — correct for `'monster'`, but a `'prop'`
+      // selection needs a FRESH, ref-aware check
+      // (rpg-project#169's "props on footprint cells" unit: a bookcase
+      // resting against a drawn wall's footprint is a legal target, a
+      // skeleton standing on it is not). Re-running the real predicate
+      // here (rather than conditionally ignoring the precomputed
+      // rejection) keeps the hole/off-canvas/occupied gates intact for
+      // props too — only the footprint gate actually differs.
+      const reject =
+        selectedPalette.kind === 'prop'
+          ? canvasPlacementRejectReason(
+              doc,
+              cell.col,
+              cell.row,
+              wallLineFootprint,
+              false
+            )
+          : cell.rejectReason;
+      if (reject) {
+        onReject?.(reject);
         return;
       }
       onPlace(null, [cell.col, cell.row]);

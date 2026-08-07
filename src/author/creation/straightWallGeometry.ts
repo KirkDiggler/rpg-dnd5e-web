@@ -51,7 +51,6 @@
  * `hexCorner.ts`'s own header comment for the corner-lattice addressing
  * and dedup rule this implies.
  */
-import { neighborCell } from '../boardGeometry';
 import {
   BOARD_HEX_SIZE,
   cellCenter,
@@ -67,6 +66,13 @@ import {
   canonicalCorner,
   cornerPoint,
   nearestCorner,
+  // `neighborCell` from `./hexCorner`, not `../boardGeometry` — see that
+  // module's own doc comment on its exported copy: `boardGeometry.ts`
+  // imports `resolvePlacement`/`DungeonDoc` from `dungeonYaml.ts`, so
+  // importing it here would make THIS module (which `dungeonYaml.ts`'s
+  // own `stripToV1Subset` needs to call directly, wallLines->edges
+  // projection unit) part of a real, crashing import cycle.
+  neighborCell,
   type CornerRef,
 } from './hexCorner';
 
@@ -463,6 +469,142 @@ export function isValidDoorCell(
   return straightWallFootprint(from, to, grid).some(
     ([c, r]) => c === cell[0] && r === cell[1]
   );
+}
+
+/**
+ * wallLines->edges projection — rpg-project#169's "drawn walls become
+ * real" unit. `wallLines:` has no wire representation of its own (see
+ * `dungeonYaml.ts`'s `WallLineDoc` doc comment: it's this concept's own
+ * client-side sugar, never sent to the real server in any form), but its
+ * GEOMETRY isn't necessarily lost — when the server accepts edge-native
+ * `walls:` (verified live, `capabilityProbe.ts`), a wallLine's footprint +
+ * crossed-edge truth projects down into real `{from, to, kind}` pairs,
+ * the same shape `walls:` already uses. This is that projection: cell-pair
+ * `walls:` edges out, given one `wallLines:` entry's corner-anchored
+ * endpoints and door cells in.
+ */
+export type ProjectedWallEdgeKind = 'solid' | 'door';
+
+export interface ProjectedWallEdge {
+  from: [number, number];
+  to: [number, number];
+  kind: ProjectedWallEdgeKind;
+}
+
+export interface WallLineProjection {
+  /** Every distinct cell-boundary edge this ONE wallLine's geometry
+   * implies, deduped within the line itself. */
+  edges: ProjectedWallEdge[];
+  /** Footprint-boundary edges whose neighbor falls OFF the canvas grid
+   * entirely (a wall run reaching the canvas rim) — a `walls:` entry
+   * needs a real cell on BOTH ends (the server's own adjacent-cell-pair
+   * validation), so these have no honest wire representation. Counted,
+   * never silently folded into `edges` or dropped without a trace — see
+   * TARGET-YAML.md's "Straight walls: stripToV1Subset" section. */
+  rimEdgeCount: number;
+}
+
+/**
+ * Projects ONE `wallLines:` entry down to real edge-native `walls:`
+ * pairs. Reuses this module's own `straightWallFootprint`/
+ * `straightWallCrossedEdges` — the SAME functions `preview3d/walkMovement.ts`
+ * already calls to enforce this exact geometry client-side — rather than
+ * re-deriving it a second time.
+ *
+ * **Mechanism (a): every footprint cell is fully blocked.** Not
+ * expressible as "this cell is non-floor" on the wire (the server has no
+ * such concept — `walls:` only ever blocks a specific edge), so the
+ * faithful edge-native translation is: seal EVERY one of a footprint
+ * cell's 6 real neighbor edges. A neighbor that's one of this line's own
+ * `doors:` cells gets `kind: 'door'` instead of `'solid'` — see this
+ * function's own "door handling" note below. A neighbor off the canvas
+ * grid entirely has no cell to pair with; counted in `rimEdgeCount`; a
+ * cell can never seal an edge toward a footprint neighbor AND a rim in
+ * the same direction, so there's no double-counting between the two.
+ *
+ * **Mechanism (b): a grazing crossing between two CLEAR cells**
+ * (`straightWallCrossedEdges`, unchanged from its existing client-side
+ * use) — always `'solid'`, no door special-case: a door only reverses ITS
+ * OWNING line's own footprint claim on its one cell (TARGET-YAML.md's
+ * "Doors" section, "this cell acts as though the wall line never clipped
+ * it at all, nothing more, and nothing less"), never mechanism (b)'s
+ * independent both-clear-cells test — a door cell whose true boundary the
+ * line still grazes remains subject to that test exactly like any other
+ * clear cell.
+ *
+ * **Door handling, the actual gap-vs-door decision** (TARGET-YAML.md has
+ * the full writeup): a door cell's own edges toward its flanking
+ * footprint neighbors are marked `kind: 'door'`, never omitted as a bare
+ * gap and never `'solid'`. An omitted edge would render as nothing at
+ * all in the real game (`syntyHexWallHelpers.ts`'s per-edge wall-piece
+ * placement only draws where a `Wall` entry exists) — indistinguishable
+ * from a rendering bug, not a doorway. `kind: 'door'` gives the opening a
+ * real door frame via the SAME `isDoorWallKind`/`edgePieceKind` path
+ * every other door in this game already renders through, so an authored
+ * doorway reads as a doorway in the actual game, not an unexplained hole
+ * in a wall — matching Kirk's own repeated diagnosis of the earlier
+ * whole-line `kind: door` prototype ("the gashes are walls... I cannot
+ * set a wall or a door").
+ */
+export function projectWallLineToEdges(
+  line: {
+    from: CornerRef;
+    to: CornerRef;
+    doors: readonly { cell: [number, number] }[];
+  },
+  grid: CreationGrid
+): WallLineProjection {
+  const doorCells = line.doors.map((d) => d.cell);
+  const doorSet = new Set(doorCells.map(([c, r]) => cellKey(c, r)));
+  const footprint = straightWallFootprint(line.from, line.to, grid, doorCells);
+
+  const edgeMap = new Map<string, ProjectedWallEdge>();
+  let rimEdgeCount = 0;
+
+  const addEdge = (
+    a: [number, number],
+    b: [number, number],
+    kind: ProjectedWallEdgeKind
+  ) => {
+    const aKey = cellKey(a[0], a[1]);
+    const bKey = cellKey(b[0], b[1]);
+    const [from, to] = aKey <= bKey ? [a, b] : [b, a];
+    const key = `${cellKey(from[0], from[1])}|${cellKey(to[0], to[1])}`;
+    const existing = edgeMap.get(key);
+    if (existing) {
+      // A door beats a solid found for the SAME edge from the opposite
+      // direction — never the reverse (a door cell's own opening is
+      // never re-sealed by a later, redundant solid derivation).
+      if (kind === 'door') existing.kind = 'door';
+      return;
+    }
+    edgeMap.set(key, { from, to, kind });
+  };
+
+  for (const [col, row] of footprint) {
+    for (let facing = 0; facing < 6; facing++) {
+      const n = neighborCell(col, row, facing);
+      if (!inBoundsGrid(n.col, n.row, grid)) {
+        rimEdgeCount++;
+        continue;
+      }
+      const kind: ProjectedWallEdgeKind = doorSet.has(cellKey(n.col, n.row))
+        ? 'door'
+        : 'solid';
+      addEdge([col, row], [n.col, n.row], kind);
+    }
+  }
+
+  for (const edge of straightWallCrossedEdges(
+    line.from,
+    line.to,
+    grid,
+    footprint
+  )) {
+    addEdge(edge.cellA, edge.cellB, 'solid');
+  }
+
+  return { edges: Array.from(edgeMap.values()), rimEdgeCount };
 }
 
 /**

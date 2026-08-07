@@ -164,26 +164,52 @@ export function resolveCanvasFloor(
  *    set cheaply from `deriveCanvasFloorCells` itself — this per-cell
  *    check exists for the 2D brush's single-click case, where building
  *    the whole floor set just to check one cell would be wasted work).
- * 2. **Not a straight-wall (`doc.wallLines`) footprint cell** — Kirk's
- *    rule ("any hex that is not 100% uncovered would not be traversable")
- *    makes a footprint cell BLOCKED, not floorless: the floor tile still
- *    renders (`deriveCanvasFloorCells` doesn't exclude it), but it isn't a
- *    legal placement target. `wallLineFootprint` is a caller-supplied set
+ *    Applies regardless of `requiresStandable` — a footprint cell still
+ *    has a floor tile (see gate 2's own note), but a hole or an
+ *    off-canvas cell has none at all, for ANY kind of placement.
+ * 2. **Not a straight-wall (`doc.wallLines`) footprint cell — PLACEABLE
+ *    vs. STANDABLE split** (`requiresStandable`, rpg-project#169's "props
+ *    on footprint cells" unit — Kirk's exact ask: a bookcase standing
+ *    against a drawn wall). Kirk's rule ("any hex that is not 100%
+ *    uncovered would not be traversable") makes a footprint cell BLOCKED
+ *    for STANDING — a creature can't occupy it — but the floor tile is
+ *    still there (`deriveCanvasFloorCells` doesn't exclude it), and
+ *    nothing about that rule says a prop can't rest against/on the wall
+ *    that covers it. `requiresStandable` names which of the two a given
+ *    placement needs: `true` for anything that must be able to stand
+ *    there (monsters, boss — a creature genuinely occupying the cell),
+ *    `false` for a prop (decor, furniture — placeable on any real floor
+ *    cell, footprint included). This gate is SKIPPED entirely when
+ *    `requiresStandable` is `false`; every other gate still applies
+ *    (a prop still needs real floor and an unoccupied cell). Start/end
+ *    markers are deliberately NOT routed through this function at all —
+ *    they keep their own pre-existing, different treatment (a retroactive
+ *    "⚠ START (BLOCKED!)" flag on an already-placed marker, never a
+ *    placement-time reject — see `CreationBoard.tsx`'s own "flag, never
+ *    silently delete or move" rendering and TARGET-YAML.md's
+ *    "Interactions with everything else" section), so this parameter
+ *    only ever needs to distinguish prop from creature, not a third case.
+ *    `wallLineFootprint` is a caller-supplied set
  *    (`creation/straightWallGeometry.ts`'s `straightWallsFootprintSet`)
  *    rather than recomputed here, so a caller checking many cells (the 3D
- *    click layer, once wired) computes it once, not once per cell.
+ *    click layer) computes it once, not once per cell.
  * 3. **Not already occupied** — `boardGeometry.ts`'s `isCellOccupied`,
  *    called with no `floorPlan` (a from-scratch canvas has none — see
  *    `isCellOccupied`'s own doc comment for why that's safe: its
  *    room-scoped loop is a no-op for `doc.rooms === []` regardless, and
  *    the top-level `doc.place` loop this actually needs never depended on
- *    `floorPlan` in the first place).
+ *    `floorPlan` in the first place). Applies regardless of
+ *    `requiresStandable` — a footprint cell holding a bookcase is a
+ *    legal target for a SECOND prop only in the same sense any other
+ *    occupied cell is (it isn't; stack elsewhere), no different rule for
+ *    footprint cells specifically.
  */
 export function canvasPlacementRejectReason(
   doc: DungeonDoc,
   col: number,
   row: number,
-  wallLineFootprint: ReadonlySet<string>
+  wallLineFootprint: ReadonlySet<string>,
+  requiresStandable: boolean
 ): string | null {
   const grid = doc.canvas ?? DEFAULT_CANVAS;
   const inBounds =
@@ -192,7 +218,7 @@ export function canvasPlacementRejectReason(
   if (!inBounds || isHole) {
     return 'No floor there — off the canvas, or a hole.';
   }
-  if (wallLineFootprint.has(`${col},${row}`)) {
+  if (requiresStandable && wallLineFootprint.has(`${col},${row}`)) {
     return "That cell is blocked by a straight wall's footprint — pick an uncovered cell.";
   }
   if (isCellOccupied(undefined, doc, col, row)) {

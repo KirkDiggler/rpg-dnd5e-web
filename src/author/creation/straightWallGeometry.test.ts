@@ -8,6 +8,7 @@ import {
   isValidDoorCell,
   nearestWallAngleFamily,
   projectPointToLineParam,
+  projectWallLineToEdges,
   snapStraightEndpoint,
   straightWallCrossedEdges,
   straightWallFootprint,
@@ -340,5 +341,114 @@ describe('clipSegmentToShrunkHex — the touch-vs-clip epsilon rule directly', (
     const a = { x: hexAt55.x + halfFlatWidth - 1, y: hexAt55.y - 30 };
     const b = { x: hexAt55.x + halfFlatWidth - 1, y: hexAt55.y + 30 };
     expect(isCellClipped(a, b, 5, 5)).toBe(true);
+  });
+});
+
+// rpg-project#169's "drawn walls become real" unit — wallLines->edges
+// projection, the send-time seam that lets a drawn straight wall become
+// wire-real `walls:` geometry. Reuses the exact fixtures the door-
+// exclusion/footprint describe blocks above already established, rather
+// than inventing new ones.
+describe('projectWallLineToEdges', () => {
+  it('a single isolated footprint cell seals all 6 of its real neighbor edges, solid, no doors', () => {
+    // The same "wall ENDING at a corner" diameter fixture from above:
+    // footprint is exactly [[5, 4]], well inside the 20x30 grid on every
+    // side, so all 6 neighbor directions resolve to real, in-grid cells.
+    const from: CornerRef = { cell: [5, 4], corner: 2 };
+    const to: CornerRef = { cell: [5, 4], corner: 5 };
+    const result = projectWallLineToEdges({ from, to, doors: [] }, GRID);
+    expect(result.rimEdgeCount).toBe(0);
+    expect(result.edges).toHaveLength(6);
+    for (const edge of result.edges) {
+      expect(edge.kind).toBe('solid');
+      const touchesSealedCell =
+        (edge.from[0] === 5 && edge.from[1] === 4) ||
+        (edge.to[0] === 5 && edge.to[1] === 4);
+      expect(touchesSealedCell).toBe(true);
+    }
+    // Every edge is a distinct cell pair — no duplicate direction landed
+    // on the same neighbor twice.
+    const keys = new Set(
+      result.edges.map((e) => `${e.from.join(',')}|${e.to.join(',')}`)
+    );
+    expect(keys.size).toBe(6);
+  });
+
+  it('every real neighbor direction is either a sealed edge or a counted rim edge — never silently dropped', () => {
+    // Same diameter fixture, but anchored at column 0 — some of the
+    // isolated footprint cell's 6 neighbor directions fall off the
+    // canvas grid entirely (no cell to pair with).
+    const from: CornerRef = { cell: [0, 4], corner: 2 };
+    const to: CornerRef = { cell: [0, 4], corner: 5 };
+    const result = projectWallLineToEdges({ from, to, doors: [] }, GRID);
+    expect(result.rimEdgeCount).toBeGreaterThan(0);
+    // The 6 real neighbor directions are mutually exclusive with rim —
+    // every direction contributes to exactly one of the two counts, so
+    // they always sum to 6 for an isolated single-cell footprint.
+    expect(result.edges.length + result.rimEdgeCount).toBe(6);
+    for (const edge of result.edges) expect(edge.kind).toBe('solid');
+  });
+
+  // A genuinely VERTICAL line (this module's own header comment: "a
+  // vertical line through a column of hex CENTERS instead clips every
+  // hex in that column full-width") clips a CONTIGUOUS run of cells —
+  // unlike the every-other-hex row fixture above, consecutive cells in
+  // this run ARE real hex neighbors of each other (verified directly,
+  // not assumed, while building this test), which is what a door in the
+  // MIDDLE of an ordinary wall run actually needs to exercise.
+  const verticalFrom: CornerRef = { cell: [5, 3], corner: 0 };
+  const verticalTo: CornerRef = { cell: [5, 9], corner: 0 };
+  const MID_DOOR_CELL: [number, number] = [6, 6]; // footprint is [6,4]..[6,9]
+
+  const sameCell = (a: [number, number], b: [number, number]) =>
+    a[0] === b[0] && a[1] === b[1];
+  const edgeBetween = (
+    edges: readonly {
+      from: [number, number];
+      to: [number, number];
+      kind: string;
+    }[],
+    a: [number, number],
+    b: [number, number]
+  ) =>
+    edges.find(
+      (e) =>
+        (sameCell(e.from, a) && sameCell(e.to, b)) ||
+        (sameCell(e.to, a) && sameCell(e.from, b))
+    );
+
+  it('a doors: cell projects its flanking footprint-neighbor edges as kind: door, never solid and never a bare gap', () => {
+    const result = projectWallLineToEdges(
+      { from: verticalFrom, to: verticalTo, doors: [{ cell: MID_DOOR_CELL }] },
+      GRID
+    );
+    // [6,6]'s own flanking footprint neighbors along the wall run are
+    // [6,5] and [6,7] — both of those edges must read as a doorway.
+    expect(edgeBetween(result.edges, MID_DOOR_CELL, [6, 5])?.kind).toBe('door');
+    expect(edgeBetween(result.edges, MID_DOOR_CELL, [6, 7])?.kind).toBe('door');
+  });
+
+  it('a door only reverses ITS OWN line’s footprint claim — an independent mechanism-(b) grazing edge on the same cell stays solid', () => {
+    // TARGET-YAML.md's own rule, verbatim: "something else... can still
+    // legitimately block it independently." [6,6] is a door cell, but the
+    // line's own grazing crossing toward [5,5] (mechanism (b), a
+    // both-clear-cells test wholly separate from the door's flanking
+    // edges above) is untouched by the door exclusion — still solid.
+    const result = projectWallLineToEdges(
+      { from: verticalFrom, to: verticalTo, doors: [{ cell: MID_DOOR_CELL }] },
+      GRID
+    );
+    const graze = edgeBetween(result.edges, MID_DOOR_CELL, [5, 5]);
+    expect(graze?.kind).toBe('solid');
+  });
+
+  it('mechanism (a) and (b) edges merge into one deduped set — no duplicate cell pairs', () => {
+    const from: CornerRef = { cell: [2, 5], corner: 0 };
+    const to: CornerRef = { cell: [10, 5], corner: 3 };
+    const result = projectWallLineToEdges({ from, to, doors: [] }, GRID);
+    const keys = result.edges.map(
+      (e) => `${e.from.join(',')}|${e.to.join(',')}`
+    );
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
