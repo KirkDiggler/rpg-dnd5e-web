@@ -187,6 +187,66 @@ export function capabilitySummary(caps: ServerCapabilities): {
 }
 
 /**
+ * The `DialectField`s that fall inside the RATIFIED v0.3 level cut
+ * (`ideas/dungeon-builder/spec/v0.3/spec.md` §1, rpg-project, status
+ * RATIFIED 2026-08-05) — derived from that table's groups (b)/(c)/(d),
+ * not declared independently:
+ *
+ *   (b) already-compiling: `walls:`, `start:`, room-scoped floor-prop
+ *       `facing:`             -> `walls`, `start`, `facingFloorProp`
+ *   (c) Wave 0 (#192): `canvas:`, top-level `place:` (canvas mode)
+ *                              -> `canvas`, `topLevelPlace`
+ *   (d) Wave 1 (#180): `regions:`
+ *                              -> `regions`
+ *
+ * `facingMonster`/`facingBoss`/`facingWallMount` are DELIBERATELY
+ * excluded — not because they're "draft," but because spec §4.9.3 is a
+ * REJECTION requirement: "a monster `place:` entry, a `boss:` entry, or a
+ * `mount: wall` placement with `facing:` set MUST be rejected... not a
+ * decode failure and not a silent drop." A fully-compliant v0.3 server
+ * MUST answer `accepted: false` for these three forever — including them
+ * here would make "v0.3 cut: fully supported" an impossible bar even a
+ * perfect server could never clear. The remaining 8 of the probe's 17
+ * fields (`holes`/`end`/`lighting`/`defaults`/`mount`/`height`/
+ * `rotationDegrees`/`targeting`) are spec §2's explicit "ABOVE v0.3" list
+ * — genuinely draft-tier, correctly excluded on those grounds instead.
+ * 6 + 8 + 3 = 17, the full `DIALECT_FIELDS` set, with no field
+ * unaccounted for either way.
+ *
+ * Deliberately a fresh set here rather than reusing `specCompat.ts`'s
+ * `inferSpecCut` — that function classifies a DOCUMENT's own construct
+ * USAGE (a `DungeonDoc`'s fields), a different domain/shape than this
+ * one (which `DialectField`s a SERVER accepts). The two are consistent
+ * with each other (cross-checked against the same spec sections) but
+ * there's no single function shape that legitimately serves both without
+ * forcing an artificial coupling between document analysis and
+ * capability probing.
+ */
+export const V03_CUT_FIELDS: ReadonlySet<DialectField> = new Set([
+  'walls',
+  'start',
+  'facingFloorProp',
+  'canvas',
+  'topLevelPlace',
+  'regions',
+]);
+
+/** True only when EVERY `V03_CUT_FIELDS` member is accepted — the ratified
+ * v0.3 cut is fully live on this server, regardless of the draft-tier (or
+ * spec-mandated-rejection) remainder of `DIALECT_FIELDS`. Drives the
+ * capabilities line's "v0.3 cut: fully supported" suffix
+ * (`YamlPane.tsx`'s `CapabilitiesLine`) — derived from the live probe
+ * result every time this is called, never cached/hardcoded, so it
+ * un-claims itself the instant a server (an older deploy, a rollback)
+ * stops accepting even one cut field. */
+export function v03CutFullySupported(caps: ServerCapabilities): boolean {
+  for (const field of V03_CUT_FIELDS) {
+    if (!caps[field]?.accepted) return false;
+  }
+  return true;
+}
+
+/**
  * Minimal, known-good base every probe document builds on: a 3-room chain
  * (entrance/chamber/boss) with a declared boss. Two rooms alone are NOT
  * enough — a real, load-bearing finding from building this probe suite

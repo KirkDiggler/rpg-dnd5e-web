@@ -16,7 +16,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { DialectField, ServerCapabilities } from './capabilityProbe';
-import { DIALECT_FIELDS } from './capabilityProbe';
+import { DIALECT_FIELDS, V03_CUT_FIELDS } from './capabilityProbe';
 import {
   CapabilitiesLine,
   CompileBadgeStrip,
@@ -223,7 +223,37 @@ describe('CapabilitiesLine — the "server capabilities" readout', () => {
     expect(container.textContent).not.toContain('fully supported');
   });
 
-  it('appends "v0.3 cut: fully supported" ONLY when the live probe accepted every dialect field (Kirk look-feedback, rpg-project#194) — derived from the probe, never hardcoded', () => {
+  it('appends "v0.3 cut: fully supported" once every RATIFIED v0.3-cut field is accepted — TODAY\'S real state against the Wave-1 verification server (Kirk look-feedback, rpg-project#194), even though 11 of 17 fields (draft-tier or spec-mandated rejections) stay rejected', () => {
+    const cutFields = [...V03_CUT_FIELDS];
+    const { container } = render(
+      <CapabilitiesLine
+        serverState="live"
+        capabilities={allCapabilities(cutFields)}
+        onRefresh={vi.fn()}
+      />
+    );
+    expect(container.textContent).toContain(
+      `server capabilities: accepts ${cutFields.length}/${DIALECT_FIELDS.length} dialect fields`
+    );
+    expect(container.textContent).toContain('v0.3 cut: fully supported');
+  });
+
+  it('un-claims "fully supported" the moment even ONE v0.3-cut field is rejected — an older/rolled-back server, not just any field', () => {
+    const [, ...cutFieldsMinusOne] = [...V03_CUT_FIELDS];
+    const { container } = render(
+      <CapabilitiesLine
+        serverState="live"
+        capabilities={allCapabilities(cutFieldsMinusOne)}
+        onRefresh={vi.fn()}
+      />
+    );
+    expect(container.textContent).toContain(
+      `server capabilities: accepts ${cutFieldsMinusOne.length}/${DIALECT_FIELDS.length} dialect fields`
+    );
+    expect(container.textContent).not.toContain('fully supported');
+  });
+
+  it('still shows "fully supported" at 17/17 — accepting every field trivially includes every cut field', () => {
     const { container } = render(
       <CapabilitiesLine
         serverState="live"
@@ -237,17 +267,14 @@ describe('CapabilitiesLine — the "server capabilities" readout', () => {
     expect(container.textContent).toContain('v0.3 cut: fully supported');
   });
 
-  it('un-claims "fully supported" the moment even ONE field is rejected — an older/rolled-back server', () => {
-    const allButOne = DIALECT_FIELDS.slice(0, -1);
+  it('does NOT claim "fully supported" from draft-tier fields alone — accepting all the NON-cut fields is not the v0.3 cut', () => {
+    const nonCutFields = DIALECT_FIELDS.filter((f) => !V03_CUT_FIELDS.has(f));
     const { container } = render(
       <CapabilitiesLine
         serverState="live"
-        capabilities={allCapabilities(allButOne)}
+        capabilities={allCapabilities(nonCutFields)}
         onRefresh={vi.fn()}
       />
-    );
-    expect(container.textContent).toContain(
-      `server capabilities: accepts ${allButOne.length}/${DIALECT_FIELDS.length} dialect fields`
     );
     expect(container.textContent).not.toContain('fully supported');
   });

@@ -35,7 +35,11 @@
  * and handed down as one plain-data prop. */
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { useRef } from 'react';
-import { capabilitySummary, type ServerCapabilities } from './capabilityProbe';
+import {
+  capabilitySummary,
+  v03CutFullySupported,
+  type ServerCapabilities,
+} from './capabilityProbe';
 import { downloadYamlFile } from './fileIO';
 import type { SpecCompatReport } from './specCompat';
 import type { ServerState } from './usePutDungeonPreview';
@@ -69,13 +73,17 @@ export function CapabilitiesLine({
   }
   const { accepted, total } = capabilitySummary(capabilities);
   // Kirk look-feedback addendum (2026-08-07, rpg-project#194): "I am
-  // being told the backend fully supports v0.3." Derived from the SAME
-  // live probe result every field/badge above already reads, never a
-  // hardcoded claim — the moment a server accepts fewer than all
-  // DIALECT_FIELDS (an older deploy, a rolled-back server), this line
-  // un-claims itself automatically, exactly as honest as the badges
-  // beside it.
-  const fullySupported = total > 0 && accepted === total;
+  // being told the backend fully supports v0.3." Gated on the RATIFIED
+  // v0.3 CUT specifically (`capabilityProbe.ts`'s `v03CutFullySupported`
+  // — spec.md §1's groups b/c/d, 6 of the 17 probed fields), not on
+  // every DIALECT_FIELD: the other 11 are either genuinely draft-tier
+  // (§2) or spec-mandated REJECTIONS (facing on monster/boss/wall-mount,
+  // §4.9.3) that a compliant server must never accept — see that
+  // function's own doc comment for the full field-by-field accounting.
+  // Derived from the SAME live probe result every field/badge above
+  // already reads, never a hardcoded claim — un-claims itself the
+  // instant even one cut field stops being accepted.
+  const fullySupported = v03CutFullySupported(capabilities);
   return (
     <span
       style={{

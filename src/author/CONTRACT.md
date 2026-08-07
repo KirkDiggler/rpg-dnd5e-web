@@ -7363,4 +7363,84 @@ appearing at 17/17 and correctly absent at 16/17 — the "un-claims
 itself" half of the honesty guarantee, not just the happy path.
 `ci-check` clean.
 
+## Correction: "v0.3 cut: fully supported" was gated on the wrong subset (2026-08-07, rpg-project#194)
+
+The line above shipped gated on `accepted === total` (all 17 probed
+`DialectField`s) — wrong. The v0.3 CUT is a specific 6-field subset of
+those 17 (spec.md §1 groups b/c/d), not "everything the probe knows
+about." Against today's real Wave-1 verification server (6/17 accepted,
+exactly the cut, the other 11 correctly still rejected), the old gate
+stayed silent — inverting the line's whole purpose: Kirk was told the
+backend fully supports v0.3, and this line exists to confirm that from
+LIVE PROBE TRUTH, not to wait for constructs that were never part of
+v0.3 in the first place.
+
+### The correct set, verified against the ratified spec directly
+
+Read `ideas/dungeon-builder/spec/v0.3/spec.md` §1 (rpg-project,
+**RATIFIED 2026-08-05**) directly rather than trusting either the quick
+verbal enumeration or `specCompat.ts`'s document-level reasoning alone.
+§1's table groups (b) already-compiling, (c) Wave 0 (#192), (d) Wave 1
+(#180) map onto exactly 6 of the 17 probed `DialectField`s:
+
+| Spec §1 group         | Constructs                                           | `DialectField`s                     |
+| --------------------- | ---------------------------------------------------- | ----------------------------------- |
+| (b) already-compiling | `walls:`, `start:`, room-scoped floor-prop `facing:` | `walls`, `start`, `facingFloorProp` |
+| (c) Wave 0 (#192)     | `canvas:`, top-level `place:` (canvas mode)          | `canvas`, `topLevelPlace`           |
+| (d) Wave 1 (#180)     | `regions:`                                           | `regions`                           |
+
+New `V03_CUT_FIELDS` (`capabilityProbe.ts`) is exactly this 6-field set,
+declared fresh rather than imported from `specCompat.ts` — the two
+modules classify genuinely different things (a DOCUMENT's own construct
+USAGE vs. what a SERVER accepts) and forcing one shape to serve both
+would be an artificial coupling, not a real reuse; the constant's own
+doc comment cites the spec table directly instead. New
+`v03CutFullySupported(caps)` returns true only when every `V03_CUT_FIELDS`
+member is individually accepted.
+
+**The subtle part, worth recording precisely**: the remaining 11 fields
+split into two DIFFERENT kinds of "not in the cut," not one — spec §2's
+explicit "ABOVE v0.3" table (`holes`/`end`/`lighting`/`defaults`/`mount`/
+`height`/`rotationDegrees`/`targeting`, 8 fields) is genuinely draft-tier,
+not-yet-ratified. But `facingMonster`/`facingBoss`/`facingWallMount` (3
+fields) are NOT in that table at all — reading spec §4.9.3 directly:
+"a monster `place:` entry, a `boss:` entry, or a `mount: wall` placement
+with `facing:` set MUST be rejected... not a decode failure and not a
+silent drop." A fully spec-COMPLIANT v0.3 server must answer
+`accepted: false` for these three FOREVER, by design — they're not
+"not shipped yet," they're "must never be accepted." Including them in
+the required set would have made "fully supported" an impossible bar no
+server, however compliant, could ever clear. `specCompat.ts`'s own
+`inferSpecCut` independently reaches the same practical conclusion from
+the document-classification side (`facing` itself is excluded from its
+above-v0.3 reasons list, "it's a v0.3 construct... on every entry type" —
+consistent once you separate "is facing a v0.3 construct" from "is
+facing ACCEPTED on this entry type," which §4.9.2's own text does:
+"Acceptance is scoped to non-monster, `mount: floor`... placements").
+6 (cut) + 8 (§2 draft) + 3 (§4.9.3 mandated-rejection) = 17, the full
+`DIALECT_FIELDS` set — every field accounted for on one side or the
+other, no ambiguity left.
+
+### Tests
+
+New `capabilityProbe.test.ts` coverage (8 tests): `V03_CUT_FIELDS` is
+exactly the spec-derived 6-field set and a strict subset of
+`DIALECT_FIELDS`; `v03CutFullySupported` true at exactly-the-cut-accepted
+(today's real state), false the moment one cut field drops, true at
+17/17, false from non-cut fields alone, false against an all-rejected
+server. `YamlPane.test.tsx`'s two capability-line tests corrected to the
+same semantics, plus two more (16 total): "fully supported" at 17/17
+(boundary case) and absent when only non-cut fields are accepted (rules
+out "any 6 fields" satisfying the claim). Full suite: 139 files / 2304
+tests, `ci-check` clean.
+
+### Live re-verification
+
+`/author` against the SAME Wave-1 verification server (`:8092`, dev-tip
+`rpg-api` 361242c / #774) now reads exactly: **"server capabilities:
+accepts 6/17 dialect fields · v0.3 cut: fully supported"** — the precise
+string the correction was written to produce, screenshotted, not just
+asserted. Concepts Lab's fixtures mount re-confirmed unaffected (no
+capabilities line at all outside live mode, unchanged).
+
 — asset-pipeline agent, on behalf of KirkDiggler
