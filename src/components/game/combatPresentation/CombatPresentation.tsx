@@ -19,6 +19,9 @@ export interface CombatPresentationAttack {
 export interface CombatPresentationProps {
   item: CombatPresentationAttack;
   damage?: EntityDamaged;
+  /** Fires exactly once when this attack reaches its authoritative outcome beat:
+   * Verdict for a miss, Impact for a hit. Presentation coordination only. */
+  onResultRelease?: (id: number) => void;
   onComplete: (id: number) => void;
 }
 
@@ -49,6 +52,7 @@ function damageVisibleAtBeat(beat: string, hit: boolean): boolean {
 export function CombatPresentation({
   item,
   damage,
+  onResultRelease,
   onComplete,
 }: CombatPresentationProps) {
   const reducedMotion = useReducedMotion() ?? false;
@@ -71,6 +75,9 @@ export function CombatPresentation({
   const completedItemRef = useRef<CombatPresentationAttack | undefined>(
     undefined
   );
+  const releasedItemRef = useRef<CombatPresentationAttack | undefined>(
+    undefined
+  );
 
   useEffect(() => {
     // A new item first renders with the previous sequencer beat. Wait for its
@@ -79,11 +86,16 @@ export function CombatPresentation({
       previousItemRef.current = item;
       return;
     }
+    const resultBeat = item.attack.hit ? 'impact' : 'verdict';
+    if (seq.beat === resultBeat && releasedItemRef.current !== item) {
+      releasedItemRef.current = item;
+      onResultRelease?.(item.id);
+    }
     if (seq.beat === 'done' && completedItemRef.current !== item) {
       completedItemRef.current = item;
       onComplete(item.id);
     }
-  }, [item, onComplete, seq.beat]);
+  }, [item, onComplete, onResultRelease, seq.beat]);
 
   const outcome = ['verdict', 'impact', 'release'].includes(seq.beat)
     ? verdictLabel(item.attack)

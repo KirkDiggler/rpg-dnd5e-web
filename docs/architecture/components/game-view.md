@@ -1,8 +1,8 @@
 ---
 name: GameView
 description: The live game path's successor to LobbyView — party assembly (LobbyFlow) then a live encounter (EncounterView), built entirely on the shared harness stack
-updated: 2026-07-12
-confidence: high — verified by reading every new file in full, running the full vitest suite (675 passing), and cross-checking rpg-api's start_encounter.go entity-id claim
+updated: 2026-08-07
+confidence: high — verified by focused real-path tests plus the repository CI suite; server-owned entity-id behavior remains cross-checked against rpg-api start_encounter.go
 ---
 
 # GameView
@@ -96,6 +96,26 @@ changing with no story.
   renders its entityId-derived fallback name/emoji for every combatant
   (same as `EncounterMap`'s existing renderable-entity naming) rather than
   portraits/class icons — a follow-up, not a proto gap.
+
+### Ordered combat presentation (#721)
+
+`EncounterView` keeps `useEncounterState` canonical as stream envelopes arrive,
+but holds a small presentation-only projection for the active attack story:
+visible HP and correlated outcome log entries release on the existing theater's
+semantic result beat (Verdict for a miss, Impact for a hit). A canonically
+removed, already-known entity is retained as a render tombstone through that
+result and then follows the existing removal path when the theater completes.
+No death, hit, damage, or HP value is inferred; every displayed value is copied
+from `AttackResolved`, `EntityDamaged.hp_after`, `EntityDied`, or
+`EntityRemoved`.
+
+Two narrow lifecycle seams coordinate the story. `useHexMovePath` reports the
+exact completed `moveSeq` through `HexEntity` → `HexGrid` → `EncounterMap`, so
+an attack waits only for its own actor's current in-flight movement and ignores
+stale completions. `CombatPresentation` exposes `onResultRelease(id)` plus its
+existing `onComplete(id)`; it remains unaware of Three.js, the combat log, HP,
+or terminal rendering. Snapshot replacement, encounter end, and leaving
+turn-based mode flush the held projection instead of replaying it.
 
 ## Related references
 
