@@ -12,6 +12,7 @@
  * - Turn order overlay
  */
 
+import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import {
   doorHexKinds,
   doorHexPositions,
@@ -158,6 +159,15 @@ export interface HexGridProps {
    * instead of SyntyHexWall's legacy per-cell hex-vertex look. Empty/
    * omitted renders nothing extra, unchanged from pre-W3 behavior. */
   connectorFallbackSegments?: WallRunSegment[];
+  /** A canvas (authored) dungeon's own real wall edges, chained into
+   * straight runs by authoredWallRuns.computeAuthoredWallRuns and rendered
+   * by WallRunMesh with the SAME tiled-Synty-piece language as
+   * envelopeRuns — see WallRunMesh's own `authoredRuns` prop doc comment
+   * for why this can't reuse envelope/connector geometry (a canvas
+   * dungeon's regions are semantic-only zones, not wall truth). Empty/
+   * omitted (every caller not yet updated, and any chain-generated
+   * dungeon) renders nothing extra, unchanged. */
+  authoredRuns?: AuthoredWallRun[];
   /** Per-door exact position + rotationY override, keyed by Wall.id
    * (wallRunAdapters.connectorDoorPlanes) — passed straight through to
    * SyntyHexWall so a door frame/leaf sits exactly on its connector's own
@@ -409,6 +419,7 @@ function Scene({
   envelopeCorners = [],
   connectorRuns = [],
   connectorFallbackSegments = [],
+  authoredRuns = [],
   doorPlaneOverrides,
   wallHeight,
   wallCutaway = false,
@@ -981,6 +992,7 @@ function Scene({
             envelopeCorners={envelopeCorners}
             connectorRuns={connectorRuns}
             fallbackSegments={connectorFallbackSegments}
+            authoredRuns={authoredRuns}
             spaceTheme={spaceTheme}
             rememberedEnvelopeRegionIds={rememberedRunIds.envelopeRegionIds}
             rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}

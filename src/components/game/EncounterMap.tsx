@@ -29,8 +29,11 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
 import { DevPerfProbe } from '../../dev/DevPerfProbe';
+import { computeAuthoredWallRuns } from '../../hooks/authoredWallRuns';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import {
+  authoredWallEdgeCandidates,
+  authoredWallRunEdgeInputs,
   connectorDoorHeights,
   connectorDoorInputsFromWalls,
   connectorDoorPlanes,
@@ -259,7 +262,7 @@ export function EncounterMap({
       }),
     [regions, connectorDoors, hasWallTruth]
   );
-  const legacySyntyWalls = useMemo(
+  const legacySyntyWallsRaw = useMemo(
     () =>
       legacyRenderWalls(
         wallList,
@@ -269,6 +272,55 @@ export function EncounterMap({
       ),
     [wallList, regions, wallRunsResult, connectorDoors]
   );
+  // Authored-wall-run rendering (rpg-project#720 follow-up, "authored
+  // walls speak the game's run language"): every 'interior'-category,
+  // boundary-edge, non-door wall (authoredWallEdgeCandidates' own doc
+  // comment) — the category nearly every real authored (canvas) dungeon
+  // wall edge falls into today, since #720 correctly stopped feeding a
+  // zone's bounding box into computeWallRuns for those, but never gave
+  // them anywhere better to render than SyntyHexWall's legacy per-cell
+  // path (the "vertical blinds" jagged look: one small piece per single
+  // hex edge, independently rotated/variant-picked). Chained into
+  // straight runs and rendered by WallRunMesh with the same tiled-Synty-
+  // piece language envelope/connector runs already use. A chain dungeon's
+  // real perimeter/connector walls are never in 'interior' category (they
+  // resolve to an envelope/connector run or a door instead), so this is a
+  // no-op there — see wallRunAdapters.test.ts's own regression coverage
+  // against real reference-tomb wire data.
+  const authoredWallEdges = useMemo(
+    () =>
+      authoredWallEdgeCandidates(
+        wallList,
+        regions,
+        wallRunsResult.connectorRuns,
+        connectorDoors
+      ),
+    [wallList, regions, wallRunsResult, connectorDoors]
+  );
+  const authoredWallRuns = useMemo(() => {
+    const edgeInputs = authoredWallRunEdgeInputs(
+      wallList,
+      regions,
+      wallRunsResult.connectorRuns,
+      connectorDoors
+    );
+    return computeAuthoredWallRuns(edgeInputs);
+  }, [wallList, regions, wallRunsResult, connectorDoors]);
+  // legacySyntyWallsRaw still includes every 'interior' wall (degenerate
+  // AND boundary-edge alike — legacyRenderWalls' own contract is
+  // unchanged, see authoredWallEdgeCandidates' doc comment on why it
+  // stays a narrower, separate selection rather than a mutation of that
+  // function). Subtract exactly the boundary-edge ones now covered by
+  // authoredWallRuns above, by reference (both derive from the SAME
+  // `wallList` array, so its own elements are shared, not cloned) — a
+  // degenerate 'interior' wall (a real blocked-cell obstacle, e.g. a
+  // crypt pillar) is never in `authoredWallEdges`, so it stays on
+  // SyntyHexWall's legacy per-cell path unaffected.
+  const legacySyntyWalls = useMemo(() => {
+    if (authoredWallEdges.length === 0) return legacySyntyWallsRaw;
+    const covered = new Set(authoredWallEdges);
+    return legacySyntyWallsRaw.filter((wall) => !covered.has(wall));
+  }, [legacySyntyWallsRaw, authoredWallEdges]);
   // W3 "fallback restyle" (rpg-project#133 design.md/plan.md): the same
   // structural safety-net candidates legacyRenderWalls used to keep for
   // SyntyHexWall's legacy per-cell renderer now render as straight,
@@ -574,6 +626,7 @@ export function EncounterMap({
         envelopeCorners={wallRunsResult.envelopeCorners}
         connectorRuns={wallRunsResult.connectorRuns}
         connectorFallbackSegments={fallbackSegments}
+        authoredRuns={authoredWallRuns}
         doorPlaneOverrides={doorPlaneOverrides}
         wallHeight={wallHeightOverride}
         wallCutaway={wallCutawayOverride}

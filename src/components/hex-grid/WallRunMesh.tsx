@@ -31,6 +31,7 @@
  * `WallRunMeshProps.fallbackSegments`'s doc comment.
  */
 
+import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import type {
   ConnectorRun,
   EnvelopeCorner,
@@ -222,6 +223,30 @@ export interface WallRunMeshProps {
    * remembered-hexes data source (fog-of-war Task 2+).
    */
   fallbackSegments?: WallRunSegment[];
+  /**
+   * A canvas (authored) dungeon's own real wall edges, chained into
+   * straight runs by `authoredWallRuns.computeAuthoredWallRuns` — the
+   * same tiled-Synty-piece language as `envelopeRuns`, but derived
+   * directly from real wall EDGES rather than a region's bounding box
+   * (rpg-dnd5e-web#720 "zones are not rooms": an authored dungeon's
+   * `regions:` are semantic-only zones with no guaranteed relationship to
+   * real wall truth, so envelope/connector geometry can't be trusted for
+   * them the way it can for a chain-generated room). Carries its own
+   * `facing` (derived from its wall network's own vertex centroid, the
+   * closest available stand-in for "room center" a zone-independent
+   * module has), so it gets the same `facingCorrectedRotationY` treatment
+   * envelope runs do. Empty/omitted (every caller before this prop
+   * existed, and any chain-generated dungeon, which has no authored wall
+   * edges at all) renders nothing extra, unchanged.
+   *
+   * Not currently matched against `rememberedEnvelopeRegionIds` — an
+   * authored run has no `regionId` of its own to key against (it can span
+   * or ignore zone boundaries entirely); fog-of-war memory for authored
+   * dungeons is a follow-up, not a regression this prop introduces
+   * (chain dungeons, the only routes with fog-of-war memory wired up
+   * today, never populate this prop at all).
+   */
+  authoredRuns?: AuthoredWallRun[];
   /** Fog-of-war memory (rpg-dnd5e-web#601/#602 scene-knowledge contract):
    * region ids whose envelope (all 4 sides + corner) should render via
    * `GlbInstance`'s `remembered` look instead of `spaceTheme`'s tint.
@@ -307,6 +332,7 @@ export function WallRunMesh({
   envelopeRuns,
   connectorRuns,
   fallbackSegments = [],
+  authoredRuns = [],
   rememberedEnvelopeRegionIds,
   rememberedConnectorDoorIds,
   wallHeight = WALL_HEIGHT,
@@ -331,6 +357,25 @@ export function WallRunMesh({
               facing={run.facing}
             />
             <FloorSkirtBox segment={run} remembered={remembered} />
+          </group>
+        );
+      })}
+      {authoredRuns.map((run) => {
+        // Same envelope-side height rule as envelopeRuns above (both
+        // carry a real outward `facing`, unlike a connector/fallback
+        // interior partition) — see `authoredRuns`' own prop doc comment
+        // for why this run has no regionId to key fog-of-war memory
+        // against yet.
+        const height = effectiveWallHeight(run.facing, wallCutaway, wallHeight);
+        return (
+          <group key={run.key}>
+            <TiledWallRun
+              segment={run}
+              wallHeight={height}
+              tint={tint}
+              facing={run.facing}
+            />
+            <FloorSkirtBox segment={run} />
           </group>
         );
       })}
