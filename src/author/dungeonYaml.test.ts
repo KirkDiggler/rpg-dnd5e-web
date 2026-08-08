@@ -131,6 +131,13 @@ describe('parseDungeon', () => {
   });
 });
 
+describe('emptyCanvasYaml seed — theme: crypt (rpg-project#194 authoring-robustness unit)', () => {
+  it('stamps theme: crypt so a fresh "New Dungeon" canvas is never full-bright', () => {
+    const { doc } = parseDungeon(emptyCanvasYaml(20, 30));
+    expect(doc.theme).toBe('crypt');
+  });
+});
+
 describe('shape validation at parse (rpg-project#194 authoring-robustness unit — "the YAML is always fixable")', () => {
   const base = () => emptyCanvasYaml(10, 10);
 

@@ -36,6 +36,17 @@
  * `specCompat.ts`'s `inferSpecCut` for what happens the moment an author
  * adds a draft-only construct (the declared value stops matching the
  * inferred one, and the compat report says so).
+ *
+ * `theme: crypt` (authoring-robustness unit, rpg-project#194) — a
+ * from-scratch canvas used to omit `theme:` entirely, which every real
+ * consumer (`HexGrid.tsx`, `SyntyHexFloor`/`SyntyHexWall`, `EncounterMap.tsx`)
+ * reads as full-bright default lighting: every "New Dungeon" Kirk played
+ * came out flat and shadowless, not the crypt look `SHOWCASE_YAML`'s own
+ * `theme: crypt` already demonstrates. Unlike every OTHER field this
+ * template writes, `theme` is NOT target-dialect/proposed — it's a plain
+ * v1-real `DungeonDoc.theme` field (`dungeonYaml.ts`), never touched by
+ * `stripToV1Subset`, so stamping it here needed no compiler/strip changes
+ * at all.
  */
 export const DEFAULT_CANVAS = { width: 20, height: 30 };
 
@@ -44,6 +55,7 @@ export function emptyCanvasYaml(width: number, height: number): string {
 spec: "0.3"
 key: untitled-creation
 name: "Untitled Dungeon"
+theme: crypt
 height: 1 # unused placeholder — no compiled room chain exists yet; canvas.height below is what the board actually reads
 canvas:
   width: ${width}
