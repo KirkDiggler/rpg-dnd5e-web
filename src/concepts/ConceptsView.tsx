@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
+import { AssetAnchorLabConcept } from '../author/AssetAnchorLabConcept';
 import { DungeonBuilderConcept } from '../author/DungeonBuilderConcept';
 import { PropCompositionConcept } from '../author/PropCompositionConcept';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
@@ -19,7 +20,8 @@ type ConceptPage =
   | 'just-roll'
   | 'fog-of-war'
   | 'dungeon-builder'
-  | 'prop-composition';
+  | 'prop-composition'
+  | 'asset-anchor-lab';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'class-selection', label: 'Class Selection' },
@@ -31,6 +33,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'fog-of-war', label: 'Fog of War' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'prop-composition', label: 'Prop Composition' },
+  { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
 ];
 
 interface ConceptsViewProps {
@@ -126,6 +129,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
           <DungeonBuilderConcept forceFixtures />
         )}
         {activePage === 'prop-composition' && <PropCompositionConcept />}
+        {activePage === 'asset-anchor-lab' && <AssetAnchorLabConcept />}
       </motion.div>
     </div>
   );

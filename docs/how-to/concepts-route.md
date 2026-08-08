@@ -1,7 +1,7 @@
 ---
 name: working with /concepts
 description: How to use and add to the UI prototyping sandbox
-updated: 2026-08-07
+updated: 2026-08-08
 ---
 
 # Working with /concepts
@@ -18,7 +18,7 @@ load the app, then click the floating 🧪 "Open Concepts Lab" button
 (bottom-right, only rendered when `import.meta.env.MODE === 'development'`)
 to switch into it; use the sub-nav buttons at the top of that view to pick
 a concept (e.g. "Combat Pacing"). A reproducible development deep link is
-`?concept=<id>` (for example `?concept=prop-composition`). There is no
+`?concept=<id>` (for example `?concept=asset-anchor-lab`). There is no
 production entry point —
 the dev-tools button is gated behind the same `isDevelopment` check as
 the rest of `App.tsx`'s dev tools row.
@@ -63,13 +63,14 @@ There is no formal process yet. When a concept is ready:
 
 ## Current concepts
 
-| Concept            | Status                      | Notes                                                                                                                                                                                                                                      |
-| ------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `class-selection/` | Prototype — not promoted    | Enriched class selection UI with guidance panels. Hard-coded data in `data.ts`. Needs API wiring to promote.                                                                                                                               |
-| `encounter-dock/`  | Verification harness        | Renders the live `EncounterDock` with mock data to check responsive wrap behavior (#494/#519).                                                                                                                                             |
-| `combat-panel/`    | Design review (web#525)     | Round-1 IA compositions built from `ui/combat` primitives on proto-typed fixtures; fixture-first exemplar.                                                                                                                                 |
-| `combat-pacing/`   | Design review (web#561)     | Round-1 beat-sequencer bench (`useBeatSequencer` + `BeatStage`) with one shared tray: routine outcomes upper-center and crit/nat-1 frame breaks center-stage; fixture-first exemplar.                                                      |
-| `just-roll/`       | Concept exploration         | Persistent local-only d20 play that reuses one shared `src/components/ui/dice/DiceTray` across rolls.                                                                                                                                      |
-| `fog-of-war/`      | Design review (web#605)     | Viewer-scoped fog contract, remembered-vs-visible knowledge, authority/knowledge event boundary enforced by test.                                                                                                                          |
-| `dungeon-builder/` | Graduated authoring surface | Shared authoring component tree: live at `/author`, fixture-backed in Concepts Lab. Hex-true 2D/3D canvas, palette/Inspector/YAML, and Play/Walk/Orbit cameras; see `src/author/CONTRACT.md`.                                              |
-| `prop-composition` | Learn verdict (web#728)     | Fixture-only surface in `src/author/PropCompositionConcept.tsx`: actual bookcase/ornate-torch models, bounded wall-local nudge/snap/replace/reset, and the shared tactical Play camera. Findings: `docs/evidence/prop-composition-728.md`. |
+| Concept            | Status                      | Notes                                                                                                                                                                                                                                                                             |
+| ------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `class-selection/` | Prototype — not promoted    | Enriched class selection UI with guidance panels. Hard-coded data in `data.ts`. Needs API wiring to promote.                                                                                                                                                                      |
+| `encounter-dock/`  | Verification harness        | Renders the live `EncounterDock` with mock data to check responsive wrap behavior (#494/#519).                                                                                                                                                                                    |
+| `combat-panel/`    | Design review (web#525)     | Round-1 IA compositions built from `ui/combat` primitives on proto-typed fixtures; fixture-first exemplar.                                                                                                                                                                        |
+| `combat-pacing/`   | Design review (web#561)     | Round-1 beat-sequencer bench (`useBeatSequencer` + `BeatStage`) with one shared tray: routine outcomes upper-center and crit/nat-1 frame breaks center-stage; fixture-first exemplar.                                                                                             |
+| `just-roll/`       | Concept exploration         | Persistent local-only d20 play that reuses one shared `src/components/ui/dice/DiceTray` across rolls.                                                                                                                                                                             |
+| `fog-of-war/`      | Design review (web#605)     | Viewer-scoped fog contract, remembered-vs-visible knowledge, authority/knowledge event boundary enforced by test.                                                                                                                                                                 |
+| `dungeon-builder/` | Graduated authoring surface | Shared authoring component tree: live at `/author`, fixture-backed in Concepts Lab. Hex-true 2D/3D canvas, palette/Inspector/YAML, and Play/Walk/Orbit cameras; see `src/author/CONTRACT.md`.                                                                                     |
+| `prop-composition` | Learn verdict (web#728)     | Fixture-only surface in `src/author/PropCompositionConcept.tsx`: actual bookcase/ornate-torch models, bounded wall-local nudge/snap/replace/reset, and the shared tactical Play camera. Findings: `docs/evidence/prop-composition-728.md`.                                        |
+| `asset-anchor-lab` | Learn verdict (web#731)     | Actual synced bookcase, ornate torch, and fighter standing/downed GLBs; raw origin/bounds vs measured candidates, six facings, bounded resettable adjustment, one owning hex, Orbit/Play gate, and non-production output only. Findings: `docs/evidence/asset-anchor-lab-731.md`. |
