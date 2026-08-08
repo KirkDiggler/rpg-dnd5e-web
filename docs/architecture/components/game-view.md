@@ -101,13 +101,17 @@ changing with no story.
 
 `EncounterView` keeps `useEncounterState` canonical as stream envelopes arrive,
 but holds a small presentation-only projection for the active attack story:
-visible HP and correlated outcome log entries release on the existing theater's
-semantic result beat (Verdict for a miss, Impact for a hit). A canonically
+visible HP, statuses, and correlated outcome log entries release on the existing
+theater's semantic result beat (Verdict for a miss, Impact for a hit).
+Correlated `StatusApplied` envelopes use the same entity/correlation and
+observed-order association: their badge, model projection, and log wait for the
+result, while uncorrelated statuses remain immediate. Command safety remains on
+canonical turn state; presentation never re-enables an action. A canonically
 removed, already-known entity is retained as a render tombstone through that
 result and then follows the existing removal path when the theater completes.
-No death, hit, damage, or HP value is inferred; every displayed value is copied
-from `AttackResolved`, `EntityDamaged.hp_after`, `EntityDied`, or
-`EntityRemoved`.
+No status, death, hit, damage, or HP value is inferred; every displayed value is
+copied from `AttackResolved`, `EntityDamaged.hp_after`, `StatusApplied`,
+`EntityDied`, or `EntityRemoved`.
 
 Two narrow lifecycle seams coordinate the story. `useHexMovePath` reports the
 exact completed `moveSeq` through `HexEntity` → `HexGrid` → `EncounterMap`, so
