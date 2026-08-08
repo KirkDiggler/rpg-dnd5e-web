@@ -42,7 +42,8 @@ import {
   buildFloorTiles,
   buildOnePlacement,
   buildPlaceableCells,
-  buildWallLineFootprint,
+  buildStandableWallLineFootprint,
+  buildWallLineFootprintCoverage,
   buildWallLineSegments,
   CANVAS_ROOM_ID,
 } from './DungeonPreview3D';
@@ -153,7 +154,7 @@ describe('buildOnePlacement — resolved facing × fine-rotation composition', (
 
 // rpg-project#169's creation-mode 3D preview unit (2026-08-04) — the
 // alternate `floorCells` input path this component's own header doc
-// comment describes. `buildFloorTiles`/`buildWallLineFootprint` are pure
+// comment describes. `buildFloorTiles`/`buildStandableWallLineFootprint` are pure
 // math with no Canvas/GLB dependency (same reasoning `buildOnePlacement`'s
 // own doc comment above gives for being exported and tested directly).
 describe('buildFloorTiles — the floorCells alternate input path (creation mode)', () => {
@@ -254,13 +255,14 @@ describe('buildFloorTiles — the floorCells alternate input path (creation mode
   });
 });
 
-describe('buildWallLineFootprint — doc-native, mode-agnostic', () => {
-  it('an empty doc.wallLines produces an empty set, cheaply (no grid scan)', () => {
+describe('buildWallLineFootprintCoverage / buildStandableWallLineFootprint — doc-native, mode-agnostic', () => {
+  it('an empty doc.wallLines produces an empty coverage map and an empty standable set, cheaply (no grid scan)', () => {
     const { doc } = parseDungeon(SHOWCASE_YAML);
-    expect(buildWallLineFootprint(doc).size).toBe(0);
+    expect(buildWallLineFootprintCoverage(doc).size).toBe(0);
+    expect(buildStandableWallLineFootprint(doc).size).toBe(0);
   });
 
-  it('matches straightWallFootprint (creation/straightWallGeometry.ts) exactly for one drawn line — reused geometry, not re-derived', () => {
+  it('buildWallLineFootprintCoverage matches straightWallFootprint (creation/straightWallGeometry.ts) exactly for one drawn line — reused geometry, not re-derived — with every cell carrying a real coverage value', () => {
     const { cst } = parseDungeon(SHOWCASE_YAML);
     const from = { cell: [4, 4] as [number, number], corner: 0 };
     const to = { cell: [6, 1] as [number, number], corner: 3 };
@@ -276,10 +278,13 @@ describe('buildWallLineFootprint — doc-native, mode-agnostic', () => {
     );
     expect(expectedFootprint.length).toBeGreaterThan(0);
 
-    const result = buildWallLineFootprint(doc);
-    expect(result.size).toBe(expectedFootprint.length);
+    // buildWallLineFootprintCoverage is the FULL touched-at-all set — same
+    // cells as the raw footprint, regardless of coverage/threshold.
+    const coverage = buildWallLineFootprintCoverage(doc);
+    expect(coverage.size).toBe(expectedFootprint.length);
     for (const [col, row] of expectedFootprint) {
-      expect(result.has(`${col},${row}`)).toBe(true);
+      expect(coverage.has(`${col},${row}`)).toBe(true);
+      expect(coverage.get(`${col},${row}`)).toBeGreaterThan(0);
     }
   });
 });
@@ -470,7 +475,7 @@ describe('buildPlaceableCells — creation mode (floorPlan: undefined, rpg-proje
     const doc = toDungeonDoc(cst);
     const floorCells = deriveCanvasFloorCells(doc);
     const floorTiles = buildFloorTiles(undefined, doc.holes, floorCells);
-    const wallLineFootprint = buildWallLineFootprint(doc);
+    const wallLineFootprint = buildStandableWallLineFootprint(doc);
     const cells = buildPlaceableCells(
       undefined,
       doc,

@@ -7622,3 +7622,143 @@ way, a real authored wallLine's footprint permits a prop via the full
 tests, `ci-check` clean (format/lint/typecheck/build/test all green).
 
 — asset-pipeline agent, on behalf of KirkDiggler
+
+## Half B v2: coverage-based standability, replacing the binary footprint rule (2026-08-07, rpg-project#169)
+
+A live-design follow-up from Kirk mid-flight on the same unit, arriving
+AFTER the "drawn walls become real" round above had already shipped and
+been reported: "Nothing is set in stone... if you can say we won't clip
+we can go on those squares, maybe some percent is fine. the small
+triangles on the edge we could prob allow those to be placed on... like
+we can slide a bookcase to a wall." Retires the original "any hex that is
+not 100% uncovered would not be traversable" rule for STANDING purposes —
+placement legality and Walk-mode movement now read a per-cell COVERAGE
+PERCENTAGE instead of bare footprint membership. **Half A's own wire
+projection is completely untouched** — Kirk's own explicit rule 5: "the
+line blocks CROSSINGS, coverage decides STANDING," and the projected
+`walls:` edges stay exactly the line's crossings regardless of coverage.
+
+### The geometry
+
+New in `creation/straightWallGeometry.ts`: `hexCoverageFraction(from, to,
+col, row)` — clips the hex's own TRUE polygon (not the epsilon-shrunk one
+`isCellClipped` uses for the touch-vs-clip decision) against the wall
+line's half-plane (Sutherland-Hodgman, a genuinely different operation
+than this module's existing segment-vs-hex Cyrus-Beck clip), returns the
+SMALLER of the two resulting sub-polygon areas over the hex's total area.
+Smaller side, not a directionally-consistent "wall's own side" — a single
+line has no inherent material side without external context, and Kirk's
+own framing ("the small triangles on the edge") is exactly the min-area
+case, symmetric and context-free. Verified structurally (the two sides
+always sum to the hex's own full area, a corner-to-corner-two-apart
+chord always cuts off exactly 1/6 by regular-hexagon symmetry, a
+diameter always splits it exactly in half) as well as against a real,
+independently-computed spread of bench values (~1.7% to ~44.9%).
+
+`straightWallFootprintCoverage`/`straightWallsFootprintCoverage` are the
+coverage-aware siblings of the existing `straightWallFootprint`/
+`straightWallsFootprintSet` — same cell sets, richer per-cell value.
+`standableFootprintKeys(coverage, threshold)` filters down to a plain
+`Set<string>` — the exact shape `walkMovement.ts`'s `blockedCells` and
+`canvasFloor.ts`'s `canvasPlacementRejectReason` already consumed, so
+NEITHER needed a single signature or logic change: `walkMovement.ts`
+already kept mechanism (a)'s cell-blocking (the `wallLineFootprint` param
+straight into `blockedCells`) architecturally separate from mechanism
+(b)'s edge-blocking (a FRESH `straightWallFootprint` call per line,
+always the full/raw set) — exactly the separation this refinement
+needed, already there before this round. Only WHICH set callers pass in
+changed: `DungeonPreview3D.tsx`'s `buildWallLineFootprint` split into
+`buildWallLineFootprintCoverage` (full, for the dim-opacity visual) and
+`buildStandableWallLineFootprint` (coverage-filtered, for
+`buildPlaceableCells`/`buildWalkContext`/`handleClickCell`, unchanged
+code); `CreationBoard.tsx`'s palette-placement legality check and its
+`renderPlacement`'s monster-only warning ring both now pass the
+coverage-filtered set instead of the raw touch-at-all one. The 2D hatch
+and 3D `FootprintDimCell` both scale opacity by coverage (light for a
+shallow clip, full for a deep one) — every genuinely-touched cell still
+renders SOME dim, an author needs to see every real clip regardless of
+whether it also blocks standing.
+
+### The threshold — reasoned, not (yet) measured, and said so honestly
+
+`STANDABLE_COVERAGE_THRESHOLD = 0.10`. Kirk's own "measured, not guessed"
+standing-calibration principle calls for walking the first-person camera
+against a real coverage bench and observing where clipping starts to
+read as wrong. **That pass was ATTEMPTED, not completed.** A real
+two-line bench was built (`canvas: {width:50, height:30}`, lines at
+`(16,21)c0->(22,20)c0` and `(37,20)c0->(44,18)c0`, spanning
+independently-verified coverage from ~1.7% to ~44.9%), loaded live via a
+direct `localStorage` draft injection (`dungeon-builder:draft:create`) —
+no drag-draw needed, immediately reproducible — and the server-side
+projection was confirmed correct against it (`YamlPane`'s own compile
+badge: "2 straight walls (projects to 74 wall edges)" for these exact
+two lines, live against the Wave-1 server, proving Half A's own
+machinery is completely unaffected by any of this).
+
+The actual VISUAL inspection in Walk mode could not be finished: this
+session's chrome-devtools MCP browser (headless Chrome, debugging port 9222) collided live with a DIFFERENT, concurrent teammate agent's own
+active session mid-pass — a `navigate_page`/click issued from this
+session landed on a different origin/port entirely
+(`localhost:3003/?playerId=charli`, someone else's active gameplay), and
+a subsequent click (intended to leave this session's own stuck lobby
+resume) landed there too. Confirmed via `ss -tlnp`: this session's own
+Chrome was bound to `127.0.0.1:9222` (not exposed past loopback, despite
+requesting `--remote-debugging-address=0.0.0.0` — headless Chrome
+apparently ignores that flag), meaning the collision was a same-machine,
+same-default-port collision between two concurrent agents' MCP tooling,
+not a network exposure issue. Rather than push through on an actively
+shared, actively colliding resource — real risk of disrupting a
+teammate's live session — this stopped, killed this session's own Chrome
+instance immediately, and recorded the gap here instead of either
+fabricating a "measured" narrative or silently blocking without saying
+why.
+
+**The threshold is therefore reasoned from the real, independently-
+verified geometry instead**: set below the existing, already-established
+16.67% reference (`straightWallFootprint`'s own corner-to-corner-two-apart
+diagonal fixture — the smallest "clean" symmetric corner cut reachable
+via a same-cell chord, a real non-trivial triangular wedge, kept
+blocked), while treating the bench's smaller measured slivers (up to
+~10%) as standable — matching Kirk's own qualitative framing at the
+geometric level even without a completed visual confirmation. Recorded
+as a one-line constant specifically so a future session's real Walk-mode
+pass (against the exact same documented, reproducible bench) is a
+one-line change, not a rebuild. **A named, explicit follow-up, not a
+silently-accepted final answer.**
+
+### Slide-to-flush — ledgered as named next, not landed this round
+
+Kirk's own follow-on in the same message: "we can slide a bookcase to a
+wall." A sub-cell positional offset so a placement on a wall-adjacent/
+footprint cell sits flush against the wall's own face — the POSITION
+half of a pair whose ROTATION half already exists (`Inspector.tsx`'s
+"Snap flush to nearest wall" button, fine-rotation-generalization round:
+orients a prop edge-parallel to a wall, doesn't move it). Genuinely
+separate work (a computed offset, its own draft-tier dialect field,
+stripped at save, rendered in both the builder preview and the
+walkthrough) — scoped out deliberately rather than rushed alongside the
+coverage-geometry work above, which was already substantial. Named here,
+with its pairing point identified precisely, so a future session picks
+it up as a real next step instead of rediscovering the need from
+scratch. TARGET-YAML.md's own "Coverage-based standability" section
+carries the same note in the dialect-facing spec.
+
+### Tests
+
+`straightWallGeometry.test.ts`: 11 new tests — `hexCoverageFraction`'s
+own structural/symmetry proofs (corner-two-apart = 1/6, diameter = 1/2,
+the two sides always sum to the whole), the real bench's own independent
+verification (a wide spread, both above and below the threshold
+represented), `straightWallFootprintCoverage`/
+`straightWallsFootprintCoverage`/`standableFootprintKeys`'s own behavior
+(door exclusion carries through, max-wins on multi-line overlap,
+default/explicit threshold filtering), and an explicit RULE-5 REGRESSION
+GUARD: a genuinely low-coverage cell (standable) still gets fully sealed
+by `projectWallLineToEdges` — the wire projection provably doesn't know
+coverage exists. `canvasFloor.test.ts`: 2 new tests exercising the FULL
+real pipeline (not a hand-typed `Set`) — a low-coverage footprint cell
+is standable for a MONSTER too (`requiresStandable: true`), not just
+placeable for a prop; a high-coverage cell on the same real line stays
+blocked. Full suite: 139 files / 2329 tests, `ci-check` clean.
+
+— asset-pipeline agent, on behalf of KirkDiggler

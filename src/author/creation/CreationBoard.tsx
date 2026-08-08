@@ -99,8 +99,11 @@ import {
   isValidDoorCell,
   nearestWallAngleFamily,
   snapStraightEndpoint,
+  standableFootprintKeys,
   straightWallCrossedEdges,
   straightWallFootprint,
+  straightWallFootprintCoverage,
+  straightWallsFootprintCoverage,
   straightWallsFootprintSet,
   wallLineDoorCellAt,
   type WallAxisFamily,
@@ -289,6 +292,14 @@ function straightWallDeleteButtonHit(
 
 const CELL_SIZE = BOARD_HEX_SIZE - 1.5;
 
+/** Floor opacity for a footprint hatch cell at near-zero coverage — the
+ * 2D sibling of `DungeonPreview3D.tsx`'s own `FOOTPRINT_DIM_MIN_OPACITY`,
+ * same reasoning: even the faintest genuine clip stays visible, never
+ * fully invisible, while a heavily-clipped cell still reads at full
+ * strength (opacity scales linearly from here up to 1 as coverage
+ * approaches `hexCoverageFraction`'s own 0.5 maximum). */
+const FOOTPRINT_HATCH_MIN_OPACITY = 0.25;
+
 /**
  * Every visual element for ONE straight wall's own line — footprint
  * hatch, blocked-crossing dashes (movement semantics (a)/(b), see
@@ -330,9 +341,28 @@ function straightWallLineElements(
   const doorCells = doors.map((d) => d.cell);
   const footprintColor = provisional ? '#ffb347' : '#c94f4f';
   const lineColor = !provisional ? '#e8e2d8' : snapped ? '#fff3c4' : '#ffb347';
-  const footprint = straightWallFootprint(from, to, grid, doorCells);
+  // Coverage-based standability (rpg-project#169's live-design follow-up
+  // with Kirk, 2026-08-07): every genuinely-touched cell still renders
+  // (an author needs to see the wall's real footprint, standable or not),
+  // but a lightly-clipped, standable cell reads visibly lighter than a
+  // heavily-clipped, blocked one — the same light-vs-full de-emphasis
+  // `DungeonPreview3D.tsx`'s own `FootprintDimCell` now applies, one
+  // coordinate space over.
+  const footprintCoverage = straightWallFootprintCoverage(
+    from,
+    to,
+    grid,
+    doorCells
+  );
+  const footprint = [...footprintCoverage.keys()].map(
+    (key) => key.split(',').map(Number) as [number, number]
+  );
 
   for (const [col, row] of footprint) {
+    const coverage = footprintCoverage.get(`${col},${row}`) ?? 0.5;
+    const opacity =
+      FOOTPRINT_HATCH_MIN_OPACITY +
+      (1 - FOOTPRINT_HATCH_MIN_OPACITY) * Math.min(1, coverage / 0.5);
     const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
       .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
       .join(' ');
@@ -344,6 +374,7 @@ function straightWallLineElements(
         stroke={footprintColor}
         strokeWidth={1.5}
         strokeDasharray={provisional ? '3 2' : undefined}
+        opacity={opacity}
         pointerEvents="none"
       />
     );
@@ -662,11 +693,18 @@ export function CreationBoard({
       // comment (`canvasFloor.ts`) for the exact three gates.
       //
       // PLACEABLE vs. STANDABLE (rpg-project#169's "props on footprint
-      // cells" unit): a prop only needs real floor, not standable floor —
-      // Kirk's exact ask, a bookcase resting against a drawn wall. Only
-      // `'prop'` relaxes the footprint gate; `'monster'` still requires
-      // standable ground (`'boss'` never reaches here, rejected above).
-      const footprint = straightWallsFootprintSet(doc.wallLines, grid);
+      // cells" unit, refined by the coverage-based-standability live
+      // design round with Kirk, 2026-08-07): a prop only needs real
+      // floor, not standable floor — Kirk's exact ask, a bookcase resting
+      // against a drawn wall — so `'prop'` skips the footprint gate
+      // entirely, coverage or not. `'monster'` still requires standable
+      // ground, now COVERAGE-based rather than the original "any touch at
+      // all blocks" rule: a lightly-clipped cell below
+      // `STANDABLE_COVERAGE_THRESHOLD` is real floor again for a monster
+      // too (`'boss'` never reaches here, rejected above).
+      const footprint = standableFootprintKeys(
+        straightWallsFootprintCoverage(doc.wallLines, grid)
+      );
       const reject = canvasPlacementRejectReason(
         doc,
         cell[0],
@@ -1285,6 +1323,34 @@ export function CreationBoard({
   const inFootprint = (col: number, row: number) =>
     footprintKeys.has(`${col},${row}`);
 
+  // Coverage-based standability (rpg-project#169's live-design follow-up
+  // with Kirk, 2026-08-07) — a SEPARATE, narrower check from `inFootprint`
+  // above: `inFootprint` stays the raw "any touch at all" set (the
+  // flagging warnings below — placements/start/end/regions — stay
+  // maximally sensitive, informational, never silently dropped). This one
+  // answers "is this specific cell blocked for STANDING" and is used only
+  // by `renderPlacement`'s own monster-only warning ring, below — a
+  // lightly-clipped cell is no longer a real block for anything that
+  // doesn't need standable ground.
+  const committedFootprintCoverage = straightWallsFootprintCoverage(
+    doc.wallLines.map((line, index) => {
+      const dragging =
+        draggingEndpoint && draggingEndpoint.lineIndex === index
+          ? draggingEndpoint
+          : null;
+      if (!dragging) return line;
+      return {
+        from: dragging.which === 'from' ? dragging.current : line.from,
+        to: dragging.which === 'to' ? dragging.current : line.to,
+        doors: line.doors,
+      };
+    }),
+    grid
+  );
+  const standableFootprint = standableFootprintKeys(committedFootprintCoverage);
+  const inStandableFootprint = (col: number, row: number) =>
+    standableFootprint.has(`${col},${row}`);
+
   // Same dark/dashed treatment Board.tsx (edit mode) uses for a target-
   // dialect hole — one visual language for "no floor here" across both
   // boards. Hex polygon now, not an axis-aligned rect.
@@ -1523,16 +1589,20 @@ export function CreationBoard({
     // its own to prefix.
     //
     // PLACEABLE vs. STANDABLE (rpg-project#169's "props on footprint
-    // cells" unit): a footprint cell is no longer an error condition for
-    // a PROP — it's the intended target (Kirk's exact ask, a bookcase
-    // against a drawn wall) — so a prop on one renders normally, no
-    // warning. A monster still can't stand there, so the warning stays
-    // for it. Matches `canvasPlacementRejectReason`'s own
-    // `requiresStandable` split at PLACEMENT time — this is the same
-    // rule applied retroactively, to a wall drawn AFTER the placement
-    // already existed.
+    // cells" unit, refined by the coverage-based-standability live design
+    // round with Kirk, 2026-08-07): a footprint cell is no longer an
+    // error condition for a PROP — it's the intended target (Kirk's exact
+    // ask, a bookcase against a drawn wall) — so a prop on one renders
+    // normally, no warning. A monster still can't stand on a cell whose
+    // coverage meets `STANDABLE_COVERAGE_THRESHOLD` — `inStandableFootprint`
+    // (not the raw `inFootprint`, which flags ANY touch at all) — so the
+    // warning is scoped to genuinely-blocked cells now, not every cell the
+    // wall merely grazes. Matches `canvasPlacementRejectReason`'s own
+    // `requiresStandable` split at PLACEMENT time — this is the same rule
+    // applied retroactively, to a wall drawn AFTER the placement already
+    // existed.
     const blocked =
-      inFootprint(at[0], at[1]) && ref.startsWith('dnd5e:monsters:');
+      inStandableFootprint(at[0], at[1]) && ref.startsWith('dnd5e:monsters:');
     return (
       <g
         key={sel.boss ? 'boss' : `place-${sel.index}`}

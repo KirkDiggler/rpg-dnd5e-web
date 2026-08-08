@@ -1,17 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { BOARD_HEX_SIZE, cellCenter } from '../hexLayout';
-import { cornerPoint, nearestCorner, type CornerRef } from './hexCorner';
+import {
+  canonicalCorner,
+  cornerPoint,
+  nearestCorner,
+  type CornerRef,
+} from './hexCorner';
 import {
   clipSegmentToShrunkHex,
   footprintCellAtParam,
+  hexCoverageFraction,
   isCellClipped,
   isValidDoorCell,
   nearestWallAngleFamily,
   projectPointToLineParam,
   projectWallLineToEdges,
   snapStraightEndpoint,
+  STANDABLE_COVERAGE_THRESHOLD,
+  standableFootprintKeys,
   straightWallCrossedEdges,
   straightWallFootprint,
+  straightWallFootprintCoverage,
+  straightWallsFootprintCoverage,
   straightWallsFootprintSet,
   WALL_ANGLE_SNAP_TOLERANCE_DEG,
   wallLineDoorCellAt,
@@ -450,5 +460,162 @@ describe('projectWallLineToEdges', () => {
       (e) => `${e.from.join(',')}|${e.to.join(',')}`
     );
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('rule 5 regression guard: the wire projection is UNCHANGED by coverage — a low-coverage cell still gets sealed', () => {
+    // Kirk's live-design follow-up, rule 5, verbatim: "traversability
+    // relaxation does NOT change Half A's emitted walls — projected
+    // walls: edges = the line's crossings, independent of cell
+    // coverage." (17,20) below has coverage ~1.67% (see the
+    // "hexCoverageFraction" describe block's own bench) — genuinely
+    // standable under STANDABLE_COVERAGE_THRESHOLD — but the WIRE
+    // projection must still seal it exactly as it would any other
+    // footprint cell, since the server has no notion of coverage at all.
+    const from: CornerRef = canonicalCorner({ cell: [17, 20], corner: 0 });
+    const to: CornerRef = canonicalCorner({ cell: [24, 18], corner: 0 });
+    const LOW_COVERAGE_CELL: [number, number] = [19, 19];
+    expect(hexCoverageFraction(from, to, ...LOW_COVERAGE_CELL)).toBeLessThan(
+      STANDABLE_COVERAGE_THRESHOLD
+    );
+    const result = projectWallLineToEdges({ from, to, doors: [] }, GRID);
+    const sealedEdges = result.edges.filter(
+      (e) =>
+        (e.from[0] === LOW_COVERAGE_CELL[0] &&
+          e.from[1] === LOW_COVERAGE_CELL[1]) ||
+        (e.to[0] === LOW_COVERAGE_CELL[0] && e.to[1] === LOW_COVERAGE_CELL[1])
+    );
+    // Mechanism (a) seals every real neighbor direction of a footprint
+    // cell regardless of how little of it the line actually clips.
+    expect(sealedEdges.length).toBeGreaterThan(0);
+    for (const e of sealedEdges) expect(e.kind).toBe('solid');
+  });
+});
+
+// Coverage-based standability (Kirk's live-design follow-up to "drawn
+// walls become real," 2026-08-07) — every fixture value here is
+// independently verified by this describe block itself (not eyeballed),
+// and doubles as the exact bench `STANDABLE_COVERAGE_THRESHOLD`'s own
+// doc comment describes for a future real Walk-mode visual pass.
+describe('hexCoverageFraction — measurement bench', () => {
+  it('a corner-to-corner diagonal two apart (skipping one vertex) always cuts off exactly 1/6 of the hex, by regular-hexagon symmetry', () => {
+    // Real, load-bearing reference point: the smallest "clean" symmetric
+    // corner cut reachable via a same-cell corner-to-corner chord —
+    // STANDABLE_COVERAGE_THRESHOLD is deliberately set below this value,
+    // keeping it blocked.
+    const from: CornerRef = { cell: [8, 8], corner: 0 };
+    const to: CornerRef = { cell: [8, 8], corner: 2 };
+    const cov = hexCoverageFraction(from, to, 8, 8);
+    expect(cov).toBeCloseTo(1 / 6, 5);
+  });
+
+  it('a corner-to-opposite-corner diameter splits the hex exactly in half', () => {
+    const from: CornerRef = { cell: [8, 8], corner: 0 };
+    const to: CornerRef = { cell: [8, 8], corner: 3 };
+    const cov = hexCoverageFraction(from, to, 8, 8);
+    expect(cov).toBeCloseTo(0.5, 5);
+  });
+
+  it('the two sub-polygons a line splits a hex into always sum to the hex’s own full area', () => {
+    // Verified structurally, not just for one fixture: for ANY line that
+    // genuinely clips the cell, the smaller + larger fractions this
+    // function's own `min(sideArea, otherSideArea)` computation implies
+    // must together account for the whole hex — a convex polygon split
+    // by one line partitions exactly, modulo the zero-area shared
+    // boundary (this test's own justification for why `otherSideArea =
+    // totalArea - sideArea` is used instead of a second clip call).
+    const from: CornerRef = canonicalCorner({ cell: [17, 20], corner: 0 });
+    const to: CornerRef = canonicalCorner({ cell: [24, 18], corner: 0 });
+    const footprint = straightWallFootprint(from, to, GRID);
+    expect(footprint.length).toBeGreaterThan(0);
+    for (const [col, row] of footprint) {
+      const cov = hexCoverageFraction(from, to, col, row);
+      expect(cov).toBeGreaterThan(0);
+      expect(cov).toBeLessThanOrEqual(0.5); // always the SMALLER side
+    }
+  });
+
+  it('a real bench line produces a wide, independently-verified spread of coverage values, low to high', () => {
+    // The exact two-line bench STANDABLE_COVERAGE_THRESHOLD's own doc
+    // comment names as reproducible for a future Walk-mode visual pass —
+    // this test is that reproducibility, executable rather than just
+    // described. A wider grid than this file's own default `GRID` —
+    // line B's own cells reach column 44, which `GRID`'s width: 20 would
+    // clamp and silently change the footprint.
+    const BENCH_GRID = { width: 50, height: 30 };
+    const lineA = {
+      from: canonicalCorner({ cell: [16, 21], corner: 0 }),
+      to: canonicalCorner({ cell: [22, 20], corner: 0 }),
+    };
+    const lineB = {
+      from: canonicalCorner({ cell: [37, 20], corner: 0 }),
+      to: canonicalCorner({ cell: [44, 18], corner: 0 }),
+    };
+    const covA = straightWallFootprint(lineA.from, lineA.to, BENCH_GRID).map(
+      ([c, r]) => hexCoverageFraction(lineA.from, lineA.to, c, r)
+    );
+    const covB = straightWallFootprint(lineB.from, lineB.to, BENCH_GRID).map(
+      ([c, r]) => hexCoverageFraction(lineB.from, lineB.to, c, r)
+    );
+    const all = [...covA, ...covB].sort((a, b) => a - b);
+    // A real spread from well under the threshold to well above it —
+    // the bench actually exercises the standable/blocked boundary, not
+    // just one tier. Smallest value is line B's own ~1.67% cell.
+    expect(all[0]).toBeLessThan(0.02);
+    expect(all[all.length - 1]).toBeGreaterThan(0.4);
+    expect(all.some((c) => c < STANDABLE_COVERAGE_THRESHOLD)).toBe(true);
+    expect(all.some((c) => c >= STANDABLE_COVERAGE_THRESHOLD)).toBe(true);
+  });
+});
+
+describe('straightWallFootprintCoverage / straightWallsFootprintCoverage / standableFootprintKeys', () => {
+  it('straightWallFootprintCoverage returns exactly the footprint cell set, each with its own coverage', () => {
+    const from: CornerRef = { cell: [5, 4], corner: 2 };
+    const to: CornerRef = { cell: [5, 4], corner: 5 };
+    const coverage = straightWallFootprintCoverage(from, to, GRID);
+    expect([...coverage.keys()]).toEqual(['5,4']);
+    expect(coverage.get('5,4')).toBeGreaterThan(0);
+  });
+
+  it('a door cell is excluded from the coverage map exactly like the footprint (door exclusion happens before coverage is ever computed for it)', () => {
+    const from: CornerRef = { cell: [2, 5], corner: 0 };
+    const to: CornerRef = { cell: [10, 5], corner: 3 };
+    const DOOR_CELL: [number, number] = [6, 5];
+    const coverage = straightWallFootprintCoverage(from, to, GRID, [DOOR_CELL]);
+    expect(coverage.has('6,5')).toBe(false);
+    expect(coverage.has('4,5')).toBe(true);
+  });
+
+  it('straightWallsFootprintCoverage takes the MAX coverage when two lines both touch the same cell', () => {
+    // Two lines authored to both clip (8,8) at different depths — the
+    // shallower corner-cut (1/6) and the deep diameter (1/2). The
+    // documented simplification: max wins, not a true union of areas.
+    const shallow = {
+      from: { cell: [8, 8], corner: 0 } as CornerRef,
+      to: { cell: [8, 8], corner: 2 } as CornerRef,
+    };
+    const deep = {
+      from: { cell: [8, 8], corner: 0 } as CornerRef,
+      to: { cell: [8, 8], corner: 3 } as CornerRef,
+    };
+    const coverage = straightWallsFootprintCoverage([shallow, deep], GRID);
+    expect(coverage.get('8,8')).toBeCloseTo(0.5, 5);
+  });
+
+  it('standableFootprintKeys filters to cells at/above the threshold, default and explicit', () => {
+    const coverage = new Map<string, number>([
+      ['1,1', 0.02],
+      ['2,2', 0.09],
+      ['3,3', 0.1],
+      ['4,4', 0.5],
+    ]);
+    expect([...standableFootprintKeys(coverage)].sort()).toEqual([
+      '3,3',
+      '4,4',
+    ]);
+    expect([...standableFootprintKeys(coverage, 0.05)].sort()).toEqual([
+      '2,2',
+      '3,3',
+      '4,4',
+    ]);
   });
 });

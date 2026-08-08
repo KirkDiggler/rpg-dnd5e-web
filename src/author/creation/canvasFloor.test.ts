@@ -18,7 +18,12 @@ import {
   sortCellsLexicographic,
 } from './canvasFloor';
 import { emptyCanvasYaml } from './emptyCanvasDoc';
-import { straightWallsFootprintSet } from './straightWallGeometry';
+import {
+  STANDABLE_COVERAGE_THRESHOLD,
+  standableFootprintKeys,
+  straightWallsFootprintCoverage,
+  straightWallsFootprintSet,
+} from './straightWallGeometry';
 
 describe('deriveCanvasFloorCells', () => {
   it('produces every cell in a small canvas bounds, none missing or duplicated', () => {
@@ -324,6 +329,58 @@ describe('canvasPlacementRejectReason', () => {
       expect(
         canvasPlacementRejectReason(doc, 5, 4, footprint, false)
       ).toBeNull();
+    });
+  });
+
+  // Coverage-based standability (rpg-project#169's live-design follow-up
+  // with Kirk, 2026-08-07) — the full real pipeline, not a hand-typed
+  // Set: a genuinely low-coverage footprint cell is legal even for a
+  // MONSTER (`requiresStandable: true`), and a genuinely high-coverage
+  // one stays blocked, driven entirely by `straightWallsFootprintCoverage`
+  // + `standableFootprintKeys` against a real authored wallLine.
+  describe('coverage-based standability — the real pipeline (requiresStandable: true)', () => {
+    it('a low-coverage footprint cell is standable for a monster too — not just placeable for a prop', () => {
+      const { cst } = parseDungeon(emptyCanvasYaml(50, 30));
+      // The exact bench fixture from straightWallGeometry.test.ts's own
+      // "hexCoverageFraction — measurement bench": cell (39,19) has
+      // coverage ~1.67%, well under STANDABLE_COVERAGE_THRESHOLD (10%).
+      addWallLine(
+        cst,
+        { cell: [37, 20], corner: 0 },
+        { cell: [44, 18], corner: 0 }
+      );
+      const doc = toDungeonDoc(cst);
+      const coverage = straightWallsFootprintCoverage(
+        doc.wallLines,
+        doc.canvas!
+      );
+      expect(coverage.get('39,19')).toBeLessThan(STANDABLE_COVERAGE_THRESHOLD);
+      const standable = standableFootprintKeys(coverage);
+      expect(
+        canvasPlacementRejectReason(doc, 39, 19, standable, true)
+      ).toBeNull();
+    });
+
+    it('a high-coverage footprint cell on the SAME line stays blocked for a monster', () => {
+      const { cst } = parseDungeon(emptyCanvasYaml(50, 30));
+      addWallLine(
+        cst,
+        { cell: [37, 20], corner: 0 },
+        { cell: [44, 18], corner: 0 }
+      );
+      const doc = toDungeonDoc(cst);
+      const coverage = straightWallsFootprintCoverage(
+        doc.wallLines,
+        doc.canvas!
+      );
+      // (42,19) is ~44.87% in the same bench — well above the threshold.
+      expect(coverage.get('42,19')).toBeGreaterThan(
+        STANDABLE_COVERAGE_THRESHOLD
+      );
+      const standable = standableFootprintKeys(coverage);
+      expect(
+        canvasPlacementRejectReason(doc, 42, 19, standable, true)
+      ).not.toBeNull();
     });
   });
 });

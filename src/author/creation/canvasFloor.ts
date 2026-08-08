@@ -170,29 +170,39 @@ export function resolveCanvasFloor(
  * 2. **Not a straight-wall (`doc.wallLines`) footprint cell — PLACEABLE
  *    vs. STANDABLE split** (`requiresStandable`, rpg-project#169's "props
  *    on footprint cells" unit — Kirk's exact ask: a bookcase standing
- *    against a drawn wall). Kirk's rule ("any hex that is not 100%
- *    uncovered would not be traversable") makes a footprint cell BLOCKED
- *    for STANDING — a creature can't occupy it — but the floor tile is
- *    still there (`deriveCanvasFloorCells` doesn't exclude it), and
- *    nothing about that rule says a prop can't rest against/on the wall
- *    that covers it. `requiresStandable` names which of the two a given
- *    placement needs: `true` for anything that must be able to stand
- *    there (monsters, boss — a creature genuinely occupying the cell),
- *    `false` for a prop (decor, furniture — placeable on any real floor
- *    cell, footprint included). This gate is SKIPPED entirely when
- *    `requiresStandable` is `false`; every other gate still applies
- *    (a prop still needs real floor and an unoccupied cell). Start/end
- *    markers are deliberately NOT routed through this function at all —
- *    they keep their own pre-existing, different treatment (a retroactive
- *    "⚠ START (BLOCKED!)" flag on an already-placed marker, never a
- *    placement-time reject — see `CreationBoard.tsx`'s own "flag, never
- *    silently delete or move" rendering and TARGET-YAML.md's
- *    "Interactions with everything else" section), so this parameter
- *    only ever needs to distinguish prop from creature, not a third case.
- *    `wallLineFootprint` is a caller-supplied set
- *    (`creation/straightWallGeometry.ts`'s `straightWallsFootprintSet`)
- *    rather than recomputed here, so a caller checking many cells (the 3D
- *    click layer) computes it once, not once per cell.
+ *    against a drawn wall — refined by the coverage-based-standability
+ *    live design round, same day: "if you can say we won't clip we can
+ *    go on those squares... the small triangles on the edge we could
+ *    prob allow those to be placed on"). The ORIGINAL binary rule ("any
+ *    hex that is not 100% uncovered would not be traversable") is
+ *    retired for STANDING purposes: `wallLineFootprint` here is expected
+ *    to be the COVERAGE-FILTERED subset
+ *    (`creation/straightWallGeometry.ts`'s `standableFootprintKeys`,
+ *    cells at/above `STANDABLE_COVERAGE_THRESHOLD`), not every cell the
+ *    wall merely touches — a lightly-clipped cell is real, standable
+ *    floor again. The floor tile itself is always there regardless
+ *    (`deriveCanvasFloorCells` never excludes a footprint cell, clipped
+ *    lightly or fully), and nothing about the rule ever said a prop
+ *    can't rest against/on the wall that covers it. `requiresStandable`
+ *    names which of the two a given placement needs: `true` for anything
+ *    that must be able to stand there (monsters, boss — a creature
+ *    genuinely occupying the cell), `false` for a prop (decor, furniture
+ *    — placeable on any real floor cell, footprint included, at ANY
+ *    coverage). This gate is SKIPPED entirely when `requiresStandable` is
+ *    `false`; every other gate still applies (a prop still needs real
+ *    floor and an unoccupied cell). Start/end markers are deliberately
+ *    NOT routed through this function at all — they keep their own
+ *    pre-existing, different treatment (a retroactive "⚠ START
+ *    (BLOCKED!)" flag on an already-placed marker, never a placement-time
+ *    reject — see `CreationBoard.tsx`'s own "flag, never silently delete
+ *    or move" rendering and TARGET-YAML.md's "Interactions with
+ *    everything else" section), so this parameter only ever needs to
+ *    distinguish prop from creature, not a third case. `wallLineFootprint`
+ *    is a caller-supplied set rather than recomputed here, so a caller
+ *    checking many cells (the 3D click layer) computes it once, not once
+ *    per cell — which specific set (raw vs. coverage-filtered) is the
+ *    caller's own choice; every current caller passes the
+ *    coverage-filtered one.
  * 3. **Not already occupied** — `boardGeometry.ts`'s `isCellOccupied`,
  *    called with no `floorPlan` (a from-scratch canvas has none — see
  *    `isCellOccupied`'s own doc comment for why that's safe: its

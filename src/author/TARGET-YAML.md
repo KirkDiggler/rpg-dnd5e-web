@@ -518,6 +518,82 @@ Two concrete cases worth naming directly, both covered by
   endpoint boundary cases" describe block, not just asserted from the
   general epsilon rule above.
 
+### Coverage-based standability (retires the binary "footprint = blocked" rule for STANDING, 2026-08-07)
+
+**"Every hex the wall's line genuinely passes through is BLOCKED," above,
+is no longer the whole story — it now describes the FOOTPRINT (what
+`straightWallFootprint`/`isCellClipped` compute, what Half A's wire
+projection seals, what mechanism (a)/(b) below still block unconditionally),
+not, by itself, who may STAND there.** Kirk, live design session, looking
+at the epsilon-gated all-or-nothing block: "Nothing is set in stone... if
+you can say we won't clip we can go on those squares, maybe some percent
+is fine. the small triangles on the edge we could prob allow those to be
+placed on... like we can slide a bookcase to a wall."
+
+**The refined model, precisely:**
+
+1. **The footprint itself — and everything this section already
+   describes about it — is UNCHANGED.** A cell the line genuinely clips
+   is still a footprint cell, at the same epsilon-gated touch-vs-clip
+   boundary as always.
+2. **What changed is what a footprint cell's membership MEANS for
+   standing.** Each footprint cell now carries a coverage FRACTION
+   (`creation/straightWallGeometry.ts`'s `hexCoverageFraction` — the
+   smaller of the two sub-polygon areas the wall's own infinite line
+   splits the hex's TRUE polygon into, over the hex's total area; see
+   that function's own doc comment for the full geometric write-up,
+   including why the SMALLER side rather than a directionally-consistent
+   "wall's own side"). A cell below `STANDABLE_COVERAGE_THRESHOLD`
+   (currently 10%) is STANDABLE — real, walkable floor again for anything
+   that needs to occupy it. At/above, blocked exactly as before.
+3. **Placeable vs. standable, restated precisely**: a PROP never needed
+   standable ground in the first place (this file's own "Interactions
+   with everything else" section) — it needs real floor, full stop,
+   coverage or not. A MONSTER/boss/start point needs standable ground —
+   now coverage-gated rather than footprint-membership-gated.
+4. **What did NOT change, deliberately (Half A stays exactly as
+   briefed)**: the wall LINE's own crossing prohibition — mechanism (b),
+   below, and Half A's wire projection
+   (`stripToV1Subset`'s `walls:` merge) — reads the FULL, unfiltered
+   footprint regardless of coverage. A standable low-coverage cell is not
+   a free pass through the wall's own line; it only means you may stand
+   there once you've reached it via an edge the line doesn't cross.
+   Server-side enforcement is completely untouched by any of this —
+   coverage is purely a client-side authoring/preview refinement of
+   "who may stand here," never a wire concept.
+5. **The threshold's own status, honestly**: `STANDABLE_COVERAGE_THRESHOLD`
+   is REASONED from real, independently-verified geometry (a documented
+   bench of wallLines spanning ~1.7%–~44.9% coverage — see the constant's
+   own doc comment for the exact fixtures), not yet CONFIRMED by a
+   completed live Walk-mode visual pass — that pass was attempted and
+   blocked by an environment-level shared-browser collision with a
+   concurrent agent session, recorded rather than silently worked around.
+   A future session without that collision should do the real visual
+   pass against the documented bench and adjust the one-line constant if
+   warranted.
+6. **Visual de-emphasis**: every genuinely-touched footprint cell still
+   renders a dim/hatch overlay (an author needs to see every cell the
+   wall clips, standable or not), but scales its opacity by coverage —
+   `DungeonPreview3D.tsx`'s `FootprintDimCell`/`CreationBoard.tsx`'s
+   hatch polygon both read the SAME `hexCoverageFraction` value, light
+   for a shallow clip, full for a deep one.
+
+**Slide-to-flush — named next, not landed this round.** Kirk's own
+follow-on ("we can slide a bookcase to a wall"): a placement on a
+wall-adjacent/footprint cell sliding flush against the wall's own face (a
+sub-cell positional offset), pairing with the EXISTING "Snap flush to
+nearest wall" button (`Inspector.tsx`'s fine-rotation-generalization
+round) — that button already solves the ROTATION half (orienting a prop
+edge-parallel to a wall); slide-to-flush is the POSITION half, genuinely
+separate work (a computed offset, its own draft-tier dialect field —
+`offset:` or a computed flush flag, TBD by whoever picks this up —
+stripped at save like every other draft field, rendered in both the
+builder preview and the walkthrough). Scoped out of this round
+deliberately rather than rushed alongside the coverage-geometry work
+above, which was already substantial on its own; recorded here so a
+future session picks it up as a real, named next step instead of
+rediscovering the need from scratch.
+
 ### Movement semantics
 
 Two distinct effects, both implemented:
