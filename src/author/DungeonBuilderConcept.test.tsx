@@ -62,9 +62,7 @@ describe('DungeonBuilderConcept — crash-proof draft restore (Kirk incident reg
   it('does not throw mounting on a broken-walls draft, and shows the recovery surface with the text intact', () => {
     seedBrokenDraft();
 
-    expect(() =>
-      render(<DungeonBuilderConcept forceFixtures />)
-    ).not.toThrow();
+    expect(() => render(<DungeonBuilderConcept forceFixtures />)).not.toThrow();
 
     // The crash-recovery surface, not the normal board/pane.
     const recoveryBox = screen.getByLabelText(
@@ -86,18 +84,12 @@ describe('DungeonBuilderConcept — crash-proof draft restore (Kirk incident reg
   it('every reload restores the SAME recovery surface, never a crash (the incident\'s "every reload re-crashed" symptom, made safe)', () => {
     seedBrokenDraft();
     const { unmount } = render(<DungeonBuilderConcept forceFixtures />);
-    expect(
-      screen.getByLabelText('Dungeon YAML (recovery)')
-    ).toBeTruthy();
+    expect(screen.getByLabelText('Dungeon YAML (recovery)')).toBeTruthy();
     unmount();
 
     // Simulate a second reload against the same (untouched) localStorage.
-    expect(() =>
-      render(<DungeonBuilderConcept forceFixtures />)
-    ).not.toThrow();
-    expect(
-      screen.getByLabelText('Dungeon YAML (recovery)')
-    ).toBeTruthy();
+    expect(() => render(<DungeonBuilderConcept forceFixtures />)).not.toThrow();
+    expect(screen.getByLabelText('Dungeon YAML (recovery)')).toBeTruthy();
   });
 
   it('Apply & retry: fixing the text in place returns the real board', () => {
@@ -112,9 +104,7 @@ describe('DungeonBuilderConcept — crash-proof draft restore (Kirk incident reg
     fireEvent.change(recoveryBox, { target: { value: fixed } });
     fireEvent.click(screen.getByText('Apply & retry'));
 
-    expect(
-      screen.queryByLabelText('Dungeon YAML (recovery)')
-    ).toBeNull();
+    expect(screen.queryByLabelText('Dungeon YAML (recovery)')).toBeNull();
     expect(screen.getByLabelText('Dungeon YAML')).toBeTruthy();
   });
 
@@ -146,18 +136,16 @@ describe('DungeonBuilderConcept — crash-proof draft restore (Kirk incident reg
 
     fireEvent.click(screen.getByText('Discard draft & start fresh'));
 
-    expect(
-      screen.queryByLabelText('Dungeon YAML (recovery)')
-    ).toBeNull();
+    expect(screen.queryByLabelText('Dungeon YAML (recovery)')).toBeNull();
     expect(screen.getByLabelText('Dungeon YAML')).toBeTruthy();
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
   });
 
   it('a healthy draft still restores normally (no false-positive recovery surface)', () => {
-    const healthy = emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height).replace(
-      'name: "Untitled Dungeon"',
-      'name: "A Healthy Draft"'
-    );
+    const healthy = emptyCanvasYaml(
+      DEFAULT_CANVAS.width,
+      DEFAULT_CANVAS.height
+    ).replace('name: "Untitled Dungeon"', 'name: "A Healthy Draft"');
     localStorage.setItem(
       DRAFT_KEY,
       JSON.stringify({ yamlText: healthy, savedAt: Date.now() })
@@ -165,9 +153,7 @@ describe('DungeonBuilderConcept — crash-proof draft restore (Kirk incident reg
 
     render(<DungeonBuilderConcept forceFixtures />);
 
-    expect(
-      screen.queryByLabelText('Dungeon YAML (recovery)')
-    ).toBeNull();
+    expect(screen.queryByLabelText('Dungeon YAML (recovery)')).toBeNull();
     expect(screen.getByLabelText('Dungeon YAML')).toBeTruthy();
     expect(screen.getByText(/Draft restored/)).toBeTruthy();
   });

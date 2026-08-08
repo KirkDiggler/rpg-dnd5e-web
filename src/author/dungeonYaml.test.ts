@@ -143,10 +143,7 @@ describe('shape validation at parse (rpg-project#194 authoring-robustness unit â
 
   describe('walls: â€” the incident repro (pasted wallLines-shaped objects, missing from/to)', () => {
     it('rejects an entry with no from/to at all, naming the entry and field', () => {
-      const yaml = base().replace(
-        'walls: []',
-        'walls:\n  - { kind: solid }'
-      );
+      const yaml = base().replace('walls: []', 'walls:\n  - { kind: solid }');
       expect(() => parseDungeon(yaml)).toThrow(DungeonParseError);
       expect(() => parseDungeon(yaml)).toThrow(/walls\[0\]\.from/);
     });
@@ -207,7 +204,9 @@ describe('shape validation at parse (rpg-project#194 authoring-robustness unit â
         'wallLines: []',
         'wallLines:\n  - { from: [0, 0], to: [2, 0], doors: [{ cell: [1] }] }'
       );
-      expect(() => parseDungeon(yaml)).toThrow(/wallLines\[0\]\.doors\[0\]\.cell/);
+      expect(() => parseDungeon(yaml)).toThrow(
+        /wallLines\[0\]\.doors\[0\]\.cell/
+      );
     });
   });
 

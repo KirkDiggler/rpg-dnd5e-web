@@ -723,7 +723,9 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
       ? (() => {
           const b = room.boss as Record<string, unknown>;
           if (typeof b.ref !== 'string') {
-            throw new DungeonParseError(`Room "${room.id}" boss: missing "ref"`);
+            throw new DungeonParseError(
+              `Room "${room.id}" boss: missing "ref"`
+            );
           }
           const at = assertCellPair(b.at, `Room "${room.id}" boss.at`);
           return {
