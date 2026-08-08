@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { DungeonBuilderConcept } from '../author/DungeonBuilderConcept';
+import { PropCompositionConcept } from '../author/PropCompositionConcept';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
@@ -17,7 +18,8 @@ type ConceptPage =
   | 'combat-pacing'
   | 'just-roll'
   | 'fog-of-war'
-  | 'dungeon-builder';
+  | 'dungeon-builder'
+  | 'prop-composition';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'class-selection', label: 'Class Selection' },
@@ -28,6 +30,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'just-roll', label: 'Just Roll' },
   { id: 'fog-of-war', label: 'Fog of War' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
+  { id: 'prop-composition', label: 'Prop Composition' },
 ];
 
 interface ConceptsViewProps {
@@ -76,7 +79,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
       </div>
 
       {/* Sub-navigation */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {CONCEPT_PAGES.map((page) => (
           <button
             key={page.id}
@@ -122,6 +125,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'dungeon-builder' && (
           <DungeonBuilderConcept forceFixtures />
         )}
+        {activePage === 'prop-composition' && <PropCompositionConcept />}
       </motion.div>
     </div>
   );

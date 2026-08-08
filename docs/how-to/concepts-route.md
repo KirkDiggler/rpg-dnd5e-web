@@ -1,7 +1,7 @@
 ---
 name: working with /concepts
 description: How to use and add to the UI prototyping sandbox
-updated: 2026-07-22
+updated: 2026-08-07
 ---
 
 # Working with /concepts
@@ -17,7 +17,9 @@ state in `App.tsx`, not a router route. In development, run `npm run dev`,
 load the app, then click the floating 🧪 "Open Concepts Lab" button
 (bottom-right, only rendered when `import.meta.env.MODE === 'development'`)
 to switch into it; use the sub-nav buttons at the top of that view to pick
-a concept (e.g. "Combat Pacing"). There is no production entry point —
+a concept (e.g. "Combat Pacing"). A reproducible development deep link is
+`?concept=<id>` (for example `?concept=prop-composition`). There is no
+production entry point —
 the dev-tools button is gated behind the same `isDevelopment` check as
 the rest of `App.tsx`'s dev tools row.
 
@@ -39,11 +41,12 @@ components against fixture data — not throwaway mockups:
   component must not be able to tell fixture from stream.
 - **Fixtures cover the states that are hard to reach live**: armed actions,
   spent reactions, spectator turns, FREE_ROAM intervals.
-- **The fixture contract is the draft proto contract.** Where the panel
-  needs data the wire does NOT carry, keep that data in a clearly separated
-  fixture type. That delta, once the concept proves it, becomes a concrete
-  feature request to the platform team on board #19 (example:
-  rpg-api-protos#183, the combat-HUD data gap).
+- **The fixture contract discovers the desired contract; it does not ratify one
+  automatically.** Where the panel needs data the wire does NOT carry, keep that
+  data in a clearly separated, explicitly provisional fixture type. After the UX
+  proves the semantics, record the delta and exact open questions. Only then can
+  Kirk choose whether it becomes a concrete Platform request on board #19
+  (example: rpg-api-protos#183, the combat-HUD data gap).
 - **Promotion = a data-source swap.** If the fixtures were faithful, wiring
   the composition into the game screen changes the data source, not the
   components.
@@ -60,12 +63,13 @@ There is no formal process yet. When a concept is ready:
 
 ## Current concepts
 
-| Concept            | Status                   | Notes                                                                                                                                                                                                                                                                    |
-| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `class-selection/` | Prototype — not promoted | Enriched class selection UI with guidance panels. Hard-coded data in `data.ts`. Needs API wiring to promote.                                                                                                                                                             |
-| `encounter-dock/`  | Verification harness     | Renders the live `EncounterDock` with mock data to check responsive wrap behavior (#494/#519).                                                                                                                                                                           |
-| `combat-panel/`    | Design review (web#525)  | Round-1 IA compositions built from `ui/combat` primitives on proto-typed fixtures; fixture-first exemplar.                                                                                                                                                               |
-| `combat-pacing/`   | Design review (web#561)  | Round-1 beat-sequencer bench (`useBeatSequencer` + `BeatStage`) with one shared tray: routine outcomes upper-center and crit/nat-1 frame breaks center-stage; fixture-first exemplar.                                                                                    |
-| `just-roll/`       | Concept exploration      | Persistent local-only d20 play that reuses one shared `src/components/ui/dice/DiceTray` across rolls.                                                                                                                                                                    |
-| `fog-of-war/`      | Design review (web#605)  | Viewer-scoped fog contract, remembered-vs-visible knowledge, authority/knowledge event boundary enforced by test.                                                                                                                                                        |
-| `dungeon-builder/` | Design gate (web#667)    | Design approval: rpg-project#170. Settled authoring model: rpg-project#175; ordered slices: rpg-project#176–#180. Palette/board/YAML panes, live `PutDungeon(validate_only)` with a FIXTURES MODE fallback, and hex-true/flattened layout toggle; see its `CONTRACT.md`. |
+| Concept            | Status                      | Notes                                                                                                                                                                                                                                      |
+| ------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `class-selection/` | Prototype — not promoted    | Enriched class selection UI with guidance panels. Hard-coded data in `data.ts`. Needs API wiring to promote.                                                                                                                               |
+| `encounter-dock/`  | Verification harness        | Renders the live `EncounterDock` with mock data to check responsive wrap behavior (#494/#519).                                                                                                                                             |
+| `combat-panel/`    | Design review (web#525)     | Round-1 IA compositions built from `ui/combat` primitives on proto-typed fixtures; fixture-first exemplar.                                                                                                                                 |
+| `combat-pacing/`   | Design review (web#561)     | Round-1 beat-sequencer bench (`useBeatSequencer` + `BeatStage`) with one shared tray: routine outcomes upper-center and crit/nat-1 frame breaks center-stage; fixture-first exemplar.                                                      |
+| `just-roll/`       | Concept exploration         | Persistent local-only d20 play that reuses one shared `src/components/ui/dice/DiceTray` across rolls.                                                                                                                                      |
+| `fog-of-war/`      | Design review (web#605)     | Viewer-scoped fog contract, remembered-vs-visible knowledge, authority/knowledge event boundary enforced by test.                                                                                                                          |
+| `dungeon-builder/` | Graduated authoring surface | Shared authoring component tree: live at `/author`, fixture-backed in Concepts Lab. Hex-true 2D/3D canvas, palette/Inspector/YAML, and Play/Walk/Orbit cameras; see `src/author/CONTRACT.md`.                                              |
+| `prop-composition` | Learn verdict (web#728)     | Fixture-only surface in `src/author/PropCompositionConcept.tsx`: actual bookcase/ornate-torch models, bounded wall-local nudge/snap/replace/reset, and the shared tactical Play camera. Findings: `docs/evidence/prop-composition-728.md`. |
