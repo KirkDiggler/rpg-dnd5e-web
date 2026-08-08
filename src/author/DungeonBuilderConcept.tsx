@@ -36,7 +36,9 @@
  * for a SCRIPTED straight drag; `nearestEdge`/`dragFamily` (which a real
  * interactive drag actually calls) are untouched.
  */
+import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { BoardCrashRecovery } from './BoardCrashRecovery';
 import { CreationConcept } from './creation/CreationConcept';
 import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
 import type { CornerRef } from './creation/hexCorner';
@@ -77,6 +79,18 @@ import {
 import { useSaveDungeon } from './useSaveDungeon';
 
 const APPLY_DEBOUNCE_MS = 700;
+
+/** Crash-recovery state (this unit, rpg-project#194 authoring-robustness)
+ * — non-null whenever the board can't be shown for either of the two
+ * reasons `BoardCrashRecovery.tsx`'s own doc comment covers: a restored
+ * draft that fails to (re-)parse, or a live render crash caught by the
+ * `ErrorBoundary` around `CreationConcept` below. `yamlText` is always
+ * the EXACT text responsible — never the fresh-seed fallback quietly
+ * backing `creationDoc`/`creationCst` underneath while this is shown. */
+interface CreationCrash {
+  message: string;
+  yamlText: string;
+}
 
 /** `draftDiffersFromFreshSeed`'s canonicalize function — the real
  * parse+serialize round trip, module-level since it needs nothing from
@@ -145,48 +159,74 @@ export function DungeonBuilderConcept({
   // Local drafts (this unit): before falling back to the fresh seed,
   // check for a locally-saved 'create' draft (`draftStorage.ts`) and
   // restore it instead — the author never loses a board to a refresh/
-  // crash. A corrupt/unparseable draft is discarded rather than left to
-  // keep failing on every future mount (`createRestoredDraftAt` stays
-  // null in that case, so `DraftRestoredBanner` never appears for
-  // content that was never actually loaded).
+  // crash.
+  //
+  // Crash-proof by construction (authoring-robustness unit, rpg-project#194):
+  // a draft that fails to (re-)parse used to be silently discarded here —
+  // safe (nothing crashed) but LOSSY, the exact "had to manually clear
+  // localStorage" failure mode Kirk hit. It's kept in storage now, the
+  // WORKING doc still falls back to the fresh seed so the rest of this
+  // component's state initializes normally, but the broken text + a real
+  // error message are carried out as `crash` so the render below can show
+  // `BoardCrashRecovery` instead of quietly losing it (`createRestoredDraftAt`
+  // stays null in this branch too — nothing was actually loaded onto the
+  // board, so `DraftRestoredBanner` shouldn't claim it was).
   //
   // Honesty guard (Copilot review, PR #717): a stored draft that's
   // canonically indistinguishable from the fresh seed is NOT a real
   // authored draft — announcing it as one would be dishonest.
-  const [{ parsed: creationInitial, restoredAt: createRestoredDraftAt }] =
-    useState(() => {
-      const freshCreationSeed = emptyCanvasYaml(
-        DEFAULT_CANVAS.width,
-        DEFAULT_CANVAS.height
-      );
-      const draft = loadDraft('create');
-      if (draft) {
-        if (
-          draftDiffersFromFreshSeed(
-            draft.yamlText,
-            freshCreationSeed,
-            canonicalizeYaml
-          )
-        ) {
-          try {
-            return {
-              parsed: parseDungeon(draft.yamlText),
-              restoredAt: draft.savedAt,
-            };
-          } catch {
-            discardDraft('create');
-          }
-        } else {
-          discardDraft('create');
+  const [
+    {
+      parsed: creationInitial,
+      restoredAt: createRestoredDraftAt,
+      crash: creationInitialCrash,
+    },
+  ] = useState(() => {
+    const freshCreationSeed = emptyCanvasYaml(
+      DEFAULT_CANVAS.width,
+      DEFAULT_CANVAS.height
+    );
+    const draft = loadDraft('create');
+    if (draft) {
+      if (
+        draftDiffersFromFreshSeed(
+          draft.yamlText,
+          freshCreationSeed,
+          canonicalizeYaml
+        )
+      ) {
+        try {
+          return {
+            parsed: parseDungeon(draft.yamlText),
+            restoredAt: draft.savedAt,
+            crash: null as CreationCrash | null,
+          };
+        } catch (err) {
+          return {
+            parsed: parseDungeon(freshCreationSeed),
+            restoredAt: null as number | null,
+            crash: {
+              message:
+                err instanceof DungeonParseError ? err.message : String(err),
+              yamlText: draft.yamlText,
+            } as CreationCrash | null,
+          };
         }
+      } else {
+        discardDraft('create');
       }
-      return {
-        parsed: parseDungeon(freshCreationSeed),
-        restoredAt: null as number | null,
-      };
-    });
+    }
+    return {
+      parsed: parseDungeon(freshCreationSeed),
+      restoredAt: null as number | null,
+      crash: null as CreationCrash | null,
+    };
+  });
   const [createDraftBannerDismissed, setCreateDraftBannerDismissed] =
     useState(false);
+  const [creationCrash, setCreationCrash] = useState<CreationCrash | null>(
+    creationInitialCrash
+  );
   const [creationCst, setCreationCst] = useState(creationInitial.cst);
   const [creationDoc, setCreationDoc] = useState<DungeonDoc>(
     creationInitial.doc
@@ -426,6 +466,50 @@ export function DungeonBuilderConcept({
     setCreationParseError(null);
     creationEdit.setSelectedPlacement(null);
     setCreateDraftBannerDismissed(true);
+    // Also the crash-recovery surface's own "start fresh" escape hatch
+    // (this unit) — same reset, plus clearing whichever crash reason
+    // (restore-parse-failure or live render crash) put us here.
+    setCreationCrash(null);
+  };
+
+  // Crash-recovery surface (this unit, rpg-project#194 authoring-
+  // robustness) — `BoardCrashRecovery.tsx`'s own doc comment has the full
+  // "why this exists" writeup. Edits the crash's OWN `yamlText` (never
+  // `creationYamlText`, which the board itself isn't necessarily showing
+  // while crashed) and re-parses on explicit Apply, same
+  // editable-text/explicit-Apply/never-lose-what-was-typed contract
+  // `ProposedYamlPane`'s (non-crashed) textarea already offers.
+  const handleCreationCrashTextChange = (text: string) => {
+    setCreationCrash((c) => (c ? { ...c, yamlText: text } : c));
+  };
+
+  const handleCreationCrashApply = () => {
+    if (!creationCrash) return;
+    try {
+      const parsed = parseDungeon(creationCrash.yamlText);
+      setCreationCst(parsed.cst);
+      setCreationDoc(parsed.doc);
+      setCreationYamlText(creationCrash.yamlText);
+      setCreationParseError(null);
+      creationEdit.setSelectedPlacement(null);
+      // Clearing this is what lets the board attempt to render again —
+      // `creationCrash === null` is the render-time switch back to the
+      // real `ErrorBoundary`-wrapped board below, a fresh boundary
+      // instance with its own hasError reset. If the newly-applied doc
+      // crashes too, `onError` sets `creationCrash` right back with the
+      // new error — the loop this unit's own "apply-to-retry" ask names.
+      setCreationCrash(null);
+    } catch (err) {
+      setCreationCrash((c) =>
+        c
+          ? {
+              ...c,
+              message:
+                err instanceof DungeonParseError ? err.message : String(err),
+            }
+          : c
+      );
+    }
   };
 
   // Delete/Backspace removes the selected placement — creation mode's
@@ -463,45 +547,76 @@ export function DungeonBuilderConcept({
           onDiscard={handleDiscardCreateDraft}
         />
       )}
-      <CreationConcept
-        doc={creationDoc}
-        yamlText={creationYamlText}
-        yamlParseError={creationParseError}
-        onChangeYamlText={handleChangeCreationText}
-        edit={creationEdit}
-        selectedTool={creationSelectedTool}
-        onSelectTool={setCreationSelectedTool}
-        onToggleWallEdge={handleCreationToggleWallEdge}
-        onAddStraightWall={handleCreationAddStraightWall}
-        onRemoveStraightWallAt={handleCreationRemoveStraightWallAt}
-        onSetStraightWallEndpoint={handleCreationSetStraightWallEndpoint}
-        onToggleStraightWallDoorAt={handleCreationToggleStraightWallDoorAt}
-        onToggleHole={handleCreationToggleHole}
-        onSetPoint={handleCreationSetPoint}
-        onNewCanvas={handleNewCanvas}
-        toast={flashToast}
-        regionEdit={regionEdit}
-        paletteCollapsed={createPaletteCollapsed}
-        onTogglePalette={() => setCreatePaletteCollapsed((c) => !c)}
-        yamlCollapsed={createYamlCollapsed}
-        onToggleYaml={() => setCreateYamlCollapsed((c) => !c)}
-        serverState={preview.serverState}
-        capabilities={preview.capabilities}
-        onRefreshCapabilities={preview.refreshCapabilities}
-        liveFloorPlan={creationFloorPreview.floorPlan}
-        v1Subset={creationV1Subset}
-        onSaveAndPlay={handleCreationSaveAndPlay}
-        saveState={creationSave.state}
-        savedKey={creationSave.savedKey}
-        saveFieldErrors={creationSave.fieldErrors}
-        saveErrorMessage={creationSave.errorMessage}
-        boardDim={createBoardDim}
-        onSetBoardDim={setCreateBoardDim}
-        yamlDownloadFilename={creationDownloadFilename}
-        onLoadYamlFile={handleLoadCreationYamlFile}
-        onLoadYamlFileError={handleLoadCreationYamlFileError}
-        specCompat={creationSpecCompat}
-      />
+      {creationCrash ? (
+        <BoardCrashRecovery
+          errorMessage={creationCrash.message}
+          yamlText={creationCrash.yamlText}
+          onChangeText={handleCreationCrashTextChange}
+          onApply={handleCreationCrashApply}
+          onDiscardDraft={handleDiscardCreateDraft}
+        />
+      ) : (
+        // Crash-proof by construction (this unit): if the board throws
+        // ANYWAY — a shape `dungeonYaml.ts`'s parse-time validation
+        // doesn't catch, or any other render bug — this boundary catches
+        // it instead of white-screening the whole app, and hands the
+        // error + the text that caused it to `creationCrash` above
+        // rather than rendering its own generic fallback (`fallback={null}`:
+        // the very next render swaps this whole branch for
+        // `BoardCrashRecovery`, so there's nothing worth showing here).
+        // A fresh `ErrorBoundary` instance mounts here every time
+        // `creationCrash` goes back to `null` (Apply & retry, Discard),
+        // so its own `hasError` is always reset for the next attempt.
+        <ErrorBoundary
+          fallback={null}
+          onError={(error) =>
+            setCreationCrash({
+              message: error.message,
+              yamlText: creationYamlText,
+            })
+          }
+        >
+          <CreationConcept
+            doc={creationDoc}
+            yamlText={creationYamlText}
+            yamlParseError={creationParseError}
+            onChangeYamlText={handleChangeCreationText}
+            edit={creationEdit}
+            selectedTool={creationSelectedTool}
+            onSelectTool={setCreationSelectedTool}
+            onToggleWallEdge={handleCreationToggleWallEdge}
+            onAddStraightWall={handleCreationAddStraightWall}
+            onRemoveStraightWallAt={handleCreationRemoveStraightWallAt}
+            onSetStraightWallEndpoint={handleCreationSetStraightWallEndpoint}
+            onToggleStraightWallDoorAt={handleCreationToggleStraightWallDoorAt}
+            onToggleHole={handleCreationToggleHole}
+            onSetPoint={handleCreationSetPoint}
+            onNewCanvas={handleNewCanvas}
+            toast={flashToast}
+            regionEdit={regionEdit}
+            paletteCollapsed={createPaletteCollapsed}
+            onTogglePalette={() => setCreatePaletteCollapsed((c) => !c)}
+            yamlCollapsed={createYamlCollapsed}
+            onToggleYaml={() => setCreateYamlCollapsed((c) => !c)}
+            serverState={preview.serverState}
+            capabilities={preview.capabilities}
+            onRefreshCapabilities={preview.refreshCapabilities}
+            liveFloorPlan={creationFloorPreview.floorPlan}
+            v1Subset={creationV1Subset}
+            onSaveAndPlay={handleCreationSaveAndPlay}
+            saveState={creationSave.state}
+            savedKey={creationSave.savedKey}
+            saveFieldErrors={creationSave.fieldErrors}
+            saveErrorMessage={creationSave.errorMessage}
+            boardDim={createBoardDim}
+            onSetBoardDim={setCreateBoardDim}
+            yamlDownloadFilename={creationDownloadFilename}
+            onLoadYamlFile={handleLoadCreationYamlFile}
+            onLoadYamlFileError={handleLoadCreationYamlFileError}
+            specCompat={creationSpecCompat}
+          />
+        </ErrorBoundary>
+      )}
       {toast && <ToastBanner message={toast} />}
     </div>
   );
