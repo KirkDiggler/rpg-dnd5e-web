@@ -1,8 +1,8 @@
 ---
 name: GameView
 description: The live game path's successor to LobbyView — party assembly (LobbyFlow) then a live encounter (EncounterView), built entirely on the shared harness stack
-updated: 2026-07-12
-confidence: high — verified by reading every new file in full, running the full vitest suite (675 passing), and cross-checking rpg-api's start_encounter.go entity-id claim
+updated: 2026-08-07
+confidence: high — verified by focused real-path tests plus the repository CI suite; server-owned entity-id behavior remains cross-checked against rpg-api start_encounter.go
 ---
 
 # GameView
@@ -96,6 +96,44 @@ changing with no story.
   renders its entityId-derived fallback name/emoji for every combatant
   (same as `EncounterMap`'s existing renderable-entity naming) rather than
   portraits/class icons — a follow-up, not a proto gap.
+
+### Ordered combat presentation (#721)
+
+`EncounterView` keeps `useEncounterState` canonical as stream envelopes arrive,
+but holds a small presentation-only projection for the active attack story:
+visible HP, statuses, and correlated outcome log entries release on the existing
+theater's semantic result beat (Verdict for a miss, Impact for a hit).
+`StatusApplied` envelopes use entity/source identity, correlation when present,
+and observed damage order: today's empty-correlation attack statuses bind the
+most recent matching damage story. Their badge, model projection, and log wait
+for the result; a status with no causally matching damage story remains
+immediate. Command safety remains canonical: while local control labels are
+held, every combat dispatch surface (movement, targeting/actions, reactions,
+and end turn) is disabled, and presentation never re-enables an unavailable
+command. A canonically
+removed, already-known entity is retained as a render tombstone through that
+result and then follows the existing removal path when the theater completes.
+No status, death, hit, damage, or HP value is inferred; every displayed value is
+copied from `AttackResolved`, `EntityDamaged.hp_after`, `StatusApplied`,
+`EntityDied`, or `EntityRemoved`.
+
+Two narrow lifecycle seams coordinate the story. `useHexMovePath` reports the
+exact completed `moveSeq` through `HexEntity` → `HexGrid` → `EncounterMap`, so
+an attack waits only for its own actor's current in-flight movement and ignores
+stale completions. A same-sequence canonical/knowledge prop refresh preserves
+the active frame loop rather than snapping and losing its completion; player
+and NPC actors use this identical handshake. `CombatPresentation` exposes
+`onResultRelease(id)` plus its
+existing `onComplete(id)`; it remains unaware of Three.js, the combat log, HP,
+or terminal rendering. Snapshot replacement and leaving turn-based mode
+cancel the held projection. Encounter end is different: it follows the most
+recent terminal story in observed FIFO stream order, and all queued stories
+drain through their own result beats (holding banner, dock, tombstones, and
+terminal log together) before cleanup; an encounter end with no staged terminal
+story still flushes immediately. Empty/reused correlations are
+fail-safe: outcome association always requires actor/target identity, and
+same-target terminal events follow observed stream causality (the most recent
+matching damage, then explicit death for removal), never inferred HP rules.
 
 ## Related references
 

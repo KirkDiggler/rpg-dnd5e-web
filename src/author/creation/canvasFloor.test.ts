@@ -18,7 +18,12 @@ import {
   sortCellsLexicographic,
 } from './canvasFloor';
 import { emptyCanvasYaml } from './emptyCanvasDoc';
-import { straightWallsFootprintSet } from './straightWallGeometry';
+import {
+  STANDABLE_COVERAGE_THRESHOLD,
+  standableFootprintKeys,
+  straightWallsFootprintCoverage,
+  straightWallsFootprintSet,
+} from './straightWallGeometry';
 
 describe('deriveCanvasFloorCells', () => {
   it('produces every cell in a small canvas bounds, none missing or duplicated', () => {
@@ -199,46 +204,58 @@ describe('canvasPlacementRejectReason', () => {
 
   it('an ordinary empty floor cell is legal — null, no reason', () => {
     const doc = emptyDoc();
-    expect(canvasPlacementRejectReason(doc, 5, 5, new Set())).toBeNull();
+    expect(canvasPlacementRejectReason(doc, 5, 5, new Set(), true)).toBeNull();
   });
 
   it('rejects a cell outside the canvas bounds, same as a hole would', () => {
     const doc = emptyDoc();
-    expect(canvasPlacementRejectReason(doc, -1, 5, new Set())).not.toBeNull();
-    expect(canvasPlacementRejectReason(doc, 20, 5, new Set())).not.toBeNull();
-    expect(canvasPlacementRejectReason(doc, 5, 30, new Set())).not.toBeNull();
+    expect(
+      canvasPlacementRejectReason(doc, -1, 5, new Set(), true)
+    ).not.toBeNull();
+    expect(
+      canvasPlacementRejectReason(doc, 20, 5, new Set(), true)
+    ).not.toBeNull();
+    expect(
+      canvasPlacementRejectReason(doc, 5, 30, new Set(), true)
+    ).not.toBeNull();
   });
 
   it('rejects a hole cell', () => {
     const { cst } = parseDungeon(emptyCanvasYaml(20, 30));
     toggleHole(cst, 5, 5);
     const doc = toDungeonDoc(cst);
-    expect(canvasPlacementRejectReason(doc, 5, 5, new Set())).not.toBeNull();
+    expect(
+      canvasPlacementRejectReason(doc, 5, 5, new Set(), true)
+    ).not.toBeNull();
     // A neighboring, non-hole cell stays legal — the reject is cell-
     // specific, not a whole-canvas panic.
-    expect(canvasPlacementRejectReason(doc, 6, 5, new Set())).toBeNull();
+    expect(canvasPlacementRejectReason(doc, 6, 5, new Set(), true)).toBeNull();
   });
 
-  it('rejects a cell inside a straight wall’s footprint, and only that cell', () => {
+  it('rejects a cell inside a straight wall’s footprint, and only that cell, when requiresStandable', () => {
     const doc = emptyDoc();
     // Same known single-cell footprint fixture straightWallGeometry.test.ts
     // itself uses ("a wall ENDING at a corner shared with a cell does not
     // clip that cell"): this line's footprint is exactly [[5, 4]].
     const footprint = new Set(['5,4']);
-    expect(canvasPlacementRejectReason(doc, 5, 4, footprint)).not.toBeNull();
+    expect(
+      canvasPlacementRejectReason(doc, 5, 4, footprint, true)
+    ).not.toBeNull();
     // A neighboring cell the footprint doesn't cover stays legal — the
     // rule is footprint MEMBERSHIP, not proximity to a drawn wall.
-    expect(canvasPlacementRejectReason(doc, 5, 5, footprint)).toBeNull();
-    expect(canvasPlacementRejectReason(doc, 6, 5, footprint)).toBeNull();
+    expect(canvasPlacementRejectReason(doc, 5, 5, footprint, true)).toBeNull();
+    expect(canvasPlacementRejectReason(doc, 6, 5, footprint, true)).toBeNull();
   });
 
   it('rejects an already-occupied cell (top-level doc.place)', () => {
     const { cst } = parseDungeon(emptyCanvasYaml(20, 30));
     placeItem(cst, null, 'dnd5e:props:pillar', [3, 3]);
     const doc = toDungeonDoc(cst);
-    expect(canvasPlacementRejectReason(doc, 3, 3, new Set())).not.toBeNull();
+    expect(
+      canvasPlacementRejectReason(doc, 3, 3, new Set(), true)
+    ).not.toBeNull();
     // The occupied placement's own cell is the only one affected.
-    expect(canvasPlacementRejectReason(doc, 4, 3, new Set())).toBeNull();
+    expect(canvasPlacementRejectReason(doc, 4, 3, new Set(), true)).toBeNull();
   });
 
   it('checks gates in order: an out-of-bounds cell is rejected for that reason even if it would also be "occupied" by coincidence', () => {
@@ -246,7 +263,7 @@ describe('canvasPlacementRejectReason', () => {
     // No real placement can exist out of bounds, but this proves the
     // bounds/hole gate runs FIRST regardless — a caller never needs a
     // real occupied placement out of bounds to trust this ordering.
-    const reason = canvasPlacementRejectReason(doc, -5, -5, new Set());
+    const reason = canvasPlacementRejectReason(doc, -5, -5, new Set(), true);
     expect(reason).toMatch(/floor/i);
   });
 
@@ -255,6 +272,115 @@ describe('canvasPlacementRejectReason', () => {
     addWallLine(cst, { cell: [5, 4], corner: 2 }, { cell: [5, 4], corner: 5 });
     const doc = toDungeonDoc(cst);
     const footprint = straightWallsFootprintSet(doc.wallLines, doc.canvas!);
-    expect(canvasPlacementRejectReason(doc, 5, 4, footprint)).not.toBeNull();
+    expect(
+      canvasPlacementRejectReason(doc, 5, 4, footprint, true)
+    ).not.toBeNull();
+  });
+
+  // rpg-project#169's "props on footprint cells" unit — Kirk's exact ask:
+  // a bookcase resting against a drawn wall. `requiresStandable: false`
+  // relaxes ONLY the footprint gate; every other gate (floor bounds,
+  // holes, already-occupied) still applies to a prop exactly as it does
+  // to a monster.
+  describe('requiresStandable: false (props)', () => {
+    it('a footprint cell is a LEGAL prop target — the standable gate is skipped', () => {
+      const doc = emptyDoc();
+      const footprint = new Set(['5,4']);
+      expect(
+        canvasPlacementRejectReason(doc, 5, 4, footprint, false)
+      ).toBeNull();
+    });
+
+    it('the SAME footprint cell is still rejected for a placement that requires standable ground', () => {
+      const doc = emptyDoc();
+      const footprint = new Set(['5,4']);
+      expect(
+        canvasPlacementRejectReason(doc, 5, 4, footprint, true)
+      ).not.toBeNull();
+    });
+
+    it('a hole is still rejected for a prop — the floor gate is unconditional', () => {
+      const { cst } = parseDungeon(emptyCanvasYaml(20, 30));
+      toggleHole(cst, 5, 5);
+      const doc = toDungeonDoc(cst);
+      expect(
+        canvasPlacementRejectReason(doc, 5, 5, new Set(), false)
+      ).not.toBeNull();
+    });
+
+    it('an already-occupied cell is still rejected for a prop — the occupied gate is unconditional', () => {
+      const { cst } = parseDungeon(emptyCanvasYaml(20, 30));
+      placeItem(cst, null, 'dnd5e:props:pillar', [3, 3]);
+      const doc = toDungeonDoc(cst);
+      expect(
+        canvasPlacementRejectReason(doc, 3, 3, new Set(), false)
+      ).not.toBeNull();
+    });
+
+    it('addWallLine + straightWallsFootprintSet integration: a real authored wall line permits a prop on its own footprint cell', () => {
+      const { cst } = parseDungeon(emptyCanvasYaml(20, 30));
+      addWallLine(
+        cst,
+        { cell: [5, 4], corner: 2 },
+        { cell: [5, 4], corner: 5 }
+      );
+      const doc = toDungeonDoc(cst);
+      const footprint = straightWallsFootprintSet(doc.wallLines, doc.canvas!);
+      expect(
+        canvasPlacementRejectReason(doc, 5, 4, footprint, false)
+      ).toBeNull();
+    });
+  });
+
+  // Coverage-based standability (rpg-project#169's live-design follow-up
+  // with Kirk, 2026-08-07) — the full real pipeline, not a hand-typed
+  // Set: a genuinely low-coverage footprint cell is legal even for a
+  // MONSTER (`requiresStandable: true`), and a genuinely high-coverage
+  // one stays blocked, driven entirely by `straightWallsFootprintCoverage`
+  // + `standableFootprintKeys` against a real authored wallLine.
+  describe('coverage-based standability — the real pipeline (requiresStandable: true)', () => {
+    it('a low-coverage footprint cell is standable for a monster too — not just placeable for a prop', () => {
+      const { cst } = parseDungeon(emptyCanvasYaml(50, 30));
+      // The exact bench fixture from straightWallGeometry.test.ts's own
+      // "hexCoverageFraction — measurement bench": cell (39,19) has
+      // coverage ~1.67%, well under STANDABLE_COVERAGE_THRESHOLD (10%).
+      addWallLine(
+        cst,
+        { cell: [37, 20], corner: 0 },
+        { cell: [44, 18], corner: 0 }
+      );
+      const doc = toDungeonDoc(cst);
+      const coverage = straightWallsFootprintCoverage(
+        doc.wallLines,
+        doc.canvas!
+      );
+      expect(coverage.get('39,19')).toBeLessThan(STANDABLE_COVERAGE_THRESHOLD);
+      const standable = standableFootprintKeys(coverage);
+      expect(
+        canvasPlacementRejectReason(doc, 39, 19, standable, true)
+      ).toBeNull();
+    });
+
+    it('a high-coverage footprint cell on the SAME line stays blocked for a monster', () => {
+      const { cst } = parseDungeon(emptyCanvasYaml(50, 30));
+      addWallLine(
+        cst,
+        { cell: [37, 20], corner: 0 },
+        { cell: [44, 18], corner: 0 }
+      );
+      const doc = toDungeonDoc(cst);
+      const coverage = straightWallsFootprintCoverage(
+        doc.wallLines,
+        doc.canvas!
+      );
+      // (42,19) is ~44.87% in the same bench — well above the threshold.
+      expect(coverage.get('42,19')).toBeGreaterThan(
+        STANDABLE_COVERAGE_THRESHOLD
+      );
+      const standable = standableFootprintKeys(coverage);
+      expect(
+        canvasPlacementRejectReason(doc, 42, 19, standable, true)
+      ).not.toBeNull();
+    });
   });
 });

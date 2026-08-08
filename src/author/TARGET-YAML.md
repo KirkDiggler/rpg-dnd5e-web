@@ -518,6 +518,82 @@ Two concrete cases worth naming directly, both covered by
   endpoint boundary cases" describe block, not just asserted from the
   general epsilon rule above.
 
+### Coverage-based standability (retires the binary "footprint = blocked" rule for STANDING, 2026-08-07)
+
+**"Every hex the wall's line genuinely passes through is BLOCKED," above,
+is no longer the whole story — it now describes the FOOTPRINT (what
+`straightWallFootprint`/`isCellClipped` compute, what Half A's wire
+projection seals, what mechanism (a)/(b) below still block unconditionally),
+not, by itself, who may STAND there.** Kirk, live design session, looking
+at the epsilon-gated all-or-nothing block: "Nothing is set in stone... if
+you can say we won't clip we can go on those squares, maybe some percent
+is fine. the small triangles on the edge we could prob allow those to be
+placed on... like we can slide a bookcase to a wall."
+
+**The refined model, precisely:**
+
+1. **The footprint itself — and everything this section already
+   describes about it — is UNCHANGED.** A cell the line genuinely clips
+   is still a footprint cell, at the same epsilon-gated touch-vs-clip
+   boundary as always.
+2. **What changed is what a footprint cell's membership MEANS for
+   standing.** Each footprint cell now carries a coverage FRACTION
+   (`creation/straightWallGeometry.ts`'s `hexCoverageFraction` — the
+   smaller of the two sub-polygon areas the wall's own infinite line
+   splits the hex's TRUE polygon into, over the hex's total area; see
+   that function's own doc comment for the full geometric write-up,
+   including why the SMALLER side rather than a directionally-consistent
+   "wall's own side"). A cell below `STANDABLE_COVERAGE_THRESHOLD`
+   (currently 10%) is STANDABLE — real, walkable floor again for anything
+   that needs to occupy it. At/above, blocked exactly as before.
+3. **Placeable vs. standable, restated precisely**: a PROP never needed
+   standable ground in the first place (this file's own "Interactions
+   with everything else" section) — it needs real floor, full stop,
+   coverage or not. A MONSTER/boss/start point needs standable ground —
+   now coverage-gated rather than footprint-membership-gated.
+4. **What did NOT change, deliberately (Half A stays exactly as
+   briefed)**: the wall LINE's own crossing prohibition — mechanism (b),
+   below, and Half A's wire projection
+   (`stripToV1Subset`'s `walls:` merge) — reads the FULL, unfiltered
+   footprint regardless of coverage. A standable low-coverage cell is not
+   a free pass through the wall's own line; it only means you may stand
+   there once you've reached it via an edge the line doesn't cross.
+   Server-side enforcement is completely untouched by any of this —
+   coverage is purely a client-side authoring/preview refinement of
+   "who may stand here," never a wire concept.
+5. **The threshold's own status, honestly**: `STANDABLE_COVERAGE_THRESHOLD`
+   is REASONED from real, independently-verified geometry (a documented
+   bench of wallLines spanning ~1.7%–~44.9% coverage — see the constant's
+   own doc comment for the exact fixtures), not yet CONFIRMED by a
+   completed live Walk-mode visual pass — that pass was attempted and
+   blocked by an environment-level shared-browser collision with a
+   concurrent agent session, recorded rather than silently worked around.
+   A future session without that collision should do the real visual
+   pass against the documented bench and adjust the one-line constant if
+   warranted.
+6. **Visual de-emphasis**: every genuinely-touched footprint cell still
+   renders a dim/hatch overlay (an author needs to see every cell the
+   wall clips, standable or not), but scales its opacity by coverage —
+   `DungeonPreview3D.tsx`'s `FootprintDimCell`/`CreationBoard.tsx`'s
+   hatch polygon both read the SAME `hexCoverageFraction` value, light
+   for a shallow clip, full for a deep one.
+
+**Slide-to-flush — named next, not landed this round.** Kirk's own
+follow-on ("we can slide a bookcase to a wall"): a placement on a
+wall-adjacent/footprint cell sliding flush against the wall's own face (a
+sub-cell positional offset), pairing with the EXISTING "Snap flush to
+nearest wall" button (`Inspector.tsx`'s fine-rotation-generalization
+round) — that button already solves the ROTATION half (orienting a prop
+edge-parallel to a wall); slide-to-flush is the POSITION half, genuinely
+separate work (a computed offset, its own draft-tier dialect field —
+`offset:` or a computed flush flag, TBD by whoever picks this up —
+stripped at save like every other draft field, rendered in both the
+builder preview and the walkthrough). Scoped out of this round
+deliberately rather than rushed alongside the coverage-geometry work
+above, which was already substantial on its own; recorded here so a
+future session picks it up as a real, named next step instead of
+rediscovering the need from scratch.
+
 ### Movement semantics
 
 Two distinct effects, both implemented:
@@ -717,10 +793,29 @@ content is FLAGGED, not silently deleted or relocated:
 - **Placements** (`doc.place`) inside a footprint render an extra warning
   ring + "⚠ IN WALL FOOTPRINT" label, live, including while a wall is still
   being dragged (not just after release) — the placement itself is
-  untouched.
+  untouched. **PLACEABLE vs. STANDABLE split (rpg-project#169's "props on
+  footprint cells" unit, 2026-08-07):** this warning is scoped to
+  placements that actually NEED standable ground — monsters. A prop on a
+  footprint cell is no longer a warning-worthy state at all; it's the
+  intended target (Kirk's exact ask: a bookcase resting against a drawn
+  wall) — it renders normally, same as anywhere else on the floor. The
+  underlying placement-legality gate this warning mirrors
+  (`creation/canvasFloor.ts`'s `canvasPlacementRejectReason`) grew a
+  `requiresStandable` parameter for the same split: `false` for a
+  `'prop'` palette selection skips the footprint gate entirely (every
+  other gate — real floor, not already occupied — still applies), `true`
+  for `'monster'`/`'boss'` keeps the pre-existing hard reject. Both 2D
+  (`CreationBoard.tsx`) and 3D (`preview3d/DungeonPreview3D.tsx`)
+  click-to-place paths consult the same predicate, so they can never
+  disagree about where a prop is legal.
 - **Start/End** reuse `Board.tsx`'s own "⚠ ... (BLOCKED!)" visual language
   verbatim (the same convention edit mode's entrance-blocked check uses)
-  rather than inventing a new one.
+  rather than inventing a new one. Deliberately left OUTSIDE the
+  PLACEABLE/STANDABLE split above: start/end never routed through
+  `canvasPlacementRejectReason` in the first place (no placement-time
+  reject exists for either today — only this retroactive flag), and a
+  start point genuinely does need standable ground the same as a
+  monster, so there was nothing to relax here.
 - **Region cells** (`doc.regions`) inside a footprint get a small ⚠ glyph
   overlaid on the affected cell — the region's own `cells:` membership is
   never rewritten by a wall mutator, per the settled model's own "an inner
@@ -749,16 +844,138 @@ semantics/addressing a server-side implementation should match.
 
 ### `stripToV1Subset`
 
-`wallLines:` drops entirely, same treatment as `walls:` (no v1 analog at
-all), counted and reported SEPARATELY in the compile-badge/dropped summary
-("N straight walls", never folded into the edge-wall "N walls" count) —
-they're genuinely different constructs, and conflating their counts would
-misrepresent which tool an author actually used. A line's own `doors:`
-entries are nested data on a construct that already has no v1 analog at
-all — they drop along with their parent line, with no separate count of
-their own (counting "doors" as a sibling tally to "straight walls" would
-misrepresent them as an independent authoring action, when they only ever
-exist attached to a wallLine that's already being dropped).
+**The KEY never survives** — `dungeonspec` has no `wallLines:` field and
+never will (it's this concept's own client-side sugar), so it's deleted
+unconditionally on every strip, same "key presence alone gets rejected"
+treatment as `holes:`/`end:`.
+
+**The GEOMETRY is no longer unconditionally lost (rpg-project#169's
+"drawn walls become real" unit, 2026-08-07).** Before this unit, a
+wallLine's footprint/crossed-edge geometry was a pure client-side
+preview — real for the board's own hatch overlay and Walk-mode
+collision, invisible to the actual saved dungeon and to any real
+in-game encounter started from it. Now: whenever this server accepts
+edge-native `walls:` (live today — `capabilityProbe.ts`'s `walls`
+field), `stripToV1Subset` derives every wallLine's real cell-boundary
+edges (`creation/straightWallGeometry.ts`'s `projectWallLineToEdges` —
+the SAME `straightWallFootprint`/`straightWallCrossedEdges` primitives
+`preview3d/walkMovement.ts` already calls to enforce this exact geometry
+client-side, not a second derivation) and injects them as `walls:`
+entries. A wall drawn with the straight-wall tool now renders AND is
+enforced in the real game, the same as one drawn with the zigzag
+edge-wall tool — not just previewed.
+
+**This is a projection, not a conversion.** `wallLines:` itself is
+STILL deleted from the sent subset (the server would reject the key
+regardless of what else compiles) — only its geometric CONSEQUENCE
+survives, folded into `walls:`. The live document the author is editing
+is untouched: `stripToV1Subset` parses a fresh CST from the input text
+and never mutates the caller's own `cst`, so reloading/re-editing the
+full document still shows straight walls as straight walls, with their
+own footprint hatch, in the builder — exactly like every other
+target-dialect field this file's own two-bucket split already treats
+this way.
+
+**Derivation, precisely.** For each footprint cell (door cells already
+excluded, per `straightWallFootprint`'s own `doorCells` parameter): seal
+all 6 of its real neighbor edges — the edge-native wire format has no
+notion of "this cell is blocked," only "this edge is blocked," so
+faithfully representing "the whole cell is impassable" means walling
+off every real approach to it. Mechanism (b)'s between-two-clear-cells
+grazing crossings (`straightWallCrossedEdges`, unchanged from its
+existing client-side use) are added on top, always `kind: solid` — see
+"doors," directly below, for why mechanism (b) is deliberately NOT
+door-aware even when one of its two cells is a door cell.
+
+**Doors: `kind: door`, not a bare gap — the actual decision, and why.**
+A door cell's own edges toward its flanking footprint neighbors (the
+wall run continuing on either side of the opening) needed one of two
+treatments: omit the edge entirely (a silent gap — no `walls:` entry at
+all at that boundary) or emit it as `kind: door`. **Chosen: `kind:
+door`.** The real game's per-edge wall renderer
+(`syntyHexWallHelpers.ts`'s `isDoorWallKind`/`edgePieceKind`, consumed
+by `SyntyHexWall`/`wallRunAdapters.ts`) only ever draws geometry where a
+`Wall` entry exists — an omitted edge renders as nothing whatsoever,
+indistinguishable from a rendering bug or an author who simply forgot a
+segment. `kind: door` gives the opening a real, intentional door
+frame/leaf through the exact same rendering path every other door in
+this game already uses, so an authored doorway reads as a doorway,
+matching Kirk's own repeated diagnosis of the earlier whole-line
+`kind: door` prototype this section's "Doors" subsection documents
+above: "the gashes are walls... I cannot set a wall or a door." A gap
+would have reintroduced exactly that complaint one layer down — a real
+opening that LOOKS like nothing happened there at all.
+
+This does NOT make mechanism (b) door-aware: a door cell's own
+INDEPENDENT grazing crossing (toward a cell that isn't one of its
+flanking footprint neighbors) stays `solid` — the door only reverses
+its OWNING line's own footprint claim on that one cell ("Doors,"
+above: "this cell acts as though the wall line never clipped it at all,
+nothing more, and nothing less"), never mechanism (b)'s separate
+both-clear-cells test. Verified directly, not assumed
+(`straightWallGeometry.test.ts`'s `projectWallLineToEdges` describe
+block): a genuinely vertical wallLine with a door at its middle cell
+gets `kind: door` on both its flanking edges, while a grazing
+mechanism-(b) edge on that SAME cell (toward a cell one column over)
+stays `kind: solid`.
+
+**Rim edges — the honest gap.** A footprint cell at the canvas boundary
+can have a neighbor direction that falls entirely off the grid — no
+cell exists there to form an adjacent-cell-pair `walls:` entry with
+(the server's own wall validation requires two real, in-grid cells).
+These are counted (`rimEdgeCount`) and folded into the compile-badge
+message ("N straight walls (projects to M wall edges; K rim edges at
+the canvas boundary could not be expressed)") rather than silently
+absorbed into the edge count or dropped without a trace — the same
+"flag, never silently delete" discipline this file's "Interactions with
+everything else" subsection already applies to placements/start/end/
+regions, extended here to the projection's own geometric limits.
+
+**Merge with explicit `walls:` — explicit wins.** A document can carry
+both hand-painted edge walls (`walls:`, the zigzag tool) and straight
+wallLines at once. The projected edges are deduped against each other
+(a door beats a solid found for the same edge from a different
+direction/line) and then checked against every EXPLICIT `walls:` entry
+by the same order-independent cell-pair key: an explicit entry is never
+duplicated and never has its `kind` overwritten by a projected one, even
+when they disagree — an author who hand-painted a door somewhere the
+straight-wall footprint would have sealed solid keeps their door. Only
+cell pairs with no explicit entry get a newly appended projected node.
+
+**Reported honestly, per-server, like every other capability-gated
+field.** `walls:` NOT accepted (an older/rolled-back server): unchanged
+prior behavior — wallLines drop entirely, counted in `dropped` as before
+this unit, never touching `walls:` at all. `walls:` accepted: counted in
+`compiling`, never `dropped` — the compile badge no longer claims
+wallLines are stripped client-side sugar with no wire effect once this
+server can actually carry the geometry. Counted SEPARATELY from the
+edge-wall `walls:` tally either way ("N straight walls" is never folded
+into "M walls") — they remain genuinely different authoring constructs,
+and conflating their counts would misrepresent which tool an author
+actually used, same principle this section held before this unit. A
+line's own `doors:` entries stay uncounted as their own tally (they only
+ever exist attached to a wallLine, never an independent authoring
+action) — their EFFECT is now visible in the edge count and the `kind:
+door` entries themselves, just never a separate "N doors" line.
+
+**Known gap, honestly recorded, not solved by this unit**: the
+projection assumes the wallLine's footprint cells are real server floor
+— true by construction in canvas mode (`doc.canvas ?? DEFAULT_CANVAS`,
+this file's own established canvas-floor semantic: every cell in
+bounds, minus holes). A wallLine authored inside a ROOM-CHAIN document
+(rooms non-empty, no `canvas:`) has no such guarantee — its footprint
+cells might fall in a real room, in the reserved connector gap, or
+outside any declared room's bounds entirely, and the server's own
+endpoint-floor-membership check would reject a projected edge that
+references a genuinely non-floor cell. This unit does not pre-validate
+that case client-side; a document in that shape surfaces the real
+server's own `field_errors` on Save & Play, same as any other genuine
+validation failure this concept already relies on the live preview to
+catch — not a silent client-side guess at a rule the server itself
+would enforce more precisely. `wallLines:` was designed and has so far
+only been exercised against canvas-mode documents (this whole "Straight
+walls" section's own framing), so this is a real but narrow, honestly-
+scoped gap rather than an oversight.
 
 ## Top-level placement: rooms are semantic, not placement containers
 

@@ -22,7 +22,6 @@
  * comment) rather than an 'h'/'v' orientation tag, which had no hex
  * analog once a cell stopped having exactly two edge orientations.
  */
-import { neighborCell } from '../boardGeometry';
 import {
   BOARD_HEX_SIZE,
   cellCenter,
@@ -35,6 +34,12 @@ import {
 } from '../hexLayout';
 import type { Cell } from '../regionGeometry';
 import { type CreationGrid } from './creationTypes';
+// `neighborCell` from `./hexCorner`, not `../boardGeometry` — see that
+// module's own doc comment on its exported copy for why (avoids a
+// dungeonYaml.ts -> straightWallGeometry.ts -> creationGeometry.ts ->
+// boardGeometry.ts -> dungeonYaml.ts import cycle, the same class of
+// crash `hexCorner.ts` was already built leaf-level to avoid).
+import { neighborCell } from './hexCorner';
 
 export function creationCellCenter(col: number, row: number): CellPos {
   return cellCenter(col, row);

@@ -1468,6 +1468,142 @@ connectors: []
         );
       });
     });
+
+    // wallLines->edges projection (rpg-project#169's "drawn walls become
+    // real" unit) — a genuinely VERTICAL corner-anchored line clips a
+    // CONTIGUOUS column run (this fixture verified directly against
+    // `straightWallGeometry.ts`'s own test suite: footprint
+    // [[6,4],[6,5],[6,6],[6,7],[6,8],[6,9]], every consecutive pair real
+    // hex neighbors of each other), so `[6,4]`<->`[6,5]` is a KNOWN real
+    // projected edge to assert against directly, not guessed at.
+    describe('wallLines -> walls: projection', () => {
+      const VLINE_FROM = canonicalCorner({ cell: [5, 3], corner: 0 });
+      const VLINE_TO = canonicalCorner({ cell: [5, 9], corner: 0 });
+
+      it('projects into walls: when this server accepts walls, counted in compiling — never dropped', () => {
+        const { cst } = parseDungeon(SHOWCASE_YAML);
+        addWallLine(cst, VLINE_FROM, VLINE_TO);
+
+        const result = stripToV1Subset(serializeDungeon(cst), caps(['walls']));
+
+        expect(result.dropped).toEqual([]);
+        expect(result.compiling).toEqual([
+          expect.stringMatching(
+            /^1 straight wall \(projects to \d+ wall edges?\)$/
+          ),
+        ]);
+        const { doc: stripped } = parseDungeon(result.yaml);
+        expect(stripped.wallLines).toEqual([]); // the key itself never survives
+        const edge = stripped.walls.find(
+          (w) =>
+            (w.from[0] === 6 &&
+              w.from[1] === 4 &&
+              w.to[0] === 6 &&
+              w.to[1] === 5) ||
+            (w.from[0] === 6 &&
+              w.from[1] === 5 &&
+              w.to[0] === 6 &&
+              w.to[1] === 4)
+        );
+        expect(edge).toBeDefined();
+        expect(edge?.kind).toBe('solid');
+      });
+
+      it('the ORIGINAL live doc is untouched — a projection, not a conversion; wallLines: still round-trips from the caller’s own cst', () => {
+        const { cst } = parseDungeon(SHOWCASE_YAML);
+        addWallLine(cst, VLINE_FROM, VLINE_TO);
+        const yamlText = serializeDungeon(cst);
+
+        stripToV1Subset(yamlText, caps(['walls']));
+
+        // stripToV1Subset parsed a FRESH cst from yamlText — the caller's
+        // own cst (and re-parsing yamlText itself) still shows the
+        // straight wall, untouched.
+        expect(toDungeonDoc(cst).wallLines).toHaveLength(1);
+        expect(parseDungeon(yamlText).doc.wallLines).toHaveLength(1);
+      });
+
+      it('merges with explicit walls: — EXPLICIT wins on a kind conflict, no duplicate edge', () => {
+        const { cst } = parseDungeon(SHOWCASE_YAML);
+        addWallLine(cst, VLINE_FROM, VLINE_TO);
+        // The projection would derive [6,4]<->[6,5] as `solid` (previous
+        // test) — author it explicitly as a DOOR instead.
+        setWallEdge(cst, [6, 4], [6, 5], 'door', true);
+
+        const result = stripToV1Subset(serializeDungeon(cst), caps(['walls']));
+        const { doc: stripped } = parseDungeon(result.yaml);
+        const matches = stripped.walls.filter(
+          (w) =>
+            (w.from[0] === 6 &&
+              w.from[1] === 4 &&
+              w.to[0] === 6 &&
+              w.to[1] === 5) ||
+            (w.from[0] === 6 &&
+              w.from[1] === 5 &&
+              w.to[0] === 6 &&
+              w.to[1] === 4)
+        );
+        expect(matches).toHaveLength(1); // never duplicated
+        expect(matches[0].kind).toBe('door'); // explicit wins, not overwritten to solid
+      });
+
+      it('a doors: cell projects as kind: door, reading as a doorway rather than a bare gap or a block', () => {
+        const { cst } = parseDungeon(SHOWCASE_YAML);
+        addWallLine(cst, VLINE_FROM, VLINE_TO);
+        toggleWallLineDoorAt(cst, 0, [6, 6]); // middle of the [6,4]..[6,9] run
+
+        const result = stripToV1Subset(serializeDungeon(cst), caps(['walls']));
+        const { doc: stripped } = parseDungeon(result.yaml);
+        const doorEdge = stripped.walls.find(
+          (w) =>
+            (w.from[0] === 6 &&
+              w.from[1] === 6 &&
+              w.to[0] === 6 &&
+              w.to[1] === 5) ||
+            (w.from[0] === 6 &&
+              w.from[1] === 5 &&
+              w.to[0] === 6 &&
+              w.to[1] === 6)
+        );
+        expect(doorEdge?.kind).toBe('door');
+        // The door cell itself never appears in doc.holes/blocked in any
+        // v1 sense — it's real floor with a door edge beside it, nothing
+        // marks the CELL itself as special on the wire (matching real
+        // walls: semantics: kind lives on the edge, not the cell).
+      });
+
+      it('rim edges (the wall reaches the canvas boundary) are counted honestly, never silently dropped', () => {
+        const { cst } = parseDungeon(SHOWCASE_YAML);
+        // Same "diameter of one cell" fixture straightWallGeometry.test.ts
+        // uses, anchored at column 0 — some of its 6 neighbor directions
+        // fall off the canvas grid entirely.
+        addWallLine(
+          cst,
+          canonicalCorner({ cell: [0, 4], corner: 2 }),
+          canonicalCorner({ cell: [0, 4], corner: 5 })
+        );
+
+        const result = stripToV1Subset(serializeDungeon(cst), caps(['walls']));
+        expect(result.compiling).toEqual([
+          expect.stringMatching(
+            /rim edges? at the canvas boundary could not be expressed/
+          ),
+        ]);
+      });
+
+      it('not accepted (walls: itself rejected): still drops both, never touches walls: — unchanged prior behavior', () => {
+        const { cst } = parseDungeon(SHOWCASE_YAML);
+        addWallLine(cst, VLINE_FROM, VLINE_TO);
+
+        const result = stripToV1Subset(serializeDungeon(cst), caps([])); // nothing accepted
+
+        expect(result.dropped).toEqual(['1 straight wall']);
+        expect(result.compiling).toEqual([]);
+        const { doc: stripped } = parseDungeon(result.yaml);
+        expect(stripped.walls).toEqual([]);
+        expect(stripped.wallLines).toEqual([]);
+      });
+    });
   });
 
   describe('generalized placement mutators (roomId: null = top-level)', () => {

@@ -72,15 +72,29 @@
  * `buildProbeDoc` below picks the base per field's own legal mode for
  * exactly this reason — see its field/base/spec-section table.
  *
- * **`wallLines:` is deliberately NOT probed.** It's this concept's own
- * client-side sugar (`straightWallGeometry.ts` compiles a corner-anchored
- * line + door cells down to a footprint) — `stripToV1Subset` drops it
- * unconditionally, on its own line, separate from `walls:`, and never
- * projects it INTO a `walls:` entry before stripping (confirmed by
- * reading `stripToV1Subset` itself, not assumed). The real dungeonspec
- * server has never been sent this construct in any form, so there is
- * nothing to probe — it stays permanently client-only until a real
- * request-side authoring contract exists for it (rpg-project#179).
+ * **`wallLines:` is deliberately NOT probed, but is no longer always
+ * dropped.** The KEY itself never survives (dungeonspec has no
+ * `wallLines:` field and never will — it's this concept's own
+ * client-side sugar), so there is nothing about the key to probe. But as
+ * of the wallLines->edges projection unit (rpg-project#169), its
+ * GEOMETRY is no longer unconditionally lost: `stripToV1Subset` now
+ * checks `accepted('walls')` for wallLines too — when `walls:` itself is
+ * accepted, every wallLine's footprint + crossed-edge truth
+ * (`straightWallGeometry.ts`'s `projectWallLineToEdges`) is projected
+ * into real edge-native `walls:` entries and merged into whatever
+ * explicit `walls:` survives, counted in `compiling`, not `dropped`. Only
+ * when `walls:` itself is NOT accepted does wallLines fall back to the
+ * original unconditional drop (confirm by reading `stripToV1Subset`
+ * itself, not this comment, if the exact behavior matters — it's
+ * `accepted('walls')`-gated the same way as everything else in this
+ * file, no hardcoded exception). See TARGET-YAML.md's "Straight walls:
+ * stripToV1Subset" section for the full writeup. `walls:` is real,
+ * accepted-by-a-real-server capability probed above, same as every other
+ * field in `DIALECT_FIELDS` — wallLines rides on that probe rather than
+ * needing one of its own, because its own key is never sent regardless
+ * of the answer. It stays permanently client-only (the key, not the
+ * geometry) until a real request-side authoring contract exists for it
+ * (rpg-project#179).
  */
 import { authoringClient } from '@/api/client';
 import { create } from '@bufbuild/protobuf';
