@@ -46,7 +46,9 @@ import {
   buildWallLineFootprintCoverage,
   buildWallLineSegments,
   CANVAS_ROOM_ID,
+  ORBIT_INITIAL_CAMERA_POSITION,
 } from './DungeonPreview3D';
+import { azimuthOf, INITIAL_AZIMUTH } from './playCameraRig';
 
 // Same board-space -> world-space ratio `DungeonPreview3D.tsx`'s own
 // `BOARD_TO_WORLD_SCALE` uses — recomputed independently here (not
@@ -534,5 +536,30 @@ describe('buildPlaceableCells — edit mode (floorPlan present) stays unchanged'
     for (const cell of cells) expect(cell.rejectReason).toBeUndefined();
     // Real room ids, never the creation-mode sentinel.
     for (const cell of cells) expect(cell.roomId).not.toBe(CANVAS_ROOM_ID);
+  });
+});
+
+describe('ORBIT_INITIAL_CAMERA_POSITION — Orbit stays azimuth-matched to the tactical camera (world-parity unit)', () => {
+  // Kirk reported the builder's 3D preview and the live game reading as
+  // "flipped/mirrored" for the same authored dungeon. Position math was
+  // verified correct and IDENTICAL between the builder and the live game
+  // (grpcurl ground truth against the real server, two separate docs —
+  // see boardGeometry.ts's own "THE CANONICAL WORLD" doc comment for the
+  // full writeup); so was the facing-to-rotationY conversion, confirmed by
+  // reading the actual applied rotationY back out of the running game.
+  // What actually differs is Orbit's PERSPECTIVE projection vs the
+  // tactical camera's ORTHOGRAPHIC one (verified with a single-variable
+  // experiment: matching polar angle alone did not change the result) —
+  // not fixable by this file's own geometry. What IS a real, testable
+  // invariant this file's geometry owns: Orbit's fixed starting azimuth
+  // should still match the tactical camera's, so the two cameras are at
+  // least looking from the same COMPASS direction even though their
+  // projections differ. A future edit to either camera's setup that
+  // silently drifts this apart would make the mismatch strictly worse
+  // (a second axis of disagreement on top of the projection one) — this
+  // guards against that.
+  it("Orbit's initial camera position has the same azimuth as the tactical camera's INITIAL_AZIMUTH", () => {
+    const [x, y, z] = ORBIT_INITIAL_CAMERA_POSITION;
+    expect(azimuthOf({ x, y, z })).toBeCloseTo(INITIAL_AZIMUTH, 10);
   });
 });

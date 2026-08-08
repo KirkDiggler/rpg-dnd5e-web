@@ -35,6 +35,24 @@ export const ORTHO_ZOOM = 80;
 export const ORTHO_NEAR = 0.1;
 export const ORTHO_FAR = 1000;
 
+/**
+ * `Math.atan2(z, x)` for a camera position vector — the azimuthal angle
+ * (world-XZ bearing from the origin) that vector represents, in the SAME
+ * convention `sphericalCameraPosition` builds one from (`x =
+ * cos(azimuth)`, `z = sin(azimuth)`, at unit distance). Exists so a
+ * DIFFERENT camera's fixed initial position (Orbit mode's own
+ * `DungeonPreview3D.tsx` `<Canvas camera={{ position: [...] }}>`, a plain
+ * array with no azimuth of its own) can be checked against this rig's
+ * `INITIAL_AZIMUTH` without hand-deriving the trig each time — see
+ * `boardGeometry.ts`'s own "THE CANONICAL WORLD" doc comment for why this
+ * comparison matters (Orbit and the tactical camera sharing an azimuth is
+ * necessary, though NOT sufficient, for Orbit to preview facing
+ * accurately — see that same doc comment for what the remaining gap is).
+ */
+export function azimuthOf(position: Vec3): number {
+  return Math.atan2(position.z, position.x);
+}
+
 export interface Vec3 {
   x: number;
   y: number;
