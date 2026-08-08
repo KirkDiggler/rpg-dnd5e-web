@@ -103,10 +103,14 @@ changing with no story.
 but holds a small presentation-only projection for the active attack story:
 visible HP, statuses, and correlated outcome log entries release on the existing
 theater's semantic result beat (Verdict for a miss, Impact for a hit).
-Correlated `StatusApplied` envelopes use the same entity/correlation and
-observed-order association: their badge, model projection, and log wait for the
-result, while uncorrelated statuses remain immediate. Command safety remains on
-canonical turn state; presentation never re-enables an action. A canonically
+`StatusApplied` envelopes use entity/source identity, correlation when present,
+and observed damage order: today's empty-correlation attack statuses bind the
+most recent matching damage story. Their badge, model projection, and log wait
+for the result; a status with no causally matching damage story remains
+immediate. Command safety remains canonical: while local control labels are
+held, every combat dispatch surface (movement, targeting/actions, reactions,
+and end turn) is disabled, and presentation never re-enables an unavailable
+command. A canonically
 removed, already-known entity is retained as a render tombstone through that
 result and then follows the existing removal path when the theater completes.
 No status, death, hit, damage, or HP value is inferred; every displayed value is

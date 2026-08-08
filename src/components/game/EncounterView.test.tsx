@@ -2030,7 +2030,7 @@ describe('EncounterView combat pacing', () => {
     expect(screen.getByTestId('combat-presentation')).toBeTruthy();
   });
 
-  it('holds correlated authoritative status badges, logs, and model projection until hit Impact', () => {
+  it('holds correlated authoritative status badges, logs, and model projection until hit Impact', async () => {
     hoisted.captureStreamCallbacks = true;
     render(
       <EncounterView
@@ -2067,11 +2067,16 @@ describe('EncounterView combat pacing', () => {
                   type: EntityType.CHARACTER,
                   hp: { current: 2, max: 10, temp: 0 },
                 },
+                { id: 'goblin-1', type: EntityType.MONSTER },
               ],
               hexes: [
                 {
                   position: { x: 0, y: 0, z: 0 },
                   contents: [{ entityId: 'char-alice' }],
+                },
+                {
+                  position: { x: 1, y: -1, z: 0 },
+                  contents: [{ entityId: 'goblin-1' }],
                 },
               ],
             },
@@ -2096,7 +2101,15 @@ describe('EncounterView combat pacing', () => {
         {
           turnState: {
             economy: { movementRemaining: 30 },
-            availableActions: [],
+            availableActions: [
+              {
+                ref: { module: 'dnd5e', type: 'action', id: 'attack' },
+                displayName: 'Attack',
+                available: true,
+                economySlot: EconomySlot.ACTION,
+                targetKind: TargetKind.SINGLE_ENTITY,
+              },
+            ],
           },
         } as never,
         metadata
@@ -2125,8 +2138,14 @@ describe('EncounterView combat pacing', () => {
         } as never,
         metadata
       );
-      callbacks.onStatusApplied?.(unconscious, metadata);
-      callbacks.onStatusApplied?.(unconscious, metadata);
+      callbacks.onStatusApplied?.(unconscious, {
+        ...metadata,
+        correlationId: '',
+      });
+      callbacks.onStatusApplied?.(unconscious, {
+        ...metadata,
+        correlationId: '',
+      });
       callbacks.onTurnStateChanged?.(
         {
           turnState: {
@@ -2149,10 +2168,24 @@ describe('EncounterView combat pacing', () => {
     expect(screen.getByTestId('encounter-dock-movement').textContent).toContain(
       '30 ft'
     );
-    expect(
-      (screen.getByRole('button', { name: 'End Turn' }) as HTMLButtonElement)
-        .disabled
-    ).toBe(true);
+    const endTurnButton = screen.getByRole('button', { name: 'End Turn' });
+    const attackButton = screen.getByRole('button', { name: 'Attack' });
+    fireEvent.click(screen.getByLabelText('Combat settings'));
+    const reactionToggle = screen.getByTestId(
+      'reaction-toggle-dnd5e:conditions:opportunity_attack'
+    );
+    expect((endTurnButton as HTMLButtonElement).disabled).toBe(true);
+    expect((attackButton as HTMLButtonElement).disabled).toBe(true);
+    expect((reactionToggle as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId('stub-move'));
+    fireEvent.click(screen.getByTestId('stub-click-goblin'));
+    fireEvent.click(attackButton);
+    fireEvent.click(endTurnButton);
+    fireEvent.click(reactionToggle);
+    expect(hoisted.moveEntityFn).not.toHaveBeenCalled();
+    expect(hoisted.takeActionFn).not.toHaveBeenCalled();
+    expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+    expect(hoisted.setReactionReadyFn).not.toHaveBeenCalled();
 
     act(() => vi.advanceTimersByTime(300 + 2000));
     expect(screen.getByTestId('beat-verdict')).toBeTruthy();
@@ -2171,6 +2204,35 @@ describe('EncounterView combat pacing', () => {
     );
     expect(screen.getByTestId('combat-log-entry-statusApplied-3')).toBeTruthy();
     expect(screen.getByTestId('combat-log-entry-statusApplied-4')).toBeTruthy();
+    expect((reactionToggle as HTMLInputElement).disabled).toBe(false);
+    act(() => {
+      callbacks.onTurnStateChanged?.(
+        {
+          turnState: {
+            economy: { movementRemaining: 30 },
+            availableActions: [
+              {
+                ref: { module: 'dnd5e', type: 'action', id: 'attack' },
+                displayName: 'Attack',
+                available: true,
+                economySlot: EconomySlot.ACTION,
+                targetKind: TargetKind.SINGLE_ENTITY,
+              },
+            ],
+          },
+        } as never,
+        metadata
+      );
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('stub-move'));
+      fireEvent.click(screen.getByTestId('stub-click-goblin'));
+      fireEvent.click(reactionToggle);
+      await Promise.resolve();
+    });
+    expect(hoisted.moveEntityFn).toHaveBeenCalledOnce();
+    expect(hoisted.takeActionFn).toHaveBeenCalledOnce();
+    expect(hoisted.setReactionReadyFn).toHaveBeenCalledOnce();
 
     // A correlated envelope arriving after semantic release reveals only its
     // new payload and does not re-fire the attack lifecycle.
@@ -2245,7 +2307,7 @@ describe('EncounterView combat pacing', () => {
             displayName: 'Prone',
           },
         } as never,
-        metadata
+        { correlationId: '' } as never
       );
     });
 
@@ -2260,6 +2322,177 @@ describe('EncounterView combat pacing', () => {
     );
     expect(screen.getByTestId('combat-log-entry-statusApplied-4')).toBeTruthy();
   });
+
+  it('keeps newer immediate status apply/remove truth when releasing an earlier held status', () => {
+    hoisted.captureStreamCallbacks = true;
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    const callbacks = hoisted.streamCallbacks;
+    if (!callbacks) throw new Error('stream callbacks not captured');
+    const attackMetadata = { correlationId: 'corr-status-order' } as never;
+    act(() => {
+      callbacks.onAttackResolved?.(
+        {
+          attackerEntityId: 'goblin-1',
+          targetEntityId: 'char-alice',
+          hit: true,
+          critical: false,
+          attackRoll: 18,
+        } as never,
+        attackMetadata
+      );
+      callbacks.onEntityDamaged?.(
+        {
+          entityId: 'char-alice',
+          sourceEntityId: 'goblin-1',
+          amount: 4,
+          damageBreakdown: [],
+          hpAfter: { current: 0, max: 10, temp: 0 },
+        } as never,
+        attackMetadata
+      );
+      callbacks.onStatusApplied?.(
+        {
+          entityId: 'char-alice',
+          sourceEntityId: 'goblin-1',
+          status: {
+            source: { module: 'dnd5e', type: 'conditions', id: 'prone' },
+            displayName: 'Prone',
+          },
+        } as never,
+        { correlationId: '' } as never
+      );
+      callbacks.onStatusApplied?.(
+        {
+          entityId: 'char-alice',
+          status: {
+            source: { module: 'dnd5e', type: 'conditions', id: 'blessed' },
+            displayName: 'Blessed',
+          },
+        } as never,
+        { correlationId: 'unrelated-status' } as never
+      );
+      callbacks.onStatusRemoved?.(
+        {
+          entityId: 'char-alice',
+          statusSource: { module: 'dnd5e', type: 'conditions', id: 'prone' },
+        } as never,
+        { correlationId: '' } as never
+      );
+    });
+
+    expect(screen.getByTestId('my-status-badges').textContent).toContain(
+      'Blessed'
+    );
+    expect(screen.getByTestId('my-status-badges').textContent).not.toContain(
+      'Prone'
+    );
+    act(() => vi.advanceTimersByTime(300 + 2000 + 1600));
+    expect(screen.getByTestId('my-status-badges').textContent).toContain(
+      'Blessed'
+    );
+    expect(screen.getByTestId('my-status-badges').textContent).not.toContain(
+      'Prone'
+    );
+  });
+
+  it.each(['snapshot', 'knowledge'] as const)(
+    'uses batched %s status hydration as the held pre-attack baseline',
+    (hydration) => {
+      hoisted.captureStreamCallbacks = true;
+      render(
+        <EncounterView
+          encounterId="enc-1"
+          characterId="char-alice"
+          playerId="alice"
+          onBack={() => {}}
+        />
+      );
+      const callbacks = hoisted.streamCallbacks;
+      if (!callbacks) throw new Error('stream callbacks not captured');
+      const entity = {
+        id: 'char-alice',
+        type: EntityType.CHARACTER,
+        statusEffects: [
+          {
+            source: { module: 'dnd5e', type: 'conditions', id: 'raging' },
+            displayName: 'Raging',
+          },
+        ],
+      };
+      const hex = {
+        position: { x: 0, y: 0, z: 0 },
+        contents: [{ entityId: 'char-alice' }],
+      };
+      const metadata = { correlationId: 'corr-hydrated-status' } as never;
+      act(() => {
+        if (hydration === 'snapshot') {
+          callbacks.onSnapshotDelivered?.(
+            {
+              encounter: { space: { entities: [entity], hexes: [hex] } },
+            } as never,
+            metadata
+          );
+        } else {
+          callbacks.onHexKnowledgeChanged?.(
+            { entities: [entity], hexes: [hex] } as never,
+            metadata
+          );
+        }
+        callbacks.onAttackResolved?.(
+          {
+            attackerEntityId: 'goblin-1',
+            targetEntityId: 'char-alice',
+            hit: true,
+            critical: false,
+            attackRoll: 18,
+          } as never,
+          metadata
+        );
+        callbacks.onEntityDamaged?.(
+          {
+            entityId: 'char-alice',
+            sourceEntityId: 'goblin-1',
+            amount: 2,
+            damageBreakdown: [],
+            hpAfter: { current: 8, max: 10, temp: 0 },
+          } as never,
+          metadata
+        );
+        callbacks.onStatusApplied?.(
+          {
+            entityId: 'char-alice',
+            sourceEntityId: 'goblin-1',
+            status: {
+              source: { module: 'dnd5e', type: 'conditions', id: 'prone' },
+              displayName: 'Prone',
+            },
+          } as never,
+          { correlationId: '' } as never
+        );
+      });
+
+      expect(screen.getByTestId('my-status-badges').textContent).toContain(
+        'Raging'
+      );
+      expect(screen.getByTestId('my-status-badges').textContent).not.toContain(
+        'Prone'
+      );
+      act(() => vi.advanceTimersByTime(300 + 2000 + 1600));
+      expect(screen.getByTestId('my-status-badges').textContent).toContain(
+        'Raging'
+      );
+      expect(screen.getByTestId('my-status-badges').textContent).toContain(
+        'Prone'
+      );
+    }
+  );
 
   it('keeps an uncorrelated status immediate while an attack story is staged', () => {
     hoisted.captureStreamCallbacks = true;

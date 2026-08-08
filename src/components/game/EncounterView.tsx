@@ -72,6 +72,8 @@ import type {
   EntityStatus,
 } from '../../hooks/useEncounterState';
 import {
+  applyEntityAppearedBatch,
+  applyEntityKnowledgeBatch,
   applyStatusApplied,
   applyStatusRemoved,
   positionByEntityIdFromHexes,
@@ -245,9 +247,10 @@ function findPresentationStory(
   return candidates[candidates.length - 1];
 }
 
-/** StatusApplied is multi-valued and correlation-bearing. Empty correlation
- * remains immediate; a reused correlation follows the most recent matching
- * damage story in observed stream order. */
+/** StatusApplied is multi-valued. A populated correlation narrows candidates;
+ * today's empty status correlations follow the most recent matching damage
+ * story by target/source and observed stream order. No damage story means the
+ * status remains immediate. */
 function findPresentationStatusStory(
   queue: PresentationStoryItem[],
   outcomes: ReadonlyMap<number, PresentationStoryOutcome>,
@@ -255,18 +258,14 @@ function findPresentationStatusStory(
   targetEntityId: string,
   sourceEntityId?: string
 ): PresentationStoryItem | undefined {
-  if (correlationId === '') return undefined;
   const candidates = queue.filter(
     (item) =>
-      item.correlationId === correlationId &&
+      (correlationId === '' || item.correlationId === correlationId) &&
       item.attack.targetEntityId === targetEntityId &&
-      (!sourceEntityId || item.attack.attackerEntityId === sourceEntityId)
+      (!sourceEntityId || item.attack.attackerEntityId === sourceEntityId) &&
+      outcomes.get(item.id)?.damage !== undefined
   );
-  const withDamage = candidates.filter(
-    (item) => outcomes.get(item.id)?.damage !== undefined
-  );
-  const preferred = withDamage.length > 0 ? withDamage : candidates;
-  return preferred[preferred.length - 1];
+  return candidates[candidates.length - 1];
 }
 
 function findTerminalPresentationStory(
@@ -369,6 +368,7 @@ export function EncounterView({
   const [, setMovementCompletionVersion] = useState(0);
   const presentationIdRef = useRef(0);
   const releasedPresentationIdsRef = useRef(new Set<number>());
+  const heldControlStoryIdsRef = useRef(new Set<number>());
 
   const flushPresentation = () => {
     presentationQueueRef.current = [];
@@ -383,6 +383,7 @@ export function EncounterView({
     movementGenerationRef.current.clear();
     completedMovementGenerationRef.current.clear();
     releasedPresentationIdsRef.current.clear();
+    heldControlStoryIdsRef.current.clear();
   };
 
   const releasePresentationResult = (id: number) => {
@@ -390,6 +391,7 @@ export function EncounterView({
     const current = presentationQueueRef.current[0];
     if (current?.id !== id) return;
     releasedPresentationIdsRef.current.add(id);
+    heldControlStoryIdsRef.current.delete(id);
     const outcome = presentationOutcomesRef.current.get(id) ?? {};
     combatLog.recordAttackResolved(current.attack);
     if (outcome.damage) {
@@ -408,7 +410,10 @@ export function EncounterView({
       const next = new Map(heldVisibleStatusesRef.current);
       for (const status of outcome.statuses) {
         combatLog.recordStatusApplied(status.event);
-        next.set(status.event.entityId, status.statusesAfter);
+        next.set(
+          status.event.entityId,
+          canonicalStatusesRef.current.get(status.event.entityId) ?? []
+        );
       }
       heldVisibleStatusesRef.current = next;
       setHeldVisibleStatuses(next);
@@ -645,6 +650,13 @@ export function EncounterView({
                 : undefined,
           }));
         if (entityEntries.length > 0) {
+          canonicalStatusesRef.current = applyEntityAppearedBatch(
+            {
+              ...encounterState.state,
+              entityStatuses: canonicalStatusesRef.current,
+            },
+            entityEntries
+          ).entityStatuses;
           encounterState.applyEntityAppearedBatch(entityEntries);
           const nextEntities = new Map(canonicalEntitiesRef.current);
           for (const entry of entityEntries) {
@@ -751,6 +763,13 @@ export function EncounterView({
             : undefined,
       }));
       if (knowledgeEntries.length > 0) {
+        canonicalStatusesRef.current = applyEntityKnowledgeBatch(
+          {
+            ...encounterState.state,
+            entityStatuses: canonicalStatusesRef.current,
+          },
+          knowledgeEntries
+        ).entityStatuses;
         encounterState.applyEntityKnowledgeBatch(knowledgeEntries);
       }
 
@@ -800,6 +819,13 @@ export function EncounterView({
         return;
       }
 
+      if (
+        e.entityId === entityIdRef.current &&
+        !releasedPresentationIdsRef.current.has(stagedAttack.id)
+      ) {
+        heldControlStoryIdsRef.current.add(stagedAttack.id);
+      }
+
       const stagedIndex = presentationQueueRef.current.findIndex(
         (item) => item.id === stagedAttack.id
       );
@@ -839,7 +865,10 @@ export function EncounterView({
       if (releasedPresentationIdsRef.current.has(stagedAttack.id)) {
         combatLog.recordStatusApplied(e);
         const next = new Map(heldVisibleStatusesRef.current);
-        next.set(e.entityId, statusesAfter);
+        next.set(
+          e.entityId,
+          canonicalStatusesRef.current.get(e.entityId) ?? []
+        );
         heldVisibleStatusesRef.current = next;
         setHeldVisibleStatuses(next);
       }
@@ -1173,7 +1202,7 @@ export function EncounterView({
     // completes (see resolveMyEntityId above). Never send an RPC with an
     // empty actor id — a fast click in that window would otherwise reach
     // the server as a real, malformed request (Copilot review on #461).
-    if (!entityId) return false;
+    if (!entityId || heldControlStoryIdsRef.current.size > 0) return false;
     try {
       await takeAction({
         encounterId,
@@ -1198,7 +1227,7 @@ export function EncounterView({
   // (an explicit toggle-off, one of #511's two cancel affordances — Escape
   // is the other, wired via the keydown effect below).
   const handleSelectAction = async (action: AvailableAction) => {
-    if (!action.ref) return;
+    if (heldControlStoryIdsRef.current.size > 0 || !action.ref) return;
     if (
       armedAction &&
       action.ref &&
@@ -1229,7 +1258,13 @@ export function EncounterView({
   const handleVisualMove = async (
     path: Array<{ x: number; y: number; z: number }>
   ) => {
-    if (!entityId || encounterEnded || path.length === 0) return;
+    if (
+      !entityId ||
+      encounterEnded ||
+      heldControlStoryIdsRef.current.size > 0 ||
+      path.length === 0
+    )
+      return;
     try {
       await moveEntity(encounterId, entityId, path);
     } catch {
@@ -1250,7 +1285,8 @@ export function EncounterView({
   // immediate basic attack" shortcut; any other click is a no-op (matches
   // the harness's identical primary-loop convenience).
   const handleVisualEntityClick = (targetId: string) => {
-    if (!entityId || encounterEnded) return;
+    if (!entityId || encounterEnded || heldControlStoryIdsRef.current.size > 0)
+      return;
     if (armedAction?.ref) {
       if (armedAction.targetKind === TargetKind.SINGLE_ENTITY) {
         const armedRef = armedAction.ref;
@@ -1274,6 +1310,7 @@ export function EncounterView({
   };
 
   const handleEndTurn = async () => {
+    if (heldControlStoryIdsRef.current.size > 0) return;
     // combatEnabled already can't be true while entityId is unresolved
     // (isMyTurn compares activeEntityId against entityId, and a real
     // activeEntityId never equals ''), but guard explicitly rather than
@@ -1296,7 +1333,7 @@ export function EncounterView({
     reactionRef: { module: string; type: string; id: string },
     ready: boolean
   ) => {
-    if (!entityId) return;
+    if (!entityId || heldControlStoryIdsRef.current.size > 0) return;
     try {
       await setReactionReady({
         encounterId,
@@ -1331,6 +1368,7 @@ export function EncounterView({
   // rpg-api-protos#197) plus the next snapshot's HexRecord.edges for the
   // newly-visible geometry — there is no parallel reveal event anymore.
   const handleDoorClick = async (doorId: string) => {
+    if (heldControlStoryIdsRef.current.size > 0) return;
     try {
       const response = await interact(encounterId, doorId, 'open');
       if (response.inputRequired) {
@@ -1692,7 +1730,7 @@ export function EncounterView({
         // that window was a silent no-op (handleToggleReactionReady's own
         // `if (!entityId) return` guard fires, but nothing tells the
         // player why nothing happened).
-        reactionDisabled={encounterEnded || !entityId}
+        reactionDisabled={encounterEnded || controlsHeld || !entityId}
         onToggleReaction={(ref, ready) =>
           void handleToggleReactionReady(ref, ready)
         }
