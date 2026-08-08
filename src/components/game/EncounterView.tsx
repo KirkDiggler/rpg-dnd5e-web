@@ -36,12 +36,19 @@
 
 import { create } from '@bufbuild/protobuf';
 import { EntityStateSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
-import type { EntityDamaged } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
+import type {
+  EncounterEnded,
+  EntityDamaged,
+  EntityDied,
+  EntityRemoved,
+  StatusApplied,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import type { ActionTarget } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 import type {
   AvailableAction,
   CharacterData,
   Entity,
+  TurnState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import {
   EncounterMode,
@@ -60,8 +67,15 @@ import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useTakeAction } from '../../api/useTakeAction';
 import { useUnequipItem } from '../../api/useUnequipItem';
 import { useCombatLog } from '../../hooks/useCombatLog';
-import type { CharacterEquipment } from '../../hooks/useEncounterState';
+import type {
+  CharacterEquipment,
+  EntityStatus,
+} from '../../hooks/useEncounterState';
 import {
+  applyEntityAppearedBatch,
+  applyEntityKnowledgeBatch,
+  applyStatusApplied,
+  applyStatusRemoved,
   positionByEntityIdFromHexes,
   useEncounterState,
 } from '../../hooks/useEncounterState';
@@ -173,6 +187,110 @@ function characterEquipmentFrom(
   };
 }
 
+interface PresentationStoryItem extends CombatPresentationAttack {
+  /** Per-attacker movement generation observed before this attack event. */
+  waitForMovementGeneration?: number;
+  /** Pre-story dock labels for a local target. Commands remain canonically gated. */
+  targetControlSnapshot?: { turnState: TurnState | null };
+}
+
+interface PresentationStatusOutcome {
+  event: StatusApplied;
+  statusesAfter: EntityStatus[];
+}
+
+interface PresentationStoryOutcome {
+  damage?: EntityDamaged;
+  statuses?: PresentationStatusOutcome[];
+  died?: EntityDied;
+  removed?: EntityRemoved;
+  encounterEnded?: EncounterEnded;
+}
+
+type PresentationOutcomeKind = keyof PresentationStoryOutcome;
+
+/** Correlation narrows a story when present; target/source identity is always
+ * required, so empty or reused correlations can never cross-wire actors. */
+function findPresentationStory(
+  queue: PresentationStoryItem[],
+  outcomes: ReadonlyMap<number, PresentationStoryOutcome>,
+  correlationId: string,
+  targetEntityId: string,
+  kind: PresentationOutcomeKind,
+  sourceEntityId?: string
+): PresentationStoryItem | undefined {
+  const candidates = queue.filter((item) => {
+    // A non-empty envelope correlation is authoritative and must match.
+    // Empty correlations fall back to the identity + stream-order rules
+    // below; they must not erase a correlated attack's story.
+    if (correlationId !== '' && item.correlationId !== correlationId)
+      return false;
+    if (item.attack.targetEntityId !== targetEntityId) return false;
+    if (sourceEntityId && item.attack.attackerEntityId !== sourceEntityId)
+      return false;
+    return outcomes.get(item.id)?.[kind] === undefined;
+  });
+  if (kind === 'damage') return candidates[0];
+  if (kind === 'removed') {
+    const withDeath = candidates.filter(
+      (item) => outcomes.get(item.id)?.died !== undefined
+    );
+    if (withDeath.length > 0) return withDeath[withDeath.length - 1];
+  }
+  // Died follows the most recent matching damage in observed stream order;
+  // Removed prefers that explicit Died story above, then the same damage
+  // evidence. This is event association only — no HP/lethality inference.
+  const withDamage = candidates.filter(
+    (item) => outcomes.get(item.id)?.damage !== undefined
+  );
+  if (withDamage.length > 0) return withDamage[withDamage.length - 1];
+  return candidates[candidates.length - 1];
+}
+
+/** StatusApplied is multi-valued. A populated correlation narrows candidates;
+ * today's empty status correlations follow the most recent matching damage
+ * story by target/source and observed stream order. No damage story means the
+ * status remains immediate. */
+function findPresentationStatusStory(
+  queue: PresentationStoryItem[],
+  outcomes: ReadonlyMap<number, PresentationStoryOutcome>,
+  correlationId: string,
+  targetEntityId: string,
+  sourceEntityId?: string
+): PresentationStoryItem | undefined {
+  const candidates = queue.filter(
+    (item) =>
+      (correlationId === '' || item.correlationId === correlationId) &&
+      item.attack.targetEntityId === targetEntityId &&
+      (!sourceEntityId || item.attack.attackerEntityId === sourceEntityId) &&
+      outcomes.get(item.id)?.damage !== undefined
+  );
+  return candidates[candidates.length - 1];
+}
+
+function findTerminalPresentationStory(
+  queue: PresentationStoryItem[],
+  outcomes: ReadonlyMap<number, PresentationStoryOutcome>,
+  correlationId: string
+): PresentationStoryItem | undefined {
+  const terminal = queue.filter((item) => {
+    const outcome = outcomes.get(item.id);
+    return (
+      outcome?.encounterEnded === undefined &&
+      (outcome?.removed !== undefined || outcome?.died !== undefined)
+    );
+  });
+  const correlated = correlationId
+    ? terminal.filter((item) => item.correlationId === correlationId)
+    : [];
+  if (correlated.length > 0) return correlated[correlated.length - 1];
+  // EncounterEnded is encounter-global and may carry no attack correlation.
+  // It follows the most recent terminal story in observed FIFO stream order:
+  // the final Died/Removed immediately preceding the encounter-global end.
+  // This associates events only; it does not infer which attack was lethal.
+  return terminal[terminal.length - 1];
+}
+
 export function EncounterView({
   encounterId,
   characterId,
@@ -187,40 +305,187 @@ export function EncounterView({
   const entityIdRef = useRef(entityId);
   entityIdRef.current = entityId;
   const encounterState = useEncounterState();
+  // Callback-time mirror of authoritative HP. Stream events can batch before
+  // React commits; this ref preserves the exact last server value for the
+  // presentation hold without deriving/subtracting anything.
+  const canonicalHPRef = useRef(encounterState.state.entityHP);
+  canonicalHPRef.current = encounterState.state.entityHP;
+  const canonicalEntitiesRef = useRef(encounterState.state.entities);
+  canonicalEntitiesRef.current = encounterState.state.entities;
+  const canonicalStatusesRef = useRef(encounterState.state.entityStatuses);
+  canonicalStatusesRef.current = encounterState.state.entityStatuses;
+  const canonicalTurnStateRef = useRef(encounterState.state.turnState);
+  canonicalTurnStateRef.current = encounterState.state.turnState;
   // #445: game-grade combat narrative — the same dispatched events, rendered
   // as a scrolling log instead of PlaytestHarness's raw dev-log text.
   const combatLog = useCombatLog();
   const [presentationQueue, setPresentationQueue] = useState<
-    CombatPresentationAttack[]
+    PresentationStoryItem[]
   >([]);
-  // Observed server contract for this path: one EntityDamaged payload per
-  // attack correlation. If the stream ever starts emitting multiple damage
-  // envelopes for one correlation, this last-write map stays a residual
-  // and will need a list model — we are not expanding scope without proof.
-  const [damageByCorrelationId, setDamageByCorrelationId] = useState<
-    Record<string, EntityDamaged>
-  >({});
-  const presentationIdRef = useRef(0);
-  const flushPresentation = () => {
-    setPresentationQueue([]);
-    setDamageByCorrelationId({});
+  const presentationQueueRef = useRef<PresentationStoryItem[]>([]);
+  const [presentationOutcomes, setPresentationOutcomes] = useState<
+    Map<number, PresentationStoryOutcome>
+  >(new Map());
+  const presentationOutcomesRef = useRef(
+    new Map<number, PresentationStoryOutcome>()
+  );
+  const updatePresentationOutcome = (
+    id: number,
+    update: (outcome: PresentationStoryOutcome) => PresentationStoryOutcome
+  ) => {
+    const next = new Map(presentationOutcomesRef.current);
+    next.set(id, update(next.get(id) ?? {}));
+    presentationOutcomesRef.current = next;
+    setPresentationOutcomes(next);
   };
-  const completePresentation = (id: number) => {
-    const current = presentationQueue[0];
+  const updatePresentationQueue = (
+    update: (queue: PresentationStoryItem[]) => PresentationStoryItem[]
+  ) => {
+    // Stream callbacks may arrive in one React batch. Advance the ref
+    // synchronously so later envelopes correlate against earlier envelopes
+    // without waiting for a render commit.
+    const next = update(presentationQueueRef.current);
+    presentationQueueRef.current = next;
+    setPresentationQueue(next);
+  };
+  // Canonical reducers always update immediately. These two maps are only the
+  // visible projection held back while an authoritative outcome is staged.
+  const [heldVisibleHP, setHeldVisibleHP] = useState<
+    Map<string, { current: number; max: number }>
+  >(new Map());
+  const heldVisibleHPRef = useRef(
+    new Map<string, { current: number; max: number }>()
+  );
+  const [heldVisibleStatuses, setHeldVisibleStatuses] = useState<
+    Map<string, EntityStatus[]>
+  >(new Map());
+  const heldVisibleStatusesRef = useRef(new Map<string, EntityStatus[]>());
+  const [presentationTombstones, setPresentationTombstones] = useState<
+    typeof encounterState.state.entities
+  >(new Map());
+  const movementGenerationRef = useRef(new Map<string, number>());
+  const completedMovementGenerationRef = useRef(new Map<string, number>());
+  const [, setMovementCompletionVersion] = useState(0);
+  const presentationIdRef = useRef(0);
+  const releasedPresentationIdsRef = useRef(new Set<number>());
+  const heldControlStoryIdsRef = useRef(new Set<number>());
+
+  const flushPresentation = () => {
+    presentationQueueRef.current = [];
+    setPresentationQueue([]);
+    presentationOutcomesRef.current = new Map();
+    setPresentationOutcomes(new Map());
+    heldVisibleHPRef.current = new Map();
+    setHeldVisibleHP(new Map());
+    heldVisibleStatusesRef.current = new Map();
+    setHeldVisibleStatuses(new Map());
+    setPresentationTombstones(new Map());
+    movementGenerationRef.current.clear();
+    completedMovementGenerationRef.current.clear();
+    releasedPresentationIdsRef.current.clear();
+    heldControlStoryIdsRef.current.clear();
+  };
+
+  const releasePresentationResult = (id: number) => {
+    if (releasedPresentationIdsRef.current.has(id)) return;
+    const current = presentationQueueRef.current[0];
     if (current?.id !== id) return;
-    if (current.correlationId) {
-      setDamageByCorrelationId((currentDamage) => {
-        if (!(current.correlationId in currentDamage)) return currentDamage;
-        const next = { ...currentDamage };
-        delete next[current.correlationId];
+    releasedPresentationIdsRef.current.add(id);
+    heldControlStoryIdsRef.current.delete(id);
+    const outcome = presentationOutcomesRef.current.get(id) ?? {};
+    combatLog.recordAttackResolved(current.attack);
+    if (outcome.damage) {
+      combatLog.recordEntityDamaged(outcome.damage);
+      if (outcome.damage.hpAfter) {
+        const next = new Map(heldVisibleHPRef.current);
+        next.set(outcome.damage.entityId, {
+          current: outcome.damage.hpAfter.current,
+          max: outcome.damage.hpAfter.max,
+        });
+        heldVisibleHPRef.current = next;
+        setHeldVisibleHP(next);
+      }
+    }
+    if (outcome.statuses) {
+      const next = new Map(heldVisibleStatusesRef.current);
+      for (const status of outcome.statuses) {
+        combatLog.recordStatusApplied(status.event);
+        next.set(
+          status.event.entityId,
+          canonicalStatusesRef.current.get(status.event.entityId) ?? []
+        );
+      }
+      heldVisibleStatusesRef.current = next;
+      setHeldVisibleStatuses(next);
+    }
+    if (outcome.died) combatLog.recordEntityDied(outcome.died);
+    if (outcome.removed) combatLog.recordEntityRemoved(outcome.removed);
+    if (outcome.encounterEnded)
+      combatLog.recordEncounterEnded(outcome.encounterEnded);
+  };
+
+  const completePresentation = (id: number) => {
+    const current = presentationQueueRef.current[0];
+    if (current?.id !== id) return;
+    // Defensive for instant/skip policy changes: completion cannot bypass the
+    // semantic outcome release, and the id set keeps it exactly-once.
+    releasePresentationResult(id);
+    const outcome = presentationOutcomesRef.current.get(id) ?? {};
+    const remaining = presentationQueueRef.current.slice(1);
+    if (outcome.removed) {
+      setPresentationTombstones((tombstones) => {
+        const next = new Map(tombstones);
+        next.delete(outcome.removed!.entityId);
         return next;
       });
     }
-    setPresentationQueue((queue) =>
-      queue[0]?.id === id ? queue.slice(1) : queue
-    );
+    if (outcome.damage) {
+      const targetId = outcome.damage.entityId;
+      const laterDamagePending = remaining.some(
+        (item) =>
+          presentationOutcomesRef.current.get(item.id)?.damage?.entityId ===
+          targetId
+      );
+      if (!laterDamagePending) {
+        const next = new Map(heldVisibleHPRef.current);
+        next.delete(targetId);
+        heldVisibleHPRef.current = next;
+        setHeldVisibleHP(next);
+      }
+    }
+    if (outcome.statuses) {
+      const targetIds = new Set(
+        outcome.statuses.map((status) => status.event.entityId)
+      );
+      const next = new Map(heldVisibleStatusesRef.current);
+      for (const targetId of targetIds) {
+        const laterStatusPending = remaining.some((item) =>
+          presentationOutcomesRef.current
+            .get(item.id)
+            ?.statuses?.some((status) => status.event.entityId === targetId)
+        );
+        if (!laterStatusPending) next.delete(targetId);
+      }
+      heldVisibleStatusesRef.current = next;
+      setHeldVisibleStatuses(next);
+    }
+    releasedPresentationIdsRef.current.delete(id);
+    const remainingOutcomes = new Map(presentationOutcomesRef.current);
+    remainingOutcomes.delete(id);
+    presentationOutcomesRef.current = remainingOutcomes;
+    setPresentationOutcomes(remainingOutcomes);
+    presentationQueueRef.current = remaining;
+    setPresentationQueue(remaining);
   };
   const activePresentation = presentationQueue[0];
+  const activePresentationOutcome = activePresentation
+    ? presentationOutcomes.get(activePresentation.id)
+    : undefined;
+  const activeMovementComplete = activePresentation
+    ? (completedMovementGenerationRef.current.get(
+        activePresentation.attack.attackerEntityId
+      ) ?? 0) >= (activePresentation.waitForMovementGeneration ?? 0)
+    : true;
   // rpg-dnd5e-web#511: the action-selection interaction state. Set by
   // clicking a SINGLE_ENTITY/POSITION/AREA-targeted menu action ("arming"
   // it) — survives exploratory clicks (hover/inspect/camera, an empty-hex
@@ -309,6 +574,7 @@ export function EncounterView({
             setResolvedEntityId(resolved);
           }
         }
+        canonicalTurnStateRef.current = e.encounter.turnState ?? null;
         encounterState.applySnapshotTurnState(
           e.encounter.mode,
           e.encounter.turnState
@@ -384,7 +650,25 @@ export function EncounterView({
                 : undefined,
           }));
         if (entityEntries.length > 0) {
+          canonicalStatusesRef.current = applyEntityAppearedBatch(
+            {
+              ...encounterState.state,
+              entityStatuses: canonicalStatusesRef.current,
+            },
+            entityEntries
+          ).entityStatuses;
           encounterState.applyEntityAppearedBatch(entityEntries);
+          const nextEntities = new Map(canonicalEntitiesRef.current);
+          for (const entry of entityEntries) {
+            nextEntities.set(entry.entity.entityId, entry.entity);
+          }
+          canonicalEntitiesRef.current = nextEntities;
+          const nextHP = new Map(canonicalHPRef.current);
+          for (const entry of entityEntries) {
+            if (entry.initialHP)
+              nextHP.set(entry.entity.entityId, entry.initialHP);
+          }
+          canonicalHPRef.current = nextHP;
         }
         // v1alpha2 hex-knowledge contract: walls no longer ride a flat
         // Space.walls list — each hex carries its own boundary segments as
@@ -399,16 +683,35 @@ export function EncounterView({
     onEntityMoved: (e) => {
       const last = e.actualPath[e.actualPath.length - 1];
       if (last) {
+        const existing = canonicalEntitiesRef.current.get(e.entityId);
+        // This is the same per-entity sequence mergeEntityPosition will store.
+        // Derive from canonical presentation data, not a flushable local count:
+        // mode/snapshot cancellation clears story bookkeeping but does not
+        // necessarily clear the reducer's existing moveSeq.
+        const nextMoveSeq = (existing?.moveSeq ?? 0) + 1;
+        movementGenerationRef.current.set(e.entityId, nextMoveSeq);
         // rpg-dnd5e-web#542: pass the WHOLE actualPath (not just its last
         // element) so HexEntity can step through the real hex-by-hex route
         // instead of teleporting straight to the destination. actualPath is
         // real, backend-populated per-viewer-visible route data (confirmed
         // directly against rpg-api's translateMoveEvent), not a stub.
+        const position = v2PositionToV1(last);
+        const movePath = e.actualPath.map(v2PositionToV1);
         encounterState.applyEntityPositionUpdate(
           e.entityId,
-          v2PositionToV1(last),
-          e.actualPath.map(v2PositionToV1)
+          position,
+          movePath
         );
+        if (existing) {
+          const nextEntities = new Map(canonicalEntitiesRef.current);
+          nextEntities.set(e.entityId, {
+            ...existing,
+            position,
+            movePath,
+            moveSeq: nextMoveSeq,
+          });
+          canonicalEntitiesRef.current = nextEntities;
+        }
       }
     },
     // DoorOpened is a pure notification now (door identity only,
@@ -460,6 +763,13 @@ export function EncounterView({
             : undefined,
       }));
       if (knowledgeEntries.length > 0) {
+        canonicalStatusesRef.current = applyEntityKnowledgeBatch(
+          {
+            ...encounterState.state,
+            entityStatuses: canonicalStatusesRef.current,
+          },
+          knowledgeEntries
+        ).entityStatuses;
         encounterState.applyEntityKnowledgeBatch(knowledgeEntries);
       }
 
@@ -473,13 +783,123 @@ export function EncounterView({
         encounterState.applyWallsRevealed(liveWalls);
       }
     },
-    onStatusApplied: (e) => {
+    onStatusApplied: (e, metadata) => {
+      const canonicalBefore = canonicalStatusesRef.current;
+      const canonicalNextState = applyStatusApplied(
+        { ...encounterState.state, entityStatuses: canonicalBefore },
+        e
+      );
+      canonicalStatusesRef.current = canonicalNextState.entityStatuses;
       encounterState.applyStatusApplied(e);
-      combatLog.recordStatusApplied(e);
+
+      const stagedAttack = findPresentationStatusStory(
+        presentationQueueRef.current,
+        presentationOutcomesRef.current,
+        metadata.correlationId,
+        e.entityId,
+        e.sourceEntityId
+      );
+      const heldBefore = heldVisibleStatusesRef.current.get(e.entityId);
+      if (!stagedAttack) {
+        combatLog.recordStatusApplied(e);
+        // An honest, unrelated status stays immediate even while another
+        // attack story holds this entity's correlated status projection.
+        if (heldBefore) {
+          const visibleBase = new Map(heldVisibleStatusesRef.current);
+          visibleBase.set(e.entityId, heldBefore);
+          const visibleNext = applyStatusApplied(
+            { ...encounterState.state, entityStatuses: visibleBase },
+            e
+          ).entityStatuses;
+          const next = new Map(heldVisibleStatusesRef.current);
+          next.set(e.entityId, visibleNext.get(e.entityId) ?? []);
+          heldVisibleStatusesRef.current = next;
+          setHeldVisibleStatuses(next);
+        }
+        return;
+      }
+
+      if (
+        e.entityId === entityIdRef.current &&
+        !releasedPresentationIdsRef.current.has(stagedAttack.id)
+      ) {
+        heldControlStoryIdsRef.current.add(stagedAttack.id);
+      }
+
+      const stagedIndex = presentationQueueRef.current.findIndex(
+        (item) => item.id === stagedAttack.id
+      );
+      let priorStagedStatuses: PresentationStatusOutcome | undefined;
+      for (const item of presentationQueueRef.current.slice(
+        0,
+        stagedIndex + 1
+      )) {
+        const statuses = presentationOutcomesRef.current.get(item.id)?.statuses;
+        for (const status of statuses ?? []) {
+          if (status.event.entityId === e.entityId)
+            priorStagedStatuses = status;
+        }
+      }
+      const visibleBefore =
+        priorStagedStatuses?.statusesAfter ??
+        heldBefore ??
+        canonicalBefore.get(e.entityId) ??
+        [];
+      if (!heldVisibleStatusesRef.current.has(e.entityId)) {
+        const next = new Map(heldVisibleStatusesRef.current);
+        next.set(e.entityId, visibleBefore);
+        heldVisibleStatusesRef.current = next;
+        setHeldVisibleStatuses(next);
+      }
+      const projectionBase = new Map(canonicalBefore);
+      projectionBase.set(e.entityId, visibleBefore);
+      const statusesAfter =
+        applyStatusApplied(
+          { ...encounterState.state, entityStatuses: projectionBase },
+          e
+        ).entityStatuses.get(e.entityId) ?? [];
+      updatePresentationOutcome(stagedAttack.id, (outcome) => ({
+        ...outcome,
+        statuses: [...(outcome.statuses ?? []), { event: e, statusesAfter }],
+      }));
+      if (releasedPresentationIdsRef.current.has(stagedAttack.id)) {
+        combatLog.recordStatusApplied(e);
+        const next = new Map(heldVisibleStatusesRef.current);
+        next.set(
+          e.entityId,
+          canonicalStatusesRef.current.get(e.entityId) ?? []
+        );
+        heldVisibleStatusesRef.current = next;
+        setHeldVisibleStatuses(next);
+      }
     },
     onStatusRemoved: (e) => {
+      const canonicalNext = applyStatusRemoved(
+        {
+          ...encounterState.state,
+          entityStatuses: canonicalStatusesRef.current,
+        },
+        e
+      ).entityStatuses;
+      canonicalStatusesRef.current = canonicalNext;
       encounterState.applyStatusRemoved(e);
       combatLog.recordStatusRemoved(e);
+      // StatusRemoved is not an attack outcome in this slice. Preserve its
+      // existing immediate behavior even if another story is holding this
+      // entity's correlated StatusApplied projection.
+      const held = heldVisibleStatusesRef.current.get(e.entityId);
+      if (held) {
+        const visibleBase = new Map(heldVisibleStatusesRef.current);
+        visibleBase.set(e.entityId, held);
+        const visibleNext = applyStatusRemoved(
+          { ...encounterState.state, entityStatuses: visibleBase },
+          e
+        ).entityStatuses;
+        const next = new Map(heldVisibleStatusesRef.current);
+        next.set(e.entityId, visibleNext.get(e.entityId) ?? []);
+        heldVisibleStatusesRef.current = next;
+        setHeldVisibleStatuses(next);
+      }
     },
     onModeChanged: (e) => {
       encounterState.applyModeChanged(e);
@@ -508,6 +928,7 @@ export function EncounterView({
       combatLog.recordTurnEnded(e);
     },
     onTurnStateChanged: (e) => {
+      canonicalTurnStateRef.current = e.turnState ?? null;
       encounterState.applyTurnStateChanged(e.turnState);
     },
     // TakeAction wave (#426): umbrella resolution beat for any action. The
@@ -520,41 +941,161 @@ export function EncounterView({
     // too (hit=false) — rendered as-is in the combat log so a whiff isn't
     // silent. Damage rides the correlated EntityDamaged above.
     onAttackResolved: (e, metadata) => {
-      combatLog.recordAttackResolved(e);
-      setPresentationQueue((queue) => [
+      updatePresentationQueue((queue) => [
         ...queue,
         {
           id: ++presentationIdRef.current,
           correlationId: metadata.correlationId,
           attack: e,
           isViewerAttack: e.attackerEntityId === entityIdRef.current,
+          waitForMovementGeneration: movementGenerationRef.current.get(
+            e.attackerEntityId
+          ),
+          targetControlSnapshot:
+            e.targetEntityId === entityIdRef.current
+              ? { turnState: canonicalTurnStateRef.current }
+              : undefined,
         },
       ]);
     },
     onEntityDamaged: (e, metadata) => {
+      const stagedAttack = findPresentationStory(
+        presentationQueueRef.current,
+        presentationOutcomesRef.current,
+        metadata.correlationId,
+        e.entityId,
+        'damage',
+        e.sourceEntityId
+      );
+      if (!stagedAttack) {
+        if (e.hpAfter) {
+          const nextHP = new Map(canonicalHPRef.current);
+          nextHP.set(e.entityId, {
+            current: e.hpAfter.current,
+            max: e.hpAfter.max,
+          });
+          canonicalHPRef.current = nextHP;
+        }
+        encounterState.applyEntityDamaged(e);
+        combatLog.recordEntityDamaged(e);
+        return;
+      }
+      // Freeze the last-painted HP before applying authoritative hp_after.
+      // A later queued attack against the same target keeps this hold and
+      // advances it only as each earlier story reaches its result beat.
+      const beforeHP = canonicalHPRef.current.get(e.entityId);
+      if (!heldVisibleHPRef.current.has(e.entityId) && beforeHP) {
+        const next = new Map(heldVisibleHPRef.current);
+        next.set(e.entityId, beforeHP);
+        heldVisibleHPRef.current = next;
+        setHeldVisibleHP(next);
+      }
+      if (e.hpAfter) {
+        const nextHP = new Map(canonicalHPRef.current);
+        nextHP.set(e.entityId, {
+          current: e.hpAfter.current,
+          max: e.hpAfter.max,
+        });
+        canonicalHPRef.current = nextHP;
+      }
       encounterState.applyEntityDamaged(e);
-      combatLog.recordEntityDamaged(e);
-      if (metadata.correlationId) {
-        setDamageByCorrelationId((current) => ({
-          ...current,
-          [metadata.correlationId]: e,
-        }));
+      updatePresentationOutcome(stagedAttack.id, (outcome) => ({
+        ...outcome,
+        damage: e,
+      }));
+      // If the semantic result beat already fired, this authoritative
+      // envelope joins the already-open result surface immediately. The
+      // lifecycle callback remains exactly-once; only this newly arrived
+      // payload is released.
+      if (releasedPresentationIdsRef.current.has(stagedAttack.id)) {
+        combatLog.recordEntityDamaged(e);
+        if (e.hpAfter) {
+          const next = new Map(heldVisibleHPRef.current);
+          next.set(e.entityId, {
+            current: e.hpAfter.current,
+            max: e.hpAfter.max,
+          });
+          heldVisibleHPRef.current = next;
+          setHeldVisibleHP(next);
+        }
       }
     },
-    onEntityDied: (e) => {
+    onEntityDied: (e, metadata) => {
       encounterState.applyEntityDied(e);
-      combatLog.recordEntityDied(e);
+      const stagedAttack = findPresentationStory(
+        presentationQueueRef.current,
+        presentationOutcomesRef.current,
+        metadata.correlationId,
+        e.entityId,
+        'died'
+      );
+      if (!stagedAttack) {
+        combatLog.recordEntityDied(e);
+        return;
+      }
+      updatePresentationOutcome(stagedAttack.id, (outcome) => ({
+        ...outcome,
+        died: e,
+      }));
+      if (releasedPresentationIdsRef.current.has(stagedAttack.id)) {
+        combatLog.recordEntityDied(e);
+      }
     },
-    onEntityRemoved: (e) => {
+    onEntityRemoved: (e, metadata) => {
+      const stagedAttack = findPresentationStory(
+        presentationQueueRef.current,
+        presentationOutcomesRef.current,
+        metadata.correlationId,
+        e.entityId,
+        'removed'
+      );
+      const knownEntity = canonicalEntitiesRef.current.get(e.entityId);
+      if (stagedAttack && knownEntity) {
+        setPresentationTombstones((tombstones) => {
+          const next = new Map(tombstones);
+          next.set(e.entityId, knownEntity);
+          return next;
+        });
+      }
       encounterState.applyEntityRemoved(e);
-      combatLog.recordEntityRemoved(e);
+      const remainingEntities = new Map(canonicalEntitiesRef.current);
+      remainingEntities.delete(e.entityId);
+      canonicalEntitiesRef.current = remainingEntities;
+      if (!stagedAttack) {
+        combatLog.recordEntityRemoved(e);
+        return;
+      }
+      updatePresentationOutcome(stagedAttack.id, (outcome) => ({
+        ...outcome,
+        removed: e,
+      }));
+      if (releasedPresentationIdsRef.current.has(stagedAttack.id)) {
+        combatLog.recordEntityRemoved(e);
+      }
     },
-    onEncounterEnded: (e) => {
+    onEncounterEnded: (e, metadata) => {
       encounterState.applyEncounterEnded(e);
-      combatLog.recordEncounterEnded(e);
-      // rpg-dnd5e-web#544: an ended encounter has no turns to be armed in.
+      // rpg-dnd5e-web#544: canonical encounter end disables actions now, but
+      // a terminal attack story already on stage must drain rather than be
+      // cancelled like an explicit snapshot/view transition.
       setArmedState(null);
-      flushPresentation();
+      const terminalStory = findTerminalPresentationStory(
+        presentationQueueRef.current,
+        presentationOutcomesRef.current,
+        metadata.correlationId
+      );
+      if (!terminalStory) {
+        combatLog.recordEncounterEnded(e);
+        flushPresentation();
+        return;
+      }
+      updatePresentationOutcome(terminalStory.id, (outcome) => ({
+        ...outcome,
+        encounterEnded: e,
+      }));
+      if (releasedPresentationIdsRef.current.has(terminalStory.id)) {
+        combatLog.recordEncounterEnded(e);
+      }
     },
     // Death-save arc (rpg-toolkit#742, wave KirkDiggler/rpg-project#75):
     // PlaytestHarness has logged these since that wave landed; EncounterView
@@ -573,13 +1114,33 @@ export function EncounterView({
     },
   });
 
-  const myPosition = encounterState.state.entities.get(entityId)?.position;
-  const myHP = encounterState.state.entityHP.get(entityId);
+  const presentedEntities = new Map(encounterState.state.entities);
+  for (const [id, entity] of presentationTombstones) {
+    if (!presentedEntities.has(id)) presentedEntities.set(id, entity);
+  }
+  const presentedEntityHP = new Map(encounterState.state.entityHP);
+  for (const [id, hp] of heldVisibleHP) presentedEntityHP.set(id, hp);
+  const presentedEntityStatuses = new Map(encounterState.state.entityStatuses);
+  for (const [id, statuses] of heldVisibleStatuses) {
+    presentedEntityStatuses.set(id, statuses);
+  }
+
+  const myPosition = presentedEntities.get(entityId)?.position;
+  const myHP = presentedEntityHP.get(entityId);
   const myAC = encounterState.state.entityAC.get(entityId);
   const myMeta = encounterState.state.entityMeta.get(entityId);
   const myEquipment = encounterState.state.characterEquipment.get(entityId);
-  const myStatuses = encounterState.state.entityStatuses.get(entityId) ?? [];
+  const myStatuses = presentedEntityStatuses.get(entityId) ?? [];
   const encounterEnded = encounterState.state.encounterStatus === 'ended';
+  const terminalResultHeld = Boolean(
+    encounterEnded &&
+    presentationQueue.some(
+      (item) =>
+        presentationOutcomes.get(item.id)?.encounterEnded !== undefined &&
+        !releasedPresentationIdsRef.current.has(item.id)
+    )
+  );
+  const showEncounterEnded = encounterEnded && !terminalResultHeld;
   const isMyTurn =
     encounterState.state.mode === EncounterMode.TURN_BASED &&
     encounterState.state.activeEntityId === entityId;
@@ -611,9 +1172,21 @@ export function EncounterView({
       setArmedState(null);
   }, [armedState, currentTurnKey, combatEnabled]);
 
-  const turnState = encounterState.state.turnState;
-  const availableActions = turnState?.availableActions ?? [];
-  const economy = turnState?.economy ?? null;
+  const canonicalTurnState = encounterState.state.turnState;
+  const heldControlStory = presentationQueue.find(
+    (item) =>
+      item.targetControlSnapshot !== undefined &&
+      presentationOutcomes
+        .get(item.id)
+        ?.statuses?.some((status) => status.event.entityId === entityId) &&
+      !releasedPresentationIdsRef.current.has(item.id)
+  );
+  const controlsHeld = heldControlStory !== undefined;
+  const presentedTurnState = controlsHeld
+    ? heldControlStory.targetControlSnapshot!.turnState
+    : canonicalTurnState;
+  const availableActions = presentedTurnState?.availableActions ?? [];
+  const economy = presentedTurnState?.economy ?? null;
 
   // Returns whether the dispatch succeeded — rpg-dnd5e-web#511's armed-
   // action state clears only on a successful dispatch (a rejected target
@@ -629,7 +1202,7 @@ export function EncounterView({
     // completes (see resolveMyEntityId above). Never send an RPC with an
     // empty actor id — a fast click in that window would otherwise reach
     // the server as a real, malformed request (Copilot review on #461).
-    if (!entityId) return false;
+    if (!entityId || heldControlStoryIdsRef.current.size > 0) return false;
     try {
       await takeAction({
         encounterId,
@@ -654,7 +1227,7 @@ export function EncounterView({
   // (an explicit toggle-off, one of #511's two cancel affordances — Escape
   // is the other, wired via the keydown effect below).
   const handleSelectAction = async (action: AvailableAction) => {
-    if (!action.ref) return;
+    if (heldControlStoryIdsRef.current.size > 0 || !action.ref) return;
     if (
       armedAction &&
       action.ref &&
@@ -685,7 +1258,13 @@ export function EncounterView({
   const handleVisualMove = async (
     path: Array<{ x: number; y: number; z: number }>
   ) => {
-    if (!entityId || encounterEnded || path.length === 0) return;
+    if (
+      !entityId ||
+      encounterEnded ||
+      heldControlStoryIdsRef.current.size > 0 ||
+      path.length === 0
+    )
+      return;
     try {
       await moveEntity(encounterId, entityId, path);
     } catch {
@@ -706,7 +1285,8 @@ export function EncounterView({
   // immediate basic attack" shortcut; any other click is a no-op (matches
   // the harness's identical primary-loop convenience).
   const handleVisualEntityClick = (targetId: string) => {
-    if (!entityId || encounterEnded) return;
+    if (!entityId || encounterEnded || heldControlStoryIdsRef.current.size > 0)
+      return;
     if (armedAction?.ref) {
       if (armedAction.targetKind === TargetKind.SINGLE_ENTITY) {
         const armedRef = armedAction.ref;
@@ -730,6 +1310,7 @@ export function EncounterView({
   };
 
   const handleEndTurn = async () => {
+    if (heldControlStoryIdsRef.current.size > 0) return;
     // combatEnabled already can't be true while entityId is unresolved
     // (isMyTurn compares activeEntityId against entityId, and a real
     // activeEntityId never equals ''), but guard explicitly rather than
@@ -752,7 +1333,7 @@ export function EncounterView({
     reactionRef: { module: string; type: string; id: string },
     ready: boolean
   ) => {
-    if (!entityId) return;
+    if (!entityId || heldControlStoryIdsRef.current.size > 0) return;
     try {
       await setReactionReady({
         encounterId,
@@ -787,6 +1368,7 @@ export function EncounterView({
   // rpg-api-protos#197) plus the next snapshot's HexRecord.edges for the
   // newly-visible geometry — there is no parallel reveal event anymore.
   const handleDoorClick = async (doorId: string) => {
+    if (heldControlStoryIdsRef.current.size > 0) return;
     try {
       const response = await interact(encounterId, doorId, 'open');
       if (response.inputRequired) {
@@ -890,7 +1472,7 @@ export function EncounterView({
         </button>
       </div>
 
-      {encounterEnded && (
+      {showEncounterEnded && (
         <div
           data-testid="encounter-ended-banner"
           className="rounded-lg px-4 py-3 font-bold"
@@ -927,12 +1509,12 @@ export function EncounterView({
           renders at width/height 100% of its container. */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <EncounterMap
-          entities={encounterState.state.entities}
+          entities={presentedEntities}
           entityMeta={encounterState.state.entityMeta}
           revealedHexes={encounterState.state.revealedHexes}
           walls={encounterState.state.walls}
-          entityHP={encounterState.state.entityHP}
-          entityStatuses={encounterState.state.entityStatuses}
+          entityHP={presentedEntityHP}
+          entityStatuses={presentedEntityStatuses}
           theme={encounterState.state.theme}
           // Gate by mode: applyModeChanged only flips `mode`, it doesn't
           // clear initiativeOrder/activeEntityId (only the next snapshot's
@@ -962,11 +1544,22 @@ export function EncounterView({
           )}
           openDoorIds={Array.from(encounterState.state.openDoors)}
           onMove={(path) => void handleVisualMove(path)}
+          onEntityMovementPresentationComplete={(movedEntityId, moveSeq) => {
+            const currentGeneration =
+              movementGenerationRef.current.get(movedEntityId) ?? 0;
+            // Ignore a completion from an animation superseded by a newer move.
+            if (moveSeq !== currentGeneration) return;
+            completedMovementGenerationRef.current.set(
+              movedEntityId,
+              currentGeneration
+            );
+            setMovementCompletionVersion((version) => version + 1);
+          }}
           onEntityClick={handleVisualEntityClick}
           onDoorClick={(doorId) => void handleDoorClick(doorId)}
         />
 
-        {activePresentation && (
+        {activePresentation && activeMovementComplete && (
           <div
             data-testid="combat-presentation-overlay"
             style={{
@@ -981,7 +1574,8 @@ export function EncounterView({
             <CombatPresentation
               key={activePresentation.id}
               item={activePresentation}
-              damage={damageByCorrelationId[activePresentation.correlationId]}
+              damage={activePresentationOutcome?.damage}
+              onResultRelease={releasePresentationResult}
               onComplete={completePresentation}
             />
           </div>
@@ -1108,7 +1702,7 @@ export function EncounterView({
         economy={economy}
         actions={availableActions}
         mode={encounterState.state.mode}
-        encounterEnded={encounterEnded}
+        encounterEnded={showEncounterEnded}
         isMyTurn={isMyTurn}
         // Spectator strip (#458): whose turn it is, resolved the same way
         // the dock resolves the local player's own name.
@@ -1124,7 +1718,7 @@ export function EncounterView({
               )
             : undefined
         }
-        actionsEnabled={combatEnabled}
+        actionsEnabled={combatEnabled && !controlsHeld}
         actionsLoading={takeActionLoading}
         onSelectAction={(a) => void handleSelectAction(a)}
         armedActionKey={armedAction ? actionKey(armedAction) : undefined}
@@ -1136,12 +1730,12 @@ export function EncounterView({
         // that window was a silent no-op (handleToggleReactionReady's own
         // `if (!entityId) return` guard fires, but nothing tells the
         // player why nothing happened).
-        reactionDisabled={encounterEnded || !entityId}
+        reactionDisabled={encounterEnded || controlsHeld || !entityId}
         onToggleReaction={(ref, ready) =>
           void handleToggleReactionReady(ref, ready)
         }
         onEndTurn={() => void handleEndTurn()}
-        endTurnDisabled={!combatEnabled || endTurnLoading}
+        endTurnDisabled={!combatEnabled || controlsHeld || endTurnLoading}
         endTurnLoading={endTurnLoading}
         combatLogEntries={combatLog.entries}
         equipment={myEquipment}

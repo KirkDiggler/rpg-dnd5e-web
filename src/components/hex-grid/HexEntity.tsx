@@ -118,6 +118,8 @@ export interface HexEntityProps {
    * `useHexMovePath` watches this, not `position` itself, to distinguish a
    * real move from initial placement or a ghost/revive reconciliation. */
   moveSeq?: number;
+  /** Presentation-only completion for this entity's exact move sequence. */
+  onMovementPresentationComplete?: (entityId: string, moveSeq: number) => void;
 }
 
 // Visual state colors
@@ -294,6 +296,7 @@ export function HexEntity({
   propRotationY,
   movePath,
   moveSeq,
+  onMovementPresentationComplete,
 }: HexEntityProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const { invalidate } = useThree();
@@ -330,7 +333,9 @@ export function HexEntity({
     hexSize,
     CHARACTER_Y_OFFSET,
     movingGroupRef,
-    requestHeading
+    requestHeading,
+    (completedMoveSeq) =>
+      onMovementPresentationComplete?.(entityId, completedMoveSeq)
   );
 
   // Same "sticky failure keyed by url, not a bare boolean" shape as
