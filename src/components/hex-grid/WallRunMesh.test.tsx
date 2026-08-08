@@ -1,3 +1,4 @@
+import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import type {
   ConnectorRun,
   EnvelopeCorner,
@@ -140,6 +141,35 @@ describe('WallRunMesh R3F scene', () => {
 
     // 1 tiled wall piece + 1 skirt = 2.
     expect(countMeshes(renderer)).toBe(2);
+  });
+
+  it('renders authored wall runs with the same tiled visual language and facing correction as envelope runs', async () => {
+    const authoredRuns: AuthoredWallRun[] = [
+      {
+        key: 'left-run',
+        start: { x: 0, z: 0 },
+        end: { x: 0, z: 4 },
+        facing: { x: -1, z: 0 },
+      },
+      {
+        key: 'right-run',
+        start: { x: 4, z: 0 },
+        end: { x: 4, z: 4 },
+        facing: { x: 1, z: 0 },
+      },
+    ];
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[]}
+        connectorRuns={[]}
+        authoredRuns={authoredRuns}
+      />
+    );
+
+    // Same tiling arithmetic as the envelope-run test above: 2 runs of
+    // length 4 -> 4 pieces each (8 total) + 1 skirt per run (2) = 10.
+    expect(countMeshes(renderer)).toBe(10);
   });
 
   it('skips degenerate zero-length segments without throwing', async () => {
