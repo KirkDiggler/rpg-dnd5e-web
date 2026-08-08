@@ -13,7 +13,10 @@
 
 import { useEffect, useRef } from 'react';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
-import { formatSourceRefs } from '../../utils/combatFormat';
+import {
+  formatSourceRefs,
+  formatTargetRationale,
+} from '../../utils/combatFormat';
 import { getConditionDisplay } from '../../utils/conditionIcons';
 
 export interface CombatLogProps {
@@ -207,7 +210,8 @@ function lineText(entry: CombatLogEntry): string {
         ? `${e.actionRef.module}:${e.actionRef.type}:${e.actionRef.id}`
         : '(no ref)';
       const targetPart = e.targetEntityId ? ` → ${e.targetEntityId}` : '';
-      return `▶️ ${e.actorEntityId} ${refStr}${targetPart}`;
+      const rationalePart = formatTargetRationale(entry.targetRationale);
+      return `▶️ ${e.actorEntityId} ${refStr}${targetPart}${rationalePart}`;
     }
     case 'died': {
       const e = entry.event;

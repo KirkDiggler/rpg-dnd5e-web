@@ -173,6 +173,79 @@ describe('CombatLog', () => {
     expect(line.textContent).toContain('goblin-1');
   });
 
+  it('renders the lowest-hp target_rationale in D&D voice (Monster AI slice 1, #733)', () => {
+    const entries: CombatLogEntry[] = [
+      {
+        id: 0,
+        round: 1,
+        kind: 'actionResolved',
+        event: {
+          actorEntityId: 'skeleton-1',
+          actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+          targetEntityId: 'char-alice',
+        } as never,
+        targetRationale: 'dnd5e:targeting:lowest-hp',
+      },
+    ];
+    render(<CombatLog entries={entries} />);
+    expect(
+      screen.getByTestId('combat-log-entry-actionResolved-0').textContent
+    ).toContain('turns on the most wounded');
+  });
+
+  it('renders the lowest-ac target_rationale in D&D voice', () => {
+    const entries: CombatLogEntry[] = [
+      {
+        id: 0,
+        round: 1,
+        kind: 'actionResolved',
+        event: {
+          actorEntityId: 'skeleton-1',
+          actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+          targetEntityId: 'char-alice',
+        } as never,
+        targetRationale: 'dnd5e:targeting:lowest-ac',
+      },
+    ];
+    render(<CombatLog entries={entries} />);
+    expect(
+      screen.getByTestId('combat-log-entry-actionResolved-0').textContent
+    ).toContain('picks out the least armored');
+  });
+
+  it("renders today's line unchanged for closest/unknown/absent target_rationale (regression — keeps log noise low)", () => {
+    const baseEvent = {
+      actorEntityId: 'skeleton-1',
+      actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+      targetEntityId: 'char-alice',
+    };
+    const entries: CombatLogEntry[] = [
+      { id: 0, round: 1, kind: 'actionResolved', event: baseEvent as never },
+      {
+        id: 1,
+        round: 1,
+        kind: 'actionResolved',
+        event: baseEvent as never,
+        targetRationale: 'dnd5e:targeting:closest',
+      },
+      {
+        id: 2,
+        round: 1,
+        kind: 'actionResolved',
+        event: baseEvent as never,
+        targetRationale: 'dnd5e:targeting:some-future-ref',
+      },
+    ];
+    render(<CombatLog entries={entries} />);
+    for (const id of [0, 1, 2]) {
+      const line = screen.getByTestId(`combat-log-entry-actionResolved-${id}`);
+      expect(line.textContent).toContain(
+        'skeleton-1 dnd5e:action:attack → char-alice'
+      );
+      expect(line.textContent).not.toContain('—');
+    }
+  });
+
   it('renders a DeathSaveRolled roll with its derived flags verbatim (rpg-dnd5e-web#432 harness-parity)', () => {
     const entries: CombatLogEntry[] = [
       {

@@ -175,6 +175,52 @@ describe('useCombatLog', () => {
     });
   });
 
+  it('carries target_rationale defensively for lowest-hp/lowest-ac targeting (rpg-api-protos#215, pre-proto-bump)', () => {
+    const { result } = renderHook(() => useCombatLog());
+    const lowestHp = {
+      actorEntityId: 'skeleton-1',
+      actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+      targetEntityId: 'char-alice',
+      targetRationale: 'dnd5e:targeting:lowest-hp',
+    } as unknown as ActionResolved;
+    const lowestAc = {
+      actorEntityId: 'skeleton-1',
+      actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+      targetEntityId: 'char-bob',
+      targetRationale: 'dnd5e:targeting:lowest-ac',
+    } as unknown as ActionResolved;
+
+    act(() => {
+      result.current.recordActionResolved(lowestHp);
+      result.current.recordActionResolved(lowestAc);
+    });
+
+    expect(result.current.entries[0]).toMatchObject({
+      kind: 'actionResolved',
+      targetRationale: 'dnd5e:targeting:lowest-hp',
+    });
+    expect(result.current.entries[1]).toMatchObject({
+      kind: 'actionResolved',
+      targetRationale: 'dnd5e:targeting:lowest-ac',
+    });
+  });
+
+  it('leaves target_rationale undefined when the event carries none (regression, pre-proto-bump default)', () => {
+    const { result } = renderHook(() => useCombatLog());
+    const event = {
+      actorEntityId: 'skeleton-1',
+      actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+      targetEntityId: 'char-alice',
+    } as unknown as ActionResolved;
+
+    act(() => result.current.recordActionResolved(event));
+
+    expect(
+      (result.current.entries[0] as { targetRationale?: string })
+        .targetRationale
+    ).toBeUndefined();
+  });
+
   it('assigns stable, monotonically increasing ids independent of array position', () => {
     const { result } = renderHook(() => useCombatLog());
     const died = { entityId: 'x' } as unknown as EntityDied;
