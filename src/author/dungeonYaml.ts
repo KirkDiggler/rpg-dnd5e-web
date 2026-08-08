@@ -203,6 +203,78 @@ function parseTargeting(raw: unknown): string | null {
   return typeof raw === 'string' ? raw : null;
 }
 
+/** The shape check underlying this file's whole "the YAML is always
+ * fixable" incident response (rpg-project#194 authoring-robustness unit,
+ * 2026-08-07): Kirk pasted `wallLines:`-shaped objects into `walls:`
+ * (entries with no `from`/`to` at all) and `parseDungeon` accepted it —
+ * `walls: []`'s old parse was a blind `w.from as [number, number]` cast,
+ * no shape check — so a malformed entry sailed through parsing with
+ * `from: undefined` and the crash didn't happen until board render tried
+ * `wall.from.join(',')` (`CreationBoard.tsx`), by which point autosave
+ * had already captured the broken text and every reload re-crashed:
+ * white screen, no UI, no way back in short of manually clearing
+ * `localStorage`. The fix is this function and its callers below:
+ * validate every `[col, row]`-shaped field AT PARSE TIME, so a malformed
+ * entry throws a `DungeonParseError` naming exactly which entry and field
+ * is wrong — same failure mode as the existing `rooms[i]`/`regions[i]`
+ * shape checks just above, extended to every other list-shaped construct
+ * `toDungeonDoc` used to trust blindly. The invariant this file now holds
+ * everywhere: anything `parseDungeon` accepts must be safe to render. */
+function assertCellPair(raw: unknown, context: string): [number, number] {
+  if (
+    !Array.isArray(raw) ||
+    raw.length !== 2 ||
+    typeof raw[0] !== 'number' ||
+    typeof raw[1] !== 'number' ||
+    !Number.isFinite(raw[0]) ||
+    !Number.isFinite(raw[1])
+  ) {
+    throw new DungeonParseError(
+      `${context}: expected [col, row], got ${JSON.stringify(raw)}`
+    );
+  }
+  return [raw[0], raw[1]];
+}
+
+/** Same check as `assertCellPair`, but for a field that's legitimately
+ * absent/`null` (`start:`/`end:`) — only a PRESENT-but-malformed value is
+ * a shape error; an absent one is just "unset." */
+function assertOptionalCellPair(
+  raw: unknown,
+  context: string
+): [number, number] | null {
+  if (raw === undefined || raw === null) return null;
+  return assertCellPair(raw, context);
+}
+
+/** Validates one `wallLines[].from`/`.to` endpoint's raw shape BEFORE
+ * `parseWallLineEndpoint` (above) touches it — that function's own two
+ * accepted shapes (bare `[col,row]` legacy cell, or `{cell, corner}`
+ * corner-anchored) both assume the value already looks like one of the
+ * two; neither branch has ever shape-checked its input, so anything else
+ * (missing entirely, a string, `{cell: undefined}`) fell through to
+ * `migrateLegacyCenterEndpoint`/`canonicalCorner` with garbage and
+ * crashed downstream geometry instead of failing parse honestly. */
+function assertWallLineEndpointShape(raw: unknown, context: string): void {
+  if (Array.isArray(raw)) {
+    assertCellPair(raw, context);
+    return;
+  }
+  if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    assertCellPair(obj.cell, `${context}.cell`);
+    if (obj.corner !== undefined && typeof obj.corner !== 'number') {
+      throw new DungeonParseError(
+        `${context}.corner: expected a number, got ${JSON.stringify(obj.corner)}`
+      );
+    }
+    return;
+  }
+  throw new DungeonParseError(
+    `${context}: missing/invalid endpoint (expected [col, row] or {cell: [col, row], corner})`
+  );
+}
+
 /** Shared by both `place:` sites — room-scoped (`rooms[].place`, real
  * dungeonspec, room-LOCAL `at`) and top-level (`place:`, target dialect,
  * proposed, absolute `at` — see TARGET-YAML.md's "top-level placement"
@@ -212,12 +284,13 @@ function parseTargeting(raw: unknown): string | null {
 function parsePlacementList(raw: unknown, context: string): PlacementDoc[] {
   if (!Array.isArray(raw)) return [];
   return (raw as Record<string, unknown>[]).map((p, pi) => {
-    if (typeof p.ref !== 'string' || !Array.isArray(p.at)) {
-      throw new DungeonParseError(`${context}[${pi}] missing ref/at`);
+    if (typeof p.ref !== 'string') {
+      throw new DungeonParseError(`${context}[${pi}]: missing "ref"`);
     }
+    const at = assertCellPair(p.at, `${context}[${pi}].at`);
     return {
       ref: p.ref,
-      at: [p.at[0] as number, p.at[1] as number] as [number, number],
+      at,
       blocksMovement: p.blocks_movement === true,
       blocksLos: p.blocks_los === true,
       isMonster: p.ref.startsWith('dnd5e:monsters:'),
@@ -649,9 +722,15 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     const boss = room.boss
       ? (() => {
           const b = room.boss as Record<string, unknown>;
+          if (typeof b.ref !== 'string') {
+            throw new DungeonParseError(
+              `Room "${room.id}" boss: missing "ref"`
+            );
+          }
+          const at = assertCellPair(b.at, `Room "${room.id}" boss.at`);
           return {
-            ref: b.ref as string,
-            at: b.at as [number, number],
+            ref: b.ref,
+            at,
             facing: parseFacing(b.facing),
             targeting: parseTargeting(b.targeting),
           };
@@ -676,15 +755,28 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
   if (!Array.isArray(raw.connectors)) {
     throw new DungeonParseError('No connectors: list found');
   }
-  const connectors: ConnectorDoc[] = raw.connectors.map((c) => {
+  const connectors: ConnectorDoc[] = raw.connectors.map((c, ci) => {
     const conn = c as Record<string, unknown>;
-    const locked = conn.locked as Record<string, unknown> | undefined;
+    if (typeof conn.from !== 'string' || typeof conn.to !== 'string') {
+      throw new DungeonParseError(`connectors[${ci}]: missing "from"/"to"`);
+    }
+    const rawLocked = conn.locked as Record<string, unknown> | null | undefined;
+    let locked: LockedDoc | null = null;
+    if (rawLocked != null) {
+      if (
+        typeof rawLocked.dc !== 'number' ||
+        typeof rawLocked.ability !== 'string'
+      ) {
+        throw new DungeonParseError(
+          `connectors[${ci}].locked: expected {dc: number, ability: string}`
+        );
+      }
+      locked = { dc: rawLocked.dc, ability: rawLocked.ability };
+    }
     return {
-      from: conn.from as string,
-      to: conn.to as string,
-      locked: locked
-        ? { dc: locked.dc as number, ability: locked.ability as string }
-        : null,
+      from: conn.from,
+      to: conn.to,
+      locked,
     };
   });
 
@@ -694,20 +786,41 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
   const canvas = raw.canvas
     ? (() => {
         const c = raw.canvas as Record<string, unknown>;
-        return { width: c.width as number, height: c.height as number };
+        if (typeof c.width !== 'number' || typeof c.height !== 'number') {
+          throw new DungeonParseError(
+            `canvas: width/height must be numbers, got ${JSON.stringify(c)}`
+          );
+        }
+        return { width: c.width, height: c.height };
       })()
     : null;
 
+  // walls: — the incident this unit exists to close (see
+  // `assertCellPair`'s own doc comment): every entry must carry a real
+  // [col, row] `from`/`to` pair before it's trusted anywhere downstream.
   const walls: WallDoc[] = Array.isArray(raw.walls)
-    ? (raw.walls as Record<string, unknown>[]).map((w) => ({
-        from: w.from as [number, number],
-        to: w.to as [number, number],
-        kind: w.kind === 'door' ? 'door' : 'solid',
-      }))
+    ? (raw.walls as Record<string, unknown>[]).map((w, wi) => {
+        const from = assertCellPair(w.from, `walls[${wi}].from`);
+        const to = assertCellPair(w.to, `walls[${wi}].to`);
+        if (w.kind !== undefined && w.kind !== 'solid' && w.kind !== 'door') {
+          throw new DungeonParseError(
+            `walls[${wi}].kind: expected "solid" or "door", got ${JSON.stringify(w.kind)}`
+          );
+        }
+        return { from, to, kind: w.kind === 'door' ? 'door' : 'solid' };
+      })
     : [];
 
   const wallLines: WallLineDoc[] = Array.isArray(raw.wallLines)
-    ? (raw.wallLines as Record<string, unknown>[]).map((w) => {
+    ? (raw.wallLines as Record<string, unknown>[]).map((w, wi) => {
+        assertWallLineEndpointShape(w.from, `wallLines[${wi}].from`);
+        assertWallLineEndpointShape(w.to, `wallLines[${wi}].to`);
+        if (Array.isArray(w.doors)) {
+          (w.doors as unknown[]).forEach((d, di) => {
+            const door = d as Record<string, unknown>;
+            assertCellPair(door.cell, `wallLines[${wi}].doors[${di}].cell`);
+          });
+        }
         const from = parseWallLineEndpoint(w.from, w.to);
         const to = parseWallLineEndpoint(w.to, w.from);
         return {
@@ -719,18 +832,22 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
     : [];
 
   const holes: [number, number][] = Array.isArray(raw.holes)
-    ? (raw.holes as [number, number][]).map(
-        (h) => [h[0], h[1]] as [number, number]
-      )
+    ? (raw.holes as unknown[]).map((h, hi) => assertCellPair(h, `holes[${hi}]`))
     : [];
 
-  const start = Array.isArray(raw.start)
-    ? (raw.start as [number, number])
-    : null;
-  const end = Array.isArray(raw.end) ? (raw.end as [number, number]) : null;
+  const start = assertOptionalCellPair(raw.start, 'start');
+  const end = assertOptionalCellPair(raw.end, 'end');
 
   const lighting = raw.lighting
-    ? { ambient: (raw.lighting as Record<string, unknown>).ambient as number }
+    ? (() => {
+        const l = raw.lighting as Record<string, unknown>;
+        if (typeof l.ambient !== 'number') {
+          throw new DungeonParseError(
+            `lighting.ambient: must be a number, got ${JSON.stringify(l.ambient)}`
+          );
+        }
+        return { ambient: l.ambient };
+      })()
     : null;
 
   // Top-level, absolute-[col,row] placements — target dialect, proposed. See
@@ -753,8 +870,8 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
           throw new DungeonParseError(`region "${r.id}" has no archetype`);
         }
         const cells: [number, number][] = Array.isArray(r.cells)
-          ? (r.cells as [number, number][]).map(
-              (c) => [c[0], c[1]] as [number, number]
+          ? (r.cells as unknown[]).map((c, ci) =>
+              assertCellPair(c, `regions[${ri}].cells[${ci}]`)
             )
           : [];
         return {

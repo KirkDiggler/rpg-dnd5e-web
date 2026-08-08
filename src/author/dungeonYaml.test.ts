@@ -131,6 +131,185 @@ describe('parseDungeon', () => {
   });
 });
 
+describe('emptyCanvasYaml seed — theme: crypt (rpg-project#194 authoring-robustness unit)', () => {
+  it('stamps theme: crypt so a fresh "New Dungeon" canvas is never full-bright', () => {
+    const { doc } = parseDungeon(emptyCanvasYaml(20, 30));
+    expect(doc.theme).toBe('crypt');
+  });
+});
+
+describe('shape validation at parse (rpg-project#194 authoring-robustness unit — "the YAML is always fixable")', () => {
+  const base = () => emptyCanvasYaml(10, 10);
+
+  describe('walls: — the incident repro (pasted wallLines-shaped objects, missing from/to)', () => {
+    it('rejects an entry with no from/to at all, naming the entry and field', () => {
+      const yaml = base().replace('walls: []', 'walls:\n  - { kind: solid }');
+      expect(() => parseDungeon(yaml)).toThrow(DungeonParseError);
+      expect(() => parseDungeon(yaml)).toThrow(/walls\[0\]\.from/);
+    });
+
+    it("rejects a wallLines-shaped from (Kirk's exact paste: {cell, corner} instead of [col, row])", () => {
+      const yaml = base().replace(
+        'walls: []',
+        'walls:\n  - { from: { cell: [1, 1], corner: 0 }, to: [2, 2], kind: solid }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/walls\[0\]\.from/);
+    });
+
+    it('rejects a from/to with non-numeric elements', () => {
+      const yaml = base().replace(
+        'walls: []',
+        'walls:\n  - { from: ["a", 1], to: [2, 2] }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/walls\[0\]\.from/);
+    });
+
+    it('rejects an invalid kind', () => {
+      const yaml = base().replace(
+        'walls: []',
+        'walls:\n  - { from: [0, 0], to: [1, 0], kind: portcullis }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/walls\[0\]\.kind/);
+    });
+
+    it('accepts a well-formed entry (positive control)', () => {
+      const yaml = base().replace(
+        'walls: []',
+        'walls:\n  - { from: [0, 0], to: [1, 0], kind: door }'
+      );
+      const { doc } = parseDungeon(yaml);
+      expect(doc.walls).toEqual([{ from: [0, 0], to: [1, 0], kind: 'door' }]);
+    });
+  });
+
+  describe('wallLines:', () => {
+    it('rejects a from with neither [col,row] nor {cell,corner} shape', () => {
+      const yaml = base().replace(
+        'wallLines: []',
+        'wallLines:\n  - { from: "nope", to: [2, 2] }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/wallLines\[0\]\.from/);
+    });
+
+    it('rejects a {cell, corner} endpoint whose cell is missing', () => {
+      const yaml = base().replace(
+        'wallLines: []',
+        'wallLines:\n  - { from: { corner: 0 }, to: [2, 2] }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/wallLines\[0\]\.from\.cell/);
+    });
+
+    it('rejects a malformed doors[].cell', () => {
+      const yaml = base().replace(
+        'wallLines: []',
+        'wallLines:\n  - { from: [0, 0], to: [2, 0], doors: [{ cell: [1] }] }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(
+        /wallLines\[0\]\.doors\[0\]\.cell/
+      );
+    });
+  });
+
+  describe('holes: / start: / end:', () => {
+    it('rejects a malformed holes entry', () => {
+      const yaml = base().replace('holes: []', 'holes:\n  - [1]');
+      expect(() => parseDungeon(yaml)).toThrow(/holes\[0\]/);
+    });
+
+    it('rejects a present-but-malformed start', () => {
+      const yaml = base().replace('start: null', 'start: "middle"');
+      expect(() => parseDungeon(yaml)).toThrow(/^start:/);
+    });
+
+    it('rejects a present-but-malformed end', () => {
+      const yaml = base().replace('end: null', 'end: [1]');
+      expect(() => parseDungeon(yaml)).toThrow(/^end:/);
+    });
+
+    it('leaves start/end unset (not an error) when genuinely absent', () => {
+      const { doc } = parseDungeon(base());
+      expect(doc.start).toBeNull();
+      expect(doc.end).toBeNull();
+    });
+  });
+
+  describe('canvas: / lighting:', () => {
+    it('rejects a non-numeric canvas width/height', () => {
+      const yaml = base().replace(
+        'canvas:\n  width: 10\n  height: 10',
+        'canvas:\n  width: "10"\n  height: 10'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/^canvas:/);
+    });
+
+    it('rejects a non-numeric lighting.ambient', () => {
+      const yaml = base().replace(
+        'place: []',
+        'place: []\nlighting:\n  ambient: "bright"'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/lighting\.ambient/);
+    });
+  });
+
+  describe('connectors:', () => {
+    it('rejects a connector missing from/to', () => {
+      const yaml = SHOWCASE_YAML.replace(
+        '- { from: antechamber, to: shrine }',
+        '- { to: shrine }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/connectors\[0\]/);
+    });
+
+    it('rejects a malformed locked: block', () => {
+      const withBadLock = SHOWCASE_YAML.replace(
+        '- { from: shrine, to: vault }',
+        '- { from: shrine, to: vault, locked: { dc: "twelve", ability: dex } }'
+      );
+      expect(() => parseDungeon(withBadLock)).toThrow(
+        /connectors\[\d+\]\.locked/
+      );
+    });
+  });
+
+  describe('place: (top-level and room-scoped)', () => {
+    it('rejects a top-level place entry with a non-numeric at', () => {
+      const yaml = base().replace(
+        'place: []',
+        'place:\n  - { ref: "dnd5e:props:crate", at: ["a", 1] }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/place\[0\]\.at/);
+    });
+
+    it('rejects a room-scoped place entry missing ref', () => {
+      const yaml = SHOWCASE_YAML.replace(
+        '- { ref: "dnd5e:props:brazier", at: [1, 1], blocks_movement: true, blocks_los: false }',
+        '- { at: [1, 1] }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/place\[0\]/);
+    });
+  });
+
+  describe('regions: cells', () => {
+    it('rejects a malformed cell', () => {
+      const yaml = base().replace(
+        'place: []',
+        'place: []\nregions:\n  - { id: r1, archetype: chamber, cells: [[1, 1], [2]] }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/regions\[0\]\.cells\[1\]/);
+    });
+  });
+
+  describe('boss: at', () => {
+    it('rejects a malformed boss.at', () => {
+      const yaml = SHOWCASE_YAML.replace(
+        'boss: { ref: "dnd5e:monsters:skeleton-captain", at: [5, 5] }',
+        'boss: { ref: "dnd5e:monsters:skeleton-captain", at: [5] }'
+      );
+      expect(() => parseDungeon(yaml)).toThrow(/boss\.at/);
+    });
+  });
+});
+
 describe('setConnectorLocked (door editing, rpg-dnd5e-web#667)', () => {
   it('adds a flow-style locked: block matching the real dungeonspec shape', () => {
     const { cst } = parseDungeon(SHOWCASE_YAML);

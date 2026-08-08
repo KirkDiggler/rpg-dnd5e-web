@@ -7762,3 +7762,154 @@ placeable for a prop; a high-coverage cell on the same real line stays
 blocked. Full suite: 139 files / 2329 tests, `ci-check` clean.
 
 — asset-pipeline agent, on behalf of KirkDiggler
+
+## Authoring robustness — "the YAML is always fixable" (2026-08-07, rpg-project#194)
+
+Kirk white-screened the entire builder hand-editing YAML: he pasted
+`wallLines:`-shaped objects into `walls:` (entries with no real
+`[col, row]` `from`/`to`) and used Load .yaml. `parseDungeon` accepted
+it — `walls:`'s parse was a blind `w.from as [number, number]` cast, no
+shape check at all — so the malformed entry sailed through with
+`from: undefined`, and the crash didn't happen until board render tried
+`wall.from.join(',')` (`CreationBoard.tsx`'s `wallEls` loop). By then
+autosave had already captured the broken text, so every reload restored
+it and re-crashed — the only way back in was manually clearing
+`localStorage` in DevTools. This unit exists to make that whole class of
+breakage structurally impossible, four ways.
+
+### 1. Strict shape validation at parse (`dungeonYaml.ts`)
+
+Every list-shaped/tuple-shaped construct `toDungeonDoc` used to trust
+with a blind cast now goes through `assertCellPair`/
+`assertOptionalCellPair`/`assertWallLineEndpointShape` first: `walls:`
+(the incident itself), `wallLines:` endpoints and `doors[].cell`,
+`holes:`, `start:`/`end:` (present-but-malformed only — genuinely absent
+stays a legitimate unset, not an error), `canvas:` width/height,
+`lighting.ambient`, `connectors:` `from`/`to`/`locked`, `place:` (both
+room-scoped and top-level — tightened from "is it an array" to "are the
+elements actually numbers"), `regions[].cells`, and room `boss.at`. Each
+throws `DungeonParseError` naming the exact entry and field —
+`walls[3]: missing 'from'`-style, matching this file's own pre-existing
+`rooms[i]`/`regions[i]` shape-check discipline, not a new pattern. The
+invariant this file now holds everywhere: **anything `parseDungeon`
+accepts must be safe to render.**
+
+Audited every construct the brief named (place/regions/wallLines/start)
+plus everything else `toDungeonDoc` builds; the fields left untouched
+(`obstacles:`, `defaults:`) were already either genuinely inert (rolled
+content, unexercised per this file's own earlier "rolled content panel
+is untested against real data" finding) or already `typeof`-guarded —
+no accept-then-crash risk found there worth the diff.
+
+### 2. Crash-recovery surface (`BoardCrashRecovery.tsx` + `DungeonBuilderConcept.tsx`)
+
+Tooth 1 closes the KNOWN gap; this is the safety net for anything else —
+a shape validation doesn't catch, or a genuine render bug. `CreationConcept`
+is now wrapped in a real `ErrorBoundary` (`@/components/ui/Feedback/ErrorBoundary`,
+already used elsewhere in this codebase — e.g. `RealWallPieces.tsx`'s GLB
+fallback — same pattern, not a new one); its `onError` hands the caught
+error + the EXACT `creationYamlText` that produced it to a new
+`creationCrash` state, and the composition root's own render swaps the
+whole boundary out for `BoardCrashRecovery` — an editable textarea (the
+broken text, untouched), the real error message, and two explicit
+actions: **Apply & retry** (re-parses; on success hands the board a fresh
+doc and mounts a brand-new `ErrorBoundary` instance to try again; on
+failure updates the error in place, text never lost) and **Discard draft
+& start fresh**. `fallback={null}` on the boundary itself — the very next
+render replaces it with `BoardCrashRecovery` entirely, so there's nothing
+worth showing in the boundary's own fallback slot.
+
+Both mounts (`AuthorView.tsx`'s real `/author` route, `ConceptsView.tsx`'s
+dev sandbox) get this for free — they both mount the SAME
+`DungeonBuilderConcept`, so the boundary living inside it, not at each
+call site, is what makes "both mounts" true without duplicating anything.
+
+### 3. The live YAML pane was already two-way — confirmed, not rebuilt
+
+Read the brief's "retire the display-only fossil" literally and went
+looking for a display-only pane; there wasn't one left to retire.
+`creation/ProposedYamlPane.tsx`'s "PROPOSED SCHEMA" hazard framing and
+its non-editable posture were ALREADY retired earlier the same day (this
+file's own "PROPOSED SCHEMA framing retired" section above, rpg-project#194
+ratification round) — the pane has been a real, editable `serializeDungeon(cst)`
+view with debounced reparse (`APPLY_DEBOUNCE_MS = 700`, `applyCreationText`)
+and inline `parseError` display (text never auto-reverted on a bad edit)
+since before this unit started. What THIS unit adds on top: `BoardCrashRecovery`
+reuses the identical editable-textarea / explicit-action / never-lose-what-
+was-typed contract as the error-recovery surface (tooth 2), and new
+end-to-end tests (`DungeonBuilderConcept.test.tsx`) prove the live pane's
+two-way behavior at the composition level for the first time — a
+malformed edit rejects inline without losing the text or triggering the
+crash-recovery surface (parse rejection is not a render crash), and a
+subsequent valid edit applies cleanly and clears the error.
+
+### 4. Draft restore, crash-proof by construction
+
+The mount-time draft-restore path used to `try { parseDungeon(draft.yamlText) } catch { discardDraft('create') }`
+— safe (nothing crashed) but LOSSY: a draft that failed to parse just
+vanished, exactly the "had to manually clear localStorage" pain Kirk
+hit. It now keeps the draft in storage, still falls the WORKING doc back
+to the fresh seed so the rest of the component's state initializes
+normally, but carries the broken text + a real error message out as the
+SAME `creationCrash` shape a live render crash uses — one recovery
+surface, two ways in. `createRestoredDraftAt` stays `null` on this path
+(nothing was actually loaded onto the board, so `DraftRestoredBanner`
+doesn't claim it was).
+
+Also: `emptyCanvasDoc.ts`'s `emptyCanvasYaml` now stamps `theme: crypt` —
+a from-scratch canvas omitted `theme:` entirely, which every real
+consumer (`HexGrid.tsx`, `SyntyHexFloor`/`SyntyHexWall`, `EncounterMap.tsx`)
+reads as full-bright default lighting, so every "New Dungeon" Kirk played
+came out flat, not the crypt look `SHOWCASE_YAML`'s own `theme: crypt`
+already demonstrates. `theme` is plain v1-real `DungeonDoc` state, never
+touched by `stripToV1Subset` — a one-line fix, no compiler changes.
+
+### Live verification (2026-08-07, against the Wave-1 server, `localhost:8092`)
+
+Own dev server, port 3057, `VITE_API_HOST`/`VITE_DEV_PLAYER_ID` pointed at
+the live server in `.env.local` (gitignored, never committed), never
+touching the shared port-3001 dev server or any other in-flight unit's
+port. A throwaway Playwright script drove the real Home → Dungeon
+Builder flow end to end:
+
+1. Fresh "New Dungeon" open — YAML pane's own text confirmed `theme: crypt`
+   present.
+2. Typed Kirk's exact malformed paste (`wallLines`-shaped `walls:` entry)
+   into the live pane — rejected inline (`walls[0].from: expected [col, row], got {"cell":[1,1],"corner":0}`),
+   typed text preserved verbatim, and confirmed the crash-recovery surface
+   did NOT appear (a parse rejection is not a render crash — different
+   code path, both verified live).
+3. Fixed the text in place — inline error cleared, board applied normally.
+4. Seeded the EXACT broken draft into `localStorage`, reloaded: the
+   crash-recovery surface appeared with the broken text byte-for-byte
+   intact and the same specific error message — no white screen, no blank
+   page.
+5. Reloaded AGAIN against the same untouched broken draft — the
+   incident's own "every reload re-crashed" symptom, directly disproved:
+   recovery surface reappears cleanly every time, never a crash.
+6. Fixed the text in the recovery surface, clicked **Apply & retry** — the
+   real board returned.
+7. Repeated from a fresh broken-draft reload, clicked **Discard draft &
+   start fresh** instead — storage cleared, fresh canvas rendered, and
+   its YAML pane confirmed `theme: crypt` present on the new seed too.
+
+No unexpected console errors across the whole run — only the
+pre-existing, deliberately-invalid liveness-probe errors this file has
+already documented elsewhere (`usePutDungeonPreview`/`probeAuthoringGate`'s
+own `key "" must match ...` self-checks).
+
+### Tests
+
+`dungeonYaml.test.ts`: 21 new tests — the full parse-time shape-validation
+sweep (walls/wallLines/holes/start/end/canvas/lighting/connectors/place/
+regions.cells/boss.at, including Kirk's exact incident repro) plus the
+`theme: crypt` seed check. `DungeonBuilderConcept.test.tsx` (new file): 8
+end-to-end tests — the incident regression (seed a broken draft, mount,
+expect the recovery surface with the text intact, never a thrown render
+exception), the "every reload re-crashes" symptom made safe across two
+consecutive mounts, Apply & retry succeeding and failing-safely, Discard
+draft, a healthy draft still restoring normally (no false-positive
+recovery surface), and the live pane's own two-way malformed/valid-edit
+round trip. Full suite: 143 files / 2437 tests, `ci-check` clean.
+
+— asset-pipeline agent, on behalf of KirkDiggler
