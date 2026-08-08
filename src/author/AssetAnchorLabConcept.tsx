@@ -598,8 +598,9 @@ export function AssetAnchorLabConcept() {
             <div style={{ marginTop: 4, color: '#ffdf54', fontSize: 10 }}>
               Gold dot is centered at exact raw origin (0,0,0). Its separate
               vertical stem ends at the elevated visibility ring; neither the
-              ring nor the +Z arrow is the origin. Magenta raw result is never
-              hidden.
+              ring nor the +Z arrow is the origin. The magenta raw result is
+              unchanged and visible in Raw-only/Overlay; Calibrated-only
+              intentionally hides it.
             </div>
           </div>
 

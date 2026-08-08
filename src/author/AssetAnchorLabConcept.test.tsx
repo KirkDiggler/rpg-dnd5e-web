@@ -146,6 +146,11 @@ describe('AssetAnchorLabConcept — real inspection/calibration interaction path
       'showing raw'
     );
     expect(
+      screen.getByText(/The magenta raw result is unchanged/).textContent
+    ).toContain(
+      'visible in Raw-only/Overlay; Calibrated-only intentionally hides it'
+    );
+    expect(
       (
         screen.getByRole('button', {
           name: 'Visibility Calibrated only',
