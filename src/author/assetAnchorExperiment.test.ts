@@ -4,6 +4,7 @@ import {
   ADJUST_STEP_METERS,
   ANCHOR_LAB_CASES,
   assetAnchorLabReducer,
+  assetVariantKey,
   candidateOffset,
   canRecordProvisional,
   createInitialAssetAnchorLabState,
@@ -15,23 +16,72 @@ import {
   type AnchorCandidate,
   type AssetAnchorLabState,
   type FacingIndex,
+  type LabCameraMode,
   type LabVariant,
+  type RenderObservation,
 } from './assetAnchorExperiment';
 
-function visitSix(
+const VALID_BOUNDS = FIXTURE_VISIBLE_BOUNDS.bookcase!;
+
+function acknowledge(
   state: AssetAnchorLabState,
-  variant?: LabVariant
+  overrides: Partial<RenderObservation> = {}
 ): AssetAnchorLabState {
-  let next = variant
-    ? assetAnchorLabReducer(state, { type: 'select-variant', variant })
-    : state;
+  return assetAnchorLabReducer(state, {
+    type: 'acknowledge-render',
+    observation: {
+      caseId: state.caseId,
+      variant: state.variant,
+      candidate: state.candidate,
+      cameraMode: state.cameraMode,
+      facing: state.facing,
+      bounds: VALID_BOUNDS,
+      ...overrides,
+    },
+  });
+}
+
+function observeFacing(
+  state: AssetAnchorLabState,
+  facing: FacingIndex
+): AssetAnchorLabState {
+  return acknowledge(
+    assetAnchorLabReducer(state, { type: 'select-facing', facing })
+  );
+}
+
+function observeCamera(
+  state: AssetAnchorLabState,
+  cameraMode: LabCameraMode
+): AssetAnchorLabState {
+  return acknowledge(
+    assetAnchorLabReducer(state, { type: 'select-camera', mode: cameraMode })
+  );
+}
+
+function observeRequiredVariant(
+  state: AssetAnchorLabState,
+  variant: LabVariant
+): AssetAnchorLabState {
+  let next = assetAnchorLabReducer(state, {
+    type: 'select-variant',
+    variant,
+  });
+  next = assetAnchorLabReducer(next, { type: 'select-camera', mode: 'orbit' });
   for (let facing = 0; facing < FACING_LABELS.length; facing += 1) {
-    next = assetAnchorLabReducer(next, {
-      type: 'select-facing',
-      facing: facing as FacingIndex,
-    });
+    next = observeFacing(next, facing as FacingIndex);
   }
-  return next;
+  return observeCamera(next, 'play');
+}
+
+function chooseCandidate(
+  state: AssetAnchorLabState,
+  candidate: AnchorCandidate
+): AssetAnchorLabState {
+  return assetAnchorLabReducer(state, {
+    type: 'select-candidate',
+    candidate,
+  });
 }
 
 describe('Asset Anchor Lab fixture state', () => {
@@ -90,11 +140,10 @@ describe('Asset Anchor Lab fixture state', () => {
 
   it('reset returns exactly to the selected candidate while raw bounds and owning hex stay isolated', () => {
     const frozenBounds = structuredClone(FIXTURE_VISIBLE_BOUNDS.bookcase!);
-    let state = createInitialAssetAnchorLabState();
-    state = assetAnchorLabReducer(state, {
-      type: 'select-candidate',
-      candidate: 'bounds-center-floor',
-    });
+    let state = chooseCandidate(
+      createInitialAssetAnchorLabState(),
+      'bounds-center-floor'
+    );
     const baseline = resolvedCalibrationOffset(state, frozenBounds);
     state = assetAnchorLabReducer(state, {
       type: 'adjust',
@@ -110,53 +159,123 @@ describe('Asset Anchor Lab fixture state', () => {
     expect(OWNING_HEX).toEqual({ q: 0, r: 0, s: 0 });
   });
 
-  it('withholds output until an explicit candidate, Orbit+Play, and all six facings are observed', () => {
+  it('starts with no pre-credited observation and unlocks only from positive acknowledgements for the exact selection', () => {
     let state = createInitialAssetAnchorLabState();
-    state = visitSix(state);
-    state = assetAnchorLabReducer(state, {
-      type: 'select-camera',
-      mode: 'play',
-    });
-    expect(canRecordProvisional(state)).toBe(false);
-    expect(
-      assetAnchorLabReducer(state, { type: 'record-provisional' }).recorded
-    ).toEqual({});
-
-    state = assetAnchorLabReducer(state, {
-      type: 'select-candidate',
-      candidate: 'raw-origin',
-    });
-    state = visitSix(state);
+    expect(state.observed.size).toBe(0);
+    expect(state.assetStatus).toEqual({});
+    state = chooseCandidate(state, 'bounds-center-floor');
+    state = observeRequiredVariant(state, 'standing');
+    expect(state.assetStatus[assetVariantKey('bookcase', 'standing')]).toBe(
+      'measured'
+    );
     expect(canRecordProvisional(state)).toBe(true);
     state = assetAnchorLabReducer(state, { type: 'record-provisional' });
     expect(state.recorded.bookcase?.warning).toBe(
       'NON-PRODUCTION FIXTURE EVIDENCE'
     );
-    expect(state.recorded.bookcase?.facingsCompared).toEqual(FACING_LABELS);
+  });
+
+  it('withholds for pending, load error, and unusable/unmeasured geometry even after prior coverage', () => {
+    let qualified = chooseCandidate(
+      createInitialAssetAnchorLabState(),
+      'bounds-center-floor'
+    );
+    qualified = observeRequiredVariant(qualified, 'standing');
+    expect(canRecordProvisional(qualified)).toBe(true);
+
+    const pending = assetAnchorLabReducer(qualified, {
+      type: 'asset-load-pending',
+      caseId: 'bookcase',
+      variant: 'standing',
+    });
+    expect(canRecordProvisional(pending)).toBe(false);
+    expect(pending.observed.size).toBe(0);
+
+    const errored = assetAnchorLabReducer(qualified, {
+      type: 'asset-load-failed',
+      caseId: 'bookcase',
+      variant: 'standing',
+      status: 'error',
+    });
+    expect(canRecordProvisional(errored)).toBe(false);
+
+    const invalid = acknowledge(qualified, {
+      bounds: {
+        min: [0, 0, 0],
+        max: [0, 0, 0],
+        center: [0, 0, 0],
+        size: [0, 0, 0],
+      },
+    });
+    expect(invalid.assetStatus[assetVariantKey('bookcase', 'standing')]).toBe(
+      'unmeasured'
+    );
+    expect(canRecordProvisional(invalid)).toBe(false);
+  });
+
+  it('withholds when Play is missing even after all six selected-candidate Orbit renders', () => {
+    let state = chooseCandidate(
+      createInitialAssetAnchorLabState(),
+      'bounds-center-floor'
+    );
+    for (let facing = 0; facing < FACING_LABELS.length; facing += 1) {
+      state = observeFacing(state, facing as FacingIndex);
+    }
+    expect(canRecordProvisional(state)).toBe(false);
+  });
+
+  it('does not let raw/Orbit or another candidate satisfy selected bounds-center/Orbit', () => {
+    let state = chooseCandidate(
+      createInitialAssetAnchorLabState(),
+      'raw-origin'
+    );
+    state = observeRequiredVariant(state, 'standing');
+    expect(canRecordProvisional(state)).toBe(true);
+
+    state = chooseCandidate(state, 'bounds-center-floor');
+    // Six Play observations for bounds-center; prior raw Orbit must not count.
+    state = assetAnchorLabReducer(state, {
+      type: 'select-camera',
+      mode: 'play',
+    });
+    for (let facing = 0; facing < FACING_LABELS.length; facing += 1) {
+      state = observeFacing(state, facing as FacingIndex);
+    }
+    expect(canRecordProvisional(state)).toBe(false);
+    state = observeCamera(state, 'orbit');
+    expect(canRecordProvisional(state)).toBe(true);
+  });
+
+  it('ignores stale acknowledgements from another candidate, variant, camera, or facing', () => {
+    let state = chooseCandidate(
+      createInitialAssetAnchorLabState(),
+      'bounds-center-floor'
+    );
+    const before = state;
+    state = acknowledge(state, { candidate: 'raw-origin' });
+    state = acknowledge(state, { variant: 'downed' });
+    state = acknowledge(state, { cameraMode: 'play' });
+    state = acknowledge(state, { facing: 4 });
+    expect(state).toBe(before);
+    expect(state.observed.size).toBe(0);
   });
 
   it.each(['raw-origin', 'bounds-center-floor'] as AnchorCandidate[])(
-    'requires standing and downed to each retain all six observations for %s',
+    'requires standing and downed positive observations for %s on one logical hex',
     (candidate) => {
       let state = assetAnchorLabReducer(createInitialAssetAnchorLabState(), {
         type: 'select-case',
         caseId: 'fighter-pair',
       });
-      state = assetAnchorLabReducer(state, {
-        type: 'select-candidate',
-        candidate,
-      });
-      state = visitSix(state, 'standing');
-      state = assetAnchorLabReducer(state, {
-        type: 'select-camera',
-        mode: 'play',
-      });
+      state = chooseCandidate(state, candidate);
+      state = observeRequiredVariant(state, 'standing');
       expect(canRecordProvisional(state)).toBe(false);
-      state = visitSix(state, 'downed');
+      state = observeRequiredVariant(state, 'downed');
       expect(canRecordProvisional(state)).toBe(true);
       expect(OWNING_HEX).toEqual({ q: 0, r: 0, s: 0 });
     }
   );
+
   it.each([
     ['bookcase', 'raw-origin'],
     ['bookcase', 'bounds-center-floor'],
@@ -167,23 +286,16 @@ describe('Asset Anchor Lab fixture state', () => {
     ['fighter-pair', 'raw-origin'],
     ['fighter-pair', 'bounds-center-floor'],
   ] as const)(
-    'can exercise every %s / %s candidate through all facings and required variants',
+    'can exercise every %s / %s candidate through positive real-render acknowledgements',
     (caseId, candidate) => {
       let state = assetAnchorLabReducer(createInitialAssetAnchorLabState(), {
         type: 'select-case',
         caseId,
       });
-      state = assetAnchorLabReducer(state, {
-        type: 'select-candidate',
-        candidate,
-      });
+      state = chooseCandidate(state, candidate);
       for (const variant of ANCHOR_LAB_CASES[caseId].variants) {
-        state = visitSix(state, variant);
+        state = observeRequiredVariant(state, variant);
       }
-      state = assetAnchorLabReducer(state, {
-        type: 'select-camera',
-        mode: 'play',
-      });
       expect(canRecordProvisional(state)).toBe(true);
     }
   );

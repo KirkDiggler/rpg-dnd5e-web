@@ -15,11 +15,26 @@ Source checkpoints:
 ## What the working surface proves
 
 - The cyan owning hex is always cube `q0,r0,s0`; changing case, facing, candidate, camera, or standing/downed variant never changes that logical address.
-- The magenta raw model/bounds remain rendered. Cyan is the candidate + bounded adjustment. Gold is the raw model origin and the lab's explicit local `+Z` direction probe. Orange is the real synced wall piece plus a high-contrast wall-plane outline.
+- The magenta raw model/bounds remain rendered. Cyan is the candidate + bounded adjustment. The gold dot is centered at exact model-local `(0,0,0)`; a distinct vertical stem runs from zero to a separately named elevated visibility ring, and a separate gold arrow is the local `+Z` direction probe. No elevated element is called the raw origin. Orange is the real synced wall piece plus a high-contrast wall-plane outline.
 - Candidate meanings are deliberately semantic and local: raw origin, visible-bounds center/floor, and measured back-face/wall. They are not proposed production field names.
 - Adjustment is local X/Y/Z in 5 cm steps, clamped to exactly ±25 cm, and reset returns to the selected measured candidate.
 - The same candidate transform feeds Orbit and Play. Play uses the existing tactical orthographic constants; there is no camera-only compensation.
-- Provisional output stays withheld until a person explicitly selects a candidate, visits Orbit and Play, and visits all six canonical facings. The fighter additionally requires all six for standing **and** downed.
+- Navigation never pre-credits evidence. Provisional output accepts only positive callbacks emitted after the real GLB has loaded, produced finite non-zero measured bounds, and committed raw + calibrated primitives under the exact case + variant + candidate + camera + facing selection. The chosen candidate needs Orbit, Play, and all six facings; the fighter requires that independently for standing **and** downed. Pending, error, unmeasured/fallback-only, stale, other-candidate, and other-variant observations remain gated.
+
+## Positive gate and real-scene verification
+
+Focused native verification after the review remediation: **3 files / 30 tests passed**. The pure reducer suite covers initial/pending/error/unmeasured states, missing Play, missing selected-candidate Orbit, stale callbacks, another candidate, another variant, both fighter variants, and every fixture candidate while retaining the existing candidate math and ±25 cm clamp/reset coverage. `AssetAnchorLabPreview.test.tsx` uses the real R3F scene graph and stubs only external GLB/texture fetches; it asserts both actual asset primitives, the Synty floor texture path, Synty wall GLB path, raw + calibrated bounds, exact-zero marker/leader/elevated glyph separation, owning-hex highlight, shared tactical camera, measured bounds, and the post-commit render observation payload.
+
+Mutation red/green proof was run against the focused native tests, restoring each edit before the next:
+
+| Deliberate mutation | Red assertion |
+|---|---|
+| remove the calibrated asset `<primitive>` | expected two actual asset meshes, got one |
+| remove `SyntyHexFloor` | expected the real floor texture loader call |
+| remove the real wall `GlbInstance` | expected an environment GLB loader call |
+| remove the Play requirement from `canRecordProvisional` | “withholds when Play is missing…” changed from expected false to true |
+
+Each mutation returned non-zero. After restoration, the same focused command returned **30/30 green**. These are discriminating seams rather than source-text assertions.
 
 ## Runtime measurements from the loaded GLBs
 
@@ -57,9 +72,9 @@ This ledger intentionally does **not** collapse the torch's wall registration an
 
 All captures are 1440×900 local Chromium against the real Vite runtime and actual synced GLBs.
 
-- [`asset-anchor-lab-731-bookcase-orbit.png`](asset-anchor-lab-731-bookcase-orbit.png) — **viewed:** magenta raw bookcase/bounds sit corner-offset from the gold origin; cyan visible-center/floor candidate is centered over the same highlighted hex. The orange wall reference remains visible from the authoring angle.
+- [`asset-anchor-lab-731-bookcase-orbit.png`](asset-anchor-lab-731-bookcase-orbit.png) — **viewed:** magenta raw bookcase/bounds sit corner-offset from the gold exact-zero dot and its visibility leader; cyan visible-center/floor candidate is centered over the same highlighted hex. The orange wall reference remains visible from the authoring angle.
 - [`asset-anchor-lab-731-bookcase-play.png`](asset-anchor-lab-731-bookcase-play.png) — **viewed:** the shared tactical projection shows the same raw/calibrated separation at facing SE; no camera-specific correction appears.
-- [`asset-anchor-lab-731-six-facings-play.png`](asset-anchor-lab-731-six-facings-play.png) — **viewed:** E/NE/NW/W/SW/SE all rotate the raw and calibrated bounds, origin probe, and wall reference together under Play. The cyan candidate stays associated with the highlighted owning hex while the magenta corner-pivot result rotates around it.
+- [`asset-anchor-lab-731-six-facings-play.png`](asset-anchor-lab-731-six-facings-play.png) — **viewed:** E/NE/NW/W/SW/SE all rotate the raw and calibrated bounds, exact-zero marker + separate leader/ring, local-forward probe, and wall reference together under Play. The cyan candidate stays associated with the highlighted owning hex while the magenta corner-pivot result rotates around it.
 - [`asset-anchor-lab-731-torch-orbit.png`](asset-anchor-lab-731-torch-orbit.png) — **viewed:** magenta raw torch is upright at the hex center/floor; cyan wall-face candidate is centered on the orange wall at the fixture-only eye line. The large gap rules out foreshortening as the explanation.
 - [`asset-anchor-lab-731-torch-play.png`](asset-anchor-lab-731-torch-play.png) — **viewed:** the tactical camera shows the same torch on the same wall plane; raw remains visible on the owning hex.
 - [`asset-anchor-lab-731-fighter-standing-play.png`](asset-anchor-lab-731-fighter-standing-play.png) — **viewed:** standing fighter remains centered on q0/r0/s0; raw and bounds-center candidate nearly coincide.

@@ -13,12 +13,12 @@
       "contentType": "model/gltf-binary"
     },
     {
-      "url": "http://127.0.0.1:5310/models/synty/env/SM_Env_Wall_Broken_Edge_01.glb",
+      "url": "http://127.0.0.1:5310/models/synty/env/SM_Env_Door_Frame_01.glb",
       "status": 200,
       "contentType": "model/gltf-binary"
     },
     {
-      "url": "http://127.0.0.1:5310/models/synty/env/SM_Env_Wall_Alcove_01.glb",
+      "url": "http://127.0.0.1:5310/models/synty/env/SM_Env_Wall_Broken_Edge_01.glb",
       "status": 200,
       "contentType": "model/gltf-binary"
     },
@@ -28,7 +28,7 @@
       "contentType": "model/gltf-binary"
     },
     {
-      "url": "http://127.0.0.1:5310/models/synty/env/SM_Env_Door_Frame_01.glb",
+      "url": "http://127.0.0.1:5310/models/synty/env/SM_Env_Wall_Alcove_01.glb",
       "status": 200,
       "contentType": "model/gltf-binary"
     },
@@ -142,47 +142,47 @@
     },
     {
       "type": "log",
-      "text": "🟢 Response: dnd5e.api.lobby.v1alpha1.LobbyService.GetMyActiveLobby (121ms) {$typeName: dnd5e.api.lobby.v1alpha1.GetMyActiveLobbyResponse, lobbyId: lobby_53ae6650-b726-47bd-a217-a0f8973e93b2, encounterId: f8ff98c0-4895-461d-90d3-ae60063c5a57, lobbyStatus: 2}"
+      "text": "🟢 Response: dnd5e.api.lobby.v1alpha1.LobbyService.GetMyActiveLobby (148ms) {$typeName: dnd5e.api.lobby.v1alpha1.GetMyActiveLobbyResponse, lobbyId: lobby_53ae6650-b726-47bd-a217-a0f8973e93b2, encounterId: f8ff98c0-4895-461d-90d3-ae60063c5a57, lobbyStatus: 2}"
     },
     {
       "type": "log",
-      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListRaces (127ms) {$typeName: dnd5e.api.v1alpha1.ListRacesResponse, races: Array(9), nextPageToken: , totalSize: 9}"
+      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListRaces (159ms) {$typeName: dnd5e.api.v1alpha1.ListRacesResponse, races: Array(9), nextPageToken: , totalSize: 9}"
     },
     {
       "type": "log",
-      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListClasses (133ms) {$typeName: dnd5e.api.v1alpha1.ListClassesResponse, classes: Array(12), nextPageToken: , totalSize: 12}"
+      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListClasses (167ms) {$typeName: dnd5e.api.v1alpha1.ListClassesResponse, classes: Array(12), nextPageToken: , totalSize: 12}"
     },
     {
       "type": "log",
-      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListBackgrounds (133ms) {$typeName: dnd5e.api.v1alpha1.ListBackgroundsResponse, backgrounds: Array(17), nextPageToken: , totalSize: 17}"
+      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListBackgrounds (167ms) {$typeName: dnd5e.api.v1alpha1.ListBackgroundsResponse, backgrounds: Array(17), nextPageToken: , totalSize: 17}"
     },
     {
       "type": "log",
-      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListRaces (130ms) {$typeName: dnd5e.api.v1alpha1.ListRacesResponse, races: Array(9), nextPageToken: , totalSize: 9}"
+      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListRaces (164ms) {$typeName: dnd5e.api.v1alpha1.ListRacesResponse, races: Array(9), nextPageToken: , totalSize: 9}"
     },
     {
       "type": "log",
-      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListClasses (136ms) {$typeName: dnd5e.api.v1alpha1.ListClassesResponse, classes: Array(12), nextPageToken: , totalSize: 12}"
+      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListClasses (172ms) {$typeName: dnd5e.api.v1alpha1.ListClassesResponse, classes: Array(12), nextPageToken: , totalSize: 12}"
     },
     {
       "type": "log",
-      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListBackgrounds (137ms) {$typeName: dnd5e.api.v1alpha1.ListBackgroundsResponse, backgrounds: Array(17), nextPageToken: , totalSize: 17}"
+      "text": "🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListBackgrounds (172ms) {$typeName: dnd5e.api.v1alpha1.ListBackgroundsResponse, backgrounds: Array(17), nextPageToken: , totalSize: 17}"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x32b4062b2400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0x106c062ee000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x32b4062b2400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0x106c062ee000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x32b4062b2400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      "text": "[.WebGL-0x106c062ee000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
     },
     {
       "type": "warning",
-      "text": "[.WebGL-0x32b4062b2400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      "text": "[.WebGL-0x106c062ee000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
     },
     {
       "type": "log",

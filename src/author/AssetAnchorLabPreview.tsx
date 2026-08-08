@@ -14,12 +14,21 @@ import {
   useGLTF,
 } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import { Suspense, useEffect, useMemo, useRef } from 'react';
+import {
+  Component,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import {
+  isUsableMeasurement,
   resolvedCalibrationOffset,
   type AssetAnchorLabState,
+  type RenderObservation,
   type Vec3Tuple,
   type VisibleBounds,
 } from './assetAnchorExperiment';
@@ -99,16 +108,18 @@ function BoundsBox({
   bounds,
   offset,
   color,
+  name,
 }: {
   bounds: VisibleBounds;
   offset: Vec3Tuple;
   color: string;
+  name: string;
 }) {
   const position = bounds.center.map(
     (value, index) => value + offset[index]!
   ) as Vec3Tuple;
   return (
-    <mesh position={position} renderOrder={10}>
+    <mesh name={name} position={position} renderOrder={10}>
       <boxGeometry args={bounds.size} />
       <meshBasicMaterial
         color={color}
@@ -122,16 +133,20 @@ function BoundsBox({
   );
 }
 
-function AssetComparison({
+export function AssetComparison({
   url,
   state,
   fallbackBounds,
   onBoundsMeasured,
+  onRenderObserved,
+  onAssetFailed,
 }: {
   url: string;
   state: AssetAnchorLabState;
   fallbackBounds: VisibleBounds;
   onBoundsMeasured: (bounds: VisibleBounds) => void;
+  onRenderObserved: (observation: RenderObservation) => void;
+  onAssetFailed: (status: 'error' | 'unmeasured') => void;
 }) {
   const { scene } = useGLTF(url);
   const raw = useMemo(() => cloneSkeleton(scene), [scene]);
@@ -139,26 +154,97 @@ function AssetComparison({
   const measured = useMemo(() => measureVisibleBounds(raw), [raw]);
   useRawGhostMaterials(raw);
 
-  useEffect(() => onBoundsMeasured(measured), [measured, onBoundsMeasured]);
+  useEffect(() => {
+    if (!isUsableMeasurement(measured)) {
+      onAssetFailed('unmeasured');
+      return;
+    }
+    // This effect runs only after the real raw/calibrated primitives and the
+    // current camera/facing branch have committed. Reducer navigation never
+    // manufactures an observation.
+    onBoundsMeasured(measured);
+    onRenderObserved({
+      caseId: state.caseId,
+      variant: state.variant,
+      candidate: state.candidate,
+      cameraMode: state.cameraMode,
+      facing: state.facing,
+      bounds: measured,
+    });
+  }, [
+    measured,
+    onAssetFailed,
+    onBoundsMeasured,
+    onRenderObserved,
+    state.cameraMode,
+    state.candidate,
+    state.caseId,
+    state.facing,
+    state.variant,
+  ]);
 
-  const bounds = measured.size.every(Number.isFinite)
-    ? measured
-    : fallbackBounds;
+  const bounds = isUsableMeasurement(measured) ? measured : fallbackBounds;
   const offset = resolvedCalibrationOffset(state, bounds);
   const rotationY = facingToRotationY(state.facing);
 
   return (
-    <group rotation={[0, rotationY, 0]}>
-      <group scale={SYNTY_SCALE}>
+    <group name="anchor-lab-asset-comparison" rotation={[0, rotationY, 0]}>
+      <group name="anchor-lab-raw-asset" scale={SYNTY_SCALE}>
         <primitive object={raw} />
       </group>
-      <group position={offset} scale={SYNTY_SCALE}>
+      <group
+        name="anchor-lab-calibrated-asset"
+        position={offset}
+        scale={SYNTY_SCALE}
+      >
         <primitive object={calibrated} />
       </group>
-      <BoundsBox bounds={bounds} offset={[0, 0, 0]} color="#ff3fa4" />
-      <BoundsBox bounds={bounds} offset={offset} color="#39e7ff" />
-      <mesh position={[0, 0.28, 0]} renderOrder={20}>
-        <sphereGeometry args={[0.085, 16, 12]} />
+      <BoundsBox
+        name="anchor-lab-raw-bounds"
+        bounds={bounds}
+        offset={[0, 0, 0]}
+        color="#ff3fa4"
+      />
+      <BoundsBox
+        name="anchor-lab-calibrated-bounds"
+        bounds={bounds}
+        offset={offset}
+        color="#39e7ff"
+      />
+
+      {/* The dot is centered at exact model-local zero. The vertical stem
+          begins at zero and ends at the separately named elevated glyph. */}
+      <mesh
+        name="anchor-lab-exact-raw-origin"
+        position={[0, 0, 0]}
+        renderOrder={20}
+      >
+        <sphereGeometry args={[0.06, 16, 12]} />
+        <meshBasicMaterial
+          color="#ffdf54"
+          depthTest={false}
+          toneMapped={false}
+        />
+      </mesh>
+      <mesh
+        name="anchor-lab-origin-visibility-leader"
+        position={[0, 0.17, 0]}
+        renderOrder={19}
+      >
+        <cylinderGeometry args={[0.012, 0.012, 0.34, 8]} />
+        <meshBasicMaterial
+          color="#ffdf54"
+          depthTest={false}
+          toneMapped={false}
+        />
+      </mesh>
+      <mesh
+        name="anchor-lab-elevated-origin-glyph"
+        position={[0, 0.34, 0]}
+        rotation={[Math.PI / 2, 0, 0]}
+        renderOrder={20}
+      >
+        <torusGeometry args={[0.09, 0.018, 8, 20]} />
         <meshBasicMaterial
           color="#ffdf54"
           depthTest={false}
@@ -166,9 +252,10 @@ function AssetComparison({
         />
       </mesh>
       <arrowHelper
+        name="anchor-lab-local-forward-probe"
         args={[
           new THREE.Vector3(0, 0, 1),
-          new THREE.Vector3(0, 0.34, 0),
+          new THREE.Vector3(0, 0.025, 0),
           0.85,
           '#ffdf54',
           0.22,
@@ -194,6 +281,7 @@ function TacticalCamera() {
   return (
     <OrthographicCamera
       ref={ref}
+      name="anchor-lab-shared-tactical-camera"
       makeDefault
       position={[position.x, position.y, position.z]}
       zoom={ORTHO_ZOOM}
@@ -203,16 +291,20 @@ function TacticalCamera() {
   );
 }
 
-function LabScene({
+export function AssetAnchorLabScene({
   url,
   state,
   fallbackBounds,
   onBoundsMeasured,
+  onRenderObserved,
+  onAssetFailed,
 }: {
   url: string;
   state: AssetAnchorLabState;
   fallbackBounds: VisibleBounds;
   onBoundsMeasured: (bounds: VisibleBounds) => void;
+  onRenderObserved: (observation: RenderObservation) => void;
+  onAssetFailed: (status: 'error' | 'unmeasured') => void;
 }) {
   const highlightGeometry = useMemo(makeHexGeometry, []);
   const rotationY = facingToRotationY(state.facing);
@@ -222,15 +314,26 @@ function LabScene({
         <TacticalCamera />
       ) : (
         <>
-          <PerspectiveCamera makeDefault position={[4.8, 4.2, 5.4]} fov={42} />
+          <PerspectiveCamera
+            name="anchor-lab-orbit-camera"
+            makeDefault
+            position={[4.8, 4.2, 5.4]}
+            fov={42}
+          />
           <OrbitControls makeDefault target={[0, 0.75, 0]} />
         </>
       )}
       <ambientLight intensity={0.9} />
       <directionalLight position={[5, 8, 4]} intensity={1.1} />
       <Suspense fallback={null}>
-        <SyntyHexFloor floorTiles={FLOOR_TILES} hexSize={HEX_SIZE} />
-        <mesh geometry={highlightGeometry} position={[0, 0.215, 0]}>
+        <group name="anchor-lab-real-synty-floor">
+          <SyntyHexFloor floorTiles={FLOOR_TILES} hexSize={HEX_SIZE} />
+        </group>
+        <mesh
+          name="anchor-lab-owning-hex-highlight"
+          geometry={highlightGeometry}
+          position={[0, 0.215, 0]}
+        >
           <meshBasicMaterial
             color="#1fd4c4"
             transparent
@@ -239,7 +342,7 @@ function LabScene({
             toneMapped={false}
           />
         </mesh>
-        <group rotation={[0, rotationY, 0]}>
+        <group name="anchor-lab-real-synty-wall" rotation={[0, rotationY, 0]}>
           <GlbInstance
             file={PLAIN_WALL.file}
             position={{ x: -0.5, z: WALL_Z }}
@@ -263,6 +366,8 @@ function LabScene({
           state={state}
           fallbackBounds={fallbackBounds}
           onBoundsMeasured={onBoundsMeasured}
+          onRenderObserved={onRenderObserved}
+          onAssetFailed={onAssetFailed}
         />
       </Suspense>
       <gridHelper
@@ -278,6 +383,27 @@ export interface AssetAnchorLabPreviewProps {
   state: AssetAnchorLabState;
   fallbackBounds: VisibleBounds;
   onBoundsMeasured: (bounds: VisibleBounds) => void;
+  onRenderObserved: (observation: RenderObservation) => void;
+  onAssetFailed: (status: 'error' | 'unmeasured') => void;
+}
+
+class PreviewErrorBoundary extends Component<
+  { children: ReactNode; onError: () => void },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch() {
+    this.props.onError();
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
 }
 
 /**
@@ -295,9 +421,11 @@ export function AssetAnchorLabPreview(props: AssetAnchorLabPreviewProps) {
         background: '#081012',
       }}
     >
-      <Canvas frameloop="demand" dpr={[1, 1.5]}>
-        <LabScene {...props} />
-      </Canvas>
+      <PreviewErrorBoundary onError={() => props.onAssetFailed('error')}>
+        <Canvas frameloop="demand" dpr={[1, 1.5]}>
+          <AssetAnchorLabScene {...props} />
+        </Canvas>
+      </PreviewErrorBoundary>
       <div
         style={{
           position: 'absolute',
@@ -311,8 +439,9 @@ export function AssetAnchorLabPreview(props: AssetAnchorLabPreviewProps) {
           pointerEvents: 'none',
         }}
       >
-        cyan = calibrated bounds · magenta = raw bounds/model · gold = raw
-        origin + local +Z probe
+        cyan = calibrated bounds · magenta = raw bounds/model · gold dot = exact
+        raw origin (0,0,0) · gold stem/ring = elevated visibility glyph · gold
+        arrow = local +Z probe
       </div>
     </div>
   );

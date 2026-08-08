@@ -5,6 +5,7 @@ import {
   ADJUST_STEP_METERS,
   ANCHOR_LAB_CASES,
   assetAnchorLabReducer,
+  assetVariantKey,
   candidateOffset,
   canRecordProvisional,
   createInitialAssetAnchorLabState,
@@ -19,6 +20,7 @@ import {
   type AnchorCandidate,
   type FacingIndex,
   type LabCameraMode,
+  type RenderObservation,
   type VisibleBounds,
 } from './assetAnchorExperiment';
 
@@ -89,6 +91,26 @@ export function AssetAnchorLabConcept() {
     (next: VisibleBounds) => setMeasured({ url, bounds: next }),
     [url]
   );
+  const handleRenderObserved = useCallback(
+    (observation: RenderObservation) => {
+      setMeasured({ url, bounds: observation.bounds });
+      dispatch({ type: 'acknowledge-render', observation });
+    },
+    [url]
+  );
+  const handleAssetFailed = useCallback(
+    (status: 'error' | 'unmeasured') =>
+      dispatch({
+        type: 'asset-load-failed',
+        caseId: state.caseId,
+        variant: state.variant,
+        status,
+      }),
+    [state.caseId, state.variant]
+  );
+  const assetStatus =
+    state.assetStatus[assetVariantKey(state.caseId, state.variant)] ??
+    'pending';
   const rawCandidateOffset = useMemo(
     () => candidateOffset(state.caseId, state.candidate, bounds),
     [bounds, state.candidate, state.caseId]
@@ -153,6 +175,8 @@ export function AssetAnchorLabConcept() {
             state={state}
             fallbackBounds={fallbackBounds}
             onBoundsMeasured={handleBounds}
+            onRenderObserved={handleRenderObserved}
+            onAssetFailed={handleAssetFailed}
           />
         </div>
 
@@ -207,6 +231,16 @@ export function AssetAnchorLabConcept() {
               }}
             >
               {item.source} → {url}
+            </div>
+            <div
+              data-testid="asset-render-status"
+              style={{
+                marginTop: 3,
+                font: '10px monospace',
+                color: assetStatus === 'measured' ? '#56d99a' : '#e0a46d',
+              }}
+            >
+              loader / measurement / render: {assetStatus}
             </div>
           </div>
 
@@ -420,7 +454,9 @@ export function AssetAnchorLabConcept() {
             </div>
             <BoundsReadout bounds={bounds} />
             <div style={{ marginTop: 4, color: '#ffdf54', fontSize: 10 }}>
-              Raw origin remains gold at (0,0,0); magenta raw result is never
+              Gold dot is centered at exact raw origin (0,0,0). Its separate
+              vertical stem ends at the elevated visibility ring; neither the
+              ring nor the +Z arrow is the origin. Magenta raw result is never
               hidden.
             </div>
           </div>
@@ -435,10 +471,12 @@ export function AssetAnchorLabConcept() {
               PROVISIONAL FIXTURE OUTPUT GATE
             </div>
             <div style={{ fontSize: 10, color: '#b9aaa0', margin: '4px 0' }}>
-              Explicitly choose a candidate, view Orbit + Play, and inspect all
-              six facings
+              After successful GLB load + measurement + render, explicitly
+              choose one candidate and render that exact selection in Orbit,
+              Play, and all six facings
               {item.variants.length > 1 ? ' for both standing and downed' : ''}.
-              Nothing here writes production state.
+              Pending, failed, fallback-only, stale, and other-candidate views
+              never qualify. Nothing here writes production state.
             </div>
             <button
               disabled={!recordReady}

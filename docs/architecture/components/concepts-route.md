@@ -65,8 +65,10 @@ ornate torch, and canonical fighter standing/downed GLBs through the shared
 prop/class resolvers and `useGLTF`; renders them against shared scale, hex,
 wall, canonical-facing, and tactical-camera conventions; and keeps raw and
 measured-candidate results visible together. `assetAnchorExperiment.ts`
-contains only local semantic candidates, bounded adjustment, observation
-progress, and a local provisional-output gate. It does not write production
+contains only local semantic candidates, bounded adjustment, and a local
+provisional-output gate driven by positive post-load/measurement/R3F-commit
+observations keyed to exact case + variant + candidate + camera + facing. It
+does not write production
 state or add asset-specific behavior to a game renderer. Verdict and runtime
 proof: `docs/evidence/asset-anchor-lab-731.md`.
 

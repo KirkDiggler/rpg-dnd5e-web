@@ -173,6 +173,17 @@ export interface ProvisionalFixtureEvidence {
   warning: 'NON-PRODUCTION FIXTURE EVIDENCE';
 }
 
+export type AssetRenderStatus = 'pending' | 'error' | 'unmeasured' | 'measured';
+
+export interface RenderObservation {
+  caseId: LabCaseId;
+  variant: LabVariant;
+  candidate: AnchorCandidate;
+  cameraMode: LabCameraMode;
+  facing: FacingIndex;
+  bounds: VisibleBounds;
+}
+
 export interface AssetAnchorLabState {
   caseId: LabCaseId;
   facing: FacingIndex;
@@ -181,7 +192,10 @@ export interface AssetAnchorLabState {
   cameraMode: LabCameraMode;
   adjustment: Vec3Tuple;
   candidateExplicitlyChosen: boolean;
+  /** Positive observations emitted only after the real R3F asset commits. */
   observed: ReadonlySet<string>;
+  /** Per exact case+variant loader/measurement state; fixture bounds do not count. */
+  assetStatus: Readonly<Record<string, AssetRenderStatus>>;
   recorded: Partial<Record<LabCaseId, ProvisionalFixtureEvidence>>;
 }
 
@@ -191,36 +205,74 @@ export type AssetAnchorLabAction =
   | { type: 'select-variant'; variant: LabVariant }
   | { type: 'select-candidate'; candidate: AnchorCandidate }
   | { type: 'select-camera'; mode: LabCameraMode }
+  | { type: 'asset-load-pending'; caseId: LabCaseId; variant: LabVariant }
+  | {
+      type: 'asset-load-failed';
+      caseId: LabCaseId;
+      variant: LabVariant;
+      status: 'error' | 'unmeasured';
+    }
+  | { type: 'acknowledge-render'; observation: RenderObservation }
   | { type: 'adjust'; axis: 0 | 1 | 2; delta: number }
   | { type: 'reset-adjustment' }
   | { type: 'record-provisional' };
+
+export function assetVariantKey(
+  caseId: LabCaseId,
+  variant: LabVariant
+): string {
+  return `${caseId}|${variant}`;
+}
 
 function observationKey(
   caseId: LabCaseId,
   variant: LabVariant,
   candidate: AnchorCandidate,
+  cameraMode: LabCameraMode,
   facing: FacingIndex
 ): string {
-  return `${caseId}|${variant}|${candidate}|${facing}`;
+  return `${caseId}|${variant}|${candidate}|${cameraMode}|${facing}`;
 }
 
-function cameraKey(caseId: LabCaseId, mode: LabCameraMode): string {
-  return `${caseId}|camera|${mode}`;
+function invalidateAssetObservations(
+  observed: ReadonlySet<string>,
+  caseId: LabCaseId,
+  variant: LabVariant
+): ReadonlySet<string> {
+  const prefix = `${caseId}|${variant}|`;
+  return new Set([...observed].filter((key) => !key.startsWith(prefix)));
 }
 
-function withCurrentObservation(
-  state: AssetAnchorLabState
+function withAssetStatus(
+  state: AssetAnchorLabState,
+  caseId: LabCaseId,
+  variant: LabVariant,
+  status: AssetRenderStatus
 ): AssetAnchorLabState {
-  const observed = new Set(state.observed);
-  observed.add(
-    observationKey(state.caseId, state.variant, state.candidate, state.facing)
+  return {
+    ...state,
+    observed:
+      status === 'measured'
+        ? state.observed
+        : invalidateAssetObservations(state.observed, caseId, variant),
+    assetStatus: {
+      ...state.assetStatus,
+      [assetVariantKey(caseId, variant)]: status,
+    },
+  };
+}
+
+export function isUsableMeasurement(bounds: VisibleBounds): boolean {
+  const values = [bounds.min, bounds.max, bounds.center, bounds.size].flat();
+  return (
+    values.every(Number.isFinite) &&
+    bounds.size.every((value) => value > 0) &&
+    bounds.min.every((value, index) => value <= bounds.max[index]!)
   );
-  observed.add(cameraKey(state.caseId, state.cameraMode));
-  return { ...state, observed };
 }
 
 export function createInitialAssetAnchorLabState(): AssetAnchorLabState {
-  return withCurrentObservation({
+  return {
     caseId: 'bookcase',
     facing: 0,
     variant: 'standing',
@@ -229,8 +281,9 @@ export function createInitialAssetAnchorLabState(): AssetAnchorLabState {
     adjustment: [0, 0, 0],
     candidateExplicitlyChosen: false,
     observed: new Set(),
+    assetStatus: {},
     recorded: {},
-  });
+  };
 }
 
 function clampAdjustment(value: number): number {
@@ -240,23 +293,39 @@ function clampAdjustment(value: number): number {
   );
 }
 
+function hasObservation(
+  state: AssetAnchorLabState,
+  variant: LabVariant,
+  cameraMode: LabCameraMode,
+  facing: FacingIndex
+): boolean {
+  return state.observed.has(
+    observationKey(state.caseId, variant, state.candidate, cameraMode, facing)
+  );
+}
+
 export function canRecordProvisional(state: AssetAnchorLabState): boolean {
   if (!state.candidateExplicitlyChosen) return false;
-  if (!state.observed.has(cameraKey(state.caseId, 'orbit'))) return false;
-  if (!state.observed.has(cameraKey(state.caseId, 'play'))) return false;
   const variants = ANCHOR_LAB_CASES[state.caseId].variants;
-  return variants.every((variant) =>
-    FACING_LABELS.every((_, facing) =>
-      state.observed.has(
-        observationKey(
-          state.caseId,
-          variant,
-          state.candidate,
-          facing as FacingIndex
-        )
+  return variants.every((variant) => {
+    if (
+      state.assetStatus[assetVariantKey(state.caseId, variant)] !== 'measured'
+    ) {
+      return false;
+    }
+    const hasOrbit = FACING_LABELS.some((_, facing) =>
+      hasObservation(state, variant, 'orbit', facing as FacingIndex)
+    );
+    const hasPlay = FACING_LABELS.some((_, facing) =>
+      hasObservation(state, variant, 'play', facing as FacingIndex)
+    );
+    const hasAllFacings = FACING_LABELS.every((_, facing) =>
+      (['orbit', 'play'] as const).some((cameraMode) =>
+        hasObservation(state, variant, cameraMode, facing as FacingIndex)
       )
-    )
-  );
+    );
+    return hasOrbit && hasPlay && hasAllFacings;
+  });
 }
 
 function provisionalEvidence(
@@ -282,33 +351,98 @@ export function assetAnchorLabReducer(
   switch (action.type) {
     case 'select-case': {
       const item = ANCHOR_LAB_CASES[action.caseId];
-      return withCurrentObservation({
+      const selected = {
         ...state,
         caseId: action.caseId,
-        facing: 0,
+        facing: 0 as FacingIndex,
         variant: item.variants[0]!,
         candidate: item.candidates[0]!,
-        adjustment: [0, 0, 0],
+        adjustment: [0, 0, 0] as Vec3Tuple,
         candidateExplicitlyChosen: false,
-      });
+      };
+      return action.caseId === state.caseId
+        ? selected
+        : withAssetStatus(
+            selected,
+            selected.caseId,
+            selected.variant,
+            'pending'
+          );
     }
     case 'select-facing':
-      return withCurrentObservation({ ...state, facing: action.facing });
-    case 'select-variant':
-      return withCurrentObservation({
+      return { ...state, facing: action.facing };
+    case 'select-variant': {
+      const selected = {
         ...state,
         variant: action.variant,
-        adjustment: [0, 0, 0],
-      });
+        adjustment: [0, 0, 0] as Vec3Tuple,
+      };
+      return action.variant === state.variant
+        ? selected
+        : withAssetStatus(
+            selected,
+            selected.caseId,
+            selected.variant,
+            'pending'
+          );
+    }
     case 'select-candidate':
-      return withCurrentObservation({
+      return {
         ...state,
         candidate: action.candidate,
         adjustment: [0, 0, 0],
         candidateExplicitlyChosen: true,
-      });
+      };
     case 'select-camera':
-      return withCurrentObservation({ ...state, cameraMode: action.mode });
+      return { ...state, cameraMode: action.mode };
+    case 'asset-load-pending':
+      return withAssetStatus(state, action.caseId, action.variant, 'pending');
+    case 'asset-load-failed':
+      return withAssetStatus(
+        state,
+        action.caseId,
+        action.variant,
+        action.status
+      );
+    case 'acknowledge-render': {
+      const observation = action.observation;
+      // Ignore stale callbacks from a Suspense/render branch that is no longer
+      // the exact case+variant+candidate+camera+facing a person is viewing.
+      if (
+        observation.caseId !== state.caseId ||
+        observation.variant !== state.variant ||
+        observation.candidate !== state.candidate ||
+        observation.cameraMode !== state.cameraMode ||
+        observation.facing !== state.facing
+      ) {
+        return state;
+      }
+      if (!isUsableMeasurement(observation.bounds)) {
+        return withAssetStatus(
+          state,
+          observation.caseId,
+          observation.variant,
+          'unmeasured'
+        );
+      }
+      const measured = withAssetStatus(
+        state,
+        observation.caseId,
+        observation.variant,
+        'measured'
+      );
+      const observed = new Set(measured.observed);
+      observed.add(
+        observationKey(
+          observation.caseId,
+          observation.variant,
+          observation.candidate,
+          observation.cameraMode,
+          observation.facing
+        )
+      );
+      return { ...measured, observed };
+    }
     case 'adjust': {
       const adjustment = [...state.adjustment] as Vec3Tuple;
       adjustment[action.axis] = clampAdjustment(
@@ -336,13 +470,8 @@ export function facingProgress(state: AssetAnchorLabState): string {
     (total, variant) =>
       total +
       FACING_LABELS.filter((_, facing) =>
-        state.observed.has(
-          observationKey(
-            state.caseId,
-            variant,
-            state.candidate,
-            facing as FacingIndex
-          )
+        (['orbit', 'play'] as const).some((cameraMode) =>
+          hasObservation(state, variant, cameraMode, facing as FacingIndex)
         )
       ).length,
     0

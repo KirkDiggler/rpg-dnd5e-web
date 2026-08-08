@@ -1,17 +1,52 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useEffect } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AssetAnchorLabConcept } from './AssetAnchorLabConcept';
 
 vi.mock('./AssetAnchorLabPreview', () => ({
+  // The real R3F graph has its own test. This DOM seam simulates only the
+  // post-commit callback so Concept coverage exercises the real reducer gate.
   AssetAnchorLabPreview: (props: {
     url: string;
-    state: { facing: number; variant: string; cameraMode: string };
-  }) => (
-    <div data-testid="mock-anchor-preview">
-      {props.url}|facing={props.state.facing}|variant={props.state.variant}
-      |camera={props.state.cameraMode}
-    </div>
-  ),
+    state: {
+      caseId: 'bookcase' | 'torch-ornate' | 'fighter-pair';
+      facing: 0 | 1 | 2 | 3 | 4 | 5;
+      variant: 'standing' | 'downed';
+      candidate: 'raw-origin' | 'bounds-center-floor' | 'wall-face';
+      cameraMode: 'orbit' | 'play';
+    };
+    onRenderObserved: (observation: unknown) => void;
+  }) => {
+    const { url, state, onRenderObserved } = props;
+    useEffect(() => {
+      onRenderObserved({
+        caseId: state.caseId,
+        facing: state.facing,
+        variant: state.variant,
+        candidate: state.candidate,
+        cameraMode: state.cameraMode,
+        bounds: {
+          min: [0, 0, 0],
+          max: [1, 2, 1],
+          center: [0.5, 1, 0.5],
+          size: [1, 2, 1],
+        },
+      });
+    }, [
+      onRenderObserved,
+      state.cameraMode,
+      state.candidate,
+      state.caseId,
+      state.facing,
+      state.variant,
+    ]);
+    return (
+      <div data-testid="mock-anchor-preview">
+        {url}|facing={state.facing}|variant={state.variant}|camera=
+        {state.cameraMode}
+      </div>
+    );
+  },
 }));
 
 function clickAllFacings() {
@@ -103,6 +138,9 @@ describe('AssetAnchorLabConcept — real inspection/calibration interaction path
     expect(screen.getByTestId('facing-progress').textContent).toContain(
       '12/12'
     );
+    // Standing's Orbit observation cannot satisfy the exact downed variant.
+    expect((record as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Orbit · inspect' }));
     expect((record as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByTestId('classification').textContent).toContain(
       'Re-export defect'
