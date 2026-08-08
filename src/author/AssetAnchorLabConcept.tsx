@@ -20,6 +20,7 @@ import {
   type AnchorCandidate,
   type FacingIndex,
   type LabCameraMode,
+  type LabVisibilityMode,
   type RenderObservation,
   type VisibleBounds,
 } from './assetAnchorExperiment';
@@ -68,6 +69,42 @@ const CANDIDATE_LABELS: Record<AnchorCandidate, string> = {
   'wall-face': 'Measured back face + wall reference',
 };
 
+function recommendationFor(
+  caseId: keyof typeof ANCHOR_LAB_CASES,
+  variant: 'standing' | 'downed'
+): { heading: string; detail: string; candidate: AnchorCandidate } {
+  if (caseId === 'bookcase') {
+    return {
+      heading: 'Recommended: center visible bounds on hex',
+      detail:
+        'Intrinsic corner-pivot correction; visible X/Z center → owning hex center and base → floor. Keep any wall nudge separate.',
+      candidate: 'bounds-center-floor',
+    };
+  }
+  if (caseId === 'torch-ornate') {
+    return {
+      heading: 'Recommended: wall-face (height provisional)',
+      detail:
+        'Measured back face → wall target. Center Y=1.15m is a provisional scene-height judgment.',
+      candidate: 'wall-face',
+    };
+  }
+  if (variant === 'downed') {
+    return {
+      heading: 'Diagnostic center only — production fix is re-export',
+      detail:
+        'Centers visible bounds on q0,r0,s0 for diagnosis; never a production per-variant anchor.',
+      candidate: 'bounds-center-floor',
+    };
+  }
+  return {
+    heading: 'Raw is centered',
+    detail:
+      'Standing visible bounds already center on q0,r0,s0. Confirm raw origin as the comparison candidate.',
+    candidate: 'raw-origin',
+  };
+}
+
 export function AssetAnchorLabConcept() {
   const [state, dispatch] = useReducer(
     assetAnchorLabReducer,
@@ -75,6 +112,7 @@ export function AssetAnchorLabConcept() {
     createInitialAssetAnchorLabState
   );
   const item = ANCHOR_LAB_CASES[state.caseId];
+  const recommendation = recommendationFor(state.caseId, state.variant);
   const url = resolveAssetAnchorUrl(state.caseId, state.variant);
   const fallbackBounds =
     FIXTURE_VISIBLE_BOUNDS[fixtureBoundsKey(state.caseId, state.variant)]!;
@@ -276,6 +314,91 @@ export function AssetAnchorLabConcept() {
             </div>
           )}
 
+          <div
+            data-testid="candidate-recommendation"
+            style={{ ...panelStyle, borderColor: '#5ab6a8' }}
+          >
+            <div style={{ color: '#72bdb4', fontSize: 10 }}>
+              INTENDED ANSWER · EXPLICIT HUMAN ACTION
+            </div>
+            <strong
+              style={{ display: 'block', marginTop: 4, color: '#dffcf7' }}
+            >
+              {recommendation.heading}
+            </strong>
+            <div style={{ marginTop: 3, color: '#a9bfbb', fontSize: 10 }}>
+              {recommendation.detail}
+            </div>
+            <button
+              style={{
+                ...buttonStyle,
+                width: '100%',
+                marginTop: 6,
+                background: '#23564f',
+              }}
+              onClick={() =>
+                dispatch({
+                  type: 'select-candidate',
+                  candidate: recommendation.candidate,
+                })
+              }
+            >
+              Apply and show: {CANDIDATE_LABELS[recommendation.candidate]}
+            </button>
+          </div>
+
+          <div style={panelStyle}>
+            <div style={{ color: '#72bdb4', fontSize: 10 }}>
+              VISIBILITY · JUDGE ONE ANSWER AT A TIME
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 4,
+                marginTop: 5,
+              }}
+            >
+              {(
+                [
+                  ['raw', 'Raw only'],
+                  ['calibrated', 'Calibrated only'],
+                  ['overlay', 'Overlay'],
+                ] as [LabVisibilityMode, string][]
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  aria-label={`Visibility ${label}`}
+                  disabled={mode !== 'raw' && !state.candidateExplicitlyChosen}
+                  style={{
+                    ...buttonStyle,
+                    padding: '5px 3px',
+                    opacity:
+                      mode !== 'raw' && !state.candidateExplicitlyChosen
+                        ? 0.4
+                        : 1,
+                    background:
+                      state.visibilityMode === mode
+                        ? '#4b4160'
+                        : buttonStyle.background,
+                  }}
+                  onClick={() => dispatch({ type: 'select-visibility', mode })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div
+              data-testid="visibility-status"
+              style={{ marginTop: 4, color: '#ffdf54', fontSize: 10 }}
+            >
+              showing {state.visibilityMode}
+              {!state.candidateExplicitlyChosen
+                ? ' · choose a candidate to unlock calibrated views'
+                : ''}
+            </div>
+          </div>
+
           <div style={panelStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: '#72bdb4', fontSize: 10 }}>
@@ -328,7 +451,7 @@ export function AssetAnchorLabConcept() {
 
           <div style={panelStyle}>
             <div style={{ color: '#72bdb4', fontSize: 10 }}>
-              CANDIDATE ANCHOR · FIXTURE SEMANTICS ONLY
+              OTHER CANDIDATE PRESETS · EXPLICIT SELECTION
             </div>
             <div style={{ display: 'grid', gap: 4, marginTop: 5 }}>
               {item.candidates.map((candidate) => (
@@ -354,15 +477,34 @@ export function AssetAnchorLabConcept() {
               data-testid="candidate-offset"
               style={{ marginTop: 5, font: '10px monospace' }}
             >
-              measured candidate {vector(rawCandidateOffset)}
+              preset base offset {vector(rawCandidateOffset)}
             </div>
           </div>
 
           <div style={panelStyle}>
             <div style={{ color: '#72bdb4', fontSize: 10 }}>
-              BOUNDED LOCAL ADJUSTMENT · ±{ADJUST_LIMIT_METERS.toFixed(2)}m ·{' '}
+              FINE TRIM AROUND PRESET · ±{ADJUST_LIMIT_METERS.toFixed(2)}m ·{' '}
               {ADJUST_STEP_METERS.toFixed(2)}m step
             </div>
+            <div style={{ color: '#9eb5b1', fontSize: 9.5, marginTop: 3 }}>
+              Fine trim cannot replace the larger semantic preset. Effective
+              offset = preset base + trim.
+            </div>
+            {(state.caseId === 'bookcase' ||
+              state.caseId === 'torch-ornate') && (
+              <div
+                data-testid="shared-wall-scene-nudge"
+                style={{ color: '#e7b575', fontSize: 9.5, marginTop: 3 }}
+              >
+                This fixture only: Kirk found Z −0.20m (negative = toward this
+                wall) improves both bookcase and torch contact. Repetition makes
+                this a shared wall-target / scene-clearance diagnostic, not two
+                asset anchors. Measured wall GLB spans Z −0.981..−0.654m; the
+                nominal edge plane Z −0.866m is 0.212m behind its room-side
+                visible face. The visual −0.20m does not mathematically move to
+                that near face, so it remains an explicit scene judgment.
+              </div>
+            )}
             {(['X tangent', 'Y up', 'Z wall-normal'] as const).map(
               (axisLabel, axis) => (
                 <div
@@ -417,7 +559,7 @@ export function AssetAnchorLabConcept() {
               data-testid="calibrated-offset"
               style={{ marginTop: 5, font: '10px monospace', color: '#39e7ff' }}
             >
-              calibrated {vector(calibratedOffset)}
+              effective calibrated offset {vector(calibratedOffset)}
             </div>
           </div>
 
@@ -472,8 +614,9 @@ export function AssetAnchorLabConcept() {
             </div>
             <div style={{ fontSize: 10, color: '#b9aaa0', margin: '4px 0' }}>
               After successful GLB load + measurement + render, explicitly
-              choose one candidate and render that exact selection in Orbit,
-              Play, and all six facings
+              choose one candidate and visibly render that exact selection in
+              Calibrated-only or Overlay mode in Orbit, Play, and all six
+              facings
               {item.variants.length > 1 ? ' for both standing and downed' : ''}.
               Pending, failed, fallback-only, stale, and other-candidate views
               never qualify. Nothing here writes production state.

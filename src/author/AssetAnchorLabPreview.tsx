@@ -8,6 +8,7 @@ import {
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import {
+  Html,
   OrbitControls,
   OrthographicCamera,
   PerspectiveCamera,
@@ -46,7 +47,14 @@ import {
 const FLOOR_TILES = new Map<string, AbsoluteFloorTile>([
   ['0,0,0', { x: 0, y: 0, z: 0, roomId: 'anchor-lab' }],
 ]);
-const WALL_Z = -Math.sqrt(3) / 2;
+export const LAB_WALL_NOMINAL_Z = -Math.sqrt(3) / 2;
+// Measured from the exact plain wall GLB used by this fixture: raw Z
+// [-0.153132, +0.282585] scaled by SYNTY_SCALE and placed at nominal Z.
+export const LAB_WALL_VISIBLE_FAR_FACE_Z =
+  LAB_WALL_NOMINAL_Z + -0.1531318724 * SYNTY_SCALE;
+export const LAB_WALL_VISIBLE_ROOM_FACE_Z =
+  LAB_WALL_NOMINAL_Z + 0.282584846 * SYNTY_SCALE;
+const WALL_Z = LAB_WALL_NOMINAL_Z;
 const WALL_HEIGHT = 1.6;
 const PLAIN_WALL = WALL_VARIANTS[0]!;
 
@@ -133,6 +141,48 @@ function BoundsBox({
   );
 }
 
+function SceneLabel({
+  name,
+  text,
+  position,
+  tone,
+}: {
+  name: string;
+  text: string;
+  position: Vec3Tuple;
+  tone: 'raw' | 'calibrated' | 'reference';
+}) {
+  const color =
+    tone === 'raw' ? '#ff69b5' : tone === 'calibrated' ? '#58edff' : '#ffe36e';
+  return (
+    <group name={name} position={position} userData={{ label: text }}>
+      {/* Fixed-pixel Html is deliberate: drei distanceFactor can magnify a
+          label mounted after an orthographic camera switch until it covers
+          the canvas. Anchoring still follows the 3D position. */}
+      <Html center zIndexRange={[30, 20]}>
+        <span
+          data-scene-label={text}
+          style={{
+            display: 'block',
+            whiteSpace: 'nowrap',
+            border: `1px solid ${color}`,
+            borderRadius: 3,
+            padding: '3px 6px',
+            background: 'rgba(3, 10, 12, 0.92)',
+            color,
+            font: '700 10px/1.1 monospace',
+            letterSpacing: '0.04em',
+            boxShadow: '0 1px 5px rgba(0,0,0,.8)',
+            pointerEvents: 'none',
+          }}
+        >
+          {text}
+        </span>
+      </Html>
+    </group>
+  );
+}
+
 export function AssetComparison({
   url,
   state,
@@ -168,6 +218,7 @@ export function AssetComparison({
       variant: state.variant,
       candidate: state.candidate,
       cameraMode: state.cameraMode,
+      visibilityMode: state.visibilityMode,
       facing: state.facing,
       bounds: measured,
     });
@@ -181,36 +232,73 @@ export function AssetComparison({
     state.caseId,
     state.facing,
     state.variant,
+    state.visibilityMode,
   ]);
 
   const bounds = isUsableMeasurement(measured) ? measured : fallbackBounds;
   const offset = resolvedCalibrationOffset(state, bounds);
   const rotationY = facingToRotationY(state.facing);
+  const showRaw = state.visibilityMode !== 'calibrated';
+  const showCalibrated = state.visibilityMode !== 'raw';
+  const rawLabelPosition: Vec3Tuple = [
+    bounds.center[0],
+    bounds.max[1] + 0.18,
+    bounds.center[2],
+  ];
+  const calibratedLabelPosition: Vec3Tuple = [
+    bounds.center[0] + offset[0],
+    bounds.max[1] + offset[1] + 0.18,
+    bounds.center[2] + offset[2],
+  ];
+  const calibratedLabel =
+    state.caseId === 'fighter-pair' && state.variant === 'downed'
+      ? 'DIAGNOSTIC · CENTER ONLY'
+      : 'CALIBRATED';
 
   return (
     <group name="anchor-lab-asset-comparison" rotation={[0, rotationY, 0]}>
-      <group name="anchor-lab-raw-asset" scale={SYNTY_SCALE}>
-        <primitive object={raw} />
-      </group>
-      <group
-        name="anchor-lab-calibrated-asset"
-        position={offset}
-        scale={SYNTY_SCALE}
-      >
-        <primitive object={calibrated} />
-      </group>
-      <BoundsBox
-        name="anchor-lab-raw-bounds"
-        bounds={bounds}
-        offset={[0, 0, 0]}
-        color="#ff3fa4"
-      />
-      <BoundsBox
-        name="anchor-lab-calibrated-bounds"
-        bounds={bounds}
-        offset={offset}
-        color="#39e7ff"
-      />
+      {showRaw && (
+        <>
+          <group name="anchor-lab-raw-asset" scale={SYNTY_SCALE}>
+            <primitive object={raw} />
+          </group>
+          <BoundsBox
+            name="anchor-lab-raw-bounds"
+            bounds={bounds}
+            offset={[0, 0, 0]}
+            color="#ff3fa4"
+          />
+          <SceneLabel
+            name="anchor-lab-label-raw"
+            text="RAW INPUT"
+            position={rawLabelPosition}
+            tone="raw"
+          />
+        </>
+      )}
+      {showCalibrated && (
+        <>
+          <group
+            name="anchor-lab-calibrated-asset"
+            position={offset}
+            scale={SYNTY_SCALE}
+          >
+            <primitive object={calibrated} />
+          </group>
+          <BoundsBox
+            name="anchor-lab-calibrated-bounds"
+            bounds={bounds}
+            offset={offset}
+            color="#39e7ff"
+          />
+          <SceneLabel
+            name="anchor-lab-label-calibrated"
+            text={calibratedLabel}
+            position={calibratedLabelPosition}
+            tone="calibrated"
+          />
+        </>
+      )}
 
       {/* The dot is centered at exact model-local zero. The vertical stem
           begins at zero and ends at the separately named elevated glyph. */}
@@ -342,6 +430,12 @@ export function AssetAnchorLabScene({
             toneMapped={false}
           />
         </mesh>
+        <SceneLabel
+          name="anchor-lab-label-owning-hex"
+          text="OWNING HEX CENTER · q0,r0,s0"
+          position={[0, 0.12, 0]}
+          tone="reference"
+        />
         <group name="anchor-lab-real-synty-wall" rotation={[0, rotationY, 0]}>
           <GlbInstance
             file={PLAIN_WALL.file}
@@ -349,8 +443,11 @@ export function AssetAnchorLabScene({
             rotationY={0}
             scale={wallVariantScale(PLAIN_WALL, WALL_HEIGHT, SYNTY_SCALE)}
           />
-          <mesh position={[0, WALL_HEIGHT / 2, WALL_Z - 0.035]}>
-            <boxGeometry args={[1.08, WALL_HEIGHT, 0.04]} />
+          <mesh
+            name="anchor-lab-visible-wall-face"
+            position={[0, WALL_HEIGHT / 2, LAB_WALL_VISIBLE_ROOM_FACE_Z]}
+          >
+            <boxGeometry args={[1.08, WALL_HEIGHT, 0.015]} />
             <meshBasicMaterial
               color="#ff9e45"
               wireframe
@@ -360,6 +457,32 @@ export function AssetAnchorLabScene({
               toneMapped={false}
             />
           </mesh>
+          <mesh
+            name="anchor-lab-nominal-wall-plane"
+            position={[0, WALL_HEIGHT / 2, LAB_WALL_NOMINAL_Z]}
+          >
+            <boxGeometry args={[1.02, WALL_HEIGHT * 0.92, 0.01]} />
+            <meshBasicMaterial
+              color="#ffe36e"
+              wireframe
+              transparent
+              opacity={0.5}
+              depthTest={false}
+              toneMapped={false}
+            />
+          </mesh>
+          <SceneLabel
+            name="anchor-lab-label-wall-target"
+            text="VISIBLE WALL FACE · Z -0.654m"
+            position={[-0.78, WALL_HEIGHT + 0.22, LAB_WALL_VISIBLE_ROOM_FACE_Z]}
+            tone="reference"
+          />
+          <SceneLabel
+            name="anchor-lab-label-wall-nominal"
+            text="NOMINAL EDGE PLANE · Z -0.866m"
+            position={[0.78, WALL_HEIGHT - 0.05, LAB_WALL_NOMINAL_Z]}
+            tone="reference"
+          />
         </group>
         <AssetComparison
           url={url}
@@ -439,9 +562,10 @@ export function AssetAnchorLabPreview(props: AssetAnchorLabPreviewProps) {
           pointerEvents: 'none',
         }}
       >
-        cyan = calibrated bounds · magenta = raw bounds/model · gold dot = exact
-        raw origin (0,0,0) · gold stem/ring = elevated visibility glyph · gold
-        arrow = local +Z probe
+        showing {props.state.visibilityMode.toUpperCase()} · anchored labels
+        identify RAW INPUT / CALIBRATED / DIAGNOSTIC · gold dot = exact raw
+        origin (0,0,0) · gold stem/ring = elevated visibility glyph · gold arrow
+        = local +Z probe
       </div>
     </div>
   );

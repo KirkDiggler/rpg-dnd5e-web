@@ -34,6 +34,7 @@ function acknowledge(
       variant: state.variant,
       candidate: state.candidate,
       cameraMode: state.cameraMode,
+      visibilityMode: state.visibilityMode,
       facing: state.facing,
       bounds: VALID_BOUNDS,
       ...overrides,
@@ -63,10 +64,12 @@ function observeRequiredVariant(
   state: AssetAnchorLabState,
   variant: LabVariant
 ): AssetAnchorLabState {
+  const candidate = state.candidate;
   let next = assetAnchorLabReducer(state, {
     type: 'select-variant',
     variant,
   });
+  if (!next.candidateExplicitlyChosen) next = chooseCandidate(next, candidate);
   next = assetAnchorLabReducer(next, { type: 'select-camera', mode: 'orbit' });
   for (let facing = 0; facing < FACING_LABELS.length; facing += 1) {
     next = observeFacing(next, facing as FacingIndex);
@@ -175,6 +178,34 @@ describe('Asset Anchor Lab fixture state', () => {
     );
   });
 
+  it('starts each case raw-only and never credits a calibrated candidate while only raw is visible', () => {
+    let state = createInitialAssetAnchorLabState();
+    expect(state.visibilityMode).toBe('raw');
+    state = acknowledge(state);
+    expect(state.assetStatus[assetVariantKey('bookcase', 'standing')]).toBe(
+      'measured'
+    );
+    expect(state.observed.size).toBe(0);
+    state = assetAnchorLabReducer(state, {
+      type: 'select-visibility',
+      mode: 'calibrated',
+    });
+    expect(state.visibilityMode).toBe('raw');
+    expect(canRecordProvisional(state)).toBe(false);
+
+    state = chooseCandidate(state, 'bounds-center-floor');
+    expect(state.visibilityMode).toBe('calibrated');
+    state = assetAnchorLabReducer(state, {
+      type: 'select-visibility',
+      mode: 'raw',
+    });
+    for (let facing = 0; facing < FACING_LABELS.length; facing += 1) {
+      state = observeFacing(state, facing as FacingIndex);
+    }
+    expect(state.observed.size).toBe(0);
+    expect(canRecordProvisional(state)).toBe(false);
+  });
+
   it('withholds for pending, load error, and unusable/unmeasured geometry even after prior coverage', () => {
     let qualified = chooseCandidate(
       createInitialAssetAnchorLabState(),
@@ -255,6 +286,7 @@ describe('Asset Anchor Lab fixture state', () => {
     state = acknowledge(state, { candidate: 'raw-origin' });
     state = acknowledge(state, { variant: 'downed' });
     state = acknowledge(state, { cameraMode: 'play' });
+    state = acknowledge(state, { visibilityMode: 'raw' });
     state = acknowledge(state, { facing: 4 });
     expect(state).toBe(before);
     expect(state.observed.size).toBe(0);

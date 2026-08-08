@@ -14,10 +14,17 @@ vi.mock('./AssetAnchorLabPreview', () => ({
       variant: 'standing' | 'downed';
       candidate: 'raw-origin' | 'bounds-center-floor' | 'wall-face';
       cameraMode: 'orbit' | 'play';
+      visibilityMode: 'raw' | 'calibrated' | 'overlay';
+    };
+    fallbackBounds: {
+      min: [number, number, number];
+      max: [number, number, number];
+      center: [number, number, number];
+      size: [number, number, number];
     };
     onRenderObserved: (observation: unknown) => void;
   }) => {
-    const { url, state, onRenderObserved } = props;
+    const { url, state, fallbackBounds, onRenderObserved } = props;
     useEffect(() => {
       onRenderObserved({
         caseId: state.caseId,
@@ -25,25 +32,23 @@ vi.mock('./AssetAnchorLabPreview', () => ({
         variant: state.variant,
         candidate: state.candidate,
         cameraMode: state.cameraMode,
-        bounds: {
-          min: [0, 0, 0],
-          max: [1, 2, 1],
-          center: [0.5, 1, 0.5],
-          size: [1, 2, 1],
-        },
+        visibilityMode: state.visibilityMode,
+        bounds: fallbackBounds,
       });
     }, [
+      fallbackBounds,
       onRenderObserved,
       state.cameraMode,
       state.candidate,
       state.caseId,
       state.facing,
       state.variant,
+      state.visibilityMode,
     ]);
     return (
       <div data-testid="mock-anchor-preview">
         {url}|facing={state.facing}|variant={state.variant}|camera=
-        {state.cameraMode}
+        {state.cameraMode}|visibility={state.visibilityMode}
       </div>
     );
   },
@@ -76,6 +81,9 @@ describe('AssetAnchorLabConcept — real inspection/calibration interaction path
     expect(screen.getByTestId('mock-anchor-preview').textContent).toContain(
       '/models/synty/characters/fighter.glb'
     );
+    expect(
+      screen.getByTestId('candidate-recommendation').textContent
+    ).toContain('Raw is centered');
     fireEvent.click(screen.getByRole('button', { name: 'downed' }));
     expect(screen.getByTestId('mock-anchor-preview').textContent).toContain(
       '/models/synty/characters/fighter-downed.glb'
@@ -118,6 +126,82 @@ describe('AssetAnchorLabConcept — real inspection/calibration interaction path
     expect(output).toContain('Asset anchor metadata');
   });
 
+  it('does not credit real preview callbacks while the selected view remains Raw-only', () => {
+    render(<AssetAnchorLabConcept />);
+    clickAllFacings();
+    fireEvent.click(screen.getByRole('button', { name: 'Play · tactical' }));
+    expect(screen.getByTestId('facing-progress').textContent).toContain('0/6');
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Record non-production candidate',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+  });
+
+  it('starts raw-only, exposes the intended candidate action, and separates preset base from fixture fine trim', () => {
+    render(<AssetAnchorLabConcept />);
+    expect(screen.getByTestId('visibility-status').textContent).toContain(
+      'showing raw'
+    );
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Visibility Calibrated only',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    expect(
+      screen.getByTestId('candidate-recommendation').textContent
+    ).toContain('Recommended: center visible bounds on hex');
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Apply and show: Visible bounds center + floor',
+      })
+    );
+    expect(screen.getByTestId('visibility-status').textContent).toContain(
+      'showing calibrated'
+    );
+    expect(screen.getByTestId('candidate-offset').textContent).toContain(
+      'preset base offset (-0.927m, +0.000m, -0.330m)'
+    );
+    expect(screen.getByTestId('calibrated-offset').textContent).toContain(
+      'effective calibrated offset (-0.927m, +0.000m, -0.330m)'
+    );
+
+    const towardWall = screen.getByRole('button', {
+      name: 'Decrease Z wall-normal',
+    });
+    for (let index = 0; index < 4; index += 1) fireEvent.click(towardWall);
+    expect(screen.getByTestId('candidate-offset').textContent).toContain(
+      '(-0.927m, +0.000m, -0.330m)'
+    );
+    expect(screen.getByTestId('calibrated-offset').textContent).toContain(
+      '(-0.927m, +0.000m, -0.530m)'
+    );
+    expect(screen.getByTestId('shared-wall-scene-nudge').textContent).toContain(
+      'Z −0.20m'
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ornate wall torch' }));
+    expect(screen.getByTestId('visibility-status').textContent).toContain(
+      'showing raw'
+    );
+    expect(
+      screen.getByTestId('candidate-recommendation').textContent
+    ).toContain('Recommended: wall-face (height provisional)');
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Apply and show: Measured back face + wall reference',
+      })
+    );
+    expect(screen.getByTestId('candidate-offset').textContent).toContain(
+      '(+0.000m, +1.182m, -0.790m)'
+    );
+  });
+
   it('keeps character output gated until both standing and downed have each been viewed in all six facings', () => {
     render(<AssetAnchorLabConcept />);
     fireEvent.click(
@@ -134,6 +218,17 @@ describe('AssetAnchorLabConcept — real inspection/calibration interaction path
     expect((record as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: 'downed' }));
+    expect(screen.getByTestId('visibility-status').textContent).toContain(
+      'showing raw'
+    );
+    expect(
+      screen.getByTestId('candidate-recommendation').textContent
+    ).toContain('Diagnostic center only — production fix is re-export');
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Apply and show: Visible bounds center + floor',
+      })
+    );
     clickAllFacings();
     expect(screen.getByTestId('facing-progress').textContent).toContain(
       '12/12'

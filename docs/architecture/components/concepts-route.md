@@ -63,13 +63,15 @@ web#731 fixture-first calibration Learn probe, registered as
 `asset-anchor-lab`. It resolves the actual synced corner-pivot bookcase,
 ornate torch, and canonical fighter standing/downed GLBs through the shared
 prop/class resolvers and `useGLTF`; renders them against shared scale, hex,
-wall, canonical-facing, and tactical-camera conventions; and keeps raw and
-measured-candidate results visible together. `assetAnchorExperiment.ts`
-contains only local semantic candidates, bounded adjustment, and a local
-provisional-output gate driven by positive post-load/measurement/R3F-commit
-observations keyed to exact case + variant + candidate + camera + facing. It
-does not write production
-state or add asset-specific behavior to a game renderer. Verdict and runtime
+wall, canonical-facing, and tactical-camera conventions. Raw-only is the
+start state; explicit recommended/diagnostic actions unlock Calibrated-only
+and optional labelled Overlay, with preset base separated from bounded fine
+trim. The fixture labels both measured visible wall face and nominal edge
+plane. `assetAnchorExperiment.ts` contains only local semantic candidates and
+a provisional-output gate driven by positive post-load/measurement/R3F-commit
+observations keyed to exact case + variant + candidate + camera + facing;
+Raw-only observations cannot credit a calibrated candidate. It does not write
+production state or add asset-specific behavior to a game renderer. Verdict and runtime
 proof: `docs/evidence/asset-anchor-lab-731.md`.
 
 ## Gap: no promotion process

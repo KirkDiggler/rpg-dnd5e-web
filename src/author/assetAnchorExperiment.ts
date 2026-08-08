@@ -18,6 +18,7 @@ export const FACING_LABELS = ['E', 'NE', 'NW', 'W', 'SW', 'SE'] as const;
 export type FacingIndex = 0 | 1 | 2 | 3 | 4 | 5;
 export type LabVariant = 'standing' | 'downed';
 export type LabCameraMode = 'orbit' | 'play';
+export type LabVisibilityMode = 'raw' | 'calibrated' | 'overlay';
 export type AnchorCandidate =
   | 'raw-origin'
   | 'bounds-center-floor'
@@ -180,6 +181,7 @@ export interface RenderObservation {
   variant: LabVariant;
   candidate: AnchorCandidate;
   cameraMode: LabCameraMode;
+  visibilityMode: LabVisibilityMode;
   facing: FacingIndex;
   bounds: VisibleBounds;
 }
@@ -190,6 +192,7 @@ export interface AssetAnchorLabState {
   variant: LabVariant;
   candidate: AnchorCandidate;
   cameraMode: LabCameraMode;
+  visibilityMode: LabVisibilityMode;
   adjustment: Vec3Tuple;
   candidateExplicitlyChosen: boolean;
   /** Positive observations emitted only after the real R3F asset commits. */
@@ -205,6 +208,7 @@ export type AssetAnchorLabAction =
   | { type: 'select-variant'; variant: LabVariant }
   | { type: 'select-candidate'; candidate: AnchorCandidate }
   | { type: 'select-camera'; mode: LabCameraMode }
+  | { type: 'select-visibility'; mode: LabVisibilityMode }
   | { type: 'asset-load-pending'; caseId: LabCaseId; variant: LabVariant }
   | {
       type: 'asset-load-failed';
@@ -278,6 +282,7 @@ export function createInitialAssetAnchorLabState(): AssetAnchorLabState {
     variant: 'standing',
     candidate: 'raw-origin',
     cameraMode: 'orbit',
+    visibilityMode: 'raw',
     adjustment: [0, 0, 0],
     candidateExplicitlyChosen: false,
     observed: new Set(),
@@ -357,6 +362,7 @@ export function assetAnchorLabReducer(
         facing: 0 as FacingIndex,
         variant: item.variants[0]!,
         candidate: item.candidates[0]!,
+        visibilityMode: 'raw' as LabVisibilityMode,
         adjustment: [0, 0, 0] as Vec3Tuple,
         candidateExplicitlyChosen: false,
       };
@@ -372,29 +378,35 @@ export function assetAnchorLabReducer(
     case 'select-facing':
       return { ...state, facing: action.facing };
     case 'select-variant': {
+      if (action.variant === state.variant) return state;
       const selected = {
         ...state,
         variant: action.variant,
+        visibilityMode: 'raw' as LabVisibilityMode,
         adjustment: [0, 0, 0] as Vec3Tuple,
+        candidateExplicitlyChosen: false,
       };
-      return action.variant === state.variant
-        ? selected
-        : withAssetStatus(
-            selected,
-            selected.caseId,
-            selected.variant,
-            'pending'
-          );
+      return withAssetStatus(
+        selected,
+        selected.caseId,
+        selected.variant,
+        'pending'
+      );
     }
     case 'select-candidate':
       return {
         ...state,
         candidate: action.candidate,
+        visibilityMode: 'calibrated',
         adjustment: [0, 0, 0],
         candidateExplicitlyChosen: true,
       };
     case 'select-camera':
       return { ...state, cameraMode: action.mode };
+    case 'select-visibility':
+      if (action.mode !== 'raw' && !state.candidateExplicitlyChosen)
+        return state;
+      return { ...state, visibilityMode: action.mode };
     case 'asset-load-pending':
       return withAssetStatus(state, action.caseId, action.variant, 'pending');
     case 'asset-load-failed':
@@ -413,6 +425,7 @@ export function assetAnchorLabReducer(
         observation.variant !== state.variant ||
         observation.candidate !== state.candidate ||
         observation.cameraMode !== state.cameraMode ||
+        observation.visibilityMode !== state.visibilityMode ||
         observation.facing !== state.facing
       ) {
         return state;
@@ -431,6 +444,9 @@ export function assetAnchorLabReducer(
         observation.variant,
         'measured'
       );
+      // Raw-only proves that the asset loaded and measured, but the selected
+      // calibrated candidate was not visible and therefore earns no evidence.
+      if (observation.visibilityMode === 'raw') return measured;
       const observed = new Set(measured.observed);
       observed.add(
         observationKey(
