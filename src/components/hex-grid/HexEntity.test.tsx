@@ -38,8 +38,17 @@ vi.mock('@react-three/drei', () => {
   return {
     useGLTF: () => ({ scene: make(), animations: [] }),
     useTexture: () => new THREE.Texture(),
+    // `names: []` (not omitted) — ClassCharacterModel's
+    // resolveIdleClipName(names) reads this unconditionally on every
+    // render; an undefined `names` throws past HexEntity's ErrorBoundary
+    // and silently swaps in the MediumHumanoid fallback, which would make
+    // every "monster"/"player" test below exercise the WRONG model path
+    // without any test ever noticing (resolveIdleClipName's own doc
+    // comment: `resolveIdleClipName([])` is the documented, safe
+    // zero-clip case — matches a real clip-less GLB, not a broken mock).
     useAnimations: () => ({
       actions: {},
+      names: [],
       mixer: new THREE.AnimationMixer(new THREE.Group()),
     }),
   };
@@ -119,6 +128,98 @@ describe('remembered entities are inert', () => {
     );
 
     expect(handlerCount(renderer, 'onClick')).toBe(0);
+  });
+});
+
+describe('raycast proxy (rpg-dnd5e-web unit/game-fidelity Bug A)', () => {
+  // A THREE.SkinnedMesh raycasts against its BIND-POSE geometry, not the
+  // pose the idle/walk clip actually renders — clicks on the visible
+  // (animated) body hit-or-miss by animation frame with no console signal
+  // on a miss. HexEntity now mounts an invisible, static capsule alongside
+  // the model and the model's own meshes opt OUT of raycasting entirely
+  // (ClassCharacterModel's `cloned` useMemo), so the proxy is the only
+  // thing left for R3F's raycaster to ever hit.
+  function meshes(
+    renderer: Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>
+  ) {
+    return renderer.scene.findAllByType('Mesh') as unknown as {
+      instance: THREE.Mesh;
+    }[];
+  }
+
+  it('mounts an invisible capsule raycast proxy alongside a live monster model', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="monster"
+        monsterRefId="skeleton"
+        onClick={() => {}}
+      />
+    );
+
+    const proxy = meshes(renderer).find(
+      (m) => m.instance.geometry.type === 'CapsuleGeometry'
+    );
+    expect(proxy).toBeDefined();
+    const material = proxy!.instance.material as THREE.MeshBasicMaterial;
+    expect(material.transparent).toBe(true);
+    expect(material.opacity).toBe(0);
+    // Untouched — only ClassCharacterModel's own GLB meshes opt out. A
+    // real THREE.Mesh.raycast takes (raycaster, intersects); the no-op
+    // override installed on the model's own meshes takes neither — arity
+    // is a robust way to tell them apart without an identity comparison
+    // against THREE.Mesh.prototype (this test environment can end up with
+    // more than one loaded copy of three.js, which would make a strict
+    // `toBe` comparison meaningless either way).
+    expect(proxy!.instance.raycast.length).toBe(2);
+  });
+
+  it('disables raycasting on the GLB-sourced model mesh so only the proxy is hittable', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="monster"
+        monsterRefId="skeleton"
+        onClick={() => {}}
+      />
+    );
+
+    // The mocked useGLTF scene (top of this file) is a single BoxGeometry
+    // mesh standing in for the real skinned GLB.
+    const modelMesh = meshes(renderer).find(
+      (m) => m.instance.geometry.type === 'BoxGeometry'
+    );
+    expect(modelMesh).toBeDefined();
+    // Arity, not identity (see the proxy test's own comment for why) — a
+    // real THREE.Mesh.raycast takes (raycaster, intersects); the no-op
+    // override takes neither.
+    expect(modelMesh!.instance.raycast.length).toBe(0);
+
+    // The override is a genuine no-op, not merely a different function —
+    // calling it must never append an intersection.
+    const intersects: THREE.Intersection[] = [];
+    expect(() =>
+      modelMesh!.instance.raycast(new THREE.Raycaster(), intersects)
+    ).not.toThrow();
+    expect(intersects).toHaveLength(0);
+  });
+
+  it('mounts the same invisible capsule proxy for a live player entity', async () => {
+    // characters are skinned too (ClassCharacterModel renders both player
+    // and monster GLBs through the same component) — same proxy, same fix.
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="player"
+        classRefId="rogue"
+        onClick={() => {}}
+      />
+    );
+
+    const proxy = meshes(renderer).find(
+      (m) => m.instance.geometry.type === 'CapsuleGeometry'
+    );
+    expect(proxy).toBeDefined();
   });
 });
 

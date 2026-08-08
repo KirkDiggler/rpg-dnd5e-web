@@ -67,6 +67,13 @@ export interface RenderableEntity {
    * (obstaclePropKeys.ts's resolvePropKeyForEntity). Undefined until
    * platform starts sending a ref (no server code path sets one yet). */
   propRefId?: string;
+  /** Authored runtime-override facing (rpg-dnd5e-web unit/game-fidelity Bug
+   * B) — the wire's `Placement.facing` (v1alpha2 types_pb.ts), a
+   * hex-direction index E=0/NE=1/NW=2/W=3/SW=4/SE=5. Undefined means no
+   * authored override; HexEntity/HexGrid fall back to whichever default
+   * orientation they already use (unchanged from every pre-existing
+   * caller). */
+  facing?: number;
   /** The most recent genuine move's real hex-by-hex route
    * (rpg-dnd5e-web#542), passed straight through to HexEntity's movement
    * interpolation. Undefined for an entity that has never moved. */
@@ -170,6 +177,7 @@ export function buildRenderableEntities(
       ghost?: boolean;
       movePath?: { x: number; y: number; z: number }[];
       moveSeq?: number;
+      facing?: number;
     }
   >,
   entityMeta: Map<string, EntityMeta>,
@@ -208,6 +216,7 @@ export function buildRenderableEntities(
       monsterRefId: meta?.monsterRefId,
       isDowned,
       propRefId: meta?.propRefId,
+      facing: entity.facing,
       movePath: entity.movePath,
       moveSeq: entity.moveSeq,
       knowledgeState: revealedHexes
