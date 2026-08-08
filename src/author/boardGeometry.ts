@@ -2,6 +2,72 @@
  * boardGeometry — pure lookups over a compiled `FloorPlan` + the parallel
  * `DungeonDoc`, shared by `Board.tsx` and its drag logic. Kept separate
  * from the component so it's unit-testable without React.
+ *
+ * ## THE CANONICAL WORLD — one place, so the next renderer can't diverge
+ * silently (rpg-project#XXX "world parity" unit, 2026-08-07)
+ *
+ * Kirk reported the builder's 3D preview and the live game route reading as
+ * "flipped/mirrored" for the same authored dungeon — a room that looked
+ * right while authoring came out wrong once played. Measured, not inferred
+ * (this codebase's own standing discipline — see `facing.ts`'s own doc
+ * comment on a prior naive-derivation hazard): the actual cause is NOT a
+ * coordinate-system or world-construction mismatch. Verified three
+ * independent ways against the live server and the live game route:
+ *
+ * 1. **Position**: `grpcurl GetEncounter` ground truth for two separate
+ *    authored docs (a minimal probe and the real `dungeon-one`) shows the
+ *    server assigns the EXACT SAME cube coordinate to a given `[col, row]`
+ *    that `cubeAtColRow` (this file's own re-export, from `wallRuns.ts`)
+ *    computes client-side — including wall edges and `start`, down to the
+ *    exact `{x,y,z}`.
+ * 2. **Screen orientation**: the builder's 2D board (a plain top-down
+ *    projection, no camera angle to get wrong) and the live game agree on
+ *    left/right and north/south for the same dungeon — row 0 near the top,
+ *    higher columns to the right, in both.
+ * 3. **Facing**: the wire's `Placement.facing` (E=0/NE=1/NW=2/W=3/SW=4/
+ *    SE=5), `facingToRotationY` below, and the game's `resolvePropRotationY`
+ *    (`HexGrid.tsx`) all agree — confirmed live by reading the actual
+ *    applied `rotationY` back out of the running game via a temporary
+ *    console probe, not just by reading the source. `facingToRotationY` is
+ *    the single shared conversion; both sides import THIS function, never a
+ *    re-derived equivalent.
+ *
+ * So: `cubeAtColRow` → `cubeToWorld` → `facingToRotationY` is the one
+ * canonical world, and both the builder and the live game already agree on
+ * it. Nothing in this file needs to change to fix a coordinate mismatch,
+ * because there isn't one.
+ *
+ * **What Kirk actually saw, and why**: the builder's 3D preview has TWO
+ * camera modes — "Orbit" (a general-purpose free-look PERSPECTIVE camera,
+ * `DungeonPreview3D.tsx`'s default/only-practical-for-editing view) and
+ * "Play" (an ORTHOGRAPHIC camera whose position/angle math is a byte-cited
+ * port of the live game's own tactical camera — see `playCameraRig.ts`'s
+ * header comment). For a prop placed off-center from the camera's orbit
+ * target (true of almost every real placement), PERSPECTIVE projection's
+ * diverging rays give that specific prop a genuinely different effective
+ * viewing angle than the nominal camera-to-target one — while ORTHOGONAL
+ * (parallel-ray) projection views every object from the exact same fixed
+ * angle regardless of position. Verified with a single-variable experiment:
+ * matching Orbit's polar angle to the tactical camera's own constant
+ * (`Math.PI / 3.5`, `playCameraRig.ts`'s `POLAR_ANGLE`) while leaving
+ * Orbit's projection as perspective did NOT change the result — a
+ * `facing: SE` bookcase still rendered broad-face-on in Orbit and edge-on
+ * under the tactical/orthographic camera (both the game and "Play" mode
+ * agree with each other here, confirming that IS the game's real,
+ * intended, correctly-computed appearance for that rotation, not a bug in
+ * it). Orbit's perspective view of an off-center prop is simply not a
+ * reliable preview of what the orthographic tactical camera will show for
+ * a rotation-sensitive placement.
+ *
+ * **The practical upshot**: verify a facing-sensitive placement's real
+ * appearance in "Play" mode (or the live game), not "Orbit" — Orbit is
+ * still the right tool for placing/editing (it's the only 3D-editable
+ * mode), it just isn't the right tool for judging how a rotation will
+ * actually read in play. This is a deliberate, understood characteristic
+ * of having two different-purpose cameras in the same tool, not something
+ * this file's own math can fix — changing Orbit to orthographic would trade
+ * away its general-purpose legibility for facing-preview accuracy, a real
+ * product tradeoff for Kirk to make, not a silent geometry fix.
  */
 import { facingDirection } from '@/components/hex-grid/authorGridHelpers';
 import { cubeToWorld, hexEdgeBetween } from '@/components/hex-grid/hexMath';

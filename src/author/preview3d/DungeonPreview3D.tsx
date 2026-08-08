@@ -216,6 +216,28 @@ import {
  * future consumer has one place to special-case it, if it ever needs to. */
 export const CANVAS_ROOM_ID = 'canvas';
 
+/**
+ * Orbit mode's fixed initial `<Canvas camera={{ position }}>` — a plain,
+ * un-derived `[x, y, z]` literal for most of this file's history. Named
+ * and exported now (world-parity unit, see `boardGeometry.ts`'s own
+ * "THE CANONICAL WORLD" doc comment for the full investigation) so its
+ * azimuth can be checked against `playCameraRig.INITIAL_AZIMUTH` — the
+ * tactical camera's own value — in a real test (this file's own
+ * `DungeonPreview3D.test.ts`, "ORBIT_INITIAL_CAMERA_POSITION" describe
+ * block), instead of only ever being eyeballed. Matching azimuth is
+ * necessary but NOT sufficient for Orbit to preview a facing-sensitive
+ * placement accurately (that doc comment has the rest: perspective vs the
+ * tactical camera's orthographic projection is the actual remaining gap)
+ * — this constant and its test guard the one part of that relationship
+ * that COULD silently drift and wouldn't be caught any other way.
+ * `Bounds.fit` (below) still repositions the camera to frame whatever's
+ * actually loaded; this is only ever the value it starts from before that
+ * runs.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const ORBIT_INITIAL_CAMERA_POSITION: readonly [number, number, number] =
+  [10, 14, 10];
+
 interface DungeonPreview3DProps {
   /** Compiled room-chain floor plan — edit mode's own input, unchanged.
    * Now OPTIONAL: omit it (or pass `undefined`) when supplying
@@ -1453,7 +1475,7 @@ export function DungeonPreview3D({
         style={{ width: '100%', height: '100%' }}
       >
         <Canvas
-          camera={{ fov: 45, position: [10, 14, 10] }}
+          camera={{ fov: 45, position: ORBIT_INITIAL_CAMERA_POSITION }}
           onPointerMissed={() => effectiveOnSelect?.(null)}
         >
           <ambientLight intensity={ambientIntensity} />
