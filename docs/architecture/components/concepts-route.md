@@ -1,7 +1,7 @@
 ---
 name: /concepts route
 description: UI prototyping sandbox — isolated from production, no promotion process
-updated: 2026-08-07
+updated: 2026-08-08
 confidence: high — verified by reading ConceptsView.tsx and the concepts/ directory
 ---
 
@@ -57,6 +57,20 @@ fixture-local bounded wall-relative placement state, and the same
 `DungeonPreview3D` Orbit/Play camera path. It has no save/persistence path;
 its discovered ownership contract and visual verdict are recorded in
 `docs/evidence/prop-composition-728.md`.
+
+`src/author/AssetAnchorLabConcept.tsx` + `AssetAnchorLabPreview.tsx` — the
+web#731 fixture-first calibration Learn probe, registered as
+`asset-anchor-lab`. It resolves the actual synced corner-pivot bookcase,
+ornate torch, and canonical fighter standing/downed GLBs through the shared
+prop/class resolvers and `useGLTF`; renders them against shared scale, hex,
+wall, canonical-facing, and tactical-camera conventions; and keeps raw and
+measured-candidate results visible together. `assetAnchorExperiment.ts`
+contains only local semantic candidates, bounded adjustment, and a local
+provisional-output gate driven by positive post-load/measurement/R3F-commit
+observations keyed to exact case + variant + candidate + camera + facing. It
+does not write production
+state or add asset-specific behavior to a game renderer. Verdict and runtime
+proof: `docs/evidence/asset-anchor-lab-731.md`.
 
 ## Gap: no promotion process
 
