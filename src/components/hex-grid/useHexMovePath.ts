@@ -270,12 +270,24 @@ export function useHexMovePath(
     seenSeqRef.current = result.nextSeenSeq;
 
     if (!result.isGenuineMove) {
+      // A canonical/knowledge refresh can replace position/path objects while
+      // the same streamed moveSeq is still painting. That is the SAME move,
+      // not a snap/reset: keep its frame loop alive so its exact completion
+      // can satisfy the presentation gate. This applies identically to player
+      // and NPC actors.
+      if (
+        moveSeq !== undefined &&
+        activeMoveSeqRef.current === moveSeq &&
+        stepRef.current.points.length > 1
+      ) {
+        return;
+      }
       // Initial mount, non-move position change (initial placement,
-      // ghost/revive), or a re-render where moveSeq hasn't advanced since
-      // we last saw it — snap straight to the destination, matching
-      // pre-#542 behavior exactly. Also clears any in-flight step so a
-      // stale useFrame tick from a just-superseded move can't keep nudging
-      // the position after a non-move update resets it.
+      // ghost/revive), or a settled re-render where moveSeq hasn't advanced
+      // since we last saw it — snap straight to the destination, matching
+      // pre-#542 behavior exactly. Also clears any in-flight step so a stale
+      // useFrame tick from a reset can't keep nudging the position.
+      activeMoveSeqRef.current = undefined;
       stepRef.current = { points: [], index: 0, elapsed: 0 };
       groupRef.current.position.set(destination.x, yOffset, destination.z);
       setIsMoving(false);

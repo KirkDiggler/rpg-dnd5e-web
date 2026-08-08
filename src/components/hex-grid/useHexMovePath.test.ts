@@ -451,6 +451,40 @@ describe('useHexMovePath (hook-level regression test)', () => {
     expect(onPresentationComplete).toHaveBeenCalledExactlyOnceWith(2);
   });
 
+  it('keeps one move instance alive across same-sequence canonical prop refreshes and reports its completion', () => {
+    const onPresentationComplete = vi.fn();
+    const { result, rerender, groupRef } = renderMovePath(
+      undefined,
+      onPresentationComplete
+    );
+    act(() => {
+      groupRef.current = new THREE.Group();
+      const start = cubeToWorld(posA, HEX_SIZE);
+      groupRef.current.position.set(start.x, Y_OFFSET, start.z);
+    });
+
+    rerender({
+      entityPosition: { ...posC },
+      movePath: [posA, posB, posC],
+      moveSeq: 1,
+    });
+    expect(result.current.isMoving).toBe(true);
+
+    // The real viewer route receives a knowledge/canonical refresh for the
+    // same streamed move before its frame loop completes. Object identities
+    // change, but moveSeq still names the same presentation instance.
+    rerender({
+      entityPosition: { ...posC },
+      movePath: [{ ...posA }, { ...posB }, { ...posC }],
+      moveSeq: 1,
+    });
+    tick(SECONDS_PER_HEX_STEP);
+    tick(SECONDS_PER_HEX_STEP);
+
+    expect(onPresentationComplete).toHaveBeenCalledExactlyOnceWith(1);
+    expect(result.current.isMoving).toBe(false);
+  });
+
   it('treats the first move after a revive as a genuine move (animates), not a snap', () => {
     const { result, rerender, groupRef } = renderMovePath();
 

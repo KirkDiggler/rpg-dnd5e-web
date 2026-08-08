@@ -112,7 +112,10 @@ from `AttackResolved`, `EntityDamaged.hp_after`, `EntityDied`, or
 Two narrow lifecycle seams coordinate the story. `useHexMovePath` reports the
 exact completed `moveSeq` through `HexEntity` → `HexGrid` → `EncounterMap`, so
 an attack waits only for its own actor's current in-flight movement and ignores
-stale completions. `CombatPresentation` exposes `onResultRelease(id)` plus its
+stale completions. A same-sequence canonical/knowledge prop refresh preserves
+the active frame loop rather than snapping and losing its completion; player
+and NPC actors use this identical handshake. `CombatPresentation` exposes
+`onResultRelease(id)` plus its
 existing `onComplete(id)`; it remains unaware of Three.js, the combat log, HP,
 or terminal rendering. Snapshot replacement and leaving turn-based mode
 cancel the held projection. Encounter end is different: it follows the most

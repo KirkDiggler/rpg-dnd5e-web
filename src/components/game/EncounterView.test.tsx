@@ -103,7 +103,10 @@ vi.mock('./EncounterMap', () => ({
     myEntityId: string;
     openDoorIds?: string[];
     theme?: string;
-    entities: Map<string, { position?: { x: number; y: number; z: number } }>;
+    entities: Map<
+      string,
+      { position?: { x: number; y: number; z: number }; moveSeq?: number }
+    >;
     entityHP: Map<string, { current: number; max: number }>;
     onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
     onEntityClick: (entityId: string) => void;
@@ -145,6 +148,20 @@ vi.mock('./EncounterMap', () => ({
         onClick={() => props.onDoorClick?.('door-1')}
       >
         click door
+      </button>
+      <button
+        data-testid="stub-finish-player-move"
+        onClick={() => {
+          const moveSeq = props.entities.get(props.myEntityId)?.moveSeq;
+          if (moveSeq !== undefined) {
+            props.onEntityMovementPresentationComplete?.(
+              props.myEntityId,
+              moveSeq
+            );
+          }
+        }}
+      >
+        finish player move
       </button>
       <button
         data-testid="stub-finish-stale-goblin-move"
@@ -1741,6 +1758,100 @@ describe('EncounterView combat pacing', () => {
       );
     });
 
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+  });
+
+  it('releases player movement into viewer Armed/Roll and does not re-wait that move for a second attack', () => {
+    hoisted.captureStreamCallbacks = true;
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+    const callbacks = hoisted.streamCallbacks;
+    if (!callbacks) throw new Error('stream callbacks not captured');
+    const metadata = {
+      sequence: 1n,
+      timestamp: undefined,
+      correlationId: 'corr-viewer',
+    } as EncounterEventMetadata;
+
+    act(() => {
+      callbacks.onSnapshotDelivered?.(
+        {
+          encounter: {
+            space: {
+              entities: [
+                { id: 'char-alice', type: EntityType.CHARACTER },
+                { id: 'goblin-1', type: EntityType.MONSTER },
+              ],
+              hexes: [
+                {
+                  position: { x: 0, y: 0, z: 0 },
+                  contents: [{ entityId: 'char-alice' }],
+                },
+                {
+                  position: { x: 2, y: -2, z: 0 },
+                  contents: [{ entityId: 'goblin-1' }],
+                },
+              ],
+            },
+          },
+        } as never,
+        metadata
+      );
+      callbacks.onEntityMoved?.(
+        {
+          entityId: 'char-alice',
+          actualPath: [
+            { x: 0, y: 0, z: 0 },
+            { x: 1, y: -1, z: 0 },
+            { x: 2, y: -2, z: 0 },
+          ],
+        } as never,
+        metadata
+      );
+      callbacks.onAttackResolved?.(
+        {
+          attackerEntityId: 'char-alice',
+          targetEntityId: 'goblin-1',
+          attackRoll: 18,
+          attackBonus: 5,
+          targetAc: 13,
+          hit: true,
+          critical: false,
+        } as never,
+        metadata
+      );
+    });
+
+    expect(screen.queryByTestId('combat-presentation')).toBeNull();
+    fireEvent.click(screen.getByTestId('stub-finish-player-move'));
+    expect(screen.getByTestId('combat-presentation')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(300));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    act(() => vi.advanceTimersByTime(2000 + 1600 + 900 + 300));
+    expect(screen.getByTestId('combat-log-entry-attack-0')).toBeTruthy();
+
+    act(() => {
+      callbacks.onAttackResolved?.(
+        {
+          attackerEntityId: 'char-alice',
+          targetEntityId: 'goblin-1',
+          attackRoll: 7,
+          attackBonus: 5,
+          targetAc: 13,
+          hit: false,
+          critical: false,
+        } as never,
+        { ...metadata, sequence: 2n, correlationId: 'corr-viewer-2' }
+      );
+    });
+    expect(screen.getByTestId('combat-presentation')).toBeTruthy();
     act(() => vi.advanceTimersByTime(300));
     expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
   });
