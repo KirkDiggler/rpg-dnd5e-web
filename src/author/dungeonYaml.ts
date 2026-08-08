@@ -441,9 +441,15 @@ export interface ConnectorDoc {
   locked: LockedDoc | null;
 }
 
+export type CanvasFloorSource = 'bounds' | 'regions';
+
 export interface CanvasDoc {
   width: number;
   height: number;
+  /** RATIFIED Dungeon YAML v0.4 topology discriminator. `null` preserves
+   * omission as authored; the provider resolves omission to `bounds` in its
+   * FloorPlan projection. The client must never rewrite `regions` to bounds. */
+  floorSource?: CanvasFloorSource | null;
 }
 
 /** Cell-authored semantic room region — target dialect, proposed
@@ -672,6 +678,10 @@ export interface ParsedDungeon {
 
 export class DungeonParseError extends Error {}
 
+/** Hard stop for an exact `floor_source: regions` document while the
+ * released FloorPlan proto cannot project the resolved discriminator. */
+export class UnsupportedRegionFloorContractError extends Error {}
+
 /** Parse YAML text into both the CST (for mutation/round-trip) and a plain
  * view model (for rendering). Throws `DungeonParseError` on YAML syntax
  * errors OR on structural shape mismatches (missing `rooms`, a room with
@@ -791,7 +801,24 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
             `canvas: width/height must be numbers, got ${JSON.stringify(c)}`
           );
         }
-        return { width: c.width, height: c.height };
+        if (
+          c.floor_source !== undefined &&
+          c.floor_source !== 'bounds' &&
+          c.floor_source !== 'regions'
+        ) {
+          throw new DungeonParseError(
+            `canvas.floor_source: expected "bounds" or "regions", got ${JSON.stringify(c.floor_source)}`
+          );
+        }
+        const floorSource: CanvasFloorSource | null =
+          c.floor_source === 'bounds' || c.floor_source === 'regions'
+            ? c.floor_source
+            : null;
+        return {
+          width: c.width,
+          height: c.height,
+          floorSource,
+        };
       })()
     : null;
 
@@ -2601,6 +2628,11 @@ export function stripToV1Subset(
   capabilities?: ServerCapabilities
 ): V1SubsetResult {
   const { cst, doc } = parseDungeon(yamlText);
+  if (doc.canvas?.floorSource === 'regions') {
+    throw new UnsupportedRegionFloorContractError(
+      'canvas.floor_source: regions cannot be stripped or downgraded; wait for the additive FloorPlan.floor_source proto before preview/save/run'
+    );
+  }
   const dropped: string[] = [];
   const compiling: string[] = [];
   const accepted = (field: DialectField): boolean =>

@@ -37,7 +37,10 @@ import type {
   FloorPlanCell,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { isCellOccupied } from '../boardGeometry';
-import type { DungeonDoc } from '../dungeonYaml';
+import {
+  UnsupportedRegionFloorContractError,
+  type DungeonDoc,
+} from '../dungeonYaml';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
 
 export type Cell = [number, number];
@@ -126,6 +129,11 @@ export function resolveCanvasFloor(
   doc: Pick<DungeonDoc, 'canvas' | 'holes'>,
   floorPlan: FloorPlan | null
 ): ResolvedCanvasFloor {
+  if (doc.canvas?.floorSource === 'regions') {
+    throw new UnsupportedRegionFloorContractError(
+      'FloorPlan.floor_source is not present in the released proto; refusing to infer or downgrade a region-union floor'
+    );
+  }
   if (floorPlan && floorPlan.floorCells.length > 0) {
     return {
       cells: sortCellsLexicographic(
