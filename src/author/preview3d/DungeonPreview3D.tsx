@@ -329,9 +329,27 @@ interface DungeonPreview3DProps {
    * creation-canvas-scoped the same way) just falls back to the
    * pre-existing generic message. */
   selectedTool?: BoardTool | null;
+  /**
+   * Fixture-only render seam used by the precise-composition Learn probe
+   * (#728). It can swap the rendered asset or add a small world-space offset
+   * without promoting either experiment into DungeonDoc/YAML. The resolved
+   * prop list is shared by Orbit and Play; this does not create a camera-only
+   * transform path. Omitted by every production authoring caller.
+   */
+  placementPreviewOverride?: PlacementPreviewOverrideResolver;
 }
 
-interface PlacedProp {
+export interface PlacementPreviewOverride {
+  assetRef?: string;
+  positionOffset?: readonly [number, number, number];
+  rotationOffsetY?: number;
+}
+
+export type PlacementPreviewOverrideResolver = (
+  selection: PlacementSelection
+) => PlacementPreviewOverride | undefined;
+
+export interface PlacedProp {
   key: string;
   position: [number, number, number];
   variantRef: string;
@@ -636,6 +654,29 @@ export function buildOnePlacement(
       : {};
   }
   return { prop: { key, position, variantRef: p.ref, rotationY, sel } };
+}
+
+/** Apply the Learn probe's optional render-only adjustment to one already-
+ * resolved prop. Kept pure/exported so tests discriminate against replacement
+ * losing the authored center or a later camera branch applying a second
+ * transform. Production authoring never supplies an override. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function applyPlacementPreviewOverride(
+  prop: PlacedProp,
+  override: PlacementPreviewOverride | undefined
+): PlacedProp {
+  if (!override) return prop;
+  const [dx, dy, dz] = override.positionOffset ?? [0, 0, 0];
+  return {
+    ...prop,
+    variantRef: override.assetRef ?? prop.variantRef,
+    position: [
+      prop.position[0] + dx,
+      prop.position[1] + dy,
+      prop.position[2] + dz,
+    ],
+    rotationY: prop.rotationY + (override.rotationOffsetY ?? 0),
+  };
 }
 
 function buildPlacements(
@@ -1209,14 +1250,27 @@ export function DungeonPreview3D({
   onReject,
   onSelectConnector,
   selectedTool,
+  placementPreviewOverride,
 }: DungeonPreview3DProps) {
   const floorTiles = useMemo(
     () => buildFloorTiles(floorPlan, doc.holes, floorCells),
     [floorPlan, doc.holes, floorCells]
   );
-  const { props, monsters } = useMemo(
+  const { props: baseProps, monsters } = useMemo(
     () => buildPlacements(floorPlan, doc),
     [floorPlan, doc]
+  );
+  // Resolve fixture-only offsets/assets once, before any camera branch.
+  // Orbit and Play below render this SAME array through the SAME PropModel.
+  const props = useMemo(
+    () =>
+      baseProps.map((prop) =>
+        applyPlacementPreviewOverride(
+          prop,
+          placementPreviewOverride?.(prop.sel)
+        )
+      ),
+    [baseProps, placementPreviewOverride]
   );
   const authoredWalls = useMemo(
     () => buildWalls(doc.walls, 'authored'),

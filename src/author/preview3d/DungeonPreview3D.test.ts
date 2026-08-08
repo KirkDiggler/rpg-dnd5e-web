@@ -17,6 +17,8 @@
  */
 import { HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { facingToRotationY } from '../boardGeometry';
 import { deriveCanvasFloorCells } from '../creation/canvasFloor';
@@ -39,6 +41,7 @@ import {
 import { SHOWCASE_FLOORPLAN, SHOWCASE_YAML } from '../fixtures';
 import { BOARD_HEX_SIZE, cubeAtColRow } from '../hexLayout';
 import {
+  applyPlacementPreviewOverride,
   buildFloorTiles,
   buildOnePlacement,
   buildPlaceableCells,
@@ -561,5 +564,47 @@ describe('ORBIT_INITIAL_CAMERA_POSITION — Orbit stays azimuth-matched to the t
   it("Orbit's initial camera position has the same azimuth as the tactical camera's INITIAL_AZIMUTH", () => {
     const [x, y, z] = ORBIT_INITIAL_CAMERA_POSITION;
     expect(azimuthOf({ x, y, z })).toBeCloseTo(INITIAL_AZIMUTH, 10);
+  });
+});
+
+describe('fixture preview overrides — one transform path for Orbit and Play (#728)', () => {
+  it('replacement changes the asset and offsets the authored center without rebuilding a second placement', () => {
+    const { doc } = parseDungeon(SHOWCASE_YAML);
+    const source = doc.rooms[0].place[0];
+    const base = buildOnePlacement(
+      doc,
+      source,
+      source.at[0],
+      source.at[1],
+      { roomId: doc.rooms[0].id, index: 0 },
+      'composition-test'
+    ).prop!;
+    const replaced = applyPlacementPreviewOverride(base, {
+      assetRef: 'dnd5e:props:torch-ornate',
+      positionOffset: [0.1, 0, -0.05],
+    });
+
+    expect(replaced.variantRef).toBe('dnd5e:props:torch-ornate');
+    expect(replaced.position).toEqual([
+      base.position[0] + 0.1,
+      base.position[1],
+      base.position[2] - 0.05,
+    ]);
+    expect(replaced.sel).toBe(base.sel);
+    expect(replaced.rotationY).toBe(base.rotationY);
+  });
+
+  it('resolves overrides before camera mode and renders exactly one shared PropModel path', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/author/preview3d/DungeonPreview3D.tsx'),
+      'utf8'
+    );
+    const resolvedTransform = source.indexOf('const props = useMemo(');
+    const cameraState = source.indexOf('const [cameraMode, setCameraMode]');
+    expect(resolvedTransform).toBeGreaterThan(0);
+    expect(resolvedTransform).toBeLessThan(cameraState);
+    // Discriminates against a future Orbit-PropModel + Play-PropModel split,
+    // which could silently apply different transforms in each camera.
+    expect(source.match(/<PropModel\b/g)).toHaveLength(1);
   });
 });

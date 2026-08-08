@@ -1,7 +1,7 @@
 ---
 name: /concepts route
 description: UI prototyping sandbox — isolated from production, no promotion process
-updated: 2026-07-22
+updated: 2026-08-07
 confidence: high — verified by reading ConceptsView.tsx and the concepts/ directory
 ---
 
@@ -48,6 +48,15 @@ equipment file) — no Platform issue filed by this round.
 `src/concepts/just-roll/` — local-only d20 play that reuses one persistent
 presentation-only `src/components/ui/dice/DiceTray` across rolls; it and
 combat pacing supply the tray's phase, outcome, motion, and final face.
+
+`src/author/PropCompositionConcept.tsx` — the web#728 fixture-first Learn
+probe, registered as `prop-composition`. It deliberately lives beside the
+shared authoring renderer it exercises rather than inventing a parallel
+concept renderer: actual manifest-backed bookcase/ornate-torch models,
+fixture-local bounded wall-relative placement state, and the same
+`DungeonPreview3D` Orbit/Play camera path. It has no save/persistence path;
+its discovered ownership contract and visual verdict are recorded in
+`docs/evidence/prop-composition-728.md`.
 
 ## Gap: no promotion process
 
