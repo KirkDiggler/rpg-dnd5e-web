@@ -45,6 +45,7 @@
  */
 
 import {
+  cubeToWorld,
   HEX_SIZE,
   hexEdgeBetween,
   type CubeCoord,
@@ -173,10 +174,26 @@ class UnionFind {
  * `hexSize` defaults to the game's standard `HEX_SIZE` so a real caller
  * never has to pass it explicitly, matching `computeWallRuns`' own
  * convention.
+ *
+ * `floorHexes` (optional): every hex cell the caller independently knows
+ * is real floor (e.g. `RegionInput.hexes` flattened) — used ONLY to
+ * ground each run's outward `facing` in physical floor proximity rather
+ * than the connected-component-centroid fallback (see
+ * `facingViaFloorProximity`'s own doc comment for why the centroid
+ * heuristic breaks down on a finely irregular boundary, and why this is
+ * the fix). Passing region/zone hex data here does not reintroduce the
+ * #720 "zones are not rooms" defect — that bug was synthesizing wall
+ * GEOMETRY from a zone's bounding box; this only asks "is there floor
+ * near this side of an ALREADY-real wall edge," a much weaker, orienting-
+ * only use that degrades to the centroid fallback if the zone data
+ * happens to be wrong or absent, never fabricates a wall that isn't
+ * there. Omitted (every caller before this parameter existed) keeps the
+ * centroid-based facing unchanged.
  */
 export function computeAuthoredWallRuns(
   edges: AuthoredWallEdgeInput[],
-  hexSize: number = HEX_SIZE
+  hexSize: number = HEX_SIZE,
+  floorHexes?: CubeCoord[]
 ): AuthoredWallRun[] {
   const geoms: EdgeGeom[] = edges.map((input) => {
     const { a, b } = hexEdgeBetween(input.from, input.to, hexSize);
@@ -332,6 +349,76 @@ export function computeAuthoredWallRuns(
     return { startKey, endKey: currentKey, chainEdges };
   }
 
+  const floorWorldPositions: WorldPos[] = (floorHexes ?? []).map((hex) =>
+    cubeToWorld(hex, hexSize)
+  );
+
+  /**
+   * Ground truth for outward-ness, physically: probe a short step in each
+   * perpendicular direction from a point on the run and see which probe
+   * lands nearer a KNOWN floor hex — that side is inward, so facing points
+   * the other way.
+   *
+   * Why the centroid heuristic (this module's original design) isn't
+   * enough on its own: it tests "which side of THIS run's own line does
+   * the WHOLE component's average vertex position fall on" — a fine
+   * approximation for a room whose boundary is convex-ish (a rectangle, a
+   * gentle zigzag), but it breaks down on a finely irregular boundary
+   * (verified against dungeon-one's real crenellated wall pattern — small
+   * triangular teeth authored directly in its wall list, not a projection
+   * artifact): a short run sitting in a local concave notch can be on
+   * EITHER side of the distant whole-network centroid depending on the
+   * notch's own tiny-scale geometry, with no relation to which side is
+   * actually the room's floor. Measured live: roughly half of that
+   * pattern's individual teeth got the WRONG facing this way (pointing
+   * into the room, showing tiled pieces' flat undecorated back to a
+   * player standing inside — exactly Kirk's live report that authored
+   * wall segments read as dark/illegible, worst under crypt's already-dim
+   * mood lighting where a wrong-facing piece's flat back reads as an
+   * almost featureless black silhouette). Floor proximity has no such
+   * blind spot: it asks a purely LOCAL question near each run, so a
+   * notch's individual teeth resolve independently and correctly instead
+   * of all deferring to one distant, unrepresentative reference point.
+   */
+  function facingViaFloorProximity(
+    mid: WorldPos,
+    perp: WorldPos
+  ): WorldPos | undefined {
+    if (floorWorldPositions.length === 0) return undefined;
+    // A pure single-direction (e.g. left/right) boundary's nearest floor
+    // hex sits exactly one hex radius away, but a zigzag (e.g. top/bottom)
+    // boundary's own staircase "eats" a large fraction of a naive 1-hex
+    // probe before it clears the floor hexes' own footprint (the identical
+    // effect wallRuns.ts's DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES =
+    // sqrt(3) corrects for) — verified live: a 1.0 probe misclassified
+    // most runs along a wide, shallow rectangle's top/bottom sides.
+    // sqrt(3) is the same constant reused here rather than re-derived.
+    const probeDist = hexSize * Math.sqrt(3);
+    const probeA: WorldPos = {
+      x: mid.x + perp.x * probeDist,
+      z: mid.z + perp.z * probeDist,
+    };
+    const probeB: WorldPos = {
+      x: mid.x - perp.x * probeDist,
+      z: mid.z - perp.z * probeDist,
+    };
+    const nearestFloorDistance = (p: WorldPos): number => {
+      let best = Infinity;
+      for (const f of floorWorldPositions) {
+        const d = distance(p, f);
+        if (d < best) best = d;
+      }
+      return best;
+    };
+    const distA = nearestFloorDistance(probeA);
+    const distB = nearestFloorDistance(probeB);
+    if (distA === distB) return undefined; // genuinely ambiguous, fall back
+    // Whichever probe is CLOSER to floor sits on the inward side, so
+    // facing (outward) points along the OTHER probe's own direction —
+    // i.e. away from the closer one, never toward it.
+    return distA < distB ? { x: -perp.x, z: -perp.z } : perp;
+  }
+
   const runs: AuthoredWallRun[] = [];
 
   function emitRun(startKey: string, endKey: string, chainEdges: EdgeGeom[]) {
@@ -355,15 +442,21 @@ export function computeAuthoredWallRuns(
         z: end.z - dir.z * (DOOR_FRAME_CALIBRATED_WIDTH / 2),
       };
     }
-    const centroid = centroidOfComponent(startKey);
     const mid: WorldPos = {
       x: (start.x + end.x) / 2,
       z: (start.z + end.z) / 2,
     };
     const perp: WorldPos = { x: -dir.z, z: dir.x };
+    // Prefer the physically-grounded floor-proximity test (see
+    // facingViaFloorProximity's own doc comment); fall back to the
+    // connected-component centroid only when no floor data was supplied,
+    // or the rare case both probes tie.
+    const centroid = centroidOfComponent(startKey);
     const toMid: WorldPos = { x: mid.x - centroid.x, z: mid.z - centroid.z };
     const dot = perp.x * toMid.x + perp.z * toMid.z;
-    const facing: WorldPos = dot >= 0 ? perp : { x: -perp.x, z: -perp.z };
+    const centroidFacing: WorldPos =
+      dot >= 0 ? perp : { x: -perp.x, z: -perp.z };
+    const facing = facingViaFloorProximity(mid, perp) ?? centroidFacing;
     const key = chainEdges
       .map((g) => g.input.id ?? `${g.aKey}|${g.bKey}`)
       .sort()

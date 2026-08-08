@@ -304,7 +304,18 @@ export function EncounterMap({
       wallRunsResult.connectorRuns,
       connectorDoors
     );
-    return computeAuthoredWallRuns(edgeInputs);
+    // Ground each run's outward `facing` in real floor proximity (every
+    // revealed region's own hex membership) rather than the pure
+    // connected-component-centroid fallback — see
+    // computeAuthoredWallRuns' own `floorHexes` doc comment for why a
+    // centroid-only heuristic breaks down on a finely irregular boundary
+    // (verified live against dungeon-one's own wall data: roughly half
+    // its crenellated stretch's tiled pieces showed their flat,
+    // undecorated back to the player instead of the tinted/detailed
+    // front — exactly Kirk's live report that authored walls read as
+    // dark/illegible, worst under crypt's already-dim mood lighting).
+    const floorHexes = regions.flatMap((region) => region.hexes);
+    return computeAuthoredWallRuns(edgeInputs, HEX_SIZE, floorHexes);
   }, [wallList, regions, wallRunsResult, connectorDoors]);
   // legacySyntyWallsRaw still includes every 'interior' wall (degenerate
   // AND boundary-edge alike — legacyRenderWalls' own contract is

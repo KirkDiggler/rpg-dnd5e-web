@@ -8,6 +8,7 @@
  */
 import {
   coordToKey,
+  cubeToWorld,
   HEX_DIRECTIONS,
   HEX_SIZE,
   hexEdgeBetween,
@@ -189,6 +190,60 @@ describe("computeAuthoredWallRuns — a rectangular wall loop (Kirk's dungeon-on
       expect(mag).toBeGreaterThan(0.9);
       expect(mag).toBeLessThan(1.1);
     }
+  });
+});
+
+describe('computeAuthoredWallRuns — floorHexes-grounded facing (fixes the centroid heuristic breaking down on a locally irregular boundary)', () => {
+  it('points every run of a full rectangular loop away from the known floor inside it', () => {
+    const edges = rectBoundaryEdges(0, 20, 0, 3);
+    const floorHexes: CubeCoord[] = [];
+    for (let col = 0; col <= 20; col++) {
+      for (let row = 0; row <= 3; row++) {
+        floorHexes.push(cubeAtColRow(col, row));
+      }
+    }
+    const floorWorldPositions = floorHexes.map((h) => cubeToWorld(h, HEX_SIZE));
+
+    const runs = computeAuthoredWallRuns(edges, HEX_SIZE, floorHexes);
+    expect(runs.length).toBeGreaterThan(0);
+    for (const run of runs) {
+      const mid = {
+        x: (run.start.x + run.end.x) / 2,
+        z: (run.start.z + run.end.z) / 2,
+      };
+      // Same probe distance the module's own facingViaFloorProximity uses
+      // internally (sqrt(3) hex radii) — a shorter verification probe can
+      // land ambiguously close to a zigzag boundary's own "eaten" offset
+      // (wallRuns.ts's DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES finding)
+      // and produce a false failure independent of whether facing is
+      // actually correct.
+      const probeDist = HEX_SIZE * Math.sqrt(3);
+      const inwardProbe = {
+        x: mid.x - run.facing.x * probeDist,
+        z: mid.z - run.facing.z * probeDist,
+      };
+      const outwardProbe = {
+        x: mid.x + run.facing.x * probeDist,
+        z: mid.z + run.facing.z * probeDist,
+      };
+      const nearestFloorDistance = (p: { x: number; z: number }) =>
+        Math.min(
+          ...floorWorldPositions.map((f) => Math.hypot(p.x - f.x, p.z - f.z))
+        );
+      // The probe BEHIND facing (mid - facing*step) should land closer to
+      // known floor than the probe AHEAD of facing (mid + facing*step) —
+      // i.e. facing points away from the room, not into it.
+      expect(nearestFloorDistance(inwardProbe)).toBeLessThanOrEqual(
+        nearestFloorDistance(outwardProbe)
+      );
+    }
+  });
+
+  it('omitting floorHexes keeps the original centroid-based facing (backward compatible)', () => {
+    const edges = rectBoundaryEdges(0, 5, 0, 3);
+    const withoutFloor = computeAuthoredWallRuns(edges);
+    const withEmptyFloor = computeAuthoredWallRuns(edges, HEX_SIZE, []);
+    expect(withEmptyFloor).toEqual(withoutFloor);
   });
 });
 
