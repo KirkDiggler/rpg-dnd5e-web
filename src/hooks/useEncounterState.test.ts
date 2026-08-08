@@ -75,6 +75,7 @@ import {
   applyTurnStateChanged,
   applyWallsRevealed,
   createEmptyEncounterState,
+  facingByEntityIdFromHexes,
   hexesWithPosition,
   knowledgeStateForPosition,
   mergeEntityPosition,
@@ -980,6 +981,71 @@ describe('v1alpha2 reducer additions', () => {
           );
         });
       });
+
+      describe('facing propagation (rpg-dnd5e-web unit/game-fidelity Bug B)', () => {
+        // Placement.facing rides the SAME record as position (types_pb.ts's
+        // own doc comment: "facing rides HERE... on Placement, not
+        // Entity") — these pin that applyHexRecordsMerged actually carries
+        // it through instead of silently dropping it the way the pre-fix
+        // `setPosition` helper did.
+        it('carries an authored facing through to the cached entity state', () => {
+          let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+          const hex = makeHexRecord({ x: 2, y: -1, z: -1 }, HexState.VISIBLE, [
+            makePlacement('goblin-1', 3),
+          ]);
+
+          state = applyHexRecordsMerged(state, [hex]);
+
+          expect(state.entities.get('goblin-1')?.facing).toBe(3);
+        });
+
+        it('leaves facing undefined for a placement carrying no authored override', () => {
+          let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+          const hex = makeHexRecord({ x: 2, y: -1, z: -1 }, HexState.VISIBLE, [
+            create(PlacementSchema, { entityId: 'goblin-1' }),
+          ]);
+
+          state = applyHexRecordsMerged(state, [hex]);
+
+          expect(state.entities.get('goblin-1')?.facing).toBeUndefined();
+        });
+
+        it('a facing-only change at the SAME hex (turning in place) still produces a state update', () => {
+          let state = seedKnownEntity(createEmptyEncounterState(), 'goblin-1');
+          const facingEast = makeHexRecord(
+            { x: 0, y: 0, z: 0 },
+            HexState.VISIBLE,
+            [makePlacement('goblin-1', 0)]
+          );
+          state = applyHexRecordsMerged(state, [facingEast]);
+          expect(state.entities.get('goblin-1')?.facing).toBe(0);
+
+          const facingNorthwest = makeHexRecord(
+            { x: 0, y: 0, z: 0 },
+            HexState.VISIBLE,
+            [makePlacement('goblin-1', 2)]
+          );
+          const after = applyHexRecordsMerged(state, [facingNorthwest]);
+
+          expect(after.entities).not.toBe(state.entities);
+          expect(after.entities.get('goblin-1')?.facing).toBe(2);
+        });
+
+        it('is idempotent on facing too — re-applying the same event twice leaves state identical', () => {
+          const seeded = seedKnownEntity(
+            createEmptyEncounterState(),
+            'goblin-1'
+          );
+          const hex = makeHexRecord({ x: 0, y: 0, z: 0 }, HexState.VISIBLE, [
+            makePlacement('goblin-1', 4),
+          ]);
+
+          const first = applyHexRecordsMerged(seeded, [hex]);
+          const second = applyHexRecordsMerged(first, [hex]);
+
+          expect(second.entities).toBe(first.entities);
+        });
+      });
     });
 
     describe('positionByEntityIdFromHexes (rpg-dnd5e-web#651)', () => {
@@ -1064,6 +1130,59 @@ describe('v1alpha2 reducer additions', () => {
         const positions = positionByEntityIdFromHexes([positionless]);
 
         expect(positions.has('goblin-1')).toBe(false);
+      });
+    });
+
+    describe('facingByEntityIdFromHexes (rpg-dnd5e-web unit/game-fidelity Bug B)', () => {
+      // Snapshot-hydration sibling of the applyHexRecordsMerged facing
+      // coverage above — same VISIBLE-over-REMEMBERED precedence
+      // (rpg-dnd5e-web#651), resolving Placement.facing instead of
+      // Placement's implicit hex position.
+      it('resolves an authored facing for a VISIBLE placement', () => {
+        const visible = makeHexRecord({ x: 1, y: -1, z: 0 }, HexState.VISIBLE, [
+          makePlacement('statue-1', 5),
+        ]);
+
+        const facings = facingByEntityIdFromHexes([visible]);
+
+        expect(facings.get('statue-1')).toBe(5);
+      });
+
+      it('omits an entity whose placement carries no authored facing', () => {
+        const visible = makeHexRecord({ x: 1, y: -1, z: 0 }, HexState.VISIBLE, [
+          create(PlacementSchema, { entityId: 'statue-1' }),
+        ]);
+
+        const facings = facingByEntityIdFromHexes([visible]);
+
+        expect(facings.has('statue-1')).toBe(false);
+      });
+
+      it('resolves to the VISIBLE facing when a REMEMBERED record for the same entity also carries one', () => {
+        const visible = makeHexRecord({ x: 1, y: -1, z: 0 }, HexState.VISIBLE, [
+          makePlacement('goblin-1', 1),
+        ]);
+        const remembered = makeHexRecord(
+          { x: 0, y: 0, z: 0 },
+          HexState.REMEMBERED,
+          [makePlacement('goblin-1', 4)]
+        );
+
+        const facings = facingByEntityIdFromHexes([remembered, visible]);
+
+        expect(facings.get('goblin-1')).toBe(1);
+      });
+
+      it('still resolves a facing for an entity present ONLY in a REMEMBERED record', () => {
+        const remembered = makeHexRecord(
+          { x: 3, y: -2, z: -1 },
+          HexState.REMEMBERED,
+          [makePlacement('goblin-1', 2)]
+        );
+
+        const facings = facingByEntityIdFromHexes([remembered]);
+
+        expect(facings.get('goblin-1')).toBe(2);
       });
     });
 
@@ -1844,6 +1963,33 @@ describe('applyEntityAppearedBatch', () => {
       },
     ]);
     expect(after.entityMeta.get('obstacle-1')?.propRefId).toBe('barrel');
+  });
+
+  it('stores facing per entity (rpg-dnd5e-web unit/game-fidelity Bug B)', () => {
+    const prev = createEmptyEncounterState();
+    const after = applyEntityAppearedBatch(prev, [
+      {
+        entity: makeTestEntity('statue-1', { x: 2, y: 0, z: -2 }),
+        type: EntityType.OBSTACLE,
+        monsterRefId: undefined,
+        initialHP: undefined,
+        initialAC: undefined,
+        displayName: 'Statue',
+        propRefId: 'statue',
+        facing: 4,
+      },
+      {
+        entity: makeTestEntity('bookcase-1', { x: 3, y: 0, z: -3 }),
+        type: EntityType.OBSTACLE,
+        monsterRefId: undefined,
+        initialHP: undefined,
+        initialAC: undefined,
+        displayName: 'Bookcase',
+        propRefId: 'bookcase',
+      },
+    ]);
+    expect(after.entities.get('statue-1')?.facing).toBe(4);
+    expect(after.entities.get('bookcase-1')?.facing).toBeUndefined();
   });
 
   it('is a no-op on empty array (returns same reference)', () => {

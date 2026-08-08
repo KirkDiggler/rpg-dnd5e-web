@@ -62,6 +62,7 @@ import { useUnequipItem } from '../../api/useUnequipItem';
 import { useCombatLog } from '../../hooks/useCombatLog';
 import type { CharacterEquipment } from '../../hooks/useEncounterState';
 import {
+  facingByEntityIdFromHexes,
   positionByEntityIdFromHexes,
   useEncounterState,
 } from '../../hooks/useEncounterState';
@@ -332,6 +333,11 @@ export function EncounterView({
         // `hexes`' own array order — see its doc comment for why a plain
         // per-hex loop here corrupted the mover's own position on reconnect.
         const positionByEntityId = positionByEntityIdFromHexes(hexes);
+        // rpg-dnd5e-web unit/game-fidelity Bug B: same reverse-index shape
+        // as positionByEntityId above, resolving Placement.facing instead
+        // of Placement's implicit hex position — see
+        // facingByEntityIdFromHexes's own doc comment.
+        const facingByEntityId = facingByEntityIdFromHexes(hexes);
         const entityEntries = (e.encounter.space?.entities ?? [])
           .filter((entity) => positionByEntityId.has(entity.id))
           .map((entity) => ({
@@ -382,6 +388,11 @@ export function EncounterView({
               entity.data?.case === 'character'
                 ? characterEquipmentFrom(entity.data.value)
                 : undefined,
+            // rpg-dnd5e-web unit/game-fidelity Bug B: authored facing
+            // (statues/bookcases etc.) must render in-game, not just in the
+            // builder preview — see facingByEntityIdFromHexes's doc
+            // comment.
+            facing: facingByEntityId.get(entity.id),
           }));
         if (entityEntries.length > 0) {
           encounterState.applyEntityAppearedBatch(entityEntries);

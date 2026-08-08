@@ -18,6 +18,7 @@ import { useMoveEntity } from '../../api/useMoveEntity';
 import { useSetReactionReady } from '../../api/useSetReactionReady';
 import { useTakeAction } from '../../api/useTakeAction';
 import {
+  facingByEntityIdFromHexes,
   positionByEntityIdFromHexes,
   useEncounterState,
 } from '../../hooks/useEncounterState';
@@ -221,6 +222,10 @@ export function PlaytestHarness() {
           // EncounterView.tsx) resolves VISIBLE over REMEMBERED for an
           // entity present in both, regardless of `hexes`' own array order.
           const positionByEntityId = positionByEntityIdFromHexes(hexes);
+          // rpg-dnd5e-web unit/game-fidelity Bug B: same reverse-index
+          // shape as positionByEntityId above, shared with EncounterView.tsx
+          // — see facingByEntityIdFromHexes's own doc comment.
+          const facingByEntityId = facingByEntityIdFromHexes(hexes);
           // Seed entities from the snapshot's space entities list in a single
           // batch setState call to avoid N intermediate renders for N entities.
           const entityEntries = (e.encounter.space?.entities ?? [])
@@ -251,6 +256,7 @@ export function PlaytestHarness() {
                 entity.data?.case === 'character'
                   ? entity.data.value.classRef?.id
                   : undefined,
+              facing: facingByEntityId.get(entity.id),
             }));
           if (entityEntries.length > 0) {
             encounterState.applyEntityAppearedBatch(entityEntries);

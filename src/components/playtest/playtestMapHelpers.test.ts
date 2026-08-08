@@ -211,6 +211,34 @@ describe('buildRenderableEntities', () => {
     });
   });
 
+  it('passes facing through untouched (rpg-dnd5e-web unit/game-fidelity Bug B)', () => {
+    const withFacing = {
+      ...makeEntityState('statue-1', { x: 2, y: -2, z: 0 }),
+      facing: 3,
+    };
+    const entities = new Map([['statue-1', withFacing]]);
+    const meta = new Map<string, EntityMeta>([
+      ['statue-1', { type: EntityType.OBSTACLE, monsterRefId: undefined }],
+    ]);
+
+    const list = buildRenderableEntities(entities, meta, new Map());
+
+    expect(list[0]).toMatchObject({ facing: 3 });
+  });
+
+  it('leaves facing undefined for an entity with no authored override', () => {
+    const entities = new Map([
+      ['statue-1', makeEntityState('statue-1', { x: 0, y: 0, z: 0 })],
+    ]);
+    const meta = new Map<string, EntityMeta>([
+      ['statue-1', { type: EntityType.OBSTACLE, monsterRefId: undefined }],
+    ]);
+
+    const list = buildRenderableEntities(entities, meta, new Map());
+
+    expect(list[0]?.facing).toBeUndefined();
+  });
+
   it('leaves movePath/moveSeq undefined for an entity that has never moved', () => {
     const entities = new Map([
       ['char-alice', makeEntityState('char-alice', { x: 0, y: 0, z: 0 })],

@@ -12,6 +12,16 @@
  * - Turn order overlay
  */
 
+// facingToRotationY is the Kirk-approved reference mapping for a wire
+// `facing` index (rpg-dnd5e-web unit/game-fidelity Bug B) — the builder's
+// 3D preview (author/preview3d/DungeonPreview3D.tsx) already renders
+// authored facing through this exact function, verified correct against
+// TARGET-YAML.md's E/NE/NW/W/SW/SE convention. The live game route reuses
+// it rather than re-deriving an equivalent, per this codebase's own
+// "MEASURED, not inferred" facing-offset discipline (facing.ts's own doc
+// comment on a prior naive-derivation hazard) — importing the single
+// existing measurement is the only way to GUARANTEE agreement with it.
+import { facingToRotationY } from '@/author/boardGeometry';
 import {
   doorHexKinds,
   doorHexPositions,
@@ -87,6 +97,11 @@ export interface HexGridEntity {
   isDowned?: boolean;
   obstacleType?: ObstacleType;
   propRefId?: string;
+  /** Authored runtime-override facing (rpg-dnd5e-web unit/game-fidelity Bug
+   * B) — wire hex-direction index E=0/NE=1/NW=2/W=3/SW=4/SE=5, converted to
+   * a rotationY by `resolvePropRotationY` below. Undefined means no
+   * authored override. */
+  facing?: number;
   movePath?: { x: number; y: number; z: number }[];
   moveSeq?: number;
   knowledgeState?: SceneKnowledgeState;
@@ -311,6 +326,30 @@ const GROUND_PLANE_SIZE = 200;
  * duplicating the whole rotation-computation wiring. */
 const WALL_ADJACENT_PROP_KEYS = new Set<string>(['dnd5e:props:wall-banner']);
 
+/** The rotationY HexEntity's `propRotationY` prop should actually receive
+ * for one entity (rpg-dnd5e-web unit/game-fidelity Bug B) — the computed
+ * wall-adjacent rotation (wall-banner, geometry-derived from wall
+ * neighbors, ignores `facing` entirely) wins when present, since it solves
+ * a DIFFERENT problem (flush-against-a-specific-wall-face) that a bare
+ * `facingToRotationY` conversion doesn't attempt; otherwise an authored
+ * wire `facing` (statues, bookcases, etc.) converts via the same
+ * Kirk-approved `facingToRotationY` the builder's 3D preview already uses.
+ * `undefined` (no wall-adjacent match AND no authored facing) falls
+ * through to PropModel's own rotationY=0 default, unchanged from every
+ * entity before this field existed. Pulled out of the render loop as a
+ * pure, exported function so the precedence rule is covered by a direct
+ * unit test instead of only a live-render assertion — same "pull the
+ * composition into arithmetic a test can pin" reasoning as
+ * HexEntity.tsx's `shouldTiltDeadOrDowned`. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function resolvePropRotationY(
+  wallAdjacentRotationY: number | undefined,
+  facing: number | undefined
+): number | undefined {
+  if (wallAdjacentRotationY !== undefined) return wallAdjacentRotationY;
+  return facing === undefined ? undefined : facingToRotationY(facing);
+}
+
 // Scene consumes this exact helper; exporting it permits pathfinding coverage.
 // eslint-disable-next-line react-refresh/only-export-components
 export function isHexBlocked(
@@ -497,6 +536,24 @@ function Scene({
     }
     return map;
   }, [entities, walls, wallKindByHex]);
+
+  // Final per-entity propRotationY (rpg-dnd5e-web unit/game-fidelity Bug B)
+  // — combines the wall-adjacent computation above with an authored wire
+  // `facing` via resolvePropRotationY's own precedence rule. Precomputed
+  // once per (entities, wallAdjacentRotations) change, same reasoning as
+  // wallAdjacentRotations itself: O(entities) here instead of resolving
+  // per-entity inline in the render loop below.
+  const propRotationYByEntity = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const entity of entities) {
+      const rotationY = resolvePropRotationY(
+        wallAdjacentRotations.get(entity.entityId),
+        entity.facing
+      );
+      if (rotationY !== undefined) map.set(entity.entityId, rotationY);
+    }
+    return map;
+  }, [entities, wallAdjacentRotations]);
 
   // Create character lookup map by ID for efficient entity -> character mapping
   const characterMap = useMemo(() => {
@@ -1054,7 +1111,7 @@ function Scene({
           isDowned={entity.isDowned}
           obstacleType={entity.obstacleType}
           propRefId={entity.propRefId}
-          propRotationY={wallAdjacentRotations.get(entity.entityId)}
+          propRotationY={propRotationYByEntity.get(entity.entityId)}
           movePath={entity.movePath}
           moveSeq={entity.moveSeq}
           knowledgeState={entity.knowledgeState}
