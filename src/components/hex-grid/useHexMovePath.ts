@@ -223,7 +223,10 @@ export function useHexMovePath(
   // this hook created the ref, the two hooks would be circular at the call
   // site. The two writes are disjoint by property, so they cannot fight.
   groupRef: React.RefObject<THREE.Group | null>,
-  onHeading?: (radians: number) => void
+  onHeading?: (radians: number) => void,
+  /** Reports completion of the exact move instance that finished painting.
+   * Presentation-only: callers must not treat this as game-state completion. */
+  onPresentationComplete?: (moveSeq: number) => void
 ): UseHexMovePathResult {
   const [isMoving, setIsMoving] = useState(false);
   const { invalidate } = useThree();
@@ -238,8 +241,11 @@ export function useHexMovePath(
   // first leg of every move would report through a stale callback.
   const onHeadingRef = useRef(onHeading);
   onHeadingRef.current = onHeading;
+  const onPresentationCompleteRef = useRef(onPresentationComplete);
+  onPresentationCompleteRef.current = onPresentationComplete;
 
   const seenSeqRef = useRef<number | undefined>(undefined);
+  const activeMoveSeqRef = useRef<number | undefined>(undefined);
   const stepRef = useRef<StepState>({ points: [], index: 0, elapsed: 0 });
 
   const destination = cubeToWorld(entityPosition, hexSize);
@@ -264,12 +270,24 @@ export function useHexMovePath(
     seenSeqRef.current = result.nextSeenSeq;
 
     if (!result.isGenuineMove) {
+      // A canonical/knowledge refresh can replace position/path objects while
+      // the same streamed moveSeq is still painting. That is the SAME move,
+      // not a snap/reset: keep its frame loop alive so its exact completion
+      // can satisfy the presentation gate. This applies identically to player
+      // and NPC actors.
+      if (
+        moveSeq !== undefined &&
+        activeMoveSeqRef.current === moveSeq &&
+        stepRef.current.points.length > 1
+      ) {
+        return;
+      }
       // Initial mount, non-move position change (initial placement,
-      // ghost/revive), or a re-render where moveSeq hasn't advanced since
-      // we last saw it — snap straight to the destination, matching
-      // pre-#542 behavior exactly. Also clears any in-flight step so a
-      // stale useFrame tick from a just-superseded move can't keep nudging
-      // the position after a non-move update resets it.
+      // ghost/revive), or a settled re-render where moveSeq hasn't advanced
+      // since we last saw it — snap straight to the destination, matching
+      // pre-#542 behavior exactly. Also clears any in-flight step so a stale
+      // useFrame tick from a reset can't keep nudging the position.
+      activeMoveSeqRef.current = undefined;
       stepRef.current = { points: [], index: 0, elapsed: 0 };
       groupRef.current.position.set(destination.x, yOffset, destination.z);
       setIsMoving(false);
@@ -277,7 +295,11 @@ export function useHexMovePath(
     }
 
     stepRef.current = { points: result.points, index: 0, elapsed: 0 };
+    activeMoveSeqRef.current = moveSeq;
     setIsMoving(result.points.length > 1);
+    if (result.points.length <= 1 && moveSeq !== undefined) {
+      onPresentationCompleteRef.current?.(moveSeq);
+    }
     // Report the first leg's heading. `undefined` for a zero-length leg (the
     // #656 same-hex move) means "no opinion" — the entity holds whatever it
     // was already facing rather than snapping to due north.
@@ -293,6 +315,7 @@ export function useHexMovePath(
     destination.z,
     yOffset,
     invalidate,
+    groupRef,
   ]);
 
   useFrame((_state, delta) => {
@@ -313,6 +336,11 @@ export function useHexMovePath(
       if (nextHeading !== undefined) onHeadingRef.current?.(nextHeading);
       if (s.index >= s.points.length - 1) {
         setIsMoving(false);
+        const completedSeq = activeMoveSeqRef.current;
+        activeMoveSeqRef.current = undefined;
+        if (completedSeq !== undefined) {
+          onPresentationCompleteRef.current?.(completedSeq);
+        }
       }
     }
   });

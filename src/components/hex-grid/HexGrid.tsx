@@ -125,6 +125,11 @@ export interface HexGridProps {
   /** Monster combat state for texture selection (includes monsterType) */
   monsters?: MonsterCombatState[];
   onMoveComplete?: (path: CubeCoord[]) => void;
+  /** Presentation-only completion of an entity's exact rendered move. */
+  onEntityMovementPresentationComplete?: (
+    entityId: string,
+    moveSeq: number
+  ) => void;
   onAttackComplete?: (targetId: string) => void;
   onHoverChange?: (
     entity: { id: string; type: string; name: string } | null
@@ -434,6 +439,7 @@ function Scene({
   isPlayerTurn = false,
   combatState = null,
   onMoveComplete,
+  onEntityMovementPresentationComplete,
   onAttackComplete,
   onHoverChange,
   onDoorClick,
@@ -1114,6 +1120,7 @@ function Scene({
           propRotationY={propRotationYByEntity.get(entity.entityId)}
           movePath={entity.movePath}
           moveSeq={entity.moveSeq}
+          onMovementPresentationComplete={onEntityMovementPresentationComplete}
           knowledgeState={entity.knowledgeState}
         />
       ))}
