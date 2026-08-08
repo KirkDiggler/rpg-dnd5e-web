@@ -134,6 +134,11 @@ export interface EncounterMapProps {
   openDoorIds?: string[];
   /** Full computed path (start + intermediates + end) when a hex click lands a move. */
   onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
+  /** Presentation-only completion of an entity's exact rendered move. */
+  onEntityMovementPresentationComplete?: (
+    entityId: string,
+    moveSeq: number
+  ) => void;
   /** Clicked entity id — caller dispatches attack for monsters or selects for characters. */
   onEntityClick: (entityId: string) => void;
   /** Fired with the door's Wall.id (rpg-api-protos#186) when a DOOR_* wall
@@ -159,6 +164,7 @@ export function EncounterMap({
   movementRemaining = DEFAULT_MOVEMENT_FEET,
   openDoorIds = [],
   onMove,
+  onEntityMovementPresentationComplete,
   onEntityClick,
   onDoorClick,
 }: EncounterMapProps) {
@@ -612,6 +618,9 @@ export function EncounterMap({
         onMoveComplete={(path: CubeCoord[]) => {
           onMove(path.map((c) => ({ x: c.x, y: c.y, z: c.z })));
         }}
+        onEntityMovementPresentationComplete={
+          onEntityMovementPresentationComplete
+        }
         onEntityClick={(targetId: string) => {
           onEntityClick(targetId);
         }}
